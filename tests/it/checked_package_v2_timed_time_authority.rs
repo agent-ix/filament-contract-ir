@@ -161,7 +161,7 @@ fn fixture(proposal: &Path, tick: bool) -> Value {
 
 fn admitted(wire: &Value, proposal: &Path) -> CheckedPackageV2 {
     match read(wire, proposal) {
-        CheckedPackageV2ReadResult::Admitted(package) => package,
+        CheckedPackageV2ReadResult::Admitted(package) => *package,
         other => panic!("unchanged owner positive must admit: {other:?}"),
     }
 }
@@ -229,13 +229,15 @@ fn rejects_non_time_dimension(derived: bool, tick: bool) {
         (Code::IllTyped, Some(Cause::InvalidTimeQuantity)),
         "{refusal:?}"
     );
-    assert!(
-        refusal.locus.is_some(),
-        "time authority refusal must identify the failing node"
+    assert_eq!(
+        serde_json::to_value(refusal.locus).unwrap(),
+        wire["semantic_graph"]["nodes"][44]["node_id"],
+        "time authority refusal must identify the source node"
     );
-    assert!(
-        refusal.path.is_some(),
-        "time authority refusal must identify the failing member"
+    assert_eq!(
+        refusal.path.unwrap().to_string(),
+        "/semantic_graph/nodes/44/body/members/1/value",
+        "FR-322 AC120 locates a non-time unit at the source unit binding"
     );
 }
 
