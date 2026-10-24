@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Agent-IX
 
-//! Isolated nominal Time authority checks over the owner-published structural fixture.
-//! The fixture's tick source with Clock places is not evidence of full timed validity.
+//! Nominal Time authority checks from independent owner-published dense and tick controls.
 
 use crate::support::checked_package::{canonical, rename_node};
 use ix_trace_rs::trace;
@@ -152,18 +151,28 @@ fn remint(wire: &mut Value) {
     .to_string());
 }
 
-fn rejects_non_time_dimension(derived: bool) {
+fn fixture(proposal: &Path, tick: bool) -> Value {
+    document(&proposal.join(if tick {
+        "fixtures/positive-tick-timed-model-nodes.json"
+    } else {
+        "fixtures/positive-timed-model-nodes.json"
+    }))
+}
+
+fn admitted(wire: &Value, proposal: &Path) -> CheckedPackageV2 {
+    match read(wire, proposal) {
+        CheckedPackageV2ReadResult::Admitted(package) => package,
+        other => panic!("unchanged owner positive must admit: {other:?}"),
+    }
+}
+
+fn rejects_non_time_dimension(derived: bool, tick: bool) {
     let Some(proposal) = proposal() else {
         return;
     };
-    let mut wire = document(&proposal.join("fixtures/positive-timed-model-nodes.json"));
-    assert!(
-        matches!(
-            read(&wire, &proposal),
-            CheckedPackageV2ReadResult::Admitted(_)
-        ),
-        "unchanged owner structural baseline must admit through this reader"
-    );
+    let mut wire = fixture(&proposal, tick);
+    let _ = admitted(&wire, &proposal);
+    let root = if tick { 45 } else { 52 };
     let original_id = wire["package_id"].clone();
     if derived {
         let mut base = wire["semantic_graph"]["nodes"][42].clone();
@@ -200,12 +209,13 @@ fn rejects_non_time_dimension(derived: bool) {
     assert_ne!(wire["package_id"], original_id);
     assert_eq!(
         wire["semantic_graph"]["nodes"][43]["nominal_identity_preimage"]["dimension_node_id"],
-        wire["semantic_graph"]["nodes"][52]["body"]["members"][1]["value"]["target"]
+        wire["semantic_graph"]["nodes"][root]["body"]["members"][1]["value"]["target"]
     );
     let refusal = match read(&wire, &proposal) {
         CheckedPackageV2ReadResult::Refused(refusal) => refusal,
         CheckedPackageV2ReadResult::Admitted(_) => panic!(
-            "timed model admitted a unit whose exact nominal dimension is {}",
+            "{} timed model admitted a unit whose exact nominal dimension is {}",
+            if tick { "tick" } else { "dense" },
             if derived {
                 "derived Time"
             } else {
@@ -232,11 +242,104 @@ fn rejects_non_time_dimension(derived: bool) {
 #[trace("TC-048", "FR-038-AC-320")]
 #[test]
 fn timed_source_rejects_a_unit_of_a_non_time_base_dimension() {
-    rejects_non_time_dimension(false);
+    rejects_non_time_dimension(false, false);
 }
 
 #[trace("TC-048", "FR-038-AC-320")]
 #[test]
 fn timed_source_rejects_a_unit_of_a_derived_dimension_named_time() {
-    rejects_non_time_dimension(true);
+    rejects_non_time_dimension(true, false);
+}
+
+#[trace("TC-048", "FR-038-AC-320")]
+#[test]
+fn tick_source_rejects_a_unit_of_a_non_time_base_dimension() {
+    rejects_non_time_dimension(false, true);
+}
+
+#[trace("TC-048", "FR-038-AC-320")]
+#[test]
+fn tick_source_rejects_a_unit_of_a_derived_dimension_named_time() {
+    rejects_non_time_dimension(true, true);
+}
+
+#[trace("TC-048", "FR-038-AC-320")]
+#[test]
+fn owner_dense_and_tick_positive_controls_admit_complete_graphs() {
+    let Some(proposal) = proposal() else {
+        return;
+    };
+    for tick in [false, true] {
+        let wire = fixture(&proposal, tick);
+        let package = admitted(&wire, &proposal);
+        assert_eq!(
+            serde_json::to_value(&package.graph().nodes).unwrap(),
+            wire["semantic_graph"]["nodes"]
+        );
+        assert_eq!(
+            serde_json::to_value(package.package_id()).unwrap(),
+            wire["package_id"]
+        );
+        let root = if tick { 45 } else { 52 };
+        let source = &wire["semantic_graph"]["nodes"][44]["body"]["members"];
+        assert_eq!(
+            source[0]["value"]["value"],
+            if tick { "tick" } else { "dense" }
+        );
+        for member in wire["semantic_graph"]["nodes"][root]["body"]["members"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .skip(3)
+        {
+            assert_eq!(
+                member["value"]["members"].as_array().unwrap().is_empty(),
+                tick
+            );
+        }
+        println!(
+            "owner {} positive admitted complete graph",
+            if tick { "tick" } else { "dense" }
+        );
+    }
+}
+
+// FR-415 AC2/AC8 specifies invalid_timed_model/clock-without-dense-time.
+// The IR refusal enum currently has neither member; this checks refusal only,
+// without assigning the owner diagnostic an invented IR alias or locus.
+#[trace("TC-048", "FR-415-AC-2", "FR-415-AC-8")]
+#[test]
+fn tick_source_with_clock_places_requires_refusal() {
+    let Some(proposal) = proposal() else {
+        return;
+    };
+    let mut wire = fixture(&proposal, false);
+    let tick = fixture(&proposal, true);
+    let _ = admitted(&wire, &proposal);
+    let _ = admitted(&tick, &proposal);
+    wire["semantic_graph"]["nodes"][44]["body"] =
+        tick["semantic_graph"]["nodes"][44]["body"].clone();
+    wire["semantic_graph"]["nodes"][44]["dependencies"] =
+        tick["semantic_graph"]["nodes"][44]["dependencies"].clone();
+    for index in [46, 48] {
+        let node = tick["semantic_graph"]["nodes"][index].clone();
+        let origin = tick["source_map"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|row| row["node_id"] == node["node_id"])
+            .unwrap()
+            .clone();
+        wire["semantic_graph"]["nodes"]
+            .as_array_mut()
+            .unwrap()
+            .push(node);
+        wire["source_map"].as_array_mut().unwrap().push(origin);
+    }
+    remint(&mut wire);
+    match read(&wire, &proposal) {
+        CheckedPackageV2ReadResult::Refused(refusal) => println!("unmapped owner tick+Clock refusal: {refusal:?}"),
+        CheckedPackageV2ReadResult::Admitted(_) => panic!("tick source admitted the dense control's Clock places; owner refusal mapping remains absent"),
+        other => panic!("expected typed owner refusal, got {other:?}"),
+    }
 }
