@@ -183,12 +183,13 @@ fn invalid(meter: &mut WorkMeter, row: usize, at: Path<'static>) -> ValidationFa
     )
 }
 
-/// Whether `node` is owned by the operation member `member` of `document`.
-fn owned_by(node: &CheckedSemanticNodeV2<CheckedJson>, document: &str, member: &str) -> bool {
+/// Whether `node` is owned by the operation member `member`. The member
+/// identity names its document, and the owner join has already matched the
+/// owner's document, so the owner node alone is compared.
+fn owned_by(node: &CheckedSemanticNodeV2<CheckedJson>, member: &str) -> bool {
     matches!(
         node.owner.as_ref(),
-        Some(CheckedNodeOwner::Model { identity, node })
-            if identity.as_ref() == document && node.as_ref() == member
+        Some(CheckedNodeOwner::Model { node, .. }) if node.as_ref() == member
     )
 }
 
@@ -200,7 +201,7 @@ fn owned_by(node: &CheckedSemanticNodeV2<CheckedJson>, document: &str, member: &
 /// itself when it redefines the operation, else the ancestor it inherits it
 /// from. Candidates of one dispatch table share the selected operation but
 /// carry different bodies, so the family's `selected_operation` is not the
-/// join. STD-661 tracks the FR-322 wording for this join.
+/// join (FR-322 "Candidate join").
 type Candidate<'a> = (&'a str, &'a str, &'a str, &'a CheckedNodeId);
 
 /// Validate a present carrier against the selected documents and the package
@@ -231,8 +232,7 @@ pub(super) fn validate(
     // The carrier runs before `checked_term_data` validation, so it joins only
     // a candidate whose receiver is in its table's family (the family owner's
     // package, and `operation_in_family`); any other candidate is left to
-    // dispatch validation to refuse (FSpec OBR-20 records the carrier locus
-    // for a package holding both defects).
+    // dispatch validation to refuse (FSpec OBD-01).
     for table in tables {
         let Some(family) = models.owner_by_key(&table.operation.declaring) else {
             continue;
@@ -268,25 +268,19 @@ pub(super) fn validate(
             .map(|row| key_of(&row.document, &row.declaring, &row.operation)),
     )?;
     let repeated = first_repeated(&covered);
-    // The (document, member) pairs that own a body clause function.
-    let mut owned: Vec<(&str, &str)> = stage_storage::vec(meter, &site(0, rows_at()), nodes.len())?;
+    // The members that own a body clause function.
+    let mut owned: Vec<&str> = stage_storage::vec(meter, &site(0, rows_at()), nodes.len())?;
     owned.extend(nodes.iter().enumerate().filter_map(|(position, node)| {
         match (
             node.owner.as_ref(),
             kinds.get(position),
             terms.get(position),
         ) {
-            (
-                Some(CheckedNodeOwner::Model {
-                    identity,
-                    node: member,
-                }),
-                Some(kind),
-                Some(term),
-            ) if matches!(kind, CheckedNodeKind::Function(_))
-                && super::owner::is_body_clause(term) =>
+            (Some(CheckedNodeOwner::Model { node: member, .. }), Some(kind), Some(term))
+                if matches!(kind, CheckedNodeKind::Function(_))
+                    && super::owner::is_body_clause(term) =>
             {
-                Some((identity.as_ref(), member.as_ref()))
+                Some(member.as_ref())
             }
             _ => None,
         }
@@ -323,9 +317,7 @@ pub(super) fn validate(
             meter,
             &mut |meter, code, cause, locus| refused(meter, index, code, Some(cause), locus),
         )?;
-        let has_body = owned
-            .binary_search(&(row.document.as_ref(), operation.identity.as_ref()))
-            .is_ok();
+        let has_body = owned.binary_search(&operation.identity.as_ref()).is_ok();
         let body_at = at.key("body");
         let node = match &row.body {
             OperationBody::Function { node } if has_body => Some(node),
@@ -357,7 +349,7 @@ pub(super) fn validate(
             let own = terms
                 .get(position)
                 .is_some_and(super::owner::is_body_clause)
-                && owned_by(&nodes[position], &row.document, &operation.identity);
+                && owned_by(&nodes[position], &operation.identity);
             if !own {
                 return Err(invalid(meter, index, node_at));
             }
