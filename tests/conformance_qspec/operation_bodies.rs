@@ -522,3 +522,28 @@ fn tc_987_dispatch_join_refusal_vectors_refuse_at_the_dispatch_join() {
         );
     }
 }
+
+/// A receiver outside the table's family that declares its own same-named
+/// operation, with its own row, is skipped by the carrier. Without the
+/// family check the candidate would join that row and the carrier would
+/// refuse it at the row's `body`; the dispatch join refuses it at its own
+/// `selection_key`.
+#[trace("TC-987", "FR-322-AC-397", "FR-038-AC-541")]
+#[test]
+fn an_out_of_family_receiver_with_its_own_operation_is_left_to_the_dispatch_join() {
+    let vectors = vectors();
+    let mut input = case(&vectors, "OBC-04-same-member-name");
+    let order = json!({"package": "acme/orders", "path": ["model", "object_type", "ix://acme/orders/Order"], "ordinal": 0});
+    input["dispatch_candidates"] = json!([{
+        "selected_operation": {"declaring": order, "operation": "settle"},
+        "selection_key": {"owner_effective_type": null,
+            "original": {"package": "acme/orders", "node": "ix://acme/orders/Invoice"}},
+        "operation_body": {"package": "acme/orders",
+            "path": ["function", "pure_function", "ix://acme/orders/Order/settle/body"],
+            "ordinal": 0},
+    }]);
+    assert_eq!(
+        refused_at(&input),
+        "/checked_term_data/dispatch_tables/0/candidates/0/selection_key"
+    );
+}
