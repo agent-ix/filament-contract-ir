@@ -3,8 +3,7 @@
 
 //! FR-052 neutral outcome and synthetic census tests.
 
-use ix_trace_rs::trace;
-use quire_contract_model::source_obligation::{
+use filament_contract_model::source_obligation::{
     build_source_obligation_census, SourceAssertionId, SourceAssertionProvenance,
     SourceAuthoredCriterionId, SourceByteRegion, SourceContractAuthorId,
     SourceCorrespondenceAssertion, SourceCorrespondenceError, SourceCorrespondenceRejectionReason,
@@ -18,11 +17,12 @@ use quire_contract_model::source_obligation::{
     SourceSemanticOccurrenceId, SourceTypeExhaustion, SourceTypeExhaustionSite,
     SourceTypeWorkDimension, SourceUnitHandle,
 };
-use quire_contract_model::{
+use filament_contract_model::{
     CheckedNodeId, CheckedNodePathSegment, CheckedOccurrence, CheckedOccurrenceRole,
     CheckedPackageIncomplete, CheckedPackageLimit, SourceDocumentId, SourceIdentity,
     SourceRevision,
 };
+use ix_trace_rs::trace;
 
 fn source() -> SourceIdentity {
     SourceIdentity::new(
@@ -160,12 +160,12 @@ fn quire_outcome_rejects_other_owner_scope_and_rows() {
     assert_eq!(outcome.items(), &[row]);
 
     let mut wrong_scope = TestEnumerator::new(SourceInventoryOwner::Quire, vec![]);
-    wrong_scope.scope = SourceInventoryScope::QslCheckedRequirementsAndPendingObligations;
+    wrong_scope.scope = SourceInventoryScope::FslCheckedRequirementsAndPendingObligations;
     assert_eq!(
         SourceInventoryOutcome::from_enumerator(wrong_scope),
         Err(SourceInventoryOutcomeError::OwnerScopeMismatch)
     );
-    let qsl_row = SourceInventoryRow::new(
+    let fsl_row = SourceInventoryRow::new(
         selected,
         SourceInventoryIdentity::RequirementRecord(SourceRequirementOccurrenceId {
             node: requirement_node("claim-a"),
@@ -176,7 +176,7 @@ fn quire_outcome_rejects_other_owner_scope_and_rows() {
     assert_eq!(
         SourceInventoryOutcome::from_enumerator(TestEnumerator::new(
             SourceInventoryOwner::Quire,
-            vec![qsl_row],
+            vec![fsl_row],
         )),
         Err(SourceInventoryOutcomeError::RowOwnerMismatch)
     );
@@ -184,7 +184,7 @@ fn quire_outcome_rejects_other_owner_scope_and_rows() {
 
 #[trace("FR-052-AC-12", "FR-052-AC-13")]
 #[test]
-fn native_qsl_identity_fields_and_stop_causes_remain_distinct() {
+fn native_fsl_identity_fields_and_stop_causes_remain_distinct() {
     let selected = source();
     let base = SourceRequirementOccurrenceId {
         node: requirement_node("claim-a"),
@@ -260,7 +260,7 @@ fn native_qsl_identity_fields_and_stop_causes_remain_distinct() {
     let unfinished = SourceInventoryIncompleteReason::TypeAdmissionUnfinished {
         declaration: SourceDeclarationHandle(1),
     };
-    let qsl_rows = pending_keys
+    let fsl_rows = pending_keys
         .into_iter()
         .map(|identity| {
             SourceInventoryRow::new(
@@ -269,9 +269,9 @@ fn native_qsl_identity_fields_and_stop_causes_remain_distinct() {
             )
         })
         .collect();
-    let mut enumerator = TestEnumerator::new(SourceInventoryOwner::Qsl, qsl_rows);
+    let mut enumerator = TestEnumerator::new(SourceInventoryOwner::Fsl, fsl_rows);
     enumerator.stop = Some(exhaustion.clone());
-    let report = SourceInventoryOutcome::from_enumerator(enumerator).expect("QSL outcome");
+    let report = SourceInventoryOutcome::from_enumerator(enumerator).expect("FSL outcome");
     assert_eq!(report.items().len(), 8);
     assert_eq!(
         report.completeness(),
@@ -285,7 +285,7 @@ fn native_qsl_identity_fields_and_stop_causes_remain_distinct() {
 
 #[trace("FR-052-AC-28")]
 #[test]
-fn incomplete_requirement_forms_have_distinct_qsl_identities_without_checked_nodes() {
+fn incomplete_requirement_forms_have_distinct_fsl_identities_without_checked_nodes() {
     let selected = source();
     let forms = [
         SourceRequirementFormId {
@@ -312,7 +312,7 @@ fn incomplete_requirement_forms_have_distinct_qsl_identities_without_checked_nod
         .collect();
     assert!(rows
         .iter()
-        .all(|row| row.owner() == SourceInventoryOwner::Qsl));
+        .all(|row| row.owner() == SourceInventoryOwner::Fsl));
     assert_eq!(
         rows.iter()
             .map(SourceInventoryRow::identity)
@@ -323,21 +323,21 @@ fn incomplete_requirement_forms_have_distinct_qsl_identities_without_checked_nod
 
     assert_eq!(
         SourceInventoryOutcome::from_enumerator(TestEnumerator::new(
-            SourceInventoryOwner::Qsl,
+            SourceInventoryOwner::Fsl,
             rows.clone(),
         )),
         Err(SourceInventoryOutcomeError::RequirementFormInComplete)
     );
-    let mut partial = TestEnumerator::new(SourceInventoryOwner::Qsl, rows.clone());
+    let mut partial = TestEnumerator::new(SourceInventoryOwner::Fsl, rows.clone());
     partial.stop = Some(SourceInventoryIncompleteReason::EarlyStop {
-        owner: SourceInventoryOwner::Qsl,
+        owner: SourceInventoryOwner::Fsl,
     });
     let report =
-        SourceInventoryOutcome::from_enumerator(partial).expect("partial QSL form outcome");
+        SourceInventoryOutcome::from_enumerator(partial).expect("partial FSL form outcome");
     assert_eq!(
         report.completeness(),
         &SourceInventoryCompleteness::Incomplete(SourceInventoryIncompleteReason::EarlyStop {
-            owner: SourceInventoryOwner::Qsl,
+            owner: SourceInventoryOwner::Fsl,
         })
     );
     assert_eq!(report.items(), rows);
@@ -381,10 +381,10 @@ fn capability_labels_are_exact_pending_identities_distinct_from_type_kinds() {
         })
         .collect();
     let report = SourceInventoryOutcome::from_enumerator(TestEnumerator::new(
-        SourceInventoryOwner::Qsl,
+        SourceInventoryOwner::Fsl,
         rows.clone(),
     ))
-    .expect("QSL obligation outcome");
+    .expect("FSL obligation outcome");
     assert_eq!(report.items(), rows);
     assert_eq!(
         report
@@ -396,7 +396,7 @@ fn capability_labels_are_exact_pending_identities_distinct_from_type_kinds() {
         12
     );
     let SourceInventoryIdentity::PendingObligation(first) = report.items()[0].identity() else {
-        panic!("first QSL row must be a pending obligation");
+        panic!("first FSL row must be a pending obligation");
     };
     assert_eq!(
         first.kind,
@@ -464,12 +464,12 @@ fn spine_and_composed_exhaustion_preserve_only_owner_measured_fields() {
         },
     };
     for expected in [s1, s3, composed] {
-        let mut enumerator = TestEnumerator::new(SourceInventoryOwner::Qsl, vec![]);
+        let mut enumerator = TestEnumerator::new(SourceInventoryOwner::Fsl, vec![]);
         enumerator.stop = Some(SourceInventoryIncompleteReason::TypeWorkExhausted(
             Box::new(expected.clone()),
         ));
         let outcome =
-            SourceInventoryOutcome::from_enumerator(enumerator).expect("QSL stop outcome");
+            SourceInventoryOutcome::from_enumerator(enumerator).expect("FSL stop outcome");
         assert_eq!(
             outcome.completeness(),
             &SourceInventoryCompleteness::Incomplete(
@@ -485,7 +485,7 @@ fn spine_and_composed_exhaustion_preserve_only_owner_measured_fields() {
 #[trace("FR-052-AC-4")]
 #[test]
 fn census_input_has_no_result_or_completeness_fields() {
-    let source = include_str!("../../crates/quire-contract-model/src/source_obligation.rs");
+    let source = include_str!("../../crates/filament-contract-model/src/source_obligation.rs");
     let input = source
         .split("pub struct SourceObligationInput {")
         .nth(1)
@@ -511,7 +511,7 @@ fn census_input_has_no_result_or_completeness_fields() {
 }
 
 // These synthetic enumerators exercise the neutral retention boundary. They
-// do not stand in for QSL or quire-code-rs owner-output conformance.
+// do not stand in for FSL or quire-code-rs owner-output conformance.
 struct TestEnumerator {
     source: SourceIdentity,
     owner: SourceInventoryOwner,
@@ -527,8 +527,8 @@ impl TestEnumerator {
         let scope = match owner {
             SourceInventoryOwner::Quire => SourceInventoryScope::QuireSelectedAuthoredCriteria,
             SourceInventoryOwner::IrV2 => SourceInventoryScope::IrV2SemanticGraphAndOccurrences,
-            SourceInventoryOwner::Qsl => {
-                SourceInventoryScope::QslCheckedRequirementsAndPendingObligations
+            SourceInventoryOwner::Fsl => {
+                SourceInventoryScope::FslCheckedRequirementsAndPendingObligations
             }
             SourceInventoryOwner::QuireCodeRs => {
                 SourceInventoryScope::QuireCodeRsProductionModulesAndFunctions
@@ -638,7 +638,7 @@ fn terminal_boundary_preserves_typed_stops_and_rejects_mismatched_rows() {
                 region: None,
             },
         }));
-    let qsl_row = SourceInventoryRow::new(
+    let fsl_row = SourceInventoryRow::new(
         source(),
         SourceInventoryIdentity::PendingObligation(pending(
             site(),
@@ -651,10 +651,10 @@ fn terminal_boundary_preserves_typed_stops_and_rejects_mismatched_rows() {
             declaration: SourceDeclarationHandle(7),
         },
     ] {
-        let mut enumerator = TestEnumerator::new(SourceInventoryOwner::Qsl, vec![qsl_row.clone()]);
+        let mut enumerator = TestEnumerator::new(SourceInventoryOwner::Fsl, vec![fsl_row.clone()]);
         enumerator.stop = Some(cause.clone());
         let outcome = SourceInventoryOutcome::from_enumerator(enumerator).expect("typed stop");
-        assert_eq!(outcome.items(), std::slice::from_ref(&qsl_row));
+        assert_eq!(outcome.items(), std::slice::from_ref(&fsl_row));
         assert_eq!(
             outcome.completeness(),
             &SourceInventoryCompleteness::Incomplete(cause)
@@ -665,7 +665,8 @@ fn terminal_boundary_preserves_typed_stops_and_rejects_mismatched_rows() {
         limit: 3,
         consumed: 4,
         path: Some(
-            quire_contract_model::JsonPointer::parse("/semantic_graph/nodes/3").expect("pointer"),
+            filament_contract_model::JsonPointer::parse("/semantic_graph/nodes/3")
+                .expect("pointer"),
         ),
     };
     let mut ir = TestEnumerator::new(SourceInventoryOwner::IrV2, vec![]);
@@ -683,11 +684,11 @@ fn terminal_boundary_preserves_typed_stops_and_rejects_mismatched_rows() {
     assert_eq!(
         SourceInventoryOutcome::from_enumerator(TestEnumerator::new(
             SourceInventoryOwner::IrV2,
-            vec![qsl_row],
+            vec![fsl_row],
         )),
         Err(SourceInventoryOutcomeError::RowOwnerMismatch)
     );
-    let mut wrong_scope = TestEnumerator::new(SourceInventoryOwner::Qsl, vec![]);
+    let mut wrong_scope = TestEnumerator::new(SourceInventoryOwner::Fsl, vec![]);
     wrong_scope.scope = SourceInventoryScope::IrV2SemanticGraphAndOccurrences;
     assert_eq!(
         SourceInventoryOutcome::from_enumerator(wrong_scope),
@@ -795,7 +796,7 @@ fn census_input(assertions: Vec<SourceCorrespondenceAssertion>) -> SourceObligat
             ],
         )),
         Some(census_outcome(
-            SourceInventoryOwner::Qsl,
+            SourceInventoryOwner::Fsl,
             vec![
                 SourceInventoryRow::new(
                     selected.clone(),
@@ -1039,7 +1040,7 @@ fn binding_refusals_are_typed() {
         None,
         base.quire().cloned(),
         base.ir_v2().cloned(),
-        base.qsl().cloned(),
+        base.fsl().cloned(),
         base.quire_code_rs().cloned(),
         vec![],
     );
@@ -1057,7 +1058,7 @@ fn binding_refusals_are_typed() {
         Some(binding(foreign.clone())),
         input.quire().cloned(),
         input.ir_v2().cloned(),
-        input.qsl().cloned(),
+        input.fsl().cloned(),
         input.quire_code_rs().cloned(),
         vec![],
     );
@@ -1119,11 +1120,11 @@ fn with_positions(
     binding_value: Option<SourceCriterionSourceBinding>,
     quire: Option<SourceInventoryOutcome>,
     ir: Option<SourceInventoryOutcome>,
-    qsl: Option<SourceInventoryOutcome>,
+    fsl: Option<SourceInventoryOutcome>,
     code: Option<SourceInventoryOutcome>,
     assertions: Vec<SourceCorrespondenceAssertion>,
 ) -> SourceObligationInput {
-    SourceObligationInput::new(source(), binding_value, quire, ir, qsl, code, assertions)
+    SourceObligationInput::new(source(), binding_value, quire, ir, fsl, code, assertions)
 }
 
 #[trace("TC-452", "FR-052-AC-6")]
@@ -1133,7 +1134,7 @@ fn every_owner_position_refuses_missing_and_typed_incomplete_outcomes() {
     let owners = [
         SourceInventoryOwner::Quire,
         SourceInventoryOwner::IrV2,
-        SourceInventoryOwner::Qsl,
+        SourceInventoryOwner::Fsl,
         SourceInventoryOwner::QuireCodeRs,
     ];
     for owner in owners {
@@ -1150,10 +1151,10 @@ fn every_owner_position_refuses_missing_and_typed_incomplete_outcomes() {
                 } else {
                     base.ir_v2().cloned()
                 },
-                if owner == SourceInventoryOwner::Qsl {
+                if owner == SourceInventoryOwner::Fsl {
                     replacement.clone()
                 } else {
-                    base.qsl().cloned()
+                    base.fsl().cloned()
                 },
                 if owner == SourceInventoryOwner::QuireCodeRs {
                     replacement
@@ -1178,12 +1179,12 @@ fn every_owner_position_refuses_missing_and_typed_incomplete_outcomes() {
                     limit: 3,
                     consumed: 4,
                     path: Some(
-                        quire_contract_model::JsonPointer::parse("/semantic_graph/nodes/3")
+                        filament_contract_model::JsonPointer::parse("/semantic_graph/nodes/3")
                             .unwrap(),
                     ),
                 }),
             ],
-            SourceInventoryOwner::Qsl => vec![
+            SourceInventoryOwner::Fsl => vec![
                 SourceInventoryIncompleteReason::TypeWorkExhausted(Box::new(
                     SourceTypeExhaustion {
                         stage: None,
@@ -1229,7 +1230,7 @@ fn every_owner_position_refuses_missing_and_typed_incomplete_outcomes() {
         Some(binding(source())),
         base.quire().cloned(),
         base.ir_v2().cloned(),
-        base.qsl().cloned(),
+        base.fsl().cloned(),
         Some(complete),
         vec![],
     ))
@@ -1274,7 +1275,7 @@ fn synthetic_many_to_many_and_unmapped_inventory_survive_permutation_and_row_rem
             Some(binding(source())),
             base.quire().cloned(),
             Some(ir),
-            base.qsl().cloned(),
+            base.fsl().cloned(),
             base.quire_code_rs().cloned(),
             statements,
         ))
@@ -1365,7 +1366,7 @@ fn synthetic_many_to_many_and_unmapped_inventory_survive_permutation_and_row_rem
         Some(binding(source())),
         Some(permute(SourceInventoryOwner::Quire, base.quire().unwrap())),
         Some(permute(SourceInventoryOwner::IrV2, base.ir_v2().unwrap())),
-        Some(permute(SourceInventoryOwner::Qsl, base.qsl().unwrap())),
+        Some(permute(SourceInventoryOwner::Fsl, base.fsl().unwrap())),
         Some(permute(
             SourceInventoryOwner::QuireCodeRs,
             base.quire_code_rs().unwrap(),
@@ -1451,7 +1452,7 @@ fn adjacent_census_refusals_follow_fixed_position_order() {
             Some(binding(foreign.clone())),
             Some(incomplete(SourceInventoryOwner::Quire)),
             base.ir_v2().cloned(),
-            base.qsl().cloned(),
+            base.fsl().cloned(),
             base.quire_code_rs().cloned(),
             SourceCorrespondenceError::ForeignCriterionSourceBinding {
                 expected: source(),
@@ -1462,7 +1463,7 @@ fn adjacent_census_refusals_follow_fixed_position_order() {
             Some(binding(source())),
             Some(incomplete_conflicting_quire()),
             None,
-            base.qsl().cloned(),
+            base.fsl().cloned(),
             base.quire_code_rs().cloned(),
             SourceCorrespondenceError::IncompleteOwnerInventory {
                 owner: SourceInventoryOwner::Quire,
@@ -1485,23 +1486,23 @@ fn adjacent_census_refusals_follow_fixed_position_order() {
             Some(binding(source())),
             base.quire().cloned(),
             base.ir_v2().cloned(),
-            Some(incomplete(SourceInventoryOwner::Qsl)),
+            Some(incomplete(SourceInventoryOwner::Fsl)),
             None,
             SourceCorrespondenceError::IncompleteOwnerInventory {
-                owner: SourceInventoryOwner::Qsl,
+                owner: SourceInventoryOwner::Fsl,
                 cause: SourceInventoryIncompleteReason::EarlyStop {
-                    owner: SourceInventoryOwner::Qsl,
+                    owner: SourceInventoryOwner::Fsl,
                 },
             },
         ),
     ];
-    for (binding_value, quire, ir, qsl, code, expected) in cases {
+    for (binding_value, quire, ir, fsl, code, expected) in cases {
         assert_eq!(
             build_source_obligation_census(with_positions(
                 binding_value,
                 quire,
                 ir,
-                qsl,
+                fsl,
                 code,
                 vec![]
             )),
@@ -1522,7 +1523,7 @@ fn adjacent_census_refusals_follow_fixed_position_order() {
             Some(binding(source())),
             Some(conflicting_quire),
             None,
-            base.qsl().cloned(),
+            base.fsl().cloned(),
             base.quire_code_rs().cloned(),
             vec![]
         )),
@@ -1579,7 +1580,7 @@ fn input_permutations_produce_equal_ordered_census() {
         Some(binding(source())),
         Some(reverse(SourceInventoryOwner::Quire, base.quire().unwrap())),
         Some(reverse(SourceInventoryOwner::IrV2, base.ir_v2().unwrap())),
-        Some(reverse(SourceInventoryOwner::Qsl, base.qsl().unwrap())),
+        Some(reverse(SourceInventoryOwner::Fsl, base.fsl().unwrap())),
         Some(reverse(
             SourceInventoryOwner::QuireCodeRs,
             base.quire_code_rs().unwrap(),
@@ -1600,8 +1601,8 @@ fn owner_scope_and_source_errors_precede_incompleteness() {
             SourceInventoryScope::IrV2SemanticGraphAndOccurrences,
         ),
         (
-            SourceInventoryOwner::Qsl,
-            SourceInventoryScope::QslCheckedRequirementsAndPendingObligations,
+            SourceInventoryOwner::Fsl,
+            SourceInventoryScope::FslCheckedRequirementsAndPendingObligations,
         ),
         (
             SourceInventoryOwner::QuireCodeRs,
@@ -1609,15 +1610,15 @@ fn owner_scope_and_source_errors_precede_incompleteness() {
         ),
     ] {
         let wrong = Some(incomplete(SourceInventoryOwner::Quire));
-        let (ir, qsl, code) = match owner {
+        let (ir, fsl, code) = match owner {
             SourceInventoryOwner::IrV2 => {
-                (wrong, base.qsl().cloned(), base.quire_code_rs().cloned())
+                (wrong, base.fsl().cloned(), base.quire_code_rs().cloned())
             }
-            SourceInventoryOwner::Qsl => {
+            SourceInventoryOwner::Fsl => {
                 (base.ir_v2().cloned(), wrong, base.quire_code_rs().cloned())
             }
             SourceInventoryOwner::QuireCodeRs => {
-                (base.ir_v2().cloned(), base.qsl().cloned(), wrong)
+                (base.ir_v2().cloned(), base.fsl().cloned(), wrong)
             }
             SourceInventoryOwner::Quire => unreachable!(),
         };
@@ -1626,7 +1627,7 @@ fn owner_scope_and_source_errors_precede_incompleteness() {
                 Some(binding(source())),
                 base.quire().cloned(),
                 ir,
-                qsl,
+                fsl,
                 code,
                 vec![],
             )),
@@ -1640,40 +1641,40 @@ fn owner_scope_and_source_errors_precede_incompleteness() {
     assert_eq!(
         build_source_obligation_census(with_positions(
             Some(binding(source())),
-            Some(incomplete(SourceInventoryOwner::Qsl)),
+            Some(incomplete(SourceInventoryOwner::Fsl)),
             base.ir_v2().cloned(),
-            base.qsl().cloned(),
+            base.fsl().cloned(),
             base.quire_code_rs().cloned(),
             vec![]
         )),
         Err(SourceCorrespondenceError::InventoryScopeMismatch {
             owner: SourceInventoryOwner::Quire,
             expected: SourceInventoryScope::QuireSelectedAuthoredCriteria,
-            observed: SourceInventoryScope::QslCheckedRequirementsAndPendingObligations
+            observed: SourceInventoryScope::FslCheckedRequirementsAndPendingObligations
         })
     );
     let other = SourceIdentity::new(
         SourceDocumentId::new("other").unwrap(),
         SourceRevision::new(1).unwrap(),
     );
-    let mut wrong_both = TestEnumerator::new(SourceInventoryOwner::Qsl, vec![]);
+    let mut wrong_both = TestEnumerator::new(SourceInventoryOwner::Fsl, vec![]);
     wrong_both.source = other.clone();
     wrong_both.stop = Some(SourceInventoryIncompleteReason::EarlyStop {
-        owner: SourceInventoryOwner::Qsl,
+        owner: SourceInventoryOwner::Fsl,
     });
     assert_eq!(
         build_source_obligation_census(with_positions(
             Some(binding(source())),
             Some(SourceInventoryOutcome::from_enumerator(wrong_both).unwrap()),
             base.ir_v2().cloned(),
-            base.qsl().cloned(),
+            base.fsl().cloned(),
             base.quire_code_rs().cloned(),
             vec![]
         )),
         Err(SourceCorrespondenceError::InventoryScopeMismatch {
             owner: SourceInventoryOwner::Quire,
             expected: SourceInventoryScope::QuireSelectedAuthoredCriteria,
-            observed: SourceInventoryScope::QslCheckedRequirementsAndPendingObligations,
+            observed: SourceInventoryScope::FslCheckedRequirementsAndPendingObligations,
         })
     );
     let mut e = TestEnumerator::new(SourceInventoryOwner::Quire, vec![]);
@@ -1687,7 +1688,7 @@ fn owner_scope_and_source_errors_precede_incompleteness() {
             Some(binding(source())),
             Some(foreign),
             base.ir_v2().cloned(),
-            base.qsl().cloned(),
+            base.fsl().cloned(),
             base.quire_code_rs().cloned(),
             vec![]
         )),
@@ -1857,7 +1858,7 @@ fn orphan_or_conflicting_endpoints_do_not_resolve() {
             Some(binding(source())),
             base.quire().cloned(),
             Some(census_outcome(SourceInventoryOwner::IrV2, rows)),
-            base.qsl().cloned(),
+            base.fsl().cloned(),
             base.quire_code_rs().cloned(),
             vec![assertion.clone()],
         ))
@@ -1888,7 +1889,7 @@ fn orphan_or_conflicting_endpoints_do_not_resolve() {
         Some(binding(source())),
         base.quire().cloned(),
         base.ir_v2().cloned(),
-        base.qsl().cloned(),
+        base.fsl().cloned(),
         Some(census_outcome(
             SourceInventoryOwner::QuireCodeRs,
             vec![SourceInventoryRow::new(
@@ -1939,7 +1940,7 @@ fn conflicting_semantic_type_facts_remain_visible_and_block_correspondence() {
             Some(binding(source())),
             base.quire().cloned(),
             Some(census_outcome(SourceInventoryOwner::IrV2, rows)),
-            base.qsl().cloned(),
+            base.fsl().cloned(),
             base.quire_code_rs().cloned(),
             vec![census_assertion("conflicting-node", "AC-1", None)],
         ))

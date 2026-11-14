@@ -5,14 +5,14 @@ type: FR
 relationships:
   - target: ix://agent-ix/quire-cli/FR-027
     type: depends_on
-  - target: ix://agent-ix/quire-contract-ir/AD-007
+  - target: ix://agent-ix/filament-contract-ir/AD-007
     type: references
 ---
 # FR-055: Consume the owned lock coherence gate
 
 ## Description
 
-When a developer runs `make deny`, quire-contract-ir shall execute the released
+When a developer runs `make deny`, filament-contract-ir shall execute the released
 `quire check-lock Cargo.lock` command and propagate its failure to Make.
 [CLI FR-027](ix://agent-ix/quire-cli/FR-027) owns the algorithm, diagnostics and
 installation contract. This requirement owns only the consumer wiring and removal

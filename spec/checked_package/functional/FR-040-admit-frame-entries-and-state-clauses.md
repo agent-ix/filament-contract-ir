@@ -3,34 +3,34 @@ id: FR-040
 title: "Admit V2 frame entries, operation anchors and state clause bodies"
 type: FR
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/StR-001
+  - target: ix://agent-ix/filament-contract-ir/StR-001
     type: traces_to
-  - target: ix://agent-ix/quire-contract-ir/FR-038
+  - target: ix://agent-ix/filament-contract-ir/FR-038
     type: depends_on
-  - target: ix://agent-ix/quire-specification/FR-340
+  - target: ix://agent-ix/filament-specification/FR-340
     type: references
-  - target: ix://agent-ix/quire-specification/FR-341
+  - target: ix://agent-ix/filament-specification/FR-341
     type: references
-  - target: ix://agent-ix/quire-specification/FR-342
+  - target: ix://agent-ix/filament-specification/FR-342
     type: references
-  - target: ix://agent-ix/quire-specification/FR-322
+  - target: ix://agent-ix/filament-specification/FR-322
     type: references
 ---
 # FR-040: Admit V2 frame entries, operation anchors and state clause bodies
 
 ## Description
 
-When the `quire.checked-package/v2` reader ([FR-038](./FR-038-consume-checked-package-v2.md))
+When the `filament.checked-package/v2` reader ([FR-038](./FR-038-consume-checked-package-v2.md))
 reads a `state`/`frame`, `state`/`operation_anchor`, `state`/`state_clause`
 or `value`/`parameter` node, the reader shall admit that node's body exactly
-as QSpec FR-340, FR-342 and FR-341 define it, and shall refuse every other
+as FSpec FR-340, FR-342 and FR-341 define it, and shall refuse every other
 body of those nodes with the refusal those requirements fix, in their reader
-order. QSpec FR-341 here is the checked-package state clause body,
+order. FSpec FR-341 here is the checked-package state clause body,
 `spec/objects/interfaces/FR-341-checked-package-state-clause-body.md`;
 FR-340 is `spec/objects/interfaces/FR-340-checked-package-frame-location.md`
 and FR-342 is
 `spec/objects/interfaces/FR-342-checked-package-operation-anchor-body.md`.
-The QSpec text and the published
+The FSpec text and the published
 `proposals/checked-package-v2/schema.json` (`FrameModifiesEntry`,
 `FrameBody`, `FrameDeletesScopedEntry`, `OperationAnchorBody`, `StateClauseBody`, `ParameterBody`,
 `BodyBindingRules`) are normative; this requirement states what the Contract
@@ -55,7 +55,7 @@ cause and RFC 6901 locus. No partial package.
 
 ### Model forms
 
-The reader shall admit exactly the fifteen `model` semantic forms QSpec's
+The reader shall admit exactly the fifteen `model` semantic forms FSpec's
 `ModelNode` enumerates: `model_import`, `object_type`, `value_type`,
 `variant_type`, `record_value_type`, `event_type`, `state_machine`,
 `process`, `persistence_interface`, `namespace`, `systems_interface`,
@@ -102,7 +102,7 @@ occurrence of a frame node has role `generated`.
 
 The frame's scoped members are retained in its complete body. A valid body edit under a retained structural id reaches the frame step; malformed members refuse at their own body or frame rule.
 
-Where QSpec fixes a case at the schema level (a body, entry or binding of
+Where FSpec fixes a case at the schema level (a body, entry or binding of
 the wrong shape, or an occurrence of the wrong role for its node form), the
 reader refuses it as `invalid_semantic_graph` with no cause, located at the
 offending entry, at the node's `body` for a body or binding shape, and at the
@@ -160,7 +160,7 @@ validation pass or changed first-refusal order. The frame step SHALL retain
 its existing meaning-join-before-canonical-order and ascending-frame-key
 precedence, and non-record entries retain their existing results.
 
-A `modifies` entry's order key is its `declaration` structural node id, compared componentwise under QSpec FR-322, then its `name` as UTF-8 bytes, then its `scope` with
+A `modifies` entry's order key is its `declaration` structural node id, compared componentwise under FSpec FR-322, then its `name` as UTF-8 bytes, then its `scope` with
 `every-object` before `receiver`; a relationship entry's name is empty and it
 has no scope. `modifies` shall be strictly ascending by that key; a misordered
 array refuses as `invalid_semantic_graph`. `deletes_scoped` shall hold the
@@ -181,7 +181,7 @@ entry in whatever order the two are listed (its array index follows its
 position), which is why the rule is not "the later entry in array order",
 whose entry would change with the listing. The other entry is not carried:
 FR-340 says the refusal names both entries, and carrying the first needs a
-refusal member this repository does not have, which is a QSpec question as
+refusal member this repository does not have, which is a FSpec question as
 FR-346 states it for its own conflicts.
 
 One frame node reports exactly one defect: any meaning-join defect outranks a
@@ -220,13 +220,13 @@ operation as `missing_declaration`/`missing-name`, two or more as
 inherits as `invalid_model_binding`/`malformed-declaration`); and every
 `parameter` entry of the `frame` target's `deletes_scoped` names a reference
 parameter of the resolved operation, else `missing_declaration`/`missing-name`
-located at the frame node (QSpec FR-342 check 5). A `receiver` entry needs no
+located at the frame node (FSpec FR-342 check 5). A `receiver` entry needs no
 parameter, and a parameter is a reference parameter when its type is
 `Reference<T>` for an object type `T`. Once every
 anchor's own joins and point applicability hold, a second anchor naming the same (`context`,
 `operation`) pair with the same execution point (including both absent) refuses as
 `ambiguous_declaration`/`ambiguous-name` at the second anchor in ascending
-structural node-id order. QSpec FR-342-AC-6
+structural node-id order. FSpec FR-342-AC-6
 admits two anchors of one `context` that reference one `frame` node, as
 operations with equal frames do. An inherited-only operation is anchored
 at its declaring type: a subtype process or state machine naming an operation
@@ -245,10 +245,10 @@ The optional fourth binding's `value` is the bare closed FR-322
 read this member as a dedicated typed point alongside the three existing
 term-valued bindings; it shall not invent a `term` tag or put the point into
 the generic expression-term grammar. Its wire shape is checked against
-QSpec's `OperationAnchorBody`/`ExecutionPoint` before graph and state checks.
+FSpec's `OperationAnchorBody`/`ExecutionPoint` before graph and state checks.
 A wrong binding count, position or non-point fourth value refuses
 `invalid_semantic_graph` with no cause at the anchor `body` before the state
-step. IR reading of QSpec's shape/semantic tension: an object present in the
+step. IR reading of FSpec's shape/semantic tension: an object present in the
 fourth position but failing the closed `ExecutionPoint` schema (unknown kind,
 missing or extra member, empty name) is a schema-level
 `invalid_semantic_graph` with no cause at that binding's `value`; only a
@@ -272,24 +272,24 @@ state step. The fourth binding and the state-clause member point are retained in
 
 The admitted `CheckedApplicationOperation::state_clause_kind()` public accessor
 SHALL return the closed `StateClauseKind` of its `state_clause` member only for
-an admitted `quire.op.state.clause` operation. It SHALL return `None` for an
+an admitted `filament.op.state.clause` operation. It SHALL return `None` for an
 operation of another identity or member shape. The accessor reads the retained
 typed admission result; it neither exposes the operation's raw record nor
 re-parses its JSON. FR-038 owns the other public operation views.
 
 A `state`/`state_clause` node's `body` is one `application` with operator
-class `state_clause` and `operation.identity` `quire.op.state.clause`, whose
+class `state_clause` and `operation.identity` `filament.op.state.clause`, whose
 `operation.member` is `{"kind": "state_clause", "clause", "execution_point"?}` with `clause` one
 of `invariant`, `constraint`, `precondition` or `postcondition` and an optional
 `execution_point`, `laws` empty, `mode` `null` and `leaves` empty, and whose three arguments are, in order, an
 `aggregate` of one or more `reference` terms (the parameters), a `reference`
 (the anchor) and the Boolean condition. Every occurrence has role `claim`,
 and the node's `semantic_type` is the `scalar_type`/`boolean` node. A
-`quire.op.state.clause` application standing as the body root of any node that
+`filament.op.state.clause` application standing as the body root of any node that
 is not `state`/`state_clause` refuses as `ill_typed`/`operator-ineligible` at
 the node that holds it, and one nested in a node body or another term refuses
 `malformed_wire` at the nested application at strict wire validation (merged
-QSpec FR-341-AC-6 and FR-322 "Body grammar"; FR-038 "The flat wire").
+FSpec FR-341-AC-6 and FR-322 "Body grammar"; FR-038 "The flat wire").
 
 For one clause node the reader checks, in order, and reports the first
 failure:
@@ -328,14 +328,14 @@ failure:
    resolved operation name and its point, including absence, equals its
    `operation_anchor` point. For an invariant or constraint, the reader
    retains the nonempty name unchanged; the V2 package has no independently
-   selected source anchor name to compare. QSL owns that source agreement,
+   selected source anchor name to compare. FSL owns that source agreement,
    verified by the fresh producer vector in TC-056. A well-formed point of an
    inapplicable kind, a mismatched operation name, or a clause/anchor point
    mismatch refuses `invalid_model_binding`/`malformed-declaration` at
    `/semantic_graph/nodes/{i}` in the state step.
 
 A clause node's own `semantic_type` is not checked beyond the catalog's
-`result_type` for `quire.op.state.clause` being the `scalar_type`/`boolean`
+`result_type` for `filament.op.state.clause` being the `scalar_type`/`boolean`
 node.
 
 A `value`/`parameter` node's `body` is an `aggregate` of exactly two
@@ -344,7 +344,7 @@ bindings in order: `name`, a `text` literal whose value is an identifier, and
 of any other shape refuses at the node's `body`.
 
 An operation whose catalog entry carries the `reference_edge` constraint
-(`quire.op.model.reaches_field`) is admitted exactly when, in order: operand 0
+(`filament.op.model.reaches_field`) is admitted exactly when, in order: operand 0
 is `Reference<D>` for the `field` member's declaring model node `D`; the
 member's name resolves on `D` to a field declared by object type `T` (`D` or
 one of its supertypes); that field's type is `Reference<T>`,
@@ -358,7 +358,7 @@ refuses as `missing_declaration`/`missing-selection` at the member
 declaration, and an ambiguous name as `ambiguous_declaration`/`ambiguous-name`
 at the member name.
 
-The operation catalog shall hold `quire.op.state.clause` with operator class
+The operation catalog shall hold `filament.op.state.clause` with operator class
 `state_clause`, operands `aggregate`, `object` and `boolean`, result `clause`
 (declared Boolean), no laws, no mode and the `state_clause` member kind. A
 non-Boolean condition and a `result_type` naming a non-Boolean node each
@@ -369,13 +369,13 @@ refuse as `ill_typed`/`operator-ineligible` at the operation step.
 The frame step runs after every graph-shape and declaration
 refusal. The state step runs after the frame step and before the operation
 step; within it the reader checks, each in structural node-id order,
-the placement of every `quire.op.state.clause` application, then every
+the placement of every `filament.op.state.clause` application, then every
 operation anchor (including the scoped-deletes and point checks), then tuple
 uniqueness among anchors whose own checks passed, then every state clause,
 then every `state`/`transition` node under
 [FR-067](./FR-067-admit-boolean-state-transition.md), and reports the first
 defect. The state step checks the placement of a
-`quire.op.state.transition` application before the anchor checks, as QSpec
+`filament.op.state.transition` application before the anchor checks, as FSpec
 FR-341 requires.
 
 ## Acceptance Criteria
@@ -389,12 +389,12 @@ FR-341 requires.
 | FR-040-AC-5 | A frame whose `semantic_type` names a `model`/`object_type`, `model`/`process` or `model`/`state_machine` declaring its operation admits that type join; a frame whose `semantic_type` names any other node refuses as `invalid_model_binding`/`malformed-declaration` at its `semantic_type` before any entry defect. A frame occurrence with a role other than `generated` refuses as `invalid_semantic_graph` with no cause, located at that occurrence's `role`. | Test (TC-056) |
 | FR-040-AC-6 | Each of the fifteen `model` forms admits as a node form; `field_declaration`, `operation_declaration`, `clause_member_declaration` and any other `model` form refuse as `invalid_semantic_graph` with no cause, located at the node's `semantic_form`. | Test (TC-056) |
 | FR-040-AC-7 | An operation anchor with the three bindings in order admits. Reordered bindings, a non-text `operation`, a missing binding, and an extra binding each refuse as `invalid_semantic_graph` with no cause, located at the anchor's `body`; an occurrence role other than `anchor` refuses the same way, located at that occurrence's `role`. A `context` naming a frame, a `frame` naming an object type, and a `frame` target missing from `dependencies` refuse as `invalid_model_binding`/`malformed-declaration`, `invalid_model_binding`/`malformed-declaration` and `missing_declaration`/`missing-name` at the target; an anchor whose `semantic_type` is not its `context` refuses as `invalid_model_binding`/`malformed-declaration` at the anchor. An `operation` declared by an object type, process or state-machine `context` resolves; an undeclared name and a field's name refuse as `missing_declaration`/`missing-name`, an operation the context only inherits as `invalid_model_binding`/`malformed-declaration`, and a context keyed under an unselected domain package as `missing_declaration`/`missing-selection`, each at the anchor's `operation` binding. A duplicate (`context`, `operation`) pair refuses as `ambiguous_declaration`/`ambiguous-name` at the second anchor in structural node-id order; a shared `frame` target refuses the same way (FR-040-AC-28 supersedes the former shared-frame refusal). | Test (TC-056) |
-| FR-040-AC-8 | An invariant, a precondition and a postcondition in QSpec FR-341's shape each admit; an invariant anchored at an operation anchor and a precondition anchored at an object type, process or state machine refuse as `invalid_model_binding`/`malformed-declaration` at the anchor's target; a parameter reference to a node that is not `value`/`parameter` refuses the same way at its target. Another operation identity, operator class, member kind or clause value, a first argument that is not an `aggregate` of `reference` terms, and a second argument that is not a `reference` each refuse as `invalid_semantic_graph` with no cause, located at the clause node's `body`; an occurrence role other than `claim` refuses the same way, located at that occurrence's `role`. | Test (TC-056) |
+| FR-040-AC-8 | An invariant, a precondition and a postcondition in FSpec FR-341's shape each admit; an invariant anchored at an operation anchor and a precondition anchored at an object type, process or state machine refuse as `invalid_model_binding`/`malformed-declaration` at the anchor's target; a parameter reference to a node that is not `value`/`parameter` refuses the same way at its target. Another operation identity, operator class, member kind or clause value, a first argument that is not an `aggregate` of `reference` terms, and a second argument that is not a `reference` each refuse as `invalid_semantic_graph` with no cause, located at the clause node's `body`; an occurrence role other than `claim` refuses the same way, located at that occurrence's `role`. | Test (TC-056) |
 | FR-040-AC-9 | For `Order.scaled(n: Integer): Integer`, a precondition binding `[Reference<Order>, Integer]` and a postcondition binding `[Reference<Order>, Integer, Integer]` admit; a precondition missing the operation parameter, a postcondition missing the result, a parameter of another type, a `self` that is a `Reference` to another declaring type than its anchor's, and an invariant binding a second parameter each refuse as `ill_typed`/`operator-ineligible` at the clause node's first argument. | Test (TC-056) |
-| FR-040-AC-10 | A `quire.op.state.clause` application standing as the body root of a node that is not `state`/`state_clause` refuses as `ill_typed`/`operator-ineligible` at the holding node, and one nested in a node body or another term refuses `malformed_wire` at the nested application (FR-038-AC-114); a non-Boolean condition refuses as `ill_typed`/`operator-ineligible` at the operation step. | Test (TC-056) |
+| FR-040-AC-10 | A `filament.op.state.clause` application standing as the body root of a node that is not `state`/`state_clause` refuses as `ill_typed`/`operator-ineligible` at the holding node, and one nested in a node body or another term refuses `malformed_wire` at the nested application (FR-038-AC-114); a non-Boolean condition refuses as `ill_typed`/`operator-ineligible` at the operation step. | Test (TC-056) |
 | FR-040-AC-11 | A `value`/`parameter` body of `name` then `level` admits; reordered bindings, a non-text `name`, a non-integer `level`, and a missing binding each refuse as `invalid_semantic_graph` with no cause, located at the node's `body`; an occurrence role other than `expression` refuses the same way, located at that occurrence's `role`. | Test (TC-056) |
 | FR-040-AC-12 | A package carrying a frame defect and a state defect reports the frame defect; one carrying an anchor defect and a clause defect reports the anchor defect; one carrying a state defect and an operation defect reports the state defect. | Test (TC-056) |
-| FR-040-AC-13 | A `quire.op.model.reaches_field` application over `Reference<D>` operands admits when its field resolves on `D` to a `Reference<T>`, `Option<Reference<T>>` or bounded `Sequence<Reference<T>>` of the field's owner `T` and operand 1 references `T` or a subtype of `T`, including one two levels down and an inherited edge. A set, an unbounded sequence, a reference to another type and a non-reference field, an undeclared name, an operand 0 that does not name the declaring node, an operand 1 that is a supertype of `T`, unrelated or an object refuse as `ill_typed`/`operator-ineligible` at the operand, member declaration or member name at fault; an ambiguous name refuses as `ambiguous_declaration`/`ambiguous-name` and a declaring node keyed under an unselected domain package as `missing_declaration`/`missing-selection`. | Test (TC-056) |
+| FR-040-AC-13 | A `filament.op.model.reaches_field` application over `Reference<D>` operands admits when its field resolves on `D` to a `Reference<T>`, `Option<Reference<T>>` or bounded `Sequence<Reference<T>>` of the field's owner `T` and operand 1 references `T` or a subtype of `T`, including one two levels down and an inherited edge. A set, an unbounded sequence, a reference to another type and a non-reference field, an undeclared name, an operand 0 that does not name the declaring node, an operand 1 that is a supertype of `T`, unrelated or an object refuse as `ill_typed`/`operator-ineligible` at the operand, member declaration or member name at fault; an ambiguous name refuses as `ambiguous_declaration`/`ambiguous-name` and a declaring node keyed under an unselected domain package as `missing_declaration`/`missing-selection`. | Test (TC-056) |
 | FR-040-AC-14 | IMPLEMENTED (IR-770). With an authentic selected record owner `Address` declaring a bounded text `street` field and an object `Account` declaring an `address: Address` field, the reader admits a frame with distinct `(Account, address)` and `(Address, street)` entries and resolves both against their selected owners. Replacing only `street` with `ghost` on the same valid selected record refuses `missing_declaration`/`missing-name` at that frame entry; an operation's name is not a field candidate, two exposed fields of one name refuse `ambiguous_declaration`/`ambiguous-name`, and a record node with no selected owner refuses `missing_declaration`/`missing-selection` before field resolution. A separate expression projection of unknown `Address.ghost` retains FR-322's `ill_typed`/`operator-ineligible` refusal at its member name. | Test (TC-056) |
 | FR-040-AC-15 | IMPLEMENTED (IR-770). A selected record field whose type is another record, including an inherited field on a record subtype, retains the named record declaration node as its member type. Optional, bounded-sequence and finite-recursive record paths retain that same owner-bearing record node at the innermost element; none becomes `Reference<Address>` or acquires object identity. The effective view honors redefinitions and reports an ambiguous exposed field name rather than choosing one. | Test (TC-056) |
 | FR-040-AC-16 | IMPLEMENTED (IR-770). Selected record owner indexing and effective-field derivation are charged at the existing selection row under the `work` limit; an exact limit admits and one unit less returns typed `incomplete` at that row. A record field meaning-join defect outranks canonical-order defects in its frame, lower node-id frames retain precedence, and pre-frame graph and owner refusals retain precedence over a record name defect. Existing source-declared object, relationship, operation-anchor and state-clause outcomes are unchanged. | Test (TC-056) |
@@ -410,11 +410,11 @@ FR-341 requires.
 | FR-040-AC-27 | A `parameter` entry of a frame's `deletes_scoped` naming no reference parameter of the operation an anchor referencing the frame resolves refuses `missing_declaration`/`missing-name`, located at the frame node, in the state step after that anchor's own joins hold, and not in the frame step. | Test (TC-056) |
 | FR-040-AC-28 | Two anchors of one `context` referencing one `frame` node both admit, and the frame's `parameter` entries are checked against each anchor's operation, the first failure in ascending anchor structural node-id order being reported. This criterion supersedes the last clause of FR-040-AC-7: the test tagged FR-040-AC-7 (`tc_056_operation_anchors_admit_their_three_bindings_and_joins`, case "a shared frame") asserts admission; no other outcome of AC-7 changes. | Test (TC-056) |
 | FR-040-AC-29 | A package carrying a frame-step defect and a `parameter` entry that fails the state step's scoped-deletes check reports the frame-step defect. | Test (TC-056) |
-| FR-040-AC-30 | A context target naming no node or absent from the anchor's declared dependencies refuses `missing_declaration`/`missing-name` at that target. A declared context target that is not a `model`/`object_type`, `model`/`process` or `model`/`state_machine` refuses `invalid_model_binding`/`malformed-declaration` at the context target before operation resolution or scoped deletes. A valid process or state-machine anchor with a frame `parameter` entry naming no reference parameter of its resolved own operation refuses `missing_declaration`/`missing-name` at the frame node in the state step. This corrects the earlier unresolved-context admission oracle to match QSpec FR-342 checks 1 and 5; it does not admit an additional context kind. | Test (TC-056) |
+| FR-040-AC-30 | A context target naming no node or absent from the anchor's declared dependencies refuses `missing_declaration`/`missing-name` at that target. A declared context target that is not a `model`/`object_type`, `model`/`process` or `model`/`state_machine` refuses `invalid_model_binding`/`malformed-declaration` at the context target before operation resolution or scoped deletes. A valid process or state-machine anchor with a frame `parameter` entry naming no reference parameter of its resolved own operation refuses `missing_declaration`/`missing-name` at the frame node in the state step. This corrects the earlier unresolved-context admission oracle to match FSpec FR-342 checks 1 and 5; it does not admit an additional context kind. | Test (TC-056) |
 | FR-040-AC-31 | PLANNED/UNRUN (IR-1141). An anchor admits its three required bindings with no point or a fourth execution_point binding after frame holding the closed pre or post object. Reordering the fourth binding or adding another binding refuses invalid_semantic_graph at the exact offending member. The reader retains the point in the complete body; it does not rederive the node id from that body. | Test (TC-056) |
 | FR-040-AC-32 | PLANNED/UNRUN (IR-1141). An anchor with an unknown point variant, missing or extra point member, or empty name refuses `invalid_semantic_graph` with no cause at `/semantic_graph/nodes/{i}/body/members/3/value` before state. A well-formed `initialization` or `handler` point or point whose operation differs from the checked operation refuses `invalid_model_binding`/`malformed-declaration` at `/semantic_graph/nodes/{i}` in state. A duplicate `(context, operation, point)` tuple refuses `ambiguous_declaration`/`ambiguous-name` at the second anchor by ascending structural node id; the same context and operation with distinct accepted points or one absent point admit. This refines AC-7's pair uniqueness without changing its no-point duplicate outcome. | Test (TC-056) |
 | FR-040-AC-33 | A state clause admits an optional `execution_point` member with each closed FR-322 variant: `initialization{name}` and `handler{name}` on an invariant or constraint, `pre{operation}` and `post{operation}` on a precondition or postcondition. The reader admits an omitted point as an explicit absence and never infers one from clause kind or anchor; the producer determines whether to emit one. A point-only body edit changes the retained body and accessor result under the same valid structural id; an accepted point round-trips unchanged. A `constraint` is checked like an invariant. This extends AC-8's three listed admitted clause kinds. | Test (TC-056) |
-| FR-040-AC-34 | An unknown clause point variant, missing or extra point member, or empty name refuses `invalid_semantic_graph` with no cause at `/semantic_graph/nodes/{i}/body/operation/member/execution_point` before state. A well-formed point inapplicable to the clause kind, an operation name different from the resolved operation, or a point unequal to the referenced operation anchor's point (including present on only one side) refuses `invalid_model_binding`/`malformed-declaration` at `/semantic_graph/nodes/{i}` in state. Invariant and constraint point names are retained exactly; source-name agreement is QSL-owned and verified through a fresh producer vector. A point-only body edit is judged by point shape, applicability and clause-anchor agreement, without a stale-key refusal. | Test (TC-056) |
+| FR-040-AC-34 | An unknown clause point variant, missing or extra point member, or empty name refuses `invalid_semantic_graph` with no cause at `/semantic_graph/nodes/{i}/body/operation/member/execution_point` before state. A well-formed point inapplicable to the clause kind, an operation name different from the resolved operation, or a point unequal to the referenced operation anchor's point (including present on only one side) refuses `invalid_model_binding`/`malformed-declaration` at `/semantic_graph/nodes/{i}` in state. Invariant and constraint point names are retained exactly; source-name agreement is FSL-owned and verified through a fresh producer vector. A point-only body edit is judged by point shape, applicability and clause-anchor agreement, without a stale-key refusal. | Test (TC-056) |
 | FR-040-AC-35 | PLANNED/UNRUN (IR-1141). With simultaneous defects, graph shape precedes frame, frame precedes state; within state, placement precedes structural-id-ordered anchors and anchors precede clauses. Anchor checks precede duplicate (context, operation, point) detection, and clause signature checks precede point applicability and equality. The first applicable defect returns its exact code, cause and RFC 6901 locus with no package. | Test (TC-056) |
 | FR-040-AC-36 | For an admitted package, writer/encoder output preserves the exact optional point object in each anchor body and clause application member, including variant and name; an absent point emits no `execution_point` member. Reading the writer output returns equal retained typed points (or equal absence), equal structural node ids and equal package name. Writer output never turns the anchor's bare point object into an expression term. | Test (TC-056) |
 | FR-040-AC-37 | Implemented (IR-1082). Through the public V2 reader, each admitted invariant, constraint, precondition and postcondition application returns its exact `StateClauseKind` from `state_clause_kind()`; an admitted non-state-clause operation returns `None`. A malformed clause member is refused by admission and cannot produce a value through this accessor. The accessor returns a typed value without exposing a raw operation record. | Test (TC-056) |
@@ -425,7 +425,7 @@ FR-341 requires.
 
 [FR-038](./FR-038-consume-checked-package-v2.md) owns the reader, its
 refusal codes and pointers, the `creates`/`deletes` eligibility and the
-model-owned member resolution this requirement reuses. QSpec FR-340, FR-341
+model-owned member resolution this requirement reuses. FSpec FR-340, FR-341
 and FR-342 own the normative shapes and refusal order, and FR-322 the
 operation catalog and reader order they extend. Lowering an admitted frame's
 grants, scoped or not, to `kani::modifies` places is a later lowering requirement, not this

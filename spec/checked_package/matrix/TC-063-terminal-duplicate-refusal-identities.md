@@ -3,7 +3,7 @@ id: TC-063
 title: "Terminal duplicate refusal carries both typed identities"
 type: TC
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/FR-062
+  - target: ix://agent-ix/filament-contract-ir/FR-062
     type: verifies
 ---
 
@@ -13,7 +13,7 @@ relationships:
 
 Verify [FR-062](../functional/FR-062-carry-terminal-duplicate-identities.md)
 through the public V2 reader and refusal type, using IR-owned vectors for
-QSpec FR-476's two duplicate forms.
+FSpec FR-476's two duplicate forms.
 
 ## Test Procedure
 
@@ -29,7 +29,7 @@ As controls, read either terminal node alone; a nonterminal ambiguous-name
 case; and packages where a strict-wire, graph-shape, key, source-map, body or
 target defect coexists with a duplicate. Compile an external consumer that
 imports `CheckedTerminalDuplicate`, `CheckedPackageRefusal`, `CheckedNodeId`
-and `CheckedOccurrence` from `quire_contract_model`, reads the public
+and `CheckedOccurrence` from `filament_contract_model`, reads the public
 `terminal_duplicate` member and matches both enum variants without a
 wildcard. It shall not import a private module or parse a JSON body or
 message.

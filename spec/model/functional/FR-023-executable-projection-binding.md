@@ -3,11 +3,11 @@ id: FR-023
 title: "Bind derived executable projections to their clause population"
 type: FR
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/StR-001
+  - target: ix://agent-ix/filament-contract-ir/StR-001
     type: traces_to
-  - target: ix://agent-ix/quire-contract-ir/FR-012
+  - target: ix://agent-ix/filament-contract-ir/FR-012
     type: depends_on
-  - target: ix://agent-ix/quire-contract-ir/FR-014
+  - target: ix://agent-ix/filament-contract-ir/FR-014
     type: depends_on
 ---
 
@@ -33,7 +33,7 @@ prove source-language correctness.
 
 `BoundPackage::from_json_bytes` takes a strict UTF-8 JSON object with exactly:
 
-- `format`: `quire.contract.executable-projection/v1`;
+- `format`: `filament.contract.executable-projection/v1`;
 - `package`: the FR-011/FR-018 ReferenceBody package wire representation;
 - `bindings`: an array of objects containing `clause` (full ClauseRef) and
   `expression` (the published expression-input representation from FR-018).
@@ -116,7 +116,7 @@ A `BoundPackage` exposing read-only accessors, or structured IR diagnostics.
 
 - FR-011 and FR-012 own package, requirement, clause and reference identity.
 - FR-013 through FR-015 own declarations, typed expressions and definedness.
-- FR-016 owns canonical bytes; FR-018 owns the shared wire forms. QSL owns
+- FR-016 owns canonical bytes; FR-018 owns the shared wire forms. FSL owns
   source association when it consumes this result; IR defines no replacement
   source-mismatch refusal.
 

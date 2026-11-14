@@ -1,6 +1,6 @@
 ---
 type: master-requirements
-name: quire-contract-ir
+name: filament-contract-ir
 org: agent-ix
 component_type: semantic-contract-library
 implementation_language: rust-json-schema
@@ -23,19 +23,19 @@ or canonicalization semantics.
 
 - Package, requirement, clause, anchor, type, expression, and dependency identity.
 - Definedness, canonical encoding, stable digests, schema evolution, and orphan handling.
-- The cycle-free `quire-contract-model` package and the `quire-contract-ir`
+- The cycle-free `filament-contract-model` package and the `filament-contract-ir`
   root crate, each with its own public item list and no item under two paths.
 - Public Rust, serialized JSON, and conformance-runner interfaces.
 - A versioned bounded-Kani profile boundary for finite checked native clauses,
   including explicit supported/refused/unsupported capability classification,
   finite input validation, the dispatch index, typed outcomes, and
-  the map from each outcome to its QSL terminal value.
+  the map from each outcome to its FSL terminal value.
 - A source-derived, method-qualified proof-coverage baseline with distinct
   requirement, module, function, and obligation views.
 - A target-neutral output-mapping request, per-obligation loss record, bounded
   mapper seam, atomic generated-package assembler, and downstream observer reference.
 - The cross-repository contract (FR-350) for the native temporal-to-TL
-  correspondence bridge, which `agent-ix/quire-integration` implements without
+  correspondence bridge, which `agent-ix/filament-integration` implements without
   parsing source or invoking either evaluator (AD-009). Contract IR implements
   no temporal module.
 
@@ -88,40 +88,40 @@ under FR-015-AC-109.
 Profile selection, the finite input/outcome firewall and module dispatch are
 implemented against the integrated codegen corpus.
 That implementation applies only to its exact selected finite profile and
-does not qualify unbounded source semantics. The map from a Kani outcome to a QSL `qsl_replay::TerminalValue` is owned by
-`agent-ix/quire-contract-codegen` (tracked there under Linear IR-358); Contract
+does not qualify unbounded source semantics. The map from a Kani outcome to a FSL `fsl_replay::TerminalValue` is owned by
+`agent-ix/filament-contract-codegen` (tracked there under Linear IR-358); Contract
 IR exposes only its own Kani outcome types (FR-031-AC-5 is retired). A construct the profile cannot interpret
 settles `unsupported` at negotiation and produces no outcome (FR-029).
 Counterexample replay is not a Contract IR operation: the envelope, witness,
-replay source, terminal record and obligation identity are QSL's `qsl-replay`
-types, and the codegen replay adapter replays through `qsl_replay::replay`.
+replay source, terminal record and obligation identity are FSL's `fsl-replay`
+types, and the codegen replay adapter replays through `fsl_replay::replay`.
 TC-222 verifies the FR-344 refusals and TC-223 the outcome constructors and TC-443 the typed code of an outcome. [TC-457](kani/matrix/TC-457-infallible-non-success-outcomes.md) specifies the planned external infallible non-success constructor controls.
 FR-032 through FR-034 define the cycle-free target-neutral FS06 coordinator,
-record, and atomic package foundation. They implement accepted QSpec AD-004 and
+record, and atomic package foundation. They implement accepted FSpec AD-004 and
 FR-120/121/125/269/297/298/299 without implementing any target-specific
 correspondence or admitting generated target text as source.
-FR-035 through FR-037 adopt QSpec AD-010 and FR-195 through FR-197 for the
+FR-035 through FR-037 adopt FSpec AD-010 and FR-195 through FR-197 for the
 complete-V1 target-neutral ContractPackage, exact provider negotiation, and
-the rule that backend counterexamples reach replay only through QSL's
+the rule that backend counterexamples reach replay only through FSL's
 envelope. They do not reopen the closed bounded-Kani profile or claim
 target-specific mapping support.
 The temporal bridge contract is
 [FR-350](temporal/functional/FR-350-native-temporal-tl-correspondence.md): the
-bridge in `agent-ix/quire-integration` projects QSL FR-527's admitted
-classification and joins the QSL FR-052 native report with the quire-mltl
+bridge in `agent-ix/filament-integration` projects FSL FR-527's admitted
+classification and joins the FSL FR-052 native report with the filament-mltl
 mapped result. [TC-461](temporal/matrix/TC-461-native-temporal-tl-correspondence.md)
-is its test case, executed in `agent-ix/quire-integration`;
+is its test case, executed in `agent-ix/filament-integration`;
 [AD-009](assurance/AD-009-native-temporal-bridge.md) describes its components.
-FR-038 consumes the QSpec I04 `quire.checked-package/v2` contract through a
+FR-038 consumes the FSpec I04 `filament.checked-package/v2` contract through a
 strict reader that parses `contract_version` once, admits only
-`quire.checked-package/v2`, re-derives every package and nominal node
+`filament.checked-package/v2`, re-derives every package and nominal node
 identity, and lowers admitted items independently per request. Its strict literal
 admission requires literal-only `value`/`literal` bodies with empty dependencies;
 nonliteral bodies refuse before bounds-required lowering. FR-040 admits
-QSpec FR-340's frame entries (`modifies` with scope, `deletes_scoped`), FR-342's operation anchors and
+FSpec FR-340's frame entries (`modifies` with scope, `deletes_scoped`), FR-342's operation anchors and
 FR-341's state clause and parameter bodies in that reader, and FR-344 refuses
 the ADR-002 2.0.0 members the V2 wire does not yet carry. FR-346 admits
-QSpec FR-451's abstraction relation body in that reader. FR-347 admits a
+FSpec FR-451's abstraction relation body in that reader. FR-347 admits a
 conforming record at operation-call arguments, field reads, case arms, union
 payloads and function-call arguments, and checks function body roots (TC-448
 tests it).
@@ -140,13 +140,13 @@ and recursion-group labels. Final checked-package admission remains with
 [FR-049](checked_package/functional/FR-049-admitted-scalar-result-context.md)
 defines the planned admitted-package reverse consumer context for an exact
 requested scalar expression; [TC-447](checked_package/matrix/TC-447-admitted-scalar-result-context.md)
-defines its reader-admitted QSL and adverse controls.
+defines its reader-admitted FSL and adverse controls.
 [FR-051](checked_package/functional/FR-051-encode-checked-package-v2-envelope.md)
 defines the typed V2 envelope encoder implemented in the model crate; its
 focused IR controls are
 [TC-451](checked_package/matrix/TC-451-typed-v2-envelope-encoding.md).
 [FR-063](checked_package/functional/FR-063-dimension-equivalence-node.md)
-specifies typed V2 encoding and strict admission of QSpec FR-322-AC-118
+specifies typed V2 encoding and strict admission of FSpec FR-322-AC-118
 dimension equivalence nodes, including identity, graph consistency and
 refusal cases.
 [FR-064](checked_package/functional/FR-064-bind-protocol-clause-to-owner-model.md)
@@ -157,7 +157,7 @@ defines the identity-bound root of each selected model package, including
 typed V2 carriage, source correspondence, structural identity and refinement
 header joins.
 [FR-066](checked_package/functional/FR-066-retain-identity-bound-execution-points.md)
-defines the typed V2 body carriers for QSpec execution points and their
+defines the typed V2 body carriers for FSpec execution points and their
 reader, writer, structural-id and published-fixture obligations.
 [FR-068](checked_package/functional/FR-068-join-selected-process-and-persistence-declarations.md)
 defines selected process and persistence-interface owner joins, process
@@ -173,7 +173,7 @@ QSL-766 owns the separate producer adoption.
 specifies a planned admitted V2 clause-claim execution-point accessor, with
 [TC-462](checked_package/matrix/TC-462-admitted-clause-execution-point.md)
 covering exact binding identity, reader admission and typed refusals. QSL-1082
-and the QSpec carrier contract must land before producer-origin cases or
+and the FSpec carrier contract must land before producer-origin cases or
 implementation can qualify.
 [NFR-006](checked_package/non-functional/NFR-006-v2-producer-memory.md) bounds
 the integrated checked-package V2 producer's emission memory while requiring
@@ -186,8 +186,8 @@ owns the typed source-obligation correspondence input in the cycle-free model;
 planned API, mapping and refusal controls.
 [FR-053](model/functional/FR-053-selected-population-binding.md) defines the
 occurrence-scoped, source-backed finite population projection from an admitted
-QSL-produced V2 package; [TC-453](model/matrix/TC-453-selected-population-binding.md)
-records its selected-binding, provenance and typed refusal controls. QSL owns
+FSL-produced V2 package; [TC-453](model/matrix/TC-453-selected-population-binding.md)
+records its selected-binding, provenance and typed refusal controls. FSL owns
 checked population typing and lowering under FR-094, and typed unknown-closure
 admission under FR-084; the IR query preserves that pre-admission outcome and
 does not infer a bound from domain closure or resource limits, or replace
@@ -216,13 +216,13 @@ coverage target is specified before it is measured and reviewed.
 
 | Subsystem | Path | Role | Owning crates/modules | ADs | Owner |
 | --- | --- | --- | --- | --- | --- |
-| Core | `spec/core/` | Stakeholder needs, package, anchor, clause and dependency identity, resource limits, the diagnostic code registry, proof-coverage accounting, and the determinism, portability and diagnostic-integrity properties every subsystem shares | `quire-contract-model::identity`, `quire-contract-model::limits`; proof-coverage implementation planned | AD-001, AD-008, ADR-0056 | Contract IR lane |
-| Model | `spec/model/` | The type system, expression semantics, definedness, canonical encoding and digests, version and orphan handling, executable-projection binding, the model crate's public interface and the cycle-free model/root package split | `quire-contract-model::expression`, `quire-contract-model::canonical`, `quire-contract-model::wire`, `quire-contract-model::coverage`, `quire-contract-model::binding` | AD-001, AD-005, ADR-0053, ADR-0054 | Contract IR lane |
-| Conformance | `spec/conformance/` | The conformance corpus and the JSON conformance interface | `quire-contract-model::conformance`, `quire-contract-ir` binary `quire-contract-conformance` | AD-001 | Contract IR lane |
-| Checked package | `spec/checked_package/` | The strict `quire.checked-package/v2` reader, its frame, anchor and state-clause admission, the refusal of unadmitted ADR-002 members, and complete-V1 ContractPackage lowering from that input | `quire-contract-model::checked_package` | AD-001, AD-003, AD-004 | Contract IR lane |
-| Output mapping | `spec/output_mapping/` | The target-neutral output-mapping request, per-obligation record, mapper seam, atomic package assembly and the refusal code registry | `quire-contract-model::output_mapping` | AD-001 | Contract IR lane |
-| Kani | `spec/kani/` | The versioned bounded-Kani profile, finite input and outcome firewall, dispatch index and typed outcomes, provider-side exact backend negotiation, the root crate's public interface and the rule that Contract IR defines no replay type | `quire-contract-ir` root crate (`lib.rs` and `kani`) excluding the conformance binary | AD-001, AD-002, AD-003, AD-006 | Contract IR lane |
-| Temporal | `spec/temporal/` | The cross-repository contract for native-to-TL projection, correspondence and result joining | none in this repository; implemented by `agent-ix/quire-integration` (`temporal`) | AD-001, AD-009, ADR-0056 | Contract IR lane (contract) |
+| Core | `spec/core/` | Stakeholder needs, package, anchor, clause and dependency identity, resource limits, the diagnostic code registry, proof-coverage accounting, and the determinism, portability and diagnostic-integrity properties every subsystem shares | `filament-contract-model::identity`, `filament-contract-model::limits`; proof-coverage implementation planned | AD-001, AD-008, ADR-0056 | Contract IR lane |
+| Model | `spec/model/` | The type system, expression semantics, definedness, canonical encoding and digests, version and orphan handling, executable-projection binding, the model crate's public interface and the cycle-free model/root package split | `filament-contract-model::expression`, `filament-contract-model::canonical`, `filament-contract-model::wire`, `filament-contract-model::coverage`, `filament-contract-model::binding` | AD-001, AD-005, ADR-0053, ADR-0054 | Contract IR lane |
+| Conformance | `spec/conformance/` | The conformance corpus and the JSON conformance interface | `filament-contract-model::conformance`, `filament-contract-ir` binary `filament-contract-conformance` | AD-001 | Contract IR lane |
+| Checked package | `spec/checked_package/` | The strict `filament.checked-package/v2` reader, its frame, anchor and state-clause admission, the refusal of unadmitted ADR-002 members, and complete-V1 ContractPackage lowering from that input | `filament-contract-model::checked_package` | AD-001, AD-003, AD-004 | Contract IR lane |
+| Output mapping | `spec/output_mapping/` | The target-neutral output-mapping request, per-obligation record, mapper seam, atomic package assembly and the refusal code registry | `filament-contract-model::output_mapping` | AD-001 | Contract IR lane |
+| Kani | `spec/kani/` | The versioned bounded-Kani profile, finite input and outcome firewall, dispatch index and typed outcomes, provider-side exact backend negotiation, the root crate's public interface and the rule that Contract IR defines no replay type | `filament-contract-ir` root crate (`lib.rs` and `kani`) excluding the conformance binary | AD-001, AD-002, AD-003, AD-006 | Contract IR lane |
+| Temporal | `spec/temporal/` | The cross-repository contract for native-to-TL projection, correspondence and result joining | none in this repository; implemented by `agent-ix/filament-integration` (`temporal`) | AD-001, AD-009, ADR-0056 | Contract IR lane (contract) |
 
 ## References
 
@@ -230,10 +230,10 @@ coverage target is specified before it is measured and reviewed.
 - [Complete-V1 backend delivery architecture](assurance/AD-003-complete-v1-backend-delivery.md).
 - [Repository architecture and versioning](assurance/AD-001-contract-ir-architecture.md).
 - [Bounded Kani backend architecture](assurance/AD-002-bounded-kani-architecture.md).
-- [QSpec to IR checked-package seam](assurance/AD-004-checked-package-seam.md).
+- [FSpec to IR checked-package seam](assurance/AD-004-checked-package-seam.md).
 - [Formal clause source profiles](decisions/ADR-0053-formal-clause-source-profiles.md).
 - [Subsystem spec layout and registry format](decisions/ADR-0056-spec-layout-convention.md).
-- [IR to QSL seam: what QSL takes from the model crate](assurance/AD-005-qsl-consumption-seam.md).
+- [IR to FSL seam: what FSL takes from the model crate](assurance/AD-005-fsl-consumption-seam.md).
 - [IR to codegen seam: what codegen consumes](assurance/AD-006-codegen-consumption-seam.md).
 - [Cross-repo dependency graph](assurance/AD-007-cross-repo-dependency-graph.md).
 - [Proof coverage accounting](assurance/AD-008-proof-coverage-accounting.md).

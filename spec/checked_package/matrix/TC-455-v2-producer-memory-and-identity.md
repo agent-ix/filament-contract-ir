@@ -3,24 +3,24 @@ id: TC-455
 title: "Checked-package V2 producer memory and structural output"
 type: TC
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/NFR-006
+  - target: ix://agent-ix/filament-contract-ir/NFR-006
     type: verifies
-  - target: ix://agent-ix/quire-contract-ir/FR-051
+  - target: ix://agent-ix/filament-contract-ir/FR-051
     type: references
 ---
 # TC-455: Checked-package V2 producer memory and structural output
 
 ## Description
 
-Measure the integrated QSL producer's V2 emission memory on a fixed checked
+Measure the integrated FSL producer's V2 emission memory on a fixed checked
 source, and verify that removing retained projection-body copies leaves the
 complete canonical envelope and package name unchanged. The Contract IR API
-portion alone does not satisfy the integrated memory result until QSL adopts it.
+portion alone does not satisfy the integrated memory result until FSL adopts it.
 
 ## Test Procedure
 
 In a fresh process, construct the exact UTF-8 source as the prefix
-`language "ix:native" edition "1-draft";\nprofile v = "quire.value.complete/v1";\nfunction f using v(a: Boolean, x: Integer): Integer pure { `,
+`language "ix:native" edition "1-draft";\nprofile v = "filament.value.complete/v1";\nfunction f using v(a: Boolean, x: Integer): Integer pure { `,
 followed by `x + ` repeated 12,499 times and the suffix `x }\n`.
 Use fixed source identity (`a`, `u`, `git`, `1`) and unit name `unit.native`.
 Set parser source-byte and token limits to at least the source byte length,
@@ -44,7 +44,7 @@ temporary comparison oracle, not as a repository copy of another artifact.
 For the candidate path, compare the complete canonical bytes byte-for-byte
 with baseline output and compare the typed package `name`. Read both envelopes
 with the existing V2 reader and the same valid evidence. Inspect the IR and
-QSL producer paths for a retained per-node `Value::clone` or a collected owned
+FSL producer paths for a retained per-node `Value::clone` or a collected owned
 identity projection. Exercise one body with nested values and a canonical
 encoding refusal at the IR encoder boundary to ensure the borrowing path
 retains the existing error and no-partial-bytes behavior.
@@ -52,13 +52,13 @@ retains the existing error and no-partial-bytes behavior.
 ## Expected Results
 
 All six fresh processes emit the same canonical bytes and package `name`; both
-versions' bytes are reader-admitted. Once QSL adopts the borrowed view, the
+versions' bytes are reader-admitted. Once FSL adopts the borrowed view, the
 changed producer's median incremental peak RSS is at least 65,536 KiB (64 MiB)
 below the freshly remeasured owned-projection baseline median on the same host.
 The fresh control's median is 339,124 KiB, giving this measurement a candidate
 ceiling of 273,588 KiB. The local uncommitted candidate's median is 254,692 KiB,
 an 84,432 KiB (24.90%) reduction; this demonstrates the target with the trial
-patch but does not complete QSL-owned adoption. The candidate's median emission
+patch but does not complete FSL-owned adoption. The candidate's median emission
 time was 1,544 ms versus the baseline's 1,137 ms, a 35.8% slowdown disclosed
 without a time bound.
 No second owned body is retained per projected node, and canonical refusal

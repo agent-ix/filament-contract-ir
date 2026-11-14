@@ -9,7 +9,7 @@ use super::checked_package::{
     canonical, domain_package_document, evidence_for, fixture_source, index_fixture_node_ids,
     node_id, rebuild_source_map, select_model, v2_all_families, v2_reference_chain,
 };
-use quire_contract_model::{
+use filament_contract_model::{
     CheckedPackageEvidence, CheckedPackageReadLimits, CheckedPackageV2ReadResult,
 };
 use serde_json::{json, Value};
@@ -218,7 +218,7 @@ pub fn selected_models_two_512k() -> Input {
         let ty = json!({"identity":format!("ix://{identity}/Large"),"displayName":"",
             "kind":{"module":identity,"name":"entity"},"roles":[],"constraints":[],"extensions":[],"unknownPolicy":"reject","supertypes":[],"fields":[],"operations":[]});
         let mut document = domain_package_document(identity, "1", vec![ty]);
-        document["constructs"] = json!([{"kind":{"module":identity,"name":"entity"},"construct":{"meaning":"quire.meaning.model.object-type/v1"}}]);
+        document["constructs"] = json!([{"kind":{"module":identity,"name":"entity"},"construct":{"meaning":"filament.meaning.model.object-type/v1"}}]);
         let padding = (512 << 10) - canonical(&document).len();
         document["types"][0]["displayName"] = json!("m".repeat(padding));
         let bytes = canonical(&document);

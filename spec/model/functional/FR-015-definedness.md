@@ -3,7 +3,7 @@ id: FR-015
 title: "Track partial-operation definedness"
 type: FR
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/FR-014
+  - target: ix://agent-ix/filament-contract-ir/FR-014
     type: depends_on
 ---
 # FR-015: Track partial-operation definedness

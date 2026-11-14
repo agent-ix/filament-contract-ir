@@ -1,0 +1,1029 @@
+//! FR-348 extension form body and declaration joins.
+
+pub(super) use super::extension_body::{body_work, read_body, targets};
+use super::model_members::{Budget, DeclarationForm, EmptyAggregateBody, ModelOwners};
+use super::native_join_budget::PackageReadStage;
+use super::node_lookup::NodeLookup;
+use super::stage_storage::{self, Path, Refusal, Site};
+use super::{
+    BoundedDomainForm, CheckedNodeKind, CheckedPackageWireV2, CheckedSemanticNodeV2, CheckedTerm,
+    ModelForm, ScalarTypeForm, WorkMeter,
+};
+use crate::checked_package::common::ValidationFailure;
+use crate::checked_package::evidence::CheckedPackageEvidence;
+use crate::checked_package::shared::{
+    CheckedExtensionRefusalDetail, CheckedNodeId, CheckedPackageRefusalCause as Cause,
+    CheckedPackageRefusalCode as Code,
+};
+use std::mem::size_of;
+
+pub(super) fn validate_source_regions<Body>(
+    wire: &CheckedPackageWireV2<Body>,
+    kinds: &[CheckedNodeKind],
+    meter: &mut WorkMeter,
+) -> Result<(), ValidationFailure> {
+    let is_extension = |kind: &CheckedNodeKind| matches!(kind, CheckedNodeKind::Extension(_));
+    let count = kinds.iter().filter(|kind| is_extension(kind)).count();
+    if count == 0 {
+        return Ok(());
+    }
+    let site = |index: usize, at: Path<'static>| {
+        Site::new(PackageReadStage::Extension, index, "extension", at)
+    };
+    let source_map = Path::root().key("source_map");
+    // The extension nodes, ascending by identity, with their graph positions.
+    let mut extensions: Vec<(&CheckedNodeId, usize)> =
+        stage_storage::vec(meter, &site(0, source_map), count)?;
+    extensions.extend(
+        wire.semantic_graph
+            .nodes
+            .iter()
+            .zip(kinds)
+            .enumerate()
+            .filter(|(_, (_, kind))| is_extension(kind))
+            .map(|(position, (node, _))| (&node.node_id, position)),
+    );
+    extensions.sort_unstable();
+    for (entry_index, entry) in wire.source_map.iter().enumerate() {
+        let Ok(found) = extensions.binary_search_by(|(id, _)| (*id).cmp(&entry.node_id)) else {
+            continue;
+        };
+        if entry.regions.len() != 1 {
+            let regions = source_map.index(entry_index).key("regions");
+            return Err(stage_storage::refuse(
+                meter,
+                &site(extensions[found].1, regions),
+                Refusal::new(Code::InvalidSourceMap, regions).at_node(&entry.node_id),
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// A refusal of `code` at `at` with `cause`, located at the extension node.
+fn located<'a, Body>(
+    code: Code,
+    cause: Cause,
+    at: Path<'a>,
+    node: &'a CheckedSemanticNodeV2<Body>,
+) -> Refusal<'a> {
+    Refusal::new(code, at).because(cause).at_node(&node.node_id)
+}
+
+/// The refusal, its owned diagnostic charged at the extension node first.
+fn fail(meter: &mut WorkMeter, position: usize, refusal: Refusal<'_>) -> ValidationFailure {
+    let site = Site::new(
+        PackageReadStage::Extension,
+        position,
+        "extension",
+        refusal.path,
+    );
+    stage_storage::refuse(meter, &site, refusal)
+}
+
+/// The heap the clause detail of a refusal owns, which the refusal's charge
+/// includes: the record and its strings.
+fn detail_bytes(
+    member: &str,
+    expected: Option<&str>,
+    actual: Option<&Actual<'_>>,
+    actual_semantic_type: Option<&CheckedNodeId>,
+) -> usize {
+    size_of::<CheckedExtensionRefusalDetail>()
+        .saturating_add(member.len())
+        .saturating_add(expected.map_or(0, str::len))
+        .saturating_add(actual.map_or(0, Actual::boxed_bytes))
+        .saturating_add(actual_semantic_type.map_or(0, stage_storage::node_id_clone_bytes))
+}
+
+/// Attaches the clause detail to a refusal whose bytes already include it.
+fn with_detail(
+    mut failure: ValidationFailure,
+    member: &str,
+    expected: Option<&str>,
+    actual: Option<Actual<'_>>,
+    actual_semantic_type: Option<&CheckedNodeId>,
+) -> ValidationFailure {
+    if let ValidationFailure::Refused(ref mut refusal) = failure {
+        refusal.extension_detail = Some(Box::new(CheckedExtensionRefusalDetail {
+            member: member.into(),
+            expected_type: expected.map(Into::into),
+            actual_type: actual.map(Actual::into_box),
+            actual_semantic_type: actual_semantic_type.cloned(),
+        }));
+    }
+    failure
+}
+
+/// Joins selected and held definitions, node kinds, clauses and clause types.
+pub(super) fn validate<Body: EmptyAggregateBody>(
+    wire: &CheckedPackageWireV2<Body>,
+    kinds: &[CheckedNodeKind],
+    terms: &[Option<CheckedTerm>],
+    index: &dyn NodeLookup,
+    evidence: &CheckedPackageEvidence,
+    owners: &ModelOwners<'_>,
+    meter: &mut WorkMeter,
+) -> Result<(), ValidationFailure> {
+    let nodes = &wire.semantic_graph.nodes;
+    let is_extension = |kind: &CheckedNodeKind| matches!(kind, CheckedNodeKind::Extension(_));
+    let count = kinds.iter().filter(|kind| is_extension(kind)).count();
+    if count == 0 {
+        return Ok(());
+    }
+    let nodes_at = Path::root().key("semantic_graph").key("nodes");
+    let site = |position: usize, at: Path<'static>| {
+        Site::new(PackageReadStage::Extension, position, "extension", at)
+    };
+    // The extension nodes in ascending identity order, which is the order the
+    // join refuses them in.
+    let mut order: Vec<(&CheckedNodeId, usize)> =
+        stage_storage::vec(meter, &site(0, nodes_at), count)?;
+    order.extend(
+        nodes
+            .iter()
+            .zip(kinds)
+            .enumerate()
+            .filter(|(_, (_, kind))| is_extension(kind))
+            .map(|(position, (node, _))| (&node.node_id, position)),
+    );
+    order.sort_unstable();
+    for &(_, position) in &order {
+        let node = &nodes[position];
+        let at = nodes_at.index(position).key("body");
+        let Some(CheckedTerm::ExtensionForm {
+            definition,
+            node_kind,
+            clauses,
+        }) = terms.get(position).and_then(Option::as_ref)
+        else {
+            return Err(fail(meter, position, Refusal::new(Code::MalformedWire, at)));
+        };
+        let mut bindings: Vec<(&str, &CheckedNodeId)> =
+            stage_storage::vec(meter, &site(position, at), clauses.len())?;
+        for clause in clauses {
+            let CheckedTerm::Binding { name, value } = clause else {
+                return Err(fail(meter, position, Refusal::new(Code::MalformedWire, at)));
+            };
+            let CheckedTerm::Reference { target } = value.as_ref() else {
+                return Err(fail(meter, position, Refusal::new(Code::MalformedWire, at)));
+            };
+            bindings.push((name.as_ref(), target));
+        }
+        let def_at = at.key("definition");
+        if !wire.lock.definition_selections.contains(definition) {
+            return Err(fail(
+                meter,
+                position,
+                located(
+                    Code::MissingDeclaration,
+                    Cause::MissingSelection,
+                    def_at,
+                    node,
+                ),
+            ));
+        }
+        let Some(definition) = evidence.extension_definition(definition) else {
+            return Err(fail(
+                meter,
+                position,
+                Refusal::unheld_definition(def_at, &node.node_id),
+            ));
+        };
+        let Some(schema) = definition
+            .typed_node_schema
+            .nodes
+            .iter()
+            .find(|entry| entry.node_kind.as_ref() == node_kind.as_ref())
+        else {
+            return Err(fail(
+                meter,
+                position,
+                located(
+                    Code::MissingDeclaration,
+                    Cause::MissingName,
+                    at.key("node_kind"),
+                    node,
+                ),
+            ));
+        };
+        for (ordinal, ((name, _), expected)) in bindings.iter().zip(&schema.clauses).enumerate() {
+            if *name != expected.name.as_ref() {
+                return Err(fail(
+                    meter,
+                    position,
+                    located(
+                        Code::InvalidPackage,
+                        Cause::InvalidValue,
+                        at.key("clauses").index(ordinal),
+                        node,
+                    ),
+                ));
+            }
+        }
+        if bindings.len() > schema.clauses.len() {
+            return Err(fail(
+                meter,
+                position,
+                located(
+                    Code::InvalidPackage,
+                    Cause::InvalidValue,
+                    at.key("clauses").index(schema.clauses.len()),
+                    node,
+                ),
+            ));
+        }
+        if bindings.len() < schema.clauses.len() {
+            let member = &schema.clauses[bindings.len()].name;
+            let refusal = located(
+                Code::InvalidPackage,
+                Cause::MissingMember,
+                at.key("clauses"),
+                node,
+            )
+            .with_extra(detail_bytes(member, None, None, None));
+            return Err(with_detail(
+                fail(meter, position, refusal),
+                member,
+                None,
+                None,
+                None,
+            ));
+        }
+        for (ordinal, ((name, target_id), expected)) in
+            bindings.iter().zip(&schema.clauses).enumerate()
+        {
+            let pointer = at.key("clauses").index(ordinal).key("value");
+            let Some(&target_position) = index.position(target_id) else {
+                return Err(fail(
+                    meter,
+                    position,
+                    located(Code::MissingDeclaration, Cause::MissingName, pointer, node),
+                ));
+            };
+            let target = &nodes[target_position];
+            if !type_matches(
+                &expected.type_ref,
+                nodes,
+                kinds,
+                terms,
+                target_position,
+                index,
+                owners,
+                meter,
+            )? {
+                let actual = actual_type(
+                    meter,
+                    position,
+                    target,
+                    nodes,
+                    kinds,
+                    terms,
+                    target_position,
+                    index,
+                )?;
+                let semantic = &target.semantic_type;
+                let refusal = located(Code::IllTyped, Cause::TypeMismatch, pointer, node)
+                    .with_extra(detail_bytes(
+                        name,
+                        Some(&expected.type_ref),
+                        Some(&actual),
+                        Some(semantic),
+                    ));
+                return Err(with_detail(
+                    fail(meter, position, refusal),
+                    name,
+                    Some(&expected.type_ref),
+                    Some(actual),
+                    Some(semantic),
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+pub(super) fn integer_range_bounds(term: &CheckedTerm) -> Option<(&str, &str)> {
+    fn bound<'a>(term: &'a CheckedTerm, expected: &str) -> Option<&'a str> {
+        let CheckedTerm::Binding { name, value } = term else {
+            return None;
+        };
+        if name.as_ref() != expected {
+            return None;
+        }
+        let CheckedTerm::Literal { value, .. } = value.as_ref() else {
+            return None;
+        };
+        value.as_str()
+    }
+    let CheckedTerm::Aggregate { members } = term else {
+        return None;
+    };
+    let [lo, hi] = members.as_slice() else {
+        return None;
+    };
+    Some((bound(lo, "min")?, bound(hi, "max")?))
+}
+
+enum ExpectedType<'a> {
+    IntegerRange(&'a str),
+    Scalar(ScalarTypeForm),
+    Other,
+}
+
+impl<'a> ExpectedType<'a> {
+    #[ix_trace_rs::string_edge]
+    fn from_text(expected: &'a str) -> Self {
+        if let Some(bounds) = expected
+            .strip_prefix("Int[")
+            .and_then(|tail| tail.strip_suffix(']'))
+        {
+            return Self::IntegerRange(bounds);
+        }
+        let scalar = match expected {
+            "Boolean" => Some(ScalarTypeForm::Boolean),
+            "Integer" | "Int" => Some(ScalarTypeForm::Integer),
+            "Rational" => Some(ScalarTypeForm::Rational),
+            "Decimal" => Some(ScalarTypeForm::Decimal),
+            "Float32" => Some(ScalarTypeForm::Float32),
+            "Float64" => Some(ScalarTypeForm::Float64),
+            "Text" => Some(ScalarTypeForm::Text),
+            "String" => Some(ScalarTypeForm::String),
+            "UUID" => Some(ScalarTypeForm::Uuid),
+            "Timestamp" => Some(ScalarTypeForm::Timestamp),
+            _ => None,
+        };
+        scalar.map_or(Self::Other, Self::Scalar)
+    }
+}
+
+fn type_matches<Body: EmptyAggregateBody>(
+    expected: &str,
+    nodes: &[CheckedSemanticNodeV2<Body>],
+    kinds: &[CheckedNodeKind],
+    terms: &[Option<CheckedTerm>],
+    target_position: usize,
+    index: &dyn NodeLookup,
+    owners: &ModelOwners<'_>,
+    meter: &mut WorkMeter,
+) -> Result<bool, ValidationFailure> {
+    let Some((target, &kind)) = nodes.get(target_position).zip(kinds.get(target_position)) else {
+        return Ok(false);
+    };
+    if !matches!(
+        kind,
+        CheckedNodeKind::Value(_) | CheckedNodeKind::Expression(_) | CheckedNodeKind::Extension(_)
+    ) {
+        return Ok(false);
+    }
+    let expected_type = ExpectedType::from_text(expected);
+    if let ExpectedType::IntegerRange(bound) = &expected_type {
+        let Some((lo, hi)) = bound.split_once(',') else {
+            return Ok(false);
+        };
+        let Some(&position) = index.position(&target.semantic_type) else {
+            return Ok(false);
+        };
+        let bounds_match = terms
+            .get(position)
+            .and_then(Option::as_ref)
+            .and_then(integer_range_bounds)
+            .is_some_and(|(lower, upper)| lower == lo.trim() && upper == hi.trim());
+        return Ok(kinds.get(position)
+            == Some(&CheckedNodeKind::BoundedDomain(
+                BoundedDomainForm::IntegerRange,
+            ))
+            && bounds_match);
+    }
+    if let ExpectedType::Scalar(form) = expected_type {
+        return Ok(index
+            .position(&target.semantic_type)
+            .and_then(|&position| nodes.get(position).zip(kinds.get(position)))
+            .is_some_and(|(_, kind)| *kind == CheckedNodeKind::ScalarType(form)));
+    }
+    if let Some((type_node, type_kind)) = index
+        .position(&target.semantic_type)
+        .and_then(|&position| nodes.get(position).zip(kinds.get(position)))
+    {
+        if *type_kind == CheckedNodeKind::Model(ModelForm::RecordValueType) {
+            if let Ok(actual) = owners.recover(type_node) {
+                if actual.form == DeclarationForm::RecordValueType
+                    && actual.package.record_types.contains_key(expected)
+                {
+                    let mut budget = Budget::new(meter, actual.package.root, actual.package.bytes);
+                    return actual
+                        .package
+                        .conforms_to(actual.node, expected, &mut budget);
+                }
+            }
+        }
+    }
+    Ok(matches!(kind, CheckedNodeKind::Extension(_))
+        && matches!(terms.get(target_position).and_then(Option::as_ref),
+            Some(CheckedTerm::ExtensionForm { node_kind, .. }) if node_kind.as_ref() == expected))
+}
+
+/// The text naming a clause target's actual type, held as the pieces it is
+/// spelled from so its length is known before any of it is copied.
+enum Actual<'a> {
+    Text(&'a str),
+    /// `Int[lo, hi]`.
+    Range(&'a str, &'a str),
+    /// The segments of a qualified name, joined by `.`.
+    Joined(&'a [Box<str>]),
+    /// Text already built, in a block of exactly its length.
+    Encoded(String),
+}
+
+impl Actual<'_> {
+    fn len(&self) -> usize {
+        match self {
+            Self::Text(text) => text.len(),
+            Self::Range(lo, hi) => "Int[".len() + lo.len() + ", ".len() + hi.len() + "]".len(),
+            Self::Joined(parts) => parts
+                .iter()
+                .map(|part| part.len())
+                .sum::<usize>()
+                .saturating_add(parts.len().saturating_sub(1)),
+            Self::Encoded(text) => text.len(),
+        }
+    }
+
+    /// The heap the boxed text requests; an encoded text is boxed in place.
+    fn boxed_bytes(&self) -> usize {
+        match self {
+            Self::Encoded(_) => 0,
+            other => other.len(),
+        }
+    }
+
+    fn into_box(self) -> Box<str> {
+        let length = self.len();
+        match self {
+            Self::Text(text) => text.into(),
+            Self::Range(lo, hi) => {
+                let mut text = String::with_capacity(length);
+                text.push_str("Int[");
+                text.push_str(lo);
+                text.push_str(", ");
+                text.push_str(hi);
+                text.push(']');
+                text.into_boxed_str()
+            }
+            Self::Joined(parts) => {
+                let mut text = String::with_capacity(length);
+                for (position, part) in parts.iter().enumerate() {
+                    if position > 0 {
+                        text.push('.');
+                    }
+                    text.push_str(part);
+                }
+                text.into_boxed_str()
+            }
+            Self::Encoded(text) => text.into_boxed_str(),
+        }
+    }
+}
+
+/// The canonical text of `id`, counted in a first pass and built in a block of
+/// exactly that length in a second, the writer's own heap charged in both.
+fn structural_text(
+    meter: &mut WorkMeter,
+    position: usize,
+    id: &CheckedNodeId,
+) -> Result<Actual<'static>, ValidationFailure> {
+    let at = Path::root()
+        .key("semantic_graph")
+        .key("nodes")
+        .index(position);
+    let site = Site::new(PackageReadStage::Extension, position, "extension", at);
+    let limits = quire_canonical::Limits::new(u64::MAX);
+    let mut counted = stage_storage::CountingSink::default();
+    let mut charges = stage_storage::WriterCharges::new(meter, site);
+    let counting = quire_canonical::encode_with_reservation(&mut counted, id, limits, &mut charges);
+    if let Some(failure) = charges.failure.take() {
+        return Err(failure);
+    }
+    if counting.is_err() {
+        return Ok(Actual::Text("unknown structural type"));
+    }
+    let mut bytes: Vec<u8> = stage_storage::vec(meter, &site, counted.0)?;
+    let mut charges = stage_storage::WriterCharges::new(meter, site);
+    let encoding = quire_canonical::encode_with_reservation(&mut bytes, id, limits, &mut charges);
+    if let Some(failure) = charges.failure.take() {
+        return Err(failure);
+    }
+    match (encoding, String::from_utf8(bytes)) {
+        (Ok(_), Ok(text)) => Ok(Actual::Encoded(text)),
+        _ => Ok(Actual::Text("unknown structural type")),
+    }
+}
+
+fn actual_type<'a, Body>(
+    meter: &mut WorkMeter,
+    position: usize,
+    target: &'a CheckedSemanticNodeV2<Body>,
+    nodes: &'a [CheckedSemanticNodeV2<Body>],
+    kinds: &[CheckedNodeKind],
+    terms: &'a [Option<CheckedTerm>],
+    target_position: usize,
+    index: &dyn NodeLookup,
+) -> Result<Actual<'a>, ValidationFailure> {
+    if matches!(kinds[target_position], CheckedNodeKind::Extension(_)) {
+        return Ok(match terms.get(target_position).and_then(Option::as_ref) {
+            Some(CheckedTerm::ExtensionForm { node_kind, .. }) => Actual::Text(node_kind),
+            _ => Actual::Text("extension"),
+        });
+    }
+    let Some(&type_position) = index.position(&target.semantic_type) else {
+        return structural_text(meter, position, &target.semantic_type);
+    };
+    let Some((type_node, type_kind)) = nodes.get(type_position).zip(kinds.get(type_position))
+    else {
+        return structural_text(meter, position, &target.semantic_type);
+    };
+    if *type_kind == CheckedNodeKind::BoundedDomain(BoundedDomainForm::IntegerRange) {
+        if let Some((lo, hi)) = terms
+            .get(type_position)
+            .and_then(Option::as_ref)
+            .and_then(integer_range_bounds)
+        {
+            return Ok(Actual::Range(lo, hi));
+        }
+    }
+    Ok(match type_kind {
+        CheckedNodeKind::ScalarType(ScalarTypeForm::Boolean) => Actual::Text("Boolean"),
+        CheckedNodeKind::ScalarType(ScalarTypeForm::Integer) => Actual::Text("Integer"),
+        CheckedNodeKind::ScalarType(ScalarTypeForm::Rational) => Actual::Text("Rational"),
+        CheckedNodeKind::ScalarType(ScalarTypeForm::Decimal) => Actual::Text("Decimal"),
+        CheckedNodeKind::ScalarType(ScalarTypeForm::Float32) => Actual::Text("Float32"),
+        CheckedNodeKind::ScalarType(ScalarTypeForm::Float64) => Actual::Text("Float64"),
+        CheckedNodeKind::ScalarType(ScalarTypeForm::Text) => Actual::Text("Text"),
+        CheckedNodeKind::ScalarType(ScalarTypeForm::String) => Actual::Text("String"),
+        CheckedNodeKind::ScalarType(ScalarTypeForm::Uuid) => Actual::Text("UUID"),
+        CheckedNodeKind::ScalarType(ScalarTypeForm::Timestamp) => Actual::Text("Timestamp"),
+        _ => type_node
+            .declaration
+            .as_ref()
+            .map_or(Actual::Text(&type_node.semantic_form), |declaration| {
+                Actual::Joined(&declaration.qualified_name)
+            }),
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::checked_package::evidence::CheckedExtensionDefinition;
+    use crate::checked_package::v2::budgeted_read::CheckedPackagePendingOutcome;
+    use crate::checked_package::v2::native_join_budget::{NativeJoinBudget, NativeJoinLocusSource};
+    use crate::checked_package::v2::{
+        test_support::node_id, BoundedDomainForm, ExtensionForm, ModelForm, ValueForm,
+    };
+    use ix_trace_rs::trace;
+    use serde_json::json;
+
+    /// This graph enters the actual extension join directly. Its metadata/kind
+    /// mismatches are deliberately private states, not newly admitted packages.
+    struct Join {
+        wire: CheckedPackageWireV2,
+        kinds: Vec<CheckedNodeKind>,
+        terms: Vec<Option<CheckedTerm>>,
+        evidence: CheckedPackageEvidence,
+    }
+
+    impl Join {
+        fn new(expected: &str, kind: CheckedNodeKind) -> Self {
+            let definition = json!({"authority": "test", "identity": "open-extension"});
+            let edition = json!({"role": "edition", "definition": definition});
+            let mut wire: CheckedPackageWireV2 = serde_json::from_value(json!({
+                "contract_version": super::super::CHECKED_PACKAGE_V2,
+                "name": "test/extension",
+                "lock": {"sources": [], "edition": edition, "profile_selections": [],
+                    "definition_selections": [definition],
+                    "required_features": [], "dependency_selections": []},
+                "semantic_graph": {"graph_version": "filament.checked-semantic-graph/v2", "nodes": [], "operand_rows": []},
+                "source_map": [], "capability_report": [],
+                "diagnostics": {"catalog": definition, "entries": []}
+            }))
+            .expect("private join wire");
+            let node = |id: char, kind: CheckedNodeKind, ty: CheckedNodeId| {
+                serde_json::from_value(json!({
+                    "node_id": node_id(id), "schema_version": "filament.checked-semantic-graph/v2",
+                    "node_tag": kind.tag().as_wire(), "semantic_form": kind.form_wire(),
+                    "semantic_type": ty, "dependencies": [], "occurrences": [],
+                    "body": {"term": "aggregate", "members": []}
+                }))
+                .expect("private graph node")
+            };
+            wire.semantic_graph.nodes = vec![
+                node('0', kind, node_id('0')),
+                node(
+                    '1',
+                    CheckedNodeKind::Value(ValueForm::Parameter),
+                    node_id('0'),
+                ),
+                node(
+                    '2',
+                    CheckedNodeKind::Extension(ExtensionForm::ExtensionForm),
+                    node_id('2'),
+                ),
+            ];
+            let extension = CheckedTerm::ExtensionForm {
+                definition: serde_json::from_value(definition).expect("definition ref"),
+                node_kind: "open-kind".into(),
+                clauses: vec![CheckedTerm::Binding {
+                    name: "subject".into(),
+                    value: Box::new(CheckedTerm::Reference {
+                        target: node_id('1'),
+                    }),
+                }],
+            };
+            let mut evidence = CheckedPackageEvidence::new();
+            let schema: CheckedExtensionDefinition = serde_json::from_value(json!({
+                "grammar_schema": {"productions": [{"keyword": "open", "clauses": ["subject"]},
+                    {"keyword": "future", "clauses": []}]},
+                "typed_node_schema": {"nodes": [{"keyword": "open", "node_kind": "open-kind",
+                    "clauses": [{"name": "subject", "type": expected}]},
+                        {"keyword": "future", "node_kind": "future-kind", "clauses": []}]}
+            }))
+            .expect("held definition");
+            evidence
+                .insert_extension_definition(wire.lock.definition_selections[0].clone(), schema)
+                .expect("definition evidence");
+            Self {
+                wire,
+                kinds: vec![
+                    kind,
+                    CheckedNodeKind::Value(ValueForm::Parameter),
+                    CheckedNodeKind::Extension(ExtensionForm::ExtensionForm),
+                ],
+                terms: vec![
+                    Some(CheckedTerm::Aggregate { members: vec![] }),
+                    None,
+                    Some(extension),
+                ],
+                evidence,
+            }
+        }
+
+        fn run(&self) -> (Result<(), ValidationFailure>, u64) {
+            let owners = ModelOwners::new(&[], &self.wire.semantic_graph.nodes, |_| Ok(()))
+                .expect("empty selected-model owners");
+            self.run_with_owners(&owners)
+        }
+
+        fn run_with_owners(
+            &self,
+            owners: &ModelOwners<'_>,
+        ) -> (Result<(), ValidationFailure>, u64) {
+            let mut index: Vec<(&CheckedNodeId, usize)> = self
+                .wire
+                .semantic_graph
+                .nodes
+                .iter()
+                .enumerate()
+                .map(|(position, node)| (&node.node_id, position))
+                .collect();
+            index.sort_unstable_by_key(|(left, _)| *left);
+            let mut meter = WorkMeter::new(100_000);
+            let result = validate(
+                &self.wire,
+                &self.kinds,
+                &self.terms,
+                &index,
+                &self.evidence,
+                owners,
+                &mut meter,
+            );
+            (result, meter.consumed())
+        }
+
+        /// The join over a caller budget whose read storage is `limit`.
+        fn run_budgeted(&self, limit: u64) -> (Result<(), ValidationFailure>, NativeJoinBudget) {
+            let owners = ModelOwners::new(&[], &self.wire.semantic_graph.nodes, |_| Ok(()))
+                .expect("empty selected-model owners");
+            let mut index: Vec<(&CheckedNodeId, usize)> = self
+                .wire
+                .semantic_graph
+                .nodes
+                .iter()
+                .enumerate()
+                .map(|(position, node)| (&node.node_id, position))
+                .collect();
+            index.sort_unstable_by_key(|(left, _)| *left);
+            let mut budget = NativeJoinBudget::new(u64::MAX, 0).with_read_storage_limit(limit);
+            let result = validate(
+                &self.wire,
+                &self.kinds,
+                &self.terms,
+                &index,
+                &self.evidence,
+                &owners,
+                &mut WorkMeter::over(&mut budget),
+            );
+            (result, budget)
+        }
+
+        fn range(&mut self) {
+            let bound = |name: &str, text: &str| CheckedTerm::Binding {
+                name: name.into(),
+                value: Box::new(CheckedTerm::Literal {
+                    type_id: node_id('0'),
+                    value_kind: super::super::LiteralKind::Integer,
+                    value: crate::checked_package::CheckedJson::scalar(&json!(text)),
+                }),
+            };
+            self.terms[0] = Some(CheckedTerm::Aggregate {
+                members: vec![bound("min", "1"), bound("max", "3650")],
+            });
+        }
+
+        fn mismatch(&self, expected: &str, actual: &str) {
+            let (result, work) = self.run();
+            let Err(ValidationFailure::Refused(refusal)) = result else {
+                panic!("expected extension mismatch, got {result:?}");
+            };
+            assert_eq!(
+                (refusal.code, refusal.cause),
+                (Code::IllTyped, Some(Cause::TypeMismatch))
+            );
+            assert_eq!(
+                refusal.loci[0].path.clone().expect("path").to_string(),
+                "/semantic_graph/nodes/2/body/clauses/0/value"
+            );
+            assert_eq!(refusal.locus, Some(node_id('2')));
+            let detail = refusal.extension_detail.expect("detail");
+            assert_eq!(detail.member.as_ref(), "subject");
+            assert_eq!(detail.expected_type.as_deref(), Some(expected));
+            assert_eq!(detail.actual_type.as_deref(), Some(actual));
+            assert_eq!(
+                detail.actual_semantic_type,
+                Some(self.wire.semantic_graph.nodes[1].semantic_type.clone())
+            );
+            assert_eq!(
+                work, 0,
+                "native type checks charge no model-conformance work"
+            );
+        }
+    }
+
+    /// The join charges its order table and the owned diagnostic of its
+    /// refusal, detail included, at the extension node: the measured
+    /// requirement refuses, and one byte short exhausts the budget with the
+    /// refusal pending (FR-038-AC-506, AC-510).
+    #[trace("TC-472", "FR-038-AC-506")]
+    #[test]
+    fn extension_join_charges_its_tables_and_refusal_diagnostic() {
+        let mut join = Join::new("Boolean", CheckedNodeKind::ScalarType(ScalarTypeForm::Text));
+        join.wire.semantic_graph.nodes[0].semantic_form = "integer".into();
+        let (result, measured) = join.run_budgeted(u64::MAX);
+        assert!(matches!(
+            result,
+            Err(ValidationFailure::Refused(ref refusal))
+                if refusal.code == Code::IllTyped
+                    && refusal.extension_detail.as_ref().is_some_and(|detail|
+                        detail.actual_type.as_deref() == Some("Text"))
+        ));
+        let required = measured.read_storage_consumed();
+        assert!(required > 0);
+        let (exact, _) = join.run_budgeted(required);
+        assert!(matches!(exact, Err(ValidationFailure::Refused(_))));
+        let (short, mut budget) = join.run_budgeted(required - 1);
+        assert!(
+            matches!(short, Err(ValidationFailure::Budget(_))),
+            "{short:?}"
+        );
+        assert_eq!(
+            budget.take_pending(),
+            Some(CheckedPackagePendingOutcome::Refused(Code::IllTyped))
+        );
+        let locus = budget.first_unpaid_locus().expect("a denial has a locus");
+        assert_eq!(
+            (locus.source, locus.form),
+            (
+                NativeJoinLocusSource::PackageRead(PackageReadStage::Extension, 2),
+                "diagnostic"
+            )
+        );
+    }
+
+    /// Native typed metadata enters the same extension join without a raw
+    /// body copy. Observe its real temporary tables, including their drop.
+    #[trace("TC-472", "FR-038-AC-506")]
+    #[test]
+    fn typed_metadata_extension_join_reserves_its_actual_allocations() {
+        let join = Join::new(
+            "Boolean",
+            CheckedNodeKind::ScalarType(ScalarTypeForm::Boolean),
+        );
+        let owners = ModelOwners::new(&[], &join.wire.semantic_graph.nodes, |_| Ok(()))
+            .expect("empty selected-model owners");
+        let index: Vec<(&CheckedNodeId, usize)> = join
+            .wire
+            .semantic_graph
+            .nodes
+            .iter()
+            .enumerate()
+            .map(|(position, node)| (&node.node_id, position))
+            .collect();
+        let run = |limit| {
+            let mut budget = NativeJoinBudget::new(u64::MAX, 0).with_read_storage_limit(limit);
+            let mut result = None;
+            let observed = allocation_counter::measure(|| {
+                result = Some(validate(
+                    &join.wire,
+                    &join.kinds,
+                    &join.terms,
+                    &index,
+                    &join.evidence,
+                    &owners,
+                    &mut WorkMeter::over(&mut budget),
+                ));
+            });
+            (result.expect("the join ran"), observed.bytes_total, budget)
+        };
+        let (result, allocated, budget) = run(u64::MAX);
+        assert!(result.is_ok(), "the Boolean target conforms: {result:?}");
+        let required = budget.read_storage_consumed();
+        assert!(required > 0, "the join owns its index and binding tables");
+        assert_eq!(allocated, required, "every actual allocation is prepaid");
+        assert!(run(required).0.is_ok(), "the exact allowance admits");
+        let (short, _, budget) = run(required - 1);
+        assert!(matches!(short, Err(ValidationFailure::Budget(_))));
+        assert!(matches!(
+            budget.first_unpaid_locus().map(|locus| locus.source),
+            Some(NativeJoinLocusSource::PackageRead(
+                PackageReadStage::Extension,
+                2
+            ))
+        ));
+    }
+
+    #[trace("TC-459")]
+    #[test]
+    fn extension_join_scalar_dispatch_uses_retained_type_kind() {
+        for (name, form) in [
+            ("Boolean", ScalarTypeForm::Boolean),
+            ("Integer", ScalarTypeForm::Integer),
+            ("Int", ScalarTypeForm::Integer),
+            ("Rational", ScalarTypeForm::Rational),
+            ("Decimal", ScalarTypeForm::Decimal),
+            ("Float32", ScalarTypeForm::Float32),
+            ("Float64", ScalarTypeForm::Float64),
+            ("Text", ScalarTypeForm::Text),
+            ("String", ScalarTypeForm::String),
+            ("UUID", ScalarTypeForm::Uuid),
+            ("Timestamp", ScalarTypeForm::Timestamp),
+        ] {
+            let mut join = Join::new(name, CheckedNodeKind::ScalarType(form));
+            let (baseline, work) = join.run();
+            assert!(baseline.is_ok(), "{name}: {baseline:?}");
+            join.wire.semantic_graph.nodes[0].node_tag = "model".into();
+            join.wire.semantic_graph.nodes[0].semantic_form = "record_value_type".into();
+            let (damaged, damaged_work) = join.run();
+            assert!(
+                damaged.is_ok(),
+                "retained {name} must match despite private raw damage: {damaged:?}"
+            );
+            assert_eq!(damaged_work, work);
+
+            let mut inverse = Join::new(name, CheckedNodeKind::ScalarType(form));
+            inverse.kinds[0] = CheckedNodeKind::Model(ModelForm::ObjectType);
+            inverse.mismatch(name, form.as_wire());
+        }
+    }
+
+    #[trace("TC-459")]
+    #[test]
+    fn extension_join_range_dispatch_and_diagnostic_use_retained_kind() {
+        let range = CheckedNodeKind::BoundedDomain(BoundedDomainForm::IntegerRange);
+        let mut join = Join::new("Int[1, 3650]", range);
+        join.range();
+        assert!(join.run().0.is_ok());
+        join.wire.semantic_graph.nodes[0].node_tag = "scalar_type".into();
+        join.wire.semantic_graph.nodes[0].semantic_form = "text".into();
+        assert!(
+            join.run().0.is_ok(),
+            "private raw damage cannot change retained range"
+        );
+        let mut inverse = Join::new("Int[1, 3650]", range);
+        inverse.range();
+        inverse.kinds[0] = CheckedNodeKind::ScalarType(ScalarTypeForm::Text);
+        inverse.mismatch("Int[1, 3650]", "Text");
+        let mut diagnostic = Join::new("Boolean", range);
+        diagnostic.range();
+        diagnostic.wire.semantic_graph.nodes[0].node_tag = "scalar_type".into();
+        diagnostic.wire.semantic_graph.nodes[0].semantic_form = "text".into();
+        diagnostic.mismatch("Boolean", "Int[1, 3650]");
+    }
+
+    #[trace("TC-459")]
+    #[test]
+    fn extension_join_scalar_diagnostic_uses_retained_kind() {
+        let mut join = Join::new("Boolean", CheckedNodeKind::ScalarType(ScalarTypeForm::Text));
+        join.wire.semantic_graph.nodes[0].semantic_form = "integer".into();
+        join.mismatch("Boolean", "Text");
+    }
+    #[trace("TC-459")]
+    #[test]
+    fn extension_join_selected_record_dispatch_preserves_owner_conformance() {
+        use crate::checked_package::v2::model_members::{declaration_id, tests as model_tests};
+        let base = "ix://acme/orders/Base";
+        let child = "ix://acme/orders/Child";
+        let mut types = vec![
+            model_tests::object_type(base, &[], vec![]),
+            model_tests::object_type(child, &[base], vec![]),
+        ];
+        for ty in &mut types {
+            ty["kind"]["name"] = json!("record");
+        }
+        let mut document = model_tests::document(types);
+        document["constructs"]
+            .as_array_mut()
+            .expect("constructs")
+            .push(json!({
+                "kind": {"module": "acme/orders", "name": "record"},
+                "construct": {"meaning": "filament.meaning.model.record-value-type/v1"}
+            }));
+        let model = model_tests::read(&document).expect("genuine selected record document");
+        let mut join = Join::new(base, CheckedNodeKind::Model(ModelForm::RecordValueType));
+        let key = declaration_id("acme/orders", DeclarationForm::RecordValueType, child);
+        let ty = &mut join.wire.semantic_graph.nodes[0];
+        ty.node_id = key;
+        ty.semantic_type = ty.node_id.clone();
+        ty.owner = Some(
+            serde_json::from_value(json!({
+                "kind": "model", "identity": "acme/orders", "node": child
+            }))
+            .expect("owner"),
+        );
+        join.wire.semantic_graph.nodes[1].semantic_type = ty.node_id.clone();
+        let owners = ModelOwners::new(
+            std::slice::from_ref(&model),
+            &join.wire.semantic_graph.nodes,
+            |_| Ok(()),
+        )
+        .expect("owners");
+        let (baseline, baseline_work) = join.run_with_owners(&owners);
+        assert!(
+            baseline.is_ok(),
+            "directional record conformance: {baseline:?}"
+        );
+        assert!(
+            baseline_work > 0,
+            "real owner conformance must charge actual work"
+        );
+        join.kinds[0] = CheckedNodeKind::Model(ModelForm::ObjectType);
+        let (result, work) = join.run_with_owners(&owners);
+        let Err(ValidationFailure::Refused(refusal)) = result else {
+            panic!("nonrecord retained kind cannot enter record conformance: {result:?}");
+        };
+        assert_eq!(
+            (refusal.code, refusal.cause),
+            (Code::IllTyped, Some(Cause::TypeMismatch))
+        );
+        assert_eq!(
+            refusal.loci[0].path.clone().expect("path").to_string(),
+            "/semantic_graph/nodes/2/body/clauses/0/value"
+        );
+        assert_eq!(
+            work, 0,
+            "ineligible kind must not charge owner-conformance work"
+        );
+        println!("extension_record baseline_work={baseline_work} retained_nonrecord_work={work}");
+    }
+
+    #[trace("TC-459")]
+    #[test]
+    fn extension_join_preserves_open_kind_names_and_selection_precedence() {
+        let kind = CheckedNodeKind::Extension(ExtensionForm::ExtensionForm);
+        let mut join = Join::new(
+            "future-kind",
+            CheckedNodeKind::ScalarType(ScalarTypeForm::Text),
+        );
+        join.kinds[1] = kind;
+        join.terms[1] = Some(CheckedTerm::ExtensionForm {
+            definition: join.wire.lock.definition_selections[0].clone(),
+            node_kind: "future-kind".into(),
+            clauses: vec![],
+        });
+        assert!(join.run().0.is_ok(), "open extension name must remain data");
+        join.wire.lock.definition_selections.clear();
+        join.terms[1] = None;
+        join.kinds[1] = CheckedNodeKind::Value(ValueForm::Parameter);
+        let (result, work) = join.run();
+        let Err(ValidationFailure::Refused(refusal)) = result else {
+            panic!("missing selection must precede target typing: {result:?}");
+        };
+        assert_eq!(
+            (refusal.code, refusal.cause),
+            (Code::MissingDeclaration, Some(Cause::MissingSelection))
+        );
+        assert_eq!(
+            refusal.loci[0].path.clone().expect("path").to_string(),
+            "/semantic_graph/nodes/2/body/definition"
+        );
+        assert_eq!(work, 0);
+    }
+}

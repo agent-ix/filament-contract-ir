@@ -4,9 +4,9 @@
 //! Single integration-test binary (IR-236) for the root crate.
 //!
 //! The ordinary `tests/*.rs` files are modules here, so this crate builds and
-//! links `quire-contract-model` once for the default integration-test suite
+//! links `filament-contract-model` once for the default integration-test suite
 //! instead of once per file.
-//! The QSL-dependent selected-population test has an explicit conformance lane.
+//! The FSL-dependent selected-population test has an explicit conformance lane.
 //! `tests/support/` moved to `tests/it/support/` and
 //! is now a single shared module (`crate::support::*`) instead of a
 //! `#[path = "support/…"]` copy compiled into each of several binaries.

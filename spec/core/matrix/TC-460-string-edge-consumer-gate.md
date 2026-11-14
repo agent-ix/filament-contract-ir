@@ -3,7 +3,7 @@ id: TC-460
 title: "Reject post-intake wire dispatch through the shared scanner"
 type: TC
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/FR-056
+  - target: ix://agent-ix/filament-contract-ir/FR-056
     type: verifies
 ---
 # TC-460: Reject post-intake wire dispatch through the shared scanner
@@ -17,7 +17,7 @@ fixture substitutes for a clean scan of both real production roots.
 
 ## Test Procedure
 
-1. Install the authoritative scanner through QSL FR-064's Git route, or select
+1. Install the authoritative scanner through FSL FR-064's Git route, or select
    that installed executable by explicit path. Inspect the normal Make graph for
    the scan prerequisite under `lint`, retained under `ci`, and the exact base,
    two source roots and checked-in rules arguments. Run that prerequisite in a
@@ -40,11 +40,11 @@ fixture substitutes for a clean scan of both real production roots.
    failure through the same prerequisite. Verify failure reaches Make, with no
    fallback, skip, ignored status or misleading clean result.
 6. Inspect Cargo metadata and compile the real marked functions against the
-   neutral crate. Retain FR-028's no-QSL-in-any-kind and acyclic-model controls.
+   neutral crate. Retain FR-028's no-FSL-in-any-kind and acyclic-model controls.
    Review every new marker and rule against the actual function's conversion
    boundary; do not exempt whole files or validators.
 7. Run the actual normal repository invocation over `src` and
-   `crates/quire-contract-model/src`. Keep unresolved reports failing and route
+   `crates/filament-contract-model/src`. Keep unresolved reports failing and route
    them to their source owners. Only an actual completed clean result backs
    FR-056-AC-8. Preserve existing intake/refusal/conformance tests during each
    owning semantic migration.
@@ -56,7 +56,7 @@ control passes. The actual marker compiles without changing the converter's
 behavior, and look-alikes do not hide violations. Open-key controls remain
 accepted within the documented detector limits. Branch suppression and invalid
 requests fail, and every such failure propagates through the normal prerequisite.
-The dependency graph contains no QSL edge. The real repository scan passes only
+The dependency graph contains no FSL edge. The real repository scan passes only
 after all reported occurrences are resolved by valid edge marking or their
 owning source migrations; neither fixture success nor this procedure alone
 establishes global AD-004 Q-6 completion.

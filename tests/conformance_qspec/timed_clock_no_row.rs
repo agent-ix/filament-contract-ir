@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Agent-IX
 
-//! Timed no-row qualification against QSpec's TN vectors by reference.
+//! Timed no-row qualification against FSpec's TN vectors by reference.
 
 use super::*;
-use quire_contract_model::CheckedModelTimeReadErrorCode;
+use filament_contract_model::CheckedModelTimeReadErrorCode;
 use std::collections::BTreeSet;
 
 fn vectors() -> Value {
@@ -20,7 +20,7 @@ fn timed_model_clause() -> Value {
         .expect("profile selections")
     {
         if selection["role"] == "temporal_profile" {
-            selection["definition"]["identity"] = json!("quire.temporal.timed/v1");
+            selection["definition"]["identity"] = json!("filament.temporal.timed/v1");
         }
     }
     for node in wire["semantic_graph"]["nodes"]
@@ -35,7 +35,7 @@ fn timed_model_clause() -> Value {
         {
             for law in laws {
                 if law["role"] == "temporal_profile" {
-                    law["definition"]["identity"] = json!("quire.temporal.timed/v1");
+                    law["definition"]["identity"] = json!("filament.temporal.timed/v1");
                 }
             }
         }
@@ -62,7 +62,7 @@ fn admitted(wire: &Value) -> Box<CheckedPackageV2> {
     }
 }
 
-fn refusal(wire: &Value) -> quire_contract_model::CheckedPackageRefusal {
+fn refusal(wire: &Value) -> filament_contract_model::CheckedPackageRefusal {
     match read_package(wire).expect("published selection evidence") {
         CheckedPackageV2ReadResult::Refused(refusal) => refusal,
         other => panic!("expected Timed refusal: {other:?}"),

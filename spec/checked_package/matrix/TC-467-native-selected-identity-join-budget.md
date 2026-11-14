@@ -3,9 +3,9 @@ id: TC-467
 title: "Shared native selected-identity join budget"
 type: TC
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/FR-358
+  - target: ix://agent-ix/filament-contract-ir/FR-358
     type: verifies
-  - target: ix://agent-ix/quire-contract-ir/FR-352
+  - target: ix://agent-ix/filament-contract-ir/FR-352
     type: verifies
 ---
 # TC-467: Shared native selected-identity join budget
@@ -32,7 +32,7 @@ Read an admitted Boolean equality at ample, exact work, exact storage,
 one-below work and storage, and zero storage. Repeat two individually
 affordable equality reads against a shared allowance one work unit below
 their combined requirement.
-Use a QSV materialization refusal with a variable-size exact charge to
+Use a FSV materialization refusal with a variable-size exact charge to
 compare the full owned-cause storage boundary with a nonzero allowance one
 unit below it.
 
@@ -59,12 +59,12 @@ their combined allowance is one below exact. The first selected value remains
 unchanged after refusal, and a cloned package gives the same result and
 charges. Typed non-budget identity refusals retain their existing causes and
 first loci. The crate exports one mandatory `NativeJoinBudget` acquisition
-path and its charge metadata without a QSL or runtime dependency.
+path and its charge metadata without a FSL or runtime dependency.
 The equality read returns the same opaque decision at both exact limits,
 records a success delta, refuses at the first unpaid shared charge and
 returns no owned diagnostic at zero storage.
-At the exact diagnostic allowance the original QSV cause is retained; one
-unit below it the compact typed code and first QSV locus remain while no
+At the exact diagnostic allowance the original FSV cause is retained; one
+unit below it the compact typed code and first FSV locus remain while no
 owned cause is returned.
 
 The limit getters remain equal to the caller's original configured values,
@@ -87,7 +87,7 @@ contents and cloned admission; omit each channel; compare an independently
 admitted package with colliding contents; and exercise the mandatory native
 budget at measured exact limits, one unit below, and after earlier acquisition.
 Every failure must leave the input unchanged and expose no rebound value.
-The IR-owned rows establish native correspondence, not QSL producer authority.
+The IR-owned rows establish native correspondence, not FSL producer authority.
 
 The external model test `complete_witness_public` runs without optional model
 features. Its strict obligation-free fixture checks all mandatory entry points

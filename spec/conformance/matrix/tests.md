@@ -1,9 +1,9 @@
 ---
 id: TM-005
-title: "quire-contract-ir conformance test matrix"
+title: "filament-contract-ir conformance test matrix"
 type: TestMatrix
 ---
-# quire-contract-ir conformance test matrix
+# filament-contract-ir conformance test matrix
 
 ## Functional Requirement Coverage
 

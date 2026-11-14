@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Agent-IX
 
-//! Strict reader regression over the actual multi-source QSL D10 emission.
+//! Strict reader regression over the actual multi-source FSL D10 emission.
 use super::*;
 
 const PACKAGE: &str = "example/config-version";
@@ -15,7 +15,7 @@ fn d10_model_document() -> Value {
             "name": name,
             "params": [],
             "returns": {
-                "typeRef": "ix://quire/native/Integer",
+                "typeRef": "ix://filament/native/Integer",
                 "multiplicity": {"lower": 1, "upper": 1, "ordered": false, "unique": true},
                 "nullable": false,
             },
@@ -64,7 +64,7 @@ fn d10_model_document() -> Value {
 
 #[trace("TC-472", "FR-354-AC-13")]
 #[test]
-fn genuine_qsl_d10_retains_static_context_and_complete_selected_family() {
+fn genuine_fsl_d10_retains_static_context_and_complete_selected_family() {
     let package: Value = serde_json::from_str(include_str!(
         "../../fixtures/inherited-dispatch/d10-package.json"
     ))
@@ -277,7 +277,7 @@ fn wrong_kind_unrelated_and_cyclic_redefinition_links_refuse() {
         // has no bearing on that name's exposure, but cannot prove a family.
         let target = match malformed {
             "field" => {
-                document["types"][0]["fields"] = json!([{"identity":format!("{ORDER}/marker"),"typeRef":"ix://quire/native/Integer","multiplicity":{"lower":1,"upper":1,"ordered":false,"unique":true},"presence":"required"}]);
+                document["types"][0]["fields"] = json!([{"identity":format!("{ORDER}/marker"),"typeRef":"ix://filament/native/Integer","multiplicity":{"lower":1,"upper":1,"ordered":false,"unique":true},"presence":"required"}]);
                 format!("{ORDER}/marker")
             }
             "unrelated" => format!("{CUSTOMER}/total"),
@@ -432,7 +432,7 @@ fn an_owner_chain_refuses_at_its_selection_key_and_a_scalar_owner_at_the_value()
     );
 }
 
-/// The D10 fixture is the QSL #950 emission converted to the FR-322 operand
+/// The D10 fixture is the FSL #950 emission converted to the FR-322 operand
 /// slot form (see the fixture README). Resolving its slots must give back the
 /// index-form graph the admitted package holds, node for node.
 #[trace("TC-472", "FR-354-AC-13")]

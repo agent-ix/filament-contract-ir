@@ -18,13 +18,13 @@ pub(crate) mod observation;
 pub(crate) use equivalence::{
     assert_admitted_views_equal, assert_budgeted_results_equal, ReadViewScope,
 };
-use observation::drop_without_request;
-pub(crate) use observation::{measure_at, Counter, Observation};
-use quire_contract_model::{
+use filament_contract_model::{
     CheckedPackageEvidence, CheckedPackageLimit, CheckedPackageReadLimits, CheckedPackageV2,
     CheckedPackageV2BudgetedReadResult as Budgeted, CheckedPackageV2ReadResult as Plain,
     PackageReadResource,
 };
+use observation::drop_without_request;
+pub(crate) use observation::{measure_at, Counter, Observation};
 use std::io::Write;
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -37,7 +37,7 @@ pub(crate) struct ReadProviderObligation {
     pub(crate) role: &'static str,
     pub(crate) fact: u64,
     pub(crate) fact_source: &'static str,
-    pub(crate) reservation_locus: Option<quire_contract_model::NativeJoinLocus>,
+    pub(crate) reservation_locus: Option<filament_contract_model::NativeJoinLocus>,
     pub(crate) reservation_source: Option<&'static str>,
     pub(crate) same_walk_instance_source: Option<&'static str>,
 }
@@ -302,7 +302,7 @@ pub(crate) fn measure_seeded(
     bytes: &[u8],
     evidence: &CheckedPackageEvidence,
     limits: CheckedPackageReadLimits,
-    mut budget: quire_contract_model::NativeJoinBudget,
+    mut budget: filament_contract_model::NativeJoinBudget,
 ) -> Observation {
     let before = budget.read_storage_consumed();
     let logical_before = budget.consumed().storage;
@@ -524,7 +524,7 @@ fn full_work_boundaries(
             .expect("next actual work charge");
         assert_eq!(
             denied.kind,
-            quire_contract_model::NativeJoinChargeKind::Work
+            filament_contract_model::NativeJoinChargeKind::Work
         );
         assert_eq!(stopped.budget.consumed().work, before);
         let next = before
@@ -583,7 +583,7 @@ fn native_amount_json(amount: u128) -> serde_json::Value {
 }
 
 #[cfg(feature = "test-support")]
-fn native_event_json(event: &quire_contract_model::NativeBudgetEvent) -> serde_json::Value {
+fn native_event_json(event: &filament_contract_model::NativeBudgetEvent) -> serde_json::Value {
     serde_json::json!({
         "resource": format!("{:?}", event.resource), "amount": native_amount_json(event.amount),
         "consumed_before": event.consumed_before, "admitted": event.admitted,
@@ -597,11 +597,11 @@ fn native_event_json(event: &quire_contract_model::NativeBudgetEvent) -> serde_j
 #[cfg(feature = "test-support")]
 fn assert_native_denial(
     observation: &Observation,
-    event: quire_contract_model::NativeBudgetEvent,
+    event: filament_contract_model::NativeBudgetEvent,
     bound: u64,
-    events: &[quire_contract_model::NativeBudgetEvent],
+    events: &[filament_contract_model::NativeBudgetEvent],
 ) -> serde_json::Value {
-    use quire_contract_model::NativeBudgetResource as Resource;
+    use filament_contract_model::NativeBudgetResource as Resource;
     let resource = match event.resource {
         Resource::Work => {
             let unpaid = observation
@@ -610,7 +610,7 @@ fn assert_native_denial(
                 .expect("first unpaid work");
             assert_eq!(
                 unpaid.kind,
-                quire_contract_model::NativeJoinChargeKind::Work
+                filament_contract_model::NativeJoinChargeKind::Work
             );
             assert_eq!(unpaid.amount, event.amount);
             assert!(observation.budget.first_unpaid_read_storage().is_none());
@@ -674,17 +674,19 @@ pub(crate) fn full_native_reference(
     limits: CheckedPackageReadLimits,
     evidence: &CheckedPackageEvidence,
     reference: &Observation,
-    seed: Option<&quire_contract_model::NativeJoinBudget>,
+    seed: Option<&filament_contract_model::NativeJoinBudget>,
 ) -> (
-    quire_contract_model::NativeJoinBudget,
-    Vec<quire_contract_model::NativeBudgetEvent>,
+    filament_contract_model::NativeJoinBudget,
+    Vec<filament_contract_model::NativeBudgetEvent>,
     serde_json::Value,
 ) {
-    let unlimited_seed =
-        seed.map_or_else(quire_contract_model::NativeJoinBudget::unlimited, |seed| {
+    let unlimited_seed = seed.map_or_else(
+        filament_contract_model::NativeJoinBudget::unlimited,
+        |seed| {
             seed.read_proof_snapshot()
                 .read_proof_rebound(u64::MAX, u64::MAX, true)
-        });
+        },
+    );
     let prior_work = unlimited_seed.consumed().work;
     let prior_read = unlimited_seed.read_storage_consumed();
     let (complete, events) = native_budget_trace::checked_seeded_with_scope(
@@ -829,13 +831,13 @@ pub(crate) fn full_native_boundaries(
     evidence: &CheckedPackageEvidence,
     reference: &Observation,
     exhaustive_classes: &[&str],
-    seed: Option<&quire_contract_model::NativeJoinBudget>,
+    seed: Option<&filament_contract_model::NativeJoinBudget>,
 ) -> (
     Vec<serde_json::Value>,
     Vec<serde_json::Value>,
     serde_json::Value,
 ) {
-    use quire_contract_model::{NativeBudgetResource as Resource, NativeJoinLocusSource};
+    use filament_contract_model::{NativeBudgetResource as Resource, NativeJoinLocusSource};
     use std::collections::{BTreeMap, BTreeSet};
     let (unlimited_seed, events, complete_reference) =
         full_native_reference(bytes, limits, evidence, reference, seed);
@@ -1122,7 +1124,7 @@ fn finish_proof(
     }
     #[cfg(feature = "test-support")]
     let (native_events, boundary_results, complete_reference) = if mode == "full" {
-        // Original QSpec calls use stage/class endpoints. Designated adverse
+        // Original FSpec calls use stage/class endpoints. Designated adverse
         // providers must explicitly request all intermediate growth events.
         full_native_boundaries(
             bytes,
@@ -1256,7 +1258,7 @@ pub(crate) fn read_budget_and_account(
     bytes: &[u8],
     limits: CheckedPackageReadLimits,
     evidence: &CheckedPackageEvidence,
-    budget: &mut quire_contract_model::NativeJoinBudget,
+    budget: &mut filament_contract_model::NativeJoinBudget,
 ) -> Budgeted {
     let location = std::panic::Location::caller();
     let provider = provider_for_input(bytes, evidence, location);
@@ -1429,7 +1431,7 @@ pub(crate) fn read_budget_and_account(
 #[cfg(test)]
 mod caller_budget_tests {
     use super::{Counter, DriverCounter};
-    use quire_contract_model::{
+    use filament_contract_model::{
         CheckedPackageEvidence, CheckedPackageReadLimits, CheckedPackageV2, NativeJoinBudget,
         NativeJoinChargeKind,
     };
@@ -1439,7 +1441,7 @@ mod caller_budget_tests {
     #[ix_trace_rs::trace("TC-472")]
     #[test]
     fn qualification_metadata_entries_preserve_the_existing_invalid_json_outcome() {
-        quire_contract_model::initialize_operation_catalog().expect("catalogue reads");
+        filament_contract_model::initialize_operation_catalog().expect("catalogue reads");
         let bytes = b"not json";
         let evidence = CheckedPackageEvidence::new();
         let limits = CheckedPackageReadLimits::bounded();
@@ -1459,8 +1461,8 @@ mod caller_budget_tests {
     #[test]
     fn full_reference_rebounds_finite_caller_limits_and_checks_typed_denials() {
         let mut seed = NativeJoinBudget::new(3, 2).with_read_storage_limit(0);
-        let locus = quire_contract_model::NativeJoinLocus {
-            source: quire_contract_model::NativeJoinLocusSource::Package,
+        let locus = filament_contract_model::NativeJoinLocus {
+            source: filament_contract_model::NativeJoinLocusSource::Package,
             form: "prior_caller_charge",
         };
         seed.accounted_charge(NativeJoinChargeKind::Work, 3, locus)
@@ -1473,8 +1475,8 @@ mod caller_budget_tests {
             super::measure_seeded(b"null", &evidence, limits, seed.read_proof_snapshot());
         assert!(matches!(
             reference.result,
-            quire_contract_model::CheckedPackageV2BudgetedReadResult::BudgetIncomplete(_)
-                | quire_contract_model::CheckedPackageV2BudgetedReadResult::Exhausted(_)
+            filament_contract_model::CheckedPackageV2BudgetedReadResult::BudgetIncomplete(_)
+                | filament_contract_model::CheckedPackageV2BudgetedReadResult::Exhausted(_)
         ));
         let (events, results, complete) =
             super::full_native_boundaries(b"null", limits, &evidence, &reference, &[], Some(&seed));
@@ -1502,8 +1504,8 @@ mod caller_budget_tests {
         let seeded = || {
             let mut budget =
                 NativeJoinBudget::new(u64::MAX, u64::MAX).with_read_storage_limit(u64::MAX);
-            let locus = quire_contract_model::NativeJoinLocus {
-                source: quire_contract_model::NativeJoinLocusSource::Package,
+            let locus = filament_contract_model::NativeJoinLocus {
+                source: filament_contract_model::NativeJoinLocusSource::Package,
                 form: "prior_caller_charge",
             };
             budget
@@ -1559,15 +1561,15 @@ mod provider_scope_tests {
     #[cfg(feature = "test-support")]
     #[test]
     fn native_event_serialization_preserves_u128_max_denied_diagnostic() {
-        let event = quire_contract_model::NativeBudgetEvent {
-            resource: quire_contract_model::NativeBudgetResource::ReadStorage,
+        let event = filament_contract_model::NativeBudgetEvent {
+            resource: filament_contract_model::NativeBudgetResource::ReadStorage,
             amount: u128::MAX,
             consumed_before: 17,
             admitted: false,
             allocation_class: None,
-            locus: Some(quire_contract_model::NativeJoinLocus {
-                source: quire_contract_model::NativeJoinLocusSource::PackageRead(
-                    quire_contract_model::PackageReadStage::Graph,
+            locus: Some(filament_contract_model::NativeJoinLocus {
+                source: filament_contract_model::NativeJoinLocusSource::PackageRead(
+                    filament_contract_model::PackageReadStage::Graph,
                     0,
                 ),
                 form: "diagnostic",
@@ -1585,8 +1587,8 @@ mod provider_scope_tests {
         use super::{provider_for_input, ReadInputBinding, ReadProvider};
         let bytes = b"null".to_vec();
         let library = b"null".to_vec();
-        let evidence = quire_contract_model::CheckedPackageEvidence::new();
-        let library_evidence = quire_contract_model::CheckedPackageEvidence::new();
+        let evidence = filament_contract_model::CheckedPackageEvidence::new();
+        let library_evidence = filament_contract_model::CheckedPackageEvidence::new();
         let site = std::panic::Location::caller();
         let binding = ReadInputBinding::new(&bytes, &evidence, site);
         let previous = READ_PROVIDER.with(|current| {
@@ -1628,10 +1630,10 @@ mod provider_scope_tests {
     #[cfg(feature = "test-support")]
     #[test]
     fn provider_designated_read_preserves_the_original_scalar_refusal() {
-        let evidence = quire_contract_model::CheckedPackageEvidence::new();
+        let evidence = filament_contract_model::CheckedPackageEvidence::new();
         let result = super::read_designated_and_account(
             b"null",
-            quire_contract_model::CheckedPackageReadLimits::bounded(),
+            filament_contract_model::CheckedPackageReadLimits::bounded(),
             &evidence,
             super::DesignatedReadProvider {
                 symbol: "minimal scalar binding control",
@@ -1641,7 +1643,7 @@ mod provider_scope_tests {
         );
         assert!(matches!(
             result,
-            quire_contract_model::CheckedPackageV2ReadResult::Refused(_)
+            filament_contract_model::CheckedPackageV2ReadResult::Refused(_)
         ));
         assert!(READ_PROVIDER.with(std::cell::Cell::get).is_none());
     }

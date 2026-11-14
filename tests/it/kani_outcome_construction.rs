@@ -1,8 +1,8 @@
 //! External-consumer checks for the infallible non-success outcome API.
 
+use filament_contract_ir::kani::{KaniCancellationSource, KaniOutcome, KaniOutcomeKind};
+use filament_contract_model::{std001_code, Std001Code};
 use ix_trace_rs::trace;
-use quire_contract_ir::kani::{KaniCancellationSource, KaniOutcome, KaniOutcomeKind};
-use quire_contract_model::{std001_code, Std001Code};
 
 fn assert_round_trip(
     outcome: &KaniOutcome,

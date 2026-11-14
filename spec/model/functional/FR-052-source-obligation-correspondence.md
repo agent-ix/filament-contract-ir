@@ -3,13 +3,13 @@ id: FR-052
 title: "Accept typed source-obligation correspondence in the neutral model"
 type: FR
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/FR-045
+  - target: ix://agent-ix/filament-contract-ir/FR-045
     type: traces_to
-  - target: ix://agent-ix/quire-contract-ir/FR-019
+  - target: ix://agent-ix/filament-contract-ir/FR-019
     type: traces_to
-  - target: ix://agent-ix/quire-contract-ir/FR-028
+  - target: ix://agent-ix/filament-contract-ir/FR-028
     type: traces_to
-  - target: ix://agent-ix/quire-contract-ir/AD-008
+  - target: ix://agent-ix/filament-contract-ir/AD-008
     type: references
 ---
 # FR-052: Accept typed source-obligation correspondence in the neutral model
@@ -17,7 +17,7 @@ relationships:
 ## Description
 
 When a selected source is prepared for proof-coverage accounting, the
-`quire-contract-model` crate shall accept a typed correspondence input linking
+`filament-contract-model` crate shall accept a typed correspondence input linking
 author-authored requirement criteria and semantic obligation occurrences to
 selected production symbols, and retain its complete source census for
 downstream consumers before any generation or proof attempt.
@@ -40,7 +40,7 @@ row vector, count, or absent stop reason into evidence of exhaustion.
   positions.
   They carry the complete typed inventories from their owners: Quire-authored acceptance
   criteria; Contract IR V2 semantic nodes
-  and source occurrences; QSL checked `RequirementRecord` values and native
+  and source occurrences; FSL checked `RequirementRecord` values and native
   pending obligations; and `quire-code-rs` selected production module and
   function facts.
 - Quire's criterion identity is the obligation source declaration, scoped
@@ -49,17 +49,17 @@ row vector, count, or absent stop reason into evidence of exhaustion.
   scope, including criteria with no authored correspondence or test binding.
   This is a different identity from the formal `ClauseRef` of a Contract IR
   clause. An explicit authored relation may connect them where needed; neither
-  the criterion ID nor a QSL requirement record may be converted into a
+  the criterion ID nor a FSL requirement record may be converted into a
   `ClauseRef` by spelling or inference.
-- QSL checked requirement identities are projections of the keys of
+- FSL checked requirement identities are projections of the keys of
   `CheckedGraph::requirements()`: the requirement node's structural
   `CheckedNodeId` (`package`, full `path` whose index segments resolve to operand nodes in the selected package graph, and node `ordinal`) and the occurrence origin's role and
   ordinal. They are not `RequirementRef` values.
   A spine inventory stopped by a stage limit may additionally retain an S2
   requirement form whose identity is its ordinal among requirement forms in
-  source order and its optional declared name (QSL FR-514). A form has no checked
+  source order and its optional declared name (FSL FR-514). A form has no checked
   node and is never a checked requirement record. Form rows occur only in a
-  QSL-issued `Incomplete` outcome, including forms that would produce no
+  FSL-issued `Incomplete` outcome, including forms that would produce no
   requirement record after successful checking.
   Native pending-obligation identities project the exact `Obligation.site`
   declaration, unit, expression and byte span together with `Obligation.kind`,
@@ -73,12 +73,12 @@ row vector, count, or absent stop reason into evidence of exhaustion.
 - Explicit many-to-many correspondence assertions authored for the selected
   source by its source-contract author. These assertions are the authority for
   criterion-to-occurrence and occurrence-to-production-symbol links. The model
-  does not derive them from QSL claim records, source mention edges, generated
+  does not derive them from FSL claim records, source mention edges, generated
   harnesses, test tags, or proof results.
 
 ## Outputs
 
-The public `quire_contract_model::source_obligation` module exports
+The public `filament_contract_model::source_obligation` module exports
 `SourceObligationInput`, `SourceObligationCensus`, `SourceObligationRow`,
 `SourceInventoryRow`, `SourceCensusInventoryRow`, `SourceCorrespondenceAssertion`,
 `SourceCorrespondenceRejection`, `SourceCorrespondenceRejectionReason`,
@@ -98,14 +98,14 @@ boundary supplies `SourceInventoryOutcome` and `SourceInventoryEnumerator`;
 builder evaluates their typed terminal states and authored assertions.
 The census builder supersedes the provisional input port. FR-052-AC-17
 supersedes retired FR-052-AC-8. `SourceObligationInput::new` now accepts the
-four optional outcomes in Quire, IR V2, QSL and `quire-code-rs` order. TC-452
+four optional outcomes in Quire, IR V2, FSL and `quire-code-rs` order. TC-452
 records the synthetic census checks separately from pending owner-native work.
 The neutral port uses a typed
 `SourceAuthoredCriterionId` carrying Quire's obligation declaration, scoped
 document and criterion ID, plus a typed `SourceCriterionSourceBinding` carrying
 the selected Quire scope and the source-contract author's selected
 `SourceIdentity`. A `SourceInventoryIdentity::Criterion` row has owner
-`Quire`; QSL rows contain only native checked requirement records and
+`Quire`; FSL rows contain only native checked requirement records and
 pending obligations. A formal `ClauseRef` is distinct from an authored
 acceptance criterion. Any explicit
 criterion-to-formal-clause relation shall use separate typed endpoints and
@@ -124,7 +124,7 @@ mapping reasons shall be typed and distinguish at least no accepted authored
 mapping from an explicitly authored absence of a production function. A typed
 top-level error shall distinguish missing owner inventory, incomplete owner
 inventory, inventory source mismatch, and inventory scope mismatch. Its owner context shall identify Quire, IR V2,
-QSL, or `quire-code-rs`; incomplete errors shall retain the typed owner cause.
+FSL, or `quire-code-rs`; incomplete errors shall retain the typed owner cause.
 `SourceCorrespondenceRejection` shall distinguish `ForeignSource`,
 `DanglingCriterion`, `DanglingOccurrence`, `DanglingProductionSymbol`,
 `ConflictingRelation`, and `ConflictingProvenance` reasons.
@@ -134,18 +134,18 @@ QSL, or `quire-code-rs`; incomplete errors shall retain the typed owner cause.
 ### Neutral API authority and source provenance
 
 The public types and constructor shall be defined in the cycle-free
-`quire-contract-model` crate, under the `source_obligation` module. They shall
+`filament-contract-model` crate, under the `source_obligation` module. They shall
 use neutral model-owned identity and provenance types.
 
 The completed `SourceObligationInput` constructor shall take the selected
 source, an explicit Quire-selection-to-source binding, four
 independently optional owner `SourceInventoryOutcome` values (one per owner
-position: Quire, IR V2, QSL, `quire-code-rs`), and the author-authored
+position: Quire, IR V2, FSL, `quire-code-rs`), and the author-authored
 assertions as typed arguments. An outcome identifies its owner, selected
 source, covered scope, observed row count, typed completeness state, and
 retained inventory rows. The four required scopes shall be Quire's complete selected authored
 acceptance-criterion population, IR V2's complete semantic graph and
-source-occurrence set, QSL's complete checked `RequirementRecord` set and
+source-occurrence set, FSL's complete checked `RequirementRecord` set and
 native pending-obligation set, and `quire-code-rs`'s complete selected
 production-module and function facts. Each outcome's owner and scope
 shall match its required input position, and its source shall match the
@@ -160,8 +160,8 @@ other outcomes and assertions. A missing, conflicting, or foreign binding
 shall refuse the census with a distinct typed cause
 (`MissingCriterionSourceBinding`, `ConflictingCriterionSourceBinding`, or
 `ForeignCriterionSourceBinding`); matching labels alone
-shall not authenticate equal content across Quire, IR V2, QSL, and production
-sources. In particular, QSL's current `CheckedUnit` checks source labels for
+shall not authenticate equal content across Quire, IR V2, FSL, and production
+sources. In particular, FSL's current `CheckedUnit` checks source labels for
 its graph and type report, not one shared digest-bound parse. No complete
 matched-source census may be claimed from that interim match alone.
 
@@ -170,12 +170,12 @@ a `SourceInventoryIncompleteReason`. The owner-native inventory enumerator or
 its typed adapter shall issue `Complete` only after normal exhaustion of the
 entire named scope; an early stop, failed parse, failed owner request, or
 unavailable selected module shall issue `Incomplete` with the original typed
-cause. QSL type-work exhaustion shall retain its native dimension, configured
+cause. FSL type-work exhaustion shall retain its native dimension, configured
 bound and any available site in a dedicated typed cause. The spine path also
 retains its exact stage, setting and observed amount. The composed lane has no
 such reported fields and shall leave them absent; it retains its measured prior
 usage and requested charge instead. Those two fields are absent for a spine
-stage limit because the spine reports neither value. Where a QSL owner
+stage limit because the spine reports neither value. Where a FSL owner
 path reports `TypeDisposition::Unfinished`, that stop shall be a different
 typed cause keyed by its native declaration handle. This state is evidence from enumeration, not a
 caller-authored boolean or eligibility policy. The outcome's observed row count shall equal the number of
@@ -188,9 +188,9 @@ and found no entries. A complete outcome may also contain an empty component
 inventory, such as a fully parsed production module with no functions. These
 cases are distinct from an absent outcome, an incomplete outcome, and an
 inventoried entity whose correspondence count is zero.
-At the neutral outcome boundary, a QSL `Complete` terminal event with any
+At the neutral outcome boundary, a FSL `Complete` terminal event with any
 `RequirementForm` row returns `SourceInventoryOutcomeError::RequirementFormInComplete`
-and no outcome. The same row is retained when a typed QSL `Incomplete` stop
+and no outcome. The same row is retained when a typed FSL `Incomplete` stop
 follows it; the model does not reinterpret a pre-check form as a checked record.
 
 For the IR-794 boundary, an owner-issued enumeration outcome shall carry the
@@ -205,8 +205,8 @@ shall retain every emitted row and advance to the owner's normal end before
 issuing `Complete`. Any early return, cancellation, capacity refusal, parser
 failure, missing selected module, or, where the owner path reports it,
 unfinished type admission shall issue `Incomplete` and retain the original
-typed cause, including rows emitted before the stop. In particular, on a QSL
-owner path that reports `TypeDisposition::Unfinished`, QSL type-work
+typed cause, including rows emitted before the stop. In particular, on a FSL
+owner path that reports `TypeDisposition::Unfinished`, FSL type-work
 exhaustion and that stop remain separate causes. An adapter must not
 translate an absent stop cause into `Complete`.
 
@@ -231,10 +231,10 @@ lossless typed stop projection. Producer delivery and these controls alone do
 not establish the full census, which remains Planned/UNRUN.
 
 The neutral stop projection is closed over owner paths that actually exist.
-For the spine QSL path, `SourceInventoryIdentity::RequirementForm` shall carry
+For the spine FSL path, `SourceInventoryIdentity::RequirementForm` shall carry
 `SourceRequirementFormId { ordinal: u64, declared_name: Option<Box<str>> }`.
 The ordinal counts only S2 requirement forms in source order, not all
-declarations or checked graph nodes. This variant belongs to the QSL owner
+declarations or checked graph nodes. This variant belongs to the FSL owner
 and is distinct from `RequirementRecord` even when its ordinal or name happens
 to match one. An owner-issued `Complete` spine inventory shall contain only
 checked requirement records and pending obligations; a stage-limited
@@ -242,7 +242,7 @@ checked requirement records and pending obligations; a stage-limited
 node exists.
 
 `SourcePendingObligationKind::CapabilityKind(Box<str>)` shall retain the exact
-admitted FR-057 capability-kind label of a spine claim. The QSL owner shall
+admitted FR-057 capability-kind label of a spine claim. The FSL owner shall
 admit the label against its FR-057 vocabulary before projection; Contract IR
 shall neither substitute `GraphClosure` nor maintain a second twelve-label
 catalog or alias table. The kind and `SourcePendingObligationId` cease to be
@@ -251,17 +251,17 @@ Existing type-level kind variants, including the `PredicateTotal` target,
 remain distinct from a capability label of any spelling.
 
 `SourceTypeExhaustion` shall carry `stage: Option<Box<str>>` and
-`setting: Option<Box<str>>` for the exact owner-native QSL names,
+`setting: Option<Box<str>>` for the exact owner-native FSL names,
 `dimension: SourceTypeWorkDimension`, `limit: u64`,
 `observed: Option<u128>`, `prior: Option<u128>` and
-`requested: Option<u128>`. A present observed value preserves QSL
+`requested: Option<u128>`. A present observed value preserves FSL
 `LimitExceeded::actual()` greater than `u64::MAX` without narrowing. Its
 `site: SourceTypeExhaustionSite` shall contain
 `native: Option<SourceObligationSite>` and
 `region: Option<SourceByteRegion>`. A present native site retains the owner-native
 declaration, unit, optional expression and unit-relative span together; a
 producer with no such handles leaves the whole native site absent. A present region
-shall retain the exact QSL `RawSourceRef` authority and identity plus its
+shall retain the exact FSL `RawSourceRef` authority and identity plus its
 half-open `start: u64` and `end: u64` byte bounds. These four fields belong to
 one region value; the model shall not infer a document from a unit handle,
 the selected `SourceIdentity` or a matching byte interval. A region with no
@@ -271,8 +271,8 @@ declaration and unit handles and its required span. Neither a native site nor
 a source region is inferred from the other; each is present only when the
 owner reports enough information for it.
 
-QSL's implemented inventory is its composed-lane
-`checking::source_inventory::qsl_inventory`. It projects
+FSL's implemented inventory is its composed-lane
+`checking::source_inventory::fsl_inventory`. It projects
 `TypeReport::exhaustion()` to
 `SourceInventoryIncompleteReason::TypeWorkExhausted` with dimension, limit,
 prior, requested charge and site; it projects `TypeDisposition::Unfinished`
@@ -281,29 +281,29 @@ to `TypeAdmissionUnfinished` with the declaration handle. That lane reports
 before a declaration was bound or for declarations of an admitted reference
 cycle, so `TypeAdmissionUnfinished` is the only
 non-`Complete` projection of that stop and the model keeps it. The spine
-`qsl_inventory` that QSL FR-514 specifies, not yet built (QSL-1533), has no
+`fsl_inventory` that FSL FR-514 specifies, not yet built (QSL-1533), has no
 admission-unfinished stop: it maps a stage limit to `TypeWorkExhausted` and
 never produces `TypeAdmissionUnfinished`. Its limit projection shall set both
-stage and FR-255 setting to their exact QSL names and observed to the exact
+stage and FR-255 setting to their exact FSL names and observed to the exact
 `u128` amount, retain the limit kind's dimension, configured `u64` bound and
 the whole source region when present. It shall leave `site.native` absent
 rather than inventing declaration or unit handles. The present composed-lane
 projection shall leave stage, setting and observed absent and keep its measured
 prior and requested values and complete native site. It shall carry
-`site.region` only if the exact QSL `RawSourceRef` is available from that
-producer. Neither QSL path shall synthesize a measured value from a bound,
+`site.region` only if the exact FSL `RawSourceRef` is available from that
+producer. Neither FSL path shall synthesize a measured value from a bound,
 another field or list position.
 `TypeAdmissionUnfinished` is removed, with no replacement, under IR-1304 once
-QSL deletes the composed-lane inventory (QSL-868, QSL-830). An IR V2 reader
+FSL deletes the composed-lane inventory (QSL-868, QSL-830). An IR V2 reader
 limit shall retain the existing model-owned `CheckedPackageIncomplete`
 payload (`CheckedPackageLimit`, limit, consumed and optional `JsonPointer`)
 in a distinct `IrV2ReadLimit` cause, never a message string. Where an owner
-actually accepts a `quire_exact::Cancel` and reports its `CancelCause`, its
+actually accepts a `filament_exact::Cancel` and reports its `CancelCause`, its
 adapter shall project `Requested` and `Deadline` exhaustively to a neutral
 `SourceInventoryCancelCause` carried by a distinct
 `Cancelled { owner, cause }` incomplete variant. This projection adds no
-`quire-exact`, QSL or `quire-code-rs` dependency to the model. The current
-QSL inventory and `quire-code-rs` selection API do not emit such a
+`filament-exact`, FSL or `quire-code-rs` dependency to the model. The current
+FSL inventory and `quire-code-rs` selection API do not emit such a
 cancellation outcome, so neither adapter may synthesize one. A future
 owner-specific capacity or stop type shall get a distinct typed neutral
 projection and a field-preserving adapter test before it can be reported as
@@ -315,10 +315,10 @@ lossless projection for a new owner error type.
 Each owner adapter shall consume that owner's selected native object or
 owner-issued terminal report, rather than a caller-authored inventory row
 vector, count, or completion flag. IR V2's adapter belongs in
-`quire-contract-model`, which already owns the admitted V2 graph. The Quire,
-QSL, and `quire-code-rs` adapters belong with their respective owners; their
+`filament-contract-model`, which already owns the admitted V2 graph. The Quire,
+FSL, and `quire-code-rs` adapters belong with their respective owners; their
 typed outcomes cross the neutral model boundary without adding those owners
-as dependencies of `quire-contract-model`. FR-052-AC-16 tests Quire's owner
+as dependencies of `filament-contract-model`. FR-052-AC-16 tests Quire's owner
 portion, and FR-052-AC-25 through AC-27 test the other three portions
 separately. Passing one owner portion does not discharge the four-owner
 requirements in FR-052-AC-7 or AC-9 through AC-11.
@@ -360,21 +360,21 @@ owner/scope-pair, row-owner, row-source or stop-owner inconsistency is refused
 earlier by `SourceInventoryOutcomeError` and never reaches the census. For
 scope, the census sees only a well-formed outcome supplied in the wrong owner
 position, which returns `InventoryScopeMismatch`. The census shall
-report the first failing owner in fixed order: Quire, IR V2, QSL, then
+report the first failing owner in fixed order: Quire, IR V2, FSL, then
 `quire-code-rs`. The binding belongs to the Quire position: a missing binding
 and then a foreign binding are checked before the Quire outcome, and a
 conflicting binding is checked after the Quire outcome passes and before IR V2.
 The full order is therefore: missing or foreign binding, Quire outcome,
-conflicting binding, IR V2, QSL, `quire-code-rs`. Within one owner position the checks run in this order: missing outcome,
+conflicting binding, IR V2, FSL, `quire-code-rs`. Within one owner position the checks run in this order: missing outcome,
 scope mismatch, source mismatch, then incomplete outcome. The
 constructor shall not treat a missing outcome or partial owner enumeration as
 a zero-mapping entity or a complete empty inventory. A census is complete only
 when the binding and all four required owner outcomes pass these checks.
 
-`SourceInventoryOwner` shall distinguish `Quire`, `IrV2`, `Qsl`, and
+`SourceInventoryOwner` shall distinguish `Quire`, `IrV2`, `Fsl`, and
 `QuireCodeRs`. `SourceInventoryScope` shall distinguish
 `QuireSelectedAuthoredCriteria`, `IrV2SemanticGraphAndOccurrences`,
-`QslCheckedRequirementsAndPendingObligations`, and
+`FslCheckedRequirementsAndPendingObligations`, and
 `QuireCodeRsProductionModulesAndFunctions`. Each owner shall supply exactly
 its corresponding scope. `SourceCorrespondenceError` shall expose distinct
 variants `MissingOwnerInventory`, `IncompleteOwnerInventory`,
@@ -430,7 +430,7 @@ assertion with a corresponding typed reason (`ForeignSource`,
 shall not become an accepted relation. The census shall distinguish those
 rejected relations from valid entities that have no authored relation. No
 malformed or incomplete input shall produce a census that appears complete.
-An assertion-only criterion key, a QSL `RequirementRecord`, or a formal
+An assertion-only criterion key, a FSL `RequirementRecord`, or a formal
 `ClauseRef` outside an explicit authored relation shall never satisfy the
 criterion endpoint lookup.
 
@@ -438,7 +438,7 @@ criterion endpoint lookup.
 
 `SourceObligationInput::new` shall take, in order, the selected
 `SourceIdentity`, an `Option<SourceCriterionSourceBinding>`, one
-`Option<SourceInventoryOutcome>` for each of the Quire, IR V2, QSL and
+`Option<SourceInventoryOutcome>` for each of the Quire, IR V2, FSL and
 `quire-code-rs` positions, and a `Vec<SourceCorrespondenceAssertion>`.
 `build_source_obligation_census` shall take that input by value and return
 `Result<SourceObligationCensus, SourceCorrespondenceError>`.
@@ -507,10 +507,10 @@ function. A semantic node is named when one of its occurrences is `Mapped`, and
 a production module when one of its functions is `Mapped`. A row that is not
 `Mapped` is `ZeroMappings(ExplicitNoProductionFunction)` when it is an
 occurrence, or the node of an occurrence, named by an accepted row with no
-production function. Every other row, including an empty module and every QSL
+production function. Every other row, including an empty module and every FSL
 `RequirementRecord`, `RequirementForm` and `PendingObligation` row, is
-`ZeroMappings(NoAuthoredMapping)`; no assertion endpoint can name a QSL row.
-That QSL rows are always `ZeroMappings(NoAuthoredMapping)` is an IR reading
+`ZeroMappings(NoAuthoredMapping)`; no assertion endpoint can name a FSL row.
+That FSL rows are always `ZeroMappings(NoAuthoredMapping)` is an IR reading
 pending owner confirmation (see Open questions).
 
 Dispositions derive only from accepted rows. `NoAuthoredMapping` means that no
@@ -519,7 +519,7 @@ were rejected therefore reads `ZeroMappings(NoAuthoredMapping)`, as does an
 orphan or a row under a conflicting node. The census reports those assertions,
 and their reasons, only through `rejected_assertions()`.
 
-Inventory rows shall be ordered by owner in the order Quire, IR V2, QSL,
+Inventory rows shall be ordered by owner in the order Quire, IR V2, FSL,
 `quire-code-rs`, then by `SourceInventoryIdentity` ascending. Accepted rows
 shall be ordered ascending by criterion, occurrence, production function and
 provenance. Rejections shall be ordered ascending by assertion ID, source,
@@ -539,33 +539,33 @@ candidate denominator.
   obligation sources" in the plural. Whether one binding may cover several
   obligation declarations, and so what counts as a conflicting binding,
   awaits owner confirmation.
-- QSL rows. The correspondence assertion has criterion, occurrence and
-  production-function endpoints only, so the census reads every QSL
+- FSL rows. The correspondence assertion has criterion, occurrence and
+  production-function endpoints only, so the census reads every FSL
   `RequirementRecord`, `RequirementForm` and `PendingObligation` row as
-  `ZeroMappings(NoAuthoredMapping)`. Whether QSL rows are meant to be census
+  `ZeroMappings(NoAuthoredMapping)`. Whether FSL rows are meant to be census
   members only, with no correspondence endpoint, awaits owner confirmation.
 
 ## Acceptance Criteria
 
 | ID | Criteria | Verification |
 | --- | --- | --- |
-| FR-052-AC-1 | A default-feature consumer imports and calls the input, constructor, census and row types from `quire_contract_model::source_obligation`; FR-019's public-items inventory lists every exported item. | Test |
+| FR-052-AC-1 | A default-feature consumer imports and calls the input, constructor, census and row types from `filament_contract_model::source_obligation`; FR-019's public-items inventory lists every exported item. | Test |
 | FR-052-AC-2 | A typed fixture containing two Quire-authored acceptance criteria, including one with no mapping, three semantic occurrences, one empty module, two production functions and explicit many-to-many assertions preserves every inventory row and exactly the asserted valid relations with their selected-source provenance. Unmapped criteria, occurrences, modules and functions remain visible with typed missing reasons. Reordering equivalent inputs yields the same ordered census; removing one occurrence from a complete IR V2 outcome changes it. | Test |
 | FR-052-AC-3 | A foreign source, each dangling endpoint, an exact duplicate, conflicting assertion relation facts, and conflicting assertion provenance each receive their named deterministic disposition; rejected entries remain inspectable and never enter accepted relations. A foreign-source inventory row is refused at the outcome boundary, not by the census (FR-052-AC-13). Conflicting inventory facts are FR-052-AC-24. | Test |
 | FR-052-AC-4 | Inspection of the public constructor and `SourceObligationInput` signature confirms that the input schema has no result, method, profile, artifact, attempt or run field. | Inspection |
-| FR-052-AC-5 | An external default-feature consumer compiles a borrow of `SourceObligationCensus` and its rows from `quire_contract_model::source_obligation`. | Test |
+| FR-052-AC-5 | An external default-feature consumer compiles a borrow of `SourceObligationCensus` and its rows from `filament_contract_model::source_obligation`. | Test |
 | FR-052-AC-6 | Omitting each of the four owner outcomes in turn returns `MissingOwnerInventory` naming that owner and no census. Supplying, for each position, an outcome whose enumerator ended with a typed `Err` (issued `Incomplete`) returns `IncompleteOwnerInventory` with the supplied typed cause and no census. A fully parsed production module with no function facts is accepted as complete, retains the module row, and differs observably from both outcomes. No Quire `Complete` fixture counts as owner evidence until PLAT-1165 supplies it. | Test |
-| FR-052-AC-7 | Complete Quire scope covers every authored acceptance criterion in the bound selected corpus and declared obligation sources, including unbound criteria; complete IR V2 scope covers every semantic node and source occurrence in the selected V2 graph; complete QSL scope covers every checked `RequirementRecord` and native pending obligation for the selected request, identified by its collision-free structural `CheckedNodeId` plus occurrence role and ordinal, or by its native site/kind tuple for a pending obligation, without conversion to an IR requirement reference; complete `quire-code-rs` scope covers every selected production module and every function fact, including empty modules. Normal exhaustion is required for `Complete`; Quire skipped/load/scan failures, QSL exhaustion and, on a QSL owner path that reports it, `Unfinished`, early stop, failed parse/request, unavailable selected module, or scope/source mismatch produce a typed incomplete or error result and no census; an observed-count mismatch is refused as `SourceInventoryOutcomeError::ObservedCountMismatch` and issues no outcome. | Test |
+| FR-052-AC-7 | Complete Quire scope covers every authored acceptance criterion in the bound selected corpus and declared obligation sources, including unbound criteria; complete IR V2 scope covers every semantic node and source occurrence in the selected V2 graph; complete FSL scope covers every checked `RequirementRecord` and native pending obligation for the selected request, identified by its collision-free structural `CheckedNodeId` plus occurrence role and ordinal, or by its native site/kind tuple for a pending obligation, without conversion to an IR requirement reference; complete `quire-code-rs` scope covers every selected production module and every function fact, including empty modules. Normal exhaustion is required for `Complete`; Quire skipped/load/scan failures, FSL exhaustion and, on a FSL owner path that reports it, `Unfinished`, early stop, failed parse/request, unavailable selected module, or scope/source mismatch produce a typed incomplete or error result and no census; an observed-count mismatch is refused as `SourceInventoryOutcomeError::ObservedCountMismatch` and issues no outcome. | Test |
 | FR-052-AC-9 | For each of the four owners, the native enumerator or typed adapter issues a `Complete` outcome only after the selected named scope reaches its normal end; the outcome retains the selected source, typed owner and scope, every owner-emitted row and the observed count. For Quire this requires PLAT-1165's selected-scope producer, not an IR traversal of `obligation::derive` output. A complete zero-row scope and a fully parsed module with zero functions remain complete, while an absent owner report remains absent. Deleting one row after the owner's full output is observed makes the owner-output comparison fail even when the remaining row count is changed to match. | Test |
-| FR-052-AC-10 | For each owner, stopping before normal exhaustion issues `Incomplete` with retained partial rows and the typed cause the owner actually reports. Quire discovery/load/scan/skipped-row failures retain their distinct owner-native causes once PLAT-1165 supplies them; current `obligation::derive` cannot issue `Complete`. QSL type-work exhaustion retains dimension, configured bound, and its available native site or full source region. A spine stage limit retains present exact stage, setting and observed amount with absent prior, requested and native site; a composed-lane exhaustion retains present measured prior, requested and native site with stage, setting and observed absent. A missing exact source reference leaves the region absent without dropping a composed native site. On a QSL owner path that reports `TypeDisposition::Unfinished` (the composed lane), it retains its declaration handle and is distinct; a QSL path with no such stop (the spine, QSL FR-514) never issues `TypeAdmissionUnfinished`. An IR V2 reader limit retains the `CheckedPackageIncomplete` fields. For an owner path that reports `quire_exact::CancelCause`, requested and deadline cancellation remain distinct through `SourceInventoryCancelCause`; the current QSL inventory and `quire-code-rs` adapter do not claim cancellation support. An absent stop cause cannot be promoted to `Complete`, which follows only from the enumerator's `Ok(None)`, and a new owner stop type cannot be projected into a string or generic early stop. | Test |
+| FR-052-AC-10 | For each owner, stopping before normal exhaustion issues `Incomplete` with retained partial rows and the typed cause the owner actually reports. Quire discovery/load/scan/skipped-row failures retain their distinct owner-native causes once PLAT-1165 supplies them; current `obligation::derive` cannot issue `Complete`. FSL type-work exhaustion retains dimension, configured bound, and its available native site or full source region. A spine stage limit retains present exact stage, setting and observed amount with absent prior, requested and native site; a composed-lane exhaustion retains present measured prior, requested and native site with stage, setting and observed absent. A missing exact source reference leaves the region absent without dropping a composed native site. On a FSL owner path that reports `TypeDisposition::Unfinished` (the composed lane), it retains its declaration handle and is distinct; a FSL path with no such stop (the spine, FSL FR-514) never issues `TypeAdmissionUnfinished`. An IR V2 reader limit retains the `CheckedPackageIncomplete` fields. For an owner path that reports `filament_exact::CancelCause`, requested and deadline cancellation remain distinct through `SourceInventoryCancelCause`; the current FSL inventory and `quire-code-rs` adapter do not claim cancellation support. An absent stop cause cannot be promoted to `Complete`, which follows only from the enumerator's `Ok(None)`, and a new owner stop type cannot be projected into a string or generic early stop. | Test |
 | FR-052-AC-11 | The neutral model retains an owner-issued outcome only when its source, owner, scope and observed count match the retained rows; a mismatch is typed and refuses the outcome. Owner adapter tests show that no adapter completion branch accepts an arbitrary caller-supplied row vector/count/completion flag in place of enumerating the selected native owner output. The model does not claim independent authentication of external owner exhaustion or a completed four-owner census. | Test |
 | FR-052-AC-12 | A synthetic `SourceInventoryEnumerator` producing zero or multiple `Ok(Some(row))` events yields a neutral `Complete` outcome only after its `Ok(None)` terminal event. Replacing that terminal event with `Err(typed_cause)` yields `Incomplete(typed_cause)` and retains exactly the preceding rows; the typed cause is equal to the emitted error. The test claims no owner-native exhaustion or full-output comparison. | Test |
 | FR-052-AC-13 | For a synthetic enumerator, the neutral outcome keeps its retained rows and count private: an external default-feature consumer fails to compile when it directly reads either field or constructs an outcome by struct literal, while accessor calls compile. A zero- or nonzero-row stream reports the count derived from its retained rows. Mismatched observed count, owner/scope pair, row owner, row source, or stop-cause owner returns the corresponding typed structural error and no outcome. This structural test grants no FR-052-AC-9 through AC-11 owner-native credit. | Test |
-| FR-052-AC-14 | A default-feature neutral consumer distinguishes a typed Quire criterion identity containing obligation declaration, scoped document and authored criterion ID from `ClauseRef` and QSL `RequirementRecord`. Two neutral fixture rows with distinct authored criterion identities, one without a correspondence assertion, remain distinct Quire-owned rows before any generation or result. A formal clause, QSL requirement record or assertion-only key cannot substitute for either fixture criterion. This neutral fixture does not claim Quire owner-issued completeness. | Test |
-| FR-052-AC-15 | An explicit source-author binding connects the selected Quire corpus/obligation scope to the selected IR `SourceIdentity`. A missing, foreign or conflicting binding refuses a complete census with distinct typed causes; a matching label or revision alone is not treated as proof of equal source bytes across Quire, IR V2 and QSL. Foreign and dangling AC-to-occurrence/function assertions retain their separate typed dispositions. | Test |
+| FR-052-AC-14 | A default-feature neutral consumer distinguishes a typed Quire criterion identity containing obligation declaration, scoped document and authored criterion ID from `ClauseRef` and FSL `RequirementRecord`. Two neutral fixture rows with distinct authored criterion identities, one without a correspondence assertion, remain distinct Quire-owned rows before any generation or result. A formal clause, FSL requirement record or assertion-only key cannot substitute for either fixture criterion. This neutral fixture does not claim Quire owner-issued completeness. | Test |
+| FR-052-AC-15 | An explicit source-author binding connects the selected Quire corpus/obligation scope to the selected IR `SourceIdentity`. A missing, foreign or conflicting binding refuses a complete census with distinct typed causes; a matching label or revision alone is not treated as proof of equal source bytes across Quire, IR V2 and FSL. Foreign and dangling AC-to-occurrence/function assertions retain their separate typed dispositions. | Test |
 | FR-052-AC-16 | With PLAT-1165's real Quire producer, normal exhaustion of the validated selected scope issues `Complete` with every authored criterion and its provenance; a valid empty scope completes with zero rows. Changing or deleting one authored criterion in the selected Quire corpus changes the owner-issued inventory before generation or proof results, including when that criterion has zero mappings. An unreadable selected document, skipped criterion row, failed discovery, missing declared table/ID column, and early stop each report typed `Incomplete` with emitted partial rows, and deletion of a row from full owner output fails comparison even when the shortened count matches. Until this producer exists, no Quire `Complete` or full FR-052 census is claimed. | Test |
-| FR-052-AC-17 | Given four synthetic `Complete` outcomes and a valid binding, where the outcomes hold the AC-2 fixture shape plus a QSL outcome with at least one `RequirementRecord` row and one `PendingObligation` row, `build_source_obligation_census` returns a census equal to a hand-written expected census: every inventory row with its disposition and missing-mapping reason, every accepted row with its provenance, and their orderings. In that census an occurrence asserted only without a production function is `ZeroMappings(ExplicitNoProductionFunction)` and each QSL row is `ZeroMappings(NoAuthoredMapping)`; the QSL expectation is an IR reading pending owner confirmation (see Open questions). This grants no owner-native completeness and does not by itself back FR-052-AC-2. | Test |
-| FR-052-AC-18 | Given synthetic outcomes, two faults in adjacent positions of the order (missing or foreign binding, Quire outcome, conflicting binding, IR V2, QSL, `quire-code-rs`) yield only the error for the earlier position. The tested pairs are a foreign binding with an incomplete Quire outcome (`ForeignCriterionSourceBinding`), an incomplete Quire outcome with a conflicting binding (`IncompleteOwnerInventory` for Quire), a conflicting binding with a missing IR V2 outcome (`ConflictingCriterionSourceBinding`), a missing IR V2 outcome with a missing QSL outcome (`MissingOwnerInventory` for IR V2), and an incomplete QSL outcome with a missing `quire-code-rs` outcome (`IncompleteOwnerInventory` for QSL). The conflicting-binding definition used is an IR reading pending owner confirmation. This does not by itself back FR-052-AC-6 and grants no AC-7 owner-native credit. | Test |
+| FR-052-AC-17 | Given four synthetic `Complete` outcomes and a valid binding, where the outcomes hold the AC-2 fixture shape plus a FSL outcome with at least one `RequirementRecord` row and one `PendingObligation` row, `build_source_obligation_census` returns a census equal to a hand-written expected census: every inventory row with its disposition and missing-mapping reason, every accepted row with its provenance, and their orderings. In that census an occurrence asserted only without a production function is `ZeroMappings(ExplicitNoProductionFunction)` and each FSL row is `ZeroMappings(NoAuthoredMapping)`; the FSL expectation is an IR reading pending owner confirmation (see Open questions). This grants no owner-native completeness and does not by itself back FR-052-AC-2. | Test |
+| FR-052-AC-18 | Given synthetic outcomes, two faults in adjacent positions of the order (missing or foreign binding, Quire outcome, conflicting binding, IR V2, FSL, `quire-code-rs`) yield only the error for the earlier position. The tested pairs are a foreign binding with an incomplete Quire outcome (`ForeignCriterionSourceBinding`), an incomplete Quire outcome with a conflicting binding (`IncompleteOwnerInventory` for Quire), a conflicting binding with a missing IR V2 outcome (`ConflictingCriterionSourceBinding`), a missing IR V2 outcome with a missing FSL outcome (`MissingOwnerInventory` for IR V2), and an incomplete FSL outcome with a missing `quire-code-rs` outcome (`IncompleteOwnerInventory` for FSL). The conflicting-binding definition used is an IR reading pending owner confirmation. This does not by itself back FR-052-AC-6 and grants no AC-7 owner-native credit. | Test |
 | FR-052-AC-19 | Given synthetic `Complete` outcomes, an assertion that is both foreign and dangling is rejected only with `ForeignSource`, and one repeated assertion ID whose members differ in both relation and provenance is rejected only with `ConflictingRelation`. This does not by itself back FR-052-AC-3. | Test |
 | FR-052-AC-20 | Given the FR-052-AC-17 inputs, permuting the assertion order and the row order of each outcome yields a census equal to the unpermuted one. | Test |
 | FR-052-AC-21 | Given synthetic outcomes, an outcome in one owner position that is both in the wrong position and incomplete yields `InventoryScopeMismatch`, and one that names the wrong source and is incomplete yields `InventorySourceMismatch`. | Test |
@@ -573,10 +573,10 @@ candidate denominator.
 | FR-052-AC-23 | Given synthetic `Complete` outcomes, an assertion whose occurrence lies under a `ConflictingIdentity` node, an assertion whose occurrence has no `SemanticNode` row, and an assertion whose production function has no `ProductionModule` row are rejected with `DanglingOccurrence`, `DanglingOccurrence` and `DanglingProductionSymbol` respectively; each orphan or conflicting row stays in the census. | Test |
 | FR-052-AC-24 | Conflicting inventory facts (two `SemanticNode` rows with one `CheckedNodeId` node key and differing `semantic_type: CheckedNodeId` facts) receive their named deterministic disposition, `ConflictingIdentity`; each conflicting entry remains inspectable, and no occurrence under a conflicting node enters an accepted relation. | Test |
 | FR-052-AC-25 | Given an owner-issued IR V2 reader result for a selected artifact, the model-owned adapter enumerates every node in an admitted package as its `node_id` plus native `semantic_type: CheckedNodeId` fact and every source occurrence under its node key, and issues `Complete` only after the graph reaches its normal end. Its selected source, IR V2 owner and scope, retained rows and observed count equal an independent traversal of that graph; deleting one emitted row fails that comparison even with an adjusted count. A reader `Incomplete` instead yields an incomplete outcome preserving the original `CheckedPackageIncomplete` limit kind, limit, consumed count and optional path; a reader refusal, including a node with no occurrence, never yields `Complete`. No adapter completion path accepts a caller-authored row vector, count or flag in place of the selected reader result. | Test |
-| FR-052-AC-26 | Given a selected QSL checked request, the QSL-owned adapter enumerates every checked requirement and native pending obligation, preserving each requirement record's structural `CheckedNodeId` (`package`, complete `path` with index segments resolved against the selected package graph, and node `ordinal`), occurrence role and ordinal, and each obligation's declaration, unit, expression, byte span, kind and predicate target. A spine `Complete` outcome has one row per `type_report()` requirement and pending obligation and no requirement-form row; each spine obligation retains its exact FR-057 capability label, owning declaration ordinal, presented unit position and source span without a fabricated `GraphClosure` or declaration. Distinct node packages, path segments, node ordinals, roles and occurrence ordinals remain distinct inventory identities; equal native tuples collapse. Its `Complete` outcome matches an independent full-output traversal only after normal exhaustion, including a valid empty scope; an omitted row fails comparison even with an adjusted count. A spine stage limit instead issues `Incomplete` with one form row per S2 requirement form, no obligation row, present exact stage, setting and observed amount, the dimension and bound, and the whole source region where known; prior, requested and native site are absent. A composed-lane exhaustion retains its measured prior, requested and native site, leaves stage, setting and observed absent, and carries a region only if its exact source reference is available. Where the selected QSL path reports `TypeDisposition::Unfinished`, it issues a distinct `Incomplete` with the native declaration handle, and a path with no such stop never issues `TypeAdmissionUnfinished`. No completion path accepts caller-authored rows, count or flag, or fabricates cancellation unsupported by the selected owner path. | Test |
+| FR-052-AC-26 | Given a selected FSL checked request, the FSL-owned adapter enumerates every checked requirement and native pending obligation, preserving each requirement record's structural `CheckedNodeId` (`package`, complete `path` with index segments resolved against the selected package graph, and node `ordinal`), occurrence role and ordinal, and each obligation's declaration, unit, expression, byte span, kind and predicate target. A spine `Complete` outcome has one row per `type_report()` requirement and pending obligation and no requirement-form row; each spine obligation retains its exact FR-057 capability label, owning declaration ordinal, presented unit position and source span without a fabricated `GraphClosure` or declaration. Distinct node packages, path segments, node ordinals, roles and occurrence ordinals remain distinct inventory identities; equal native tuples collapse. Its `Complete` outcome matches an independent full-output traversal only after normal exhaustion, including a valid empty scope; an omitted row fails comparison even with an adjusted count. A spine stage limit instead issues `Incomplete` with one form row per S2 requirement form, no obligation row, present exact stage, setting and observed amount, the dimension and bound, and the whole source region where known; prior, requested and native site are absent. A composed-lane exhaustion retains its measured prior, requested and native site, leaves stage, setting and observed absent, and carries a region only if its exact source reference is available. Where the selected FSL path reports `TypeDisposition::Unfinished`, it issues a distinct `Incomplete` with the native declaration handle, and a path with no such stop never issues `TypeAdmissionUnfinished`. No completion path accepts caller-authored rows, count or flag, or fabricates cancellation unsupported by the selected owner path. | Test |
 | FR-052-AC-27 | Given a `quire-code-rs` selected production module, the owner adapter retains that module and every function fact from its complete native parse, including a parsed module with zero functions, and issues `Complete` only after the selected module's normal terminal state. Its source, owner, scope, rows and count equal independent full output; deleting one emitted row fails comparison even with an adjusted count. A missing selected module or failed parse instead issues `Incomplete` with the native module or parse cause and retained partial rows; no completion path accepts caller-authored rows, count or flag or fabricates cancellation unsupported by the selected owner path. | Test |
-| FR-052-AC-28 | Implemented by the neutral IR carrier. A default-feature model consumer constructs a `SourceRequirementFormId` with ordinal zero and no name, and two with the same ordinal but different declared names; all are distinct QSL-owned `RequirementForm` inventory identities, none equals a `RequirementRecord` whose checked node or occurrence ordinal happens to match, and no checked node is fabricated for a form. A QSL `Complete` terminal event with these rows returns `RequirementFormInComplete` and no outcome; a typed `Incomplete` retains them exactly. | Test |
-| FR-052-AC-29 | Implemented by the neutral IR carrier. A default-feature model consumer constructs `CapabilityKind` values with two different admitted FR-057 labels at one native site; they remain distinct pending-obligation identities and retain their exact labels. A capability label is distinct from every type-level kind, including `GraphClosure`, and the `PredicateTotal` target still participates in identity. The neutral model neither aliases labels nor duplicates QSL's admission table. | Test, Inspection |
+| FR-052-AC-28 | Implemented by the neutral IR carrier. A default-feature model consumer constructs a `SourceRequirementFormId` with ordinal zero and no name, and two with the same ordinal but different declared names; all are distinct FSL-owned `RequirementForm` inventory identities, none equals a `RequirementRecord` whose checked node or occurrence ordinal happens to match, and no checked node is fabricated for a form. A FSL `Complete` terminal event with these rows returns `RequirementFormInComplete` and no outcome; a typed `Incomplete` retains them exactly. | Test |
+| FR-052-AC-29 | Implemented by the neutral IR carrier. A default-feature model consumer constructs `CapabilityKind` values with two different admitted FR-057 labels at one native site; they remain distinct pending-obligation identities and retain their exact labels. A capability label is distinct from every type-level kind, including `GraphClosure`, and the `PredicateTotal` target still participates in identity. The neutral model neither aliases labels nor duplicates FSL's admission table. | Test, Inspection |
 | FR-052-AC-30 | Implemented by the neutral IR carrier. A default-feature model consumer retains a spine S1 stage limit with stage `Some("S1")`, setting `Some("s1.nodes")`, dimension `Expressions`, limit 4, observed `Some(5)`, absent prior/requested/native site and absent region; a spine S3 limit retains `Some("s3.work_units")` and a region with exact source authority, identity, start and end. Two such regions with equal offsets and different source identities remain distinct. A second observed amount above `u64::MAX` survives unchanged. A composed-lane cause retains `None` stage/setting/observed, present measured prior/requested and a native site including its unit-relative span, while a region remains absent when its exact `RawSourceRef` is unavailable. None of the absent fields is filled with a bound, list position or zero. | Test |
 
 FR-052-AC-8 is retired and its ID is not reused (ADR-0056).
@@ -606,7 +606,7 @@ adapters. AC-25 is Implemented by the IR V2 reader-result adapter and traced
 tests. AC-26 and AC-27 remain Planned until their owner adapters and traced
 tests land. AC-28 through AC-30 are Implemented by the neutral IR carrier
 types and traced default-feature controls; their delivery alone does not
-make the QSL owner adapter of AC-26 Complete. AC-16 is Implemented by IR-812's external consumer controls over
+make the FSL owner adapter of AC-26 Complete. AC-16 is Implemented by IR-812's external consumer controls over
 PLAT-1165's real Quire producer, including full-output comparison, zero-mapping
 criteria, source edits, valid empty input, typed native partial failures and
 stop causes. AC-11's first sentence is exercised at the neutral boundary by
@@ -623,7 +623,7 @@ owns candidate eligibility, evidence joins, and projections;
 accounting meaning. [FR-019](./FR-019-rust-library-interface.md) owns the
 model crate public-items inventory, and [FR-028](./FR-028-separate-cycle-free-contract-model.md)
 owns the model dependency boundary. The typed inputs retain owner-native
-identities from Quire, IR V2, QSL, and `quire-code-rs` APIs; this requirement
+identities from Quire, IR V2, FSL, and `quire-code-rs` APIs; this requirement
 defines no replacement parser or owner schema.
 
 The selected source is an existing typed `SourceIdentity` from

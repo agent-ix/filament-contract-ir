@@ -3,7 +3,7 @@ id: FR-016
 title: "Canonicalize contracts"
 type: FR
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/StR-002
+  - target: ix://agent-ix/filament-contract-ir/StR-002
     type: traces_to
 ---
 # FR-016: Canonicalize contracts
@@ -24,7 +24,7 @@ Canonical UTF-8 JSON bytes for every addressable semantic object.
 ## Behavior
 
 The only profile identity is
-`quire.contract.canonical-json/v1`. A canonical object is the UTF-8 encoding of
+`filament.contract.canonical-json/v1`. A canonical object is the UTF-8 encoding of
 an envelope whose members, after key sorting, are emitted in the
 exact order `kind`, `profile`, `value`:
 `{"kind":<kind>,"profile":<profile>,"value":<semantic-value>}`. Object member
@@ -39,7 +39,7 @@ is emitted directly as UTF-8. `/` and non-ASCII scalars are not escaped.
 Boolean values are lowercase.
 
 The profile spells every integer the model bounds by `i128` as a JSON
-string of its minimal base-ten digits, the `IntegerString` spelling of QSpec
+string of its minimal base-ten digits, the `IntegerString` spelling of FSpec
 V2 (`^(0|-?[1-9][0-9]*)$`: `0` for zero, no `+`, no leading zero, `-` only
 before a nonzero digit). These are the eight members of the profile:
 `minimum` and `maximum` of an integer type, `value` of an integer literal,

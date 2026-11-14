@@ -3,36 +3,36 @@ id: FR-347
 title: "Admit a conforming record at operation-call, field-read, case-arm, union-payload and function-call positions"
 type: FR
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/StR-001
+  - target: ix://agent-ix/filament-contract-ir/StR-001
     type: traces_to
-  - target: ix://agent-ix/quire-contract-ir/FR-038
+  - target: ix://agent-ix/filament-contract-ir/FR-038
     type: depends_on
-  - target: ix://agent-ix/quire-specification/FR-322
+  - target: ix://agent-ix/filament-specification/FR-322
     type: references
-  - target: ix://agent-ix/quire-specification/FR-208
+  - target: ix://agent-ix/filament-specification/FR-208
     type: references
-  - target: ix://agent-ix/quire-specification/FR-151
+  - target: ix://agent-ix/filament-specification/FR-151
     type: references
-  - target: ix://agent-ix/quire-spec-language/FR-359
+  - target: ix://agent-ix/filament-spec-language/FR-359
     type: references
 ---
 # FR-347: Admit a conforming record at operation-call, field-read, case-arm, union-payload and function-call positions
 
 ## Description
 
-When the `quire.checked-package/v2` reader ([FR-038](./FR-038-consume-checked-package-v2.md))
+When the `filament.checked-package/v2` reader ([FR-038](./FR-038-consume-checked-package-v2.md))
 checks a model-owned `operation` member call, the reader SHALL admit an
 argument whose type is a record value type that conforms to the record value
 type its parameter declares, and SHALL keep every other argument exact.
 
-QSpec FR-208 and FR-151 say a value of a record subtype is a value of each
-ancestor wherever a parameter names the ancestor. QSL FR-359 (cross-repo
-requirement 4) asks the reader to accept the checked package QSL emits for
+FSpec FR-208 and FR-151 say a value of a record subtype is a value of each
+ancestor wherever a parameter names the ancestor. FSL FR-359 (cross-repo
+requirement 4) asks the reader to accept the checked package FSL emits for
 such a call. Today FR-038 "Model-owned members" step 4's operation check
 compares each argument's type node with the parameter's declared type by node
 key alone, so a child passed to a parent-typed parameter refuses
 `ill_typed`/`operator-ineligible`. This requirement replaces that exact
-comparison for a record-typed parameter. QSpec FR-322-AC-69 relaxes other
+comparison for a record-typed parameter. FSpec FR-322-AC-69 relaxes other
 positions the same way, and this requirement states the reader's rule at each
 one the reader checks today: a field-read operand, a `case` arm body, a
 `union_value` payload and, with the callee's body `parameters` binding (FR-322-AC-70), a
@@ -61,7 +61,7 @@ exact comparison gives today.
 ### What the reader consults
 
 The package carries no `supertypes` member and no conversion node on the
-checked side (QSL FR-359 item 3). The ancestry of a record is the
+checked side (FSL FR-359 item 3). The ancestry of a record is the
 `supertypes` its declaration carries in the domain package document the lock
 selects by its declared identity, which the reader already reads, for the
 effective-field and Reference-conformance rules of FR-038 "Model-owned
@@ -91,7 +91,7 @@ steps 2 and 3 hold.
   by node key exactly. A collection of a conforming record is not covariant:
   an argument of type `Set<S>[0, 1]` at a `Set<P>[0, 1]` parameter refuses, as
   does a bare `S` there, because the collection's type identity includes its
-  element type (QSL FR-359 item 5). A domain package document cannot declare
+  element type (FSL FR-359 item 5). A domain package document cannot declare
   an `Option<P>` parameter (a parameter has no presence; only a field does,
   and a `[0, 1]` parameter is a bounded `Set`), so no `Option` parameter case
   exists in a document-backed package. An `Option<S>`-typed argument at a
@@ -155,7 +155,7 @@ refuses as today: the `union_arms` constraint not holding is
 ### Result positions
 
 The reader compares no function or expression body root with the node's
-declared type today. This requirement adds the check (QSpec FR-322-AC-69
+declared type today. This requirement adds the check (FSpec FR-322-AC-69
 refuses a body root that does not conform). For a `function` node, the root
 is the node its body binding `body` references; for an `expression` node, it
 is the root application's `result_type`. The root's type node must equal the
@@ -187,10 +187,10 @@ returns `incomplete` for `work`.
 ### Function-call arguments
 
 Today the reader compares neither the number nor the types of a
-`quire.op.function.call`'s arguments with the callee (FR-038, "Documented
+`filament.op.function.call`'s arguments with the callee (FR-038, "Documented
 limits"). This requirement adds both checks, from the callee function node's
-body. QSL FR-092 "Function nodes" is the source of the body binding shape;
-QSpec FR-322-AC-70 is the rule that uses it.
+body. FSL FR-092 "Function nodes" is the source of the body binding shape;
+FSpec FR-322-AC-70 is the rule that uses it.
 
 - **Where the declared types come from.** The callee is argument 0, a
   `reference` to a `function` node of this package. The function node's body
@@ -233,8 +233,8 @@ as FR-038 states.
 
 ### Scope
 
-Only `record_value_type` is covered. QSL FR-359 also treats an event type as
-a record value. QSpec FR-322 defines the `model`/`event_type` node and its
+Only `record_value_type` is covered. FSL FR-359 also treats an event type as
+a record value. FSpec FR-322 defines the `model`/`event_type` node and its
 owner-presence rule; event conformance at the positions in this FR remains
 outside this requirement's scope (FR-359 cross-repo requirement 7).
 
@@ -261,13 +261,13 @@ outside this requirement's scope (FR-359 cross-repo requirement 7).
 - Whether the reader should also accept a conforming argument at a
   `Reference<P>` parameter. FR-322 "Reference conformance" owns reference
   conformance; this requirement leaves it unchanged. Not chosen here because
-  QSL FR-359 asks only for record values.
+  FSL FR-359 asks only for record values.
 
 ## Dependencies
 
 - [FR-038](./FR-038-consume-checked-package-v2.md) owns the operation check,
   the owner recovery and the ancestor walk this requirement reuses.
-- QSpec FR-322-AC-69 (conforming records) and FR-322-AC-70 (the callee's body
-  `parameters` binding) are the producer side of this rule (QSL FR-359
+- FSpec FR-322-AC-69 (conforming records) and FR-322-AC-70 (the callee's body
+  `parameters` binding) are the producer side of this rule (FSL FR-359
   cross-repo requirement 5); this requirement states the reader's rule and
   follows them where it differs.

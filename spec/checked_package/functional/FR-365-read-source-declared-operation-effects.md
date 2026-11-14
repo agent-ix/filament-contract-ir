@@ -3,17 +3,17 @@ id: FR-365
 title: "Read operation effects for a source-declared operation"
 type: FR
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/StR-001
+  - target: ix://agent-ix/filament-contract-ir/StR-001
     type: traces_to
-  - target: ix://agent-ix/quire-contract-ir/FR-038
+  - target: ix://agent-ix/filament-contract-ir/FR-038
     type: depends_on
-  - target: ix://agent-ix/quire-contract-ir/FR-362
+  - target: ix://agent-ix/filament-contract-ir/FR-362
     type: depends_on
-  - target: ix://agent-ix/quire-spec-language/ADR-013
+  - target: ix://agent-ix/filament-spec-language/ADR-013
     type: references
-  - target: ix://agent-ix/quire-spec-language/FR-569
+  - target: ix://agent-ix/filament-spec-language/FR-569
     type: references
-  - target: ix://agent-ix/quire-specification/FR-322
+  - target: ix://agent-ix/filament-specification/FR-322
     type: references
 ---
 
@@ -25,8 +25,8 @@ The `operation_effects` carrier of [FR-038](./FR-038-consume-checked-package-v2.
 admits one provenance origin, `model_document_operation_frame`, and joins each
 row to a selected model. The reader and encoder SHALL also admit a row whose
 `declaring` node is a source-declared object type, with `provenance.origin`
-`source_declaration_operation_frame` (QSL ADR-013 QC-30 items 2e and 4). IR
-admits this origin ahead of QSpec's closed schema; the model-row vectors are
+`source_declaration_operation_frame` (FSL ADR-013 QC-30 items 2e and 4). IR
+admits this origin ahead of FSpec's closed schema; the model-row vectors are
 unchanged.
 
 ## Inputs

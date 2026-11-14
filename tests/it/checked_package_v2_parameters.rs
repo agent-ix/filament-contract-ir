@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Agent-IX
 
-//! IR-280: the V2 reader admits the node shapes QSL's S4 emitter writes for
-//! a function that takes parameters (`value`/`parameter`, QSL FR-092) and
-//! for a compound-unit quantity type (`scalar_type`/`compound_unit`, QSL
+//! IR-280: the V2 reader admits the node shapes FSL's S4 emitter writes for
+//! a function that takes parameters (`value`/`parameter`, FSL FR-092) and
+//! for a compound-unit quantity type (`scalar_type`/`compound_unit`, FSL
 //! FR-094), and checks FR-322's application-node dependency join.
 //!
-//! The package below is built here, node by node, in QSL FR-092's shapes for
+//! The package below is built here, node by node, in FSL FR-092's shapes for
 //! `function both(a: Boolean, b: Boolean): Boolean { a and b }`, each node
 //! assigned its own structural path.
 
@@ -15,14 +15,14 @@ use crate::support::checked_package::{
     nominal_fixture_members, nominal_package, rebuild_source_map, refusal, refusal_at_id,
     source_owner, ExpectedRefusal,
 };
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     CheckedCallableIdentity, CheckedCallableReadErrorCode, CheckedNodeId, CheckedNodeKind,
     CheckedNodeTag, CheckedPackageReadLimits, CheckedPackageRefusal, CheckedPackageRefusalCause,
     CheckedPackageRefusalCode, CheckedPackageV2, CheckedPackageV2ReadResult,
     CheckedParameterDeclaration, CheckedParameterDeclarationError, CompleteLoweringProfileV2,
     CompleteLoweringRecordV2, SelectedOperationMembers, ValueForm,
 };
+use ix_trace_rs::trace;
 use serde_json::{json, Value};
 use std::sync::LazyLock;
 
@@ -51,7 +51,7 @@ fn wire_node(
 ) -> Value {
     json!({
         "node_id": node_id(key),
-        "schema_version": "quire.checked-semantic-graph/v2",
+        "schema_version": "filament.checked-semantic-graph/v2",
         "node_tag": tag,
         "semantic_form": form,
         "semantic_type": node_id(semantic_type),
@@ -126,7 +126,7 @@ fn set_compound_id(node: &mut Value, terms: &[(&str, &str)]) {
     node["semantic_type"] = id;
 }
 
-/// Positions of the QSL-shaped nodes in [`parameters_package`]'s graph.
+/// Positions of the FSL-shaped nodes in [`parameters_package`]'s graph.
 const DIMENSION: usize = 0;
 const METRE: usize = 1;
 const SECOND: usize = 3;
@@ -153,13 +153,13 @@ fn extra_units(dimension: &Value, metre: &Value, metre_key: &str) -> Vec<(Value,
         (preimage, key)
     };
     let time = keyed(json!({
-        "version": "quire.dimension-node/v1",
+        "version": "filament.dimension-node/v1",
         "owner": dimension["owner"],
         "qualified_declaration": ["Example", "Time"],
         "terms": [],
     }));
     let second = keyed(json!({
-        "version": "quire.unit-node/v1",
+        "version": "filament.unit-node/v1",
         "owner": metre["owner"],
         "qualified_declaration": ["Example", "Second"],
         "dimension_node_id": node_id(&time.1),
@@ -168,7 +168,7 @@ fn extra_units(dimension: &Value, metre: &Value, metre_key: &str) -> Vec<(Value,
         "offset": {"numerator": "0", "denominator": "1"},
     }));
     let kilometre = keyed(json!({
-        "version": "quire.unit-node/v1",
+        "version": "filament.unit-node/v1",
         "owner": metre["owner"],
         "qualified_declaration": ["Example", "Kilometre"],
         "dimension_node_id": metre["dimension_node_id"],
@@ -179,7 +179,7 @@ fn extra_units(dimension: &Value, metre: &Value, metre_key: &str) -> Vec<(Value,
     vec![time, second, kilometre]
 }
 
-/// A QSL-shaped V2 package: the fixture's `Length` dimension and root unit
+/// A FSL-shaped V2 package: the fixture's `Length` dimension and root unit
 /// `Metre`, the [`extra_units`], the Boolean, Integer and text scalars, the parameters `a` and
 /// `b`, the expression `a and b`, the function `both` that takes them, and
 /// the compound unit `Metre^2`.
@@ -200,7 +200,7 @@ pub(crate) fn parameters_package() -> Value {
     let and_body = json!({
         "term": "application",
         "operator": "binary",
-        "operation": {"identity": "quire.op.boolean.and", "laws": [], "mode": null,
+        "operation": {"identity": "filament.op.boolean.and", "laws": [], "mode": null,
             "member": null, "leaves": []},
         "result_type": node_id(&BOOLEAN),
         "arguments": [reference(&a), reference(&b)],
@@ -371,7 +371,7 @@ fn tc_048_a_function_with_parameters_reads_and_lowers() {
     let package = parameters_package();
     let CheckedPackageV2ReadResult::Admitted(admitted) = read(&package) else {
         panic!(
-            "the QSL-shaped package must admit, got {:?}",
+            "the FSL-shaped package must admit, got {:?}",
             read(&package)
         );
     };
@@ -393,8 +393,8 @@ fn tc_048_a_function_with_parameters_reads_and_lowers() {
         })
         .collect::<Vec<_>>();
     let profile = CompleteLoweringProfileV2 {
-        reference: quire_contract_model::LoweringProfileRef {
-            authority: "quire".into(),
+        reference: filament_contract_model::LoweringProfileRef {
+            authority: "filament".into(),
             identity: "complete-v1".into(),
         },
         required_source_selections: Vec::new(),

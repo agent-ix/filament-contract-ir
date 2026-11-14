@@ -10,8 +10,7 @@
 //! into this crate or into the encoder.
 
 use crate::checked_package_v2_identity_digests::{production_source, repository_path};
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     AnchorName, CanonicalKind, CanonicalOutput, CanonicalProfile, Clause, ClauseId, ClauseKind,
     CollectionType, ContractPackage, DeclarationEnvironment, DiagnosticCode, ExecutionPoint,
     Expression, ExpressionKind, IntegerDomain, IntegerType, OverflowPolicy, PackageId,
@@ -19,6 +18,7 @@ use quire_contract_model::{
     SchemaVersion, SourceDocumentId, SourceIdentity, SourceLocation, SourceRevision, SourceSpan,
     SymbolName, TypedExpression, ValueDeclaration, ValueDeclarationKind, ValueType,
 };
+use ix_trace_rs::trace;
 use std::fs;
 
 fn source() -> SourceIdentity {
@@ -128,7 +128,7 @@ fn text(output: &CanonicalOutput) -> &str {
 }
 
 const PACKAGE_BYTES: &str = concat!(
-    "{\"kind\":\"package\",\"profile\":\"quire.contract.canonical-json/v1\",\"value\":",
+    "{\"kind\":\"package\",\"profile\":\"filament.contract.canonical-json/v1\",\"value\":",
     "{\"id\":\"agent-ix/pkg\",\"requirements\":[{\"clauses\":[{\"body\":{\"node\":\"literal\"},",
     "\"id\":\"note\",\"kind\":\"information\",\"requirement\":{\"package\":\"agent-ix/pkg\",",
     "\"requirement\":\"REQ_a\",\"revision\":1}}],\"id\":\"REQ_a\",\"package\":\"agent-ix/pkg\",",
@@ -136,20 +136,20 @@ const PACKAGE_BYTES: &str = concat!(
 );
 
 const REQUIREMENT_BYTES: &str = concat!(
-    "{\"kind\":\"requirement\",\"profile\":\"quire.contract.canonical-json/v1\",\"value\":",
+    "{\"kind\":\"requirement\",\"profile\":\"filament.contract.canonical-json/v1\",\"value\":",
     "{\"clauses\":[{\"body\":{\"node\":\"literal\"},\"id\":\"note\",\"kind\":\"information\",",
     "\"requirement\":{\"package\":\"agent-ix/pkg\",\"requirement\":\"REQ_a\",\"revision\":1}}],",
     "\"id\":\"REQ_a\",\"package\":\"agent-ix/pkg\",\"revision\":1}}"
 );
 
 const CLAUSE_BYTES: &str = concat!(
-    "{\"kind\":\"clause\",\"profile\":\"quire.contract.canonical-json/v1\",\"value\":",
+    "{\"kind\":\"clause\",\"profile\":\"filament.contract.canonical-json/v1\",\"value\":",
     "{\"body\":{\"node\":\"literal\"},\"id\":\"note\",\"kind\":\"information\",",
     "\"requirement\":{\"package\":\"agent-ix/pkg\",\"requirement\":\"REQ_a\",\"revision\":1}}}"
 );
 
 const DECLARATION_BYTES: &str = concat!(
-    "{\"kind\":\"declaration\",\"profile\":\"quire.contract.canonical-json/v1\",\"value\":",
+    "{\"kind\":\"declaration\",\"profile\":\"filament.contract.canonical-json/v1\",\"value\":",
     "{\"functions\":[],\"owner\":{\"package\":\"agent-ix/pkg\",\"requirement\":\"REQ_a\",",
     "\"revision\":1},\"types\":[],\"values\":[{\"kind\":\"input\",\"name\":\"n\",",
     "\"value_type\":{\"kind\":\"integer\",\"value\":{\"domain\":\"signed\",",
@@ -161,7 +161,7 @@ const DECLARATION_BYTES: &str = concat!(
 );
 
 const EXPRESSION_BYTES: &str = concat!(
-    "{\"kind\":\"expression\",\"profile\":\"quire.contract.canonical-json/v1\",\"value\":",
+    "{\"kind\":\"expression\",\"profile\":\"filament.contract.canonical-json/v1\",\"value\":",
     "{\"result_type\":{\"kind\":\"integer\",\"value\":{\"domain\":\"signed\",",
     "\"maximum\":\"9223372036854775807\",\"minimum\":\"-9223372036854775808\",",
     "\"overflow\":\"reject\"}},\"tree\":{\"kind\":{\"node\":\"integer_literal\",",
@@ -209,7 +209,7 @@ fn expression_fixture() -> TypedExpression {
 /// One fixture of each of the five kinds, with the bytes it must produce and
 /// a closure that asks for them under a byte limit.
 type Budgeted<'a> =
-    Box<dyn Fn(u64) -> Result<CanonicalOutput, quire_contract_model::Diagnostic> + 'a>;
+    Box<dyn Fn(u64) -> Result<CanonicalOutput, filament_contract_model::Diagnostic> + 'a>;
 
 /// ACs: FR-016-AC-1, FR-016-AC-5, FR-016-AC-6
 #[trace("TC-017", "FR-016-AC-1", "FR-016-AC-5", "FR-016-AC-6")]
@@ -282,7 +282,7 @@ fn tc_017_the_five_kinds_equal_their_written_out_bytes_and_limits() {
 #[test]
 fn tc_017_clause_order_is_canonical_in_requirement_and_package_bytes() {
     const EXPECTED_REQUIREMENT: &str = concat!(
-        "{\"kind\":\"requirement\",\"profile\":\"quire.contract.canonical-json/v1\",\"value\":",
+        "{\"kind\":\"requirement\",\"profile\":\"filament.contract.canonical-json/v1\",\"value\":",
         "{\"clauses\":[{\"body\":{\"node\":\"literal\"},\"id\":\"alpha\",\"kind\":\"information\",",
         "\"requirement\":{\"package\":\"agent-ix/pkg\",\"requirement\":\"REQ_a\",\"revision\":1}},",
         "{\"body\":{\"node\":\"literal\"},\"id\":\"zeta\",\"kind\":\"information\",",
@@ -290,7 +290,7 @@ fn tc_017_clause_order_is_canonical_in_requirement_and_package_bytes() {
         "\"id\":\"REQ_a\",\"package\":\"agent-ix/pkg\",\"revision\":1}}"
     );
     const EXPECTED_PACKAGE: &str = concat!(
-        "{\"kind\":\"package\",\"profile\":\"quire.contract.canonical-json/v1\",\"value\":",
+        "{\"kind\":\"package\",\"profile\":\"filament.contract.canonical-json/v1\",\"value\":",
         "{\"id\":\"agent-ix/pkg\",\"requirements\":[{\"clauses\":[",
         "{\"body\":{\"node\":\"literal\"},\"id\":\"alpha\",\"kind\":\"information\",",
         "\"requirement\":{\"package\":\"agent-ix/pkg\",\"requirement\":\"REQ_a\",\"revision\":1}},",
@@ -358,7 +358,7 @@ fn tc_017_the_eight_integer_members_are_strings_and_the_rest_stay_numbers() {
     assert_eq!(
         text(&zero_output),
         concat!(
-            "{\"kind\":\"expression\",\"profile\":\"quire.contract.canonical-json/v1\",",
+            "{\"kind\":\"expression\",\"profile\":\"filament.contract.canonical-json/v1\",",
             "\"value\":{\"result_type\":{\"kind\":\"integer\",\"value\":{\"domain\":\"unsigned\",",
             "\"maximum\":\"0\",\"minimum\":\"0\",\"overflow\":\"saturate\"}},",
             "\"tree\":{\"kind\":{\"node\":\"integer_literal\",\"value\":\"0\",",
@@ -385,7 +385,7 @@ fn tc_017_the_eight_integer_members_are_strings_and_the_rest_stay_numbers() {
     assert_eq!(
         text(&rational),
         concat!(
-            "{\"kind\":\"expression\",\"profile\":\"quire.contract.canonical-json/v1\",",
+            "{\"kind\":\"expression\",\"profile\":\"filament.contract.canonical-json/v1\",",
             "\"value\":{\"result_type\":{\"kind\":\"rational\",\"value\":",
             "{\"maximum_denominator\":\"9223372036854775807\",",
             "\"numerator_maximum\":\"9223372036854775807\",",
@@ -474,7 +474,7 @@ fn tc_017_the_eight_integer_members_are_strings_and_the_rest_stay_numbers() {
 fn tc_017_the_canonical_source_holds_no_encoder_of_its_own() {
     for file in ["canonical.rs", "binding.rs", "output_mapping.rs"] {
         let text = fs::read_to_string(repository_path(&format!(
-            "crates/quire-contract-model/src/{file}"
+            "crates/filament-contract-model/src/{file}"
         )))
         .unwrap();
         let production = production_source(&text);
@@ -489,7 +489,7 @@ fn tc_017_the_canonical_source_holds_no_encoder_of_its_own() {
             assert_eq!(production.matches(symbol).count(), 0, "{file}: `{symbol}`");
         }
     }
-    for manifest in ["Cargo.toml", "crates/quire-contract-model/Cargo.toml"] {
+    for manifest in ["Cargo.toml", "crates/filament-contract-model/Cargo.toml"] {
         let text = fs::read_to_string(repository_path(manifest)).unwrap();
         assert_eq!(
             text.matches("serde_json_canonicalizer").count(),
@@ -536,7 +536,7 @@ fn tc_017_no_canonical_type_can_hold_a_null_a_float_or_a_value() {
     let read = |file: &str| {
         production_source(
             &fs::read_to_string(repository_path(&format!(
-                "crates/quire-contract-model/src/{file}"
+                "crates/filament-contract-model/src/{file}"
             )))
             .unwrap(),
         )

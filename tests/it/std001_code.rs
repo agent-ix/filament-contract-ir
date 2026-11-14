@@ -3,8 +3,8 @@
 //! model crate's other compile probes use, paired there with the passing
 //! `const` form.
 
+use filament_contract_model::{std001_code, DiagnosticCode, Std001Code, Std001CodeError};
 use ix_trace_rs::trace;
-use quire_contract_model::{std001_code, DiagnosticCode, Std001Code, Std001CodeError};
 
 const MACRO_CODE: Std001Code = std001_code!("kani_corpus_identity_collision");
 const FROM_STATIC_OK: Result<Std001Code, Std001CodeError> =

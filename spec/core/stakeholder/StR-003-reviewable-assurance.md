@@ -3,7 +3,7 @@ id: StR-003
 title: "Make contract failures reviewable"
 type: StR
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/StR-001
+  - target: ix://agent-ix/filament-contract-ir/StR-001
     type: depends_on
 ---
 # StR-003: Make contract failures reviewable

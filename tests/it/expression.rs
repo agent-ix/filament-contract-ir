@@ -1,5 +1,4 @@
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     AnchorName, BooleanOperator, CollectionType, ComparisonOperator, DeclarationEnvironment,
     DefinednessObligationKind, DependencyKind, DiagnosticCode, EnumDeclaration,
     EnumVariantDeclaration, ExecutionPoint, Expression, ExpressionKind, FunctionParameter,
@@ -10,13 +9,14 @@ use quire_contract_model::{
     ValueDeclaration, ValueDeclarationKind, ValueType, MAX_EXPRESSION_DEPTH, MAX_EXPRESSION_NODES,
     MAX_TEXT_LENGTH,
 };
+use ix_trace_rs::trace;
 
 /// A source-level guard for TC-444's private representation inspection. The
 /// public behavior controls below continue to check diagnostic codes and spans.
 #[trace("TC-444", "FR-014-AC-9")]
 #[test]
 fn checked_numeric_operands_pair_type_and_interval_in_one_variant() {
-    let source = include_str!("../../crates/quire-contract-model/src/expression.rs");
+    let source = include_str!("../../crates/filament-contract-model/src/expression.rs");
     let file = syn::parse_file(source).expect("expression source parses");
     let checked = file
         .items
@@ -204,7 +204,10 @@ fn boolean(value: bool, at: u64) -> Expression {
 }
 
 fn assert_code(
-    result: Result<quire_contract_model::TypedExpression, Vec<quire_contract_model::Diagnostic>>,
+    result: Result<
+        filament_contract_model::TypedExpression,
+        Vec<filament_contract_model::Diagnostic>,
+    >,
     code: DiagnosticCode,
 ) {
     assert_eq!(result.unwrap_err()[0].code, code);
@@ -285,8 +288,8 @@ fn environment() -> DeclarationEnvironment {
     DeclarationEnvironment::new(
         RequirementRef::new(
             PackageId::new("agent-ix/contract").unwrap(),
-            quire_contract_model::RequirementId::new("REQ_expression").unwrap(),
-            quire_contract_model::RequirementRevision::new(1).unwrap(),
+            filament_contract_model::RequirementId::new("REQ_expression").unwrap(),
+            filament_contract_model::RequirementRevision::new(1).unwrap(),
         ),
         vec![
             TypeDeclaration::Enum { declaration: color },
@@ -1345,7 +1348,7 @@ fn tc_016_scope_guard_flow_call_ranges_and_diagnostic_invariants_conform() {
         "path":"expression",
         "obligation_kind":"checked_range"
     }"#;
-    assert!(serde_json::from_str::<quire_contract_model::Diagnostic>(invalid_wire).is_err());
+    assert!(serde_json::from_str::<filament_contract_model::Diagnostic>(invalid_wire).is_err());
 
     let call = |at| {
         Expression::new(
@@ -1450,7 +1453,7 @@ fn tc_016_mixed_dependencies_implement_the_structural_source_contract() {
 
     assert_eq!(
         checked.dependencies(),
-        &quire_contract_model::DependencySource::dependencies(&checked)
+        &filament_contract_model::DependencySource::dependencies(&checked)
     );
     let actual = checked
         .dependencies()
@@ -1681,8 +1684,8 @@ impl Numeric {
         DeclarationEnvironment::new(
             RequirementRef::new(
                 PackageId::new("agent-ix/contract").unwrap(),
-                quire_contract_model::RequirementId::new("REQ_range_sets").unwrap(),
-                quire_contract_model::RequirementRevision::new(1).unwrap(),
+                filament_contract_model::RequirementId::new("REQ_range_sets").unwrap(),
+                filament_contract_model::RequirementRevision::new(1).unwrap(),
             ),
             Vec::new(),
             vec![ValueDeclaration::new(
@@ -1752,7 +1755,10 @@ impl Numeric {
         })
     }
 
-    fn check(&self, expression: &Expression) -> Result<(), Vec<quire_contract_model::Diagnostic>> {
+    fn check(
+        &self,
+        expression: &Expression,
+    ) -> Result<(), Vec<filament_contract_model::Diagnostic>> {
         self.environment()
             .check_expression(expression, &ValueType::Boolean, &pre(), true)
             .map(|_| ())

@@ -1,19 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Agent-IX
 
-//! TC-445's producer-origin assertion using the authoritative QSL executables.
-//! Set `QUIRE_SPEC_LANGUAGE_DIR` after building that checkout's `quire-spec`
+//! TC-445's producer-origin assertion using the authoritative FSL executables.
+//! Set `FILAMENT_SPEC_LANGUAGE_DIR` after building that checkout's `fsl`
 //! and `config_version_fixtures` binaries from its current source. An absent
 //! producer leaves this external case unrun in the ordinary IR test lane.
 
 use crate::support::checked_package::sha256_hex;
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     CheckedClauseComparison, CheckedComparisonClauseKind, CheckedComparisonObservation,
     CheckedComparisonOperandIdentity, CheckedComparisonOperandKind, CheckedComparisonOperator,
     CheckedComparisonPath, CheckedComparisonRead, CheckedComparisonRefusal, CheckedNodeId,
     CheckedPackageEvidence, CheckedPackageReadLimits, CheckedPackageV2, CheckedPackageV2ReadResult,
 };
+use ix_trace_rs::trace;
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -23,7 +23,7 @@ struct Scratch(PathBuf);
 impl Scratch {
     fn new() -> Self {
         let path =
-            std::env::temp_dir().join(format!("ir703-qsl-config-version-{}", std::process::id()));
+            std::env::temp_dir().join(format!("ir703-fsl-config-version-{}", std::process::id()));
         std::fs::create_dir(&path).expect("unique producer output directory");
         Self(path)
     }
@@ -129,7 +129,7 @@ fn bounded_input_variant(case: &Path, original_unit: &str, original_model: &Valu
 }
 
 fn admit_selected_variant(case: &Path, bytes: &[u8]) -> CheckedPackageV2 {
-    let wire: Value = serde_json::from_slice(bytes).expect("QSL variant V2 JSON");
+    let wire: Value = serde_json::from_slice(bytes).expect("FSL variant V2 JSON");
     let mut evidence = CheckedPackageEvidence::new();
     evidence
         .insert_domain_package_document(
@@ -138,10 +138,10 @@ fn admit_selected_variant(case: &Path, bytes: &[u8]) -> CheckedPackageV2 {
                 .expect("variant selected model"),
         )
         .expect("domain evidence declarations agree on exact bytes");
-    evidence.support_feature("quire.value.complete/v1");
+    evidence.support_feature("filament.value.complete/v1");
     match CheckedPackageV2::read(bytes, CheckedPackageReadLimits::bounded(), &evidence) {
         CheckedPackageV2ReadResult::Admitted(package) => *package,
-        other => panic!("QSL selected-model variant must admit: {other:?}"),
+        other => panic!("FSL selected-model variant must admit: {other:?}"),
     }
 }
 
@@ -158,7 +158,7 @@ fn version_unchanged(package: &CheckedPackageV2) -> CheckedClauseComparison {
                 .occurrences
                 .iter()
                 .filter(|occurrence| {
-                    occurrence.role == quire_contract_model::CheckedOccurrenceRole::Claim
+                    occurrence.role == filament_contract_model::CheckedOccurrenceRole::Claim
                 })
                 .filter_map(|claim| {
                     package
@@ -208,7 +208,9 @@ fn external_consumer_matches_closed_types(projection: &CheckedClauseComparison) 
     }
 }
 
-fn external_consumer_matches_closed_refusal(error: &quire_contract_model::CheckedComparisonError) {
+fn external_consumer_matches_closed_refusal(
+    error: &filament_contract_model::CheckedComparisonError,
+) {
     match error.kind {
         CheckedComparisonRefusal::UnknownClause
         | CheckedComparisonRefusal::NotStateClause
@@ -243,16 +245,16 @@ fn external_consumer_matches_closed_refusal(error: &quire_contract_model::Checke
     "FR-038-AC-209"
 )]
 #[test]
-fn tc_445_fresh_qsl_config_version_has_shared_field_with_post_and_pre_observations() {
-    if std::env::var_os("IR703_QSL_CONFORMANCE").is_none() {
+fn tc_445_fresh_fsl_config_version_has_shared_field_with_post_and_pre_observations() {
+    if std::env::var_os("IR703_FSL_CONFORMANCE").is_none() {
         eprintln!("TC-445 producer-origin case unrun outside the named conformance gate");
         return;
     }
-    let Some(root) = std::env::var_os("QUIRE_SPEC_LANGUAGE_DIR").map(PathBuf::from) else {
-        panic!("TC-445 conformance requires QUIRE_SPEC_LANGUAGE_DIR");
+    let Some(root) = std::env::var_os("FILAMENT_SPEC_LANGUAGE_DIR").map(PathBuf::from) else {
+        panic!("TC-445 conformance requires FILAMENT_SPEC_LANGUAGE_DIR");
     };
     let fixture = root.join("target/debug/examples/config_version_fixtures");
-    let producer = root.join("target/debug/quire-spec");
+    let producer = root.join("target/debug/fsl");
     let revision = Command::new("git")
         .args([
             "-C",
@@ -261,17 +263,17 @@ fn tc_445_fresh_qsl_config_version_has_shared_field_with_post_and_pre_observatio
             "HEAD",
         ])
         .output()
-        .expect("inspect producing QSL revision");
-    assert!(revision.status.success(), "QSL revision must be available");
+        .expect("inspect producing FSL revision");
+    assert!(revision.status.success(), "FSL revision must be available");
     let scratch = Scratch::new();
     run(&fixture, &[&scratch.0]);
     let case = scratch.0.join("unchanged-version");
     let original_unit =
-        std::fs::read_to_string(case.join("spine-unit.native")).expect("fresh QSL spine source");
+        std::fs::read_to_string(case.join("spine-unit.native")).expect("fresh FSL spine source");
     assert!(original_unit.contains("self.versionNumber = pre(self.versionNumber)"));
     let request = compile_request(&case);
     eprintln!(
-        "TC-445 QSL revision={} commands='{} {}; {} compile {}'",
+        "TC-445 FSL revision={} commands='{} {}; {} compile {}'",
         String::from_utf8_lossy(&revision.stdout).trim(),
         fixture.display(),
         scratch.0.display(),
@@ -279,29 +281,29 @@ fn tc_445_fresh_qsl_config_version_has_shared_field_with_post_and_pre_observatio
         request.display()
     );
     let bytes = run(&producer, &[Path::new("compile"), &request]);
-    let wire: Value = serde_json::from_slice(&bytes).expect("QSL emits V2 JSON");
+    let wire: Value = serde_json::from_slice(&bytes).expect("FSL emits V2 JSON");
     let model = std::fs::read(
         scratch
             .0
             .join("unchanged-version/spine-model.semantic-ir.json"),
     )
-    .expect("selected QSL model document");
+    .expect("selected FSL model document");
     let original_model: Value = serde_json::from_slice(&model).expect("producer model JSON");
     let mut evidence = CheckedPackageEvidence::new();
     evidence
         .insert_domain_package_document(selected_model(&wire), model)
         .expect("domain evidence declarations agree on exact bytes");
-    evidence.support_feature("quire.value.complete/v1");
+    evidence.support_feature("filament.value.complete/v1");
     let package =
         match CheckedPackageV2::read(&bytes, CheckedPackageReadLimits::bounded(), &evidence) {
             CheckedPackageV2ReadResult::Admitted(package) => package,
-            other => panic!("fresh QSL package must be admitted by IR: {other:?}"),
+            other => panic!("fresh FSL package must be admitted by IR: {other:?}"),
         };
     let before = package.clone();
     let result = version_unchanged(&package);
     external_consumer_matches_closed_types(&result);
     let missing_clause: CheckedNodeId = serde_json::from_value(json!({
-        "domain": "quire.checked-semantic-node/v1", "digest": "f".repeat(64)
+        "domain": "filament.checked-semantic-node/v1", "digest": "f".repeat(64)
     }))
     .expect("well-shaped unknown clause id");
     let refusal = package
@@ -356,13 +358,13 @@ fn tc_445_fresh_qsl_config_version_has_shared_field_with_post_and_pre_observatio
             &format!("self.versionNumber {spelling} pre(self.versionNumber)"),
             1,
         );
-        std::fs::write(case.join("spine-unit.native"), variant).expect("write QSL source variant");
+        std::fs::write(case.join("spine-unit.native"), variant).expect("write FSL source variant");
         let variant_request = compile_request(&case);
         let bytes = run(&producer, &[Path::new("compile"), &variant_request]);
         let admitted =
             match CheckedPackageV2::read(&bytes, CheckedPackageReadLimits::bounded(), &evidence) {
                 CheckedPackageV2ReadResult::Admitted(package) => package,
-                other => panic!("QSL {spelling} comparison must admit: {other:?}"),
+                other => panic!("FSL {spelling} comparison must admit: {other:?}"),
             };
         let projected = version_unchanged(&admitted);
         assert_eq!(projected.operator, expected);
@@ -385,7 +387,7 @@ fn tc_445_fresh_qsl_config_version_has_shared_field_with_post_and_pre_observatio
         &evidence,
     ) {
         CheckedPackageV2ReadResult::Admitted(package) => package,
-        other => panic!("QSL current-observation clauses must admit: {other:?}"),
+        other => panic!("FSL current-observation clauses must admit: {other:?}"),
     };
     for kind in [
         CheckedComparisonClauseKind::Invariant,
@@ -467,7 +469,7 @@ fn tc_445_fresh_qsl_config_version_has_shared_field_with_post_and_pre_observatio
         &evidence,
     ) {
         CheckedPackageV2ReadResult::Admitted(package) => package,
-        other => panic!("QSL reversed read pair must admit: {other:?}"),
+        other => panic!("FSL reversed read pair must admit: {other:?}"),
     };
     let reversed = version_unchanged(&reversed_package);
     for (ordinal, source) in [(0, 1), (1, 0)] {
@@ -500,7 +502,7 @@ fn tc_445_fresh_qsl_config_version_has_shared_field_with_post_and_pre_observatio
         &evidence,
     ) {
         CheckedPackageV2ReadResult::Admitted(package) => package,
-        other => panic!("QSL repeated clause must admit: {other:?}"),
+        other => panic!("FSL repeated clause must admit: {other:?}"),
     };
     let repeated_clause = repeated_package
         .graph()
@@ -513,7 +515,7 @@ fn tc_445_fresh_qsl_config_version_has_shared_field_with_post_and_pre_observatio
                     .occurrences
                     .iter()
                     .filter(|occurrence| {
-                        occurrence.role == quire_contract_model::CheckedOccurrenceRole::Claim
+                        occurrence.role == filament_contract_model::CheckedOccurrenceRole::Claim
                     })
                     .count()
                     >= 2
@@ -522,7 +524,9 @@ fn tc_445_fresh_qsl_config_version_has_shared_field_with_post_and_pre_observatio
     let claims: Vec<_> = repeated_clause
         .occurrences
         .iter()
-        .filter(|occurrence| occurrence.role == quire_contract_model::CheckedOccurrenceRole::Claim)
+        .filter(|occurrence| {
+            occurrence.role == filament_contract_model::CheckedOccurrenceRole::Claim
+        })
         .take(2)
         .collect();
     let first = repeated_package
@@ -559,7 +563,7 @@ fn tc_445_fresh_qsl_config_version_has_shared_field_with_post_and_pre_observatio
     }
 
     let mut unbounded_model = original_model.clone();
-    unbounded_model["types"][1]["fields"][0]["typeRef"] = json!("ix://quire/native/Integer");
+    unbounded_model["types"][1]["fields"][0]["typeRef"] = json!("ix://filament/native/Integer");
     let unbounded_request = selected_model_variant(
         &case,
         &original_unit,
@@ -591,7 +595,7 @@ fn tc_445_fresh_qsl_config_version_has_shared_field_with_post_and_pre_observatio
     assert!(unbounded.child.is_some());
 
     // The fresh producer's selected model is extended with a bounded input.
-    // Recompute its selection digest and compile the changed source through QSL.
+    // Recompute its selection digest and compile the changed source through FSL.
     let input_request = bounded_input_variant(&case, &original_unit, &original_model);
     let input_bytes = run(&producer, &[Path::new("compile"), &input_request]);
     let input_package = admit_selected_variant(&case, &input_bytes);

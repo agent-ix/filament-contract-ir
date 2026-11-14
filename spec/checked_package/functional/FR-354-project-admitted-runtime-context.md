@@ -3,19 +3,19 @@ id: FR-354
 title: "Project admitted runtime context from checked-package decisions"
 type: FR
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/StR-001
+  - target: ix://agent-ix/filament-contract-ir/StR-001
     type: traces_to
-  - target: ix://agent-ix/quire-contract-ir/FR-038
+  - target: ix://agent-ix/filament-contract-ir/FR-038
     type: depends_on
-  - target: ix://agent-ix/quire-contract-ir/FR-349
+  - target: ix://agent-ix/filament-contract-ir/FR-349
     type: depends_on
-  - target: ix://agent-ix/quire-contract-ir/FR-352
+  - target: ix://agent-ix/filament-contract-ir/FR-352
     type: depends_on
-  - target: ix://agent-ix/quire-contract-ir/FR-358
+  - target: ix://agent-ix/filament-contract-ir/FR-358
     type: depends_on
-  - target: ix://agent-ix/quire-spec-language/FR-390
+  - target: ix://agent-ix/filament-spec-language/FR-390
     type: references
-  - target: ix://agent-ix/quire-spec-language/FR-103
+  - target: ix://agent-ix/filament-spec-language/FR-103
     type: references
 ---
 # FR-354: Project admitted runtime context from checked-package decisions
@@ -27,8 +27,8 @@ When a consumer builds the sealed runtime adapter for an admitted
 the package's selected type declarations, callable bodies and frames, dispatch
 candidates and effective preconditions, units, enum members, and captured protocol semantic locations.
 Contract IR SHALL return complete admitted facts or a typed refusal before exposing a
-partial view. Contract IR SHALL neither create a second checker nor reconstruct QSL
-`Scope` or `CheckedGraph`. QSL [FR-390](ix://agent-ix/quire-spec-language/FR-390)
+partial view. Contract IR SHALL neither create a second checker nor reconstruct FSL
+`Scope` or `CheckedGraph`. FSL [FR-390](ix://agent-ix/filament-spec-language/FR-390)
 owns runtime interpretation and supplied-state admission.
 
 ## Inputs
@@ -37,13 +37,13 @@ owns runtime interpretation and supplied-state admission.
   identity, and finite projection work limit.
 - Where an Exact identity is required, the selected-document identity rows of
   [FR-352](./FR-352-project-admitted-exact-value-types.md), produced by the
-  same QSL selection stage as the admitted package.
+  same FSL selection stage as the admitted package.
 - For `project_selected_type_declarations`, the caller-owned mutable
   `NativeJoinBudget` of [FR-358](./FR-358-compose-native-identity-join-budget.md)
   for its checked admitted-type acquisition. This mandatory parameter is
   additional to the existing projection work limit; the latter continues to
   bound projection work, rather than silently creating a native join allowance.
-- Additional QSL-stage rows for selected tuple declarations, source-owned
+- Additional FSL-stage rows for selected tuple declarations, source-owned
   declared units, enum declarations, and enum members. Each row carries the
   selected source/document identity, original declaration or member identity,
   admitted structural node identity, closed form, and the stage's Exact
@@ -63,17 +63,17 @@ owns runtime interpretation and supplied-state admission.
   read SHALL take this row through a typed admitted join; an absent row or an
   anchor outside a selected model SHALL return typed unavailable-witness.
 - For an object type's own declared operations, producer-supplied selected
-  operation facts from the same QSL selection as the admitted package. Each
+  operation facts from the same FSL selection as the admitted package. Each
   fact identifies the selected document, declaring object and original operation
   member, and carries the declared effect (`modifies`, `creates`, `deletes`,
   `deletes_scoped`). The admission-retained selected operation alone supplies
-  its ordered parameter and optional result signature. QSL
-  [FR-103](ix://agent-ix/quire-spec-language/FR-103) owns the declared effect;
-  QSpec STD-640 carries that effect without a second signature witness.
+  its ordered parameter and optional result signature. FSL
+  [FR-103](ix://agent-ix/filament-spec-language/FR-103) owns the declared effect;
+  FSpec STD-640 carries that effect without a second signature witness.
 
 ## Outputs
 
-- Public typed views of the admitted runtime context. An index built by QSL
+- Public typed views of the admitted runtime context. An index built by FSL
   over these views is a lookup cache, not a new admission decision.
 - A closed typed outcome identifying an absent, foreign, ambiguous, malformed,
   or unsupported selected join, or the exhausted limit and first failing
@@ -87,19 +87,19 @@ field identities and types, each object's own declared operations in declaration
 order, inheritance edges, and unit identities needed by
 semantic-value `TypeEnvironment`. It SHALL preserve [FR-352](./FR-352-project-admitted-exact-value-types.md)'s
 selected-document and structural-key joins. For tuples, source-owned units,
-and enums, Contract IR SHALL check each additional QSL-stage row against the
+and enums, Contract IR SHALL check each additional FSL-stage row against the
 admission-retained selected source/document, original identity, node form,
 and structural node; the opaque Exact identity remains a producer fact.
 Contract IR SHALL reject a member row that names another enum declaration or case.
 Contract IR SHALL reject one Exact identity claimed by competing selected nodes.
 Contract IR SHALL return a typed refusal if any required declaration, member, parent, or unit lacks a unique witnessed
-identity or a representable type. QSL may construct its `TypeEnvironment`
+identity or a representable type. FSL may construct its `TypeEnvironment`
 from the complete view, but Contract IR SHALL NOT claim that a newly constructed
 environment was itself the producer's checked result.
 
 For each selected object operation, Contract IR SHALL preserve its declaring
 object and original member identity, admission-retained ordered parameter names
-and projected types, admission-retained optional result type, and the QSL producer's declared effect, including
+and projected types, admission-retained optional result type, and the FSL producer's declared effect, including
 an intentionally empty effect. It SHALL join the producer operation fact to
 the admission-retained selected document, object declaration and own operation
 member; inherited visibility SHALL NOT change that declaring owner or duplicate
@@ -108,7 +108,7 @@ missing, foreign, duplicate or conflicting producer fact, mismatched owner or
 member, a producer row with no admission-retained own operation, or
 unrepresentable admission-retained signature or producer effect before exposing
 any partial type-declaration view. It SHALL NOT derive an effect from an
-operation name, callable frame, state/frame node or default empty effect. Until the QSL producer
+operation name, callable frame, state/frame node or default empty effect. Until the FSL producer
 supplies the selected operation effect facts, an object with operations SHALL
 return typed unavailable-witness; the admitted model signature alone does not
 authorize a complete `ObjectTypeDeclaration`. The projection SHALL charge
@@ -151,7 +151,7 @@ precondition body handle. It SHALL reject missing or competing selected joins
 without choosing a candidate. The consumer SHALL evaluate those preconditions
 at runtime; IR SHALL NOT evaluate them or infer a dispatch decision from names.
 If the checked package does not retain a producer decision required by this
-view, Contract IR SHALL return a typed unsupported outcome until QSpec and its
+view, Contract IR SHALL return a typed unsupported outcome until FSpec and its
 producer carry that fact. A newly inferred value is not an admitted decision.
 
 ### Inherited operation dispatch admission
@@ -208,11 +208,11 @@ from case text or display names.
 When a consumer requests a protocol semantic location, Contract IR SHALL
 borrow the canonical producer-captured row keyed by exact local application,
 source occurrence and per-term ordinal from the admitted checked-term sidecar.
-Admission SHALL refuse an omitted required term mapping with the exact QSpec
+Admission SHALL refuse an omitted required term mapping with the exact FSpec
 FR-322/STD-614 invalid-package outcome; it SHALL NOT invent a required-term
 census from graph shape or source text. Admission SHALL validate local application and source-occurrence joins, sorted
 unique per-term keys, the closed origin and canonical child ordinals under
-QSpec FR-322/STD-614. A row preserves its named type-declaration or protocol
+FSpec FR-322/STD-614. A row preserves its named type-declaration or protocol
 attempt origin and complete child-index path. The read SHALL distinguish an
 absent sidecar from a present sidecar missing the requested row, and SHALL
 bound work before returning a complete borrowed row. It SHALL NOT infer a
@@ -230,17 +230,17 @@ typed outcomes.
 
 | ID | Criteria | Verification |
 |----|----------|--------------|
-| FR-354-AC-1 | With the FR-352 and additional QSL-stage rows for selected tuples and source-owned units, and the required QSL producer facts for object operations, a public IR-model read supplies complete record, tuple and object declarations, effective fields, ancestry, own object operations and units from which QSL constructs the expected `TypeEnvironment`; no source or JSON is reparsed. Before a required producer fact exists, the corresponding request refuses rather than claiming a complete view. | Test |
+| FR-354-AC-1 | With the FR-352 and additional FSL-stage rows for selected tuples and source-owned units, and the required FSL producer facts for object operations, a public IR-model read supplies complete record, tuple and object declarations, effective fields, ancestry, own object operations and units from which FSL constructs the expected `TypeEnvironment`; no source or JSON is reparsed. Before a required producer fact exists, the corresponding request refuses rather than claiming a complete view. | Test |
 | FR-354-AC-2 | A missing, foreign, duplicated or conflicting selected declaration, field, parent or unit identity, including an additional tuple or source-unit row, returns a named typed outcome before any partial type-environment view; matching display names do not make a join. | Test |
 | FR-354-AC-3 | Given a matching FR-352 `SelectedOperationMemberRow`, the callable projection returns each selected model-owned operation's ordered parameters, admitted body handle, context and frame, including an intentionally empty frame; a pure function can be read from its admitted node without that row. A source-function read reports charged work on success, including an absent callable. A missing or conflicting model-member row, a source-declared operation anchor without its own producer witness, a dangling body, wrong owner or absent required frame returns a typed outcome without a callable view. | Test |
 | FR-354-AC-4 | The dispatch projection preserves every admitted candidate in producer order with its effective precondition term reference; a missing or ambiguous candidate/precondition join refuses without choosing a candidate or evaluating a predicate. | Test |
-| FR-354-AC-5 | With QSL-stage unit rows for source-owned declarations, a selected root and converted unit yield exact dimension, target, scale, offset and witnessed identity sufficient for `UnitTable`; absent rows, a dangling target, foreign identity or unresolved conversion return a typed outcome without a partial resolver. | Test |
-| FR-354-AC-6 | With QSL-stage enum declaration and member rows, an ordered and an unordered selected enum each yield exact case order, member identity and position sufficient for `EnumMemberIndex`; absent, duplicate, mismatched-case or foreign member witnesses refuse before any partial index. | Test |
+| FR-354-AC-5 | With FSL-stage unit rows for source-owned declarations, a selected root and converted unit yield exact dimension, target, scale, offset and witnessed identity sufficient for `UnitTable`; absent rows, a dangling target, foreign identity or unresolved conversion return a typed outcome without a partial resolver. | Test |
+| FR-354-AC-6 | With FSL-stage enum declaration and member rows, an ordered and an unordered selected enum each yield exact case order, member identity and position sufficient for `EnumMemberIndex`; absent, duplicate, mismatched-case or foreign member witnesses refuse before any partial index. | Test |
 | FR-354-AC-7 | Repeated bounded reads of an admitted package and its clone agree; a selective admitted monitor-entry callable read returns its entry identity, ordered parameter handles and expression body handle with charged success work, without scanning unrelated graph nodes or claiming complete type closure. The exact successful work limit admits; a limit one below reports charged work and locus without a partial view, source recheck, wire reparse or stack growth with term depth. | Test |
-| FR-354-AC-8 | Public API and dependency inspection finds the runtime projections in IR model, no QSL `Scope`, `CheckedGraph`, evaluator, supplied-state admission or mirror expression type in IR, and no claimed success for a producer decision absent from the package. | Inspection |
+| FR-354-AC-8 | Public API and dependency inspection finds the runtime projections in IR model, no FSL `Scope`, `CheckedGraph`, evaluator, supplied-state admission or mirror expression type in IR, and no claimed success for a producer decision absent from the package. | Inspection |
 | FR-354-AC-9 | Captured protocol semantic location reads preserve the exact application, occurrence, per-term ordinal, closed origin and child path; two terms sharing one application occurrence remain distinct. Foreign, absent or non-application targets, missing source occurrences, duplicate keys and malformed origin or ordinal shapes refuse before admission. An absent sidecar and an absent selected row return distinct typed outcomes; a bounded read returns the complete borrowed row at its exact work limit and reports charged exhaustion one below without a partial value or source-region inference. | Test |
-| FR-354-AC-10 | A selected `Ledger` with own `pay` and `payTaxed` operations (the QSL `child_composite` signature pattern) exposes them in declaration order with their selected declaring owner and original member identities, ordered typed parameters, optional result and producer-declared effects, including an empty effect and a nonempty effect in the test case, sufficient for QSL `ObjectTypeDeclaration::with_operations`; inherited visibility does not change ownership or add an own operation to the subtype. | Test |
-| FR-354-AC-11 | A missing, foreign, duplicate or conflicting operation/effect fact, wrong document, owner or member, a producer row with no admission-retained own operation, or unrepresentable admission-retained signature or producer effect returns a named typed outcome without any partial declaration view; an admitted signature without the required producer effect fact refuses. The operation signature comes only from the admission-retained selected `OperationDecl`; the QSpec STD-640 producer effect row contains no parameter or result signature to compare. Repeated bounded reads of the admitted package and its clone agree, and a limit one below the charged work reports exhaustion without a partial view. | Test |
+| FR-354-AC-10 | A selected `Ledger` with own `pay` and `payTaxed` operations (the FSL `child_composite` signature pattern) exposes them in declaration order with their selected declaring owner and original member identities, ordered typed parameters, optional result and producer-declared effects, including an empty effect and a nonempty effect in the test case, sufficient for FSL `ObjectTypeDeclaration::with_operations`; inherited visibility does not change ownership or add an own operation to the subtype. | Test |
+| FR-354-AC-11 | A missing, foreign, duplicate or conflicting operation/effect fact, wrong document, owner or member, a producer row with no admission-retained own operation, or unrepresentable admission-retained signature or producer effect returns a named typed outcome without any partial declaration view; an admitted signature without the required producer effect fact refuses. The operation signature comes only from the admission-retained selected `OperationDecl`; the FSpec STD-640 producer effect row contains no parameter or result signature to compare. Repeated bounded reads of the admitted package and its clone agree, and a limit one below the charged work reports exhaustion without a partial view. | Test |
 | FR-354-AC-12 | A strictly admitted ordinary source function whose body directly references a parameter or literal value returns that admitted Value node as its callable body through source_callable and the general callable table; an expression body remains valid. The selective read reports its charged work and succeeds at that exact limit, refuses one below with WorkLimit, charged work and the selected function locus, and agrees across a package clone. A body reference to a scalar type or foreign-owned value refuses with MalformedBody. An admitted monitor-plan entry still accepts only an expression body. | Test |
 | FR-354-AC-13 | A genuine inherited call whose operation member names static receiver `Sub` while its captured table names the selected `ConfigVersion` operation-family witness admits through the strict reader. Its public dispatch view preserves both distinct identities, receiver context `Sub`, the complete producer candidate order and each candidate's exact selected-operation witness. A genuine `ConfigVersion` family candidate remains admitted although it is not a subtype of the narrower static receiver `Sub`. A direct call with equal declaration identities continues to admit. | Test |
 | FR-354-AC-14 | Changing only that captured table's declaring witness to an unrelated selected declaration with a same-named operation refuses `InvalidPackage` with cause `InvalidValue` at `/checked_term_data/dispatch_tables/0/operation`; it returns no admitted package or dispatch view. Names alone cannot satisfy the family join. | Test |
@@ -254,13 +254,13 @@ typed outcomes.
 - [FR-349](./FR-349-retain-typed-checked-v2-terms.md) owns typed retained terms.
 - [FR-352](./FR-352-project-admitted-exact-value-types.md) owns Exact type and
   selected identity joins; its remaining obligations precede complete AC-1.
-- QSL [FR-390](ix://agent-ix/quire-spec-language/FR-390) owns the sealed runtime
-  adapter and evaluation. QSpec FR-322 owns any producer decision not retained
+- FSL [FR-390](ix://agent-ix/filament-spec-language/FR-390) owns the sealed runtime
+  adapter and evaluation. FSpec FR-322 owns any producer decision not retained
   by the current checked package.
-- QSL [FR-103](ix://agent-ix/quire-spec-language/FR-103) owns the declared
-  operation effects. The QSL producer must expose those selected facts with
+- FSL [FR-103](ix://agent-ix/filament-spec-language/FR-103) owns the declared
+  operation effects. The FSL producer must expose those selected facts with
   object/member provenance before IR can satisfy operation-bearing AC-1 and
   AC-10/AC-11; the current checked-package model carries no operation-member effect.
-- QSpec STD-640 owns the checked-package operation-effect carrier and its
+- FSpec STD-640 owns the checked-package operation-effect carrier and its
   producer provenance. IR-1226 depends on that carrier; no effect-bearing read
   is complete before it is produced and admitted.

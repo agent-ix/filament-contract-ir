@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Agent-IX
 
-//! Input builders shared with the original QSpec FMA conformance driver.
+//! Input builders shared with the original FSpec FMA conformance driver.
 
 use crate::support::checked_package as fixture_support;
 use serde_json::{json, Value};
@@ -30,7 +30,7 @@ pub(crate) fn literal_id(width: &str, index: usize) -> Value {
 fn type_node(width: &str) -> Value {
     let id = type_id(width);
     json!({
-        "node_id": id, "schema_version": "quire.checked-semantic-graph/v2",
+        "node_id": id, "schema_version": "filament.checked-semantic-graph/v2",
         "node_tag": "scalar_type", "semantic_form": width, "semantic_type": id,
         "dependencies": [], "occurrences": [{"role": "generated", "ordinal": 0}],
         "body": {"term": "aggregate", "members": []},
@@ -41,7 +41,7 @@ fn rounded_type_node(width: &str) -> Value {
     let scalar = type_id(width);
     json!({
         "node_id": rounded_type_id(width),
-        "schema_version": "quire.checked-semantic-graph/v2",
+        "schema_version": "filament.checked-semantic-graph/v2",
         "node_tag": "bounded_domain", "semantic_form": "float_rounding",
         "semantic_type": scalar, "dependencies": [scalar],
         "occurrences": [{"role": "generated", "ordinal": 0}],
@@ -62,7 +62,7 @@ fn literal_node(width: &str, index: usize) -> Value {
     };
     let ty = operand_type_id(width);
     json!({
-        "node_id": literal_id(width, index), "schema_version": "quire.checked-semantic-graph/v2",
+        "node_id": literal_id(width, index), "schema_version": "filament.checked-semantic-graph/v2",
         "node_tag": "value", "semantic_form": "literal", "semantic_type": ty,
         "dependencies": [], "occurrences": [{"role": "generated", "ordinal": 0}],
         "body": {"term": "literal", "type": ty, "value_kind": kind, "value": value},
@@ -72,7 +72,8 @@ fn literal_node(width: &str, index: usize) -> Value {
 #[ix_trace_rs::string_edge]
 pub(crate) fn package_for(case: &Value) -> (Value, usize) {
     let mut package = fixture_support::v2_all_families();
-    let law = json!({"authority": "agent-ix", "identity": "quire.value.ieee754-2019-default/v1"});
+    let law =
+        json!({"authority": "agent-ix", "identity": "filament.value.ieee754-2019-default/v1"});
     package["lock"]["definition_selections"] = json!([law.clone()]);
     let widths = case["argument_widths"]
         .as_array()
@@ -101,7 +102,7 @@ pub(crate) fn package_for(case: &Value) -> (Value, usize) {
     let result = operand_type_id(case["result_width"].as_str().expect("result width"));
     let application = json!({
         "node_id": fixture_support::node_id("fma/application"),
-        "schema_version": "quire.checked-semantic-graph/v2",
+        "schema_version": "filament.checked-semantic-graph/v2",
         "node_tag": "expression", "semantic_form": "call", "semantic_type": result,
         "dependencies": [], "occurrences": [{"role": "generated", "ordinal": 0}],
         "body": {

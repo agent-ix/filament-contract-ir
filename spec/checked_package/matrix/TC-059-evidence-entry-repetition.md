@@ -3,7 +3,7 @@ id: TC-059
 title: "Check first-entry retention for repeated evidence declarations"
 type: TC
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/FR-047
+  - target: ix://agent-ix/filament-contract-ir/FR-047
     type: verifies
 ---
 # TC-059: Check first-entry retention for repeated evidence declarations

@@ -3,7 +3,7 @@
 Run the corpus without linking the Rust library:
 
 ```text
-quire-contract-conformance run --corpus corpus/contract-v0.1 --schemas schemas
+filament-contract-conformance run --corpus corpus/contract-v0.1 --schemas schemas
 ```
 
 The corpus is this directory. Each `inputs/<id>.json` is one fixture, its
@@ -31,8 +31,8 @@ criterion. Large exact-edge fixtures are reproducibly authored by the Rust
 generator:
 
 ```text
-cargo build --locked --bin quire-contract-conformance
-cargo run --locked --bin quire-contract-corpus-generator -- --output /tmp/contract-v0.1
+cargo build --locked --bin filament-contract-conformance
+cargo run --locked --bin filament-contract-corpus-generator -- --output /tmp/contract-v0.1
 ```
 
 Omit `--output` to regenerate the checked-in corpus. The generator freezes

@@ -3,9 +3,9 @@ id: TC-473
 title: "Reached map rows on the shared native budget"
 type: TC
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/FR-357
+  - target: ix://agent-ix/filament-contract-ir/FR-357
     type: verifies
-  - target: ix://agent-ix/quire-contract-ir/FR-358
+  - target: ix://agent-ix/filament-contract-ir/FR-358
     type: verifies
 ---
 # TC-473: Reached map rows on the shared native budget

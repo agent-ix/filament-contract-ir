@@ -4,7 +4,7 @@
 //! The original option-vector document and package preparation adapter.
 
 use crate::support::checked_package as fixture;
-use quire_contract_model::CheckedPackageEvidence;
+use filament_contract_model::CheckedPackageEvidence;
 use serde_json::{json, Value};
 
 pub(crate) fn apply(value: &mut Value, patch: &Value) {
@@ -71,27 +71,27 @@ pub(crate) fn document(projection: &Value) -> Input {
         (
             "record_types",
             "record",
-            Some("quire.meaning.model.record-value-type/v1"),
+            Some("filament.meaning.model.record-value-type/v1"),
         ),
         (
             "tuple_types",
             "tuple",
-            Some("quire.meaning.model.tuple-value-type/v1"),
+            Some("filament.meaning.model.tuple-value-type/v1"),
         ),
         (
             "variant_types",
             "variant",
-            Some("quire.meaning.model.variant-type/v1"),
+            Some("filament.meaning.model.variant-type/v1"),
         ),
         (
             "namespaces",
             "namespace",
-            Some("quire.meaning.model.namespace/v1"),
+            Some("filament.meaning.model.namespace/v1"),
         ),
         (
             "object_types",
             "entity",
-            Some("quire.meaning.model.object-type/v1"),
+            Some("filament.meaning.model.object-type/v1"),
         ),
     ] {
         for (position, row) in projection[group]
@@ -167,11 +167,11 @@ pub(crate) fn document(projection: &Value) -> Input {
         }
     }
     let constructs = [
-        ("entity","quire.meaning.model.object-type/v1"),
-        ("record","quire.meaning.model.record-value-type/v1"),
-        ("tuple","quire.meaning.model.tuple-value-type/v1"),
-        ("variant","quire.meaning.model.variant-type/v1"),
-        ("namespace","quire.meaning.model.namespace/v1"),
+        ("entity","filament.meaning.model.object-type/v1"),
+        ("record","filament.meaning.model.record-value-type/v1"),
+        ("tuple","filament.meaning.model.tuple-value-type/v1"),
+        ("variant","filament.meaning.model.variant-type/v1"),
+        ("namespace","filament.meaning.model.namespace/v1"),
     ].into_iter().map(|(name,meaning)|json!({"kind":{"module":identity,"name":name},"construct":{"meaning":meaning}})).collect::<Vec<_>>();
     let units = projection["units"].as_array().into_iter().flatten().map(|unit| {
         let key = unit["node"].as_str().unwrap();
@@ -216,7 +216,7 @@ pub(crate) fn prepare(input: &Input) -> (Value, CheckedPackageEvidence) {
         };
         let key = model_id(identity, ty["identity"].as_str().unwrap(), form);
         package["semantic_graph"]["nodes"].as_array_mut().unwrap().push(json!({
-            "node_id":key,"schema_version":"quire.checked-semantic-graph/v2","node_tag":"model","semantic_form":form,
+            "node_id":key,"schema_version":"filament.checked-semantic-graph/v2","node_tag":"model","semantic_form":form,
             "semantic_type":key,"dependencies":[],"occurrences":[{"role":"type","ordinal":0}],
             "owner":{"kind":"model","identity":identity,"node":ty["identity"]},"body":{"term":"aggregate","members":[]}
         }));
@@ -224,7 +224,7 @@ pub(crate) fn prepare(input: &Input) -> (Value, CheckedPackageEvidence) {
     fixture::select_model(&mut package, identity);
     fixture::settle(&mut package);
     let mut evidence = fixture::evidence_with_document(&package, identity, &input.document);
-    evidence.support_feature("quire.value.complete/v1");
+    evidence.support_feature("filament.value.complete/v1");
     (package, evidence)
 }
 

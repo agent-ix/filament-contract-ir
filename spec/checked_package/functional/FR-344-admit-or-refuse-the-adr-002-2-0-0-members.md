@@ -3,17 +3,17 @@ id: FR-344
 title: "Admit or refuse the ADR-002 semantic IR 2.0.0 members this reader does not yet carry"
 type: FR
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/StR-001
+  - target: ix://agent-ix/filament-contract-ir/StR-001
     type: traces_to
-  - target: ix://agent-ix/quire-contract-ir/FR-038
+  - target: ix://agent-ix/filament-contract-ir/FR-038
     type: references
-  - target: ix://agent-ix/quire-specification/ADR-002
+  - target: ix://agent-ix/filament-specification/ADR-002
     type: references
-  - target: ix://agent-ix/quire-specification/FR-340
+  - target: ix://agent-ix/filament-specification/FR-340
     type: references
-  - target: ix://agent-ix/quire-specification/FR-154
+  - target: ix://agent-ix/filament-specification/FR-154
     type: references
-  - target: ix://agent-ix/quire-specification/FR-208
+  - target: ix://agent-ix/filament-specification/FR-208
     type: references
 ---
 
@@ -21,7 +21,7 @@ relationships:
 
 ## Description
 
-QSpec ADR-002 (accepted) sets a lifted domain package's semantic IR contract
+FSpec ADR-002 (accepted) sets a lifted domain package's semantic IR contract
 version to `2.0.0` and names seven members that member set adds beyond the
 fields, multiplicity, units, relationships, operations, opaque clauses and
 closed constraint keyword set the contract already carries: a supertype
@@ -29,15 +29,15 @@ list, an abstractness flag, a subsets edge, a redefines edge, an operation
 frame, a population node and an embedded meaning vocabulary. FCD is the
 producing side ADR-002 names to define each member;
 this repository is the producer-neutral consumer of the resulting
-`quire.checked-package/v2` wire ([FR-038](./FR-038-consume-checked-package-v2.md)'s
+`filament.checked-package/v2` wire ([FR-038](./FR-038-consume-checked-package-v2.md)'s
 Inputs).
 
 Measured against the current reader
-(`crates/quire-contract-model/src/checked_package/v2/mod.rs`,
-`CheckedNodeTag::ALL`, 13 variants) and the QSpec artifacts that own the
+(`crates/filament-contract-model/src/checked_package/v2/mod.rs`,
+`CheckedNodeTag::ALL`, 13 variants) and the FSpec artifacts that own the
 wire (FR-322, FR-340), the seven members are not uniformly missing:
 
-- **Operation frame** already has a published QSpec wire carrier —
+- **Operation frame** already has a published FSpec wire carrier —
   FR-340's `state`/`frame` node, cited by FR-322's own `semantic_graph`
   Properties — and this repository admits it through
   [FR-038-AC-12](./FR-038-consume-checked-package-v2.md) through
@@ -47,7 +47,7 @@ wire (FR-322, FR-340), the seven members are not uniformly missing:
   (`Operation.frame`, dotted access-path list → declaration `NodeRef`
   list, per FCD's own FR-141-AC-4); the wire this repository reads was not
   the correction's target and is unaffected.
-- **Embedded meaning vocabulary** is FR-208's closed Quire meaning id set,
+- **Embedded meaning vocabulary** is FR-208's closed Filament meaning id set,
   and the wire already carries it as `semantic_form` — FR-038 already
   validates a `model` node against the closed fifteen-form list
   [FR-040](./FR-040-admit-frame-entries-and-state-clauses.md) states and
@@ -58,7 +58,7 @@ wire (FR-322, FR-340), the seven members are not uniformly missing:
   FR-142) introduces no new meaning id.
 - The remaining five — **supertype list, abstractness flag, subsets edge,
   redefines edge** and **population node** — have no admission or
-  lowering disposition on the `quire.checked-package/v2` wire today. Four
+  lowering disposition on the `filament.checked-package/v2` wire today. Four
   of the five (every member but population) have no `(node_tag,
   semantic_form)` slot in `CheckedNodeKind` at all, so any
   wire content attempting to carry one refuses at the tag or form gate
@@ -87,11 +87,11 @@ comprehensive refusal, not a silent one.
 
 ## Inputs
 
-The same untrusted `quire.checked-package/v2` wire bytes and reader limits
+The same untrusted `filament.checked-package/v2` wire bytes and reader limits
 as FR-038's Inputs. For the five members this FR specifies, no additional
 input is defined: each member's FCD-side (domain-package/document) shape
-is published by FCD (cited per member below), but no QSpec-owned
-`quire.checked-package/v2` wire-carrier requirement — the FR-340
+is published by FCD (cited per member below), but no FSpec-owned
+`filament.checked-package/v2` wire-carrier requirement — the FR-340
 counterpart for these five — is published. This FR
 accordingly states no admission or lowering criterion for those five: a
 criterion whose subject shape is unpublished cannot be written without
@@ -132,7 +132,7 @@ refuses earlier still, in the strict closed-schema decode of the whole
 document, as `unknown_member` at that member's pointer; and a body that satisfies no
 branch of the closed `SemanticTerm` grammar refuses at the body. Admission
 and lowering for these five is out of scope for this FR and stays blocked
-on the one thing this repository does not own — the QSpec wire-carrier
+on the one thing this repository does not own — the FSpec wire-carrier
 requirement that fixes each member's `(node_tag, semantic_form, body)`
 encoding, as FR-340 already did for operation frame.
 
@@ -157,33 +157,33 @@ recorded in Dependencies and Status instead.
 
 | ID | Criteria | Verification |
 | --- | --- | --- |
-| FR-344-AC-1 | A `quire.checked-package/v2` document whose semantic graph carries a node attempting to represent a supertype list, an abstractness flag, a subsets edge or a redefines edge, via any `node_tag` outside `CheckedNodeTag::ALL` or any `semantic_form` outside that tag's closed form enum, refuses `unsupported_node_tag` at `semantic_graph.nodes.node_tag` or `invalid_semantic_graph` at `semantic_graph.nodes.semantic_form`, before any declaration is built and with the document never admitted with the offending node dropped. | Test (TC-222) |
+| FR-344-AC-1 | A `filament.checked-package/v2` document whose semantic graph carries a node attempting to represent a supertype list, an abstractness flag, a subsets edge or a redefines edge, via any `node_tag` outside `CheckedNodeTag::ALL` or any `semantic_form` outside that tag's closed form enum, refuses `unsupported_node_tag` at `semantic_graph.nodes.node_tag` or `invalid_semantic_graph` at `semantic_graph.nodes.semantic_form`, before any declaration is built and with the document never admitted with the offending node dropped. | Test (TC-222) |
 | FR-344-AC-2 | A `relation`/`population` node whose `body` carries content satisfying no branch of the closed `SemanticTerm` grammar refuses `invalid_semantic_graph`, never admitted as an ordinary `relation` term, at `/semantic_graph/nodes/{n}/body` (FR-038's pointer of the node body) in both of its shapes: when the body carries no `term` member at all — the case of FCD's published population shape — the refusal points at the body object that lacks it, and when it carries a `term` value that matches no arm's own closed member set, at that same body term. | Test (TC-222) |
-| FR-344-AC-3 | A `quire.checked-package/v2` document carrying a subsets or redefines edge as an extra top-level member of an already-admitted node — FCD's published `field.subsets` and `field.redefines` shapes, which a producer would attach to the `model`/`object_type` node declaring the field, since the V2 wire has no node of its own for a field, rather than introducing a new `node_tag` or `semantic_form` — refuses `unknown_member` at the pointer of the extra member, in the strict closed-schema decode of the whole wire and therefore before any node tag, form or body of any node is validated, with the document never admitted with the extra member dropped. | Test (TC-222) |
+| FR-344-AC-3 | A `filament.checked-package/v2` document carrying a subsets or redefines edge as an extra top-level member of an already-admitted node — FCD's published `field.subsets` and `field.redefines` shapes, which a producer would attach to the `model`/`object_type` node declaring the field, since the V2 wire has no node of its own for a field, rather than introducing a new `node_tag` or `semantic_form` — refuses `unknown_member` at the pointer of the extra member, in the strict closed-schema decode of the whole wire and therefore before any node tag, form or body of any node is validated, with the document never admitted with the extra member dropped. | Test (TC-222) |
 
 ## Dependencies
 
 - [FR-038](./FR-038-consume-checked-package-v2.md) owns the
-  `quire.checked-package/v2` reader and lowerer this FR extends. Operation
+  `filament.checked-package/v2` reader and lowerer this FR extends. Operation
   frame (FR-038-AC-12 through FR-038-AC-15, TC-053) and embedded meaning
   vocabulary (FR-038-AC-2, FR-038-AC-17, TC-048) are fully discharged
   there; this FR adds no criterion for either.
-- quire-specification:FR-322
+- filament-specification:FR-322
   owns the `semantic_graph` tag enumeration this FR measures the ceiling
-  of; quire-specification:FR-340
+  of; filament-specification:FR-340
   is the published precedent this FR's five planned criteria are shaped
-  after — each becomes real once QSpec publishes its own counterpart for
+  after — each becomes real once FSpec publishes its own counterpart for
   that member.
-- quire-specification:ADR-002
+- filament-specification:ADR-002
   names the seven members and the FCD ownership boundary this FR does not
   cross.
 - FCD owns the domain-package/document-schema shape of each member; this
   FR cites it per member and specifies no shape beyond what FCD published.
-- quire-specification:FR-154
-  is the nearest-miss artifact: it is the one published QSpec requirement
+- filament-specification:FR-154
+  is the nearest-miss artifact: it is the one published FSpec requirement
   that names supertypes, subsets, redefines and population together with
-  refusal codes, but it governs QSL's intake of a *domain package model* —
-  a different artifact from the `quire.checked-package/v2` wire this
+  refusal codes, but it governs FSL's intake of a *domain package model* —
+  a different artifact from the `filament.checked-package/v2` wire this
   repository reads. It is therefore not the wire-carrier requirement these
   five members wait on, and none of its refusal codes or loci transfers to
   this reader; it is cited here so a future reader does not have to
@@ -192,7 +192,7 @@ recorded in Dependencies and Status instead.
 ### Blocked admission and lowering work
 
 Admission, refusal-cause and lowering for the five members below are not
-criteria of this FR. Each waits on a QSpec `quire.checked-package/v2`
+criteria of this FR. Each waits on a FSpec `filament.checked-package/v2`
 wire-carrier requirement — the FR-340 counterpart for that member — fixing
 its `(node_tag, semantic_form, body)` encoding; none is published. The FCD-side shape each will have to carry is already
 published, and is recorded here so the future requirement has a starting
@@ -216,7 +216,7 @@ grammars; TC-222 pins them as a named regression in
 `tests/it/checked_package_v2_adr002_members.rs`.
 
 Admission and lowering for the five members remains blocked, per
-Dependencies above, on a QSpec-published `quire.checked-package/v2`
+Dependencies above, on a FSpec-published `filament.checked-package/v2`
 wire-carrier requirement per member, none of which exists. That work is not a criterion of this FR and carries no test
 case here; when the first wire carrier publishes, it is specified by a new
 FR of its own, with its own testable criteria and its own test case.

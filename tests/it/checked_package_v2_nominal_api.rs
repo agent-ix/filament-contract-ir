@@ -7,12 +7,12 @@ use crate::support::checked_package::{
     canonical, evidence_for, index_fixture_node_ids, nominal_fixture_members, nominal_package,
     v2_nominal,
 };
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     CheckedDeclaredNodeId, CheckedDimensionOperand, CheckedNodeId, CheckedNodePathSegment,
     CheckedPackageNodeRef, CheckedPackageReadLimits, CheckedPackageRefusalCode,
     CheckedPackageV2ReadResult, CheckedRational, CheckedTerm, DimensionTerm, NominalBody,
 };
+use ix_trace_rs::trace;
 use serde_json::{json, Value};
 
 fn node_id(value: &Value) -> CheckedNodeId {
@@ -167,7 +167,7 @@ fn nominal_semantic_refusals_visit_structural_ids_before_graph_positions() {
     let mut members = nominal_fixture_members();
     let unit = members
         .iter()
-        .find(|(preimage, _)| preimage["version"] == "quire.unit-node/v1")
+        .find(|(preimage, _)| preimage["version"] == "filament.unit-node/v1")
         .expect("root unit")
         .clone();
     let mut earlier = unit.0;
@@ -356,7 +356,7 @@ fn admitted_nominal_enum_details_borrow_authored_order_and_members() {
 }
 
 fn assert_malformed(
-    result: Result<NominalBody, Box<quire_contract_model::CheckedPackageRefusal>>,
+    result: Result<NominalBody, Box<filament_contract_model::CheckedPackageRefusal>>,
     at: &str,
 ) {
     let refusal = result.expect_err("malformed nominal body must refuse");

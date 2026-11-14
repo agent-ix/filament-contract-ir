@@ -1,0 +1,2315 @@
+//! Version-neutral I04 wire front end and helpers shared by the strict V2
+//! decoder and its lowering pipeline.
+//!
+//! Every function here measures bytes, nesting, duplicate members and
+//! canonical form identically regardless of which closed schema is decoded
+//! from the resulting value.
+
+use super::shared::{push_index, push_key, CheckedOperandEntry};
+use super::shared::{
+    CheckedArtifactRef, CheckedNodeId, CheckedPackageIncomplete, CheckedPackageLimit,
+    CheckedPackageReadLimits, CheckedPackageRefusal, CheckedPackageRefusalCause,
+    CheckedPackageRefusalCode, CheckedSourceRef, JsonPointer, RefusalFields,
+};
+use super::terms::{At, Cursor, TermSource};
+use super::v2::read_charge::{ReadStorage, Site};
+use super::v2::{ApplicationOperator, BodyTerm, LiteralKind, NodeIdRead};
+use filament_walk::{Children, Walk};
+use serde::de::{DeserializeSeed, MapAccess, SeqAccess, Visitor};
+use serde::Deserialize;
+use serde_json::{Map, Value};
+use std::cell::RefCell;
+use std::collections::BTreeSet;
+
+use std::fmt;
+use std::ops::ControlFlow;
+
+/// A terminal front-end or validation outcome, before it is wrapped in a
+/// version-specific read result. It carries the public refusal or incomplete
+/// record, so every stage builds the exact value the caller sees.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) enum ValidationFailure {
+    Refused(Box<CheckedPackageRefusal>),
+    Incomplete(CheckedPackageIncomplete),
+    /// The caller's budget refused a charge; the budgeted entry builds the
+    /// outcome, charging its diagnostic first.
+    Budget(super::v2::BudgetStop),
+}
+
+impl ValidationFailure {
+    /// A refusal about the value at `path`.
+    pub(super) fn refused(code: CheckedPackageRefusalCode, path: JsonPointer) -> Self {
+        Self::Refused(Box::new(CheckedPackageRefusal::new(RefusalFields {
+            code,
+            path: Some(path),
+            cause: None,
+            locus: None,
+            contract_version: None,
+            document_pointer: None,
+        })))
+    }
+
+    /// `noncanonical_wire` about the number at `document_pointer` inside a
+    /// supplied model document, located at the selection row's `path`, with
+    /// the `cause` the number earned.
+    pub(super) fn refused_number_in_document(
+        path: JsonPointer,
+        document_pointer: JsonPointer,
+        cause: CheckedPackageRefusalCause,
+    ) -> Self {
+        Self::Refused(Box::new(CheckedPackageRefusal::new(RefusalFields {
+            code: CheckedPackageRefusalCode::NoncanonicalWire,
+            path: Some(path),
+            cause: Some(cause),
+            locus: None,
+            contract_version: None,
+            document_pointer: Some(document_pointer),
+        })))
+    }
+
+    /// A refusal about the value at `path` carrying the cause this stage
+    /// determined, not located at any graph node.
+    pub(super) fn refused_because(
+        code: CheckedPackageRefusalCode,
+        path: JsonPointer,
+        cause: CheckedPackageRefusalCause,
+    ) -> Self {
+        Self::Refused(Box::new(CheckedPackageRefusal::new(RefusalFields {
+            code,
+            path: Some(path),
+            cause: Some(cause),
+            locus: None,
+            contract_version: None,
+            document_pointer: None,
+        })))
+    }
+
+    /// A repeated identity whose first and second concrete entries are both
+    /// part of the refusal, in declaration order.
+    pub(super) fn refused_because_at_two_paths(
+        code: CheckedPackageRefusalCode,
+        first: JsonPointer,
+        second: JsonPointer,
+        cause: CheckedPackageRefusalCause,
+    ) -> Self {
+        let mut failure = Self::refused_because(code, first, cause);
+        if let Self::Refused(ref mut refusal) = failure {
+            refusal.push_path(second);
+        }
+        failure
+    }
+
+    /// A refusal about the byte stream rather than any value: malformed JSON
+    /// or non-canonical bytes.
+    pub(super) fn refused_bytes(code: CheckedPackageRefusalCode) -> Self {
+        Self::Refused(Box::new(CheckedPackageRefusal::new(RefusalFields {
+            code,
+            path: None,
+            cause: None,
+            locus: None,
+            contract_version: None,
+            document_pointer: None,
+        })))
+    }
+
+    /// A refusal located at a specific graph node, carrying the cause tag
+    /// this reader determined (when the stage determines one) and the node
+    /// key of the offending entry or node.
+    pub(super) fn refused_at(
+        code: CheckedPackageRefusalCode,
+        path: JsonPointer,
+        cause: Option<CheckedPackageRefusalCause>,
+        locus: CheckedNodeId,
+    ) -> Self {
+        Self::Refused(Box::new(CheckedPackageRefusal::new(RefusalFields {
+            code,
+            path: Some(path),
+            cause,
+            locus: Some(locus),
+            contract_version: None,
+            document_pointer: None,
+        })))
+    }
+
+    /// A node-local capability refusal whose selected definition is also
+    /// identified by the package document pointer required by FR-469.
+    pub(super) fn unknown_extension_definition(pointer: JsonPointer, locus: CheckedNodeId) -> Self {
+        Self::Refused(Box::new(CheckedPackageRefusal::new(RefusalFields {
+            code: CheckedPackageRefusalCode::UnknownRequiredCapability,
+            path: Some(pointer.clone()),
+            cause: None,
+            locus: Some(locus),
+            contract_version: None,
+            document_pointer: Some(pointer),
+        })))
+    }
+
+    /// `unknown_contract_version` for the version string actually read at
+    /// the document's `contract_version` member.
+    pub(super) fn unknown_contract_version(version: &str) -> Self {
+        Self::Refused(Box::new(CheckedPackageRefusal::new(RefusalFields {
+            code: CheckedPackageRefusalCode::UnknownContractVersion,
+            path: Some(JsonPointer::root().key("contract_version")),
+            cause: None,
+            locus: None,
+            contract_version: Some(version.into()),
+            document_pointer: None,
+        })))
+    }
+
+    /// The first exhausted limit, charged at the value `path` names (absent
+    /// only for the byte limit, charged before any value exists).
+    pub(super) fn incomplete(
+        limit_kind: CheckedPackageLimit,
+        limit: u64,
+        consumed: impl TryInto<u64>,
+        path: Option<JsonPointer>,
+    ) -> Self {
+        Self::Incomplete(CheckedPackageIncomplete {
+            limit_kind,
+            limit,
+            consumed: consumed.try_into().unwrap_or(u64::MAX),
+            path,
+        })
+    }
+}
+
+/// One RFC 6901 reference token, borrowed from the reader's own traversal.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum Step<'a> {
+    /// An object member name.
+    Key(&'a str),
+    /// An array index.
+    Index(usize),
+}
+
+/// The reader's current position in the document, as a chain of borrowed
+/// steps on the walking code's own stack. Building it allocates nothing; a
+/// [`JsonPointer`] is materialized only when an outcome needs one.
+#[derive(Clone, Copy, Debug)]
+pub(super) enum Trail<'a> {
+    /// A fixed prefix of steps from the document root.
+    Base(&'a [Step<'a>]),
+    /// One step below a parent position.
+    Child(&'a Trail<'a>, Step<'a>),
+}
+
+impl<'a> Trail<'a> {
+    /// The position one object member below this one.
+    pub(super) fn key<'b>(&'b self, key: &'b str) -> Trail<'b>
+    where
+        'a: 'b,
+    {
+        Trail::Child(self, Step::Key(key))
+    }
+
+    /// The position one array element below this one.
+    pub(super) fn index<'b>(&'b self, index: usize) -> Trail<'b>
+    where
+        'a: 'b,
+    {
+        Trail::Child(self, Step::Index(index))
+    }
+
+    /// How many steps lead from the document root to this position. Walks the
+    /// chain iteratively.
+    pub(super) fn step_count(&self) -> usize {
+        let mut count = 0usize;
+        let mut current = self;
+        loop {
+            match current {
+                Trail::Base(steps) => return count.saturating_add(steps.len()),
+                Trail::Child(parent, _) => {
+                    count = count.saturating_add(1);
+                    current = parent;
+                }
+            }
+        }
+    }
+
+    /// The steps from the document root to this position, in order, in one
+    /// vector of exactly [`Self::step_count`] entries. Walks the chain
+    /// iteratively.
+    pub(super) fn steps(&self) -> Vec<Step<'a>> {
+        self.steps_with_capacity(self.step_count())
+    }
+
+    /// [`Self::steps`] in a vector of `capacity` (at least the step count)
+    /// entries: a walk's cursor reserves room for the steps below.
+    pub(super) fn steps_with_capacity(&self, capacity: usize) -> Vec<Step<'a>> {
+        let count = self.step_count();
+        let mut steps = Vec::with_capacity(capacity.max(count));
+        steps.resize(count, Step::Index(0));
+        let mut at = count;
+        let mut current = self;
+        loop {
+            match current {
+                Trail::Base(base) => {
+                    steps[..base.len()].copy_from_slice(base);
+                    return steps;
+                }
+                Trail::Child(parent, step) => {
+                    at -= 1;
+                    steps[at] = *step;
+                    current = parent;
+                }
+            }
+        }
+    }
+
+    /// The RFC 6901 pointer of this position. Walks the chain iteratively.
+    pub(super) fn pointer(&self) -> JsonPointer {
+        let mut below = Vec::new();
+        let mut current = self;
+        let base = loop {
+            match current {
+                Trail::Base(steps) => break *steps,
+                Trail::Child(parent, step) => {
+                    below.push(*step);
+                    current = parent;
+                }
+            }
+        };
+        pointer_from_steps(base.iter().chain(below.iter().rev()).copied())
+    }
+}
+
+/// Assembles an RFC 6901 pointer from reference tokens, escaping each key.
+pub(super) fn pointer_from_steps<'a>(steps: impl IntoIterator<Item = Step<'a>>) -> JsonPointer {
+    let mut text = String::new();
+    for step in steps {
+        match step {
+            Step::Key(key) => push_key(&mut text, key),
+            Step::Index(index) => push_index(&mut text, index),
+        }
+    }
+    JsonPointer::from_escaped(text)
+}
+
+/// The pointer of `/semantic_graph/nodes/{position}`.
+pub(super) fn node_pointer(position: usize) -> JsonPointer {
+    JsonPointer::root()
+        .key("semantic_graph")
+        .key("nodes")
+        .index(position)
+}
+
+/// Test control for the former full-document parser. The production V2 reader
+/// uses [`read_typed_prefix`] and borrowed closed-schema decoding.
+///
+/// Order, as FR-322 states it: byte limit, strict syntax and member
+/// validation, fixed nesting-depth refusal, canonical bytes (FR-038-AC-117).
+/// [`strict_shape`] checks syntax and duplicate members without building a
+/// value, so a syntax or duplicate-member defect anywhere in the document is
+/// refused first, however deep the document is. The document is then parsed
+/// under `serde_json`'s own recursion limit of 128. The scan refuses a
+/// document at the first container reaching that depth, with its pointer,
+/// before parsing. The closed body grammar ("The flat wire") fixes the depth
+/// of every in-grammar package at far less.
+#[cfg(test)]
+pub(super) fn read_value<T>(
+    bytes: &[u8],
+    limits: CheckedPackageReadLimits,
+    admit: impl FnOnce(Value) -> Result<T, ValidationFailure>,
+) -> Result<T, ValidationFailure> {
+    if exceeds(bytes.len(), limits.bytes) {
+        return Err(ValidationFailure::incomplete(
+            CheckedPackageLimit::Bytes,
+            limits.bytes,
+            bytes.len(),
+            None,
+        ));
+    }
+    if let Some(pointer) = strict_shape_depth(bytes)? {
+        return Err(ValidationFailure::refused(
+            CheckedPackageRefusalCode::MalformedWire,
+            pointer,
+        ));
+    }
+    let value = strict_parse(bytes)?;
+    require_canonical_bytes(bytes, &value, limits.bytes)?;
+    admit(value)
+}
+
+/// Requires `bytes` to be `quire-canonical`'s RFC 8785 bytes for `value`, the
+/// document they hold, under a byte ceiling of `ceiling`. The value is written
+/// through `quire-canonical`'s writer from an explicit heap stack, so the
+/// check does not recurse over it. A document whose bytes differ, and one
+/// `quire-canonical` refuses to encode (an integer past 2^53, a canonical text
+/// past the ceiling) refuse `noncanonical_wire`, with no pointer.
+#[cfg(test)]
+fn require_canonical_bytes(
+    bytes: &[u8],
+    value: &Value,
+    ceiling: u64,
+) -> Result<(), ValidationFailure> {
+    // An integer spelling past u64 or i64 parses as a float, whose RFC 8785
+    // text is the same digits, so the byte comparison alone admits it: refuse
+    // every whole number past 2^53 that is not an `i64` or `u64` here.
+    if holds_float_integer_past_2_pow_53(value) {
+        return Err(ValidationFailure::refused_bytes(
+            CheckedPackageRefusalCode::NoncanonicalWire,
+        ));
+    }
+    match quire_canonical::to_vec(value, quire_canonical::Limits::new(ceiling)) {
+        Ok(canonical) if canonical.as_slice() == bytes => Ok(()),
+        _ => Err(ValidationFailure::refused_bytes(
+            CheckedPackageRefusalCode::NoncanonicalWire,
+        )),
+    }
+}
+
+/// The V2 intake checks canonical source text without building a document
+/// value or asking the canonical writer to buffer the enclosing object. That
+/// writer buffers every open object's members, including the entire package;
+/// each scalar below is instead checked independently by the same encoder.
+pub(super) fn read_typed_prefix(
+    bytes: &[u8],
+    limits: CheckedPackageReadLimits,
+) -> Result<(), ValidationFailure> {
+    if exceeds(bytes.len(), limits.bytes) {
+        return Err(ValidationFailure::incomplete(
+            CheckedPackageLimit::Bytes,
+            limits.bytes,
+            bytes.len(),
+            None,
+        ));
+    }
+    // The strict scan completes before refusing depth, so a later syntax or
+    // duplicate defect still wins.
+    if let Some(pointer) = strict_shape_depth(bytes)? {
+        return Err(ValidationFailure::refused(
+            CheckedPackageRefusalCode::MalformedWire,
+            pointer,
+        ));
+    }
+    require_canonical_tokens(bytes)
+}
+
+/// The byte-limit refusal: `incomplete` for `bytes`, charged before any value
+/// exists, so it carries no pointer.
+pub(super) fn refuse_bytes_exceeded(limit: u64, length: usize) -> ValidationFailure {
+    ValidationFailure::incomplete(CheckedPackageLimit::Bytes, limit, length, None)
+}
+
+/// A sink comparing one scalar's canonical bytes with its original token.
+struct TokenSink<'a> {
+    original: &'a [u8],
+    at: usize,
+    agrees: bool,
+}
+
+impl quire_canonical::Sink for TokenSink<'_> {
+    fn write_bytes(&mut self, bytes: &[u8]) -> Result<(), quire_canonical::Error> {
+        let end = self.at.checked_add(bytes.len());
+        if end.and_then(|end| self.original.get(self.at..end)) != Some(bytes) {
+            self.agrees = false;
+        }
+        self.at = end.unwrap_or(usize::MAX);
+        Ok(())
+    }
+}
+
+fn canonical_token(value: &Value, original: &[u8]) -> bool {
+    let mut sink = TokenSink {
+        original,
+        at: 0,
+        agrees: true,
+    };
+    quire_canonical::encode(
+        &mut sink,
+        value,
+        quire_canonical::Limits::new(u64::try_from(original.len()).unwrap_or(u64::MAX)),
+    )
+    .is_ok()
+        && sink.agrees
+        && sink.at == original.len()
+}
+
+enum CanonicalOpen {
+    Array,
+    Object { previous: String },
+}
+
+/// The strict scan has already proved syntax and duplicate-member validity.
+/// This second, allocation-bounded scan checks the ordering of object members
+/// and compares each scalar spelling with `quire-canonical`'s own spelling.
+#[ix_trace_rs::string_edge]
+fn require_canonical_tokens(input: &[u8]) -> Result<(), ValidationFailure> {
+    let noncanonical =
+        || ValidationFailure::refused_bytes(CheckedPackageRefusalCode::NoncanonicalWire);
+    let mut scan = Scan {
+        input,
+        at: 0,
+        open: Vec::new(),
+    };
+    let mut open = Vec::new();
+    loop {
+        match input.get(scan.at).copied().ok_or_else(noncanonical)? {
+            b'[' => {
+                scan.at += 1;
+                if input.get(scan.at) != Some(&b']') {
+                    open.push(CanonicalOpen::Array);
+                    continue;
+                }
+                scan.at += 1;
+            }
+            b'{' => {
+                scan.at += 1;
+                if input.get(scan.at) != Some(&b'}') {
+                    let previous = canonical_member(&mut scan)?;
+                    // With arbitrary-precision serde_json, this private key
+                    // as the first member decodes as a number, not an object.
+                    if previous == SERDE_JSON_NUMBER_TOKEN {
+                        return Err(noncanonical());
+                    }
+                    open.push(CanonicalOpen::Object { previous });
+                    continue;
+                }
+                scan.at += 1;
+            }
+            _ => {
+                let start = scan.at;
+                let mut scalar = scan.token::<Value>().map_err(|_| noncanonical())?;
+                if matches!(input[start], b'-' | b'0'..=b'9') {
+                    let text =
+                        std::str::from_utf8(&input[start..scan.at]).map_err(|_| noncanonical())?;
+                    scalar =
+                        number_from_token::<serde_json::Error>(text).map_err(|_| noncanonical())?;
+                }
+                if holds_float_integer_past_2_pow_53(&scalar)
+                    || !canonical_token(&scalar, &input[start..scan.at])
+                {
+                    return Err(noncanonical());
+                }
+            }
+        }
+        loop {
+            match open.last_mut() {
+                None => {
+                    return if scan.at == input.len() {
+                        Ok(())
+                    } else {
+                        Err(noncanonical())
+                    };
+                }
+                Some(CanonicalOpen::Array) => match input.get(scan.at) {
+                    Some(b']') => {
+                        scan.at += 1;
+                        open.pop();
+                    }
+                    Some(b',') => {
+                        scan.at += 1;
+                        break;
+                    }
+                    _ => return Err(noncanonical()),
+                },
+                Some(CanonicalOpen::Object { previous }) => match input.get(scan.at) {
+                    Some(b'}') => {
+                        scan.at += 1;
+                        open.pop();
+                    }
+                    Some(b',') => {
+                        scan.at += 1;
+                        let next = canonical_member(&mut scan)?;
+                        if previous.encode_utf16().cmp(next.encode_utf16()).is_ge() {
+                            return Err(noncanonical());
+                        }
+                        *previous = next;
+                        break;
+                    }
+                    _ => return Err(noncanonical()),
+                },
+            }
+        }
+    }
+}
+
+fn canonical_member(scan: &mut Scan<'_>) -> Result<String, ValidationFailure> {
+    let noncanonical =
+        || ValidationFailure::refused_bytes(CheckedPackageRefusalCode::NoncanonicalWire);
+    let start = scan.at;
+    let member = scan.member_name().map_err(|_| noncanonical())?;
+    // `member_name` consumed the colon; the key token ends one byte before it.
+    let key_end = scan.at.checked_sub(1).ok_or_else(noncanonical)?;
+    if scan.input.get(key_end) != Some(&b':')
+        || !canonical_token(&Value::String(member.clone()), &scan.input[start..key_end])
+    {
+        return Err(noncanonical());
+    }
+    Ok(member)
+}
+
+/// Whether `value` holds, at any depth, a number that is no `i64` or `u64` but
+/// is whole with a magnitude above 2^53: an integer spelled past the 64-bit
+/// range. Walks with an explicit stack.
+fn holds_float_integer_past_2_pow_53(value: &Value) -> bool {
+    const MAXIMUM_INTEGER: f64 = 9_007_199_254_740_992.0;
+    let mut pending = vec![value];
+    while let Some(next) = pending.pop() {
+        match next {
+            Value::Number(number) => {
+                if number.as_i64().is_none()
+                    && number.as_u64().is_none()
+                    && number
+                        .as_f64()
+                        .is_some_and(|float| float.fract() == 0.0 && float.abs() > MAXIMUM_INTEGER)
+                {
+                    return true;
+                }
+            }
+            Value::Array(items) => pending.extend(items),
+            Value::Object(members) => pending.extend(members.values()),
+            Value::Null | Value::Bool(_) | Value::String(_) => {}
+        }
+    }
+    false
+}
+
+/// [`read_value`] handing back the value itself, for tests.
+#[cfg(test)]
+pub(super) fn canonical_value(
+    bytes: &[u8],
+    limits: CheckedPackageReadLimits,
+) -> Result<Value, ValidationFailure> {
+    read_value(bytes, limits, Ok)
+}
+
+/// Decode a closed package from the reader's document: the closed wire is
+/// decoded in place, charging each string and sequence it requests to the
+/// budget's read storage, with the same member-fault pointers.
+#[cfg(test)]
+pub(super) fn decode_closed_document<'d, T: Deserialize<'d>>(
+    document: &'d std::sync::Arc<quire_canonical::Document>,
+    budget: &mut crate::checked_package::v2::NativeJoinBudget,
+) -> Result<T, ValidationFailure> {
+    decode_closed_document_with_classifier(
+        document,
+        budget,
+        crate::checked_package::v2::DecodeContext::materialize_schema_failure,
+    )
+}
+
+/// Classify the decoder's borrowed first fault before its one prepaid
+/// diagnostic is materialized. The policy must use the actual caller meter.
+pub(super) fn decode_closed_document_with_classifier<'d, T: Deserialize<'d>>(
+    document: &'d std::sync::Arc<quire_canonical::Document>,
+    budget: &mut crate::checked_package::v2::NativeJoinBudget,
+    classify: impl FnOnce(
+        CheckedPackageRefusalCode,
+        &[Step<'d>],
+        &mut crate::checked_package::v2::WorkMeter,
+    ) -> ValidationFailure,
+) -> Result<T, ValidationFailure> {
+    use crate::checked_package::v2::DecodeContext;
+    let context = DecodeContext::new(document, budget);
+    let outcome = match T::deserialize(context.root()) {
+        Ok(decoded) => Ok(decoded),
+        Err(_) if context.denied() => Err(None),
+        Err(_) => Err(Some(context.schema_failure_with_classifier(classify))),
+    };
+    let at = context.denied_at();
+    *budget = context.finish();
+    match outcome {
+        Ok(decoded) => Ok(decoded),
+        Err(Some(failure)) => Err(failure),
+        Err(None) => Err(match crate::checked_package::v2::decode_denial(budget) {
+            ValidationFailure::Budget(mut stop) => {
+                stop.path = at;
+                ValidationFailure::Budget(stop)
+            }
+            other => other,
+        }),
+    }
+}
+
+/// The decoder's position below `base` (the value it decoded) as a pointer.
+/// A position the decoder reached only through buffered content (an
+/// internally tagged enum's members) is not tracked below that enum, so the
+/// pointer stops at the deepest position it names exactly.
+pub(super) fn decoder_pointer(base: JsonPointer, path: &serde_path_to_error::Path) -> JsonPointer {
+    use serde_path_to_error::Segment;
+    let mut pointer = base;
+    for segment in path.iter() {
+        pointer = match segment {
+            Segment::Seq { index } => pointer.index(*index),
+            Segment::Map { key } => pointer.key(key),
+            Segment::Enum { .. } | Segment::Unknown => break,
+        };
+    }
+    pointer
+}
+
+/// The pointer of the first position, in document order, at which `other`
+/// differs from `original`, where `original` sits at `base`: the member or
+/// element whose value differs or is missing from `other`, or the container
+/// whose shape differs. Descends iteratively, one differing child at a time.
+#[cfg(test)]
+pub(super) fn first_difference(base: JsonPointer, original: &Value, other: &Value) -> JsonPointer {
+    let mut steps = Vec::new();
+    let (mut left, mut right) = (original, other);
+    loop {
+        let next = match (left, right) {
+            (Value::Object(left_members), Value::Object(right_members)) => left_members
+                .iter()
+                .find_map(|(key, left_value)| match right_members.get(key) {
+                    Some(right_value) if right_value == left_value => None,
+                    Some(right_value) => {
+                        Some((Step::Key(key.as_str()), left_value, Some(right_value)))
+                    }
+                    None => Some((Step::Key(key.as_str()), left_value, None)),
+                }),
+            (Value::Array(left_items), Value::Array(right_items))
+                if left_items.len() == right_items.len() =>
+            {
+                left_items
+                    .iter()
+                    .zip(right_items)
+                    .enumerate()
+                    .find(|(_, (left_item, right_item))| left_item != right_item)
+                    .map(|(index, (left_item, right_item))| {
+                        (Step::Index(index), left_item, Some(right_item))
+                    })
+            }
+            _ => None,
+        };
+        match next {
+            Some((step, left_value, Some(right_value))) => {
+                steps.push(step);
+                left = left_value;
+                right = right_value;
+            }
+            Some((step, _, None)) => {
+                steps.push(step);
+                break;
+            }
+            None => break,
+        }
+    }
+    steps.into_iter().fold(base, |pointer, step| match step {
+        Step::Key(key) => pointer.key(key),
+        Step::Index(index) => pointer.index(index),
+    })
+}
+
+pub(super) fn exceeds(consumed: impl TryInto<u64>, limit: u64) -> bool {
+    consumed.try_into().map_or(true, |value| value > limit)
+}
+
+pub(super) fn count(len: usize) -> u64 {
+    u64::try_from(len).unwrap_or(u64::MAX)
+}
+
+pub(super) fn is_nonempty(value: &str) -> bool {
+    !value.is_empty()
+}
+
+/// Checks one locked source row's nonempty authority and identity.
+pub(super) fn validate_locked_source(
+    artifact: &CheckedSourceRef,
+    at: &dyn Fn() -> JsonPointer,
+) -> Result<(), ValidationFailure> {
+    let refuse = |code, member: &str| ValidationFailure::refused(code, at().key(member));
+    let members: [(&str, &str); 2] = [
+        (&artifact.authority, "authority"),
+        (&artifact.identity, "identity"),
+    ];
+    if let Some((_, member)) = members.iter().find(|(value, _)| !is_nonempty(value)) {
+        return Err(refuse(CheckedPackageRefusalCode::MalformedWire, member));
+    }
+    Ok(())
+}
+
+/// Checks one definition reference's `authority` and `identity` are nonempty,
+/// the only check a definition reference takes. `at` names the reference;
+/// each refusal points at the empty member.
+pub(super) fn validate_definition_ref(
+    definition: &CheckedArtifactRef,
+    at: &dyn Fn() -> JsonPointer,
+) -> Result<(), ValidationFailure> {
+    let members: [(&str, &str); 2] = [
+        (&definition.authority, "authority"),
+        (&definition.identity, "identity"),
+    ];
+    match members.iter().find(|(value, _)| !is_nonempty(value)) {
+        Some((_, member)) => Err(ValidationFailure::refused(
+            CheckedPackageRefusalCode::MalformedWire,
+            at().key(member),
+        )),
+        None => Ok(()),
+    }
+}
+
+/// Which member carried a reported reference target.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum ReferenceMember {
+    /// A `reference` term's `target`.
+    Target,
+    /// A `literal` term's `type`.
+    Type,
+    /// An `application` term's `result_type`.
+    ResultType,
+}
+
+/// Where a resolved reference target was found: the member that carried it,
+/// and whether it was reported by the node body's own top-level term rather
+/// than a term nested inside it (an `aggregate` member, a `binding` value, or
+/// an `application` argument). Only a target reported with `is_body_root:
+/// true` can be the node's own self-typed `literal.type`; the same member
+/// reported from a nested term names a different, non-exempt occurrence.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct ReferenceSite {
+    pub(super) member: ReferenceMember,
+    pub(super) is_body_root: bool,
+}
+
+/// Receives each reference target a walk finds, the site that carried it and
+/// the walk's position at that target.
+pub(super) type ReferenceVisitor<'v> = dyn FnMut(
+        CheckedNodeId,
+        ReferenceSite,
+        &Trail<'_>,
+        &mut dyn ReadStorage,
+        Site,
+    ) -> Result<(), ValidationFailure>
+    + 'v;
+
+/// The literal-value grammar a semantic term is validated against.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum TermGrammar {
+    /// V2 `SemanticTerm`: a numeric literal value must be an integer token
+    /// within the signed or unsigned 64-bit range. The upstream schema admits
+    /// only `integer` numbers; a fraction, exponent or out-of-range integer is
+    /// refused rather than rounded.
+    V2,
+}
+
+/// Validates one public semantic term at position `at`, returning its work
+/// and reporting every reference target to `visit` with a [`ReferenceSite`]
+/// naming the member that carried it and whether `value` itself is the node
+/// body's own top-level term (`is_body_root`), so a caller can tell a target
+/// found in the body root from the same member found in a nested term. Every
+/// term below the first — an `aggregate` member, a `binding` value, an
+/// `application` argument — is entered with `is_body_root: false`: only the
+/// term handed to this call can be the body root. The walk enters the terms in
+/// document pre-order on `filament-walk`'s heap stack, so it never recurses on the
+/// call stack. It does not decide where an application may stand: the flat-wire
+/// check (`v2::flat_wire`) refuses a nested application ahead of it. A refusal
+/// points at the term that matches no closed shape, or at the member it is
+/// about.
+pub(super) fn validate_term<'a, V: TermSource<'a>>(
+    value: V,
+    grammar: TermGrammar,
+    is_body_root: bool,
+    at: &Trail<'a>,
+    visit: &mut ReferenceVisitor<'_>,
+    ids: Ids<'_, '_>,
+) -> Result<u64, ValidationFailure> {
+    let Ids { sink, site, row } = ids;
+    let shared = RefCell::new(sink);
+    let charge = |bytes: usize| -> Result<(), ValidationFailure> {
+        let mut sink = shared.borrow_mut();
+        sink.reserve(bytes as u128, site).map_err(|_| sink.denial())
+    };
+    let cursor = Cursor::charged(at, &charge)?;
+    let root = cursor.root(value, is_body_root);
+    let mut terms = TermWalk {
+        grammar,
+        cursor,
+        visit,
+        sink: &shared,
+        site,
+        row,
+        charge: &charge,
+        work: 0,
+        _terms: std::marker::PhantomData,
+    };
+    let mut reservation = SharedReservation {
+        sink: &shared,
+        site: site.form("walk"),
+    };
+    match filament_walk::walk_reserved(&mut terms, root, &mut reservation) {
+        Ok(ControlFlow::Continue(())) => Ok(terms.work),
+        Ok(ControlFlow::Break(failure)) => Err(failure),
+        Err(_) => Err(shared.borrow().denial()),
+    }
+}
+
+/// Where the node IDs a validated term carries are read: the sink their
+/// allocations are charged to, the charge site, and the operand row of the
+/// node holding the term. A `Value` term ignores it (the uncharged bridge).
+pub(super) struct Ids<'s, 'r> {
+    pub(super) sink: &'s mut dyn ReadStorage,
+    pub(super) site: Site,
+    pub(super) row: &'r [CheckedOperandEntry],
+}
+
+impl<'s, 'r> Ids<'s, 'r> {
+    /// A second [`Ids`] over the same sink, for the next call.
+    pub(super) fn reborrow(&mut self) -> Ids<'_, 'r> {
+        Ids {
+            sink: &mut *self.sink,
+            site: self.site,
+            row: self.row,
+        }
+    }
+}
+
+/// Runs a test oracle over a `Value` with an [`Ids`] that charges nothing.
+#[cfg(test)]
+pub(super) fn with_unmetered_ids<R>(body: impl FnOnce(Ids<'_, '_>) -> R) -> R {
+    with_unmetered_ids_row(&[], body)
+}
+
+/// Runs an ID-aware validator without a read ceiling while preserving the
+/// node's document operand row.
+pub(super) fn with_unmetered_ids_row<R>(
+    row: &[CheckedOperandEntry],
+    body: impl FnOnce(Ids<'_, '_>) -> R,
+) -> R {
+    let mut budget = super::v2::NativeJoinBudget::unlimited();
+    let site = Site::new(super::v2::PackageReadStage::Graph, 0, "reference");
+    body(Ids {
+        sink: &mut budget,
+        site,
+        row,
+    })
+}
+
+/// The walker's growth requests, charged through the shared sink.
+struct SharedReservation<'r, 's> {
+    sink: &'r RefCell<&'s mut dyn ReadStorage>,
+    site: Site,
+}
+
+impl filament_walk::Reservation for SharedReservation<'_, '_> {
+    fn reserve(&mut self, bytes: usize) -> Result<(), filament_walk::Denied> {
+        super::v2::observe_allocation_class("walker_growth", || {
+            self.sink
+                .borrow_mut()
+                .reserve(bytes as u128, self.site)
+                .map_err(|_| filament_walk::Denied)
+        })
+    }
+}
+
+/// [`validate_term`]'s walk: each entered term is checked and charged on its
+/// own, and its subterms are entered after it.
+struct TermWalk<'a, 'v, 'w, 'i, 's, 'r, V> {
+    grammar: TermGrammar,
+    cursor: Cursor<'a>,
+    visit: &'v mut ReferenceVisitor<'w>,
+    sink: &'i RefCell<&'s mut dyn ReadStorage>,
+    site: Site,
+    row: &'r [CheckedOperandEntry],
+    charge: &'i dyn Fn(usize) -> Result<(), ValidationFailure>,
+    work: u64,
+    _terms: std::marker::PhantomData<V>,
+}
+
+impl<'a, V: TermSource<'a>> Walk for TermWalk<'a, '_, '_, '_, '_, '_, V> {
+    /// A term, and whether it is the body root.
+    type Node = At<'a, bool, V>;
+    type Frame = ();
+    type Stop = ValidationFailure;
+
+    fn enter(
+        &mut self,
+        node: At<'a, bool, V>,
+        children: &mut Children<'_, At<'a, bool, V>>,
+    ) -> ControlFlow<ValidationFailure> {
+        if let Err(failure) = self.cursor.enter_charged(&node, self.charge) {
+            return ControlFlow::Break(failure);
+        }
+        match validate_one(
+            node.value,
+            self.grammar,
+            node.extra,
+            &self.cursor.trail(),
+            &mut *self.visit,
+            (self.sink, self.site, self.row),
+        ) {
+            Ok(work) => self.work = self.work.saturating_add(work),
+            Err(failure) => return ControlFlow::Break(failure),
+        }
+        children.extend(
+            node.value
+                .subterms()
+                .map(|(child, key, index)| self.cursor.child(child, Some(key), index, false)),
+        );
+        ControlFlow::Continue(())
+    }
+
+    fn exit(&mut self, (): ()) -> ControlFlow<ValidationFailure> {
+        ControlFlow::Continue(())
+    }
+}
+
+/// Validates the one term `wire` at `at`, without its subterms, and returns
+/// the work it is charged: the checks of its own closed shape, in the order the
+/// term's members are read, and each reference it carries reported to `visit`.
+/// An `application` or `aggregate` whose `arguments` or `members` is no array is
+/// refused here, at that member, before any subterm is entered.
+fn validate_one<'a, V: TermSource<'a>>(
+    wire: V,
+    grammar: TermGrammar,
+    is_body_root: bool,
+    at: &Trail<'_>,
+    visit: &mut ReferenceVisitor<'_>,
+    ids: IdRead<'_, '_, '_>,
+) -> Result<u64, ValidationFailure> {
+    let invalid = |position: &Trail<'_>| {
+        term_refusal(
+            CheckedPackageRefusalCode::InvalidSemanticGraph,
+            position,
+            ids,
+        )
+    };
+    if !wire.is_object() {
+        return Err(invalid(at));
+    }
+    match wire.tag() {
+        TermTag::Known(_) | TermTag::ExtensionForm | TermTag::Unknown => {}
+        TermTag::NonString => return Err(invalid(&at.key("term"))),
+        TermTag::Missing => return Err(invalid(at)),
+    }
+    let Some(term) = wire.kind() else {
+        return Err(invalid(at));
+    };
+    let _ = grammar;
+    match term {
+        BodyTerm::Literal => {
+            if wire.exact_members(&["term", "type", "value_kind", "value"])
+                && wire
+                    .member("value_kind")
+                    .and_then(TermSource::text)
+                    .and_then(LiteralKind::from_wire)
+                    .is_some()
+                && wire
+                    .member("value")
+                    .is_some_and(TermSource::literal_value_ok)
+            {
+                visit_member(
+                    wire,
+                    "type",
+                    ReferenceMember::Type,
+                    is_body_root,
+                    at,
+                    visit,
+                    ids,
+                )
+            } else {
+                Err(invalid(at))
+            }
+        }
+        BodyTerm::Reference => {
+            if wire.exact_members(&["term", "target"]) {
+                visit_member(
+                    wire,
+                    "target",
+                    ReferenceMember::Target,
+                    is_body_root,
+                    at,
+                    visit,
+                    ids,
+                )
+            } else {
+                Err(invalid(at))
+            }
+        }
+        BodyTerm::Application => {
+            if !(wire.exact_members(&["term", "operator", "operation", "result_type", "arguments"])
+                && wire.operator().is_some())
+            {
+                return Err(invalid(at));
+            }
+            // The `operation` member's presence is checked here; its own
+            // closed shape and catalog-law validation is
+            // `v2::operations::validate_operations`'s job, run once the
+            // whole graph's identity and dependency edges are known — the
+            // same reason `validate_frame_semantics` runs separately from
+            // this per-term walk rather than inline here.
+            let result_type_work = visit_member(
+                wire,
+                "result_type",
+                ReferenceMember::ResultType,
+                is_body_root,
+                at,
+                visit,
+                ids,
+            )?;
+            let arguments = require_array(wire, "arguments", at, ids)?;
+            Ok(result_type_work.saturating_add(arguments))
+        }
+        BodyTerm::Aggregate => {
+            if wire.exact_members(&["term", "members"]) {
+                require_array(wire, "members", at, ids)
+            } else {
+                Err(invalid(at))
+            }
+        }
+        BodyTerm::Binding => {
+            if wire.exact_members(&["term", "name", "value"])
+                && wire
+                    .member("name")
+                    .and_then(TermSource::text)
+                    .is_some_and(is_nonempty)
+            {
+                Ok(1)
+            } else {
+                Err(invalid(at))
+            }
+        }
+        // Implements: FR-322. `{term, package, node}`. The target names a node of a
+        // dependency package, so it is never a reference of this graph and
+        // is not reported to `visit`. Which positions admit it is decided by
+        // the operation stage (step 7), not by this shape check.
+        BodyTerm::DependencyReference => {
+            if !wire.exact_members(&["term", "package", "node"]) {
+                return Err(invalid(at));
+            }
+            if !wire
+                .member("package")
+                .and_then(TermSource::text)
+                .is_some_and(is_nonempty)
+            {
+                return Err(invalid(&at.key("package")));
+            }
+            let node = wire.member("node").map(|node| read_node_id(node, ids));
+            match node {
+                Some(Ok(NodeIdRead::Id(_))) => {}
+                Some(Err(failure)) => return Err(failure),
+                Some(Ok(NodeIdRead::Invalid(_) | NodeIdRead::Malformed)) | None => {
+                    return Err(invalid(&at.key("node")));
+                }
+            }
+            Ok(1)
+        }
+        // A frame and an abstraction relation are node bodies of their own,
+        // never a nested term and never the body of a node of another form.
+        BodyTerm::Frame
+        | BodyTerm::AbstractionRelation
+        | BodyTerm::ImplementationGuarantee
+        | BodyTerm::ComponentComposition => Err(invalid(at)),
+    }
+}
+
+/// The shared sink, the charge site and the operand row a term's node IDs are
+/// read with.
+type IdRead<'i, 's, 'r> = (
+    &'i RefCell<&'s mut dyn ReadStorage>,
+    Site,
+    &'r [CheckedOperandEntry],
+);
+
+/// Pay for a term fault before building any of its owned diagnostic fields.
+fn term_refusal(
+    code: CheckedPackageRefusalCode,
+    at: &Trail<'_>,
+    ids: IdRead<'_, '_, '_>,
+) -> ValidationFailure {
+    let mut sink = ids.0.borrow_mut();
+    super::v2::read_charge::refuse_at(&mut **sink, ids.1, code, at)
+}
+
+/// Reads `value` as a node ID, charging the shared sink.
+fn read_node_id<'a, V: TermSource<'a>>(
+    value: V,
+    (sink, site, row): IdRead<'_, '_, '_>,
+) -> Result<NodeIdRead, ValidationFailure> {
+    let mut sink = sink.borrow_mut();
+    value
+        .node_id(&mut **sink, site, row)
+        .map_err(|_| sink.denial())
+}
+
+/// The outcome of decoding a term discriminator from untrusted wire data.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(in crate::checked_package) enum TermTag {
+    Known(BodyTerm),
+    ExtensionForm,
+    Missing,
+    NonString,
+    Unknown,
+}
+
+/// Closed field names used by the borrowed term projection.
+#[derive(Clone, Copy)]
+pub(in crate::checked_package) enum TermField {
+    Type,
+    ValueKind,
+    Value,
+    Target,
+    Operator,
+    Operation,
+    ResultType,
+    Arguments,
+    Members,
+    Name,
+    Package,
+    Node,
+    Modifies,
+    Creates,
+    Deletes,
+    DeletesScoped,
+    Objects,
+    Populations,
+    Frames,
+    Definition,
+    NodeKind,
+    Clauses,
+    Clause,
+    Relation,
+    Initial,
+    Progress,
+    Environment,
+    Rule,
+    Components,
+    Guarantees,
+    Relies,
+    LivenessDependencies,
+    Supplies,
+}
+
+impl TermField {
+    pub(in crate::checked_package) const fn as_wire(self) -> &'static str {
+        match self {
+            Self::Type => "type",
+            Self::ValueKind => "value_kind",
+            Self::Value => "value",
+            Self::Target => "target",
+            Self::Operator => "operator",
+            Self::Operation => "operation",
+            Self::ResultType => "result_type",
+            Self::Arguments => "arguments",
+            Self::Members => "members",
+            Self::Name => "name",
+            Self::Package => "package",
+            Self::Node => "node",
+            Self::Modifies => "modifies",
+            Self::Creates => "creates",
+            Self::Deletes => "deletes",
+            Self::DeletesScoped => "deletes_scoped",
+            Self::Objects => "objects",
+            Self::Populations => "populations",
+            Self::Frames => "frames",
+            Self::Definition => "definition",
+            Self::NodeKind => "node_kind",
+            Self::Clauses => "clauses",
+            Self::Clause => "clause",
+            Self::Relation => "relation",
+            Self::Initial => "initial",
+            Self::Progress => "progress",
+            Self::Environment => "environment",
+            Self::Rule => "rule",
+            Self::Components => "components",
+            Self::Guarantees => "guarantees",
+            Self::Relies => "relies",
+            Self::LivenessDependencies => "liveness_dependencies",
+            Self::Supplies => "supplies",
+        }
+    }
+}
+
+/// A borrowed, constant-work projection of one raw term. This constructor is
+/// the sole raw discriminator lookup; every validation walk uses its typed
+/// tag and its fields, including when a malformed body needs an exact path.
+#[derive(Clone, Copy)]
+pub(in crate::checked_package) struct WireTerm<'a> {
+    object: Option<&'a Map<String, Value>>,
+    tag: TermTag,
+}
+
+impl<'a> WireTerm<'a> {
+    #[ix_trace_rs::string_edge]
+    pub(in crate::checked_package) fn decode(value: &'a Value) -> Self {
+        let object = value.as_object();
+        let tag = match object.and_then(|object| object.get("term")) {
+            None => TermTag::Missing,
+            Some(Value::String(tag)) if tag == "extension_form" => TermTag::ExtensionForm,
+            Some(Value::String(tag)) => {
+                BodyTerm::from_wire(tag).map_or(TermTag::Unknown, TermTag::Known)
+            }
+            Some(_) => TermTag::NonString,
+        };
+        Self { object, tag }
+    }
+
+    #[cfg(test)]
+    pub(in crate::checked_package) fn object(self) -> Option<&'a Map<String, Value>> {
+        self.object
+    }
+
+    pub(in crate::checked_package) fn tag(self) -> TermTag {
+        self.tag
+    }
+
+    pub(in crate::checked_package) fn kind(self) -> Option<BodyTerm> {
+        match self.tag {
+            TermTag::Known(term) => Some(term),
+            TermTag::ExtensionForm | TermTag::Missing | TermTag::NonString | TermTag::Unknown => {
+                None
+            }
+        }
+    }
+
+    pub(in crate::checked_package) fn field(self, field: TermField) -> Option<&'a Value> {
+        self.object?.get(field.as_wire())
+    }
+
+    pub(in crate::checked_package) fn array(self, field: TermField) -> Option<&'a [Value]> {
+        self.field(field)?.as_array().map(Vec::as_slice)
+    }
+
+    #[cfg(test)]
+    pub(in crate::checked_package) fn literal_kind(self) -> Option<LiteralKind> {
+        LiteralKind::from_wire(self.field(TermField::ValueKind)?.as_str()?)
+    }
+
+    pub(in crate::checked_package) fn operator(self) -> Option<ApplicationOperator> {
+        ApplicationOperator::from_wire(self.field(TermField::Operator)?.as_str()?)
+    }
+}
+
+/// Reports the node reference held in `term[key]` (the term at `at`).
+fn visit_member<'a, V: TermSource<'a>>(
+    term: V,
+    key: &str,
+    member: ReferenceMember,
+    is_body_root: bool,
+    at: &Trail<'_>,
+    visit: &mut ReferenceVisitor<'_>,
+    ids: IdRead<'_, '_, '_>,
+) -> Result<u64, ValidationFailure> {
+    let Some(value) = term.member(key) else {
+        return Err(term_refusal(
+            CheckedPackageRefusalCode::InvalidSemanticGraph,
+            at,
+            ids,
+        ));
+    };
+    visit_reference_with(value, member, is_body_root, &at.key(key), visit, ids)
+}
+
+/// Parses one node reference at position `at`, reports its target and a
+/// [`ReferenceSite`] naming `member` and `is_body_root` to `visit`, and
+/// charges one unit of work. Shared by `reference.target`, `literal.type`,
+/// `application.result_type`, and the V2 `frame` body's reference arrays.
+// Intake check of a structural node reference.
+#[ix_trace_rs::string_edge]
+fn visit_reference_with<'a, V: TermSource<'a>>(
+    value: V,
+    member: ReferenceMember,
+    is_body_root: bool,
+    at: &Trail<'_>,
+    visit: &mut ReferenceVisitor<'_>,
+    ids: IdRead<'_, '_, '_>,
+) -> Result<u64, ValidationFailure> {
+    match read_node_id(value, ids)? {
+        NodeIdRead::Malformed => Err(term_refusal(
+            CheckedPackageRefusalCode::InvalidSemanticGraph,
+            at,
+            ids,
+        )),
+        NodeIdRead::Invalid(_) => Err(term_refusal(
+            CheckedPackageRefusalCode::MalformedWire,
+            at,
+            ids,
+        )),
+        NodeIdRead::Id(target) => {
+            let mut sink = ids.0.borrow_mut();
+            visit(
+                target,
+                ReferenceSite {
+                    member,
+                    is_body_root,
+                },
+                at,
+                &mut **sink,
+                ids.1,
+            )?;
+            Ok(1)
+        }
+    }
+}
+
+pub(super) fn exact_members(object: &Map<String, Value>, expected: &[&str]) -> bool {
+    object.len() == expected.len() && expected.iter().all(|member| object.contains_key(*member))
+}
+
+/// Requires `object[key]`, the `aggregate.members` or `application.arguments`
+/// array of the term at `at`, to be an array, else refuses at that member, and
+/// charges the one unit of work the array itself costs. Its elements are
+/// entered, and charged, by the walk.
+fn require_array<'a, V: TermSource<'a>>(
+    term: V,
+    key: &str,
+    at: &Trail<'_>,
+    ids: IdRead<'_, '_, '_>,
+) -> Result<u64, ValidationFailure> {
+    if term
+        .member(key)
+        .is_some_and(|member| member.items().is_some())
+    {
+        Ok(1)
+    } else {
+        Err(term_refusal(
+            CheckedPackageRefusalCode::InvalidSemanticGraph,
+            &at.key(key),
+            ids,
+        ))
+    }
+}
+
+/// Parses strict JSON with serde_json's own nesting cap: a repeated object
+/// member refuses as `duplicate_member` at that member, any other syntax
+/// error as `malformed_wire` with no pointer. For input whose depth no caller
+/// limit has charged. Test-only: the reader parses a package through
+/// `strict_parse`, and a selected model document is read once by
+/// `quire-canonical`.
+#[cfg(test)]
+pub(super) fn strict_json_value(input: &[u8]) -> Result<Value, ValidationFailure> {
+    let duplicate = RefCell::new(None);
+    let mut deserializer = serde_json::Deserializer::from_slice(input);
+    let parsed = StrictSeed::root(&duplicate).deserialize(&mut deserializer);
+    finish(parsed, duplicate)
+}
+
+/// Parses `input` into a value after [`strict_shape_depth`] has checked syntax,
+/// duplicate members and the fixed 128-container nesting limit. A nested
+/// document is refused at its first container reaching the limit, with its
+/// pointer (FR-038-AC-117).
+pub(super) fn strict_parse(input: &[u8]) -> Result<Value, ValidationFailure> {
+    let duplicate = RefCell::new(None);
+    let mut deserializer = serde_json::Deserializer::from_slice(input);
+    let parsed = StrictSeed::root(&duplicate).deserialize(&mut deserializer);
+    finish(parsed, duplicate)
+}
+
+/// Maps a finished parse to the reader's outcome. Trailing bytes are left for
+/// the canonical-bytes comparison to refuse.
+fn finish<T>(
+    parsed: Result<T, serde_json::Error>,
+    duplicate: RefCell<Option<JsonPointer>>,
+) -> Result<T, ValidationFailure> {
+    match (parsed, duplicate.into_inner()) {
+        (Ok(value), _) => Ok(value),
+        (Err(_), Some(pointer)) => Err(ValidationFailure::refused(
+            CheckedPackageRefusalCode::DuplicateMember,
+            pointer,
+        )),
+        (Err(_), None) => Err(ValidationFailure::refused_bytes(
+            CheckedPackageRefusalCode::MalformedWire,
+        )),
+    }
+}
+
+// Steps the first pass has taken on this thread, for TC-048. The scan counts one
+// step per outer-loop turn, per closing-loop turn, per whitespace byte skipped,
+// per byte a token consumes and per step of a pointer it builds. This is not
+// the FR-038 work limit and bills nothing to it. It counts only the steps that
+// call `count_scan_step`: work the scan does elsewhere is invisible to it, so a
+// test on the count guards the counted steps and does not prove the pass linear.
+// Test builds only; production counts nothing.
+#[cfg(test)]
+thread_local! {
+    static SCAN_STEPS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
+/// Adds `steps` to this thread's count of first-pass steps.
+#[cfg(test)]
+fn count_scan_step(steps: usize) {
+    let steps = u64::try_from(steps).unwrap_or(u64::MAX);
+    SCAN_STEPS.with(|count| count.set(count.get().saturating_add(steps)));
+}
+
+/// Production counts nothing.
+#[cfg(not(test))]
+#[inline(always)]
+fn count_scan_step(_steps: usize) {}
+
+/// One container the scan is inside.
+enum Open {
+    Array {
+        /// The element being read.
+        index: usize,
+    },
+    Object {
+        /// The member being read.
+        key: String,
+        /// Every member name met so far, `key` included.
+        names: BTreeSet<String>,
+        /// Whether `key` repeats an earlier member.
+        repeated: bool,
+    },
+}
+
+impl Open {
+    fn step(&self) -> Step<'_> {
+        match self {
+            Self::Array { index } => Step::Index(*index),
+            Self::Object { key, .. } => Step::Key(key),
+        }
+    }
+}
+
+/// The first pass: the strict grammar [`StrictSeed`] parses — syntax, finite
+/// numbers, duplicate members — read iteratively with an explicit stack of
+/// open containers, so cost is linear in the input and independent of nesting.
+/// Scalars and member names are read by serde_json itself, so their grammar is
+/// exactly the parser's. No value is built. Trailing bytes are left for the
+/// canonical-bytes comparison to refuse.
+#[cfg(test)]
+fn strict_shape(input: &[u8]) -> Result<(), ValidationFailure> {
+    strict_shape_depth(input).map(|_| ())
+}
+
+pub(super) const JSON_NESTING_LIMIT: usize = 128;
+
+/// The strict shape and first container reaching the nesting cap, counted
+/// without native recursion.
+#[ix_trace_rs::string_edge]
+pub(super) fn strict_shape_depth(input: &[u8]) -> Result<Option<JsonPointer>, ValidationFailure> {
+    let malformed = || ValidationFailure::refused_bytes(CheckedPackageRefusalCode::MalformedWire);
+    let mut scan = Scan {
+        input,
+        at: 0,
+        open: Vec::new(),
+    };
+    let mut limit_pointer = None;
+    loop {
+        count_scan_step(1);
+        let opens = match scan.peek().ok_or_else(malformed)? {
+            b'[' => {
+                let depth = scan.open.len().saturating_add(1);
+                if depth == JSON_NESTING_LIMIT && limit_pointer.is_none() {
+                    limit_pointer = Some(scan.pointer());
+                }
+                scan.at += 1;
+                if scan.peek() == Some(b']') {
+                    scan.at += 1;
+                    false
+                } else {
+                    scan.open.push(Open::Array { index: 0 });
+                    true
+                }
+            }
+            b'{' => {
+                let depth = scan.open.len().saturating_add(1);
+                if depth == JSON_NESTING_LIMIT && limit_pointer.is_none() {
+                    limit_pointer = Some(scan.pointer());
+                }
+                scan.at += 1;
+                if scan.peek() == Some(b'}') {
+                    scan.at += 1;
+                    false
+                } else {
+                    let key = scan.member_name()?;
+                    if key == SERDE_JSON_NUMBER_TOKEN {
+                        scan.number_token()?;
+                        false
+                    } else {
+                        scan.open.push(Open::Object {
+                            names: BTreeSet::from([key.clone()]),
+                            key,
+                            repeated: false,
+                        });
+                        true
+                    }
+                }
+            }
+            _ => {
+                scan.scalar()?;
+                false
+            }
+        };
+        if opens {
+            continue;
+        }
+        // The value just read is complete: close every container it ends,
+        // then read the next sibling, if any.
+        loop {
+            count_scan_step(1);
+            let Some(top) = scan.open.last() else {
+                return Ok(limit_pointer);
+            };
+            let in_array = matches!(top, Open::Array { .. });
+            if matches!(top, Open::Object { repeated: true, .. }) {
+                return Err(ValidationFailure::refused(
+                    CheckedPackageRefusalCode::DuplicateMember,
+                    scan.pointer(),
+                ));
+            }
+            let byte = scan.peek().ok_or_else(malformed)?;
+            scan.at += 1;
+            match (in_array, byte) {
+                (true, b']') | (false, b'}') => {
+                    scan.open.pop();
+                    continue;
+                }
+                (_, b',') => {}
+                _ => return Err(malformed()),
+            }
+            if in_array {
+                if let Some(Open::Array { index }) = scan.open.last_mut() {
+                    *index += 1;
+                }
+            } else {
+                let next = scan.member_name()?;
+                if let Some(Open::Object {
+                    key,
+                    names,
+                    repeated,
+                }) = scan.open.last_mut()
+                {
+                    *repeated = !names.insert(next.clone());
+                    *key = next;
+                }
+            }
+            break;
+        }
+    }
+}
+
+/// The scan's position in the input and in the document.
+struct Scan<'i> {
+    input: &'i [u8],
+    at: usize,
+    open: Vec<Open>,
+}
+
+impl Scan<'_> {
+    /// The next byte that is not JSON whitespace, left unconsumed.
+    fn peek(&mut self) -> Option<u8> {
+        while let Some(&byte) = self.input.get(self.at) {
+            if !matches!(byte, b' ' | b'\t' | b'\n' | b'\r') {
+                return Some(byte);
+            }
+            count_scan_step(1);
+            self.at += 1;
+        }
+        None
+    }
+
+    /// The pointer of the value being read.
+    fn pointer(&self) -> JsonPointer {
+        count_scan_step(self.open.len());
+        pointer_from_steps(self.open.iter().map(Open::step))
+    }
+
+    /// Reads one JSON token with serde_json, as `T`, and advances past it.
+    fn token<T: serde::de::DeserializeOwned>(&mut self) -> Result<T, ValidationFailure> {
+        let mut tokens =
+            serde_json::Deserializer::from_slice(&self.input[self.at..]).into_iter::<T>();
+        let token = tokens.next().and_then(Result::ok).ok_or_else(|| {
+            ValidationFailure::refused_bytes(CheckedPackageRefusalCode::MalformedWire)
+        })?;
+        count_scan_step(tokens.byte_offset());
+        self.at += tokens.byte_offset();
+        Ok(token)
+    }
+
+    /// Reads a scalar value as the strict grammar admits it.
+    fn scalar(&mut self) -> Result<(), ValidationFailure> {
+        self.token::<StrictScalar>().map(|_| ())
+    }
+
+    /// Reads an object member name and the `:` after it.
+    fn member_name(&mut self) -> Result<String, ValidationFailure> {
+        if self.peek() != Some(b'"') {
+            return Err(ValidationFailure::refused_bytes(
+                CheckedPackageRefusalCode::MalformedWire,
+            ));
+        }
+        let name = self.token::<String>()?;
+        if self.peek() != Some(b':') {
+            return Err(ValidationFailure::refused_bytes(
+                CheckedPackageRefusalCode::MalformedWire,
+            ));
+        }
+        self.at += 1;
+        Ok(name)
+    }
+
+    /// Reads the rest of an object whose first member is the number token:
+    /// its string value, which must spell a finite number, and the closing
+    /// brace. The object reads as that number.
+    fn number_token(&mut self) -> Result<(), ValidationFailure> {
+        let malformed =
+            || ValidationFailure::refused_bytes(CheckedPackageRefusalCode::MalformedWire);
+        if self.peek() != Some(b'"') {
+            return Err(malformed());
+        }
+        let digits = self.token::<String>()?;
+        number_from_token::<serde_json::Error>(&digits).map_err(|_| malformed())?;
+        if self.peek() != Some(b'}') {
+            return Err(malformed());
+        }
+        self.at += 1;
+        Ok(())
+    }
+}
+
+/// A scalar read under the strict grammar, for [`Scan::scalar`].
+struct StrictScalar;
+
+impl<'de> Deserialize<'de> for StrictScalar {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let duplicate = RefCell::new(None);
+        StrictSeed::root(&duplicate)
+            .deserialize(deserializer)
+            .map(|_| StrictScalar)
+    }
+}
+
+/// Parses one JSON value at position `at`, recording the pointer of the first
+/// repeated member it meets in `duplicate`.
+#[derive(Clone, Copy)]
+struct StrictSeed<'s> {
+    at: &'s Trail<'s>,
+    duplicate: &'s RefCell<Option<JsonPointer>>,
+}
+
+impl<'s> StrictSeed<'s> {
+    fn root(duplicate: &'s RefCell<Option<JsonPointer>>) -> Self {
+        Self {
+            at: &Trail::Base(&[]),
+            duplicate,
+        }
+    }
+}
+
+/// The single member name serde_json uses to hand a number's source text to a
+/// visitor when its `arbitrary_precision` feature is on. Feature unification
+/// can switch that on for this crate without this crate asking for it.
+const SERDE_JSON_NUMBER_TOKEN: &str = "$serde_json::private::Number";
+
+/// Converts a number's source text exactly as the default serde_json build
+/// would have visited it: `u64`, then `i64`, then a finite `f64`.
+fn number_from_token<E: serde::de::Error>(text: &str) -> Result<Value, E> {
+    if let Ok(unsigned) = text.parse::<u64>() {
+        return Ok(Value::Number(unsigned.into()));
+    }
+    if let Ok(signed) = text.parse::<i64>() {
+        return Ok(Value::Number(signed.into()));
+    }
+    text.parse::<f64>()
+        .ok()
+        .and_then(serde_json::Number::from_f64)
+        .map(Value::Number)
+        .ok_or_else(|| E::custom("non-finite JSON number"))
+}
+
+impl<'de> DeserializeSeed<'de> for StrictSeed<'_> {
+    type Value = Value;
+
+    fn deserialize<D>(self, deserializer: D) -> Result<Value, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        deserializer.deserialize_any(self)
+    }
+}
+
+impl<'de> Visitor<'de> for StrictSeed<'_> {
+    type Value = Value;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("strict JSON value")
+    }
+    fn visit_bool<E>(self, value: bool) -> Result<Value, E> {
+        Ok(Value::Bool(value))
+    }
+    fn visit_i64<E>(self, value: i64) -> Result<Value, E> {
+        Ok(Value::Number(value.into()))
+    }
+    fn visit_u64<E>(self, value: u64) -> Result<Value, E> {
+        Ok(Value::Number(value.into()))
+    }
+    fn visit_f64<E>(self, value: f64) -> Result<Value, E>
+    where
+        E: serde::de::Error,
+    {
+        serde_json::Number::from_f64(value)
+            .map(Value::Number)
+            .ok_or_else(|| E::custom("non-finite JSON number"))
+    }
+    fn visit_str<E>(self, value: &str) -> Result<Value, E> {
+        Ok(Value::String(value.to_owned()))
+    }
+    fn visit_string<E>(self, value: String) -> Result<Value, E> {
+        Ok(Value::String(value))
+    }
+    fn visit_none<E>(self) -> Result<Value, E> {
+        Ok(Value::Null)
+    }
+    fn visit_unit<E>(self) -> Result<Value, E> {
+        Ok(Value::Null)
+    }
+    fn visit_seq<A>(self, mut access: A) -> Result<Value, A::Error>
+    where
+        A: SeqAccess<'de>,
+    {
+        let mut values = Vec::new();
+        loop {
+            let at = self.at.index(values.len());
+            let seed = StrictSeed {
+                at: &at,
+                duplicate: self.duplicate,
+            };
+            match access.next_element_seed(seed)? {
+                Some(value) => values.push(value),
+                None => return Ok(Value::Array(values)),
+            }
+        }
+    }
+    // Canonical-JSON front end: reads serde_json's number token.
+    #[ix_trace_rs::string_edge]
+    fn visit_map<A>(self, mut access: A) -> Result<Value, A::Error>
+    where
+        A: MapAccess<'de>,
+    {
+        let mut map = Map::new();
+        let mut first = true;
+        while let Some(key) = access.next_key::<String>()? {
+            if first && key == SERDE_JSON_NUMBER_TOKEN {
+                let digits = access.next_value::<String>()?;
+                return number_from_token(&digits);
+            }
+            first = false;
+            let at = self.at.key(&key);
+            let value = access.next_value_seed(StrictSeed {
+                at: &at,
+                duplicate: self.duplicate,
+            })?;
+            if map.contains_key(&key) {
+                self.duplicate.replace(Some(at.pointer()));
+                return Err(serde::de::Error::custom("duplicate JSON member"));
+            }
+            map.insert(key, value);
+        }
+        Ok(Value::Object(map))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        canonical_value, first_difference, validate_term, with_unmetered_ids, Step, TermGrammar,
+        TermSource, Trail, ValidationFailure,
+    };
+    use crate::checked_package::shared::{
+        CheckedPackageReadLimits, CheckedPackageRefusalCode, JsonPointer,
+    };
+    use ix_trace_rs::trace;
+    use serde_json::{json, Number, Value};
+
+    /// A trail materializes as an RFC 6901 pointer: `~` and `/` escaped in
+    /// every member name, array elements by index, the empty pointer for the
+    /// document itself; and the text round-trips through `JsonPointer::parse`.
+    #[trace("TC-048", "FR-038-AC-24")]
+    #[test]
+    fn tc_048_trails_materialize_as_escaped_rfc_6901_pointers() {
+        let base = [Step::Key("semantic_graph"), Step::Key("nodes")];
+        let root = Trail::Base(&base);
+        let node = root.index(7);
+        let member = node.key("a/b~c");
+        let deeper = member.index(0);
+        assert_eq!(
+            deeper.pointer().as_str(),
+            "/semantic_graph/nodes/7/a~1b~0c/0"
+        );
+        assert_eq!(Trail::Base(&[]).pointer(), JsonPointer::root());
+        assert_eq!(JsonPointer::root().as_str(), "");
+        assert_eq!(
+            JsonPointer::root().key("~1").index(2).as_str(),
+            "/~01/2",
+            "an escape sequence spelled in a key is itself escaped"
+        );
+        assert_eq!(
+            JsonPointer::parse("/semantic_graph/nodes/7/a~1b~0c/0"),
+            Some(deeper.pointer())
+        );
+        for invalid in ["semantic_graph", "/a~", "/a~2", "/~x"] {
+            assert_eq!(JsonPointer::parse(invalid), None, "{invalid}");
+        }
+    }
+
+    /// A document below the fixed nesting cap is read whatever its shape
+    /// (FR-038-AC-117).
+    #[trace("TC-048")]
+    #[test]
+    fn tc_048_a_document_below_the_nesting_cap_is_read() {
+        let value = json!({"a": [1, {"b": 2}], "c": {"d": {"e": 3}}});
+        let bytes = serde_json::to_vec(&value).expect("bytes");
+        assert_eq!(
+            canonical_value(&bytes, CheckedPackageReadLimits::bounded()),
+            Ok(value)
+        );
+    }
+
+    /// A lossy decode is located at the first member it changed or dropped.
+    #[trace("TC-048", "FR-038-AC-24")]
+    #[test]
+    fn tc_048_first_difference_names_the_changed_member() {
+        let original = json!({"a": {"b": [1, {"c": null}], "d": 1}});
+        let decoded = json!({"a": {"b": [1, {}], "d": 1}});
+        assert_eq!(
+            first_difference(JsonPointer::root(), &original, &decoded).as_str(),
+            "/a/b/1/c"
+        );
+        let shorter = json!({"a": {"b": [1], "d": 1}});
+        assert_eq!(
+            first_difference(JsonPointer::root().key("x"), &original, &shorter).as_str(),
+            "/x/a/b",
+            "an array whose length changed is itself the value at fault"
+        );
+    }
+
+    #[trace("TC-048", "FR-038-AC-2", "FR-038-AC-79")]
+    #[test]
+    fn tc_048_number_tokens_decode_identically_with_or_without_arbitrary_precision() {
+        let limits = CheckedPackageReadLimits::bounded();
+        for (bytes, integer, canonical) in [
+            (&br#"{"v":1.5}"#[..], false, true),
+            // Not canonical RFC 8785 bytes: `2.0` is spelled `2`, and an
+            // integer past 2^53 has no encoding (FR-038-AC-79).
+            (br#"{"v":2.0}"#, false, false),
+            (br#"{"v":-7}"#, true, true),
+            (br#"{"v":18446744073709551615}"#, true, false),
+        ] {
+            let text = String::from_utf8_lossy(bytes);
+            let expected = if canonical {
+                None
+            } else {
+                Some(ValidationFailure::refused_bytes(
+                    CheckedPackageRefusalCode::NoncanonicalWire,
+                ))
+            };
+            assert_eq!(canonical_value(bytes, limits).err(), expected, "{text}");
+            let value: Value = serde_json::from_slice(bytes).expect("number document parses");
+            let number = &value["v"];
+            assert!(number.is_number(), "{number}");
+            assert_eq!(
+                TermSource::literal_value_ok(number),
+                integer,
+                "{}",
+                String::from_utf8_lossy(bytes)
+            );
+        }
+        // The feature's private member name spelled as data decodes as the
+        // number it names in every build, so it never re-serializes to the
+        // bytes it arrived as and is refused identically.
+        assert_eq!(
+            canonical_value(br#"{"$serde_json::private::Number":"1"}"#, limits),
+            Err(ValidationFailure::refused_bytes(
+                CheckedPackageRefusalCode::NoncanonicalWire
+            ))
+        );
+    }
+
+    /// The term walk's native stack use does not follow the depth of the term
+    /// and its work is each term's own charge: a term of 200000 nested
+    /// aggregates over a literal is validated whole on a thread whose stack is
+    /// 256 KiB, charged one unit per aggregate and one for the literal, and
+    /// reports the one reference the literal carries.
+    #[trace("TC-048", "FR-038-AC-117")]
+    #[test]
+    fn tc_048_the_term_walk_validates_a_deep_term_on_a_small_stack() {
+        const LEVELS: usize = 200_000;
+        let outcome = std::thread::Builder::new()
+            .stack_size(256 * 1024)
+            .spawn(|| {
+                let mut term = json!({
+                    "term": "literal",
+                    "type": {"package":"test", "path":["integer"], "ordinal":0},
+                    "value_kind": "integer",
+                    "value": 1,
+                });
+                // Built by moving each level into the next: `json!` would copy
+                // the term below it, recursively.
+                for _ in 0..LEVELS {
+                    let mut aggregate = serde_json::Map::new();
+                    aggregate.insert("term".to_owned(), Value::String("aggregate".to_owned()));
+                    aggregate.insert("members".to_owned(), Value::Array(vec![term]));
+                    term = Value::Object(aggregate);
+                }
+                let mut reported = Vec::new();
+                let work = with_unmetered_ids(|ids| {
+                    validate_term(
+                        &term,
+                        TermGrammar::V2,
+                        true,
+                        &Trail::Base(&[]),
+                        &mut |target, site, _, _, _| {
+                            reported.push((target.path.len(), site.is_body_root));
+                            Ok(())
+                        },
+                        ids,
+                    )
+                });
+                quire_canonical::drop_value(term);
+                (work, reported)
+            })
+            .expect("spawns")
+            .join()
+            .expect("the walk ran to completion");
+        assert_eq!(
+            outcome,
+            (Ok(200_001), vec![(1, false)]),
+            "the literal is nested, so it is no body root"
+        );
+    }
+
+    #[trace("TC-048")]
+    #[test]
+    fn tc_048_v2_literal_numbers_are_integers() {
+        let fractional = Value::Number(Number::from_f64(1.5).expect("finite"));
+        let whole_float = Value::Number(Number::from_f64(2.0).expect("finite"));
+        for (value, is_literal) in [
+            (json!(7), true),
+            (json!(-7), true),
+            (json!(u64::MAX), true),
+            (json!(true), true),
+            (json!("7"), true),
+            (Value::Null, true),
+            (fractional, false),
+            (whole_float, false),
+            (json!([]), false),
+            (json!({}), false),
+        ] {
+            assert_eq!(TermSource::literal_value_ok(&value), is_literal, "{value}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod depth_tests {
+    use super::{read_value, strict_json_value, strict_shape, ValidationFailure};
+    use crate::checked_package::shared::{
+        CheckedPackageReadLimits, CheckedPackageRefusalCode, JsonPointer,
+    };
+    use ix_trace_rs::trace;
+
+    fn nested(depth: usize) -> String {
+        format!("{}{}", "[".repeat(depth), "]".repeat(depth))
+    }
+
+    fn limits() -> CheckedPackageReadLimits {
+        CheckedPackageReadLimits {
+            bytes: 1 << 24,
+            ..CheckedPackageReadLimits::bounded()
+        }
+    }
+
+    fn malformed() -> ValidationFailure {
+        ValidationFailure::refused_bytes(CheckedPackageRefusalCode::MalformedWire)
+    }
+
+    /// The iterative first pass accepts and refuses exactly what the strict
+    /// parser does, with the same refusal.
+    #[trace("TC-048")]
+    #[test]
+    fn tc_048_strict_shape_agrees_with_the_strict_parser() {
+        for text in [
+            "",
+            " ",
+            "null",
+            "true",
+            "tru",
+            "nul1",
+            "01",
+            "-",
+            "1.",
+            "1e",
+            "1e999",
+            "-1.5E+3",
+            "18446744073709551616",
+            "\"a\\u0041\\n\"",
+            "\"a\\ud800\"",
+            "\"a\\x\"",
+            "\"a\nb\"",
+            "\"unterminated",
+            "[",
+            "]",
+            "[1,]",
+            "[,1]",
+            "[1 2]",
+            "[1,2]",
+            "{}",
+            "{,}",
+            "{\"a\"}",
+            "{\"a\":}",
+            "{a:1}",
+            "{\"a\":1,}",
+            "{\"a\":1 \"b\":2}",
+            "{\"a\":1,\"b\":{\"c\":[1,{\"d\":2,\"d\":3}]}}",
+            "{\"a\":1,\"a\":2,\"b\":x}",
+            "{\"a\":1,\"a\":[}",
+            "{\"a\":{\"b\":1,\"b\":2},\"a\":3}",
+            "[{\"k\":1},{\"k\":2,\"k\":3}]",
+            "{\"$serde_json::private::Number\":\"12\"}",
+            "{\"$serde_json::private::Number\":\"1e999\"}",
+            "{\"$serde_json::private::Number\":\"x\"}",
+            "{\"$serde_json::private::Number\":1}",
+            "{\"$serde_json::private::Number\":\"1\",\"b\":2}",
+            "{\"b\":1,\"$serde_json::private::Number\":\"1\"}",
+            "[1] trailing",
+            "[1]]",
+        ] {
+            let shape = strict_shape(text.as_bytes());
+            let parsed = strict_json_value(text.as_bytes());
+            assert_eq!(shape.is_ok(), parsed.is_ok(), "{text:?}");
+            if let (Err(shape), Err(parsed)) = (&shape, &parsed) {
+                assert_eq!(shape, parsed, "{text:?}");
+            }
+        }
+    }
+
+    /// Runs `operation` on a thread whose stack is 256 KiB.
+    fn on_small_stack<T: Send + 'static>(operation: impl FnOnce() -> T + Send + 'static) -> T {
+        std::thread::Builder::new()
+            .stack_size(256 * 1024)
+            .spawn(operation)
+            .expect("spawns")
+            .join()
+            .expect("the read overflowed its stack or panicked")
+    }
+
+    /// The fixed 128-container cap refuses at the first container reaching
+    /// it, with that value's pointer, never `incomplete` (FR-038-AC-117).
+    #[trace("TC-048", "FR-038-AC-117")]
+    #[test]
+    fn tc_048_the_nesting_cap_refuses_with_the_first_container_pointer() {
+        on_small_stack(|| {
+            // The cap is reached at container 128; its pointer names the
+            // value at that depth, with the preceding 127 array indexes.
+            assert!(read_value(nested(127).as_bytes(), limits(), Ok).is_ok());
+            let pointer = JsonPointer::parse(&"/0".repeat(127)).expect("valid pointer");
+            assert_eq!(
+                read_value(nested(128).as_bytes(), limits(), Ok),
+                Err(ValidationFailure::refused(
+                    CheckedPackageRefusalCode::MalformedWire,
+                    pointer.clone(),
+                ))
+            );
+            for depth in [129, 300, 100_000, 2_000_000] {
+                assert_eq!(
+                    read_value(nested(depth).as_bytes(), limits(), Ok),
+                    Err(ValidationFailure::refused(
+                        CheckedPackageRefusalCode::MalformedWire,
+                        pointer.clone(),
+                    )),
+                    "{depth}"
+                );
+            }
+        });
+    }
+
+    /// A syntax error or duplicate member anywhere in a document is refused
+    /// before the fixed nesting cap can hide it.
+    #[trace("TC-048", "FR-038-AC-2", "FR-038-AC-117")]
+    #[test]
+    fn tc_048_a_syntax_or_duplicate_defect_is_found_before_the_nesting_cap() {
+        on_small_stack(|| {
+            let depth = 2_000_000;
+            let deep = nested(depth);
+            let duplicate = format!("{{\"a\":{deep},\"a\":1}}");
+            assert_eq!(
+                read_value(duplicate.as_bytes(), limits(), Ok),
+                Err(ValidationFailure::refused(
+                    CheckedPackageRefusalCode::DuplicateMember,
+                    JsonPointer::root().key("a"),
+                ))
+            );
+            let broken = format!("{}x{}", "[".repeat(depth), "]".repeat(depth));
+            assert_eq!(
+                read_value(broken.as_bytes(), limits(), Ok),
+                Err(malformed())
+            );
+        });
+    }
+
+    /// Builds one deep document per counted step of the first pass, at three
+    /// depths, and returns the steps counted at each.
+    fn steps_at(build: impl Fn(usize) -> String) -> [u64; 3] {
+        [131_000, 262_000, 524_000].map(|depth| {
+            let text = build(depth);
+            super::SCAN_STEPS.with(|count| count.set(0));
+            assert!(read_value(text.as_bytes(), limits(), Ok).is_err());
+            super::SCAN_STEPS.with(|count| count.get())
+        })
+    }
+
+    /// Asserts the counted steps grow linearly in depth, and that each depth
+    /// level costs between `least` and `most` steps.
+    ///
+    /// Linear means the step from 262000 to 524000 levels is twice the step
+    /// from 131000 to 262000 (within a twentieth), whatever fixed cost the pass
+    /// has: a quadratic pass makes it six times. `least` is the per-level cost
+    /// the counted sites give this document today, so a dropped count site
+    /// fails; `most` is four times that, so a constant-factor change does not.
+    fn assert_linear(name: &str, least: u64, most: u64, build: impl Fn(usize) -> String) {
+        let [a, b, c] = steps_at(build);
+        let (first, second) = (b - a, c - b);
+        assert!(
+            first.abs_diff(second / 2) * 20 <= first,
+            "{name}: steps {a}, {b}, {c} at 131000, 262000, 524000 levels are not linear"
+        );
+        assert!(
+            (least * 131_000..=most * 131_000).contains(&first),
+            "{name}: {first} steps per 131000 levels is outside {least}..={most} per level"
+        );
+    }
+
+    /// The first pass takes steps linear in the depth of the document, for
+    /// each kind of counted step: a syntax error at the bottom of a document
+    /// half a million levels deep, which a recursive parser reports once per
+    /// enclosing level, is refused after steps that grow with the depth, not
+    /// with its square. Each document below reaches different counted sites of
+    /// the pass, so dropping any one of them fails a bound here.
+    ///
+    /// The count covers only the steps `count_scan_step` marks. It guards
+    /// those steps against a quadratic regression; it does not prove the pass
+    /// linear, and work done without being counted is invisible to it.
+    #[trace("TC-048")]
+    #[test]
+    fn tc_048_the_counted_steps_of_a_deep_document_grow_linearly() {
+        // The same refusals at a small depth, so each document below is the
+        // defect it is named for.
+        let syntax =
+            |text: &str| assert_eq!(read_value(text.as_bytes(), limits(), Ok), Err(malformed()));
+        syntax(&format!("{}x{}", "[".repeat(300), "]".repeat(300)));
+        syntax(&format!("[{}1{}, x]", "[1,".repeat(300), "]".repeat(300)));
+
+        // Outer-loop turns: a syntax error at the bottom of nested arrays.
+        assert_linear("bottom syntax error", 1, 4, |depth| {
+            format!("{}x{}", "[".repeat(depth), "]".repeat(depth))
+        });
+        // Closing-loop turns and tokens: every level holds a number, the
+        // levels all close, and the syntax error comes after.
+        assert_linear("closers then error", 5, 20, |depth| {
+            format!("[{}1{}, x]", "[1,".repeat(depth), "]".repeat(depth))
+        });
+        // Whitespace: the same document with a space before every token.
+        assert_linear("whitespace", 8, 32, |depth| {
+            format!("[ {} 1 {} , x ]", "[ 1 ,".repeat(depth), " ]".repeat(depth))
+        });
+        // Pointer steps: a repeated member at the bottom of nested objects is
+        // refused with the pointer of every enclosing key.
+        assert_linear("duplicate member", 5, 20, |depth| {
+            format!(
+                "{}{{\"a\":1,\"a\":2}}{}",
+                "{\"a\":".repeat(depth),
+                "}".repeat(depth)
+            )
+        });
+    }
+}
+
+#[cfg(test)]
+mod term_fault_storage_tests {
+    use super::super::v2::{NativeJoinBudget, PackageReadStage, TermNode};
+    use super::*;
+    use ix_trace_rs::trace;
+
+    #[trace("TC-472", "FR-038-AC-510", "FR-038-AC-511")]
+    #[test]
+    fn term_shape_faults_prepay_the_complete_final_diagnostic() {
+        for (bytes, suffix, code) in [
+            (
+                br#"{"term":"bogus","n":2}"#.as_slice(),
+                "",
+                CheckedPackageRefusalCode::InvalidSemanticGraph,
+            ),
+            (
+                br#"{"term":"aggregate","members":false}"#.as_slice(),
+                "/members",
+                CheckedPackageRefusalCode::InvalidSemanticGraph,
+            ),
+            (
+                br#"{"term":"reference","target":false}"#.as_slice(),
+                "/target",
+                CheckedPackageRefusalCode::InvalidSemanticGraph,
+            ),
+            (
+                br#"{"term":"reference","target":{"package":"","path":["x"],"ordinal":0}}"#
+                    .as_slice(),
+                "/target",
+                CheckedPackageRefusalCode::MalformedWire,
+            ),
+        ] {
+            let document = quire_canonical::read(bytes, u64::MAX).unwrap();
+            let steps = [
+                Step::Key("semantic_graph"),
+                Step::Key("nodes"),
+                Step::Index(2),
+                Step::Key("body"),
+            ];
+            let at = Trail::Base(&steps);
+            let expected_path = format!("/semantic_graph/nodes/2/body{suffix}");
+            let run = |budget: &mut NativeJoinBudget| {
+                let mut outcome = None;
+                let allocated = allocation_counter::measure(|| {
+                    outcome = Some(validate_term(
+                        TermNode::from_ref(document.root()),
+                        TermGrammar::V2,
+                        true,
+                        &at,
+                        &mut |_, _, _, _, _| Ok(()),
+                        Ids {
+                            sink: budget,
+                            site: Site::new(PackageReadStage::Graph, 2, "value"),
+                            row: &[],
+                        },
+                    ));
+                })
+                .bytes_total;
+                (outcome.unwrap(), allocated)
+            };
+            let mut ample = NativeJoinBudget::new(u64::MAX, 0).with_read_storage_limit(u64::MAX);
+            let (expected, allocated) = run(&mut ample);
+            let Err(ValidationFailure::Refused(refusal)) = &expected else {
+                panic!("term shape fault")
+            };
+            assert_eq!(refusal.code, code);
+            assert_eq!(refusal.cause, None);
+            assert_eq!(refusal.locus, None);
+            assert_eq!(refusal.primary_path().unwrap().as_str(), expected_path);
+            // The existing unmetered Value bridge keeps exactly the same
+            // semantic refusal; physical proof belongs to the strict document source.
+            let value: Value = serde_json::from_slice(bytes).unwrap();
+            let value_outcome = with_unmetered_ids(|ids| {
+                validate_term(
+                    &value,
+                    TermGrammar::V2,
+                    true,
+                    &at,
+                    &mut |_, _, _, _, _| Ok(()),
+                    ids,
+                )
+            });
+            assert_eq!(value_outcome, expected);
+            let required = ample.read_storage_consumed();
+            assert_eq!(allocated, required);
+            let mut exact = NativeJoinBudget::new(u64::MAX, 0).with_read_storage_limit(required);
+            assert_eq!(run(&mut exact), (expected.clone(), required));
+            for limit in [0, required - 1] {
+                let mut short = NativeJoinBudget::new(u64::MAX, 0).with_read_storage_limit(limit);
+                let (outcome, allocated) = run(&mut short);
+                assert!(matches!(outcome, Err(ValidationFailure::Budget(_))));
+                assert_eq!(allocated, short.read_storage_consumed());
+                assert!(short.first_unpaid_read_storage().is_some());
+            }
+            let mut repeated =
+                NativeJoinBudget::new(u64::MAX, 0).with_read_storage_limit(2 * required);
+            assert_eq!(run(&mut repeated), (expected.clone(), required));
+            assert_eq!(run(&mut repeated), (expected, required));
+            assert_eq!(repeated.read_storage_consumed(), 2 * required);
+            assert_eq!(repeated.first_unpaid_read_storage(), None);
+        }
+    }
+}

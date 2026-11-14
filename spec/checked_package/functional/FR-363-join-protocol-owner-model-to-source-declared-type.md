@@ -3,19 +3,19 @@ id: FR-363
 title: "Join a protocol owner model and role model to a source-declared type"
 type: FR
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/StR-001
+  - target: ix://agent-ix/filament-contract-ir/StR-001
     type: traces_to
-  - target: ix://agent-ix/quire-contract-ir/FR-038
+  - target: ix://agent-ix/filament-contract-ir/FR-038
     type: depends_on
-  - target: ix://agent-ix/quire-contract-ir/FR-064
+  - target: ix://agent-ix/filament-contract-ir/FR-064
     type: depends_on
-  - target: ix://agent-ix/quire-contract-ir/FR-362
+  - target: ix://agent-ix/filament-contract-ir/FR-362
     type: depends_on
-  - target: ix://agent-ix/quire-spec-language/ADR-013
+  - target: ix://agent-ix/filament-spec-language/ADR-013
     type: references
-  - target: ix://agent-ix/quire-spec-language/FR-569
+  - target: ix://agent-ix/filament-spec-language/FR-569
     type: references
-  - target: ix://agent-ix/quire-specification/FR-322
+  - target: ix://agent-ix/filament-specification/FR-322
     type: references
 ---
 
@@ -27,7 +27,7 @@ relationships:
 clause's `owner_model` to name a selected model declaration, so a protocol
 `over` a source-declared object type is refused today. This requirement
 amends FR-064: the reader SHALL also accept an `owner_model`, and a role
-`model`, that names an admitted source-declared object type node (QSL ADR-013
+`model`, that names an admitted source-declared object type node (FSL ADR-013
 QC-30 item 3, FR-464, FR-465). FR-064-AC-4 is amended to match.
 
 ## Inputs

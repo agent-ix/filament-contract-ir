@@ -3,44 +3,44 @@ id: FR-346
 title: "Admit the V2 abstraction relation body"
 type: FR
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/StR-001
+  - target: ix://agent-ix/filament-contract-ir/StR-001
     type: traces_to
-  - target: ix://agent-ix/quire-contract-ir/FR-038
+  - target: ix://agent-ix/filament-contract-ir/FR-038
     type: depends_on
-  - target: ix://agent-ix/quire-contract-ir/FR-040
+  - target: ix://agent-ix/filament-contract-ir/FR-040
     type: depends_on
-  - target: ix://agent-ix/quire-specification/FR-451
+  - target: ix://agent-ix/filament-specification/FR-451
     type: references
-  - target: ix://agent-ix/quire-specification/FR-353
+  - target: ix://agent-ix/filament-specification/FR-353
     type: references
-  - target: ix://agent-ix/quire-specification/FR-450
+  - target: ix://agent-ix/filament-specification/FR-450
     type: references
-  - target: ix://agent-ix/quire-specification/FR-322
+  - target: ix://agent-ix/filament-specification/FR-322
     type: references
-  - target: ix://agent-ix/quire-specification/FR-341
+  - target: ix://agent-ix/filament-specification/FR-341
     type: references
-  - target: ix://agent-ix/quire-specification/FR-342
+  - target: ix://agent-ix/filament-specification/FR-342
     type: references
 ---
 # FR-346: Admit the V2 abstraction relation body
 
 ## Description
 
-When the `quire.checked-package/v2` reader ([FR-038](./FR-038-consume-checked-package-v2.md))
+When the `filament.checked-package/v2` reader ([FR-038](./FR-038-consume-checked-package-v2.md))
 reads a `correspondence` node of `semantic_form` `abstraction_relation`, the
-reader shall admit that node's body exactly as QSpec FR-451 defines it. The
+reader shall admit that node's body exactly as FSpec FR-451 defines it. The
 reader shall refuse a body whose joins do not hold with the refusal FR-451
-fixes for that join, in FR-451's reader order. QSpec FR-451 here is the
+fixes for that join, in FR-451's reader order. FSpec FR-451 here is the
 checked-package abstraction relation body,
 `spec/objects/interfaces/FR-451-checked-package-abstraction-relation-body.md`;
-the relation's meaning is QSpec FR-353 and its source spelling QSpec FR-450.
-The QSpec text and the published `proposals/checked-package-v2/schema.json`
+the relation's meaning is FSpec FR-353 and its source spelling FSpec FR-450.
+The FSpec text and the published `proposals/checked-package-v2/schema.json`
 (`AbstractionRelationBody`, `CorrespondenceNode`) are normative. Where FR-451
 fixes no code, cause or locus, this requirement states the reading Contract IR
 takes and marks it "IR reading": FR-451 gives no code for a schema failure and
 no locus for any refusal, so every code, cause and locus below that FR-451 does
 not state is an IR reading, taken from FR-038 and FR-040. Contract IR reads the
-relation from this node and from nothing else, and reads nothing from QSL.
+relation from this node and from nothing else, and reads nothing from FSL.
 
 ## Inputs
 
@@ -62,7 +62,7 @@ refusal with its code, cause, RFC 6901 path and locus. No partial package.
 The `correspondence` family's closed form enum, decoded once at intake
 ([FR-038](./FR-038-consume-checked-package-v2.md) "Closed vocabularies are
 decoded once"), holds `source_locus`, `model_correspondence`, `binding_role`
-and `profile_correspondence` today. QSpec's `CorrespondenceNode` adds a fifth
+and `profile_correspondence` today. FSpec's `CorrespondenceNode` adds a fifth
 member, `abstraction_relation`, so this requirement adds it: the reader shall
 decode `abstraction_relation` as a `correspondence` form, matching it
 exhaustively with no catch-all arm, and an unrecognized `correspondence` form
@@ -85,7 +85,7 @@ three members required, each an array that may be empty:
   `receiver` a `RustReceiver`, and `parameters` an array of
   `{name, rust_parameter}`.
 
-`RustPath`, `RustField`, `RustReceiver` and the Rust spellings are QSpec
+`RustPath`, `RustField`, `RustReceiver` and the Rust spellings are FSpec
 FR-451's and FR-450's ("Rust spellings"). A `RustPath` is an array of one or
 more strings. Every member of every shape above is required, and each shape is
 closed: a member outside it is refused.
@@ -94,7 +94,7 @@ The body is flat: it holds node keys, identifiers and Rust strings and no
 application, aggregate, binding or literal term. The reader validates it
 against this shape alone, as it validates a frame body (FR-040), and not
 against the semantic-term grammar; FR-038 "Frame bodies" and "The flat wire"
-are amended to say so, as merged QSpec FR-322 "Body grammar" lists the
+are amended to say so, as merged FSpec FR-322 "Body grammar" lists the
 `abstraction_relation` body among the body forms.
 
 IR reading (FR-451 gives no code, cause or locus for a schema failure): a body,
@@ -115,7 +115,7 @@ all is an entry of the wrong shape. An occurrence whose role is not
 `ill_typed`/`operator-ineligible` at the node, as FR-038-AC-115 refuses an
 application at the body root of a node its class does not place there. FR-038
 decides body-root placement in several steps (the temporal classes in the
-temporal step, `quire.op.state.clause` in the state step, the other classes in
+temporal step, `filament.op.state.clause` in the state step, the other classes in
 the operation step), and the abstraction step runs before the operation step,
 so this requirement states the stage: for any class, the root is refused in the
 first of those steps that reaches it, and otherwise by the shape check that
@@ -129,7 +129,7 @@ FR-038-AC-114 refuses a nested application in any node body, and a nested `case`
 application refuses `ill_typed`/`operator-ineligible` at its `operator`, as
 FR-038-AC-115 states. A node of any other `semantic_form` whose body
 carries this shape refuses `invalid_semantic_graph` at its `body`, as FR-038
-does for a frame body (IR reading, pending a QSpec ruling: merged FR-451 states
+does for a frame body (IR reading, pending a FSpec ruling: merged FR-451 states
 no refusal for it).
 
 ### Keys
@@ -143,12 +143,12 @@ its operation whether or not the package holds the `state`/`frame` or
 
 ### Structural identity and graph checks
 
-The node carries its structural `node_id` under QSpec FR-322 and is self typed. Its `dependencies` are exactly the unique structurally ordered set of every `type`, `population` and `context` target in the body. The reader checks type, dependency membership and body semantics without computing a key from the body. A valid body edit may retain the same structural id.
+The node carries its structural `node_id` under FSpec FR-322 and is self typed. Its `dependencies` are exactly the unique structurally ordered set of every `type`, `population` and `context` target in the body. The reader checks type, dependency membership and body semantics without computing a key from the body. A valid body edit may retain the same structural id.
 
 ### Canonical order
 
 `objects` is sorted ascending by structural `type` id, `populations` by structural `population` id, and `frames` by structural `context` id and then `operation` as UTF-8 bytes,
-each structural id compared by QSpec order. `fields` and `parameters` are sorted
+each structural id compared by FSpec order. `fields` and `parameters` are sorted
 ascending by `name` as UTF-8 bytes. An array out of order refuses as
 `invalid_semantic_graph` (FR-451), located, as an IR reading, at the array
 (`/semantic_graph/nodes/{n}/body/objects`, `.../objects/{i}/fields`, and so
@@ -206,7 +206,7 @@ is its defect:
      `ambiguous_declaration`/`ambiguous-name`; an operation the `context` only
      inherits as `invalid_model_binding`/`malformed-declaration`.
    - A declared parameter's name is the `name` member of its slot in the
-     selected domain package document. QSpec FR-154-AC-14 validates that name
+     selected domain package document. FSpec FR-154-AC-14 validates that name
      at domain selection, before frame entries are read. The name must match
      `^[A-Za-z][A-Za-z0-9_]*$` and equal the last segment of its identity.
      A malformed name refuses as `invalid_model_binding`/
@@ -231,7 +231,7 @@ locus (FR-038 "Locating refusals"), so the refusal's path is the second
 entry's, its locus is the key's `type`, `population` or `context` node key,
 and its message names the key; the first entry is not carried. FR-451 says the
 refusal names both entries; carrying the first needs a refusal member this
-repository does not have, and is a QSpec question. The same holds for the
+repository does not have, and is a FSpec question. The same holds for the
 field name of a duplicate `fields` entry.
 
 ### Lowering
@@ -240,10 +240,10 @@ FR-038-AC-6 and FR-035 require every admitted node family to lower with exact
 source, type and dependency correspondence, so an admitted
 `correspondence`/`abstraction_relation` node reaches lowering. What it lowers
 to, and any refusal record for an unbound model element, are not stated by
-merged QSpec FR-451 and are an open question; this requirement does not decide
+merged FSpec FR-451 and are an open question; this requirement does not decide
 them. The `correspondence` arms in `v2/lower.rs` and `v2/mod.rs` take the new
 form under the exhaustive-match rule as IR-509's code, and IR-509 does not pick
-a lowering outcome without a ruling. QSpec FR-353 (FR-353-AC-3) places the
+a lowering outcome without a ruling. FSpec FR-353 (FR-353-AC-3) places the
 unbound-element refusal at emission onto implementation code, which this
 reader does not do.
 
@@ -267,9 +267,9 @@ reader does not do.
 codes and pointers, the closed vocabularies, the flat wire and the model-owned
 member resolution this requirement reuses. [FR-040](./FR-040-admit-frame-entries-and-state-clauses.md)
 owns the state step this step follows and the operation resolution frame
-entries share. QSpec FR-451 owns the normative body and refusal order, FR-353
+entries share. FSpec FR-451 owns the normative body and refusal order, FR-353
 the relation's meaning and FR-450 the source form and Rust spellings; FR-322
 owns the graph and structural node ids. A generator reads the
-relation from this node alone, and no part of this reader depends on QSL.
+relation from this node alone, and no part of this reader depends on FSL.
 
-Open QSpec questions outside the structural-identity change: FR-451-AC-3 and AC-4 name different refusals for an omitted dependency; the remaining exact schema loci, two-entry refusal representation, ambiguous field name and unbound-element lowering outcomes require their own reconciliation. QSpec #517 resolves the former stale-key question: a valid body edit under an unchanged structural id is admitted when every independent graph and body rule holds.
+Open FSpec questions outside the structural-identity change: FR-451-AC-3 and AC-4 name different refusals for an omitted dependency; the remaining exact schema loci, two-entry refusal representation, ambiguous field name and unbound-element lowering outcomes require their own reconciliation. FSpec #517 resolves the former stale-key question: a valid body edit under an unchanged structural id is admitted when every independent graph and body rule holds.

@@ -3,15 +3,15 @@ id: FR-063
 title: "Encode and admit checked-package dimension equivalence nodes"
 type: FR
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/StR-001
+  - target: ix://agent-ix/filament-contract-ir/StR-001
     type: traces_to
-  - target: ix://agent-ix/quire-contract-ir/FR-038
+  - target: ix://agent-ix/filament-contract-ir/FR-038
     type: depends_on
-  - target: ix://agent-ix/quire-contract-ir/FR-051
+  - target: ix://agent-ix/filament-contract-ir/FR-051
     type: depends_on
-  - target: ix://agent-ix/quire-specification/FR-322-AC-51
+  - target: ix://agent-ix/filament-specification/FR-322-AC-51
     type: references
-  - target: ix://agent-ix/quire-specification/FR-322-AC-52
+  - target: ix://agent-ix/filament-specification/FR-322-AC-52
     type: references
 ---
 # FR-063: Encode and admit checked-package dimension equivalence nodes
@@ -20,9 +20,9 @@ relationships:
 
 When a checked-package V2 graph contains a `scalar_type` node with semantic
 form `dimension_equivalence`, the Contract IR typed writer SHALL encode its
-complete QSpec structural id and graph members, and the strict reader SHALL
-admit it only under QSpec FR-322's dimension-equivalence and owner rules. For an invalid equivalence, the strict
-reader SHALL refuse the package at the first applicable QSpec FR-322 wire,
+complete FSpec structural id and graph members, and the strict reader SHALL
+admit it only under FSpec FR-322's dimension-equivalence and owner rules. For an invalid equivalence, the strict
+reader SHALL refuse the package at the first applicable FSpec FR-322 wire,
 graph or semantic check, with no partial admitted package. IR
 neither infers an equivalence from names nor rewrites a producer's pair or
 scale.
@@ -33,7 +33,7 @@ The typed V2 graph supplied to the encoder of
 [FR-051](./FR-051-encode-checked-package-v2-envelope.md), or untrusted V2
 bytes, selected package evidence, lock and limits supplied to the strict
 reader of [FR-038](./FR-038-consume-checked-package-v2.md). The authoritative
-form is QSpec `ix://agent-ix/quire-specification/FR-322` and the
+form is FSpec `ix://agent-ix/filament-specification/FR-322` and the
 published `proposals/checked-package-v2/schema.json`; IR carries no schema
 copy.
 
@@ -75,7 +75,7 @@ roots. For equivalences
 between derived dimensions, it SHALL require equal normalized maps and
 the ratio fixed by those base roots. Across a connected equivalence graph,
 it SHALL require every cycle's root-scale product to equal one exactly.
-It SHALL apply QSpec FR-322's wire, graph and semantic refusal
+It SHALL apply FSpec FR-322's wire, graph and semantic refusal
 order; the encoder is a byte-construction API and does not substitute for
 reader admission.
 
@@ -83,11 +83,11 @@ reader admission.
 
 | ID | Criteria | Verification |
 | --- | --- | --- |
-| FR-063-AC-1 | PLANNED/UNRUN (IR-1141; QSpec #529). An external consumer encodes a typed dimension_equivalence node with the closed three-member body and top-level SourceOwner, then reads it through the public strict V2 reader. The admitted package retains the structural id, exact pair, positive reduced scale, two dependencies, self semantic_type, absent declaration, owner and one anchor occurrence. Canonical re-encoding retains the same complete node. | Test |
-| FR-063-AC-3 | PLANNED/UNRUN (IR-1141; QSpec FR-322-AC-268, XP-01). Three independently authored equivalence packages retain the ordered pairs `(clock_time, flow_time)`, `(clock_time, rpc_time)` and `(flow_time, rpc_time)` with `root_scale` respectively `1/1000`, `1/1000` and `1/1`: one canonical root of the first node equals that ratio of canonical roots of the second. The reader admits their consistent three-package graph as one equivalence class with anchor ordinals in source declaration order; a selected dependency reference resolves to its named package and structural node id, never to a same-path local node. As an additive control, three equivalence nodes in one selected package graph with the same consistent ratios also admit as one class. Withdrawn hash-based TC-233 MU-22 through MU-24 are not evidence for either current structural control. | Test |
-| FR-063-AC-4 | PLANNED/UNRUN (IR-1141; QSpec #529). Each independently authored adverse pair or graph is refused `invalid_semantic_graph` at its equivalence node: descending ids, equal ids, a unit id, a repeated pair, unequal derived-dimension normalized maps, a scale inconsistent with base roots, or a cycle whose exact scale product differs from one. No malformed node is skipped or treated as an unknown form. | Test |
-| FR-063-AC-5 | PLANNED/UNRUN (IR-1141; QSpec #529). Missing or invalid scale, one-entry pair, missing top-level SourceOwner and present declaration refuse `malformed_wire` at the node before graph checks. Unreduced scale, missing dependency or non-self semantic_type refuses `invalid_semantic_graph` at its exact node. A well-formed SourceOwner absent from `lock.sources` refuses `missing_declaration`/`missing-selection` at the node's `node_id` in the owner join before equivalence-body checks. No stale-key refusal or vector hash comparison occurs. | Test |
-| FR-063-AC-6 | The writer and reader use the typed dimension_equivalence form in the V2 graph and envelope. Unknown scalar forms remain closed; no untyped alternate path or copied QSpec schema or fixture is added. | Inspection |
+| FR-063-AC-1 | PLANNED/UNRUN (IR-1141; FSpec #529). An external consumer encodes a typed dimension_equivalence node with the closed three-member body and top-level SourceOwner, then reads it through the public strict V2 reader. The admitted package retains the structural id, exact pair, positive reduced scale, two dependencies, self semantic_type, absent declaration, owner and one anchor occurrence. Canonical re-encoding retains the same complete node. | Test |
+| FR-063-AC-3 | PLANNED/UNRUN (IR-1141; FSpec FR-322-AC-268, XP-01). Three independently authored equivalence packages retain the ordered pairs `(clock_time, flow_time)`, `(clock_time, rpc_time)` and `(flow_time, rpc_time)` with `root_scale` respectively `1/1000`, `1/1000` and `1/1`: one canonical root of the first node equals that ratio of canonical roots of the second. The reader admits their consistent three-package graph as one equivalence class with anchor ordinals in source declaration order; a selected dependency reference resolves to its named package and structural node id, never to a same-path local node. As an additive control, three equivalence nodes in one selected package graph with the same consistent ratios also admit as one class. Withdrawn hash-based TC-233 MU-22 through MU-24 are not evidence for either current structural control. | Test |
+| FR-063-AC-4 | PLANNED/UNRUN (IR-1141; FSpec #529). Each independently authored adverse pair or graph is refused `invalid_semantic_graph` at its equivalence node: descending ids, equal ids, a unit id, a repeated pair, unequal derived-dimension normalized maps, a scale inconsistent with base roots, or a cycle whose exact scale product differs from one. No malformed node is skipped or treated as an unknown form. | Test |
+| FR-063-AC-5 | PLANNED/UNRUN (IR-1141; FSpec #529). Missing or invalid scale, one-entry pair, missing top-level SourceOwner and present declaration refuse `malformed_wire` at the node before graph checks. Unreduced scale, missing dependency or non-self semantic_type refuses `invalid_semantic_graph` at its exact node. A well-formed SourceOwner absent from `lock.sources` refuses `missing_declaration`/`missing-selection` at the node's `node_id` in the owner join before equivalence-body checks. No stale-key refusal or vector hash comparison occurs. | Test |
+| FR-063-AC-6 | The writer and reader use the typed dimension_equivalence form in the V2 graph and envelope. Unknown scalar forms remain closed; no untyped alternate path or copied FSpec schema or fixture is added. | Inspection |
 
 ## Dependencies
 
@@ -95,11 +95,11 @@ reader admission.
   structural identity and refusal precedence.
 - [FR-051](./FR-051-encode-checked-package-v2-envelope.md) owns the typed
   envelope writer.
-- QSpec FR-322's dimension-equivalence narrative owns the pair, scale and graph
-  meaning. QSpec #529 proposes top-level SourceOwner presence and a closed
+- FSpec FR-322's dimension-equivalence narrative owns the pair, scale and graph
+  meaning. FSpec #529 proposes top-level SourceOwner presence and a closed
   body; FR-322-AC-51 explicitly admits SourceOwner on this declaration-free
   form, and FR-322-AC-52 owns the owner join.
-  QSpec FR-322-AC-268 and its XP-01..XP-10 vectors in the #530 draft specify
+  FSpec FR-322-AC-268 and its XP-01..XP-10 vectors in the #530 draft specify
   cross-package equivalence; the three-package FR-063-AC-3 obligation remains live.
   The former FR-322-AC-118/139
   and TC-233 equivalence vectors are withdrawn; IR's controls above require

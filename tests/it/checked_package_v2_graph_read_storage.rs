@@ -6,11 +6,11 @@
 //! before they are made (TC-472).
 
 use crate::support::checked_package::{canonical, evidence_for, v2_all_families};
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     CheckedPackageReadLimits, CheckedPackageV2BudgetedReadResult, NativeJoinBudget,
     NativeJoinLocusSource, PackageReadStage,
 };
+use ix_trace_rs::trace;
 
 /// One heap request of the read, in the order it was made.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -177,8 +177,8 @@ fn the_graph_index_state_tables_and_walks_are_charged_at_graph_loci() {
 /// by `0x00 0x01`; a segment is a kind tag (name 1, index 2, operand 3,
 /// dependency position 4, node 5) and its value, a nested node being its own whole key; a path
 /// ends with tag 0; the ordinal comes last.
-fn canonical_key(id: &quire_contract_model::CheckedNodeId, out: &mut Vec<u8>) {
-    use quire_contract_model::CheckedNodePathSegment as Segment;
+fn canonical_key(id: &filament_contract_model::CheckedNodeId, out: &mut Vec<u8>) {
+    use filament_contract_model::CheckedNodePathSegment as Segment;
     fn text(value: &str, out: &mut Vec<u8>) {
         for byte in value.bytes() {
             out.push(byte);
@@ -223,7 +223,7 @@ fn canonical_key(id: &quire_contract_model::CheckedNodeId, out: &mut Vec<u8>) {
 #[trace("TC-472", "FR-038-AC-504")]
 #[test]
 fn node_id_order_equals_canonical_key_byte_order_on_real_packages() {
-    use quire_contract_model::CheckedPackageV2ReadResult;
+    use filament_contract_model::CheckedPackageV2ReadResult;
     let mut ids = Vec::new();
     let wires = [
         v2_all_families(),
@@ -269,11 +269,11 @@ fn node_id_order_equals_canonical_key_byte_order_on_real_packages() {
 #[trace("TC-472", "FR-038-AC-504")]
 #[test]
 fn deeply_nested_keys_read_without_a_plain_comparison_spill() {
-    use quire_contract_model::CheckedPackageV2ReadResult;
+    use filament_contract_model::CheckedPackageV2ReadResult;
     struct Guard;
     impl Drop for Guard {
         fn drop(&mut self) {
-            std::env::remove_var("QUIRE_FORBID_PLAIN_CMP_SPILL_ON");
+            std::env::remove_var("FILAMENT_FORBID_PLAIN_CMP_SPILL_ON");
         }
     }
     let name = std::thread::current()
@@ -297,14 +297,14 @@ fn deeply_nested_keys_read_without_a_plain_comparison_spill() {
             .clone()
     };
     let (left, right) = (read_key(), read_key());
-    std::env::set_var("QUIRE_FORBID_PLAIN_CMP_SPILL_ON", &name);
+    std::env::set_var("FILAMENT_FORBID_PLAIN_CMP_SPILL_ON", &name);
     let _armed = Guard;
     let spilled = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| left.cmp(&right)));
     assert!(spilled.is_err(), "a deep plain comparison trips the guard");
     for depth in [40_usize, 120] {
         let (wire, maps, _) = crate::checked_package_v2_map_type::map_chain_wire(depth);
         assert_eq!(maps.len(), depth);
-        std::env::set_var("QUIRE_FORBID_PLAIN_CMP_SPILL_ON", &name);
+        std::env::set_var("FILAMENT_FORBID_PLAIN_CMP_SPILL_ON", &name);
         let _guard = Guard;
         let result = crate::read_and_account(
             &canonical(&wire),

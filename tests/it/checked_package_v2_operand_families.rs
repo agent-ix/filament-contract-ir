@@ -8,11 +8,11 @@ use crate::support::checked_package::{
     nominal_fixture_members, nominal_package, rebuild_source_map, refresh_identity, settle,
     v2_all_families,
 };
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     CheckedLiteralValue, CheckedPackageLimit, CheckedPackageReadLimits, CheckedPackageRefusalCause,
     CheckedPackageRefusalCode, CheckedPackageV2ReadResult,
 };
+use ix_trace_rs::trace;
 use serde_json::{json, Value};
 
 fn add_node(package: &mut Value, key: &str, tag: &str, form: &str, ty: &str, body: Value) {
@@ -21,7 +21,7 @@ fn add_node(package: &mut Value, key: &str, tag: &str, form: &str, ty: &str, bod
         .expect("nodes")
         .push(json!({
             "node_id": node_id(key),
-            "schema_version": "quire.checked-semantic-graph/v2",
+            "schema_version": "filament.checked-semantic-graph/v2",
             "node_tag": tag, "semantic_form": form,
             "semantic_type": node_id(ty),
             "dependencies": [],
@@ -34,7 +34,7 @@ fn fixture() -> (Value, String, String, String, String, String) {
     let members = nominal_fixture_members();
     let unit = members
         .iter()
-        .find(|(p, _)| p["version"] == "quire.unit-node/v1")
+        .find(|(p, _)| p["version"] == "filament.unit-node/v1")
         .expect("unit")
         .1
         .clone();
@@ -156,7 +156,7 @@ fn tc_230_declaration_names_are_scoped_to_unit_dimension_and_type() {
         .as_array_mut()
         .unwrap()
         .push(json!({
-            "node_id": id, "schema_version": "quire.checked-semantic-graph/v2",
+            "node_id": id, "schema_version": "filament.checked-semantic-graph/v2",
             "node_tag": "composite_type", "semantic_form": "record",
             "semantic_type": id, "dependencies": [],
             "occurrences": [{"role": "declaration", "ordinal": 0}],
@@ -279,7 +279,7 @@ fn tc_230_quantity_literal_refuses_dimension_type_without_operand_family() {
     let (mut package, _, _, _, _, _) = fixture();
     let dimension = nominal_fixture_members()
         .into_iter()
-        .find(|(preimage, _)| preimage["version"] == "quire.dimension-node/v1")
+        .find(|(preimage, _)| preimage["version"] == "filament.dimension-node/v1")
         .expect("dimension fixture")
         .1;
     let at = append_literal(&mut package, &dimension, "quantity", json!("3"));
@@ -397,7 +397,11 @@ fn native_comparison(
         package,
         "binary",
         "binary",
-        operation(&format!("quire.op.{kind}.{verb}"), Value::Null, Value::Null),
+        operation(
+            &format!("filament.op.{kind}.{verb}"),
+            Value::Null,
+            Value::Null,
+        ),
         boolean,
         vec![reference(left), reference(right)],
     )
@@ -430,7 +434,7 @@ fn native_refuses(
 fn native_scalar_comparisons_keep_distinct_types_and_operands() {
     let (base, boolean, native, text) = native_fixture();
     let catalog: Value = serde_json::from_str(
-        quire_verification_contracts::operation_catalog::CHECKED_OPERATION_CATALOG_V1,
+        filament_verification_contracts::operation_catalog::CHECKED_OPERATION_CATALOG_V1,
     )
     .expect("catalog");
     let mut native_identities = catalog["operations"]
@@ -441,7 +445,7 @@ fn native_scalar_comparisons_keep_distinct_types_and_operands() {
         .filter(|identity| {
             ["string", "uuid", "timestamp"]
                 .iter()
-                .any(|kind| identity.starts_with(&format!("quire.op.{kind}.")))
+                .any(|kind| identity.starts_with(&format!("filament.op.{kind}.")))
         })
         .filter(|identity| identity.ends_with(".eq") || identity.ends_with(".ne"))
         .collect::<Vec<_>>();
@@ -449,12 +453,12 @@ fn native_scalar_comparisons_keep_distinct_types_and_operands() {
     assert_eq!(
         native_identities,
         [
-            "quire.op.string.eq",
-            "quire.op.string.ne",
-            "quire.op.timestamp.eq",
-            "quire.op.timestamp.ne",
-            "quire.op.uuid.eq",
-            "quire.op.uuid.ne",
+            "filament.op.string.eq",
+            "filament.op.string.ne",
+            "filament.op.timestamp.eq",
+            "filament.op.timestamp.ne",
+            "filament.op.uuid.eq",
+            "filament.op.uuid.ne",
         ]
     );
     for (index, kind, equal, unequal) in [
@@ -523,8 +527,8 @@ fn native_scalar_comparisons_keep_distinct_types_and_operands() {
             );
             assert_eq!(
                 admitted.node_kinds()[at - 2],
-                quire_contract_model::CheckedNodeKind::Value(
-                    quire_contract_model::ValueForm::Literal
+                filament_contract_model::CheckedNodeKind::Value(
+                    filament_contract_model::ValueForm::Literal
                 )
             );
             let foreign = if index == 0 {
@@ -546,7 +550,7 @@ fn native_scalar_comparisons_keep_distinct_types_and_operands() {
                 );
             }
             if verb == "eq" {
-                for foreign_operation in ["quire.op.integer.lt", "quire.op.integer.add"] {
+                for foreign_operation in ["filament.op.integer.lt", "filament.op.integer.add"] {
                     let mut changed = package.clone();
                     changed["semantic_graph"]["nodes"][at]["body"]["operation"]["identity"] =
                         json!(foreign_operation);
@@ -746,7 +750,7 @@ fn native_literal_work_limit_precedes_later_payload_defect() {
 fn native_comparisons_reject_text_laws_and_modes() {
     let (base, boolean, native, _) = native_fixture();
     let catalog: Value = serde_json::from_str(
-        quire_verification_contracts::operation_catalog::CHECKED_OPERATION_CATALOG_V1,
+        filament_verification_contracts::operation_catalog::CHECKED_OPERATION_CATALOG_V1,
     )
     .expect("catalog");
     let law = catalog["law_roles"]["text_profile"][0].clone();
@@ -799,7 +803,7 @@ fn native_comparisons_reject_text_laws_and_modes() {
 fn text_comparison_rejects_string_at_its_mode_value() {
     let (base, boolean, native, text) = native_fixture();
     let catalog: Value = serde_json::from_str(
-        quire_verification_contracts::operation_catalog::CHECKED_OPERATION_CATALOG_V1,
+        filament_verification_contracts::operation_catalog::CHECKED_OPERATION_CATALOG_V1,
     )
     .expect("catalog");
     let law = catalog["law_roles"]["text_profile"][0].clone();
@@ -817,7 +821,7 @@ fn text_comparison_rejects_string_at_its_mode_value() {
             &mut package,
             "binary",
             "binary",
-            json!({"identity": "quire.op.text.eq",
+            json!({"identity": "filament.op.text.eq",
                 "laws": [{"role": "text_profile", "definition": law}],
                 "mode": {"kind": "text_profile", "value": "nfc"},
                 "member": null, "leaves": []}),
@@ -840,7 +844,7 @@ fn text_comparison_checks_arity_and_other_families_before_string_mode() {
     let (mut package, boolean, native, text) = native_fixture();
     let integer = "operand/scalar/integer".to_owned();
     let catalog: Value = serde_json::from_str(
-        quire_verification_contracts::operation_catalog::CHECKED_OPERATION_CATALOG_V1,
+        filament_verification_contracts::operation_catalog::CHECKED_OPERATION_CATALOG_V1,
     )
     .expect("catalog");
     let law = catalog["law_roles"]["text_profile"][0].clone();
@@ -855,7 +859,7 @@ fn text_comparison_checks_arity_and_other_families_before_string_mode() {
         &mut package,
         "binary",
         "binary",
-        json!({"identity": "quire.op.text.eq",
+        json!({"identity": "filament.op.text.eq",
             "laws": [{"role": "text_profile", "definition": law}],
             "mode": {"kind": "text_profile", "value": "nfc"},
             "member": null, "leaves": []}),
@@ -918,7 +922,7 @@ fn quantity_family_checks_every_catalogued_quantity_operand() {
             &mut package,
             if convert { "convert" } else { "binary" },
             if convert { "conversion" } else { "binary" },
-            operation(&format!("quire.op.quantity.{identity}"), mode, member),
+            operation(&format!("filament.op.quantity.{identity}"), mode, member),
             result,
             args,
         );
@@ -948,7 +952,7 @@ fn quantity_family_checks_every_catalogued_quantity_operand() {
         &mut pow,
         "binary",
         "binary",
-        operation("quire.op.quantity.pow", Value::Null, Value::Null),
+        operation("filament.op.quantity.pow", Value::Null, Value::Null),
         &unit,
         vec![reference(&left), reference(&integer)],
     );
@@ -967,7 +971,7 @@ fn quantity_family_checks_every_catalogued_quantity_operand() {
         &mut integer_add,
         "binary",
         "binary",
-        operation("quire.op.integer.add", Value::Null, Value::Null),
+        operation("filament.op.integer.add", Value::Null, Value::Null),
         &integer,
         vec![reference(&left), reference(&integer)],
     );
@@ -987,7 +991,7 @@ fn control_if_checks_quantity_branch_family() {
         &mut package,
         "conditional",
         "conditional",
-        operation("quire.op.control.if", Value::Null, Value::Null),
+        operation("filament.op.control.if", Value::Null, Value::Null),
         &unit,
         vec![reference(&boolean), reference(&left), reference(&right)],
     );
@@ -1010,7 +1014,7 @@ fn aggregate_arguments_admit_at_clause_positions_and_refuse_at_boolean_position(
         .as_array()
         .expect("nodes")
         .iter()
-        .find(|node| node["body"]["operation"]["identity"] == "quire.op.temporal.clause")
+        .find(|node| node["body"]["operation"]["identity"] == "filament.op.temporal.clause")
         .expect("temporal clause");
     for position in [2, 3, 4] {
         assert_eq!(
@@ -1050,7 +1054,7 @@ fn aggregate_arguments_admit_at_clause_positions_and_refuse_at_boolean_position(
         &mut package,
         "binary",
         "binary",
-        operation("quire.op.boolean.and", Value::Null, Value::Null),
+        operation("filament.op.boolean.and", Value::Null, Value::Null),
         &boolean,
         vec![
             json!({"term": "aggregate", "members": []}),
@@ -1071,7 +1075,7 @@ fn literal_kind_is_checked_at_its_own_type_even_outside_family_operands() {
     let (base, unit, boolean, integer, _, _) = fixture();
     let enum_key = nominal_fixture_members()
         .iter()
-        .find(|(preimage, _)| preimage["version"] == "quire.enum-declaration-node/v1")
+        .find(|(preimage, _)| preimage["version"] == "filament.enum-declaration-node/v1")
         .expect("enum")
         .1
         .clone();
@@ -1141,13 +1145,13 @@ fn literal_kind_is_checked_at_its_own_type_even_outside_family_operands() {
     let mut ordered_members = nominal_fixture_members();
     let declaration = ordered_members
         .iter()
-        .position(|(preimage, _)| preimage["version"] == "quire.enum-declaration-node/v1")
+        .position(|(preimage, _)| preimage["version"] == "filament.enum-declaration-node/v1")
         .expect("declaration");
     ordered_members[declaration].0["ordered"] = json!(true);
     let ordered_key = ordered_members[declaration].1.clone();
     let member = ordered_members
         .iter()
-        .position(|(preimage, _)| preimage["version"] == "quire.enum-member-node/v1")
+        .position(|(preimage, _)| preimage["version"] == "filament.enum-member-node/v1")
         .expect("member");
     ordered_members[member].0["declaration_node_id"] = node_id(&ordered_key);
     let mut ordered = nominal_package(&ordered_members);
@@ -1170,7 +1174,7 @@ fn literal_kind_is_checked_at_its_own_type_even_outside_family_operands() {
         &mut control,
         "conditional",
         "conditional",
-        operation("quire.op.control.if", Value::Null, Value::Null),
+        operation("filament.op.control.if", Value::Null, Value::Null),
         &integer,
         vec![reference(&boolean), integer_literal, reference(&integer)],
     );
@@ -1194,7 +1198,7 @@ fn quantity_conversion_defaults_to_exact_rounding() {
         "convert",
         "conversion",
         operation(
-            "quire.op.quantity.convert",
+            "filament.op.quantity.convert",
             json!({"kind": "rounding", "value": "exact"}),
             json!({"kind": "type_argument", "declaration": node_id(&unit)}),
         ),
@@ -1222,7 +1226,7 @@ fn quantity_convert_checks_member_result_before_rounding_type() {
         "convert",
         "conversion",
         operation(
-            "quire.op.quantity.convert",
+            "filament.op.quantity.convert",
             json!({"kind": "rounding", "value": "exact"}),
             json!({"kind": "type_argument", "declaration": node_id(&unit)}),
         ),
@@ -1301,7 +1305,7 @@ fn position_and_element_member_results_do_not_require_declaration_equality() {
         "query",
         "query",
         operation(
-            "quire.op.tuple.project",
+            "filament.op.tuple.project",
             Value::Null,
             json!({"kind": "position", "declaration": node_id(&tuple), "position": 0}),
         ),
@@ -1326,7 +1330,7 @@ fn position_and_element_member_results_do_not_require_declaration_equality() {
         "query",
         "query",
         operation(
-            "quire.op.collection.index",
+            "filament.op.collection.index",
             Value::Null,
             json!({"kind": "element", "declaration": node_id(&set)}),
         ),
@@ -1367,7 +1371,7 @@ fn quantity_convert_admits_equal_compound_unit_result() {
         "convert",
         "conversion",
         operation(
-            "quire.op.quantity.convert",
+            "filament.op.quantity.convert",
             json!({"kind":"rounding","value":"exact"}),
             json!({"kind":"type_argument","declaration":node_id(&compound)}),
         ),
@@ -1419,7 +1423,7 @@ fn collection_size_admits_equal_model_population_result() {
         "collection",
         "collection",
         operation(
-            "quire.op.collection.size",
+            "filament.op.collection.size",
             Value::Null,
             json!({"kind":"type_argument","declaration":node_id(&population)}),
         ),
@@ -1441,7 +1445,10 @@ fn collection_size_admits_equal_model_population_result() {
 #[trace("TC-048", "FR-038-AC-247", "FR-038-AC-248")]
 #[test]
 fn fold_and_reduce_admit_without_member_family_and_refuse_unequal_result() {
-    for identity in ["quire.op.collection.fold", "quire.op.collection.reduce"] {
+    for identity in [
+        "filament.op.collection.fold",
+        "filament.op.collection.reduce",
+    ] {
         let (mut package, _, boolean, integer, _, _) = fixture();
         let set_body = json!({"term":"aggregate","members":[reference(&integer)]});
         let set = "operand/type/set".to_owned();
@@ -1483,7 +1490,10 @@ fn fold_and_reduce_admit_without_member_family_and_refuse_unequal_result() {
 #[trace("TC-048", "FR-038-AC-247", "FR-038-AC-251")]
 #[test]
 fn nested_fold_and_reduce_binders_resolve_only_the_single_final_step() {
-    for identity in ["quire.op.collection.fold", "quire.op.collection.reduce"] {
+    for identity in [
+        "filament.op.collection.fold",
+        "filament.op.collection.reduce",
+    ] {
         let (mut package, _, boolean, integer, _, _) = fixture();
         let set = "operand/type/set";
         add_node(
@@ -1557,8 +1567,8 @@ fn nested_fold_and_reduce_binders_resolve_only_the_single_final_step() {
 #[test]
 fn genuine_integer_fold_with_both_authored_binders_is_admitted() {
     let bytes = include_bytes!("../fixtures/fold-binders/integer-fold.json");
-    let mut evidence = quire_contract_model::CheckedPackageEvidence::new();
-    evidence.support_feature("quire.value.complete/v1");
+    let mut evidence = filament_contract_model::CheckedPackageEvidence::new();
+    evidence.support_feature("filament.value.complete/v1");
     let CheckedPackageV2ReadResult::Admitted(package) =
         crate::read_and_account(bytes, CheckedPackageReadLimits::bounded(), &evidence)
     else {
@@ -1570,7 +1580,7 @@ fn genuine_integer_fold_with_both_authored_binders_is_admitted() {
         .iter()
         .find(|node| node.semantic_form.as_ref() == "collection")
         .expect("emitted fold node");
-    let Some(quire_contract_model::CheckedTerm::Application {
+    let Some(filament_contract_model::CheckedTerm::Application {
         arguments,
         result_type,
         ..
@@ -1578,18 +1588,18 @@ fn genuine_integer_fold_with_both_authored_binders_is_admitted() {
     else {
         panic!("typed fold application");
     };
-    let quire_contract_model::CheckedTerm::Binding { name, value } = &arguments[1] else {
+    let filament_contract_model::CheckedTerm::Binding { name, value } = &arguments[1] else {
         panic!("accumulator binder");
     };
     assert_eq!(name.as_ref(), "acc");
-    let quire_contract_model::CheckedTerm::Aggregate { members } = value.as_ref() else {
+    let filament_contract_model::CheckedTerm::Aggregate { members } = value.as_ref() else {
         panic!("element binder wrapper");
     };
-    let [quire_contract_model::CheckedTerm::Binding { name, value }] = members.as_slice() else {
+    let [filament_contract_model::CheckedTerm::Binding { name, value }] = members.as_slice() else {
         panic!("single element binder");
     };
     assert_eq!(name.as_ref(), "x");
-    let quire_contract_model::CheckedTerm::Reference { target } = value.as_ref() else {
+    let filament_contract_model::CheckedTerm::Reference { target } = value.as_ref() else {
         panic!("step reference");
     };
     let step = package
@@ -1605,8 +1615,8 @@ fn genuine_integer_fold_with_both_authored_binders_is_admitted() {
 #[test]
 fn genuine_monitor_base_fold_is_admitted_without_removing_semantics() {
     let bytes = include_bytes!("../fixtures/fold-binders/monitor-base.json");
-    let mut evidence = quire_contract_model::CheckedPackageEvidence::new();
-    evidence.support_feature("quire.value.complete/v1");
+    let mut evidence = filament_contract_model::CheckedPackageEvidence::new();
+    evidence.support_feature("filament.value.complete/v1");
     evidence
         .insert_domain_package_document(
             "example/config-version",
@@ -1634,7 +1644,7 @@ fn genuine_monitor_base_fold_is_admitted_without_removing_semantics() {
     let fold = package
         .document_held_id(359)
         .expect("original monitor fold id");
-    let Some(quire_contract_model::CheckedTerm::Application {
+    let Some(filament_contract_model::CheckedTerm::Application {
         operation,
         arguments,
         result_type,
@@ -1643,19 +1653,19 @@ fn genuine_monitor_base_fold_is_admitted_without_removing_semantics() {
     else {
         panic!("original monitor fold application");
     };
-    assert_eq!(operation.identity(), Some("quire.op.collection.fold"));
-    let quire_contract_model::CheckedTerm::Binding { name, value } = &arguments[1] else {
+    assert_eq!(operation.identity(), Some("filament.op.collection.fold"));
+    let filament_contract_model::CheckedTerm::Binding { name, value } = &arguments[1] else {
         panic!("monitor accumulator binder");
     };
     assert_eq!(name.as_ref(), "a");
-    let quire_contract_model::CheckedTerm::Aggregate { members } = value.as_ref() else {
+    let filament_contract_model::CheckedTerm::Aggregate { members } = value.as_ref() else {
         panic!("monitor element wrapper");
     };
-    let [quire_contract_model::CheckedTerm::Binding { name, value }] = members.as_slice() else {
+    let [filament_contract_model::CheckedTerm::Binding { name, value }] = members.as_slice() else {
         panic!("monitor element binder");
     };
     assert_eq!(name.as_ref(), "x");
-    let quire_contract_model::CheckedTerm::Reference { target } = value.as_ref() else {
+    let filament_contract_model::CheckedTerm::Reference { target } = value.as_ref() else {
         panic!("monitor final step reference");
     };
     let step = package
@@ -1749,9 +1759,9 @@ fn non_member_model_results_remain_admitted() {
             "query",
             operation(
                 if lookup {
-                    "quire.op.model.lookup"
+                    "filament.op.model.lookup"
                 } else {
-                    "quire.op.model.all_instances"
+                    "filament.op.model.all_instances"
                 },
                 if lookup {
                     json!({"kind":"absence","value":"option"})
@@ -1777,7 +1787,7 @@ pub(crate) fn quantity_sum_control() -> (Value, usize) {
         "collection",
         "collection",
         operation(
-            "quire.op.collection.sum.quantity",
+            "filament.op.collection.sum.quantity",
             json!({"kind": "rounding", "value": "exact"}),
             json!({"kind": "type_argument", "declaration": node_id(&unit)}),
         ),
@@ -1790,7 +1800,7 @@ pub(crate) fn quantity_sum_control() -> (Value, usize) {
     (package, at)
 }
 
-/// An admitted `quire.op.collection.sum.carried_quantity` application over a
+/// An admitted `filament.op.collection.sum.carried_quantity` application over a
 /// set of a carried quantity, with the carried node as binder bound, member and
 /// result.
 pub(crate) fn carried_sum_control() -> (Value, usize) {
@@ -1826,7 +1836,7 @@ pub(crate) fn carried_sum_control() -> (Value, usize) {
                 role: &str,
                 body: Value| {
         json!({
-            "node_id": id, "schema_version": "quire.checked-semantic-graph/v2",
+            "node_id": id, "schema_version": "filament.checked-semantic-graph/v2",
             "node_tag": tag, "semantic_form": form, "semantic_type": ty,
             "dependencies": dependencies, "occurrences": [{"role": role, "ordinal": 0}], "body": body,
         })
@@ -1898,7 +1908,7 @@ pub(crate) fn carried_sum_control() -> (Value, usize) {
         "expression",
         json!({"term": "application", "operator": "collection",
         "operation": operation(
-            "quire.op.collection.sum.carried_quantity",
+            "filament.op.collection.sum.carried_quantity",
             json!({"kind": "rounding", "value": "exact"}),
             json!({"kind": "type_argument", "declaration": carried}),
         ),

@@ -6,11 +6,11 @@
 use crate::support::checked_package::{
     canonical, evidence_for, rebuild_complete_source_map, refresh_identity, v2_all_families,
 };
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     CheckedNodeKind, CheckedPackageReadLimits, CheckedPackageRefusalCode, CheckedPackageV2,
     CheckedPackageV2ReadResult, TemporalForm,
 };
+use ix_trace_rs::trace;
 use serde_json::{json, Value};
 
 fn read(wire: &Value) -> CheckedPackageV2ReadResult {
@@ -31,7 +31,7 @@ fn monitor_plan_absence_is_an_empty_exact_size_iterator() {
     assert!(package.monitor_plans().next().is_none());
     assert_eq!(
         CheckedNodeKind::decode(
-            quire_contract_model::CheckedNodeTag::Temporal,
+            filament_contract_model::CheckedNodeTag::Temporal,
             "monitor_plan"
         ),
         Some(CheckedNodeKind::Temporal(TemporalForm::MonitorPlan))
@@ -51,7 +51,7 @@ fn monitor_plan_empty_body_refuses_at_first_required_binding() {
     let root = wire["semantic_graph"]["nodes"].as_array().unwrap().len();
     let id = json!({"package":wire["name"],"path":["temporal","monitor_plan","empty"],"ordinal":0});
     wire["semantic_graph"]["nodes"].as_array_mut().unwrap().push(json!({
-        "schema_version":"quire.checked-semantic-graph/v2","node_id":id,"node_tag":"temporal","semantic_form":"monitor_plan",
+        "schema_version":"filament.checked-semantic-graph/v2","node_id":id,"node_tag":"temporal","semantic_form":"monitor_plan",
         "semantic_type":boolean,"body":{"term":"aggregate","members":[]},"dependencies":[boolean],"occurrences":[{"role":"generated","ordinal":0}]
     }));
     rebuild_complete_source_map(&mut wire);
@@ -115,7 +115,7 @@ fn anonymous_entry_support_keeps_model_and_source_owner_requirements() {
 #[trace("TC-472", "FR-038-AC-510")]
 #[test]
 fn graph_storage_denial_pointer_is_paid_once_through_the_public_reader() {
-    use quire_contract_model::{
+    use filament_contract_model::{
         CheckedPackageV2BudgetedReadResult, NativeJoinBudget, NativeJoinLocusSource,
         PackageReadResource, PackageReadStage,
     };

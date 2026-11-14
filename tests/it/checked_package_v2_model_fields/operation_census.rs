@@ -2,7 +2,7 @@
 //! Complete operation declarations read through the admitted public facade.
 
 use super::*;
-use quire_contract_model::CheckedOperationReadErrorCode as Code;
+use filament_contract_model::CheckedOperationReadErrorCode as Code;
 
 fn operation(owner: &str, name: &str) -> Value {
     json!({"identity":format!("{}/{name}",orders(owner)),"name":name,
@@ -42,24 +42,34 @@ fn ledger_own_operations_preserve_signature_and_witnessed_effect() {
     let mut ledger = object(
         "Ledger",
         &[],
-        &[field("balance", "ix://quire/native/Integer")],
+        &[field("balance", "ix://filament/native/Integer")],
     );
     let mut pay = operation("Ledger", "pay");
     pay["params"] = json!([parameter(
         "Ledger",
         "pay",
         "amount",
-        "ix://quire/native/Integer"
+        "ix://filament/native/Integer"
     )]);
-    pay["returns"] = parameter("Ledger", "pay", "result", "ix://quire/native/Boolean");
+    pay["returns"] = parameter("Ledger", "pay", "result", "ix://filament/native/Boolean");
     let balance = format!("{}/balance", orders("Ledger"));
     pay["frame"]["modifies"] = json!([balance]);
     let mut taxed = operation("Ledger", "payTaxed");
     taxed["params"] = json!([
-        parameter("Ledger", "payTaxed", "amount", "ix://quire/native/Integer"),
-        parameter("Ledger", "payTaxed", "tax", "ix://quire/native/Integer")
+        parameter(
+            "Ledger",
+            "payTaxed",
+            "amount",
+            "ix://filament/native/Integer"
+        ),
+        parameter("Ledger", "payTaxed", "tax", "ix://filament/native/Integer")
     ]);
-    taxed["returns"] = parameter("Ledger", "payTaxed", "result", "ix://quire/native/Boolean");
+    taxed["returns"] = parameter(
+        "Ledger",
+        "payTaxed",
+        "result",
+        "ix://filament/native/Boolean",
+    );
     ledger["operations"] = json!([pay, taxed]);
     let (mut wire, evidence, _) =
         self::package(&document(vec![ledger]), &[("Ledger", OBJECT)], &[]);
@@ -94,10 +104,10 @@ fn ledger_own_operations_preserve_signature_and_witnessed_effect() {
             )),
         )],
         [],
-        &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+        &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
     )
     .expect("selected object identity");
-    let mut measured_budget = quire_contract_model::NativeJoinBudget::new(10_000, u64::MAX);
+    let mut measured_budget = filament_contract_model::NativeJoinBudget::new(10_000, u64::MAX);
     let projected = admitted
         .project_selected_type_declarations(&witnessed, &[], &[], &mut measured_budget)
         .expect("witnessed Ledger type environment");
@@ -105,7 +115,7 @@ fn ledger_own_operations_preserve_signature_and_witnessed_effect() {
         .last_success_delta()
         .expect("successful projection records its native budget delta");
     let mut exact_budget =
-        quire_contract_model::NativeJoinBudget::new(measured.work, measured.storage);
+        filament_contract_model::NativeJoinBudget::new(measured.work, measured.storage);
     assert_eq!(
         admitted.clone().project_selected_type_declarations(
             &witnessed,
@@ -117,14 +127,14 @@ fn ledger_own_operations_preserve_signature_and_witnessed_effect() {
     );
     assert_eq!(exact_budget.last_success_delta(), Some(measured));
     let mut short_storage =
-        quire_contract_model::NativeJoinBudget::new(measured.work, measured.storage - 1);
+        filament_contract_model::NativeJoinBudget::new(measured.work, measured.storage - 1);
     let denied = admitted
         .clone()
         .project_selected_type_declarations(&witnessed, &[], &[], &mut short_storage)
         .expect_err("one below the measured helper storage refuses");
     assert_eq!(
         denied.code,
-        quire_contract_model::ExactTypeProjectionErrorCode::ExhaustedStorage
+        filament_contract_model::ExactTypeProjectionErrorCode::ExhaustedStorage
     );
     assert_eq!(denied.denied, short_storage.first_unpaid());
     assert_eq!(short_storage.last_success_delta(), None);
@@ -147,7 +157,7 @@ fn ledger_own_operations_preserve_signature_and_witnessed_effect() {
             &witnessed,
             &[],
             &[],
-            &mut quire_contract_model::NativeJoinBudget::new(10_000, u64::MAX)
+            &mut filament_contract_model::NativeJoinBudget::new(10_000, u64::MAX)
         ),
         Ok(projected.clone())
     );
@@ -156,7 +166,7 @@ fn ledger_own_operations_preserve_signature_and_witnessed_effect() {
             &witnessed,
             &[],
             &[],
-            &mut quire_contract_model::NativeJoinBudget::new(projected.work() - 1, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(projected.work() - 1, u64::MAX),
         )
         .expect_err("finite work refuses before exposing a partial view");
     assert_eq!(exhausted.code, ExactTypeProjectionErrorCode::ExhaustedWork);
@@ -227,7 +237,7 @@ fn parameter_order_domains_and_optional_result_are_independent() {
     let mut many = parameter("Node", "typed", "middle", &orders("Small"));
     many["multiplicity"] = json!({"lower":1,"upper":3,"ordered":true,"unique":true});
     typed["params"] = json!([
-        parameter("Node", "typed", "z_flag", "ix://quire/native/Boolean"),
+        parameter("Node", "typed", "z_flag", "ix://filament/native/Boolean"),
         many,
         parameter("Node", "typed", "a_count", &orders("Small")),
     ]);
@@ -237,10 +247,14 @@ fn parameter_order_domains_and_optional_result_are_independent() {
         "Node",
         "unsupported",
         "real",
-        "ix://quire/native/Decimal"
+        "ix://filament/native/Decimal"
     )]);
-    unsupported["returns"] =
-        parameter("Node", "unsupported", "result", "ix://quire/native/Decimal");
+    unsupported["returns"] = parameter(
+        "Node",
+        "unsupported",
+        "result",
+        "ix://filament/native/Decimal",
+    );
     let doc = document(vec![
         with_operations(
             "Node",
@@ -304,7 +318,7 @@ fn same_names_in_distinct_selected_packages_do_not_join_contexts_or_domains() {
         "Node",
         "step",
         "value",
-        "ix://quire/native/Boolean"
+        "ix://filament/native/Boolean"
     )]);
     let first = document(vec![with_operations("Node", &[], vec![step])]);
     let mut second: Value = serde_json::from_str(
@@ -314,7 +328,7 @@ fn same_names_in_distinct_selected_packages_do_not_join_contexts_or_domains() {
     )
     .unwrap();
     second["types"][0]["operations"][0]["params"][0]["typeRef"] =
-        json!("ix://quire/native/Integer");
+        json!("ix://filament/native/Integer");
     let (mut wire, _, _) = package(&first, &[("Node", OBJECT)], &[]);
     let nodes = wire["semantic_graph"]["nodes"].as_array_mut().unwrap();
     let mut other = nodes
@@ -334,7 +348,7 @@ fn same_names_in_distinct_selected_packages_do_not_join_contexts_or_domains() {
     select_model(&mut wire, "acme/other");
     settle(&mut wire);
     let mut evidence = CheckedPackageEvidence::new();
-    evidence.support_feature("quire.value.complete/v1");
+    evidence.support_feature("filament.value.complete/v1");
     for (identity, document) in [
         (IDENTITY, first),
         ("acme/other", second),
@@ -375,7 +389,7 @@ fn same_names_in_distinct_selected_packages_do_not_join_contexts_or_domains() {
 #[test]
 fn unavailable_parameter_name_refuses_instead_of_inventing_a_binder() {
     let mut op = operation("Node", "step");
-    let mut slot = parameter("Node", "step", "value", "ix://quire/native/Boolean");
+    let mut slot = parameter("Node", "step", "value", "ix://filament/native/Boolean");
     slot.as_object_mut().unwrap().remove("name");
     slot.as_object_mut().unwrap().remove("identity");
     op["params"] = json!([slot]);
@@ -578,23 +592,23 @@ fn every_operation_bearing_model_form_can_expose_its_declared_census() {
         (
             "entity",
             "object_type",
-            "quire.meaning.model.object-type/v1",
+            "filament.meaning.model.object-type/v1",
         ),
         (
             "interface",
             "systems_interface",
-            "quire.meaning.systems.interface/v1",
+            "filament.meaning.systems.interface/v1",
         ),
-        ("process", "process", "quire.meaning.model.process/v1"),
+        ("process", "process", "filament.meaning.model.process/v1"),
         (
             "machine",
             "state_machine",
-            "quire.meaning.model.state-machine/v1",
+            "filament.meaning.model.state-machine/v1",
         ),
         (
             "persistence",
             "persistence_interface",
-            "quire.meaning.model.persistence-interface/v1",
+            "filament.meaning.model.persistence-interface/v1",
         ),
     ] {
         let mut ty = if kind == "process" {
@@ -616,7 +630,7 @@ fn every_operation_bearing_model_form_can_expose_its_declared_census() {
         }
         let mut types = vec![ty];
         if kind == "persistence" {
-            let mut stored = object("Stored", &[], &[field("id", "ix://quire/native/UUID")]);
+            let mut stored = object("Stored", &[], &[field("id", "ix://filament/native/UUID")]);
             stored["identityFields"] = json!([format!("{}/id", orders("Stored"))]);
             types.push(stored);
         }

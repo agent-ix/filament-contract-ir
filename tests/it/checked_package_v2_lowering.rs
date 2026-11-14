@@ -8,11 +8,11 @@ use crate::support::checked_package::{
     self, canonical, evidence_for, refresh_identity, settle, typed_node_id, v2_all_families,
     v2_nominal,
 };
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     CheckedNodeId, CheckedNodeTag, CheckedPackageLimit, CheckedPackageReadLimits, CheckedPackageV2,
     CheckedPackageV2ReadResult, CompleteLoweringProfileV2, CompleteLoweringRecordV2,
 };
+use ix_trace_rs::trace;
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
 
@@ -36,7 +36,7 @@ const FAMILIES: [(&str, CheckedNodeTag); 13] = [
 /// Every family node's node key is `prefix.repeat(16)` except the four whose
 /// body is a real `application` term (function, temporal, protocol, claim):
 /// their required `operation`/`result_type` members change their preimage, so
-/// the fixture gives them the real computed `quire.application-node/v1` key
+/// the fixture gives them the real computed `filament.application-node/v1` key
 /// instead of a repeated placeholder — see `checked_package::family_key`,
 /// which both the fixture builder and this lookup call, so the two can never
 /// drift apart. `prefix` still labels and orders them.
@@ -66,8 +66,8 @@ fn admit(value: &Value) -> CheckedPackageV2 {
 
 fn profile(work_limit: u64) -> CompleteLoweringProfileV2 {
     CompleteLoweringProfileV2 {
-        reference: quire_contract_model::LoweringProfileRef {
-            authority: "quire".into(),
+        reference: filament_contract_model::LoweringProfileRef {
+            authority: "filament".into(),
             identity: "complete-v1".into(),
         },
         required_source_selections: Vec::new(),
@@ -77,7 +77,7 @@ fn profile(work_limit: u64) -> CompleteLoweringProfileV2 {
     }
 }
 
-fn lowered(record: &CompleteLoweringRecordV2) -> &quire_contract_model::CompleteContractNodeV2 {
+fn lowered(record: &CompleteLoweringRecordV2) -> &filament_contract_model::CompleteContractNodeV2 {
     match record {
         CompleteLoweringRecordV2::Lowered { node } => node,
         other => panic!("expected lowered record, got {other:?}"),
@@ -604,7 +604,7 @@ fn forms_package(scalar_form: &str, composite_form: &str) -> Forms {
     let node = |key: &str, tag: &str, form: &str, ty: &str, dependencies: &[&str], body: Value| {
         json!({
             "node_id": checked_package::node_id(key),
-            "schema_version": "quire.checked-semantic-graph/v2",
+            "schema_version": "filament.checked-semantic-graph/v2",
             "node_tag": tag,
             "semantic_form": form,
             "semantic_type": checked_package::node_id(ty),
@@ -856,7 +856,7 @@ fn tc_052_float_rounding_domain_bounds_a_float() {
             .expect("nodes")
             .push(json!({
                 "node_id": checked_package::node_id(&domain_key),
-                "schema_version": "quire.checked-semantic-graph/v2",
+                "schema_version": "filament.checked-semantic-graph/v2",
                 "node_tag": "bounded_domain",
                 "semantic_form": "float_rounding",
                 "semantic_type": checked_package::node_id(&scalar_key),

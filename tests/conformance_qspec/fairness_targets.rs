@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! The owning STD-616 vectors exercise the canonical public target union.
+use filament_contract_model::CheckedFairnessTarget;
 use ix_trace_rs::trace;
-use quire_contract_model::CheckedFairnessTarget;
 use serde_json::Value;
 
 #[test]
 #[trace("TC-048", "FR-038-AC-98", "FR-349-AC-9")]
 fn owner_vectors_have_one_exact_typed_fairness_target() {
-    let root = std::env::var_os("QUIRE_SPECIFICATION_DIR").expect("QSpec checkout required");
+    let root = std::env::var_os("FILAMENT_SPECIFICATION_DIR").expect("FSpec checkout required");
     let path = std::path::PathBuf::from(root)
         .join("proposals/checked-package-v2/temporal-fairness-target-vectors.json");
     let vectors: Value =

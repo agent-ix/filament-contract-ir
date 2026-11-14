@@ -1,31 +1,31 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Agent-IX
 
-//! QSpec's carried-quantity wire controls through the complete V2 reader.
+//! FSpec's carried-quantity wire controls through the complete V2 reader.
 
 use super::{proposal_dir_of, read_json};
 use crate::fixture_support::{
     canonical, evidence_for, index_fixture_node_ids, node_id, nominal_fixture_members,
     nominal_package, resolved_fixture_id, settle,
 };
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     BoundedDomainForm, CheckedNodeId, CheckedNodeKind, CheckedNodeTag, CheckedPackageReadLimits,
     CheckedPackageV2, CheckedPackageV2ReadResult, CheckedTerm, CompleteLoweringProfileV2,
     CompleteLoweringRecordV2, CompositeTypeForm, ExactTypeProjectionErrorCode, LiteralKind,
     NativeJoinBudget, ScalarTypeForm, SelectedExactIdentities,
 };
+use ix_trace_rs::trace;
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
 
 fn vectors() -> Value {
     read_json(&proposal_dir_of(&super::fixtures_dir()).join("quantity-carrier-vectors.json"))
-        .expect("QSpec quantity carrier vectors")
+        .expect("FSpec quantity carrier vectors")
 }
 
 fn bounded_vectors() -> Value {
     read_json(&proposal_dir_of(&super::fixtures_dir()).join("bounded-quantity-vectors.json"))
-        .expect("QSpec bounded quantity vectors")
+        .expect("FSpec bounded quantity vectors")
 }
 
 fn bound_text(bound: &Value) -> String {
@@ -79,7 +79,7 @@ fn assert_carried_bindings(
         .unwrap_or_else(|| panic!("{name}: missing admitted carried type"));
     assert_eq!(
         *kind,
-        quire_contract_model::CheckedNodeKind::ScalarType(ScalarTypeForm::CarriedQuantity),
+        filament_contract_model::CheckedNodeKind::ScalarType(ScalarTypeForm::CarriedQuantity),
         "{name}"
     );
     let body = serde_json::to_value(&carried.body).expect("typed carried body");
@@ -125,7 +125,7 @@ fn assert_rational_carrier_bounds(
         .expect("admitted rational carrier");
     assert_eq!(
         *kind,
-        quire_contract_model::CheckedNodeKind::BoundedDomain(BoundedDomainForm::RationalRange)
+        filament_contract_model::CheckedNodeKind::BoundedDomain(BoundedDomainForm::RationalRange)
     );
     let CheckedTerm::Aggregate { members } = &carrier.body else {
         panic!("rational carrier body is not a typed aggregate");
@@ -211,7 +211,7 @@ impl Package {
         let mut members = nominal_fixture_members();
         let dimension = members
             .iter()
-            .find(|(value, _)| value["version"] == "quire.dimension-node/v1")
+            .find(|(value, _)| value["version"] == "filament.dimension-node/v1")
             .expect("length dimension");
         let length = node_id(&dimension.1);
         let mut time = dimension.0.clone();
@@ -219,7 +219,7 @@ impl Package {
         members.push((time, "qualified:Example/Time".into()));
         let unit = members
             .iter()
-            .find(|(value, _)| value["version"] == "quire.unit-node/v1")
+            .find(|(value, _)| value["version"] == "filament.unit-node/v1")
             .expect("length unit");
         let metre = node_id(&unit.1);
         let unit = unit.0.clone();
@@ -290,7 +290,7 @@ impl Package {
             .expect("nodes")
             .push(json!({
                 "node_id": id,
-                "schema_version": "quire.checked-semantic-graph/v2",
+                "schema_version": "filament.checked-semantic-graph/v2",
                 "node_tag": tag,
                 "semantic_form": form,
                 "semantic_type": semantic_type,
@@ -324,7 +324,7 @@ impl Package {
             .as_array_mut()
             .expect("nodes")
             .push(json!({
-                "node_id": parameter, "schema_version":"quire.checked-semantic-graph/v2",
+                "node_id": parameter, "schema_version":"filament.checked-semantic-graph/v2",
                 "node_tag":"value", "semantic_form":"parameter", "semantic_type":source,
                 "dependencies":[], "occurrences":[{"role":"expression","ordinal":0}],
                 "body":body,
@@ -334,17 +334,17 @@ impl Package {
             .expect("nodes")
             .len();
         let identity = application["operation"].as_str().expect("operation");
-        let member = if identity == "quire.op.quantity.convert" {
+        let member = if identity == "filament.op.quantity.convert" {
             json!({"kind":"type_argument","declaration":target})
         } else {
             Value::Null
         };
-        let operator = if identity == "quire.op.quantity.convert" {
+        let operator = if identity == "filament.op.quantity.convert" {
             "convert"
         } else {
             "binary"
         };
-        let form = if identity == "quire.op.quantity.convert" {
+        let form = if identity == "filament.op.quantity.convert" {
             "conversion"
         } else {
             "binary"
@@ -354,7 +354,7 @@ impl Package {
             .expect("nodes")
             .push(json!({
                 "node_id":node_id(&format!("quantity/vector-application/{at}")),
-                "schema_version":"quire.checked-semantic-graph/v2",
+                "schema_version":"filament.checked-semantic-graph/v2",
                 "node_tag":"expression", "semantic_form":form,
                 "semantic_type":target, "dependencies":[],
                 "occurrences":[{"role":"expression","ordinal":0}],
@@ -362,7 +362,7 @@ impl Package {
                     "operation":{"identity":identity,"laws":[],"mode":application["mode"],
                         "member":member,"leaves":[]},
                     "result_type":target,
-                    "arguments": if identity == "quire.op.quantity.convert" {
+                    "arguments": if identity == "filament.op.quantity.convert" {
                         vec![json!({"term":"reference","target":parameter})]
                     } else {
                         vec![json!({"term":"reference","target":parameter}),
@@ -391,7 +391,7 @@ impl Package {
             .as_array_mut()
             .expect("nodes")
             .push(json!({
-                "node_id":id,"schema_version":"quire.checked-semantic-graph/v2",
+                "node_id":id,"schema_version":"filament.checked-semantic-graph/v2",
                 "node_tag":"composite_type","semantic_form":"record",
                 "semantic_type":id,"dependencies":types,
                 "occurrences":[{"role":"type","ordinal":0}],
@@ -412,7 +412,7 @@ impl Package {
             .as_array_mut()
             .expect("nodes")
             .push(json!({
-                "node_id":id,"schema_version":"quire.checked-semantic-graph/v2",
+                "node_id":id,"schema_version":"filament.checked-semantic-graph/v2",
                 "node_tag":"value","semantic_form":"parameter",
                 "semantic_type":self.ids[ty],"dependencies":[],
                 "occurrences":[{"role":"expression","ordinal":0}],"body":body,
@@ -430,7 +430,7 @@ impl Package {
             .as_array_mut()
             .expect("nodes")
             .push(json!({
-                "node_id":id,"schema_version":"quire.checked-semantic-graph/v2",
+                "node_id":id,"schema_version":"filament.checked-semantic-graph/v2",
                 "node_tag":"scalar_type","semantic_form":"compound_unit",
                 "semantic_type":id,"dependencies":[],
                 "occurrences":[{"role":"expression","ordinal":0}],
@@ -452,7 +452,7 @@ impl Package {
             .as_array_mut()
             .expect("nodes")
             .push(json!({
-                "node_id":id,"schema_version":"quire.checked-semantic-graph/v2",
+                "node_id":id,"schema_version":"filament.checked-semantic-graph/v2",
                 "node_tag":"scalar_type","semantic_form":"bounded_quantity",
                 "semantic_type":id,"dependencies":[unit,rational],
                 "occurrences":[{"role":"type","ordinal":0}],
@@ -501,7 +501,7 @@ impl Package {
     }
 }
 
-/// Trace: FR-038-AC-485, FR-038-AC-486, FR-019-AC-26; QSpec FR-322-AC-384.
+/// Trace: FR-038-AC-485, FR-038-AC-486, FR-019-AC-26; FSpec FR-322-AC-384.
 #[trace(
     "TC-048",
     "TC-050",
@@ -561,8 +561,8 @@ fn published_bounded_quantity_shape_and_bounds_policy() {
             assert_eq!(actual["members"][1]["value"]["value"], min, "{id} min");
             assert_eq!(actual["members"][2]["value"]["value"], max, "{id} max");
             let profile = CompleteLoweringProfileV2 {
-                reference: quire_contract_model::LoweringProfileRef {
-                    authority: "quire".into(),
+                reference: filament_contract_model::LoweringProfileRef {
+                    authority: "filament".into(),
                     identity: "complete-v1".into(),
                 },
                 required_source_selections: Vec::new(),
@@ -613,12 +613,12 @@ fn published_bounded_quantity_shape_and_bounds_policy() {
             };
             assert_eq!(
                 refusal.code,
-                quire_contract_model::CheckedPackageRefusalCode::InvalidPackage,
+                filament_contract_model::CheckedPackageRefusalCode::InvalidPackage,
                 "{id}"
             );
             assert_eq!(
                 refusal.cause,
-                Some(quire_contract_model::CheckedPackageRefusalCause::InvalidDerivedShape),
+                Some(filament_contract_model::CheckedPackageRefusalCause::InvalidDerivedShape),
                 "{id}"
             );
             if id == "BQ-06" {
@@ -665,7 +665,7 @@ fn admitted_bounded_quantity_is_a_map_scalar_key() {
         .as_array_mut()
         .expect("nodes")
         .push(json!({
-            "node_id": map, "schema_version": "quire.checked-semantic-graph/v2",
+            "node_id": map, "schema_version": "filament.checked-semantic-graph/v2",
             "node_tag": "composite_type", "semantic_form": "map",
             "semantic_type": map, "dependencies": dependencies,
             "occurrences": [{"role": "type", "ordinal": 0}],
@@ -709,7 +709,7 @@ fn admitted_bounded_quantity_is_a_map_scalar_key() {
     );
 }
 
-/// Trace: FR-038-AC-485, FR-019-AC-26; QSpec FR-322-AC-384.
+/// Trace: FR-038-AC-485, FR-019-AC-26; FSpec FR-322-AC-384.
 #[trace("TC-048", "TC-058", "FR-038-AC-485", "FR-019-AC-26")]
 #[test]
 fn published_bounded_quantity_unit_and_alias_identity() {
@@ -790,7 +790,7 @@ fn published_bounded_quantity_unit_and_alias_identity() {
     assert_eq!(bounded_nodes, 2, "BQ-03 adds no alias node");
 }
 
-/// Trace: FR-038-AC-486; QSpec FR-322-AC-384.
+/// Trace: FR-038-AC-486; FSpec FR-322-AC-384.
 #[trace("TC-048", "FR-038-AC-486")]
 #[test]
 fn published_bounded_quantity_add_convert_and_lt_admit() {
@@ -806,14 +806,14 @@ fn published_bounded_quantity_add_convert_and_lt_admit() {
     all["boolean"] = json!({"tag":"scalar_type","form":"boolean",
         "path":["scalar_type","boolean"],"body":{"term":"aggregate","members":[]}});
     for (identity, source, result, mode) in [
-        ("quire.op.quantity.add", "bounded", "unit_m", Value::Null),
+        ("filament.op.quantity.add", "bounded", "unit_m", Value::Null),
         (
-            "quire.op.quantity.convert",
+            "filament.op.quantity.convert",
             "unit_m",
             "bounded",
             json!({"kind":"rounding","value":"exact"}),
         ),
-        ("quire.op.quantity.lt", "bounded", "boolean", Value::Null),
+        ("filament.op.quantity.lt", "bounded", "boolean", Value::Null),
     ] {
         assert!(
             operations.iter().any(|item| item == identity),
@@ -824,7 +824,7 @@ fn published_bounded_quantity_add_convert_and_lt_admit() {
             package.add(name, &all);
         }
         package.bounded("bounded", "unit_m", "0", "20");
-        if identity == "quire.op.quantity.lt" {
+        if identity == "filament.op.quantity.lt" {
             package.add("boolean", &all);
         }
         package.application(
@@ -845,7 +845,7 @@ fn published_bounded_quantity_add_convert_and_lt_admit() {
     }
 }
 
-/// Trace: FR-038-AC-486; QSpec FR-322-AC-384.
+/// Trace: FR-038-AC-486; FSpec FR-322-AC-384.
 #[trace("TC-048", "FR-038-AC-486")]
 #[test]
 fn bounded_quantity_add_requires_an_ordinary_unit_result() {
@@ -860,7 +860,7 @@ fn bounded_quantity_add_requires_an_ordinary_unit_result() {
         .as_array()
         .expect("BQ operations")
         .iter()
-        .any(|operation| operation == "quire.op.quantity.add"));
+        .any(|operation| operation == "filament.op.quantity.add"));
     let mut package = Package::new();
     let all = &vectors()["nodes"];
     for name in ["rational", "text", "integer"] {
@@ -869,7 +869,7 @@ fn bounded_quantity_add_requires_an_ordinary_unit_result() {
     package.bounded("bounded", "unit_m", "0", "20");
     let at = package.application(
         &json!({"application":{
-            "operation":"quire.op.quantity.add", "operand_types":["bounded"],
+            "operation":"filament.op.quantity.add", "operand_types":["bounded"],
             "result_type":"unit_m", "mode":null
         }}),
         all,
@@ -883,11 +883,11 @@ fn bounded_quantity_add_requires_an_ordinary_unit_result() {
     };
     assert_eq!(
         refusal.code,
-        quire_contract_model::CheckedPackageRefusalCode::IllTyped
+        filament_contract_model::CheckedPackageRefusalCode::IllTyped
     );
     assert_eq!(
         refusal.cause,
-        Some(quire_contract_model::CheckedPackageRefusalCause::OperatorIneligible)
+        Some(filament_contract_model::CheckedPackageRefusalCause::OperatorIneligible)
     );
     assert_eq!(
         refusal.loci[0].path.as_ref().map(ToString::to_string),
@@ -895,7 +895,7 @@ fn bounded_quantity_add_requires_an_ordinary_unit_result() {
     );
 }
 
-/// Trace: FR-038-AC-486; QSpec FR-322-AC-384.
+/// Trace: FR-038-AC-486; FSpec FR-322-AC-384.
 #[trace("TC-048", "FR-038-AC-486")]
 #[test]
 fn published_bounded_quantity_lt_rejects_other_dimension() {
@@ -919,7 +919,7 @@ fn published_bounded_quantity_lt_rejects_other_dimension() {
     package.parameter("time_parameter", "time");
     let at = package.application(
         &json!({"application":{
-            "operation":"quire.op.quantity.lt", "operand_types":["length"],
+            "operation":"filament.op.quantity.lt", "operand_types":["length"],
             "result_type":"boolean", "mode":null
         }}),
         &all,
@@ -931,11 +931,11 @@ fn published_bounded_quantity_lt_rejects_other_dimension() {
     };
     assert_eq!(
         refusal.code,
-        quire_contract_model::CheckedPackageRefusalCode::IllTyped
+        filament_contract_model::CheckedPackageRefusalCode::IllTyped
     );
     assert_eq!(
         refusal.cause,
-        Some(quire_contract_model::CheckedPackageRefusalCause::OperatorIneligible)
+        Some(filament_contract_model::CheckedPackageRefusalCause::OperatorIneligible)
     );
 }
 
@@ -1008,8 +1008,8 @@ fn published_carried_quantity_positions_lower_without_covering_a_bare_unit() {
         .map(|name| resolved(name))
         .collect::<Vec<_>>();
     let profile = CompleteLoweringProfileV2 {
-        reference: quire_contract_model::LoweringProfileRef {
-            authority: "quire".into(),
+        reference: filament_contract_model::LoweringProfileRef {
+            authority: "filament".into(),
             identity: "complete-v1".into(),
         },
         required_source_selections: Vec::new(),
@@ -1226,7 +1226,7 @@ fn published_carried_quantity_vectors_read_as_wire() {
         let unit = case["source"]["unit"].as_str().expect("source unit");
         let mut package = Package::new();
         let application = json!({
-            "application":{"operation":"quire.op.quantity.convert",
+            "application":{"operation":"filament.op.quantity.convert",
                 "operand_types":[format!("unit_{unit}")],"result_type":target,
                 "mode":{"kind":"rounding","value":case["mode"]}}
         });
@@ -1311,7 +1311,7 @@ fn conversion_into_a_carried_quantity_requires_a_unit_or_carried_source() {
     package.compound_unit();
     let at = package.application(
         &json!({"application":{
-            "operation":"quire.op.quantity.convert",
+            "operation":"filament.op.quantity.convert",
             "operand_types":["compound_unit"],
             "result_type":"q_dec",
             "mode":{"kind":"rounding","value":"exact"},
@@ -1337,7 +1337,7 @@ fn conversion_into_a_carried_quantity_requires_a_unit_or_carried_source() {
 }
 
 // TC-187 publishes CS-01..CS-06 as wire rows in its Markdown table. Reuse
-// QSpec's scalar wire constructors and change their explicit bound values to
+// FSpec's scalar wire constructors and change their explicit bound values to
 // the CS table's domains; these are complete reader fixtures, not evaluations.
 fn sum_nodes() -> Value {
     fn replace(value: &mut Value, from: &str, to: &str) {
@@ -1401,7 +1401,7 @@ fn sum_package(
         .as_array_mut()
         .expect("nodes")
         .push(json!({
-            "node_id":compound,"schema_version":"quire.checked-semantic-graph/v2",
+            "node_id":compound,"schema_version":"filament.checked-semantic-graph/v2",
             "node_tag":"scalar_type","semantic_form":"compound_unit","semantic_type":compound,
             "dependencies":[unit],"occurrences":[{"role":"type","ordinal":0}],
             "body":{"term":"aggregate","members":[{"term":"aggregate","members":[
@@ -1417,11 +1417,11 @@ fn sum_package(
     let bounded = json!({"package":package.wire["name"],
         "path":["bounded_domain","collection_bounds","min",integer,"0","max","3",sequence],"ordinal":0});
     package.wire["semantic_graph"]["nodes"].as_array_mut().expect("nodes").extend([
-        json!({"node_id":sequence,"schema_version":"quire.checked-semantic-graph/v2",
+        json!({"node_id":sequence,"schema_version":"filament.checked-semantic-graph/v2",
             "node_tag":"composite_type","semantic_form":"sequence","semantic_type":sequence,
             "dependencies":[inner],"occurrences":[{"role":"type","ordinal":0}],
             "body":{"term":"aggregate","members":[{"term":"reference","target":inner}]}}),
-        json!({"node_id":bounded,"schema_version":"quire.checked-semantic-graph/v2",
+        json!({"node_id":bounded,"schema_version":"filament.checked-semantic-graph/v2",
             "node_tag":"bounded_domain","semantic_form":"collection_bounds","semantic_type":sequence,
             "dependencies":[sequence],"occurrences":[{"role":"type","ordinal":0}],
             "body":{"term":"aggregate","members":[
@@ -1437,11 +1437,11 @@ fn sum_package(
         .expect("nodes")
         .len();
     package.wire["semantic_graph"]["nodes"].as_array_mut().expect("nodes").push(json!({
-        "node_id":node_id("quantity/carried-sum"),"schema_version":"quire.checked-semantic-graph/v2",
+        "node_id":node_id("quantity/carried-sum"),"schema_version":"filament.checked-semantic-graph/v2",
         "node_tag":"expression","semantic_form":"collection","semantic_type":package.ids[result],
         "dependencies":[],"occurrences":[{"role":"expression","ordinal":0}],
         "body":{"term":"application","operator":"collection","operation":{
-            "identity":"quire.op.collection.sum.carried_quantity","laws":[],
+            "identity":"filament.op.collection.sum.carried_quantity","laws":[],
             "mode":mode.map(|value| json!({"kind":"rounding","value":value})),
             "member":{"kind":"type_argument","declaration":package.ids[member]},"leaves":[]},
             "result_type":package.ids[result],"arguments":[
@@ -1647,7 +1647,7 @@ fn carried_sum_cs03_laws_then_required_mode_precede_types() {
         let (mut package, at) = sum_package("Q", bound, "Q", "Q", mode);
         if law {
             package.wire["semantic_graph"]["nodes"][at]["body"]["operation"]["laws"] = json!([
-                {"role":"integer_division","definition":{"authority":"quire.math.integer/v1","identity":"euclidean"}}
+                {"role":"integer_division","definition":{"authority":"filament.math.integer/v1","identity":"euclidean"}}
             ]);
         }
         assert_sum_refusal(
@@ -1693,7 +1693,7 @@ fn carried_sum_cs06_requires_carried_member_and_unique_identity() {
         let (mut package, at) = sum_package("Q", member, member, member, Some("exact"));
         if member == "Q" {
             package.wire["semantic_graph"]["nodes"][at]["body"]["operation"]["identity"] =
-                json!("quire.op.collection.sum.quantity");
+                json!("filament.op.collection.sum.quantity");
         }
         assert_sum_refusal(package, at, "ill_typed", "operator-ineligible");
     }
@@ -1704,7 +1704,7 @@ fn carried_sum_cs06_requires_carried_member_and_unique_identity() {
 fn ordinary_quantity_sum_refuses_a_carried_type_argument() {
     let (mut package, at) = sum_package("Q", "Q", "Q", "Q", Some("exact"));
     package.wire["semantic_graph"]["nodes"][at]["body"]["operation"]["identity"] =
-        json!("quire.op.collection.sum.quantity");
+        json!("filament.op.collection.sum.quantity");
     assert_sum_refusal(package, at, "ill_typed", "operator-ineligible");
 }
 
@@ -1713,7 +1713,7 @@ fn ordinary_quantity_sum_refuses_a_carried_type_argument() {
 fn quantity_sum_bound_constraint_compares_the_binder_parameter_type() {
     let (mut package, at) = sum_package("Q", "unit_cm", "unit_m", "unit_m", Some("exact"));
     package.wire["semantic_graph"]["nodes"][at]["body"]["operation"]["identity"] =
-        json!("quire.op.collection.sum.quantity");
+        json!("filament.op.collection.sum.quantity");
     assert_sum_refusal(package, at, "ill_typed", "operator-ineligible");
 }
 

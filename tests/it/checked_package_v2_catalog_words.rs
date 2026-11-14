@@ -8,23 +8,23 @@
 //! else, and at the application's `operator` in a diagnostic detail; an
 //! operator outside the closed vocabulary refuses `invalid_semantic_graph`.
 //! The catalog read, the root-application checks and the temporal clause shape
-//! are unit tests in `crates/quire-contract-model/src/checked_package/v2/`,
+//! are unit tests in `crates/filament-contract-model/src/checked_package/v2/`,
 //! where the catalog's own entries are read rather than listed; the placement
 //! of nodes and references and the rest of the temporal step are
 //! `checked_package_v2_temporal.rs`.
 
 use crate::support::checked_package::{canonical, evidence_for, pointer, settle, v2_all_families};
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     CheckedPackageReadLimits, CheckedPackageRefusal, CheckedPackageRefusalCause,
     CheckedPackageRefusalCode, CheckedPackageV2ReadResult,
 };
+use ix_trace_rs::trace;
 use serde_json::{json, Value};
 
 const OPERATORS: [(&str, &str); 3] = [
-    ("case", "quire.op.control.case"),
-    ("temporal_formula", "quire.op.temporal.holds"),
-    ("temporal_fairness", "quire.op.temporal.fair"),
+    ("case", "filament.op.control.case"),
+    ("temporal_formula", "filament.op.temporal.holds"),
+    ("temporal_fairness", "filament.op.temporal.fair"),
 ];
 
 fn refused(package: &Value) -> CheckedPackageRefusal {
@@ -80,7 +80,7 @@ fn ineligible(
 ) -> (
     CheckedPackageRefusalCode,
     Option<CheckedPackageRefusalCause>,
-    Option<quire_contract_model::JsonPointer>,
+    Option<filament_contract_model::JsonPointer>,
 ) {
     (
         CheckedPackageRefusalCode::IllTyped,
@@ -162,7 +162,7 @@ fn tc_048_a_nested_application_of_a_placed_class_refuses_at_the_nested_applicati
         }
         // The refusal is of the operator class, whatever identity it names.
         let (package, position) =
-            with_second_argument(move |t| nested(operator, "quire.op.boolean.not", t));
+            with_second_argument(move |t| nested(operator, "filament.op.boolean.not", t));
         assert_eq!(
             refused(&package).loci[0].path,
             expected(position, "arguments/1").2
@@ -260,7 +260,8 @@ fn tc_048_an_operator_outside_the_closed_vocabulary_refuses_at_the_term() {
 #[trace("TC-048", "FR-038-AC-114")]
 #[test]
 fn tc_048_a_nested_application_with_an_unknown_operator_is_outside_the_grammar() {
-    let (package, position) = with_second_argument(|t| nested("bogus", "quire.op.boolean.not", t));
+    let (package, position) =
+        with_second_argument(|t| nested("bogus", "filament.op.boolean.not", t));
     let refusal = refused(&package);
     assert_eq!(refusal.code, CheckedPackageRefusalCode::MalformedWire);
     assert_eq!(

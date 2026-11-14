@@ -7,12 +7,12 @@ use crate::support::checked_package::{
     add_family_reference_target, canonical, evidence_for, family_key, index_fixture_node_ids,
     node_id, nominal_fixture_members, nominal_package, refresh_identity, settle, v2_all_families,
 };
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     CheckedPackageEvidence, CheckedPackageReadLimits, CheckedPackageRefusalCause,
     CheckedPackageRefusalCode, CheckedPackageV2, CheckedPackageV2ReadResult, CheckedTerm,
     OperationModeKind,
 };
+use ix_trace_rs::trace;
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -21,7 +21,7 @@ fn node(package: &mut Value, key: &str, tag: &str, form: &str, ty: &str, body: V
         .as_array_mut()
         .expect("nodes")
         .push(json!({
-            "node_id": node_id(key), "schema_version": "quire.checked-semantic-graph/v2",
+            "node_id": node_id(key), "schema_version": "filament.checked-semantic-graph/v2",
             "node_tag": tag, "semantic_form": form, "semantic_type": node_id(ty),
             "dependencies": [], "occurrences": [{"role": "expression", "ordinal": 0}], "body": body
         }));
@@ -41,7 +41,7 @@ fn fixture() -> Fixture {
     let members = nominal_fixture_members();
     let unit = members
         .iter()
-        .find(|(p, _)| p["version"] == "quire.unit-node/v1")
+        .find(|(p, _)| p["version"] == "filament.unit-node/v1")
         .expect("unit")
         .1
         .clone();
@@ -165,7 +165,7 @@ fn parameter(f: &mut Fixture, ty: &str, name: &str) -> String {
 }
 fn ieee_law(f: &mut Fixture, position: usize) {
     let definition = json!({"authority":"agent-ix",
-        "identity":"quire.value.ieee754-2019-default/v1"});
+        "identity":"filament.value.ieee754-2019-default/v1"});
     f.package["lock"]["definition_selections"]
         .as_array_mut()
         .expect("selections")
@@ -177,7 +177,7 @@ fn ieee_law(f: &mut Fixture, position: usize) {
 
 fn selected_catalog_law(f: &mut Fixture, position: usize, role: &str) {
     let catalog: Value = serde_json::from_str(
-        quire_verification_contracts::operation_catalog::CHECKED_OPERATION_CATALOG_V1,
+        filament_verification_contracts::operation_catalog::CHECKED_OPERATION_CATALOG_V1,
     )
     .expect("reader catalog");
     let definition = catalog["law_roles"][role][0].clone();
@@ -194,11 +194,11 @@ fn selected_catalog_law(f: &mut Fixture, position: usize, role: &str) {
 
 fn text_or_string_conversion(identity: &str) -> Option<Value> {
     let (source, destination) = identity
-        .strip_prefix("quire.op.text.to_")
+        .strip_prefix("filament.op.text.to_")
         .map(|to| ("text", to))
         .or_else(|| {
             identity
-                .strip_prefix("quire.op.string.to_")
+                .strip_prefix("filament.op.string.to_")
                 .map(|to| ("string", to))
         })?;
     if !matches!(
@@ -313,11 +313,13 @@ fn read_with_evidence(
 
 pub(super) fn simple_fixture(entry: &Value) -> Option<Value> {
     let identity = entry["identity"].as_str()?;
-    let family = if identity.starts_with("quire.op.boolean.") {
+    let family = if identity.starts_with("filament.op.boolean.") {
         "boolean"
-    } else if identity.starts_with("quire.op.integer.") {
+    } else if identity.starts_with("filament.op.integer.") {
         "integer"
-    } else if identity.starts_with("quire.op.rational.") && identity != "quire.op.rational.narrow" {
+    } else if identity.starts_with("filament.op.rational.")
+        && identity != "filament.op.rational.narrow"
+    {
         "rational"
     } else {
         return None;
@@ -435,23 +437,25 @@ pub(super) fn admitted_fixture(identity: &str) -> Option<Value> {
     if let Some(package) = text_or_string_conversion(identity) {
         return Some(package);
     }
-    if identity == "quire.op.numeric.narrow" {
+    if identity == "filament.op.numeric.narrow" {
         return Some(crate::admitted_result_context::fixture());
     }
-    if identity == "quire.op.collection.sum.carried_quantity" {
+    if identity == "filament.op.collection.sum.carried_quantity" {
         return Some(crate::checked_package_v2_operand_families::carried_sum_control().0);
     }
-    if identity == "quire.op.collection.sum.quantity" {
+    if identity == "filament.op.collection.sum.quantity" {
         return Some(crate::checked_package_v2_operand_families::quantity_sum_control().0);
     }
     if matches!(
         identity,
-        "quire.op.ieee.to_float32" | "quire.op.ieee.to_float64" | "quire.op.ieee.to_rational"
+        "filament.op.ieee.to_float32"
+            | "filament.op.ieee.to_float64"
+            | "filament.op.ieee.to_rational"
     ) {
         let (source, destination) = match identity {
-            "quire.op.ieee.to_float32" => ("float64", "float32"),
-            "quire.op.ieee.to_float64" => ("float32", "float64"),
-            "quire.op.ieee.to_rational" => ("float32", "rational"),
+            "filament.op.ieee.to_float32" => ("float64", "float32"),
+            "filament.op.ieee.to_float64" => ("float32", "float64"),
+            "filament.op.ieee.to_rational" => ("float32", "rational"),
             _ => unreachable!(),
         };
         return Some(
@@ -471,7 +475,7 @@ pub(super) fn admitted_fixture(identity: &str) -> Option<Value> {
     let b = f.boolean.clone();
     let mut set_i = || composite(&mut f.package, "set", &i);
     match identity {
-        "quire.op.reference.eq" => {
+        "filament.op.reference.eq" => {
             let target = add_family_reference_target(&mut f.package);
             let reference_type = composite(&mut f.package, "reference", &target);
             let operand = parameter(&mut f, &reference_type, "same_reference");
@@ -486,8 +490,8 @@ pub(super) fn admitted_fixture(identity: &str) -> Option<Value> {
                 vec![reference(&operand), reference(&operand)],
             );
         }
-        "quire.op.ieee.from_exact" | "quire.op.numeric.convert_rounding" => {
-            let family = if identity == "quire.op.ieee.from_exact" {
+        "filament.op.ieee.from_exact" | "filament.op.numeric.convert_rounding" => {
+            let family = if identity == "filament.op.ieee.from_exact" {
                 "float32"
             } else {
                 "decimal"
@@ -503,13 +507,13 @@ pub(super) fn admitted_fixture(identity: &str) -> Option<Value> {
                 &destination,
                 vec![integer_literal(&i)],
             );
-            if identity == "quire.op.ieee.from_exact" {
+            if identity == "filament.op.ieee.from_exact" {
                 ieee_law(&mut f, at);
             }
         }
-        "quire.op.collection.sum.decimal"
-        | "quire.op.collection.sum.float32"
-        | "quire.op.collection.sum.float64" => {
+        "filament.op.collection.sum.decimal"
+        | "filament.op.collection.sum.float32"
+        | "filament.op.collection.sum.float64" => {
             let family = identity.rsplit('.').next().expect("family");
             let destination = scalar(&mut f, family);
             let set = composite(&mut f.package, "set", &destination);
@@ -532,7 +536,7 @@ pub(super) fn admitted_fixture(identity: &str) -> Option<Value> {
                 ieee_law(&mut f, at);
             }
         }
-        "quire.op.collection.fold" => {
+        "filament.op.collection.fold" => {
             let set = set_i();
             application(
                 &mut f,
@@ -549,7 +553,7 @@ pub(super) fn admitted_fixture(identity: &str) -> Option<Value> {
                 ],
             );
         }
-        "quire.op.collection.reduce" | "quire.op.collection.sum.integer" => {
+        "filament.op.collection.reduce" | "filament.op.collection.sum.integer" => {
             let set = set_i();
             application(
                 &mut f,
@@ -562,7 +566,7 @@ pub(super) fn admitted_fixture(identity: &str) -> Option<Value> {
                 vec![reference(&set), binder(integer_literal(&i))],
             );
         }
-        "quire.op.collection.count" => {
+        "filament.op.collection.count" => {
             let set = set_i();
             application(
                 &mut f,
@@ -579,7 +583,7 @@ pub(super) fn admitted_fixture(identity: &str) -> Option<Value> {
                 ],
             );
         }
-        "quire.op.collection.sum.rational" => {
+        "filament.op.collection.sum.rational" => {
             let set = composite(&mut f.package, "set", &r);
             let parameter = rational_parameter(&mut f);
             application(
@@ -593,7 +597,7 @@ pub(super) fn admitted_fixture(identity: &str) -> Option<Value> {
                 vec![reference(&set), binder(reference(&parameter))],
             );
         }
-        "quire.op.collection.size" => {
+        "filament.op.collection.size" => {
             let set = set_i();
             application(
                 &mut f,
@@ -606,7 +610,7 @@ pub(super) fn admitted_fixture(identity: &str) -> Option<Value> {
                 vec![reference(&set)],
             );
         }
-        "quire.op.collection.convert" => {
+        "filament.op.collection.convert" => {
             let set = set_i();
             let sequence = composite(&mut f.package, "sequence", &i);
             application(
@@ -620,7 +624,7 @@ pub(super) fn admitted_fixture(identity: &str) -> Option<Value> {
                 vec![reference(&set)],
             );
         }
-        "quire.op.numeric.convert" => {
+        "filament.op.numeric.convert" => {
             application(
                 &mut f,
                 "convert",
@@ -632,7 +636,7 @@ pub(super) fn admitted_fixture(identity: &str) -> Option<Value> {
                 vec![integer_literal(&i)],
             );
         }
-        "quire.op.quantity.convert" => {
+        "filament.op.quantity.convert" => {
             let left = f.left.clone();
             application(
                 &mut f,
@@ -645,7 +649,7 @@ pub(super) fn admitted_fixture(identity: &str) -> Option<Value> {
                 vec![reference(&left)],
             );
         }
-        "quire.op.rational.narrow" => {
+        "filament.op.rational.narrow" => {
             let parameter = rational_parameter(&mut f);
             application(
                 &mut f,
@@ -658,7 +662,7 @@ pub(super) fn admitted_fixture(identity: &str) -> Option<Value> {
                 vec![reference(&parameter)],
             );
         }
-        "quire.op.reference.upcast" => {
+        "filament.op.reference.upcast" => {
             let target = add_family_reference_target(&mut f.package);
             let reference_type = composite(&mut f.package, "reference", &target);
             let expression = expression_reference(&mut f.package, &f.left.clone(), &reference_type);
@@ -673,7 +677,7 @@ pub(super) fn admitted_fixture(identity: &str) -> Option<Value> {
                 vec![reference(&expression)],
             );
         }
-        "quire.op.model.all_instances" => {
+        "filament.op.model.all_instances" => {
             let target = add_family_reference_target(&mut f.package);
             let reference_type = composite(&mut f.package, "reference", &target);
             let set = composite(&mut f.package, "set", &reference_type);
@@ -689,7 +693,7 @@ pub(super) fn admitted_fixture(identity: &str) -> Option<Value> {
                 vec![reference(&pop)],
             );
         }
-        "quire.op.model.lookup" => {
+        "filament.op.model.lookup" => {
             let target = add_family_reference_target(&mut f.package);
             let reference_type = composite(&mut f.package, "reference", &target);
             let option = composite(&mut f.package, "option", &u);
@@ -706,7 +710,7 @@ pub(super) fn admitted_fixture(identity: &str) -> Option<Value> {
                 vec![reference(&pop), reference(&expression)],
             );
         }
-        "quire.op.tuple.project" => {
+        "filament.op.tuple.project" => {
             let tuple = composite(&mut f.package, "tuple", &i);
             application_with_member(
                 &mut f,
@@ -719,7 +723,7 @@ pub(super) fn admitted_fixture(identity: &str) -> Option<Value> {
                 vec![reference(&tuple)],
             );
         }
-        "quire.op.collection.index" => {
+        "filament.op.collection.index" => {
             let set = set_i();
             application_with_member(
                 &mut f,
@@ -770,7 +774,7 @@ fn tc_048_public_operation_views_follow_admitted_values() {
         .iter()
         .find_map(|node| match &node.body {
             CheckedTerm::Application { operation, .. }
-                if operation.identity() == Some("quire.op.record.project") =>
+                if operation.identity() == Some("filament.op.record.project") =>
             {
                 Some(operation)
             }
@@ -781,7 +785,7 @@ fn tc_048_public_operation_views_follow_admitted_values() {
         .as_array()
         .expect("nodes")
         .iter()
-        .find(|node| node["body"]["operation"]["identity"] == "quire.op.record.project")
+        .find(|node| node["body"]["operation"]["identity"] == "filament.op.record.project")
         .expect("field projection source")["body"]["operation"]["member"];
     let declaration = serde_json::from_value(member["declaration"].clone()).expect("node id");
     assert_eq!(
@@ -800,19 +804,19 @@ fn tc_048_public_operation_views_follow_admitted_values() {
 
     for (identity, kind, value, laws) in [
         (
-            "quire.op.numeric.convert_rounding",
+            "filament.op.numeric.convert_rounding",
             OperationModeKind::Rounding,
             "exact",
             0,
         ),
         (
-            "quire.op.model.lookup",
+            "filament.op.model.lookup",
             OperationModeKind::Absence,
             "option",
             0,
         ),
         (
-            "quire.op.ieee.from_exact",
+            "filament.op.ieee.from_exact",
             OperationModeKind::Rounding,
             "exact",
             1,
@@ -856,13 +860,13 @@ fn tc_048_public_operation_views_follow_admitted_values() {
                 operation.law_definitions().expect("admitted views")[0]
                     .identity
                     .as_ref(),
-                "quire.value.ieee754-2019-default/v1"
+                "filament.value.ieee754-2019-default/v1"
             );
         }
         assert_eq!(operation.projection_field().expect("admitted views"), None);
     }
 
-    let wire = admitted_fixture("quire.op.tuple.project").expect("position fixture");
+    let wire = admitted_fixture("filament.op.tuple.project").expect("position fixture");
     let admitted = match read(&wire) {
         CheckedPackageV2ReadResult::Admitted(package) => package,
         other => panic!("position fixture refused: {other:?}"),
@@ -873,7 +877,7 @@ fn tc_048_public_operation_views_follow_admitted_values() {
         .iter()
         .find_map(|node| match &node.body {
             CheckedTerm::Application { operation, .. }
-                if operation.identity() == Some("quire.op.tuple.project") =>
+                if operation.identity() == Some("filament.op.tuple.project") =>
             {
                 Some(operation)
             }
@@ -891,7 +895,7 @@ fn tc_048_public_operation_views_follow_admitted_values() {
         .expect("admitted views")
         .is_empty());
 
-    let wire = admitted_fixture("quire.op.quantity.convert").expect("quantity fixture");
+    let wire = admitted_fixture("filament.op.quantity.convert").expect("quantity fixture");
     let admitted = match read(&wire) {
         CheckedPackageV2ReadResult::Admitted(package) => package,
         other => panic!("quantity fixture refused: {other:?}"),
@@ -902,7 +906,7 @@ fn tc_048_public_operation_views_follow_admitted_values() {
         .iter()
         .find_map(|node| match &node.body {
             CheckedTerm::Application { operation, .. }
-                if operation.identity() == Some("quire.op.quantity.convert") =>
+                if operation.identity() == Some("filament.op.quantity.convert") =>
             {
                 Some(operation)
             }
@@ -913,7 +917,7 @@ fn tc_048_public_operation_views_follow_admitted_values() {
         .as_array()
         .expect("nodes")
         .iter()
-        .find(|node| node["body"]["operation"]["identity"] == "quire.op.quantity.convert")
+        .find(|node| node["body"]["operation"]["identity"] == "filament.op.quantity.convert")
         .expect("quantity source")["body"]["operation"]["member"]["declaration"];
     let declared = serde_json::from_value(declared.clone()).expect("quantity declaration");
     assert_eq!(
@@ -923,14 +927,14 @@ fn tc_048_public_operation_views_follow_admitted_values() {
     assert_eq!(operation.projection_field().expect("admitted views"), None);
 
     let catalog: Value = serde_json::from_str(
-        quire_verification_contracts::operation_catalog::CHECKED_OPERATION_CATALOG_V1,
+        filament_verification_contracts::operation_catalog::CHECKED_OPERATION_CATALOG_V1,
     )
     .expect("catalogue JSON");
     let entry = catalog["operations"]
         .as_array()
         .expect("operations")
         .iter()
-        .find(|entry| entry["identity"] == "quire.op.integer.add")
+        .find(|entry| entry["identity"] == "filament.op.integer.add")
         .expect("integer add entry");
     let wire = simple_fixture(entry).expect("plain operation fixture");
     let admitted = match read(&wire) {
@@ -943,7 +947,7 @@ fn tc_048_public_operation_views_follow_admitted_values() {
         .iter()
         .find_map(|node| match &node.body {
             CheckedTerm::Application { operation, .. }
-                if operation.identity() == Some("quire.op.integer.add") =>
+                if operation.identity() == Some("filament.op.integer.add") =>
             {
                 Some(operation)
             }
@@ -976,7 +980,7 @@ fn tc_048_malformed_operation_facts_have_no_admitted_view() {
         .as_array_mut()
         .expect("nodes")
         .iter_mut()
-        .find(|node| node["body"]["operation"]["identity"] == "quire.op.record.project")
+        .find(|node| node["body"]["operation"]["identity"] == "filament.op.record.project")
         .expect("field projection");
     field_node["body"]["operation"]["member"]["declaration"] = json!(false);
     refresh_identity(&mut field);
@@ -992,7 +996,7 @@ fn tc_048_malformed_operation_facts_have_no_admitted_view() {
         .as_array_mut()
         .expect("nodes")
         .iter_mut()
-        .find(|node| node["body"]["operation"]["identity"] == "quire.op.record.project")
+        .find(|node| node["body"]["operation"]["identity"] == "filament.op.record.project")
         .expect("field projection");
     field_node["body"]["operation"]["member"]["declaration"] = node_id(&"f".repeat(64));
     settle(&mut unselected);
@@ -1001,12 +1005,14 @@ fn tc_048_malformed_operation_facts_have_no_admitted_view() {
         CheckedPackageV2ReadResult::Refused(_)
     ));
 
-    let mut mode = admitted_fixture("quire.op.numeric.convert_rounding").expect("mode fixture");
+    let mut mode = admitted_fixture("filament.op.numeric.convert_rounding").expect("mode fixture");
     let mode_node = mode["semantic_graph"]["nodes"]
         .as_array_mut()
         .expect("nodes")
         .iter_mut()
-        .find(|node| node["body"]["operation"]["identity"] == "quire.op.numeric.convert_rounding")
+        .find(|node| {
+            node["body"]["operation"]["identity"] == "filament.op.numeric.convert_rounding"
+        })
         .expect("rounding conversion");
     mode_node["body"]["operation"]["mode"]["kind"] = json!("unknown");
     settle(&mut mode);
@@ -1015,7 +1021,7 @@ fn tc_048_malformed_operation_facts_have_no_admitted_view() {
         CheckedPackageV2ReadResult::Refused(_)
     ));
 
-    let mut law = admitted_fixture("quire.op.ieee.from_exact").expect("law fixture");
+    let mut law = admitted_fixture("filament.op.ieee.from_exact").expect("law fixture");
     law["lock"]["definition_selections"] = json!([]);
     settle(&mut law);
     assert!(matches!(read(&law), CheckedPackageV2ReadResult::Refused(_)));
@@ -1025,7 +1031,7 @@ fn tc_048_malformed_operation_facts_have_no_admitted_view() {
 #[test]
 fn tc_048_every_catalogue_entry_retains_its_constructible_admission() {
     let catalog: Value = serde_json::from_str(
-        quire_verification_contracts::operation_catalog::CHECKED_OPERATION_CATALOG_V1,
+        filament_verification_contracts::operation_catalog::CHECKED_OPERATION_CATALOG_V1,
     )
     .expect("reader's catalogue is JSON");
     let entries = catalog["operations"].as_array().expect("operations");
@@ -1041,10 +1047,10 @@ fn tc_048_every_catalogue_entry_retains_its_constructible_admission() {
     for entry in entries {
         let identity = entry["identity"].as_str().expect("identity");
         let external = match identity {
-            "quire.op.record.project" => {
+            "filament.op.record.project" => {
                 Some(crate::checked_package_v2_model_fields::record_project_control())
             }
-            "quire.op.model.navigate" | "quire.op.model.dispatch_call" => {
+            "filament.op.model.navigate" | "filament.op.model.dispatch_call" => {
                 Some(crate::checked_package_v2_model_members::model_member_control(identity))
             }
             _ => None,
@@ -1061,8 +1067,8 @@ fn tc_048_every_catalogue_entry_retains_its_constructible_admission() {
             let CheckedPackageV2ReadResult::Admitted(admitted_package) = result else {
                 panic!("{identity}: {result:?}");
             };
-            if identity.starts_with("quire.op.text.to_")
-                || identity.starts_with("quire.op.string.to_")
+            if identity.starts_with("filament.op.text.to_")
+                || identity.starts_with("filament.op.string.to_")
             {
                 let position = package["semantic_graph"]["nodes"]
                     .as_array()
@@ -1119,19 +1125,19 @@ fn tc_048_every_catalogue_entry_retains_its_constructible_admission() {
             .position(|node| node["body"]["operation"]["identity"] == identity)
             .expect("catalogued application");
         let other = match identity {
-            "quire.op.ieee.to_float32" => "float64",
-            "quire.op.ieee.to_float64" | "quire.op.ieee.to_rational" => "float32",
-            "quire.op.collection.fold"
-            | "quire.op.collection.reduce"
-            | "quire.op.collection.count"
-            | "quire.op.collection.sum.integer"
-            | "quire.op.collection.size" => "rational",
-            "quire.op.text.to_integer" | "quire.op.string.to_integer" => "rational",
+            "filament.op.ieee.to_float32" => "float64",
+            "filament.op.ieee.to_float64" | "filament.op.ieee.to_rational" => "float32",
+            "filament.op.collection.fold"
+            | "filament.op.collection.reduce"
+            | "filament.op.collection.count"
+            | "filament.op.collection.sum.integer"
+            | "filament.op.collection.size" => "rational",
+            "filament.op.text.to_integer" | "filament.op.string.to_integer" => "rational",
             _ => "integer",
         };
-        let key = if identity == "quire.op.numeric.narrow" {
+        let key = if identity == "filament.op.numeric.narrow" {
             family_key("a3a3")
-        } else if identity == "quire.op.reference.upcast" {
+        } else if identity == "filament.op.reference.upcast" {
             let flow = family_key("1616");
             let selected = v2_all_families();
             let declaration = selected["semantic_graph"]["nodes"]
@@ -1158,12 +1164,12 @@ fn tc_048_every_catalogue_entry_retains_its_constructible_admission() {
         for (member, result) in [(source, "rational"), ("rational", source), (source, source)] {
             let (package, position) =
                 crate::checked_package_v2_ieee_admission::with_ieee_conversion_source(
-                    "quire.op.ieee.to_rational",
+                    "filament.op.ieee.to_rational",
                     source,
                     member,
                     result,
                 );
-            assert_result_refusal(&package, position, "quire.op.ieee.to_rational");
+            assert_result_refusal(&package, position, "filament.op.ieee.to_rational");
         }
     }
 }
@@ -1185,13 +1191,15 @@ fn assert_result_refusal(package: &Value, position: usize, identity: &str) {
         (
             CheckedPackageRefusalCode::IllTyped,
             Some(CheckedPackageRefusalCause::OperatorIneligible),
-            // QSpec FR-322 locates a carried-sum result mismatch at the
+            // FSpec FR-322 locates a carried-sum result mismatch at the
             // application node itself, not at its `result_type`.
-            Some(if identity == "quire.op.collection.sum.carried_quantity" {
-                format!("/semantic_graph/nodes/{position}")
-            } else {
-                format!("/semantic_graph/nodes/{position}/body/result_type")
-            }),
+            Some(
+                if identity == "filament.op.collection.sum.carried_quantity" {
+                    format!("/semantic_graph/nodes/{position}")
+                } else {
+                    format!("/semantic_graph/nodes/{position}/body/result_type")
+                }
+            ),
             package["semantic_graph"]["nodes"][position]["node_id"].clone()
         ),
         "{identity}"
@@ -1201,7 +1209,7 @@ fn assert_result_refusal(package: &Value, position: usize, identity: &str) {
 #[trace("TC-048", "FR-038-AC-69", "FR-038-AC-251")]
 #[test]
 fn tc_048_member_kind_mismatch_precedes_member_result_check() {
-    let mut package = admitted_fixture("quire.op.collection.fold").expect("fold control");
+    let mut package = admitted_fixture("filament.op.collection.fold").expect("fold control");
     let position = package["semantic_graph"]["nodes"]
         .as_array()
         .expect("nodes")

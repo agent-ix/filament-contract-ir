@@ -3,11 +3,11 @@ id: TC-044
 title: "Complete-V1 target-neutral ContractPackage lowering conforms"
 type: TC
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/FR-035
+  - target: ix://agent-ix/filament-contract-ir/FR-035
     type: verifies
-  - target: ix://agent-ix/quire-specification/TC-217
+  - target: ix://agent-ix/filament-specification/TC-217
     type: references
-  - target: ix://agent-ix/quire-specification/TC-935
+  - target: ix://agent-ix/filament-specification/TC-935
     type: references
 ---
 # TC-044: Complete-V1 target-neutral ContractPackage lowering conforms
@@ -56,7 +56,7 @@ selected admitted package.
 
 ## Typed source-selection adapter conformance
 
-Use QSpec [TC-935](ix://agent-ix/quire-specification/TC-935) as the single owner
+Use FSpec [TC-935](ix://agent-ix/filament-specification/TC-935) as the single owner
 of the matching, missing, differing-identity and unrelated-selection fixtures,
 empty/duplicate/order controls and exact/one-under compatibility work vectors.
 Do not copy or independently redefine their selection values or expected

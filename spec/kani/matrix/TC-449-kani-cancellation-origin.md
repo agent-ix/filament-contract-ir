@@ -3,7 +3,7 @@ id: TC-449
 title: "Kani cancellation carries the producer's requested or deadline origin"
 type: TC
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/FR-030
+  - target: ix://agent-ix/filament-contract-ir/FR-030
     type: verifies
 ---
 # TC-449: Kani cancellation carries the producer's requested or deadline origin
@@ -13,7 +13,7 @@ relationships:
 Verify FR-030-AC-7's IR carrier and wire refusal at Contract IR's public Kani
 outcome boundary. A second, planned CG integration control checks that the
 Kani run's observed cancellation event, rather than a test-supplied label,
-determines the origin. CG's event producer and conversion to QSL's terminal
+determines the origin. CG's event producer and conversion to FSL's terminal
 value belong to IR-701.
 
 ## Test Procedure
@@ -53,4 +53,4 @@ that run, and the reversed event reverses the outcome source.
 IR carrier, validation and local serialization controls are tagged in
 `tests/it/kani_shared.rs`. CG currently has no Kani cancellation event reader
 or IR `Cancelled` producer; IR-701 implements and tests that downstream source
-observation, event reversal and QSL mapping.
+observation, event reversal and FSL mapping.

@@ -3,27 +3,27 @@ id: FR-350
 title: "Establish native temporal and TL result correspondence"
 type: FR
 relationships:
-  - target: ix://agent-ix/quire-specification/FR-095
+  - target: ix://agent-ix/filament-specification/FR-095
     type: implements
-  - target: ix://agent-ix/quire-specification/FR-092
+  - target: ix://agent-ix/filament-specification/FR-092
     type: depends_on
-  - target: ix://agent-ix/quire-specification/FR-091
+  - target: ix://agent-ix/filament-specification/FR-091
     type: depends_on
-  - target: ix://agent-ix/quire-spec-language/FR-045
+  - target: ix://agent-ix/filament-spec-language/FR-045
     type: depends_on
-  - target: ix://agent-ix/quire-spec-language/FR-050
+  - target: ix://agent-ix/filament-spec-language/FR-050
     type: depends_on
-  - target: ix://agent-ix/quire-spec-language/FR-052
+  - target: ix://agent-ix/filament-spec-language/FR-052
     type: depends_on
-  - target: ix://agent-ix/quire-spec-language/FR-515
+  - target: ix://agent-ix/filament-spec-language/FR-515
     type: depends_on
-  - target: ix://agent-ix/quire-spec-language/FR-516
+  - target: ix://agent-ix/filament-spec-language/FR-516
     type: depends_on
-  - target: ix://agent-ix/quire-spec-language/FR-527
+  - target: ix://agent-ix/filament-spec-language/FR-527
     type: depends_on
-  - target: ix://agent-ix/quire-spec-language/FR-526
+  - target: ix://agent-ix/filament-spec-language/FR-526
     type: depends_on
-  - target: ix://agent-ix/quire-observation/FR-004
+  - target: ix://agent-ix/filament-observation/FR-004
     type: depends_on
   - target: ix://agent-ix/tl-syntax/FR-011
     type: depends_on
@@ -35,33 +35,33 @@ relationships:
     type: depends_on
   - target: ix://agent-ix/tl-mltl/FR-018
     type: depends_on
-  - target: ix://agent-ix/quire-mltl/FR-001
+  - target: ix://agent-ix/filament-mltl/FR-001
     type: depends_on
-  - target: ix://agent-ix/quire-mltl/FR-003
+  - target: ix://agent-ix/filament-mltl/FR-003
     type: depends_on
-  - target: ix://agent-ix/quire-mltl/FR-004
+  - target: ix://agent-ix/filament-mltl/FR-004
     type: depends_on
-  - target: ix://agent-ix/quire-contract-ir/FR-358
+  - target: ix://agent-ix/filament-contract-ir/FR-358
     type: references
-  - target: ix://agent-ix/quire-contract-ir/AD-009
+  - target: ix://agent-ix/filament-contract-ir/AD-009
     type: references
 ---
 # FR-350: Establish native temporal and TL result correspondence
 
 ## Description
 
-When QSL FR-527 returns a `Supported` classification for a temporal
-declaration occurrence in an admitted `quire.checked-package/v2` package, the
-temporal bridge in `agent-ix/quire-integration` SHALL construct and owner-read
+When FSL FR-527 returns a `Supported` classification for a temporal
+declaration occurrence in an admitted `filament.checked-package/v2` package, the
+temporal bridge in `agent-ix/filament-integration` SHALL construct and owner-read
 the TL formula, proposition map, trace or position history and request from
 the native owner inputs, record one bridge-owned correspondence record, and
-later join the native QSL FR-526 evaluator-issued result with the TL mapped result under that
-record. The bridge SHALL take the target and outstanding premises from the QSL
-classification and preserve the meaning QSpec FR-095 defines. This artifact is
-the cross-repository bridge contract. It assigns no QSL-typed API to either
+later join the native FSL FR-526 evaluator-issued result with the TL mapped result under that
+record. The bridge SHALL take the target and outstanding premises from the FSL
+classification and preserve the meaning FSpec FR-095 defines. This artifact is
+the cross-repository bridge contract. It assigns no FSL-typed API to either
 Contract IR package; [AD-009](../../assurance/AD-009-native-temporal-bridge.md)
 states the component architecture. The integration contract IT-022 in
-`agent-ix/quire-integration` specifies the integration scenarios that exercise
+`agent-ix/filament-integration` specifies the integration scenarios that exercise
 this contract and does not restate it.
 
 ## Inputs
@@ -72,24 +72,24 @@ for any of them.
 
 | Input | Owner API | Use |
 | --- | --- | --- |
-| admitted package | `quire_contract_model::CheckedPackageV2` | package name, lock, source map, graph, `selected_model_packages()` and predicate terms |
-| checked subject | `qsl_package::checked_views::TemporalSubjectView`, borrowed from that package by `temporal_subject` (QSL FR-515) | declaration, profile, occurrences, per-occurrence name and clock, captures, predicate leaves, formula graph, activation |
-| classification | `qsl_package::checked_views::Classification` from `mapping_support` (QSL FR-527) | support disposition, target, outstanding premises, retained subject and sealed selection |
-| surrounding closure | `qsl_package::checked_views::Closure` | selects the closed-trace or online-prefix future target |
-| native request | `qsl_eval::temporal::evidence::EvidenceRequest` (QSL FR-516) | each member as stated in the disposition table below |
-| exact occurrence | `qsl_package::checked_views::ClauseOccurrence` | node, role and ordinal of the assessed occurrence |
-| admitted observation revision | `quire_integration::temporal::AdmittedObservationRevision` (IT-021) over a Quire Observation bundle | observation records keyed by observation identity, with clock and owner anchor |
-| clock view | `quire_observation::authority::clock::View` | clock identity, clock revision and selected range |
-| observation views | `quire_mltl::request::ObservationInputs` | decision and surrounding progress/closure, completeness and availability views |
-| bridge definition | `ValidatedTlBridgeDefinition` from `read_tl_bridge_definition` (IT-022) | authority `agent-ix/quire-integration`, identity `native-temporal-correspondence/v1`, profile and version |
+| admitted package | `filament_contract_model::CheckedPackageV2` | package name, lock, source map, graph, `selected_model_packages()` and predicate terms |
+| checked subject | `fsl_package::checked_views::TemporalSubjectView`, borrowed from that package by `temporal_subject` (FSL FR-515) | declaration, profile, occurrences, per-occurrence name and clock, captures, predicate leaves, formula graph, activation |
+| classification | `fsl_package::checked_views::Classification` from `mapping_support` (FSL FR-527) | support disposition, target, outstanding premises, retained subject and sealed selection |
+| surrounding closure | `fsl_package::checked_views::Closure` | selects the closed-trace or online-prefix future target |
+| native request | `fsl_eval::temporal::evidence::EvidenceRequest` (FSL FR-516) | each member as stated in the disposition table below |
+| exact occurrence | `fsl_package::checked_views::ClauseOccurrence` | node, role and ordinal of the assessed occurrence |
+| admitted observation revision | `filament_integration::temporal::AdmittedObservationRevision` (IT-021) over a Filament Observation bundle | observation records keyed by observation identity, with clock and owner anchor |
+| clock view | `filament_observation::authority::clock::View` | clock identity, clock revision and selected range |
+| observation views | `filament_mltl::request::ObservationInputs` | decision and surrounding progress/closure, completeness and availability views |
+| bridge definition | `ValidatedTlBridgeDefinition` from `read_tl_bridge_definition` (IT-022) | authority `agent-ix/filament-integration`, identity `native-temporal-correspondence/v1`, profile and version |
 | owner limits | `tl_mltl::wire::OwnerLimits` | finite ceilings passed to the TL owner operations |
 | bridge limits | `TlLimits` | the seven bridge counters below |
 
 The join additionally borrows the original native whole call outcome
-`Option<&Result<qsl_eval::temporal::evidence::EvaluatedEvidence, quire_eval::CallFailure>>`
-(QSL FR-516 and FR-526), the TL `quire_mltl::contract_ir::ValidatedMappedResult`
+`Option<&Result<fsl_eval::temporal::evidence::EvaluatedEvidence, filament_eval::CallFailure>>`
+(FSL FR-516 and FR-526), the TL `filament_mltl::contract_ir::ValidatedMappedResult`
 with its source `ValidatedTemporalResult`, an optional previously admitted join
-and the caller's `qsl_package::NativeJoinBudget` (FR-358) for owner package
+and the caller's `fsl_package::NativeJoinBudget` (FR-358) for owner package
 projection. `None` is genuine absence; an original typed `Err` is not absence
 or a native `NonValue`. Only the evaluator issues the opaque carrier. Its
 `result()` borrows the complete original output immutably; a copied or modified
@@ -135,8 +135,8 @@ partial projection or join is observable on any error.
 
 ### Boundary and interface
 
-The `agent-ix/quire-integration` bridge SHALL implement the public profile
-`quire.native-temporal-correspondence/v1`. Its public operations SHALL be
+The `agent-ix/filament-integration` bridge SHALL implement the public profile
+`filament.native-temporal-correspondence/v1`. Its public operations SHALL be
 equivalent to:
 
 ```text
@@ -162,8 +162,8 @@ temporal::read_tl_projection(
 
 temporal::join_tl(
   projection: &ValidatedTlProjection,
-  native: Option<&Result<qsl_eval::temporal::evidence::EvaluatedEvidence, quire_eval::CallFailure>>,
-  mapped: Option<&quire_mltl::contract_ir::ValidatedMappedResult>,
+  native: Option<&Result<fsl_eval::temporal::evidence::EvaluatedEvidence, filament_eval::CallFailure>>,
+  mapped: Option<&filament_mltl::contract_ir::ValidatedMappedResult>,
   previous: Option<&ValidatedTlJoin>,
   limits: TlLimits,
   native_budget: &mut NativeJoinBudget,
@@ -181,11 +181,11 @@ temporal::read_tl_join(
 SHALL be constructor-private: only the operations above construct them. No
 operation SHALL accept a parser, evaluator, callback, trust flag, alias map or
 caller-authored mirror of an owner record. The bridge SHALL invoke neither the
-native evaluator (`evaluate_temporal_evidence`) nor the TL evaluator (`quire_mltl::report::evaluate`
-or `quire_mltl::report::read`, which re-evaluates). It admits TL results only
-as `ValidatedMappedResult` values, which only the quire-mltl readers construct;
-this is the TL owner's accepted result input. Neither `quire-contract-model`
-nor the `quire-contract-ir` root SHALL depend on a QSL crate to implement this
+native evaluator (`evaluate_temporal_evidence`) nor the TL evaluator (`filament_mltl::report::evaluate`
+or `filament_mltl::report::read`, which re-evaluates). It admits TL results only
+as `ValidatedMappedResult` values, which only the filament-mltl readers construct;
+this is the TL owner's accepted result input. Neither `filament-contract-model`
+nor the `filament-contract-ir` root SHALL depend on a FSL crate to implement this
 profile (FR-028-AC-3).
 
 ### Error vocabulary
@@ -223,8 +223,8 @@ payloads. Steps run in order and the first failure is returned.
    projection, with its target taken from the classification; `Unsupported`
    returns `tl-projection-unsupported`.
 
-The support domain SHALL be exactly the QSL FR-045 and QSpec FR-095 table. It
-includes each bounded past operator of QSpec FR-092, individually, under both
+The support domain SHALL be exactly the FSL FR-045 and FSpec FR-095 table. It
+includes each bounded past operator of FSpec FR-092, individually, under both
 false-extension profiles when no future operator is reachable. A mixed
 past-and-future graph, a timestamped-event (finite-window) profile and an
 infinite-trace profile are unsupported. Decision-scope closure,
@@ -250,7 +250,7 @@ discharged by exactly one step below.
    `clock-cover`.
 4. **Correspondence reference.** `request.correspondence.identity` SHALL equal
    the bridge definition identity `native-temporal-correspondence/v1` and its
-   `authority_identity` the bridge authority `agent-ix/quire-integration`;
+   `authority_identity` the bridge authority `agent-ix/filament-integration`;
    otherwise native-premise `correspondence-reference`. These values are
    constant across corrections, so the native owner's `correspondence-changed`
    refusal never fires for a correction made through this bridge.
@@ -300,7 +300,7 @@ discharged by exactly one step below.
    `clock-representation`. A non-nanosecond fixed-sample unit is never
    converted: for a future target it returns native-premise
    `clock-representation`; for a past target the epoch and period are passed
-   unchanged and the TL request owner's typed refusal (quire-mltl FR-001-AC-9)
+   unchanged and the TL request owner's typed refusal (filament-mltl FR-001-AC-9)
    is returned as `tl-projection-owner`.
    `request.anchor` equal to no position's observation identity returns
    incomplete `anchor`; equal to more than one returns native-premise
@@ -317,18 +317,18 @@ discharged by exactly one step below.
    Some(true)` returns incomplete `history`; a history cutoff is never an
    execution origin.
 8. **Progress, closure and completeness.** Closures compare by state only:
-   native `ProgressClosure::Closed`/`Open` against the QObs closure view's
+   native `ProgressClosure::Closed`/`Open` against the FObs closure view's
    `payload().state()` `Closed`/`Open`. Progress compares the native `u64`
-   watermark with the decimal `watermark` text of the QObs progress view's
+   watermark with the decimal `watermark` text of the FObs progress view's
    event-position or fixed-sample boundary, parsed as `u64`. An absent
    `decision_closure` returns incomplete `complete-input`; a differing one
    native-premise `decision-closure`. A `surrounding_closure` unequal to the
-   supplied surrounding closure (`Complete` as `Closed`) or to the QObs view
+   supplied surrounding closure (`Complete` as `Closed`) or to the FObs view
    returns native-premise `surrounding-closure`. An absent or differing
    progress value, an unparsable watermark or a timestamped boundary returns
    native-premise `progress`. An absent or `Incomplete` `request.completeness`,
-   or a QObs completeness state `Incomplete`, returns incomplete
-   `complete-input`; a QObs state `Contradicted` returns native-premise
+   or a FObs completeness state `Incomplete`, returns incomplete
+   `complete-input`; a FObs state `Contradicted` returns native-premise
    `completeness`.
 9. **Valuations.** The bridge SHALL use `native_atom_operands(subject)` and
    the checked subject's instance-bound atom selection to map native atom
@@ -359,9 +359,9 @@ discharged by exactly one step below.
   that is not a `holds` leaf, including an aggregate atom, returns
   `tl-projection-formula`. Numeric, nullable, unavailable or pending values
   SHALL NOT become propositions.
-- Future-only mappings SHALL use the formula and false-extension rules of QSpec
+- Future-only mappings SHALL use the formula and false-extension rules of FSpec
   FR-091; past-only mappings SHALL use the formula edition and origin-complete
-  history of QSpec FR-092 and the TL owners' public contracts. A fixed-sample
+  history of FSpec FR-092 and the TL owners' public contracts. A fixed-sample
   mapping SHALL retain its authenticated epoch, period and unit; an absent
   sample is incomplete `position`, and a changed period or event-count
   reinterpretation is refused (native-premise `clock`) even where formula
@@ -384,12 +384,12 @@ values from earlier steps or the inputs, so no value depends on a later one:
 2. The source-map entry.
 3. TL formula and proposition map, then the trace (future) or position
    history (past) from the step-9 cell values; each owner-read.
-4. `quire_mltl::request::derive` with `RequestInput { formula,
+4. `filament_mltl::request::derive` with `RequestInput { formula,
    proposition_map, input, clock, subject_identity, correspondence_identity,
    anchor, observations }`, where `subject_identity` is the native subject
    name and `correspondence_identity` is the constant profile name
-   `quire.native-temporal-correspondence/v1`; then
-   `quire_mltl::request::read` of the derived bytes against the same input.
+   `filament.native-temporal-correspondence/v1`; then
+   `filament_mltl::request::read` of the derived bytes against the same input.
 5. The correspondence record, which contains the exact request bytes from
    step 4.
 
@@ -409,7 +409,7 @@ writer under `max_bytes`. Encodings:
 - **dec**: the base-10 string, without leading zeros (`"0"` for zero), of an
   integer; a negative integer carries a leading `-`.
 - **str**: the exact owner string. **bool**: a JSON Boolean.
-- **IR**: the `quire-contract-model` serde JSON value of that type, in which
+- **IR**: the `filament-contract-model` serde JSON value of that type, in which
   every JSON number is replaced by its dec string. An IR value containing a
   non-integer number returns `tl-projection-encoding`.
 - JSON `null` encodes `None` where the table says so. No JSON number appears in
@@ -417,7 +417,7 @@ writer under `max_bytes`. Encodings:
 
 | Member | Encoding | Value |
 | --- | --- | --- |
-| `profile` | str | `quire.native-temporal-correspondence/v1` |
+| `profile` | str | `filament.native-temporal-correspondence/v1` |
 | `bridgeDefinition` | hex | `ValidatedTlBridgeDefinition` record bytes |
 | `package` | str | `CheckedPackageV2::name()` |
 | `lock` | IR | `CheckedPackageV2::lock()` |
@@ -466,7 +466,7 @@ the original request to the carrier's result identity; a mismatch is native
 identity equality, supplies authority for actual truth, support, settlement and
 ledger. No native report serializer, strict result reader, predecessor-byte
 copy or result-byte storage is used. It SHALL re-read the
-mapped result with `quire_mltl::contract_ir::read(mapped.bytes(),
+mapped result with `filament_mltl::contract_ir::read(mapped.bytes(),
 mapped.source(), &MappingSelection::for_result(mapped.source()), owner_limits)`,
 where `owner_limits` is the projection's `owner_limits` with byte ceilings
 lowered to `max_bytes`; the selection is computed by the owner, so the bridge
@@ -520,7 +520,7 @@ equal-final or equal-pending pair with `P` false, and a final/pending pair).
 Every pair therefore has exactly one decision.
 
 R4 is a defensive total-table row. A TL `Unsupported` execution cannot arise
-from a bridge-built `Supported` request: quire-mltl returns `Unsupported` only
+from a bridge-built `Supported` request: filament-mltl returns `Unsupported` only
 for an unsupported profile or past node, and any other request is refused at
 R1. R4 is therefore excluded from FR-350-AC-5's reachable-row coverage.
 
@@ -537,7 +537,7 @@ whose native side was admitted, its original issued carrier's `result_identity`
 equal to the current relation's predecessor, and its lineage plus one (checked
 arithmetic) equal to the current lineage. Failure gives native state `lineage`
 and the typed predecessor mismatch. The carrier preserves the actual output;
-QSL admission already requires changed inputs, the authentic evaluator-written
+FSL admission already requires changed inputs, the authentic evaluator-written
 ledger's latest predecessor and unchanged obligation/correspondence. Input
 identity alone never authenticates corrected truth or ledger.
 
@@ -545,8 +545,8 @@ identity alone never authenticates corrected truth or ledger.
 `previous` is supplied; both are corrections and `previous` is absent or its
 native side was not admitted; or
 `mapped.source().validate_supplied_predecessor(previous.mapped().map(|m|
-m.source().bytes()))` refuses (quire-mltl FR-001). TL complete predecessor-byte
-validation remains required. Native lineage is bounded by QSL FR-523's
+m.source().bytes()))` refuses (filament-mltl FR-001). TL complete predecessor-byte
+validation remains required. Native lineage is bounded by FSL FR-523's
 `lineage` counter, with no native predecessor-byte work or storage budget.
 Earlier carriers and ledgers remain unchanged. `L` SHALL be evaluated only
 when a native successful carrier and a TL result are supplied; an absent side
@@ -559,7 +559,7 @@ object with exactly these members, under the same encodings:
 
 | Member | Encoding | Value |
 | --- | --- | --- |
-| `version` | str | `quire.native-temporal-join/v1` |
+| `version` | str | `filament.native-temporal-join/v1` |
 | `correspondence` | hex | the projection's correspondence record bytes |
 | `native` | hex, object or null | issued result identity bytes; original typed failure object below; or genuine absence |
 | `nativeAdmitted` | bool | whether carrier subject, request and lineage checks admitted |
@@ -637,7 +637,7 @@ the setting. This mapping is defensive and unreachable when the bridge's own
 input check precedes owner calls; it is not a tested AC clause.
 
 For `max_bytes`, the measured `n` of a correspondence or request record is its
-length computed with the setting itself embedded, because the quire-mltl
+length computed with the setting itself embedded, because the filament-mltl
 request wire embeds the lowered `max_input_bytes` and `max_output_bytes`. The
 boundary is therefore the fixed point: the smallest setting `s` with
 `record_len(s) <= s` admits and `s - 1` refuses with `limit-reached{limit: max_bytes,
@@ -649,12 +649,12 @@ the same number of digits.
 
 | ID | Criteria | Verification |
 |---|---|---|
-| FR-350-AC-1 | Given an admitted package and a QSL `Supported` classification, projection takes its target from the classification and returns owner-admitted formula, proposition map, trace or history and request values for every supported row: future-only under complete and open surrounding closure (closed-trace and online-prefix targets), and each bounded past operator of QSpec FR-092 alone under both false-extension profiles with origin-complete history. A non-zero range start or an `authoritative_origin` other than `Some(true)` for a past target returns incomplete `history`. | Test |
+| FR-350-AC-1 | Given an admitted package and a FSL `Supported` classification, projection takes its target from the classification and returns owner-admitted formula, proposition map, trace or history and request values for every supported row: future-only under complete and open surrounding closure (closed-trace and online-prefix targets), and each bounded past operator of FSpec FR-092 alone under both false-extension profiles with origin-complete history. A non-zero range start or an `authoritative_origin` other than `Some(true)` for a past target returns incomplete `history`. | Test |
 | FR-350-AC-2 | Timestamped-event (finite-window), mixed past-and-future and infinite-trace classifications return `tl-projection-unsupported` carrying the complete classification and no formula, request or record. A changed support, retained field, definition selection or surrounding closure, a foreign subject, or a classification from another admission of equal bytes returns `tl-projection-binding`; a clone retaining the admission is accepted. | Test |
 | FR-350-AC-3 | Mutating each correspondence-record member's source input independently (source entry, declaration, lock, subject profile, model selection, binding, interval, anchor, capture, trigger, payload, clock, each observation view, surrounding, origin, each position's observation reference and order key, owner document, selected valuation cell, and each `native` member including the correspondence reference and trigger scope) changes exactly the corresponding record member, and `read_tl_projection` of the original bytes against the mutated inputs returns `tl-projection-correspondence-mismatch`; a non-`holds` atom returns `tl-projection-formula`. | Test |
 | FR-350-AC-4 | Fixed-sample projection with a nanosecond unit retains epoch, period and unit and matches them to the owner anchor by exact equality; a changed period or event-count reinterpretation with equal formula bytes returns native-premise `clock`; a missing sample returns incomplete `position`; a non-nanosecond unit is not converted and returns native-premise `clock-representation` for a future target and `tl-projection-owner` with the TL request owner's refusal for a past target. | Test |
 | FR-350-AC-5 | For each of R1 to R8 a genuine owner-produced pair reaches that row with the stated decision, comparison and cause list, excluding the defensive row R4, including an equal-final pair with `P` false and a final/pending pair (R6), a TL `Failed` result (R2) and a native predecessor mismatch (R6); for each pair of rows R1 to R6 a pair satisfying both returns the first decision and both causes once in row order; only R7 carries a Boolean; every join retains the complete native and TL result values. Each lineage condition of `L` and a different prior issued carrier or TL equal-identity different-content predecessor yields R6, while a correction whose native issued identity and lineage and TL complete direct predecessor match the previous join's admitted results reaches R7. | Test |
-| FR-350-AC-6 | Each binding failure returns its assigned code and premise; an unknown native atom key returns `tl-projection-valuation` with original request position and atom index; explicit false projects as false; missing, undefined or absent selected values return incomplete `valuation{position, operand}`, and a foreign trigger's map cannot supply them. Each owner-reader refusal retains the typed owner error; alternate projection/join bytes return their mismatch code, with no partial value. Joins retain the original immutable native carrier or typed call failure and unchanged TL owner usage. No bridge operation calls `evaluate_temporal_evidence`, `quire_mltl::report::evaluate` or `quire_mltl::report::read`. | Test, Inspection |
+| FR-350-AC-6 | Each binding failure returns its assigned code and premise; an unknown native atom key returns `tl-projection-valuation` with original request position and atom index; explicit false projects as false; missing, undefined or absent selected values return incomplete `valuation{position, operand}`, and a foreign trigger's map cannot supply them. Each owner-reader refusal retains the typed owner error; alternate projection/join bytes return their mismatch code, with no partial value. Joins retain the original immutable native carrier or typed call failure and unchanged TL owner usage. No bridge operation calls `evaluate_temporal_evidence`, `filament_mltl::report::evaluate` or `filament_mltl::report::read`. | Test, Inspection |
 | FR-350-AC-8 | For each of the seven limits, `TlLimits::default()` returns the stated default; with the other six settings above their counts, an operation whose expected count `n`, computed by the test from its inputs by the Limits table, admits at setting `n` and, at setting `n - 1`, returns `limit-reached{limit, value: n, setting: n - 1}` with the rejected unit unvisited and no partial value; the operation's reported usage equals `n`; an action crossing two limits at once returns only the first in table order; for `max_bytes` the measured `n` is the record length with the setting embedded, so the boundary is the smallest setting `s` with `record_len(s) <= s`, which admits, while `s - 1` refuses with `value` equal to `record_len(s - 1)`. Projection exercises `max_bytes`, `max_nodes`, `max_positions`, `max_valuations` and `max_work`; join exercises `max_bytes`, `max_support`, `max_causes` and `max_work`; each strict reader exercises `max_bytes`. | Test |
 | FR-350-AC-9 | Given the authenticated binding, exact occurrence and original request maps, projection selects shared or selected-trigger Boolean values through the native atom-to-predicate mapping and maps the opaque request anchor by exact equality with one admitted position observation identity, including when it resembles another numeric position. An absent request occurrence selects the sole occurrence. Wrong binding, node/role/ordinal, ambiguous occurrence, foreign control, mismatched delivered anchor/capture, absent observation or duplicate observation each returns the assigned refusal before any TL artifact. Changing a selected request valuation changes the projected cell; a shared value cannot replace an instance-bound value, and a foreign trigger cannot supply it. | Test |
 | FR-350-AC-10 | The projection and join retain the exact supplied package admission; the `models` member equals `selected_model_packages()` in its ascending identity order, and two packages selecting the same model set in different source orders yield an identical `models` member. A correction join retains the original prior native carrier and TL direct predecessor; `previous` records the native issued identity or typed failure and complete TL result bytes. A different prior issued carrier or different complete TL predecessor of equal result identity refuses strict reading. | Test |
@@ -662,24 +662,24 @@ the same number of digits.
 
 ## Dependencies
 
-- `agent-ix/quire-integration` owns the QSL-typed bridge, the bridge
+- `agent-ix/filament-integration` owns the FSL-typed bridge, the bridge
   definition, strict projection and join readers, the correspondence and join
   records, and the executable TC-461 evidence. FR-028-AC-3 and TC-041 keep both
-  Contract IR packages free of QSL dependencies.
-- QSL FR-045 defines the support table; FR-515 supplies the checked subject;
+  Contract IR packages free of FSL dependencies.
+- FSL FR-045 defines the support table; FR-515 supplies the checked subject;
   FR-527 supplies `mapping_support`; FR-516 supplies `EvidenceRequest`;
   FR-050 supplies the admitted package and temporal binding; FR-526 supplies
   the immutable `EvaluatedEvidence` carrier, checked result subject, support
   and evaluator-written ledger lineage authority. FR-516 owns request maps
   and typed call outcomes; its successor removes the retired native report API.
-- QSpec FR-095 owns the correspondence meaning; FR-092 the bounded-past
+- FSpec FR-095 owns the correspondence meaning; FR-092 the bounded-past
   semantics; FR-091 the future false-extension rules; FR-322 the structural
   package names and source references.
-- Quire Observation FR-004 supplies observation, clock, progress, closure,
+- Filament Observation FR-004 supplies observation, clock, progress, closure,
   completeness and availability views.
 - tl-syntax FR-011 to FR-014 and tl-mltl FR-018 supply the formula, proposition
-  map, trace and history contracts and readers. quire-mltl FR-001 supplies
+  map, trace and history contracts and readers. filament-mltl FR-001 supplies
   `RequestInput`, request derivation and reading, result admission, the
   public direct-predecessor bytes and `validate_supplied_predecessor`;
-  quire-mltl FR-003 supplies the mapped result, `MappingSelection::for_result`
+  filament-mltl FR-003 supplies the mapped result, `MappingSelection::for_result`
   and its non-evaluating reader.

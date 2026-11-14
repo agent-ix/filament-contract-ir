@@ -9,14 +9,14 @@ use std::{
 };
 
 use crate::support::cargo_graph::production_graph;
+use filament_contract_model::{CheckedNodeId, CheckedNodePathSegment, DiagnosticCode, Std001Code};
 use ix_trace_rs::trace;
-use quire_contract_model::{CheckedNodeId, CheckedNodePathSegment, DiagnosticCode, Std001Code};
 use serde_json::{json, Value};
 use syn::{parse::Parser, punctuated::Punctuated, Token};
 
-const MODEL_ROOT: &str = include_str!("../../crates/quire-contract-model/src/lib.rs");
+const MODEL_ROOT: &str = include_str!("../../crates/filament-contract-model/src/lib.rs");
 const CHECKED_PACKAGE_V2: &str =
-    include_str!("../../crates/quire-contract-model/src/checked_package/v2/mod.rs");
+    include_str!("../../crates/filament-contract-model/src/checked_package/v2/mod.rs");
 const BRIDGE_ROOT: &str = include_str!("../../src/lib.rs");
 const KANI_ROOT: &str = include_str!("../../src/kani/mod.rs");
 const FR_039: &str =
@@ -113,7 +113,7 @@ fn parse_model_source(source: &str, what: &str) -> syn::File {
 
 fn parse_model_module(module: &str) -> syn::File {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("crates/quire-contract-model/src")
+        .join("crates/filament-contract-model/src")
         .join(format!("{module}.rs"));
     let source = fs::read_to_string(&path)
         .unwrap_or_else(|error| panic!("public module {module} must be readable: {error}"));
@@ -969,7 +969,7 @@ fn exported_items() -> BTreeMap<String, BTreeSet<String>> {
         }
     }
     let mut sources =
-        vec![PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("crates/quire-contract-model/src")];
+        vec![PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("crates/filament-contract-model/src")];
     let mut exported_macros = BTreeSet::new();
     while let Some(path) = sources.pop() {
         for entry in fs::read_dir(path).expect("model source directory must be readable") {
@@ -1051,19 +1051,19 @@ fn tc_058_model_root_exports_exactly_the_documented_public_items() {
         .any(|line| line == "pub mod selected_population;"));
 }
 
-fn qsl_package(package: &Value) -> bool {
+fn fsl_package(package: &Value) -> bool {
     let name = package["name"].as_str().expect("package name");
-    name.starts_with("qsl-")
-        || name == "quire-spec-language"
+    name.starts_with("fsl-")
+        || name == "filament-spec-language"
         || package["source"]
             .as_str()
-            .is_some_and(|source| source.contains("github.com/agent-ix/quire-spec-language"))
+            .is_some_and(|source| source.contains("github.com/agent-ix/filament-spec-language"))
 }
 
 #[trace("FR-352-AC-8", "FR-360-AC-3", "TC-058")]
 #[test]
 fn exact_projection_public_surface_and_dependencies_remain_model_owned() {
-    use quire_contract_model::{
+    use filament_contract_model::{
         CheckedPackageV2, ExactTypeProjection, ExactTypeProjectionError, SelectedExactIdentities,
     };
 
@@ -1073,20 +1073,20 @@ fn exact_projection_public_surface_and_dependencies_remain_model_owned() {
         &CheckedPackageV2,
         &CheckedNodeId,
         &SelectedExactIdentities,
-        &mut quire_contract_model::NativeJoinBudget,
+        &mut filament_contract_model::NativeJoinBudget,
     ) -> Result<ExactTypeProjection, ExactTypeProjectionError> =
         CheckedPackageV2::project_exact_type;
-    let _: fn(&ExactTypeProjection) -> &quire_exact::ValueType = ExactTypeProjection::value_type;
+    let _: fn(&ExactTypeProjection) -> &filament_exact::ValueType = ExactTypeProjection::value_type;
     type RuntimeProjectionResult = Result<
-        quire_contract_model::SelectedTypeDeclarations,
-        quire_contract_model::SelectedTypeDeclarationsError,
+        filament_contract_model::SelectedTypeDeclarations,
+        filament_contract_model::SelectedTypeDeclarationsError,
     >;
     let _: fn(
         &CheckedPackageV2,
         &SelectedExactIdentities,
-        &[quire_contract_model::SelectedTupleDeclarationRow],
-        &[quire_contract_model::SelectedSourceUnitRow],
-        &mut quire_contract_model::NativeJoinBudget,
+        &[filament_contract_model::SelectedTupleDeclarationRow],
+        &[filament_contract_model::SelectedSourceUnitRow],
+        &mut filament_contract_model::NativeJoinBudget,
     ) -> RuntimeProjectionResult = CheckedPackageV2::project_selected_type_declarations;
 
     let exports = exported_items();
@@ -1109,11 +1109,11 @@ fn exact_projection_public_surface_and_dependencies_remain_model_owned() {
     let root = public_declarations(&parse_model_source(BRIDGE_ROOT, "IR root"));
     assert!(
         matches!(root.as_slice(), [PublicDeclaration::Module(name)] if name == "kani"),
-        "root must not re-export the projection or QSL APIs"
+        "root must not re-export the projection or FSL APIs"
     );
 
     let repository = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let mut names = model_source_inventory(&repository.join("crates/quire-contract-model/src"));
+    let mut names = model_source_inventory(&repository.join("crates/filament-contract-model/src"));
     names.extend(model_source_inventory(&repository.join("src")));
     let projection_methods = names
         .iter()
@@ -1135,16 +1135,16 @@ fn exact_projection_public_surface_and_dependencies_remain_model_owned() {
             "evaluate_expression", "Evaluator", "ExpressionChecker",
         ].contains(&item.name.as_str())
             // The existing v1 declaration environment owns its own typed IR
-            // expression check; it is not QSL's checked-expression API.
+            // expression check; it is not FSL's checked-expression API.
             || (item.name == "check_expression" && item.owner != "DeclarationEnvironment")
     };
     assert!(
         names.iter().all(|item| !forbidden(item)),
-        "QSL checked-expression, checking or evaluation API entered IR"
+        "FSL checked-expression, checking or evaluation API entered IR"
     );
     for source in [
         "pub struct CheckedExpression;",
-        "pub use qsl_semantics::check::CheckedExpression;",
+        "pub use fsl_semantics::check::CheckedExpression;",
         "pub struct Existing; impl Existing { pub fn check_expression() {} }",
         "pub fn evaluate_expression() {}",
     ] {
@@ -1181,17 +1181,17 @@ fn exact_projection_public_surface_and_dependencies_remain_model_owned() {
         assert_eq!(selected.len(), 1, "one resolved package for {name}");
         selected[0]
     };
-    let model = package("quire-contract-model");
-    let exact = package("quire-exact");
-    let ir = package("quire-contract-ir");
+    let model = package("filament-contract-model");
+    let exact = package("filament-exact");
+    let ir = package("filament-contract-ir");
     for package in [model, ir] {
         assert!(
             package["dependencies"]
                 .as_array()
                 .expect("declared dependencies")
                 .iter()
-                .all(|dependency| !qsl_package(dependency)),
-            "even disabled optional or developer dependencies must not introduce QSL into IR"
+                .all(|dependency| !fsl_package(dependency)),
+            "even disabled optional or developer dependencies must not introduce FSL into IR"
         );
     }
     let model_id = model["id"].as_str().expect("model package ID");
@@ -1219,11 +1219,11 @@ fn exact_projection_public_surface_and_dependencies_remain_model_owned() {
         assert!(
             packages.iter().all(|package| !dependencies
                 .contains(package["id"].as_str().expect("package ID"))
-                || !qsl_package(package)),
-            "IR must not depend on QSL checking or evaluation"
+                || !fsl_package(package)),
+            "IR must not depend on FSL checking or evaluation"
         );
     }
-    // QSL's result/charge-log parity is exercised by QSL FR-390, not by
+    // FSL's result/charge-log parity is exercised by FSL FR-390, not by
     // this IR ownership and dependency check.
 }
 
@@ -1231,8 +1231,8 @@ fn exact_projection_public_surface_and_dependencies_remain_model_owned() {
 #[test]
 fn exact_projection_dependency_inventory_follows_renames_and_transitive_edges() {
     let graph = json!({"packages": [
-        {"id": "model", "name": "quire-contract-model"},
-        {"id": "exact", "name": "quire-exact"},
+        {"id": "model", "name": "filament-contract-model"},
+        {"id": "exact", "name": "filament-exact"},
         {"id": "bridge", "name": "ordinary-library"}
     ], "resolve": {"nodes": [
         {"id": "model", "deps": [{"name": "numeric_alias", "pkg": "exact",
@@ -1261,23 +1261,23 @@ fn exact_projection_dependency_inventory_follows_renames_and_transitive_edges() 
         BTreeSet::from(["model".into(), "exact".into()]),
         "a dev-only edge is not a production admission dependency"
     );
-    assert!(qsl_package(
-        &json!({"name": "qsl-semantics", "source": null})
+    assert!(fsl_package(
+        &json!({"name": "fsl-semantics", "source": null})
     ));
-    assert!(qsl_package(&json!({"name": "renamed_checker", "source":
-        "git+https://github.com/agent-ix/quire-spec-language?branch=main"})));
-    assert!(!qsl_package(
-        &json!({"name": "quire-exact", "source": null})
+    assert!(fsl_package(&json!({"name": "renamed_checker", "source":
+        "git+https://github.com/agent-ix/filament-spec-language?branch=main"})));
+    assert!(!fsl_package(
+        &json!({"name": "filament-exact", "source": null})
     ));
 }
 
 #[trace("TC-456", "NFR-002-AC-1")]
 #[test]
 fn tc_456_public_schema_and_model_names_are_portable() {
-    let _: Option<quire_contract_model::MappingAllocationPoint> = None;
+    let _: Option<filament_contract_model::MappingAllocationPoint> = None;
     let tables = std001_code_rows(STD_001);
     let source_root =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("crates/quire-contract-model/src");
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("crates/filament-contract-model/src");
     let mut names = model_source_inventory(&source_root);
     let model_items = exported_items();
     let inventoried_modules = model_items
@@ -1418,7 +1418,7 @@ fn tc_456_name_matcher_covers_case_boundaries_and_near_misses() {
 #[trace("TC-456")]
 #[test]
 fn tc_456_gated_reexport_checks_inline_enum_variants() {
-    let _: Option<quire_contract_model::MappingAllocationPoint> = None;
+    let _: Option<filament_contract_model::MappingAllocationPoint> = None;
     let source = parse_model_source(
         "mod allocation { pub enum Point { Safe, SolverRuntimeBuffer } } #[cfg(feature = \"fault-injection\")] pub use allocation::Point;",
         "gated re-export control",
@@ -1615,7 +1615,7 @@ fn tc_058_fixture_operation_does_not_bypass_strict_package_admission() {
     use crate::support::checked_package::{
         canonical, evidence_for, pointer, settle, v2_all_families,
     };
-    use quire_contract_model::{
+    use filament_contract_model::{
         CheckedApplicationOperation, CheckedApplicationOperationFixture, CheckedPackageReadLimits,
         CheckedPackageRefusalCode, CheckedPackageV2ReadResult,
     };
@@ -1660,7 +1660,7 @@ fn tc_058_fixture_operation_does_not_bypass_strict_package_admission() {
 #[trace("TC-058", "FR-019-AC-16")]
 #[test]
 fn tc_058_both_test_features_export_their_independent_items() {
-    use quire_contract_model::{
+    use filament_contract_model::{
         CheckedApplicationOperation, CheckedApplicationOperationFixture,
         CheckedApplicationOperationFixtureError, MappingAllocationPoint,
     };
@@ -1680,7 +1680,9 @@ fn tc_058_both_test_features_export_their_independent_items() {
 #[test]
 fn tc_058_reader_admitted_operation_has_no_fixture_provenance() {
     use crate::support::checked_package::{canonical, evidence_for, v2_all_families};
-    use quire_contract_model::{CheckedPackageReadLimits, CheckedPackageV2ReadResult, CheckedTerm};
+    use filament_contract_model::{
+        CheckedPackageReadLimits, CheckedPackageV2ReadResult, CheckedTerm,
+    };
 
     let package = v2_all_families();
     let CheckedPackageV2ReadResult::Admitted(admitted) = crate::read_and_account(
@@ -1819,7 +1821,7 @@ fn tc_055_nested_exported_macro_is_rejected_by_inventory() {
 fn tc_055_no_foreign_runtime_or_replay_surface_in_source() {
     let root_source = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src");
     let model_source =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("crates/quire-contract-model/src");
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("crates/filament-contract-model/src");
     let mut pending = vec![root_source.clone(), model_source.clone()];
     let mut scanned = Vec::new();
     while let Some(dir) = pending.pop() {
@@ -1846,8 +1848,8 @@ fn tc_055_no_foreign_runtime_or_replay_surface_in_source() {
                 .collect::<Vec<_>>()
                 .join("\n");
             for forbidden in [
-                "quire_spec_language::runtime",
-                "qsl_replay::",
+                "filament_spec_language::runtime",
+                "fsl_replay::",
                 "TerminalValue",
                 "replay_with_native_runtime",
             ] {
@@ -1933,8 +1935,11 @@ fn tc_058_structural_node_identity_is_public_and_typed() {
 #[trace("TC-058", "TC-048")]
 #[test]
 fn tc_058_timed_model_form_is_available_from_the_public_model_root() {
-    let kind = quire_contract_model::CheckedNodeKind::TimedModel(
-        quire_contract_model::TimedModelForm::Source,
+    let kind = filament_contract_model::CheckedNodeKind::TimedModel(
+        filament_contract_model::TimedModelForm::Source,
     );
-    assert_eq!(kind.tag(), quire_contract_model::CheckedNodeTag::TimedModel);
+    assert_eq!(
+        kind.tag(),
+        filament_contract_model::CheckedNodeTag::TimedModel
+    );
 }

@@ -11,15 +11,15 @@ use crate::support::checked_package::{
     select_model, unknown_version, v2_all_families, v2_nominal, ExpectedRefusal,
     COMPLETE_VALUE_FEATURE,
 };
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     read_checked_package, CheckedOccurrenceRole, CheckedPackageDispatchResult,
     CheckedPackageEvidence, CheckedPackageLimit, CheckedPackageReadLimits, CheckedPackageRefusal,
     CheckedPackageRefusalCause, CheckedPackageRefusalCode, CheckedPackageV2,
     CheckedPackageV2ReadResult, ExactTypeProjectionErrorCode, ExpressionForm,
     SelectedExactIdentities,
 };
-use quire_exact::{IntegerInterval, ValueType};
+use filament_exact::{IntegerInterval, ValueType};
+use ix_trace_rs::trace;
 use serde_json::{json, Value};
 
 type Mutation = Box<dyn Fn(&mut Value)>;
@@ -115,7 +115,7 @@ fn exact_scalar_projection_uses_publicly_admitted_package() {
         &package,
         [],
         [],
-        &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+        &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
     )
     .expect("scalar rows");
     for (id, expected) in expected {
@@ -124,7 +124,7 @@ fn exact_scalar_projection_uses_publicly_admitted_package() {
             .project_exact_type(
                 &id,
                 &identities,
-                &mut quire_contract_model::NativeJoinBudget::new(128, u64::MAX),
+                &mut filament_contract_model::NativeJoinBudget::new(128, u64::MAX),
             )
             .expect("Exact type");
         assert_eq!(projected.node(), &id);
@@ -133,13 +133,13 @@ fn exact_scalar_projection_uses_publicly_admitted_package() {
             package.clone().project_exact_type(
                 &id,
                 &identities,
-                &mut quire_contract_model::NativeJoinBudget::new(128, u64::MAX)
+                &mut filament_contract_model::NativeJoinBudget::new(128, u64::MAX)
             ),
             Ok(projected)
         );
     }
     let id = serde_json::from_value(node_id(&family_key("aaaa"))).expect("Boolean ID");
-    let mut exhausted_budget = quire_contract_model::NativeJoinBudget::new(1, u64::MAX);
+    let mut exhausted_budget = filament_contract_model::NativeJoinBudget::new(1, u64::MAX);
     let exhausted = package
         .project_exact_type(&id, &identities, &mut exhausted_budget)
         .expect_err("finite limit");
@@ -150,7 +150,7 @@ fn exact_scalar_projection_uses_publicly_admitted_package() {
     assert_eq!(exhausted.denied, exhausted_budget.first_unpaid());
     assert_eq!(
         exhausted.denied.unwrap().kind,
-        quire_contract_model::NativeJoinChargeKind::Work
+        filament_contract_model::NativeJoinChargeKind::Work
     );
     assert_eq!(exhausted.work, 1);
 }
@@ -244,13 +244,21 @@ fn tc_048_reader_refuses_unknown_absent_and_malformed_versions() {
     };
     // An unknown version is refused at `/contract_version`, naming the
     // version string the reader read there.
-    for unknown in ["quire.checked-package/v3", "quire.checked-package/v0", ""] {
+    for unknown in [
+        "filament.checked-package/v3",
+        "filament.checked-package/v0",
+        "",
+    ] {
         assert_dispatch_refused(
             dispatch(&with_version(json!(unknown)), &evidence),
             unknown_version(unknown),
         );
     }
-    for malformed in [json!(2), json!(null), json!(["quire.checked-package/v2"])] {
+    for malformed in [
+        json!(2),
+        json!(null),
+        json!(["filament.checked-package/v2"]),
+    ] {
         assert_dispatch_refused(
             dispatch(&with_version(malformed), &evidence),
             refusal(
@@ -284,7 +292,7 @@ fn tc_048_reader_refuses_unknown_absent_and_malformed_versions() {
     let bytes = canonical(&fixture);
     let body = std::str::from_utf8(&bytes).expect("UTF-8 fixture");
     let duplicate = format!(
-        "{{\"contract_version\":\"quire.checked-package/v0\",{}",
+        "{{\"contract_version\":\"filament.checked-package/v0\",{}",
         body.trim_start_matches('{')
     );
     assert_dispatch_refused(
@@ -370,7 +378,7 @@ fn tc_048_refusal_pointers_escape_member_names_and_resolve() {
 }
 
 /// Five structural mutations against document-level members every
-/// `quire.checked-package/v2` document shares, each named by JSON pointer and
+/// `filament.checked-package/v2` document shares, each named by JSON pointer and
 /// its expected refusal code. Authored here rather than vendored: unlike the
 /// node-identity vectors, this is not an independent conformance oracle —
 /// each entry asserts the reader's own documented structural rule
@@ -408,9 +416,9 @@ const STRUCTURAL_MUTATIONS: [(&str, &str, CheckedPackageRefusalCode); 5] = [
 
 fn structural_mutation_replacement(pointer: &str) -> Value {
     match pointer {
-        "/contract_version" => json!("quire.checked-package/v3"),
+        "/contract_version" => json!("filament.checked-package/v3"),
         "/lock/sources" => json!([]),
-        "/semantic_graph/graph_version" => json!("quire.checked-semantic-graph/v3"),
+        "/semantic_graph/graph_version" => json!("filament.checked-semantic-graph/v3"),
         "/lock/sources/0/authority" => json!(""),
         "/capability_report" => json!([]),
         other => panic!("no replacement authored for structural mutation pointer {other}"),
@@ -457,7 +465,7 @@ fn tc_048_v2_reader_refuses_injected_wire_evidence_and_graph_faults() {
     assert_eq!(
         refused_bytes(
             format!(
-                "{{\"contract_version\":\"quire.checked-package/v2\",{}",
+                "{{\"contract_version\":\"filament.checked-package/v2\",{}",
                 &text[1..]
             )
             .as_bytes(),
@@ -2232,7 +2240,7 @@ fn tc_048_a_declaration_refusal_precedes_an_operation_refusal() {
     // Control: the unknown operation alone reaches the operation stage.
     let mut operation_only = positive_operation_identities();
     operation_only["semantic_graph"]["nodes"][4]["body"]["operation"]["identity"] =
-        json!("quire.op.unknown");
+        json!("filament.op.unknown");
     checked_package::settle(&mut operation_only);
     let control = refused(&operation_only, &evidence_for(&operation_only));
     assert_eq!(

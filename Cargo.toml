@@ -1,12 +1,12 @@
 [workspace]
-members = [".", "crates/quire-contract-model"]
+members = [".", "crates/filament-contract-model"]
 resolver = "2"
 
 [workspace.lints.clippy]
 undocumented_unsafe_blocks = "deny"
 
 [package]
-name = "quire-contract-ir"
+name = "filament-contract-ir"
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.98.1"
@@ -14,26 +14,26 @@ description = "Versioned semantic contract model and canonical representation fo
 authors = ["Peter Krenesky <kreneskyp@gmail.com>"]
 license = "AGPL-3.0-or-later"
 publish = false
-repository = "https://github.com/agent-ix/quire-contract-ir"
+repository = "https://github.com/agent-ix/filament-contract-ir"
 
 [lints]
 workspace = true
 
 [lib]
-name = "quire_contract_ir"
+name = "filament_contract_ir"
 path = "src/lib.rs"
 
 [[bin]]
-name = "quire-contract-conformance"
-path = "src/bin/quire-contract-conformance.rs"
+name = "filament-contract-conformance"
+path = "src/bin/filament-contract-conformance.rs"
 required-features = ["conformance-cli"]
 
 [features]
 default = []
 conformance-cli = ["dep:ix-cli-kit"]
-test-support = ["quire-contract-model/test-support"]
+test-support = ["filament-contract-model/test-support"]
 
-# FR-038-AC-107: reads QSpec's positive fixtures from a `quire-specification`
+# FR-038-AC-107: reads FSpec's positive fixtures from a `filament-specification`
 # checkout, which `make test` has not got. `test = false` keeps it outside
 # `cargo test --workspace --all-targets`; CI compiles it with `--no-run`, and
 # only `make conformance-qspec` runs its fixture tests.
@@ -42,44 +42,44 @@ name = "conformance_qspec"
 path = "tests/conformance_qspec/main.rs"
 test = false
 
-# FR-355/TC-464: exact live QSL producer output and its selected model are
+# FR-355/TC-464: exact live FSL producer output and its selected model are
 # caller inputs to this explicit conformance lane, outside the ordinary gate.
 [[test]]
-name = "conformance_qsl_ir1236"
-path = "tests/conformance_qsl_ir1236/main.rs"
+name = "conformance_fsl_ir1236"
+path = "tests/conformance_fsl_ir1236/main.rs"
 test = false
 
-# FR-049/TC-447: fresh QSL source is compiled by the owning checkout's
+# FR-049/TC-447: fresh FSL source is compiled by the owning checkout's
 # executable in a named producer lane, outside ordinary IR make test.
 [[test]]
-name = "conformance_qsl_ir769"
-path = "tests/conformance_qsl_ir769/main.rs"
+name = "conformance_fsl_ir769"
+path = "tests/conformance_fsl_ir769/main.rs"
 test = false
 
-# FR-352-AC-9: the real QSL selected-identity producer is an explicit host lane.
+# FR-352-AC-9: the real FSL selected-identity producer is an explicit host lane.
 [[test]]
-name = "conformance_qsl_exact_producer"
-path = "tests/conformance_qsl_exact_producer/main.rs"
+name = "conformance_fsl_exact_producer"
+path = "tests/conformance_fsl_exact_producer/main.rs"
 test = false
 
-# FR-050/TC-450: independently read QSL's checked RequirementItem path
+# FR-050/TC-450: independently read FSL's checked RequirementItem path
 # conditions before mapping the FR-062 RR-13 guards into admitted IR.
 [[test]]
-name = "conformance_qsl_ir779"
-path = "tests/conformance_qsl_ir779/main.rs"
+name = "conformance_fsl_ir779"
+path = "tests/conformance_fsl_ir779/main.rs"
 test = false
 
 # FR-053/TC-453: the selected-population fixture is emitted by the owning
-# QSL checkout, so its test runs only in the named conformance lane.
+# FSL checkout, so its test runs only in the named conformance lane.
 [[test]]
-name = "conformance_qsl_ir760"
-path = "tests/conformance_qsl_ir760/main.rs"
+name = "conformance_fsl_ir760"
+path = "tests/conformance_fsl_ir760/main.rs"
 test = false
 
-# FR-067-AC-7: read fresh QSL producer output in a named external lane.
+# FR-067-AC-7: read fresh FSL producer output in a named external lane.
 [[test]]
-name = "conformance_qsl_ir1052"
-path = "tests/conformance_qsl_ir1052.rs"
+name = "conformance_fsl_ir1052"
+path = "tests/conformance_fsl_ir1052.rs"
 test = false
 
 # FR-038-AC-214: 177 MB fixture and three isolated reader processes.
@@ -107,21 +107,21 @@ test = false
 [dependencies]
 ix-cli-kit = { version = "0.1", git = "https://github.com/agent-ix/ix-cli-kit", branch = "main", default-features = false, optional = true }
 ix-trace-rs = { version = "0.1", git = "https://github.com/agent-ix/ix-trace-rs", branch = "main" }
-quire-contract-model = { version = "=0.1.0", path = "crates/quire-contract-model" }
+filament-contract-model = { version = "=0.1.0", path = "crates/filament-contract-model" }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = { version = "1.0.151", features = ["unbounded_depth"] }
 thiserror = "=2.0.20"
 
 [dev-dependencies]
 allocation-counter = "0.8"
-# Native Quire consumer qualification stays outside the cycle-free model.
+# Native Filament consumer qualification stays outside the cycle-free model.
 quire-rs = { version = "0.53", git = "https://github.com/agent-ix/quire-rs", branch = "main", default-features = false }
 syn = { version = "2", features = ["full", "visit"] }
-quire-contract-model = { version = "=0.1.0", path = "crates/quire-contract-model", features = ["fault-injection"] }
+filament-contract-model = { version = "=0.1.0", path = "crates/filament-contract-model", features = ["fault-injection"] }
 # Moving first-party branches use compatible ranges; Cargo.lock records selected revisions.
 quire-canonical = { version = "0.3", git = "https://github.com/agent-ix/quire-canonical", branch = "main" }
-quire-exact = { version = "0.1", git = "https://github.com/agent-ix/quire-exact", branch = "main" }
-quire-verification-contracts = { version = "0.1", git = "https://github.com/agent-ix/quire-verification-contracts", branch = "main" }
+filament-exact = { version = "0.1", git = "https://github.com/agent-ix/filament-exact", branch = "main" }
+filament-verification-contracts = { version = "0.1", git = "https://github.com/agent-ix/filament-verification-contracts", branch = "main" }
 jsonschema = { version = "=0.17.1", default-features = false, features = ["draft202012"] }
 sha2 = "=0.10.9"
 

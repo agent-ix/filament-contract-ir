@@ -1,21 +1,21 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! Instantiate QSpec's symbolic protocol-location vectors in an admitted graph.
+//! Instantiate FSpec's symbolic protocol-location vectors in an admitted graph.
 //! Vector origin/path/term facts remain authoritative owner data, read in place.
 
 use crate::fixture_support::{canonical, evidence_for, refresh_identity};
-use ix_trace_rs::trace;
-use quire_contract_model::CheckedProtocolLocationReadError;
-use quire_contract_model::{
+use filament_contract_model::CheckedProtocolLocationReadError;
+use filament_contract_model::{
     CheckedOccurrence, CheckedPackageReadLimits, CheckedPackageRefusalCause,
     CheckedPackageRefusalCode, CheckedPackageV2, CheckedPackageV2ReadResult,
 };
+use ix_trace_rs::trace;
 use serde_json::{json, Value};
 use std::{fs, path::PathBuf};
 
 fn vectors() -> Value {
     let root = PathBuf::from(
-        std::env::var_os("QUIRE_SPECIFICATION_DIR")
-            .expect("QUIRE_SPECIFICATION_DIR must select the owning QSpec vector checkout"),
+        std::env::var_os("FILAMENT_SPECIFICATION_DIR")
+            .expect("FILAMENT_SPECIFICATION_DIR must select the owning FSpec vector checkout"),
     );
     let path = root.join("proposals/checked-package-v2/checked-term-data-vectors.json");
     serde_json::from_slice(&fs::read(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display())))
@@ -27,7 +27,7 @@ fn positive(id: &str) -> Value {
         .unwrap()
         .iter()
         .find(|row| row["id"] == id)
-        .expect("published QSpec vector")
+        .expect("published FSpec vector")
         .clone();
     row.as_object_mut().unwrap().remove("id");
     row
@@ -350,7 +350,7 @@ fn missing_selected_mapping_is_not_substituted_by_a_sibling_term() {
     let (wire, _) = fixture(vector["value"].as_array().unwrap().clone());
     let result = read(&wire);
     let CheckedPackageV2ReadResult::Refused(refusal) = result else {
-        panic!("QSpec missing-term vector requires its recorded refusal, got {result:?}");
+        panic!("FSpec missing-term vector requires its recorded refusal, got {result:?}");
     };
     assert_eq!(
         serde_json::to_value(refusal.code).unwrap(),

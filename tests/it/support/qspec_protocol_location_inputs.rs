@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Agent-IX
 
-//! Package construction shared with QSpec's protocol-location driver.
+//! Package construction shared with FSpec's protocol-location driver.
 
 use crate::support::checked_package::{
     positive_operation_identities, refresh_identity, settle, v2_all_families,

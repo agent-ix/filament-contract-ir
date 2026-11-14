@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Agent-IX
 
-//! TC-474: the V2 reader admits QSpec FR-490's `correspondence`/
+//! TC-474: the V2 reader admits FSpec FR-490's `correspondence`/
 //! `implementation_guarantee` body and FR-491's `correspondence`/
 //! `component_composition` body, and refuses every other shape with the code,
 //! cause and locus FR-038 "Implementation guarantee and component composition
@@ -11,7 +11,7 @@
 //! `checked_package_v2_temporal` (a clause selecting the infinite-trace
 //! profile, the `Order` and `Sub` object types and their domain package) plus
 //! an empty abstraction relation node, a `predicate` node and the node under
-//! test. No QSL value is used: the node shapes are QSpec's.
+//! test. No FSL value is used: the node shapes are FSpec's.
 
 use crate::checked_package_v2_temporal::{
     clause, model_key, node_id, node_with_key, orders_document, push, read, select_profile,
@@ -21,13 +21,13 @@ use crate::support::checked_package::{
     canonical, evidence_with_document, index_fixture_node_ids, reassign_node_id, settle,
     v2_all_families, wire_form,
 };
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     CheckedDependencyOperand, CheckedNodeId, CheckedNodeKind, CheckedNodePathSegment,
     CheckedOperandEntry, CheckedPackageReadLimits, CheckedPackageRefusalCause as Cause,
     CheckedPackageRefusalCode as Code, CheckedPackageV2, CheckedPackageV2ReadResult, CheckedTerm,
     CorrespondenceForm,
 };
+use ix_trace_rs::trace;
 use serde_json::{json, Value};
 
 const GUARANTEE: &str = "guarantee/G";
@@ -176,7 +176,7 @@ fn base() -> Value {
     push(
         &mut package,
         json!({
-            "node_id": reference, "schema_version": "quire.checked-semantic-graph/v2",
+            "node_id": reference, "schema_version": "filament.checked-semantic-graph/v2",
             "node_tag": "composite_type", "semantic_form": "reference",
             "semantic_type": reference, "dependencies": [order()],
             "occurrences": [{"role": "type", "ordinal": 0}],
@@ -646,7 +646,7 @@ fn tc_474_semantic_type_and_dependencies_must_be_the_nodes_own_and_its_targets()
     }
 }
 
-/// QSpec FR-490: `dependencies` are `clause`, `relation` and every `context`
+/// FSpec FR-490: `dependencies` are `clause`, `relation` and every `context`
 /// and `assumption` target, so a scheduling environment member's `context`
 /// is one too.
 #[trace("TC-474", "FR-038-AC-534")]
@@ -826,7 +826,7 @@ fn tc_474_a_guarantee_target_must_be_a_declared_node_of_its_kind() {
     let mut package = base();
     select_profile(
         &mut package,
-        "quire.temporal.event-position.false-extension/v1",
+        "filament.temporal.event-position.false-extension/v1",
     );
     let live_formula = nodes(&package)
         .iter()
@@ -1125,7 +1125,8 @@ fn tc_474_premise_classification_uses_negation_normal_form() {
             .position(|node| node["node_id"] == node_id("guarantee/live-formula"))
             .expect("live formula");
         let formula = &mut component["semantic_graph"]["nodes"][root];
-        formula["body"]["operation"]["identity"] = json!(format!("quire.op.temporal.{operator}"));
+        formula["body"]["operation"]["identity"] =
+            json!(format!("filament.op.temporal.{operator}"));
         if matches!(operator, "until" | "release") {
             let argument = formula["body"]["arguments"][0].clone();
             formula["body"]["arguments"]
@@ -1136,7 +1137,7 @@ fn tc_474_premise_classification_uses_negation_normal_form() {
         if negated {
             let mut inner = formula.clone();
             inner["node_id"] = node_id("guarantee/negated-formula");
-            formula["body"]["operation"]["identity"] = json!("quire.op.temporal.not");
+            formula["body"]["operation"]["identity"] = json!("filament.op.temporal.not");
             formula["body"]["operation"]["member"] = Value::Null;
             formula["body"]["arguments"] =
                 json!([{"term": "reference", "target": inner["node_id"]}]);

@@ -11,10 +11,10 @@
 
 use std::{collections::BTreeSet, fs, path::PathBuf};
 
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     run_corpus, ContractPackage, DiagnosticCode, FixtureResult, ValidationOptions,
 };
+use ix_trace_rs::trace;
 use serde_json::Value;
 
 /// One invalid-input class and the fixtures that exercise it.
@@ -320,7 +320,7 @@ fn rejected_rows(rows: &[Value]) -> Vec<&Value> {
 /// The package JSON text and decoder verdict for a package-operation row. The
 /// fixture input is the package itself, a `document_json` text, or a probe that
 /// wraps the package under `package`.
-fn decode(fixture: &str) -> Result<(), Vec<quire_contract_model::Diagnostic>> {
+fn decode(fixture: &str) -> Result<(), Vec<filament_contract_model::Diagnostic>> {
     let input = input(fixture);
     let package = input.get("package").unwrap_or(&input);
     ContractPackage::from_json_str(&package_text(package), ValidationOptions::strict()).map(|_| ())

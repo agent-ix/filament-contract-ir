@@ -1,18 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! OP vectors are read from QSpec; only the projection-to-document adapter lives here.
+//! OP vectors are read from FSpec; only the projection-to-document adapter lives here.
 
 use super::{fixture_support as fixture, fixtures_dir, proposal_dir_of, read_json};
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     CheckedCollectionKind, CheckedMemberType, CheckedNodeId, CheckedPackageReadLimits,
     CheckedPackageV2ReadResult,
 };
+use ix_trace_rs::trace;
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
 fn vectors() -> Value {
     read_json(&proposal_dir_of(&fixtures_dir()).join("model-option-type-vectors.json"))
-        .expect("the current QSpec option corpus")
+        .expect("the current FSpec option corpus")
 }
 
 #[path = "../it/support/qspec_option_inputs.rs"]

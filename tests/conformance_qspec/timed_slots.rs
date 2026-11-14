@@ -327,7 +327,7 @@ fn admitted_presence_retains_boolean_owner_slot_and_resolved_path_facts() {
         else {
             panic!("presence application")
         };
-        assert_eq!(operation.identity(), Some("quire.op.option.present"));
+        assert_eq!(operation.identity(), Some("filament.op.option.present"));
         assert_eq!(result_type, &node.semantic_type);
         assert_eq!(
             node.semantic_type,
@@ -449,7 +449,7 @@ fn optional_clock_path_refuses_missing_member_presence_and_inner_type() {
                 fields.remove(index);
             }
             "required presence" => fields[index]["presence"] = json!("required"),
-            "wrong inner type" => fields[index]["typeRef"] = json!("ix://quire/native/Integer"),
+            "wrong inner type" => fields[index]["typeRef"] = json!("ix://filament/native/Integer"),
             _ => unreachable!(),
         }
         let bytes = serde_json::to_vec(&selected).unwrap();
@@ -592,7 +592,7 @@ fn public_reader_keeps_the_one_operand_option_presence_form() {
     application["semantic_type"] = boolean.clone();
     application["dependencies"] = json!([value_id]);
     application["body"] = json!({"term":"application", "operator":"present",
-        "operation":{"identity":"quire.op.option.present", "laws":[], "mode":null, "member":null, "leaves":[]}, "result_type":boolean,
+        "operation":{"identity":"filament.op.option.present", "laws":[], "mode":null, "member":null, "leaves":[]}, "result_type":boolean,
         "arguments":[{"term":"reference", "target":value_id}]});
     application["occurrences"] = json!([{"role":"expression", "ordinal":0}]);
     for mut node in [value, application] {
@@ -626,6 +626,6 @@ fn public_reader_keeps_the_one_operand_option_presence_form() {
     else {
         panic!("presence application")
     };
-    assert_eq!(operation.identity(), Some("quire.op.option.present"));
+    assert_eq!(operation.identity(), Some("filament.op.option.present"));
     assert_eq!(arguments.len(), 1);
 }

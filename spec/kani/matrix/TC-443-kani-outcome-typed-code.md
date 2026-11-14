@@ -3,7 +3,7 @@ id: TC-443
 title: "A Kani outcome and its error carry a typed STD-001 code"
 type: TC
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/FR-030
+  - target: ix://agent-ix/filament-contract-ir/FR-030
     type: verifies
 ---
 # TC-443: A Kani outcome and its error carry a typed STD-001 code
@@ -42,6 +42,6 @@ the paired call compiles.
 Implemented: `tc_443_the_outcome_and_its_error_carry_a_typed_std001_code`
 in `tests/it/kani_shared.rs`, and two `compile_fail` doctests with a passing one
 on `KaniOutcome::non_success`, which `make test` runs (`cargo test -p
-quire-contract-ir --doc`). The test calls `KaniOutcome::proved(0, ...)` and
+filament-contract-ir --doc`). The test calls `KaniOutcome::proved(0, ...)` and
 checks its `KaniOutcomeError` code, as well as the zero-check outcome code,
 serialization, malformed-code refusal and broad-constructor errors.

@@ -3,18 +3,18 @@ id: FR-046
 title: "Construct a structural application node identity before reader admission"
 type: FR
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/StR-001
+  - target: ix://agent-ix/filament-contract-ir/StR-001
     type: traces_to
-  - target: ix://agent-ix/quire-contract-ir/FR-019
+  - target: ix://agent-ix/filament-contract-ir/FR-019
     type: traces_to
-  - target: ix://agent-ix/quire-contract-ir/FR-038
+  - target: ix://agent-ix/filament-contract-ir/FR-038
     type: traces_to
 ---
 # FR-046: Construct a structural application node identity before reader admission
 
 ## Description
 
-When a producer assembles a V2 application before reader admission, the model crate SHALL expose the typed structural node-id value of QSpec FR-322 and require the complete package to pass the strict reader before it is treated as admitted. The former content-derived candidate helper is removed; no compatibility helper or hash is retained.
+When a producer assembles a V2 application before reader admission, the model crate SHALL expose the typed structural node-id value of FSpec FR-322 and require the complete package to pass the strict reader before it is treated as admitted. The former content-derived candidate helper is removed; no compatibility helper or hash is retained.
 
 ## Inputs
 
@@ -26,7 +26,7 @@ A typed `CheckedNodeId { package, path, ordinal }` may be constructed before adm
 
 ## Behavior
 
-The model crate SHALL export the structural `CheckedNodeId` by name. Its package and path are explicit and its producer-assigned ordinal is bounded by QSpec FR-322 and unique only among nodes sharing package and path; zero, contiguity and graph order are not required. An ungrouped derived application uses path `[node_tag, semantic_form, ...operands]`. A declared recursion-group member keeps its own declaration path; an anonymous derived member uses the sole declared member's path when exactly one exists, or a producer-chosen path when zero or multiple exist. No grouped path is operand-derived. The producer keeps references and dependencies consistent with the final ids. The reader validates closed shape, uniqueness, reference resolution, owner joins, body grammar and operation semantics; it does not hash the draft or authenticate content-derived keys. No candidate helper constructs an admitted package.
+The model crate SHALL export the structural `CheckedNodeId` by name. Its package and path are explicit and its producer-assigned ordinal is bounded by FSpec FR-322 and unique only among nodes sharing package and path; zero, contiguity and graph order are not required. An ungrouped derived application uses path `[node_tag, semantic_form, ...operands]`. A declared recursion-group member keeps its own declaration path; an anonymous derived member uses the sole declared member's path when exactly one exists, or a producer-chosen path when zero or multiple exist. No grouped path is operand-derived. The producer keeps references and dependencies consistent with the final ids. The reader validates closed shape, uniqueness, reference resolution, owner joins, body grammar and operation semantics; it does not hash the draft or authenticate content-derived keys. No candidate helper constructs an admitted package.
 
 ## Acceptance Criteria
 
@@ -39,4 +39,4 @@ The model crate SHALL export the structural `CheckedNodeId` by name. Its package
 
 ## Dependencies
 
-FR-038 and QSpec FR-322 own structural ids, graph validation and the reader. FR-019 owns the public inventory; FR-051 owns typed envelope construction. The QSpec #517 structural-id ruling treats derived paths as identity labels and requires no reader recomputation.
+FR-038 and FSpec FR-322 own structural ids, graph validation and the reader. FR-019 owns the public inventory; FR-051 owns typed envelope construction. The FSpec #517 structural-id ruling treats derived paths as identity labels and requires no reader recomputation.

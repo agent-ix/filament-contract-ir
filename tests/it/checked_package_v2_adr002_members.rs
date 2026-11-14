@@ -8,11 +8,11 @@
 //! Every case mutates the in-repo `v2_all_families()` package.
 
 use crate::support::checked_package::{canonical, evidence_for, refresh_identity, v2_all_families};
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     CheckedPackageReadLimits, CheckedPackageRefusal, CheckedPackageRefusalCode, CheckedPackageV2,
     CheckedPackageV2ReadResult,
 };
+use ix_trace_rs::trace;
 use serde_json::{json, Value};
 
 fn refused(value: &Value) -> CheckedPackageRefusal {

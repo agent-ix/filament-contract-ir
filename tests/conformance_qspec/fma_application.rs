@@ -1,25 +1,25 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Agent-IX
 
-//! TC-048: QSpec's published FMA application cases at the strict reader boundary.
+//! TC-048: FSpec's published FMA application cases at the strict reader boundary.
 
 use super::{cause_word, code_word, fixture_support, fixtures_dir, proposal_dir_of, read_json};
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     ApplicationOperator, CheckedPackageReadLimits, CheckedPackageV2ReadResult, CheckedTerm,
 };
+use ix_trace_rs::trace;
 use std::collections::BTreeSet;
 
 #[path = "../it/support/qspec_fma_inputs.rs"]
 mod inputs;
 use inputs::{literal_id, operand_type_id, package_for};
 
-/// Trace: FR-038-AC-431, FR-038-AC-432; QSpec FR-322-AC-307.
+/// Trace: FR-038-AC-431, FR-038-AC-432; FSpec FR-322-AC-307.
 #[trace("TC-048", "FR-038-AC-431", "FR-038-AC-432")]
 #[test]
 fn tc_048_fma_applications_follow_published_qspec_cases() {
     let vectors = read_json(&proposal_dir_of(&fixtures_dir()).join("fma-application-vectors.json"))
-        .expect("published QSpec FMA application vectors");
+        .expect("published FSpec FMA application vectors");
     let cases = vectors["cases"].as_array().expect("published cases");
     let mut seen = BTreeSet::new();
     for case in cases {

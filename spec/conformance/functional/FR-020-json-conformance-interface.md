@@ -3,7 +3,7 @@ id: FR-020
 title: "Expose versioned JSON and conformance-runner interfaces"
 type: FR
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/StR-002
+  - target: ix://agent-ix/filament-contract-ir/StR-002
     type: traces_to
   - target: ix://agent-ix/ix-cli-kit/FR-017
     type: depends_on
@@ -11,7 +11,7 @@ relationships:
     type: depends_on
   - target: ix://agent-ix/ix-cli-kit/FR-003
     type: depends_on
-  - target: ix://agent-ix/quire-contract-ir/FR-028
+  - target: ix://agent-ix/filament-contract-ir/FR-028
     type: depends_on
 ---
 # FR-020: Expose versioned JSON and conformance-runner interfaces
@@ -20,7 +20,7 @@ relationships:
 
 ```yaml
 name: ContractIrJsonConformanceApi
-ownership: quire-contract-ir
+ownership: filament-contract-ir
 inputs:
   - UTF-8 JSON bytes
   - optional conformance corpus directory
@@ -54,9 +54,9 @@ diagnostics, canonical bytes, dependency identities, tool identity, and exit cla
 
 ## Behavior
 
-The executable name is `quire-contract-conformance`. Its protocol identity is
-`quire.contract.conformance-jsonl/v1`. The closed invocation is
-`quire-contract-conformance run --corpus <directory> --schemas <directory>` plus
+The executable name is `filament-contract-conformance`. Its protocol identity is
+`filament.contract.conformance-jsonl/v1`. The closed invocation is
+`filament-contract-conformance run --corpus <directory> --schemas <directory>` plus
 `--version`; unknown,
 missing, repeated, or non-UTF-8 arguments are invocation failures. The runner
 does not search parent directories, environment variables, network locations,
@@ -86,9 +86,9 @@ partial JSON, and mixed stdout/stderr records are forbidden.
 
 The root bridge package SHALL consume `ix-cli-kit` from its authoritative
 `agent-ix/ix-cli-kit` Git source only through the default-off `conformance-cli`
-feature required by `quire-contract-conformance`, with the selected dependency
+feature required by `filament-contract-conformance`, with the selected dependency
 recorded in `Cargo.lock`. The root's default production dependency closure and
-the cycle-free `quire-contract-model` package SHALL NOT contain `ix-cli-kit`.
+the cycle-free `filament-contract-model` package SHALL NOT contain `ix-cli-kit`.
 The repository SHALL NOT copy the kit's implementation or introduce an alternate
 argument grammar to perform this adoption.
 

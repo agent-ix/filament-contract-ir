@@ -3,13 +3,13 @@ id: FR-056
 title: "Consume the authoritative string-edge scan"
 type: FR
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/StR-003
+  - target: ix://agent-ix/filament-contract-ir/StR-003
     type: traces_to
-  - target: ix://agent-ix/quire-contract-ir/FR-028
+  - target: ix://agent-ix/filament-contract-ir/FR-028
     type: depends_on
-  - target: ix://agent-ix/quire-contract-ir/AD-004
+  - target: ix://agent-ix/filament-contract-ir/AD-004
     type: references
-  - target: ix://agent-ix/quire-spec-language/FR-064
+  - target: ix://agent-ix/filament-spec-language/FR-064
     type: depends_on
   - target: ix://agent-ix/ix-trace-rs/FR-004
     type: depends_on
@@ -19,18 +19,18 @@ relationships:
 ## Description
 
 When a developer runs `make lint`, the Contract IR repository shall run the
-authoritative external `qsl-string-edge` command over both production source
-roots and propagate its failure. [QSL FR-064](ix://agent-ix/quire-spec-language/FR-064)
+authoritative external `fsl-string-edge` command over both production source
+roots and propagate its failure. [FSL FR-064](ix://agent-ix/filament-spec-language/FR-064)
 owns the detector, strict rules format and command interface. This requirement
 owns the IR consumer invocation, edge inventory and falsifying controls under
-IR-9, without a second detector or a QSL Cargo dependency.
+IR-9, without a second detector or a FSL Cargo dependency.
 
 ## Inputs
 
 - The repository base directory and the nonoverlapping crate source roots `src`
-  and `crates/quire-contract-model/src`.
+  and `crates/filament-contract-model/src`.
 - One checked-in rules file in the strict FR-064 JSON format.
-- The installed authoritative `qsl-string-edge` executable. An explicit executable
+- The installed authoritative `fsl-string-edge` executable. An explicit executable
   path may select the same command for local installation or qualification.
 - Function markers imported directly from the neutral `ix-trace-rs` crate.
 
@@ -99,7 +99,7 @@ that all later matches are exhaustive. The broader Q-6 gap in
 | FR-056-AC-3 | A genuine intake function marked with `ix_trace_rs::string_edge` compiles against the authoritative neutral crate and preserves its conversion/refusal behavior. The command accepts this marked edge while still reporting an adjacent unmarked closed-string decision. A look-alike qualified marker and comment-only marker do not exempt the adverse decision. | Test |
 | FR-056-AC-4 | An unchanged comparison of two supplied identity/selection keys passes the controlled scan, and an allowed detector-visible non-branching open-text comparison passes only with its valid rule. Removing that rule reports it; attempting to allow-list a branch-gating wire decision is a rule error rather than a clean scan. These controls state the detector's variable-to-variable limitation. | Test |
 | FR-056-AC-5 | A missing executable, malformed rules, missing source root or malformed Rust source makes the normal scan prerequisite fail. Request/rule/read/parse errors preserve the real command's exit-two diagnostic, and no path reports clean after failure or partial execution. | Test |
-| FR-056-AC-6 | Every production package that marks an intake function resolves the neutral marker from `ix-trace-rs`, and Cargo metadata confirms neither IR package adds a dependency in any kind on QSL or the scanner. Existing cycle-free metadata and intake conformance controls remain intact. | Test |
+| FR-056-AC-6 | Every production package that marks an intake function resolves the neutral marker from `ix-trace-rs`, and Cargo metadata confirms neither IR package adds a dependency in any kind on FSL or the scanner. Existing cycle-free metadata and intake conformance controls remain intact. | Test |
 | FR-056-AC-7 | Each marked function is an actual intake conversion; the checked-in rules contain no branch-dispatch suppression, file/crate exemption or copied scanner logic. Existing reported post-intake decisions retain their owning remediation until removed from the real report. | Inspection |
 | FR-056-AC-8 | The actual repository command completes with no unresolved occurrences across both roots, without removing a root, filtering diagnostics, introducing a local marker or weakening FR-064's rule checks. A fixture-only success cannot satisfy this criterion. | Test |
 
@@ -116,7 +116,7 @@ review must retain that distinction.
 - [TC-460](../matrix/TC-460-string-edge-consumer-gate.md) defines consumer controls.
 - [FR-028](../../model/functional/FR-028-separate-cycle-free-contract-model.md)
   owns the dependency boundary.
-- [QSL FR-064](ix://agent-ix/quire-spec-language/FR-064) owns the detector and
-  documented `cargo install --git https://github.com/agent-ix/quire-spec-language --branch main qsl-string-edge`
+- [FSL FR-064](ix://agent-ix/filament-spec-language/FR-064) owns the detector and
+  documented `cargo install --git https://github.com/agent-ix/filament-spec-language --branch main fsl-string-edge`
   route. Installation is tooling setup, not an IR Cargo dependency.
 - [ix-trace-rs FR-004](ix://agent-ix/ix-trace-rs/FR-004) owns the marker.

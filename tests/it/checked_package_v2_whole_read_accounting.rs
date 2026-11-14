@@ -23,14 +23,14 @@ use crate::support::checked_package::{
     canonical, evidence_for, index_fixture_node_ids, positive_operation_identities, settle,
     v2_all_families, v2_nominal,
 };
-use ix_trace_rs::trace;
-use proof::{Counter, Expected};
 #[cfg(feature = "test-support")]
-use quire_contract_model::CheckedPackageV2BudgetedReadResult as Budgeted;
-use quire_contract_model::{
+use filament_contract_model::CheckedPackageV2BudgetedReadResult as Budgeted;
+use filament_contract_model::{
     initialize_operation_catalog, CheckedPackageEvidence, CheckedPackageRefusalCode as Code,
     CheckedPackageV2, CheckedPackageV2ReadResult,
 };
+use ix_trace_rs::trace;
+use proof::{Counter, Expected};
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
 
@@ -98,7 +98,7 @@ fn original_wide_bounded_quantity_provider_is_accounted_within_the_bound_at_core
 #[trace("TC-472", "FR-038-AC-511", "FR-038-AC-512", "FR-038-AC-516")]
 #[test]
 fn original_protocol_term_tree_prepays_each_reserved_walk_growth() {
-    use quire_contract_model::{
+    use filament_contract_model::{
         CheckedNodeId, CheckedPackageReadLimits, CheckedPackageV2BudgetedReadResult as Budgeted,
         CheckedTerm, NativeBudgetResource, NativeJoinLocusSource, PackageReadStage,
     };
@@ -170,7 +170,7 @@ fn original_protocol_term_tree_prepays_each_reserved_walk_growth() {
         .collect::<Vec<_>>();
     // Instance/list IDs are not part of NativeBudgetEvent. Attribution is
     // source-bound: state/temporal placement enqueue every child, with no
-    // SkipChildren, and quire-walk extends per child into one pending list.
+    // SkipChildren, and filament-walk extends per child into one pending list.
     // This admitted thirteen-child enter therefore requires capacities
     // 4/8/16 in that list; the task stack has its separate full-capacity costs.
     assert!(
@@ -324,16 +324,16 @@ fn positive_cases() -> Vec<Case> {
     ));
     cases.push(wide_bounded_quantity_case());
     let catalog: Value = serde_json::from_str(
-        quire_verification_contracts::operation_catalog::CHECKED_OPERATION_CATALOG_V1,
+        filament_verification_contracts::operation_catalog::CHECKED_OPERATION_CATALOG_V1,
     )
     .expect("actual operation catalogue");
     for entry in catalog["operations"].as_array().expect("operations") {
         let identity = entry["identity"].as_str().expect("identity");
         let external = match identity {
-            "quire.op.record.project" => {
+            "filament.op.record.project" => {
                 Some(crate::checked_package_v2_model_fields::record_project_control())
             }
-            "quire.op.model.navigate" | "quire.op.model.dispatch_call" => {
+            "filament.op.model.navigate" | "filament.op.model.dispatch_call" => {
                 Some(crate::checked_package_v2_model_members::model_member_control(identity))
             }
             _ => None,
@@ -364,8 +364,8 @@ struct DependencyCallCase {
 /// helpers. The raw importer base is never resolved before its wire patches.
 fn dependency_call_cases() -> (Vec<DependencyCallCase>, BTreeSet<String>) {
     let root = std::path::PathBuf::from(
-        std::env::var_os("QUIRE_SPECIFICATION_DIR")
-            .expect("QUIRE_SPECIFICATION_DIR is required: it names the selected QSpec checkout"),
+        std::env::var_os("FILAMENT_SPECIFICATION_DIR")
+            .expect("FILAMENT_SPECIFICATION_DIR is required: it names the selected FSpec checkout"),
     );
     let proposal = root.join("proposals/checked-package-v2");
     let fixtures = proposal.join("fixtures");
@@ -401,7 +401,7 @@ fn dependency_call_cases() -> (Vec<DependencyCallCase>, BTreeSet<String>) {
         .expect("original read_package evidence");
         cases.push(DependencyCallCase {
             input: Case {
-                label: format!("QSpec/dependency-call/{name}"),
+                label: format!("FSpec/dependency-call/{name}"),
                 bytes: canonical(&wire),
                 evidence,
                 expected: Expected::Admitted,
@@ -448,7 +448,7 @@ fn dependency_call_cases() -> (Vec<DependencyCallCase>, BTreeSet<String>) {
             .expect("refusal code");
         cases.push(DependencyCallCase {
             input: Case {
-                label: format!("QSpec/dependency-call/{id}"),
+                label: format!("FSpec/dependency-call/{id}"),
                 bytes: canonical(&wire),
                 evidence,
                 expected: Expected::Refused(
@@ -475,7 +475,7 @@ fn dependency_call_providers_preserve_original_outcomes_and_loci() {
     for case in cases {
         let actual = CheckedPackageV2::read(
             &case.input.bytes,
-            quire_contract_model::CheckedPackageReadLimits::bounded(),
+            filament_contract_model::CheckedPackageReadLimits::bounded(),
             &case.input.evidence,
         );
         if let Some(row) = case.mutation {
@@ -521,12 +521,12 @@ fn dependency_call_providers_preserve_original_outcomes_and_loci() {
     eprintln!("Dependency-call family: direct admitted {admitted}; published mutations refused {refused}; unresolved 0; original-source-site census join pending");
 }
 
-/// The same files and construction functions the existing QSpec drivers use.
+/// The same files and construction functions the existing FSpec drivers use.
 /// Files are read by reference; no copy of a published vector is stored here.
 fn qspec_cases() -> (Vec<Case>, BTreeSet<String>) {
     let root = std::path::PathBuf::from(
-        std::env::var_os("QUIRE_SPECIFICATION_DIR")
-            .expect("QUIRE_SPECIFICATION_DIR is required: it names the selected QSpec checkout"),
+        std::env::var_os("FILAMENT_SPECIFICATION_DIR")
+            .expect("FILAMENT_SPECIFICATION_DIR is required: it names the selected FSpec checkout"),
     );
     let proposal = root.join("proposals/checked-package-v2");
     let mut providers = BTreeSet::new();
@@ -541,7 +541,7 @@ fn qspec_cases() -> (Vec<Case>, BTreeSet<String>) {
             qspec_inputs::evidence_for_published(&wire, name, &document, true, None, &fixtures)
                 .expect("same conformance evidence construction");
         cases.push(Case {
-            label: format!("QSpec/POSITIVE_ALL/{name}"),
+            label: format!("FSpec/POSITIVE_ALL/{name}"),
             bytes: canonical(&wire),
             evidence,
             expected: Expected::Admitted,
@@ -550,8 +550,8 @@ fn qspec_cases() -> (Vec<Case>, BTreeSet<String>) {
     }
     let read = |_driver: &str, file: &str| -> Value {
         let bytes = std::fs::read(proposal.join(file))
-            .unwrap_or_else(|error| panic!("QSpec {file}: {error}"));
-        serde_json::from_slice(&bytes).expect("published QSpec JSON")
+            .unwrap_or_else(|error| panic!("FSpec {file}: {error}"));
+        serde_json::from_slice(&bytes).expect("published FSpec JSON")
     };
     let package = read(
         "checked_package_v2_owners.rs",
@@ -564,7 +564,7 @@ fn qspec_cases() -> (Vec<Case>, BTreeSet<String>) {
     let evidence =
         crate::support::checked_package::evidence_with_document(&package, "acme/orders", &document);
     cases.push(Case {
-        label: "QSpec/positive-operation-identities".into(),
+        label: "FSpec/positive-operation-identities".into(),
         bytes: canonical(&package),
         evidence,
         expected: Expected::Admitted,
@@ -586,7 +586,7 @@ fn qspec_cases() -> (Vec<Case>, BTreeSet<String>) {
             let id = row["id"].as_str().expect("published case id");
             assert_eq!(row["outcome"], "admitted", "published population control");
             cases.push(Case {
-                label: format!("QSpec/population/{id}"),
+                label: format!("FSpec/population/{id}"),
                 bytes: canonical(&package),
                 evidence: crate::support::checked_package::evidence_with_document(
                     &package,
@@ -622,7 +622,7 @@ fn qspec_cases() -> (Vec<Case>, BTreeSet<String>) {
             &fixture.document,
         );
         cases.push(Case {
-            label: format!("QSpec/{}", row["id"]),
+            label: format!("FSpec/{}", row["id"]),
             bytes: canonical(&fixture.package),
             evidence,
             expected,
@@ -650,7 +650,7 @@ fn qspec_cases() -> (Vec<Case>, BTreeSet<String>) {
             )
         };
         cases.push(Case {
-            label: format!("QSpec/{}", vector["id"]),
+            label: format!("FSpec/{}", vector["id"]),
             bytes: canonical(&wire),
             evidence: evidence_for(&wire),
             expected,
@@ -672,7 +672,7 @@ fn qspec_cases() -> (Vec<Case>, BTreeSet<String>) {
                 .expect("published refusal code"),
         );
         cases.push(Case {
-            label: format!("QSpec/{}", vector["id"]),
+            label: format!("FSpec/{}", vector["id"]),
             bytes: canonical(&wire),
             evidence: evidence_for(&wire),
             expected,
@@ -715,7 +715,7 @@ fn qspec_cases() -> (Vec<Case>, BTreeSet<String>) {
                 "conformance_qspec/text_literals.rs: {file}#/cases#{id}"
             ));
             cases.push(Case {
-                label: format!("QSpec/{file}#{id}"),
+                label: format!("FSpec/{file}#{id}"),
                 bytes: canonical(&wire),
                 evidence: evidence_for(&wire),
                 expected,
@@ -749,7 +749,7 @@ fn qspec_cases() -> (Vec<Case>, BTreeSet<String>) {
             "conformance_qspec/model_root.rs: model-root-vectors.json#/vectors#{id}"
         ));
         cases.push(Case {
-            label: format!("QSpec/model-root/{id}"),
+            label: format!("FSpec/model-root/{id}"),
             bytes: canonical(&wire),
             evidence: qspec_inputs::evidence_for_published(
                 &wire,
@@ -784,7 +784,7 @@ fn qspec_cases() -> (Vec<Case>, BTreeSet<String>) {
             "conformance_qspec/node_ordinal.rs: node-ordinal-vectors.json#/uniqueness_cases#{id}"
         ));
         cases.push(Case {
-            label: format!("QSpec/node-ordinal/{id}"),
+            label: format!("FSpec/node-ordinal/{id}"),
             bytes: canonical(&wire),
             evidence: qspec_inputs::evidence_for_published(
                 &wire,
@@ -814,7 +814,7 @@ fn qspec_cases() -> (Vec<Case>, BTreeSet<String>) {
             "conformance_qspec/fma_application.rs: fma-application-vectors.json#/cases#{id}"
         ));
         cases.push(Case {
-            label: format!("QSpec/FMA/{id}"),
+            label: format!("FSpec/FMA/{id}"),
             bytes: canonical(&wire),
             evidence: evidence_for(&wire),
             expected,
@@ -844,7 +844,7 @@ fn qspec_cases() -> (Vec<Case>, BTreeSet<String>) {
             "conformance_qspec/node_index.rs: node-index-vectors.json#/cases#{id}"
         ));
         cases.push(Case {
-            label: format!("QSpec/node-index/{id}"),
+            label: format!("FSpec/node-index/{id}"),
             bytes: canonical(&wire),
             evidence: qspec_inputs::evidence_for_published(
                 &wire,
@@ -880,7 +880,7 @@ fn qspec_cases() -> (Vec<Case>, BTreeSet<String>) {
             .collect();
         let (wire, _) = qspec_protocol_location_inputs::fixture(rows);
         providers.insert(format!("conformance_qspec/protocol_locations.rs: checked-term-data-vectors.json#/positive/protocol_locations#{id}"));
-        cases.push(positive(format!("QSpec/protocol-location/{id}"), wire));
+        cases.push(positive(format!("FSpec/protocol-location/{id}"), wire));
     }
     for category in ["schema_invalid", "reader_refusals"] {
         for row in vectors[category]
@@ -905,7 +905,7 @@ fn qspec_cases() -> (Vec<Case>, BTreeSet<String>) {
             );
             providers.insert(format!("conformance_qspec/protocol_locations.rs: checked-term-data-vectors.json#/{category}#{id}"));
             cases.push(Case {
-                label: format!("QSpec/protocol-location/{id}"),
+                label: format!("FSpec/protocol-location/{id}"),
                 bytes: canonical(&wire),
                 evidence: evidence_for(&wire),
                 expected,
@@ -947,7 +947,7 @@ fn qspec_cases() -> (Vec<Case>, BTreeSet<String>) {
             )
             .expect("mutation evidence");
             cases.push(Case {
-                label: format!("QSpec/{list}/{id}"),
+                label: format!("FSpec/{list}/{id}"),
                 bytes: canonical(&wire),
                 evidence,
                 expected,
@@ -970,7 +970,7 @@ fn qspec_cases() -> (Vec<Case>, BTreeSet<String>) {
                 )
                 .expect("flattened control evidence");
                 cases.push(Case {
-                    label: format!("QSpec/{list}/{id}/flattened-control"),
+                    label: format!("FSpec/{list}/{id}/flattened-control"),
                     bytes: canonical(&control),
                     evidence,
                     expected: Expected::OriginalOracle(qspec_inputs::flat_body_control_passes),
@@ -984,7 +984,7 @@ fn qspec_cases() -> (Vec<Case>, BTreeSet<String>) {
     let (wire, evidence) = qspec_option_inputs::prepare(&base);
     cases.push(Case {
         label: format!(
-            "QSpec/option/base-fields/{}-projected-types",
+            "FSpec/option/base-fields/{}-projected-types",
             base.origins.len()
         ),
         bytes: canonical(&wire),
@@ -1018,7 +1018,7 @@ fn qspec_cases() -> (Vec<Case>, BTreeSet<String>) {
         };
         providers.insert(format!("conformance_qspec/model_option_types.rs: model-option-type-vectors.json#/intake_cases#{id}"));
         cases.push(Case {
-            label: format!("QSpec/option/{id}"),
+            label: format!("FSpec/option/{id}"),
             bytes: canonical(&wire),
             evidence,
             expected,
@@ -1058,7 +1058,7 @@ fn qspec_cases() -> (Vec<Case>, BTreeSet<String>) {
         let evidence = qspec_tuple_inputs::selected_evidence(&selected);
         providers.insert(format!("conformance_qspec/model_tuple_union.rs: model-tuple-union-vectors.json#/wire_cases#{id}"));
         cases.push(Case {
-            label: format!("QSpec/tuple-union/wire/{id}"),
+            label: format!("FSpec/tuple-union/wire/{id}"),
             bytes: canonical(&wire),
             evidence,
             expected,
@@ -1131,7 +1131,7 @@ fn refusal_cases() -> Vec<Case> {
     });
     let mut operation = positive_operation_identities();
     operation["semantic_graph"]["nodes"][4]["body"]["operation"]["identity"] =
-        json!("quire.op.unknown");
+        json!("filament.op.unknown");
     settle(&mut operation);
     cases.push(case(
         "unknown operation",
@@ -1163,8 +1163,10 @@ fn refusal_cases() -> Vec<Case> {
         evidence: no_documents,
         expected: Expected::Refused(Code::MissingImport),
     });
-    let (law, _) =
-        crate::checked_package_v2_temporal::clause_law("quire.fixture.temporal-profile/v1", None);
+    let (law, _) = crate::checked_package_v2_temporal::clause_law(
+        "filament.fixture.temporal-profile/v1",
+        None,
+    );
     cases.push(case(
         "unknown temporal profile",
         law.clone(),
@@ -1236,14 +1238,14 @@ fn refusal_cases() -> Vec<Case> {
         Expected::Refused(Code::InvalidTimedModel),
     ));
     let mut wrong_result = crate::checked_package_v2_catalogue_differential::admitted_fixture(
-        "quire.op.collection.count",
+        "filament.op.collection.count",
     )
     .expect("actual catalogue control");
     let position = wrong_result["semantic_graph"]["nodes"]
         .as_array()
         .expect("nodes")
         .iter()
-        .position(|n| n["body"]["operation"]["identity"] == "quire.op.collection.count")
+        .position(|n| n["body"]["operation"]["identity"] == "filament.op.collection.count")
         .expect("count application");
     let rational = crate::support::checked_package::node_id("scalar_type/rational");
     wrong_result["semantic_graph"]["nodes"][position]["semantic_type"] = rational.clone();
@@ -1261,7 +1263,7 @@ fn refusal_cases() -> Vec<Case> {
 fn required_codes() -> BTreeSet<String> {
     let source = std::fs::read_to_string(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/crates/quire-contract-model/src/checked_package/shared.rs"
+        "/crates/filament-contract-model/src/checked_package/shared.rs"
     ))
     .expect("public refusal source");
     let syntax = syn::parse_file(&source).expect("public refusal enum syntax");
@@ -1399,7 +1401,7 @@ fn every_registered_input_is_accounted_within_the_bound_at_core_bounds() {
     }
 }
 
-/// Keep the refusal-diagnostic accounting claim tied to the named QSpec
+/// Keep the refusal-diagnostic accounting claim tied to the named FSpec
 /// cases that motivated it. These diagnostics are bounded independently of
 /// unrelated package bytes; they do not justify a charge at the failing site.
 #[cfg(feature = "test-support")]
@@ -1425,7 +1427,7 @@ fn named_qspec_refusal_diagnostics_stay_within_the_separate_bound() {
     assert_eq!(
         selected.len(),
         named.len(),
-        "each named QSpec refusal is registered exactly once"
+        "each named FSpec refusal is registered exactly once"
     );
     let maxima = std::thread::scope(|scope| {
         let handles = selected
@@ -1444,7 +1446,7 @@ fn named_qspec_refusal_diagnostics_stay_within_the_separate_bound() {
                     );
                     let Budgeted::Refused(refusal) = &observation.result else {
                         panic!(
-                            "{label}: selected QSpec input must refuse: {:?}",
+                            "{label}: selected FSpec input must refuse: {:?}",
                             observation.result
                         )
                     };
@@ -1453,7 +1455,7 @@ fn named_qspec_refusal_diagnostics_stay_within_the_separate_bound() {
                     let boundary_maximum =
                         proof::every_request::<IntegrationCounter>(&input.bytes, &input.evidence);
                     eprintln!(
-                        "Named QSpec refusal diagnostic boundaries: {label}; input_bytes={}; ample_unpaid_bytes={}; maximum_boundary_unpaid_bytes={boundary_maximum}",
+                        "Named FSpec refusal diagnostic boundaries: {label}; input_bytes={}; ample_unpaid_bytes={}; maximum_boundary_unpaid_bytes={boundary_maximum}",
                         input.bytes.len(),
                         proof::unpaid(&observation),
                     );
@@ -1475,9 +1477,9 @@ fn named_qspec_refusal_diagnostics_stay_within_the_separate_bound() {
         .iter()
         .map(|(_, maximum)| *maximum)
         .max()
-        .expect("named QSpec refusal set is nonempty");
+        .expect("named FSpec refusal set is nonempty");
     eprintln!(
-        "Maximum named QSpec refusal-diagnostic unpaid bytes across all boundaries: {maximum_diagnostic_unpaid}; independent bound: {}",
+        "Maximum named FSpec refusal-diagnostic unpaid bytes across all boundaries: {maximum_diagnostic_unpaid}; independent bound: {}",
         proof::REFUSAL_DIAGNOSTIC_UNPAID_BOUND,
     );
 }
@@ -1488,7 +1490,7 @@ fn the_actual_tc048_catalogue_and_refusal_corpus_is_accounted_within_the_bound()
     initialize_operation_catalog().expect("catalog gate");
     // Every registered input still gets its ample, exact, repeated, and
     // whole-read one-below checks. Exhaustive per-request refusal boundaries
-    // are covered by the focused QSpec diagnostic proof above.
+    // are covered by the focused FSpec diagnostic proof above.
     for input in registered_cases() {
         eprintln!("Registry full actual input: {}", input.label);
         proof::assert_read::<IntegrationCounter>(
@@ -1531,7 +1533,7 @@ fn original_read_boundary_preserves_structural_and_work_limits() {
     let wire = v2_all_families();
     let bytes = canonical(&wire);
     let evidence = evidence_for(&wire);
-    let mut limits = quire_contract_model::CheckedPackageReadLimits::bounded();
+    let mut limits = filament_contract_model::CheckedPackageReadLimits::bounded();
     limits.bytes = 0;
     let CheckedPackageV2ReadResult::Incomplete(bytes_stop) =
         crate::read_and_account(&bytes, limits, &evidence)
@@ -1540,7 +1542,7 @@ fn original_read_boundary_preserves_structural_and_work_limits() {
     };
     assert_eq!(
         bytes_stop.limit_kind,
-        quire_contract_model::CheckedPackageLimit::Bytes
+        filament_contract_model::CheckedPackageLimit::Bytes
     );
     assert_eq!(bytes_stop.limit, 0);
     assert_eq!(
@@ -1548,7 +1550,7 @@ fn original_read_boundary_preserves_structural_and_work_limits() {
         u64::try_from(bytes.len()).expect("fixture byte count")
     );
 
-    limits = quire_contract_model::CheckedPackageReadLimits::bounded();
+    limits = filament_contract_model::CheckedPackageReadLimits::bounded();
     limits.work = 0;
     let CheckedPackageV2ReadResult::Incomplete(work_stop) =
         crate::read_and_account(&bytes, limits, &evidence)
@@ -1557,7 +1559,7 @@ fn original_read_boundary_preserves_structural_and_work_limits() {
     };
     assert_eq!(
         work_stop.limit_kind,
-        quire_contract_model::CheckedPackageLimit::Work
+        filament_contract_model::CheckedPackageLimit::Work
     );
     assert_eq!(work_stop.limit, 0);
     assert!(
@@ -1567,7 +1569,7 @@ fn original_read_boundary_preserves_structural_and_work_limits() {
 
     let CheckedPackageV2ReadResult::Refused(malformed) = crate::read_and_account(
         b"not json",
-        quire_contract_model::CheckedPackageReadLimits::bounded(),
+        filament_contract_model::CheckedPackageReadLimits::bounded(),
         &evidence,
     ) else {
         panic!("a malformed original byte stream must refuse");
@@ -1583,7 +1585,7 @@ fn original_enclosing_allocator_observes_only_its_original_read() {
     let wire = v2_all_families();
     let bytes = canonical(&wire);
     let evidence = evidence_for(&wire);
-    let limits = quire_contract_model::CheckedPackageReadLimits::bounded();
+    let limits = filament_contract_model::CheckedPackageReadLimits::bounded();
     let mut wrapped = None;
     let accounted = allocation_counter::measure(|| {
         wrapped = Some(crate::read_and_account(&bytes, limits, &evidence));

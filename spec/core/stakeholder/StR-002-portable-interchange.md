@@ -3,7 +3,7 @@ id: StR-002
 title: "Exchange contracts reproducibly across implementations"
 type: StR
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/StR-001
+  - target: ix://agent-ix/filament-contract-ir/StR-001
     type: depends_on
 ---
 # StR-002: Exchange contracts reproducibly across implementations

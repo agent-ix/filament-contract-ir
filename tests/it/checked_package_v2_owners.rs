@@ -9,15 +9,17 @@ use crate::support::checked_package::{
     refresh_identity_projection, resolve_operands, resolved_fixture_id, select_model, settle,
     v2_all_families, v2_nominal,
 };
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     CheckedCollectionKind, CheckedMemberType, CheckedPackageEvidence, CheckedPackageReadLimits,
     CheckedPackageRefusalCause, CheckedPackageRefusalCode, CheckedPackageV2,
     CheckedPackageV2ReadResult, ExactTypeProjectionErrorCode, SelectedExactIdentities,
     SelectedSourceRecordMemberRow, SelectedSourceRecordRow, SelectedSourceTupleRow,
     SelectedTuplePositionRow,
 };
-use quire_exact::{EffectiveId, NodeKey, OriginalDeclarationKey, PathSegment, Presence, ValueType};
+use filament_exact::{
+    EffectiveId, NodeKey, OriginalDeclarationKey, PathSegment, Presence, ValueType,
+};
+use ix_trace_rs::trace;
 use serde_json::{json, Value};
 
 fn source_package_form(tag: &str, form: &str, name: &str) -> Value {
@@ -32,7 +34,7 @@ fn source_package_form(tag: &str, form: &str, name: &str) -> Value {
         .expect("nodes")
         .push(json!({
             "node_id": id,
-            "schema_version": "quire.checked-semantic-graph/v2",
+            "schema_version": "filament.checked-semantic-graph/v2",
             "node_tag": tag, "semantic_form": form,
             "semantic_type": id, "dependencies": [],
             "occurrences": [{"role": "declaration", "ordinal": 0}],
@@ -65,7 +67,7 @@ fn source_record_with_members() -> Value {
         nodes.insert(
             nodes.len() - 1,
             json!({
-                "node_id": id, "schema_version": "quire.checked-semantic-graph/v2",
+                "node_id": id, "schema_version": "filament.checked-semantic-graph/v2",
                 "node_tag": "scalar_type", "semantic_form": form,
                 "semantic_type": id, "dependencies": [],
                 "occurrences": [{"role":"type","ordinal":0}],
@@ -93,7 +95,7 @@ fn source_record_with_members() -> Value {
     nodes.insert(
         nodes.len() - 1,
         json!({
-            "node_id": option, "schema_version": "quire.checked-semantic-graph/v2",
+            "node_id": option, "schema_version": "filament.checked-semantic-graph/v2",
             "node_tag": "composite_type", "semantic_form": "option",
             "semantic_type": option, "dependencies": [integer],
             "occurrences": [{"role":"type","ordinal":0}],
@@ -141,7 +143,7 @@ fn selected_source_tuple_requires_complete_ordered_position_rows() {
     let structural_node = package.graph().nodes.last().unwrap().node_id.clone();
     let source = &package.lock().sources[0];
     let key = NodeKey::new(
-        "qsl-tuple-stage",
+        "fsl-tuple-stage",
         vec![PathSegment::Text("Point".into())],
         0,
     )
@@ -177,7 +179,7 @@ fn selected_source_tuple_requires_complete_ordered_position_rows() {
         .with_source_tuple_rows(
             &package,
             [row.clone()],
-            &mut quire_contract_model::NativeJoinBudget::new(100, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(100, u64::MAX),
         )
         .unwrap();
     assert_eq!(identities, budgeted);
@@ -187,7 +189,7 @@ fn selected_source_tuple_requires_complete_ordered_position_rows() {
                 .with_source_tuple_rows(
                     &package,
                     [row.clone()],
-                    &mut quire_contract_model::NativeJoinBudget::new(limit, u64::MAX),
+                    &mut filament_contract_model::NativeJoinBudget::new(limit, u64::MAX),
                 )
                 .is_ok()
         })
@@ -198,7 +200,7 @@ fn selected_source_tuple_requires_complete_ordered_position_rows() {
             .with_source_tuple_rows(
                 &package,
                 [row.clone()],
-                &mut quire_contract_model::NativeJoinBudget::new(join_exact - 1, u64::MAX)
+                &mut filament_contract_model::NativeJoinBudget::new(join_exact - 1, u64::MAX)
             )
             .unwrap_err()
             .code,
@@ -209,7 +211,7 @@ fn selected_source_tuple_requires_complete_ordered_position_rows() {
         .project_exact_type(
             &structural_node,
             &identities,
-            &mut quire_contract_model::NativeJoinBudget::new(100, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(100, u64::MAX),
         )
         .unwrap();
     assert_eq!(projected.value_type(), &ValueType::Composite(key));
@@ -224,7 +226,7 @@ fn selected_source_tuple_requires_complete_ordered_position_rows() {
             .project_exact_type(
                 &structural_node,
                 &identities,
-                &mut quire_contract_model::NativeJoinBudget::new(exact, u64::MAX)
+                &mut filament_contract_model::NativeJoinBudget::new(exact, u64::MAX)
             )
             .unwrap(),
         projected
@@ -234,7 +236,7 @@ fn selected_source_tuple_requires_complete_ordered_position_rows() {
             .project_exact_type(
                 &structural_node,
                 &identities,
-                &mut quire_contract_model::NativeJoinBudget::new(exact - 1, u64::MAX)
+                &mut filament_contract_model::NativeJoinBudget::new(exact - 1, u64::MAX)
             )
             .unwrap_err()
             .code,
@@ -246,7 +248,7 @@ fn selected_source_tuple_requires_complete_ordered_position_rows() {
             .project_exact_type(
                 &structural_node,
                 &identities,
-                &mut quire_contract_model::NativeJoinBudget::new(exact, u64::MAX)
+                &mut filament_contract_model::NativeJoinBudget::new(exact, u64::MAX)
             )
             .unwrap(),
         projected
@@ -256,7 +258,7 @@ fn selected_source_tuple_requires_complete_ordered_position_rows() {
             .project_exact_type(
                 &structural_node,
                 &SelectedExactIdentities::empty(),
-                &mut quire_contract_model::NativeJoinBudget::new(100, u64::MAX)
+                &mut filament_contract_model::NativeJoinBudget::new(100, u64::MAX)
             )
             .unwrap_err()
             .code,
@@ -269,7 +271,7 @@ fn selected_source_tuple_requires_complete_ordered_position_rows() {
             .with_source_tuple_rows(
                 &package,
                 [changed],
-                &mut quire_contract_model::NativeJoinBudget::new(100, u64::MAX)
+                &mut filament_contract_model::NativeJoinBudget::new(100, u64::MAX)
             )
             .unwrap_err()
             .code,
@@ -282,7 +284,7 @@ fn selected_source_tuple_requires_complete_ordered_position_rows() {
             .with_source_tuple_rows(
                 &package,
                 [reordered],
-                &mut quire_contract_model::NativeJoinBudget::new(100, u64::MAX)
+                &mut filament_contract_model::NativeJoinBudget::new(100, u64::MAX)
             )
             .unwrap_err()
             .code,
@@ -295,7 +297,7 @@ fn selected_source_tuple_requires_complete_ordered_position_rows() {
             .with_source_tuple_rows(
                 &package,
                 [incomplete],
-                &mut quire_contract_model::NativeJoinBudget::new(100, u64::MAX)
+                &mut filament_contract_model::NativeJoinBudget::new(100, u64::MAX)
             )
             .unwrap_err()
             .code,
@@ -320,7 +322,7 @@ fn selected_source_tuple_requires_complete_ordered_position_rows() {
                 .with_source_tuple_rows(
                     &package,
                     [changed],
-                    &mut quire_contract_model::NativeJoinBudget::new(100, u64::MAX)
+                    &mut filament_contract_model::NativeJoinBudget::new(100, u64::MAX)
                 )
                 .unwrap_err()
                 .code,
@@ -334,7 +336,7 @@ fn selected_source_tuple_requires_complete_ordered_position_rows() {
         .with_source_tuple_rows(
             &package,
             [foreign],
-            &mut quire_contract_model::NativeJoinBudget::new(100, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(100, u64::MAX),
         )
         .unwrap_err();
     assert_eq!(refusal.code, ExactTypeProjectionErrorCode::ForeignNode);
@@ -345,7 +347,7 @@ fn selected_source_tuple_requires_complete_ordered_position_rows() {
             .with_source_tuple_rows(
                 &package,
                 [row.clone(), row],
-                &mut quire_contract_model::NativeJoinBudget::new(200, u64::MAX)
+                &mut filament_contract_model::NativeJoinBudget::new(200, u64::MAX)
             )
             .unwrap_err()
             .code,
@@ -375,7 +377,7 @@ fn selected_source_record_requires_complete_ordered_producer_rows() {
         .any(|node| node.semantic_form.as_ref() == "enum"));
     let source = &package.lock().sources[0];
     let key = NodeKey::new(
-        "qsl-record-stage",
+        "fsl-record-stage",
         vec![PathSegment::Text("Point".into())],
         0,
     )
@@ -428,7 +430,7 @@ fn selected_source_record_requires_complete_ordered_producer_rows() {
         None,
         OriginalDeclarationKey::new("p".repeat(64), "n".repeat(64)),
     ));
-    let mut dynamic_budget = quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX);
+    let mut dynamic_budget = filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX);
     let retained_dynamic = SelectedExactIdentities::empty()
         .with_source_record_rows(&package, [dynamic.clone()], &mut dynamic_budget)
         .expect("opaque dynamic Exact type remains a producer claim");
@@ -439,7 +441,7 @@ fn selected_source_record_requires_complete_ordered_producer_rows() {
         .with_source_record_rows(
             &package,
             [row.clone()],
-            &mut quire_contract_model::NativeJoinBudget::new(100, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(100, u64::MAX),
         )
         .expect("complete source row");
     assert_eq!(identities, budgeted);
@@ -449,7 +451,7 @@ fn selected_source_record_requires_complete_ordered_producer_rows() {
                 .with_source_record_rows(
                     &package,
                     [row.clone()],
-                    &mut quire_contract_model::NativeJoinBudget::new(limit, u64::MAX),
+                    &mut filament_contract_model::NativeJoinBudget::new(limit, u64::MAX),
                 )
                 .is_ok()
         })
@@ -459,7 +461,7 @@ fn selected_source_record_requires_complete_ordered_producer_rows() {
         .with_source_record_rows(
             &package,
             [row.clone()],
-            &mut quire_contract_model::NativeJoinBudget::new(join_exact - 1, u64::MAX)
+            &mut filament_contract_model::NativeJoinBudget::new(join_exact - 1, u64::MAX)
         )
         .is_err_and(|error| error.code == ExactTypeProjectionErrorCode::ExhaustedWork));
     assert_eq!(identities.source_record_rows().next(), Some(&row));
@@ -467,7 +469,7 @@ fn selected_source_record_requires_complete_ordered_producer_rows() {
         .project_exact_type(
             &record,
             &identities,
-            &mut quire_contract_model::NativeJoinBudget::new(100, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(100, u64::MAX),
         )
         .expect("record Exact projection");
     assert_eq!(projected.value_type(), &ValueType::Composite(key));
@@ -483,7 +485,7 @@ fn selected_source_record_requires_complete_ordered_producer_rows() {
             .project_exact_type(
                 &record,
                 &identities,
-                &mut quire_contract_model::NativeJoinBudget::new(exact, u64::MAX)
+                &mut filament_contract_model::NativeJoinBudget::new(exact, u64::MAX)
             )
             .unwrap(),
         projected
@@ -492,7 +494,7 @@ fn selected_source_record_requires_complete_ordered_producer_rows() {
         .project_exact_type(
             &record,
             &identities,
-            &mut quire_contract_model::NativeJoinBudget::new(exact - 1, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(exact - 1, u64::MAX),
         )
         .unwrap_err();
     assert_eq!(denied.code, ExactTypeProjectionErrorCode::ExhaustedWork);
@@ -500,7 +502,7 @@ fn selected_source_record_requires_complete_ordered_producer_rows() {
     assert_eq!(denied.at, None);
     assert_eq!(
         denied.denied.unwrap().kind,
-        quire_contract_model::NativeJoinChargeKind::Work
+        filament_contract_model::NativeJoinChargeKind::Work
     );
     let cloned = package.clone();
     assert_eq!(
@@ -508,7 +510,7 @@ fn selected_source_record_requires_complete_ordered_producer_rows() {
             .project_exact_type(
                 &record,
                 &identities,
-                &mut quire_contract_model::NativeJoinBudget::new(exact, u64::MAX)
+                &mut filament_contract_model::NativeJoinBudget::new(exact, u64::MAX)
             )
             .unwrap(),
         projected
@@ -518,7 +520,7 @@ fn selected_source_record_requires_complete_ordered_producer_rows() {
             .project_exact_type(
                 &record,
                 &identities,
-                &mut quire_contract_model::NativeJoinBudget::new(exact - 1, u64::MAX)
+                &mut filament_contract_model::NativeJoinBudget::new(exact - 1, u64::MAX)
             )
             .unwrap_err(),
         denied
@@ -529,14 +531,14 @@ fn selected_source_record_requires_complete_ordered_producer_rows() {
         .with_source_record_rows(
             &package,
             [opaque.clone()],
-            &mut quire_contract_model::NativeJoinBudget::new(100, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(100, u64::MAX),
         )
         .expect("opaque producer type remains a producer claim");
     let opaque_projection = package
         .project_exact_type(
             &record,
             &opaque_identities,
-            &mut quire_contract_model::NativeJoinBudget::new(100, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(100, u64::MAX),
         )
         .expect("structural join does not invent a different Exact field type");
     assert_eq!(
@@ -551,7 +553,7 @@ fn selected_source_record_requires_complete_ordered_producer_rows() {
         .project_exact_type(
             &record,
             &SelectedExactIdentities::empty(),
-            &mut quire_contract_model::NativeJoinBudget::new(100, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(100, u64::MAX),
         )
         .unwrap_err();
     assert_eq!(
@@ -601,7 +603,7 @@ fn selected_source_record_requires_complete_ordered_producer_rows() {
             .with_source_record_rows(
                 &package,
                 [variant],
-                &mut quire_contract_model::NativeJoinBudget::new(100, u64::MAX),
+                &mut filament_contract_model::NativeJoinBudget::new(100, u64::MAX),
             )
             .unwrap_err();
         assert_eq!(
@@ -614,7 +616,7 @@ fn selected_source_record_requires_complete_ordered_producer_rows() {
         .with_source_record_rows(
             &package,
             [row.clone(), row.clone()],
-            &mut quire_contract_model::NativeJoinBudget::new(200, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(200, u64::MAX),
         )
         .unwrap_err();
     assert_eq!(
@@ -628,7 +630,7 @@ fn selected_source_record_requires_complete_ordered_producer_rows() {
             .with_source_record_rows(
                 &package,
                 [foreign],
-                &mut quire_contract_model::NativeJoinBudget::new(100, u64::MAX)
+                &mut filament_contract_model::NativeJoinBudget::new(100, u64::MAX)
             )
             .unwrap_err()
             .code,
@@ -650,10 +652,10 @@ fn model_document() -> Value {
         "package": {"identity": "acme/owners", "version": "1.0.0"},
         "constructs": [{
             "kind": {"module": "acme/owners", "name": "entity"},
-            "construct": {"meaning": "quire.meaning.model.object-type/v1"},
+            "construct": {"meaning": "filament.meaning.model.object-type/v1"},
         }, {
             "kind": {"module": "acme/owners", "name": "population"},
-            "construct": {"meaning": "quire.meaning.model.population/v1"},
+            "construct": {"meaning": "filament.meaning.model.population/v1"},
         }],
         "types": [{
             "identity": "ix://acme/owners/Point", "displayName": "Point",
@@ -679,7 +681,7 @@ fn model_package() -> (Value, Value) {
         .as_array_mut()
         .expect("nodes")
         .push(json!({
-            "node_id": id, "schema_version": "quire.checked-semantic-graph/v2",
+            "node_id": id, "schema_version": "filament.checked-semantic-graph/v2",
             "node_tag": "model", "semantic_form": "object_type",
             "semantic_type": id, "dependencies": [],
             "occurrences": [{"role": "type", "ordinal": 0}],
@@ -754,7 +756,7 @@ fn retarget_qspec_application_argument(package: &mut Value, operation: &str, tar
     crate::support::checked_package::resolve_operands(package);
     let nodes = package["semantic_graph"]["nodes"]
         .as_array()
-        .expect("QSpec nodes");
+        .expect("FSpec nodes");
     let application = nodes
         .iter()
         .position(|node| node["body"]["operation"]["identity"] == operation)
@@ -763,7 +765,7 @@ fn retarget_qspec_application_argument(package: &mut Value, operation: &str, tar
     let old_position = nodes
         .iter()
         .position(|node| node["node_id"] == *old_target)
-        .expect("original QSpec operand");
+        .expect("original FSpec operand");
     let target_position = nodes
         .iter()
         .position(|node| node["node_id"] == *target)
@@ -799,13 +801,13 @@ fn unit_field_document(type_ref: &str) -> (Value, Value) {
 #[trace("TC-230", "FR-038-AC-300")]
 #[test]
 fn tc_230_selected_model_field_resolves_checked_unit_type_ref() {
-    let (package, document) = unit_field_document("ix://quire/unit/Example/Metre");
+    let (package, document) = unit_field_document("ix://filament/unit/Example/Metre");
     let CheckedPackageV2ReadResult::Admitted(admitted) = read_with_model(&package, &document)
     else {
         panic!("selected checked unit must admit");
     };
     let nodes = package["semantic_graph"]["nodes"].as_array().unwrap();
-    let unit: quire_contract_model::CheckedNodeId = serde_json::from_value(
+    let unit: filament_contract_model::CheckedNodeId = serde_json::from_value(
         nodes
             .iter()
             .find(|node| node["semantic_form"] == "unit")
@@ -813,7 +815,7 @@ fn tc_230_selected_model_field_resolves_checked_unit_type_ref() {
             .clone(),
     )
     .unwrap();
-    let model: quire_contract_model::CheckedNodeId = serde_json::from_value(
+    let model: filament_contract_model::CheckedNodeId = serde_json::from_value(
         nodes
             .iter()
             .find(|node| node["semantic_form"] == "object_type")
@@ -833,7 +835,7 @@ fn tc_230_selected_model_field_resolves_checked_unit_type_ref() {
 #[trace("TC-230", "FR-038-AC-300")]
 #[test]
 fn tc_230_selected_model_field_refuses_unknown_unit_type_ref() {
-    let (package, document) = unit_field_document("ix://quire/unit/Example/ghost");
+    let (package, document) = unit_field_document("ix://filament/unit/Example/ghost");
     let CheckedPackageV2ReadResult::Refused(refusal) = read_with_model(&package, &document) else {
         panic!("unknown unit must refuse");
     };
@@ -853,7 +855,7 @@ fn tc_230_selected_model_field_refuses_unknown_unit_type_ref() {
 #[trace("TC-230", "FR-038-AC-300")]
 #[test]
 fn tc_230_checked_unit_field_obeys_collection_multiplicity() {
-    let (mut package, mut document) = unit_field_document("ix://quire/unit/Example/Metre");
+    let (mut package, mut document) = unit_field_document("ix://filament/unit/Example/Metre");
     document["types"][0]["fields"][0]["multiplicity"] =
         json!({"lower": 0, "ordered": false, "unique": true});
     refresh_identity(&mut package);
@@ -863,7 +865,7 @@ fn tc_230_checked_unit_field_obeys_collection_multiplicity() {
     };
     let nodes = package["semantic_graph"]["nodes"].as_array().unwrap();
     let id = |form| {
-        serde_json::from_value::<quire_contract_model::CheckedNodeId>(
+        serde_json::from_value::<filament_contract_model::CheckedNodeId>(
             nodes
                 .iter()
                 .find(|node| node["semantic_form"] == form)
@@ -890,7 +892,7 @@ fn tc_230_checked_unit_field_obeys_collection_multiplicity() {
 #[trace("TC-230", "FR-038-AC-300")]
 #[test]
 fn tc_230_checked_unit_field_obeys_optional_presence() {
-    let (mut package, mut document) = unit_field_document("ix://quire/unit/Example/Metre");
+    let (mut package, mut document) = unit_field_document("ix://filament/unit/Example/Metre");
     document["types"][0]["fields"][0]["presence"] = json!("optional");
     refresh_identity(&mut package);
     let CheckedPackageV2ReadResult::Admitted(admitted) = read_with_model(&package, &document)
@@ -899,7 +901,7 @@ fn tc_230_checked_unit_field_obeys_optional_presence() {
     };
     let nodes = package["semantic_graph"]["nodes"].as_array().unwrap();
     let id = |form| {
-        serde_json::from_value::<quire_contract_model::CheckedNodeId>(
+        serde_json::from_value::<filament_contract_model::CheckedNodeId>(
             nodes
                 .iter()
                 .find(|node| node["semantic_form"] == form)
@@ -926,7 +928,7 @@ fn tc_230_checked_unit_field_obeys_optional_presence() {
 fn tc_230_selected_model_operation_parameter_and_result_resolve_checked_unit() {
     let (mut package, mut document) = model_package();
     let slot = json!({
-        "typeRef": "ix://quire/unit/Example/Metre",
+        "typeRef": "ix://filament/unit/Example/Metre",
         "multiplicity": {"lower": 1, "upper": 1, "ordered": false, "unique": true},
     });
     document["types"][0]["operations"] = json!([{
@@ -1316,7 +1318,7 @@ fn tc_229_declared_population_is_query_operand() {
             .as_array_mut()
             .unwrap()
             .push(json!({
-                "node_id":node_id(&reference), "schema_version":"quire.checked-semantic-graph/v2",
+                "node_id":node_id(&reference), "schema_version":"filament.checked-semantic-graph/v2",
                 "node_tag":"composite_type", "semantic_form":"reference",
                 "semantic_type":node_id(&reference), "dependencies":[],
                 "occurrences":[{"role":"type","ordinal":0}], "body":reference_body
@@ -1328,7 +1330,7 @@ fn tc_229_declared_population_is_query_operand() {
             .as_array_mut()
             .unwrap()
             .push(json!({
-                "node_id":node_id(&set), "schema_version":"quire.checked-semantic-graph/v2",
+                "node_id":node_id(&set), "schema_version":"filament.checked-semantic-graph/v2",
                 "node_tag":"composite_type", "semantic_form":"set",
                 "semantic_type":node_id(&set), "dependencies":[],
                 "occurrences":[{"role":"type","ordinal":0}], "body":set_body
@@ -1341,7 +1343,7 @@ fn tc_229_declared_population_is_query_operand() {
                 .as_array_mut()
                 .unwrap()
                 .push(json!({
-                    "node_id":node_id(&option), "schema_version":"quire.checked-semantic-graph/v2",
+                    "node_id":node_id(&option), "schema_version":"filament.checked-semantic-graph/v2",
                     "node_tag":"composite_type", "semantic_form":"option",
                     "semantic_type":node_id(&option), "dependencies":[],
                     "occurrences":[{"role":"type","ordinal":0}], "body":option_body
@@ -1349,7 +1351,7 @@ fn tc_229_declared_population_is_query_operand() {
             let identity_body = json!({"term":"reference","target":point.clone()});
             let identity = "query/expression/object".to_owned();
             package["semantic_graph"]["nodes"].as_array_mut().unwrap().push(json!({
-            "node_id":node_id(&identity), "schema_version":"quire.checked-semantic-graph/v2",
+            "node_id":node_id(&identity), "schema_version":"filament.checked-semantic-graph/v2",
             "node_tag":"expression", "semantic_form":"reference",
             "semantic_type":node_id(&reference), "dependencies":[],
             "occurrences":[{"role":"expression","ordinal":0}], "body":identity_body
@@ -1370,7 +1372,7 @@ fn tc_229_declared_population_is_query_operand() {
                     .any(|node| node["node_id"] == node_id(&integer))
                 {
                     package["semantic_graph"]["nodes"].as_array_mut().unwrap().push(json!({
-                            "node_id":node_id(&integer), "schema_version":"quire.checked-semantic-graph/v2",
+                            "node_id":node_id(&integer), "schema_version":"filament.checked-semantic-graph/v2",
                             "node_tag":"scalar_type", "semantic_form":"integer",
                             "semantic_type":node_id(&integer), "dependencies":[],
                             "occurrences":[{"role":"type","ordinal":0}],
@@ -1380,7 +1382,7 @@ fn tc_229_declared_population_is_query_operand() {
                 let body = bounds_body("0", "2");
                 let bounded_key = "query/bounds/collection".to_owned();
                 package["semantic_graph"]["nodes"].as_array_mut().unwrap().push(json!({
-                        "node_id":node_id(&bounded_key), "schema_version":"quire.checked-semantic-graph/v2",
+                        "node_id":node_id(&bounded_key), "schema_version":"filament.checked-semantic-graph/v2",
                         "node_tag":"bounded_domain", "semantic_form":"collection_bounds",
                         "semantic_type":node_id(&set), "dependencies":[node_id(&set)],
                         "occurrences":[{"role":"type","ordinal":0}], "body":body
@@ -1396,7 +1398,7 @@ fn tc_229_declared_population_is_query_operand() {
             )
         };
         let body = json!({"term":"application","operator":"query",
-        "operation":{"identity":if lookup {"quire.op.model.lookup"} else {"quire.op.model.all_instances"},
+        "operation":{"identity":if lookup {"filament.op.model.lookup"} else {"filament.op.model.all_instances"},
             "laws":[],"mode":mode,
             "member":{"kind":"type_argument","declaration":point},"leaves":[]},
         "result_type":node_id(&result),"arguments":arguments});
@@ -1411,7 +1413,7 @@ fn tc_229_declared_population_is_query_operand() {
             .as_array_mut()
             .unwrap()
             .push(json!({
-                "node_id":node_id(application), "schema_version":"quire.checked-semantic-graph/v2",
+                "node_id":node_id(application), "schema_version":"filament.checked-semantic-graph/v2",
                 "node_tag":"expression", "semantic_form":"query",
                 "semantic_type":node_id(&result), "dependencies":[],
                 "occurrences":[{"role":"expression","ordinal":0}], "body":body
@@ -1451,22 +1453,22 @@ fn tc_229_declared_population_is_query_operand() {
 #[trace("TC-229", "FR-038-AC-305", "FR-038-AC-307")]
 #[test]
 fn tc_229_qspec_published_population_binding_fixture_admits() {
-    let root = match std::env::var("QUIRE_SPECIFICATION_DIR") {
+    let root = match std::env::var("FILAMENT_SPECIFICATION_DIR") {
         Ok(root) if !root.is_empty() => root,
         _ if std::env::var_os("QSPEC_CONFORMANCE").is_none() => return,
-        _ => panic!("QUIRE_SPECIFICATION_DIR is required for QSpec conformance"),
+        _ => panic!("FILAMENT_SPECIFICATION_DIR is required for FSpec conformance"),
     };
     let proposal = std::path::Path::new(&root).join("proposals/checked-package-v2");
     let package: Value = serde_json::from_slice(
         &std::fs::read(proposal.join("fixtures/positive-operation-identities.json"))
-            .expect("QSpec positive operation fixture"),
+            .expect("FSpec positive operation fixture"),
     )
-    .expect("QSpec positive operation JSON");
+    .expect("FSpec positive operation JSON");
     let document: Value = serde_json::from_slice(
         &std::fs::read(proposal.join("domain-package-acme-orders.json"))
-            .expect("QSpec selected domain document"),
+            .expect("FSpec selected domain document"),
     )
-    .expect("QSpec selected domain JSON");
+    .expect("FSpec selected domain JSON");
     let result = read_with_selected_model(&package, "acme/orders", &document);
     assert!(
         matches!(&result, CheckedPackageV2ReadResult::Admitted(_)),
@@ -1484,7 +1486,10 @@ fn tc_229_qspec_published_population_binding_fixture_admits() {
         })
         .expect("published population binding");
     let population_id = &population["node_id"];
-    for identity in ["quire.op.model.all_instances", "quire.op.model.lookup"] {
+    for identity in [
+        "filament.op.model.all_instances",
+        "filament.op.model.lookup",
+    ] {
         let application = nodes
             .iter()
             .find(|node| node["body"]["operation"]["identity"] == identity)
@@ -1557,7 +1562,7 @@ pub(super) fn population_reference_fixture(
         .expect("constructs")
         .push(json!({
             "kind": {"module": "acme/orders", "name": "population"},
-            "construct": {"meaning": "quire.meaning.model.population/v1"},
+            "construct": {"meaning": "filament.meaning.model.population/v1"},
         }));
     document["populations"] = cases["selected_document_populations"].clone();
     match case["document_populations"].as_str() {
@@ -1565,7 +1570,7 @@ pub(super) fn population_reference_fixture(
             document["populations"] = Value::Array(
                 cases["selected_document_populations"]
                     .as_array()
-                    .expect("QSpec selected populations")
+                    .expect("FSpec selected populations")
                     .iter()
                     .map(|entry| json!({"node": entry["identity"]}))
                     .collect(),
@@ -1577,11 +1582,11 @@ pub(super) fn population_reference_fixture(
         Some("without-identity") => {
             document["populations"][0]
                 .as_object_mut()
-                .expect("QSpec population")
+                .expect("FSpec population")
                 .remove("identity");
         }
         None => {}
-        Some(other) => panic!("unknown QSpec population document variant: {other}"),
+        Some(other) => panic!("unknown FSpec population document variant: {other}"),
     }
     let owner = case["owner_node"]
         .as_str()
@@ -1598,7 +1603,7 @@ pub(super) fn population_reference_fixture(
         id
     };
     let mut population_node = json!({
-        "node_id":population,"schema_version":"quire.checked-semantic-graph/v2",
+        "node_id":population,"schema_version":"filament.checked-semantic-graph/v2",
         "node_tag":"relation","semantic_form":"population",
         "semantic_type":population,"dependencies":[],
         "occurrences":[{"role":"generated","ordinal":0}],
@@ -1615,7 +1620,7 @@ pub(super) fn population_reference_fixture(
         .unwrap()
         .push(population_node);
     let operation = format!(
-        "quire.op.{}",
+        "filament.op.{}",
         case["operation"].as_str().expect("operation")
     );
     let application = package["semantic_graph"]["nodes"]
@@ -1632,7 +1637,7 @@ pub(super) fn population_reference_fixture(
         retarget_qspec_application_argument(&mut package, &operation, &population);
     }
     if let Some(also) = case["also"].as_str() {
-        let also = format!("quire.op.{also}");
+        let also = format!("filament.op.{also}");
         retarget_qspec_application_argument(&mut package, &also, &population);
     }
     settle(&mut package);
@@ -1684,21 +1689,21 @@ pub(super) fn population_reference_fixture(
 )]
 #[test]
 fn tc_229_qspec_population_reference_cases_match_reader() {
-    let root = match std::env::var("QUIRE_SPECIFICATION_DIR") {
+    let root = match std::env::var("FILAMENT_SPECIFICATION_DIR") {
         Ok(root) if !root.is_empty() => root,
         _ if std::env::var_os("QSPEC_CONFORMANCE").is_none() => return,
-        _ => panic!("QUIRE_SPECIFICATION_DIR is required for QSpec conformance"),
+        _ => panic!("FILAMENT_SPECIFICATION_DIR is required for FSpec conformance"),
     };
     let proposal = std::path::Path::new(&root).join("proposals/checked-package-v2");
     let read = |name: &str| -> Value {
-        serde_json::from_slice(&std::fs::read(proposal.join(name)).expect("QSpec fixture"))
-            .expect("QSpec JSON")
+        serde_json::from_slice(&std::fs::read(proposal.join(name)).expect("FSpec fixture"))
+            .expect("FSpec JSON")
     };
     let cases = read("fixtures/adverse.json");
     let rows = cases["population_reference_cases"]
         .as_array()
         .expect("population cases");
-    assert_eq!(rows.len(), 15, "QSpec population case inventory");
+    assert_eq!(rows.len(), 15, "FSpec population case inventory");
     let mut admitted = std::collections::BTreeMap::new();
     for case in rows {
         let id = case["id"].as_str().expect("case id");
@@ -1733,7 +1738,7 @@ fn tc_229_qspec_population_reference_cases_match_reader() {
                     "{id}"
                 );
                 if let Some(also) = case["also"].as_str() {
-                    let also = format!("quire.op.{also}");
+                    let also = format!("filament.op.{also}");
                     let second = nodes
                         .iter()
                         .find(|node| node["body"]["operation"]["identity"] == also)
@@ -1858,14 +1863,14 @@ fn owned_clause(mut package: Value, _document: &Value, declared: &str, clause: &
     package
 }
 
-/// Trace: FR-068-AC-2, QSpec FR-322-AC-63
+/// Trace: FR-068-AC-2, FSpec FR-322-AC-63
 #[trace("TC-463")]
 #[test]
 fn selected_record_invariant_owner_joins_its_real_declaration() {
     let (base, mut document) = model_package();
     let address = "ix://acme/owners/Address";
     document["constructs"][0]["construct"]["meaning"] =
-        json!("quire.meaning.model.record-value-type/v1");
+        json!("filament.meaning.model.record-value-type/v1");
     document["types"][0]["identity"] = json!(address);
     document["types"][0]["displayName"] = json!("Address");
     let package = owned_clause(base, &document, address, "invariant");
@@ -1878,18 +1883,19 @@ fn selected_record_invariant_owner_joins_its_real_declaration() {
     );
 }
 
-/// Trace: FR-038-AC-420, QSpec FR-322-AC-68.
+/// Trace: FR-038-AC-420, FSpec FR-322-AC-68.
 #[trace("TC-048", "TC-281", "FR-038-AC-420")]
 #[test]
 fn selected_event_invariant_owner_joins_its_real_declaration() {
     let (base, mut document) = model_package();
     let event = "ix://acme/owners/OrderPlaced";
     let occurrence = format!("{event}/occurred_at");
-    document["constructs"][0]["construct"]["meaning"] = json!("quire.meaning.model.event-type/v1");
+    document["constructs"][0]["construct"]["meaning"] =
+        json!("filament.meaning.model.event-type/v1");
     document["types"][0]["identity"] = json!(event);
     document["types"][0]["displayName"] = json!("OrderPlaced");
     document["types"][0]["fields"] = json!([{
-        "identity": occurrence, "name": "occurred_at", "typeRef": "ix://quire/native/Timestamp",
+        "identity": occurrence, "name": "occurred_at", "typeRef": "ix://filament/native/Timestamp",
         "presence": "required", "nullable": false, "defaultKind": "none",
         "multiplicity": {"lower": 1, "upper": 1, "ordered": false, "unique": true},
     }]);
@@ -1963,7 +1969,7 @@ fn tc_228_declared_record_tuple_and_function_carry_their_source_owner() {
     }
 }
 
-/// Trace: FR-038-AC-420, QSpec FR-322-AC-68.
+/// Trace: FR-038-AC-420, FSpec FR-322-AC-68.
 #[trace("TC-048", "FR-038-AC-420")]
 #[test]
 fn declared_event_keeps_source_owner() {
@@ -2217,7 +2223,7 @@ fn tc_228_an_unreachable_model_node_joins_its_declaring_object_type() {
 
     let mut interface_document = document.clone();
     interface_document["constructs"][0]["construct"]["meaning"] =
-        json!("quire.meaning.systems.interface/v1");
+        json!("filament.meaning.systems.interface/v1");
     interface_document["types"][0]["interfaceFeatures"] = json!({});
     let mut wrong_subtype = base.clone();
     refresh_identity(&mut wrong_subtype);
@@ -2267,7 +2273,7 @@ fn tc_228_operation_and_invariant_clause_owners_join_only_their_kind() {
     let field = format!("{object}/field");
     document["types"][0]["operations"] = json!([{"identity": operation, "params": []}]);
     document["types"][0]["fields"] = json!([{
-        "identity": field, "name": "field", "typeRef": "ix://quire/native/Integer",
+        "identity": field, "name": "field", "typeRef": "ix://filament/native/Integer",
         "presence": "required", "nullable": false, "defaultKind": "none",
         "multiplicity": {"lower": 1, "upper": 1, "ordered": false, "unique": true},
     }]);
@@ -2445,9 +2451,9 @@ fn tc_228_model_owner_is_closed_and_required_on_the_graph_node() {
 pub(crate) struct CompleteWitnessFixture {
     pub package: CheckedPackageV2,
     pub identities: SelectedExactIdentities,
-    pub budget: quire_contract_model::NativeJoinBudget,
-    pub tuples: Vec<quire_contract_model::SelectedTupleDeclarationRow>,
-    pub units: Vec<quire_contract_model::SelectedSourceUnitRow>,
+    pub budget: filament_contract_model::NativeJoinBudget,
+    pub tuples: Vec<filament_contract_model::SelectedTupleDeclarationRow>,
+    pub units: Vec<filament_contract_model::SelectedSourceUnitRow>,
 }
 
 pub(crate) fn complete_witness_fixture() -> CompleteWitnessFixture {
@@ -2472,12 +2478,12 @@ fn native_source_family_fixture_with_authority(
     include_model: bool,
     authority: Option<&str>,
 ) -> CompleteWitnessFixture {
-    use quire_contract_model::{
+    use filament_contract_model::{
         NativeJoinBudget, NativeJoinCharge, SelectedEnumDeclarationRow, SelectedEnumMemberRow,
         SelectedSourceCollectionRow, SelectedSourceEnumRow, SelectedSourceUnionRow,
         SelectedTuplePositionRow, SelectedUnionMemberRow,
     };
-    use quire_exact::{CollectionKind, CollectionType, EnumShape, UnionMember, VariantId};
+    use filament_exact::{CollectionKind, CollectionType, EnumShape, UnionMember, VariantId};
 
     let mut members = nominal_fixture_members();
     members[1].0["members"] = json!(["ACTIVE"]);
@@ -2534,7 +2540,7 @@ fn native_source_family_fixture_with_authority(
         .as_array_mut()
         .unwrap()
         .push(json!({
-            "node_id":integer, "schema_version":"quire.checked-semantic-graph/v2",
+            "node_id":integer, "schema_version":"filament.checked-semantic-graph/v2",
             "node_tag":"scalar_type", "semantic_form":"integer", "semantic_type":integer,
             "dependencies":[], "occurrences":[{"role":"type","ordinal":0}],
             "body":{"term":"aggregate","members":[]}
@@ -2577,7 +2583,7 @@ fn native_source_family_fixture_with_authority(
     ] {
         let id = node_id(&format!("native-budget-{name}"));
         let mut node = json!({
-            "node_id":id, "schema_version":"quire.checked-semantic-graph/v2",
+            "node_id":id, "schema_version":"filament.checked-semantic-graph/v2",
             "node_tag":"composite_type", "semantic_form":form, "semantic_type":id,
             "dependencies":[integer], "occurrences":[{"role":role,"ordinal":0}],
             "body":body
@@ -2655,7 +2661,7 @@ fn native_source_family_fixture_with_authority(
     assert_eq!(error.at.as_deref(), Some(&union_id));
     assert_eq!(
         short_text.first_unpaid().unwrap().kind,
-        quire_contract_model::NativeJoinChargeKind::Work
+        filament_contract_model::NativeJoinChargeKind::Work
     );
     assert!(short_text.first_unpaid().unwrap().amount >= 4096);
     let record = SelectedSourceRecordRow {
@@ -2712,7 +2718,9 @@ fn native_source_family_fixture_with_authority(
             .path
             .iter()
             .map(|segment| match segment {
-                quire_contract_model::CheckedNodePathSegment::Name(name) => 1 + name.len() as u128,
+                filament_contract_model::CheckedNodePathSegment::Name(name) => {
+                    1 + name.len() as u128
+                }
                 _ => 1,
             })
             .sum::<u128>();
@@ -2727,7 +2735,7 @@ fn native_source_family_fixture_with_authority(
         let denied = trial.first_unpaid().expect("first denied storage charge");
         assert_eq!(
             denied.kind,
-            quire_contract_model::NativeJoinChargeKind::Storage
+            filament_contract_model::NativeJoinChargeKind::Storage
         );
         if denied.amount == index_key_storage {
             assert_eq!(
@@ -2772,19 +2780,19 @@ fn native_source_family_fixture_with_authority(
             .iter()
             .filter(|node| node.semantic_form.as_ref() == "unit")
             .map(|node| {
-                let quire_contract_model::CheckedNodeOwner::Source {
+                let filament_contract_model::CheckedNodeOwner::Source {
                     authority,
                     identity,
                 } = node.owner.as_ref().unwrap()
                 else {
                     panic!("source unit");
                 };
-                quire_contract_model::SelectedSourceUnitRow::new(
+                filament_contract_model::SelectedSourceUnitRow::new(
                     node.node_id.clone(),
                     authority.clone(),
                     identity.clone(),
                     node.declaration.as_ref().unwrap().qualified_name.clone(),
-                    quire_exact::UnitId::Declared(key(&format!(
+                    filament_exact::UnitId::Declared(key(&format!(
                         "private-unit-{}",
                         node.declaration.as_ref().unwrap().qualified_name.join("/")
                     ))),

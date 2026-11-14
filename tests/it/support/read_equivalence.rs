@@ -4,7 +4,7 @@
 //! Public retained and admission-derived consumers shared by read-budget proofs.
 //! Every assertion runs after the measured reader call has returned.
 
-use quire_contract_model::{
+use filament_contract_model::{
     CheckedModelPopulationCatalogLimits, CheckedNodeTag, CheckedPackageV2,
     CheckedPackageV2BudgetedReadResult, CompleteLoweringProfileV2, LoweringProfileRef,
 };
@@ -111,7 +111,7 @@ pub(crate) fn assert_admitted_views_equal(
     );
     let profile = CompleteLoweringProfileV2 {
         reference: LoweringProfileRef {
-            authority: "quire".into(),
+            authority: "filament".into(),
             identity: "complete-v1".into(),
         },
         required_source_selections: Vec::new(),

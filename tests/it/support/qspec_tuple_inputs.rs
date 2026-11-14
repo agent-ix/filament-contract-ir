@@ -4,7 +4,7 @@
 //! Evidence and wire patch adapters shared with the original tuple driver.
 
 use crate::support::checked_package as fixture_support;
-use quire_contract_model::CheckedPackageEvidence;
+use filament_contract_model::CheckedPackageEvidence;
 use serde_json::Value;
 
 pub(crate) fn selected_evidence(document: &Value) -> CheckedPackageEvidence {
@@ -17,7 +17,7 @@ pub(crate) fn selected_evidence(document: &Value) -> CheckedPackageEvidence {
             fixture_support::canonical(document),
         )
         .expect("selected document evidence");
-    evidence.support_feature("quire.value.complete/v1");
+    evidence.support_feature("filament.value.complete/v1");
     evidence
 }
 

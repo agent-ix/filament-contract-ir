@@ -7,12 +7,12 @@ use crate::admitted_result_context::{
     admit, by_operation, fixture, package, package_with_profile, profile, sources_for,
 };
 use crate::support::checked_package::{family_key, node_id, refresh_identity, settle, source_key};
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     BoundedDomainForm, CheckedOccurrenceRole, CheckedScalarOperandError, ContractOccurrenceKeyV1,
     ContractRootViewError, ContractScalarOperandChildV1, ContractScalarOperandErrorV1,
     ContractScalarOperandViewV1, ContractScalarOwnRangeV1,
 };
+use ix_trace_rs::trace;
 use serde_json::{json, Value};
 
 fn revised(mut wire: Value, change: impl FnOnce(&mut Value)) -> Value {
@@ -26,7 +26,7 @@ fn add_body_mut(wire: &mut Value) -> &mut Value {
         .as_array_mut()
         .expect("fixture graph")
         .iter_mut()
-        .find(|node| node["body"]["operation"]["identity"] == "quire.op.integer.add")
+        .find(|node| node["body"]["operation"]["identity"] == "filament.op.integer.add")
         .expect("add node")["body"]
 }
 
@@ -34,12 +34,12 @@ fn add_body_mut(wire: &mut Value) -> &mut Value {
 #[test]
 fn tc_458_admitted_add_retains_graph_child_then_inline_one() {
     let checked = admit(&fixture());
-    let add = by_operation(&checked, "quire.op.integer.add");
+    let add = by_operation(&checked, "filament.op.integer.add");
     let admitted = package(&checked, std::slice::from_ref(&add.node_id));
     let before = admitted.wire().clone();
     let reached = admitted
         .reached_closure(
-            &quire_contract_model::ContractSourceKeyV1::from_structural(&add.node_id)
+            &filament_contract_model::ContractSourceKeyV1::from_structural(&add.node_id)
                 .expect("structural source key"),
         )
         .expect("reached before");
@@ -94,7 +94,7 @@ fn tc_458_admitted_add_retains_graph_child_then_inline_one() {
     assert_eq!(
         admitted
             .reached_closure(
-                &quire_contract_model::ContractSourceKeyV1::from_structural(&add.node_id)
+                &filament_contract_model::ContractSourceKeyV1::from_structural(&add.node_id)
                     .expect("structural source key")
             )
             .expect("reached after"),
@@ -123,7 +123,7 @@ fn tc_458_repeated_graph_child_keeps_both_authored_positions() {
         arguments[1] = arguments[0].clone();
     });
     let checked = admit(&wire);
-    let add = by_operation(&checked, "quire.op.integer.add");
+    let add = by_operation(&checked, "filament.op.integer.add");
     let admitted = package(&checked, std::slice::from_ref(&add.node_id));
     let ContractScalarOperandViewV1::Lowered(view) = admitted
         .scalar_operands(&add.node_id, &add)
@@ -167,7 +167,7 @@ fn tc_458_absent_own_range_does_not_erase_positions_or_invent_a_fallback() {
         parameter["semantic_type"] = node_id(&family_key("a3a3"));
     });
     let checked = admit(&unbounded);
-    let add = by_operation(&checked, "quire.op.integer.add");
+    let add = by_operation(&checked, "filament.op.integer.add");
     let admitted = package(&checked, std::slice::from_ref(&add.node_id));
     let ContractScalarOperandViewV1::Lowered(view) = admitted
         .scalar_operands(&add.node_id, &add)
@@ -194,7 +194,7 @@ fn tc_458_absent_own_range_does_not_erase_positions_or_invent_a_fallback() {
         add_body_mut(wire)["arguments"][1]["value"] = Value::String(huge.into());
     });
     let checked = admit(&outside);
-    let add = by_operation(&checked, "quire.op.integer.add");
+    let add = by_operation(&checked, "filament.op.integer.add");
     let admitted = package(&checked, std::slice::from_ref(&add.node_id));
     let ContractScalarOperandViewV1::Lowered(view) = admitted
         .scalar_operands(&add.node_id, &add)
@@ -217,13 +217,13 @@ fn tc_458_absent_own_range_does_not_erase_positions_or_invent_a_fallback() {
 #[test]
 fn tc_458_invalid_occurrence_refuses_without_mutating_admitted_views() {
     let checked = admit(&fixture());
-    let add = by_operation(&checked, "quire.op.integer.add");
-    let narrow = by_operation(&checked, "quire.op.numeric.narrow");
+    let add = by_operation(&checked, "filament.op.integer.add");
+    let narrow = by_operation(&checked, "filament.op.numeric.narrow");
     let admitted = package(&checked, std::slice::from_ref(&add.node_id));
     let before = admitted.wire().clone();
     let before_reached = admitted
         .reached_closure(
-            &quire_contract_model::ContractSourceKeyV1::from_structural(&add.node_id)
+            &filament_contract_model::ContractSourceKeyV1::from_structural(&add.node_id)
                 .expect("structural source key"),
         )
         .expect("reached");
@@ -292,7 +292,7 @@ fn tc_458_invalid_occurrence_refuses_without_mutating_admitted_views() {
     assert_eq!(
         admitted
             .reached_closure(
-                &quire_contract_model::ContractSourceKeyV1::from_structural(&add.node_id)
+                &filament_contract_model::ContractSourceKeyV1::from_structural(&add.node_id)
                     .expect("structural source key")
             )
             .expect("reached"),
@@ -308,7 +308,7 @@ fn tc_458_two_valid_represented_occurrences_remain_distinct() {
             .as_array_mut()
             .expect("fixture graph")
             .iter_mut()
-            .find(|node| node["body"]["operation"]["identity"] == "quire.op.integer.add")
+            .find(|node| node["body"]["operation"]["identity"] == "filament.op.integer.add")
             .expect("add node");
         add["occurrences"]
             .as_array_mut()
@@ -319,7 +319,7 @@ fn tc_458_two_valid_represented_occurrences_remain_distinct() {
         .as_array()
         .expect("fixture graph")
         .iter()
-        .find(|node| node["body"]["operation"]["identity"] == "quire.op.integer.add")
+        .find(|node| node["body"]["operation"]["identity"] == "filament.op.integer.add")
         .expect("add node")["node_id"]
         .clone();
     let mut second_source = wire["source_map"]
@@ -336,7 +336,7 @@ fn tc_458_two_valid_represented_occurrences_remain_distinct() {
         .push(second_source);
     refresh_identity(&mut wire);
     let checked = admit(&wire);
-    let first = by_operation(&checked, "quire.op.integer.add");
+    let first = by_operation(&checked, "filament.op.integer.add");
     let admitted = package(&checked, std::slice::from_ref(&first.node_id));
     let second = ContractOccurrenceKeyV1 {
         ordinal: 1,
@@ -367,7 +367,7 @@ fn tc_458_two_valid_represented_occurrences_remain_distinct() {
 #[test]
 fn tc_458_inconsistent_child_source_refuses_without_a_partial_vector() {
     let checked = admit(&fixture());
-    let add = by_operation(&checked, "quire.op.integer.add");
+    let add = by_operation(&checked, "filament.op.integer.add");
     let mut admitted = package(&checked, std::slice::from_ref(&add.node_id));
     let child = {
         let ContractScalarOperandViewV1::Lowered(view) = admitted
@@ -409,18 +409,20 @@ fn admitted_graph_literal_keeps_its_singleton_range_in_both_package_views() {
             json!({"term":"literal", "type":integer, "value_kind":"integer", "value":"13"});
     });
     let checked = admit(&wire);
-    let add = by_operation(&checked, "quire.op.integer.add");
+    let add = by_operation(&checked, "filament.op.integer.add");
     let child = match checked.term(&add.node_id).expect("admitted application") {
-        quire_contract_model::CheckedTerm::Application { arguments, .. } => match &arguments[0] {
-            quire_contract_model::CheckedTerm::Reference { target } => target.clone(),
-            _ => panic!("first operand must be a graph reference"),
-        },
+        filament_contract_model::CheckedTerm::Application { arguments, .. } => {
+            match &arguments[0] {
+                filament_contract_model::CheckedTerm::Reference { target } => target.clone(),
+                _ => panic!("first operand must be a graph reference"),
+            }
+        }
         _ => panic!("selected node must be an application"),
     };
     let source_operands = checked
         .scalar_application_operands(
             &add.node_id,
-            &quire_contract_model::CheckedOccurrence {
+            &filament_contract_model::CheckedOccurrence {
                 role: CheckedOccurrenceRole::Expression,
                 ordinal: add.ordinal,
             },
@@ -428,14 +430,14 @@ fn admitted_graph_literal_keeps_its_singleton_range_in_both_package_views() {
         .expect("source singleton operands");
     assert_eq!(
         source_operands[0].range,
-        quire_contract_model::CheckedScalarOperandRange {
+        filament_contract_model::CheckedScalarOperandRange {
             lower: 13,
             upper: 13
         }
     );
     assert_eq!(
         source_operands[0].child,
-        quire_contract_model::CheckedScalarOperandChild::GraphChild(child.clone())
+        filament_contract_model::CheckedScalarOperandChild::GraphChild(child.clone())
     );
     let admitted = package(&checked, std::slice::from_ref(&add.node_id));
     let before = admitted.wire().clone();

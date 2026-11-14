@@ -1,5 +1,5 @@
+use filament_contract_model::SchemaVersion;
 use ix_trace_rs::trace;
-use quire_contract_model::SchemaVersion;
 
 #[trace("TC-015")]
 #[test]

@@ -5,9 +5,9 @@ type: ADR
 status: accepted
 owner: kreneskyp
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/FR-013
+  - target: ix://agent-ix/filament-contract-ir/FR-013
     type: depends_on
-  - target: ix://agent-ix/quire-contract-ir/FR-023
+  - target: ix://agent-ix/filament-contract-ir/FR-023
     type: depends_on
 ---
 # ADR-0054: Separate archetype datatype generation from formal type projection

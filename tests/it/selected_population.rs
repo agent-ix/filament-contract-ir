@@ -2,8 +2,7 @@
 // Copyright (C) 2026 Agent-IX
 
 use crate::support::checked_package::refresh_identity;
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     selected_population::{
         select_population, CheckedSelectedPopulationOutcome as Outcome,
         CheckedSelectedPopulationSelector as Selector, CheckedSelectedPopulationSource as Source,
@@ -11,6 +10,7 @@ use quire_contract_model::{
     CheckedOccurrenceRole, CheckedPackageEvidence, CheckedPackageReadLimits, CheckedPackageV2,
     CheckedPackageV2ReadResult,
 };
+use ix_trace_rs::trace;
 use serde_json::Value;
 use std::{fs, path::PathBuf, process::Command};
 
@@ -22,23 +22,23 @@ impl Drop for Scratch {
     }
 }
 
-fn qsl_fixture() -> Scratch {
-    let qsl = std::env::var_os("QUIRE_SPEC_LANGUAGE_DIR")
+fn fsl_fixture() -> Scratch {
+    let fsl = std::env::var_os("FILAMENT_SPEC_LANGUAGE_DIR")
         .map(PathBuf::from)
-        .expect("selected-population test requires QUIRE_SPEC_LANGUAGE_DIR");
+        .expect("selected-population test requires FILAMENT_SPEC_LANGUAGE_DIR");
     let scratch_path =
         std::env::temp_dir().join(format!("ir760-duplicate-max-{}", std::process::id()));
     let _ = fs::remove_dir_all(&scratch_path);
-    fs::create_dir(&scratch_path).expect("create QSL producer scratch");
+    fs::create_dir(&scratch_path).expect("create FSL producer scratch");
     let output = scratch_path.join("emitted");
-    let target = std::env::var_os("QUIRE_SPEC_LANGUAGE_TARGET_DIR")
+    let target = std::env::var_os("FILAMENT_SPEC_LANGUAGE_TARGET_DIR")
         .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target/qsl-producer"));
+        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target/fsl-producer"));
     let result = Command::new("cargo")
         .arg("run")
         .arg("--locked")
         .arg("--manifest-path")
-        .arg(qsl.join("Cargo.toml"))
+        .arg(fsl.join("Cargo.toml"))
         .arg("--example")
         .arg("population_v2_fixtures")
         .arg("--features")
@@ -47,10 +47,10 @@ fn qsl_fixture() -> Scratch {
         .arg(&output)
         .env("CARGO_TARGET_DIR", target)
         .output()
-        .expect("run authoritative QSL producer");
+        .expect("run authoritative FSL producer");
     assert!(
         result.status.success(),
-        "QSL producer failed: {}",
+        "FSL producer failed: {}",
         String::from_utf8_lossy(&result.stderr)
     );
     Scratch(scratch_path)
@@ -58,11 +58,11 @@ fn qsl_fixture() -> Scratch {
 
 fn admitted(package: &Value, domain: &Value) -> CheckedPackageV2 {
     let domain_bytes = quire_canonical::to_vec(domain, quire_canonical::Limits::new(1 << 30))
-        .expect("QSL domain package is canonicalizable");
+        .expect("FSL domain package is canonicalizable");
     let mut evidence = CheckedPackageEvidence::new();
     for root in package["semantic_graph"]["nodes"]
         .as_array()
-        .expect("QSL graph nodes")
+        .expect("FSL graph nodes")
         .iter()
         .filter(|node| node["semantic_form"] == "model_root")
     {
@@ -71,9 +71,9 @@ fn admitted(package: &Value, domain: &Value) -> CheckedPackageV2 {
             .insert_domain_package_document(identity, domain_bytes.clone())
             .expect("selected domain package evidence");
     }
-    evidence.support_feature("quire.value.complete/v1");
+    evidence.support_feature("filament.value.complete/v1");
     let bytes = quire_canonical::to_vec(package, quire_canonical::Limits::new(1 << 30))
-        .expect("QSL package is canonicalizable");
+        .expect("FSL package is canonicalizable");
     match CheckedPackageV2::read(&bytes, CheckedPackageReadLimits::bounded(), &evidence) {
         CheckedPackageV2ReadResult::Admitted(package) => *package,
         other => panic!("rekeyed duplicate-max package must admit: {other:?}"),
@@ -83,17 +83,17 @@ fn admitted(package: &Value, domain: &Value) -> CheckedPackageV2 {
 #[trace("FR-053-AC-3", "TC-453")]
 #[test]
 fn duplicate_max_on_reader_admitted_population_is_not_population() {
-    let scratch = qsl_fixture();
+    let scratch = fsl_fixture();
     let domain: Value = serde_json::from_slice(
         &fs::read(scratch.0.join("emitted/spine-model.semantic-ir.json"))
-            .expect("QSL domain package output"),
+            .expect("FSL domain package output"),
     )
-    .expect("QSL domain package JSON");
+    .expect("FSL domain package JSON");
     let mut package: Value = serde_json::from_slice(
         &fs::read(scratch.0.join("emitted/population-2-5.json"))
-            .expect("QSL emitted population package"),
+            .expect("FSL emitted population package"),
     )
-    .expect("QSL package JSON");
+    .expect("FSL package JSON");
     let nodes = package["semantic_graph"]["nodes"]
         .as_array_mut()
         .expect("semantic graph nodes");
@@ -102,7 +102,7 @@ fn duplicate_max_on_reader_admitted_population_is_not_population() {
         .find(|node| {
             node["node_tag"] == "bounded_domain" && node["semantic_form"] == "model_population"
         })
-        .expect("QSL emitted population node");
+        .expect("FSL emitted population node");
     let maximum = population["body"]["members"]
         .as_array()
         .expect("population members")

@@ -8,12 +8,12 @@ use crate::support::checked_package::{
     canonical, evidence_for, index_fixture_node_ids, v2_all_families, v2_nominal,
     v2_reference_chain,
 };
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     initialize_operation_catalog, CheckedPackageEvidence, CheckedPackageReadLimits,
     CheckedPackageRefusalCode, CheckedPackageV2, CheckedPackageV2BudgetedReadResult,
     CheckedPackageV2ReadResult, NativeJoinBudget,
 };
+use ix_trace_rs::trace;
 use serde_json::Value;
 
 struct Input {
@@ -42,7 +42,7 @@ fn corpus() -> Vec<Input> {
         input("nominal", &v2_nominal()),
     ];
     let catalog: Value = serde_json::from_str(
-        quire_verification_contracts::operation_catalog::CHECKED_OPERATION_CATALOG_V1,
+        filament_verification_contracts::operation_catalog::CHECKED_OPERATION_CATALOG_V1,
     )
     .expect("the reader's catalogue is JSON");
     for entry in catalog["operations"].as_array().expect("operations") {

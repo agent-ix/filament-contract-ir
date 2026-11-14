@@ -8,11 +8,11 @@ use crate::support::checked_package::{
     protocol_role_node, read_with_dependencies, rebuild_source_map, refresh_identity, settle,
     source_owner, v2_all_families,
 };
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     CheckedNodeKind, CheckedPackageReadLimits, CheckedPackageRefusalCause,
     CheckedPackageRefusalCode, CheckedPackageV2ReadResult, ProtocolForm,
 };
+use ix_trace_rs::trace;
 use serde_json::{json, Value};
 use std::time::Instant;
 
@@ -54,7 +54,7 @@ fn carrier(target: &Value, semantic_type: &Value) -> Value {
     let body = json!({"term": "reference", "target": target});
     json!({
         "node_id": node_id("protocol-reference-carrier"),
-        "schema_version": "quire.checked-semantic-graph/v2",
+        "schema_version": "filament.checked-semantic-graph/v2",
         "node_tag": "protocol",
         "semantic_form": "protocol_reference",
         "semantic_type": semantic_type,
@@ -137,7 +137,7 @@ fn protocol_reference_reads_both_protocol_target_forms_and_rekeys_on_retarget() 
     );
     assert_eq!(
         CheckedNodeKind::decode(
-            quire_contract_model::CheckedNodeTag::Protocol,
+            filament_contract_model::CheckedNodeTag::Protocol,
             &first.graph().nodes[position].semantic_form,
         ),
         Some(CheckedNodeKind::Protocol(ProtocolForm::ProtocolReference)),
@@ -148,7 +148,7 @@ fn protocol_reference_reads_both_protocol_target_forms_and_rekeys_on_retarget() 
     assert_eq!(
         first.graph().nodes[position].dependencies,
         vec![match &first.graph().nodes[position].body {
-            quire_contract_model::CheckedTerm::Reference { target } => target.clone(),
+            filament_contract_model::CheckedTerm::Reference { target } => target.clone(),
             other => panic!("expected typed reference, got {other:?}"),
         }]
     );
@@ -273,7 +273,7 @@ fn protocol_reference_target_refusal_precedes_an_operation_refusal() {
         })
         .expect("protocol clause");
     package["semantic_graph"]["nodes"][operation]["body"]["operation"]["identity"] =
-        json!("quire.op.protocol.unknown");
+        json!("filament.op.protocol.unknown");
     refresh_identity(&mut package);
     expect_refusal(
         read(&package),
@@ -436,7 +436,7 @@ fn grouped_protocol_reference_package(member_count: usize) -> (Value, Vec<usize>
             .expect("nodes")
             .push(json!({
                 "node_id": ids[ordinal],
-                "schema_version": "quire.checked-semantic-graph/v2",
+                "schema_version": "filament.checked-semantic-graph/v2",
                 "node_tag": "protocol",
                 "semantic_form": "protocol_reference",
                 "semantic_type": semantic_type,
@@ -483,7 +483,7 @@ fn grouped_protocol_reference_is_admitted_with_its_group_key() {
     ] {
         assert!(matches!(
             &nodes[position].body,
-            quire_contract_model::CheckedTerm::Reference { target: actual } if actual == target
+            filament_contract_model::CheckedTerm::Reference { target: actual } if actual == target
         ));
     }
 }
@@ -682,7 +682,7 @@ fn repeated_protocol_references_retain_one_carrier_and_stable_canonical_identiti
             assert_eq!(row.ordinal, ordinal);
             assert_eq!(
                 row.role,
-                quire_contract_model::CheckedOccurrenceRole::Expression
+                filament_contract_model::CheckedOccurrenceRole::Expression
             );
             assert_eq!(row.regions.len(), 1);
             assert_eq!(

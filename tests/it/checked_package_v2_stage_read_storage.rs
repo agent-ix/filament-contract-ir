@@ -13,17 +13,17 @@ use crate::support::checked_package::{
     domain_package_document, index_fixture_node_ids, rebuild_source_map, refresh_identity,
     select_model,
 };
-use ix_trace_rs::trace;
 #[cfg(feature = "test-support")]
-use quire_contract_model::{
+use filament_contract_model::{
     with_native_budget_observer, CheckedPackageEvidence, CheckedPackageV2ReadResult,
     NativeBudgetEvent, NativeBudgetResource,
 };
-use quire_contract_model::{
+use filament_contract_model::{
     CheckedPackagePendingOutcome, CheckedPackageReadLimits, CheckedPackageRefusalCode,
     CheckedPackageV2, CheckedPackageV2BudgetedReadResult, NativeJoinBudget, NativeJoinLocusSource,
     PackageReadResource, PackageReadStage,
 };
+use ix_trace_rs::trace;
 use serde_json::{json, Value};
 #[cfg(feature = "test-support")]
 use std::cell::RefCell;
@@ -220,7 +220,7 @@ fn two_selected_models_input() -> ReadInput {
         let mut document = domain_package_document(identity, "1", vec![ty]);
         document["constructs"] = json!([{
             "kind": {"module": identity, "name": "entity"},
-            "construct": {"meaning": "quire.meaning.model.object-type/v1"}
+            "construct": {"meaning": "filament.meaning.model.object-type/v1"}
         }]);
         let key = format!("model|object_type|{identity}|ix://{identity}/Large");
         package["semantic_graph"]["nodes"]
@@ -228,7 +228,7 @@ fn two_selected_models_input() -> ReadInput {
             .expect("nodes")
             .push(json!({
                 "node_id": node_id(&key),
-                "schema_version": "quire.checked-semantic-graph/v2",
+                "schema_version": "filament.checked-semantic-graph/v2",
                 "node_tag": "model", "semantic_form": "object_type",
                 "semantic_type": node_id(&key), "dependencies": [],
                 "occurrences": [{"role": "type", "ordinal": 0}],
@@ -268,7 +268,7 @@ fn capture_read_storage(event: NativeBudgetEvent) {
 #[cfg(feature = "test-support")]
 fn read_storage_requests(
     bytes: &[u8],
-    evidence: &quire_contract_model::CheckedPackageEvidence,
+    evidence: &filament_contract_model::CheckedPackageEvidence,
 ) -> Vec<Request> {
     requests_of(
         observed_events(bytes, evidence),
@@ -280,7 +280,7 @@ fn read_storage_requests(
 #[cfg(feature = "test-support")]
 fn observed_events(
     bytes: &[u8],
-    evidence: &quire_contract_model::CheckedPackageEvidence,
+    evidence: &filament_contract_model::CheckedPackageEvidence,
 ) -> Vec<NativeBudgetEvent> {
     let mut budget = NativeJoinBudget::unlimited();
     let (result, events) = observed_read(bytes, evidence, &mut budget);
@@ -294,7 +294,7 @@ fn observed_events(
 #[cfg(feature = "test-support")]
 fn observed_read(
     bytes: &[u8],
-    evidence: &quire_contract_model::CheckedPackageEvidence,
+    evidence: &filament_contract_model::CheckedPackageEvidence,
     budget: &mut NativeJoinBudget,
 ) -> (CheckedPackageV2BudgetedReadResult, Vec<NativeBudgetEvent>) {
     OBSERVED_READ_STORAGE.with(|events| events.borrow_mut().clear());
@@ -336,7 +336,7 @@ fn requests_of(events: Vec<NativeBudgetEvent>, resource: NativeBudgetResource) -
 #[cfg(feature = "test-support")]
 fn assert_one_byte_short_at_input(
     bytes: &[u8],
-    evidence: &quire_contract_model::CheckedPackageEvidence,
+    evidence: &filament_contract_model::CheckedPackageEvidence,
     request: &Request,
 ) {
     let amount = u64::try_from(request.amount).expect("read-storage request fits u64");
@@ -370,7 +370,7 @@ fn assert_one_byte_short_at_input(
 #[cfg(feature = "test-support")]
 fn assert_exact_allowance_admits(
     bytes: &[u8],
-    evidence: &quire_contract_model::CheckedPackageEvidence,
+    evidence: &filament_contract_model::CheckedPackageEvidence,
     request: &Request,
 ) {
     let amount = u64::try_from(request.amount).expect("read-storage request fits u64");
@@ -904,17 +904,17 @@ fn with_equality_decision() -> Value {
         .as_array_mut()
         .expect("nodes");
     graph_nodes.push(json!({
-        "node_id":boolean,"schema_version":"quire.checked-semantic-graph/v2",
+        "node_id":boolean,"schema_version":"filament.checked-semantic-graph/v2",
         "node_tag":"scalar_type","semantic_form":"boolean","semantic_type":boolean,
         "dependencies":[],"occurrences":[{"role":"type","ordinal":0}],
         "body":{"term":"aggregate","members":[]}
     }));
     graph_nodes.push(json!({
-        "node_id":application,"schema_version":"quire.checked-semantic-graph/v2",
+        "node_id":application,"schema_version":"filament.checked-semantic-graph/v2",
         "node_tag":"expression","semantic_form":"binary","semantic_type":boolean,
         "dependencies":[unit],"occurrences":[{"role":"expression","ordinal":0}],
         "body":{"term":"application","operator":"binary",
-            "operation":{"identity":"quire.op.quantity.eq","laws":[],"mode":null,
+            "operation":{"identity":"filament.op.quantity.eq","laws":[],"mode":null,
                 "member":null,"leaves":[]},
             "result_type":boolean,
             "arguments":[{"term":"reference","target":unit},{"term":"reference","target":unit}]}

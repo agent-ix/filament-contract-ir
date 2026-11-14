@@ -7,11 +7,11 @@
 #[path = "it/support/mod.rs"]
 mod support;
 
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     CheckedPackageReadLimits, CheckedPackageRefusalCode, CheckedPackageV2,
     CheckedPackageV2ReadResult,
 };
+use ix_trace_rs::trace;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};

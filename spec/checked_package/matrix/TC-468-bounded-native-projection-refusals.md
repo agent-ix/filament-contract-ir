@@ -3,7 +3,7 @@ id: TC-468
 title: "Bounded native clock and type-projection refusals"
 type: TC
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/FR-359
+  - target: ix://agent-ix/filament-contract-ir/FR-359
     type: verifies
 ---
 # TC-468: Bounded native clock and Exact-projection refusals

@@ -1,29 +1,29 @@
 ---
 id: AD-004
-title: "QSpec to IR seam: the quire.checked-package/v2 reader and lowering"
+title: "FSpec to IR seam: the filament.checked-package/v2 reader and lowering"
 type: ArchitectureDescription
 status: accepted
 owner: kreneskyp
-system: quire-contract-model checked_package module (reader, lowerer, evidence), its inputs from QSpec's wire contract and QSL's emission, and its output to codegen
+system: filament-contract-model checked_package module (reader, lowerer, evidence), its inputs from FSpec's wire contract and FSL's emission, and its output to codegen
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/AD-001
+  - target: ix://agent-ix/filament-contract-ir/AD-001
     type: references
-  - target: ix://agent-ix/quire-contract-ir/AD-003
+  - target: ix://agent-ix/filament-contract-ir/AD-003
     type: references
-  - target: ix://agent-ix/quire-contract-ir/FR-038
+  - target: ix://agent-ix/filament-contract-ir/FR-038
     type: references
-  - target: ix://agent-ix/quire-contract-ir/FR-040
+  - target: ix://agent-ix/filament-contract-ir/FR-040
     type: references
-  - target: ix://agent-ix/quire-contract-ir/FR-344
+  - target: ix://agent-ix/filament-contract-ir/FR-344
     type: references
-  - target: ix://agent-ix/quire-contract-ir/FR-035
+  - target: ix://agent-ix/filament-contract-ir/FR-035
     type: references
-  - target: ix://agent-ix/quire-specification/FR-322
+  - target: ix://agent-ix/filament-specification/FR-322
     type: references
-  - target: ix://agent-ix/quire-specification/FR-340
+  - target: ix://agent-ix/filament-specification/FR-340
     type: references
 ---
-# QSpec to IR seam: the checked-package reader and lowering
+# FSpec to IR seam: the checked-package reader and lowering
 
 The `checked_package` row of the Subsystem Registry lists this AD beside AD-001 and AD-003.
 AD-001 gives the reader one paragraph and the versioned-contracts table one row; this AD states
@@ -31,20 +31,20 @@ the seam in full and does not restate AD-001. It is one of the seam descriptions
 
 ## System Boundary
 
-IR is the strict reader of a wire it does not own. QSpec owns `quire.checked-package/v2`; QSL
+IR is the strict reader of a wire it does not own. FSpec owns `filament.checked-package/v2`; FSL
 produces packages; IR admits or refuses bytes and lowers admitted nodes for backends. This AD
 states what the reader takes, what it asserts about identity, what it refuses, who answers when
 the producer and the contract disagree, and which disagreements are open.
 
-Out of scope: how QSL emits, what QSpec's text should say (routed), and the Kani profile.
+Out of scope: how FSL emits, what FSpec's text should say (routed), and the Kani profile.
 
 This is staged architecture acceptance, not a claim that the current reader conforms to
-every published QSpec source-reference rule. IR-1273 was canceled after its proposed
+every published FSpec source-reference rule. IR-1273 was canceled after its proposed
 source-byte check failed the feature-necessity test. The reader retains two-member
-`CheckedSourceRef` values and receives no source bytes. QSpec FR-322/FR-323 and QSL
+`CheckedSourceRef` values and receives no source bytes. FSpec FR-322/FR-323 and FSL
 FR-518 still require owner-led correction of their source-integrity language; their
 published rule and the implemented reader remain distinct until that correction lands.
-The other QSpec questions in Risks remain routed.
+The other FSpec questions in Risks remain routed.
 
 ## Views
 
@@ -54,19 +54,19 @@ The seam is described as what crosses it, how identity is asserted, which way de
 
 | Item | Direction | Owner | Notes |
 | --- | --- | --- | --- |
-| `quire.checked-package/v2` bytes: `contract_version`, `name`, `lock`, `semantic_graph`, `source_map`, `capability_report`, `diagnostics` (and optional `refinement_step_rows`) | QSL (producer) to IR | QSpec FR-322 and FR-340 to FR-342 define the wire | IR holds no copy of QSpec files; it states the shape it admits in its own reader (`crates/quire-contract-model/src/checked_package/`) |
-| `CheckedPackageEvidence`: selected domain package documents (supplied under their identity), dependency packages (already admitted), supported features | caller to IR | IR defines the type | The implemented reader joins two-member source references by `{authority, identity}` and receives no source bytes. IR-1273's proposed source-byte check was canceled; QSpec owns correction of its published source-reference rule. Definition references remain two-member pairs. |
-| `quire.checked-operation-catalog/v1`: the closed catalog every V2 `application` term's `operation` is validated against | `quire-verification-contracts` (owner) to IR | `quire-verification-contracts` | IR depends on that crate and owns only the reader; it holds no copy of the catalog (`v2/operation_catalog.rs`) |
+| `filament.checked-package/v2` bytes: `contract_version`, `name`, `lock`, `semantic_graph`, `source_map`, `capability_report`, `diagnostics` (and optional `refinement_step_rows`) | FSL (producer) to IR | FSpec FR-322 and FR-340 to FR-342 define the wire | IR holds no copy of FSpec files; it states the shape it admits in its own reader (`crates/filament-contract-model/src/checked_package/`) |
+| `CheckedPackageEvidence`: selected domain package documents (supplied under their identity), dependency packages (already admitted), supported features | caller to IR | IR defines the type | The implemented reader joins two-member source references by `{authority, identity}` and receives no source bytes. IR-1273's proposed source-byte check was canceled; FSpec owns correction of its published source-reference rule. Definition references remain two-member pairs. |
+| `filament.checked-operation-catalog/v1`: the closed catalog every V2 `application` term's `operation` is validated against | `filament-verification-contracts` (owner) to IR | `filament-verification-contracts` | IR depends on that crate and owns only the reader; it holds no copy of the catalog (`v2/operation_catalog.rs`) |
 | `CheckedPackageReadLimits` (`bounded()` default: 1048576 bytes, 10000 nodes, 100000 edges, 100000 occurrences, 10000 diagnostics, 1000000 validation visits; no depth member, and no `CheckedPackageLimit::Depth` or `CheckedPackageReadLimits::MAXIMUM_DEPTH`, FR-038-AC-117 having removed them, a breaking change for a consumer across this seam that builds any of them) | caller to IR | IR | every member finite |
 | `CheckedPackageDispatchResult`: `AdmittedV2` / `Refused` / `Incomplete` | IR to caller | IR | typed code and RFC 6901 pointer on refusal |
-| `CheckedPackageV2` and its accessors | IR to codegen and QSL | IR | only the reader can build one |
-| Lowering records (seven kinds) and FR-330 `ContractPackage` (`quire.contract-package/v1`) | IR to backends | QSpec FR-330 owns the published wire; IR FR-035 owns lowering | one `feature_accounting` record per requested item; codegen consumer adoption remains IR-744 |
+| `CheckedPackageV2` and its accessors | IR to codegen and FSL | IR | only the reader can build one |
+| Lowering records (seven kinds) and FR-330 `ContractPackage` (`filament.contract-package/v1`) | IR to backends | FSpec FR-330 owns the published wire; IR FR-035 owns lowering | one `feature_accounting` record per requested item; codegen consumer adoption remains IR-744 |
 
 ### FR-330 output boundary
 
-The target-neutral output is one published `quire.contract-package/v1` value
+The target-neutral output is one published `filament.contract-package/v1` value
 with `package`, one key-ordered tagged `semantic_graph`, `source_map`,
-`feature_accounting` and `identity` (FR-035, QSpec FR-330). The seven per-item
+`feature_accounting` and `identity` (FR-035, FSpec FR-330). The seven per-item
 records retain independent sibling outcomes and exact refusal loci. Local
 semantic references resolve to compatible nodes in that graph. A
 `dependency_reference` retains the FR-322 selected package identity and
@@ -81,7 +81,7 @@ codegen consumer adoption remains IR-744.
 
 - `contract_version` is read exactly once, before any version-specific decode (`dispatch.rs`:
   `read_checked_package` and `dispatch_value`). The strict parse, the duplicate-member check and
-  the canonical-bytes check run first, over the whole document (`common.rs`, `read_value`). It admits `quire.checked-package/v2` only; every
+  the canonical-bytes check run first, over the whole document (`common.rs`, `read_value`). It admits `filament.checked-package/v2` only; every
   other version refuses `unknown_contract_version` carrying the version read, and a missing or
   non-string `contract_version` refuses `malformed_wire`. This is a refusal control: IR never
   relabels or widens the input to fit.
@@ -97,21 +97,21 @@ codegen consumer adoption remains IR-744.
   packages reached under one identity in a diamond refuse
   `invalid_package`/`conflicting-definition` with both paths. Neither package
   nor node has a content-derived id, and no stale-content refusal exists.
-- Published QSpec FR-322 still describes a three-member source reference,
-  which conflicts with the canceled IR-1273 decision. QSpec owns removal of
+- Published FSpec FR-322 still describes a three-member source reference,
+  which conflicts with the canceled IR-1273 decision. FSpec owns removal of
   that unsupported source-byte requirement. IR's `CheckedSourceRef` and
   definition references retain their two-member `{authority, identity}` shape;
   admission under this reader makes no source-byte authentication claim.
 
 ### Dependency direction
 
-IR depends on nothing of QSpec's code or QSL. QSL depends on the `quire-contract-model` package
-under that dependency name (`Cargo.toml:28,88`; `qsl-package/Cargo.toml:47`) and calls
+IR depends on nothing of FSpec's code or FSL. FSL depends on the `filament-contract-model` package
+under that dependency name (`Cargo.toml:28,88`; `fsl-package/Cargo.toml:47`) and calls
 `read_checked_package` through it. CG
 and the driver read through the model crate directly; IR's root crate does not re-export it.
-The direction is QSpec (text) to IR (reader) to QSL, CG,
+The direction is FSpec (text) to IR (reader) to FSL, CG,
 driver (consumers); no arrow points back to IR. IR's one other inbound edge is the operation
-catalog: the reader depends on `quire-verification-contracts` for `quire.checked-operation-catalog/v1`
+catalog: the reader depends on `filament-verification-contracts` for `filament.checked-operation-catalog/v1`
 and does not copy it.
 
 ### Failure outcomes and who reports them
@@ -128,8 +128,8 @@ and does not copy it.
 | Frame, anchor or state-clause body defect | IR | the cause tag FR-322's pairing fixes, with the node key |
 | A limit reached | IR | `Incomplete` with the limit, the consumed amount and, except for the byte budget, the pointer of the value whose charge failed |
 | Item cannot lower | IR | one of seven record kinds (`lowered`, `unsupported`, `requires_bound`, `invalid_input`, `failed`, `invalid_body`, `body_incomplete`); the last two are never produced for an admitted package |
-| QSL emits something IR refuses | IR reports; QSL or QSpec fixes the producer or the text | see precedence below |
-| QSpec text and QSpec's reference reader (its checked-package test harness) disagree | QSpec | IR follows the reference reader as its own policy and records a known deviation until QSpec rules |
+| FSL emits something IR refuses | IR reports; FSL or FSpec fixes the producer or the text | see precedence below |
+| FSpec text and FSpec's reference reader (its checked-package test harness) disagree | FSpec | IR follows the reference reader as its own policy and records a known deviation until FSpec rules |
 
 IR never reports a producer's defect as its own and never admits a package to make a producer
 pass.
@@ -140,16 +140,16 @@ Two decisions govern the seam: who wins when the producer, the text and the read
 
 ### Precedence when producer, text and reader disagree
 
-1. QSpec's published text and schema decide what the wire is.
-2. Where the text is silent, IR's policy is to match QSpec's reference reader, QSpec's own
-   checked-package test harness. This is IR's choice, not a ruling on QSpec's authority; QSpec
+1. FSpec's published text and schema decide what the wire is.
+2. Where the text is silent, IR's policy is to match FSpec's reference reader, FSpec's own
+   checked-package test harness. This is IR's choice, not a ruling on FSpec's authority; FSpec
    rules and IR follows (IR-483 matches it for cyclic compared types).
-3. QSL's emission is evidence of a defect in 1 or 2, or in QSL. IR does not widen the reader to
-   fit an emission. The disagreement is filed with QSpec to rule (as STD-129 does for recursive
+3. FSL's emission is evidence of a defect in 1 or 2, or in FSL. IR does not widen the reader to
+   fit an emission. The disagreement is filed with FSpec to rule (as STD-129 does for recursive
    compared types).
 
-CG reads what QSL emits and does not hand-build its own shape (IR-324, comment of 2026-09-30,
-untrusted ticket text citing IR-480). IR is the admitting gate in between and it follows QSpec,
+CG reads what FSL emits and does not hand-build its own shape (IR-324, comment of 2026-09-30,
+untrusted ticket text citing IR-480). IR is the admitting gate in between and it follows FSpec,
 not the emission.
 
 ### Invariants a test can check
@@ -161,7 +161,7 @@ no backing test was measured here) or gap (not true today).
 - Q-1. Every byte string yields exactly one of admitted, refused or incomplete; never a panic
   (property test over mutated packages). Gap: IR has no property-test or fuzz dependency, so no
   such test exists.
-- Q-2. A byte string whose `contract_version` is not `quire.checked-package/v2` refuses
+- Q-2. A byte string whose `contract_version` is not `filament.checked-package/v2` refuses
   `unknown_contract_version` before any version-specific decode. Current: FR-038 Description.
 - Q-3. An admitted package exposes its exact required `name`; a diamond over one identity admits only structurally equal complete JSON packages and refuses unequal ones with both lock paths. Planned: FR-038-AC-363 and AC-366.
 - Q-4. A domain package document whose own identity differs from the identity it is supplied under is refused `invalid_model_binding`/`wrong-model-selection`. Stated: `CheckedPackageEvidence` doc; FR-038-AC-27.
@@ -172,12 +172,12 @@ no backing test was measured here) or gap (not true today).
   are matched over `serde_json::Value` with `_ =>` arms (for example `v2/frame.rs`), so the
   statement does not hold as worded.
 - Q-7. IR defines no replay or witness type (FR-037-AC-6, planned) and the model crate depends on
-  no QSL crate (FR-028). FR-037-AC-6 covers neither a terminal type nor a dependency rule.
+  no FSL crate (FR-028). FR-037-AC-6 covers neither a terminal type nor a dependency rule.
 - Q-8. Each of the five ADR-002 members FR-344 names as unadmitted (supertype list, abstractness
   flag, subsets edge, redefines edge, population node) refuses with a typed code. Current:
   FR-344, TC-222. The other two members are carried and admitted.
-- Q-9. A package QSL emits for each node family and semantic form QSL can produce is admitted
-  by the reader under the emitted `name` (cross-repo, runs in QSL; see Routed gaps). Gap.
+- Q-9. A package FSL emits for each node family and semantic form FSL can produce is admitted
+  by the reader under the emitted `name` (cross-repo, runs in FSL; see Routed gaps). Gap.
 
 ## Risks
 
@@ -188,54 +188,54 @@ What is measured today, what is open and with whom, and what is routed.
 - Reader: `dispatch.rs` (version dispatch), `v2/` (identity, operations, frame, state,
   structural, lowering), `evidence.rs`. FR-038 declares ACs 1 to 15, 17 to 33 and 35 to 43; it
   has no AC-16 or AC-34, a numbering hole and not a gap in behaviour.
-- Merged QSpec FR-322 settles STD-125: the reader has no depth limit, because the body grammar
+- Merged FSpec FR-322 settles STD-125: the reader has no depth limit, because the body grammar
   fixes the JSON depth of every package. FR-038 states the flat wire and no depth limit
   (FR-038-AC-114 through FR-038-AC-118); the reader (IR-495's code) has no depth limit, refuses a
   nested application and decides the body grammar ahead of every identity check.
 - FR-040 states a known deviation: a field entry on a `model`/`record_value_type` node is joined
-  and ordered but its name is not resolved, because QSpec's `ModelDeclarationNode` has no such
-  form while FR-340 says the name matches a declared field. Pending a QSpec ruling.
+  and ordered but its name is not resolved, because FSpec's `ModelDeclarationNode` has no such
+  form while FR-340 says the name matches a declared field. Pending a FSpec ruling.
 - FR-344: of ADR-002's seven members, two are already carried (operation frame, embedded
   meaning vocabulary) and five (supertype list, abstractness flag, subsets edge, redefines edge,
-  population node) have no QSpec wire carrier, so the reader refuses them. Blocked on QSpec.
+  population node) have no FSpec wire carrier, so the reader refuses them. Blocked on FSpec.
 - IR-483 (merged): empty operation `leaves` is admitted for a compared type with no text leaf,
   and a cyclic or unresolved compared type is refused as operator-ineligible, matching
-  QSpec's reference reader (its checked-package test harness). That QSL emits `leaves: []` for
+  FSpec's reference reader (its checked-package test harness). That FSL emits `leaves: []` for
   a cyclic type with no text field and a `recursion:<d>` leaf for a cyclic type that reaches
-  text, which QSpec has not adopted and the published leaf schema rejects, is STD-129's text
-  (untrusted, not re-measured here); IR's refusal was re-measured. Open at QSpec: STD-129.
-- The conversion identity is settled: `quire.op.numeric.convert` has an
-  `exact_numeric` operand, not Text. QSpec FR-322's conversion family rule,
-  QSL FR-093-AC-47 and CG ADR-006 agree that Text to Integer lowers to
-  `quire.op.text.to_integer`; CG's six text-operand `numeric.convert` attempts
+  text, which FSpec has not adopted and the published leaf schema rejects, is STD-129's text
+  (untrusted, not re-measured here); IR's refusal was re-measured. Open at FSpec: STD-129.
+- The conversion identity is settled: `filament.op.numeric.convert` has an
+  `exact_numeric` operand, not Text. FSpec FR-322's conversion family rule,
+  FSL FR-093-AC-47 and CG ADR-006 agree that Text to Integer lowers to
+  `filament.op.text.to_integer`; CG's six text-operand `numeric.convert` attempts
   remain IR refusals and do not prove caller Text admission. The QVC operation
-  catalog owns the identity vocabulary; QSL owns producer lowering, IR owns
+  catalog owns the identity vocabulary; FSL owns producer lowering, IR owns
   strict admission and CG owns its caller-ingress oracle. No widening of
-  `numeric.convert` is required. Sources: QSpec
+  `numeric.convert` is required. Sources: FSpec
   `spec/objects/interfaces/FR-322-checked-package-artifact.md:3123-3126`;
-  QSL `spec/functional/FR-093-lower-checked-value-expressions-to-fr-322-terms.md:852`;
+  FSL `spec/functional/FR-093-lower-checked-value-expressions-to-fr-322-terms.md:852`;
   CG `spec/decisions/ADR-006-caller-text-admission-boundary.md:24-31,72-75`
   and `spec/oracle/functional/FR-035-caller-text-admission.md:33-38`.
-- QSpec FR-322 still requires `source_integrity` verification before closed-schema
+- FSpec FR-322 still requires `source_integrity` verification before closed-schema
   checks. IR's `CheckedSourceRef` has only `authority` and `identity`, and its
   evidence API receives no source bytes. IR-1273 was canceled after the
-  source-byte check failed the feature-necessity test; QSpec and QSL own
+  source-byte check failed the feature-necessity test; FSpec and FSL own
   removal of their dependent requirements. No present reader-conformance claim
   for that published rule follows from this AD's accepted status. Sources:
-  QSpec `spec/objects/interfaces/FR-322-checked-package-artifact.md:3191-3240`;
-  IR `crates/quire-contract-model/src/checked_package/shared.rs:1514-1523`.
+  FSpec `spec/objects/interfaces/FR-322-checked-package-artifact.md:3191-3240`;
+  IR `crates/filament-contract-model/src/checked_package/shared.rs:1514-1523`.
 - IR's own tests build packages in-repo from IR's own vocabulary
-  (`tests/it/support/checked_package.rs`; FR-038 matrix row). That cannot see a shape QSL emits
-  and IR's builder does not. The IR-reader test over a real QSL emission lives in QSL
+  (`tests/it/support/checked_package.rs`; FR-038 matrix row). That cannot see a shape FSL emits
+  and IR's builder does not. The IR-reader test over a real FSL emission lives in FSL
   (`tests/it/config_version_spine.rs`, `tc_469_step_6_the_emitted_package_admits_via_i04`), for
-  one spine fixture. IR cannot hold a QSL-emitted fixture without copying QSL's output into IR,
-  so the cross-repo corpus belongs in QSL, which already depends on the model crate. That
-  corpus is tracked as QSL-353 (as relayed, untrusted). The cross-repo test in quire-integration
+  one spine fixture. IR cannot hold a FSL-emitted fixture without copying FSL's output into IR,
+  so the cross-repo corpus belongs in FSL, which already depends on the model crate. That
+  corpus is tracked as QSL-353 (as relayed, untrusted). The cross-repo test in filament-integration
   that the relayed review text mentions concerns the replay seam, not this one, and does not
   apply here.
-- QSpec ids: two QSpec documents carry `id: FR-341`: "checked-package state clause body" and
+- FSpec ids: two FSpec documents carry `id: FR-341`: "checked-package state clause body" and
   "infinite-trace result disposition". IR FR-040 disambiguates by title.
-- At this AD's original measurement, IR's root crate had `pub use quire_contract_model::*`
+- At this AD's original measurement, IR's root crate had `pub use filament_contract_model::*`
   while AD-001 said the root re-exported nothing from the model; CG imported `CheckedNodeId` and
   `CheckedPackageV2` through that glob. IR-347 subsequently removed the glob and the root crate's
   `KaniProviderResult` and `KaniProviderRecord` exports, which FR-039 excludes; IR-605 made the
@@ -245,11 +245,11 @@ What is measured today, what is open and with whom, and what is routed.
 
 | Question | Owner | Recommendation | Cost of the alternative |
 | --- | --- | --- | --- |
-| Recursive compared type: refuse (matches the reference reader, which IR follows) or 0 leaves for no-text cyclic types; adopt `recursion:<d>` leaves | QSpec (STD-129) | IR does not change before the ruling | IR widening first would diverge from the reference reader |
-| `record_value_type` field names | QSpec | rule that a field entry on that form names no declared field, or add the form to `ModelDeclarationNode` | IR keeps a documented deviation |
-| Published source-reference rule after IR-1273 cancellation | QSpec owns FR-322/FR-323 correction; QSL owns FR-518 correction | Remove the unsupported source-byte requirement from the owner specifications; retain IR's two-member reader | Until corrected, the published wire text and implemented reader disagree; acceptance here does not certify source-byte integrity |
-| Five ADR-002 members have no wire carrier | QSpec | publish carriers or state they are out of v2 | reader refuses forever |
-| Duplicate `FR-341` ids in QSpec | QSpec | renumber one | citations by id are ambiguous |
+| Recursive compared type: refuse (matches the reference reader, which IR follows) or 0 leaves for no-text cyclic types; adopt `recursion:<d>` leaves | FSpec (STD-129) | IR does not change before the ruling | IR widening first would diverge from the reference reader |
+| `record_value_type` field names | FSpec | rule that a field entry on that form names no declared field, or add the form to `ModelDeclarationNode` | IR keeps a documented deviation |
+| Published source-reference rule after IR-1273 cancellation | FSpec owns FR-322/FR-323 correction; FSL owns FR-518 correction | Remove the unsupported source-byte requirement from the owner specifications; retain IR's two-member reader | Until corrected, the published wire text and implemented reader disagree; acceptance here does not certify source-byte integrity |
+| Five ADR-002 members have no wire carrier | FSpec | publish carriers or state they are out of v2 | reader refuses forever |
+| Duplicate `FR-341` ids in FSpec | FSpec | renumber one | citations by id are ambiguous |
 
 No compatibility layer is proposed. IR admits one version and refuses the rest.
 
@@ -258,13 +258,13 @@ No compatibility layer is proposed. IR admits one version and refuses the rest.
 Needs stated to owners, not decisions. Ids are the routing ids of IR-324; they are not
 requirement ids.
 
-To QSL (QSL reviews these rows):
+To FSL (FSL reviews these rows):
 
 | Id | Stated need |
 | --- | --- |
-| R-Q6 | An emission-to-admission test in QSL over every node family and form QSL can emit, reading through the model crate. IR cannot hold QSL output without copying it. As relayed (untrusted), tracked as QSL-353. |
+| R-Q6 | An emission-to-admission test in FSL over every node family and form FSL can emit, reading through the model crate. IR cannot hold FSL output without copying it. As relayed (untrusted), tracked as QSL-353. |
 
-To QSpec:
+To FSpec:
 
 | Id | Stated need |
 | --- | --- |
@@ -276,8 +276,8 @@ To QSpec:
 
 The routing ids R-S2 and R-S3 (the FR-331 provider envelope and the obligation-identity digest
 domain) belong to the replay and evidence seams and are carried in CG's AD-003, not here. The
-former text-admission question is resolved by QSpec FR-322, QSL FR-093 and CG ADR-006: no
-QSpec routing is needed for `numeric.convert`.
+former text-admission question is resolved by FSpec FR-322, FSL FR-093 and CG ADR-006: no
+FSpec routing is needed for `numeric.convert`.
 
 IR-owned items, defined here because other seam ADs cite them:
 
@@ -285,6 +285,6 @@ IR-owned items, defined here because other seam ADs cite them:
 | --- | --- | --- |
 | R-I1 | Delete `KaniProviderResult` and `KaniProviderRecord` and the `provider_result` map from the root crate; they duplicate the terminal map CG owns. | IR-347: removed |
 | R-I2 | Export cause-code constants or a typed cause enum: the kani cause codes cross as bare strings that consumers re-spell. | Overlaps IR-347's free-string cause codes |
-| R-I3 | Remove `pub use quire_contract_model::*` together with CG adding a direct `quire-contract-model` dependency. | IR-347: removed; CG imports the model directly |
+| R-I3 | Remove `pub use filament_contract_model::*` together with CG adding a direct `filament-contract-model` dependency. | IR-347: removed; CG imports the model directly |
 
 No new ticket is filed for them.

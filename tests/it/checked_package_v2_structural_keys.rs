@@ -9,13 +9,13 @@ use crate::support::checked_package::{
     canonical, evidence_for, evidence_with_document, family_model_document, index_fixture_node_ids,
     reassign_node_id, settle, structural_id, v2_all_families, v2_nominal, v2_reference_chain,
 };
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     CheckedFieldReadForm, CheckedMemberType, CheckedNodeId, CheckedOperationMember,
     CheckedPackageEvidence, CheckedPackageLimit, CheckedPackageReadLimits,
     CheckedPackageRefusalCause, CheckedPackageRefusalCode, CheckedPackageV2ReadResult, CheckedTerm,
     ContractBodyRefusalV1, ContractFeatureRecordV1,
 };
+use ix_trace_rs::trace;
 use serde_json::{json, Value};
 
 fn local_package() -> Value {
@@ -542,7 +542,7 @@ fn selected_model_field_range_joins_exact_body_members() {
         .expect("model constructs")
         .push(json!({
             "kind":{"module":identity,"name":"count"},
-            "construct":{"meaning":"quire.meaning.model.value-type/v1"}
+            "construct":{"meaning":"filament.meaning.model.value-type/v1"}
         }));
     document["types"][0]["fields"]
         .as_array_mut()
@@ -574,7 +574,7 @@ fn selected_model_field_range_joins_exact_body_members() {
     deref["occurrences"] = json!([{"role":"expression", "ordinal":0}]);
     deref["body"] = json!({
         "term":"application", "operator":"deref",
-        "operation":{"identity":"quire.op.model.deref","laws":[],"mode":null,
+        "operation":{"identity":"filament.op.model.deref","laws":[],"mode":null,
             "member":null,"leaves":[]},
         "result_type":object_id,
         "arguments":[{"term":"reference","target":reference_id}]
@@ -590,7 +590,7 @@ fn selected_model_field_range_joins_exact_body_members() {
     query["dependencies"] = json!([deref_id]);
     query["body"] = json!({
         "term":"application", "operator":"query",
-        "operation":{"identity":"quire.op.record.project","laws":[],"mode":null,
+        "operation":{"identity":"filament.op.record.project","laws":[],"mode":null,
             "member":{"kind":"field","declaration":object_id,"name":"count",
                 "read_form":"bare"},
             "leaves":[]},
@@ -987,7 +987,7 @@ fn derived_shape_refusal_precedes_declaration_state_temporal_abstraction_and_ope
         .position(|node| node["body"]["term"] == "application" && node["node_tag"] == "function")
         .expect("function call application");
     unknown_operation["semantic_graph"]["nodes"][call_position]["body"]["operation"]["identity"] =
-        json!("quire.op.unselected.invalid");
+        json!("filament.op.unselected.invalid");
     settle(&mut unknown_operation);
     let CheckedPackageV2ReadResult::Refused(operation_refusal) = read(&unknown_operation) else {
         panic!("unknown operation must refuse");
@@ -1000,7 +1000,7 @@ fn derived_shape_refusal_precedes_declaration_state_temporal_abstraction_and_ope
     let mut unknown_temporal = v2_all_families();
     let clause = index_of(&unknown_temporal, "temporal", "temporal_clause");
     unknown_temporal["semantic_graph"]["nodes"][clause]["body"]["operation"]["laws"][0]
-        ["definition"]["identity"] = json!("quire.fixture.temporal-profile/v1");
+        ["definition"]["identity"] = json!("filament.fixture.temporal-profile/v1");
     settle(&mut unknown_temporal);
     let CheckedPackageV2ReadResult::Refused(temporal_refusal) = read(&unknown_temporal) else {
         panic!("unknown temporal profile must refuse");
@@ -1015,7 +1015,7 @@ fn derived_shape_refusal_precedes_declaration_state_temporal_abstraction_and_ope
     let snapshot = index_of(&invalid_state_placement, "state", "snapshot");
     let mut clause_body =
         invalid_state_placement["semantic_graph"]["nodes"][source_clause]["body"].clone();
-    clause_body["operation"]["identity"] = json!("quire.op.state.clause");
+    clause_body["operation"]["identity"] = json!("filament.op.state.clause");
     invalid_state_placement["semantic_graph"]["nodes"][snapshot]["body"] = clause_body;
     settle(&mut invalid_state_placement);
     let CheckedPackageV2ReadResult::Refused(state_refusal) = read(&invalid_state_placement) else {
@@ -1147,7 +1147,7 @@ fn public_refusal_projection_retains_typed_fields_and_authentic_locus() {
         serde_json::from_value(wire).expect("contract feature readback");
     assert_eq!(decoded, record);
 
-    package["contract_version"] = json!("quire.checked-package/v3");
+    package["contract_version"] = json!("filament.checked-package/v3");
     let CheckedPackageV2ReadResult::Refused(version) = read(&package) else {
         panic!("unknown contract version must refuse before graph admission");
     };

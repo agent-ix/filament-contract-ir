@@ -2,7 +2,7 @@
 
 use std::collections::BTreeSet;
 
-use quire_contract_model::Std001Code;
+use filament_contract_model::Std001Code;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 

@@ -1,6 +1,6 @@
 //! Closed outcomes at the bounded-Kani boundary.
 
-use quire_contract_model::Std001Code;
+use filament_contract_model::Std001Code;
 use serde::{de::Error as _, Deserialize, Deserializer, Serialize};
 use std::num::NonZeroUsize;
 use thiserror::Error;
@@ -10,12 +10,12 @@ use thiserror::Error;
 /// A cancelled outcome requires the producer's observed source:
 ///
 /// ```compile_fail
-/// use quire_contract_ir::kani::KaniOutcomeKind;
+/// use filament_contract_ir::kani::KaniOutcomeKind;
 /// let _ = KaniOutcomeKind::Cancelled;
 /// ```
 ///
 /// ```
-/// use quire_contract_ir::kani::{KaniCancellationSource, KaniOutcomeKind};
+/// use filament_contract_ir::kani::{KaniCancellationSource, KaniOutcomeKind};
 /// let _ = KaniOutcomeKind::Cancelled { source: KaniCancellationSource::Requested };
 /// ```
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -154,8 +154,8 @@ impl TryFrom<KaniOutcomeKind> for NonSuccessKind {
 ///
 /// ```compile_fail,E0451
 /// use std::num::NonZeroUsize;
-/// use quire_contract_ir::kani::{KaniOutcome, KaniOutcomeKind};
-/// use quire_contract_model::Std001Code;
+/// use filament_contract_ir::kani::{KaniOutcome, KaniOutcomeKind};
+/// use filament_contract_model::Std001Code;
 /// let _ = KaniOutcome {
 ///     kind: KaniOutcomeKind::Proved,
 ///     code: Std001Code::KANI_PROVED,
@@ -269,10 +269,10 @@ impl KaniOutcome {
     ///
     /// This function maps a check count to an outcome; it does not itself
     /// observe or run anything. This is the one shared implementation of
-    /// that rule: `quire-contract-codegen`'s `classify_run`
+    /// that rule: `filament-contract-codegen`'s `classify_run`
     /// (`src/kani_execution.rs`) routes its own SUCCESS-check classification
     /// through this function instead of re-deriving the zero-check rule from
-    /// its transcript parse (agent-ix/quire-contract-codegen#99). No caller
+    /// its transcript parse (agent-ix/filament-contract-codegen#99). No caller
     /// inside this repository's own `src/` or `crates/` needs to route a
     /// Kani run through it — the caller is external — so within this
     /// repository it is exercised only by `tests/kani_shared.rs`.
@@ -295,29 +295,29 @@ impl KaniOutcome {
     /// Constructs a `refused` outcome retaining the supplied cause and context.
     ///
     /// ```
-    /// use quire_contract_ir::kani::KaniOutcome;
-    /// use quire_contract_model::std001_code;
+    /// use filament_contract_ir::kani::KaniOutcome;
+    /// use filament_contract_model::std001_code;
     /// let outcome: KaniOutcome = KaniOutcome::refused(std001_code!("consumer_stop"), "source", "context");
     /// assert_eq!(outcome.boolean_claim(), None);
     /// ```
     ///
     /// ```compile_fail,E0308
-    /// use quire_contract_ir::kani::KaniOutcome;
+    /// use filament_contract_ir::kani::KaniOutcome;
     /// let _: KaniOutcome = KaniOutcome::refused("consumer_stop", "source", "context");
     /// ```
     ///
     /// ```compile_fail,E0308
-    /// use quire_contract_ir::kani::KaniOutcome;
+    /// use filament_contract_ir::kani::KaniOutcome;
     /// let _: KaniOutcome = KaniOutcome::refused(String::from("consumer_stop"), "source", "context");
     /// ```
     ///
     /// ```compile_fail,E0308
-    /// use quire_contract_ir::kani::{KaniOutcome, KaniOutcomeKind};
+    /// use filament_contract_ir::kani::{KaniOutcome, KaniOutcomeKind};
     /// let _: KaniOutcome = KaniOutcome::refused(KaniOutcomeKind::Proved, "source", "context");
     /// ```
     ///
     /// ```compile_fail,E0308
-    /// use quire_contract_ir::kani::{KaniOutcome, KaniOutcomeKind};
+    /// use filament_contract_ir::kani::{KaniOutcome, KaniOutcomeKind};
     /// let _: KaniOutcome = KaniOutcome::refused(KaniOutcomeKind::Counterexample, "source", "context");
     /// ```
     pub fn refused(
@@ -331,19 +331,19 @@ impl KaniOutcome {
     /// Constructs a `invalid_input` outcome retaining the supplied cause and context.
     ///
     /// ```
-    /// use quire_contract_ir::kani::KaniOutcome;
-    /// use quire_contract_model::std001_code;
+    /// use filament_contract_ir::kani::KaniOutcome;
+    /// use filament_contract_model::std001_code;
     /// let outcome: KaniOutcome = KaniOutcome::invalid_input(std001_code!("consumer_stop"), "source", "context");
     /// assert_eq!(outcome.boolean_claim(), None);
     /// ```
     ///
     /// ```compile_fail,E0308
-    /// use quire_contract_ir::kani::KaniOutcome;
+    /// use filament_contract_ir::kani::KaniOutcome;
     /// let _: KaniOutcome = KaniOutcome::invalid_input("consumer_stop", "source", "context");
     /// ```
     ///
     /// ```compile_fail,E0308
-    /// use quire_contract_ir::kani::KaniOutcome;
+    /// use filament_contract_ir::kani::KaniOutcome;
     /// let _: KaniOutcome = KaniOutcome::invalid_input(String::from("consumer_stop"), "source", "context");
     /// ```
     pub fn invalid_input(
@@ -357,19 +357,19 @@ impl KaniOutcome {
     /// Constructs a `incomplete_input` outcome retaining the supplied cause and context.
     ///
     /// ```
-    /// use quire_contract_ir::kani::KaniOutcome;
-    /// use quire_contract_model::std001_code;
+    /// use filament_contract_ir::kani::KaniOutcome;
+    /// use filament_contract_model::std001_code;
     /// let outcome: KaniOutcome = KaniOutcome::incomplete_input(std001_code!("consumer_stop"), "source", "context");
     /// assert_eq!(outcome.boolean_claim(), None);
     /// ```
     ///
     /// ```compile_fail,E0308
-    /// use quire_contract_ir::kani::KaniOutcome;
+    /// use filament_contract_ir::kani::KaniOutcome;
     /// let _: KaniOutcome = KaniOutcome::incomplete_input("consumer_stop", "source", "context");
     /// ```
     ///
     /// ```compile_fail,E0308
-    /// use quire_contract_ir::kani::KaniOutcome;
+    /// use filament_contract_ir::kani::KaniOutcome;
     /// let _: KaniOutcome = KaniOutcome::incomplete_input(String::from("consumer_stop"), "source", "context");
     /// ```
     pub fn incomplete_input(
@@ -383,19 +383,19 @@ impl KaniOutcome {
     /// Constructs a `timed_out` outcome retaining the supplied cause and context.
     ///
     /// ```
-    /// use quire_contract_ir::kani::KaniOutcome;
-    /// use quire_contract_model::std001_code;
+    /// use filament_contract_ir::kani::KaniOutcome;
+    /// use filament_contract_model::std001_code;
     /// let outcome: KaniOutcome = KaniOutcome::timed_out(std001_code!("consumer_stop"), "source", "context");
     /// assert_eq!(outcome.boolean_claim(), None);
     /// ```
     ///
     /// ```compile_fail,E0308
-    /// use quire_contract_ir::kani::KaniOutcome;
+    /// use filament_contract_ir::kani::KaniOutcome;
     /// let _: KaniOutcome = KaniOutcome::timed_out("consumer_stop", "source", "context");
     /// ```
     ///
     /// ```compile_fail,E0308
-    /// use quire_contract_ir::kani::KaniOutcome;
+    /// use filament_contract_ir::kani::KaniOutcome;
     /// let _: KaniOutcome = KaniOutcome::timed_out(String::from("consumer_stop"), "source", "context");
     /// ```
     pub fn timed_out(
@@ -409,19 +409,19 @@ impl KaniOutcome {
     /// Constructs a `resource_exhausted` outcome retaining the supplied cause and context.
     ///
     /// ```
-    /// use quire_contract_ir::kani::KaniOutcome;
-    /// use quire_contract_model::std001_code;
+    /// use filament_contract_ir::kani::KaniOutcome;
+    /// use filament_contract_model::std001_code;
     /// let outcome: KaniOutcome = KaniOutcome::resource_exhausted(std001_code!("consumer_stop"), "source", "context");
     /// assert_eq!(outcome.boolean_claim(), None);
     /// ```
     ///
     /// ```compile_fail,E0308
-    /// use quire_contract_ir::kani::KaniOutcome;
+    /// use filament_contract_ir::kani::KaniOutcome;
     /// let _: KaniOutcome = KaniOutcome::resource_exhausted("consumer_stop", "source", "context");
     /// ```
     ///
     /// ```compile_fail,E0308
-    /// use quire_contract_ir::kani::KaniOutcome;
+    /// use filament_contract_ir::kani::KaniOutcome;
     /// let _: KaniOutcome = KaniOutcome::resource_exhausted(String::from("consumer_stop"), "source", "context");
     /// ```
     pub fn resource_exhausted(
@@ -436,25 +436,25 @@ impl KaniOutcome {
     /// The source must be the event observed by the producer; this method does not observe it.
     ///
     /// ```
-    /// use quire_contract_ir::kani::{KaniOutcome, KaniCancellationSource};
-    /// use quire_contract_model::std001_code;
+    /// use filament_contract_ir::kani::{KaniOutcome, KaniCancellationSource};
+    /// use filament_contract_model::std001_code;
     /// let outcome: KaniOutcome = KaniOutcome::cancelled(KaniCancellationSource::Requested, std001_code!("consumer_stop"), "source", "context");
     /// assert_eq!(outcome.boolean_claim(), None);
     /// ```
     ///
     /// ```compile_fail,E0308
-    /// use quire_contract_ir::kani::{KaniOutcome, KaniCancellationSource};
+    /// use filament_contract_ir::kani::{KaniOutcome, KaniCancellationSource};
     /// let _: KaniOutcome = KaniOutcome::cancelled(KaniCancellationSource::Requested, "consumer_stop", "source", "context");
     /// ```
     ///
     /// ```compile_fail,E0308
-    /// use quire_contract_ir::kani::{KaniOutcome, KaniCancellationSource};
+    /// use filament_contract_ir::kani::{KaniOutcome, KaniCancellationSource};
     /// let _: KaniOutcome = KaniOutcome::cancelled(KaniCancellationSource::Requested, String::from("consumer_stop"), "source", "context");
     /// ```
     ///
     /// ```compile_fail,E0061
-    /// use quire_contract_ir::kani::KaniOutcome;
-    /// use quire_contract_model::std001_code;
+    /// use filament_contract_ir::kani::KaniOutcome;
+    /// use filament_contract_model::std001_code;
     /// let _: KaniOutcome = KaniOutcome::cancelled(std001_code!("consumer_stop"), "source", "context");
     /// ```
     pub fn cancelled(
@@ -474,7 +474,7 @@ impl KaniOutcome {
     /// Constructs an outcome for an absent checker with its fixed cause.
     ///
     /// ```
-    /// use quire_contract_ir::kani::KaniOutcome;
+    /// use filament_contract_ir::kani::KaniOutcome;
     /// let outcome: KaniOutcome = KaniOutcome::checker_unavailable("source", "context");
     /// assert_eq!(outcome.boolean_claim(), None);
     /// ```
@@ -482,8 +482,8 @@ impl KaniOutcome {
     /// The cause cannot be overridden:
     ///
     /// ```compile_fail,E0061
-    /// use quire_contract_ir::kani::KaniOutcome;
-    /// use quire_contract_model::std001_code;
+    /// use filament_contract_ir::kani::KaniOutcome;
+    /// use filament_contract_model::std001_code;
     /// let _: KaniOutcome = KaniOutcome::checker_unavailable(std001_code!("consumer_stop"), "source", "context");
     /// ```
     pub fn checker_unavailable(source_id: impl Into<String>, context: impl Into<String>) -> Self {
@@ -498,7 +498,7 @@ impl KaniOutcome {
     /// Constructs an outcome for an absent backend with its fixed cause.
     ///
     /// ```
-    /// use quire_contract_ir::kani::KaniOutcome;
+    /// use filament_contract_ir::kani::KaniOutcome;
     /// let outcome: KaniOutcome = KaniOutcome::backend_unavailable("source", "context");
     /// assert_eq!(outcome.boolean_claim(), None);
     /// ```
@@ -506,8 +506,8 @@ impl KaniOutcome {
     /// The cause cannot be overridden:
     ///
     /// ```compile_fail,E0061
-    /// use quire_contract_ir::kani::KaniOutcome;
-    /// use quire_contract_model::std001_code;
+    /// use filament_contract_ir::kani::KaniOutcome;
+    /// use filament_contract_model::std001_code;
     /// let _: KaniOutcome = KaniOutcome::backend_unavailable(std001_code!("consumer_stop"), "source", "context");
     /// ```
     pub fn backend_unavailable(source_id: impl Into<String>, context: impl Into<String>) -> Self {
@@ -522,7 +522,7 @@ impl KaniOutcome {
     /// Constructs an outcome for a caller-observed zero-SUCCESS-check result with its fixed cause.
     ///
     /// ```
-    /// use quire_contract_ir::kani::KaniOutcome;
+    /// use filament_contract_ir::kani::KaniOutcome;
     /// let outcome: KaniOutcome = KaniOutcome::vacuous_proof("source", "context");
     /// assert_eq!(outcome.boolean_claim(), None);
     /// ```
@@ -530,8 +530,8 @@ impl KaniOutcome {
     /// The cause cannot be overridden:
     ///
     /// ```compile_fail,E0061
-    /// use quire_contract_ir::kani::KaniOutcome;
-    /// use quire_contract_model::std001_code;
+    /// use filament_contract_ir::kani::KaniOutcome;
+    /// use filament_contract_model::std001_code;
     /// let _: KaniOutcome = KaniOutcome::vacuous_proof(std001_code!("consumer_stop"), "source", "context");
     /// ```
     pub fn vacuous_proof(source_id: impl Into<String>, context: impl Into<String>) -> Self {
@@ -550,12 +550,12 @@ impl KaniOutcome {
     /// at run time is checked by [`Std001Code::new`] first.
     ///
     /// ```compile_fail
-    /// use quire_contract_ir::kani::{KaniOutcome, KaniOutcomeKind};
+    /// use filament_contract_ir::kani::{KaniOutcome, KaniOutcomeKind};
     /// let _ = KaniOutcome::non_success(KaniOutcomeKind::Refused, "kani_x", "source", "context");
     /// ```
     ///
     /// ```compile_fail
-    /// use quire_contract_ir::kani::{KaniOutcome, KaniOutcomeKind};
+    /// use filament_contract_ir::kani::{KaniOutcome, KaniOutcomeKind};
     /// let code = String::from("kani_x");
     /// let _ = KaniOutcome::non_success(KaniOutcomeKind::Refused, code, "source", "context");
     /// ```
@@ -564,8 +564,8 @@ impl KaniOutcome {
     /// arguments with a `Std001Code`:
     ///
     /// ```
-    /// use quire_contract_ir::kani::{KaniOutcome, KaniOutcomeKind};
-    /// use quire_contract_model::std001_code;
+    /// use filament_contract_ir::kani::{KaniOutcome, KaniOutcomeKind};
+    /// use filament_contract_model::std001_code;
     /// let outcome = KaniOutcome::non_success(
     ///     KaniOutcomeKind::Refused,
     ///     std001_code!("kani_x"),

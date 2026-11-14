@@ -5,7 +5,7 @@
 
 use std::{collections::BTreeMap, env, fs, path::Path, process::ExitCode};
 
-use quire_contract_model::{run_corpus, FixtureStatus, CANONICAL_PROFILE};
+use filament_contract_model::{run_corpus, FixtureStatus, CANONICAL_PROFILE};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 

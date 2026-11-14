@@ -1,20 +1,20 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Agent-IX
 
-//! QSpec NI-01..NI-24 operand-row and operand-slot vectors through the production V2 reader.
+//! FSpec NI-01..NI-24 operand-row and operand-slot vectors through the production V2 reader.
 
 use super::fixture_support;
 use super::{
     cause_word, code_word, fixtures_dir, proposal_dir_of, read_json, read_json_wire, read_package,
     read_package_with_document_and_extensions_at_limit, DOMAIN_DOCUMENT,
 };
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     CheckedNodeId, CheckedNodeKind, CheckedNodePathSegment, CheckedNodeTag, CheckedOperandEntry,
     CheckedPackageReadLimits, CheckedPackageV2ReadResult, CheckedSemanticNodeV2, CheckedTerm,
     CompleteLoweringProfileV2, CompleteLoweringRecordV2, ContractDependencies,
     ContractPackageReadResult, ContractPackageWireV1, ExpressionForm, LoweringProfileRef,
 };
+use ix_trace_rs::trace;
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
 use std::sync::Arc;
@@ -33,8 +33,8 @@ use super::qspec_inputs::apply_node_index_patch as apply_patch;
 fn published_operand_vectors_refuse_in_the_fr322_check_order() {
     let fixtures = fixtures_dir();
     let vectors = read_json(&proposal_dir_of(&fixtures).join("node-index-vectors.json"))
-        .expect("QSpec operand vectors");
-    assert_eq!(vectors["version"], "quire.checked-node-index-vectors/v1");
+        .expect("FSpec operand vectors");
+    assert_eq!(vectors["version"], "filament.checked-node-index-vectors/v1");
     assert_eq!(vectors["base"], "fixtures/positive-dependency-call.json");
     let rows = vectors["cases"].as_array().expect("published cases");
     assert_eq!(
@@ -101,7 +101,7 @@ fn vector_case<'a>(vectors: &'a Value, id: &str) -> &'a Value {
         .unwrap_or_else(|| panic!("published {id}"))
 }
 
-fn admitted_wire(wire: &Value) -> Box<quire_contract_model::CheckedPackageV2> {
+fn admitted_wire(wire: &Value) -> Box<filament_contract_model::CheckedPackageV2> {
     match read_package(wire).expect("production read") {
         CheckedPackageV2ReadResult::Admitted(package) => package,
         other => panic!("package must admit: {other:?}"),
@@ -207,7 +207,7 @@ fn replace_node_id_replaces_slot_form_ids_as_written() {
 fn unrelated_nodes_leave_other_nodes_bytes_and_keys_unchanged() {
     let fixtures = fixtures_dir();
     let vectors = read_json(&proposal_dir_of(&fixtures).join("node-index-vectors.json"))
-        .expect("QSpec operand vectors");
+        .expect("FSpec operand vectors");
     let base = read_json_wire(&fixtures.join("positive-dependency-call.json"))
         .expect("published dependency-call fixture");
     let original = admitted_wire(&base);
@@ -484,7 +484,7 @@ fn contract_source_and_output_index_tables_permute_independently() {
     absent.path[0] = CheckedNodePathSegment::Name("absent".into());
     let profile = CompleteLoweringProfileV2 {
         reference: LoweringProfileRef {
-            authority: "quire".into(),
+            authority: "filament".into(),
             identity: "complete-v1".into(),
         },
         required_source_selections: Vec::new(),
@@ -768,7 +768,7 @@ fn v1_indexed_frame_joins_use_resolved_node_keys() {
     });
     let profile = CompleteLoweringProfileV2 {
         reference: LoweringProfileRef {
-            authority: "quire".into(),
+            authority: "filament".into(),
             identity: "complete-v1".into(),
         },
         required_source_selections: Vec::new(),
@@ -890,7 +890,7 @@ fn v1_absent_indexed_request_retains_invalid_input_and_exact_key() {
     assert_eq!(absent.path[7], CheckedNodePathSegment::Index(21));
     let profile = CompleteLoweringProfileV2 {
         reference: LoweringProfileRef {
-            authority: "quire".into(),
+            authority: "filament".into(),
             identity: "complete-v1".into(),
         },
         required_source_selections: Vec::new(),
@@ -1042,7 +1042,7 @@ fn v1_absent_indexed_request_retains_invalid_input_and_exact_key() {
     assert!(read_back.wire().semantic_graph.nodes.is_empty());
     assert!(matches!(
         read_back.wire().feature_accounting[0].disposition(),
-        quire_contract_model::ContractDispositionV1::InvalidInput
+        filament_contract_model::ContractDispositionV1::InvalidInput
     ));
 }
 
@@ -1059,7 +1059,7 @@ fn v1_indexed_unsupported_request_authenticates_its_source_kind() {
     let supported = source.document_held_id(34).expect("graph node").clone();
     let profile = CompleteLoweringProfileV2 {
         reference: LoweringProfileRef {
-            authority: "quire".into(),
+            authority: "filament".into(),
             identity: "complete-v1".into(),
         },
         required_source_selections: Vec::new(),
@@ -1361,7 +1361,7 @@ fn two_semantic_defects_choose_structural_order_over_graph_order() {
         .as_array()
         .expect("published graph nodes")
         .len();
-    assert_eq!(count, 62, "selected QSpec operation fixture cardinality");
+    assert_eq!(count, 62, "selected FSpec operation fixture cardinality");
     // Swap operand nodes 31 and 34, retaining application positions 25 and
     // 26. Rewriting all indexes keeps the positive package's meaning intact.
     base["semantic_graph"]["nodes"]
@@ -1376,11 +1376,11 @@ fn two_semantic_defects_choose_structural_order_over_graph_order() {
         .expect("published graph nodes");
     assert_eq!(
         nodes[25]["body"]["operation"]["identity"],
-        "quire.op.ieee.float64.add"
+        "filament.op.ieee.float64.add"
     );
     assert_eq!(
         nodes[26]["body"]["operation"]["identity"],
-        "quire.op.ieee.float64.add"
+        "filament.op.ieee.float64.add"
     );
     assert_eq!(nodes[25]["node_id"]["package"], "example");
     assert_eq!(nodes[26]["node_id"]["package"], "example");
@@ -1408,7 +1408,7 @@ fn two_semantic_defects_choose_structural_order_over_graph_order() {
     for position in [25, 26] {
         let mut single = base.clone();
         single["semantic_graph"]["nodes"][position]["body"]["operation"]["identity"] =
-            json!("quire.op.not-catalogued");
+            json!("filament.op.not-catalogued");
         let CheckedPackageV2ReadResult::Refused(refusal) =
             read_package(&single).expect("single operation-defect read")
         else {
@@ -1427,7 +1427,7 @@ fn two_semantic_defects_choose_structural_order_over_graph_order() {
     let mut package = base;
     for position in [25, 26] {
         package["semantic_graph"]["nodes"][position]["body"]["operation"]["identity"] =
-            json!("quire.op.not-catalogued");
+            json!("filament.op.not-catalogued");
     }
     let CheckedPackageV2ReadResult::Refused(refusal) =
         read_package(&package).expect("two-defect package read")
@@ -1482,7 +1482,7 @@ fn mixed_operation_defects_choose_resolved_operand_order() {
     );
     let unknown = |wire: &mut Value| {
         wire["semantic_graph"]["nodes"][25]["body"]["operation"]["identity"] =
-            json!("quire.op.not-catalogued");
+            json!("filament.op.not-catalogued");
     };
     let wrong_class = |wire: &mut Value| {
         wire["semantic_graph"]["nodes"][26]["body"]["operator"] = json!("unary");
@@ -1555,7 +1555,7 @@ fn long_index_chain_admits_on_a_small_stack_with_shared_keys() {
     assert_eq!(integer["semantic_form"], "integer");
     assert_eq!(
         application_template["body"]["operation"]["identity"],
-        "quire.op.integer.add"
+        "filament.op.integer.add"
     );
     let sources = package["source_map"]
         .as_array()

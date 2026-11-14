@@ -11,11 +11,11 @@ use crate::support::checked_package::{
 #[path = "support/dependency_selection_inputs.rs"]
 mod dependency_selection_inputs;
 use dependency_selection_inputs::dependency_selection_package as empty_package;
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     CheckedPackageReadLimits, CheckedPackageRefusal, CheckedPackageRefusalCause as Cause,
     CheckedPackageRefusalCode as Code, CheckedPackageV2, CheckedPackageV2ReadResult,
 };
+use ix_trace_rs::trace;
 use serde_json::{json, Value};
 
 fn entry(identity: &str) -> Value {

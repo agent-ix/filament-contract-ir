@@ -3,7 +3,7 @@
 
 //! The allocation observation shared by registry and original-driver proofs.
 
-use quire_contract_model::{
+use filament_contract_model::{
     CheckedPackageEvidence, CheckedPackageReadLimits, CheckedPackageV2,
     CheckedPackageV2BudgetedReadResult, NativeJoinBudget,
 };

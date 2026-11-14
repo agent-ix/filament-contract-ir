@@ -3,17 +3,17 @@ id: TC-043
 title: "Output-mapping coordinator and package foundation conform"
 type: TC
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/FR-032
+  - target: ix://agent-ix/filament-contract-ir/FR-032
     type: verifies
-  - target: ix://agent-ix/quire-contract-ir/FR-033
+  - target: ix://agent-ix/filament-contract-ir/FR-033
     type: verifies
-  - target: ix://agent-ix/quire-contract-ir/FR-034
+  - target: ix://agent-ix/filament-contract-ir/FR-034
     type: verifies
-  - target: ix://agent-ix/quire-specification/TC-150
+  - target: ix://agent-ix/filament-specification/TC-150
     type: references
-  - target: ix://agent-ix/quire-specification/TC-154
+  - target: ix://agent-ix/filament-specification/TC-154
     type: references
-  - target: ix://agent-ix/quire-specification/TC-155
+  - target: ix://agent-ix/filament-specification/TC-155
     type: references
 ---
 # TC-043: Output-mapping coordinator and package foundation conform

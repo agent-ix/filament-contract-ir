@@ -3,17 +3,17 @@ id: FR-357
 title: "Project the selected generated type and declaration closure"
 type: FR
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/StR-001
+  - target: ix://agent-ix/filament-contract-ir/StR-001
     type: traces_to
-  - target: ix://agent-ix/quire-contract-ir/FR-038
+  - target: ix://agent-ix/filament-contract-ir/FR-038
     type: depends_on
-  - target: ix://agent-ix/quire-contract-ir/FR-353
+  - target: ix://agent-ix/filament-contract-ir/FR-353
     type: references
-  - target: ix://agent-ix/quire-contract-ir/FR-354
+  - target: ix://agent-ix/filament-contract-ir/FR-354
     type: depends_on
-  - target: ix://agent-ix/quire-contract-runtime/FR-276
+  - target: ix://agent-ix/filament-contract-runtime/FR-276
     type: references
-  - target: ix://agent-ix/quire-spec-language/FR-251
+  - target: ix://agent-ix/filament-spec-language/FR-251
     type: depends_on
 ---
 # FR-357: Project the selected generated type and declaration closure
@@ -31,7 +31,7 @@ producer/fact rows. Collections are structural Exact
 identity row.
 The IR-side union and source-record joins admit strict IR-owned fixture rows;
 they do not authenticate caller-created opaque Exact values. A genuine
-same-final-emission QSL-to-IR producer acceptance test in `quire-integration`
+same-final-emission FSL-to-IR producer acceptance test in `filament-integration`
 remains required by AC-11 for real producer acceptance. The implemented first IR-721 slice
 reads an explicitly selected, bounded set of witnessed model declaration/field
 and equality facts, as specified below. It does not traverse a monitor root.
@@ -50,7 +50,7 @@ The `CheckedMonitorPlanRef::project_selected_type_closure` read SHALL
 take one borrowed plan from an admitted `CheckedPackageV2`, one finite caller
 owned `NativeJoinBudget` for work and storage and one IR-owned
 `SelectedMonitorClosureRows` input containing the selected producer rows from
-the same final QSL emission. The plan itself supplies the State, Inputs,
+the same final FSL emission. The plan itself supplies the State, Inputs,
 Scope and Results type nodes and the four ordered `init`, `on_event`,
 `on_watermark` and `on_gap` entry signatures (parameter types in signature
 order and result type) and bodies under
@@ -68,31 +68,31 @@ and `None` for every other collection. A missing, foreign or misplaced key
 node SHALL refuse `SelectedMonitorTypeClosureErrorCode::CollectionKey` at the
 collection node. Each row SHALL preserve
 its final emitted structural node, selected owner or source and original
-declaration/member identity where those exist, and QSL-issued opaque Exact
+declaration/member identity where those exist, and FSL-issued opaque Exact
 identity and value where that channel defines one. An anonymous structural
 collection row has no invented owner or declaration identity.
 IR SHALL check admitted structural correspondence but SHALL NOT authenticate
 arbitrary caller-created opaque Exact values. A caller-created name,
 structural key or Exact key alone SHALL NOT establish producer authority.
 Where a reachable channel lacks a required row, the read SHALL return its
-native unavailable-witness or projection refusal. The QSL producer SHALL
-supply every row from one final emission; QSL-to-IR same-emission adapter
-acceptance is owned by `quire-integration`, with QSL producer types remaining
+native unavailable-witness or projection refusal. The FSL producer SHALL
+supply every row from one final emission; FSL-to-IR same-emission adapter
+acceptance is owned by `filament-integration`, with FSL producer types remaining
 outside IR's dependency graph.
 
 For the first selected-fact read, the caller SHALL supply an admitted package;
 an explicit finite selection of full admitted model declaration node IDs,
 record-node/original-field identities and equality application node/occurrence
 pairs; `SelectedExactDeclarationRow`, `SelectedExactFieldRow` and
-`SelectedSourceUnitRow` slices from one final QSL emission; same-emission
+`SelectedSourceUnitRow` slices from one final FSL emission; same-emission
 equality application and fact witnesses; and a finite work allowance. The
-caller SHALL translate QSL's `EqualityProducerEmissionRow` and
+caller SHALL translate FSL's `EqualityProducerEmissionRow` and
 `EqualityFactWitnessRow` into IR's `SelectedEqualityApplicationRow` and
 `SelectedEqualityFactRow` without altering identity, occurrence, source map,
-owner, fact role or order. QSL's public `Emission::equality_witness` adapter
+owner, fact role or order. FSL's public `Emission::equality_witness` adapter
 provides this typed handoff; no access to private producer witness enums is
 required. IR SHALL accept these IR-owned row types and SHALL
-NOT depend on QSL or assume caller construction authenticates Exact payloads.
+NOT depend on FSL or assume caller construction authenticates Exact payloads.
 The caller SHALL keep all rows tied to the same final emission; IR SHALL check
 their admitted structural correspondences. The selected IDs SHALL NOT assert
 entry reachability or producer authority by themselves.
@@ -103,7 +103,7 @@ A successful `SelectedMonitorTypeClosure` SHALL retain the selected monitor
 root; State, Inputs, Scope and Results; the four entry signatures and complete
 ordinary bodies in admitted order; every reachable type/declaration fact in
 producer order within its declaration; original declaration/member identities;
-QSL-issued opaque Exact keys, member bindings and full value types; and the
+FSL-issued opaque Exact keys, member bindings and full value types; and the
 exact charged work. The selected facts SHALL be sufficient for a downstream
 consumer to construct the canonical semantic-value `TypeEnvironment`, without
 requiring a package-wide scan, source recheck or invented identity. The
@@ -162,7 +162,7 @@ by name or graph position. IR SHALL apply the existing
 [FR-354](./FR-354-project-admitted-runtime-context.md) model joins and native
 nominal/Exact projection rules only to reached declarations. The complete
 result SHALL preserve original declaration/member identities alongside
-QSL-issued opaque Exact identities; a structural ID or display name SHALL
+FSL-issued opaque Exact identities; a structural ID or display name SHALL
 NOT replace a missing opaque identity.
 
 The read SHALL use one shared finite native work and storage budget from seed inspection through
@@ -193,15 +193,15 @@ borrow a same-named declaration or omit the edge. Rows outside the reached
 closure SHALL NOT be validated or refuse the read; a selected lookup SHALL
 charge their inspected row/index positions and exhaust at the first such
 uncharged position. The read SHALL NOT
-reparse QSL source, create a QSL or RT dependency, construct a
+reparse FSL source, create a FSL or RT dependency, construct a
 `TypeEnvironment`, or lower an executable plan.
 
-For a QSL-selected source record, IR SHALL accept one complete row carrying
+For a FSL-selected source record, IR SHALL accept one complete row carrying
 the final admitted record node, selected source authority and identity,
-original qualified declaration, QSL-issued opaque record key, and every
+original qualified declaration, FSL-issued opaque record key, and every
 declared member in producer order. Each member row SHALL retain its original
 declared field identity, final admitted binding name, declared presence,
-final emitted type node and QSL-issued opaque field value type. IR SHALL
+final emitted type node and FSL-issued opaque field value type. IR SHALL
 check the row against the selected source, admitted owner, declaration,
 record form, complete ordered member census, binding names and type-node
 references. It SHALL not infer a source `MemberId` or compare the opaque
@@ -210,7 +210,7 @@ or a mismatched, duplicate or foreign row SHALL refuse without a partial
 source record view. This row join and single-type projection alone SHALL not
 certify monitor-entry reachability or the complete selected closure.
 
-IR SHALL join each required QSL row to the selected source or document, final
+IR SHALL join each required FSL row to the selected source or document, final
 admitted structural node, original declaration/member identity, form and
 occurrence. Missing, foreign, duplicate, conflicting or stale-after-rewrite
 rows, unrepresentable admitted types, unresolved dependencies and exhausted
@@ -224,7 +224,7 @@ declarations and source units by scanning all graph nodes, and currently refuses
 enum and model-unit selections. Its success SHALL NOT be treated as proof of
 this selected generated-source closure. Implementations may reuse its admitted
 joins, but SHALL expose the complete selected result through one bounded read
-without a second plan, evaluator, type vocabulary or QSL source recheck.
+without a second plan, evaluator, type vocabulary or FSL source recheck.
 
 ### Public reached-map row projection
 
@@ -240,7 +240,7 @@ existing element meaning. A map row's value SHALL be the complete producer
 The existing source-collection row join and Exact projection path SHALL
 accept a structurally corresponding map row and return its complete map type.
 This row support SHALL retain the existing cardinality rules. The admitted map
-key domain is the package's scalar key types (QSpec FR-154 "Map types"); a
+key domain is the package's scalar key types (FSpec FR-154 "Map types"); a
 package map type declares its key type, its value type and its entry-count
 bound, and a projected `ValueType::Map` SHALL carry the Exact type of the
 emitted key node, not a fixed key: a `Text` or `String` key projects as
@@ -284,7 +284,7 @@ caller-supplied declaration list, a display name or a package-wide discovery
 scan. It MAY inspect the complete admitted members of a reached declaration
 and charged selected row or index entries. For each reached model record or
 object it SHALL
-retain the selected document and original declaration identity, QSL-issued
+retain the selected document and original declaration identity, FSL-issued
 Exact identity, complete effective fields in admitted order with original
 field identities, presence and full types, object ancestry, and the object's
 own operations with ordered parameters, result, admitted effect and
@@ -294,18 +294,18 @@ declaration cannot be silently omitted. Shared declarations SHALL appear
 once. A reached unsupported type or missing identity SHALL refuse at its
 native locus; an unrelated selected declaration SHALL not refuse.
 
-For a reached source unit, the prerequisite SHALL retain its QSL-issued
+For a reached source unit, the prerequisite SHALL retain its FSL-issued
 declared `UnitId`, original qualified declaration, admitted dimension and
 conversion-target closure, exact scale and offset. For a reached model unit,
 it SHALL join the selected document's admitted original unit, dimension,
-target, scale and offset to its final model-owned unit node and the QSL-issued
+target, scale and offset to its final model-owned unit node and the FSL-issued
 `SelectedExactDeclarationRow` whose form is
 `SelectedExactDeclarationForm::DeclaredUnit` and whose identity is
 `SelectedExactIdentity::DeclaredUnit`; it SHALL not assign a source
 declaration or invent a dimension key. Unit targets and dimension terms SHALL
 be followed only from reached units, with a visited set and a typed unresolved
 dependency refusal. A reached model variant SHALL return an unavailable
-shape-witness refusal until QSL supplies its model `EnumShape` and
+shape-witness refusal until FSL supplies its model `EnumShape` and
 `VariantId` facts; source enum rows SHALL not stand in for model rows.
 
 The prerequisite SHALL charge the selected graph walk, every inspected
@@ -325,7 +325,7 @@ application/occurrence pairs in one admitted package. It SHALL verify each
 selected ID against that package and preserve the selected document, final
 structural node, admitted form and original declaration or field identity.
 For a selected record field it SHALL preserve the declaring record,
-QSL-issued `MemberId`, producer order, presence and admitted field type.
+FSL-issued `MemberId`, producer order, presence and admitted field type.
 Repeated selected IDs SHALL produce one item. The read SHALL inspect only the selected facts and the
 admitted facts needed to validate them; it SHALL NOT traverse the selected
 monitor root, its four entry signatures or bodies, or infer a reachable
@@ -333,11 +333,11 @@ declaration closure. Merged IR PR #906 exposes selective bounded callable
 reads for admitted monitor entries. PR #907 also permits direct admitted Value
 bodies for ordinary source functions; monitor entries still require expression
 bodies. These reads preserve admitted handles and charged work, without
-certifying complete monitor type closure. QSL's generated PlanRoot reaches
-source-owned records and an `Outcome` union. Their QSL producer rows are now
+certifying complete monitor type closure. FSL's generated PlanRoot reaches
+source-owned records and an `Outcome` union. Their FSL producer rows are now
 available, but this selective read does not traverse their four-entry closure;
 the real same-final-emission closure adapter test remains pending in
-`quire-integration`. Therefore this selected-fact read SHALL NOT report that
+`filament-integration`. Therefore this selected-fact read SHALL NOT report that
 root's closure as complete or construct a `TypeEnvironment`.
 
 For each selected model declaration and field, IR SHALL join the supplied row
@@ -354,7 +354,7 @@ row material and typed refusal payloads against cumulative work and logical
 storage before inspection or allocation. IR SHALL NOT derive an Exact identity or equality schedule from a
 name, node index, structural key, operand type or missing row. IR's joins
 cannot authenticate a caller-supplied opaque Exact value; the caller remains
-responsible for supplying the final QSL emission's rows.
+responsible for supplying the final FSL emission's rows.
 
 The selected-fact result SHALL contain only complete selected, representable
 witnessed items. An unsupported graph form or absent witness outside the
@@ -371,7 +371,7 @@ caller allowance before use. It SHALL NOT scan unrelated graph nodes to
 discover selected facts. Exhaustion SHALL name attempted work and the first
 uncharged row or graph locus. Equal admitted inputs, rows and
 allowance SHALL produce equal results or equal first stops. The public API
-SHALL remain in IR's cycle-free model, take no QSL or RT type, and return no
+SHALL remain in IR's cycle-free model, take no FSL or RT type, and return no
 RT `ProgramParts` or IR-owned environment. The driver owns later canonical
 `TypeEnvironment` assembly and `ProgramParts` construction; the selected-fact
 result alone SHALL NOT authorize either construction.
@@ -380,20 +380,20 @@ result alone SHALL NOT authorize either construction.
 
 | ID | Criteria | Verification |
 | --- | --- | --- |
-| FR-357-AC-1 | Implemented (IR-1354; TC-470). One bounded read of an admitted `CheckedMonitorPlanRef` seeds State, Inputs, Scope, Results and all four ordered entry signatures and bodies, then returns exactly the reachable complete type/declaration and admitted equality closure. Source records, tuples, structural collections, sealed unions, source/model enum cases, model objects/fields and units/dimensions/conversions retain original identities, QSL-issued opaque Exact identities, producer order, presence, shape and member/payload types sufficient for the canonical `TypeEnvironment`; shared references yield one declaration. An IR-owned strict fixture proves the traversal separately from AC-11's real QSL producer handoff. | Test |
+| FR-357-AC-1 | Implemented (IR-1354; TC-470). One bounded read of an admitted `CheckedMonitorPlanRef` seeds State, Inputs, Scope, Results and all four ordered entry signatures and bodies, then returns exactly the reachable complete type/declaration and admitted equality closure. Source records, tuples, structural collections, sealed unions, source/model enum cases, model objects/fields and units/dimensions/conversions retain original identities, FSL-issued opaque Exact identities, producer order, presence, shape and member/payload types sufficient for the canonical `TypeEnvironment`; shared references yield one declaration. An IR-owned strict fixture proves the traversal separately from AC-11's real FSL producer handoff. | Test |
 | FR-357-AC-2 | Implemented (IR-1354; TC-470). A missing, foreign, duplicate, conflicting or stale producer row; changed member/payload type node; unresolved reached declaration; cross-package reference without an admitted resolution rule; unrepresentable reached type; or native nominal, Exact or equality refusal returns its typed cause and first node/edge/row/occurrence locus, with charged work, no partial view and no invented identity. An unrelated unsupported graph node or absent row outside the reached closure does not refuse; a selected row search can still exhaust at an inspected unrelated row position. | Test |
 | FR-357-AC-3 | Implemented (IR-1354; TC-470). A large selected closure amid unrelated graph nodes visits only reached graph, typed-term, semantic-type and declaration edges using iterative worklists and visited node/edge sets. A deep term does not grow the host stack. One shared native work and storage budget charges every inspected node/edge, row/index, member/payload position and identity/value byte, including nested Exact, nominal and equality reads and output; the exact allowance succeeds and one less names the first uncharged locus. Equal inputs and allowances, including a package clone, give equal complete results or first stops. | Test |
-| FR-357-AC-4 | Implemented (IR-1354; TC-470 and FR-019 exact inventory). Static API and dependency analysis finds one bounded `CheckedMonitorPlanRef` projection over admitted package facts and IR-owned selected producer rows, with no IR-owned `TypeEnvironment`, second plan/evaluator, QSL or RT dependency, source reparse or witness fabrication. The root exports appear in FR-019's exact implemented inventory. | Analysis |
+| FR-357-AC-4 | Implemented (IR-1354; TC-470 and FR-019 exact inventory). Static API and dependency analysis finds one bounded `CheckedMonitorPlanRef` projection over admitted package facts and IR-owned selected producer rows, with no IR-owned `TypeEnvironment`, second plan/evaluator, FSL or RT dependency, source reparse or witness fabrication. The root exports appear in FR-019's exact implemented inventory. | Analysis |
 | FR-357-AC-5 | Implemented (IR-721 selected facts; IR-owned fixture). Given an admitted package, explicit IDs for one selected model declaration, its selected record field and one equality application/occurrence, and matching IR-owned same-emission rows, the public bounded read returns exactly those complete facts. It preserves selected document, final structural node, original identities, field order/presence/type, exact equality occurrence and opaque FR-353 decision. No monitor-entry traversal or generated-source closure is claimed. | Test |
 | FR-357-AC-6 | Implemented (IR-721 selected facts). A missing, foreign, duplicate, conflicting or pre-rewrite selected declaration, field, equality application or fact row; wrong document, form, owner, role, occurrence or source-map correspondence; selected unsupported form or unrepresentable type; and native FR-353 refusal each produce a named typed outcome with first native locus and no partial view or invented identity. An unrelated unsupported graph form or absent witness outside the explicit selection leaves the same successful result. Duplicate selected IDs produce one item. | Test |
 | FR-357-AC-7 | Implemented (IR-721 selected facts). The bounded read inspects the explicitly selected admitted facts without traversing monitor entries or scanning unrelated graph nodes. Locating selected witnesses in full-emission row slices charges every inspected row and index entry, including unrelated rows; adding unrelated rows either raises required work or causes a charged first-row-locus stop at the former allowance. The exact allowance succeeds and one less refuses with attempted work and first uncharged locus. Equal inputs and allowance, including a package clone, yield equal results or first stops. | Test |
-| FR-357-AC-8 | Implemented (IR-721 selected facts; API and dependency inspection). Public API and dependency inspection shows the read takes an admitted package, explicit selected model declaration/field IDs and equality application/occurrence pairs, IR-owned row slices, a work allowance and a caller-owned shared `NativeJoinBudget`, performs no QSL/RT dependency or source recheck, and returns neither an IR environment nor `ProgramParts`. The equality read uses that same budget for work and storage rather than a local equality limit. A caller adapts QSL-owned equality emission rows without changing their values; IR checks admitted joins but does not claim to authenticate arbitrary caller-created Exact payloads. | Inspection |
-| FR-357-AC-9 | Implemented (`quire-integration` PR #47; explicit selected-fact scope only). A `quire-integration` test obtains a real final `PlanRoot.emission` through QSL, selects admitted IDs from its available model declaration/field rows and one equality application/occurrence pair, translates QSL equality rows without changing their values, and exercises the public IR selected-fact read on those explicit IDs. It verifies successful joins for representable selected model facts and an opaque FR-353 equality decision or its native typed missing-witness result for the selected equality. The executed PR #47 control observed opaque equality success; the missing-witness alternative remains source-reviewed rather than an observed result. It does not traverse four monitor entries or claim a complete generated-source closure, `TypeEnvironment` or RT `ProgramParts`, and it adds no QSL dependency to IR. | Test |
-| FR-357-AC-10 | Implemented (IR-owned strict fixture; complete QSL handoff acceptance pending). A complete source record row joins one selected admitted source record with its original declaration identity, producer-claimed opaque record key and every member's original field identity, admitted name, presence, final type node and opaque value type in producer order. The selected record projects its opaque `ValueType::Composite` and exposes the complete joined member rows without creating a `MemberId`. Missing, foreign, duplicate, reordered, omitted, renamed or stale type-node rows refuse with a typed cause and no partial record view. Equal package clones and rows agree; an unrelated unsupported declaration is ignored. This explicit record projection does not claim four-entry closure or authenticate arbitrary caller rows as QSL output. | Test |
-| FR-357-AC-11 | PLANNED/UNRUN (`quire-integration` same-emission acceptance). A genuine QSL final emission supplies the generated four-entry plan root; QSL's budgeted adapters return its source record/member, sealed union/member/payload, enum, model enum shape, collection, tuple, model, unit and equality rows as IR-owned row types without changing identities or order, and its `AdmittedPlanAuthority` supplies the FR-361 authority row. The one complete closure read over that authority's `admitted_package()` succeeds with those real rows, and a missing or pre-rewrite source row refuses at its native locus. The IR-owned fixture evidence for AC-1 through AC-3 alone does not satisfy this producer acceptance. | Test |
-| FR-357-AC-12 | Implemented prerequisite (IR-owned strict QSpec monitor recipe in the explicit conformance-qspec lane; self-contained term bounds run in the default test gate; QSL same-emission handoff remains AC-11). Given one admitted selected monitor root, an internal borrowed read seeds its four selected type handles and four ordered entries, then visits only reached local graph nodes, dependency edges, semantic-type edges and ordinary typed-term reference, type and operation-member structural IDs and flat nominal IDs with iterative worklists and node/edge deduplication; specialized frame, abstraction, extension, operation-anchor and refinement terms refuse as unsupported in this prerequisite. Every inspected seed and node and each distinct inspected edge is charged to one finite allowance; repeated identical edges add no charge, and wide ordinary or flat nominal bodies stop at the first refused work item without materializing all child work; exact allowance succeeds, one below refuses at the first uncharged native locus without a partial result, and an equal package clone agrees. An unrelated graph node does not change the result or work, a deep ordinary term does not consume host stack, and a reached foreign dependency reference refuses with a typed cause; the foreign and specialized adverse tests inject terms after strict root admission to exercise the IR guard. This prerequisite does not join producer rows, project Exact or nominal facts, expose a driver-consumable result or certify complete type/declaration closure. | Test |
-| FR-357-AC-13 | Implemented (IR-1353 reached-model prerequisite; TC-469). From an admitted selected monitor root whose walk reaches a selected model record and object, the package-private bounded read retains only those declarations and their followed model type dependencies. It retains complete ordered effective fields, original identities, presence, QSL-issued Exact identities, object ancestry and own operations with ordered parameters, result, effect and provenance; shared declarations appear once. A reached source unit and a reached model unit retain their distinct admitted owners, original identities, QSL-issued declared `UnitId`s, dimensions and exact conversion closures. An unrelated selected model declaration, variant or unit does not enter the facts, cause a refusal or change the exact reached-only allowance. This result does not certify a complete monitor closure. | Test |
-| FR-357-AC-14 | Implemented (IR-1353 reached-model prerequisite; TC-469). A missing, foreign, duplicate or stale selected model/field/unit row, changed selected owner or original identity, unresolved field/operation/ancestry/unit dependency, unrepresentable member, or a reached model variant without its QSL-issued shape and variants refuses at the first native node, member or row with its typed cause and no partial facts. The read visits only reached nodes and followed dependencies without a package-wide discovery scan, while charging inspected reached members and selected row/index entries; it uses iterative visited sets, charges one shared allowance including nested reads and output, succeeds at the exact allowance and refuses one below at the first uncharged locus. Equal package clones agree. The internal helper creates no public closure API or environment. | Test |
+| FR-357-AC-8 | Implemented (IR-721 selected facts; API and dependency inspection). Public API and dependency inspection shows the read takes an admitted package, explicit selected model declaration/field IDs and equality application/occurrence pairs, IR-owned row slices, a work allowance and a caller-owned shared `NativeJoinBudget`, performs no FSL/RT dependency or source recheck, and returns neither an IR environment nor `ProgramParts`. The equality read uses that same budget for work and storage rather than a local equality limit. A caller adapts FSL-owned equality emission rows without changing their values; IR checks admitted joins but does not claim to authenticate arbitrary caller-created Exact payloads. | Inspection |
+| FR-357-AC-9 | Implemented (`filament-integration` PR #47; explicit selected-fact scope only). A `filament-integration` test obtains a real final `PlanRoot.emission` through FSL, selects admitted IDs from its available model declaration/field rows and one equality application/occurrence pair, translates FSL equality rows without changing their values, and exercises the public IR selected-fact read on those explicit IDs. It verifies successful joins for representable selected model facts and an opaque FR-353 equality decision or its native typed missing-witness result for the selected equality. The executed PR #47 control observed opaque equality success; the missing-witness alternative remains source-reviewed rather than an observed result. It does not traverse four monitor entries or claim a complete generated-source closure, `TypeEnvironment` or RT `ProgramParts`, and it adds no FSL dependency to IR. | Test |
+| FR-357-AC-10 | Implemented (IR-owned strict fixture; complete FSL handoff acceptance pending). A complete source record row joins one selected admitted source record with its original declaration identity, producer-claimed opaque record key and every member's original field identity, admitted name, presence, final type node and opaque value type in producer order. The selected record projects its opaque `ValueType::Composite` and exposes the complete joined member rows without creating a `MemberId`. Missing, foreign, duplicate, reordered, omitted, renamed or stale type-node rows refuse with a typed cause and no partial record view. Equal package clones and rows agree; an unrelated unsupported declaration is ignored. This explicit record projection does not claim four-entry closure or authenticate arbitrary caller rows as FSL output. | Test |
+| FR-357-AC-11 | PLANNED/UNRUN (`filament-integration` same-emission acceptance). A genuine FSL final emission supplies the generated four-entry plan root; FSL's budgeted adapters return its source record/member, sealed union/member/payload, enum, model enum shape, collection, tuple, model, unit and equality rows as IR-owned row types without changing identities or order, and its `AdmittedPlanAuthority` supplies the FR-361 authority row. The one complete closure read over that authority's `admitted_package()` succeeds with those real rows, and a missing or pre-rewrite source row refuses at its native locus. The IR-owned fixture evidence for AC-1 through AC-3 alone does not satisfy this producer acceptance. | Test |
+| FR-357-AC-12 | Implemented prerequisite (IR-owned strict FSpec monitor recipe in the explicit conformance-qspec lane; self-contained term bounds run in the default test gate; FSL same-emission handoff remains AC-11). Given one admitted selected monitor root, an internal borrowed read seeds its four selected type handles and four ordered entries, then visits only reached local graph nodes, dependency edges, semantic-type edges and ordinary typed-term reference, type and operation-member structural IDs and flat nominal IDs with iterative worklists and node/edge deduplication; specialized frame, abstraction, extension, operation-anchor and refinement terms refuse as unsupported in this prerequisite. Every inspected seed and node and each distinct inspected edge is charged to one finite allowance; repeated identical edges add no charge, and wide ordinary or flat nominal bodies stop at the first refused work item without materializing all child work; exact allowance succeeds, one below refuses at the first uncharged native locus without a partial result, and an equal package clone agrees. An unrelated graph node does not change the result or work, a deep ordinary term does not consume host stack, and a reached foreign dependency reference refuses with a typed cause; the foreign and specialized adverse tests inject terms after strict root admission to exercise the IR guard. This prerequisite does not join producer rows, project Exact or nominal facts, expose a driver-consumable result or certify complete type/declaration closure. | Test |
+| FR-357-AC-13 | Implemented (IR-1353 reached-model prerequisite; TC-469). From an admitted selected monitor root whose walk reaches a selected model record and object, the package-private bounded read retains only those declarations and their followed model type dependencies. It retains complete ordered effective fields, original identities, presence, FSL-issued Exact identities, object ancestry and own operations with ordered parameters, result, effect and provenance; shared declarations appear once. A reached source unit and a reached model unit retain their distinct admitted owners, original identities, FSL-issued declared `UnitId`s, dimensions and exact conversion closures. An unrelated selected model declaration, variant or unit does not enter the facts, cause a refusal or change the exact reached-only allowance. This result does not certify a complete monitor closure. | Test |
+| FR-357-AC-14 | Implemented (IR-1353 reached-model prerequisite; TC-469). A missing, foreign, duplicate or stale selected model/field/unit row, changed selected owner or original identity, unresolved field/operation/ancestry/unit dependency, unrepresentable member, or a reached model variant without its FSL-issued shape and variants refuses at the first native node, member or row with its typed cause and no partial facts. The read visits only reached nodes and followed dependencies without a package-wide discovery scan, while charging inspected reached members and selected row/index entries; it uses iterative visited sets, charges one shared allowance including nested reads and output, succeeds at the exact allowance and refuses one below at the first uncharged locus. Equal package clones agree. The internal helper creates no public closure API or environment. | Test |
 | FR-357-AC-15 | Implemented (IR-1387 public budget API; TC-467). A driver can debit selection and adapter work and storage before allocation through one exported finite budget, then pass that same budget to a native read. The combined exact limit succeeds and one below refuses without resetting prior consumption or changing original limits. Driver charges retain their first unpaid kind, attempted amount and locus. | Test |
 | FR-357-AC-16 | A reached admitted `composite_type`/`map` with a scalar key and a record value joins a collection row carrying its key node and value node in key-then-value order, and the closure retains the map's complete Exact `ValueType::Map`. A row whose `key_node` is absent, names another node, or is present on a non-map collection refuses `SelectedMonitorTypeClosureErrorCode::CollectionKey` at the collection node, with charged work and no partial closure; an unreached map row does not refuse. The closure with the map succeeds at its exact measured work and storage allowance, and one unit below either refuses at the first unpaid key-join charge with its kind, amount and locus. | Test |
 | FR-357-AC-17 | The closure read requires the same-emission authority row of FR-361 and returns either a complete closure carrying the receipt and layout context or one typed first refusal; no read exists without that row, and no partial closure escapes an authority refusal. | Test, Inspection |
@@ -402,7 +402,7 @@ result alone SHALL NOT authorize either construction.
 | FR-357-AC-20 | Map row selection, acquisition and projection compose on one caller-owned `NativeJoinBudget`. Their measured exact combined work and storage allowances return the same complete map facts as ample limits; one unit below either refuses before its first unpaid operation with the original bound, native kind, full amount, row/key/value locus, consumed prefix and no partial output or success delta. Zero storage refuses before any owned allocation, including diagnostic material. A selected row after an unrelated earlier row retains its original `ReachedRow` index; preceding caller charges retain their supplied native locus. Existing non-map typed refusals and non-map collection values are unchanged. | Test |
 | FR-357-AC-21 | Implemented (IR-1399; TC-470). The closure requires one FR-353 equality decision at each `expression`-role occurrence of a reached equality application. A `claim`-role occurrence of the same node is the clause's registration of the interned application, not an evaluation site, and neither needs nor receives a decision. A reached equality application with no `expression` occurrence still returns `UnavailableEqualityDecision` at that node. | Test |
 | FR-357-AC-22 | Implemented (IR-1399; TC-470). Given a bounded collection row whose `structural_node` is the `collection_bounds` wrapper and whose `base_node` is the unbounded collection node, the closure projects the wrapper from that row and does not project the base on its own. A base node that another reached node is typed by still requires its own row and returns `UnavailableIdentityWitness` without one. | Test |
-| FR-357-AC-23 | The selected-document reader retains a package map type's key type (with its authored reference), value type and `bound` `{lower, upper?}`. The key must be a scalar key type with a canonical key: a native other than `Rational`, `Decimal` and `Clock`, a unit, an `integer`, `string` or `rational` value type, or a variant with no payload-bearing case, through any alias chain. A clock, `Decimal`, record, object, tuple, union, option, sequence, map or reference key refuses `ill_typed`/`operator-ineligible` at `TypeDefinition.keys`. A missing, non-string or malformed `keys`, `values` or `bound`, a `bound` with a member other than `lower` and `upper`, a negative or non-integer bound, a member of another kind (including `items`) on a map, a `keys` or `bound` member on a sequence or option, and a key naming a non-type refuse `invalid_model_binding`/`malformed-declaration` at that member. A key naming no node refuses `missing_declaration`/`missing-name`. A `lower` above `upper`, or a `lower` above 0 with no `upper`, refuses `invalid_model_binding`/`unpreserved-model-meaning` at `TypeDefinition.bound`. A `reference` whose target is `Clock` or an alias of it reads as `Reference<Clock>`. Every `package_map_types` case of the owner's `map-type-vectors.json` (PM-01..PM-34) is read by reference from the owning QSpec checkout. | Test |
+| FR-357-AC-23 | The selected-document reader retains a package map type's key type (with its authored reference), value type and `bound` `{lower, upper?}`. The key must be a scalar key type with a canonical key: a native other than `Rational`, `Decimal` and `Clock`, a unit, an `integer`, `string` or `rational` value type, or a variant with no payload-bearing case, through any alias chain. A clock, `Decimal`, record, object, tuple, union, option, sequence, map or reference key refuses `ill_typed`/`operator-ineligible` at `TypeDefinition.keys`. A missing, non-string or malformed `keys`, `values` or `bound`, a `bound` with a member other than `lower` and `upper`, a negative or non-integer bound, a member of another kind (including `items`) on a map, a `keys` or `bound` member on a sequence or option, and a key naming a non-type refuse `invalid_model_binding`/`malformed-declaration` at that member. A key naming no node refuses `missing_declaration`/`missing-name`. A `lower` above `upper`, or a `lower` above 0 with no `upper`, refuses `invalid_model_binding`/`unpreserved-model-meaning` at `TypeDefinition.bound`. A `reference` whose target is `Clock` or an alias of it reads as `Reference<Clock>`. Every `package_map_types` case of the owner's `map-type-vectors.json` (PM-01..PM-34) is read by reference from the owning FSpec checkout. | Test |
 | FR-357-AC-24 | The timed field-type rendering of a package map is `Map<K, V>` with `K` the native key name or, for any other key, the authored `keys` reference, and the map slot's `minimum` and `maximum` are the map type's declared `bound` (`unbounded` when it has no `upper`). A projected `ValueType::Map` carries the Exact type of its key node. | Test |
 
 ## Dependencies
@@ -415,12 +415,12 @@ result alone SHALL NOT authorize either construction.
   selected model declaration and nominal joins. Its whole-graph
   `project_selected_type_declarations` output is insufficient for generated
   source closure and remains an independent read.
-- QSL FR-251 owns generation of the ordinary entry bodies. Merged QSL-1463
+- FSL FR-251 owns generation of the ordinary entry bodies. Merged QSL-1463
   retains final `emit_plan_root` model declaration/field, source-unit and
   equality producer/fact rows. QSL-1630 and QSL-1631 are delivered: the former
   binds the complete checked bodies to plan identity; the latter retains source
   enum declaration/member rows. The source enum shape row does not supply the
-  QSL-issued `EnumShape` and `VariantId` facts of a model variant; existing
+  FSL-issued `EnumShape` and `VariantId` facts of a model variant; existing
   model enum declaration/member rows contain only declaration/member keys and
   original identities. Reached model variants therefore retain a typed
   unavailable-shape boundary until a model-specific producer row exists.
@@ -433,16 +433,16 @@ result alone SHALL NOT authorize either construction.
   Exact types; IR PR #910 joins source record rows structurally. The IR-owned
   fixture reads do not authenticate arbitrary caller-supplied opaque Exact
   values or prove one complete PlanRoot emission. AC-11 assigns that
-  same-emission producer acceptance to `quire-integration` using normal QSL
-  main. No source `MemberId` is retained by QSL's checking stage or invented
+  same-emission producer acceptance to `filament-integration` using normal FSL
+  main. No source `MemberId` is retained by FSL's checking stage or invented
   by IR. IR PR #906 implements
   selective monitor-entry callable reads; PR #907 extends ordinary source
   function bodies to direct admitted Values. IR-1354 implements AC-1 through
   AC-4 using an IR-owned strict fixture and one native budget, including
   admitted equality. AC-11 retains the real same-emission producer handoff;
   the first selected-fact read alone does not satisfy AC-1 through AC-4.
-  `quire-integration` owns
-  AC-9's merged, executed real-emission QSL-to-IR integration test using the
+  `filament-integration` owns
+  AC-9's merged, executed real-emission FSL-to-IR integration test using the
   available IR selected-fact API; IR owns AC-5's explicitly selected fixture.
 - Driver PR #117 delivers partial admission through opaque
   `AdmittedMonitorSelection` and the public `lower_scalar_functions` helper

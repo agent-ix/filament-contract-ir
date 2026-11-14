@@ -4,14 +4,14 @@
 //! The published tuple and payload-variant fixture through production intake.
 
 use super::{fixtures_dir, proposal_dir_of, read_json};
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     encode_checked_package_v2, BoundedDomainForm, CheckedMemberType, CheckedNodeId,
     CheckedNodeKind, CheckedPackageEvidence, CheckedPackageReadLimits,
     CheckedPackageRefusalCause as Cause, CheckedPackageRefusalCode as Code,
     CheckedPackageSourceCorrespondenceRef, CheckedPackageV2, CheckedPackageV2ReadResult,
     CheckedTerm, CheckedVariantPayloadType,
 };
+use ix_trace_rs::trace;
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
 use std::path::Path;
@@ -222,7 +222,7 @@ fn published_variant_bodies_and_first_payload_transition_are_retained() {
     let nullary_body = asserted_variant_body(&admitted, &document, &node, color, "enum");
     let mut payload_document = document.clone();
     payload_document["types"][color_type_position]["variants"][green_position]["payloadType"] =
-        json!("ix://quire/native/Boolean");
+        json!("ix://filament/native/Boolean");
     assert_ne!(payload_document, document, "selected document must change");
     let mut payload_package = package.clone();
     let graph_nodes = payload_package["semantic_graph"]["nodes"]
@@ -241,7 +241,7 @@ fn published_variant_bodies_and_first_payload_transition_are_retained() {
         .iter()
         .position(|candidate| {
             candidate["semantic_form"] == "binary"
-                && candidate["body"]["operation"]["identity"] == "quire.op.enum.eq"
+                && candidate["body"]["operation"]["identity"] == "filament.op.enum.eq"
                 && candidate["dependencies"]
                     .as_array()
                     .is_some_and(|dependencies| {
@@ -267,7 +267,10 @@ fn published_variant_bodies_and_first_payload_transition_are_retained() {
         .as_array_mut()
         .expect("graph nodes")
         .remove(enum_equality_position);
-    assert_eq!(removed["body"]["operation"]["identity"], "quire.op.enum.eq");
+    assert_eq!(
+        removed["body"]["operation"]["identity"],
+        "filament.op.enum.eq"
+    );
     super::fixture_support::settle(&mut payload_package);
     let payload_admitted = read_selected_variant_package(&payload_package, &payload_document);
     let payload_body =
@@ -296,7 +299,7 @@ fn published_variant_bodies_and_first_payload_transition_are_retained() {
         .expect("selected types")
         .push(json!({
             "identity": alias, "displayName": "BoolAlias", "kind": "alias",
-            "target": "ix://quire/native/Boolean", "origin": origin,
+            "target": "ix://filament/native/Boolean", "origin": origin,
             "roles": [], "constraints": [], "extensions": [], "unknownPolicy": "reject"
         }));
     aliased_document["types"][color_type_position]["variants"][green_position]["payloadType"] =
@@ -311,7 +314,7 @@ fn published_variant_bodies_and_first_payload_transition_are_retained() {
     assert_eq!(
         green.payload_type(),
         Some(CheckedVariantPayloadType::Native(
-            "ix://quire/native/Boolean"
+            "ix://filament/native/Boolean"
         )),
         "payload alias resolves before retention"
     );
@@ -526,7 +529,7 @@ fn published_model_tuple_union_wire_cases_match_reader_refusals() {
             super::fixture_support::canonical(&selected),
         )
         .expect("selected document evidence");
-    evidence.support_feature("quire.value.complete/v1");
+    evidence.support_feature("filament.value.complete/v1");
     let rows = vectors["wire_cases"]
         .as_array()
         .expect("published wire cases");
@@ -583,7 +586,7 @@ fn published_model_tuple_union_wire_cases_match_reader_refusals() {
 }
 
 /// Translate the published projection mutation to the corresponding member of
-/// QSpec's full Semantic IR document. The projection ordinals are represented
+/// FSpec's full Semantic IR document. The projection ordinals are represented
 /// by position identities in that document.
 fn apply_published_intake_patch(document: &mut Value, row: &Value) {
     let name = row["name"].as_str().expect("published intake case name");
@@ -598,9 +601,9 @@ fn apply_published_intake_patch(document: &mut Value, row: &Value) {
                 let identity = declared["node"].as_str().expect("value type identity");
                 let native = declared["native"].as_str().expect("value type native");
                 let scalar = match native {
-                    "ix://quire/native/Text" => "string",
-                    "ix://quire/native/Decimal" => "decimal",
-                    "ix://quire/native/Rational" => "rational",
+                    "ix://filament/native/Text" => "string",
+                    "ix://filament/native/Decimal" => "decimal",
+                    "ix://filament/native/Rational" => "rational",
                     _ => panic!("{name}: unsupported published value type {native}"),
                 };
                 let origin = document["types"][1]["origin"].clone();
@@ -674,7 +677,7 @@ fn apply_published_intake_patch(document: &mut Value, row: &Value) {
                 {
                     document["constructs"].as_array_mut().expect("constructs").push(json!({
                         "kind":kind, "moduleVersion":"1.0.0",
-                        "construct":{"identity":"value","meaning":"quire.meaning.model.value-type/v1","shape":"record","members":{}}
+                        "construct":{"identity":"value","meaning":"filament.meaning.model.value-type/v1","shape":"record","members":{}}
                     }));
                 }
                 let mut value_type = json!({
@@ -837,7 +840,7 @@ fn published_model_tuple_union_intake_cases_refuse_at_exact_member() {
                 super::fixture_support::canonical(&document),
             )
             .expect("selected document evidence");
-        evidence.support_feature("quire.value.complete/v1");
+        evidence.support_feature("filament.value.complete/v1");
         let result = crate::read_and_account(
             &super::fixture_support::canonical(&package),
             CheckedPackageReadLimits::bounded(),
@@ -1025,7 +1028,7 @@ fn duration_projection_control(scenario: DurationCase) {
     let selected_valid = !matches!(scenario, DurationCase::InvalidSelectedWithSource);
     let mut selected =
         read_json(&proposal.join("domain-package-acme-shapes.json")).expect("selected Semantic IR");
-    selected["types"][1]["positions"][1]["typeRef"] = json!("ix://quire/native/Duration");
+    selected["types"][1]["positions"][1]["typeRef"] = json!("ix://filament/native/Duration");
     if selected_unit {
         let origin = selected["types"][1]["origin"].clone();
         let dimension = if selected_valid { "Time" } else { "Length" };
@@ -1108,7 +1111,7 @@ fn duration_projection_control(scenario: DurationCase) {
             super::fixture_support::canonical(&selected),
         )
         .expect("selected evidence");
-    evidence.support_feature("quire.value.complete/v1");
+    evidence.support_feature("filament.value.complete/v1");
     let expected_locus = package["semantic_graph"]["nodes"][11]["node_id"].clone();
     let read = crate::read_and_account(
         &super::fixture_support::canonical(&package),
@@ -1279,7 +1282,7 @@ fn duration_nominal_pair(
     )
 }
 
-/// QSpec FR-322 reads duplicate tuple ordinals before the resulting gap and
+/// FSpec FR-322 reads duplicate tuple ordinals before the resulting gap and
 /// checks all tuples before any variant payload in one selected document.
 /// Provenance: IR-1059 partial AC-6 combined-defect order; full AC-6 remains open.
 #[test]
@@ -1315,7 +1318,7 @@ fn combined_tuple_and_variant_defects_keep_published_intake_order() {
                 super::fixture_support::canonical(&document),
             )
             .expect("selected document evidence");
-        evidence.support_feature("quire.value.complete/v1");
+        evidence.support_feature("filament.value.complete/v1");
         let result = crate::read_and_account(
             &super::fixture_support::canonical(&package),
             CheckedPackageReadLimits::bounded(),
@@ -1369,7 +1372,7 @@ fn published_model_tuple_union_fixture_admits() {
             super::fixture_support::canonical(&document),
         )
         .expect("selected document evidence");
-    evidence.support_feature("quire.value.complete/v1");
+    evidence.support_feature("filament.value.complete/v1");
     let result = crate::read_and_account(
         &super::fixture_support::canonical(&package),
         CheckedPackageReadLimits::bounded(),
@@ -1416,8 +1419,8 @@ fn published_tuples_retain_named_identity_and_ordered_selected_positions() {
         for (position, (position_identity, type_ref)) in positions.iter().enumerate() {
             assert_eq!(position_identity, &format!("{identity}/p{position}"));
             let expected = match type_ref.as_str() {
-                "ix://quire/native/Boolean" => CheckedMemberType::Boolean,
-                "ix://quire/native/Integer" => CheckedMemberType::Integer,
+                "ix://filament/native/Boolean" => CheckedMemberType::Boolean,
+                "ix://filament/native/Integer" => CheckedMemberType::Integer,
                 "ix://acme/shapes/Pair" => {
                     CheckedMemberType::Tuple(tuple_node(&package, type_ref).1)
                 }
@@ -1488,8 +1491,14 @@ fn published_tuples_retain_named_identity_and_ordered_selected_positions() {
     assert_eq!(
         tuple_positions(&same_shape, swap),
         vec![
-            (format!("{swap}/p0"), "ix://quire/native/Boolean".to_owned()),
-            (format!("{swap}/p1"), "ix://quire/native/Integer".to_owned()),
+            (
+                format!("{swap}/p0"),
+                "ix://filament/native/Boolean".to_owned()
+            ),
+            (
+                format!("{swap}/p1"),
+                "ix://filament/native/Integer".to_owned()
+            ),
         ],
         "reordered declaration retains its exact authored position content"
     );
@@ -1519,7 +1528,7 @@ fn published_tuples_retain_named_identity_and_ordered_selected_positions() {
         .expect("selected types")
         .push(json!({
             "identity": alias, "displayName": "BoolAlias", "kind": "alias",
-            "target": "ix://quire/native/Boolean", "origin": origin,
+            "target": "ix://filament/native/Boolean", "origin": origin,
             "roles": [], "constraints": [], "extensions": [], "unknownPolicy": "reject"
         }));
     aliased_document["types"][swap_index]["positions"][0]["typeRef"] = json!(alias);
@@ -1572,7 +1581,7 @@ fn published_tuple_union_typed_writer_round_trips() {
             source_map: admitted.source_map(),
             refinement_step_rows: admitted.refinement_step_rows(),
         },
-        quire_contract_model::CheckedPackageSidecarsRef {
+        filament_contract_model::CheckedPackageSidecarsRef {
             temporal_clause_names: admitted.temporal_clause_names(),
             operation_effects: None,
             operation_bodies: None,
@@ -1646,9 +1655,9 @@ fn unsupported_selected_variant_payloads_refuse_at_document_member() {
     let base = read_json(&fixtures.join("positive-model-tuple-union.json"))
         .expect("published positive package");
     for payload_type in [
-        "ix://quire/native/Rational",
-        "ix://quire/native/Decimal",
-        "ix://quire/native/Text",
+        "ix://filament/native/Rational",
+        "ix://filament/native/Decimal",
+        "ix://filament/native/Text",
         "ix://acme/shapes/Raw",
     ] {
         let mut document = selected.clone();
@@ -1658,7 +1667,7 @@ fn unsupported_selected_variant_payloads_refuse_at_document_member() {
                 .as_array_mut()
                 .expect("constructs")
                 .push(json!({"kind":{"module":"acme/shapes","name":"raw"},
-                    "construct":{"meaning":"quire.meaning.model.value-type/v1"}}));
+                    "construct":{"meaning":"filament.meaning.model.value-type/v1"}}));
             document["types"]
                 .as_array_mut()
                 .expect("types")
@@ -1678,7 +1687,7 @@ fn unsupported_selected_variant_payloads_refuse_at_document_member() {
                 super::fixture_support::canonical(&document),
             )
             .expect("selected document evidence");
-        evidence.support_feature("quire.value.complete/v1");
+        evidence.support_feature("filament.value.complete/v1");
         let result = crate::read_and_account(
             &super::fixture_support::canonical(&package),
             CheckedPackageReadLimits::bounded(),
@@ -1730,7 +1739,7 @@ fn published_tuple_positions_execute_the_reader_application_join() {
         .as_array()
         .expect("nodes")
         .iter()
-        .find(|node| node["body"]["operation"]["identity"] == "quire.op.tuple.project")
+        .find(|node| node["body"]["operation"]["identity"] == "filament.op.tuple.project")
         .expect("published projection")
         .clone();
     let parameter_id = template["body"]["arguments"][0]["target"].clone();
@@ -1784,10 +1793,10 @@ fn published_tuple_positions_execute_the_reader_application_join() {
                     .expect("nodes")
                     .iter()
                     .find(|node| match type_ref.as_str() {
-                        "ix://quire/native/Boolean" => {
+                        "ix://filament/native/Boolean" => {
                             node["node_tag"] == "scalar_type" && node["semantic_form"] == "boolean"
                         }
-                        "ix://quire/native/Integer" => {
+                        "ix://filament/native/Integer" => {
                             node["node_tag"] == "scalar_type" && node["semantic_form"] == "integer"
                         }
                         _ => node["node_tag"] == "model" && node["owner"]["node"] == *type_ref,
@@ -2052,7 +2061,7 @@ fn published_recursive_tuple_union_declarations_keep_finite_structural_identity(
         panic!("retained recursive application")
     };
     let operation = operation.read().expect("reader admitted operation view");
-    assert_eq!(operation.identity, "quire.op.structural.eq");
+    assert_eq!(operation.identity, "filament.op.structural.eq");
     assert!(
         operation.leaves.is_empty(),
         "published recursive no-text leaf walk terminates"
@@ -2104,7 +2113,7 @@ fn published_recursive_tuple_union_declarations_keep_finite_structural_identity(
         panic!("retained Pair equality")
     };
     let operation = operation.read().expect("admitted tuple operation");
-    assert_eq!(operation.identity, "quire.op.structural.eq");
+    assert_eq!(operation.identity, "filament.op.structural.eq");
     assert!(
         operation.leaves.is_empty(),
         "Pair has no reachable text leaves"

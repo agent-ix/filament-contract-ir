@@ -7,12 +7,12 @@ use crate::support::checked_package::{
     canonical, evidence_for, index_fixture_node_ids, selected_interface_model_node, settle,
     v2_all_families,
 };
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     CheckedNodeId, CheckedPackageReadLimits, CheckedPackageRefusalCause, CheckedPackageRefusalCode,
     CheckedPackageV2, CheckedPackageV2ReadResult, CheckedTerm, ExactTypeProjectionErrorCode,
     SelectedExactIdentities,
 };
+use ix_trace_rs::trace;
 use serde_json::{json, Value};
 
 fn reference_package(tag: &str, form: &str) -> (Value, Value, usize) {
@@ -44,7 +44,7 @@ fn reference_package(tag: &str, form: &str) -> (Value, Value, usize) {
         .expect("fixture nodes")
         .push(json!({
             "node_id": reference,
-            "schema_version": "quire.checked-semantic-graph/v2",
+            "schema_version": "filament.checked-semantic-graph/v2",
             "node_tag": "composite_type",
             "semantic_form": "reference",
             "semantic_type": reference,
@@ -80,14 +80,14 @@ fn admitted_reference_requires_selected_exact_identity_row() {
         &admitted,
         [],
         [],
-        &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+        &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
     )
     .expect("empty selected identity rows");
     let refusal = admitted
         .project_exact_type(
             &id,
             &rows,
-            &mut quire_contract_model::NativeJoinBudget::new(3, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(3, u64::MAX),
         )
         .expect_err("missing object row");
     assert_eq!(
@@ -107,7 +107,7 @@ fn admitted_reference_requires_selected_exact_identity_row() {
     assert_eq!(refusal.at.as_deref(), Some(&object));
 }
 
-/// Trace: QSpec FR-322-AC-62, RM-REF-TARGET. Model and relationship
+/// Trace: FSpec FR-322-AC-62, RM-REF-TARGET. Model and relationship
 /// declarations are eligible targets; a scalar target is refused at the
 /// derived reference node's structural identity.
 #[trace("TC-233", "FR-322-AC-62")]
@@ -170,7 +170,7 @@ fn derived_reference_target_joins_eligible_declaration_kinds() {
         .expect("machine nodes")
         .push(json!({
             "node_id": reference,
-            "schema_version": "quire.checked-semantic-graph/v2",
+            "schema_version": "filament.checked-semantic-graph/v2",
             "node_tag": "composite_type", "semantic_form": "reference",
             "semantic_type": reference, "dependencies": [target],
             "occurrences": [{"role": "type", "ordinal": 0}],

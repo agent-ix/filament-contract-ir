@@ -3,11 +3,11 @@ id: FR-360
 title: "Charge runtime type projection through one shared native budget"
 type: FR
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/FR-358
+  - target: ix://agent-ix/filament-contract-ir/FR-358
     type: depends_on
-  - target: ix://agent-ix/quire-contract-ir/FR-354
+  - target: ix://agent-ix/filament-contract-ir/FR-354
     type: references
-  - target: ix://agent-ix/quire-contract-ir/FR-019
+  - target: ix://agent-ix/filament-contract-ir/FR-019
     type: references
 ---
 # FR-360: Charge runtime type projection through one shared native budget

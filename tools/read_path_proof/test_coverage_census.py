@@ -20,8 +20,8 @@ def export_counts(plain=3, probes=20, caller=2, calibration=1):
         ("tests/it/support/qspec_read_proof.rs", "measure_seeded"): 6*caller,
         ("tests/it/support/qspec_read_proof.rs",
          "caller_budget_observation_preserves_prior_charges_and_outer_capture"): calibration,
-        ("crates/quire-contract-model/src/checked_package/v2/budgeted_read.rs", "read"): plain,
-        ("crates/quire-contract-model/src/checked_package/v2/budgeted_read.rs", "read_with_budget"):
+        ("crates/filament-contract-model/src/checked_package/v2/budgeted_read.rs", "read"): plain,
+        ("crates/filament-contract-model/src/checked_package/v2/budgeted_read.rs", "read_with_budget"):
             plain + probes + 6*caller + caller + calibration,
     }
     functions = []

@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Agent-IX
 
-//! The published QSpec reaches-population descriptors through the IR reader.
+//! The published FSpec reaches-population descriptors through the IR reader.
 
 use super::*;
-use quire_contract_model::selected_population::{
+use filament_contract_model::selected_population::{
     select_population, CheckedSelectedPopulationOutcome as PopulationOutcome,
     CheckedSelectedPopulationSource as PopulationSource,
 };
-use quire_contract_model::CheckedNodeId;
+use filament_contract_model::CheckedNodeId;
 
 fn node_index(package: &Value, tag: &str, form: &str) -> usize {
     package["semantic_graph"]["nodes"]
@@ -127,7 +127,7 @@ fn candidate(base: &Value, case: &Value) -> Value {
         .as_array()
         .expect("nodes")
         .iter()
-        .position(|node| node["body"]["operation"]["identity"] == "quire.op.model.reaches")
+        .position(|node| node["body"]["operation"]["identity"] == "filament.op.model.reaches")
         .expect("reaches application");
     let descriptor = &case["population"];
     let link = if descriptor.is_null() {
@@ -182,7 +182,7 @@ fn candidate(base: &Value, case: &Value) -> Value {
     }
     // The published source-map regions are authoritative. `settle` rebuilds
     // every row with synthetic position regions and loses the declaration
-    // correspondence of the QSpec base (including Example.Counter). The
+    // correspondence of the FSpec base (including Example.Counter). The
     // application dependency was updated above; normalize only changed
     // owner paths and their exact references.
     fixture_support::refresh_identity(&mut package);
@@ -200,7 +200,7 @@ fn candidate(base: &Value, case: &Value) -> Value {
 #[test]
 fn tc_048_qspec_reaches_population_cases_match_the_reader() {
     let dir = fixtures_dir();
-    let adverse = read_json(&dir.join(ADVERSE)).expect("QSpec adverse fixture");
+    let adverse = read_json(&dir.join(ADVERSE)).expect("FSpec adverse fixture");
     let rows = mutations(&adverse, "reaches_population_cases").expect("published cases");
     assert_eq!(rows.len(), 7);
     let mut seen = std::collections::BTreeSet::new();
@@ -225,14 +225,14 @@ fn tc_048_qspec_reaches_population_cases_match_the_reader() {
     }
 }
 
-/// QSpec FR-322-AC-74's five published rows are read through the production
+/// FSpec FR-322-AC-74's five published rows are read through the production
 /// reader with the exact published base source map. The two admitted extents
 /// retain distinct structural population identities.
 #[trace("TC-233", "FR-322-AC-74")]
 #[test]
 fn tc_233_qspec_unbounded_population_rows_read_with_exact_sources() {
     let fixtures = fixtures_dir();
-    let adverse = read_json(&fixtures.join(ADVERSE)).expect("QSpec adverse fixture");
+    let adverse = read_json(&fixtures.join(ADVERSE)).expect("FSpec adverse fixture");
     let rows = adverse["unbounded_population_cases"]
         .as_array()
         .expect("published unbounded population rows");
@@ -257,7 +257,7 @@ fn tc_233_qspec_unbounded_population_rows_read_with_exact_sources() {
                 .expect("base source map")
                 .len()],
             published["source_map"].as_array().expect("base source map"),
-            "{id}: QSpec source correspondence must be retained"
+            "{id}: FSpec source correspondence must be retained"
         );
         let position = package["semantic_graph"]["nodes"]
             .as_array()
@@ -287,7 +287,9 @@ fn tc_233_qspec_unbounded_population_rows_read_with_exact_sources() {
                     .as_array()
                     .expect("graph nodes")
                     .iter()
-                    .find(|node| node["body"]["operation"]["identity"] == "quire.op.model.reaches")
+                    .find(|node| {
+                        node["body"]["operation"]["identity"] == "filament.op.model.reaches"
+                    })
                     .expect("reaches application");
                 let application_id: CheckedNodeId =
                     serde_json::from_value(application["node_id"].clone())
@@ -348,7 +350,7 @@ fn tc_233_qspec_unbounded_population_rows_read_with_exact_sources() {
                     "{id}: population identity locus"
                 );
             }
-            Some(other) => panic!("{id}: unknown QSpec outcome {other}"),
+            Some(other) => panic!("{id}: unknown FSpec outcome {other}"),
         }
     }
     assert_eq!(positive_ids.len(), 2, "unbounded and finite siblings");
@@ -361,7 +363,7 @@ fn tc_233_qspec_unbounded_population_rows_read_with_exact_sources() {
 fn tc_453_admitted_population_maximum_exceeds_u64_without_truncation() {
     let fixtures = fixtures_dir();
     let base = read_json(&fixtures.join("positive-operation-identities.json"))
-        .expect("QSpec positive base");
+        .expect("FSpec positive base");
     let maximum = "18446744073709551616";
     let package = candidate(
         &base,
@@ -377,7 +379,7 @@ fn tc_453_admitted_population_maximum_exceeds_u64_without_truncation() {
         .as_array()
         .expect("graph nodes")
         .iter()
-        .find(|node| node["body"]["operation"]["identity"] == "quire.op.model.reaches")
+        .find(|node| node["body"]["operation"]["identity"] == "filament.op.model.reaches")
         .expect("reaches application");
     let request: CheckedNodeId =
         serde_json::from_value(application["node_id"].clone()).expect("reaches identity");

@@ -2,16 +2,16 @@
 // Copyright (C) 2026 Agent-IX
 
 //! Public V2 structural identity and canonical-byte controls over an authored
-//! single-node fixture. The published QSpec readback runs in conformance_qspec.
+//! single-node fixture. The published FSpec readback runs in conformance_qspec.
 
-use ix_trace_rs::trace;
-use quire_canonical::{Error, LimitKind, Limits};
-use quire_contract_model::{
+use filament_contract_model::{
     encode_checked_package_v2, CheckedPackageEvidence, CheckedPackageLimit,
     CheckedPackageReadLimits, CheckedPackageSourceCorrespondenceRef, CheckedPackageV2,
     CheckedPackageV2ReadResult, CompleteLoweringProfileV2, CompleteLoweringRecordV2,
     LoweringProfileRef,
 };
+use ix_trace_rs::trace;
+use quire_canonical::{Error, LimitKind, Limits};
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 
@@ -129,7 +129,7 @@ fn derived_range_binding_name_is_validated_independently_of_its_id() {
         retained_id
     );
     let mut evidence = CheckedPackageEvidence::new();
-    evidence.support_feature("quire.value.complete/v1");
+    evidence.support_feature("filament.value.complete/v1");
     let outcome = crate::read_and_account(
         &quire_canonical::to_vec(
             &crate::support::checked_package::wire_form(&package),
@@ -151,11 +151,11 @@ fn derived_range_binding_name_is_validated_independently_of_its_id() {
     };
     assert_eq!(
         refusal.code,
-        quire_contract_model::CheckedPackageRefusalCode::InvalidPackage
+        filament_contract_model::CheckedPackageRefusalCode::InvalidPackage
     );
     assert_eq!(
         refusal.cause,
-        Some(quire_contract_model::CheckedPackageRefusalCause::InvalidDerivedShape)
+        Some(filament_contract_model::CheckedPackageRefusalCause::InvalidDerivedShape)
     );
     assert_eq!(
         refusal.loci[0].path.as_ref().map(ToString::to_string),
@@ -191,7 +191,7 @@ fn derived_range_type_and_literal_type_are_checked_independently_of_id() {
             retained_id
         );
         let mut evidence = CheckedPackageEvidence::new();
-        evidence.support_feature("quire.value.complete/v1");
+        evidence.support_feature("filament.value.complete/v1");
         let outcome = crate::read_and_account(
             &quire_canonical::to_vec(
                 &crate::support::checked_package::wire_form(&changed),
@@ -207,12 +207,12 @@ fn derived_range_type_and_literal_type_are_checked_independently_of_id() {
         };
         assert_eq!(
             refusal.code,
-            quire_contract_model::CheckedPackageRefusalCode::InvalidPackage,
+            filament_contract_model::CheckedPackageRefusalCode::InvalidPackage,
             "{edit}"
         );
         assert_eq!(
             refusal.cause,
-            Some(quire_contract_model::CheckedPackageRefusalCause::InvalidDerivedShape),
+            Some(filament_contract_model::CheckedPackageRefusalCause::InvalidDerivedShape),
             "{edit}"
         );
         assert_eq!(
@@ -252,7 +252,7 @@ fn package_with_independent_requests() -> Value {
 
 fn admit(value: &Value) -> Box<CheckedPackageV2> {
     let mut evidence = CheckedPackageEvidence::new();
-    evidence.support_feature("quire.value.complete/v1");
+    evidence.support_feature("filament.value.complete/v1");
     let bytes = quire_canonical::to_vec(
         &crate::support::checked_package::wire_form(value),
         Limits::new(u64::MAX),
@@ -273,7 +273,7 @@ fn encode(package: &CheckedPackageV2, limit: u64) -> Result<Vec<u8>, Error> {
             source_map: package.source_map(),
             refinement_step_rows: package.refinement_step_rows(),
         },
-        quire_contract_model::CheckedPackageSidecarsRef {
+        filament_contract_model::CheckedPackageSidecarsRef {
             temporal_clause_names: package.temporal_clause_names(),
             operation_effects: None,
             operation_bodies: None,
@@ -449,7 +449,7 @@ fn multi_request_lowering_preserves_independent_sibling_on_local_byte_failure() 
     let mut limits = CheckedPackageReadLimits::bounded();
     limits.bytes = bytes.len() as u64;
     let mut evidence = CheckedPackageEvidence::new();
-    evidence.support_feature("quire.value.complete/v1");
+    evidence.support_feature("filament.value.complete/v1");
     let CheckedPackageV2ReadResult::Admitted(package) =
         crate::read_and_account(&bytes, limits, &evidence)
     else {
@@ -461,7 +461,7 @@ fn multi_request_lowering_preserves_independent_sibling_on_local_byte_failure() 
     ];
     let profile = CompleteLoweringProfileV2 {
         reference: LoweringProfileRef {
-            authority: "quire".into(),
+            authority: "filament".into(),
             // Output-only text separates the two local V1 closure sizes while
             // the source package remains admissible at its exact byte limit.
             identity: format!("complete-v1-{}", "x".repeat(128)).into(),

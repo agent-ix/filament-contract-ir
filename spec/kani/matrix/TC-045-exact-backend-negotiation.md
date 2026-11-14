@@ -3,11 +3,11 @@ id: TC-045
 title: "Exact backend capability negotiation conforms"
 type: TC
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/FR-036
+  - target: ix://agent-ix/filament-contract-ir/FR-036
     type: verifies
-  - target: ix://agent-ix/quire-specification/TC-218
+  - target: ix://agent-ix/filament-specification/TC-218
     type: references
-  - target: ix://agent-ix/quire-specification/FR-290
+  - target: ix://agent-ix/filament-specification/FR-290
     type: references
 ---
 # TC-045: Exact backend capability negotiation conforms

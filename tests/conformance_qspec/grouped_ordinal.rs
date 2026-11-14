@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Agent-IX
 
-//! Direct production reads of QSpec's corrected recursion-group fixtures.
+//! Direct production reads of FSpec's corrected recursion-group fixtures.
 
 use super::{
     fixture_support::reassign_node_id, fixtures_dir, proposal_dir_of, read_package_with_document,
@@ -10,7 +10,7 @@ use super::{
 use ix_trace_rs::trace;
 use serde_json::Value;
 
-/// QSpec FR-322-AC-274: a group member's structural path names its declaration;
+/// FSpec FR-322-AC-274: a group member's structural path names its declaration;
 /// its producer-assigned node ordinal is distinct from the recursion position.
 #[trace("TC-048", "FR-038-AC-107", "FR-038-AC-176")]
 #[test]
@@ -59,7 +59,7 @@ fn corrected_qspec_grouped_fixtures_admit_with_declared_paths() {
     }
 }
 
-/// QSpec FR-322-AC-274: changing an anonymous List member's structural path
+/// FSpec FR-322-AC-274: changing an anonymous List member's structural path
 /// while retaining every exact reference leaves only the group-path defect.
 #[trace("TC-233", "FR-038-AC-145", "FR-038-AC-147", "FR-038-AC-133")]
 #[test]
@@ -273,7 +273,7 @@ fn grouped_member_and_outside_application_references_retain_exact_targets() {
     wire["semantic_graph"]["nodes"][application]["body"] = serde_json::json!({
         "term":"application", "operator":"query", "result_type":option_id,
         "arguments":[{"term":"reference", "target":outside_id}],
-        "operation":{"identity":"quire.op.record.project", "mode":null,
+        "operation":{"identity":"filament.op.record.project", "mode":null,
             "member":{"kind":"field", "declaration":record_id, "name":"next"},
             "leaves":[], "laws":[]}
     });
@@ -310,7 +310,7 @@ fn grouped_member_and_outside_application_references_retain_exact_targets() {
         .document_held_id(application)
         .expect("graph node")
         .clone();
-    let Some(quire_contract_model::CheckedTerm::Application {
+    let Some(filament_contract_model::CheckedTerm::Application {
         operation,
         arguments,
         result_type,
@@ -326,7 +326,7 @@ fn grouped_member_and_outside_application_references_retain_exact_targets() {
             .expect("graph node")
             .clone()
     );
-    let quire_contract_model::CheckedOperationMember::Field { declaration, .. } = operation
+    let filament_contract_model::CheckedOperationMember::Field { declaration, .. } = operation
         .read()
         .expect("operation view")
         .member
@@ -341,7 +341,7 @@ fn grouped_member_and_outside_application_references_retain_exact_targets() {
             .expect("graph node")
             .clone()
     );
-    let [quire_contract_model::CheckedTerm::Reference { target }] = arguments.as_slice() else {
+    let [filament_contract_model::CheckedTerm::Reference { target }] = arguments.as_slice() else {
         panic!("one outside reference");
     };
     assert_eq!(
@@ -358,7 +358,7 @@ fn grouped_member_and_outside_application_references_retain_exact_targets() {
             .expect("graph node")
             .clone()
     );
-    let Some(quire_contract_model::CheckedTerm::Aggregate { members }) = admitted.term(
+    let Some(filament_contract_model::CheckedTerm::Aggregate { members }) = admitted.term(
         &admitted
             .document_held_id(option)
             .expect("graph node")
@@ -367,7 +367,7 @@ fn grouped_member_and_outside_application_references_retain_exact_targets() {
         panic!("typed option body");
     };
     assert!(
-        matches!(members.as_slice(), [quire_contract_model::CheckedTerm::Reference { target }] if target == &admitted.document_held_id(record).expect("graph node").clone())
+        matches!(members.as_slice(), [filament_contract_model::CheckedTerm::Reference { target }] if target == &admitted.document_held_id(record).expect("graph node").clone())
     );
 
     let mut malformed = wire.clone();

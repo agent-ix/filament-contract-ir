@@ -6,21 +6,21 @@ status: accepted
 owner: Contract IR lane
 system: proof-coverage claim inventory, evidence joins, and baseline projections across Contract IR, Contract Codegen, and Contract Runtime
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/StR-004
+  - target: ix://agent-ix/filament-contract-ir/StR-004
     type: realizes
-  - target: ix://agent-ix/quire-contract-ir/FR-045
+  - target: ix://agent-ix/filament-contract-ir/FR-045
     type: realizes
-  - target: ix://agent-ix/quire-contract-ir/AD-002
+  - target: ix://agent-ix/filament-contract-ir/AD-002
     type: references
-  - target: ix://agent-ix/quire-contract-ir/FR-029
+  - target: ix://agent-ix/filament-contract-ir/FR-029
     type: references
-  - target: ix://agent-ix/quire-contract-ir/FR-030
+  - target: ix://agent-ix/filament-contract-ir/FR-030
     type: references
-  - target: ix://agent-ix/quire-contract-codegen/ADR-003
+  - target: ix://agent-ix/filament-contract-codegen/ADR-003
     type: references
-  - target: ix://agent-ix/quire-contract-codegen/FR-004
+  - target: ix://agent-ix/filament-contract-codegen/FR-004
     type: references
-  - target: ix://agent-ix/quire-contract-codegen/FR-028
+  - target: ix://agent-ix/filament-contract-codegen/FR-028
     type: references
 ---
 # Proof coverage accounting across contract assurance owners

@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Agent-IX
 
-//! QSpec TC-233: bounded Text literal membership at the public V2 reader.
+//! FSpec TC-233: bounded Text literal membership at the public V2 reader.
 
 use super::{fixture_support, fixtures_dir, proposal_dir_of, read_json};
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     CheckedPackageReadLimits, CheckedPackageRefusalCause as Cause,
     CheckedPackageRefusalCode as Code, CheckedPackageV2ReadResult,
 };
-use quire_exact::TextProfile;
+use filament_exact::TextProfile;
+use ix_trace_rs::trace;
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
 
@@ -58,8 +58,8 @@ fn assert_text_shape_refusal(package: &Value, position: usize, context: &str) {
 fn qspec_text_bounds_shape_vectors_match_reader() {
     let vectors =
         read_json(&proposal_dir_of(&fixtures_dir()).join("text-bounds-shape-vectors.json"))
-            .expect("QSpec Text bounds shape vectors");
-    let cases = vectors["cases"].as_array().expect("QSpec cases");
+            .expect("FSpec Text bounds shape vectors");
+    let cases = vectors["cases"].as_array().expect("FSpec cases");
     let actual_ids = cases
         .iter()
         .map(|case| case["id"].as_str().expect("case id").to_owned())
@@ -204,9 +204,9 @@ fn canonical_text_bounds_above_u64_are_shapes_and_check_literal_membership() {
 #[test]
 fn qspec_text_literal_vectors_match_reader() {
     let vectors = read_json(&proposal_dir_of(&fixtures_dir()).join("text-literal-vectors.json"))
-        .expect("QSpec text literal vectors");
-    let types = vectors["types"].as_object().expect("QSpec types");
-    let cases = vectors["cases"].as_array().expect("QSpec cases");
+        .expect("FSpec text literal vectors");
+    let types = vectors["types"].as_object().expect("FSpec types");
+    let cases = vectors["cases"].as_array().expect("FSpec cases");
     assert_eq!(cases.len(), 15, "published TX-01..TX-14 plus TX-13s");
     let actual_ids = cases
         .iter()

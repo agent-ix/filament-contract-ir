@@ -3,7 +3,7 @@ id: TC-062
 title: "Read and write closed checked-package refinement nodes"
 type: TC
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/FR-061
+  - target: ix://agent-ix/filament-contract-ir/FR-061
     type: verifies
 ---
 
@@ -12,8 +12,8 @@ relationships:
 ## Description
 
 Verify [FR-061](../functional/FR-061-admit-refinement-nodes.md) through the
-public V2 reader and writer against QSpec FR-375, FR-322 and TC-310's
-published refinement forms. Every vector is authored in IR; no QSpec file,
+public V2 reader and writer against FSpec FR-375, FR-322 and TC-310's
+published refinement forms. Every vector is authored in IR; no FSpec file,
 schema or fixture is copied here.
 
 ## Test Procedure
@@ -69,7 +69,7 @@ against valid declaring-type controls. For row-empty protocol subjects,
 compare the concrete catalog with the new model's classes in catalog-key order: an extra earlier
 class refuses at its entry, while an omitted earlier class refuses at the
 `concrete` array. Keep the abstract root and optional protocol clause joins
-and exact local dependencies in each control. QSpec TC-310's SR-01 through
+and exact local dependencies in each control. FSpec TC-310's SR-01 through
 SR-13 are graph-case oracles, not published two-selection wire packages.
 
 For FR-061-AC-14 through AC-16, construct catalog-free model-only refinements

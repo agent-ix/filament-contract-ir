@@ -3,7 +3,7 @@ id: TC-474
 title: "Implementation guarantee and component composition bodies"
 type: TC
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/FR-038
+  - target: ix://agent-ix/filament-contract-ir/FR-038
     type: verifies
 ---
 # TC-474: Implementation guarantee and component composition bodies
@@ -12,7 +12,7 @@ relationships:
 
 Verify FR-038-AC-531 through FR-038-AC-540: the strict V2 reader admits the
 `correspondence`/`implementation_guarantee` and `correspondence`/
-`component_composition` bodies of QSpec FR-490 and FR-491 as typed terms and
+`component_composition` bodies of FSpec FR-490 and FR-491 as typed terms and
 refuses every other shape, identity, order, target and member in reader order.
 
 ## Test Procedure
@@ -42,5 +42,5 @@ composition bodies" names.
 ## Status
 
 Implemented in `tests/it/checked_package_v2_guarantee_composition.rs`.
-QSpec FR-491 static checks 2 through 5 read the admitted component packages;
+FSpec FR-491 static checks 2 through 5 read the admitted component packages;
 clause classification uses their typed formula graphs.

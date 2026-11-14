@@ -1,26 +1,26 @@
 ---
 id: ADR-0053
-title: "Native Quire source authority and fail-closed mapping profiles"
+title: "Native Filament source authority and fail-closed mapping profiles"
 type: ADR
 status: accepted
 owner: kreneskyp
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/FR-012
+  - target: ix://agent-ix/filament-contract-ir/FR-012
     type: depends_on
-  - target: ix://agent-ix/quire-contract-ir/FR-013
+  - target: ix://agent-ix/filament-contract-ir/FR-013
     type: depends_on
-  - target: ix://agent-ix/quire-contract-ir/FR-014
+  - target: ix://agent-ix/filament-contract-ir/FR-014
     type: depends_on
-  - target: ix://agent-ix/quire-contract-ir/FR-015
+  - target: ix://agent-ix/filament-contract-ir/FR-015
     type: depends_on
-  - target: ix://agent-ix/quire-contract-ir/FR-016
+  - target: ix://agent-ix/filament-contract-ir/FR-016
     type: depends_on
 ---
-# ADR-0053: Native Quire source authority and fail-closed mapping profiles
+# ADR-0053: Native Filament source authority and fail-closed mapping profiles
 
 ## Status
 
-Accepted. Native Quire is the sole editable formal-clause source language.
+Accepted. Native Filament is the sole editable formal-clause source language.
 OCL 2.4, SysML v2/KerML and FRETish are output-only mapping targets. ADR-0054
 stays accepted.
 
@@ -30,8 +30,8 @@ qualification is implemented.
 
 | Decision field | Accepted state |
 | --- | --- |
-| Source authority | Native Quire, source identity `ix:native`; exactly one editable authority per clause |
-| Semantic profiles | Selected and versioned by the Quire standard independently of IR/backend support; historical definitions retain their meanings |
+| Source authority | Native Filament, source identity `ix:native`; exactly one editable authority per clause |
+| Semantic profiles | Selected and versioned by the Filament standard independently of IR/backend support; historical definitions retain their meanings |
 | Output mappings | OCL 2.4, SysML v2/KerML and FRETish through Rust emitters with explicit loss/refusal results |
 | Implementation boundary | First-party compiler, reader, writer, bridge, test and qualification code is Rust |
 | Foreign runtimes | No Java, JVM, Maven, Eclipse, Node or Electron production/test/CI/qualification dependency without another owner decision |
@@ -40,7 +40,7 @@ qualification is implemented.
 ## Context
 
 Archetype schema definition and datatype generation remain outside formalization.
-Native Quire consumes exact model declarations and binds supported checked
+Native Filament consumes exact model declarations and binds supported checked
 expressions to Contract IR. A field described only as `int`, `Dict[str, Any]`,
 a generated host type, or a sample value does not supply the finite semantic
 domain required by the formal language.
@@ -54,7 +54,7 @@ contracts rather than approximating them in the scalar IR.
 
 ### One source language and one authority
 
-Native Quire is the only editable formal-clause language. A clause has one
+Native Filament is the only editable formal-clause language. A clause has one
 stable identity and one authored source: one language-tagged inline region or
 one exact local-file region, never both. The source selection binds exact bytes,
 SHA-256, source revision and half-open byte span. A path or floating URL is not
@@ -83,7 +83,7 @@ native subject with an unavailable projection/backend receives its typed
 unsupported result. Neither can produce partial successful IR, a fabricated
 Boolean, an empty collection, or an approximate mapped artifact.
 
-The Quire standard owns profile definitions. The composed-v1 candidates use
+The Filament standard owns profile definitions. The composed-v1 candidates use
 `ix:native` edition `1-draft` with independently versioned state-core, query,
 finite-graph, temporal, protocol, observation, package and diagnostic
 definitions accepted for implementation planning. FS01–FS05 own final adoption. Historical
@@ -128,7 +128,7 @@ context type is insufficient.
 value, replace a parameter with a field, or reuse a guard from another
 observation. Missing/foreign anchors, `pre(parameter)`, `pre(result)`,
 cross-observation guard reuse and mismatched operations refuse before lowering.
-Exact alias and composite-expression behavior is the Quire standard's
+Exact alias and composite-expression behavior is the Filament standard's
 state-contract authority, not an OCL `@pre` rule inferred by similarity.
 
 ### ConfigVersion gate and slices

@@ -6,7 +6,7 @@
 //! Class credit additionally requires the compiler-source binding check.
 
 use super::{Counter, ThreadCounter};
-use quire_contract_model::{
+use filament_contract_model::{
     with_native_budget_observer, CheckedPackageEvidence, CheckedPackageReadLimits,
     CheckedPackageRefusalCode, CheckedPackageV2, CheckedPackageV2BudgetedReadResult,
     NativeBudgetEvent, NativeBudgetResource, NativeJoinBudget, NativeJoinLocusSource,

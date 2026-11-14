@@ -1,7 +1,6 @@
 //! TC-043 exercises the target-neutral FS06 output-mapping foundation.
 
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     assemble_output_package, map_admitted_request, map_admitted_request_controlled,
     AdmittedMappingObligation, AdmittedMappingRequest, BoundPackage, ClauseId, ClauseRef,
     DiagnosticCode, MappingAllocationPoint, MappingCancellation, MappingCancellationToken,
@@ -14,6 +13,7 @@ use quire_contract_model::{
     RequirementRevision, SemanticSourceSelection, SourceFactState, StructuralObservationOutcome,
     StructuralObservationRef, StructuralObserverIdentity, EXECUTABLE_PROJECTION_FORMAT,
 };
+use ix_trace_rs::trace;
 use serde_json::{json, Value};
 
 fn projection() -> Value {
@@ -103,7 +103,7 @@ fn ocl_profile() -> OutputMappingProfile {
     OutputMappingProfile::new(
         "ocl",
         vec!["formal/14-02-03"],
-        "quire.output.ocl24/v1",
+        "filament.output.ocl24/v1",
         "1-draft.1",
         vec![OutputCapability::Boolean, OutputCapability::BoundedInteger],
     )
@@ -116,9 +116,9 @@ fn selections() -> (
     SemanticSourceSelection,
 ) {
     (
-        NativeSourceSelection::new("quire.native/v1", "rev-native").expect("native selection"),
-        ModelSourceSelection::new("quire.model/v1", "rev-model").expect("model selection"),
-        SemanticSourceSelection::new("quire.semantic/v1", "rev-semantic")
+        NativeSourceSelection::new("filament.native/v1", "rev-native").expect("native selection"),
+        ModelSourceSelection::new("filament.model/v1", "rev-model").expect("model selection"),
+        SemanticSourceSelection::new("filament.semantic/v1", "rev-semantic")
             .expect("semantic selection"),
     )
 }
@@ -143,7 +143,7 @@ fn admit(
     obligations: Vec<RequestedMappingObligation>,
     profile: OutputMappingProfile,
     limits: MappingLimits,
-) -> Result<AdmittedMappingRequest, quire_contract_model::MappingRequestError> {
+) -> Result<AdmittedMappingRequest, filament_contract_model::MappingRequestError> {
     let (native, model, semantic) = selections();
     AdmittedMappingRequest::admit(
         package,
@@ -162,14 +162,14 @@ fn admit(
 fn tc_043_profiles_admit_only_exact_fs06_values() {
     let ocl = ocl_profile();
     assert_eq!(ocl.target_family().as_str(), "ocl");
-    assert_eq!(ocl.mapping_profile_id(), "quire.output.ocl24/v1");
+    assert_eq!(ocl.mapping_profile_id(), "filament.output.ocl24/v1");
     assert_eq!(ocl.mapping_revision(), "1-draft.1");
     assert_eq!(ocl.target_standard_refs(), ["formal/14-02-03"]);
 
     let sysml = OutputMappingProfile::new(
         "sysml-kerml",
         vec!["formal/26-03-02", "formal/26-03-01"],
-        "quire.output.sysml2-kerml1/v1",
+        "filament.output.sysml2-kerml1/v1",
         "1-draft.1",
         vec![
             OutputCapability::Boolean,
@@ -185,7 +185,7 @@ fn tc_043_profiles_admit_only_exact_fs06_values() {
     OutputMappingProfile::new(
         "fretish",
         vec!["v3.1.0"],
-        "quire.output.fretish31/v1",
+        "filament.output.fretish31/v1",
         "1-draft.1",
         vec![
             OutputCapability::Boolean,
@@ -198,36 +198,42 @@ fn tc_043_profiles_admit_only_exact_fs06_values() {
         OutputMappingProfile::new(
             "",
             vec!["formal/14-02-03"],
-            "quire.output.ocl24/v1",
+            "filament.output.ocl24/v1",
             "1-draft.1",
             vec![],
         ),
-        OutputMappingProfile::new("ocl", vec![], "quire.output.ocl24/v1", "1-draft.1", vec![]),
+        OutputMappingProfile::new(
+            "ocl",
+            vec![],
+            "filament.output.ocl24/v1",
+            "1-draft.1",
+            vec![],
+        ),
         OutputMappingProfile::new(
             "ocl",
             vec!["formal/26-03-02"],
-            "quire.output.sysml2-kerml1/v1",
+            "filament.output.sysml2-kerml1/v1",
             "1-draft.1",
             vec![],
         ),
         OutputMappingProfile::new(
             "ocl",
             vec!["formal/14-02-03"],
-            "quire.output.ocl24/v1",
+            "filament.output.ocl24/v1",
             "1-draft.2",
             vec![],
         ),
         OutputMappingProfile::new(
             "ocl",
             vec!["formal/14-02-03"],
-            "quire.output.ocl24/v1",
+            "filament.output.ocl24/v1",
             "1-draft.1",
             vec![OutputCapability::ImmediateResponse],
         ),
         OutputMappingProfile::new(
             "ocl",
             vec!["formal/14-02-03"],
-            "quire.output.ocl24/v1",
+            "filament.output.ocl24/v1",
             "1-draft.1",
             vec![OutputCapability::Boolean, OutputCapability::Boolean],
         ),
@@ -268,7 +274,7 @@ fn tc_043_request_admission_preserves_exact_ordered_inputs() {
     assert_eq!(admitted.limits(), &limits());
 }
 
-/// Also exercises QSpec NFR-060.
+/// Also exercises FSpec NFR-060.
 #[trace("TC-043", "FR-032-AC-2")]
 #[test]
 fn tc_043_request_admission_refuses_population_and_resource_mutations() {
@@ -500,8 +506,8 @@ fn tc_043_request_equality_is_semantic_and_ambient_free() {
 
 fn condition(code: &str) -> MappingCondition {
     MappingCondition::new(
-        "agent-ix/quire-specification",
-        "quire.output.ocl24/v1",
+        "agent-ix/filament-specification",
+        "filament.output.ocl24/v1",
         "1-draft.1",
         code,
     )
@@ -510,8 +516,8 @@ fn condition(code: &str) -> MappingCondition {
 
 fn cause(code: &str) -> MappingCause {
     MappingCause::new(
-        "agent-ix/quire-specification",
-        "quire.output.mapping/v1",
+        "agent-ix/filament-specification",
+        "filament.output.mapping/v1",
         "1-draft.1",
         code,
     )
@@ -551,8 +557,8 @@ fn candidate(
         causes,
         Some(
             ObservationAdequacyRef::new(
-                "agent-ix/quire-observation",
-                "quire.observation.result/v1",
+                "agent-ix/filament-observation",
+                "filament.observation.result/v1",
                 "rev-observation",
                 ObservationAdequacyState::Adequate,
             )
@@ -560,8 +566,8 @@ fn candidate(
         ),
         Some(
             ProtocolAdequacyRef::new(
-                "agent-ix/quire-protocol",
-                "quire.protocol.result/v1",
+                "agent-ix/filament-protocol",
+                "filament.protocol.result/v1",
                 "rev-protocol",
                 ProtocolAdequacyState::Demonstrated,
             )
@@ -688,7 +694,7 @@ fn tc_043_mapping_candidate_invariants_are_closed_and_non_boolean() {
     assert!(invalid.into_iter().all(|result| result.is_err()));
 }
 
-/// Also exercises QSpec NFR-060.
+/// Also exercises FSpec NFR-060.
 #[trace("TC-043", "FR-033-AC-2", "FR-033-AC-4")]
 #[test]
 fn tc_043_candidate_regions_dependencies_and_work_fail_closed() {
@@ -811,7 +817,7 @@ impl OutputMapper for OperationalFailureMapper {
 fn mapped_record(
     request: &AdmittedMappingRequest,
     candidate: MappingCandidate,
-) -> quire_contract_model::OutputMappingRecord {
+) -> filament_contract_model::OutputMappingRecord {
     let mut mapper = FixedMapper {
         profile: request.profile().clone(),
         candidate,
@@ -986,8 +992,8 @@ fn tc_043_record_content_retains_each_semantic_axis() {
         vec![],
         Some(
             ObservationAdequacyRef::new(
-                "agent-ix/quire-observation",
-                "quire.observation.result/v1",
+                "agent-ix/filament-observation",
+                "filament.observation.result/v1",
                 "rev-observation",
                 ObservationAdequacyState::Unknown,
             )
@@ -1011,8 +1017,8 @@ fn tc_043_record_content_retains_each_semantic_axis() {
         None,
         Some(
             ProtocolAdequacyRef::new(
-                "agent-ix/quire-protocol",
-                "quire.protocol.result/v1",
+                "agent-ix/filament-protocol",
+                "filament.protocol.result/v1",
                 "rev-protocol",
                 ProtocolAdequacyState::Unknown,
             )
@@ -1063,7 +1069,7 @@ fn tc_043_record_content_retains_each_semantic_axis() {
     let sysml_profile = OutputMappingProfile::new(
         "sysml-kerml",
         vec!["formal/26-03-02", "formal/26-03-01"],
-        "quire.output.sysml2-kerml1/v1",
+        "filament.output.sysml2-kerml1/v1",
         "1-draft.1",
         vec![OutputCapability::Boolean],
     )
@@ -1240,7 +1246,7 @@ fn tc_043_mapper_dispatch_is_ordered_complete_and_identity_bearing() {
     assert_eq!(mapped.records()[0].protocol_adequacy(), None);
 }
 
-/// Also exercises QSpec NFR-060.
+/// Also exercises FSpec NFR-060.
 #[trace("TC-043", "FR-033-AC-1", "FR-033-AC-4")]
 #[test]
 fn tc_043_mapper_mismatch_cross_wiring_and_exhaustion_refuse_atomically() {
@@ -1251,7 +1257,7 @@ fn tc_043_mapper_mismatch_cross_wiring_and_exhaustion_refuse_atomically() {
     let sysml = OutputMappingProfile::new(
         "sysml-kerml",
         vec!["formal/26-03-02", "formal/26-03-01"],
-        "quire.output.sysml2-kerml1/v1",
+        "filament.output.sysml2-kerml1/v1",
         "1-draft.1",
         vec![OutputCapability::Boolean],
     )
@@ -1354,7 +1360,7 @@ fn tc_043_mapper_mismatch_cross_wiring_and_exhaustion_refuse_atomically() {
     assert!(cancelled.seen.is_empty());
 }
 
-/// Also exercises QSpec NFR-060.
+/// Also exercises FSpec NFR-060.
 #[trace("TC-043", "FR-033-AC-4", "FR-034-AC-3")]
 #[test]
 fn tc_043_mapping_aggregates_accept_exact_and_refuse_just_over_bounds() {
@@ -1416,13 +1422,13 @@ fn tc_043_mapping_aggregates_accept_exact_and_refuse_just_over_bounds() {
 }
 
 fn generator() -> OutputGeneratorIdentity {
-    OutputGeneratorIdentity::new("agent-ix/quire-contract-ir").expect("Rust generator identity")
+    OutputGeneratorIdentity::new("agent-ix/filament-contract-ir").expect("Rust generator identity")
 }
 
 fn mapped(
     package: &BoundPackage,
     limits: MappingLimits,
-) -> quire_contract_model::CompletedMappings {
+) -> filament_contract_model::CompletedMappings {
     let request = admit(package, requested(package), ocl_profile(), limits)
         .expect("admitted mapping request");
     let mut mapper = DeterministicMapper::new(ocl_profile());
@@ -1469,7 +1475,7 @@ fn tc_043_common_assembly_accepts_each_exact_profile_without_claiming_target_sem
         OutputMappingProfile::new(
             "sysml-kerml",
             vec!["formal/26-03-02", "formal/26-03-01"],
-            "quire.output.sysml2-kerml1/v1",
+            "filament.output.sysml2-kerml1/v1",
             "1-draft.1",
             vec![OutputCapability::Boolean],
         )
@@ -1477,7 +1483,7 @@ fn tc_043_common_assembly_accepts_each_exact_profile_without_claiming_target_sem
         OutputMappingProfile::new(
             "fretish",
             vec!["v3.1.0"],
-            "quire.output.fretish31/v1",
+            "filament.output.fretish31/v1",
             "1-draft.1",
             vec![OutputCapability::Boolean],
         )
@@ -1520,7 +1526,7 @@ fn tc_043_package_content_retains_target_generator_source_profile_records_and_li
     let changed_profile = OutputMappingProfile::new(
         "ocl",
         vec!["formal/14-02-03"],
-        "quire.output.ocl24/v1",
+        "filament.output.ocl24/v1",
         "1-draft.1",
         vec![OutputCapability::Boolean],
     )
@@ -1622,7 +1628,7 @@ fn tc_043_package_content_retains_target_generator_source_profile_records_and_li
     );
 }
 
-/// Also exercises QSpec NFR-060.
+/// Also exercises FSpec NFR-060.
 #[trace("TC-043", "FR-034-AC-2", "FR-034-AC-3")]
 #[test]
 fn tc_043_cancellation_and_allocation_failures_expose_no_package() {
@@ -1723,7 +1729,7 @@ fn observer() -> StructuralObserverIdentity {
     StructuralObserverIdentity::new("agent-ix/observer").expect("qualified observer")
 }
 
-/// Also exercises QSpec NFR-061.
+/// Also exercises FSpec NFR-061.
 #[trace("TC-043", "FR-034-AC-4", "FR-034-AC-5")]
 #[test]
 fn tc_043_structural_observations_are_downstream_and_package_immutable() {
@@ -1917,7 +1923,7 @@ fn limits_with_request_bytes(maximum_request_bytes: u64) -> MappingLimits {
 fn long_condition_record(
     package: &BoundPackage,
     maximum_request_bytes: u64,
-) -> Result<quire_contract_model::CompletedMappings, MappingRequestError> {
+) -> Result<filament_contract_model::CompletedMappings, MappingRequestError> {
     let request = admit(
         package,
         vec![RequestedMappingObligation::new(
@@ -1966,7 +1972,7 @@ fn tc_043_record_material_is_metered_by_the_request_byte_limit() {
 fn long_generator_package(
     package: &BoundPackage,
     maximum_request_bytes: u64,
-) -> Result<quire_contract_model::GeneratedOutputPackage, MappingRequestError> {
+) -> Result<filament_contract_model::GeneratedOutputPackage, MappingRequestError> {
     let request = admit(
         package,
         requested(package).into_iter().take(1).collect(),
@@ -2084,9 +2090,9 @@ fn tc_043_admitted_request_bytes_are_the_length_of_the_hand_written_request_text
          \"source_package\":{{\"package\":\"{package_id}\",\
          \"schema_version\":{{\"major\":1,\"minor\":1}}}},\
          \"target_profile\":{profile}}}",
-        model = selection("quire.model/v1", "rev-model"),
-        native = selection("quire.native/v1", "rev-native"),
-        semantic = selection("quire.semantic/v1", "rev-semantic"),
+        model = selection("filament.model/v1", "rev-model"),
+        native = selection("filament.native/v1", "rev-native"),
+        semantic = selection("filament.semantic/v1", "rev-semantic"),
         obligations = obligation_texts.join(","),
         package_id = package.package().id().as_str(),
         profile = expected_ocl_profile(),
@@ -2099,7 +2105,7 @@ fn tc_043_admitted_request_bytes_are_the_length_of_the_hand_written_request_text
 }
 
 fn expected_ocl_profile() -> String {
-    "{\"mapping_profile_id\":\"quire.output.ocl24/v1\",\
+    "{\"mapping_profile_id\":\"filament.output.ocl24/v1\",\
          \"mapping_revision\":\"1-draft.1\",\
          \"required_capabilities\":[\"boolean\",\"bounded-integer\"],\
          \"target_family\":\"ocl\",\"target_standard_refs\":[\"formal/14-02-03\"]}"
@@ -2140,7 +2146,10 @@ fn tc_043_record_and_package_expose_typed_content_without_digest_ids() {
     assert_eq!(assembled.target_bytes(), b"x");
     assert_eq!(assembled.records(), completed.records());
     assert_eq!(assembled.source_package().package(), package.package().id());
-    assert_eq!(assembled.generator().owner(), "agent-ix/quire-contract-ir");
+    assert_eq!(
+        assembled.generator().owner(),
+        "agent-ix/filament-contract-ir"
+    );
     let record_value = serde_json::to_value(record).expect("record value");
     let package_value = serde_json::to_value(&assembled).expect("package value");
     for value in [record_value, package_value] {

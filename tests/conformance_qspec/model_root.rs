@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Agent-IX
 
-//! Model-root structural keys against QSpec's authoritative published vector.
+//! Model-root structural keys against FSpec's authoritative published vector.
 
 use super::{code_word, fixtures_dir, proposal_dir_of, read_json, read_json_wire, read_package};
+use filament_contract_model::CheckedPackageV2ReadResult;
 use ix_trace_rs::trace;
-use quire_contract_model::CheckedPackageV2ReadResult;
 use serde_json::json;
 use std::collections::BTreeSet;
 
@@ -16,7 +16,7 @@ use super::qspec_inputs::apply_vector_patch;
 #[test]
 fn published_model_root_vectors_reach_the_reader_stage_and_locus() {
     let vectors = read_json(&proposal_dir_of(&fixtures_dir()).join("model-root-vectors.json"))
-        .expect("QSpec model-root vectors");
+        .expect("FSpec model-root vectors");
     assert_eq!(vectors["base"], "fixtures/positive-all-families.json");
     let base =
         read_json_wire(&fixtures_dir().join("positive-all-families.json")).expect("published base");

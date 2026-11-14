@@ -7,8 +7,7 @@ use crate::support::checked_package::{
     bounds_body, canonical, evidence_for, family_key, node_id, refresh_identity, settle,
     source_key, v2_all_families,
 };
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     BoundedDomainForm, CheckedJson, CheckedNodeId, CheckedNodeTag, CheckedOccurrenceRole,
     CheckedPackageReadLimits, CheckedPackageRefusalCause, CheckedPackageRefusalCode,
     CheckedPackageV2, CheckedPackageV2ReadResult, CompleteLoweringProfileV2, ContractDependencies,
@@ -16,9 +15,10 @@ use quire_contract_model::{
     ContractPackageWireV1, ContractResultContextV1, ContractResultViewV1, ContractRootViewError,
     LoweringProfileRef,
 };
+use ix_trace_rs::trace;
 use serde_json::{json, Value};
 
-fn body_at(term: &quire_contract_model::CheckedTerm, path: &str) -> Option<Value> {
+fn body_at(term: &filament_contract_model::CheckedTerm, path: &str) -> Option<Value> {
     serde_json::to_value(term).ok()?.pointer(path).cloned()
 }
 
@@ -33,7 +33,7 @@ fn provisional(letter: char) -> String {
 fn node(digest: &str, tag: &str, form: &str, ty: &str, body: Value) -> Value {
     json!({
         "node_id": node_id(digest),
-        "schema_version": "quire.checked-semantic-graph/v2",
+        "schema_version": "filament.checked-semantic-graph/v2",
         "node_tag": tag,
         "semantic_form": form,
         "semantic_type": node_id(ty),
@@ -58,9 +58,9 @@ fn expression_ref(digest: &str) -> Value {
     json!({"term": "reference", "target": node_id(digest)})
 }
 
-/// Builds test-authored integer intervals matching FR-049's QSL declaration.
+/// Builds test-authored integer intervals matching FR-049's FSL declaration.
 /// This is an IR reader fixture; the named producer lane separately checks
-/// the source-to-wire correspondence with QSL's current compiler.
+/// the source-to-wire correspondence with FSL's current compiler.
 pub(crate) fn fixture() -> Value {
     let mut value = v2_all_families();
     let integer = family_key("a3a3");
@@ -106,7 +106,7 @@ pub(crate) fn fixture() -> Value {
         &integer,
         application(
             "binary",
-            operation("quire.op.integer.add", Value::Null),
+            operation("filament.op.integer.add", Value::Null),
             &integer,
             vec![
                 expression_ref(&parameter),
@@ -123,7 +123,7 @@ pub(crate) fn fixture() -> Value {
         application(
             "convert",
             operation(
-                "quire.op.numeric.narrow",
+                "filament.op.numeric.narrow",
                 json!({"kind": "type_argument", "declaration": node_id(&result_bound)}),
             ),
             &result_bound,
@@ -146,7 +146,7 @@ fn tc_048_numeric_narrow_result_equals_type_argument() {
         .as_array()
         .expect("nodes")
         .iter()
-        .position(|node| node["body"]["operation"]["identity"] == "quire.op.numeric.narrow")
+        .position(|node| node["body"]["operation"]["identity"] == "filament.op.numeric.narrow")
         .expect("narrow");
     admit(&wire);
     let integer = family_key("a3a3");
@@ -193,7 +193,7 @@ pub(crate) fn admit(value: &Value) -> CheckedPackageV2 {
 pub(crate) fn profile() -> CompleteLoweringProfileV2 {
     CompleteLoweringProfileV2 {
         reference: LoweringProfileRef {
-            authority: "quire".into(),
+            authority: "filament".into(),
             identity: "result-context".into(),
         },
         required_source_selections: Vec::new(),
@@ -230,7 +230,7 @@ pub(crate) fn package_with_profile(
 pub(crate) fn sources_for<'a>(
     package: &'a ContractPackageV1,
     key: &CheckedNodeId,
-) -> &'a [quire_contract_model::CheckedSourceMapEntry] {
+) -> &'a [filament_contract_model::CheckedSourceMapEntry] {
     package
         .source_occurrences(key)
         .expect("admitted source-map node")
@@ -266,8 +266,8 @@ pub(crate) fn by_operation(package: &CheckedPackageV2, identity: &str) -> Contra
 #[test]
 fn tc_447_context_root_selects_authored_result_interval_without_rewriting_forward_closure() {
     let input = admit(&fixture());
-    let add = by_operation(&input, "quire.op.integer.add");
-    let narrow = by_operation(&input, "quire.op.numeric.narrow");
+    let add = by_operation(&input, "filament.op.integer.add");
+    let narrow = by_operation(&input, "filament.op.numeric.narrow");
     let plain = package(&input, std::slice::from_ref(&add.node_id));
     let contextual = package(&input, &[add.node_id.clone(), narrow.node_id.clone()]);
     let first_source = contextual
@@ -384,8 +384,8 @@ fn tc_447_context_root_selects_authored_result_interval_without_rewriting_forwar
 #[test]
 fn tc_447_none_and_invalid_occurrences_have_distinct_typed_outcomes() {
     let input = admit(&fixture());
-    let add = by_operation(&input, "quire.op.integer.add");
-    let narrow = by_operation(&input, "quire.op.numeric.narrow");
+    let add = by_operation(&input, "filament.op.integer.add");
+    let narrow = by_operation(&input, "filament.op.numeric.narrow");
     let contextual = package(&input, &[add.node_id.clone(), narrow.node_id.clone()]);
     let query = |application: &ContractOccurrenceKeyV1,
                  conversion: Option<&ContractOccurrenceKeyV1>,
@@ -401,7 +401,7 @@ fn tc_447_none_and_invalid_occurrences_have_distinct_typed_outcomes() {
     assert_eq!(
         query(&add, None, BoundedDomainForm::IntegerRange),
         ContractResultContextV1::Unnarrowed,
-        "a represented narrow belonging to another item cannot alter QSL None"
+        "a represented narrow belonging to another item cannot alter FSL None"
     );
     assert!(matches!(
         query(&add, Some(&narrow), BoundedDomainForm::RationalRange),
@@ -523,7 +523,7 @@ fn tc_447_represented_wrong_conversion_shapes_refuse_without_a_bound() {
     let nodes = wire["semantic_graph"]["nodes"].as_array().expect("nodes");
     let add_key = nodes
         .iter()
-        .find(|node| node["body"]["operation"]["identity"] == "quire.op.integer.add")
+        .find(|node| node["body"]["operation"]["identity"] == "filament.op.integer.add")
         .expect("add")["node_id"]["path"][0]
         .as_str()
         .expect("add key")
@@ -540,7 +540,7 @@ fn tc_447_represented_wrong_conversion_shapes_refuse_without_a_bound() {
         .to_owned();
     let result_bound = nodes
         .iter()
-        .find(|node| node["body"]["operation"]["identity"] == "quire.op.numeric.narrow")
+        .find(|node| node["body"]["operation"]["identity"] == "filament.op.numeric.narrow")
         .expect("narrow")["semantic_type"]["path"][0]
         .as_str()
         .expect("result key")
@@ -562,7 +562,7 @@ fn tc_447_represented_wrong_conversion_shapes_refuse_without_a_bound() {
         &integer,
         application(
             "binary",
-            operation("quire.op.integer.add", Value::Null),
+            operation("filament.op.integer.add", Value::Null),
             &integer,
             vec![
                 expression_ref(&parameter_key),
@@ -579,7 +579,7 @@ fn tc_447_represented_wrong_conversion_shapes_refuse_without_a_bound() {
         application(
             "convert",
             operation(
-                "quire.op.numeric.narrow",
+                "filament.op.numeric.narrow",
                 json!({"kind": "type_argument", "declaration": node_id(&result_bound)}),
             ),
             &result_bound,
@@ -594,7 +594,7 @@ fn tc_447_represented_wrong_conversion_shapes_refuse_without_a_bound() {
         application(
             "convert",
             operation(
-                "quire.op.numeric.convert",
+                "filament.op.numeric.convert",
                 json!({"kind": "type_argument", "declaration": node_id(&rational)}),
             ),
             &rational,
@@ -613,7 +613,7 @@ fn tc_447_represented_wrong_conversion_shapes_refuse_without_a_bound() {
         .nodes
         .iter()
         .find(|node| {
-            body_at(&node.body, "/operation/identity") == Some(json!("quire.op.integer.add"))
+            body_at(&node.body, "/operation/identity") == Some(json!("filament.op.integer.add"))
                 && body_at(&node.body, "/arguments/1/value") == Some(json!("1"))
         })
         .expect("original add");
@@ -622,7 +622,7 @@ fn tc_447_represented_wrong_conversion_shapes_refuse_without_a_bound() {
         .nodes
         .iter()
         .find(|node| {
-            body_at(&node.body, "/operation/identity") == Some(json!("quire.op.integer.add"))
+            body_at(&node.body, "/operation/identity") == Some(json!("filament.op.integer.add"))
                 && body_at(&node.body, "/arguments/1/value") == Some(json!("2"))
         })
         .expect("other add");
@@ -631,7 +631,7 @@ fn tc_447_represented_wrong_conversion_shapes_refuse_without_a_bound() {
         .nodes
         .iter()
         .find(|node| {
-            body_at(&node.body, "/operation/identity") == Some(json!("quire.op.numeric.narrow"))
+            body_at(&node.body, "/operation/identity") == Some(json!("filament.op.numeric.narrow"))
                 && body_at(&node.body, "/arguments/0/target")
                     == Some(serde_json::to_value(&other_add.node_id).expect("typed key"))
         })
@@ -641,14 +641,15 @@ fn tc_447_represented_wrong_conversion_shapes_refuse_without_a_bound() {
         .nodes
         .iter()
         .find(|node| {
-            body_at(&node.body, "/operation/identity") == Some(json!("quire.op.numeric.convert"))
+            body_at(&node.body, "/operation/identity") == Some(json!("filament.op.numeric.convert"))
         })
         .expect("represented wrong operation");
-    let occurrence = |node: &quire_contract_model::CheckedSemanticNodeV2| ContractOccurrenceKeyV1 {
-        node_id: node.node_id.clone(),
-        role: CheckedOccurrenceRole::Expression,
-        ordinal: 0,
-    };
+    let occurrence =
+        |node: &filament_contract_model::CheckedSemanticNodeV2| ContractOccurrenceKeyV1 {
+            node_id: node.node_id.clone(),
+            role: CheckedOccurrenceRole::Expression,
+            ordinal: 0,
+        };
     let requested = occurrence(add);
     let emitted = package(
         &input,
@@ -700,8 +701,8 @@ fn tc_447_represented_wrong_conversion_shapes_refuse_without_a_bound() {
 #[test]
 fn tc_447_exhausted_lowering_and_post_admission_edge_return_no_partial_context() {
     let input = admit(&fixture());
-    let add = by_operation(&input, "quire.op.integer.add");
-    let narrow = by_operation(&input, "quire.op.numeric.narrow");
+    let add = by_operation(&input, "filament.op.integer.add");
+    let narrow = by_operation(&input, "filament.op.numeric.narrow");
 
     let mut exhausted_profile = profile();
     exhausted_profile.work_limit = 0;
@@ -775,7 +776,7 @@ fn tc_447_direct_bounded_expression_keeps_own_result_until_its_narrow_is_selecte
         .as_array()
         .expect("nodes")
         .iter()
-        .find(|node| node["body"]["operation"]["identity"] == "quire.op.numeric.narrow")
+        .find(|node| node["body"]["operation"]["identity"] == "filament.op.numeric.narrow")
         .expect("authored result narrow")["semantic_type"]["path"][0]
         .as_str()
         .expect("result bound key")
@@ -788,7 +789,7 @@ fn tc_447_direct_bounded_expression_keeps_own_result_until_its_narrow_is_selecte
         &input_bound,
         application(
             "binary",
-            operation("quire.op.integer.add", Value::Null),
+            operation("filament.op.integer.add", Value::Null),
             &input_bound,
             vec![
                 expression_ref(&parameter_key),
@@ -805,7 +806,7 @@ fn tc_447_direct_bounded_expression_keeps_own_result_until_its_narrow_is_selecte
         application(
             "convert",
             operation(
-                "quire.op.numeric.narrow",
+                "filament.op.numeric.narrow",
                 json!({"kind": "type_argument", "declaration": node_id(&result_bound)}),
             ),
             &result_bound,
@@ -836,7 +837,7 @@ fn tc_447_direct_bounded_expression_keeps_own_result_until_its_narrow_is_selecte
         .nodes
         .iter()
         .find(|node| {
-            body_at(&node.body, "/operation/identity") == Some(json!("quire.op.numeric.narrow"))
+            body_at(&node.body, "/operation/identity") == Some(json!("filament.op.numeric.narrow"))
                 && body_at(&node.body, "/arguments/0/target")
                     == Some(serde_json::to_value(&expression.node_id).expect("typed key"))
         })
@@ -872,7 +873,7 @@ fn tc_447_direct_bounded_expression_keeps_own_result_until_its_narrow_is_selecte
     let ContractResultContextV1::DirectBounded { bound } =
         outcome(None, BoundedDomainForm::IntegerRange)
     else {
-        panic!("QSL None selects the expression's own bound");
+        panic!("FSL None selects the expression's own bound");
     };
     assert_eq!(
         bound.node.node_id,
@@ -887,7 +888,7 @@ fn tc_447_direct_bounded_expression_keeps_own_result_until_its_narrow_is_selecte
     let ContractResultContextV1::Narrowed { bound, .. } =
         outcome(Some(&conversion), BoundedDomainForm::IntegerRange)
     else {
-        panic!("QSL Some selects the direct narrow even over an own-bounded expression");
+        panic!("FSL Some selects the direct narrow even over an own-bounded expression");
     };
     assert_eq!(
         bound.node.node_id,
@@ -904,7 +905,7 @@ fn tc_447_shared_expression_uses_each_supplied_occurrence_and_direct_narrow() {
         .as_array()
         .expect("nodes")
         .iter()
-        .find(|node| node["body"]["operation"]["identity"] == "quire.op.integer.add")
+        .find(|node| node["body"]["operation"]["identity"] == "filament.op.integer.add")
         .expect("add")["node_id"]["path"][0]
         .as_str()
         .expect("add digest")
@@ -918,7 +919,7 @@ fn tc_447_shared_expression_uses_each_supplied_occurrence_and_direct_narrow() {
         application(
             "convert",
             operation(
-                "quire.op.numeric.narrow",
+                "filament.op.numeric.narrow",
                 json!({"kind": "type_argument", "declaration": node_id(&other_bound)}),
             ),
             &other_bound,
@@ -931,7 +932,7 @@ fn tc_447_shared_expression_uses_each_supplied_occurrence_and_direct_narrow() {
         .push(other);
     settle(&mut wire);
 
-    // One semantic add key has two QSL-like application occurrences. Their
+    // One semantic add key has two FSL-like application occurrences. Their
     // distinct ordinals belong to the caller's checked per-item association.
     let add_id = node_id(&add_key);
     let nodes = wire["semantic_graph"]["nodes"]
@@ -956,7 +957,7 @@ fn tc_447_shared_expression_uses_each_supplied_occurrence_and_direct_narrow() {
     refresh_identity(&mut wire);
 
     let input = admit(&wire);
-    let add = by_operation(&input, "quire.op.integer.add");
+    let add = by_operation(&input, "filament.op.integer.add");
     let narrows = input
         .graph()
         .nodes
@@ -965,17 +966,18 @@ fn tc_447_shared_expression_uses_each_supplied_occurrence_and_direct_narrow() {
             body_at(&node.body, "/operation/identity")
                 .as_ref()
                 .and_then(Value::as_str)
-                == Some("quire.op.numeric.narrow")
+                == Some("filament.op.numeric.narrow")
         })
         .collect::<Vec<_>>();
     let [first, second] = narrows.as_slice() else {
         panic!("two represented direct narrows");
     };
-    let selected = |node: &quire_contract_model::CheckedSemanticNodeV2| ContractOccurrenceKeyV1 {
-        node_id: node.node_id.clone(),
-        role: CheckedOccurrenceRole::Expression,
-        ordinal: 0,
-    };
+    let selected =
+        |node: &filament_contract_model::CheckedSemanticNodeV2| ContractOccurrenceKeyV1 {
+            node_id: node.node_id.clone(),
+            role: CheckedOccurrenceRole::Expression,
+            ordinal: 0,
+        };
     let first = selected(first);
     let second = selected(second);
     let combined = package(
@@ -1047,9 +1049,9 @@ fn scalar_and_result_views_and_work_boundaries_hold_on_the_admitted_fixture() {
     let wire = fixture();
     let bytes = canonical(&wire);
     let checked = admit(&wire);
-    let add = by_operation(&checked, "quire.op.integer.add");
-    let narrow = by_operation(&checked, "quire.op.numeric.narrow");
-    let occurrence = quire_contract_model::CheckedOccurrence {
+    let add = by_operation(&checked, "filament.op.integer.add");
+    let narrow = by_operation(&checked, "filament.op.numeric.narrow");
+    let occurrence = filament_contract_model::CheckedOccurrence {
         role: CheckedOccurrenceRole::Expression,
         ordinal: 0,
     };
@@ -1061,7 +1063,7 @@ fn scalar_and_result_views_and_work_boundaries_hold_on_the_admitted_fixture() {
     assert_eq!(parameter.ordinal, 0);
     assert_eq!(
         parameter.range,
-        quire_contract_model::CheckedScalarOperandRange { lower: 0, upper: 9 }
+        filament_contract_model::CheckedScalarOperandRange { lower: 0, upper: 9 }
     );
     let parameter_key: CheckedNodeId = serde_json::from_value(
         wire["semantic_graph"]["nodes"]
@@ -1077,16 +1079,16 @@ fn scalar_and_result_views_and_work_boundaries_hold_on_the_admitted_fixture() {
     .expect("parameter key");
     assert_eq!(
         parameter.child,
-        quire_contract_model::CheckedScalarOperandChild::GraphChild(parameter_key)
+        filament_contract_model::CheckedScalarOperandChild::GraphChild(parameter_key)
     );
     assert_eq!(literal.ordinal, 1);
     assert_eq!(
         literal.range,
-        quire_contract_model::CheckedScalarOperandRange { lower: 1, upper: 1 }
+        filament_contract_model::CheckedScalarOperandRange { lower: 1, upper: 1 }
     );
     assert_eq!(
         literal.child,
-        quire_contract_model::CheckedScalarOperandChild::InlineLiteral {
+        filament_contract_model::CheckedScalarOperandChild::InlineLiteral {
             application: add.node_id.clone(),
             occurrence: occurrence.clone(),
             ordinal: 1
@@ -1097,9 +1099,9 @@ fn scalar_and_result_views_and_work_boundaries_hold_on_the_admitted_fixture() {
     let missing_scalar = checked.scalar_application_operands(&missing, &occurrence);
     assert_eq!(
         missing_scalar,
-        Err(quire_contract_model::CheckedScalarOperandError::UnknownNode)
+        Err(filament_contract_model::CheckedScalarOperandError::UnknownNode)
     );
-    let authored_sources: Vec<quire_contract_model::CheckedSourceMapEntry> =
+    let authored_sources: Vec<filament_contract_model::CheckedSourceMapEntry> =
         serde_json::from_value(wire["source_map"].clone()).expect("authored sources");
     assert_eq!(checked.source_map(), authored_sources);
     let evidence = evidence_for(&wire);

@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Agent-IX
 
-//! TC-935 source-selection vectors from the authoritative QSpec checkout.
+//! TC-935 source-selection vectors from the authoritative FSpec checkout.
 
 use crate::fixture_support as checked_package;
 use checked_package::{canonical, evidence_for, v2_nominal};
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     CheckedNodeId, CheckedNodeTag, CheckedPackageLimit, CheckedPackageReadLimits, CheckedPackageV2,
     CheckedPackageV2ReadResult, CompleteLoweringProfileV2, CompleteLoweringRecordV2,
 };
+use ix_trace_rs::trace;
 use serde_json::{json, Value};
 
 const SELECTION_VECTORS: &str = "contract-package-selection-vectors.json";
@@ -19,7 +19,7 @@ fn vectors() -> Value {
     let value = super::read_json(&path).unwrap_or_else(|why| panic!("{why}"));
     assert_eq!(
         value["version"],
-        "quire.contract-package-selection-vectors/v1"
+        "filament.contract-package-selection-vectors/v1"
     );
     assert_eq!(
         value["compatibility_cases"]
@@ -56,8 +56,8 @@ fn rows(vectors: &Value, labels: &Value) -> Vec<Value> {
 
 fn profile(work_limit: u64) -> CompleteLoweringProfileV2 {
     CompleteLoweringProfileV2 {
-        reference: quire_contract_model::LoweringProfileRef {
-            authority: "quire".into(),
+        reference: filament_contract_model::LoweringProfileRef {
+            authority: "filament".into(),
             identity: "complete-v1".into(),
         },
         required_source_selections: Vec::new(),
@@ -94,7 +94,7 @@ fn admit(value: &Value) -> CheckedPackageV2 {
     }
 }
 
-fn lowered(record: &CompleteLoweringRecordV2) -> &quire_contract_model::CompleteContractNodeV2 {
+fn lowered(record: &CompleteLoweringRecordV2) -> &filament_contract_model::CompleteContractNodeV2 {
     match record {
         CompleteLoweringRecordV2::Lowered { node } => node,
         other => panic!("expected lowered record, got {other:?}"),
@@ -173,7 +173,7 @@ fn assert_tc_935_failed_work(
     assert_eq!(emitted["package"]["source"]["lock"], source["lock"]);
     assert_eq!(
         emitted["package"]["lowering_profile"],
-        json!({"authority":"quire","identity":"complete-v1"})
+        json!({"authority":"filament","identity":"complete-v1"})
     );
     assert_eq!(
         emitted["feature_accounting"],
@@ -234,7 +234,7 @@ fn tc_935_required_source_rows_match_exactly_without_changing_provenance() {
         assert_eq!(serialized["package"]["source"]["lock"], source["lock"]);
         assert_eq!(
             serialized["package"]["lowering_profile"],
-            json!({"authority":"quire","identity":"complete-v1"})
+            json!({"authority":"filament","identity":"complete-v1"})
         );
         assert!(serialized.get("required_source_selections").is_none());
         assert_eq!(wire.wire().feature_accounting.len(), 2);
@@ -592,7 +592,7 @@ fn dependency_read(
     wire: &Value,
     dependencies: &[(&str, &CheckedPackageV2)],
 ) -> Result<CheckedPackageV2ReadResult, String> {
-    let mut evidence = quire_contract_model::CheckedPackageEvidence::new();
+    let mut evidence = filament_contract_model::CheckedPackageEvidence::new();
     for feature in wire["lock"]["required_features"]
         .as_array()
         .ok_or("missing features")?
@@ -608,7 +608,7 @@ fn dependency_read(
     {
         evidence
             .insert_extension_definition(
-                quire_contract_model::CheckedArtifactRef {
+                filament_contract_model::CheckedArtifactRef {
                     authority: "example".into(),
                     identity: "retention".into(),
                 },

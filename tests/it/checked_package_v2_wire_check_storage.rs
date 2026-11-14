@@ -6,11 +6,11 @@
 //! strict read" names (TC-472).
 
 use crate::support::checked_package::{canonical, evidence_for, v2_all_families};
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     CheckedPackageReadLimits, CheckedPackageV2, CheckedPackageV2BudgetedReadResult,
     NativeJoinBudget, NativeJoinLocus, NativeJoinLocusSource, PackageReadStage,
 };
+use ix_trace_rs::trace;
 
 /// Where a request falls in the read's runtime order, by the stage and form
 /// of its locus. The stage enum is not that order: the interval-bound checks

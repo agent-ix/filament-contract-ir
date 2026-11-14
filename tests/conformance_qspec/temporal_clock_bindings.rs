@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Agent-IX
 
-//! Published STD-621 clock selections, read from the selected QSpec checkout.
+//! Published STD-621 clock selections, read from the selected FSpec checkout.
 
 use super::*;
-use quire_contract_model::ClockConfiguration;
+use filament_contract_model::ClockConfiguration;
 
 fn vectors() -> Value {
     read_json(&proposal_dir_of(&fixtures_dir()).join("temporal-clock-binding-vectors.json"))
@@ -92,7 +92,7 @@ fn apply_occurrence_patch(package: &mut Value, patch: &Value, clause: &Value) {
 }
 
 fn assert_vector_node_locus(
-    refusal: &quire_contract_model::CheckedPackageRefusal,
+    refusal: &filament_contract_model::CheckedPackageRefusal,
     package: &Value,
     group: &str,
     pointer: &str,
@@ -194,7 +194,7 @@ fn published_temporal_occurrence_vectors_bind_exact_read_and_write() {
                         source_map: admitted.source_map(),
                         refinement_step_rows: admitted.refinement_step_rows(),
                     },
-                    quire_contract_model::CheckedPackageSidecarsRef {
+                    filament_contract_model::CheckedPackageSidecarsRef {
                         temporal_clause_names: admitted.temporal_clause_names(),
                         operation_effects: None,
                         operation_bodies: None,
@@ -310,7 +310,7 @@ fn published_temporal_clause_names_admit_and_refuse_at_exact_loci() {
                         source_map: admitted.source_map(),
                         refinement_step_rows: admitted.refinement_step_rows(),
                     },
-                    quire_contract_model::CheckedPackageSidecarsRef {
+                    filament_contract_model::CheckedPackageSidecarsRef {
                         operation_effects: None,
                         operation_bodies: None,
                         checked_term_data: admitted.checked_term_data(),
@@ -586,7 +586,7 @@ fn temporal_sidecar_rows_charge_the_first_unavailable_work_visit() {
         };
         assert_eq!(
             incomplete.limit_kind,
-            quire_contract_model::CheckedPackageLimit::Work,
+            filament_contract_model::CheckedPackageLimit::Work,
             "{member}"
         );
         assert_eq!(
@@ -662,7 +662,7 @@ fn refused(package: &Value, case: &Value) {
     );
 }
 
-/// Trace: QSpec FR-322-AC-294, TC-134, TC-233.
+/// Trace: FSpec FR-322-AC-294, TC-134, TC-233.
 #[trace("TC-134", "TC-233", "FR-322-AC-294")]
 #[test]
 fn temporal_clock_binding_vectors_read_at_their_exact_loci() {
@@ -817,7 +817,7 @@ fn temporal_clock_binding_vectors_read_at_their_exact_loci() {
     }
 }
 
-/// Trace: QSpec FR-322-AC-294, TC-134.
+/// Trace: FSpec FR-322-AC-294, TC-134.
 #[trace("TC-134", "FR-322-AC-294")]
 #[test]
 fn temporal_clock_writer_retains_a_configured_clause_row() {
@@ -833,7 +833,7 @@ fn temporal_clock_writer_retains_a_configured_clause_row() {
             source_map: read.source_map(),
             refinement_step_rows: read.refinement_step_rows(),
         },
-        quire_contract_model::CheckedPackageSidecarsRef {
+        filament_contract_model::CheckedPackageSidecarsRef {
             temporal_clause_names: read.temporal_clause_names(),
             operation_effects: None,
             operation_bodies: None,

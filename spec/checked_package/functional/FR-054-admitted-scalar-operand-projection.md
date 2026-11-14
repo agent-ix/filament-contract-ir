@@ -3,22 +3,22 @@ id: FR-054
 title: "Expose ordered scalar operands from an admitted ContractPackage"
 type: FR
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/StR-001
+  - target: ix://agent-ix/filament-contract-ir/StR-001
     type: traces_to
-  - target: ix://agent-ix/quire-contract-ir/FR-035
+  - target: ix://agent-ix/filament-contract-ir/FR-035
     type: depends_on
-  - target: ix://agent-ix/quire-contract-ir/FR-038
+  - target: ix://agent-ix/filament-contract-ir/FR-038
     type: references
-  - target: ix://agent-ix/quire-contract-ir/FR-049
+  - target: ix://agent-ix/filament-contract-ir/FR-049
     type: references
-  - target: ix://agent-ix/quire-specification/FR-330
+  - target: ix://agent-ix/filament-specification/FR-330
     type: references
 ---
 # FR-054: Expose ordered scalar operands from an admitted ContractPackage
 
 ## Description
 
-When a consumer supplies one exact QSL-checked application occurrence for a
+When a consumer supplies one exact FSL-checked application occurrence for a
 scalar integer expression, Contract IR SHALL project its operands from the
 reader-admitted five-member `ContractPackageV1`. The projection SHALL retain the
 authored `body.arguments` order, including repeated references, and distinguish
@@ -31,7 +31,7 @@ The caller supplies a typed application node key and its exact
 `ContractOccurrenceKeyV1` (node key, `expression` role and ordinal). The
 admitted source map proves that occurrence's correspondence to the represented
 node. As with FR-049, a different valid represented occurrence of the same
-node can pass IR's structural check; the QSL checked request and faithful
+node can pass IR's structural check; the FSL checked request and faithful
 driver mapping establish which occurrence belongs to the routed item. This
 query does not establish a unique original expression by itself.
 
@@ -102,7 +102,7 @@ lowering product, checked-graph fallback or compatibility alias is introduced.
 ## Dependencies
 
 FR-035 owns lowering and request disposition. FR-038 owns strict checked-package
-and body admission. FR-049 owns independent result-context selection. QSpec
-FR-330 owns the five-member package wire and source correspondence. QSL owns
+and body admission. FR-049 owns independent result-context selection. FSpec
+FR-330 owns the five-member package wire and source correspondence. FSL owns
 the checked requirement occurrence supplied by the driver. CG owns generation
 interval choice and scalar replay settlement.

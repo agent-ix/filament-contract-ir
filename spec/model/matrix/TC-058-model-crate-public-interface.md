@@ -3,15 +3,15 @@ id: TC-058
 title: "The model crate's public interface is exactly FR-019's list, re-exported by name"
 type: TC
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/FR-019
+  - target: ix://agent-ix/filament-contract-ir/FR-019
     type: verifies
-  - target: ix://agent-ix/quire-contract-ir/FR-019-AC-22
+  - target: ix://agent-ix/filament-contract-ir/FR-019-AC-22
     type: verifies
-  - target: ix://agent-ix/quire-contract-ir/FR-019-AC-24
+  - target: ix://agent-ix/filament-contract-ir/FR-019-AC-24
     type: verifies
-  - target: ix://agent-ix/quire-contract-ir/FR-046
+  - target: ix://agent-ix/filament-contract-ir/FR-046
     type: references
-  - target: ix://agent-ix/quire-contract-ir/FR-048
+  - target: ix://agent-ix/filament-contract-ir/FR-048
     type: references
 ---
 # TC-058: The model crate's public interface is exactly FR-019's list, re-exported by name
@@ -19,24 +19,24 @@ relationships:
 
 ## Description
 
-Verify FR-019-AC-5: the `quire_contract_model` crate root re-exports its
+Verify FR-019-AC-5: the `filament_contract_model` crate root re-exports its
 public items by name with no glob re-export, its default-feature public items
 equal FR-019's implemented Public items table entries at the tested revision,
 and none of those items is reachable
-through a `quire_contract_ir` path.
+through a `filament_contract_ir` path.
 
 ## Test Procedure
 
-Read `crates/quire-contract-model/src/lib.rs` and fail on any `pub use` whose
-path ends in `*`. Inventory every public item the `quire_contract_model` crate
+Read `crates/filament-contract-model/src/lib.rs` and fail on any `pub use` whose
+path ends in `*`. Inventory every public item the `filament_contract_model` crate
 root exports in a default-feature build, grouped by defining module, and
 compare the set with FR-019's implemented Public items table entries, excluding
 entries explicitly marked planned until their owning code lands. Fail if a
 planned item is exported before its row is marked implemented. Build the same inventory
 with the `fault-injection` feature and confirm the only added item is
 `MappingAllocationPoint`. Compile one probe that names a table item through
-`quire_contract_model` and expect it to build, and one that names the same
-item through `quire_contract_ir` and expect it to fail. The member sets of the
+`filament_contract_model` and expect it to build, and one that names the same
+item through `filament_contract_ir` and expect it to fail. The member sets of the
 FR-038 artifact references are FR-019-AC-6's, verified under TC-018 (struct
 literals naming exactly each reference's members, and a `CheckedRevision`
 probe), not here.
@@ -45,8 +45,8 @@ probe), not here.
 
 `lib.rs` has no glob re-export. The default-feature inventory equals the table's
 implemented entries with no extra or missing item, and the `fault-injection` inventory adds
-`MappingAllocationPoint` alone. The `quire_contract_model` probe builds and
-the `quire_contract_ir` probe fails to compile.
+`MappingAllocationPoint` alone. The `filament_contract_model` probe builds and
+the `filament_contract_ir` probe fails to compile.
 
 ## Typed operation fixture feature consumer
 
@@ -56,8 +56,8 @@ build must reject imports of `CheckedApplicationOperationFixture` and
 `CheckedApplicationOperationFixtureError` and calls to
 `CheckedApplicationOperation::{from_test_fixture,is_test_fixture}`. The
 feature build must import those two fixture types through
-`quire_contract_model`, call the constructor and typed accessors, and fail an
-import through `quire_contract_ir`. Inventory the feature-only exports and
+`filament_contract_model`, call the constructor and typed accessors, and fail an
+import through `filament_contract_ir`. Inventory the feature-only exports and
 confirm the default inventory remains exact, `fault-injection` alone still
 adds only `MappingAllocationPoint`, and both features add the union of their
 independent exports.
@@ -74,7 +74,7 @@ including intentional absence. Assert `is_test_fixture` remains true when
 all optional inputs are absent and false for direct-serde and actual
 reader-admitted operations. Refuse empty present identity, empty present mode
 value, a law definition with empty authority or identity, and present member
-keys with an empty package, empty path, ordinal outside QSpec FR-322's range
+keys with an empty package, empty path, ordinal outside FSpec FR-322's range
 or a malformed or out-of-range operand index segment with a typed error and
 no operation. Accept
 foreign and conflicting nonempty law identities
@@ -112,10 +112,10 @@ strict reader returns an admitted `CheckedPackageV2`.
 ## Nominal body public boundary (FR-038-AC-374, FR-038-AC-375)
 
 PLANNED/UNRUN (IR-1141). The default-feature consumer imports `NominalBody`
-and its four fallible constructors from `quire_contract_model`. Compile-fail
+and its four fallible constructors from `filament_contract_model`. Compile-fail
 probes reject construction of a raw nominal
 variant, mutation of an opaque body, unchecked conversion and direct
-deserialization into `NominalBody`; the root `quire_contract_ir` crate does not
+deserialization into `NominalBody`; the root `filament_contract_ir` crate does not
 export it. Re-run FR-019-AC-5's exact named inventory with this implemented
 entry included; a missing export fails.
 In a default-feature external compile probe, read enum details from a borrowed
@@ -129,7 +129,7 @@ inventory or the root-crate boundary.
 
 Implemented. Compile a default-feature external consumer
 that imports the already public `TemporalBinding`, `ClockConfiguration` and
-`CheckedNodeId` through `quire_contract_model`, not `quire_contract_ir`.
+`CheckedNodeId` through `filament_contract_model`, not `filament_contract_ir`.
 Give it a complete package built with typed producer inputs and admitted by
 the public strict reader, containing one temporal clause and two
 compensations with equal model, selected profile and clock name. From the

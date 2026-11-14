@@ -7,14 +7,14 @@ use crate::support::checked_package::{
     canonical, evidence_for, evidence_with_document, family_model_document, node_id,
     v2_all_families,
 };
-use ix_trace_rs::trace;
-use quire_canonical::Limits;
-use quire_contract_model::{
+use filament_contract_model::{
     encode_checked_package_v2, CheckedOperationEffectRow, CheckedPackageLimit,
     CheckedPackageReadLimits, CheckedPackageRefusalCause as Cause,
     CheckedPackageRefusalCode as Code, CheckedPackageSidecarsRef,
     CheckedPackageSourceCorrespondenceRef, CheckedPackageV2, CheckedPackageV2ReadResult,
 };
+use ix_trace_rs::trace;
+use quire_canonical::Limits;
 use serde_json::{json, Value};
 
 fn empty_row(operation: &str) -> Value {

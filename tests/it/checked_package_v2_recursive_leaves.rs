@@ -15,13 +15,13 @@ use crate::support::checked_package::{
     canonical, evidence_for, node_id, nominal_package, pointer, reassign_node_ids, refusal_at,
     settle, BOOLEAN_KEY, INTEGER_KEY,
 };
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     CheckedNodeId, CheckedNodePathSegment, CheckedNodeTag, CheckedPackageLimit,
     CheckedPackageReadLimits, CheckedPackageRefusalCause, CheckedPackageRefusalCode,
     CheckedPackageV2ReadResult, CompleteLoweringProfileV2, ContractDependencies,
     ContractPackageReadResult, ContractPackageWireV1, ContractRootViewV1, LoweringProfileRef,
 };
+use ix_trace_rs::trace;
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
@@ -49,7 +49,7 @@ fn node<S: AsRef<str>>(
     let dependencies: BTreeSet<String> = over.into_iter().map(|name| key(name.as_ref())).collect();
     let node = json!({
         "node_id": node_id(&id),
-        "schema_version": "quire.checked-semantic-graph/v2",
+        "schema_version": "filament.checked-semantic-graph/v2",
         "node_tag": tag,
         "semantic_form": form,
         "semantic_type": node_id(&key(semantic_type)),
@@ -106,7 +106,7 @@ fn nfc_text() -> Typed {
     )
 }
 
-/// A parameter named `name` typed at the node called `ty` (QSL FR-092).
+/// A parameter named `name` typed at the node called `ty` (FSL FR-092).
 fn parameter(name: &str, ty: &str) -> Typed {
     let body = json!({"term": "aggregate", "members": [
         binding("name", literal("text", "text", name)),
@@ -160,7 +160,7 @@ fn some_of(name: &str, inner: &str) -> Typed {
     )
 }
 
-/// `Option<inner>` in the QSL wrapped optional-field encoding.
+/// `Option<inner>` in the FSL wrapped optional-field encoding.
 fn option_of(name: &str, inner: &str) -> Typed {
     node(
         name,
@@ -211,7 +211,7 @@ fn in_group((id, mut node): Typed) -> Typed {
 /// A catalogued `text_profile` law definition, read from the catalog's home.
 fn text_law() -> Value {
     let catalog: Value = serde_json::from_str(
-        quire_verification_contracts::operation_catalog::CHECKED_OPERATION_CATALOG_V1,
+        filament_verification_contracts::operation_catalog::CHECKED_OPERATION_CATALOG_V1,
     )
     .expect("the catalog is JSON");
     catalog["law_roles"]["text_profile"][0].clone()
@@ -246,7 +246,7 @@ fn equality_package(types: Vec<Typed>, root: &str, leaves: Vec<Value>) -> (Value
     let body = json!({
         "term": "application",
         "operator": "binary",
-        "operation": {"identity": "quire.op.structural.eq", "laws": [], "mode": null,
+        "operation": {"identity": "filament.op.structural.eq", "laws": [], "mode": null,
             "member": null, "leaves": leaves},
         "result_type": node_id(&key("boolean")),
         "arguments": [reference("p"), reference("p")],
@@ -388,7 +388,7 @@ fn collection_of_nfc_id(package: &Value, form: &str) -> Value {
 #[trace("TC-048", "FR-038-AC-228")]
 #[test]
 fn residual_operand_source_reads_value_type_and_direct_type_references() {
-    for identity in ["quire.op.structural.eq", "quire.op.structural.ne"] {
+    for identity in ["filament.op.structural.eq", "filament.op.structural.ne"] {
         let mut selected = Vec::new();
         for (type_name, leaves) in [
             ("integer", vec![]),
@@ -490,7 +490,7 @@ fn residual_operand_source_reads_referenced_application_result_type() {
     let body = json!({
         "term": "application",
         "operator": "conditional",
-        "operation": {"identity": "quire.op.control.if", "laws": [], "mode": null,
+        "operation": {"identity": "filament.op.control.if", "laws": [], "mode": null,
             "member": null, "leaves": []},
         "result_type": record_id,
         "arguments": [
@@ -583,7 +583,7 @@ fn residual_compared_type_reaching_ieee_refuses_but_integer_control_admits() {
                 ),
                 "{shape}<{ieee}> has an independently admitted graph"
             );
-            for identity in ["quire.op.structural.eq", "quire.op.structural.ne"] {
+            for identity in ["filament.op.structural.eq", "filament.op.structural.ne"] {
                 for leaves in [vec![], vec![text_leaf(&[field("value")])]] {
                     let (mut package, _) =
                         equality_package(vec![outer.clone(), scalar(ieee, ieee)], "r", leaves);
@@ -654,7 +654,7 @@ fn residual_float_rounding_compared_type_refuses_after_graph_admission() {
             ),
             "float_rounding<{ieee}> has an independently admitted graph"
         );
-        for identity in ["quire.op.structural.eq", "quire.op.structural.ne"] {
+        for identity in ["filament.op.structural.eq", "filament.op.structural.ne"] {
             for leaves in [vec![], vec![text_leaf(&[field("value")])]] {
                 let (mut package, _) = equality_package(types.clone(), "r", leaves);
                 let application = edit_application(&mut package, |node| {
@@ -688,7 +688,7 @@ fn residual_result_inner_set_like_elements_require_an_empty_path_leaf() {
             node["semantic_form"] = json!("collection");
             node["semantic_type"] = result_id.clone();
             node["body"]["operator"] = json!("collection");
-            node["body"]["operation"]["identity"] = json!(format!("quire.op.collection.{form}"));
+            node["body"]["operation"]["identity"] = json!(format!("filament.op.collection.{form}"));
             node["body"]["operation"]["leaves"] = json!([leaf]);
             node["body"]["result_type"] = result_id;
             node["body"]["arguments"] = json!([first_argument]);
@@ -760,7 +760,7 @@ fn residual_required_leaf_sources_refuse_missing_referenced_types_on_public_read
             let collection = node["body"]["arguments"][0].clone();
             node["semantic_form"] = json!("collection");
             node["body"]["operator"] = json!("collection");
-            node["body"]["operation"]["identity"] = json!("quire.op.collection.contains");
+            node["body"]["operation"]["identity"] = json!("filament.op.collection.contains");
             node["body"]["arguments"] = json!([collection, literal("integer", "integer", "0")]);
         });
         assert_eq!(
@@ -791,7 +791,7 @@ fn residual_set_result_refuses_missing_element_type_on_public_read() {
             node["semantic_form"] = json!("collection");
             node["semantic_type"] = result_id.clone();
             node["body"]["operator"] = json!("collection");
-            node["body"]["operation"]["identity"] = json!("quire.op.collection.set");
+            node["body"]["operation"]["identity"] = json!("filament.op.collection.set");
             node["body"]["result_type"] = result_id;
             node["body"]["arguments"] = json!([first]);
         });
@@ -855,7 +855,7 @@ fn residual_result_inner_map_flat_map_flatten_and_convert_use_result_element() {
                 "collection"
             });
             node["body"]["operation"]["identity"] =
-                json!(format!("quire.op.collection.{identity}"));
+                json!(format!("filament.op.collection.{identity}"));
             node["body"]["operation"]["leaves"] = json!([text_leaf(&[])]);
             node["body"]["result_type"] = result_id.clone();
             node["body"]["arguments"] = match identity {
@@ -940,7 +940,7 @@ fn residual_result_inner_sequence_results_expect_no_leaves() {
                 "collection"
             });
             node["body"]["operation"]["identity"] =
-                json!(format!("quire.op.collection.{identity}"));
+                json!(format!("filament.op.collection.{identity}"));
             node["body"]["result_type"] = result_id.clone();
             node["body"]["arguments"] = match identity {
                 "map" => json!([source, {"term":"binding","name":"x","value":{
@@ -1007,7 +1007,7 @@ fn residual_flatten_sequence_result_does_not_compare_its_ieee_element() {
             node["semantic_form"] = json!("collection");
             node["semantic_type"] = inner_id.clone();
             node["body"]["operator"] = json!("collection");
-            node["body"]["operation"]["identity"] = json!("quire.op.collection.flatten");
+            node["body"]["operation"]["identity"] = json!("filament.op.collection.flatten");
             node["body"]["result_type"] = inner_id;
             node["body"]["arguments"] = json!([argument]);
         });
@@ -1056,7 +1056,7 @@ fn residual_contains_sequence_compares_its_ieee_element() {
                 let collection = node["body"]["arguments"][0].clone();
                 node["semantic_form"] = json!("collection");
                 node["body"]["operator"] = json!("collection");
-                node["body"]["operation"]["identity"] = json!("quire.op.collection.contains");
+                node["body"]["operation"]["identity"] = json!("filament.op.collection.contains");
                 node["body"]["arguments"] = json!([
                     collection, {"term":"reference","target":element_id}
                 ]);
@@ -1234,7 +1234,7 @@ fn recursive_group_round_trips_with_original_node_keys() {
     let root: CheckedNodeId = serde_json::from_value(node_id(&application)).expect("root key");
     let profile = CompleteLoweringProfileV2 {
         reference: LoweringProfileRef {
-            authority: "quire".into(),
+            authority: "filament".into(),
             identity: "complete-v1".into(),
         },
         required_source_selections: Vec::new(),
@@ -1266,7 +1266,7 @@ fn recursive_group_round_trips_with_original_node_keys() {
     }
     let ContractRootViewV1::Lowered(closure) = decoded
         .reached_closure(
-            &quire_contract_model::ContractSourceKeyV1::from_structural(&root)
+            &filament_contract_model::ContractSourceKeyV1::from_structural(&root)
                 .expect("structural source key"),
         )
         .expect("closure")
@@ -1313,7 +1313,7 @@ fn reached_view_visits_an_admitted_recursion_group_once() {
     let root: CheckedNodeId = serde_json::from_value(node_id(&application)).expect("root key");
     let profile = CompleteLoweringProfileV2 {
         reference: LoweringProfileRef {
-            authority: "quire".into(),
+            authority: "filament".into(),
             identity: "complete-v1".into(),
         },
         required_source_selections: Vec::new(),
@@ -1327,7 +1327,7 @@ fn reached_view_visits_an_admitted_recursion_group_once() {
         .wire()
         .expect("wire")
         .reached_closure(
-            &quire_contract_model::ContractSourceKeyV1::from_structural(&root)
+            &filament_contract_model::ContractSourceKeyV1::from_structural(&root)
                 .expect("structural source key"),
         )
         .expect("view")
@@ -1410,7 +1410,7 @@ fn reached_view_visits_an_admitted_recursion_group_once() {
     assert_eq!(grouped.len(), 2);
 }
 
-/// The QSL record-field encoding of `next?: List` contributes one field edge.
+/// The FSL record-field encoding of `next?: List` contributes one field edge.
 fn wrapped_list(text_fields: &[&str]) -> Vec<Typed> {
     let mut fields = vec![("number", "integer")];
     if let Some(label) = text_fields.first() {
@@ -1632,7 +1632,7 @@ fn tuple_of(name: &str, positions: &[&str]) -> Typed {
 
 /// `record Cell { item: (Text[nfc], Option<Cell>); }`: the cycle passes
 /// through a tuple and an option, and the record is entered at the empty path,
-/// so its recursion leaf reads `recursion:0` (QSpec FR-322 "Structural leaf
+/// so its recursion leaf reads `recursion:0` (FSpec FR-322 "Structural leaf
 /// walk"). The text leaf alone and a recursion leaf reading `recursion:1` are
 /// refused.
 #[trace("TC-048", "FR-038-AC-70")]
@@ -1794,9 +1794,9 @@ fn forwarding_operation_package(route: &str) -> (Value, String) {
         application["semantic_form"] = json!("collection");
         application["body"]["operator"] = json!("collection");
         application["body"]["operation"]["identity"] = json!(if route == "inner:0" {
-            "quire.op.collection.contains"
+            "filament.op.collection.contains"
         } else {
-            "quire.op.collection.flatten"
+            "filament.op.collection.flatten"
         });
         if route == "inner:0" {
             application["body"]["arguments"] =

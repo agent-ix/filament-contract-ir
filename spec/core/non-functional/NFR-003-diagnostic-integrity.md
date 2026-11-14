@@ -4,7 +4,7 @@ title: "Fail closed with reviewable diagnostics"
 type: NFR
 quality_attribute: safety
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/StR-003
+  - target: ix://agent-ix/filament-contract-ir/StR-003
     type: traces_to
 ---
 # NFR-003: Fail closed with reviewable diagnostics

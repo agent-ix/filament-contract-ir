@@ -3,10 +3,10 @@
 
 //! FR-038-AC-114 through FR-038-AC-117, at the package: the flat wire (an
 //! application stands only at a body root, and a body is drawn from the
-//! five-stratum grammar of merged QSpec FR-322 "Body grammar"), the order of
+//! five-stratum grammar of merged FSpec FR-322 "Body grammar"), the order of
 //! its refusals ahead of every identity check, the fixed 128-container depth
 //! cap, and the absence of recursion that follows the package's size.
-//! FR-038-AC-118 is `tests/conformance_qspec`, which runs QSpec's own
+//! FR-038-AC-118 is `tests/conformance_qspec`, which runs FSpec's own
 //! mutations through `make conformance-qspec`.
 //!
 //! Every case builds its package in-repo from this crate's public vocabulary;
@@ -16,13 +16,13 @@ use crate::support::checked_package::{
     canonical, evidence_for, family_key, json_depth, node_id, pointer, refresh_identity, settle,
     v2_all_families, v2_reference_chain,
 };
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     CheckedNodeId, CheckedNodeTag, CheckedPackageEvidence, CheckedPackageLimit,
     CheckedPackageReadLimits, CheckedPackageRefusal, CheckedPackageRefusalCause,
     CheckedPackageRefusalCode, CheckedPackageV2ReadResult, CheckedTerm, CompleteLoweringProfileV2,
     CompleteLoweringRecordV2,
 };
+use ix_trace_rs::trace;
 use serde_json::{json, Value};
 
 use CheckedPackageRefusalCode as Code;
@@ -108,11 +108,11 @@ fn application(operator: &str, identity: &str) -> Value {
 /// The five operator classes of FR-038-AC-114 other than `case`, each with an
 /// identity it names.
 const CLASSES: [(&str, &str); 5] = [
-    ("call", "quire.op.function.call"),
-    ("state_clause", "quire.op.state.clause"),
-    ("temporal", "quire.op.temporal.clause"),
-    ("temporal_formula", "quire.op.temporal.holds"),
-    ("temporal_fairness", "quire.op.temporal.fair"),
+    ("call", "filament.op.function.call"),
+    ("state_clause", "filament.op.state.clause"),
+    ("temporal", "filament.op.temporal.clause"),
+    ("temporal_formula", "filament.op.temporal.holds"),
+    ("temporal_fairness", "filament.op.temporal.fair"),
 ];
 
 fn position_of(package: &Value, tag: &str, form: &str) -> usize {
@@ -260,12 +260,12 @@ fn tc_048_an_application_in_a_frame_body_refuses_at_the_application() {
             |node| node["body"]["creates"] = json!([entry]),
         )
     };
-    let (package, node) = frame(application("call", "quire.op.function.call"));
+    let (package, node) = frame(application("call", "filament.op.function.call"));
     assert_eq!(
         outcome(&refused(&package)),
         malformed(&format!("/semantic_graph/nodes/{node}/body/creates/0"))
     );
-    let (package, node) = frame(application("case", "quire.op.control.case"));
+    let (package, node) = frame(application("case", "filament.op.control.case"));
     assert_eq!(
         outcome(&refused(&package)),
         ineligible(&format!(
@@ -433,9 +433,9 @@ fn with_detail(detail: Value) -> Value {
 #[trace("TC-048", "FR-038-AC-115")]
 #[test]
 fn tc_048_the_first_offending_construct_in_pre_order_is_refused() {
-    let case = || application("case", "quire.op.control.case");
-    let call = || application("call", "quire.op.function.call");
-    let formula = || application("temporal_formula", "quire.op.temporal.holds");
+    let case = || application("case", "filament.op.control.case");
+    let call = || application("call", "filament.op.function.call");
+    let formula = || application("temporal_formula", "filament.op.temporal.holds");
 
     // A nested `case` is refused at its `operator`, with the holder as locus.
     let (package, node) = call_with_second_argument(case());
@@ -498,7 +498,7 @@ fn tc_048_the_first_offending_construct_in_pre_order_is_refused() {
     assert_eq!(
         outcome(&refused(&with_detail(application(
             "temporal",
-            "quire.op.temporal.clause"
+            "filament.op.temporal.clause"
         )))),
         malformed("/diagnostics/entries/0/details/0")
     );
@@ -511,7 +511,7 @@ fn tc_048_the_first_offending_construct_in_pre_order_is_refused() {
 #[test]
 fn tc_048_a_misplaced_body_root_application_refuses_at_the_node() {
     let (package, host) = settled(host_position, |node| {
-        node["body"] = application("temporal_formula", "quire.op.temporal.holds");
+        node["body"] = application("temporal_formula", "filament.op.temporal.holds");
         node["dependencies"] = json!([]);
     });
     assert_eq!(
@@ -546,7 +546,7 @@ fn tc_048_the_body_grammar_is_checked_ahead_of_every_identity() {
             "{operator}"
         );
     }
-    let (package, call) = stale(application("case", "quire.op.control.case"));
+    let (package, call) = stale(application("case", "filament.op.control.case"));
     assert_eq!(
         outcome(&refused(&package)),
         ineligible(&format!(
@@ -627,8 +627,8 @@ fn tc_048_a_hundred_thousand_node_chain_is_admitted_and_lowered_on_a_small_stack
         drop(bytes);
         assert_eq!(package.graph().nodes.len(), total);
         let profile = CompleteLoweringProfileV2 {
-            reference: quire_contract_model::LoweringProfileRef {
-                authority: "quire".into(),
+            reference: filament_contract_model::LoweringProfileRef {
+                authority: "filament".into(),
                 identity: "complete-v1".into(),
             },
             required_source_selections: Vec::new(),
@@ -718,7 +718,7 @@ fn tc_048_no_read_limit_and_no_limit_kind_names_a_depth() {
 
 /// FR-038-AC-117: the V2 reader has one fixed 128-container cap and no stack
 /// that grows with the input. Dynamic depth ceilings and stack-growth helpers
-/// remain absent from `crates/quire-contract-model/src/checked_package/`.
+/// remain absent from `crates/filament-contract-model/src/checked_package/`.
 /// The crate's v1 modules and its manifest are outside the scan (FR-019, FR-023).
 #[trace("TC-048", "FR-038-AC-117")]
 #[test]
@@ -734,7 +734,7 @@ fn tc_048_the_v2_reader_has_only_its_fixed_nesting_cap() {
         }
     }
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("crates/quire-contract-model/src/checked_package");
+        .join("crates/filament-contract-model/src/checked_package");
     let mut files = Vec::new();
     sources(&root, &mut files);
     assert!(files.len() > 10, "the scan reads the reader's sources");
@@ -829,9 +829,9 @@ fn tc_048_a_document_past_the_nesting_cap_refuses_at_the_cap() {
         Some(cap_pointer.as_str())
     );
 
-    let mut budget =
-        quire_contract_model::NativeJoinBudget::new(u64::MAX, 0).with_read_storage_limit(u64::MAX);
-    let budgeted = quire_contract_model::CheckedPackageV2::read_with_budget(
+    let mut budget = filament_contract_model::NativeJoinBudget::new(u64::MAX, 0)
+        .with_read_storage_limit(u64::MAX);
+    let budgeted = filament_contract_model::CheckedPackageV2::read_with_budget(
         &deep,
         CheckedPackageReadLimits {
             bytes: 1 << 30,
@@ -840,7 +840,7 @@ fn tc_048_a_document_past_the_nesting_cap_refuses_at_the_cap() {
         &evidence,
         &mut budget,
     );
-    let quire_contract_model::CheckedPackageV2BudgetedReadResult::Refused(refusal) = budgeted
+    let filament_contract_model::CheckedPackageV2BudgetedReadResult::Refused(refusal) = budgeted
     else {
         panic!("the budgeted 300-level input refuses, read {budgeted:?}");
     };
@@ -852,9 +852,9 @@ fn tc_048_a_document_past_the_nesting_cap_refuses_at_the_cap() {
     );
     let exact_storage = budget.read_storage_consumed();
 
-    let mut exact_budget = quire_contract_model::NativeJoinBudget::new(u64::MAX, 0)
+    let mut exact_budget = filament_contract_model::NativeJoinBudget::new(u64::MAX, 0)
         .with_read_storage_limit(exact_storage);
-    let exact = quire_contract_model::CheckedPackageV2::read_with_budget(
+    let exact = filament_contract_model::CheckedPackageV2::read_with_budget(
         &deep,
         CheckedPackageReadLimits {
             bytes: 1 << 30,
@@ -863,7 +863,8 @@ fn tc_048_a_document_past_the_nesting_cap_refuses_at_the_cap() {
         &evidence,
         &mut exact_budget,
     );
-    let quire_contract_model::CheckedPackageV2BudgetedReadResult::Refused(refusal) = exact else {
+    let filament_contract_model::CheckedPackageV2BudgetedReadResult::Refused(refusal) = exact
+    else {
         panic!("the exact storage allowance pays for the cap refusal, read {exact:?}");
     };
     assert_eq!(
@@ -874,9 +875,9 @@ fn tc_048_a_document_past_the_nesting_cap_refuses_at_the_cap() {
     let short_limit = exact_storage
         .checked_sub(1)
         .expect("the read reserves storage");
-    let mut short_budget = quire_contract_model::NativeJoinBudget::new(u64::MAX, 0)
+    let mut short_budget = filament_contract_model::NativeJoinBudget::new(u64::MAX, 0)
         .with_read_storage_limit(short_limit);
-    let short = quire_contract_model::CheckedPackageV2::read_with_budget(
+    let short = filament_contract_model::CheckedPackageV2::read_with_budget(
         &deep,
         CheckedPackageReadLimits {
             bytes: 1 << 30,
@@ -885,19 +886,17 @@ fn tc_048_a_document_past_the_nesting_cap_refuses_at_the_cap() {
         &evidence,
         &mut short_budget,
     );
-    let quire_contract_model::CheckedPackageV2BudgetedReadResult::Exhausted(exhausted) = short
+    let filament_contract_model::CheckedPackageV2BudgetedReadResult::Exhausted(exhausted) = short
     else {
         panic!("one byte short cannot pay for the cap refusal, read {short:?}");
     };
     assert_eq!(
         exhausted.pending,
-        Some(quire_contract_model::CheckedPackagePendingOutcome::Refused(
-            Code::MalformedWire
-        ))
+        Some(filament_contract_model::CheckedPackagePendingOutcome::Refused(Code::MalformedWire))
     );
     assert_eq!(
         exhausted.denied.resource,
-        quire_contract_model::PackageReadResource::ReadStorage
+        filament_contract_model::PackageReadResource::ReadStorage
     );
     assert_eq!(
         u128::from(exact_storage) - u128::from(short_budget.read_storage_consumed()),

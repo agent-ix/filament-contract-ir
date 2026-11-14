@@ -3,15 +3,15 @@ id: TC-445
 title: "Typed clause-context integer comparison operands"
 type: TC
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/FR-038
+  - target: ix://agent-ix/filament-contract-ir/FR-038
     type: verifies
-  - target: ix://agent-ix/quire-specification/FR-341
+  - target: ix://agent-ix/filament-specification/FR-341
     type: references
-  - target: ix://agent-ix/quire-spec-language/FR-093
+  - target: ix://agent-ix/filament-spec-language/FR-093
     type: references
-  - target: ix://agent-ix/quire-spec-language/FR-105
+  - target: ix://agent-ix/filament-spec-language/FR-105
     type: references
-  - target: ix://agent-ix/quire-contract-codegen/FR-008
+  - target: ix://agent-ix/filament-contract-codegen/FR-008
     type: references
 ---
 # TC-445: Typed clause-context integer comparison operands
@@ -20,24 +20,24 @@ relationships:
 
 Verify FR-038-AC-202 through FR-038-AC-209 through the public
 `CheckedPackageV2` accessor. The named `ConfigVersion` producer assertion
-requires a fresh QSL-produced V2 package from the authoritative QSL checkout
+requires a fresh FSL-produced V2 package from the authoritative FSL checkout
 and its actual selected model evidence, then an admitted read by the
 production IR reader. Locally constructed V2 cases are **synthetic**
-admission and defensive-API tests; they do not substitute for the named QSL
-producer assertion. No QSL schema, binary or fixture is copied here.
+admission and defensive-API tests; they do not substitute for the named FSL
+producer assertion. No FSL schema, binary or fixture is copied here.
 
 ## Test Procedure
 
-At test time, invoke the authoritative QSL producer on its own
+At test time, invoke the authoritative FSL producer on its own
 `examples/config-version` source with `post VersionUnchanged {
 self.versionNumber = pre(self.versionNumber) }`, or its equivalent current
-QSL source fixture. Supply the producer's selected model document to
+FSL source fixture. Supply the producer's selected model document to
 `CheckedPackageV2::read`, require `Admitted`, find the actual postcondition
 clause id and an authentic claim occurrence, and call the typed accessor.
 Assert the returned comparison is integer.eq, both operand project ids are
 identical, their authored ordinals are 0 and 1, their observations are Post
 and Pre, their typed provenance is StateField, and their inclusive bounds
-are 0..=1000. Record the producing QSL source revision and command in the
+are 0..=1000. Record the producing FSL source revision and command in the
 test result rather than checking in produced bytes. If the producer or its
 model evidence is unavailable, this producer-origin case is unrun, never
 credited from a synthetic fixture.
@@ -97,7 +97,7 @@ the clause condition and absence of a new V2 per-use wire member.
 
 ## Expected Results
 
-The fresh QSL result proves the named shared-node Post/Pre topology from an
+The fresh FSL result proves the named shared-node Post/Pre topology from an
 authoritative producer. Synthetic cases establish the remaining closed
 operators, clause kinds, Current/Post/Pre observations, read/literal
 combinations, typed Input/State provenance mapping and exact finite bounds.
@@ -112,7 +112,7 @@ equality and reader admission.
 The accessor and tagged local controls for FR-038-AC-202 through
 FR-038-AC-209 are implemented in `checked_package_v2_comparison_operands.rs`,
 `checked_package_v2_frame_entries.rs` and the model crate's
-`comparison_operands.rs`. The fresh QSL producer-origin case is conditional on
-`IR703_QSL_CONFORMANCE` and `QUIRE_SPEC_LANGUAGE_DIR`; its trace tag alone is
+`comparison_operands.rs`. The fresh FSL producer-origin case is conditional on
+`IR703_FSL_CONFORMANCE` and `FILAMENT_SPEC_LANGUAGE_DIR`; its trace tag alone is
 not evidence that the producer gate ran. No result from that gate is claimed
 here.

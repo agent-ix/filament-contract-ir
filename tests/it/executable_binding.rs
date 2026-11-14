@@ -1,7 +1,7 @@
 //! Synthetic derived projections assembled from shared corpus wire forms.
 //! These tests qualify the public binder, not a source-language frontend.
+use filament_contract_model::{BoundPackage, DiagnosticCode, EXECUTABLE_PROJECTION_FORMAT};
 use ix_trace_rs::trace;
-use quire_contract_model::{BoundPackage, DiagnosticCode, EXECUTABLE_PROJECTION_FORMAT};
 use serde_json::{json, Value};
 
 fn projection() -> Value {
@@ -34,7 +34,7 @@ fn projection() -> Value {
     json!({"format":EXECUTABLE_PROJECTION_FORMAT,"package":package,"bindings":bindings})
 }
 
-fn decode(value: &Value) -> Result<BoundPackage, Vec<quire_contract_model::Diagnostic>> {
+fn decode(value: &Value) -> Result<BoundPackage, Vec<filament_contract_model::Diagnostic>> {
     BoundPackage::from_json_bytes(&serde_json::to_vec(value).unwrap())
 }
 
@@ -86,7 +86,7 @@ fn tc_035_public_consumer_preserves_complete_population() {
         assert!(clause.environment().value_declaration("absent").is_none());
         assert_eq!(
             clause.expression().value_type(),
-            &quire_contract_model::ValueType::Boolean
+            &filament_contract_model::ValueType::Boolean
         );
     }
 }
@@ -260,7 +260,7 @@ fn tc_035_strict_wire_boundary() {
     bytes.extend_from_slice(b" {}");
     assert!(BoundPackage::from_json_bytes(&bytes).is_err());
     assert!(BoundPackage::from_json_bytes(&[0xff]).is_err());
-    let huge = vec![b' '; quire_contract_model::MAX_CONFORMANCE_FILE_BYTES as usize + 1];
+    let huge = vec![b' '; filament_contract_model::MAX_CONFORMANCE_FILE_BYTES as usize + 1];
     assert_eq!(
         BoundPackage::from_json_bytes(&huge).unwrap_err()[0].code,
         DiagnosticCode::SemanticInputTooLarge
@@ -517,7 +517,7 @@ fn tc_035_semantic_budget_is_aggregate_and_individual_nodes_are_bounded() {
     let mut aggregate = minimal_projection(2);
     declarations(&mut aggregate, 6500, 0);
     let encoded = serde_json::to_vec(&aggregate).unwrap();
-    assert!(encoded.len() < quire_contract_model::MAX_CONFORMANCE_FILE_BYTES as usize);
+    assert!(encoded.len() < filament_contract_model::MAX_CONFORMANCE_FILE_BYTES as usize);
     let errors = decode(&aggregate).unwrap_err();
     assert!(
         errors
@@ -559,7 +559,7 @@ fn tc_035_expression_node_limit_is_not_replaced_by_the_larger_semantic_budget() 
         }
         value["bindings"][0]["expression"]["expression"] = level.pop().unwrap();
         let bytes = serde_json::to_vec(&value).unwrap();
-        assert!(bytes.len() < quire_contract_model::MAX_CONFORMANCE_FILE_BYTES as usize);
+        assert!(bytes.len() < filament_contract_model::MAX_CONFORMANCE_FILE_BYTES as usize);
         let outcome = BoundPackage::from_json_bytes(&bytes);
         if accepted {
             assert!(outcome.is_ok(), "9999 AST nodes refused: {outcome:?}");
@@ -628,7 +628,7 @@ fn tc_035_normative_schema_is_checked_independently_of_binder() {
 #[trace("TC-035", "FR-023-AC-4")]
 #[test]
 fn tc_035_depth_limits_do_not_abort_the_process() {
-    const CHILD: &str = "QUIRE_BINDING_DEPTH_CONTROL";
+    const CHILD: &str = "FILAMENT_BINDING_DEPTH_CONTROL";
     if let Ok(control) = std::env::var(CHILD) {
         if control.starts_with("wire:") {
             let depth: usize = control.split_once(':').unwrap().1.parse().unwrap();

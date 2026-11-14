@@ -1,18 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Agent-IX
 
-//! QSpec dependency-call vectors through the public checked-package reader.
+//! FSpec dependency-call vectors through the public checked-package reader.
 
 use super::{
     cause_word, code_word, fixtures_dir, proposal_dir_of, read_json, read_json_wire, read_package,
 };
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     CheckedNodeId, CheckedNodeTag, CheckedPackageReadLimits, CheckedPackageV2ReadResult,
     CheckedTerm, CompleteLoweringProfileV2, CompleteLoweringRecordV2, ContractDependencies,
     ContractDependencyInput, ContractPackageReadResult, ContractPackageWireV1, ContractRootViewV1,
     LoweringProfileRef,
 };
+use ix_trace_rs::trace;
 use serde_json::Value;
 use std::collections::BTreeSet;
 
@@ -38,7 +38,7 @@ fn without_dependency(package: &Value) -> CheckedPackageV2ReadResult {
 fn published_dependency_call_vectors_bind_every_reader_outcome_and_locus() {
     let fixtures = fixtures_dir();
     let vectors = read_json(&proposal_dir_of(&fixtures).join("dependency-call-vectors.json"))
-        .expect("QSpec dependency call vectors");
+        .expect("FSpec dependency call vectors");
     assert_eq!(vectors["base"], "fixtures/positive-dependency-call.json");
     assert_eq!(
         vectors["library"]["package"],
@@ -54,7 +54,7 @@ fn published_dependency_call_vectors_bind_every_reader_outcome_and_locus() {
     let rows = vectors["mutations"]
         .as_array()
         .expect("published mutations");
-    assert_eq!(rows.len(), 11, "all QSpec dependency-call rows must run");
+    assert_eq!(rows.len(), 11, "all FSpec dependency-call rows must run");
     let mut seen = BTreeSet::new();
     for row in rows {
         let id = row["id"].as_str().expect("row id");
@@ -84,7 +84,7 @@ fn published_dependency_call_vectors_bind_every_reader_outcome_and_locus() {
     }
 }
 
-/// Trace: QSpec FR-322-AC-37 and IR FR-349-AC-1. The published importer
+/// Trace: FSpec FR-322-AC-37 and IR FR-349-AC-1. The published importer
 /// retains a typed external callee through lowering and canonical readback.
 #[trace("TC-233", "FR-322-AC-37", "FR-349-AC-1")]
 #[test]
@@ -118,7 +118,7 @@ fn published_dependency_call_lowers_and_reads_back_with_selected_callee() {
         .iter()
         .position(|node| node.node_id == request)
         .expect("published call position");
-    let source_key = quire_contract_model::ContractSourceKeyV1::from_structural(
+    let source_key = filament_contract_model::ContractSourceKeyV1::from_structural(
         importer
             .structural_key_at(request_position)
             .expect("admitted call structural key"),
@@ -149,7 +149,7 @@ fn published_dependency_call_lowers_and_reads_back_with_selected_callee() {
 
     let profile = CompleteLoweringProfileV2 {
         reference: LoweringProfileRef {
-            authority: "quire".into(),
+            authority: "filament".into(),
             identity: "complete-v1".into(),
         },
         required_source_selections: Vec::new(),

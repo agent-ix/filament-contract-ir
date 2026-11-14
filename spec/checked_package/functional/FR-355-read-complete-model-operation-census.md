@@ -3,13 +3,13 @@ id: FR-355
 title: "Read the complete effective model operation census"
 type: FR
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/StR-001
+  - target: ix://agent-ix/filament-contract-ir/StR-001
     type: traces_to
-  - target: ix://agent-ix/quire-contract-ir/FR-038
+  - target: ix://agent-ix/filament-contract-ir/FR-038
     type: depends_on
-  - target: ix://agent-ix/quire-contract-ir/FR-019
+  - target: ix://agent-ix/filament-contract-ir/FR-019
     type: depends_on
-  - target: ix://agent-ix/quire-contract-ir/FR-354
+  - target: ix://agent-ix/filament-contract-ir/FR-354
     type: references
 ---
 # FR-355: Read the complete effective model operation census
@@ -59,7 +59,7 @@ rather than manufacture a structural identity or select by display name. No
 selected-stage Exact identity is inferred from a retained model member identity.
 
 The public read SHALL borrow retained declarations rather than create a second
-operation model, parse JSON, reconstruct QSL scope or recheck source. Existing
+operation model, parse JSON, reconstruct FSL scope or recheck source. Existing
 FR-354 callable/body/frame and per-call dispatch reads remain separate: consumers
 must use them independently when they require execution or dispatch evidence.
 

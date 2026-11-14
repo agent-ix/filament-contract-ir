@@ -7,8 +7,7 @@
 use crate::support::checked_package::{
     all_families_read_work, canonical, evidence_for, v2_all_families,
 };
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     initialize_operation_catalog, read_checked_package_with_budget,
     CheckedPackageBudgetedDispatchResult, CheckedPackageEvidence, CheckedPackageLimit,
     CheckedPackagePendingOutcome, CheckedPackageReadLimits, CheckedPackageV2,
@@ -16,6 +15,7 @@ use quire_contract_model::{
     NativeJoinChargeKind, NativeJoinLocus, NativeJoinLocusSource, PackageReadResource,
     PackageReadStage,
 };
+use ix_trace_rs::trace;
 use serde_json::{json, Value};
 
 fn bytes() -> Vec<u8> {
@@ -244,11 +244,11 @@ fn small_package() -> Value {
     let id = json!({"package":"complete-native", "path":["scalar_type","boolean"], "ordinal":0});
     let source = json!({"authority":"test","identity":"complete-native"});
     json!({
-        "contract_version":"quire.checked-package/v2", "name":"complete-native",
+        "contract_version":"filament.checked-package/v2", "name":"complete-native",
         "lock":{"sources":[source],"edition":{"role":"edition","definition":{"authority":"test","identity":"edition"}},
             "profile_selections":[],"definition_selections":[],"required_features":[],"dependency_selections":[]},
-        "semantic_graph":{"graph_version":"quire.checked-semantic-graph/v2","nodes":[{
-            "node_id":id,"schema_version":"quire.checked-semantic-graph/v2","node_tag":"scalar_type","semantic_form":"boolean",
+        "semantic_graph":{"graph_version":"filament.checked-semantic-graph/v2","nodes":[{
+            "node_id":id,"schema_version":"filament.checked-semantic-graph/v2","node_tag":"scalar_type","semantic_form":"boolean",
             "semantic_type":id,"dependencies":[],"occurrences":[{"role":"type","ordinal":0}],"body":{"term":"aggregate","members":[]}
         }],"operand_rows":[[]]},
         "source_map":[{"node_id":id,"role":"type","ordinal":0,"regions":[{"source":source,"start":0,"end":1}]}],
@@ -370,11 +370,11 @@ fn duplicate_name_and_out_of_range_number_diagnostics_are_charged_before_return(
     for (bytes, code) in [
         (
             br#"{"a":1,"a":2}"#.as_slice(),
-            quire_contract_model::CheckedPackageRefusalCode::DuplicateMember,
+            filament_contract_model::CheckedPackageRefusalCode::DuplicateMember,
         ),
         (
             br#"{"a":1e999}"#.as_slice(),
-            quire_contract_model::CheckedPackageRefusalCode::MalformedWire,
+            filament_contract_model::CheckedPackageRefusalCode::MalformedWire,
         ),
     ] {
         let mut measure = NativeJoinBudget::unlimited();
@@ -559,7 +559,7 @@ fn serde_json_number_token_spelling_is_noncanonical_where_the_number_admits() {
     };
     assert_eq!(
         refusal.code,
-        quire_contract_model::CheckedPackageRefusalCode::NoncanonicalWire
+        filament_contract_model::CheckedPackageRefusalCode::NoncanonicalWire
     );
     assert_eq!(refusal.loci[0].path, None);
 }
@@ -572,7 +572,7 @@ fn serde_json_number_token_spelling_is_noncanonical_where_the_number_admits() {
 #[trace("TC-472", "FR-038-AC-509")]
 #[test]
 fn the_shared_reader_orders_first_faults_on_the_v2_envelope() {
-    use quire_contract_model::CheckedPackageRefusalCode as Code;
+    use filament_contract_model::CheckedPackageRefusalCode as Code;
     let refused = |bytes: &[u8]| {
         let mut budget = NativeJoinBudget::unlimited();
         match read_bytes(bytes, &mut budget) {

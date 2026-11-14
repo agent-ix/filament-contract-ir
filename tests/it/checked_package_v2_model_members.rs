@@ -5,11 +5,11 @@
 //! Semantic IR 2.0.0 domain package (non-empty `types`), through the whole
 //! chain the reader runs: the document is admitted and read (FR-322 step 1),
 //! each declaration's model declaration node key is recovered (step 2), and
-//! a `quire.op.model.dispatch_call` on a model-owned operation is resolved
+//! a `filament.op.model.dispatch_call` on a model-owned operation is resolved
 //! and typed (steps 3 and 4) against the graph.
 //!
 //! The package and the domain package document are built here, node by node,
-//! with fixture-authored structural identities; nothing of QSpec is copied in.
+//! with fixture-authored structural identities; nothing of FSpec is copied in.
 
 use crate::support::checked_package::{
     canonical, evidence_for, evidence_with_document, fixture_source, index_fixture_node_ids,
@@ -17,8 +17,7 @@ use crate::support::checked_package::{
     rebuild_source_map, refresh_identity, refusal_bytes, refusal_cause, select_model, settle,
     source_owner, structural_fixture_id, ExpectedRefusal, COMPLETE_VALUE_FEATURE, FIXTURE_PACKAGE,
 };
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     CheckedCollectionKind, CheckedMemberType, CheckedNodeId, CheckedPackageIncomplete,
     CheckedPackageLimit, CheckedPackageReadLimits, CheckedPackageRefusal,
     CheckedPackageRefusalCause, CheckedPackageRefusalCode, CheckedPackageV2,
@@ -26,7 +25,8 @@ use quire_contract_model::{
     SelectedModelEnumDeclarationRow, SelectedModelEnumErrorCode, SelectedModelEnumMemberRow,
     SelectedModelEnumShapeCaseRow, SelectedModelEnumShapeRow, SelectedModelEnums,
 };
-use quire_exact::{EnumShape, NodeKey, PathSegment, VariantId};
+use filament_exact::{EnumShape, NodeKey, PathSegment, VariantId};
+use ix_trace_rs::trace;
 use serde_json::{json, Value};
 use std::sync::LazyLock;
 
@@ -119,7 +119,7 @@ fn wire_node(
 ) -> Value {
     json!({
         "node_id": node_id(key),
-        "schema_version": "quire.checked-semantic-graph/v2",
+        "schema_version": "filament.checked-semantic-graph/v2",
         "node_tag": tag,
         "semantic_form": form,
         "semantic_type": node_id(semantic_type),
@@ -185,8 +185,8 @@ fn domain_document(extra: Value) -> Value {
         "supertypes": [], "fields": [],
         "operations": [{
             "identity": "ix://acme/orders/Order/total",
-            "params": [slot(None, "ix://quire/native/Integer")],
-            "returns": slot(None, "ix://quire/native/Integer"),
+            "params": [slot(None, "ix://filament/native/Integer")],
+            "returns": slot(None, "ix://filament/native/Integer"),
         }],
     });
     if let (Some(order), Some(extra)) = (order.as_object_mut(), extra.as_object()) {
@@ -199,7 +199,7 @@ fn domain_document(extra: Value) -> Value {
         "package": {"identity": IDENTITY, "version": VERSION},
         "constructs": [{
             "kind": {"module": "acme/orders", "name": "entity"},
-            "construct": {"meaning": "quire.meaning.model.object-type/v1"},
+            "construct": {"meaning": "filament.meaning.model.object-type/v1"},
         }],
         "types": [order],
     })
@@ -211,7 +211,7 @@ fn domain_document(extra: Value) -> Value {
 fn package_over(
     document: &Value,
     name: &str,
-) -> (Value, quire_contract_model::CheckedPackageEvidence) {
+) -> (Value, filament_contract_model::CheckedPackageEvidence) {
     let package = package_selecting(name);
     let evidence = evidence_with_document(&package, IDENTITY, document);
     (package, evidence)
@@ -252,7 +252,7 @@ fn package_selecting_form(name: &str, form: &str, declaring: &str) -> Value {
         "term": "application",
         "operator": "call",
         "operation": {
-            "identity": "quire.op.model.dispatch_call", "laws": [], "mode": null,
+            "identity": "filament.op.model.dispatch_call", "laws": [], "mode": null,
             "member": {"kind": "operation", "declaration": node_id(&order), "name": name},
             "leaves": [],
         },
@@ -299,7 +299,7 @@ fn package_selecting_form(name: &str, form: &str, declaring: &str) -> Value {
 
 fn read(
     package: &Value,
-    evidence: &quire_contract_model::CheckedPackageEvidence,
+    evidence: &filament_contract_model::CheckedPackageEvidence,
 ) -> CheckedPackageV2ReadResult {
     crate::read_and_account(
         &indexed_bytes(package),
@@ -396,7 +396,7 @@ fn checked_dispatch_sidecar_retains_empty_and_bounded_candidate_sets() {
     let absent_occurrence = without_sidecar.resolved_graph().nodes[CALL].occurrences[0].clone();
     assert_eq!(
         without_sidecar.dispatch_candidates(&absent_call, &absent_occurrence, 1),
-        Err(quire_contract_model::CheckedDispatchReadError::Unavailable)
+        Err(filament_contract_model::CheckedDispatchReadError::Unavailable)
     );
     let call = package["semantic_graph"]["nodes"][CALL]["node_id"].clone();
     let declaring = package["semantic_graph"]["nodes"][2]["node_id"].clone();
@@ -425,7 +425,7 @@ fn checked_dispatch_sidecar_retains_empty_and_bounded_candidate_sets() {
     assert!(matches!(
         admitted.dispatch_candidates(&call, &occurrence, 0),
         Err(
-            quire_contract_model::CheckedDispatchReadError::WorkExhausted {
+            filament_contract_model::CheckedDispatchReadError::WorkExhausted {
                 row: 0,
                 candidate: None,
                 consumed: 1,
@@ -437,13 +437,13 @@ fn checked_dispatch_sidecar_retains_empty_and_bounded_candidate_sets() {
     foreign.package = "foreign".into();
     assert_eq!(
         admitted.dispatch_candidates(&foreign, &occurrence, 1),
-        Err(quire_contract_model::CheckedDispatchReadError::ForeignApplication)
+        Err(filament_contract_model::CheckedDispatchReadError::ForeignApplication)
     );
     let mut unknown = call.clone();
     unknown.ordinal += 1;
     assert_eq!(
         admitted.dispatch_candidates(&unknown, &occurrence, 1),
-        Err(quire_contract_model::CheckedDispatchReadError::UnknownApplication)
+        Err(filament_contract_model::CheckedDispatchReadError::UnknownApplication)
     );
 
     let first_body = add_dispatch_body_named(
@@ -549,7 +549,7 @@ fn checked_dispatch_sidecar_retains_empty_and_bounded_candidate_sets() {
     assert!(matches!(
         admitted.dispatch_candidates(&call, &occurrence, 2),
         Err(
-            quire_contract_model::CheckedDispatchReadError::WorkExhausted {
+            filament_contract_model::CheckedDispatchReadError::WorkExhausted {
                 row: 0,
                 candidate: Some(1),
                 consumed: 3,
@@ -831,7 +831,7 @@ fn checked_term_sidecar_refuses_unowned_equality_and_admits_protocol_rows() {
     assert_eq!(refusal.code, CheckedPackageRefusalCode::InvalidPackage);
     assert_eq!(
         refusal.cause,
-        Some(quire_contract_model::CheckedPackageRefusalCause::InvalidValue)
+        Some(filament_contract_model::CheckedPackageRefusalCause::InvalidValue)
     );
     assert_eq!(
         refusal.loci[0].path.as_ref().unwrap().as_str(),
@@ -854,7 +854,7 @@ fn selected_native_parameters_and_results_keep_their_type_nodes() {
         ("Timestamp", "timestamp"),
     ] {
         let mut document = domain_document(json!({}));
-        let type_ref = format!("ix://quire/native/{native}");
+        let type_ref = format!("ix://filament/native/{native}");
         document["types"][0]["fields"] = json!([{
             "identity": format!("{ORDER}/native"), "name": "native", "typeRef": type_ref,
             "presence": "required", "nullable": false, "defaultKind": "none",
@@ -921,7 +921,7 @@ fn selected_native_parameters_and_results_keep_their_type_nodes() {
 
 fn refused(
     package: &Value,
-    evidence: &quire_contract_model::CheckedPackageEvidence,
+    evidence: &filament_contract_model::CheckedPackageEvidence,
 ) -> CheckedPackageRefusal {
     match read(package, evidence) {
         CheckedPackageV2ReadResult::Refused(refusal) => refusal,
@@ -941,17 +941,17 @@ fn selected_tuple_and_payload_variant_declarations_admit() {
         .expect("constructs")
         .extend([
             json!({"kind":{"module":IDENTITY,"name":"tuple"},
-                "construct":{"meaning":"quire.meaning.model.tuple-value-type/v1"}}),
+                "construct":{"meaning":"filament.meaning.model.tuple-value-type/v1"}}),
             json!({"kind":{"module":IDENTITY,"name":"variant"},
-                "construct":{"meaning":"quire.meaning.model.variant-type/v1"}}),
+                "construct":{"meaning":"filament.meaning.model.variant-type/v1"}}),
         ]);
     document["types"].as_array_mut().expect("types").extend([
         json!({
             "identity":tuple, "displayName":"Pair",
             "kind":{"module":IDENTITY,"name":"tuple"},
             "positions":[
-                {"identity":format!("{tuple}/p0"),"typeRef":"ix://quire/native/Boolean"},
-                {"identity":format!("{tuple}/p1"),"typeRef":"ix://quire/native/Integer"}
+                {"identity":format!("{tuple}/p0"),"typeRef":"ix://filament/native/Boolean"},
+                {"identity":format!("{tuple}/p1"),"typeRef":"ix://filament/native/Integer"}
             ]
         }),
         json!({
@@ -986,7 +986,7 @@ fn selected_tuple_and_payload_variant_declarations_admit() {
 #[test]
 fn selected_payload_variant_uses_union_family_in_binary_operations() {
     let mut document = variant_document_named(TIER, &["Gold", "2x"]);
-    document["types"][1]["variants"][0]["payloadType"] = json!("ix://quire/native/Integer");
+    document["types"][1]["variants"][0]["payloadType"] = json!("ix://filament/native/Integer");
     let (mut package, _, variant_key) = variant_package(&["Gold", "2x"], &[], false);
     let boolean = "scalar/boolean".to_owned();
     let (left, left_node) = parameter("left", "3", &variant_key);
@@ -1001,7 +1001,7 @@ fn selected_payload_variant_uses_union_family_in_binary_operations() {
     ]);
     let body = json!({
         "term":"application", "operator":"binary",
-        "operation":{"identity":"quire.op.structural.eq", "laws":[], "mode":null,
+        "operation":{"identity":"filament.op.structural.eq", "laws":[], "mode":null,
             "member":null, "leaves":[]},
         "result_type":node_id(&boolean),
         "arguments":[reference(&left), reference(&right)],
@@ -1028,10 +1028,10 @@ fn selected_payload_variant_uses_union_family_in_binary_operations() {
         .as_array()
         .expect("nodes")
         .iter()
-        .position(|node| node["body"]["operation"]["identity"] == "quire.op.structural.eq")
+        .position(|node| node["body"]["operation"]["identity"] == "filament.op.structural.eq")
         .expect("structural equality");
     package["semantic_graph"]["nodes"][equality_index]["body"]["operation"]["identity"] =
-        json!("quire.op.enum.eq");
+        json!("filament.op.enum.eq");
     settle(&mut package);
     let refusal = refused(&package, &evidence);
     assert_eq!(
@@ -1052,7 +1052,7 @@ fn variant_document_named(declared: &str, cases: &[&str]) -> Value {
         .expect("constructs")
         .push(json!({
             "kind": {"module": "acme/orders", "name": "variant"},
-            "construct": {"meaning": "quire.meaning.model.variant-type/v1"},
+            "construct": {"meaning": "filament.meaning.model.variant-type/v1"},
         }));
     document["types"]
         .as_array_mut()
@@ -1072,7 +1072,11 @@ fn variant_package(
     cases: &[&str],
     emitted: &[&str],
     typed: bool,
-) -> (Value, quire_contract_model::CheckedPackageEvidence, String) {
+) -> (
+    Value,
+    filament_contract_model::CheckedPackageEvidence,
+    String,
+) {
     variant_package_named(TIER, cases, emitted, typed)
 }
 
@@ -1081,7 +1085,11 @@ fn variant_package_named(
     cases: &[&str],
     emitted: &[&str],
     typed: bool,
-) -> (Value, quire_contract_model::CheckedPackageEvidence, String) {
+) -> (
+    Value,
+    filament_contract_model::CheckedPackageEvidence,
+    String,
+) {
     let mut document = variant_document_named(declared, cases);
     if typed {
         let order = &mut document["types"][0];
@@ -1456,7 +1464,7 @@ fn selected_variant_types_field_parameter_and_result() {
 
 fn variant_binary_package(
     operation: &str,
-) -> (Value, quire_contract_model::CheckedPackageEvidence) {
+) -> (Value, filament_contract_model::CheckedPackageEvidence) {
     let (mut package, evidence, _) = variant_package(&["Gold", "2x"], &["Gold", "2x"], false);
     let boolean = "scalar/boolean".to_owned();
     let nodes = package["semantic_graph"]["nodes"]
@@ -1493,7 +1501,7 @@ fn variant_binary_package(
 #[trace("TC-048", "FR-038-AC-237")]
 #[test]
 fn selected_variant_admits_enum_equality_and_refuses_order_or_structural_equality() {
-    for operation in ["quire.op.enum.eq", "quire.op.enum.ne"] {
+    for operation in ["filament.op.enum.eq", "filament.op.enum.ne"] {
         let (package, evidence) = variant_binary_package(operation);
         let result = read(&package, &evidence);
         assert!(
@@ -1501,7 +1509,7 @@ fn selected_variant_admits_enum_equality_and_refuses_order_or_structural_equalit
             "{operation}: {result:?}"
         );
     }
-    for operation in ["quire.op.enum.lt", "quire.op.structural.eq"] {
+    for operation in ["filament.op.enum.lt", "filament.op.structural.eq"] {
         let (package, evidence) = variant_binary_package(operation);
         let position = package["semantic_graph"]["nodes"]
             .as_array()
@@ -1519,7 +1527,7 @@ fn selected_variant_admits_enum_equality_and_refuses_order_or_structural_equalit
             Some(CheckedPackageRefusalCause::OperatorIneligible),
             "{operation}"
         );
-        let expected_path = if operation == "quire.op.structural.eq" {
+        let expected_path = if operation == "filament.op.structural.eq" {
             format!("/semantic_graph/nodes/{position}")
         } else {
             format!("/semantic_graph/nodes/{position}/body/arguments/0")
@@ -1614,16 +1622,16 @@ pub(super) fn authored_relationship() -> Value {
 fn relationship_package(
     relationship: Value,
     role: &str,
-) -> (Value, quire_contract_model::CheckedPackageEvidence) {
+) -> (Value, filament_contract_model::CheckedPackageEvidence) {
     relationship_operation_package(relationship, role, false)
 }
 
 pub(crate) fn model_member_control(
     identity: &str,
-) -> (Value, quire_contract_model::CheckedPackageEvidence) {
+) -> (Value, filament_contract_model::CheckedPackageEvidence) {
     match identity {
-        "quire.op.model.navigate" => relationship_package(authored_relationship(), "links"),
-        "quire.op.model.dispatch_call" => package_over(&domain_document(json!({})), "total"),
+        "filament.op.model.navigate" => relationship_package(authored_relationship(), "links"),
+        "filament.op.model.dispatch_call" => package_over(&domain_document(json!({})), "total"),
         _ => unreachable!("only the two model member controls are requested"),
     }
 }
@@ -1632,7 +1640,7 @@ fn relationship_operation_package(
     relationship: Value,
     role: &str,
     reaches: bool,
-) -> (Value, quire_contract_model::CheckedPackageEvidence) {
+) -> (Value, filament_contract_model::CheckedPackageEvidence) {
     let destination = if relationship["sourceEnd"]["role"] == role {
         &relationship["targetEnd"]["type"]
     } else {
@@ -1653,9 +1661,9 @@ fn relationship_operation_package(
     let form = if reaches { "reachability" } else { "query" };
     let operator = if reaches { "reaches" } else { "query" };
     let operation = if reaches {
-        "quire.op.model.reaches"
+        "filament.op.model.reaches"
     } else {
-        "quire.op.model.navigate"
+        "filament.op.model.navigate"
     };
     let second = reaches.then(|| parameter("other", "1", &reference_type));
     let arguments = if reaches {
@@ -1765,7 +1773,7 @@ fn bounded_collection(
 fn navigation_with_result(
     relationship: Value,
     result: NavigationResult,
-) -> (Value, quire_contract_model::CheckedPackageEvidence) {
+) -> (Value, filament_contract_model::CheckedPackageEvidence) {
     let (mut package, _) = relationship_package(relationship.clone(), "links");
     let mut document = domain_document(json!({"relationships": [relationship.clone()]}));
     let destination = relationship["targetEnd"]["type"]
@@ -1841,7 +1849,7 @@ fn navigation_with_result(
 fn reaches_with_operands(
     first_type: &str,
     second_type: &str,
-) -> (Value, quire_contract_model::CheckedPackageEvidence) {
+) -> (Value, filament_contract_model::CheckedPackageEvidence) {
     reaches_over(authored_relationship(), "links", first_type, second_type)
 }
 
@@ -1850,7 +1858,7 @@ pub(super) fn reaches_over(
     role: &str,
     first_type: &str,
     second_type: &str,
-) -> (Value, quire_contract_model::CheckedPackageEvidence) {
+) -> (Value, filament_contract_model::CheckedPackageEvidence) {
     let (mut package, _) = relationship_operation_package(relation.clone(), role, true);
     let mut document = domain_document(json!({"relationships": [relation.clone()]}));
     let nodes = package["semantic_graph"]["nodes"]
@@ -2185,7 +2193,7 @@ fn tc_048_a_selected_self_relationship_reaches_through_either_named_end() {
 /// The reaches application and its result type node, as the reader admits them.
 fn admitted_reaches(
     package: &Value,
-    evidence: &quire_contract_model::CheckedPackageEvidence,
+    evidence: &filament_contract_model::CheckedPackageEvidence,
 ) -> (Value, String, usize) {
     let CheckedPackageV2ReadResult::Admitted(admitted) = read(package, evidence) else {
         panic!("expected an admitted reaches package");
@@ -2196,8 +2204,8 @@ fn admitted_reaches(
         .find(|node| {
             matches!(
                 &node.body,
-                quire_contract_model::CheckedTerm::Application {
-                    operator: quire_contract_model::ApplicationOperator::Reaches,
+                filament_contract_model::CheckedTerm::Application {
+                    operator: filament_contract_model::ApplicationOperator::Reaches,
                     ..
                 }
             )
@@ -2208,7 +2216,7 @@ fn admitted_reaches(
         .find(|node| node.node_id == call.semantic_type)
         .expect("admitted result type node");
     let operands = match &call.body {
-        quire_contract_model::CheckedTerm::Application { arguments, .. } => arguments.len(),
+        filament_contract_model::CheckedTerm::Application { arguments, .. } => arguments.len(),
         _ => 0,
     };
     (
@@ -2628,19 +2636,19 @@ fn tc_048_a_model_owned_operation_admits_through_a_real_semantic_ir_document() {
     }
 }
 
-/// Trace: FR-068-AC-2, QSpec FR-322-AC-72
+/// Trace: FR-068-AC-2, FSpec FR-322-AC-72
 #[trace("TC-463")]
 #[test]
 fn selected_flow_process_go_resolves_its_operation_and_reference_receiver() {
     let flow = format!("ix://{IDENTITY}/Flow");
     let mut document = domain_document(json!({}));
-    document["constructs"][0]["construct"]["meaning"] = json!("quire.meaning.model.process/v1");
+    document["constructs"][0]["construct"]["meaning"] = json!("filament.meaning.model.process/v1");
     document["types"][0]["identity"] = json!(flow);
     document["types"][0]["displayName"] = json!("Flow");
     document["types"][0]["operations"][0]["identity"] = json!(format!("{flow}/go"));
     document["types"][0]["fields"] = json!([{
         "identity":format!("{flow}/n"), "name":"n",
-        "typeRef":"ix://quire/native/Integer", "presence":"required",
+        "typeRef":"ix://filament/native/Integer", "presence":"required",
         "nullable":false, "defaultKind":"none",
         "multiplicity":{"lower":1,"upper":1,"ordered":false,"unique":true}
     }]);
@@ -2667,17 +2675,17 @@ fn selected_flow_process_go_resolves_its_operation_and_reference_receiver() {
 fn unit_dispatch_call(
     argument_family: &str,
     result_unit: bool,
-) -> (Value, quire_contract_model::CheckedPackageEvidence) {
+) -> (Value, filament_contract_model::CheckedPackageEvidence) {
     let mut document = domain_document(json!({}));
-    document["types"][0]["operations"][0]["params"] = json!([slot(None, "ix://quire/unit/ms")]);
+    document["types"][0]["operations"][0]["params"] = json!([slot(None, "ix://filament/unit/ms")]);
     if result_unit {
-        document["types"][0]["operations"][0]["returns"] = slot(None, "ix://quire/unit/ms");
+        document["types"][0]["operations"][0]["returns"] = slot(None, "ix://filament/unit/ms");
     }
     let mut package = package_selecting("total");
     let mut members = nominal_fixture_members();
     let unit = members
         .iter_mut()
-        .find(|(preimage, _)| preimage["version"] == "quire.unit-node/v1")
+        .find(|(preimage, _)| preimage["version"] == "filament.unit-node/v1")
         .expect("unit");
     unit.0["qualified_declaration"] = json!(["ms"]);
     unit.1 = "ms".to_owned();
@@ -2981,7 +2989,7 @@ fn document_bytes_with_number(member: &str, number: &str) -> Vec<u8> {
 /// supplied as its document.
 fn read_selecting(bytes: &[u8]) -> CheckedPackageV2ReadResult {
     let package = package_selecting("total");
-    let mut evidence = quire_contract_model::CheckedPackageEvidence::new();
+    let mut evidence = filament_contract_model::CheckedPackageEvidence::new();
     evidence
         .insert_domain_package_document(IDENTITY.to_owned(), bytes.to_vec())
         .expect("domain evidence declarations agree on exact bytes");
@@ -3053,7 +3061,7 @@ fn document_with_count_bound(maximum: Value) -> Value {
         .expect("constructs")
         .push(json!({
             "kind": {"module": "acme/orders", "name": "count"},
-            "construct": {"meaning": "quire.meaning.model.value-type/v1"},
+            "construct": {"meaning": "filament.meaning.model.value-type/v1"},
         }));
     document["types"]
         .as_array_mut()
@@ -3284,7 +3292,7 @@ fn unreadable_refusal() -> ExpectedRefusal {
 #[trace("TC-048", "FR-038-AC-110")]
 #[test]
 fn tc_048_the_first_reader_fault_decides_when_faults_coexist() {
-    // QSL FR-056: the first fault `quire_canonical::read` returns decides. A
+    // FSL FR-056: the first fault `quire_canonical::read` returns decides. A
     // number with no finite double is raised when it is read; a repeated
     // member name only when its object closes. Hand-written expectations.
     let number = |pointer: &str, cause| number_refusal(pointer, cause);
@@ -3528,7 +3536,7 @@ fn edge_document() -> Value {
         edge_field(
             ORDER,
             "total",
-            "ix://quire/native/Integer",
+            "ix://filament/native/Integer",
             "required",
             one.clone(),
         ),
@@ -3537,7 +3545,7 @@ fn edge_document() -> Value {
         vec![edge_field(
             owner,
             "code",
-            "ix://quire/native/Integer",
+            "ix://filament/native/Integer",
             "required",
             one.clone(),
         )]
@@ -3547,7 +3555,7 @@ fn edge_document() -> Value {
         "package": {"identity": IDENTITY, "version": VERSION},
         "constructs": [{
             "kind": {"module": "acme/orders", "name": "entity"},
-            "construct": {"meaning": "quire.meaning.model.object-type/v1"},
+            "construct": {"meaning": "filament.meaning.model.object-type/v1"},
         }],
         "types": [
             object_type_declaration(ORDER, &[], fields),
@@ -3580,7 +3588,7 @@ enum Operand {
 }
 
 /// A package over [`edge_document`] holding `reaches(source, target, name)`
-/// as a `quire.op.model.reaches_field` application whose member declaration
+/// as a `filament.op.model.reaches_field` application whose member declaration
 /// is `declaring` (keyed under the domain package `package`), with the
 /// operands typed as given. Returns the package, its evidence, and the
 /// application's node position.
@@ -3589,7 +3597,11 @@ fn reaches_package(
     name: &str,
     source: Operand,
     target: Operand,
-) -> (Value, quire_contract_model::CheckedPackageEvidence, usize) {
+) -> (
+    Value,
+    filament_contract_model::CheckedPackageEvidence,
+    usize,
+) {
     let document = edge_document();
     let mut package = nominal_package(&[]);
 
@@ -3648,7 +3660,7 @@ fn reaches_package(
         "term": "application",
         "operator": "reaches",
         "operation": {
-            "identity": "quire.op.model.reaches_field", "laws": [], "mode": null,
+            "identity": "filament.op.model.reaches_field", "laws": [], "mode": null,
             "member": {"kind": "field", "declaration": node_id(&declaring_key), "name": name},
             "leaves": [],
         },
@@ -3716,7 +3728,11 @@ fn reaches(
     name: &str,
     source: &'static str,
     target: &'static str,
-) -> (Value, quire_contract_model::CheckedPackageEvidence, usize) {
+) -> (
+    Value,
+    filament_contract_model::CheckedPackageEvidence,
+    usize,
+) {
     reaches_package(
         (declaring, SELECTED),
         name,
@@ -3906,7 +3922,7 @@ fn tc_056_reaches_field_refuses_an_invalid_edge_where_it_fails() {
 
 fn admitted(
     package: &Value,
-    evidence: &quire_contract_model::CheckedPackageEvidence,
+    evidence: &filament_contract_model::CheckedPackageEvidence,
 ) -> CheckedPackageV2 {
     match read(package, evidence) {
         CheckedPackageV2ReadResult::Admitted(admitted) => *admitted,
@@ -3925,7 +3941,7 @@ fn application_of(package: &CheckedPackageV2, operation: &str) -> CheckedNodeId 
         .nodes
         .iter()
         .find(|node| {
-            matches!(&node.body, quire_contract_model::CheckedTerm::Application { operation: record, .. }
+            matches!(&node.body, filament_contract_model::CheckedTerm::Application { operation: record, .. }
                 if record.identity() == Some(operation))
         })
         .expect("an application of the operation")
@@ -3984,7 +4000,7 @@ fn order_declaration_id() -> CheckedNodeId {
 fn admitted_reaching(relation: Value, role: &str) -> (CheckedPackageV2, CheckedNodeId) {
     let (package, evidence) = relationship_operation_package(relation, role, true);
     let package = admitted(&package, &evidence);
-    let application = application_of(&package, "quire.op.model.reaches");
+    let application = application_of(&package, "filament.op.model.reaches");
     (package, application)
 }
 
@@ -4066,7 +4082,7 @@ fn tc_048_relationship_end_returns_the_declared_bounds_role_and_derived_type() {
         PREFERRED_ORDER,
     );
     let package = admitted(&subtype, &evidence);
-    let application = application_of(&package, "quire.op.model.reaches");
+    let application = application_of(&package, "filament.op.model.reaches");
     assert_eq!(
         package.relationship_end(&application),
         Ok(expected_end(
@@ -4117,7 +4133,7 @@ fn tc_048_relationship_end_returns_the_declared_bounds_role_and_derived_type() {
             .any(|node| node.node_id == order),
         "the graph holds no node of the declared end type"
     );
-    let application = application_of(&package, "quire.op.model.reaches");
+    let application = application_of(&package, "filament.op.model.reaches");
     assert_eq!(
         package.relationship_end(&application),
         Ok(expected_end(
@@ -4143,7 +4159,7 @@ fn tc_048_relationship_end_refuses_every_node_that_is_not_a_reaches_application(
     for (label, node) in [
         (
             "navigate",
-            application_of(&package, "quire.op.model.navigate"),
+            application_of(&package, "filament.op.model.navigate"),
         ),
         ("relationship", relationship_id()),
         ("object declaration", order_declaration_id()),
@@ -4153,11 +4169,11 @@ fn tc_048_relationship_end_refuses_every_node_that_is_not_a_reaches_application(
 
     let (project, evidence) = crate::checked_package_v2_model_fields::record_project_control();
     let package = admitted(&project, &evidence);
-    let read = application_of(&package, "quire.op.record.project");
+    let read = application_of(&package, "filament.op.record.project");
     assert_eq!(package.relationship_end(&read), refusal, "field read");
 
     let package = crate::checked_package_v2_model_fields::integer_add_control();
-    let add = application_of(&package, "quire.op.integer.add");
+    let add = application_of(&package, "filament.op.integer.add");
     assert_eq!(package.relationship_end(&add), refusal, "integer.add");
     let literal = package
         .resolved_graph()
@@ -4180,7 +4196,7 @@ fn tc_048_retaining_the_relationship_end_changes_neither_equality_nor_work() {
     let (package, evidence) = relationship_operation_package(relation, "links", true);
     let first = admitted(&package, &evidence);
     let second = admitted(&package, &evidence);
-    let application = application_of(&first, "quire.op.model.reaches");
+    let application = application_of(&first, "filament.op.model.reaches");
     let clone = first.clone();
     let bytes = indexed_bytes(&package);
     let read_at = |work| {
@@ -4287,8 +4303,8 @@ fn tc_048_relationship_end_is_not_a_field_and_exports_no_selected_population_ite
     );
     assert!(fields.field("links").is_none() && fields.field("linkedBy").is_none());
 
-    let root = include_str!("../../crates/quire-contract-model/src/lib.rs");
-    let facade = include_str!("../../crates/quire-contract-model/src/selected_population.rs");
+    let root = include_str!("../../crates/filament-contract-model/src/lib.rs");
+    let facade = include_str!("../../crates/filament-contract-model/src/selected_population.rs");
     let exported = facade
         .split_once("pub use crate::checked_package::{")
         .expect("the facade names its exports")
@@ -4327,12 +4343,12 @@ fn tc_048_relationship_end_is_not_a_field_and_exports_no_selected_population_ite
 #[trace("TC-472", "FR-038-AC-511")]
 #[test]
 fn a_denied_relationship_destination_read_is_refused_not_a_double_borrow() {
-    let (mut wire, evidence) = model_member_control("quire.op.model.navigate");
+    let (mut wire, evidence) = model_member_control("filament.op.model.navigate");
     index_fixture_node_ids(&mut wire);
     let bytes = canonical(&wire);
     let read = |limit: u64| {
-        let mut budget =
-            quire_contract_model::NativeJoinBudget::new(u64::MAX, 0).with_read_storage_limit(limit);
+        let mut budget = filament_contract_model::NativeJoinBudget::new(u64::MAX, 0)
+            .with_read_storage_limit(limit);
         let result = CheckedPackageV2::read_with_budget(
             &bytes,
             CheckedPackageReadLimits {
@@ -4350,30 +4366,32 @@ fn a_denied_relationship_destination_read_is_refused_not_a_double_borrow() {
     };
     assert!(matches!(
         read(u64::MAX).0,
-        quire_contract_model::CheckedPackageV2BudgetedReadResult::Admitted(_)
+        filament_contract_model::CheckedPackageV2BudgetedReadResult::Admitted(_)
     ));
-    for limit in 730_400..731_100 {
+    for limit in 732_400..733_100 {
         let (result, budget) = read(limit);
         assert!(
             !matches!(
                 &result,
-                quire_contract_model::CheckedPackageV2BudgetedReadResult::Admitted(_)
+                filament_contract_model::CheckedPackageV2BudgetedReadResult::Admitted(_)
             ),
             "limit {limit} admitted"
         );
         let (denied, outcome_locus) = match result {
-            quire_contract_model::CheckedPackageV2BudgetedReadResult::BudgetIncomplete(outcome) => {
+            filament_contract_model::CheckedPackageV2BudgetedReadResult::BudgetIncomplete(
+                outcome,
+            ) => {
                 assert_eq!(
                     outcome.denied.resource,
-                    quire_contract_model::PackageReadResource::ReadStorage,
+                    filament_contract_model::PackageReadResource::ReadStorage,
                     "limit {limit} must stop on read storage"
                 );
                 (outcome.denied, None)
             }
-            quire_contract_model::CheckedPackageV2BudgetedReadResult::Exhausted(outcome) => {
+            filament_contract_model::CheckedPackageV2BudgetedReadResult::Exhausted(outcome) => {
                 assert_eq!(
                     outcome.denied.resource,
-                    quire_contract_model::PackageReadResource::ReadStorage,
+                    filament_contract_model::PackageReadResource::ReadStorage,
                     "limit {limit} must stop on read storage"
                 );
                 (outcome.denied, Some(outcome.locus))
@@ -4390,8 +4408,8 @@ fn a_denied_relationship_destination_read_is_refused_not_a_double_borrow() {
             .expect("a typed read-storage denial retains its first unpaid locus");
         assert!(matches!(
             first_unpaid_locus.source,
-            quire_contract_model::NativeJoinLocusSource::PackageRead(
-                quire_contract_model::PackageReadStage::WireChecks,
+            filament_contract_model::NativeJoinLocusSource::PackageRead(
+                filament_contract_model::PackageReadStage::WireChecks,
                 _
             )
         ));

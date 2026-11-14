@@ -3,14 +3,14 @@
 
 //! External construction and admission of structural checked-package identities.
 
-use ix_trace_rs::trace;
-use quire_canonical::Limits;
-use quire_contract_model::{
+use filament_contract_model::{
     encode_checked_package_v2, CheckedArtifactRef, CheckedDiagnosticsV2, CheckedNodeId,
     CheckedNodePathSegment, CheckedPackageEvidence, CheckedPackageLockV2, CheckedPackageReadLimits,
     CheckedPackageRefusalCode, CheckedPackageSourceCorrespondenceRef, CheckedPackageV2ReadResult,
     CheckedSemanticGraphV2, CheckedSourceMapEntry,
 };
+use ix_trace_rs::trace;
+use quire_canonical::Limits;
 use serde_json::{json, Value};
 
 fn structural_id() -> CheckedNodeId {
@@ -42,10 +42,10 @@ fn envelope() -> (
     }))
     .expect("typed lock");
     let graph = serde_json::from_value(json!({
-        "graph_version": "quire.checked-semantic-graph/v2",
+        "graph_version": "filament.checked-semantic-graph/v2",
         "nodes": [{
             "node_id": id,
-            "schema_version": "quire.checked-semantic-graph/v2",
+            "schema_version": "filament.checked-semantic-graph/v2",
             "node_tag": "scalar_type",
             "semantic_form": "boolean",
             "semantic_type": id,
@@ -88,7 +88,7 @@ fn encode(
             source_map,
             refinement_step_rows: None,
         },
-        quire_contract_model::CheckedPackageSidecarsRef {
+        filament_contract_model::CheckedPackageSidecarsRef {
             temporal_clause_names: None,
             operation_effects: None,
             operation_bodies: None,

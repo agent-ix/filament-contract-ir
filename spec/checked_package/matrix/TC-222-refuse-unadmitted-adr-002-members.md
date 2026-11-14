@@ -3,7 +3,7 @@ id: TC-222
 title: "Refuse a document attempting to carry an unadmitted ADR-002 2.0.0 member"
 type: TC
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/FR-344
+  - target: ix://agent-ix/filament-contract-ir/FR-344
     type: verifies
 ---
 
@@ -11,7 +11,7 @@ relationships:
 
 ## Description
 
-Verify FR-344-AC-1, FR-344-AC-2 and FR-344-AC-3: a `quire.checked-package/v2` document
+Verify FR-344-AC-1, FR-344-AC-2 and FR-344-AC-3: a `filament.checked-package/v2` document
 attempting to
 carry a supertype list, an abstractness flag, a subsets edge, a redefines
 edge or a population node — the five ADR-002 members this reader has no

@@ -4,23 +4,23 @@ title: "IR to codegen seam: the checked-package and Kani types codegen consumes"
 type: ArchitectureDescription
 status: accepted
 owner: kreneskyp
-system: quire-contract-ir root crate and quire-contract-model public items that quire-contract-codegen imports, the import path it uses, and the Cargo edge between the two repositories
+system: filament-contract-ir root crate and filament-contract-model public items that filament-contract-codegen imports, the import path it uses, and the Cargo edge between the two repositories
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/AD-001
+  - target: ix://agent-ix/filament-contract-ir/AD-001
     type: references
-  - target: ix://agent-ix/quire-contract-ir/AD-002
+  - target: ix://agent-ix/filament-contract-ir/AD-002
     type: references
-  - target: ix://agent-ix/quire-contract-ir/AD-003
+  - target: ix://agent-ix/filament-contract-ir/AD-003
     type: references
-  - target: ix://agent-ix/quire-contract-ir/FR-019
+  - target: ix://agent-ix/filament-contract-ir/FR-019
     type: references
-  - target: ix://agent-ix/quire-contract-ir/FR-030
+  - target: ix://agent-ix/filament-contract-ir/FR-030
     type: references
-  - target: ix://agent-ix/quire-contract-ir/FR-035
+  - target: ix://agent-ix/filament-contract-ir/FR-035
     type: references
-  - target: ix://agent-ix/quire-contract-ir/FR-038
+  - target: ix://agent-ix/filament-contract-ir/FR-038
     type: references
-  - target: ix://agent-ix/quire-contract-ir/FR-039
+  - target: ix://agent-ix/filament-contract-ir/FR-039
     type: references
 ---
 # IR to codegen seam: what codegen consumes
@@ -40,7 +40,7 @@ lowering under FR-015-AC-109. Codegen depends on IR; IR depends on nothing of
 codegen's.
 
 Out of scope: how codegen uses what it reads (codegen's own specification) and the runtime seam
-(`quire-contract-runtime` AD-003).
+(`filament-contract-runtime` AD-003).
 
 ## Views
 
@@ -53,7 +53,7 @@ Measured at the commits of codegen and IR this AD was written against.
 
 | Group | Items | Owner | Codegen files that name them |
 | --- | --- | --- | --- |
-| Checked-package v2 and lowering | `CheckedPackageV2`, `CheckedNodeId`, `CheckedNodeTag`, `CheckedSemanticId`, `CheckedSemanticNodeV2`, `CheckedSourceMapEntry`, `CompleteContractNodeV2`, `CompleteLoweringProfileV2`, `CompleteLoweringRecordV2` | IR (FR-035, FR-038; wire is QSpec's) | `composite_equality.rs`, `exact_function.rs`, `exact_scalar.rs`, `state_frame.rs`, `routed_generation.rs`, `generation.rs`, `kani_obligations.rs` |
+| Checked-package v2 and lowering | `CheckedPackageV2`, `CheckedNodeId`, `CheckedNodeTag`, `CheckedSemanticId`, `CheckedSemanticNodeV2`, `CheckedSourceMapEntry`, `CompleteContractNodeV2`, `CompleteLoweringProfileV2`, `CompleteLoweringRecordV2` | IR (FR-035, FR-038; wire is FSpec's) | `composite_equality.rs`, `exact_function.rs`, `exact_scalar.rs`, `state_frame.rs`, `routed_generation.rs`, `generation.rs`, `kani_obligations.rs` |
 | Authored-contract projection | `BoundPackage`, `BoundClause`, `ClauseRef`, `ClauseKind`, `Expression`, `ExpressionKind`, `TypedExpression`, `StateObservation`, `DependencyIdentity`, `SourceSpan` and related | IR (FR-011 to FR-023) | `bound.rs`, `bound_coverage.rs`, `bound_strategy/generation.rs`, `oracle.rs`, `harness.rs`, `kani.rs`, `strategy.rs`, `kani_obligations.rs` |
 | Shared Kani contract | `PROFILE` `kani-bounded/1`, `KaniProfile`, `ProfileSelection`, `FiniteInput` family, `DispatchIndex`, `KaniOutcome`, `KaniOutcomeKind` | IR (FR-029 to FR-031) | `bounded_kani_profile.rs`, `bounded_kani_corpus.rs`, `bounded_collections.rs`, `finite_reference_graphs.rs`, `kani_execution.rs` |
 | Former IR Kani family lowerings | `lower_checked_arithmetic`, `lower_query`, `lower_reaches` and their request and result types | absent from IR; arithmetic retired in codegen (FR-015-AC-109), collection and graph lowering owned by codegen | `bounded_collections.rs` and `finite_reference_graphs.rs` own the active lowering paths |
@@ -66,10 +66,10 @@ used none of them.
 
 ### The import path
 
-Codegen's manifest now declares both IR packages: `quire-contract-model` for model items and
-`quire-contract-ir` for the root `kani` interface. Codegen imports model items through
-`quire_contract_model`, and IR-347 removed the root crate's former
-`pub use quire_contract_model::*` glob (AD-001, FR-039).
+Codegen's manifest now declares both IR packages: `filament-contract-model` for model items and
+`filament-contract-ir` for the root `kani` interface. Codegen imports model items through
+`filament_contract_model`, and IR-347 removed the root crate's former
+`pub use filament_contract_model::*` glob (AD-001, FR-039).
 
 ### Identity and versions on this seam
 
@@ -95,8 +95,8 @@ Codegen's manifest now declares both IR packages: `quire-contract-model` for mod
 | --- | --- | --- | --- |
 | codegen to IR | yes, root crate and model crate | codegen `Cargo.toml:33-37` declares both; current `Cargo.lock` has one entry for each | CG `make deny` runs only `cargo deny check` (`Makefile:145-147`); one-revision lock qualification is missing (IR-1292) |
 | IR to codegen | no | IR `deny.toml:17-23` bans the crate by name; `tests/it/cycle_free_model.rs:206-249,360-404` rejects it on model production paths and in any direct root dependency kind | no known gap on those guarded edges |
-| IR to QSL | no | TC-041 checks model production paths and every direct root dependency kind by name/source; `deny.toml:31-44` rejects unlisted Git sources | no QSL name ban covers a model dev path or registry edge (AD-005 D-1) |
-| codegen to QSL | only `qsl-replay` | codegen `deny.toml` exceptions and QSL's `arch-lint api-surface` T12-A | not an IR concern |
+| IR to FSL | no | TC-041 checks model production paths and every direct root dependency kind by name/source; `deny.toml:31-44` rejects unlisted Git sources | no FSL name ban covers a model dev path or registry edge (AD-005 D-1) |
+| codegen to FSL | only `fsl-replay` | codegen `deny.toml` exceptions and FSL's `arch-lint api-surface` T12-A | not an IR concern |
 | IR and codegen both to runtime | IR no, codegen yes | IR `deny.toml:17-23` bans runtime by name; TC-041 checks model production and direct root edges; CG `Cargo.toml:38` declares RT | no known gap on those guarded IR edges |
 
 ### Failure outcomes and who reports them
@@ -112,14 +112,14 @@ Codegen's manifest now declares both IR packages: `quire-contract-model` for mod
 ## Decisions
 
 - A. Target: codegen reads IR through the model crate for model items and the root crate for the
-  `kani` module only. Order: codegen first adds the direct `quire-contract-model` dependency, then
+  `kani` module only. Order: codegen first adds the direct `filament-contract-model` dependency, then
   IR removes the root glob (the order the planner relays for IR-347); nothing sits between.
 - B. IR keeps the profile, finite input, dispatch index and outcome, which any backend can
   read, and exports no family lowering. Codegen retains collection and graph lowerers; its
   arithmetic lowering was retired by FR-015-AC-109. IR-347 removed the former IR modules and
   re-exports after those codegen ownership decisions.
 - C. IR's `KaniOutcome` is built only through its constructors (FR-030-AC-5), and the cause codes
-  codegen matches are `Std001Code` constants exported by `quire-contract-model`, not literals on
+  codegen matches are `Std001Code` constants exported by `filament-contract-model`, not literals on
   both sides (FR-044, FR-030-AC-6; IR-605). Codegen's own refusal codes (`kani_corpus_*` and
   `kani_profile_input_mismatch`) are built with `std001_code!`; codegen has no registry document
   for them today, and writing one is codegen's to decide. Neither is built today.
@@ -139,7 +139,7 @@ Local labels; the repository assigns requirement ids when one is authored.
   (FR-030-AC-4; implemented by `proved` and verified by tagged TC-223 tests; `non_success`
   separately refuses a `Proved` or `Counterexample` request).
 - G-5. Neither IR package depends on codegen or runtime: the two name-level bans exist in `deny.toml:17-23`, and TC-041 checks the model production graph and every direct root dependency kind (AD-005 D-2).
-- G-6. Codegen's current lock has one `quire-contract-model` and one `quire-contract-ir`,
+- G-6. Codegen's current lock has one `filament-contract-model` and one `filament-contract-ir`,
   but `make deny` does not enforce that count. IR-1292 owns the missing CG lock gate.
 - G-7. Every lowering request codegen sends yields exactly one record (AD-004; FR-035).
 
@@ -153,8 +153,8 @@ What is measured today, what is open and with whom, and what is routed.
   1. IR-347 removed the root glob and model bridge (AD-005); codegen now imports the model crate
      directly.
   2. IR-347 removed `KaniProviderResult`, `KaniProviderRecord` and
-     `KaniOutcomeKind::provider_result` from IR. FR-039 "Items QSL owns" assigns the first two to
-     QSL; codegen owns the outcome-to-QSL terminal-value map and used none of these IR items.
+     `KaniOutcomeKind::provider_result` from IR. FR-039 "Items FSL owns" assigns the first two to
+     FSL; codegen owns the outcome-to-FSL terminal-value map and used none of these IR items.
   3. IR-347 removed the three Kani family lowerings from IR. Codegen retired arithmetic and
      retains collection and graph lowerers.
   4. FR-030-AC-4 and AC-5 are implemented and backed by tagged TC-223 tests for the count,
@@ -168,8 +168,8 @@ What is measured today, what is open and with whom, and what is routed.
   The IR-311 ruling, recorded in CG AD-004 (PR 215, "One input model"), retires the first:
   `CheckedPackageV2` is the one input model and `BoundPackage` is deleted path by path in
   codegen's work order. Until then IR still exports the V1 items. Nothing is routed for it.
-- Codegen's own `deny.toml` still comments that `quire-spec-language` is "reached through
-  quire-contract-ir". IR declares no such dependency (FR-028; TC-041) and codegen's lock holds no `quire-spec-language` package, so the comment and its exception are stale.
+- Codegen's own `deny.toml` still comments that `filament-spec-language` is "reached through
+  filament-contract-ir". IR declares no such dependency (FR-028; TC-041) and codegen's lock holds no `filament-spec-language` package, so the comment and its exception are stale.
   Owner: codegen.
 
 ### Open questions
@@ -187,7 +187,7 @@ To codegen:
 | Id | Stated need |
 | --- | --- |
 | R3-C1 | Resolved: IR removed its three family lowerings; codegen retired arithmetic (FR-015-AC-109) and owns the collection and graph lowering paths. |
-| R3-C2 | Declare `quire-contract-model` directly and import model items from it, before IR removes the root glob. |
-| R3-C4 | Remove the stale comment in `deny.toml` that places `quire-spec-language` behind `quire-contract-ir`. |
+| R3-C2 | Declare `filament-contract-model` directly and import model items from it, before IR removes the root glob. |
+| R3-C4 | Remove the stale comment in `deny.toml` that places `filament-spec-language` behind `filament-contract-ir`. |
 
-To QSL: none. QSL does not consume this seam.
+To FSL: none. FSL does not consume this seam.

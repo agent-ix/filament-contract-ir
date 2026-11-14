@@ -3,37 +3,37 @@ id: FR-351
 title: "Admit the checked-package step-relation claim body"
 type: FR
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/StR-001
+  - target: ix://agent-ix/filament-contract-ir/StR-001
     type: traces_to
-  - target: ix://agent-ix/quire-contract-ir/FR-038
+  - target: ix://agent-ix/filament-contract-ir/FR-038
     type: depends_on
-  - target: ix://agent-ix/quire-contract-ir/FR-040
+  - target: ix://agent-ix/filament-contract-ir/FR-040
     type: depends_on
-  - target: ix://agent-ix/quire-contract-ir/FR-346
+  - target: ix://agent-ix/filament-contract-ir/FR-346
     type: depends_on
-  - target: ix://agent-ix/quire-contract-ir/FR-349
+  - target: ix://agent-ix/filament-contract-ir/FR-349
     type: depends_on
-  - target: ix://agent-ix/quire-specification/FR-477
+  - target: ix://agent-ix/filament-specification/FR-477
     type: references
-  - target: ix://agent-ix/quire-specification/FR-322
+  - target: ix://agent-ix/filament-specification/FR-322
     type: references
-  - target: ix://agent-ix/quire-specification/FR-341
+  - target: ix://agent-ix/filament-specification/FR-341
     type: references
-  - target: ix://agent-ix/quire-specification/FR-402
+  - target: ix://agent-ix/filament-specification/FR-402
     type: references
 ---
 # FR-351: Admit the checked-package step-relation claim body
 
 ## Description
 
-When the Contract IR V2 reader receives a `quire.checked-package/v2` package
+When the Contract IR V2 reader receives a `filament.checked-package/v2` package
 containing a `claim` node with `semantic_form: "step_relation"`, it shall admit
-the node only when its body and joins satisfy QSpec FR-477, and retain the
+the node only when its body and joins satisfy FSpec FR-477, and retain the
 admitted claim as a closed `ClaimForm::StepRelation` with a typed body. The
-reader shall return the first applicable typed refusal under QSpec FR-322's
+reader shall return the first applicable typed refusal under FSpec FR-322's
 package order and FR-477's node order, with no partially admitted package.
-This requirement specifies IR's consumption and writing of the QSpec artifact;
-QSpec FR-477 owns production, and QSpec FR-402 owns obligation identity.
+This requirement specifies IR's consumption and writing of the FSpec artifact;
+FSpec FR-477 owns production, and FSpec FR-402 owns obligation identity.
 
 ## Inputs
 
@@ -90,7 +90,7 @@ FR-402 obligation identities over the one claim occurrence.
 
 ### Identity and order
 
-The reader shall apply FR-322's graph, reference, dependency, owner, source-map and structural-id checks to this form. The node's dependencies shall be exactly the unique structural-id-ascending body reference targets. Its id is the retained `{package,path,ordinal}` label; the reader does not rederive it from owner, declaration or body. A changed invariant, precondition, execution order, binder or implementation changes the complete typed body and package value, while the declared path and package name may remain unchanged. Source whitespace and comments do not alter the typed body. The writer shall emit the same canonical body, dependencies, structural id and V2 bytes from the retained typed package, and its output shall read back with the same typed claim. The public reader shall also admit canonical bytes emitted by the external QSL producer under this QSpec contract.
+The reader shall apply FR-322's graph, reference, dependency, owner, source-map and structural-id checks to this form. The node's dependencies shall be exactly the unique structural-id-ascending body reference targets. Its id is the retained `{package,path,ordinal}` label; the reader does not rederive it from owner, declaration or body. A changed invariant, precondition, execution order, binder or implementation changes the complete typed body and package value, while the declared path and package name may remain unchanged. Source whitespace and comments do not alter the typed body. The writer shall emit the same canonical body, dependencies, structural id and V2 bytes from the retained typed package, and its output shall read back with the same typed claim. The public reader shall also admit canonical bytes emitted by the external FSL producer under this FSpec contract.
 
 The step-relation body step shall run after the terminal step and before the
 protocol step, in FR-322 body-step order. It shall visit `claim`/
@@ -112,7 +112,7 @@ their precedence; a malformed or duplicate structural id or wrong dependency lis
 | --- | --- | --- |
 | FR-351-AC-1 | Reading a canonical two-execution determinism relation over `V::Vault::step(i)` with an abstraction binding exposes one typed `claim`/`step_relation` node: four ordered root bindings; `V` once in subjects; `x` and `y` in source order, each with six ordered bindings, the same operation anchor, distinct `self` and `i` nodes at levels `[0, 1]` and `[2, 3]`, the operation's exact precondition/postcondition sets, the Vault invariant set, and a bound implementation; declaration `Det`, its source owner, one declaration and one claim occurrence are retained. Its body reading `pre(x.self.l) = pre(y.self.l)` reaches distinct self nodes. | Test |
 | FR-351-AC-2 | Without an abstraction binding, both implementation members are empty aggregates and the reader exposes the model claim alone; with the binding, both model and code claims are requested from the one claim occurrence with different FR-402 obligation identities. | Test |
-| FR-351-AC-3 | PLANNED/UNRUN (IR-1141). Adding a Vault invariant, changing step precondition or swapping x and y changes the complete step-relation body; whitespace and comment changes leave that body unchanged. Writing an admitted typed package and reading its canonical bytes preserves body, typed form and structural id; canonical output from the external QSL producer admits. | Test |
+| FR-351-AC-3 | PLANNED/UNRUN (IR-1141). Adding a Vault invariant, changing step precondition or swapping x and y changes the complete step-relation body; whitespace and comment changes leave that body unchanged. Writing an admitted typed package and reading its canonical bytes preserves body, typed form and structural id; canonical output from the external FSL producer admits. | Test |
 | FR-351-AC-4 | A missing execution `implementation` binding refuses `invalid_semantic_graph`; an unknown alias refuses `missing_declaration`/`missing-name`; an operation target naming an object type and an implementation relation lacking the operation's frame each refuse `invalid_model_binding`/`malformed-declaration`; omitted precondition or invariant references refuse the same at their aggregate; an integer-typed body expression refuses `ill_typed`/`non-boolean-root`, each at FR-477's locus and first applicable reader step. | Test |
 | FR-351-AC-5 | Replacing `y`'s `self` and `i` parameter references with `x`'s nodes, while updating the exact dependencies, refuses `invalid_model_binding`/`malformed-declaration` at `y`'s `parameters`; a simultaneous earlier-stage defect wins before this semantic refusal. | Test |
 
@@ -125,5 +125,5 @@ their precedence; a malformed or duplicate structural id or wrong dependency lis
 - [FR-346](./FR-346-admit-abstraction-relation-body.md) owns the typed
   implementation relation and its frame entries.
 - [FR-349](./FR-349-retain-typed-checked-v2-terms.md) owns typed body retention.
-- QSpec FR-477 and TC-962 define the step-relation vectors; QSpec FR-322,
+- FSpec FR-477 and TC-962 define the step-relation vectors; FSpec FR-322,
   FR-341 and FR-402 define graph identity, binders and obligation identities.

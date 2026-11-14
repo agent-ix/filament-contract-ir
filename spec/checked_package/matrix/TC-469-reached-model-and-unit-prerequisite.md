@@ -3,7 +3,7 @@ id: TC-469
 title: "Reached model and unit prerequisite"
 type: TC
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/FR-357
+  - target: ix://agent-ix/filament-contract-ir/FR-357
     type: verifies
 ---
 # TC-469: Reached model and unit prerequisite
@@ -24,7 +24,7 @@ allowance, the measured exact allowance, and one less. Repeat on an equal
 package clone, with an inspected unrelated row, and with an unrelated selected
 model inserted before the reached model. Omit required rows, alter selected
 owner and original identity claims, supply stale field and unit rows, duplicate
-a declaration row, and reach the variant without its QSL-issued shape and case
+a declaration row, and reach the variant without its FSL-issued shape and case
 variants. Reach field, operation and ancestry references to declared but
 unemitted model nodes; omit the conversion target's unit identity row; and
 reach a field whose admitted Float32 type cannot be represented in Exact.

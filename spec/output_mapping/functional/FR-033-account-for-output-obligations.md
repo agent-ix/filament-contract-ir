@@ -3,15 +3,15 @@ id: FR-033
 title: "Account for every mapped obligation"
 type: FR
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/StR-001
+  - target: ix://agent-ix/filament-contract-ir/StR-001
     type: traces_to
-  - target: ix://agent-ix/quire-contract-ir/FR-032
+  - target: ix://agent-ix/filament-contract-ir/FR-032
     type: depends_on
-  - target: ix://agent-ix/quire-specification/FR-121
+  - target: ix://agent-ix/filament-specification/FR-121
     type: implements
-  - target: ix://agent-ix/quire-specification/FR-269
+  - target: ix://agent-ix/filament-specification/FR-269
     type: implements
-  - target: ix://agent-ix/quire-specification/FR-298
+  - target: ix://agent-ix/filament-specification/FR-298
     type: implements
 ---
 # FR-033: Account for every mapped obligation
@@ -81,7 +81,7 @@ repairing, or approximating its disposition.
 
 - [FR-032](FR-032-admit-output-mapping-request.md) supplies the admitted request
   and exact target profile.
-- `ix://agent-ix/quire-specification/FR-121`, `FR-269`, and `FR-298` own the
+- `ix://agent-ix/filament-specification/FR-121`, `FR-269`, and `FR-298` own the
   complete accounting behavior and closed disposition vocabulary. Their current
-  record-identity clauses require a QSpec revision before this digest-free
+  record-identity clauses require a FSpec revision before this digest-free
   record contract can be implemented.
