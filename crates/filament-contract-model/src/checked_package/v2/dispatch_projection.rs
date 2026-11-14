@@ -6,9 +6,10 @@ use super::checked_term_data::{
 use super::model_fields::RetainedModels;
 use super::model_members::Budget;
 use super::native_join_budget::PackageReadStage;
+use super::source_object::is_source_declared_object_type;
 use super::stage_storage::{self, Path, Refusal, Site};
 use super::{
-    ApplicationOperator, CheckedNodeKind, CheckedPackageV2, CheckedPackageWireV2, CheckedTerm,
+    ApplicationOperator, CheckedNodeKind, CheckedNodeOwner, CheckedPackageV2, CheckedPackageWireV2, CheckedTerm,
     ClaimForm, ExpressionForm, FunctionForm, ModelForm, ScalarTypeForm, WorkMeter,
 };
 use crate::checked_package::common::ValidationFailure;
@@ -94,6 +95,34 @@ pub(super) fn position_of(index: &[(&CheckedNodeId, usize)], id: &CheckedNodeId)
         .binary_search_by(|(held, _)| (*held).cmp(id))
         .ok()
         .map(|found| index[found].1)
+}
+
+/// How a dispatch row's receiver family is joined.
+enum Route<'a> {
+    /// Selected model owners.
+    Model {
+        model: &'a super::model_members::DomainModel,
+        family: &'a str,
+    },
+    /// Source-declared object types sharing one `SourceOwner`.
+    Source { owner: &'a CheckedNodeOwner },
+}
+
+/// Whether `node` is a source clause function of `operation` for `clause`: its
+/// `declaration` is `[<type>, <operation>, <clause>]` under `owner`.
+fn is_source_clause_function<Body>(
+    node: &super::CheckedSemanticNodeV2<Body>,
+    owner: &CheckedNodeOwner,
+    operation: &str,
+    clause: &str,
+) -> bool {
+    node.owner.as_ref() == Some(owner)
+        && node.declaration.as_ref().is_some_and(|declaration| {
+            matches!(
+                declaration.qualified_name.as_slice(),
+                [_, name, kind] if name.as_ref() == operation && kind.as_ref() == clause
+            )
+        })
 }
 
 pub(super) type Occurrence<'a> = (&'a CheckedNodeId, &'a CheckedOccurrenceRole, u64);
@@ -191,6 +220,11 @@ pub(super) fn validate_checked_term_data<Body>(
             return Err(invalid(meter, row_index, row.key("operation")));
         }
         let context_position = position_of(&index, &table.context);
+        let source_context = context_position.is_some_and(|position| {
+            is_source_declared_object_type(&nodes[position], kinds[position])
+        });
+        let source_declaring = position_of(&index, &table.operation.declaring)
+            .is_some_and(|position| is_source_declared_object_type(&nodes[position], kinds[position]));
         let context_is_model = context_position.is_some_and(|position| {
             matches!(
                 kinds.get(position),
@@ -205,29 +239,52 @@ pub(super) fn validate_checked_term_data<Body>(
         // The member and receiver context name the call's static type,
         // while the selected operation may belong to an ancestor's family.
         if operation.member_declaration().ok().flatten() != Some(&table.context)
-            || !context_is_model
+            || !(context_is_model || source_context)
         {
             return Err(invalid(meter, row_index, row.key("context")));
         }
-        let Some(context_owner) = models.owner_by_key(&table.context) else {
-            return Err(invalid(meter, row_index, row.key("context")));
+        let route = if source_context || source_declaring {
+            // FR-366: a source row joins context and declaring through their
+            // `SourceOwner`; a row mixing a source and a model family refuses
+            // as a model row whose families differ does.
+            let owner = |id: &CheckedNodeId| {
+                position_of(&index, id)
+                    .filter(|&position| {
+                        is_source_declared_object_type(&nodes[position], kinds[position])
+                    })
+                    .and_then(|position| nodes[position].owner.as_ref())
+            };
+            match (owner(&table.context), owner(&table.operation.declaring)) {
+                (Some(context), Some(declaring)) if context == declaring => {
+                    Route::Source { owner: context }
+                }
+                _ => return Err(invalid(meter, row_index, row.key("operation"))),
+            }
+        } else {
+            let Some(context_owner) = models.owner_by_key(&table.context) else {
+                return Err(invalid(meter, row_index, row.key("context")));
+            };
+            let Some(family_owner) = models.owner_by_key(&table.operation.declaring) else {
+                return Err(invalid(meter, row_index, row.key("operation")));
+            };
+            if context_owner.selection != family_owner.selection {
+                return Err(invalid(meter, row_index, row.key("operation")));
+            }
+            let model = context_owner.package;
+            let mut budget = Budget::new(meter, model.root, model.bytes);
+            if !model.operation_in_family(
+                context_owner.node,
+                family_owner.node,
+                &table.operation.operation,
+                &mut budget,
+            )? {
+                return Err(invalid(meter, row_index, row.key("operation")));
+            }
+            Route::Model {
+                model,
+                family: family_owner.node,
+            }
         };
-        let Some(family_owner) = models.owner_by_key(&table.operation.declaring) else {
-            return Err(invalid(meter, row_index, row.key("operation")));
-        };
-        if context_owner.selection != family_owner.selection {
-            return Err(invalid(meter, row_index, row.key("operation")));
-        }
-        let model = context_owner.package;
-        let mut budget = Budget::new(meter, model.root, model.bytes);
-        if !model.operation_in_family(
-            context_owner.node,
-            family_owner.node,
-            &table.operation.operation,
-            &mut budget,
-        )? {
-            return Err(invalid(meter, row_index, row.key("operation")));
-        }
         let candidates = row.key("candidates");
         let repeated_key = stage_storage::first_repeat(
             meter,
@@ -255,29 +312,43 @@ pub(super) fn validate_checked_term_data<Body>(
                     at.key("selection_key"),
                 ));
             }
-            let original = &candidate.selection_key.original;
-            if model.identity.as_ref() != original.package.as_ref()
-                || !model.object_types.contains_key(original.node.as_ref())
-            {
-                return Err(invalid(meter, row_index, at.key("selection_key")));
+            if let Route::Model { model, family } = &route {
+                let original = &candidate.selection_key.original;
+                if model.identity.as_ref() != original.package.as_ref()
+                    || !model.object_types.contains_key(original.node.as_ref())
+                {
+                    return Err(invalid(meter, row_index, at.key("selection_key")));
+                }
+                let mut budget = Budget::new(meter, model.root, model.bytes);
+                if !model.operation_in_family(
+                    &original.node,
+                    family,
+                    &table.operation.operation,
+                    &mut budget,
+                )? {
+                    return Err(invalid(meter, row_index, at.key("selection_key")));
+                }
             }
-            let mut budget = Budget::new(meter, model.root, model.bytes);
-            if !model.operation_in_family(
-                &original.node,
-                family_owner.node,
-                &table.operation.operation,
-                &mut budget,
-            )? {
-                return Err(invalid(meter, row_index, at.key("selection_key")));
-            }
-            let body_kind = position_of(&index, &candidate.operation_body)
-                .and_then(|position| kinds.get(position));
+            let body_position = position_of(&index, &candidate.operation_body);
+            let body_kind = body_position.and_then(|position| kinds.get(position));
             // Model declarations can belong to a dependency package, so the
             // exact ID's package need not be the package being emitted. The
             // graph index and function kind prove that this handle is a
             // retained function node.
             if !matches!(body_kind, Some(CheckedNodeKind::Function(_))) {
                 return Err(invalid(meter, row_index, at.key("operation_body")));
+            }
+            if let Route::Source { owner } = &route {
+                if !body_position.is_some_and(|position| {
+                    is_source_clause_function(
+                        &nodes[position],
+                        owner,
+                        &table.operation.operation,
+                        "body",
+                    )
+                }) {
+                    return Err(invalid(meter, row_index, at.key("operation_body")));
+                }
             }
             if let Some(precondition) = candidate.effective_precondition.as_ref() {
                 let precondition_position = position_of(&index, precondition);
@@ -297,6 +368,22 @@ pub(super) fn validate_checked_term_data<Body>(
                 };
                 if !valid_precondition {
                     return Err(invalid(meter, row_index, at.key("effective_precondition")));
+                }
+                if let Route::Source { owner } = &route {
+                    if !precondition_position.is_some_and(|position| {
+                        is_source_clause_function(
+                            &nodes[position],
+                            owner,
+                            &table.operation.operation,
+                            "effective_precondition",
+                        )
+                    }) {
+                        return Err(invalid(
+                            meter,
+                            row_index,
+                            at.key("effective_precondition"),
+                        ));
+                    }
                 }
             }
         }

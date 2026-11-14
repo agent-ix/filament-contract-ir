@@ -5,7 +5,8 @@
 //! (FR-362 through FR-368). Every package is built here node by node.
 
 use crate::support::checked_package::{
-    canonical, evidence_for, family_key, fixture_source, node_id, settle, v2_all_families,
+    canonical, evidence_for, family_key, fixture_source, index_fixture_node_ids, node_id, settle,
+    v2_all_families,
 };
 use filament_contract_model::{
     encode_checked_package_v2, CheckedNodeId, CheckedNodeOwner, CheckedOperationEffectOrigin,
@@ -20,12 +21,47 @@ use serde_json::{json, Value};
 const SOURCE_FRAME_ROW: &str = "source_declaration_operation_frame";
 const MODEL_FRAME_ROW: &str = "model_document_operation_frame";
 
+/// The package with every nested structural id written as the graph-local
+/// index the wire carries.
+fn indexed(package: &Value) -> Value {
+    let mut package = package.clone();
+    index_fixture_node_ids(&mut package);
+    package
+}
+
 fn read(package: &Value) -> CheckedPackageV2ReadResult {
+    let package = indexed(package);
     crate::read_and_account(
-        &canonical(package),
+        &canonical(&package),
         CheckedPackageReadLimits::bounded(),
-        &evidence_for(package),
+        &evidence_of(&package),
     )
+}
+
+/// The model operation `deposit` returns an `Integer`, so a call on it types.
+fn dispatch_model_document() -> Value {
+    let mut document = crate::support::checked_package::family_model_document();
+    document["types"][0]["operations"][0]["returns"] = json!({
+        "typeRef": "ix://filament/native/Integer",
+        "multiplicity": {"lower": 1, "upper": 1, "ordered": false, "unique": true},
+        "nullable": false,
+    });
+    document
+}
+
+fn evidence_of(package: &Value) -> filament_contract_model::CheckedPackageEvidence {
+    if nodes(package)
+        .iter()
+        .any(|node| node["node_id"] == node_id(MODEL_CALL))
+    {
+        crate::support::checked_package::evidence_with_document(
+            package,
+            "test/families",
+            &dispatch_model_document(),
+        )
+    } else {
+        evidence_for(package)
+    }
 }
 
 fn admitted(package: &Value) -> CheckedPackageV2 {
@@ -916,6 +952,7 @@ fn forbidden_position_package(source: bool, application: &dyn Fn(&Value) -> Valu
 }
 
 fn read_forbidden(package: &Value) -> CheckedPackageRefusal {
+    let package = &indexed(package);
     let evidence = crate::support::checked_package::evidence_with_document(
         package,
         "test/families",
@@ -1119,4 +1156,383 @@ fn source_populations_key_by_name_and_a_repeated_name_refuses_as_a_repeated_decl
     };
     assert_eq!(tail(&refusal), tail(&oracle));
     assert_eq!(refusal.locus.is_some(), oracle.locus.is_some());
+}
+
+const FIXTURE_PACKAGE_NAME: &str = "test/families";
+const MODEL_CALL: &str = "fixture/src/model-call";
+const DISPATCH_CALL: &str = "fixture/src/call";
+
+fn clause_function(owner: &Value, name: &[&str], result: &Value) -> Value {
+    let label = format!("qualified:{}", name.join("/"));
+    let mut node = plain(
+        &label,
+        "function",
+        "pure_function",
+        result,
+        &[],
+        "declaration",
+        json!({"term": "aggregate", "members": []}),
+    );
+    node["declaration"] = json!({"qualified_name": name});
+    node["owner"] = owner.clone();
+    node
+}
+
+fn source_owner() -> Value {
+    json!({"kind": "source", "authority": fixture_source()["authority"],
+        "identity": fixture_source()["identity"]})
+}
+
+/// `Reference<target>`, keyed as the reader derives that anonymous type, and a
+/// `self` parameter of that type.
+fn receiver_nodes(target: &Value, label: &str) -> [Value; 2] {
+    let reference_id = json!({"package": FIXTURE_PACKAGE_NAME,
+        "path": ["composite_type", "reference", target], "ordinal": 0});
+    let mut reference_type = plain(
+        "unused",
+        "composite_type",
+        "reference",
+        &reference_id,
+        &[target],
+        "type",
+        json!({"term": "aggregate", "members": [reference(target)]}),
+    );
+    reference_type["node_id"] = reference_id.clone();
+    [
+        reference_type,
+        plain(
+            label,
+            "value",
+            "parameter",
+            &reference_id,
+            &[],
+            "expression",
+            json!({"term": "aggregate", "members": [
+                binding("name", text("self")),
+                binding("level", json!({"term": "literal", "type": integer(),
+                    "value_kind": "integer", "value": "0"})),
+            ]}),
+        ),
+    ]
+}
+
+fn dispatch_call(label: &str, receiver: &str, declaring: &Value) -> Value {
+    let mut call = application(
+        label,
+        "call",
+        "call",
+        "filament.op.model.dispatch_call",
+        json!({"kind": "operation", "declaration": declaring, "name": "deposit"}),
+        vec![reference(&node_id(receiver))],
+    );
+    if label == MODEL_CALL {
+        // A model call is typed by the member's result, the derived `Integer`.
+        let derived = node_id("qualified:scalar_type/integer");
+        call["body"]["result_type"] = derived.clone();
+        call["semantic_type"] = derived;
+    }
+    call
+}
+
+/// The derived `Integer` node a model member result names.
+fn derived_integer() -> Value {
+    plain(
+        "qualified:scalar_type/integer",
+        "scalar_type",
+        "integer",
+        &node_id("qualified:scalar_type/integer"),
+        &[],
+        "type",
+        json!({"term": "aggregate", "members": []}),
+    )
+}
+
+fn candidate(declaring: &Value, key: &str, body: &Value, precondition: Value) -> Value {
+    json!({
+        "selected_operation": {"declaring": declaring, "operation": "deposit"},
+        "selection_key": {"owner_effective_type": null,
+            "original": {"package": "test/families", "node": key}},
+        "operation_body": body,
+        "effective_precondition": precondition,
+    })
+}
+
+fn table(application: &str, context: &Value, declaring: &Value, candidates: Vec<Value>) -> Value {
+    json!({
+        "application": node_id(application),
+        "occurrence": {"role": "expression", "ordinal": 0},
+        "operation": {"declaring": declaring, "operation": "deposit"},
+        "context": context,
+        "candidates": candidates,
+    })
+}
+
+fn with_tables(mut package: Value, tables: Vec<Value>) -> Value {
+    package["checked_term_data"] = json!({"equality_decisions": [], "protocol_locations": [],
+        "dispatch_tables": tables, "probabilistic_claims": []});
+    package
+}
+
+/// Adds the subtype `Sub`, the clause functions of `deposit`, a receiver and a
+/// call on `Order`.
+fn add_dispatch_nodes(package: &mut Value) {
+    let owner = source_owner();
+    let boolean = boolean();
+    let sub = source_type("Sub", &["total"], &fixture_source());
+    let [reference_type, receiver] = receiver_nodes(&order_id(), "fixture/src/receiver");
+    nodes_mut(package).extend([
+        sub,
+        clause_function(&owner, &["Order", "deposit", "body"], &integer()),
+        clause_function(&owner, &["Order", "deposit", "effective_precondition"], &boolean),
+        clause_function(&owner, &["Sub", "deposit", "body"], &integer()),
+        reference_type,
+        receiver,
+        dispatch_call(DISPATCH_CALL, "fixture/src/receiver", &order_id()),
+    ]);
+}
+
+fn source_table(context: &Value, declaring: &Value) -> Value {
+    let order_body = node_id("qualified:Order/deposit/body");
+    let order_pre = node_id("qualified:Order/deposit/effective_precondition");
+    let sub_body = node_id("qualified:Sub/deposit/body");
+    table(
+        DISPATCH_CALL,
+        context,
+        declaring,
+        vec![
+            candidate(&order_id(), "Order", &order_body, order_pre),
+            candidate(&order_id(), "Sub", &sub_body, Value::Null),
+        ],
+    )
+}
+
+/// The source package with the subtype `Sub`, the clause functions of
+/// `deposit`, a call on `Order` and its dispatch table over `Order` and `Sub`.
+fn dispatch_package() -> Value {
+    let mut package = source_package();
+    add_dispatch_nodes(&mut package);
+    let mut package = with_tables(package, vec![source_table(&order_id(), &order_id())]);
+    settle(&mut package);
+    package
+}
+
+fn dispatch_row(package: &Value) -> &Value {
+    &package["checked_term_data"]["dispatch_tables"][0]
+}
+
+/// Trace: FR-366-AC-1.
+#[trace("TC-475", "FR-366-AC-1")]
+#[test]
+fn source_dispatch_table_reads_context_candidate_order_and_clause_identities() {
+    let package = dispatch_package();
+    let read_package = admitted(&package);
+    let occurrence = serde_json::from_value(dispatch_row(&package)["occurrence"].clone())
+        .expect("occurrence");
+    let view = read_package
+        .dispatch_candidates(&id(DISPATCH_CALL), &occurrence, 16)
+        .expect("the source table");
+    assert_eq!(view.table.context, id("qualified:Order"));
+    assert_eq!(view.table.operation.declaring, id("qualified:Order"));
+    let keys: Vec<_> = view
+        .candidates()
+        .iter()
+        .map(|candidate| candidate.selection_key.original.node.to_string())
+        .collect();
+    assert_eq!(keys, ["Order", "Sub"]);
+    assert_eq!(view.candidates()[0].operation_body, id("qualified:Order/deposit/body"));
+    assert_eq!(
+        view.candidates()[0].effective_precondition,
+        Some(id("qualified:Order/deposit/effective_precondition"))
+    );
+    assert_eq!(view.candidates()[1].operation_body, id("qualified:Sub/deposit/body"));
+    assert_eq!(view.candidates()[1].effective_precondition, None);
+}
+
+/// Trace: FR-366-AC-2.
+#[trace("TC-475", "FR-366-AC-2")]
+#[test]
+fn the_three_clause_function_forms_admit_together_and_each_segment_is_an_identifier() {
+    let mut package = dispatch_package();
+    nodes_mut(&mut package).push(clause_function(
+        &source_owner(),
+        &["Order", "deposit", "precondition", "positive"],
+        &boolean(),
+    ));
+    settle(&mut package);
+    admitted(&package);
+    let mut bad = package.clone();
+    let at = nodes(&bad)
+        .iter()
+        .position(|node| node["declaration"]["qualified_name"][3] == "positive")
+        .expect("authored precondition");
+    nodes_mut(&mut bad)[at]["declaration"]["qualified_name"][3] = json!("not an identifier");
+    settle(&mut bad);
+    let refusal = refused(&bad);
+    assert_eq!(refusal.code, Code::InvalidSemanticGraph);
+    assert!(refusal.loci[0]
+        .path
+        .as_ref()
+        .expect("path")
+        .as_str()
+        .ends_with(&format!("/{at}/declaration/qualified_name/3")));
+}
+
+/// Trace: FR-366-AC-3.
+#[trace("TC-475", "FR-366-AC-3")]
+#[test]
+fn source_clause_functions_of_another_form_operation_or_owner_refuse() {
+    let invalid = (Code::InvalidPackage, Some(Cause::InvalidValue));
+    let base = "/checked_term_data/dispatch_tables/0/candidates/0";
+    let cases: Vec<(&str, Box<dyn Fn(&mut Value)>, String)> = vec![
+        (
+            "body naming another declaration form",
+            Box::new(|row| {
+                row["candidates"][0]["operation_body"] =
+                    node_id("qualified:Order/deposit/effective_precondition");
+            }),
+            format!("{base}/operation_body"),
+        ),
+        (
+            "precondition naming a body",
+            Box::new(|row| {
+                row["candidates"][0]["effective_precondition"] =
+                    node_id("qualified:Order/deposit/body");
+            }),
+            format!("{base}/effective_precondition"),
+        ),
+        (
+            "body naming another operation",
+            Box::new(|row| {
+                row["candidates"][0]["operation_body"] = node_id("qualified:Order/withdraw/body");
+            }),
+            format!("{base}/operation_body"),
+        ),
+        (
+            "body naming a non-source function",
+            Box::new(|row| {
+                row["candidates"][0]["operation_body"] = node_id("qualified:Example/Function");
+            }),
+            format!("{base}/operation_body"),
+        ),
+    ];
+    for (case, edit, path) in cases {
+        let mut package = dispatch_package();
+        nodes_mut(&mut package).push(clause_function(
+            &source_owner(),
+            &["Order", "withdraw", "body"],
+            &integer(),
+        ));
+        edit(&mut package["checked_term_data"]["dispatch_tables"][0]);
+        settle(&mut package);
+        expect(case, &package, invalid.0, invalid.1, &path);
+    }
+    // A clause node of another `SourceOwner`.
+    let mut package = dispatch_package();
+    let other = json!({"kind": "source", "authority": fixture_source()["authority"],
+        "identity": "filament.fixture.other-source/v1"});
+    package["lock"]["sources"]
+        .as_array_mut()
+        .expect("sources")
+        .push(json!({"authority": other["authority"], "identity": other["identity"]}));
+    let at = nodes(&package)
+        .iter()
+        .position(|node| node["node_id"] == node_id("qualified:Order/deposit/body"))
+        .expect("body");
+    nodes_mut(&mut package)[at]["owner"] = other.clone();
+    settle(&mut package);
+    for entry in package["source_map"].as_array_mut().expect("source map") {
+        if entry["node_id"] == node_id("qualified:Order/deposit/body") {
+            entry["regions"][0]["source"] =
+                json!({"authority": other["authority"], "identity": other["identity"]});
+        }
+    }
+    expect(
+        "clause under another owner",
+        &package,
+        invalid.0,
+        invalid.1,
+        &format!("{base}/operation_body"),
+    );
+}
+
+/// Trace: FR-366-AC-4.
+#[trace("TC-475", "FR-366-AC-4")]
+#[test]
+fn dispatch_rows_mixing_a_source_and_a_model_family_refuse() {
+    let account = node_id("fixture/1515");
+    let operation = "/checked_term_data/dispatch_tables/0/operation";
+    // A source context with a model-owned declaring node.
+    let mut source_over_model = mixed_package();
+    add_dispatch_nodes(&mut source_over_model);
+    let mut package = with_tables(source_over_model, vec![source_table(&order_id(), &account)]);
+    settle(&mut package);
+    expect("source context, model declaring", &package, Code::InvalidPackage, Some(Cause::InvalidValue), operation);
+    // A model context with a source declaring node.
+    let mut model_over_source = mixed_package();
+    add_dispatch_nodes(&mut model_over_source);
+    let [reference_type, receiver] = receiver_nodes(&account, "fixture/src/model-receiver");
+    nodes_mut(&mut model_over_source).extend([
+        reference_type,
+        receiver,
+        dispatch_call(MODEL_CALL, "fixture/src/model-receiver", &account),
+        derived_integer(),
+    ]);
+    let mut row = source_table(&account, &order_id());
+    row["application"] = node_id(MODEL_CALL);
+    let mut package = with_tables(model_over_source, vec![row]);
+    settle(&mut package);
+    expect("model context, source declaring", &package, Code::InvalidPackage, Some(Cause::InvalidValue), operation);
+}
+
+/// Trace: FR-366-AC-5.
+#[trace("TC-475", "FR-366-AC-5")]
+#[test]
+fn a_model_dispatch_table_reads_unchanged_beside_a_source_table() {
+    let account = node_id("fixture/1515");
+    let mut package = mixed_package();
+    add_dispatch_nodes(&mut package);
+    let [reference_type, receiver] = receiver_nodes(&account, "fixture/src/model-receiver");
+    nodes_mut(&mut package).extend([
+        reference_type,
+        receiver,
+        dispatch_call(MODEL_CALL, "fixture/src/model-receiver", &account),
+        derived_integer(),
+    ]);
+    let model_candidate = json!({
+        "selected_operation": {"declaring": account, "operation": "deposit"},
+        "selection_key": {"owner_effective_type": null,
+            "original": {"package": "test/families", "node": "ix://test/families/Account"}},
+        "operation_body": node_id("qualified:Example/Function"),
+        "effective_precondition": null,
+    });
+    let model_table = table(MODEL_CALL, &account, &account, vec![model_candidate]);
+    let source_only = with_tables(package.clone(), vec![source_table(&order_id(), &order_id())]);
+    let both = with_tables(package.clone(), vec![model_table.clone(), source_table(&order_id(), &order_id())]);
+    let model_only = with_tables(package, vec![model_table]);
+    let read_model = |package: &Value| {
+        let mut package = package.clone();
+        settle(&mut package);
+        let admitted_package = admitted(&package);
+        let occurrence = serde_json::from_value(
+            json!({"role": "expression", "ordinal": 0})).expect("occurrence");
+        let table = admitted_package
+            .dispatch_candidates(&id(MODEL_CALL), &occurrence, 16)
+            .expect("the model table")
+            .table
+            .clone();
+        serde_json::to_value(table).expect("table")
+    };
+    let mut sorted = both.clone();
+    sorted["checked_term_data"]["dispatch_tables"]
+        .as_array_mut()
+        .expect("tables")
+        .sort_by_key(|row| serde_json::to_string(&row["application"]).expect("id"));
+    assert_eq!(read_model(&sorted), read_model(&model_only));
+    admitted_settled(&source_only);
+}
+
+fn admitted_settled(package: &Value) -> CheckedPackageV2 {
+    let mut package = package.clone();
+    settle(&mut package);
+    admitted(&package)
 }
