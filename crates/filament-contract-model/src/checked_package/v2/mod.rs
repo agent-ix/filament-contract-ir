@@ -87,6 +87,7 @@ mod selected_facts;
 mod selection_equality;
 mod source_map;
 mod source_object;
+mod source_operation;
 mod stage_storage;
 mod state;
 mod step_relation;
@@ -256,6 +257,7 @@ pub use source_object::{
     SelectedSourceObjectError, SelectedSourceObjectErrorCode, SelectedSourceObjectMember,
     SelectedSourceObjectRow, SelectedSourceObjects, SelectedSourcePopulation,
 };
+pub use source_operation::{SelectedSourceOperationRow, SelectedSourceOperations};
 pub use step_relation::{
     CheckedStepExecution, CheckedStepRelationBody, CheckedStepRelationCapability,
     CheckedStepRelationObligationIdentity,

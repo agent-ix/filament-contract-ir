@@ -242,14 +242,15 @@ pub use checked_package::{
     SelectedRecordFieldView, SelectedRecordView, SelectedSourceCollectionRow,
     SelectedSourceEnumRow, SelectedSourceObjectError, SelectedSourceObjectErrorCode,
     SelectedSourceObjectMember, SelectedSourceObjectRow, SelectedSourceObjects,
-    SelectedSourcePopulation, SelectedSourceRecordMemberRow, SelectedSourceRecordRow,
-    SelectedSourceTupleRow, SelectedSourceUnionRow, SelectedSourceUnitRow,
-    SelectedTupleDeclarationRow, SelectedTuplePositionRow, SelectedTypeDeclarations,
-    SelectedTypeDeclarationsError, SelectedTypeDimension, SelectedTypeModelUnit,
-    SelectedTypeObject, SelectedTypeObjectField, SelectedTypeObjectOperation,
-    SelectedTypeOperationParameter, SelectedTypeRecord, SelectedTypeTuple, SelectedTypeUnit,
-    SelectedUnionMemberRow, StateForm, TemporalBinding, TemporalClauseName, TemporalForm,
-    TimedModelForm, ValueForm, CHECKED_PACKAGE_V2, CONTRACT_PACKAGE_VERSION,
+    SelectedSourceOperationRow, SelectedSourceOperations, SelectedSourcePopulation,
+    SelectedSourceRecordMemberRow, SelectedSourceRecordRow, SelectedSourceTupleRow,
+    SelectedSourceUnionRow, SelectedSourceUnitRow, SelectedTupleDeclarationRow,
+    SelectedTuplePositionRow, SelectedTypeDeclarations, SelectedTypeDeclarationsError,
+    SelectedTypeDimension, SelectedTypeModelUnit, SelectedTypeObject, SelectedTypeObjectField,
+    SelectedTypeObjectOperation, SelectedTypeOperationParameter, SelectedTypeRecord,
+    SelectedTypeTuple, SelectedTypeUnit, SelectedUnionMemberRow, StateForm, TemporalBinding,
+    TemporalClauseName, TemporalForm, TimedModelForm, ValueForm, CHECKED_PACKAGE_V2,
+    CONTRACT_PACKAGE_VERSION,
 };
 
 pub use checked_package::CheckedFieldReadForm;

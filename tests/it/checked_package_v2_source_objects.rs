@@ -16,6 +16,11 @@ use filament_contract_model::{
     SelectedSourceObjectErrorCode as RowError, SelectedSourceObjectMember, SelectedSourceObjectRow,
     SelectedSourceObjects, SelectedSourcePopulation,
 };
+use filament_contract_model::{
+    CheckedCallableIdentity, CheckedCallableReadErrorCode, ModelForm, SelectedOperationIdentity,
+    SelectedOperationMemberErrorCode as OperationError, SelectedOperationMemberRow,
+    SelectedOperationMembers, SelectedSourceOperationRow, SelectedSourceOperations,
+};
 use ix_trace_rs::trace;
 use quire_canonical::Limits;
 use serde_json::{json, Value};
@@ -1935,4 +1940,295 @@ fn rows_whose_members_or_supertypes_the_package_does_not_support_are_unknown() {
         RowError::UnknownIdentityWitness,
         "cycle"
     );
+}
+
+/// The source package with the `[Order, deposit, body]` clause function a
+/// callable read joins: its `self` parameter and a body expression.
+fn callable_package() -> Value {
+    let mut package = source_package();
+    let [reference_type, receiver] = receiver_nodes(&order_id(), "fixture/src/body-receiver");
+    let mut function = clause_function(&source_owner(), &["Order", "deposit", "body"], &boolean());
+    function["body"] = json!({"term": "aggregate", "members": [
+        binding("parameters", json!({"term": "aggregate",
+            "members": [reference(&node_id("fixture/src/body-receiver"))]})),
+        binding("body", reference(&node_id(&family_key("dddd")))),
+    ]});
+    function["dependencies"] = json!([
+        node_id("fixture/src/body-receiver"),
+        node_id(&family_key("dddd"))
+    ]);
+    nodes_mut(&mut package).extend([reference_type, receiver, function]);
+    settle(&mut package);
+    package
+}
+
+fn anchor_of(package: &CheckedPackageV2) -> CheckedNodeId {
+    package
+        .graph()
+        .nodes
+        .iter()
+        .find(|node| node.semantic_form.as_ref() == "operation_anchor")
+        .expect("an operation anchor")
+        .node_id
+        .clone()
+}
+
+fn operation_row(package: &CheckedPackageV2, identity: &str) -> SelectedSourceOperationRow {
+    let anchor = anchor_of(package);
+    SelectedSourceOperationRow {
+        source_authority: fixture_source()["authority"]
+            .as_str()
+            .expect("authority")
+            .into(),
+        source_identity: identity.into(),
+        anchor_id: anchor.clone(),
+        structural_node: anchor,
+    }
+}
+
+fn operation_code(
+    package: &CheckedPackageV2,
+    rows: Vec<SelectedSourceOperationRow>,
+) -> OperationError {
+    SelectedSourceOperations::from_stage_rows(package, rows, 64)
+        .expect_err("the rows must be refused")
+        .code
+}
+
+/// Trace: FR-368-AC-1, FR-368-AC-2.
+#[trace("TC-475", "FR-368-AC-1", "FR-368-AC-2")]
+#[test]
+fn a_source_anchor_reads_its_joined_row_and_is_unavailable_without_one() {
+    let package = admitted(&callable_package());
+    let anchor = anchor_of(&package);
+    let rows = SelectedSourceOperations::from_stage_rows(
+        &package,
+        [operation_row(&package, "Order::deposit")],
+        64,
+    )
+    .expect("the valid row");
+    let read = package
+        .source_operation_callable(&rows, &anchor, 256)
+        .expect("the joined callable");
+    let callable = read.callable().expect("a callable");
+    assert_eq!(
+        callable.identity,
+        CheckedCallableIdentity::SourceOperation {
+            anchor: anchor.clone(),
+            source_authority: fixture_source()["authority"]
+                .as_str()
+                .expect("authority")
+                .into(),
+            source_identity: "Order::deposit".into(),
+        }
+    );
+    assert_eq!(callable.context, Some(id("qualified:Order")));
+    assert_eq!(callable.frame, Some(id("fixture/src/frame")));
+    assert_eq!(callable.parameters, [id("fixture/src/body-receiver")]);
+    assert_eq!(callable.body, id(&family_key("dddd")));
+
+    // Without a row the source anchor stays unavailable.
+    let empty = SelectedSourceOperations::from_stage_rows(&package, [], 0).expect("empty");
+    assert_eq!(
+        package
+            .source_operation_callable(&empty, &anchor, 256)
+            .expect_err("no row")
+            .code,
+        CheckedCallableReadErrorCode::UnavailableWitness
+    );
+    let none = SelectedOperationMembers::from_stage_rows(&package, [], 0).expect("empty");
+    assert_eq!(
+        package
+            .callable_table(&none, 256)
+            .expect_err("no model row")
+            .code,
+        CheckedCallableReadErrorCode::UnavailableWitness
+    );
+}
+
+/// Trace: FR-368-AC-3.
+#[trace("TC-475", "FR-368-AC-3")]
+#[test]
+fn a_row_that_does_not_name_the_anchor_its_type_its_operation_or_authority_is_refused() {
+    let package = admitted(&callable_package());
+    let valid = operation_row(&package, "Order::deposit");
+    let edits: Vec<(
+        &str,
+        Box<dyn Fn(&mut SelectedSourceOperationRow)>,
+        OperationError,
+    )> = vec![
+        (
+            "foreign anchor",
+            Box::new(|row| {
+                let mut foreign = row.anchor_id.clone();
+                foreign.package = "foreign/package".into();
+                row.anchor_id = foreign.clone();
+                row.structural_node = foreign;
+            }),
+            OperationError::UnknownAnchor,
+        ),
+        (
+            "dangling anchor",
+            Box::new(|row| {
+                row.anchor_id = id("qualified:Absent");
+                row.structural_node = id("qualified:Absent");
+            }),
+            OperationError::UnknownAnchor,
+        ),
+        (
+            "other type",
+            Box::new(|row| row.source_identity = "Sub::deposit".into()),
+            OperationError::MismatchedWitness,
+        ),
+        (
+            "other operation",
+            Box::new(|row| row.source_identity = "Order::withdraw".into()),
+            OperationError::MismatchedWitness,
+        ),
+        (
+            "wrong authority",
+            Box::new(|row| row.source_authority = "elsewhere".into()),
+            OperationError::MismatchedWitness,
+        ),
+        (
+            "structural node other than the anchor",
+            Box::new(|row| row.structural_node = id("qualified:Order")),
+            OperationError::MismatchedWitness,
+        ),
+        (
+            "a node that is no anchor",
+            Box::new(|row| {
+                row.anchor_id = id("qualified:Order");
+                row.structural_node = id("qualified:Order");
+            }),
+            OperationError::WrongAnchorForm,
+        ),
+    ];
+    for (case, edit, expected) in &edits {
+        let mut row = valid.clone();
+        edit(&mut row);
+        assert_eq!(operation_code(&package, vec![row]), *expected, "{case}");
+    }
+    assert_eq!(
+        operation_code(&package, vec![valid.clone(), valid]),
+        OperationError::ConflictingWitness
+    );
+}
+
+/// The mixed package with a model anchor over the selected `Account`.
+fn model_anchor_package() -> Value {
+    let mut package = mixed_package();
+    let frame = nodes(&package)[position(&package, "state", "frame")]["node_id"].clone();
+    let account = node_id("fixture/1515");
+    nodes_mut(&mut package).push(plain(
+        "fixture/src/model-anchor",
+        "state",
+        "operation_anchor",
+        &account,
+        &[&account, &frame],
+        "anchor",
+        json!({"term": "aggregate", "members": [
+            binding("context", reference(&account)),
+            binding("operation", text("deposit")),
+            binding("frame", reference(&frame)),
+        ]}),
+    ));
+    settle(&mut package);
+    package
+}
+
+fn node_anchor(package: &CheckedPackageV2, label: &str) -> CheckedNodeId {
+    let _ = package;
+    id(label)
+}
+
+fn model_row(anchor: CheckedNodeId) -> SelectedOperationMemberRow {
+    use filament_exact::{EffectiveId, OriginalDeclarationKey};
+    SelectedOperationMemberRow {
+        anchor,
+        selected_document: "test/families".into(),
+        declaring_form: ModelForm::ObjectType,
+        original_model_identity: "ix://test/families/Account".into(),
+        original_operation_identity: "ix://test/families/Account/deposit".into(),
+        selected_operation_identity: SelectedOperationIdentity::new(
+            EffectiveId::new(
+                None,
+                OriginalDeclarationKey::new("test/families", "ix://test/families/Account"),
+            ),
+            "deposit",
+        ),
+    }
+}
+
+/// Trace: FR-368-AC-4, FR-368-AC-5.
+#[trace("TC-475", "FR-368-AC-4", "FR-368-AC-5")]
+#[test]
+fn source_and_model_rows_do_not_cross_and_model_rows_read_unchanged() {
+    let package = admitted(&model_anchor_package());
+    let model_anchor = node_anchor(&package, "fixture/src/model-anchor");
+    // A source row for a model anchor.
+    let mut row = operation_row(&package, "Account::deposit");
+    row.anchor_id = model_anchor.clone();
+    row.structural_node = model_anchor.clone();
+    assert_eq!(
+        operation_code(&package, vec![row]),
+        OperationError::UnavailableWitness
+    );
+    // A model row for a source anchor.
+    let source_anchor = {
+        let source = admitted(&callable_package());
+        let anchor = anchor_of(&source);
+        let refused_row =
+            SelectedOperationMembers::from_stage_rows(&source, [model_row(anchor)], 16)
+                .expect_err("a source anchor has no model member");
+        assert_eq!(refused_row.code, OperationError::UnavailableWitness);
+    };
+    let _ = source_anchor;
+    // The model row for the model anchor still reads beside the source type.
+    let rows =
+        SelectedOperationMembers::from_stage_rows(&package, [model_row(model_anchor.clone())], 16)
+            .expect("the model row joins");
+    let read = rows.read(&package, &model_anchor).expect("the model row");
+    assert_eq!(
+        read.original_operation_identity.as_ref(),
+        "ix://test/families/Account/deposit"
+    );
+}
+
+/// Trace: FR-368-AC-6.
+#[trace("TC-475", "FR-368-AC-6")]
+#[test]
+fn a_row_needs_an_effects_row_only_when_the_carrier_is_present() {
+    // Present, with a row for `quote` only: `deposit` has none.
+    let mut with_carrier = callable_package();
+    with_carrier["operation_effects"] = json!([effect_row(
+        &order_id(),
+        &source_identity(),
+        "quote",
+        SOURCE_FRAME_ROW
+    )]);
+    let package = admitted(&with_carrier);
+    assert_eq!(
+        operation_code(&package, vec![operation_row(&package, "Order::deposit")]),
+        OperationError::MismatchedWitness
+    );
+    // Present, with the row for `deposit`: it joins.
+    let mut named = callable_package();
+    named["operation_effects"] = source_rows();
+    let package = admitted(&named);
+    SelectedSourceOperations::from_stage_rows(
+        &package,
+        [operation_row(&package, "Order::deposit")],
+        64,
+    )
+    .expect("the carrier names the operation");
+    // Absent: the row joins and no effect is read.
+    let package = admitted(&callable_package());
+    assert!(package.operation_effects().is_none());
+    SelectedSourceOperations::from_stage_rows(
+        &package,
+        [operation_row(&package, "Order::deposit")],
+        64,
+    )
+    .expect("no carrier, no comparison");
 }
