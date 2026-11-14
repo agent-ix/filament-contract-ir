@@ -4,13 +4,13 @@
 //! External writer checks for the optional producer-captured V2 sidecar.
 
 use crate::support::checked_package::{canonical, v2_all_families};
-use ix_trace_rs::trace;
-use quire_canonical::{Error, Limits};
-use quire_contract_model::{
+use filament_contract_model::{
     encode_checked_package_v2, CheckedCapability, CheckedDiagnosticsV2, CheckedPackageLockV2,
     CheckedPackageSourceCorrespondenceRef, CheckedProbabilisticClaim, CheckedSemanticGraphV2,
     CheckedSourceMapEntry, CheckedTermDataV2,
 };
+use ix_trace_rs::trace;
+use quire_canonical::{Error, Limits};
 use serde_json::{json, Value};
 
 fn encode(
@@ -29,10 +29,10 @@ fn encode(
         serde_json::from_value(package["capability_report"].clone()).expect("typed capabilities");
     let diagnostics: CheckedDiagnosticsV2 =
         serde_json::from_value(package["diagnostics"].clone()).expect("typed diagnostics");
-    let temporal_bindings: Option<Vec<quire_contract_model::TemporalBinding>> = package
+    let temporal_bindings: Option<Vec<filament_contract_model::TemporalBinding>> = package
         .get("temporal_bindings")
         .map(|value| serde_json::from_value(value.clone()).expect("typed temporal bindings"));
-    let temporal_clause_names: Option<Vec<quire_contract_model::TemporalClauseName>> = package
+    let temporal_clause_names: Option<Vec<filament_contract_model::TemporalClauseName>> = package
         .get("temporal_clause_names")
         .map(|value| serde_json::from_value(value.clone()).expect("typed temporal names"));
 
@@ -44,7 +44,7 @@ fn encode(
             source_map: &source_map,
             refinement_step_rows: None,
         },
-        quire_contract_model::CheckedPackageSidecarsRef {
+        filament_contract_model::CheckedPackageSidecarsRef {
             temporal_clause_names: temporal_clause_names.as_deref(),
             operation_effects: None,
             operation_bodies: None,

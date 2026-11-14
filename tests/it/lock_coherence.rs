@@ -20,7 +20,7 @@ impl Scratch {
     fn new(label: &str, lock: &str) -> Self {
         let serial = NEXT_SCRATCH.fetch_add(1, Ordering::Relaxed);
         let path = std::env::temp_dir().join(format!(
-            "quire-contract-ir-fr055-{}-{serial}-{label}",
+            "filament-contract-ir-fr055-{}-{serial}-{label}",
             std::process::id()
         ));
         fs::create_dir(&path).expect("unique scratch directory");
@@ -133,7 +133,7 @@ fn committed_lock_is_checked_without_rewriting_the_dependency_graph() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let paths = [
         root.join("Cargo.toml"),
-        root.join("crates/quire-contract-model/Cargo.toml"),
+        root.join("crates/filament-contract-model/Cargo.toml"),
         root.join("Cargo.lock"),
     ];
     let before = paths

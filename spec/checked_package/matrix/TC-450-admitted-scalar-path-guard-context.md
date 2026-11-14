@@ -3,7 +3,7 @@ id: TC-450
 title: "Admitted scalar path guards retain checked occurrences and refuse unsupported assumptions"
 type: TC
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/FR-050
+  - target: ix://agent-ix/filament-contract-ir/FR-050
     type: verifies
 ---
 # TC-450: Admitted scalar path guards retain checked occurrences and refuse unsupported assumptions
@@ -12,11 +12,11 @@ relationships:
 
 Verify [FR-050](../functional/FR-050-admitted-scalar-path-guard-context.md)
 through the public Contract IR lowering and admitted-package query, with
-independently known checked QSL guard occurrences and polarities.
+independently known checked FSL guard occurrences and polarities.
 
 ## Test Procedure
 
-Check QSL FR-062 RR-13 and an else-path counterpart. Record each checked
+Check FSL FR-062 RR-13 and an else-path counterpart. Record each checked
 item's application occurrence and outermost-first `PathGuard` values before
 mapping them to typed IR keys. Lower each application, optional direct
 conversion, and guard expression as roots in one selected source package and
@@ -43,7 +43,7 @@ typed view error without a partial list.
 Flip only `holds` for a valid guard and compare the returned polarity. Supply
 a different, independently valid represented guard to document IR's
 structural boundary: that input may pass IR and therefore cannot establish
-QSL item membership without the checked driver mapping.
+FSL item membership without the checked driver mapping.
 
 Compare the five-member wire, complete canonical value and application
 `reached_closure` before and after each read-only query. Compare the
@@ -51,7 +51,7 @@ application-only package with the contextual package to observe the ordinary
 root-driven graph/accounting/identity change. Compare FR-049 result-context
 queries with and without represented guard roots. Compile a public consumer
 that obtains structural guard references and result context from the same
-admitted package and does not read the original QSL graph. CG IR-304 separately
+admitted package and does not read the original FSL graph. CG IR-304 separately
 tests rendering, shared symbolic binding and typed refusal of unsupported
 guards; this IR procedure asserts none of those backend behaviors.
 

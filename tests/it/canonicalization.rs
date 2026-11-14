@@ -1,5 +1,4 @@
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     classify_coverage, AnchorName, ArtifactId, ArtifactTrace, CanonicalKind, CanonicalProfile,
     Clause, ClauseId, ClauseKind, CollectionType, ContractPackage, CoverageClass,
     DeclarationEnvironment, DiagnosticCode, EnumDeclaration, EnumVariantDeclaration,
@@ -10,6 +9,7 @@ use quire_contract_model::{
     SourceRevision, SourceSpan, SymbolName, TypeDeclaration, ValidationOptions, ValueDeclaration,
     ValueDeclarationKind, ValueType, MAX_SEMANTIC_COLLECTION_ITEMS,
 };
+use ix_trace_rs::trace;
 
 fn source(document: &str) -> SourceIdentity {
     SourceIdentity::new(
@@ -91,7 +91,7 @@ fn tc_017_canonical_bytes_ordering_and_resource_failure_conform() {
     let text = std::str::from_utf8(output.bytes().as_slice()).unwrap();
     assert_eq!(
         text,
-        "{\"kind\":\"package\",\"profile\":\"quire.contract.canonical-json/v1\",\"value\":{\"id\":\"agent-ix/pkg\",\"requirements\":[{\"clauses\":[{\"body\":{\"node\":\"literal\"},\"id\":\"note\",\"kind\":\"information\",\"requirement\":{\"package\":\"agent-ix/pkg\",\"requirement\":\"REQ_a\",\"revision\":1}}],\"id\":\"REQ_a\",\"package\":\"agent-ix/pkg\",\"revision\":1},{\"clauses\":[{\"body\":{\"node\":\"literal\"},\"id\":\"note\",\"kind\":\"information\",\"requirement\":{\"package\":\"agent-ix/pkg\",\"requirement\":\"REQ_b\",\"revision\":2}}],\"id\":\"REQ_b\",\"package\":\"agent-ix/pkg\",\"revision\":2}],\"schema_version\":{\"major\":1,\"minor\":1}}}"
+        "{\"kind\":\"package\",\"profile\":\"filament.contract.canonical-json/v1\",\"value\":{\"id\":\"agent-ix/pkg\",\"requirements\":[{\"clauses\":[{\"body\":{\"node\":\"literal\"},\"id\":\"note\",\"kind\":\"information\",\"requirement\":{\"package\":\"agent-ix/pkg\",\"requirement\":\"REQ_a\",\"revision\":1}}],\"id\":\"REQ_a\",\"package\":\"agent-ix/pkg\",\"revision\":1},{\"clauses\":[{\"body\":{\"node\":\"literal\"},\"id\":\"note\",\"kind\":\"information\",\"requirement\":{\"package\":\"agent-ix/pkg\",\"requirement\":\"REQ_b\",\"revision\":2}}],\"id\":\"REQ_b\",\"package\":\"agent-ix/pkg\",\"revision\":2}],\"schema_version\":{\"major\":1,\"minor\":1}}}"
     );
     assert!(!text.contains("canonical_a"));
     let changed = package_fixture("canonical_c", false, true);
@@ -503,7 +503,7 @@ fn tc_017_declaration_and_expression_projections_are_source_free_and_exact() {
     let expression_text = std::str::from_utf8(expression_output.bytes().as_slice()).unwrap();
     assert_eq!(
         expression_text,
-        "{\"kind\":\"expression\",\"profile\":\"quire.contract.canonical-json/v1\",\"value\":{\"result_type\":{\"kind\":\"text\"},\"tree\":{\"kind\":{\"node\":\"text_literal\",\"value\":\"\\\"\\\\\\b\\t\\n\\f\\r\\u0001/é\"}}}}"
+        "{\"kind\":\"expression\",\"profile\":\"filament.contract.canonical-json/v1\",\"value\":{\"result_type\":{\"kind\":\"text\"},\"tree\":{\"kind\":{\"node\":\"text_literal\",\"value\":\"\\\"\\\\\\b\\t\\n\\f\\r\\u0001/é\"}}}}"
     );
     assert_eq!(expression_output.kind(), CanonicalKind::Expression);
     assert!(!expression_text.contains("expression_source"));
@@ -635,7 +635,7 @@ fn tc_017_declaration_and_expression_projections_are_source_free_and_exact() {
     assert_eq!(
         std::str::from_utf8(rational_output.bytes().as_slice()).unwrap(),
         concat!(
-            "{\"kind\":\"expression\",\"profile\":\"quire.contract.canonical-json/v1\",",
+            "{\"kind\":\"expression\",\"profile\":\"filament.contract.canonical-json/v1\",",
             "\"value\":{\"result_type\":{\"kind\":\"rational\",\"value\":",
             "{\"maximum_denominator\":\"10\",\"numerator_maximum\":\"10\",",
             "\"numerator_minimum\":\"-10\"}},\"tree\":{\"kind\":{\"denominator\":\"2\",",
@@ -683,7 +683,7 @@ fn tc_017_declaration_and_expression_projections_are_source_free_and_exact() {
     assert_eq!(
         collection_text,
         concat!(
-            "{\"kind\":\"expression\",\"profile\":\"quire.contract.canonical-json/v1\",",
+            "{\"kind\":\"expression\",\"profile\":\"filament.contract.canonical-json/v1\",",
             "\"value\":{\"result_type\":{\"kind\":\"collection\",\"value\":",
             "{\"element\":{\"kind\":\"text\"},\"maximum_items\":2}},\"tree\":{\"kind\":",
             "{\"items\":[{\"kind\":{\"node\":\"text_literal\",\"value\":\"z_item\"}},",

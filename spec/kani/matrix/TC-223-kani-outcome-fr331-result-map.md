@@ -3,7 +3,7 @@ id: TC-223
 title: "Kani outcomes are built only by validated constructors, with their check count and cause codes"
 type: TC
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/FR-030
+  - target: ix://agent-ix/filament-contract-ir/FR-030
     type: verifies
 ---
 # TC-223: Kani outcomes are built only by validated constructors, with their check count and cause codes
@@ -14,9 +14,9 @@ Verify FR-030-AC-4 and FR-030-AC-5: the two `Unavailable` cause codes, the one
 `Inconclusive` cause, the SUCCESS check count a `proved` outcome carries, and
 the private fields and typed `KaniOutcomeError` that keep those rules from
 being bypassed. The typed `Std001Code` every outcome and error carries is
-FR-030-AC-6, verified under TC-443. The map from a Kani outcome to a QSL
+FR-030-AC-6, verified under TC-443. The map from a Kani outcome to a FSL
 `TerminalValue` is not verified here: it is owned by
-`agent-ix/quire-contract-codegen`, tracked there under Linear IR-358. The case
+`agent-ix/filament-contract-codegen`, tracked there under Linear IR-358. The case
 previously named FR-031-AC-5, which is retired.
 
 ## Test Procedure

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Agent-IX
 
-//! Text-vector input construction shared with the original QSpec driver.
+//! Text-vector input construction shared with the original FSpec driver.
 
 use crate::support::checked_package as fixture_support;
 use serde_json::{json, Value};

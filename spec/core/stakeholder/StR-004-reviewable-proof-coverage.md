@@ -3,9 +3,9 @@ id: StR-004
 title: "Make proof coverage reviewable"
 type: StR
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/FR-045
+  - target: ix://agent-ix/filament-contract-ir/FR-045
     type: satisfied_by
-  - target: ix://agent-ix/quire-contract-ir/StR-003
+  - target: ix://agent-ix/filament-contract-ir/StR-003
     type: depends_on
 ---
 # StR-004: Make proof coverage reviewable

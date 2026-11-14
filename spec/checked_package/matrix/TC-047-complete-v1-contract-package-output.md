@@ -3,9 +3,9 @@ id: TC-047
 title: "Complete-V1 lowering emits one canonical ContractPackage"
 type: TC
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/FR-035
+  - target: ix://agent-ix/filament-contract-ir/FR-035
     type: verifies
-  - target: ix://agent-ix/quire-specification/FR-330
+  - target: ix://agent-ix/filament-specification/FR-330
     type: references
 ---
 # TC-047: Complete-V1 lowering emits one canonical ContractPackage
@@ -22,7 +22,7 @@ emitter and strict-reader controls run in
 
 ## Test Procedure
 
-Lower a mixed request with represented and refused items. Read the emitted package as `quire.contract-package/v1`. Assert exactly six FR-330 members (`contract_version`, `package`, `semantic_graph`, `source_keys`, `source_map`, `feature_accounting`), one producer-chosen semantic graph node collection, total source correspondence and one accounting record per request. For one fixed admitted source graph and request list, different traversal construction orders produce equal complete canonical bytes. Change a represented node, selected profile, accounting result and valid source-map region separately; compare the corresponding typed member and complete bytes, then require strict admission or the applicable independent refusal. An extra `identity` member, missing member, extra graph partition, duplicate key and wrong version refuse before artifact generation. A node permutation with all index references rewritten admits; it is not a disordered-key refusal. No digest or hash is computed.
+Lower a mixed request with represented and refused items. Read the emitted package as `filament.contract-package/v1`. Assert exactly six FR-330 members (`contract_version`, `package`, `semantic_graph`, `source_keys`, `source_map`, `feature_accounting`), one producer-chosen semantic graph node collection, total source correspondence and one accounting record per request. For one fixed admitted source graph and request list, different traversal construction orders produce equal complete canonical bytes. Change a represented node, selected profile, accounting result and valid source-map region separately; compare the corresponding typed member and complete bytes, then require strict admission or the applicable independent refusal. An extra `identity` member, missing member, extra graph partition, duplicate key and wrong version refuse before artifact generation. A node permutation with all index references rewritten admits; it is not a disordered-key refusal. No digest or hash is computed.
 For the wire reader itself, change only `contract_version` to another string in
 an otherwise valid canonical package. Assert `Refused` with
 `unknown_contract_version`, path `/contract_version` and the exact supplied
@@ -115,8 +115,8 @@ raw indexed `CheckedNodeId` whose identical bytes occur in the two frames but
 whose rebuilt keys differ; passing the typed source key must not select the
 output node or its closure. An unresolved or malformed id cannot be converted
 into a typed source key, and the query accepts no unscoped raw id.
-The output-graph permutation is an admitted producer-chosen order under QSpec
-FR-330-AC-4/16 as merged in QSpec #548
+The output-graph permutation is an admitted producer-chosen order under FSpec
+FR-330-AC-4/16 as merged in FSpec #548
 (`da7ecb373141693ccc32ecff76377ce453113570`); it may change canonical
 bytes while preserving the named structural-key joins and typed query result.
 

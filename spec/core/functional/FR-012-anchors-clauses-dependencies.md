@@ -3,13 +3,13 @@ id: FR-012
 title: "Anchor clauses and derive referenced-value dependencies"
 type: FR
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/FR-011
+  - target: ix://agent-ix/filament-contract-ir/FR-011
     type: depends_on
-  - target: ix://agent-ix/quire-contract-ir/FR-014
+  - target: ix://agent-ix/filament-contract-ir/FR-014
     type: references
-  - target: ix://agent-ix/quire-contract-ir/FR-016
+  - target: ix://agent-ix/filament-contract-ir/FR-016
     type: references
-  - target: ix://agent-ix/quire-contract-ir/FR-017
+  - target: ix://agent-ix/filament-contract-ir/FR-017
     type: references
 ---
 # FR-012: Anchor clauses and derive referenced-value dependencies

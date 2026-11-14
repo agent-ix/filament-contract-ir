@@ -7,8 +7,7 @@ use crate::support::checked_package::{
     canonical, evidence_for, family_key, fixture_source, node_id, refresh_identity, settle,
     source_key, v2_all_families,
 };
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     BoundedDomainForm, CheckedNodeId, CheckedNodeTag, CheckedOccurrenceRole,
     CheckedPackageReadLimits, CheckedPackageV2, CheckedPackageV2ReadResult,
     CompleteLoweringProfileV2, ContractDependencies, ContractDispositionV1,
@@ -16,9 +15,10 @@ use quire_contract_model::{
     ContractOccurrenceKeyV1, ContractPackageReadResult, ContractPackageV1, ContractPackageWireV1,
     ContractPathGuardV1, ContractResultContextV1, ContractResultViewV1, LoweringProfileRef,
 };
+use ix_trace_rs::trace;
 use serde_json::{json, Value};
 
-fn body_at(term: &quire_contract_model::CheckedTerm, path: &str) -> Option<Value> {
+fn body_at(term: &filament_contract_model::CheckedTerm, path: &str) -> Option<Value> {
     serde_json::to_value(term).ok()?.pointer(path).cloned()
 }
 
@@ -52,7 +52,7 @@ fn application_node(
 ) -> Value {
     json!({
         "node_id": node_id(digest),
-        "schema_version": "quire.checked-semantic-graph/v2",
+        "schema_version": "filament.checked-semantic-graph/v2",
         "node_tag": "expression",
         "semantic_form": form,
         "semantic_type": node_id(result_type),
@@ -111,7 +111,7 @@ fn guard_source() -> Value {
             &nested_guard,
             "unary",
             "unary",
-            operation("quire.op.boolean.not"),
+            operation("filament.op.boolean.not"),
             &boolean,
             vec![json!({"term": "literal", "type": node_id(&boolean),
                 "value_kind": "boolean", "value": true})],
@@ -122,7 +122,7 @@ fn guard_source() -> Value {
             &application,
             "binary",
             "binary",
-            operation("quire.op.boolean.and"),
+            operation("filament.op.boolean.and"),
             &boolean,
             vec![
                 reference(&family_key("a4a4")),
@@ -138,7 +138,7 @@ fn guard_source() -> Value {
             &integer_guard,
             "binary",
             "binary",
-            operation("quire.op.integer.add"),
+            operation("filament.op.integer.add"),
             &integer,
             vec![
                 json!({"term": "literal", "type": node_id(&integer),
@@ -154,7 +154,7 @@ fn guard_source() -> Value {
             "conversion",
             "convert",
             json!({
-                "identity": "quire.op.numeric.narrow",
+                "identity": "filament.op.numeric.narrow",
                 "laws": [],
                 "mode": null,
                 "member": {"kind": "type_argument", "declaration": node_id(&family_key("cccc"))},
@@ -211,7 +211,7 @@ fn admit_source(value: &Value) -> CheckedPackageV2 {
 fn profile() -> CompleteLoweringProfileV2 {
     CompleteLoweringProfileV2 {
         reference: LoweringProfileRef {
-            authority: "quire".into(),
+            authority: "filament".into(),
             identity: "guard-context".into(),
         },
         required_source_selections: Vec::new(),
@@ -236,7 +236,7 @@ fn package(source: &CheckedPackageV2, roots: &[CheckedNodeId]) -> ContractPackag
 fn node_with_operation<'a>(
     package: &'a CheckedPackageV2,
     identity: &str,
-) -> &'a quire_contract_model::CheckedSemanticNodeV2 {
+) -> &'a filament_contract_model::CheckedSemanticNodeV2 {
     package
         .graph()
         .nodes
@@ -252,7 +252,7 @@ fn node_with_operation<'a>(
 
 fn reference_guard_node(
     package: &CheckedPackageV2,
-) -> &quire_contract_model::CheckedSemanticNodeV2 {
+) -> &filament_contract_model::CheckedSemanticNodeV2 {
     package
         .graph()
         .nodes
@@ -266,7 +266,7 @@ fn reference_guard_node(
 }
 
 fn occurrence(
-    node: &quire_contract_model::CheckedSemanticNodeV2,
+    node: &filament_contract_model::CheckedSemanticNodeV2,
     ordinal: u64,
 ) -> ContractOccurrenceKeyV1 {
     ContractOccurrenceKeyV1 {
@@ -281,7 +281,7 @@ fn lowered<'a>(
     expression: &CheckedNodeId,
     application: &ContractOccurrenceKeyV1,
     guards: &[ContractPathGuardV1],
-) -> Box<quire_contract_model::ContractLoweredGuardContextV1<'a>> {
+) -> Box<filament_contract_model::ContractLoweredGuardContextV1<'a>> {
     match package
         .guard_context(expression, application, guards)
         .expect("admitted guard query")
@@ -299,11 +299,11 @@ fn path_guard(occurrence: ContractOccurrenceKeyV1, holds: bool) -> ContractPathG
 #[test]
 fn tc_450_guard_context_preserves_order_polarity_identity_and_root_accounting() {
     let source = admit_source(&guard_source());
-    let app = node_with_operation(&source, "quire.op.boolean.and");
-    let integer_expression = node_with_operation(&source, "quire.op.integer.add");
-    let direct_narrow = node_with_operation(&source, "quire.op.numeric.narrow");
+    let app = node_with_operation(&source, "filament.op.boolean.and");
+    let integer_expression = node_with_operation(&source, "filament.op.integer.add");
+    let direct_narrow = node_with_operation(&source, "filament.op.numeric.narrow");
     let shared_guard = reference_guard_node(&source);
-    let nested_guard = node_with_operation(&source, "quire.op.boolean.not");
+    let nested_guard = node_with_operation(&source, "filament.op.boolean.not");
     let app_id = app.node_id.clone();
     let app_first = occurrence(app, 0);
     let app_else = occurrence(app, 1);
@@ -399,8 +399,8 @@ fn tc_450_guard_context_preserves_order_polarity_identity_and_root_accounting() 
     assert!(matches!(
         failure.cause,
         ContractGuardContextFailureCauseV1::InvalidBody(
-            quire_contract_model::ContractRootViewError::Incomplete(ref incomplete)
-        ) if incomplete.limit_kind == quire_contract_model::CheckedPackageLimit::Work
+            filament_contract_model::ContractRootViewError::Incomplete(ref incomplete)
+        ) if incomplete.limit_kind == filament_contract_model::CheckedPackageLimit::Work
             && incomplete.limit == second_root_budget
     ));
     assert_eq!(consumed, second_root_budget);
@@ -436,7 +436,7 @@ fn tc_450_guard_context_preserves_order_polarity_identity_and_root_accounting() 
     let before_wire = contextual.wire().clone();
     let before_closure = contextual
         .reached_closure(
-            &quire_contract_model::ContractSourceKeyV1::from_structural(&app_id)
+            &filament_contract_model::ContractSourceKeyV1::from_structural(&app_id)
                 .expect("structural source key"),
         )
         .expect("application closure")
@@ -523,7 +523,7 @@ fn tc_450_guard_context_preserves_order_polarity_identity_and_root_accounting() 
     assert_eq!(
         contextual
             .reached_closure(
-                &quire_contract_model::ContractSourceKeyV1::from_structural(&app_id)
+                &filament_contract_model::ContractSourceKeyV1::from_structural(&app_id)
                     .expect("structural source key")
             )
             .expect("same closure"),
@@ -536,10 +536,10 @@ fn tc_450_guard_context_preserves_order_polarity_identity_and_root_accounting() 
 fn tc_450_guard_context_refuses_first_bad_occurrence_without_a_prefix() {
     let source_value = guard_source();
     let source = admit_source(&source_value);
-    let app = node_with_operation(&source, "quire.op.boolean.and");
+    let app = node_with_operation(&source, "filament.op.boolean.and");
     let reference_guard = reference_guard_node(&source);
-    let nested_guard = node_with_operation(&source, "quire.op.boolean.not");
-    let integer_guard = node_with_operation(&source, "quire.op.integer.add");
+    let nested_guard = node_with_operation(&source, "filament.op.boolean.not");
+    let integer_guard = node_with_operation(&source, "filament.op.integer.add");
     let non_expression = source
         .graph()
         .nodes
@@ -694,7 +694,7 @@ fn tc_450_guard_context_refuses_first_bad_occurrence_without_a_prefix() {
 #[test]
 fn tc_450_unrepresented_guard_key_cannot_gain_authority_from_its_body_position() {
     let source = admit_source(&guard_source());
-    let app = node_with_operation(&source, "quire.op.boolean.and");
+    let app = node_with_operation(&source, "filament.op.boolean.and");
     let represented_parameter = source
         .graph()
         .nodes
@@ -744,7 +744,7 @@ fn tc_450_unrepresented_guard_key_cannot_gain_authority_from_its_body_position()
 #[test]
 fn tc_450_reader_refuses_a_lowered_guard_root_without_its_node() {
     let source = admit_source(&guard_source());
-    let app = node_with_operation(&source, "quire.op.boolean.and");
+    let app = node_with_operation(&source, "filament.op.boolean.and");
     let guard = reference_guard_node(&source);
     let app_id = app.node_id.clone();
     let guard_id = guard.node_id.clone();

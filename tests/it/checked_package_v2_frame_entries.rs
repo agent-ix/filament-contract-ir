@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Agent-IX
 
-//! TC-056: the V2 reader admits QSpec FR-340's frame `modifies` entries,
+//! TC-056: the V2 reader admits FSpec FR-340's frame `modifies` entries,
 //! FR-342's operation anchor body and FR-341's state clause and parameter
-//! bodies, and exactly QSpec's fifteen `model` forms, refusing every other
+//! bodies, and exactly FSpec's fifteen `model` forms, refusing every other
 //! shape with the code, cause and locus FR-040 fixes, in reader order.
 //!
 //! Every case builds its package in-repo from this crate's public
@@ -15,9 +15,7 @@ use crate::support::checked_package::{
     rebuild_source_map, refresh_identity, select_model, settle, sha256_hex, source_owner,
     structural_id, typed_node_id, v2_all_families, BOOLEAN_KEY, INTEGER_KEY,
 };
-use ix_trace_rs::trace;
-use quire_canonical::Limits;
-use quire_contract_model::{
+use filament_contract_model::{
     encode_checked_package_v2, CheckedApplicationOperation, CheckedCallableIdentity,
     CheckedCallableReadErrorCode, CheckedComparisonPath, CheckedComparisonRefusal,
     CheckedExecutionPointRefusal, CheckedFieldReadForm, CheckedMemberType, CheckedNodeId,
@@ -30,7 +28,9 @@ use quire_contract_model::{
     SelectedOperationIdentity, SelectedOperationMemberErrorCode, SelectedOperationMemberRow,
     SelectedOperationMembers, StateClauseKind,
 };
-use quire_exact::{EffectiveId, OriginalDeclarationKey};
+use filament_exact::{EffectiveId, OriginalDeclarationKey};
+use ix_trace_rs::trace;
+use quire_canonical::Limits;
 use serde_json::{json, Value};
 use std::sync::LazyLock;
 
@@ -86,7 +86,7 @@ fn step_model_document() -> Value {
         .expect("fields")
         .push(low_field);
     document["types"][0]["operations"][0]["params"] = json!([{
-        "name": "i", "typeRef": "ix://quire/native/Integer",
+        "name": "i", "typeRef": "ix://filament/native/Integer",
         "multiplicity": {"lower": 1, "upper": 1, "ordered": false, "unique": true},
     }]);
     document
@@ -469,7 +469,7 @@ type Edit = Box<dyn Fn(&mut Value)>;
 /// of the shared fixture's `family_key` mapping and the reader.
 fn fixture_key(tag: &str, form: &str, ty: Option<&str>, owner: Option<Value>) -> String {
     let mut preimage = json!({
-        "version": "quire.structural-node/v1", "node_tag": tag,
+        "version": "filament.structural-node/v1", "node_tag": tag,
         "semantic_form": form, "semantic_type": ty.map(node_id),
         "declaration": null, "recursion": null,
         "body": {"term": "aggregate", "members": []},
@@ -754,7 +754,7 @@ fn tc_056_record_source_declared_field_entries_admit_unresolved() {
         let node = &mut value["semantic_graph"]["nodes"][record];
         node["semantic_form"] = json!("record_value_type");
         let mut preimage = json!({
-            "version": "quire.structural-node/v1", "node_tag": "model",
+            "version": "filament.structural-node/v1", "node_tag": "model",
             "semantic_form": "record_value_type", "semantic_type": node_id(BOOLEAN_KEY),
             "declaration": null, "recursion": null,
             "body": {"term": "aggregate", "members": []},
@@ -931,7 +931,7 @@ fn plain(
 ) -> Value {
     json!({
         "node_id": node_id(digest),
-        "schema_version": "quire.checked-semantic-graph/v2",
+        "schema_version": "filament.checked-semantic-graph/v2",
         "node_tag": tag,
         "semantic_form": form,
         "semantic_type": node_id(ty),
@@ -969,12 +969,12 @@ fn anchor_body(context: &str, operation: Value, frame: &str) -> Value {
     ]})
 }
 
-/// A `quire.op.state.clause` application.
+/// A `filament.op.state.clause` application.
 fn clause_body(clause: &str, parameters: &[&str], anchor: &str, condition: &str) -> Value {
     json!({
         "term": "application",
         "operator": "state_clause",
-        "operation": {"identity": "quire.op.state.clause", "laws": [], "mode": null,
+        "operation": {"identity": "filament.op.state.clause", "laws": [], "mode": null,
             "member": {"kind": "state_clause", "clause": clause}, "leaves": []},
         "result_type": node_id(&boolean()),
         "arguments": [
@@ -1167,7 +1167,7 @@ fn assert_pointed_writer_round_trip(package: &StatePackage, positions: &[usize])
             source_map: admitted.source_map(),
             refinement_step_rows: admitted.refinement_step_rows(),
         },
-        quire_contract_model::CheckedPackageSidecarsRef {
+        filament_contract_model::CheckedPackageSidecarsRef {
             temporal_clause_names: admitted.temporal_clause_names(),
             operation_effects: None,
             operation_bodies: None,
@@ -2180,7 +2180,7 @@ fn tc_056_public_state_clause_kind_tracks_reader_admission() {
         .iter()
         .find_map(|node| match &node.body {
             CheckedTerm::Application { operation, .. }
-                if operation.identity() != Some("quire.op.state.clause") =>
+                if operation.identity() != Some("filament.op.state.clause") =>
             {
                 Some(operation)
             }
@@ -2261,7 +2261,7 @@ fn tc_056_state_clauses_admit_their_body_and_join_anchor_and_parameters() {
     let shapes: [(&str, Edit); 7] = [
         (
             "another identity",
-            Box::new(|body| body["operation"]["identity"] = json!("quire.op.claim.clause")),
+            Box::new(|body| body["operation"]["identity"] = json!("filament.op.claim.clause")),
         ),
         (
             "another operator class",
@@ -2422,7 +2422,7 @@ fn tc_056_a_state_clause_application_stands_only_as_a_clause_body_root() {
     let claim = nodes(&misplaced)
         .iter()
         .position(|node| {
-            node["body"]["operation"]["identity"] == "quire.op.state.clause"
+            node["body"]["operation"]["identity"] == "filament.op.state.clause"
                 && node["node_tag"] == "claim"
         })
         .expect("the misplaced clause");
@@ -2608,7 +2608,7 @@ const BOTH_NODE: &str = "ix://acme/orders/Both";
 const ACCOUNT_NODE: &str = "ix://acme/orders/Account";
 const ADDRESS_NODE: &str = "ix://acme/orders/Address";
 const STREET_TEXT_NODE: &str = "ix://acme/orders/StreetText";
-const NATIVE_INTEGER: &str = "ix://quire/native/Integer";
+const NATIVE_INTEGER: &str = "ix://filament/native/Integer";
 
 /// A member slot of type `type_ref` with the multiplicity `[1, 1]`.
 fn slot(type_ref: &str) -> Value {
@@ -2647,7 +2647,7 @@ fn orders_document() -> Value {
         "package": {"identity": ORDERS, "version": ORDERS_VERSION},
         "constructs": [{
             "kind": {"module": ORDERS, "name": "entity"},
-            "construct": {"meaning": "quire.meaning.model.object-type/v1"},
+            "construct": {"meaning": "filament.meaning.model.object-type/v1"},
         }],
         "types": [
             domain_type(ORDER_NODE, &[], vec![domain_field(ORDER_NODE, "total")], json!([
@@ -2672,14 +2672,14 @@ fn records_document() -> Value {
         .expect("constructs")
         .push(json!({
             "kind": {"module": ORDERS, "name": "record"},
-            "construct": {"meaning": "quire.meaning.model.record-value-type/v1"},
+            "construct": {"meaning": "filament.meaning.model.record-value-type/v1"},
         }));
     document["constructs"]
         .as_array_mut()
         .expect("constructs")
         .push(json!({
             "kind": {"module": ORDERS, "name": "text"},
-            "construct": {"meaning": "quire.meaning.model.value-type/v1"},
+            "construct": {"meaning": "filament.meaning.model.value-type/v1"},
         }));
     let mut street = domain_field(ADDRESS_NODE, "street");
     street["typeRef"] = json!(STREET_TEXT_NODE);
@@ -2940,7 +2940,7 @@ fn tc_056_selected_record_fields_obey_exact_work_limit() {
         CheckedPackageV2ReadResult::Incomplete(record) => {
             assert_eq!(
                 record.limit_kind,
-                quire_contract_model::CheckedPackageLimit::Work
+                filament_contract_model::CheckedPackageLimit::Work
             );
             let postcondition = StatePackage {
                 value: package.clone(),
@@ -3811,7 +3811,7 @@ fn tc_445_source_declared_operation_input_has_no_selected_model_range() {
                 &[&input],
                 "expression",
                 json!({"term": "application", "operator": "binary",
-                    "operation": {"identity": "quire.op.integer.eq", "laws": [],
+                    "operation": {"identity": "filament.op.integer.eq", "laws": [],
                         "mode": null, "member": null, "leaves": []},
                     "result_type": node_id(&boolean()),
                     "arguments": [reference(&input),
@@ -3873,8 +3873,8 @@ fn tc_050_admitted_frame_and_state_clause_nodes_lower_under_a_state_profile() {
         other => panic!("expected admission, read {other:?}"),
     };
     let profile = CompleteLoweringProfileV2 {
-        reference: quire_contract_model::LoweringProfileRef {
-            authority: "quire".into(),
+        reference: filament_contract_model::LoweringProfileRef {
+            authority: "filament".into(),
             identity: "complete-v1".into(),
         },
         // Lowering needs every tag in a node's dependency closure supported,
@@ -4493,7 +4493,7 @@ fn step_relation_package() -> Value {
                        result: Value,
                        argument: Value| {
         json!({
-            "node_id": node_id(id), "schema_version": "quire.checked-semantic-graph/v2",
+            "node_id": node_id(id), "schema_version": "filament.checked-semantic-graph/v2",
             "node_tag": "expression", "semantic_form": form,
             "semantic_type": result, "dependencies": [argument],
             "occurrences": [{"role": "expression", "ordinal": 0}],
@@ -4513,7 +4513,7 @@ fn step_relation_package() -> Value {
             deref["path"][0].as_str().expect("deref digest"),
             "deref",
             "deref",
-            "quire.op.model.deref",
+            "filament.op.model.deref",
             Value::Null,
             object.clone(),
             self_id.clone(),
@@ -4522,7 +4522,7 @@ fn step_relation_package() -> Value {
             field["path"][0].as_str().expect("field digest"),
             "query",
             "query",
-            "quire.op.record.project",
+            "filament.op.record.project",
             json!({"kind": "field", "declaration": object, "name": "l",
                 "read_form": "bare"}),
             node_id("model-scalar:integer"),
@@ -4532,7 +4532,7 @@ fn step_relation_package() -> Value {
             pre_read["path"][0].as_str().expect("pre digest"),
             "pre_read",
             "pre",
-            "quire.op.state.pre",
+            "filament.op.state.pre",
             Value::Null,
             node_id("model-scalar:integer"),
             field,
@@ -4545,7 +4545,7 @@ fn step_relation_package() -> Value {
         .collect::<Vec<_>>();
     let equality_body = json!({
         "term": "application", "operator": "binary",
-        "operation": {"identity": "quire.op.integer.eq", "laws": [],
+        "operation": {"identity": "filament.op.integer.eq", "laws": [],
             "mode": null, "member": null, "leaves": []},
         "result_type": node_id(&boolean()),
         "arguments": [
@@ -4560,7 +4560,7 @@ fn step_relation_package() -> Value {
         .expect("nodes")
         .push(json!({
             "node_id": node_id(&"ab".repeat(32)),
-            "schema_version": "quire.checked-semantic-graph/v2",
+            "schema_version": "filament.checked-semantic-graph/v2",
             "node_tag": "expression", "semantic_form": "binary",
             "semantic_type": node_id(&boolean()), "dependencies": equality_deps,
             "occurrences": [{"role": "expression", "ordinal": 0}],
@@ -4572,7 +4572,7 @@ fn step_relation_package() -> Value {
         .find(|node| {
             node["node_tag"] == "expression"
                 && node["semantic_form"] == "binary"
-                && node["body"]["operation"]["identity"] == "quire.op.integer.eq"
+                && node["body"]["operation"]["identity"] == "filament.op.integer.eq"
         })
         .expect("relation equality")["node_id"]
         .clone();
@@ -4625,7 +4625,7 @@ fn step_relation_package() -> Value {
         .expect("nodes")
         .push(json!({
             "node_id": node_id(&"cd".repeat(32)),
-            "schema_version": "quire.checked-semantic-graph/v2",
+            "schema_version": "filament.checked-semantic-graph/v2",
             "node_tag": "claim", "semantic_form": "step_relation",
             "semantic_type": node_id(&boolean()), "dependencies": dependencies,
             "declaration": {"qualified_name": ["Det"]},
@@ -4709,7 +4709,7 @@ fn step_relation_reader_retains_two_executions_and_roundtrips() {
     else {
         panic!("relation body must be an equality application");
     };
-    assert_eq!(operation.identity(), Some("quire.op.integer.eq"));
+    assert_eq!(operation.identity(), Some("filament.op.integer.eq"));
     let read_self = |term: &CheckedTerm| {
         let CheckedTerm::Reference { target: pre_id } = term else {
             panic!("equality operand must reference a pre read");
@@ -4728,7 +4728,7 @@ fn step_relation_reader_retains_two_executions_and_roundtrips() {
         else {
             panic!("pre read must be an application");
         };
-        assert_eq!(operation.identity(), Some("quire.op.state.pre"));
+        assert_eq!(operation.identity(), Some("filament.op.state.pre"));
         let [CheckedTerm::Reference { target: field_id }] = arguments.as_slice() else {
             panic!("pre must read one field");
         };
@@ -4746,7 +4746,7 @@ fn step_relation_reader_retains_two_executions_and_roundtrips() {
         else {
             panic!("field read must be an application");
         };
-        assert_eq!(operation.identity(), Some("quire.op.record.project"));
+        assert_eq!(operation.identity(), Some("filament.op.record.project"));
         assert!(matches!(
             operation.read().expect("admitted projection").member,
             Some(CheckedOperationMember::Field {
@@ -4779,7 +4779,7 @@ fn step_relation_reader_retains_two_executions_and_roundtrips() {
         else {
             panic!("deref must be an application");
         };
-        assert_eq!(operation.identity(), Some("quire.op.model.deref"));
+        assert_eq!(operation.identity(), Some("filament.op.model.deref"));
         let [CheckedTerm::Reference { target: self_id }] = arguments.as_slice() else {
             panic!("deref must read one receiver binder");
         };
@@ -4807,7 +4807,7 @@ fn step_relation_reader_retains_two_executions_and_roundtrips() {
             source_map: admitted.source_map(),
             refinement_step_rows: admitted.refinement_step_rows(),
         },
-        quire_contract_model::CheckedPackageSidecarsRef {
+        filament_contract_model::CheckedPackageSidecarsRef {
             temporal_clause_names: admitted.temporal_clause_names(),
             operation_effects: None,
             operation_bodies: None,
@@ -5173,13 +5173,13 @@ fn bound_step_relation_package() -> Value {
             "parameters": [{"name": "i", "rust_parameter": "i"}]}],
     });
     let key = sha256_hex(&canonical(&json!({
-        "version": "quire.abstraction-relation-node/v1", "body": body,
+        "version": "filament.abstraction-relation-node/v1", "body": body,
     })));
     package["semantic_graph"]["nodes"]
         .as_array_mut()
         .expect("nodes")
         .push(json!({
-            "node_id": node_id(&key), "schema_version": "quire.checked-semantic-graph/v2",
+            "node_id": node_id(&key), "schema_version": "filament.checked-semantic-graph/v2",
             "node_tag": "correspondence", "semantic_form": "abstraction_relation",
             "semantic_type": node_id(&key), "dependencies": [object],
             "occurrences": [{"role": "declaration", "ordinal": 0}], "body": body,
@@ -5239,7 +5239,7 @@ fn step_relation_bound_implementation_requests_code_claim_and_checks_frame() {
     unbound["semantic_graph"]["nodes"][abstraction]["body"]["frames"] = json!([]);
     let new_body = unbound["semantic_graph"]["nodes"][abstraction]["body"].clone();
     let new_key = sha256_hex(&canonical(
-        &json!({"version": "quire.abstraction-relation-node/v1", "body": new_body}),
+        &json!({"version": "filament.abstraction-relation-node/v1", "body": new_body}),
     ));
     unbound["semantic_graph"]["nodes"][abstraction]["semantic_type"] = node_id(&new_key);
     rename_node(
@@ -5447,7 +5447,7 @@ fn model_operation_callable_joins_selected_body_and_frame() {
     dependencies.sort_by(id_order);
     let function = json!({
         "node_id": function_id,
-        "schema_version": "quire.checked-semantic-graph/v2",
+        "schema_version": "filament.checked-semantic-graph/v2",
         "node_tag": "function", "semantic_form": "pure_function",
         "semantic_type": body_target,
         "dependencies": dependencies,
@@ -5664,7 +5664,7 @@ fn model_operation_callable_joins_selected_body_and_frame() {
 #[test]
 fn step_relation_reads_and_refusals_stay_within_the_unpaid_bound() {
     use crate::qspec_read_proof::observation::{measure_at, unpaid, Counter, UNPAID_BOUND};
-    use quire_contract_model::CheckedPackageV2BudgetedReadResult as Budgeted;
+    use filament_contract_model::CheckedPackageV2BudgetedReadResult as Budgeted;
     struct Allocations;
     impl Counter for Allocations {
         fn measure(read: impl FnOnce()) -> u64 {
@@ -5733,7 +5733,7 @@ fn step_relation_tables_are_charged_to_the_read_budget_at_the_relation_node() {
     let relation = position(&package, "claim", "step_relation");
     let evidence = step_relation_evidence(&package);
     let bytes = canonical(&package);
-    let read = |budget: &mut quire_contract_model::NativeJoinBudget| {
+    let read = |budget: &mut filament_contract_model::NativeJoinBudget| {
         crate::qspec_read_proof::read_budget_and_account(
             &bytes,
             CheckedPackageReadLimits::bounded(),
@@ -5741,7 +5741,7 @@ fn step_relation_tables_are_charged_to_the_read_budget_at_the_relation_node() {
             budget,
         )
     };
-    let requests = stage_requests(&read, quire_contract_model::PackageReadStage::Graph);
+    let requests = stage_requests(&read, filament_contract_model::PackageReadStage::Graph);
     let at_relation: Vec<_> = requests
         .iter()
         .filter(|request| request.index == relation && request.form == "claim")

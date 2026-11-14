@@ -3,7 +3,7 @@ id: TC-053
 title: "CheckedPackage V2 frame-body eligibility, precedence and visit order"
 type: TC
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/FR-038
+  - target: ix://agent-ix/filament-contract-ir/FR-038
     type: verifies
 ---
 # TC-053: CheckedPackage V2 frame-body eligibility, precedence and visit order
@@ -46,6 +46,6 @@ defect is reported over the higher one's.
 
 Implemented in `tests/it/checked_package_v2_frame_bodies.rs` and in the
 eligibility enumeration test in
-`crates/quire-contract-model/src/checked_package/v2/frame.rs`, one
+`crates/filament-contract-model/src/checked_package/v2/frame.rs`, one
 representative authored case per rule. The `modifies` eligibility
 enumeration is TC-056's, in the same file.

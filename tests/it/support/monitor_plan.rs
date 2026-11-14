@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Agent-IX
 
-//! Complete monitor fixtures assembled from selected QSpec facts by reference.
+//! Complete monitor fixtures assembled from selected FSpec facts by reference.
 #![allow(dead_code)] // Public-consumer and conformance binaries use different subsets.
 
 use super::{fixture_support, fixtures_dir, proposal_dir_of, read_json};
@@ -10,7 +10,7 @@ use std::collections::BTreeMap;
 
 pub(super) fn recipes() -> Value {
     read_json(&proposal_dir_of(&fixtures_dir()).join("monitor-plan-vectors.json"))
-        .expect("selected QSpec monitor recipes")
+        .expect("selected FSpec monitor recipes")
 }
 pub(super) fn aggregate(members: Vec<Value>) -> Value {
     json!({"term":"aggregate","members":members})
@@ -155,7 +155,7 @@ pub(super) fn append(
     }
     let id = json!({"package":wire["name"],"path":path,"ordinal":0});
     wire["semantic_graph"]["nodes"].as_array_mut().unwrap().push(json!({
-        "schema_version":"quire.checked-semantic-graph/v2","node_id":id,"node_tag":tag,"semantic_form":form,
+        "schema_version":"filament.checked-semantic-graph/v2","node_id":id,"node_tag":tag,"semantic_form":form,
         "semantic_type":ty.unwrap_or(&id),"body":body,"dependencies":[],"occurrences":[{"role":if form == "parameter" { "expression" } else { "generated" },"ordinal":0}]
     }));
     id
@@ -509,7 +509,7 @@ pub(super) fn materialize_on(
             "conditional",
             Some(result),
             json!({"term":"application", "operator":"conditional", "operation":{
-                "identity":"quire.op.control.if", "laws":[], "leaves":[], "member":null, "mode":null},
+                "identity":"filament.op.control.if", "laws":[], "leaves":[], "member":null, "mode":null},
                 "result_type":result, "arguments":[literal(&boolean,"boolean",json!(true)),reference(&constant),reference(&constant)]}),
             name,
         );
@@ -760,11 +760,11 @@ pub(super) fn model_fact_monitor_with_status(
     );
     let mut document = fixture_support::family_model_document();
     document["types"][0]["operations"][0]["params"] = json!([{
-        "name":"delta","typeRef":"ix://quire/native/Integer",
+        "name":"delta","typeRef":"ix://filament/native/Integer",
         "multiplicity":{"lower":1,"upper":1,"ordered":false,"unique":true}
     }]);
     document["types"][0]["operations"][0]["returns"] = json!({
-        "typeRef":"ix://quire/native/Integer",
+        "typeRef":"ix://filament/native/Integer",
         "multiplicity":{"lower":1,"upper":1,"ordered":false,"unique":true}
     });
     let model = "test/families";
@@ -775,11 +775,11 @@ pub(super) fn model_fact_monitor_with_status(
     let variant_original = "ix://test/families/Tier";
     document["constructs"].as_array_mut().unwrap().push(json!({
         "kind":{"module":model,"name":"record"},
-        "construct":{"meaning":"quire.meaning.model.record-value-type/v1"}
+        "construct":{"meaning":"filament.meaning.model.record-value-type/v1"}
     }));
     document["constructs"].as_array_mut().unwrap().push(json!({
         "kind":{"module":model,"name":"variant"},
-        "construct":{"meaning":"quire.meaning.model.variant-type/v1"}
+        "construct":{"meaning":"filament.meaning.model.variant-type/v1"}
     }));
     document["types"].as_array_mut().unwrap().push(json!({
         "identity":variant_original,"displayName":"Tier",
@@ -792,7 +792,7 @@ pub(super) fn model_fact_monitor_with_status(
         "kind":{"module":model,"name":"record"},
         "roles":[],"constraints":[],"extensions":[],"unknownPolicy":"reject",
         "supertypes":[],"fields":[{"identity":format!("{record_original}/amount"),
-            "name":"amount","typeRef":"ix://quire/native/Integer","presence":"required",
+            "name":"amount","typeRef":"ix://filament/native/Integer","presence":"required",
             "nullable":false,"defaultKind":"none",
             "multiplicity":{"lower":1,"upper":1,"ordered":false,"unique":true}}],
         "operations":[]
@@ -870,14 +870,14 @@ pub(super) fn model_fact_monitor_with_status(
             .as_array_mut()
             .unwrap()
             .push(json!({
-                "node_id":id,"schema_version":"quire.checked-semantic-graph/v2",
+                "node_id":id,"schema_version":"filament.checked-semantic-graph/v2",
                 "node_tag":tag,"semantic_form":form,"semantic_type":ty,"dependencies":deps,
                 "occurrences":[{"role":"generated","ordinal":0}],
                 "owner":{"kind":"model","identity":model,"node":original},"body":aggregate(vec![])
             }));
     }
     wire["semantic_graph"]["nodes"].as_array_mut().unwrap().push(json!({
-        "node_id":variant,"schema_version":"quire.checked-semantic-graph/v2",
+        "node_id":variant,"schema_version":"filament.checked-semantic-graph/v2",
         "node_tag":"model","semantic_form":"variant_type","semantic_type":variant,
         "dependencies":[],"occurrences":[{"role":"generated","ordinal":0}],
         "owner":{"kind":"model","identity":model,"node":variant_original},"body":aggregate(vec![])
@@ -891,7 +891,7 @@ pub(super) fn model_fact_monitor_with_status(
         .as_array_mut()
         .unwrap()
         .push(json!({
-            "node_id":member,"schema_version":"quire.checked-semantic-graph/v2",
+            "node_id":member,"schema_version":"filament.checked-semantic-graph/v2",
             "node_tag":"value","semantic_form":"enum_value","semantic_type":variant,
             "dependencies":[variant],"occurrences":[{"role":"expression","ordinal":0}],
             "body":literal(&variant,"enum",json!("Gold"))
@@ -901,12 +901,12 @@ pub(super) fn model_fact_monitor_with_status(
     let time = fixture_support::node_id("qualified:Example/Time");
     nominal.extend([
         (
-            json!({"version":"quire.dimension-node/v1","owner":source_owner,
+            json!({"version":"filament.dimension-node/v1","owner":source_owner,
             "qualified_declaration":["Example","Time"],"terms":[]}),
             "qualified:Example/Time".to_owned(),
         ),
         (
-            json!({"version":"quire.unit-node/v1","owner":nominal[2].0["owner"],
+            json!({"version":"filament.unit-node/v1","owner":nominal[2].0["owner"],
             "qualified_declaration":["Example","Second"],"dimension_node_id":time,
             "target_unit_node_id":null,"scale":{"numerator":"1","denominator":"1"},
             "offset":{"numerator":"0","denominator":"1"}}),
@@ -980,7 +980,7 @@ pub(super) fn append_measure(wire: &mut Value, entry: usize) -> Value {
     let integer = find(wire, "integer");
     let boolean = find(wire, "boolean");
     let value = constant(wire, &integer, "function measure value");
-    let body = json!({"term":"application","operator":"conditional","operation":{"identity":"quire.op.control.if","laws":[],"leaves":[],"member":null,"mode":null},"result_type":integer,"arguments":[literal(&boolean,"boolean",json!(true)),reference(&value),reference(&value)]});
+    let body = json!({"term":"application","operator":"conditional","operation":{"identity":"filament.op.control.if","laws":[],"leaves":[],"member":null,"mode":null},"result_type":integer,"arguments":[literal(&boolean,"boolean",json!(true)),reference(&value),reference(&value)]});
     let measure = append(
         wire,
         "expression",

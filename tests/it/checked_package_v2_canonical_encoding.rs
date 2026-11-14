@@ -11,9 +11,7 @@ use crate::support::checked_package::{
     positive_operation_identities, refusal, refusal_bytes, settle, v2_all_families, v2_nominal,
     ExpectedRefusal,
 };
-use ix_trace_rs::trace;
-use quire_canonical::{Encode, Error, FixedShape, LimitKind, Limits};
-use quire_contract_model::{
+use filament_contract_model::{
     encode_checked_package_v2, CheckedCapability, CheckedCapabilityDisposition,
     CheckedDependencySelection, CheckedDiagnosticV2, CheckedDiagnosticsV2, CheckedJson,
     CheckedJsonError, CheckedNodeId, CheckedNodePathSegment, CheckedPackageLockV2,
@@ -21,6 +19,8 @@ use quire_contract_model::{
     CheckedPackageV2ReadResult, CheckedSelectionRole, CheckedSemanticGraphV2,
     CheckedSemanticNodeV2, CheckedSourceMapEntry, CheckedTerm,
 };
+use ix_trace_rs::trace;
+use quire_canonical::{Encode, Error, FixedShape, LimitKind, Limits};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -165,11 +165,11 @@ fn tc_048_envelope_writes_index_and_refuses_inline_node_path() {
             package["name"].as_str().expect("name"),
             &lock,
             graph,
-            quire_contract_model::CheckedPackageSourceCorrespondenceRef {
+            filament_contract_model::CheckedPackageSourceCorrespondenceRef {
                 source_map: &source_map,
                 refinement_step_rows: None,
             },
-            quire_contract_model::CheckedPackageSidecarsRef {
+            filament_contract_model::CheckedPackageSidecarsRef {
                 temporal_clause_names: None,
                 operation_effects: None,
                 operation_bodies: None,
@@ -221,11 +221,11 @@ fn tc_048_envelope_refuses_indexed_dependency_reference_node() {
         package["name"].as_str().expect("name"),
         &lock,
         &graph,
-        quire_contract_model::CheckedPackageSourceCorrespondenceRef {
+        filament_contract_model::CheckedPackageSourceCorrespondenceRef {
             source_map: &source_map,
             refinement_step_rows: None,
         },
-        quire_contract_model::CheckedPackageSidecarsRef {
+        filament_contract_model::CheckedPackageSidecarsRef {
             temporal_clause_names: None,
             operation_effects: None,
             operation_bodies: None,
@@ -253,19 +253,19 @@ fn tc_048_closed_envelope_bytes_equal_independent_canonical_json() {
         let source_map: Vec<CheckedSourceMapEntry> = typed_each(&package["source_map"]);
         let capabilities: Vec<CheckedCapability> = typed_each(&package["capability_report"]);
         let diagnostics: CheckedDiagnosticsV2 = typed(&package["diagnostics"]);
-        let temporal_bindings: Option<Vec<quire_contract_model::TemporalBinding>> =
+        let temporal_bindings: Option<Vec<filament_contract_model::TemporalBinding>> =
             package.get("temporal_bindings").map(typed_each);
-        let temporal_clause_names: Option<Vec<quire_contract_model::TemporalClauseName>> =
+        let temporal_clause_names: Option<Vec<filament_contract_model::TemporalClauseName>> =
             package.get("temporal_clause_names").map(typed_each);
         let encoded = encode_checked_package_v2(
             package["name"].as_str().expect("structural name"),
             &lock,
             &graph,
-            quire_contract_model::CheckedPackageSourceCorrespondenceRef {
+            filament_contract_model::CheckedPackageSourceCorrespondenceRef {
                 source_map: &source_map,
                 refinement_step_rows: None,
             },
-            quire_contract_model::CheckedPackageSidecarsRef {
+            filament_contract_model::CheckedPackageSidecarsRef {
                 temporal_clause_names: temporal_clause_names.as_deref(),
                 operation_effects: None,
                 operation_bodies: None,
@@ -669,11 +669,11 @@ fn tc_451_typed_envelope_encodes_deep_details_on_a_small_stack() {
             &name,
             &lock,
             &graph,
-            quire_contract_model::CheckedPackageSourceCorrespondenceRef {
+            filament_contract_model::CheckedPackageSourceCorrespondenceRef {
                 source_map: &source_map,
                 refinement_step_rows: None,
             },
-            quire_contract_model::CheckedPackageSidecarsRef {
+            filament_contract_model::CheckedPackageSidecarsRef {
                 temporal_clause_names: None,
                 operation_effects: None,
                 operation_bodies: None,
@@ -711,11 +711,11 @@ fn tc_451_deep_closed_graph_encodes_once_with_exact_byte_limits() {
                 &name,
                 &lock,
                 &graph,
-                quire_contract_model::CheckedPackageSourceCorrespondenceRef {
+                filament_contract_model::CheckedPackageSourceCorrespondenceRef {
                     source_map: &source_map,
                     refinement_step_rows: None,
                 },
-                quire_contract_model::CheckedPackageSidecarsRef {
+                filament_contract_model::CheckedPackageSidecarsRef {
                     temporal_clause_names: None,
                     operation_effects: None,
                     operation_bodies: None,
@@ -872,7 +872,7 @@ fn tc_048_a_package_document_number_is_read_exactly_or_refused_without_a_pointer
     }
     // The crate that holds the reader declares the feature itself, so the
     // exact read does not depend on what other crates in the build turn on.
-    let manifest = repository_file("crates/quire-contract-model/Cargo.toml");
+    let manifest = repository_file("crates/filament-contract-model/Cargo.toml");
     let line = manifest
         .lines()
         .find(|line| line.starts_with("serde_json"))
@@ -999,7 +999,7 @@ fn repository_file(path: &str) -> String {
 #[trace("TC-048", "FR-038-AC-367")]
 #[test]
 fn structural_v2_public_surface_has_no_stale_identity_api() {
-    for path in files_under(&["crates/quire-contract-model/src", "src"], "rs") {
+    for path in files_under(&["crates/filament-contract-model/src", "src"], "rs") {
         let source = fs::read_to_string(&path).expect("checked-package source");
         let retired = retired_identity_identifiers(&source);
         assert!(
@@ -1116,7 +1116,7 @@ fn files_under(directories: &[&str], extension: &str) -> Vec<PathBuf> {
 
 /// The crate sources: the model crate and the root bridge.
 fn crate_sources() -> Vec<(PathBuf, String)> {
-    files_under(&["crates/quire-contract-model/src", "src"], "rs")
+    files_under(&["crates/filament-contract-model/src", "src"], "rs")
         .into_iter()
         .map(|path| {
             let text = fs::read_to_string(&path).expect("source reads");
@@ -1242,7 +1242,7 @@ macro_rules! is_fixed_shape {
 #[trace("TC-048", "FR-038-AC-80")]
 #[test]
 fn tc_048_quire_canonical_is_a_branch_main_git_dependency_with_its_source_allowed() {
-    for manifest in ["Cargo.toml", "crates/quire-contract-model/Cargo.toml"] {
+    for manifest in ["Cargo.toml", "crates/filament-contract-model/Cargo.toml"] {
         let text = repository_file(manifest);
         let line = text
             .lines()
@@ -1327,7 +1327,7 @@ fn tc_048_fixed_depth_types_derive_and_value_holding_types_implement_encode() {
     }
     // The closed vocabularies derive in the one macro that declares them.
     let vocabulary =
-        repository_file("crates/quire-contract-model/src/checked_package/v2/vocabulary.rs");
+        repository_file("crates/filament-contract-model/src/checked_package/v2/vocabulary.rs");
     assert!(vocabulary.contains("::quire_canonical::FixedShape"));
 }
 

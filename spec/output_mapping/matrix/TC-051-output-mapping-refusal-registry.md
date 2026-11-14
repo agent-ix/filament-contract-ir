@@ -3,9 +3,9 @@ id: TC-051
 title: "The output-mapping refusal catalog is closed and registered"
 type: TC
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/STD-003
+  - target: ix://agent-ix/filament-contract-ir/STD-003
     type: verifies
-  - target: ix://agent-ix/quire-contract-ir/FR-032
+  - target: ix://agent-ix/filament-contract-ir/FR-032
     type: verifies
 ---
 # TC-051: The output-mapping refusal catalog is closed and registered

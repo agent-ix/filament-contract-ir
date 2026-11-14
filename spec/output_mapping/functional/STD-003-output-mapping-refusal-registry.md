@@ -4,13 +4,13 @@ title: "Output-mapping refusal code registry"
 type: Standard
 code: contract-ir-output-mapping-refusals
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/FR-032
+  - target: ix://agent-ix/filament-contract-ir/FR-032
     type: references
-  - target: ix://agent-ix/quire-contract-ir/FR-033
+  - target: ix://agent-ix/filament-contract-ir/FR-033
     type: references
-  - target: ix://agent-ix/quire-contract-ir/FR-034
+  - target: ix://agent-ix/filament-contract-ir/FR-034
     type: references
-  - target: ix://agent-ix/quire-contract-ir/FR-019
+  - target: ix://agent-ix/filament-contract-ir/FR-019
     type: references
 ---
 # STD-003: Output-mapping refusal code registry

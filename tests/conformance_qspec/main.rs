@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Agent-IX
 
-//! FR-038-AC-107, AC-112, AC-113, AC-176 and AC-310: QSpec's CheckedPackage V2 fixtures and
+//! FR-038-AC-107, AC-112, AC-113, AC-176 and AC-310: FSpec's CheckedPackage V2 fixtures and
 //! vectors against the production reader.
 //!
 //! AC-107: the positive fixtures admit end to end. AC-112: every mutation of
@@ -12,8 +12,8 @@
 //! refuse at their exact pointers, while the single-body positives retain
 //! their structural names and node ids.
 //!
-//! The fixtures are QSpec's and are read from a `quire-specification` checkout
-//! named by `QUIRE_SPECIFICATION_DIR`; nothing of them is copied into this
+//! The fixtures are FSpec's and are read from a `filament-specification` checkout
+//! named by `FILAMENT_SPECIFICATION_DIR`; nothing of them is copied into this
 //! repository. This target is outside the run of `make test` (its manifest
 //! entry has `test = false`, and a plain `make test` has no checkout). CI
 //! compiles this target without running it. `make conformance-qspec` runs its
@@ -23,8 +23,7 @@
 //! not JSON, when a list is absent or empty, and when a result is not the
 //! recorded one.
 
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     encode_checked_package_v2, CheckedArtifactRef, CheckedExtensionDefinition, CheckedLiteralValue,
     CheckedNodeId, CheckedNodeTag, CheckedOperationMember, CheckedPackageEvidence,
     CheckedPackageEvidenceInsertionError, CheckedPackageReadLimits,
@@ -33,6 +32,7 @@ use quire_contract_model::{
     CheckedTerm, CompleteLoweringProfileV2, ContractDependencies, ContractPackageReadResult,
     ContractPackageWireV1,
 };
+use ix_trace_rs::trace;
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 
@@ -107,20 +107,20 @@ mod timed_model;
 mod timed_slots;
 mod transition;
 
-/// The environment variable naming the root of a `quire-specification` checkout.
-const SPECIFICATION_DIR: &str = "QUIRE_SPECIFICATION_DIR";
+/// The environment variable naming the root of a `filament-specification` checkout.
+const SPECIFICATION_DIR: &str = "FILAMENT_SPECIFICATION_DIR";
 
-/// Where QSpec publishes the CheckedPackage V2 fixtures, from its root.
+/// Where FSpec publishes the CheckedPackage V2 fixtures, from its root.
 const FIXTURES: &str = "proposals/checked-package-v2/fixtures";
 
 /// The complete published positive set required by FR-038-AC-107 and AC-176.
 
 /// The selected domain document in the proposal.
 
-/// Read QSpec's authoritative fixture-to-document map; a declared selection
+/// Read FSpec's authoritative fixture-to-document map; a declared selection
 /// cannot silently fall back to the baseline document.
 
-/// Ordinary positives use QSpec's baseline Orders document. Missing or invalid
+/// Ordinary positives use FSpec's baseline Orders document. Missing or invalid
 /// document selections fail in `vector_selected_documents` before this lookup.
 
 #[trace("TC-048", "FR-038-AC-107")]
@@ -150,7 +150,7 @@ fn tc_048_positive_document_selection_follows_qspec_map() {
     assert!(selected_document_assignments(&invalid, &proposal).is_err());
 }
 
-/// QSpec's recursive records, including the owner-free derived nodes in each group.
+/// FSpec's recursive records, including the owner-free derived nodes in each group.
 const RECURSIVE: &str = "positive-recursive-records.json";
 
 /// The adverse mutations FR-038-AC-112 applies, under `fixtures/`.
@@ -165,13 +165,13 @@ fn fixtures_dir_of(raw: Option<&str>) -> Result<PathBuf, String> {
     let root = raw.unwrap_or_default();
     if root.is_empty() {
         return Err(format!(
-            "{SPECIFICATION_DIR} is unset or empty: set it to the root of a quire-specification checkout"
+            "{SPECIFICATION_DIR} is unset or empty: set it to the root of a filament-specification checkout"
         ));
     }
     let dir = PathBuf::from(root).join(FIXTURES);
     if !dir.is_dir() {
         return Err(format!(
-            "{SPECIFICATION_DIR}={root} holds no {FIXTURES}/: it is not a quire-specification checkout"
+            "{SPECIFICATION_DIR}={root} holds no {FIXTURES}/: it is not a filament-specification checkout"
         ));
     }
     Ok(dir)
@@ -358,7 +358,7 @@ fn cause_word(cause: Cause) -> &'static str {
     }
 }
 
-/// Whether the reader's `given` reading is the refusal QSpec's `recorded`
+/// Whether the reader's `given` reading is the refusal FSpec's `recorded`
 /// outcome names: the same code, and the same cause only where the outcome
 /// gives one (`refused:<code>` or `refused:<code>/<cause>`, FR-038-AC-112).
 fn refuses_as(given: &str, recorded: &str) -> bool {
@@ -369,7 +369,7 @@ fn refuses_as(given: &str, recorded: &str) -> bool {
     }
 }
 
-/// A mutation the reader does not yet refuse as QSpec records it.
+/// A mutation the reader does not yet refuse as FSpec records it.
 struct ExpectedFailure {
     /// The mutation `id` in `adverse.json`.
     id: &'static str,
@@ -507,7 +507,7 @@ fn qspec_positive_fixtures_expose_complete_public_typed_reads() {
     let proposal = proposal_dir_of(&dir);
     let documents = vector_selected_documents(&proposal).expect("published document selections");
     let catalog: Value = serde_json::from_str(
-        quire_verification_contracts::operation_catalog::CHECKED_OPERATION_CATALOG_V1,
+        filament_verification_contracts::operation_catalog::CHECKED_OPERATION_CATALOG_V1,
     )
     .expect("authoritative operation catalog");
     let mut operations = 0;
@@ -541,7 +541,7 @@ fn qspec_positive_fixtures_expose_complete_public_typed_reads() {
                 } => {
                     let read = term
                         .literal_read()
-                        .expect("QSpec-admitted literal has a typed read");
+                        .expect("FSpec-admitted literal has a typed read");
                     assert_eq!(read.type_id, type_id);
                     assert_eq!(read.kind, *value_kind);
                     literal_kinds.insert(read.kind.as_wire());
@@ -554,7 +554,7 @@ fn qspec_positive_fixtures_expose_complete_public_typed_reads() {
                 } => {
                     let read = operation
                         .read()
-                        .expect("QSpec-admitted operation has a complete typed read");
+                        .expect("FSpec-admitted operation has a complete typed read");
                     assert_eq!(Some(read.identity), operation.identity());
                     operations += 1;
                     constraints += read.constraints.len();
@@ -574,7 +574,7 @@ fn qspec_positive_fixtures_expose_complete_public_typed_reads() {
                 source_map: admitted.source_map(),
                 refinement_step_rows: admitted.refinement_step_rows(),
             },
-            quire_contract_model::CheckedPackageSidecarsRef {
+            filament_contract_model::CheckedPackageSidecarsRef {
                 temporal_clause_names: admitted.temporal_clause_names(),
                 operation_effects: None,
                 operation_bodies: None,
@@ -586,14 +586,14 @@ fn qspec_positive_fixtures_expose_complete_public_typed_reads() {
             admitted.diagnostics(),
             quire_canonical::Limits::new(1 << 24),
         )
-        .expect("QSpec admitted package encodes");
+        .expect("FSpec admitted package encodes");
         assert_eq!(
             encoded,
             quire_canonical::to_vec(
                 &fixture_support::wire_form(&wire),
                 quire_canonical::Limits::new(1 << 24)
             )
-            .expect("QSpec canonical bytes"),
+            .expect("FSpec canonical bytes"),
             "{name}: exact published bytes"
         );
     }
@@ -619,7 +619,7 @@ fn qspec_positive_fixtures_expose_complete_public_typed_reads() {
         ]
         .into_iter()
         .collect(),
-        "published positives exercise every named QSpec literal kind"
+        "published positives exercise every named FSpec literal kind"
     );
 }
 
@@ -714,7 +714,7 @@ fn assert_qspec_literal_read(term: &CheckedTerm, wire: &Value) {
 }
 
 fn assert_qspec_operation_record(
-    read: quire_contract_model::CheckedOperationRead<'_>,
+    read: filament_contract_model::CheckedOperationRead<'_>,
     wire: &Value,
     catalog: &Value,
 ) {
@@ -826,8 +826,9 @@ fn assert_qspec_operation_record(
             assert_eq!(member["name"], name.as_ref());
             assert_eq!(
                 read_form.map(|form| match form {
-                    quire_contract_model::CheckedFieldReadForm::Bare => "bare",
-                    quire_contract_model::CheckedFieldReadForm::ExplicitDeref => "explicit_deref",
+                    filament_contract_model::CheckedFieldReadForm::Bare => "bare",
+                    filament_contract_model::CheckedFieldReadForm::ExplicitDeref =>
+                        "explicit_deref",
                 }),
                 member["read_form"].as_str()
             );
@@ -888,7 +889,7 @@ fn assert_qspec_operation_record(
                 None
             } else {
                 Some(
-                    serde_json::from_value::<quire_contract_model::CheckedOperationInterval>(
+                    serde_json::from_value::<filament_contract_model::CheckedOperationInterval>(
                         member["interval"].clone(),
                     )
                     .expect("published interval"),
@@ -965,10 +966,12 @@ fn qspec_admitted_values_members_and_catalog_constraints_are_exact() {
         };
         let read = operation.read().expect("admitted typed operation");
         if let Some(CheckedOperationMember::Field { declaration, .. }) = read.member {
-            saw_indexed_member |= declaration
-                .path
-                .iter()
-                .any(|part| matches!(part, quire_contract_model::CheckedNodePathSegment::Index(_)));
+            saw_indexed_member |= declaration.path.iter().any(|part| {
+                matches!(
+                    part,
+                    filament_contract_model::CheckedNodePathSegment::Index(_)
+                )
+            });
         }
         saw_constraints |= !read.constraints.is_empty();
     }
@@ -982,7 +985,7 @@ fn qspec_admitted_values_members_and_catalog_constraints_are_exact() {
             source_map: admitted.source_map(),
             refinement_step_rows: admitted.refinement_step_rows(),
         },
-        quire_contract_model::CheckedPackageSidecarsRef {
+        filament_contract_model::CheckedPackageSidecarsRef {
             temporal_clause_names: admitted.temporal_clause_names(),
             operation_effects: None,
             operation_bodies: None,
@@ -994,7 +997,7 @@ fn qspec_admitted_values_members_and_catalog_constraints_are_exact() {
         admitted.diagnostics(),
         quire_canonical::Limits::new(u64::MAX),
     )
-    .expect("encode admitted QSpec package");
+    .expect("encode admitted FSpec package");
     assert_eq!(
         serde_json::from_slice::<Value>(&encoded).unwrap(),
         fixture_support::wire_form(&wire)
@@ -1014,7 +1017,7 @@ fn qspec_indexed_operation_member_follows_projected_graph_positions() {
     let (_, admitted) = read_positive(&dir, "positive-operation-identities.json", &document)
         .expect("published indexed operation admits");
     let source_node = admitted.resolved_graph().nodes.iter().find(|node| matches!(&node.body,
-        CheckedTerm::Application { operation, .. } if operation.identity() == Some("quire.op.record.project")))
+        CheckedTerm::Application { operation, .. } if operation.identity() == Some("filament.op.record.project")))
         .expect("published record projection");
     let source_member = match &source_node.body {
         CheckedTerm::Application { operation, .. } => {
@@ -1026,8 +1029,8 @@ fn qspec_indexed_operation_member_follows_projected_graph_positions() {
         _ => unreachable!(),
     };
     let profile = CompleteLoweringProfileV2 {
-        reference: quire_contract_model::LoweringProfileRef {
-            authority: "quire".into(),
+        reference: filament_contract_model::LoweringProfileRef {
+            authority: "filament".into(),
             identity: "typed-projection-test".into(),
         },
         required_source_selections: Vec::new(),
@@ -1043,7 +1046,7 @@ fn qspec_indexed_operation_member_follows_projected_graph_positions() {
         .as_array()
         .unwrap()
         .iter()
-        .find(|node| node["body"]["operation"]["identity"] == "quire.op.record.project")
+        .find(|node| node["body"]["operation"]["identity"] == "filament.op.record.project")
         .expect("projected operation");
     let expected: CheckedNodeId = serde_json::from_value(
         projected_node["body"]["operation"]["member"]["declaration"].clone(),
@@ -1096,7 +1099,7 @@ fn tc_048_qspec_union_values_admit_under_their_application_keys() {
         "positive-union-nodes.json",
         &proposal_dir_of(&fixtures_dir()).join(DOMAIN_DOCUMENT),
     )
-    .expect("the current QSpec union fixture admits");
+    .expect("the current FSpec union fixture admits");
     for (position, member, payload) in [(10, "Rect", vec![8, 9]), (11, "Empty", vec![])] {
         let node = &wire["semantic_graph"]["nodes"][position];
         let retained = &admitted.graph().nodes[position];
@@ -1133,7 +1136,7 @@ fn tc_048_qspec_union_values_admit_under_their_application_keys() {
 #[test]
 fn tc_048_qspec_union_values_refuse_duplicate_ids_and_invalid_bodies() {
     let fixtures = fixtures_dir();
-    let base = read_json(&fixtures.join("positive-union-nodes.json")).expect("QSpec fixture");
+    let base = read_json(&fixtures.join("positive-union-nodes.json")).expect("FSpec fixture");
     assert!(matches!(
         read_package(&base),
         Ok(CheckedPackageV2ReadResult::Admitted(_))
@@ -1198,7 +1201,7 @@ fn tc_048_qspec_union_values_refuse_duplicate_ids_and_invalid_bodies() {
     );
 }
 
-/// Read one QSpec positive package with the selected domain document, if any.
+/// Read one FSpec positive package with the selected domain document, if any.
 /// The document is supplied under the selected package identity; the
 /// production reader checks that it names that identity.
 fn read_positive(
@@ -1282,7 +1285,7 @@ fn tc_048_qspec_all_positive_packages_and_owner_identities() {
     }
 }
 
-/// QSpec's nominal declarations and derived nodes have assigned identities;
+/// FSpec's nominal declarations and derived nodes have assigned identities;
 /// neither body bytes nor owner spelling participates in their construction.
 #[trace("TC-048", "TC-228", "FR-038-AC-89", "FR-038-AC-481")]
 #[test]
@@ -1344,15 +1347,15 @@ fn tc_048_published_nominal_structural_ids_survive_reader_and_writer() {
             "{position}: retained complete body"
         );
     }
-    let encoded = quire_contract_model::encode_checked_package_v2(
+    let encoded = filament_contract_model::encode_checked_package_v2(
         admitted.name(),
         admitted.lock(),
         admitted.graph(),
-        quire_contract_model::CheckedPackageSourceCorrespondenceRef {
+        filament_contract_model::CheckedPackageSourceCorrespondenceRef {
             source_map: admitted.source_map(),
             refinement_step_rows: admitted.refinement_step_rows(),
         },
-        quire_contract_model::CheckedPackageSidecarsRef {
+        filament_contract_model::CheckedPackageSidecarsRef {
             temporal_clause_names: admitted.temporal_clause_names(),
             operation_effects: None,
             operation_bodies: None,
@@ -1449,7 +1452,7 @@ fn qspec_dimensionless_derived_is_not_a_base_root_or_term_target() {
     );
 }
 
-/// QSpec's NB-07..09 mutations are applied to the published positive body;
+/// FSpec's NB-07..09 mutations are applied to the published positive body;
 /// the reader must refuse the exact dimension-body defect at its own locus.
 #[trace("FR-038-AC-478", "FR-038-AC-480")]
 #[test]
@@ -1580,7 +1583,7 @@ fn tc_048_qspec_positive_inputs_fail_closed() {
 #[trace("TC-048", "FR-038-AC-310", "FR-038-AC-363")]
 #[test]
 fn tc_048_package_name_is_required_and_retired_identity_members_refuse() {
-    let mut package = read_json(&fixtures_dir().join(MUTATED_BASE)).expect("QSpec fixture");
+    let mut package = read_json(&fixtures_dir().join(MUTATED_BASE)).expect("FSpec fixture");
     let admitted = read_package(&package).expect("production read");
     let CheckedPackageV2ReadResult::Admitted(admitted) = admitted else {
         panic!("published package must admit: {admitted:?}");
@@ -1710,7 +1713,7 @@ fn tc_048_qspec_adverse_run_fails_closed() {
     // The checkout: unset, empty and a path without the fixtures all fail.
     assert!(fixtures_dir_of(None).is_err());
     assert!(fixtures_dir_of(Some("")).is_err());
-    assert!(fixtures_dir_of(Some("/nonexistent/quire-specification")).is_err());
+    assert!(fixtures_dir_of(Some("/nonexistent/filament-specification")).is_err());
     // The file: missing and not JSON both fail.
     let dir = fixtures_dir();
     assert!(read_json(&dir.join("no-such-adverse.json")).is_err());

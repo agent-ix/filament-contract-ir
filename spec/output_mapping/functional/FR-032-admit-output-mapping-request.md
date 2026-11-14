@@ -3,19 +3,19 @@ id: FR-032
 title: "Admit one exact output-mapping request"
 type: FR
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/StR-001
+  - target: ix://agent-ix/filament-contract-ir/StR-001
     type: traces_to
-  - target: ix://agent-ix/quire-contract-ir/FR-023
+  - target: ix://agent-ix/filament-contract-ir/FR-023
     type: depends_on
-  - target: ix://agent-ix/quire-contract-ir/FR-028
+  - target: ix://agent-ix/filament-contract-ir/FR-028
     type: depends_on
-  - target: ix://agent-ix/quire-contract-ir/STD-003
+  - target: ix://agent-ix/filament-contract-ir/STD-003
     type: references
-  - target: ix://agent-ix/quire-specification/FR-120
+  - target: ix://agent-ix/filament-specification/FR-120
     type: implements
-  - target: ix://agent-ix/quire-specification/FR-297
+  - target: ix://agent-ix/filament-specification/FR-297
     type: implements
-  - target: ix://agent-ix/quire-specification/NFR-060
+  - target: ix://agent-ix/filament-specification/NFR-060
     type: constrained_by
 ---
 # FR-032: Admit one exact output-mapping request
@@ -101,7 +101,7 @@ one target profile, and explicit aggregate limits before mapper dispatch.
   contract to remain in the cycle-free model crate.
 - [STD-003](STD-003-output-mapping-refusal-registry.md) owns the closed refusal
   code catalog this requirement, FR-033 and FR-034 emit from.
-- `ix://agent-ix/quire-specification/FR-120`, `FR-297`, and `NFR-060` are the
+- `ix://agent-ix/filament-specification/FR-120`, `FR-297`, and `NFR-060` are the
   FS06 request, profile, and resource authorities. Their current content-digest
-  selection clauses require a QSpec revision before this name/version-only
+  selection clauses require a FSpec revision before this name/version-only
   request contract can be implemented.

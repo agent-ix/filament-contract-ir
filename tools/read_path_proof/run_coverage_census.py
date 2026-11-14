@@ -161,7 +161,7 @@ def validate_snapshot(root, config):
         raise RunError("source tree changed after the clean build")
     qspec = Path(config["qspec"]["path"])
     if git(qspec, "status", "--porcelain"):
-        raise RunError("selected QSpec tree changed during proof")
+        raise RunError("selected FSpec tree changed during proof")
 
 
 def build(args, target, env, config):
@@ -447,7 +447,7 @@ def run_original_corpus(args, binary, config, env, intended):
     result.update(selection_metadata(args))
     result["scope"]=("selected-only original tests" if getattr(args, "original_test", []) else
                      "executed original TC-048 integration tests only" if args.corpus == "tc048"
-                     else "executed original QSpec driver tests only")
+                     else "executed original FSpec driver tests only")
     write_json(args.out / "census.json", result)
     write_json(args.out / "test-report.json", persisted_test_summary(report))
     archive_export(args.out)
@@ -592,7 +592,7 @@ def main():
         if "test-support" not in set(",".join(args.features).split(",")):
             raise RunError("compiler proof requires explicit test-support for checked passive/seeded boundaries")
         if git(args.qspec_dir, "status", "--porcelain"):
-            raise RunError("select a clean QSpec checkout for the one recorded input snapshot")
+            raise RunError("select a clean FSpec checkout for the one recorded input snapshot")
         require_space(args.repo, "before compiler build")
         rustc = subprocess.check_output([str(args.toolchain_bin / "rustc"), "-vV"], text=True)
         llvm = subprocess.check_output([str(args.llvm_bin / "llvm-cov"), "--version"], text=True)
@@ -609,7 +609,7 @@ def main():
                    CARGO_PROFILE_DEV_OPT_LEVEL="0", CARGO_PROFILE_TEST_OPT_LEVEL="0",
                    CARGO_TARGET_DIR=str(args.target_dir), RUSTFLAGS=flags,
                    RUSTC=str(args.toolchain_bin / "rustc"), RUSTDOC=str(args.toolchain_bin / "rustdoc"),
-                   CARGO=str(args.toolchain_bin / "cargo"), QUIRE_SPECIFICATION_DIR=str(args.qspec_dir))
+                   CARGO=str(args.toolchain_bin / "cargo"), FILAMENT_SPECIFICATION_DIR=str(args.qspec_dir))
         env["PATH"] = str(args.toolchain_bin) + os.pathsep + env["PATH"]
         config = {"rustc": rustc, "llvm": llvm,
                   "mode": args.mode, "controls": args.controls, "class_controls":args.class_controls, "corpus": args.corpus, "features": args.features,

@@ -3,13 +3,13 @@ id: FR-030
 title: "Bind bounded Kani domains and non-Boolean outcomes"
 type: FR
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/StR-001
+  - target: ix://agent-ix/filament-contract-ir/StR-001
     type: traces_to
-  - target: ix://agent-ix/quire-contract-ir/FR-029
+  - target: ix://agent-ix/filament-contract-ir/FR-029
     type: depends_on
-  - target: ix://agent-ix/quire-contract-ir/FR-015
+  - target: ix://agent-ix/filament-contract-ir/FR-015
     type: depends_on
-  - target: ix://agent-ix/quire-contract-ir/FR-044
+  - target: ix://agent-ix/filament-contract-ir/FR-044
     type: depends_on
 ---
 # FR-030: Bind bounded Kani domains and non-Boolean outcomes
@@ -57,7 +57,7 @@ the first event that actually stopped the run, and pass that observed source
 when constructing an IR cancelled outcome. Codegen currently has no such
 event reader or `Cancelled` outcome producer; its launcher reports an elapsed
 execution ceiling as `TimedOut`. Adding the source-bearing producer and its
-QSL terminal map is a prerequisite of IR-701, not an existing behavior or an
+FSL terminal map is a prerequisite of IR-701, not an existing behavior or an
 IR model dependency. Until that producer exists, IR-701 cannot claim a
 requested/deadline cancellation mapping from a live Kani run. Neither
 Contract IR nor a consumer derives the origin from `code`, `source_id`,
@@ -66,8 +66,8 @@ part of the `Cancelled` variant of `KaniOutcomeKind`, so every cancelled
 outcome has exactly one source and no other kind has one. `TimedOut` remains a
 distinct outcome for a run that exceeded its execution timeout without a
 recorded cancellation event. The type and outcome live in the root crate's
-`kani` module without a dependency on QSL or quire-exact; codegen translates
-the two source variants into QSL's `CancelCause` at its FR-030 consumer seam.
+`kani` module without a dependency on FSL or filament-exact; codegen translates
+the two source variants into FSL's `CancelCause` at its FR-030 consumer seam.
 
 On serialization, a cancelled outcome's `kind` is
 `{"cancelled":{"source":"requested"}}` or
@@ -79,7 +79,7 @@ member on a non-cancelled outcome (for example,
 unknown members. There is no default origin or alternate legacy wire form.
 
 A `KaniOutcome`'s code, and a `KaniOutcomeError`'s, is a `Std001Code`
-(FR-044), exported by `quire-contract-model`, and not a `String`. The
+(FR-044), exported by `filament-contract-model`, and not a `String`. The
 non-success constructor takes a `Std001Code`, and a `proved` or `counterexample`
 outcome carries `kani_proved` or `kani_counterexample`. The codes IR raises are
 registered in STD-001 ("Bounded Kani Cause Codes") and spelled by `Std001Code`
@@ -132,7 +132,7 @@ not observe checks or classify an arbitrary profile refusal. Likewise,
 `cancelled` records the supplied observed event source and does not infer or
 observe cancellation. The consumer remains responsible for supplying the
 actual event and source/profile/bound context. This API adds neither a live
-Kani producer nor a QSL terminal mapper.
+Kani producer nor a FSL terminal mapper.
 
 The infallible methods shall use the same internal outcome-construction path
 as the existing fallible `non_success` method; they introduce no alternate

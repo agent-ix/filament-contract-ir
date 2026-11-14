@@ -7,11 +7,11 @@ use super::{
     fixtures_dir, map_type, proposal_dir_of, read_json, read_package_with_document,
     read_package_with_document_override,
 };
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     CheckedNodeId, CheckedPackageReadLimits, CheckedPackageRefusalCause, CheckedPackageRefusalCode,
     CheckedPackageV2ReadResult, CheckedTerm,
 };
+use ix_trace_rs::trace;
 use serde_json::{json, Value};
 
 fn mutate(case: &str, package: &mut Value, position: usize) {
@@ -33,7 +33,7 @@ fn mutate(case: &str, package: &mut Value, position: usize) {
             ], "ordinal": 0});
             let sequence_position = nodes.as_array().expect("nodes").len();
             nodes.as_array_mut().expect("nodes").push(json!({
-                "node_id": sequence, "schema_version": "quire.checked-semantic-graph/v2",
+                "node_id": sequence, "schema_version": "filament.checked-semantic-graph/v2",
                 "node_tag": "composite_type", "semantic_form": "sequence",
                 "semantic_type": sequence, "dependencies": [integer],
                 "occurrences": [{"role": "type", "ordinal": 0}],
@@ -68,7 +68,7 @@ fn mutate(case: &str, package: &mut Value, position: usize) {
 #[test]
 fn owner_map_type_vectors_match_public_reader() {
     let proposal = proposal_dir_of(&fixtures_dir());
-    let vectors = read_json(&proposal.join("map-type-vectors.json")).expect("QSpec Map vectors");
+    let vectors = read_json(&proposal.join("map-type-vectors.json")).expect("FSpec Map vectors");
     assert_eq!(vectors["version"], 1);
     let forms = vectors["forms"].as_array().expect("Map forms");
     assert_eq!(forms.len(), 7);
@@ -114,8 +114,8 @@ fn owner_map_type_vectors_match_public_reader() {
                 .find(|ty| ty["identity"] == "ix://acme/orders/ClockMap")
                 .expect("selected ClockMap");
             assert_eq!(clock_map["kind"], "map");
-            assert_eq!(clock_map["values"], "ix://quire/native/Clock");
-            clock_map["values"] = json!("ix://quire/native/Integer");
+            assert_eq!(clock_map["values"], "ix://filament/native/Clock");
+            clock_map["values"] = json!("ix://filament/native/Integer");
             let changed = serde_json::to_vec(&selected).expect("changed selected document");
             let result = read_package_with_document_override(
                 &timed,
@@ -180,7 +180,7 @@ fn owner_map_type_vectors_match_public_reader() {
                         .as_array_mut()
                         .expect("nodes")
                         .push(json!({
-                            "node_id": alias, "schema_version": "quire.checked-semantic-graph/v2",
+                            "node_id": alias, "schema_version": "filament.checked-semantic-graph/v2",
                             "node_tag": "composite_type", "semantic_form": "alias",
                             "semantic_type": alias, "dependencies": [target],
                             "occurrences": [{"role": "type", "ordinal": 0}],
@@ -240,8 +240,8 @@ fn owner_map_type_vectors_match_public_reader() {
                 assert_eq!(original_admitted.node_kind(&id), admitted.node_kind(&id));
                 assert_eq!(
                     admitted.node_kind(&id),
-                    Some(quire_contract_model::CheckedNodeKind::CompositeType(
-                        quire_contract_model::CompositeTypeForm::Map
+                    Some(filament_contract_model::CheckedNodeKind::CompositeType(
+                        filament_contract_model::CompositeTypeForm::Map
                     ))
                 );
             }

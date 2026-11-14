@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Agent-IX
 
-//! FR-070: model certificate members against QSpec's published schema.
+//! FR-070: model certificate members against FSpec's published schema.
 
 use super::*;
 use std::collections::BTreeSet;
@@ -121,7 +121,9 @@ fn model_certificate_members_match_qspec_schema() {
     let root = std::env::var(SPECIFICATION_DIR)
         .ok()
         .filter(|root| !root.is_empty())
-        .unwrap_or_else(|| panic!("{SPECIFICATION_DIR} must name a quire-specification checkout"));
+        .unwrap_or_else(|| {
+            panic!("{SPECIFICATION_DIR} must name a filament-specification checkout")
+        });
     let path = Path::new(&root).join("proposals/backend-provider-v1/schema.json");
     let schema = read_json(&path).unwrap_or_else(|error| panic!("{error}"));
     let definitions = schema["$defs"]
@@ -149,7 +151,7 @@ fn model_certificate_members_match_qspec_schema() {
         "certificate property closure differs"
     );
 
-    let model = quire_contract_model::CertificateMember::ALL
+    let model = filament_contract_model::CertificateMember::ALL
         .iter()
         .map(|member| member.as_str())
         .collect::<Vec<_>>();
@@ -162,7 +164,7 @@ fn model_certificate_members_match_qspec_schema() {
     assert_eq!(model, published, "model member sequence differs");
 
     fn assert_derives<T: Clone + Copy + std::fmt::Debug + Eq + PartialEq>() {}
-    assert_derives::<quire_contract_model::CertificateMember>();
+    assert_derives::<filament_contract_model::CertificateMember>();
 }
 
 #[trace("FR-070-AC-2")]

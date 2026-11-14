@@ -18,11 +18,11 @@ use checked_package::{
     canonical, evidence_for, family_key, node_id, positive_operation_identities, refresh_identity,
     settle, v2_all_families, v2_nominal,
 };
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     initialize_operation_catalog, CheckedPackageEvidence, CheckedPackageV2,
     CheckedPackageV2BudgetedReadResult, CheckedPackageV2ReadResult,
 };
+use ix_trace_rs::trace;
 use std::cell::Cell;
 
 thread_local! {
@@ -237,7 +237,7 @@ fn even_a_warm_catalogs_first_owned_request_is_denied_before_allocation() {
         };
         assert_eq!(
             outcome.denied.resource,
-            quire_contract_model::PackageReadResource::ReadStorage
+            filament_contract_model::PackageReadResource::ReadStorage
         );
         assert!(outcome.denied.amount > 0);
         assert_eq!(outcome.limit, 0);
@@ -278,9 +278,9 @@ fn duplicate_member_precedes_a_later_out_of_range_number() {
         // detects a repeated name when its object closes, so a later
         // out-of-range number in the same object is read, and named, first.
         let expected = if index == 0 {
-            quire_contract_model::CheckedPackageRefusalCode::DuplicateMember
+            filament_contract_model::CheckedPackageRefusalCode::DuplicateMember
         } else {
-            quire_contract_model::CheckedPackageRefusalCode::MalformedWire
+            filament_contract_model::CheckedPackageRefusalCode::MalformedWire
         };
         assert_eq!(refusal.code, expected);
         read_allocation_proof::assert_read::<ThreadCounter>(
@@ -456,7 +456,7 @@ fn exact_and_above_native_budgets_preserve_the_original_model_views_and_lowering
 #[trace("TC-472", "FR-038-AC-511")]
 #[test]
 fn full_native_boundaries_cover_seeded_work_on_the_original_genuine_package() {
-    use quire_contract_model::{
+    use filament_contract_model::{
         NativeJoinBudget, NativeJoinChargeKind, NativeJoinLocus, NativeJoinLocusSource,
     };
     let value = v2_all_families();
@@ -534,7 +534,7 @@ fn counted_exact_and_denied_work_budgets_cover_a_malformed_body() {
     let evidence = evidence_for(&value);
     let result = CheckedPackageV2::read(&bytes, generous_limits(), &evidence);
     assert!(
-        matches!(result,CheckedPackageV2ReadResult::Refused(ref refusal) if refusal.code==quire_contract_model::CheckedPackageRefusalCode::InvalidSemanticGraph),
+        matches!(result,CheckedPackageV2ReadResult::Refused(ref refusal) if refusal.code==filament_contract_model::CheckedPackageRefusalCode::InvalidSemanticGraph),
         "genuine malformed-body first fault: {result:?}"
     );
     assert!(
@@ -589,7 +589,7 @@ fn original_dedicated_counter_observes_only_its_original_read() {
     let wire = v2_all_families();
     let bytes = canonical(&wire);
     let evidence = evidence_for(&wire);
-    let limits = quire_contract_model::CheckedPackageReadLimits::bounded();
+    let limits = filament_contract_model::CheckedPackageReadLimits::bounded();
     let mut wrapped = None;
     let measured = <ThreadCounter as Counter>::measure(|| {
         wrapped = Some(read_and_account(&bytes, limits, &evidence));
@@ -622,7 +622,7 @@ mod canonical_class_denial;
 #[trace("TC-472", "FR-038-AC-511")]
 #[test]
 fn nominal_validation_work_denial_prepays_its_original_body_pointer() {
-    use quire_contract_model::{
+    use filament_contract_model::{
         NativeJoinChargeKind, NativeJoinLocus, NativeJoinLocusSource, PackageReadResource,
         PackageReadStage,
     };
@@ -704,7 +704,7 @@ mod dependency_selection_inputs;
 #[trace("TC-472", "FR-038-AC-511")]
 #[test]
 fn imported_nominals_work_denial_prepays_original_graph_pointer() {
-    use quire_contract_model::{
+    use filament_contract_model::{
         NativeJoinChargeKind, NativeJoinLocus, NativeJoinLocusSource, PackageReadResource,
         PackageReadStage,
     };
@@ -821,7 +821,7 @@ fn imported_nominals_work_denial_prepays_original_graph_pointer() {
 #[trace("TC-472", "FR-038-AC-511")]
 #[test]
 fn dependency_closure_work_denial_prepays_original_lock_pointer() {
-    use quire_contract_model::{
+    use filament_contract_model::{
         NativeJoinChargeKind, NativeJoinLocus, NativeJoinLocusSource, PackageReadResource,
         PackageReadStage,
     };
@@ -957,7 +957,7 @@ fn nonidentifier_enum_member_refusal_is_paid_before_construction() {
     };
     assert_eq!(
         refusal.code,
-        quire_contract_model::CheckedPackageRefusalCode::InvalidSemanticGraph
+        filament_contract_model::CheckedPackageRefusalCode::InvalidSemanticGraph
     );
     assert!(refusal.cause.is_none());
     assert_eq!(refusal.loci.len(), 1);
@@ -997,14 +997,12 @@ fn nonidentifier_enum_member_refusal_is_paid_before_construction() {
     };
     assert_eq!(
         exhausted.denied.resource,
-        quire_contract_model::PackageReadResource::ReadStorage
+        filament_contract_model::PackageReadResource::ReadStorage
     );
     assert_eq!(exhausted.configured_bound, paid - 1);
     assert_eq!(
         exhausted.pending,
-        Some(quire_contract_model::CheckedPackagePendingOutcome::Refused(
-            refusal.code
-        ))
+        Some(filament_contract_model::CheckedPackagePendingOutcome::Refused(refusal.code))
     );
     let request = short
         .budget
@@ -1014,8 +1012,8 @@ fn nonidentifier_enum_member_refusal_is_paid_before_construction() {
     assert_eq!(u128::from(short.requested) + request, u128::from(paid));
     assert_eq!(
         exhausted.locus.source,
-        quire_contract_model::NativeJoinLocusSource::PackageRead(
-            quire_contract_model::PackageReadStage::Graph,
+        filament_contract_model::NativeJoinLocusSource::PackageRead(
+            filament_contract_model::PackageReadStage::Graph,
             0
         )
     );
@@ -1076,7 +1074,7 @@ fn function_call_parameter_check_has_no_unpaid_allocation() {
     }]});
     nodes.push(serde_json::json!({
         "node_id": node_id("parameter/0"),
-        "schema_version": "quire.checked-semantic-graph/v2",
+        "schema_version": "filament.checked-semantic-graph/v2",
         "node_tag": "value",
         "semantic_form": "parameter",
         "semantic_type": node_id(&family_key("aaaa")),

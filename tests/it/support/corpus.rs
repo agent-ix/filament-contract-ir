@@ -20,7 +20,7 @@ pub fn corpus() -> PathBuf {
 }
 
 pub fn runner(arguments: &[&str]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_quire-contract-conformance"))
+    Command::new(env!("CARGO_BIN_EXE_filament-contract-conformance"))
         .args(arguments)
         .output()
         .unwrap()
@@ -51,7 +51,7 @@ pub struct Scratch(pub PathBuf);
 impl Scratch {
     pub fn empty(label: &str) -> Self {
         let root = std::env::temp_dir().join(format!(
-            "quire-contract-ir-tc018-{}-{label}",
+            "filament-contract-ir-tc018-{}-{label}",
             std::process::id()
         ));
         if root.exists() {
@@ -63,7 +63,7 @@ impl Scratch {
 
     pub fn corpus(label: &str) -> Self {
         let root = std::env::temp_dir().join(format!(
-            "quire-contract-ir-tc018-{}-{label}",
+            "filament-contract-ir-tc018-{}-{label}",
             std::process::id()
         ));
         if root.exists() {

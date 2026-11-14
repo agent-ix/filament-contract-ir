@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! Shared exact-limit assertion for the six admitted native join families.
 
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     CheckedNodeId, ExactTypeProjectionError, ExactTypeProjectionErrorCode, NativeJoinBudget,
     NativeJoinCharge, NativeJoinChargeKind, NativeJoinDeniedCharge, NativeJoinLocus,
     NativeJoinLocusSource, SelectedExactIdentities,
 };
+use ix_trace_rs::trace;
 
 fn charge_selection(budget: &mut NativeJoinBudget) -> Result<(), NativeJoinDeniedCharge> {
     budget.accounted_charge(

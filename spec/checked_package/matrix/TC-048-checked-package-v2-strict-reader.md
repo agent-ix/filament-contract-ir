@@ -3,91 +3,91 @@ id: TC-048
 title: "CheckedPackage V2 strict reader validates structural identities"
 type: TC
 relationships:
-  - target: ix://agent-ix/quire-specification/TC-976
+  - target: ix://agent-ix/filament-specification/TC-976
     type: references
-  - target: ix://agent-ix/quire-contract-ir/FR-038
+  - target: ix://agent-ix/filament-contract-ir/FR-038
     type: verifies
-  - target: ix://agent-ix/quire-contract-ir/FR-038-AC-409
+  - target: ix://agent-ix/filament-contract-ir/FR-038-AC-409
     type: verifies
-  - target: ix://agent-ix/quire-contract-ir/FR-038-AC-519
+  - target: ix://agent-ix/filament-contract-ir/FR-038-AC-519
     type: verifies
-  - target: ix://agent-ix/quire-contract-ir/FR-038-AC-520
+  - target: ix://agent-ix/filament-contract-ir/FR-038-AC-520
     type: verifies
-  - target: ix://agent-ix/quire-contract-ir/FR-038-AC-521
+  - target: ix://agent-ix/filament-contract-ir/FR-038-AC-521
     type: verifies
-  - target: ix://agent-ix/quire-contract-ir/FR-038-AC-522
+  - target: ix://agent-ix/filament-contract-ir/FR-038-AC-522
     type: verifies
-  - target: ix://agent-ix/quire-contract-ir/FR-038-AC-523
+  - target: ix://agent-ix/filament-contract-ir/FR-038-AC-523
     type: verifies
-  - target: ix://agent-ix/quire-contract-ir/FR-038-AC-410
+  - target: ix://agent-ix/filament-contract-ir/FR-038-AC-410
     type: verifies
-  - target: ix://agent-ix/quire-contract-ir/FR-038-AC-411
+  - target: ix://agent-ix/filament-contract-ir/FR-038-AC-411
     type: verifies
-  - target: ix://agent-ix/quire-contract-ir/FR-038-AC-412
+  - target: ix://agent-ix/filament-contract-ir/FR-038-AC-412
     type: verifies
-  - target: ix://agent-ix/quire-contract-ir/FR-038-AC-413
+  - target: ix://agent-ix/filament-contract-ir/FR-038-AC-413
     type: verifies
-  - target: ix://agent-ix/quire-contract-ir/FR-038-AC-414
+  - target: ix://agent-ix/filament-contract-ir/FR-038-AC-414
     type: verifies
-  - target: ix://agent-ix/quire-contract-ir/FR-038-AC-415
+  - target: ix://agent-ix/filament-contract-ir/FR-038-AC-415
     type: verifies
-  - target: ix://agent-ix/quire-contract-ir/FR-038-AC-416
+  - target: ix://agent-ix/filament-contract-ir/FR-038-AC-416
     type: verifies
-  - target: ix://agent-ix/quire-contract-ir/FR-038-AC-417
+  - target: ix://agent-ix/filament-contract-ir/FR-038-AC-417
     type: verifies
-  - target: ix://agent-ix/quire-contract-ir/FR-038-AC-418
+  - target: ix://agent-ix/filament-contract-ir/FR-038-AC-418
     type: verifies
-  - target: ix://agent-ix/quire-contract-ir/FR-038-AC-419
+  - target: ix://agent-ix/filament-contract-ir/FR-038-AC-419
     type: verifies
-  - target: ix://agent-ix/quire-contract-ir/FR-038-AC-431
+  - target: ix://agent-ix/filament-contract-ir/FR-038-AC-431
     type: verifies
-  - target: ix://agent-ix/quire-contract-ir/FR-038-AC-432
+  - target: ix://agent-ix/filament-contract-ir/FR-038-AC-432
     type: verifies
-  - target: ix://agent-ix/quire-specification/TC-233
+  - target: ix://agent-ix/filament-specification/TC-233
     type: references
-  - target: ix://agent-ix/quire-contract-ir/FR-064
+  - target: ix://agent-ix/filament-contract-ir/FR-064
     type: verifies
-  - target: ix://agent-ix/quire-contract-ir/FR-046
+  - target: ix://agent-ix/filament-contract-ir/FR-046
     type: verifies
-  - target: ix://agent-ix/quire-contract-ir/FR-048
+  - target: ix://agent-ix/filament-contract-ir/FR-048
     type: verifies
-  - target: ix://agent-ix/quire-specification/TC-217
+  - target: ix://agent-ix/filament-specification/TC-217
     type: references
-  - target: ix://agent-ix/quire-specification/TC-931
+  - target: ix://agent-ix/filament-specification/TC-931
     type: references
-  - target: ix://agent-ix/quire-specification/TC-946
+  - target: ix://agent-ix/filament-specification/TC-946
     type: references
-  - target: ix://agent-ix/quire-specification/TC-947
+  - target: ix://agent-ix/filament-specification/TC-947
     type: references
-  - target: ix://agent-ix/quire-specification/TC-948
+  - target: ix://agent-ix/filament-specification/TC-948
     type: references
-  - target: ix://agent-ix/quire-specification/TC-966
+  - target: ix://agent-ix/filament-specification/TC-966
     type: references
-  - target: ix://agent-ix/quire-specification/TC-367
+  - target: ix://agent-ix/filament-specification/TC-367
     type: references
-  - target: ix://agent-ix/quire-specification/TC-233
+  - target: ix://agent-ix/filament-specification/TC-233
     type: references
-  - target: ix://agent-ix/quire-specification/TC-303
+  - target: ix://agent-ix/filament-specification/TC-303
     type: references
-  - target: ix://agent-ix/quire-contract-ir/FR-038-AC-461
+  - target: ix://agent-ix/filament-contract-ir/FR-038-AC-461
     type: verifies
-  - target: ix://agent-ix/quire-contract-ir/FR-038-AC-462
+  - target: ix://agent-ix/filament-contract-ir/FR-038-AC-462
     type: verifies
-  - target: ix://agent-ix/quire-contract-ir/FR-038-AC-524
+  - target: ix://agent-ix/filament-contract-ir/FR-038-AC-524
     type: verifies
-  - target: ix://agent-ix/quire-contract-ir/FR-038-AC-525
+  - target: ix://agent-ix/filament-contract-ir/FR-038-AC-525
     type: verifies
-  - target: ix://agent-ix/quire-contract-ir/FR-038-AC-526
+  - target: ix://agent-ix/filament-contract-ir/FR-038-AC-526
     type: verifies
-  - target: ix://agent-ix/quire-contract-ir/FR-038-AC-527
+  - target: ix://agent-ix/filament-contract-ir/FR-038-AC-527
     type: verifies
-  - target: ix://agent-ix/quire-contract-ir/FR-038-AC-528
+  - target: ix://agent-ix/filament-contract-ir/FR-038-AC-528
     type: verifies
-  - target: ix://agent-ix/quire-contract-ir/FR-038-AC-529
+  - target: ix://agent-ix/filament-contract-ir/FR-038-AC-529
     type: verifies
-  - target: ix://agent-ix/quire-contract-ir/FR-038-AC-541
+  - target: ix://agent-ix/filament-contract-ir/FR-038-AC-541
     type: verifies
-  - target: ix://agent-ix/quire-specification/TC-187
+  - target: ix://agent-ix/filament-specification/TC-187
     type: references
 ---
 # TC-048: CheckedPackage V2 strict reader validates structural identities
@@ -95,29 +95,29 @@ relationships:
 
 ## Description
 
-Verify FR-038-AC-1 through FR-038-AC-5 (QSpec FR-322-AC-4, FR-322-AC-8,
+Verify FR-038-AC-1 through FR-038-AC-5 (FSpec FR-322-AC-4, FR-322-AC-8,
 FR-322-AC-10 and FR-322-AC-269) against the V2 package fixtures this repository builds from its
 own public vocabulary (`tests/it/support/checked_package.rs`), and
-read QSpec's `proposals/checked-package-v2/fixtures/adverse.json`
+read FSpec's `proposals/checked-package-v2/fixtures/adverse.json`
 `nominal_body_mutations` NB-01..NB-06 directly from its selected checkout:
 compare `malformed_wire` at each recorded body locus for NB-01..NB-05 and admission of the
 ordered enum for NB-06. Construct separate schema-valid source nominal bodies
 whose owner, declaration, semantic type, dependencies, case or unit meaning
 does not join, and compare each applicable semantic refusal after wire validation;
-do not copy QSpec fixtures into this repository. Then verify
-FR-038-AC-27 through FR-038-AC-30 (QSpec FR-322-AC-29 through FR-322-AC-34
+do not copy FSpec fixtures into this repository. Then verify
+FR-038-AC-27 through FR-038-AC-30 (FSpec FR-322-AC-29 through FR-322-AC-34
 "Model-owned members") against a self-built domain package document, and
-FR-038-AC-31 through FR-038-AC-33 (QSpec FR-322-AC-35) against the
+FR-038-AC-31 through FR-038-AC-33 (FSpec FR-322-AC-35) against the
 `DependencySelection` entries of a self-built package, and
 FR-038-AC-293 against recursively derived dependency closures with conflicting complete packages under one name, and
-FR-038-AC-35 through FR-038-AC-38 (QSpec FR-322-AC-36 and FR-322-AC-37)
+FR-038-AC-35 through FR-038-AC-38 (FSpec FR-322-AC-36 and FR-322-AC-37)
 against a self-built dependency package and a package that calls it, and
-FR-038-AC-45 (QSpec FR-322-AC-28) against a model-owned nominal declaration and
+FR-038-AC-45 (FSpec FR-322-AC-28) against a model-owned nominal declaration and
 a model declaration node with its declared structural path and `ModelOwner`, and
-FR-038-AC-46 through FR-038-AC-61 (QSpec FR-322 `lock` and `DefinitionRef`)
+FR-038-AC-46 through FR-038-AC-61 (FSpec FR-322 `lock` and `DefinitionRef`)
 against the artifact references of a self-built package and the
 operation catalog's `law_roles` entries, and FR-038-AC-62 through FR-038-AC-64
-(QSpec FR-322 `ModelRef` and `DependencySelection`) against the
+(FSpec FR-322 `ModelRef` and `DependencySelection`) against the
 `model_root` owners and `dependency_selections` entries of a self-built
 package, and FR-038-AC-65 through FR-038-AC-69 against the operation catalog's
 words and the applications of a self-built package that name them, and
@@ -126,22 +126,22 @@ themselves, and FR-038-AC-74 through FR-038-AC-80 against the V2 wire types'
 encoding through `quire-canonical` and the reader's canonical-bytes check, and
 FR-038-AC-81 through FR-038-AC-88 against the operation identity, law, mode,
 member and operand checks of a single application and the key of an application
-node, as unit tests of `crates/quire-contract-model/src/checked_package/v2/operations.rs`,
+node, as unit tests of `crates/filament-contract-model/src/checked_package/v2/operations.rs`,
 and FR-038-AC-89 through FR-038-AC-95 against structural node-id preservation, canonical bytes, selected model-document integer checks and the lowering byte ceiling; retired identity-only AC-92 has no test obligation, and
-FR-038-AC-96 through FR-038-AC-108 (QSpec FR-370, FR-440 and FR-250) against the
+FR-038-AC-96 through FR-038-AC-108 (FSpec FR-370, FR-440 and FR-250) against the
 temporal, fairness, union and `case` nodes of a self-built package, the
 temporal step's placement, clause, profile-fit and interval-bound checks, and
-QSpec's own positive fixtures read from the QSpec checkout. FR-038-AC-66 is
+FSpec's own positive fixtures read from the FSpec checkout. FR-038-AC-66 is
 retired, its ID not reused (ADR-0056), and has no case. FR-038-AC-109 through
 FR-038-AC-111 are against a number whose exact value its RFC 8785 encoding loses
 (the `inexact-number` and `inexact-integer` causes of a selected model document,
 and the package's own byte-stream refusal). FR-038-AC-112 and FR-038-AC-113 are
-against QSpec's own `adverse.json` mutations and `dependency-selection-vectors.json`
-identity, read from the QSpec checkout. FR-038-AC-114 through FR-038-AC-118 (IR-495) are against the flat wire of merged QSpec FR-322 "Body grammar": nested and
+against FSpec's own `adverse.json` mutations and `dependency-selection-vectors.json`
+identity, read from the FSpec checkout. FR-038-AC-114 through FR-038-AC-118 (IR-495) are against the flat wire of merged FSpec FR-322 "Body grammar": nested and
 misplaced applications, the pre-order pointer, the order ahead of identity recomputation,
 the absence of a depth limit and of call-stack recursion, and the five body-grammar
 mutations. FR-038-AC-119 through FR-038-AC-122 (IR-551) are against the timed interval form of
-merged QSpec FR-370 and FR-370-AC-8: the four end variants, rational bounds in lowest
+merged FSpec FR-370 and FR-370-AC-8: the four end variants, rational bounds in lowest
 terms, the refusal of a negative, malformed or non-reduced bound, a null upper bound,
 an open end with equal bounds and a missing or extra member, and the profile fit.
 FR-038-AC-159 through FR-038-AC-164 verify the typed scalar operand accessor
@@ -150,29 +150,29 @@ FR-038-AC-210 through FR-038-AC-213 have tagged public-reader admission
 and adverse controls for the published operation catalog's declared-unit
 quantity, aggregate, same-family, literal-kind and rounding-mode rules.
 FR-038-AC-222 and FR-038-AC-223 have tagged public-reader controls for the
-IEEE literal-family and catalog-result rules of QSpec FR-322-AC-23; IR-742's
+IEEE literal-family and catalog-result rules of FSpec FR-322-AC-23; IR-742's
 tagged reader tests passed.
-FR-038-AC-311 through FR-038-AC-317 specify QSpec FR-481's hybrid tag,
+FR-038-AC-311 through FR-038-AC-317 specify FSpec FR-481's hybrid tag,
 structural identity and ordered hybrid reader step. Their public-reader
-evidence consumes QSpec TC-966's published vectors from the selected checkout
-and compares exact code, cause and locus; QSpec's provider and host trace
-checks remain QSpec evidence.
+evidence consumes FSpec TC-966's published vectors from the selected checkout
+and compares exact code, cause and locus; FSpec's provider and host trace
+checks remain FSpec evidence.
 FR-038-AC-242 through FR-038-AC-245 have tagged public-reader controls for
-QSpec FR-322-AC-31/67's distinct native String, UUID and Timestamp types,
+FSpec FR-322-AC-31/67's distinct native String, UUID and Timestamp types,
 six comparisons, canonical literal payloads and typed refusals; IR-800's
 tagged reader tests passed.
 FR-038-AC-224 is the planned structural-type forwarding work control for
 operation validation; its private meter probes and public-reader work refusal
 are not counted as executed evidence until IR-490 adds tagged tests.
 FR-038-AC-225 through FR-038-AC-227 have tagged public-reader controls for
-QSpec FR-322's aggregate-bodied `value`/`union_value` application keys. They
-use the authentic QSpec positive fixture and its tampered-key adverse controls;
+FSpec FR-322's aggregate-bodied `value`/`union_value` application keys. They
+use the authentic FSpec positive fixture and its tampered-key adverse controls;
 IR-739's tagged reader and conformance tests passed.
 FR-038-AC-228 through FR-038-AC-231 are planned public-reader controls for
 the catalog's three leaf-source selectors, earlier first-operand family
 refusals, nested IEEE ineligibility and result-inner sequence exception. They
 do not claim a runtime result until IR-491 implements and runs tagged tests.
-FR-038-AC-217 and FR-038-AC-218 (merged QSpec FR-272) cover the
+FR-038-AC-217 and FR-038-AC-218 (merged FSpec FR-272) cover the
 absence of content-mismatch and digest-derived expected/actual identity fields, while independent dependency selection and conflicting-definition refusals retain typed loci.
 
 ## Test Procedure
@@ -207,7 +207,7 @@ closed-body, grouped-cycle and forbidden-member controls of AC-239 through
 AC-241.
 Producer conformance may additionally use freshly produced bytes through
 the producer's public interface, with exact source-region assertions;
-neither copied upstream fixtures nor a QSL internal dependency replaces the
+neither copied upstream fixtures nor a FSL internal dependency replaces the
 local public-reader controls above. The implemented native tests bind
 to AC-294/AC-295 with `#[trace]` on `#[test]`. The focused
 `checked_package_v2_protocol_reference` module passed all twelve native tests,
@@ -221,7 +221,7 @@ not a full matrix or aggregate release-gate result.
 For AC-210 through AC-213, start with valid checked V2 packages, not a
 post-admission mutation of an in-memory graph. Build a self-typed declared
 unit, two values of its type, a Boolean, an Integer, and the selected laws and
-members each operation needs. Exercise the operand check of every `quire.op.quantity.*` identity
+members each operation needs. Exercise the operand check of every `filament.op.quantity.*` identity
 against its published operand list, changing its first quantity operand to
 Boolean; read valid `quantity.add` and `quantity.eq` packages end to end,
 then place a declared-unit quantity in `integer.add` argument 0 and change
@@ -245,7 +245,7 @@ Dispatch unknown, empty, absent and malformed `contract_version` values, duplica
 
 For the reserved parse/GCD exception in FR-038-AC-508, verify the operand-size bounds in former 32-bit-limb work units are at least the recorded former totals (including 132 for 18446744073709551617 over 1), without running a shadow parse or GCD. Measure the new exact requirement and check exact/one-below work, the same operand/stage order, semantic first faults and active work locus, and affordable or unaffordable denial pointers. Exercise coprime and noncoprime values above 128 bits through the actual reserved SDK parse and reduction entries, replaying each actual limb request at its exact and one-below storage allowance. Heap charges remain exact, with form `exact_number`; multiplication and unrelated visit work retain their existing units.
 
-For AC-18, use a self-typed body-root literal and nested or other references to the same structural node id. The body-root exemption applies only where QSpec defines it; all other targets must be declared dependencies and resolve. A valid body edit under a retained id is judged by independent body and graph rules.
+For AC-18, use a self-typed body-root literal and nested or other references to the same structural node id. The body-root exemption applies only where FSpec defines it; all other targets must be declared dependencies and resolve. A valid body edit under a retained id is judged by independent body and graph rules.
 
 For AC-45, read a model-owned declaration with owner `{kind: model, identity, node}` and no version. Its selected model-root identity and declaration node join admit; a foreign owner, missing selected document, empty owner value or extra owner member returns the exact owner or wire refusal. Replacing a selected document with a different body under the same name reaches its independent model and member validation rather than a content-key check.
 
@@ -257,7 +257,7 @@ For FR-038-AC-364, use separately authored, otherwise valid ungrouped nodes
 with a single `(package,path)` at ordinal 7 and with two nodes sharing that
 pair at ordinals 7 and 23. Update every reference to the authored ids and
 require admission without a zero, contiguity or sibling-order check. Read
-QSpec `proposals/checked-package-v2/node-ordinal-vectors.json`
+FSpec `proposals/checked-package-v2/node-ordinal-vectors.json`
 `uniqueness_cases` NO-05..NO-08 directly from its selected checkout: NO-05
 admits the original ordinal 0 and a sibling at 7; NO-06 admits siblings at
 3 then 2 before the original at 0, in neither ordinal nor graph order;
@@ -270,14 +270,14 @@ with `node_id.ordinal` producer assigned and each in-group reference naming an
 exact structural ID. Permute an otherwise valid group without changing its
 IDs, labels or references; require admission and a changed complete graph-array
 value. The former group-position and group-reference-ordinal controls are
-withdrawn in place because the checked wire has no such carrier. Read QSpec FR-322-AC-274's four positive
+withdrawn in place because the checked wire has no such carrier. Read FSpec FR-322-AC-274's four positive
 group fixtures directly from the selected checkout: `positive-recursive-records`,
 `positive-two-owners-a`, `positive-two-owners-b` and
 `positive-integer-literal-references`. Each fixture group has a declared
 member: assert every member, including an anonymous derived member, shares
 that member's declaration path and retains its
 producer-assigned structural ordinal; assert admission without deriving that
-ordinal from graph position. Read QSpec XP-04
+ordinal from graph position. Read FSpec XP-04
 directly from its selected checkout: its second equivalence node's ordinal
 1 makes a distinct structural id, while the repeated pair still refuses
 `invalid_semantic_graph` for pair meaning, not an ordinal-shape or
@@ -303,14 +303,14 @@ An unknown, empty or absent `contract_version` refuses as
 `unknown_contract_version`; a malformed `contract_version`, document, or a
 duplicate or noncanonical top-level member refuses as `malformed_wire`,
 `duplicate_member` or `noncanonical_wire` before any version-specific
-decoding. Positive fixtures admit. Current QSpec positive packages admit with their published names, structural ids, complete bodies and source correspondence. Every adverse or injected case returns its independently expected refusal or incomplete result with no partial package. Model owners resolve only through selected model roots and declarations; no selected document is inferred or repaired.
+decoding. Positive fixtures admit. Current FSpec positive packages admit with their published names, structural ids, complete bodies and source correspondence. Every adverse or injected case returns its independently expected refusal or incomplete result with no partial package. Model owners resolve only through selected model roots and declarations; no selected document is inferred or repaired.
 
 ## Native String, UUID and Timestamp admission (FR-038-AC-242 through FR-038-AC-245)
 
 IMPLEMENTED (IR-800; tagged reader tests passed). From a selected Semantic IR document using its
 existing `typeRef` member, author a field, parameter and operation result for
-each of `ix://quire/native/String`, `ix://quire/native/UUID` and
-`ix://quire/native/Timestamp`. Through `CheckedPackageV2::read`, assert the
+each of `ix://filament/native/String`, `ix://filament/native/UUID` and
+`ix://filament/native/Timestamp`. Through `CheckedPackageV2::read`, assert the
 three distinct, self-typed scalar nodes and their member types, with String
 neither a `text` node nor a type requiring a text profile. The selected
 document and package remain in their authoritative checkout or are built by
@@ -329,7 +329,7 @@ catalogued member valid. Use `text` against `string`, `string` against `uuid`
 and `uuid` against `timestamp`, yielding twelve separate mutations. Assert
 `ill_typed`/`operator-ineligible` at the changed `/arguments/0` or
 `/arguments/1` pointer, respectively. Separately apply both
-`quire.op.integer.lt` and `quire.op.integer.add` to a pair of `string`
+`filament.op.integer.lt` and `filament.op.integer.add` to a pair of `string`
 operands, then to `uuid` operands, then to `timestamp` operands: six more
 mutations, each refusing `ill_typed`/`operator-ineligible` at
 `/arguments/0`. A reader that checks one operand only, coerces a native into
@@ -341,7 +341,7 @@ For each native comparison add a selected `text_profile` law and then a
 `text_profile` mode, separately, to the otherwise valid package. Assert
 `invalid_package`/`operation-law-mismatch` at the law and
 `invalid_package`/`operation-mode-mismatch` at the mode. Give
-`quire.op.text.eq` a String operand and assert
+`filament.op.text.eq` a String operand and assert
 `invalid_package`/`operation-mode-type-mismatch` at its mode value. Keep the
 text-profile selection valid so an earlier unselected-law refusal cannot
 satisfy these controls.
@@ -365,8 +365,8 @@ retains the reader's existing incomplete-before-later-defect precedence.
 ## IEEE literal and catalog result admission (FR-038-AC-222 and FR-038-AC-223)
 
 Implemented (IR-742). Build otherwise valid V2
-packages using the published `quire.op.ieee.to_float32` and
-`quire.op.ieee.to_float64` entries, their selected
+packages using the published `filament.op.ieee.to_float32` and
+`filament.op.ieee.to_float64` entries, their selected
 IEEE law, correctly typed `type_argument`, and genuine Float32 and Float64
 type nodes. The Float64→Float32 package with a `float64_bits` source literal
 and Float32→Float64 package with a `float32_bits` source literal must each
@@ -395,7 +395,7 @@ checks so they distinguish these admission failures from the existing first
 refusal order. These cases do not assert an admitted same-width IEEE operation.
 
 Implemented (IR-225; FR-038-AC-247 through FR-038-AC-251). Build fresh otherwise valid
-`quire.op.ieee.to_rational` applications for both Float32 and Float64 source
+`filament.op.ieee.to_rational` applications for both Float32 and Float64 source
 operands, using the catalogue's `member` result form, `type_argument` member
 and `member_family: rational` constraint. For each source width, admit the
 rational/rational member declaration and `result_type` pair. Then separately
@@ -406,12 +406,12 @@ identity and resource checks and refuse `ill_typed`/`operator-ineligible` at
 `/semantic_graph/nodes/{i}/body/result_type`, with the application node as
 locus: float/rational and rational/float exercise equality (AC-247), while
 float/float exercises the resolved-family constraint (AC-248). A valid
-`quire.op.quantity.convert` into a `compound_unit` with equal member declaration
+`filament.op.quantity.convert` into a `compound_unit` with equal member declaration
 and result must admit despite its unresolved family, as FR-038 defers that
 family ruling to FR-322 (AC-248). A resolved non-quantity declared type with
 equal member and result on an otherwise valid `quantity.convert` must refuse at
 `result_type` by its `member_family` constraint (AC-248). Add an otherwise valid
-`quire.op.collection.size` public-reader package with a collection-kind operand,
+`filament.op.collection.size` public-reader package with a collection-kind operand,
 a `model_population` type-argument declaration whose semantic type is its
 `Set<Reference<T>>` base, and `result_type` equal to that declaration. It must
 remain admitted: this result check skips the unresolved `model_population`
@@ -425,8 +425,8 @@ Each refuses `invalid_package`/`operation-member-mismatch` at
 as locus. The code PR updates the eleven existing IR fixtures that spell
 `member.type_argument` to `member.declaration`; it adds no alternate reader.
 
-For AC-250, start from admitted `quire.op.numeric.narrow` and
-`quire.op.quantity.convert` fixtures with `member.declaration == result_type`.
+For AC-250, start from admitted `filament.op.numeric.narrow` and
+`filament.op.quantity.convert` fixtures with `member.declaration == result_type`.
 For each identity, change only `result_type` and the enclosing root
 `semantic_type` to a distinct valid type while keeping the member declaration
 and all other operation requirements valid. Retain structurally valid ids and require `ill_typed`/`operator-ineligible` at application `result_type`, with
@@ -460,7 +460,7 @@ lookup/all-instances admitted controls, and that selecting an IEEE-only identity
 allow-list breaks a non-IEEE mismatched-result control.
 For fold and reduce, also read the accumulator binding whose aggregate holds
 one element binding and resolve the final step's type. Admit Integer steps
-and both the genuine QSL Integer fold fixture and the original complete
+and both the genuine FSL Integer fold fixture and the original complete
 monitor-base fixture with its selected model document. Refuse empty or multiple-member
 aggregates, non-binding members and a Boolean step when the member is Integer,
 at the application node. A further aggregate step retains its earlier
@@ -477,20 +477,20 @@ result, model-member, mode-type and leaf checks (AC-247). Compare typed code,
 cause, pointer and locus throughout.
 
 The catalogue's `result: member` entries with `member: type_argument` are
-`quire.op.quantity.convert`, `quire.op.ieee.to_float32`,
-`quire.op.ieee.to_float64`, `quire.op.ieee.to_rational`,
-`quire.op.ieee.from_exact`, `quire.op.reference.upcast`,
-`quire.op.numeric.convert`, `quire.op.numeric.convert_rounding`,
-`quire.op.numeric.narrow`, `quire.op.rational.narrow`,
-`quire.op.collection.fold`, `quire.op.collection.reduce`,
-`quire.op.collection.count`, `quire.op.collection.sum.integer`,
-`quire.op.collection.sum.rational`, `quire.op.collection.sum.decimal`,
-`quire.op.collection.sum.float32`, `quire.op.collection.sum.float64`,
-`quire.op.collection.sum.quantity`, `quire.op.collection.size` and
-`quire.op.collection.convert`. The five other `result: member` entries are
-`quire.op.record.project` (`field`), `quire.op.tuple.project` (`position`),
-`quire.op.collection.index` (`element`), `quire.op.model.navigate`
-(`relationship_end`) and `quire.op.model.dispatch_call` (`operation`).
+`filament.op.quantity.convert`, `filament.op.ieee.to_float32`,
+`filament.op.ieee.to_float64`, `filament.op.ieee.to_rational`,
+`filament.op.ieee.from_exact`, `filament.op.reference.upcast`,
+`filament.op.numeric.convert`, `filament.op.numeric.convert_rounding`,
+`filament.op.numeric.narrow`, `filament.op.rational.narrow`,
+`filament.op.collection.fold`, `filament.op.collection.reduce`,
+`filament.op.collection.count`, `filament.op.collection.sum.integer`,
+`filament.op.collection.sum.rational`, `filament.op.collection.sum.decimal`,
+`filament.op.collection.sum.float32`, `filament.op.collection.sum.float64`,
+`filament.op.collection.sum.quantity`, `filament.op.collection.size` and
+`filament.op.collection.convert`. The five other `result: member` entries are
+`filament.op.record.project` (`field`), `filament.op.tuple.project` (`position`),
+`filament.op.collection.index` (`element`), `filament.op.model.navigate`
+(`relationship_end`) and `filament.op.model.dispatch_call` (`operation`).
 
 ## Selections bind by name (FR-038-AC-62 through FR-038-AC-64)
 
@@ -507,7 +507,7 @@ outside the vocabulary, one at a time. Put an operator outside the closed
 operator vocabulary on a package application and read the package.
 
 Read the production catalog and check that `carried_member` converts between its
-wire string and enum member and that `quire.op.collection.sum.carried_quantity`
+wire string and enum member and that `filament.op.collection.sum.carried_quantity`
 carries it with no operands and no family (AC-495). Replace that entry's
 constraint kind with a word outside the vocabulary and read the bytes: the read
 error names the entry and the word. Apply the entry with a `type_argument` member
@@ -522,14 +522,14 @@ with the path `operations[i].constraints[1].kind` and the word, not a refusal,
 and nothing panics (AC-58). Read an FR-330 package the same way: the read returns
 `CatalogUnavailable` with the same path (FR-035-AC-36).
 
-Name `quire.op.control.case` under operator `unary`, and an identity the catalog
+Name `filament.op.control.case` under operator `unary`, and an identity the catalog
 lacks, and read each. Build two defective body-root nodes, one a
 `temporal_formula` application in a `function` node and one other operation
 defect, in both structural-id orders (AC-67). Put a `temporal_interval` member on
-`quire.op.boolean.not` and on `quire.op.temporal.clause`, and a `fairness`
-member on `quire.op.boolean.not` and on `quire.op.temporal.holds` (AC-69).
+`filament.op.boolean.not` and on `filament.op.temporal.clause`, and a `fairness`
+member on `filament.op.boolean.not` and on `filament.op.temporal.holds` (AC-69).
 
-Run the operation check of a `quire.op.temporal.clause` application node as a
+Run the operation check of a `filament.op.temporal.clause` application node as a
 unit and, since IR-549, through a package read whose formula node is a
 `temporal_formula` application (AC-68): with its law selected, no member and the
 six arguments, the first a `reference` to a `value`/`parameter` node of a record
@@ -543,8 +543,8 @@ enums'; each unreadable catalog returns the typed error of FR-038-AC-58
 naming the word; the foreign operator refuses `invalid_semantic_graph` at the
 term; the `unary` case refuses `operation-class-mismatch`, the unknown identity
 `unknown-operation`; the lower structural id is reported in both orders; the stray
-members on `quire.op.boolean.not`, `quire.op.temporal.holds` and
-`quire.op.temporal.clause` refuse `operation-member-mismatch` at the member; the
+members on `filament.op.boolean.not`, `filament.op.temporal.holds` and
+`filament.op.temporal.clause` refuse `operation-member-mismatch` at the member; the
 clause passes in the unit and the package, the wrong counts refuse
 `operator-ineligible` at `arguments`, the two wrong families at their arguments,
 the formula reference fits the sixth operand and the `any_term` position and not
@@ -565,13 +565,13 @@ the structural-id order they need by varying the clauses' names, and the adjacen
 of one clause are swapped where the two defects' positions can be (the
 operator order of a formula tree); `over` and the fairness argument have one
 position each.
-Build, from this crate's own vocabulary and never from a copy of QSpec's
+Build, from this crate's own vocabulary and never from a copy of FSpec's
 fixtures, a package whose `temporal`/`formula` nodes apply each of the original fifteen
 `temporal_formula` identities with their catalogued member and operands under a
 clause selecting a bounded profile, a `temporal`/`fairness` node applying
-`quire.op.temporal.fair` under a clause selecting `quire.temporal.infinite-trace/v1`,
-and a clause whose formula applies `quire.op.temporal.eventually` with the
-interval `{0, 3}` over `quire.op.temporal.holds`; read it, then lower it under a
+`filament.op.temporal.fair` under a clause selecting `filament.temporal.infinite-trace/v1`,
+and a clause whose formula applies `filament.op.temporal.eventually` with the
+interval `{0, 3}` over `filament.op.temporal.holds`; read it, then lower it under a
 profile that supports the `temporal` tag and under one that does not (AC-96). On
 each of the eight interval operators read the member as `{0, 3}`, `{9, 10}`,
 `{2, null}`, `null` interval, `{-1, 3}`, `{0, -2}`, `{-5, -2}`, `{3, 0}`, `{10, 9}`, `{2^64+1, 2^64}`,
@@ -580,7 +580,7 @@ a `fairness` member, a `null` member, an interval with a third member, an intege
 `holds`, `not` and the clause (AC-97). Read
 the `fairness` member well formed with `weak`/`whole` and `strong`/`each`, then
 with `medium`, with `part`, without `name`, with an extra member, `null`, of kind
-`temporal_interval`, and on `quire.op.boolean.not` (AC-98). Build the `Shape`
+`temporal_interval`, and on `filament.op.boolean.not` (AC-98). Build the `Shape`
 union, the `Shape::Rect(2, 3)` value and the three-arm `case` and read them; then
 read the `case` with its arms out of order, an arm omitted, an arm repeated, a binder aggregate of
 the wrong count, a binder of the wrong type and an arm body of another type; a
@@ -590,7 +590,7 @@ wrong type (AC-99). Put an application of each of the four classes in a node of
 another form, as an element of another application's `arguments`, as a `binding`
 value, inside an `aggregate`, and as a root and as a nested term in a diagnostic
 entry's `details`, with a `details` reference to a formula, a fairness, a union and a
-union value node (the first two refuse, the last two admit; merged QSpec FR-370, #182), a `case` nested in another term, and an `expression` node whose form
+union value node (the first two refuse, the last two admit; merged FSpec FR-370, #182), a `case` nested in another term, and an `expression` node whose form
 contradicts its root operator class (`invalid_semantic_graph`); give a formula,
 fairness and clause node an empty `aggregate`
 body, a `literal` body and another class's application; reference a formula node
@@ -622,8 +622,8 @@ as is `{"1.5", "0"}` at its malformed bound, none of them `operation-member-mism
 name, an absent declaration, a non-`model` declaration, a name matching two
 operations, an operation the node only inherits and a declaring node whose owner
 is not recovered (AC-103). Select
-`quire.temporal.event-position.false-extension/v1` and
-`quire.temporal.infinite-trace/v1` in turn over closed, `{lower, null}` and `null`
+`filament.temporal.event-position.false-extension/v1` and
+`filament.temporal.infinite-trace/v1` in turn over closed, `{lower, null}` and `null`
 intervals and an empty and a non-empty fairness argument, with a second clause
 whose tree shares no node with the first (AC-104). Give `holds` a formula
 reference and a Boolean reference, `until` one argument, `not` two, `true` one,
@@ -634,7 +634,7 @@ leaf for `Empty`; the recursive unions `IntList` (no `text`, `leaves` empty) and
 `TextList` with the leaves `["member:Cons", "position:0"]` and
 `["member:Cons", "position:1", "recursion:0"]`, the recursion leaf missing, written
 `recursion:1`, and placed at an `IntList` reentry (AC-106; `member:<Ident>` and union
-cycles are merged QSpec FR-322-AC-45 and AC-46; the recursion-leaf entry for a
+cycles are merged FSpec FR-322-AC-45 and AC-46; the recursion-leaf entry for a
 cycle that reaches `text` is merged FR-322 text, #182). Read an empty union and a union value with two
 bindings (AC-99, `invalid_semantic_graph` at the body); a fairness `declaration`
 naming a `scalar_type` node (AC-103, `invalid_model_binding`/`malformed-declaration`
@@ -645,7 +645,7 @@ locus" table of FR-038 lists them); a law with a member's identity under another
 formula node with `{3, 0}` (AC-97); and the placement defect in the shape of a
 formula application in a `function` node beside an unknown-identity node and beside a
 class-mismatch node (AC-102). Run
-`make conformance-qspec` with `QUIRE_SPECIFICATION_DIR` set to a QSpec checkout, to
+`make conformance-qspec` with `FILAMENT_SPECIFICATION_DIR` set to a FSpec checkout, to
 the empty string, to an unset value and to a path without the fixtures directory,
 reading `positive-all-families.json`, `positive-clause-operations.json` and
 `positive-union-nodes.json` from it, and compare the self-built packages' features
@@ -680,16 +680,16 @@ interval, a `null` `upper` and a non-empty fairness argument
 `operation-member-mismatch` and the infinite-trace profile admits them; the
 operand cases refuse `ill_typed`/`operator-ineligible` at the operation step; the
 `Shape` and `Label` comparisons admit and refuse as AC-106 states; and
-`make conformance-qspec` passes with each QSpec fixture admitted with its published
+`make conformance-qspec` passes with each FSpec fixture admitted with its published
 `name` and structural ids and fails when the variable is unset, empty or names a path without
 the fixtures; `make test` does not run it, and wiring it into CI is a separate
-decision. Selecting `quire.fixture.temporal-profile/v1` (selected nowhere else),
+decision. Selecting `filament.fixture.temporal-profile/v1` (selected nowhere else),
 an empty identity and a differently spelled infinite-trace identity as the clause
 profile refuses `unknown_profile`/`unsupported-selection`; naming
-`quire.package.composed/v1` with the lock selecting it as a `binding_contract` row,
-and `quire.protocol.complete/v1` with the lock selecting it as a `protocol_profile`
+`filament.package.composed/v1` with the lock selecting it as a `binding_contract` row,
+and `filament.protocol.complete/v1` with the lock selecting it as a `protocol_profile`
 row, refuses `unknown_profile`/`wrong-selection-role`, while the same two
-identities with no such lock row refuse `unsupported-selection` (merged QSpec
+identities with no such lock row refuse `unsupported-selection` (merged FSpec
 FR-370 "Profile check" and FR-370-AC-10, decided from the package alone); a clause with
 no `temporal_profile` law or two skips the check; each at the law's
 `definition`, first among the clause's checks, and each of the five FR-250
@@ -702,7 +702,7 @@ case above fails the run and never skips.
 
 ## Window aggregate atom (FR-038-AC-461 and FR-038-AC-462)
 
-Implemented (IR-1326). Read QSpec's current
+Implemented (IR-1326). Read FSpec's current
 `proposals/checked-package-v2/temporal-aggregate-vectors.json` directly from
 the selected checkout. For each published positive argument, construct a
 complete strict package with the published clause profile, clock unit and
@@ -721,7 +721,7 @@ package fails the case.
 
 ## Parameter and compound-unit nodes (FR-038-AC-22, FR-038-AC-23)
 
-Build a package in QSL FR-092's shapes for `function both(a: Boolean, b:
+Build a package in FSL FR-092's shapes for `function both(a: Boolean, b:
 Boolean): Boolean { a and b }` plus the compound unit `Metre^2`, read it and
 lower every node.
 Then mutate one parameter, the compound unit or the application node at a
@@ -750,11 +750,11 @@ structural ID, and update the reference node's `dependencies` to contain
 exactly that substituted target in the required order. Give each substituted
 node the owner state required for its own kind: the declared function has its
 valid joined `SourceOwner`; the builtin scalar, literal value and derived
-composite nodes carry no `owner` (QSpec FR-322-AC-51). This keeps schema,
+composite nodes carry no `owner` (FSpec FR-322-AC-51). This keeps schema,
 owner and dependency checks passing so the target-kind check is reached.
 Each `RM-REF-TARGET` mutation is schema-valid and
 refuses `invalid_package`/`invalid-derived-shape` at the reference node's
-`node_id` under QSpec FR-322 "Derived type forms and forwarding". Keep the
+`node_id` under FSpec FR-322 "Derived type forms and forwarding". Keep the
 existing reference body-shape and graph/owner checks independent. These
 reader controls are PLANNED/UNRUN.
 
@@ -795,8 +795,8 @@ selection path or treats a wire-shape refusal as owner-join evidence.
 
 Run the operation check of one `application` node as a unit, over a graph of the
 node and the type nodes it names, and the application key check of a graph of
-application nodes. Name an identity the catalog lacks, and `quire.op.integer.add`
-under `unary`; admit `quire.op.integer.add` under `binary` with two plain
+application nodes. Name an identity the catalog lacks, and `filament.op.integer.add`
+under `unary`; admit `filament.op.integer.add` under `binary` with two plain
 operands, and give `operation` a bare string (AC-81).
 
 For AC-81's implemented required-presence controls, independently build a
@@ -817,18 +817,18 @@ identity to verify that the shape refusal precedes catalog lookup. The old
 production decoder admits the omission and fails this test; restoring the
 healthy decoder restores the passing result.
 
-Supply no law to `quire.op.integer.div`, one law to
-`quire.op.integer.add`, and to `quire.op.integer.div` a law whose `role` is
+Supply no law to `filament.op.integer.div`, one law to
+`filament.op.integer.add`, and to `filament.op.integer.div` a law whose `role` is
 `not_integer_division` over a catalogued `integer_division` definition (AC-82).
-Give `quire.op.decimal.add` a `null` mode; supply the mode `toward-zero` over a
+Give `filament.op.decimal.add` a `null` mode; supply the mode `toward-zero` over a
 first operand that is a `reference` to a `decimal_range` binding `rounding`
 `nearest-even`, and over a `literal` typed at it (AC-83). Give a `null` member to
-`quire.op.quantity.convert` with its `rounding` mode supplied; name an undeclared field in
-`quire.op.record.project`; name no node as the `declaration` of
-`quire.op.model.reaches_field` (AC-84). Give `quire.op.integer.add` three
+`filament.op.quantity.convert` with its `rounding` mode supplied; name an undeclared field in
+`filament.op.record.project`; name no node as the `declaration` of
+`filament.op.model.reaches_field` (AC-84). Give `filament.op.integer.add` three
 arguments, an `integer`-typed and a `boolean`-typed literal first, and
-`quire.op.boolean.not` a `quire.op.state.clause` application (AC-85); give
-`quire.op.structural.eq` two parameters of one record type and of two, two typed
+`filament.op.boolean.not` a `filament.op.state.clause` application (AC-85); give
+`filament.op.structural.eq` two parameters of one record type and of two, two typed
 literals of one type and of two, and two nested applications of one result type
 and of two (AC-86). Compare the operand family and the type-shaped predicate of
 every kind of the closed node taxonomy with the stated pairs, the
@@ -1008,7 +1008,7 @@ expected charges come from the specified semantic visits, not implementation sca
 
 For AC182, compile an external consumer in the normal workspace test lane. It
 exhaustively matches each named public output/key/descriptor/edge/error type and
-reads the specified fields without body JSON or a QSL model import. Assert repeated
+reads the specified fields without body JSON or a FSL model import. Assert repeated
 and clone projections and pre/post package equality. API inspection checks the
 absence of drawn bound inputs, incoming-key validator, coverage verdict or obligation
 encoder. The structural.ne extension below is verified by separately tagged Ne assertions.
@@ -1017,16 +1017,16 @@ encoder. The structural.ne extension below is verified by separately tagged Ne a
 
 This IR-691 procedure is planned and unrun. Reuse TC-048 and tag each new
 behavioral test with its own FR-038 criterion id. First check and emit from
-fresh QSL FR-093 the concrete `record Point { x: Int[0,9]; }` and
+fresh FSL FR-093 the concrete `record Point { x: Int[0,9]; }` and
 `function mk using v(): Point pure { Point { x: 3 } }`. Hand its emitted bytes
 and required-feature evidence directly to the production V2 reader. Require
 admission and inspect the admitted graph: the record-value binding `x` refers
 to one expression/conversion node with body-root `convert`/
-`quire.op.numeric.narrow`, `type_argument.declaration`, `result_type` and
+`filament.op.numeric.narrow`, `type_argument.declaration`, `result_type` and
 `semantic_type` all naming the actual `Int[0,9]` node, and its sole argument
 refers to the Integer-typed literal `3`. Retain this producer-origin control
 separately from the self-built comparison fixtures; no fixture bytes are copied
-from QSL into IR.
+from FSL into IR.
 
 1. Independently build and admit structural.eq and structural.ne packages
    comparing that exact shaped record value with itself. Call the public
@@ -1135,7 +1135,7 @@ Expected results: AC197 returns exact authentic positional outputs; AC198
 retains corresponding authored domains without inequality-specific alteration;
 AC199 preserves typed refusal/first-defect semantics; AC200 preserves exact
 logical charges; AC201 finds the single existing owner path. Each missing or
-altered predicate fails its own criterion. No downstream CG/QSL replay,
+altered predicate fails its own criterion. No downstream CG/FSL replay,
 new scalar eligibility, harness draw or whole-domain coverage is claimed.
 
 ## Operation leaf count (FR-038-AC-43)
@@ -1165,8 +1165,8 @@ and `operator-ineligible`, the leaf count settling before any leaf mode.
 
 ## Residual operation leaf sources (FR-038-AC-228 through FR-038-AC-231)
 
-Use the current first-party catalog from `quire-verification-contracts` and
-its current QSpec operation fixtures by reference from their authoritative
+Use the current first-party catalog from `filament-verification-contracts` and
+its current FSpec operation fixtures by reference from their authoritative
 checkouts; do not copy those files into this repository. Start each case with
 an admitted V2 package whose selected operation, lock definitions, source
 occurrences, structural node ids, complete graph and package name agree. Assert that
@@ -1184,7 +1184,7 @@ and catalog, never computed by asking the reader twice.
    `result_type` equal to that node's `semantic_type`, and an option-typed
    `none` literal for an option comparison; keep each second operand the same
    declared type. For the application-bearing expression, use an admitted
-   `quire.op.control.if` with structural-typed value branches and a body-root
+   `filament.op.control.if` with structural-typed value branches and a body-root
    `result_type` equal to the structural type compared by the outer operation.
    Assert the exact admission or missing-leaf result of
    AC-228. Then replace only the outer operation's first-operand reference
@@ -1215,7 +1215,7 @@ and catalog, never computed by asking the reader twice.
    `operation.leaves` with both empty and supplied lists. The selected
    element adds no `inner` prefix; a wrong-prefixed supplied leaf refuses.
 4. For AC-231, use genuine Float32 and Float64 type nodes with their current
-   QSpec scalar and rounding shapes. In a separately identity-valid package,
+   FSpec scalar and rounding shapes. In a separately identity-valid package,
    place each under a record, tuple, option and sequence compared by
    `structural.eq` and `.ne`, and under the element of a sequence used by
    `collection.contains`. Both empty leaves and an authored text leaf refuse
@@ -1224,7 +1224,7 @@ and catalog, never computed by asking the reader twice.
    with exactly empty leaves. A valid `collection.flatten` result of
    `sequence<Float32>` and `sequence<Float64>` admits with no leaves; a
    set, bag or ordered set of an IEEE-bearing element is never used as an
-   admission control because QSpec FR-144 forbids its type.
+   admission control because FSpec FR-144 forbids its type.
 
 ## Exact operation leaves (FR-038-AC-44)
 
@@ -1282,11 +1282,11 @@ under the default limits, and bisect the work limit of a ring of 12 records, com
 12 text leaves and its recursion leaf, to the exact work (FR-038-AC-72). Compare the whole refusal code, cause and pointer
 with the expected one.
 
-## QSL-shaped optional record fields (FR-038-AC-151 and FR-038-AC-152)
+## FSL-shaped optional record fields (FR-038-AC-151 and FR-038-AC-152)
 
 Implemented by IR-644 in `tests/it/checked_package_v2_recursive_leaves.rs`; the assertions below run as TC-048.
 
-Build a checked package with the QSL-emitted `List` shape: its `next` field's
+Build a checked package with the FSL-emitted `List` shape: its `next` field's
 value is an aggregate containing one `optional` binding whose value references
 an `Option<List>` node; the option node references `List`. Compare two `List`
 values by `structural.eq`. With an integer field, assert admission with no
@@ -1307,7 +1307,7 @@ operation check and refuses `ill_typed`/`operator-ineligible` at
 
 ## Indexed structural paths (FR-038-AC-376 through FR-038-AC-381)
 
-Read QSpec FR-322 at the selected checkout and consume its
+Read FSpec FR-322 at the selected checkout and consume its
 `proposals/checked-package-v2/node-index-vectors.json` and named fixtures
 directly, without copying them into IR. Apply NI-01..NI-12 to the
 selected positive fixture, comparing each refusal's exact code, null cause and
@@ -1321,7 +1321,7 @@ node whose `package` differs from the importing document name and an FR-375
 external key whose own package selects its dependency's graph. Reject an
 index in a dependency-reference declaration path.
 
-Generate NI-13 from the QSpec construction, with 100000 derived nodes over
+Generate NI-13 from the FSpec construction, with 100000 derived nodes over
 Integer. Under nonbinding reader limits on a 256 KiB thread, compare node-id
 wire size and JSON depth with the 100-node control, count 100001 distinct
 shared structural keys, and inspect that each derived key holds its
@@ -1346,7 +1346,7 @@ removed `CheckedSemanticId` (FR-038-AC-80).
 
 ## Structural identity and canonical byte controls (FR-038-AC-89 through FR-038-AC-95)
 
-Read each current QSpec positive package directly from the checkout named by `QUIRE_SPECIFICATION_DIR`. Compare the admitted package name, structural node ids, graph order, complete bodies and owners with its published JSON. A missing checkout, selected domain document, fixture or selected identity fails the run. The reader must not derive an expected node id from a body or expose a package digest. Source-owner distinctions remain visible in their structural package/path components.
+Read each current FSpec positive package directly from the checkout named by `FILAMENT_SPECIFICATION_DIR`. Compare the admitted package name, structural node ids, graph order, complete bodies and owners with its published JSON. A missing checkout, selected domain document, fixture or selected identity fails the run. The reader must not derive an expected node id from a body or expose a package digest. Source-owner distinctions remain visible in their structural package/path components.
 
 Independently construct canonical JSON bytes for a complete V2 envelope and compare with the public writer's bytes. Mutate one semantic body member and then one source-map member separately; each changes only the corresponding bytes and the reader applies its independent body and graph checks. The historical digest and preimage assertions of AC-90 and AC-92 are withdrawn.
 
@@ -1360,10 +1360,10 @@ FR-038-AC-109 through FR-038-AC-111 are implemented and verified in
 tests there carry the cause `inexact-integer`; the `1e400` and `-1e400` mapping
 of FR-038-AC-110 (IR-555) is verified through `quire-canonical`'s
 `NumberOutOfRange`, `1e-400` and `-1e-400`, which read as zero with their
-text kept, through the rule on that text, and the first-fault rule (QSL
-FR-056, QSL #625) in `tc_048_the_first_reader_fault_decides_when_faults_coexist`
+text kept, through the rule on that text, and the first-fault rule (FSL
+FR-056, FSL #625) in `tc_048_the_first_reader_fault_decides_when_faults_coexist`
 (IR-573). The causes are those
-of quire-specification:FR-271 and FR-272. Read a package that selects a model
+of filament-specification:FR-271 and FR-272. Read a package that selects a model
 document holding `0.1000000000000000000001`, `9007199254740993.5`,
 `-0.1000000000000000000001`, `4.9e-324` and `1e-400` at `/package/ratio`, and check `noncanonical_wire` at
 `/semantic_graph/nodes/<i>/owner/identity` with `document_pointer` `/package/ratio` and
@@ -1396,14 +1396,14 @@ Supply an admitted dependency package by its `name` and declare a function node 
 
 ## Enum operand family (FR-038-AC-42)
 
-Verify QSpec FR-322's rule that an enum is `ordered_enum` when its selected declaration is ordered and `enum` otherwise, and FR-141-AC-5, in
+Verify FSpec FR-322's rule that an enum is `ordered_enum` when its selected declaration is ordered and `enum` otherwise, and FR-141-AC-5, in
 `tests/it/checked_package_v2_enum_order.rs`. Build a package holding an enum
 declaration, its member nodes and a `binary` application of one enum
 operation over two operands of that enum, as member literals and as
-`value`/`parameter` nodes. Apply `quire.op.enum.lt`, `le`, `gt` and `ge` to an
+`value`/`parameter` nodes. Apply `filament.op.enum.lt`, `le`, `gt` and `ge` to an
 ordered enum, one listing its members in declaration order and one whose
 declaration order is also sorted, and to an unordered enum, one listing its
-members sorted. Apply `quire.op.enum.eq` and `ne` to each. Apply `lt` to
+members sorted. Apply `filament.op.enum.eq` and `ne` to each. Apply `lt` to
 operands of two different ordered enums.
 
 Expected: the four ordering operations admit over an ordered enum however its
@@ -1449,19 +1449,19 @@ test controls and are not required by the criterion text.
 
 ## Protocol node forms (FR-038-AC-281 through FR-038-AC-292; FR-038-AC-324 through FR-038-AC-330)
 
-Use QSpec FR-464, FR-465 and FR-466 and the authored tables in TC-946, TC-947
+Use FSpec FR-464, FR-465 and FR-466 and the authored tables in TC-946, TC-947
 and TC-948 as the current independent expected outcomes. Build each case into
-a V2 package with valid structural node ids and complete bodies. Once QSpec publishes machine-readable
+a V2 package with valid structural node ids and complete bodies. Once FSpec publishes machine-readable
 protocol vectors and regenerated fixtures, run them from a
-`quire-specification` checkout named by `QUIRE_SPECIFICATION_DIR`. No fixture,
+`filament-specification` checkout named by `FILAMENT_SPECIFICATION_DIR`. No fixture,
 vector or schema is copied into this repository.
 
 1. Admit the seven non-carrier protocol forms and each of the twenty
    `profile_operator` names under the selected
-   `quire.protocol.finite-global/v1` row. Refuse an unknown operator, a missing
+   `filament.protocol.finite-global/v1` row. Refuse an unknown operator, a missing
    or wrong law, a member whose kind is not `profile_operator`, a misplaced
    application and a node with another operator's form. Select
-   `quire.protocol.complete/v1` in a separate lock and verify it does not
+   `filament.protocol.complete/v1` in a separate lock and verify it does not
    satisfy a law naming `finite-global/v1`, or the reverse. Omit the
    `temporal_profile` selection for `await` and `compensate` and require
    `missing_declaration`/`missing-selection` at each node.
@@ -1478,7 +1478,7 @@ vector or schema is copied into this repository.
    graph-stage refusal. Separately name a nonexistent local target in both
    the body and `dependencies`, updating references, and require
    `missing_declaration`/`missing-name` at the target. Compare full
-   code, cause, pointer and node locus, using QSpec TC-946 C13/C13a,
+   code, cause, pointer and node locus, using FSpec TC-946 C13/C13a,
    A8/A8a, A9/A9a and OM-09 as independent clause vectors
    (FR-038-AC-285/327).
 4. Exercise static and replicated roles, channels with each delivery and
@@ -1490,7 +1490,7 @@ vector or schema is copied into this repository.
    effect, and refuse a commit that dominates that effect; compare the
    `commit-precedes-effect` reason only for the dominating case.
    For a `terminal when` condition under an `on each` activation, read the
-   protocol `over` observation as QSpec TC-947 TM11 does and require admission;
+   protocol `over` observation as FSpec TC-947 TM11 does and require admission;
    repeat under `on origin` and require admission. Under `on each`, replace
    that read in turn with the protocol capture of TM10 and the activation
    binder of TM12; require `missing_declaration`/`missing-name` at the terminal
@@ -1520,10 +1520,10 @@ vector or schema is copied into this repository.
    binder from a run slot and require `missing_declaration`/`missing-name`
    with `read` `foreign`. In one slot pair an `over` read with a binder read
    and require the `over` refusal; pair an out-of-scope binder read with an in-scope
-   ineligible binder read and require the out-of-scope refusal. Use QSpec
+   ineligible binder read and require the out-of-scope refusal. Use FSpec
    TC-948 DF6b and DF7d..DF7h as the independent oracle. Assert the specified
    first refusal and retained stage, owner, slot and reason details rather
-   than only a refusal code (FR-038-AC-291/292; QSpec FR-466-AC-14/16).
+   than only a refusal code (FR-038-AC-291/292; FSpec FR-466-AC-14/16).
 6. Combine defects in state and protocol, temporal and protocol,
    abstraction and protocol, refinement and protocol, protocol and operation,
    and multiple protocol nodes. Require the FR-322 body-step order and
@@ -1546,14 +1546,14 @@ vector or schema is copied into this repository.
    exposed relation. Separately replace the body target with a nonexistent
    local id, list it in `dependencies`, and require
    `missing_declaration`/`missing-name` at the target with no relation
-   (FR-038-AC-324/327; QSpec TC-946 A8/A8a/A9/A9a).
-8. Use QSpec TC-310's `CC-01`, `CC-03` to `CC-05`, `CC-08` and `CC-11`
+   (FR-038-AC-324/327; FSpec TC-946 A8/A8a/A9/A9a).
+8. Use FSpec TC-310's `CC-01`, `CC-03` to `CC-05`, `CC-08` and `CC-11`
    catalog cases from the selected checkout, updating references and dependencies,
    then comparing complete package values and provenance carriers as each vector requires. Admit
    the complete catalog with separate `fork` and `join` classes on one
    parallel node, including a directly selected dependency's abstract
    protocol. Refuse a foreign or omitted class, wrong node association or
-   binder type and an absent source-default memory class at QSpec's code,
+   binder type and an absent source-default memory class at FSpec's code,
    cause and catalog locus. For `CC-11`, require the protocol-body defect
    before the catalog join and the refinement-row defect before both. For
    `CC-10`, two request memory choices leave the admitted catalog and
@@ -1599,7 +1599,7 @@ vector or schema is copied into this repository.
     an independent protocol-body defect and then an earlier refinement-row
     defect: require the row defect before the body defect, and the body
     defect before the class-catalog graph join (FR-064-AC-5,
-    FR-038-AC-284/AC-325; QSpec TC-310/TC-946). Consume QSpec's published
+    FR-038-AC-284/AC-325; FSpec TC-310/TC-946). Consume FSpec's published
     vectors from the selected checkout; do not copy them into this repo.
 12. For owned source `parallel` nodes, derive separate valid catalogs with
     single source defaults `sc`, `tso` and `ra`. Require a node-free, binder-free
@@ -1607,14 +1607,14 @@ vector or schema is copied into this repository.
     require `memory flush` with `memory_model: tso` only for `tso`. Keep the
     memory class when no refinement step row names it. In separate packages with valid structural ids, omit a required memory class, add `memory flush` under `sc` or
     `ra`, change the drain model or drain member, and duplicate or reorder a
-    memory entry. Compare the exact QSpec FR-375 code, cause and catalog
+    memory entry. Compare the exact FSpec FR-375 code, cause and catalog
     pointer, including earlier refinement canonical-order refusal for
     duplicate or disorder and later protocol catalog-join refusal for an
     inventory mismatch. Pair a memory catalog mismatch with an independent
     protocol-body defect to require the body defect first. Two analysis
     requests with different memory overrides SHALL leave the admitted
-    catalog and complete package value equal (FR-038-AC-325; QSpec TC-310).
-    Also retain QSpec TC-310 `CC-12`'s one-subject multi-default case with
+    catalog and complete package value equal (FR-038-AC-325; FSpec TC-310).
+    Also retain FSpec TC-310 `CC-12`'s one-subject multi-default case with
     distinct `memory drain` entries for `sc`, `tso` and `ra` and a `tso`
     `memory flush` entry. Require admission with the three drains in
     `ra`, `sc`, `tso` order followed by the flush, including when two
@@ -1635,7 +1635,7 @@ vector or schema is copied into this repository.
     `invalid_model_binding`/`malformed-declaration` at the entry for the
     wrong node or binder, `invalid_semantic_graph` at the catalog array for
     omission, and that code at the extra entry for origin (FR-038-AC-325;
-    QSpec FR-375-AC-27, TC-310).
+    FSpec FR-375-AC-27, TC-310).
 14. For record activation binders, build `Base { a: Boolean; b: Int }`,
     `Mid { c: Int }` and `Leaf { d: Boolean }` with the source inheritance
     chain `Base`, `Mid`, `Leaf`; require binder type keys corresponding to
@@ -1655,7 +1655,7 @@ vector or schema is copied into this repository.
     when its binder record is requested. A wrong or
     reordered binder type in an otherwise unambiguous case refuses
     `invalid_model_binding`/`malformed-declaration` at that entry
-    (FR-038-AC-325; QSpec FR-208-AC-18, FR-154-AC-32,
+    (FR-038-AC-325; FSpec FR-208-AC-18, FR-154-AC-32,
     FR-432-AC-16 through FR-432-AC-19).
 15. With a selected abstract model that has an operation but no protocol
     clause, build a protocol refinement whose complete abstract catalog
@@ -1664,7 +1664,7 @@ vector or schema is copied into this repository.
     abstract catalog array. Add a class from another selected model and
     require `invalid_semantic_graph` at the extra entry. Keep the concrete
     protocol body valid so the catalog join is reached (FR-038-AC-328;
-    QSpec FR-375 checked class catalog).
+    FSpec FR-375 checked class catalog).
 16. Build two admitted protocol clauses with different package-local
     declaration paths, including a clause path longer than one segment.
     Include a role and a nested control whose declaration path contains
@@ -1672,13 +1672,13 @@ vector or schema is copied into this repository.
     FR-432 source class spellings for each clause and member, using the
     complete clause path and the member's authored name while omitting the
     FR-464 fixed kind segment and intervening control ancestors. Include
-    QSL-authored declaration shapes `[P, finish, Done]` and
+    FSL-authored declaration shapes `[P, finish, Done]` and
     `[P, run, Main, Par]` with classes `P::Done`, `fork P::Par` and
     `join P::Par`; require admission with their node associations. Construct separate structurally valid packages with a class spelling that drops a clause-path
     segment, uses the other clause's or member's name, or includes the
     fixed kind or an ancestor control name; require
     `invalid_semantic_graph` at the missing class's array or the extra
-    entry as applicable (FR-038-AC-329; QSpec FR-322 declaration paths,
+    entry as applicable (FR-038-AC-329; FSpec FR-322 declaration paths,
     FR-464 qualified names, FR-432 class spellings).
 17. Build an admitted compensation template with its FR-432 `cend` class
     and no step row naming that class. Require its template-node association
@@ -1689,16 +1689,16 @@ vector or schema is copied into this repository.
     `invalid_model_binding`/`malformed-declaration` at the changed entry,
     and `invalid_semantic_graph` at the extra entry. Also exercise the
     selected abstract protocol's `cend` class in its abstract catalog
-    (FR-038-AC-330; QSpec FR-432 `cend`).
+    (FR-038-AC-330; FSpec FR-432 `cend`).
 
 Expected: the positive packages admit with their authored keys, every adverse
-vector refuses with the QSpec code, cause and locus, and no runtime workflow
+vector refuses with the FSpec code, cause and locus, and no runtime workflow
 instance, delivery or clock observation is required to read the package.
 
 ## Nested repeat progress (FR-038-AC-344 through FR-038-AC-356)
 
 Construct each case as an independently keyed, otherwise valid V2 package and
-read it through the public strict reader. Use QSpec FR-464 and TC-946 R13-R24
+read it through the public strict reader. Use FSpec FR-464 and TC-946 R13-R24
 as the external oracle, without embedding their vectors here. For every
 refusal compare the typed code, cause, control key and RFC 6901 locus;
 compare the selected-profile detail for a repeat-progress refusal. For every
@@ -1720,7 +1720,7 @@ steps except where the control explicitly calls for one.
 | Nest `repeat max 1 while true` around an `attempt`, with an `exhausted` `check`, as the outer body's only step | Admit on every outer iteration; entering from outside resets the inner counter (R24). |
 
 Add work probes that observe the atom order without relying on the final
-admit/refuse verdict alone (FR-038-AC-352; QSpec FR-464-AC-22). First, add
+admit/refuse verdict alone (FR-038-AC-352; FSpec FR-464-AC-22). First, add
 one eligible but unread `visible` entry to a nested two-atom tautology.
 Its valuation charges SHALL rise from four to eight; omitting unread entries
 from atom collection would leave the count at four. Next, keep one visible
@@ -1803,7 +1803,7 @@ whose charge failed, and that pointer resolves; the byte limit names none.
 
 Implemented (IR-495 code) in `tests/it/checked_package_v2_flat_wire.rs`, and AC-118
 in `tests/conformance_qspec/main.rs`. In a fresh copy of a self-built package, place each of
-`quire.op.function.call`, `quire.op.state.clause` and an application of the
+`filament.op.function.call`, `filament.op.state.clause` and an application of the
 `temporal`, `temporal_formula` and `temporal_fairness` classes inside an
 application's `arguments`, as an `aggregate` member and as a `binding` value of
 a node body, and read each; put an `aggregate` inside a Group's members, a
@@ -1819,7 +1819,7 @@ with a nested `case` argument, an aggregate of a `temporal_formula` and then a
 nested call at `arguments/1` and the two swapped (AC-115). Leave the authored structural `node_id` unchanged in a package whose body holds a nested
 non-`case` application, and in one whose body holds a nested `case`, and read the
 first again with the body flattened (AC-116). Scan the source files under
-`crates/quire-contract-model/src/checked_package/` (not the v1 modules or the
+`crates/filament-contract-model/src/checked_package/` (not the v1 modules or the
 manifest) for `MAXIMUM_DEPTH`, any `MAX_*DEPTH`, `stacker`, `serde_stacker` and
 `on_stack_for`, and check `CheckedPackageReadLimits` and `CheckedPackageLimit` for
 a depth member and variant; build a chain of 100000 nodes each referencing the
@@ -1897,14 +1897,14 @@ pre-read VmHWM equal to VmRSS; their additional peaks were 695712, 695712 and
 Implemented (IR-551). Bounds are written `{numerator, denominator}` as `{n, d}`.
 
 Admission (AC-119). Under a clause whose `temporal_profile` law names
-`quire.temporal.timed/v1`, on each of the eight interval operators of a
+`filament.temporal.timed/v1`, on each of the eight interval operators of a
 self-built package, read the timed form `{lower, upper, lower_end, upper_end}`
 with bounds `{0, 1}` and `{3, 1}` for each of the four end pairs, with `lower`
 `{1, 2}`, as the punctual `[3, 3]` (both bounds `{3, 1}`, both ends `closed`), and
 read the `null` interval.
 
 Pattern refusals (AC-120). Under `timed/v1`, and again under
-`quire.temporal.infinite-trace/v1` and each of the three bounded profiles, read the timed form with
+`filament.temporal.infinite-trace/v1` and each of the three bounded profiles, read the timed form with
 `lower` numerator `"-1"`, `lower` numerator `"01"`, `upper` denominator `"0"`,
 `upper` denominator `"-2"`, `lower` a JSON integer, `lower` the string `"3"`, and
 `upper` `null`; with `lower` numerator `"-1"` and `upper` denominator `"0"` together;
@@ -2021,7 +2021,7 @@ results.
    threshold pays the stage, not necessarily the later complete read. Separately
    measure the total-reader limit in step 8.
 
-5. Build a `quire.op.model.navigate` application with a
+5. Build a `filament.op.model.navigate` application with a
    `relationship_end` member whose `declaration` names the relationship graph
    node from step 1 and whose `name` is `billedTo`. The relationship node's
    body is empty and its content-only `ModelOwner` names the selected global
@@ -2096,7 +2096,7 @@ results.
    do not force this total-reader oracle to the selection row. Separately
    retain step 4's selection-stage-minus-one selection-row oracle. These are
    acceptance procedures to execute in the code
-   lane, not recorded measurements. External QSpec #191 relationship fixtures
+   lane, not recorded measurements. External FSpec #191 relationship fixtures
    remain planned and unrun until merged and published by their owner; this
    procedure neither copies them nor tags them as current evidence.
 
@@ -2116,7 +2116,7 @@ results.
    multiplicity to confirm the malformed-declaration row precedes both.
 10. Author a self-relationship on `Order` with the same selected relationship
     graph-node mapper, two distinct roles, bidirectional direction and finite
-    unordered singleton destination. Read `quire.op.model.reaches` over two
+    unordered singleton destination. Read `filament.op.model.reaches` over two
     `Reference<Order>` values with the source role, then the inverse role:
     both admit with Boolean result. Make destination `[0,1]` and admit the
     corresponding optional edge; use `PriorityOrder` subtype operands and
@@ -2134,12 +2134,12 @@ results.
     distinct from the relationship graph node; no Reference<relationship>
     substitutes for an object reference. These are static reader procedures,
     not runtime graph execution evidence.
-11. Implemented with tagged TC-048 reader tests (FR-038-AC-252 through FR-038-AC-257, IR-824; QSpec FR-322-AC-57 RN-18 and RN-20 through
+11. Implemented with tagged TC-048 reader tests (FR-038-AC-252 through FR-038-AC-257, IR-824; FSpec FR-322-AC-57 RN-18 and RN-20 through
     RN-27, referenced by id only.) Start from item 10's homogeneous `Order`
     self-relationship and author each variant independently from this
     repository's public vocabulary, retaining valid structural ids and updating references after each edit.
     Patch the destination end multiplicity to finite `{0,3}` unique, then
-    `{0,3}` not unique, then `{2,3}`, and read `quire.op.model.reaches` over
+    `{0,3}` not unique, then `{2,3}`, and read `filament.op.model.reaches` over
     two `Reference<Order>` operands with the source role and then the inverse
     role: every case admits with the same node shape as the single-valued case
     (Reference operands, Boolean `result_type`, no multiplicity or charge
@@ -2155,7 +2155,7 @@ results.
     refuses `ill_typed`/`operator-ineligible` at member.name even when also
     `{0,unbounded}` (direction before multiplicity). Give an admitted
     multi-valued case a navigation result type instead of Boolean: it refuses
-    at body.result_type. Last, combine defects in one package, citing QSpec
+    at body.result_type. Last, combine defects in one package, citing FSpec
     FR-322-AC-57's check order (receiver-endpoint operands, then direction,
     then multiplicity, then type): an unrelated operand 1 together with, in
     turn, an end against the declared direction, a `{0,unbounded}` end, a
@@ -2277,7 +2277,7 @@ Read malformed-wire, duplicate-id, unresolved-reference and invalid-body package
 
 ## Aggregate-bodied union values (FR-038-AC-225 through FR-038-AC-227)
 
-Read QSpec `positive-union-nodes.json` directly from the selected checkout through the production reader. Verify payload-bearing and nullary union-value nodes preserve their exact structural ids and complete aggregate bodies; separately admit ordinary applications, record values and tuple values. Duplicate a union-value id, break one body reference and make a case/payload invalid in separate copies; assert the specified graph, reference and body refusals. For a valid group with union and nonapplication members, verify its shared non-empty label, producer-assigned structural IDs, and exact in-group and outside references. A valid graph permutation rewrites index segments to the new target positions and retains every resolved structural key and reference. Malformed structural ordinal, invalid cycle label, type-incompatible exact target, repeated ID and unresolved target controls refuse at their own graph or wire stage. No content-key or expected-key accessor is involved.
+Read FSpec `positive-union-nodes.json` directly from the selected checkout through the production reader. Verify payload-bearing and nullary union-value nodes preserve their exact structural ids and complete aggregate bodies; separately admit ordinary applications, record values and tuple values. Duplicate a union-value id, break one body reference and make a case/payload invalid in separate copies; assert the specified graph, reference and body refusals. For a valid group with union and nonapplication members, verify its shared non-empty label, producer-assigned structural IDs, and exact in-group and outside references. A valid graph permutation rewrites index segments to the new target positions and retains every resolved structural key and reference. Malformed structural ordinal, invalid cycle label, type-incompatible exact target, repeated ID and unresolved target controls refuse at their own graph or wire stage. No content-key or expected-key accessor is involved.
 
 ## Dependency selection and diamond conflict (FR-038-AC-217, FR-038-AC-218)
 
@@ -2329,7 +2329,7 @@ model-owned declaration and a mixed recursion group. Verify exact
 package/path/producer-assigned structural ordinals, shared group labels, each
 declared member's own path, the sole declared member's path for an anonymous
 derived member, and producer-chosen paths for anonymous derived members of
-zero- or multiple-declared-member groups. Read QSpec TC-946 K14 directly:
+zero- or multiple-declared-member groups. Read FSpec TC-946 K14 directly:
 the three declared members `Flow`, `joinPred` and `Holder` keep distinct
 declaration paths under one label; a path substitution with a distinct valid
 ordinal refuses `invalid_package`/`declaration-nominal-mismatch` at that
@@ -2341,7 +2341,7 @@ body shape or join. A valid body edit under the same structural ID may admit.
 Exercise the public encoder's exact canonical byte ceiling and one below,
 the reader's exact work limit and one below, and iterative encoding and reader
 traversal on a 256 KiB stack with deep in-memory bodies. No candidate helper,
-preimage or copied QSpec file is permitted. The compiled public inventory is
+preimage or copied FSpec file is permitted. The compiled public inventory is
 tested by TC-058.
 
 ## Typed parameter declaration (FR-038-AC-258 through FR-038-AC-261)
@@ -2418,13 +2418,13 @@ equality and work. An external fixture exhaustively matches the error enum and
 constructs the result field by field (AC-267). Assert separately (AC-268) that
 `model_object_fields` over the object type returns only its fields and that no
 `selected_population` item is `pub use`d at the model root or re-exported from the
-`quire-contract-ir` root, and that the AC-252 through AC-257 outcomes are
+`filament-contract-ir` root, and that the AC-252 through AC-257 outcomes are
 unchanged. Do not take the expected values from the accessor under test.
 
-For QSpec FR-322-AC-270/271, read
+For FSpec FR-322-AC-270/271, read
 `proposals/checked-package-v2/fixtures/positive-operation-identities.json`
 and `adverse.json` `destination_type_mutations` DT-01..DT-05 directly from
-the selected QSpec checkout, without copying either fixture. The positive
+the selected FSpec checkout, without copying either fixture. The positive
 operation fixture's destination node is absent from its graph yet the reader
 admits it and `relationship_end` returns the supplied structural id verbatim;
 the application does not list the destination id as a dependency. Apply each
@@ -2472,7 +2472,7 @@ population over a subtype or another object type (each `ill_typed`/
 pointer; admit the
 exact type; refuse a navigate application carrying `population`; omit the
 population id from `dependencies` and list an unreferenced one (each
-`invalid_semantic_graph`, no cause). For AC-279 and QSpec FR-322-AC-74, admit one linked population with empty
+`invalid_semantic_graph`, no cause). For AC-279 and FSpec FR-322-AC-74, admit one linked population with empty
 aggregate body and no `max`, and assert its selector identifies the exact
 node and `Type` occurrence; `select_population(Admitted)` returns
 `AdmittedUnbounded` with the package name, binding, occurrence, object type
@@ -2496,8 +2496,8 @@ order (AC-280), combine an invalid `population` whose node id is listed in
 assert the refusal is at the operand; give a reaches application a mode and,
 separately, a leaf, with a `population` that is a listed node id (and, separately, an invalid id missing from `dependencies`, refused by the join), and assert the
 identity-stage refusal (`operation-mode-mismatch`, a law mismatch) in each case.
-For the published QSpec `reaches_population_cases` and
-`unbounded_population_cases` vectors (FR-322-AC-73/74), use the QSpec checkout
+For the published FSpec `reaches_population_cases` and
+`unbounded_population_cases` vectors (FR-322-AC-73/74), use the FSpec checkout
 directly from the IR harness without copying fixtures, and assert the same
 admission and refusal outcomes. The harness shall give
 each appended node (`Reference`, `Set`, population) exactly one `Type`
@@ -2526,14 +2526,14 @@ object declaration and a navigate application, and the `ill_typed`/
 ## Hybrid nodes and claims (FR-038-AC-311 through FR-038-AC-317)
 
 Read `hybrid-node-vectors.json` and `fixtures/positive-all-families.json` from
-the selected QSpec checkout, without copying either into this repository.
+the selected FSpec checkout, without copying either into this repository.
 Feed the valid `Braking`/`SlowEnough`, `Braking2`/`Slows`/`Recent` and `Tank`
 graphs through the public V2 reader. Check the admitted typed family/form,
 structural node ids, package names, body references, semantic types and dependencies;
 `Tank` must admit a variable-to-variable rate and reset value and a
 `hybrid`-classed variable with a literal-one rate. Mutate one rate under retained structural ids and check the changed body and unaffected references.
 
-Apply QSpec TC-966's strict-wire mutations with retained structural ids and assert
+Apply FSpec TC-966's strict-wire mutations with retained structural ids and assert
 `malformed_wire` at strict wire validation before body checks. For each
 semantic mutation, update dependencies and references while retaining valid structural ids and package name before reading it. Assert the exact code, cause and RFC 6901 locus for repeated
 modes, wrong variable type or level, rate count and type, mode and reset
@@ -2544,22 +2544,22 @@ temporal, model checks 1 through 6, orphan nodes, claim checks 7 through 9,
 protocol and operation. Verify that an unchanged valid hybrid node retains
 its key and that the reader never supplies a missing graph node or a second
 spelling for the default initial state. The process provider and host trace
-checks HY-15 and HY-16 remain QSpec TC-966's evidence, outside this IR
+checks HY-15 and HY-16 remain FSpec TC-966's evidence, outside this IR
 reader test.
 
 ## Symbolic clock slots and place presence (FR-038-AC-335 through FR-038-AC-340)
 
-Status: implemented; public-reader vector evidence landed in IR #775. Read QSpec's published
+Status: implemented; public-reader vector evidence landed in IR #775. Read FSpec's published
 `proposals/checked-package-v2/timed-slot-selector-vectors.json` from the
-selected QSpec checkout. Do not store a local copy. Apply its complete
+selected FSpec checkout. Do not store a local copy. Apply its complete
 SL-01..SL-07, SR-01..SR-04, GD-01..GD-03 and PR-01/PR-03..PR-06 cases through the
 public V2 reader, updating dependencies and references for a semantic mutation.
 Compare exact admission or each vector's expected code and cause. Compare the
 RFC 6901 locus suffix recorded by SR-01..04 and PR-04..06. For GD-02, assert `invalid_package`/`malformed-clock-place` at the twin
 place's first forged `resolved_path` row
-`/semantic_graph/nodes/72/body/members/2/value/members/1`, as fixed by QSpec
+`/semantic_graph/nodes/72/body/members/2/value/members/1`, as fixed by FSpec
 FR-322-AC-120, and assert aggregate order passes before the row join. For GD-03, assert `invalid_package`/`timed-node-reference` at
-`/semantic_graph/nodes/47/body` with vector suffix `body`, as fixed by QSpec
+`/semantic_graph/nodes/47/body` with vector suffix `body`, as fixed by FSpec
 FR-322-AC-243. This reader control is exercised by the published guard qualification. Check the reader stage against FR-322's stated order. Keep
 strict-wire and graph-shape checks ahead of the timed-model and
 operation-body checks.
@@ -2581,7 +2581,7 @@ arguments. Check that `e` is typed at the slot selector domain, that each
 application and its shared place template have the expected independent keys,
 and that no presence member is added to another node. Assert exact argument
 loci for a missing slot, non-place first argument, wrong owner and wrong slot
-type. Indexed `present(self.q[i])` is excluded by QSpec FR-322 and owner ruling #485 (`81078f14`); do not recreate withdrawn PR-02. Include the existing one-operand Option term as an unchanged control.
+type. Indexed `present(self.q[i])` is excluded by FSpec FR-322 and owner ruling #485 (`81078f14`); do not recreate withdrawn PR-02. Include the existing one-operand Option term as an unchanged control.
 
 For AC-339, join `Option<Clock>` and `Sequence<Option<Clock>>` resolved-path
 rows to the selected declaration's member type and optional presence. Assert
@@ -2590,7 +2590,7 @@ missing or mismatched selected member is refused at the place join.
 
 ## Timed aggregate and clause reader (FR-038-AC-342, FR-038-AC-357 through FR-038-AC-362)
 
-Status: PLANNED/UNRUN (IR-1096, IR-1109). Read QSpec's published
+Status: PLANNED/UNRUN (IR-1096, IR-1109). Read FSpec's published
 `proposals/checked-package-v2/timed-slot-selector-vectors.json` and
 `proposals/checked-package-v2/timed-clause-node-vectors.json` through the
 selected checkout. Apply `AO-01`..`AO-10` and `CL-01`..`CL-54` to the public
@@ -2601,7 +2601,7 @@ assert all published reverse-order and equal-key cases refuse
 `invalid_semantic_graph` with null cause at the first offending member.
 
 For AC-342 and AC-359, test all six root aggregates, guard-part constraint
-lists and invariant bound lists with source-region minimum first and QSpec
+lists and invariant bound lists with source-region minimum first and FSpec
 FR-322-AC-265 structural tie-break second. `AO-02`..`AO-07` distinguish
 reversed references, structural-id order, tied starts and an earlier extra region.
 `AO-08`..`AO-10` distinguish ordered, reversed and equal place-path keys on
@@ -2685,7 +2685,7 @@ refusal order: strict wire, graph shape, aggregate order,
 unlisted timed nodes, per-node joins, model-wide checks, followed by protocol
 and operation steps. Use a combined-defect case at each adjacent boundary;
 a vector's expected label alone is not evidence of stage order. Quantified
-source guard and invariant refusals `QN-01` and `QN-02` remain QSpec producer
+source guard and invariant refusals `QN-01` and `QN-02` remain FSpec producer
 controls for STD-554; IR's reader cannot recover a quantifier omitted by a
 producer, so TC-048 does not claim that source evidence.
 
@@ -2730,7 +2730,7 @@ neither exposes an admitted node from which to read enum details.
 
 ## Authenticated schedulability claim carrier (FR-038-AC-396 through FR-038-AC-400)
 
-Implemented. Read QSpec's
+Implemented. Read FSpec's
 `proposals/checked-package-v2/schedulability-claim-vectors.json`, TC-976 and
 FR-482/TC-967 body cases directly from the selected checkout; state that
 checkout's revision in execution evidence. Build complete IR-owned packages
@@ -2754,11 +2754,11 @@ retained graph body and takes no timed-model, release-binding or successor
 engine input. Re-encode the admitted package with its borrowed raw carrier
 rows through FR-051's complete writer, then read again and compare all rows
 and the body, including the two-occurrence case. This case does not run or
-qualify the QSL task-product checker.
+qualify the FSL task-product checker.
 
 ## Text bounds shape (FR-038-AC-417 through FR-038-AC-419)
 
-Planned until IR-1263 lands. Read QSpec's
+Planned until IR-1263 lands. Read FSpec's
 `proposals/checked-package-v2/text-bounds-shape-vectors.json` directly from
 the selected checkout. Assert the exact `TS-01` through `TS-10` case set;
 construct complete IR-owned V2 packages with each published body, keeping all
@@ -2771,11 +2771,11 @@ reordered, wrong-kind and negative-bound adverse controls. Give a literal
 typed by a profile-only node a value that would fail literal membership if
 the node were valid; assert shape refusal at the type node before the literal
 `value` check. Repair the existing recursive-leaves positive fixture with
-explicit `min` and `max`. Do not copy QSpec's vector or schema.
+explicit `min` and `max`. Do not copy FSpec's vector or schema.
 
 ## Text literal membership (FR-038-AC-409 through FR-038-AC-411)
 
-planned until IR-1260 lands. Read QSpec's
+planned until IR-1260 lands. Read FSpec's
 `proposals/checked-package-v2/text-literal-vectors.json` directly from the
 selected checkout. For `TX-01`
 through `TX-14` and `TX-13s`, build complete IR-owned V2 packages around
@@ -2786,7 +2786,7 @@ membership with the reader's existing Unicode 17.0.0 implementation, and
 cross-check each authored vector's `length` and `normalized` labels. Store
 no copy of the vector, schema or normalization tables.
 
-Add self-built controls for the parts of AC-409 and AC-410 outside that QSpec
+Add self-built controls for the parts of AC-409 and AC-410 outside that FSpec
 vector file. For each of `nfkc` and `nfkd`, use a compatibility character
 such as U+FB00 with bounds that admit both one and two scalars: its
 un-normalized spelling refuses at `value`, while `ff` admits. Put an
@@ -2802,7 +2802,7 @@ passes only because of an earlier unrelated refusal.
 
 ## Compensation temporal binding reader (FR-038-AC-412 through FR-038-AC-416)
 
-Implemented. Read QSpec's
+Implemented. Read FSpec's
 `proposals/checked-package-v2/temporal-clock-binding-vectors.json`
 `compensation_cases` `CB-01` through `CB-08` from the selected checkout.
 These cases are abstract: construct complete IR-owned packages with the
@@ -2833,12 +2833,12 @@ admitted or partial borrowed row view.
 
 ## IEEE fused multiply-add application (FR-038-AC-431 and FR-038-AC-432)
 
-Read QSpec's
+Read FSpec's
 `proposals/checked-package-v2/fma-application-vectors.json` from the selected
 checkout. Assert exactly `FM-01` through `FM-12` and construct complete,
 otherwise valid IR-owned V2 packages around each case. The application is the
-generic `call` of `quire.op.ieee.float32.fma` or
-`quire.op.ieee.float64.fma`, with reference arguments a, b, c; it has no
+generic `call` of `filament.op.ieee.float32.fma` or
+`filament.op.ieee.float64.fma`, with reference arguments a, b, c; it has no
 function callee argument. Read each package through the public strict reader.
 Assert admission for `FM-01` and `FM-02`, and each published code and cause for
 `FM-03` through `FM-12`. Keep operand type, result type, law, mode and every
@@ -2860,11 +2860,11 @@ bound's value.
 
 ## Anonymous Map type admission (FR-038-AC-488 through FR-038-AC-491)
 
-Status: IMPLEMENTED (IR-1356; focused reader and QSpec MT controls pass). Read QSpec's current
+Status: IMPLEMENTED (IR-1356; focused reader and FSpec MT controls pass). Read FSpec's current
 `proposals/checked-package-v2/map-type-vectors.json` through
-`QUIRE_SPECIFICATION_DIR`. Require MT-01 through MT-07 and build complete,
+`FILAMENT_SPECIFICATION_DIR`. Require MT-01 through MT-07 and build complete,
 otherwise valid V2 packages around the published forms. No local copy of a
-QSpec vector, fixture or schema is stored.
+FSpec vector, fixture or schema is stored.
 
 Read MT-01 as a self-typed `composite_type`/`map` with exactly two ordered
 bindings, `key` and `value`, to the admitted Text and Integer type nodes.
@@ -2882,7 +2882,7 @@ closed-schema body refusal before derived-shape validation; MT-04 and MT-06
 are derived-shape refusals at the map node. Check that none exposes an
 admitted or partial map view. Read MT-07 as the published clock-bearing
 model-type control, joining its Map key to the symbolic clock-place slot
-under QSpec FR-415; it does not require a Clock value node.
+under FSpec FR-415; it does not require a Clock value node.
 
 ## Carried-quantity sum admission (FR-038-AC-524 through FR-038-AC-529)
 
@@ -2891,14 +2891,14 @@ qualification is pending. All 21 published variants and three combined-defect
 controls pass. Five adverse-case groups fail for their intended behavior on
 the IR-1396 reader before the carried-sum changes; CS-01 already passes there.
 The IR-owned behavior fixtures follow manual review of current authoritative
-QSpec FR-322 AC-389 through AC-391 and
+FSpec FR-322 AC-389 through AC-391 and
 `spec/test-cases/TC-187-quantity-and-unit-conversion.md`, "Carried quantity
 sum wire cases". Require CS-01 through CS-06 and every variant within each
 row; these are published Markdown wire cases, not a JSON vector file. Build
 complete, otherwise valid IR-owned packages around the published types and
 applications using the production catalog. Keep dependencies, structural
 identities, binder scope and collection element types valid so that every
-negative reaches its intended operation check. Store no local QSpec artifact,
+negative reaches its intended operation check. Store no local FSpec artifact,
 fixture or catalog copy. Tests assert reader behavior rather than source-text
 presence; upstream specification review remains a separate human or agent task.
 
@@ -2938,9 +2938,9 @@ failure is a dependency failure, not a passing negative admission assertion.
 
 ## Operand rows and operand slots (FR-038-AC-520 through FR-038-AC-523)
 
-Read QSpec's `positive-dependency-call.json` (supplied with
+Read FSpec's `positive-dependency-call.json` (supplied with
 `positive-dependency-library.json`) and `node-index-vectors.json` through
-`QUIRE_SPECIFICATION_DIR`; no QSpec fixture or vector is copied. Admit the
+`FILAMENT_SPECIFICATION_DIR`; no FSpec fixture or vector is copied. Admit the
 fixture and assert the rebuilt structural keys: node `2` (`Int[0, 9]`, row `[0]`)
 holds the Integer node's key as its path element after `"min"`, and nodes `2` and
 `3` hold the same Integer key through the same slot `0`. Apply each of NI-01

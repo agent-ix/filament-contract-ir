@@ -3,7 +3,7 @@ id: TC-457
 title: "External consumers construct non-success Kani outcomes infallibly"
 type: TC
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/FR-030
+  - target: ix://agent-ix/filament-contract-ir/FR-030
     type: verifies
 ---
 # TC-457: External consumers construct non-success Kani outcomes infallibly
@@ -17,13 +17,13 @@ cause-validation work of TC-223 or downstream codegen adoption.
 
 ## Test Procedure
 
-Use the public `quire_contract_ir::kani::KaniOutcome` import in an external
+Use the public `filament_contract_ir::kani::KaniOutcome` import in an external
 integration test. Assign the direct return from each of `refused`,
 `invalid_input`, `incomplete_input`, `timed_out`, `resource_exhausted`,
 `cancelled`, `checker_unavailable`, `backend_unavailable` and `vacuous_proof`
 to an explicitly typed `KaniOutcome`. For the six code-taking methods use a
 valid consumer-owned unregistered code built through
-`quire_contract_model::std001_code!`. Supply distinct source identities and
+`filament_contract_model::std001_code!`. Supply distinct source identities and
 contexts containing the selected profile and bounds. For `cancelled`, run
 both `Requested` and `Deadline`.
 

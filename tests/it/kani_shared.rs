@@ -1,11 +1,11 @@
-use ix_trace_rs::trace;
-use quire_contract_ir::kani::{
+use filament_contract_ir::kani::{
     CapabilityDisposition, CapabilityEntry, DispatchError, DispatchIndex, FiniteInput,
     FiniteObject, FiniteReference, KaniCancellationSource, KaniOutcome, KaniOutcomeKind,
     KaniProfile, ModuleDescriptor, PopulationCompleteness, ProfileSelection, ResourceBounds,
     SemanticFamily, PROFILE,
 };
-use quire_contract_model::{std001_code, Std001Code};
+use filament_contract_model::{std001_code, Std001Code};
+use ix_trace_rs::trace;
 
 fn selection() -> ProfileSelection {
     ProfileSelection {
@@ -117,22 +117,22 @@ fn tc_042_an_invalid_profile_is_refused_on_every_construction_path() {
         (
             wrong_family,
             vec![entry("a")],
-            quire_contract_ir::kani::ProfileError::UnsupportedProfile("kani-bounded/2".into()),
+            filament_contract_ir::kani::ProfileError::UnsupportedProfile("kani-bounded/2".into()),
         ),
         (
             blank_revision,
             vec![entry("a")],
-            quire_contract_ir::kani::ProfileError::MissingSelectionField("revision"),
+            filament_contract_ir::kani::ProfileError::MissingSelectionField("revision"),
         ),
         (
             selection(),
             vec![entry("a"), entry("a")],
-            quire_contract_ir::kani::ProfileError::InvalidMatrix("a".into()),
+            filament_contract_ir::kani::ProfileError::InvalidMatrix("a".into()),
         ),
         (
             selection(),
             vec![entry(" ")],
-            quire_contract_ir::kani::ProfileError::InvalidMatrix(" ".into()),
+            filament_contract_ir::kani::ProfileError::InvalidMatrix(" ".into()),
         ),
     ];
     for (selection, capabilities, expected) in cases {
@@ -594,7 +594,7 @@ fn tc_055_negative_kani_corpus_returns_typed_errors_without_panics() {
     .expect_err("unknown profile");
     assert!(matches!(
         invalid_profile,
-        quire_contract_ir::kani::ProfileError::UnsupportedProfile(_)
+        filament_contract_ir::kani::ProfileError::UnsupportedProfile(_)
     ));
 
     let request_cases = [

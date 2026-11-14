@@ -19,8 +19,8 @@ confidence-threshold = 0.9
 multiple-versions = "allow"
 wildcards = "warn"
 deny = [
-    { crate = "quire-contract-codegen", reason = "IR must not depend on codegen (AD-005 D-2)" },
-    { crate = "quire-contract-runtime", reason = "IR must not depend on runtime (AD-005 D-2)" },
+    { crate = "filament-contract-codegen", reason = "IR must not depend on codegen (AD-005 D-2)" },
+    { crate = "filament-contract-runtime", reason = "IR must not depend on runtime (AD-005 D-2)" },
 ]
 
 # One copy of every first-party crate is enforced by scripts/check_one_copy.awk
@@ -38,8 +38,8 @@ allow-git = [
     "https://github.com/agent-ix/ix-cli-kit",
     "https://github.com/agent-ix/ix-trace-rs",
     "https://github.com/agent-ix/quire-canonical",
-    "https://github.com/agent-ix/quire-exact",
-    "https://github.com/agent-ix/quire-semantic-value",
-    "https://github.com/agent-ix/quire-verification-contracts",
-    "https://github.com/agent-ix/quire-walk",
+    "https://github.com/agent-ix/filament-exact",
+    "https://github.com/agent-ix/filament-semantic-value",
+    "https://github.com/agent-ix/filament-verification-contracts",
+    "https://github.com/agent-ix/filament-walk",
 ]

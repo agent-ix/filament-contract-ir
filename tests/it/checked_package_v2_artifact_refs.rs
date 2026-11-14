@@ -6,16 +6,16 @@
 //! reference exactly `{authority, identity}`, each
 //! refused as the closed shape it is. The operation catalog's own read
 //! (FR-038-AC-58) and the value-role law join (FR-038-AC-56) are unit tests in
-//! `crates/quire-contract-model/src/checked_package/v2/`.
+//! `crates/filament-contract-model/src/checked_package/v2/`.
 
 use crate::support::checked_package::{
     canonical, evidence_for, pointer, refusal, refusal_cause, settle, v2_all_families, v2_nominal,
 };
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     CheckedPackageReadLimits, CheckedPackageRefusal, CheckedPackageRefusalCause,
     CheckedPackageRefusalCode, CheckedPackageV2, CheckedPackageV2ReadResult,
 };
+use ix_trace_rs::trace;
 use serde_json::{json, Value};
 
 const DEFINITION_MEMBERS: [&str; 2] = ["authority", "identity"];
@@ -169,7 +169,7 @@ fn tc_048_a_definition_reference_with_a_digest_member_is_an_unknown_member() {
             "revision",
             json!({"namespace": "quire-draft", "value": "1"}),
         ),
-        ("digest_domain", json!("quire.definition.bytes/v1")),
+        ("digest_domain", json!("filament.definition.bytes/v1")),
         ("digest", json!("1".repeat(64))),
         ("export", json!("Status")),
     ];
@@ -193,7 +193,7 @@ fn tc_048_a_definition_reference_with_a_digest_member_is_an_unknown_member() {
         *reference = json!({
             "authority": authority, "identity": identity,
             "revision": {"namespace": "quire-draft", "value": "1"},
-            "digest_domain": "quire.definition.bytes/v1", "digest": "1".repeat(64),
+            "digest_domain": "filament.definition.bytes/v1", "digest": "1".repeat(64),
         });
         expect(
             &earlier,
@@ -269,7 +269,7 @@ fn tc_048_a_clock_row_precedes_a_malformed_temporal_law_definition() {
     let mut unconfigured = base;
     super::checked_package_v2_temporal::select_profile(
         &mut unconfigured,
-        "quire.temporal.infinite-trace/v1",
+        "filament.temporal.infinite-trace/v1",
     );
     settle(&mut unconfigured);
     admitted(&unconfigured);
@@ -295,7 +295,7 @@ fn tc_048_a_source_reference_with_an_extra_member_is_an_unknown_member() {
                 json!({"namespace": "quire-draft", "value": "1"}),
             ),
             ("export", json!("Status")),
-            ("digest_domain", json!("quire.source.bytes/v1")),
+            ("digest_domain", json!("filament.source.bytes/v1")),
             ("digest", json!("1".repeat(64))),
         ] {
             let mut mutated = package.clone();
@@ -380,7 +380,7 @@ fn tc_048_a_lock_source_digest_member_is_unknown_before_row_validation() {
     let base = v2_nominal();
     let row = "/lock/sources/0";
     for (member, value) in [
-        ("digest_domain", json!("quire.source.bytes/v1")),
+        ("digest_domain", json!("filament.source.bytes/v1")),
         ("digest", json!("1".repeat(64))),
     ] {
         for empty_authority in [false, true] {
@@ -467,7 +467,7 @@ fn tc_048_a_clock_row_precedes_an_unselected_temporal_law() {
     for (member, value) in [
         (
             "identity",
-            json!("quire.temporal.fixed-sample.false-extension/v1"),
+            json!("filament.temporal.fixed-sample.false-extension/v1"),
         ),
         ("authority", json!("other")),
     ] {
@@ -498,7 +498,7 @@ fn tc_048_a_clock_row_precedes_an_unselected_temporal_law() {
     let mut unconfigured = base;
     super::checked_package_v2_temporal::select_profile(
         &mut unconfigured,
-        "quire.temporal.infinite-trace/v1",
+        "filament.temporal.infinite-trace/v1",
     );
     settle(&mut unconfigured);
     admitted(&unconfigured);
@@ -506,14 +506,14 @@ fn tc_048_a_clock_row_precedes_an_unselected_temporal_law() {
         .as_array()
         .expect("nodes")
         .iter()
-        .position(|node| node["body"]["operation"]["identity"] == "quire.op.claim.clause")
+        .position(|node| node["body"]["operation"]["identity"] == "filament.op.claim.clause")
         .expect("claim clause");
     let claim_definition =
         format!("/semantic_graph/nodes/{claim}/body/operation/laws/0/definition");
     for (member, value) in [
         (
             "identity",
-            json!("quire.temporal.fixed-sample.false-extension/v1"),
+            json!("filament.temporal.fixed-sample.false-extension/v1"),
         ),
         ("authority", json!("other")),
     ] {
@@ -541,13 +541,13 @@ fn tc_048_definition_selection_is_the_single_authoritative_row() {
     let mut rows = base["lock"]["definition_selections"].clone();
     rows.as_array_mut()
         .expect("rows")
-        .push(json!({"authority": "agent-ix", "identity": "quire.fixture.definition.extra/v1"}));
+        .push(json!({"authority": "agent-ix", "identity": "filament.fixture.definition.extra/v1"}));
     base["lock"]["definition_selections"] = rows;
     admitted(&base);
 
     let mut edited = base.clone();
     at(&mut edited, "/lock/definition_selections/1")["identity"] =
-        json!("quire.fixture.definition.extra.next/v1");
+        json!("filament.fixture.definition.extra.next/v1");
     admitted(&edited);
     assert_ne!(canonical(&base), canonical(&edited));
 }
@@ -564,7 +564,7 @@ fn tc_048_nominal_owner_requires_a_selected_source_and_closed_kind() {
         .expect("source-owned nominal declaration");
     let mut missing_source = base.clone();
     missing_source["semantic_graph"]["nodes"][index]["owner"]["identity"] =
-        json!("quire.fixture.source.unselected/v1");
+        json!("filament.fixture.source.unselected/v1");
     let refusal = refused(&missing_source);
     assert_eq!(refusal.code, CheckedPackageRefusalCode::MissingDeclaration);
     assert_eq!(
@@ -578,7 +578,7 @@ fn tc_048_nominal_owner_requires_a_selected_source_and_closed_kind() {
 
     let mut definition_owner = base;
     definition_owner["semantic_graph"]["nodes"][index]["owner"] = json!({
-        "kind": "definition", "authority": "agent-ix", "identity": "quire.fixture.definition/v1"
+        "kind": "definition", "authority": "agent-ix", "identity": "filament.fixture.definition/v1"
     });
     expect(
         &definition_owner,
@@ -593,7 +593,7 @@ fn tc_048_nominal_owner_requires_a_selected_source_and_closed_kind() {
 /// and no other, so these literals fail to compile if a member is added or
 /// removed; the further-member and `CheckedRevision` probes, which must fail
 /// to compile, are `compile_fail` doctests on the model crate root
-/// (`crates/quire-contract-model/src/lib.rs`), the form its fault-injection
+/// (`crates/filament-contract-model/src/lib.rs`), the form its fault-injection
 /// probes use.
 ///
 /// Traced to TC-018, not TC-058: TC-058 verifies the planned FR-019-AC-5
@@ -601,7 +601,7 @@ fn tc_048_nominal_owner_requires_a_selected_source_and_closed_kind() {
 #[trace("TC-018", "FR-019-AC-6")]
 #[test]
 fn tc_018_the_artifact_reference_member_sets_are_exact() {
-    use quire_contract_model::{CheckedArtifactLocator, CheckedArtifactRef, CheckedSourceRef};
+    use filament_contract_model::{CheckedArtifactLocator, CheckedArtifactRef, CheckedSourceRef};
     let definition = CheckedArtifactRef {
         authority: "a".into(),
         identity: "i".into(),

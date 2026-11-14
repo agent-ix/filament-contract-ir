@@ -6,15 +6,15 @@ status: accepted
 owner: kreneskyp
 system: complete-V1 Contract IR, runtime, codegen, Kani, replay, and output mappings
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/AD-001
+  - target: ix://agent-ix/filament-contract-ir/AD-001
     type: references
-  - target: ix://agent-ix/quire-contract-ir/AD-002
+  - target: ix://agent-ix/filament-contract-ir/AD-002
     type: references
-  - target: ix://agent-ix/quire-specification/AD-004
+  - target: ix://agent-ix/filament-specification/AD-004
     type: references
-  - target: ix://agent-ix/quire-specification/AD-010
+  - target: ix://agent-ix/filament-specification/AD-010
     type: references
-  - target: ix://agent-ix/quire-specification/AD-016
+  - target: ix://agent-ix/filament-specification/AD-016
     type: references
 ---
 # Complete V1 target-neutral IR and backend delivery architecture
@@ -24,14 +24,14 @@ relationships:
 Contract IR owns the cycle-free, versioned `ContractPackage` representation and
 the exact lowering boundary. Runtime owns typed native oracle execution; codegen
 owns deterministic provider generation, the remaining collection and graph Kani lowerings, bounded
-Kani harnesses, the Kani transcript parser, and replay request construction; QSL's `qsl-replay` owns the
-counterexample envelope, replay request and result, and the replay facade. Output mapping remains a derived-output boundary. Native Quire remains
+Kani harnesses, the Kani transcript parser, and replay request construction; FSL's `fsl-replay` owns the
+counterexample envelope, replay request and result, and the replay facade. Output mapping remains a derived-output boundary. Native Filament remains
 the sole source and semantic authority. The checked-arithmetic lowerer and corpus arm were retired
 under CG FR-015-AC-109; CG `bec3f380` `spec/assurance/AD-004-cg-crate-layout.md:327`
-records collection and graph as the remaining paths. QSL ADR-011 E9 assigns the replay-facade
-call to the orchestrating driver, with CG building the request (QSL `adde683e`,
+records collection and graph as the remaining paths. FSL ADR-011 E9 assigns the replay-facade
+call to the orchestrating driver, with CG building the request (FSL `adde683e`,
 `spec/decisions/ADR-011-stage-dag-and-dependency-architecture.md:264-266`).
-CG `bec3f380` still calls `qsl_replay::replay` in `src/replay/function.rs:180-197,809-817`;
+CG `bec3f380` still calls `fsl_replay::replay` in `src/replay/function.rs:180-197,809-817`;
 IR-492 tracks that transition residual.
 
 ## Views
@@ -39,8 +39,8 @@ IR-492 tracks that transition residual.
 ```text
 checked native package -> exact per-item lowering -> ContractPackage
 ContractPackage -> capability negotiation -> runtime oracle | codegen provider
-codegen provider -> bounded Kani/artifacts/results -> qsl_replay::WitnessEnvelope
-qsl_replay::WitnessEnvelope -> CG replay request -> driver E9 call -> qsl_replay::replay -> ReplayResult
+codegen provider -> bounded Kani/artifacts/results -> fsl_replay::WitnessEnvelope
+fsl_replay::WitnessEnvelope -> CG replay request -> driver E9 call -> fsl_replay::replay -> ReplayResult
 ContractPackage -> output mapping package -> OCL | SysML/KerML | FRETish outputs
 ```
 
@@ -58,7 +58,7 @@ items remain independently accounted for.
 | ContractPackage is core typed data | A test-only model or backend-local wire shapes | Runtime and providers share one cycle-free identity-bearing contract. |
 | Stable identities, not positions, bind nodes | Array index or source-spelling joins | Reordering cannot alter semantic reference resolution. |
 | Exact negotiation before emission | Best-effort generation | Unbounded or unsupported meaning produces no approximating artifact. |
-| Canonical replay through `qsl_replay::replay` over QSL's envelope | Opaque backend diagnostics | Refutation evidence is independently checkable against the same package and domain. |
+| Canonical replay through `fsl_replay::replay` over FSL's envelope | Opaque backend diagnostics | Refutation evidence is independently checkable against the same package and domain. |
 | Target mappers consume the shared IR seam | Separate target source authorities | OCL, SysML/KerML, and FRETish stay derived outputs with explicit loss records. |
 
 ## Risks
@@ -67,5 +67,5 @@ items remain independently accounted for.
 | --- | --- |
 | A complete-V1 node is dropped or narrowed | TC-044 mutation and round-trip vectors cover every family and per-item accounting. |
 | A Kani bound is invented by a backend | Model-domain derivation and `requires_bound` refusal. |
-| Backend and native verdicts differ | QSL's `ReplayResult` retains a typed disagreement; TC-055 confirms Contract IR defines no competing envelope. |
+| Backend and native verdicts differ | FSL's `ReplayResult` retains a typed disagreement; TC-055 confirms Contract IR defines no competing envelope. |
 | A generated target becomes source authority | I16 mapping packages remain output-only and retain source/profile correspondence. |

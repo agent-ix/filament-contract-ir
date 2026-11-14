@@ -3,16 +3,16 @@ id: TC-050
 title: "CheckedPackage V2 items lower independently with exact correspondence"
 type: TC
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/FR-038
+  - target: ix://agent-ix/filament-contract-ir/FR-038
     type: verifies
-  - target: ix://agent-ix/quire-specification/TC-217
+  - target: ix://agent-ix/filament-specification/TC-217
     type: references
 ---
 # TC-050: CheckedPackage V2 items lower independently with exact correspondence
 
 ## Description
 
-Verify FR-038-AC-6 (QSpec FR-195-AC-1 through FR-195-AC-5) and FR-038-AC-39
+Verify FR-038-AC-6 (FSpec FR-195-AC-1 through FR-195-AC-5) and FR-038-AC-39
 through FR-038-AC-41, FR-038-AC-73, FR-038-AC-308 and FR-038-AC-309
 with the admitted V2 package API.
 
@@ -60,7 +60,7 @@ node key.
 Under a bounds-required profile, lower a record whose field is typed at a
 `unit` node, a parameter typed at a `compound_unit` node, and
 `Sequence<Quantity>[0,3]` whose element type is a `unit` node. From the
-published QSpec FR-322 `Quantity<u, C>` form, lower three separate positive
+published FSpec FR-322 `Quantity<u, C>` form, lower three separate positive
 value positions declared at self-typed `scalar_type`/`carried_quantity` nodes:
 a record field with an admitted `integer_range` carrier, a parameter with an
 admitted `decimal_range` carrier, and a record field with an admitted

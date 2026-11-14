@@ -3,7 +3,7 @@ id: FR-018
 title: "Publish the schema and conformance corpus"
 type: FR
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/StR-003
+  - target: ix://agent-ix/filament-contract-ir/StR-003
     type: traces_to
 ---
 # FR-018: Publish the schema and conformance corpus
@@ -27,14 +27,14 @@ status for any mismatch.
 ## Behavior
 
 The published package schema is JSON Schema Draft 7 with identity
-`https://agent-ix.github.io/quire-contract-ir/schemas/contract-package-reference-v1.schema.json`.
+`https://agent-ix.github.io/filament-contract-ir/schemas/contract-package-reference-v1.schema.json`.
 It describes the complete `ContractPackage<ReferenceBody>` wire representation
 for the supported schema version 1.1, closes every object with
 `additionalProperties: false`, uses fixed-width numeric bounds, and carries no
 implementation-language names. Schema success never substitutes for semantic validation.
 
 Fixture payloads are validated by Draft 7 schema identity
-`https://agent-ix.github.io/quire-contract-ir/schemas/contract-conformance-fixture-v1.schema.json`.
+`https://agent-ix.github.io/filament-contract-ir/schemas/contract-conformance-fixture-v1.schema.json`.
 The conformance schema exposes the named subschemas `packageInput`,
 `expressionInput`, `coverageInput`, and one corresponding
 `*Expectation` subschema for each operation. The runner selects the input and

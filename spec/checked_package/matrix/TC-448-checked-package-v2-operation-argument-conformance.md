@@ -3,9 +3,9 @@ id: TC-448
 title: "CheckedPackage V2 conforming records admit at argument, read, arm, payload, call and result positions and other kinds stay exact"
 type: TC
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/FR-347
+  - target: ix://agent-ix/filament-contract-ir/FR-347
     type: verifies
-  - target: ix://agent-ix/quire-spec-language/FR-359
+  - target: ix://agent-ix/filament-spec-language/FR-359
     type: references
 ---
 # TC-448: CheckedPackage V2 conforming records admit at argument, read, arm, payload, call and result positions and other kinds stay exact

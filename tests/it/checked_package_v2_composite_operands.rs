@@ -8,14 +8,14 @@ use crate::support::checked_package::{
     nominal_fixture_members, nominal_package, over_body, rebuild_source_map, refresh_identity,
     source_owner, typed_node_id,
 };
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     CheckedAuthoredCompositeDomain as Domain, CheckedCollectionKind, CheckedCompositeDomainKey,
     CheckedCompositeOperandDomain as OperandDomain, CheckedCompositeOperandError as Error,
     CheckedCompositeOperands, CheckedCompositeOperator, CheckedLiteralValue, CheckedNodeId,
     CheckedOccurrence, CheckedOccurrenceRole, CheckedPackageReadLimits, CheckedPackageV2,
     CheckedPackageV2ReadResult, CheckedScalarOperandChild, CheckedTerm,
 };
+use ix_trace_rs::trace;
 
 #[trace("FR-349-AC-6", "FR-349-AC-9")]
 #[test]
@@ -25,7 +25,7 @@ fn admitted_option_none_exposes_exact_public_value() {
     let option = fixture.collection("option", &boolean);
     let none =
         json!({"term":"literal", "type":node_id(&option), "value_kind":"none", "value":null});
-    let application = fixture.application(vec![none.clone(), none], "quire.op.structural.eq");
+    let application = fixture.application(vec![none.clone(), none], "filament.op.structural.eq");
     let admitted = fixture.read();
     let CheckedTerm::Application { arguments, .. } = admitted
         .term(&typed_node_id(&application))
@@ -143,7 +143,7 @@ impl Fixture {
         });
         dependencies.dedup();
         self.nodes.insert(id.clone(), json!({
-            "node_id":node_id(&id), "schema_version":"quire.checked-semantic-graph/v2",
+            "node_id":node_id(&id), "schema_version":"filament.checked-semantic-graph/v2",
             "node_tag":tag, "semantic_form":form, "semantic_type":node_id(ty),
             "dependencies":dependencies,
             "occurrences":[{"role":if matches!(tag,"value"|"expression") {"expression"} else {"type"},"ordinal":0}],
@@ -334,7 +334,7 @@ pub(crate) fn admitted_sequence_control() -> CheckedPackageV2 {
     let literal = json!({"term":"literal", "type":node_id(&integer),
         "value_kind":"integer", "value":"1"});
     let body = json!({"term":"application", "operator":"collection",
-        "operation":{"identity":"quire.op.collection.sequence", "laws":[], "mode":null,
+        "operation":{"identity":"filament.op.collection.sequence", "laws":[], "mode":null,
             "member":null, "leaves":[]},
         "result_type":node_id(&sequence), "arguments":[literal]});
     let key = fixture.next_key("expression", "collection");
@@ -345,7 +345,7 @@ pub(crate) fn admitted_sequence_control() -> CheckedPackageV2 {
 /// Exhaustive external patterns make every promised field and variant a
 /// compile-time API obligation, without exposing or reading the wire body.
 fn inspect_public_fields(result: &CheckedCompositeOperands) {
-    use quire_contract_model::{
+    use filament_contract_model::{
         CheckedCompositeChildEdge, CheckedCompositeDomainPosition, CheckedCompositeOperand,
         CheckedCompositeShapeEntry,
     };
@@ -453,8 +453,8 @@ fn parameter_domain(
     result: &CheckedCompositeOperands,
     operand: usize,
 ) -> (
-    &[quire_contract_model::CheckedCompositeShapeEntry],
-    &[quire_contract_model::CheckedCompositeDomainPosition],
+    &[filament_contract_model::CheckedCompositeShapeEntry],
+    &[filament_contract_model::CheckedCompositeDomainPosition],
 ) {
     match &result.operands[operand].domain {
         OperandDomain::Parameter { shape, positions } => (shape, positions),
@@ -486,8 +486,8 @@ fn tc_048_structural_operator_is_typed_across_operand_shapes() {
     let applications = shapes.map(|(left, right)| {
         let arguments = vec![left, right];
         (
-            fixture.application(arguments.clone(), "quire.op.structural.eq"),
-            fixture.application(arguments, "quire.op.structural.ne"),
+            fixture.application(arguments.clone(), "filament.op.structural.eq"),
+            fixture.application(arguments, "filament.op.structural.ne"),
         )
     });
     let package = fixture.read();
@@ -523,7 +523,7 @@ fn tc_048_positional_children_and_selected_occurrences_survive_repeated_calls_an
     let right = f.parameter("right", &record);
     let app = f.application(
         vec![reference(&left), reference(&right)],
-        "quire.op.structural.eq",
+        "filament.op.structural.eq",
     );
     f.nodes.get_mut(&app).expect("application")["occurrences"] = json!([
         {"role":"expression","ordinal":0},{"role":"expression","ordinal":1}]);
@@ -557,25 +557,25 @@ fn tc_048_positional_children_and_selected_occurrences_survive_repeated_calls_an
     assert_eq!(package, before);
     let swapped = f.application(
         vec![reference(&right), reference(&left)],
-        "quire.op.structural.eq",
+        "filament.op.structural.eq",
     );
     let repeated = f.application(
         vec![reference(&left), reference(&left)],
-        "quire.op.structural.eq",
+        "filament.op.structural.eq",
     );
     let ne = f.application(
         vec![reference(&left), reference(&right)],
-        "quire.op.structural.ne",
+        "filament.op.structural.ne",
     );
     f.nodes.get_mut(&ne).expect("inequality application")["occurrences"] = json!([
         {"role":"expression","ordinal":0},{"role":"expression","ordinal":1}]);
     let ne_swapped = f.application(
         vec![reference(&right), reference(&left)],
-        "quire.op.structural.ne",
+        "filament.op.structural.ne",
     );
     let ne_repeated = f.application(
         vec![reference(&left), reference(&left)],
-        "quire.op.structural.ne",
+        "filament.op.structural.ne",
     );
     let package = f.read();
     let swap = project(&package, &swapped);
@@ -635,8 +635,14 @@ fn tc_048_exact_authored_decimal_bounds_and_paths_have_a_reproducible_work_bound
     );
     let record = f.record(&[("items", &bounded)]);
     let p = f.parameter("p", &record);
-    let app = f.application(vec![reference(&p), reference(&p)], "quire.op.structural.eq");
-    let ne = f.application(vec![reference(&p), reference(&p)], "quire.op.structural.ne");
+    let app = f.application(
+        vec![reference(&p), reference(&p)],
+        "filament.op.structural.eq",
+    );
+    let ne = f.application(
+        vec![reference(&p), reference(&p)],
+        "filament.op.structural.ne",
+    );
     let package = f.read();
     let result = project(&package, &app);
     let inequality = project(&package, &ne);
@@ -769,7 +775,7 @@ fn tc_048_exact_authored_decimal_bounds_and_paths_have_a_reproducible_work_bound
     let changed_parameter = f.parameter("p", &changed_record);
     let changed_app = f.application(
         vec![reference(&changed_parameter), reference(&changed_parameter)],
-        "quire.op.structural.eq",
+        "filament.op.structural.eq",
     );
     let changed = project(&f.read(), &changed_app);
     let (_, changed_positions) = parameter_domain(&changed, 0);
@@ -823,11 +829,11 @@ fn tc_048_closed_graph_values_preserve_identity_while_free_values_and_unions_ref
     );
     let app = f.application(
         vec![reference(&value), reference(&value)],
-        "quire.op.structural.eq",
+        "filament.op.structural.eq",
     );
     let ne = f.application(
         vec![reference(&value), reference(&value)],
-        "quire.op.structural.ne",
+        "filament.op.structural.ne",
     );
     let package = f.read();
     let result = project(&package, &app);
@@ -857,11 +863,11 @@ fn tc_048_closed_graph_values_preserve_identity_while_free_values_and_unions_ref
         let child = f.graph_value(form, ty, aggregate(vec![literal.clone()]));
         let application = f.application(
             vec![reference(&child), reference(&child)],
-            "quire.op.structural.eq",
+            "filament.op.structural.eq",
         );
         let ne = f.application(
             vec![reference(&child), reference(&child)],
-            "quire.op.structural.ne",
+            "filament.op.structural.ne",
         );
         let package = f.read();
         let projected = project(&package, &application);
@@ -878,7 +884,7 @@ fn tc_048_closed_graph_values_preserve_identity_while_free_values_and_unions_ref
     // The owning catalog publishes collection.sequence as a collection-valued
     // operation. Its graph reference admits; flat wire rejects nested applications.
     let application_body = json!({"term":"application","operator":"collection",
-        "operation":{"identity":"quire.op.collection.sequence","laws":[],"mode":null,"member":null,"leaves":[]},
+        "operation":{"identity":"filament.op.collection.sequence","laws":[],"mode":null,"member":null,"leaves":[]},
         "result_type":node_id(&sequence),"arguments":[literal.clone()]});
     let expression_key = f.next_key("expression", "collection");
     let expression = f.node(
@@ -896,11 +902,11 @@ fn tc_048_closed_graph_values_preserve_identity_while_free_values_and_unions_ref
     );
     let referenced_app = f.application(
         vec![reference(&closed_sequence), reference(&expression)],
-        "quire.op.structural.eq",
+        "filament.op.structural.eq",
     );
     let referenced_ne = f.application(
         vec![reference(&closed_sequence), reference(&expression)],
-        "quire.op.structural.ne",
+        "filament.op.structural.ne",
     );
     assert_eq!(
         f.read().composite_application_operands(
@@ -911,7 +917,7 @@ fn tc_048_closed_graph_values_preserve_identity_while_free_values_and_unions_ref
         Err(Error::UnsupportedOperand {
             ordinal: 1,
             type_node: Some(typed_node_id(&sequence)),
-            reason: quire_contract_model::CheckedUnsupportedCompositeOperand::ApplicationSubterm
+            reason: filament_contract_model::CheckedUnsupportedCompositeOperand::ApplicationSubterm
         })
     );
     assert_eq!(
@@ -923,7 +929,7 @@ fn tc_048_closed_graph_values_preserve_identity_while_free_values_and_unions_ref
         Err(Error::UnsupportedOperand {
             ordinal: 1,
             type_node: Some(typed_node_id(&sequence)),
-            reason: quire_contract_model::CheckedUnsupportedCompositeOperand::ApplicationSubterm
+            reason: filament_contract_model::CheckedUnsupportedCompositeOperand::ApplicationSubterm
         })
     );
     // An independently authored nested application is rejected by the reader's
@@ -931,7 +937,7 @@ fn tc_048_closed_graph_values_preserve_identity_while_free_values_and_unions_ref
     // only after admitting its fixture and then mutating argument one.
     let inline_subterm = f.application(
         vec![reference(&closed_sequence), application_body],
-        "quire.op.structural.eq",
+        "filament.op.structural.eq",
     );
     let nested_wire = f.wire();
     let nested_position = nested_wire["semantic_graph"]["nodes"]
@@ -948,7 +954,7 @@ fn tc_048_closed_graph_values_preserve_identity_while_free_values_and_unions_ref
         CheckedPackageV2ReadResult::Refused(refusal) => {
             assert_eq!(
                 refusal.code,
-                quire_contract_model::CheckedPackageRefusalCode::MalformedWire
+                filament_contract_model::CheckedPackageRefusalCode::MalformedWire
             );
             assert_eq!(refusal.cause, None);
             assert_eq!(
@@ -979,7 +985,7 @@ fn tc_048_closed_graph_values_preserve_identity_while_free_values_and_unions_ref
     );
     let member_application = f.application(
         vec![reference(&closed_record), reference(&application_member)],
-        "quire.op.structural.eq",
+        "filament.op.structural.eq",
     );
     assert_eq!(
         f.read().composite_application_operands(
@@ -990,7 +996,8 @@ fn tc_048_closed_graph_values_preserve_identity_while_free_values_and_unions_ref
         Err(Error::UnsupportedOperand {
             ordinal: 1,
             type_node: Some(typed_node_id(&sequence)),
-            reason: quire_contract_model::CheckedUnsupportedCompositeOperand::NonliteralGraphValue
+            reason:
+                filament_contract_model::CheckedUnsupportedCompositeOperand::NonliteralGraphValue
         })
     );
 
@@ -1000,7 +1007,7 @@ fn tc_048_closed_graph_values_preserve_identity_while_free_values_and_unions_ref
     let integer_literal = json!({"term":"literal","type":node_id(&integer_input.integer),"value_kind":"integer","value":"1"});
     let integer_application = integer_input.application(
         vec![integer_literal.clone(), integer_literal],
-        "quire.op.structural.eq",
+        "filament.op.structural.eq",
     );
     let wire = integer_input.wire();
     let position = wire["semantic_graph"]["nodes"]
@@ -1017,11 +1024,11 @@ fn tc_048_closed_graph_values_preserve_identity_while_free_values_and_unions_ref
         CheckedPackageV2ReadResult::Refused(refusal) => {
             assert_eq!(
                 refusal.code,
-                quire_contract_model::CheckedPackageRefusalCode::IllTyped
+                filament_contract_model::CheckedPackageRefusalCode::IllTyped
             );
             assert_eq!(
                 refusal.cause,
-                Some(quire_contract_model::CheckedPackageRefusalCause::OperatorIneligible)
+                Some(filament_contract_model::CheckedPackageRefusalCause::OperatorIneligible)
             );
             assert_eq!(
                 refusal.loci[0]
@@ -1043,7 +1050,7 @@ fn tc_048_closed_graph_values_preserve_identity_while_free_values_and_unions_ref
     );
     let open_app = f.application(
         vec![reference(&open), reference(&open)],
-        "quire.op.structural.eq",
+        "filament.op.structural.eq",
     );
     assert_eq!(
         f.read()
@@ -1051,7 +1058,8 @@ fn tc_048_closed_graph_values_preserve_identity_while_free_values_and_unions_ref
         Err(Error::UnsupportedOperand {
             ordinal: 0,
             type_node: Some(typed_node_id(&boolean)),
-            reason: quire_contract_model::CheckedUnsupportedCompositeOperand::NonliteralGraphValue
+            reason:
+                filament_contract_model::CheckedUnsupportedCompositeOperand::NonliteralGraphValue
         })
     );
     let union = f.ty(
@@ -1064,7 +1072,7 @@ fn tc_048_closed_graph_values_preserve_identity_while_free_values_and_unions_ref
         json!({"term":"literal","type":node_id(&boolean),"value_kind":"boolean","value":true})]))]));
     let union_app = f.application(
         vec![reference(&union_value), reference(&union_value)],
-        "quire.op.structural.eq",
+        "filament.op.structural.eq",
     );
     let enclosing = f.record(&[("choice", &union)]);
     let nested = f.graph_value(
@@ -1074,16 +1082,16 @@ fn tc_048_closed_graph_values_preserve_identity_while_free_values_and_unions_ref
     );
     let nested_app = f.application(
         vec![reference(&nested), reference(&nested)],
-        "quire.op.structural.eq",
+        "filament.op.structural.eq",
     );
     let union_parameter = f.parameter("choice", &union);
     let parameter_app = f.application(
         vec![reference(&union_parameter), reference(&union_parameter)],
-        "quire.op.structural.eq",
+        "filament.op.structural.eq",
     );
     let union_ne = f.application(
         vec![reference(&union_parameter), reference(&union_parameter)],
-        "quire.op.structural.ne",
+        "filament.op.structural.ne",
     );
     let package = f.read();
     for app in [union_app, nested_app, parameter_app, union_ne] {
@@ -1097,11 +1105,14 @@ fn tc_048_closed_graph_values_preserve_identity_while_free_values_and_unions_ref
     }
     let option = f.collection("option", &boolean);
     let none = json!({"term":"literal","type":node_id(&option),"value_kind":"none","value":null});
-    let inline_app = f.application(vec![none.clone(), none.clone()], "quire.op.structural.eq");
+    let inline_app = f.application(
+        vec![none.clone(), none.clone()],
+        "filament.op.structural.eq",
+    );
     let closed_option = f.graph_value("option_value", &option, aggregate(vec![literal]));
     let inline_ne = f.application(
         vec![reference(&closed_option), none],
-        "quire.op.structural.ne",
+        "filament.op.structural.ne",
     );
     assert_eq!(
         f.read().composite_application_operands(
@@ -1112,7 +1123,7 @@ fn tc_048_closed_graph_values_preserve_identity_while_free_values_and_unions_ref
         Err(Error::UnsupportedOperand {
             ordinal: 0,
             type_node: Some(typed_node_id(&option)),
-            reason: quire_contract_model::CheckedUnsupportedCompositeOperand::InlineNonInteger
+            reason: filament_contract_model::CheckedUnsupportedCompositeOperand::InlineNonInteger
         })
     );
     assert_eq!(
@@ -1124,7 +1135,7 @@ fn tc_048_closed_graph_values_preserve_identity_while_free_values_and_unions_ref
         Err(Error::UnsupportedOperand {
             ordinal: 1,
             type_node: Some(typed_node_id(&option)),
-            reason: quire_contract_model::CheckedUnsupportedCompositeOperand::InlineNonInteger
+            reason: filament_contract_model::CheckedUnsupportedCompositeOperand::InlineNonInteger
         })
     );
 }
@@ -1150,11 +1161,11 @@ fn tc_048_optional_wrapper_paths_and_all_reentries_preserve_distinct_source_rout
         let parameter = f.parameter("optional_budget", &record);
         let app = f.application(
             vec![reference(&parameter), reference(&parameter)],
-            "quire.op.structural.eq",
+            "filament.op.structural.eq",
         );
         let ne = f.application(
             vec![reference(&parameter), reference(&parameter)],
-            "quire.op.structural.ne",
+            "filament.op.structural.ne",
         );
         let package = f.read();
         let result = project(&package, &app);
@@ -1197,8 +1208,14 @@ fn tc_048_optional_wrapper_paths_and_all_reentries_preserve_distinct_source_rout
             f.nodes.get_mut(id).expect("cycle member")["recursion_group"] = json!("list");
         }
         let p = f.parameter("list", &list);
-        let app = f.application(vec![reference(&p), reference(&p)], "quire.op.structural.eq");
-        let ne = f.application(vec![reference(&p), reference(&p)], "quire.op.structural.ne");
+        let app = f.application(
+            vec![reference(&p), reference(&p)],
+            "filament.op.structural.eq",
+        );
+        let ne = f.application(
+            vec![reference(&p), reference(&p)],
+            "filament.op.structural.ne",
+        );
         let package = f.read();
         let result = project(&package, &app);
         assert_eq!(project(&package, &ne).operands, result.operands);
@@ -1253,7 +1270,10 @@ fn tc_048_optional_wrapper_paths_and_all_reentries_preserve_distinct_source_rout
         f.nodes.get_mut(id).expect("cycle member")["recursion_group"] = json!("tree");
     }
     let p = f.parameter("tree", &tree);
-    let app = f.application(vec![reference(&p), reference(&p)], "quire.op.structural.eq");
+    let app = f.application(
+        vec![reference(&p), reference(&p)],
+        "filament.op.structural.eq",
+    );
     let result = project(&f.read(), &app);
     let (_, positions) = parameter_domain(&result, 0);
     assert_eq!(positions.len(), 1);
@@ -1281,7 +1301,10 @@ fn tc_048_optional_wrapper_paths_and_all_reentries_preserve_distinct_source_rout
     );
     let root = f.record(&[("first", &tuple), ("second", &tuple)]);
     let p = f.parameter("shared", &root);
-    let app = f.application(vec![reference(&p), reference(&p)], "quire.op.structural.eq");
+    let app = f.application(
+        vec![reference(&p), reference(&p)],
+        "filament.op.structural.eq",
+    );
     let result = project(&f.read(), &app);
     let (_, positions) = parameter_domain(&result, 0);
     assert_eq!(
@@ -1304,7 +1327,7 @@ fn tc_048_optional_wrapper_paths_and_all_reentries_preserve_distinct_source_rout
 #[trace("TC-048", "FR-038-AC-180", "FR-038-AC-182", "FR-038-AC-198")]
 #[test]
 fn tc_048_eligible_scalar_and_bounded_forms_keep_authored_positions_and_source_kinds() {
-    use quire_contract_model::{BoundedDomainForm, CheckedNodeKind, ScalarTypeForm};
+    use filament_contract_model::{BoundedDomainForm, CheckedNodeKind, ScalarTypeForm};
     let mut f = Fixture::new();
     let mut types: BTreeMap<String, String> = BTreeMap::new();
     for form in ["boolean", "integer", "rational", "decimal"] {
@@ -1326,7 +1349,7 @@ fn tc_048_eligible_scalar_and_bounded_forms_keep_authored_positions_and_source_k
         }
         f.nodes.insert(id, node.clone());
     }
-    let color = json!({"version":"quire.enum-declaration-node/v1","owner":source_owner(&fixture_source()),
+    let color = json!({"version":"filament.enum-declaration-node/v1","owner":source_owner(&fixture_source()),
         "qualified_declaration":["Color"],"ordered":false,"members":["Blue","Green","Red"]});
     let color_key = "Color".to_owned();
     let color_package = nominal_package(&[(color, color_key.clone())]);
@@ -1403,7 +1426,7 @@ fn tc_048_eligible_scalar_and_bounded_forms_keep_authored_positions_and_source_k
     let root = f.record(&fields);
     let p = f.parameter("all_forms", &root);
     let catalog: Value = serde_json::from_str(
-        quire_verification_contracts::operation_catalog::CHECKED_OPERATION_CATALOG_V1,
+        filament_verification_contracts::operation_catalog::CHECKED_OPERATION_CATALOG_V1,
     )
     .expect("catalog");
     let law = catalog["law_roles"]["text_profile"][0].clone();
@@ -1412,12 +1435,12 @@ fn tc_048_eligible_scalar_and_bounded_forms_keep_authored_positions_and_source_k
         "laws":[{"role":"text_profile","definition":law}],"mode":{"kind":"text_profile","value":"nfc"}})).to_vec();
     let app = f.application_with_leaves(
         vec![reference(&p), reference(&p)],
-        "quire.op.structural.eq",
+        "filament.op.structural.eq",
         leaves.clone(),
     );
     let ne = f.application_with_leaves(
         vec![reference(&p), reference(&p)],
-        "quire.op.structural.ne",
+        "filament.op.structural.ne",
         leaves,
     );
     let package = f.read();
@@ -1540,8 +1563,14 @@ fn tc_048_collection_kinds_remain_unbounded_and_ordered_enums_keep_semantic_orde
             .collect::<Vec<_>>(),
     );
     let p = f.parameter("collections", &root);
-    let app = f.application(vec![reference(&p), reference(&p)], "quire.op.structural.eq");
-    let ne = f.application(vec![reference(&p), reference(&p)], "quire.op.structural.ne");
+    let app = f.application(
+        vec![reference(&p), reference(&p)],
+        "filament.op.structural.eq",
+    );
+    let ne = f.application(
+        vec![reference(&p), reference(&p)],
+        "filament.op.structural.ne",
+    );
     let package = f.read();
     let result = project(&package, &app);
     assert_eq!(project(&package, &ne).operands, result.operands);
@@ -1555,7 +1584,7 @@ fn tc_048_collection_kinds_remain_unbounded_and_ordered_enums_keep_semantic_orde
         assert_eq!(positions[2 * index].type_node, typed_node_id(id));
         assert_eq!(positions[2 * index + 1].authored, Domain::UnboundedInteger);
     }
-    let color = json!({"version":"quire.enum-declaration-node/v1","owner":source_owner(&fixture_source()),
+    let color = json!({"version":"filament.enum-declaration-node/v1","owner":source_owner(&fixture_source()),
         "qualified_declaration":["Priority"],"ordered":true,"members":["Red","Blue","Green"]});
     let color_key = "Priority".to_owned();
     let nominal = nominal_package(&[(color.clone(), color_key.clone())]);
@@ -1567,8 +1596,14 @@ fn tc_048_collection_kinds_remain_unbounded_and_ordered_enums_keep_semantic_orde
     }
     let record = f.record(&[("priority", &color_key)]);
     let p = f.parameter("priority", &record);
-    let app = f.application(vec![reference(&p), reference(&p)], "quire.op.structural.eq");
-    let ne = f.application(vec![reference(&p), reference(&p)], "quire.op.structural.ne");
+    let app = f.application(
+        vec![reference(&p), reference(&p)],
+        "filament.op.structural.eq",
+    );
+    let ne = f.application(
+        vec![reference(&p), reference(&p)],
+        "filament.op.structural.ne",
+    );
     let package = f.read();
     let result = project(&package, &app);
     assert_eq!(project(&package, &ne).operands, result.operands);
@@ -1581,7 +1616,7 @@ fn tc_048_collection_kinds_remain_unbounded_and_ordered_enums_keep_semantic_orde
             members: ["Red", "Blue", "Green"].map(Into::into).to_vec()
         }
     );
-    let member = json!({"version":"quire.enum-member-node/v1","declaration_node_id":node_id(&color_key),"case":"Blue"});
+    let member = json!({"version":"filament.enum-member-node/v1","declaration_node_id":node_id(&color_key),"case":"Blue"});
     let member_key = "value/enum_value/Priority/Blue".to_owned();
     let declaration = color;
     let nominal = nominal_package(&[
@@ -1601,7 +1636,7 @@ fn tc_048_collection_kinds_remain_unbounded_and_ordered_enums_keep_semantic_orde
     );
     let app = f.application(
         vec![reference(&literal), reference(&literal)],
-        "quire.op.structural.eq",
+        "filament.op.structural.eq",
     );
     let result = project(&f.read(), &app);
     assert!(result
@@ -1637,11 +1672,11 @@ fn error_payload(error: Error) -> (&'static str, Option<u64>, Option<CheckedNode
             reason,
         } => {
             match reason {
-                quire_contract_model::CheckedUnsupportedCompositeOperand::InlineInteger
-                | quire_contract_model::CheckedUnsupportedCompositeOperand::InlineNonInteger
-                | quire_contract_model::CheckedUnsupportedCompositeOperand::ApplicationSubterm
-                | quire_contract_model::CheckedUnsupportedCompositeOperand::NonStructuralType
-                | quire_contract_model::CheckedUnsupportedCompositeOperand::NonliteralGraphValue => {
+                filament_contract_model::CheckedUnsupportedCompositeOperand::InlineInteger
+                | filament_contract_model::CheckedUnsupportedCompositeOperand::InlineNonInteger
+                | filament_contract_model::CheckedUnsupportedCompositeOperand::ApplicationSubterm
+                | filament_contract_model::CheckedUnsupportedCompositeOperand::NonStructuralType
+                | filament_contract_model::CheckedUnsupportedCompositeOperand::NonliteralGraphValue => {
                 }
             }
             ("operand", Some(ordinal), type_node)
@@ -1665,11 +1700,14 @@ fn tc_048_external_error_consumer_retains_authentic_node_and_application_loci() 
     let integer = f.integer.clone();
     let record = f.record(&[("number", &integer)]);
     let p = f.parameter("p", &record);
-    let eq = f.application(vec![reference(&p), reference(&p)], "quire.op.structural.eq");
+    let eq = f.application(
+        vec![reference(&p), reference(&p)],
+        "filament.op.structural.eq",
+    );
     let bool_parameter = f.parameter("flag", &f.boolean.clone());
     let ineligible = f.application(
         vec![reference(&bool_parameter), reference(&bool_parameter)],
-        "quire.op.boolean.and",
+        "filament.op.boolean.and",
     );
     let package = f.read();
     let unknown = typed_node_id("composite/absent/application");

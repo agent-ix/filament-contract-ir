@@ -64,7 +64,7 @@ fn context(vectors: &Value) -> (Value, BTreeMap<u64, Value>) {
             "published parameter and expression contexts must not conflict"
         );
         let constant = constant(&mut wire, &integer, &format!("ek constant {index}"));
-        let body = json!({"term":"application","operator":"conditional","operation":{"identity":"quire.op.control.if","laws":[],"leaves":[],"member":null,"mode":null},"result_type":integer,"arguments":[literal(&boolean,"boolean",json!(true)),reference(&constant),reference(&constant)]});
+        let body = json!({"term":"application","operator":"conditional","operation":{"identity":"filament.op.control.if","laws":[],"leaves":[],"member":null,"mode":null},"result_type":integer,"arguments":[literal(&boolean,"boolean",json!(true)),reference(&constant),reference(&constant)]});
         nodes.insert(
             index,
             append(

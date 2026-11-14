@@ -3,13 +3,13 @@ id: FR-060
 title: "Admit checked-package model terminal declarations"
 type: FR
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/StR-001
+  - target: ix://agent-ix/filament-contract-ir/StR-001
     type: traces_to
-  - target: ix://agent-ix/quire-contract-ir/FR-038
+  - target: ix://agent-ix/filament-contract-ir/FR-038
     type: depends_on
-  - target: ix://agent-ix/quire-specification/FR-476
+  - target: ix://agent-ix/filament-specification/FR-476
     type: references
-  - target: ix://agent-ix/quire-specification/FR-322
+  - target: ix://agent-ix/filament-specification/FR-322
     type: references
 ---
 
@@ -18,17 +18,17 @@ relationships:
 ## Description
 
 When a V2 checked package carries a `temporal`/`terminal` node, the Contract
-IR reader SHALL admit exactly QSpec FR-476's declaration body and joins, or refuse the
+IR reader SHALL admit exactly FSpec FR-476's declaration body and joins, or refuse the
 whole package at the first defect in FR-476's reader order. The canonical
 writer SHALL retain the admitted node's complete body and occurrences. The
 reader obtains the model's terminal declaration from this node alone.
 
 ## Inputs
 
-The untrusted `quire.checked-package/v2` bytes, evidence and limits of
+The untrusted `filament.checked-package/v2` bytes, evidence and limits of
 [FR-038](./FR-038-consume-checked-package-v2.md). The form and body are
-specified by `ix://agent-ix/quire-specification/FR-476` and the identity,
-graph and refusal ordering by `ix://agent-ix/quire-specification/FR-322`.
+specified by `ix://agent-ix/filament-specification/FR-476` and the identity,
+graph and refusal ordering by `ix://agent-ix/filament-specification/FR-322`.
 
 ## Outputs
 
@@ -78,18 +78,18 @@ earlier graph-shape step.
 
 | ID | Criteria | Verification |
 | --- | --- | --- |
-| FR-060-AC-1 | The reader admits QSpec TC-961 MT-01 through MT-03 as `temporal`/`terminal` nodes with the exact four-binding body, `when` and `any` modes, level-0 `self` parameter only when read, Boolean type, absent `declaration`, exact dependency set and `claim` occurrence. The writer emits the complete admitted shape, and a read of its output returns the same nodes and occurrences. | Test |
-| FR-060-AC-2 | QSpec TC-961 MT-07 through MT-16 refuse with FR-476's exact code, cause and pointer after identities are rebuilt: swapped bindings, invalid mode, wrong mode fit, wrong model, wrong or mistyped `self`, non-Boolean condition, and both kinds of duplicate declaration are separately observed. An unknown `temporal` form still refuses at `semantic_form`, and no malformed terminal node is omitted or reinterpreted. | Test |
+| FR-060-AC-1 | The reader admits FSpec TC-961 MT-01 through MT-03 as `temporal`/`terminal` nodes with the exact four-binding body, `when` and `any` modes, level-0 `self` parameter only when read, Boolean type, absent `declaration`, exact dependency set and `claim` occurrence. The writer emits the complete admitted shape, and a read of its output returns the same nodes and occurrences. | Test |
+| FR-060-AC-2 | FSpec TC-961 MT-07 through MT-16 refuse with FR-476's exact code, cause and pointer after identities are rebuilt: swapped bindings, invalid mode, wrong mode fit, wrong model, wrong or mistyped `self`, non-Boolean condition, and both kinds of duplicate declaration are separately observed. An unknown `temporal` form still refuses at `semantic_form`, and no malformed terminal node is omitted or reinterpreted. | Test |
 | FR-060-AC-3 | The reader observes FR-322 and FR-476 precedence: graph-shape defects precede the terminal step; state-graph, temporal and abstraction body defects precede it; each terminal node's own checks precede one-per-model checks; nodes visit in structural node-id order; and a terminal defect precedes step-relation and later body defects. | Test |
-| FR-060-AC-4 | Withdrawn by the IR-1141 structural-identity decision under QSpec #517: the reader does not recompute identity from body content or refuse a retained structural id solely because a valid body changed. This id is retained and never reused. | Withdrawn |
-| FR-060-AC-5 | IR-owned positive and negative read/write vectors for QSpec TC-961 MT-01 through MT-16 assert the published wire shapes and refusals through the public V2 reader and writer, without copying QSpec fixture or schema files into IR. | Test |
+| FR-060-AC-4 | Withdrawn by the IR-1141 structural-identity decision under FSpec #517: the reader does not recompute identity from body content or refuse a retained structural id solely because a valid body changed. This id is retained and never reused. | Withdrawn |
+| FR-060-AC-5 | IR-owned positive and negative read/write vectors for FSpec TC-961 MT-01 through MT-16 assert the published wire shapes and refusals through the public V2 reader and writer, without copying FSpec fixture or schema files into IR. | Test |
 
 ## Dependencies
 
 - [FR-038](./FR-038-consume-checked-package-v2.md) owns the V2 reader, writer,
   identity and shared refusal machinery.
-- `ix://agent-ix/quire-specification/FR-476` owns the exact terminal body,
-  reader step and target rules; `ix://agent-ix/quire-specification/FR-322`
+- `ix://agent-ix/filament-specification/FR-476` owns the exact terminal body,
+  reader step and target rules; `ix://agent-ix/filament-specification/FR-322`
   owns the enclosing package and earlier checks.
 
 ## Status

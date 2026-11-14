@@ -3,19 +3,19 @@ id: FR-366
 title: "Admit dispatch tables over source-declared operations"
 type: FR
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/StR-001
+  - target: ix://agent-ix/filament-contract-ir/StR-001
     type: traces_to
-  - target: ix://agent-ix/quire-contract-ir/FR-038
+  - target: ix://agent-ix/filament-contract-ir/FR-038
     type: depends_on
-  - target: ix://agent-ix/quire-contract-ir/FR-362
+  - target: ix://agent-ix/filament-contract-ir/FR-362
     type: depends_on
-  - target: ix://agent-ix/quire-contract-ir/FR-367
+  - target: ix://agent-ix/filament-contract-ir/FR-367
     type: depends_on
-  - target: ix://agent-ix/quire-spec-language/ADR-013
+  - target: ix://agent-ix/filament-spec-language/ADR-013
     type: references
-  - target: ix://agent-ix/quire-spec-language/FR-569
+  - target: ix://agent-ix/filament-spec-language/FR-569
     type: references
-  - target: ix://agent-ix/quire-specification/FR-322
+  - target: ix://agent-ix/filament-specification/FR-322
     type: references
 ---
 
@@ -28,7 +28,7 @@ selected model owners. It SHALL also admit a row whose receiver `context` and
 `operation.declaring` are source-declared object type nodes, whose candidate
 `selection_key` names a source-declared type node, and whose candidates'
 `operation_body` and `effective_precondition` name source clause function nodes
-(QSL ADR-013 QC-30 items 2d, 2f and 4; the row shape is QSpec FR-322).
+(FSL ADR-013 QC-30 items 2d, 2f and 4; the row shape is FSpec FR-322).
 
 ## Inputs
 
@@ -84,4 +84,4 @@ identifier rule.
 ## Dependencies
 
 - [FR-367](./FR-367-join-source-object-rows-and-field-reads.md) supplies the supertype rows for the family check.
-- QSpec FR-322 owns the dispatch row.
+- FSpec FR-322 owns the dispatch row.

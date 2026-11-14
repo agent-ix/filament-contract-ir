@@ -7,12 +7,12 @@ use crate::support::checked_package::{
     bounds_body, canonical, evidence_for, index_fixture_node_ids, integer_key, node_id, settle,
     v2_all_families,
 };
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     CheckedNodeId, CheckedNodeKind, CheckedPackageReadLimits, CheckedPackageRefusalCause,
     CheckedPackageRefusalCode, CheckedPackageV2, CheckedPackageV2ReadResult, CheckedTerm,
     CompositeTypeForm, ExactTypeProjectionErrorCode, SelectedExactIdentities,
 };
+use ix_trace_rs::trace;
 use serde_json::{json, Value};
 
 pub(crate) fn map_package() -> (Value, usize) {
@@ -32,7 +32,7 @@ pub(crate) fn keyed_map_package(key: &str, value: &str) -> (Value, usize) {
         let id = json!({"package": name, "path": ["scalar_type", form], "ordinal": 0});
         ids.push(id.clone());
         nodes.push(json!({
-            "node_id": id, "schema_version": "quire.checked-semantic-graph/v2",
+            "node_id": id, "schema_version": "filament.checked-semantic-graph/v2",
             "node_tag": "scalar_type", "semantic_form": form, "semantic_type": id,
             "dependencies": [], "occurrences": [{"role": "type", "ordinal": 0}],
             "body": {"term": "aggregate", "members": []}
@@ -44,7 +44,7 @@ pub(crate) fn keyed_map_package(key: &str, value: &str) -> (Value, usize) {
         json!({"package": name, "path": ["composite_type", "map", ids[0], ids[1]], "ordinal": 0});
     let position = nodes.len();
     nodes.push(json!({
-        "node_id": id, "schema_version": "quire.checked-semantic-graph/v2",
+        "node_id": id, "schema_version": "filament.checked-semantic-graph/v2",
         "node_tag": "composite_type", "semantic_form": "map", "semantic_type": id,
         "dependencies": dependencies, "occurrences": [{"role": "type", "ordinal": 0}],
         "body": {"term": "aggregate", "members": [
@@ -103,7 +103,7 @@ fn map_keeps_both_ordered_type_operands() {
         assert_eq!(target, &expected);
         assert_eq!(
             id.path[2 + ordinal],
-            quire_contract_model::CheckedNodePathSegment::Index(
+            filament_contract_model::CheckedNodePathSegment::Index(
                 u64::try_from(position - 2 + ordinal).expect("index")
             )
         );
@@ -112,24 +112,24 @@ fn map_keeps_both_ordered_type_operands() {
     let projection = admitted
         .project_exact_type(
             &id,
-            &quire_contract_model::SelectedExactIdentities::empty(),
-            &mut quire_contract_model::NativeJoinBudget::new(100, u64::MAX),
+            &filament_contract_model::SelectedExactIdentities::empty(),
+            &mut filament_contract_model::NativeJoinBudget::new(100, u64::MAX),
         )
         .expect("Map<Text,Integer> has an exact value projection");
-    let quire_exact::ValueType::Map(map) = projection.value_type() else {
+    let filament_exact::ValueType::Map(map) = projection.value_type() else {
         panic!("exact Map type");
     };
-    assert_eq!(map.values(), &quire_exact::ValueType::Integer);
+    assert_eq!(map.values(), &filament_exact::ValueType::Integer);
     let denied = admitted
         .project_exact_type(
             &id,
-            &quire_contract_model::SelectedExactIdentities::empty(),
-            &mut quire_contract_model::NativeJoinBudget::new(2, u64::MAX),
+            &filament_contract_model::SelectedExactIdentities::empty(),
+            &mut filament_contract_model::NativeJoinBudget::new(2, u64::MAX),
         )
         .expect_err("Map key inspection consumes the bounded work budget");
     assert_eq!(
         denied.code,
-        quire_contract_model::ExactTypeProjectionErrorCode::ExhaustedWork
+        filament_contract_model::ExactTypeProjectionErrorCode::ExhaustedWork
     );
 }
 
@@ -188,7 +188,7 @@ fn nonscalar_key_refuses_at_map_node() {
         .as_array_mut()
         .expect("nodes")
         .push(json!({
-            "node_id": sequence, "schema_version": "quire.checked-semantic-graph/v2",
+            "node_id": sequence, "schema_version": "filament.checked-semantic-graph/v2",
             "node_tag": "composite_type", "semantic_form": "sequence",
             "semantic_type": sequence, "dependencies": [integer],
             "occurrences": [{"role": "type", "ordinal": 0}],
@@ -235,7 +235,7 @@ fn collection_bounds_remain_a_separate_node() {
         .as_array_mut()
         .expect("nodes")
         .push(json!({
-            "node_id": bound, "schema_version": "quire.checked-semantic-graph/v2",
+            "node_id": bound, "schema_version": "filament.checked-semantic-graph/v2",
             "node_tag": "bounded_domain", "semantic_form": "collection_bounds",
             "semantic_type": map, "dependencies": [map],
             "occurrences": [{"role": "type", "ordinal": 0}], "body": bounds_body("1", "3")
@@ -249,27 +249,27 @@ fn collection_bounds_remain_a_separate_node() {
     let id: CheckedNodeId =
         serde_json::from_value(package["semantic_graph"]["nodes"][position]["node_id"].clone())
             .expect("bound id");
-    let mut ample = quire_contract_model::NativeJoinBudget::new(100, u64::MAX);
+    let mut ample = filament_contract_model::NativeJoinBudget::new(100, u64::MAX);
     let projection = admitted
         .project_exact_type(
             &id,
-            &quire_contract_model::SelectedExactIdentities::empty(),
+            &filament_contract_model::SelectedExactIdentities::empty(),
             &mut ample,
         )
         .expect("bounded Map exact projection");
-    let quire_exact::ValueType::Map(map) = projection.value_type() else {
+    let filament_exact::ValueType::Map(map) = projection.value_type() else {
         panic!("bounded Map");
     };
-    assert_eq!(map.values(), &quire_exact::ValueType::Integer);
+    assert_eq!(map.values(), &filament_exact::ValueType::Integer);
     let required = ample.consumed();
-    let mut exact = quire_contract_model::NativeJoinBudget::new(required.work, required.storage);
+    let mut exact = filament_contract_model::NativeJoinBudget::new(required.work, required.storage);
     assert_eq!(
         admitted.project_exact_type(&id, &SelectedExactIdentities::empty(), &mut exact),
         Ok(projection.clone())
     );
     assert_eq!(exact.last_success_delta(), Some(required));
     let mut short =
-        quire_contract_model::NativeJoinBudget::new(required.work, required.storage - 1);
+        filament_contract_model::NativeJoinBudget::new(required.work, required.storage - 1);
     let refusal = admitted
         .project_exact_type(&id, &SelectedExactIdentities::empty(), &mut short)
         .unwrap_err();
@@ -277,7 +277,7 @@ fn collection_bounds_remain_a_separate_node() {
     assert_eq!(refusal.at, None);
     assert_eq!(
         short.first_unpaid().unwrap().kind,
-        quire_contract_model::NativeJoinChargeKind::Storage
+        filament_contract_model::NativeJoinChargeKind::Storage
     );
     assert_eq!(admitted.graph().nodes[map_position].dependencies.len(), 2);
     let CheckedTerm::Aggregate { members } = admitted
@@ -325,8 +325,8 @@ fn changing_either_operand_changes_the_admitted_map_identity() {
 }
 
 /// Every scalar key form of a package map and the Exact key it projects as.
-fn scalar_key_forms() -> [(&'static str, quire_exact::ValueType); 6] {
-    use quire_exact::ValueType;
+fn scalar_key_forms() -> [(&'static str, filament_exact::ValueType); 6] {
+    use filament_exact::ValueType;
     [
         ("text", ValueType::String),
         ("string", ValueType::String),
@@ -362,10 +362,10 @@ fn scalar_key_projects_its_own_exact_key_type() {
             .project_exact_type(
                 &id,
                 &SelectedExactIdentities::empty(),
-                &mut quire_contract_model::NativeJoinBudget::new(100, u64::MAX),
+                &mut filament_contract_model::NativeJoinBudget::new(100, u64::MAX),
             )
             .unwrap_or_else(|why| panic!("{form} key has an Exact projection: {why:?}"));
-        let quire_exact::ValueType::Map(projected) = projection.value_type() else {
+        let filament_exact::ValueType::Map(projected) = projection.value_type() else {
             panic!("exact Map type");
         };
         assert_eq!(projected.key(), &key, "{form}");
@@ -383,20 +383,20 @@ fn source_map_row_joins_a_scalar_key_only_with_its_own_exact_key() {
         let value = package.project_exact_type(
             &id,
             &SelectedExactIdentities::empty(),
-            &mut quire_contract_model::NativeJoinBudget::new(100, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(100, u64::MAX),
         );
         let element = value.expect("projects").value_type().clone();
-        let quire_exact::ValueType::Map(map) = &element else {
+        let filament_exact::ValueType::Map(map) = &element else {
             panic!("exact Map type");
         };
-        let row = quire_contract_model::SelectedSourceCollectionRow {
-            value_type: quire_exact::ValueType::map(
-                quire_exact::MapType::new(key.clone(), map.values().clone(), None)
+        let row = filament_contract_model::SelectedSourceCollectionRow {
+            value_type: filament_exact::ValueType::map(
+                filament_exact::MapType::new(key.clone(), map.values().clone(), None)
                     .expect("a scalar key is a leaf"),
             ),
             ..source_map_row(&package, &id, map.values().clone())
         };
-        let mut budget = quire_contract_model::NativeJoinBudget::new(1_000_000, 1_000_000);
+        let mut budget = filament_contract_model::NativeJoinBudget::new(1_000_000, 1_000_000);
         let joined = SelectedExactIdentities::empty()
             .with_source_collection_rows(&package, [row.clone()], &mut budget)
             .unwrap_or_else(|why| panic!("{form}: matching row joins: {why:?}"));
@@ -405,14 +405,14 @@ fn source_map_row_joins_a_scalar_key_only_with_its_own_exact_key() {
             .expect("joined map projects");
         assert_eq!(projected.value_type(), &row.value_type, "{form}");
         // A row whose Exact key is another scalar type does not join.
-        let other = if key == quire_exact::ValueType::Integer {
-            quire_exact::ValueType::Boolean
+        let other = if key == filament_exact::ValueType::Integer {
+            filament_exact::ValueType::Boolean
         } else {
-            quire_exact::ValueType::Integer
+            filament_exact::ValueType::Integer
         };
-        let wrong = quire_contract_model::SelectedSourceCollectionRow {
-            value_type: quire_exact::ValueType::map(
-                quire_exact::MapType::new(other, map.values().clone(), None).expect("a leaf"),
+        let wrong = filament_contract_model::SelectedSourceCollectionRow {
+            value_type: filament_exact::ValueType::map(
+                filament_exact::MapType::new(other, map.values().clone(), None).expect("a leaf"),
             ),
             ..row
         };
@@ -420,7 +420,7 @@ fn source_map_row_joins_a_scalar_key_only_with_its_own_exact_key() {
             .with_source_collection_rows(
                 &package,
                 [wrong],
-                &mut quire_contract_model::NativeJoinBudget::new(1_000_000, 1_000_000),
+                &mut filament_contract_model::NativeJoinBudget::new(1_000_000, 1_000_000),
             )
             .expect_err("a row with another key does not join");
         assert_eq!(
@@ -446,7 +446,7 @@ fn sort_map_fixture_dependencies(wire: &mut Value) {
 
 fn source_map_fixture() -> (
     CheckedPackageV2,
-    quire_contract_model::SelectedSourceCollectionRow,
+    filament_contract_model::SelectedSourceCollectionRow,
 ) {
     let (wire, position) = map_package();
     let CheckedPackageV2ReadResult::Admitted(package) = read(&wire) else {
@@ -455,15 +455,15 @@ fn source_map_fixture() -> (
     let id: CheckedNodeId =
         serde_json::from_value(wire["semantic_graph"]["nodes"][position]["node_id"].clone())
             .expect("map id");
-    let row = source_map_row(&package, &id, quire_exact::ValueType::Integer);
+    let row = source_map_row(&package, &id, filament_exact::ValueType::Integer);
     (*package, row)
 }
 
 fn source_map_row(
     package: &CheckedPackageV2,
     id: &CheckedNodeId,
-    value: quire_exact::ValueType,
-) -> quire_contract_model::SelectedSourceCollectionRow {
+    value: filament_exact::ValueType,
+) -> filament_contract_model::SelectedSourceCollectionRow {
     let CheckedTerm::Aggregate { members } = package.term(id).expect("map term") else {
         panic!("map operands");
     };
@@ -476,13 +476,13 @@ fn source_map_row(
         };
         target.clone()
     };
-    quire_contract_model::SelectedSourceCollectionRow {
+    filament_contract_model::SelectedSourceCollectionRow {
         structural_node: id.clone(),
         base_node: id.clone(),
         key_node: Some(target(0)),
         element_node: target(1),
-        value_type: quire_exact::ValueType::map(
-            quire_exact::MapType::new(quire_exact::ValueType::String, value, None)
+        value_type: filament_exact::ValueType::map(
+            filament_exact::MapType::new(filament_exact::ValueType::String, value, None)
                 .expect("a string map key is a leaf"),
         ),
     }
@@ -493,7 +493,7 @@ fn source_map_row(
 #[test]
 fn source_map_row_joins_and_projects_its_complete_value() {
     let (package, row) = source_map_fixture();
-    let mut budget = quire_contract_model::NativeJoinBudget::new(1_000_000, 1_000_000);
+    let mut budget = filament_contract_model::NativeJoinBudget::new(1_000_000, 1_000_000);
     let joined = SelectedExactIdentities::empty()
         .with_source_collection_rows(&package, [row.clone()], &mut budget)
         .expect("authentic map row joins");
@@ -508,27 +508,27 @@ fn source_map_row_joins_and_projects_its_complete_value() {
 #[trace("TC-473", "FR-357-AC-19")]
 #[test]
 fn source_map_rows_preserve_key_and_non_collection_refusals() {
-    use quire_contract_model::NativeJoinBudget;
+    use filament_contract_model::NativeJoinBudget;
     let (package, original) = source_map_fixture();
     for row in [
-        quire_contract_model::SelectedSourceCollectionRow {
+        filament_contract_model::SelectedSourceCollectionRow {
             key_node: None,
             ..original.clone()
         },
-        quire_contract_model::SelectedSourceCollectionRow {
+        filament_contract_model::SelectedSourceCollectionRow {
             key_node: Some(original.element_node.clone()),
             ..original.clone()
         },
-        quire_contract_model::SelectedSourceCollectionRow {
-            value_type: quire_exact::ValueType::Boolean,
+        filament_contract_model::SelectedSourceCollectionRow {
+            value_type: filament_exact::ValueType::Boolean,
             ..original.clone()
         },
-        quire_contract_model::SelectedSourceCollectionRow {
-            value_type: quire_exact::ValueType::map(
-                quire_exact::MapType::new(
-                    quire_exact::ValueType::String,
-                    quire_exact::ValueType::Integer,
-                    Some(quire_exact::CardinalityBound::new(0, 3).expect("bound")),
+        filament_contract_model::SelectedSourceCollectionRow {
+            value_type: filament_exact::ValueType::map(
+                filament_exact::MapType::new(
+                    filament_exact::ValueType::String,
+                    filament_exact::ValueType::Integer,
+                    Some(filament_exact::CardinalityBound::new(0, 3).expect("bound")),
                 )
                 .expect("a string map key is a leaf"),
             ),
@@ -553,7 +553,7 @@ fn source_map_rows_preserve_key_and_non_collection_refusals() {
 #[trace("TC-473", "FR-357-AC-20")]
 #[test]
 fn source_map_rows_compose_at_exact_budget_and_preserve_first_denial() {
-    use quire_contract_model::{NativeJoinBudget, NativeJoinChargeKind};
+    use filament_contract_model::{NativeJoinBudget, NativeJoinChargeKind};
     let (package, row) = source_map_fixture();
     let initial = SelectedExactIdentities::empty();
     let run = |budget: &mut NativeJoinBudget| {
@@ -569,8 +569,8 @@ fn source_map_rows_compose_at_exact_budget_and_preserve_first_denial() {
         expected
     );
     assert_eq!(exact.consumed(), used);
-    let caller_locus = quire_contract_model::NativeJoinLocus {
-        source: quire_contract_model::NativeJoinLocusSource::MonitorSeed(7),
+    let caller_locus = filament_contract_model::NativeJoinLocus {
+        source: filament_contract_model::NativeJoinLocusSource::MonitorSeed(7),
         form: "caller_map_preparation",
     };
     let mut prefixed = NativeJoinBudget::new(used.work + 3, used.storage + 2);
@@ -594,7 +594,7 @@ fn source_map_rows_compose_at_exact_budget_and_preserve_first_denial() {
         .unwrap_err();
     assert_eq!(
         denied,
-        quire_contract_model::NativeJoinDeniedCharge {
+        filament_contract_model::NativeJoinDeniedCharge {
             kind: NativeJoinChargeKind::Storage,
             amount: 2,
         }
@@ -644,7 +644,7 @@ fn source_map_rows_compose_at_exact_budget_and_preserve_first_denial() {
 #[trace("TC-473", "FR-357-AC-20")]
 #[test]
 fn source_map_zero_storage_refuses_without_allocating_rows_or_diagnostics() {
-    use quire_contract_model::{NativeJoinBudget, NativeJoinChargeKind};
+    use filament_contract_model::{NativeJoinBudget, NativeJoinChargeKind};
     let (package, row) = source_map_fixture();
     let initial = SelectedExactIdentities::empty();
     let mut budget = NativeJoinBudget::new(1_000_000, 0);
@@ -676,8 +676,8 @@ fn source_map_zero_storage_refuses_without_allocating_rows_or_diagnostics() {
 #[trace("TC-473", "FR-357-AC-20")]
 #[test]
 fn nested_and_bounded_source_maps_preserve_all_value_rows_and_bounds() {
-    use quire_contract_model::{NativeJoinBudget, SelectedSourceCollectionRow};
-    use quire_exact::{CardinalityBound, MapType, ValueType};
+    use filament_contract_model::{NativeJoinBudget, SelectedSourceCollectionRow};
+    use filament_exact::{CardinalityBound, MapType, ValueType};
     let (mut wire, inner_position) = map_package();
     let inner = wire["semantic_graph"]["nodes"][inner_position]["node_id"].clone();
     let text = wire["semantic_graph"]["nodes"][inner_position - 2]["node_id"].clone();
@@ -688,7 +688,7 @@ fn nested_and_bounded_source_maps_preserve_all_value_rows_and_bounds() {
         .as_array_mut()
         .unwrap()
         .push(json!({
-        "schema_version":"quire.checked-semantic-graph/v2", "node_id":outer,
+        "schema_version":"filament.checked-semantic-graph/v2", "node_id":outer,
         "node_tag":"composite_type", "semantic_form":"map", "semantic_type":outer,
         "dependencies":[text,inner], "occurrences":[{"role":"type","ordinal":0}],
         "body":{"term":"aggregate", "members":[
@@ -700,7 +700,7 @@ fn nested_and_bounded_source_maps_preserve_all_value_rows_and_bounds() {
         "min",integer,"1","max",integer,"3",outer], "ordinal":0});
     let bounded_position = wire["semantic_graph"]["nodes"].as_array().unwrap().len();
     wire["semantic_graph"]["nodes"].as_array_mut().unwrap().push(json!({
-        "schema_version":"quire.checked-semantic-graph/v2", "node_id":bounded,
+        "schema_version":"filament.checked-semantic-graph/v2", "node_id":bounded,
         "node_tag":"bounded_domain", "semantic_form":"collection_bounds", "semantic_type":outer,
         "dependencies":[outer], "occurrences":[{"role":"type","ordinal":0}], "body":bounds_body("1","3")
     }));
@@ -743,8 +743,8 @@ fn nested_and_bounded_source_maps_preserve_all_value_rows_and_bounds() {
         ("source_map_key", outer.key_node.as_ref().unwrap()),
         ("source_map_value", &outer.element_node),
     ] {
-        let expected_locus = quire_contract_model::NativeJoinLocus {
-            source: quire_contract_model::NativeJoinLocusSource::ReachedRow(1),
+        let expected_locus = filament_contract_model::NativeJoinLocus {
+            source: filament_contract_model::NativeJoinLocusSource::ReachedRow(1),
             form,
         };
         let mut observed = false;
@@ -760,8 +760,8 @@ fn nested_and_bounded_source_maps_preserve_all_value_rows_and_bounds() {
             if short.first_unpaid_locus() != Some(expected_locus) {
                 continue;
             }
-            let expected_charge = quire_contract_model::NativeJoinDeniedCharge {
-                kind: quire_contract_model::NativeJoinChargeKind::Work,
+            let expected_charge = filament_contract_model::NativeJoinDeniedCharge {
+                kind: filament_contract_model::NativeJoinChargeKind::Work,
                 amount: 1,
             };
             assert_eq!(error.denied, Some(expected_charge));
@@ -776,7 +776,7 @@ fn nested_and_bounded_source_maps_preserve_all_value_rows_and_bounds() {
             let spent = short.consumed();
             let later = short
                 .accounted_charge(
-                    quire_contract_model::NativeJoinChargeKind::Storage,
+                    filament_contract_model::NativeJoinChargeKind::Storage,
                     99,
                     expected_locus,
                 )
@@ -800,8 +800,8 @@ fn nested_and_bounded_source_maps_preserve_all_value_rows_and_bounds() {
         ("source_map_key", inner.key_node.as_ref().unwrap()),
         ("source_map_value", &inner.element_node),
     ] {
-        let expected_locus = quire_contract_model::NativeJoinLocus {
-            source: quire_contract_model::NativeJoinLocusSource::GraphNode(inner_position),
+        let expected_locus = filament_contract_model::NativeJoinLocus {
+            source: filament_contract_model::NativeJoinLocusSource::GraphNode(inner_position),
             form,
         };
         let mut observed = false;
@@ -815,8 +815,8 @@ fn nested_and_bounded_source_maps_preserve_all_value_rows_and_bounds() {
             }
             assert_eq!(
                 error.denied,
-                Some(quire_contract_model::NativeJoinDeniedCharge {
-                    kind: quire_contract_model::NativeJoinChargeKind::Work,
+                Some(filament_contract_model::NativeJoinDeniedCharge {
+                    kind: filament_contract_model::NativeJoinChargeKind::Work,
                     amount: 1,
                 })
             );
@@ -870,7 +870,7 @@ fn nested_and_bounded_source_maps_preserve_all_value_rows_and_bounds() {
 #[trace("TC-473", "FR-357-AC-20")]
 #[test]
 fn source_map_copy_allocation_follows_its_storage_charge_after_a_paid_prefix() {
-    use quire_contract_model::{NativeJoinBudget, NativeJoinChargeKind, NativeJoinLocusSource};
+    use filament_contract_model::{NativeJoinBudget, NativeJoinChargeKind, NativeJoinLocusSource};
     let (package, row) = source_map_fixture();
     let initial = SelectedExactIdentities::empty();
     let acquire = |budget: &mut NativeJoinBudget| {
@@ -893,7 +893,7 @@ fn source_map_copy_allocation_follows_its_storage_charge_after_a_paid_prefix() {
     assert_eq!(denied.kind, NativeJoinChargeKind::Storage);
     assert_eq!(refusal.denied, Some(denied));
     assert_eq!(refusal.configured_bound, Some(copy_boundary));
-    let expected_locus = quire_contract_model::NativeJoinLocus {
+    let expected_locus = filament_contract_model::NativeJoinLocus {
         source: NativeJoinLocusSource::ReachedRow(0),
         form: "source_collection_row",
     };
@@ -953,8 +953,8 @@ fn source_map_copy_allocation_follows_its_storage_charge_after_a_paid_prefix() {
 #[test]
 fn cold_integer_map_rows_inspect_and_compare_before_only_admitted_allocations() {
     use crate::support::checked_package::{integer_range_key, reassign_node_id};
-    use quire_contract_model::{NativeJoinBudget, NativeJoinChargeKind, NativeJoinLocusSource};
-    use quire_exact::{Integer, IntegerInterval, MapType, ValueType};
+    use filament_contract_model::{NativeJoinBudget, NativeJoinChargeKind, NativeJoinLocusSource};
+    use filament_exact::{Integer, IntegerInterval, MapType, ValueType};
     let lower = "170141183460469231731687303715884105728";
     let upper = "680564733841876926926749214863536422913";
     let (mut wire, map_position) = map_package();
@@ -964,7 +964,7 @@ fn cold_integer_map_rows_inspect_and_compare_before_only_admitted_allocations() 
         .as_array_mut()
         .unwrap()
         .push(json!({
-            "schema_version":"quire.checked-semantic-graph/v2", "node_id":range,
+            "schema_version":"filament.checked-semantic-graph/v2", "node_id":range,
             "node_tag":"bounded_domain", "semantic_form":"integer_range", "semantic_type":integer,
             "dependencies":[integer], "occurrences":[{"role":"type","ordinal":0}],
             "body":bounds_body(lower,upper)
@@ -1121,7 +1121,7 @@ fn cold_integer_map_rows_inspect_and_compare_before_only_admitted_allocations() 
     assert_eq!(error.configured_bound, Some(handle_boundary));
     assert_eq!(
         short.first_unpaid_locus(),
-        Some(quire_contract_model::NativeJoinLocus {
+        Some(filament_contract_model::NativeJoinLocus {
             source: NativeJoinLocusSource::GraphNode(map_position),
             form: "source_collection_comparison_handle",
         })
@@ -1160,7 +1160,7 @@ fn append_refusal_map(wire: &mut Value, text: &Value, value: &Value) -> (usize, 
         .as_array_mut()
         .unwrap()
         .push(json!({
-            "schema_version":"quire.checked-semantic-graph/v2", "node_id":id,
+            "schema_version":"filament.checked-semantic-graph/v2", "node_id":id,
             "node_tag":"composite_type", "semantic_form":"map", "semantic_type":id,
             "dependencies":[text,value], "occurrences":[{"role":"type","ordinal":0}],
             "body":{"term":"aggregate","members":[
@@ -1186,7 +1186,7 @@ pub fn map_chain_wire(depth: usize) -> (Value, Vec<usize>, usize) {
     let unit = node_id(
         &members
             .iter()
-            .find(|(body, _)| body["version"] == "quire.unit-node/v1")
+            .find(|(body, _)| body["version"] == "filament.unit-node/v1")
             .expect("existing declared unit")
             .1,
     );
@@ -1197,7 +1197,7 @@ pub fn map_chain_wire(depth: usize) -> (Value, Vec<usize>, usize) {
             .as_array_mut()
             .unwrap()
             .push(json!({
-                "schema_version":"quire.checked-semantic-graph/v2", "node_id":id,
+                "schema_version":"filament.checked-semantic-graph/v2", "node_id":id,
                 "node_tag":"scalar_type", "semantic_form":form, "semantic_type":id,
                 "dependencies":[], "occurrences":[{"role":"type","ordinal":0}],
                 "body":{"term":"aggregate","members":[]}
@@ -1214,7 +1214,7 @@ pub fn map_chain_wire(depth: usize) -> (Value, Vec<usize>, usize) {
         unit,"min",rational,minimum,"max",rational,maximum], "ordinal":0});
     let bounded_position = wire["semantic_graph"]["nodes"].as_array().unwrap().len();
     wire["semantic_graph"]["nodes"].as_array_mut().unwrap().push(json!({
-        "schema_version":"quire.checked-semantic-graph/v2", "node_id":bounded,
+        "schema_version":"filament.checked-semantic-graph/v2", "node_id":bounded,
         "node_tag":"scalar_type", "semantic_form":"bounded_quantity", "semantic_type":bounded,
         "dependencies":[unit,rational], "occurrences":[{"role":"type","ordinal":0}],
         "body":{"term":"aggregate","members":[
@@ -1267,8 +1267,8 @@ fn nested_bounded_quantity_maps() -> (
 #[trace("TC-473", "FR-357-AC-20")]
 #[test]
 fn unsupported_nested_bounded_quantities_refuse_without_comparing_cold_payloads() {
-    use quire_contract_model::{NativeJoinBudget, NativeJoinLocusSource};
-    use quire_exact::{
+    use filament_contract_model::{NativeJoinBudget, NativeJoinLocusSource};
+    use filament_exact::{
         BoundedQuantityType, Integer, MapType, NodeKey, PathSegment, Quantity, Rational, UnitId,
         ValueType,
     };
@@ -1280,7 +1280,7 @@ fn unsupported_nested_bounded_quantities_refuse_without_comparing_cold_payloads(
             .iter()
             .position(|node| node.node_id == bounded)
             .unwrap()],
-        CheckedNodeKind::ScalarType(quire_contract_model::ScalarTypeForm::BoundedQuantity)
+        CheckedNodeKind::ScalarType(filament_contract_model::ScalarTypeForm::BoundedQuantity)
     );
     let unit = UnitId::declared(
         NodeKey::new(
@@ -1454,8 +1454,8 @@ fn unsupported_nested_bounded_quantities_refuse_without_comparing_cold_payloads(
 fn unsupported_nested_compound_quantities_refuse_without_comparing_cold_exponents() {
     use crate::checked_package_v2_parameters;
     use crate::support::checked_package::reassign_node_id;
-    use quire_contract_model::{NativeJoinBudget, NativeJoinLocusSource};
-    use quire_exact::{Integer, MapType, NodeKey, PathSegment, UnitId, ValueType};
+    use filament_contract_model::{NativeJoinBudget, NativeJoinLocusSource};
+    use filament_exact::{Integer, MapType, NodeKey, PathSegment, UnitId, ValueType};
     let mut wire = checked_package_v2_parameters::parameters_package();
     let exponent = "170141183460469231731687303715884105728";
     let graph = wire["semantic_graph"]["nodes"].as_array().unwrap();
@@ -1649,7 +1649,7 @@ fn bounded_quantity_bound_arithmetic_is_charged_to_the_read_budget() {
     use crate::checked_package_v2_graph_read_storage::{
         assert_exact_and_one_short, stage_requests,
     };
-    use quire_contract_model::{NativeJoinBudget, PackageReadStage};
+    use filament_contract_model::{NativeJoinBudget, PackageReadStage};
     let (wire, _, _, bounded) = nested_bounded_quantity_wire();
     let bytes = canonical(&wire);
     let evidence = evidence_for(&wire);

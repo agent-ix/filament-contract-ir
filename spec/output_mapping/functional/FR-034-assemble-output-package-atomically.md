@@ -3,19 +3,19 @@ id: FR-034
 title: "Assemble one output package atomically"
 type: FR
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/StR-001
+  - target: ix://agent-ix/filament-contract-ir/StR-001
     type: traces_to
-  - target: ix://agent-ix/quire-contract-ir/FR-032
+  - target: ix://agent-ix/filament-contract-ir/FR-032
     type: depends_on
-  - target: ix://agent-ix/quire-contract-ir/FR-033
+  - target: ix://agent-ix/filament-contract-ir/FR-033
     type: depends_on
-  - target: ix://agent-ix/quire-specification/FR-125
+  - target: ix://agent-ix/filament-specification/FR-125
     type: implements
-  - target: ix://agent-ix/quire-specification/FR-299
+  - target: ix://agent-ix/filament-specification/FR-299
     type: implements
-  - target: ix://agent-ix/quire-specification/NFR-060
+  - target: ix://agent-ix/filament-specification/NFR-060
     type: constrained_by
-  - target: ix://agent-ix/quire-specification/NFR-061
+  - target: ix://agent-ix/filament-specification/NFR-061
     type: constrained_by
 ---
 # FR-034: Assemble one output package atomically
@@ -68,7 +68,7 @@ and one-record-per-obligation completeness have been verified.
   candidate material, and of the package, so no bounded encoding step runs without a
   ceiling (FR-033 states the record rule).
 - The canonical material shall spell every `u64` as a decimal string of its
-  minimal base-ten digits (QSpec `IntegerString`, as FR-016 does for the model's
+  minimal base-ten digits (FSpec `IntegerString`, as FR-016 does for the model's
   integers): the members of `MappingLimits` and the `start` and `end` of an
   `OutputByteRegion`. A `MappingLimits` member is never zero (FR-032-AC-2
   refuses it), so only a nonzero limit reaches the material; a region `start`
@@ -109,8 +109,8 @@ and one-record-per-obligation completeness have been verified.
   source identity, and limits.
 - [FR-033](FR-033-account-for-output-obligations.md) fixes record completeness and
   disposition invariants.
-- `ix://agent-ix/quire-specification/FR-125`, `FR-299`, `NFR-060`, and `NFR-061`
+- `ix://agent-ix/filament-specification/FR-125`, `FR-299`, `NFR-060`, and `NFR-061`
   own deterministic package assembly, aggregate bounds, dependency containment,
   and observer separation. Their current record/package content-identity clauses
-  require a QSpec revision before this digest-free package contract can be
+  require a FSpec revision before this digest-free package contract can be
   implemented.

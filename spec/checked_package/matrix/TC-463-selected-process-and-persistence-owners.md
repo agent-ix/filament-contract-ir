@@ -3,11 +3,11 @@ id: TC-463
 title: "Selected process and persistence-interface owner joins"
 type: TC
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/FR-068
+  - target: ix://agent-ix/filament-contract-ir/FR-068
     type: verifies
-  - target: ix://agent-ix/quire-contract-ir/FR-064
+  - target: ix://agent-ix/filament-contract-ir/FR-064
     type: verifies
-  - target: ix://agent-ix/quire-specification/TC-280
+  - target: ix://agent-ix/filament-specification/TC-280
     type: references
 ---
 
@@ -17,8 +17,8 @@ relationships:
 
 Verify [FR-068](../functional/FR-068-join-selected-process-and-persistence-declarations.md)
 through Contract IR's public checked-package V2 reader and typed writer,
-using real selected Semantic IR documents. Exercise QSpec FR-322-AC-63,
-FR-322-AC-65 and FR-322-AC-72 without copying QSpec schemas or fixtures.
+using real selected Semantic IR documents. Exercise FSpec FR-322-AC-63,
+FR-322-AC-65 and FR-322-AC-72 without copying FSpec schemas or fixtures.
 Then verify the selected wrong-kind clause-edge controls required by
 [FR-064-AC-4](../functional/FR-064-bind-protocol-clause-to-owner-model.md).
 
@@ -33,7 +33,7 @@ identity and meaning. Admit them through the public reader, encode the
 admitted package, read it again, and compare the structural node ids and complete package value.
 Assert the `object` family of the process and state-machine nodes and the
 `record` family of the record node. Tag the
-public tests with their exact FR-068 criteria and QSpec FR-322-AC-63,
+public tests with their exact FR-068 criteria and FSpec FR-322-AC-63,
 FR-322-AC-65 or FR-322-AC-72 criterion as applicable.
 Resolve `Flow.n`, `Flow.go`, `Reference<Flow>`, `Reference<Gate>`,
 `Account.address`, `Address.street` and an invariant clause owned by
@@ -46,7 +46,7 @@ by an object type, a state machine owned by a process, a record owned by an
 object type, and a persistence interface owned by a state machine. Test each
 form with an unselected package and a missing selected declaration. Remove a
 required owner while retaining the remaining wire members. Compare the exact refusal code,
-cause, stage and pointer with QSpec's owner-join and wire rules. Test an
+cause, stage and pointer with FSpec's owner-join and wire rules. Test an
 unknown record field; a record field typed at an event type, process, state
 machine, persistence interface or namespace; and a record used as an object
 reference target.

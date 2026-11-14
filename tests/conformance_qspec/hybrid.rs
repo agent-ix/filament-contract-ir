@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Agent-IX
 
-//! QSpec TC-966 hybrid nodes read from the owning checkout, without a fixture copy.
+//! FSpec TC-966 hybrid nodes read from the owning checkout, without a fixture copy.
 
 use super::*;
 
 fn assert_locus(
-    refusal: &quire_contract_model::CheckedPackageRefusal,
+    refusal: &filament_contract_model::CheckedPackageRefusal,
     position: usize,
     suffix: &str,
 ) {
@@ -19,14 +19,14 @@ fn assert_locus(
 
 fn published_hybrid_package() -> Value {
     let package = read_json(&fixtures_dir().join("positive-all-families.json"))
-        .expect("QSpec published package");
+        .expect("FSpec published package");
     let hybrid = package["semantic_graph"]["nodes"]
         .as_array()
         .expect("published nodes")
         .iter()
         .filter(|node| node["node_tag"] == "hybrid")
         .count();
-    assert_eq!(hybrid, 3, "QSpec #415 Tank model, mode and transition");
+    assert_eq!(hybrid, 3, "FSpec #415 Tank model, mode and transition");
     package
 }
 
@@ -36,7 +36,7 @@ fn qspec_hybrid_family_in_published_package_admits() {
     let package = published_hybrid_package();
     let read = read_package(&package).expect("published evidence");
     let CheckedPackageV2ReadResult::Admitted(admitted) = read else {
-        panic!("QSpec hybrid package must admit: {read:?}");
+        panic!("FSpec hybrid package must admit: {read:?}");
     };
     assert_eq!(
         admitted
@@ -144,17 +144,17 @@ fn model_position(package: &Value) -> usize {
 fn braking_package() -> Value {
     let mut package = published_hybrid_package();
     let vectors = read_json(&proposal_dir_of(&fixtures_dir()).join("hybrid-node-vectors.json"))
-        .expect("QSpec TC-966 vectors");
+        .expect("FSpec TC-966 vectors");
     append_indexed_published_nodes(
         &mut package,
-        vectors["nodes"].as_array().expect("QSpec nodes"),
+        vectors["nodes"].as_array().expect("FSpec nodes"),
     );
     package["lock"]["profile_selections"]
         .as_array_mut()
         .expect("profile selections")
         .push(json!({
             "role": "temporal_profile",
-            "definition": {"authority": "agent-ix", "identity": "quire.temporal.infinite-trace/v1"},
+            "definition": {"authority": "agent-ix", "identity": "filament.temporal.infinite-trace/v1"},
         }));
     fixture_support::refresh_identity(&mut package);
     package
@@ -242,7 +242,7 @@ fn append_published_nodes(package: &mut Value, nodes: &[Value]) {
 fn restored_package() -> Value {
     let mut package = braking_package();
     let vectors = read_json(&proposal_dir_of(&fixtures_dir()).join("hybrid-node-vectors.json"))
-        .expect("QSpec TC-966 vectors");
+        .expect("FSpec TC-966 vectors");
     // Restored-node indexes address the published base and restored arrays
     // concatenated, rather than a fresh table starting at the restored array.
     let mut component = vectors["nodes"].as_array().expect("base nodes").clone();
@@ -259,7 +259,7 @@ fn restored_package() -> Value {
         .expect("profile selections")
         .push(json!({
             "role": "temporal_profile",
-            "definition": {"authority": "agent-ix", "identity": "quire.temporal.timed/v1"},
+            "definition": {"authority": "agent-ix", "identity": "filament.temporal.timed/v1"},
         }));
     fixture_support::refresh_identity(&mut package);
     package
@@ -327,7 +327,7 @@ fn qspec_hybrid_body_edit_preserves_structural_identity_and_checks_body() {
     assert_eq!(package["semantic_graph"]["nodes"][model]["node_id"], id);
     assert_ne!(package, original, "body edit changes the complete package");
     let CheckedPackageV2ReadResult::Refused(refusal) =
-        read_package(&package).expect("QSpec package")
+        read_package(&package).expect("FSpec package")
     else {
         panic!("invalid hybrid class admitted");
     };
@@ -365,7 +365,7 @@ fn qspec_hybrid_dependency_shape_precedes_body_checks() {
         .expect("dependencies")
         .pop();
     let CheckedPackageV2ReadResult::Refused(refusal) =
-        read_package(&package).expect("QSpec package")
+        read_package(&package).expect("FSpec package")
     else {
         panic!("independent graph and body defects admitted");
     };
@@ -416,7 +416,7 @@ fn qspec_hybrid_capture_initializer_must_match_capture_type() {
     sort_dependencies(&mut package);
     fixture_support::settle(&mut package);
     fixture_support::refresh_identity(&mut package);
-    let read = read_package(&package).expect("QSpec package");
+    let read = read_package(&package).expect("FSpec package");
     let CheckedPackageV2ReadResult::Refused(refusal) = read else {
         panic!("wrong capture type admitted")
     };
@@ -456,7 +456,7 @@ fn qspec_hybrid_capture_ignores_unrelated_same_name_and_level() {
     append_published_nodes(&mut package, &[unrelated]);
     fixture_support::settle(&mut package);
     fixture_support::refresh_identity(&mut package);
-    let read = read_package(&package).expect("QSpec package");
+    let read = read_package(&package).expect("FSpec package");
     assert!(
         matches!(read, CheckedPackageV2ReadResult::Admitted(_)),
         "{read:?}"
@@ -469,9 +469,9 @@ fn timed_claim_position(package: &Value) -> usize {
         .expect("nodes")
         .iter()
         .position(|node| {
-            node["body"]["operation"]["identity"] == "quire.op.temporal.clause"
+            node["body"]["operation"]["identity"] == "filament.op.temporal.clause"
                 && node["body"]["operation"]["laws"][0]["definition"]["identity"]
-                    == "quire.temporal.timed/v1"
+                    == "filament.temporal.timed/v1"
         })
         .expect("Slows claim")
 }
@@ -510,7 +510,7 @@ fn qspec_hybrid_restored_model_and_claims_admit_from_published_nodes() {
     else {
         panic!("admitted typed fairness target")
     };
-    let quire_contract_model::CheckedFairnessTarget::HybridTransition { declaration, name } =
+    let filament_contract_model::CheckedFairnessTarget::HybridTransition { declaration, name } =
         target
     else {
         panic!("hybrid target")
@@ -558,7 +558,8 @@ fn qspec_admitted_hybrid_fairness_maps_whole_nested_member_id() {
         panic!("hybrid fairness application");
     };
     let Some(CheckedOperationMember::Fairness {
-        target: quire_contract_model::CheckedFairnessTarget::HybridTransition { declaration, name },
+        target:
+            filament_contract_model::CheckedFairnessTarget::HybridTransition { declaration, name },
         ..
     }) = operation.read().expect("admitted operation view").member
     else {
@@ -569,8 +570,8 @@ fn qspec_admitted_hybrid_fairness_maps_whole_nested_member_id() {
     let nested = CheckedNodeId {
         package: original.package.clone(),
         path: vec![
-            quire_contract_model::CheckedNodePathSegment::Name("mapped-hybrid".into()),
-            quire_contract_model::CheckedNodePathSegment::Node(std::sync::Arc::new(
+            filament_contract_model::CheckedNodePathSegment::Name("mapped-hybrid".into()),
+            filament_contract_model::CheckedNodePathSegment::Node(std::sync::Arc::new(
                 original.clone(),
             )),
         ],
@@ -578,7 +579,7 @@ fn qspec_admitted_hybrid_fairness_maps_whole_nested_member_id() {
     };
     let final_id = CheckedNodeId {
         package: original.package.clone(),
-        path: vec![quire_contract_model::CheckedNodePathSegment::Name(
+        path: vec![filament_contract_model::CheckedNodePathSegment::Name(
             "final-hybrid".into(),
         )],
         ordinal: 0,
@@ -599,7 +600,8 @@ fn qspec_admitted_hybrid_fairness_maps_whole_nested_member_id() {
         unreachable!()
     };
     let Some(CheckedOperationMember::Fairness {
-        target: quire_contract_model::CheckedFairnessTarget::HybridTransition { declaration, name },
+        target:
+            filament_contract_model::CheckedFairnessTarget::HybridTransition { declaration, name },
         ..
     }) = operation.read().unwrap().member
     else {
@@ -629,7 +631,7 @@ fn qspec_admitted_hybrid_fairness_maps_whole_nested_member_id() {
         unreachable!()
     };
     let Some(CheckedOperationMember::Fairness {
-        target: quire_contract_model::CheckedFairnessTarget::HybridTransition { declaration, .. },
+        target: filament_contract_model::CheckedFairnessTarget::HybridTransition { declaration, .. },
         ..
     }) = operation.read().unwrap().member
     else {
@@ -682,13 +684,13 @@ fn qspec_hybrid_package_keeps_nonhybrid_timed_null_wire_refusal() {
         .position(|node| {
             node["node_tag"] == "temporal"
                 && node["semantic_form"] == "formula"
-                && node["body"]["operation"]["identity"] == "quire.op.temporal.eventually"
+                && node["body"]["operation"]["identity"] == "filament.op.temporal.eventually"
                 && node["body"]["operation"]["member"]["interval"]["upper"] == "3"
         })
         .expect("published nonhybrid formula");
     package["semantic_graph"]["nodes"][formula]["body"]["operation"]["member"]["interval"] = json!({"lower":{"numerator":"0","denominator":"1"}, "upper":null,
                "lower_end":"closed", "upper_end":"open"});
-    let read = read_package(&package).expect("QSpec package");
+    let read = read_package(&package).expect("FSpec package");
     let CheckedPackageV2ReadResult::Refused(refusal) = read else {
         panic!("nonhybrid timed null admitted: {read:?}")
     };
@@ -712,7 +714,7 @@ fn qspec_hybrid_claim_refuses_clock_outside_model_vocabulary() {
             node["node_tag"] == "temporal"
                 && node["semantic_form"] == "temporal_clause"
                 && node["body"]["operation"]["laws"][0]["definition"]["identity"]
-                    == "quire.temporal.infinite-trace/v1"
+                    == "filament.temporal.infinite-trace/v1"
         })
         .expect("SlowEnough claim");
     package["semantic_graph"]["nodes"][position]["body"]["arguments"][1]["value"] =
@@ -801,9 +803,9 @@ fn qspec_hybrid_claim_refuses_holds_read_of_over_parameter() {
     let clause = nodes
         .iter()
         .position(|node| {
-            node["body"]["operation"]["identity"] == "quire.op.temporal.clause"
+            node["body"]["operation"]["identity"] == "filament.op.temporal.clause"
                 && node["body"]["operation"]["laws"][0]["definition"]["identity"]
-                    == "quire.temporal.infinite-trace/v1"
+                    == "filament.temporal.infinite-trace/v1"
         })
         .expect("SlowEnough");
     let always_id = nodes[clause]["body"]["arguments"][5]["target"].clone();
@@ -1302,7 +1304,7 @@ fn qspec_hybrid_call_refuses_ineligible_function_signature() {
         package["semantic_graph"]["nodes"][mode]["body"]["members"][0]["value"]["target"] =
             package["semantic_graph"]["nodes"][call_position]["node_id"].clone();
         refresh_tank_hybrid_graph(&mut package);
-        let read = read_package(&package).expect("QSpec package");
+        let read = read_package(&package).expect("FSpec package");
         let CheckedPackageV2ReadResult::Refused(refusal) = read else {
             panic!("bad function {defect} admitted: {read:?}")
         };
@@ -1344,7 +1346,7 @@ fn qspec_protocol_reference_join_refuses_at_its_target() {
     );
     let carrier = json!({
         "node_id":key,
-        "schema_version":"quire.checked-semantic-graph/v2",
+        "schema_version":"filament.checked-semantic-graph/v2",
         "node_tag":"protocol", "semantic_form":"protocol_reference",
         "semantic_type":boolean, "dependencies":[body["target"].clone()],
         "occurrences":[{"role":"expression","ordinal":0}], "body":body,
@@ -1356,7 +1358,7 @@ fn qspec_protocol_reference_join_refuses_at_its_target() {
         .expect("nodes")
         .len()
         - 1;
-    let read = read_package(&package).expect("QSpec package");
+    let read = read_package(&package).expect("FSpec package");
     let CheckedPackageV2ReadResult::Refused(refusal) = read else {
         panic!("bad protocol carrier admitted: {read:?}")
     };
@@ -1380,7 +1382,7 @@ fn qspec_hybrid_step_precedes_later_protocol_body_defect() {
             node["node_tag"] == "temporal"
                 && node["semantic_form"] == "temporal_clause"
                 && node["body"]["operation"]["laws"][0]["definition"]["identity"]
-                    == "quire.temporal.infinite-trace/v1"
+                    == "filament.temporal.infinite-trace/v1"
         })
         .expect("published hybrid claim");
     let nodes = package["semantic_graph"]["nodes"]
@@ -1411,7 +1413,7 @@ fn qspec_hybrid_step_precedes_later_protocol_body_defect() {
         json!("temporal_profile");
     fixture_support::settle(&mut package);
     fixture_support::refresh_identity(&mut package);
-    let read = read_package(&package).expect("QSpec package");
+    let read = read_package(&package).expect("FSpec package");
     let CheckedPackageV2ReadResult::Refused(refusal) = read else {
         panic!("wrong protocol clause law admitted: {read:?}")
     };
@@ -1420,7 +1422,7 @@ fn qspec_hybrid_step_precedes_later_protocol_body_defect() {
         (Code::InvalidPackage, Some(Cause::OperationLawMismatch)),
         "{refusal:?}"
     );
-    // QSpec protocol V10 separates the containing node's primary locus
+    // FSpec protocol V10 separates the containing node's primary locus
     // from the rejected law row's document pointer.
     assert_locus(&refusal, protocol, "");
     assert_eq!(
@@ -1433,7 +1435,7 @@ fn qspec_hybrid_step_precedes_later_protocol_body_defect() {
     package["semantic_graph"]["nodes"][claim]["body"]["arguments"][1]["value"] = json!("wall-time");
     fixture_support::settle(&mut package);
     fixture_support::refresh_identity(&mut package);
-    let read = read_package(&package).expect("QSpec package");
+    let read = read_package(&package).expect("FSpec package");
     let CheckedPackageV2ReadResult::Refused(refusal) = read else {
         panic!("hybrid defect admitted: {read:?}")
     };
@@ -1473,7 +1475,7 @@ fn qspec_hybrid_wrong_interval_profile_precedes_fairness_defect() {
     sort_dependencies(&mut package);
     fixture_support::settle(&mut package);
     fixture_support::refresh_identity(&mut package);
-    let read = read_package(&package).expect("QSpec package");
+    let read = read_package(&package).expect("FSpec package");
     let CheckedPackageV2ReadResult::Refused(refusal) = read else {
         panic!("bad interval admitted: {read:?}")
     };

@@ -4,7 +4,7 @@
 //! Passive charge observations. Buffer allocation occurs outside measured reads.
 
 use super::{measure_at, Counter, Observation, ReadViewScope};
-use quire_contract_model::{
+use filament_contract_model::{
     with_native_budget_observer, CheckedPackageEvidence, CheckedPackageReadLimits,
     NativeBudgetEvent,
 };
@@ -105,7 +105,7 @@ pub(crate) fn checked_seeded(
     bytes: &[u8],
     evidence: &CheckedPackageEvidence,
     limits: CheckedPackageReadLimits,
-    seed: &quire_contract_model::NativeJoinBudget,
+    seed: &filament_contract_model::NativeJoinBudget,
 ) -> (Observation, Vec<NativeBudgetEvent>) {
     trace(
         || super::measure_seeded(bytes, evidence, limits, seed.read_proof_snapshot()),
@@ -117,7 +117,7 @@ pub(crate) fn checked_seeded_with_scope(
     bytes: &[u8],
     evidence: &CheckedPackageEvidence,
     limits: CheckedPackageReadLimits,
-    seed: &quire_contract_model::NativeJoinBudget,
+    seed: &filament_contract_model::NativeJoinBudget,
     views: ReadViewScope,
 ) -> (Observation, Vec<NativeBudgetEvent>) {
     match views {

@@ -3,9 +3,9 @@
 
 use std::{collections::BTreeSet, fs, path::PathBuf, process::Command};
 
-use ix_trace_rs::trace;
 #[cfg(feature = "conformance-cli")]
-use quire_contract_model::{run_corpus, FixtureStatus, RunnerErrorCode};
+use filament_contract_model::{run_corpus, FixtureStatus, RunnerErrorCode};
+use ix_trace_rs::trace;
 use serde_json::{json, Value};
 #[cfg(feature = "conformance-cli")]
 use std::path::Path;
@@ -49,10 +49,10 @@ fn equality_admission_api_and_resolved_dependency_direction() {
     use syn::{Fields, FnArg, Item, Meta, ReturnType, Type, Visibility};
 
     let graph = metadata(&[]);
-    let model = package(&graph, "quire-contract-model");
-    let root = package(&graph, "quire-contract-ir");
-    let qsv = package(&graph, "quire-semantic-value");
-    let exact = package(&graph, "quire-exact");
+    let model = package(&graph, "filament-contract-model");
+    let root = package(&graph, "filament-contract-ir");
+    let qsv = package(&graph, "filament-semantic-value");
+    let exact = package(&graph, "filament-exact");
     let resolved = |id: &Value| {
         graph["resolve"]["nodes"]
             .as_array()
@@ -79,13 +79,13 @@ fn equality_admission_api_and_resolved_dependency_direction() {
             .expect("dependencies")
             .iter()
             .all(
-                |dependency| !dependency["name"].as_str().unwrap_or("").starts_with("qsl")
-                    && dependency["name"] != "quire_spec_language"
+                |dependency| !dependency["name"].as_str().unwrap_or("").starts_with("fsl")
+                    && dependency["name"] != "filament_spec_language"
             ));
     }
 
     let raw_carrier = syn::parse_file(include_str!(
-        "../../crates/quire-contract-model/src/checked_package/v2/checked_term_data.rs"
+        "../../crates/filament-contract-model/src/checked_package/v2/checked_term_data.rs"
     ))
     .expect("IR raw sidecar syntax");
     let raw = raw_carrier
@@ -111,15 +111,15 @@ fn equality_admission_api_and_resolved_dependency_direction() {
             && matches!(&attribute.meta, Meta::List(meta) if meta.tokens.to_string().split(',')
             .any(|trait_name| trait_name.trim() == "Deserialize"))));
 
-    let qsv_root = PathBuf::from(qsv["manifest_path"].as_str().expect("QSV manifest"))
+    let qsv_root = PathBuf::from(qsv["manifest_path"].as_str().expect("FSV manifest"))
         .parent()
-        .expect("QSV directory")
+        .expect("FSV directory")
         .to_path_buf();
     let admitted = syn::parse_file(
         &fs::read_to_string(qsv_root.join("src/declaration/admitted.rs"))
-            .expect("QSV admitted API source"),
+            .expect("FSV admitted API source"),
     )
-    .expect("QSV admitted API syntax");
+    .expect("FSV admitted API syntax");
     let value = admitted
         .items
         .iter()
@@ -127,7 +127,7 @@ fn equality_admission_api_and_resolved_dependency_direction() {
             Item::Struct(value) if value.ident == "AdmittedEqualityDecision" => Some(value),
             _ => None,
         })
-        .expect("QSV admitted type");
+        .expect("FSV admitted type");
     assert!(matches!(value.vis, Visibility::Public(_)));
     let Fields::Named(fields) = &value.fields else {
         panic!("admitted value has named private fields")
@@ -160,9 +160,9 @@ fn equality_admission_api_and_resolved_dependency_direction() {
     }
     let reader = syn::parse_file(
         &fs::read_to_string(qsv_root.join("src/reader_admission.rs"))
-            .expect("QSV reader API source"),
+            .expect("FSV reader API source"),
     )
-    .expect("QSV reader API syntax");
+    .expect("FSV reader API syntax");
     let mint = reader
         .items
         .iter()
@@ -190,8 +190,10 @@ fn equality_admission_api_and_resolved_dependency_direction() {
             syn::UseTree::Glob(_) => panic!("public API export must be explicit"),
         }
     }
-    let ir_api = syn::parse_file(include_str!("../../crates/quire-contract-model/src/lib.rs"))
-        .expect("IR public API syntax");
+    let ir_api = syn::parse_file(include_str!(
+        "../../crates/filament-contract-model/src/lib.rs"
+    ))
+    .expect("IR public API syntax");
     for item in ir_api.items {
         if let Item::Use(export) = item {
             if matches!(export.vis, Visibility::Public(_)) {
@@ -212,9 +214,9 @@ fn native_join_budget_public_boundary_is_cycle_free_and_mandatory() {
     use syn::{FnArg, ImplItem, Item, Type, Visibility};
 
     let graph = metadata(&[]);
-    let model = package(&graph, "quire-contract-model");
+    let model = package(&graph, "filament-contract-model");
     let model_id = model["id"].as_str().expect("resolved model ID");
-    production_graph(&graph, model_id, true).expect("no QSL or runtime dependency or cycle");
+    production_graph(&graph, model_id, true).expect("no FSL or runtime dependency or cycle");
 
     fn exports(tree: &syn::UseTree, name: &str) -> bool {
         match tree {
@@ -225,8 +227,10 @@ fn native_join_budget_public_boundary_is_cycle_free_and_mandatory() {
             syn::UseTree::Glob(_) => panic!("native API export must be explicit"),
         }
     }
-    let public_api = syn::parse_file(include_str!("../../crates/quire-contract-model/src/lib.rs"))
-        .expect("public API syntax");
+    let public_api = syn::parse_file(include_str!(
+        "../../crates/filament-contract-model/src/lib.rs"
+    ))
+    .expect("public API syntax");
     for name in [
         "NativeJoinBudget",
         "NativeJoinCharge",
@@ -242,7 +246,7 @@ fn native_join_budget_public_boundary_is_cycle_free_and_mandatory() {
     }
 
     let source = syn::parse_file(include_str!(
-        "../../crates/quire-contract-model/src/checked_package/v2/exact_projection.rs"
+        "../../crates/filament-contract-model/src/checked_package/v2/exact_projection.rs"
     ))
     .expect("selected-identity API syntax");
     let expected = [
@@ -298,27 +302,28 @@ fn native_join_budget_public_boundary_is_cycle_free_and_mandatory() {
     assert_eq!(found, expected.into_iter().map(str::to_owned).collect());
 }
 
-const FORBIDDEN_DOWNSTREAM_CRATES: [&str; 2] = ["quire-contract-codegen", "quire-contract-runtime"];
+const FORBIDDEN_DOWNSTREAM_CRATES: [&str; 2] =
+    ["filament-contract-codegen", "filament-contract-runtime"];
 
 fn forbidden(package: &Value) -> bool {
     let name = package["name"].as_str().unwrap();
     [
-        "quire-contract-ir",
-        "quire-spec-language",
-        "quire-observation",
-        "quire-protocol",
-        "quire-checked",
+        "filament-contract-ir",
+        "filament-spec-language",
+        "filament-observation",
+        "filament-protocol",
+        "filament-checked",
     ]
     .contains(&name)
         || FORBIDDEN_DOWNSTREAM_CRATES.contains(&name)
-        || name.starts_with("qsl-")
+        || name.starts_with("fsl-")
         || name.starts_with("tl-")
-        || name == "quire-mltl"
+        || name == "filament-mltl"
         || [
-            "quire-spec-language",
-            "quire-observation",
-            "quire-protocol",
-            "quire-checked",
+            "filament-spec-language",
+            "filament-observation",
+            "filament-protocol",
+            "filament-checked",
             "tl-syntax",
             "tl-parse",
             "tl-mltl",
@@ -347,7 +352,7 @@ fn production_graph(
 #[test]
 fn resolved_production_graph_is_acyclic_and_owner_free_in_each_feature_configuration() {
     let default = metadata(&[]);
-    let model = package(&default, "quire-contract-model");
+    let model = package(&default, "filament-contract-model");
     let features: Vec<_> = model["features"]
         .as_object()
         .unwrap()
@@ -361,7 +366,7 @@ fn resolved_production_graph_is_acyclic_and_owner_free_in_each_feature_configura
             .iter()
             .map(|selected| {
                 let mut selected = selected.clone();
-                selected.push(format!("quire-contract-model/{feature}"));
+                selected.push(format!("filament-contract-model/{feature}"));
                 selected
             })
             .collect();
@@ -388,7 +393,7 @@ fn resolved_production_graph_is_acyclic_and_owner_free_in_each_feature_configura
     }));
     for configuration in configurations {
         let resolved = metadata(&configuration);
-        let model_id = package(&resolved, "quire-contract-model")["id"]
+        let model_id = package(&resolved, "filament-contract-model")["id"]
             .as_str()
             .unwrap();
         if configuration.iter().any(|arg| arg == "--all-features") {
@@ -422,7 +427,7 @@ fn resolved_production_graph_is_acyclic_and_owner_free_in_each_feature_configura
 fn graph_control_detects_indirect_owners_build_edges_and_cycles_but_excludes_dev_edges() {
     let edge = |id: &str, kind: Value| json!({"pkg": id, "dep_kinds": [{"kind": kind}]});
     let mut graph = json!({"packages": [
-        {"id": "model", "name": "quire-contract-model"},
+        {"id": "model", "name": "filament-contract-model"},
         {"id": "middle", "name": "ordinary-library"},
         {"id": "owner", "name": "tl-syntax"}],
         "resolve": {"nodes": [
@@ -458,7 +463,7 @@ fn graph_control_detects_indirect_owners_build_edges_and_cycles_but_excludes_dev
 fn model_graph_refuses_downstream_crate_names() {
     for name in FORBIDDEN_DOWNSTREAM_CRATES {
         let graph = json!({"packages": [
-            {"id": "model", "name": "quire-contract-model"},
+            {"id": "model", "name": "filament-contract-model"},
             {"id": "downstream", "name": name}],
             "resolve": {"nodes": [
                 {"id": "model", "deps": [{"pkg": "downstream", "dep_kinds": [{"kind": null}]}]},
@@ -473,14 +478,14 @@ fn model_graph_refuses_downstream_crate_names() {
 
 #[trace("TC-041", "FR-028-AC-3")]
 #[test]
-fn root_manifest_has_no_qsl_or_downstream_dependency_in_any_kind() {
+fn root_manifest_has_no_fsl_or_downstream_dependency_in_any_kind() {
     let workspace = metadata(&[]);
-    let root = package(&workspace, "quire-contract-ir");
+    let root = package(&workspace, "filament-contract-ir");
     for dependency in root["dependencies"].as_array().unwrap() {
         let name = dependency["name"].as_str().unwrap();
         assert!(
-            name != "quire-spec-language" && !name.starts_with("qsl-"),
-            "QSL dependency {name}"
+            name != "filament-spec-language" && !name.starts_with("fsl-"),
+            "FSL dependency {name}"
         );
         assert!(
             !FORBIDDEN_DOWNSTREAM_CRATES.contains(&name),
@@ -489,13 +494,13 @@ fn root_manifest_has_no_qsl_or_downstream_dependency_in_any_kind() {
         assert!(!dependency["source"]
             .as_str()
             .unwrap_or("")
-            .contains("github.com/agent-ix/quire-spec-language"));
+            .contains("github.com/agent-ix/filament-spec-language"));
     }
     assert!(root["dependencies"]
         .as_array()
         .unwrap()
         .iter()
-        .any(|dependency| dependency["name"] == "quire-contract-model"));
+        .any(|dependency| dependency["name"] == "filament-contract-model"));
 }
 
 #[trace("TC-041", "FR-028-AC-4")]
@@ -503,11 +508,11 @@ fn root_manifest_has_no_qsl_or_downstream_dependency_in_any_kind() {
 #[ignore = "explicit default/all-feature/MSRV build lane: make model-boundary-builds"]
 fn production_default_all_feature_and_msrv_builds() {
     let workspace = metadata(&[]);
-    let minimum = package(&workspace, "quire-contract-model")["rust_version"]
+    let minimum = package(&workspace, "filament-contract-model")["rust_version"]
         .as_str()
         .unwrap();
     assert_eq!(
-        package(&workspace, "quire-contract-ir")["rust_version"],
+        package(&workspace, "filament-contract-ir")["rust_version"],
         minimum
     );
     for (toolchain, features) in [(None, false), (None, true), (Some(minimum), true)] {
@@ -543,7 +548,7 @@ fn production_default_all_feature_and_msrv_builds() {
 
 #[cfg(feature = "conformance-cli")]
 fn runner(schemas: &Path) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_quire-contract-conformance"))
+    Command::new(env!("CARGO_BIN_EXE_filament-contract-conformance"))
         .args(["run", "--corpus"])
         .arg(repository().join("corpus/contract-v0.1"))
         .arg("--schemas")
@@ -705,9 +710,9 @@ fn owner_symbol(name: &str) -> bool {
         "PastProfileManifestError",
     ]
     .contains(&name)
-        || (name.starts_with("Qsl")
-            && !["Qsl", "QslCheckedRequirementsAndPendingObligations"].contains(&name))
-        || name.starts_with("QSL")
+        || (name.starts_with("Fsl")
+            && !["Fsl", "FslCheckedRequirementsAndPendingObligations"].contains(&name))
+        || name.starts_with("FSL")
         || name.starts_with("ObservationWire")
         || name.starts_with("ProtocolWire")
 }
@@ -974,7 +979,7 @@ impl<'ast> Visit<'ast> for Boundary {
         let name = ident.to_string();
         if owner_symbol(&name)
             || [
-                "parse_qsl",
+                "parse_fsl",
                 "parse_native_source",
                 "parse_observation",
                 "parse_protocol",
@@ -1022,7 +1027,7 @@ fn boundary(source: &str) -> BTreeSet<String> {
 #[trace("TC-041", "FR-028-AC-5")]
 #[test]
 fn production_boundary_has_no_owner_mirrors_parsers_or_admission_escape_surface() {
-    for directory in ["crates/quire-contract-model/src", "src"] {
+    for directory in ["crates/filament-contract-model/src", "src"] {
         let mut pending = vec![repository().join(directory)];
         while let Some(path) = pending.pop() {
             for entry in fs::read_dir(path).unwrap() {
@@ -1052,13 +1057,13 @@ fn production_boundary_has_no_owner_mirrors_parsers_or_admission_escape_surface(
 #[test]
 fn boundary_control_rejects_copied_owner_types_parsers_callbacks_and_trust_flags() {
     assert!(boundary(
-        "pub enum SourceInventoryOwner { Qsl } pub enum SourceInventoryScope { QslCheckedRequirementsAndPendingObligations }"
+        "pub enum SourceInventoryOwner { Fsl } pub enum SourceInventoryScope { FslCheckedRequirementsAndPendingObligations }"
     )
     .is_empty());
     for (source, violation) in [
-        ("pub struct QslRequirementsWire;", "QslRequirementsWire"),
+        ("pub struct FslRequirementsWire;", "FslRequirementsWire"),
         ("pub struct ParsedUnit { pub text: String }", "ParsedUnit"),
-        ("pub fn parse_qsl(_: &str) {}", "parse_qsl"),
+        ("pub fn parse_fsl(_: &str) {}", "parse_fsl"),
         (
             "pub fn validate_with(_: &dyn Fn(&str) -> bool) {}",
             "validate_with",
@@ -1113,15 +1118,15 @@ fn boundary_control_rejects_copied_owner_types_parsers_callbacks_and_trust_flags
 #[test]
 fn shared_cli_kit_is_confined_to_the_opt_in_conformance_binary() {
     let default = metadata(&[]);
-    let root = package(&default, "quire-contract-ir");
+    let root = package(&default, "filament-contract-ir");
     let feature = metadata(&["--features".to_owned(), "conformance-cli".to_owned()]);
-    let model = package(&feature, "quire-contract-model");
+    let model = package(&feature, "filament-contract-model");
     let kit = package(&feature, "ix-cli-kit");
     let kit_id = kit["id"].as_str().unwrap();
     let source = kit["source"].as_str().unwrap();
     assert!(source.starts_with("git+https://github.com/agent-ix/ix-cli-kit?branch=main#"));
     assert!(root["targets"].as_array().unwrap().iter().any(|target| {
-        target["name"] == "quire-contract-conformance"
+        target["name"] == "filament-contract-conformance"
             && target["required-features"] == json!(["conformance-cli"])
     }));
     assert!(root["dependencies"]
@@ -1140,7 +1145,7 @@ fn shared_cli_kit_is_confined_to_the_opt_in_conformance_binary() {
     );
     assert!(production_graph(
         &feature,
-        package(&feature, "quire-contract-ir")["id"]
+        package(&feature, "filament-contract-ir")["id"]
             .as_str()
             .unwrap(),
         false,

@@ -4,8 +4,8 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 Copyright (C) 2026 Agent-IX
 
 These first-party test artifacts were exported on 2026-11-07 from
-`quire-spec-language`'s
-`qsl-analyze/tests/it/monitor_root.rs` test
+`filament-spec-language`'s
+`fsl-analyze/tests/it/monitor_root.rs` test
 `budgeted_converted_model_enum_shapes_are_joined_by_the_native_monitor_closure`.
 The source fixture uses the existing `ClauseSource` renderer with a genuine
 `Inputs.tier: M::Tier` field and a Boolean atom. The unrelated authored enum
@@ -30,6 +30,6 @@ unfixed direct projection refused `UnsupportedExactType` at
 native declaration/member/shape checks and private cache installer as that
 closure, then value-asserts direct projection under cumulative exact and
 one-short budgets. It qualifies the owner projection boundary; it does not
-replace the live QSL same-emission closure test.
+replace the live FSL same-emission closure test.
 
 These artifacts are licensed under this repository's AGPL-3.0-or-later license.

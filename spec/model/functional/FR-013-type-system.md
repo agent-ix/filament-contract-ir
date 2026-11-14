@@ -3,7 +3,7 @@ id: FR-013
 title: "Represent the closed contract type system"
 type: FR
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/StR-001
+  - target: ix://agent-ix/filament-contract-ir/StR-001
     type: traces_to
 ---
 # FR-013: Represent the closed contract type system
@@ -48,7 +48,7 @@ On the wire, and in every serialized form of a validated value, an integer's
 `minimum` and `maximum`, a rational's `numerator_minimum`, `numerator_maximum`
 and `maximum_denominator`, an integer literal's `value` and a rational literal's
 `numerator` and `denominator` are JSON strings of minimal base-ten digits: the
-QSpec V2 `IntegerString` `^(0|-?[1-9][0-9]*)$`, with `0` for zero, no `+`, no
+FSpec V2 `IntegerString` `^(0|-?[1-9][0-9]*)$`, with `0` for zero, no `+`, no
 leading zero and `-` only before a nonzero digit. The same spelling is the one
 FR-016 canonicalizes, so the wire and the canonical bytes agree. A member of
 those eight that is a JSON number, whatever its value, and one that is a string

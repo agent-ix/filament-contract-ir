@@ -1,20 +1,20 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Agent-IX
 
-//! QSpec's published temporal aggregate argument fragments in complete packages.
+//! FSpec's published temporal aggregate argument fragments in complete packages.
 
 use super::{
     cause_word, code_word, fixture_support, fixtures_dir, proposal_dir_of, read_json, read_package,
     read_package_with_document,
 };
+use filament_contract_model::{CheckedNodeId, CheckedPackageV2ReadResult, CheckedTerm};
 use ix_trace_rs::trace;
-use quire_contract_model::{CheckedNodeId, CheckedPackageV2ReadResult, CheckedTerm};
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
 
 fn vectors() -> Value {
     read_json(&proposal_dir_of(&fixtures_dir()).join("temporal-aggregate-vectors.json"))
-        .expect("published QSpec temporal aggregate arguments")
+        .expect("published FSpec temporal aggregate arguments")
 }
 
 fn id(path: &[&str]) -> Value {
@@ -48,7 +48,7 @@ fn add_node(package: &mut Value, node: Value) {
 fn dimension(name: &str) -> Value {
     let key = id(&["scalar_type", "dimension", name]);
     json!({
-        "node_id": key, "schema_version": "quire.checked-semantic-graph/v2",
+        "node_id": key, "schema_version": "filament.checked-semantic-graph/v2",
         "node_tag": "scalar_type", "semantic_form": "dimension", "semantic_type": key,
         "declaration": {"qualified_name": ["scalar_type", "dimension", name]},
         "dependencies": [], "occurrences": [{"role": "declaration", "ordinal": 0}],
@@ -68,7 +68,7 @@ fn unit(name: &str, dimension: &str) -> Value {
         json!([dimension])
     };
     json!({
-        "node_id": key, "schema_version": "quire.checked-semantic-graph/v2",
+        "node_id": key, "schema_version": "filament.checked-semantic-graph/v2",
         "node_tag": "scalar_type", "semantic_form": "unit", "semantic_type": dimension,
         "declaration": {"qualified_name": ["scalar_type", "unit", name]},
         "dependencies": dependencies, "occurrences": [{"role": "declaration", "ordinal": 0}],
@@ -90,13 +90,13 @@ fn expression(target: &Value, family: &str, value_type: &Value) -> (Value, Value
         _ => panic!("published reference family {family}"),
     };
     let value_node = json!({
-        "node_id": value_id, "schema_version": "quire.checked-semantic-graph/v2",
+        "node_id": value_id, "schema_version": "filament.checked-semantic-graph/v2",
         "node_tag": "value", "semantic_form": "literal", "semantic_type": value_type,
         "dependencies": [], "occurrences": [{"role": "expression", "ordinal": 0}],
         "body": {"term": "literal", "type": value_type, "value_kind": kind, "value": value},
     });
     let expression_node = json!({
-        "node_id": target, "schema_version": "quire.checked-semantic-graph/v2",
+        "node_id": target, "schema_version": "filament.checked-semantic-graph/v2",
         "node_tag": "expression", "semantic_form": "reference", "semantic_type": value_type,
         "dependencies": [value_id], "occurrences": [{"role": "expression", "ordinal": 0}],
         "body": {"term": "reference", "target": value_id},
@@ -125,7 +125,7 @@ fn referenced_nodes(term: &Value, targets: &mut Vec<Value>) {
 
 fn replace_profile(value: &mut Value, selected: &str) {
     match value {
-        Value::String(text) if text == "quire.temporal.event-position.false-extension/v1" => {
+        Value::String(text) if text == "filament.temporal.event-position.false-extension/v1" => {
             *text = selected.to_owned();
         }
         Value::Array(items) => {
@@ -148,12 +148,12 @@ fn package_for(row: &Value, published: &Value) -> (Value, usize) {
     let profile = row["profile"].as_str().expect("published profile");
     replace_profile(&mut package, profile);
     match profile {
-        "quire.temporal.event-position.false-extension/v1" => {}
-        "quire.temporal.timestamped-event.finite-window/v1" => {
+        "filament.temporal.event-position.false-extension/v1" => {}
+        "filament.temporal.timestamped-event.finite-window/v1" => {
             package["temporal_bindings"][0]["clock"] =
                 json!({"kind": "timestamped_event", "timestamp_unit": "ms"});
         }
-        "quire.temporal.infinite-trace/v1" => {
+        "filament.temporal.infinite-trace/v1" => {
             package
                 .as_object_mut()
                 .expect("package")
@@ -180,7 +180,7 @@ fn package_for(row: &Value, published: &Value) -> (Value, usize) {
     }
     let formula_index = 28;
     let formula = &mut package["semantic_graph"]["nodes"][formula_index];
-    formula["body"]["operation"]["identity"] = json!("quire.op.temporal.aggregate");
+    formula["body"]["operation"]["identity"] = json!("filament.op.temporal.aggregate");
     formula["body"]["arguments"] = json!([row["argument"]]);
     let mut targets = Vec::new();
     referenced_nodes(&row["argument"], &mut targets);
@@ -190,7 +190,7 @@ fn package_for(row: &Value, published: &Value) -> (Value, usize) {
     (package, formula_index)
 }
 
-/// Trace: FR-038-AC-461, FR-038-AC-462; QSpec FR-370-AC-17/18, TC-303.
+/// Trace: FR-038-AC-461, FR-038-AC-462; FSpec FR-370-AC-17/18, TC-303.
 #[trace("TC-048", "FR-038-AC-461", "FR-038-AC-462")]
 #[test]
 fn published_temporal_aggregate_arguments_match_strict_reader() {
@@ -222,7 +222,7 @@ fn published_temporal_aggregate_arguments_match_strict_reader() {
             };
             assert_eq!(
                 operation.identity(),
-                Some("quire.op.temporal.aggregate"),
+                Some("filament.op.temporal.aggregate"),
                 "{case_id}"
             );
             assert_eq!(arguments.len(), 1, "{case_id}: one aggregate argument");
@@ -443,7 +443,7 @@ fn reachable_aggregate_refusals_follow_formula_identity_order() {
     add_node(&mut package, second_node);
     let second_position = package["semantic_graph"]["nodes"].as_array().unwrap().len() - 1;
     let parent = &mut package["semantic_graph"]["nodes"][29];
-    parent["body"]["operation"]["identity"] = json!("quire.op.temporal.and");
+    parent["body"]["operation"]["identity"] = json!("filament.op.temporal.and");
     parent["body"]["operation"]["member"] = Value::Null;
     parent["body"]["arguments"] = json!([
         {"term": "reference", "target": second_id},
@@ -547,7 +547,7 @@ fn document_with_time_units() -> std::path::PathBuf {
          "target": format!("ix://{OWNER}/unit/ms"), "scale": "1000", "offset": "0"},
     ]);
     let directory = std::env::temp_dir().join(format!(
-        "qsl-1662-{}-{:?}",
+        "fsl-1662-{}-{:?}",
         std::process::id(),
         std::thread::current().id()
     ));
@@ -558,7 +558,7 @@ fn document_with_time_units() -> std::path::PathBuf {
     path
 }
 
-/// The clock unit node is the unit's own node in its owning package (QSpec
+/// The clock unit node is the unit's own node in its owning package (FSpec
 /// FR-370-AC-20), not in the package of the clause that uses it.
 #[trace("TC-048", "FR-038-AC-518")]
 #[test]
@@ -589,7 +589,7 @@ fn duration_bounds_are_typed_by_the_clock_unit_in_its_owning_package() {
         }
     }
 
-    // QSpec FR-370-AC-20: `upper` typed by the unit `s` node under a clock in
+    // FSpec FR-370-AC-20: `upper` typed by the unit `s` node under a clock in
     // `ms` refuses at `upper`'s value.
     let s_unit = json!({
         "package": OWNER, "ordinal": 0,

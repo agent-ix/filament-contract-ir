@@ -3,7 +3,7 @@ id: FR-011
 title: "Identify versioned contract packages and requirement revisions"
 type: FR
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/StR-001
+  - target: ix://agent-ix/filament-contract-ir/StR-001
     type: traces_to
 ---
 # FR-011: Identify versioned contract packages and requirement revisions
@@ -41,7 +41,7 @@ wire decoders SHALL validate each execution-point name using the existing
 registered `invalid_identifier` diagnostic for an empty or malformed authored
 anchor. A validated `AnchorName` supplies the canonical point name without
 creating a second public point type or another name-validation rule. V2
-admission instead applies QSpec's closed four-variant, nonempty-name shape;
+admission instead applies FSpec's closed four-variant, nonempty-name shape;
 it SHALL retain a valid name even when the authored identifier rule would
 reject it.
 The registered codes of this requirement are those of the constructors and of
@@ -67,7 +67,7 @@ and FR-018/FR-020 later publish the complete schema and conformance interface.
 |---|---|---|
 | FR-011-AC-1 | A package round trip through the non-canonical JSON value representation preserves namespace, schema version, requirement ID, requirement revision, and source-document identity/revision with structural equality. | Test (TC-015) |
 | FR-011-AC-2 | Incrementing one requirement revision changes its clause and dependency identities without changing unrelated requirement identities. | Test (TC-015) |
-| FR-011-AC-3 | Empty or malformed package, source-document, requirement, clause, authored anchor, or dependency-path-segment identities; a zero schema major; zero source or requirement revisions and a revision above 9007199254740992 (`invalid_source_revision`, `invalid_requirement_revision`, through the constructors, the package decoder, the expression operation decoder and the binding expression decoder; a whole executable projection is FR-023-AC-6's); duplicate requirement or clause identifiers; non-increasing revision advances; and cross-package references fail with their registered structured diagnostic codes. An empty or malformed authored execution-point name, including one supplied through the public canonical point to an authored clause constructor, returns `invalid_identifier` under the existing `AnchorName` rule. The same nonempty name may still be admitted through V2 when QSpec permits it. Schema minor zero is valid. | Test (TC-015) |
+| FR-011-AC-3 | Empty or malformed package, source-document, requirement, clause, authored anchor, or dependency-path-segment identities; a zero schema major; zero source or requirement revisions and a revision above 9007199254740992 (`invalid_source_revision`, `invalid_requirement_revision`, through the constructors, the package decoder, the expression operation decoder and the binding expression decoder; a whole executable projection is FR-023-AC-6's); duplicate requirement or clause identifiers; non-increasing revision advances; and cross-package references fail with their registered structured diagnostic codes. An empty or malformed authored execution-point name, including one supplied through the public canonical point to an authored clause constructor, returns `invalid_identifier` under the existing `AnchorName` rule. The same nonempty name may still be admitted through V2 when FSpec permits it. Schema minor zero is valid. | Test (TC-015) |
 
 ## Dependencies
 

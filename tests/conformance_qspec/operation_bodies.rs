@@ -1,23 +1,23 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! TC-987: QSpec's operation-body vectors against the production reader and writer.
+//! TC-987: FSpec's operation-body vectors against the production reader and writer.
 
 use super::operation_effects::{expand_document, normalize_relationship, patch};
 use super::{
     cause_word, code_word, fixture_support as fixture, fixtures_dir, proposal_dir_of, read_json,
 };
-use ix_trace_rs::trace;
-use quire_canonical::Limits;
-use quire_contract_model::{
+use filament_contract_model::{
     encode_checked_package_v2, CheckedNodeId, CheckedPackageEvidence, CheckedPackageReadLimits,
     CheckedPackageSidecarsRef, CheckedPackageSourceCorrespondenceRef, CheckedPackageV2,
     CheckedPackageV2ReadResult, OperationBody, OperationBodyRow,
 };
+use ix_trace_rs::trace;
+use quire_canonical::Limits;
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
 
 fn vectors() -> Value {
     read_json(&proposal_dir_of(&fixtures_dir()).join("operation-body-vectors.json"))
-        .expect("current QSpec TC-987 vectors")
+        .expect("current FSpec TC-987 vectors")
 }
 
 fn text_type() -> Value {
@@ -28,7 +28,7 @@ fn graph_node(entry: &Value) -> Value {
     let key = entry["node"].clone();
     let text = text_type();
     let mut node = json!({
-        "node_id": key, "schema_version": "quire.checked-semantic-graph/v2",
+        "node_id": key, "schema_version": "filament.checked-semantic-graph/v2",
         "semantic_type": text, "dependencies": [],
         "occurrences": [{"role": "generated", "ordinal": 0}],
     });
@@ -84,7 +84,7 @@ fn expand_document_with_processes(sketch: &Value) -> Value {
         let is_premium = ty["identity"] == format!("ix://{identity}/Premium");
         for operation in ty["operations"].as_array_mut().expect("operations") {
             // A dispatched call is typed by its operation's result.
-            operation["returns"] = json!({"typeRef": "ix://quire/native/Integer",
+            operation["returns"] = json!({"typeRef": "ix://filament/native/Integer",
                 "multiplicity": {"lower": 1, "upper": 1, "ordered": false, "unique": true}});
             if is_premium {
                 operation["redefines"] = json!(format!(
@@ -106,7 +106,7 @@ fn expand_document_with_processes(sketch: &Value) -> Value {
             ty["kind"] = json!({"module": identity, "name": "process"});
             let key = format!("{}/id", ty["identity"].as_str().expect("type identity"));
             ty["fields"] = json!([{"identity": key, "name": "id",
-                "typeRef": "ix://quire/native/Integer", "presence": "required",
+                "typeRef": "ix://filament/native/Integer", "presence": "required",
                 "nullable": false, "defaultKind": "none",
                 "multiplicity": {"lower": 1, "upper": 1, "ordered": false, "unique": true}}]);
             ty["identityFields"] = json!([key]);
@@ -121,7 +121,7 @@ fn expand_document_with_processes(sketch: &Value) -> Value {
             .expect("constructs")
             .push(json!({
                 "kind": {"module": identity, "name": "process"},
-                "construct": {"meaning": "quire.meaning.model.process/v1"}
+                "construct": {"meaning": "filament.meaning.model.process/v1"}
             }));
     }
     document
@@ -150,7 +150,7 @@ fn plain_node(
 ) -> Value {
     let mut deps = deps;
     deps.sort_by_key(fixture::structural_fixture_id);
-    json!({"node_id": key, "schema_version": "quire.checked-semantic-graph/v2",
+    json!({"node_id": key, "schema_version": "filament.checked-semantic-graph/v2",
         "node_tag": tag, "semantic_form": form, "semantic_type": ty, "dependencies": deps,
         "occurrences": [{"role": role, "ordinal": 0}], "body": body})
 }
@@ -184,7 +184,7 @@ fn add_dispatch_table(package: &mut Value, candidates: &[Value]) {
     ]});
     let call_body = json!({
         "term": "application", "operator": "call",
-        "operation": {"identity": "quire.op.model.dispatch_call", "laws": [], "mode": null,
+        "operation": {"identity": "filament.op.model.dispatch_call", "laws": [], "mode": null,
             "member": {"kind": "operation", "declaration": declaring, "name": operation},
             "leaves": []},
         "result_type": integer, "arguments": [reference_term(&receiver)],
@@ -255,7 +255,7 @@ fn read(case: &Value) -> (Value, CheckedPackageEvidence, CheckedPackageV2ReadRes
         .as_array_mut()
         .unwrap()
         .push(json!({
-            "node_id": text_type(), "schema_version": "quire.checked-semantic-graph/v2",
+            "node_id": text_type(), "schema_version": "filament.checked-semantic-graph/v2",
             "node_tag": "scalar_type", "semantic_form": "text", "semantic_type": text_type(),
             "dependencies": [], "occurrences": [{"role": "type", "ordinal": 0}],
             "body": {"term": "aggregate", "members": []},
@@ -274,7 +274,7 @@ fn read(case: &Value) -> (Value, CheckedPackageEvidence, CheckedPackageV2ReadRes
                 0,
             );
             package["semantic_graph"]["nodes"].as_array_mut().unwrap().push(json!({
-                "node_id":key,"schema_version":"quire.checked-semantic-graph/v2","node_tag":"model",
+                "node_id":key,"schema_version":"filament.checked-semantic-graph/v2","node_tag":"model",
                 "semantic_form":form,"semantic_type":key,"dependencies":[],
                 "occurrences":[{"role":"type","ordinal":0}],
                 "owner":{"kind":"model","identity":identity,"node":member},
@@ -292,7 +292,7 @@ fn read(case: &Value) -> (Value, CheckedPackageEvidence, CheckedPackageV2ReadRes
                 0,
             );
             package["semantic_graph"]["nodes"].as_array_mut().unwrap().push(json!({
-                "node_id":key,"schema_version":"quire.checked-semantic-graph/v2","node_tag":"relation",
+                "node_id":key,"schema_version":"filament.checked-semantic-graph/v2","node_tag":"relation",
                 "semantic_form":"relationship","semantic_type":key,"dependencies":[],
                 "occurrences":[{"role":"type","ordinal":0}],
                 "owner":{"kind":"model","identity":identity,"node":member},
@@ -336,7 +336,7 @@ fn read(case: &Value) -> (Value, CheckedPackageEvidence, CheckedPackageV2ReadRes
             .collect();
         add_dispatch_table(&mut package, &candidates);
     }
-    evidence.support_feature("quire.value.complete/v1");
+    evidence.support_feature("filament.value.complete/v1");
     fixture::settle(&mut package);
     fixture::index_fixture_node_ids(&mut package);
     let result = crate::read_and_account(

@@ -3,11 +3,11 @@ id: FR-057
 title: "Bind the IR contribution to cross-repository conformance"
 type: FR
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/StR-003
+  - target: ix://agent-ix/filament-contract-ir/StR-003
     type: traces_to
-  - target: ix://agent-ix/quire-contract-ir/FR-018
+  - target: ix://agent-ix/filament-contract-ir/FR-018
     type: depends_on
-  - target: ix://agent-ix/quire-contract-ir/FR-020
+  - target: ix://agent-ix/filament-contract-ir/FR-020
     type: depends_on
   - target: ix://agent-ix/engineering-assurance/FR-008
     type: depends_on

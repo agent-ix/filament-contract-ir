@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Agent-IX
 
-//! QSpec's producer-assigned node ordinal and uniqueness controls.
+//! FSpec's producer-assigned node ordinal and uniqueness controls.
 
 use super::*;
 
@@ -14,9 +14,9 @@ fn qspec_node_ordinal_uniqueness_cases_read_exactly() {
     let fixtures = fixtures_dir();
     let proposal = proposal_dir_of(&fixtures);
     let vectors = read_json(&proposal.join("node-ordinal-vectors.json"))
-        .expect("authoritative QSpec node ordinal vectors");
+        .expect("authoritative FSpec node ordinal vectors");
     let base = read_json(&fixtures.join("positive-all-families.json"))
-        .expect("authoritative QSpec base package");
+        .expect("authoritative FSpec base package");
     let cases = vectors["uniqueness_cases"]
         .as_array()
         .expect("uniqueness cases");

@@ -3,7 +3,7 @@ id: TC-446
 title: "Proof-coverage baseline retains the population and qualifies evidence"
 type: TC
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/FR-045
+  - target: ix://agent-ix/filament-contract-ir/FR-045
     type: verifies
 ---
 # TC-446: Proof-coverage baseline retains the population and qualifies evidence

@@ -15,18 +15,18 @@ use crate::support::checked_package::{
     pointer, select_model, selected_model_identities, settle, source_owner, structural_id,
     COMPLETE_VALUE_FEATURE,
 };
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     CheckedPackageEvidence, CheckedPackageLimit, CheckedPackageReadLimits,
     CheckedPackageRefusalCause as Cause, CheckedPackageRefusalCode as Code, CheckedPackageV2,
     CheckedPackageV2ReadResult,
 };
+use ix_trace_rs::trace;
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
 
 const LEDGER: &str = "acme/ledger";
 const VENDOR: &str = "acme/vendor";
-const NATIVE: &str = "ix://quire/native/";
+const NATIVE: &str = "ix://filament/native/";
 
 fn iri(identity: &str, short: &str) -> String {
     format!("ix://{identity}/{short}")
@@ -164,7 +164,7 @@ fn wire_node(
 ) -> Value {
     json!({
         "node_id": node_id(key),
-        "schema_version": "quire.checked-semantic-graph/v2",
+        "schema_version": "filament.checked-semantic-graph/v2",
         "node_tag": tag,
         "semantic_form": form,
         "semantic_type": node_id(semantic_type),
@@ -257,11 +257,11 @@ fn document(identity: &str, types: Vec<Value>) -> Value {
         "package": {"identity": identity, "version": "1.0.0"},
         "constructs": [
             {"kind": {"module": identity, "name": "entity"},
-             "construct": {"meaning": "quire.meaning.model.object-type/v1"}},
+             "construct": {"meaning": "filament.meaning.model.object-type/v1"}},
             {"kind": {"module": identity, "name": "record"},
-             "construct": {"meaning": "quire.meaning.model.record-value-type/v1"}},
+             "construct": {"meaning": "filament.meaning.model.record-value-type/v1"}},
             {"kind": {"module": identity, "name": "digit"},
-             "construct": {"meaning": "quire.meaning.model.value-type/v1"}},
+             "construct": {"meaning": "filament.meaning.model.value-type/v1"}},
         ],
         "types": types,
     })
@@ -586,7 +586,7 @@ impl Scene {
             tag: "expression",
             form: "call",
             operator: "call",
-            identity: "quire.op.model.dispatch_call",
+            identity: "filament.op.model.dispatch_call",
             member: json!({"kind": "operation", "declaration": node_id(declaring), "name": name}),
             semantic: result,
             result,
@@ -1059,7 +1059,7 @@ fn tc_448_conformance_charges_every_reachable_supertype_edge_once() {
 
 // --- TC-448: field reads (FR-347-AC-9) ------------------------------------------------
 
-/// `operand.field` as a `quire.op.record.project` of `field` declared by
+/// `operand.field` as a `filament.op.record.project` of `field` declared by
 /// `declaring`, the operand a parameter typed `operand`.
 fn read_of(declaring: &Ty, field: &str, operand: &Ty) -> Case {
     let mut scene = ledger_scene();
@@ -1075,7 +1075,7 @@ fn read_of(declaring: &Ty, field: &str, operand: &Ty) -> Case {
         tag: "expression",
         form: "query",
         operator: "query",
-        identity: "quire.op.record.project",
+        identity: "filament.op.record.project",
         member: json!({"kind": "field", "declaration": node_id(&declaring), "name": field}),
         semantic: &integer,
         result: &integer,
@@ -1145,7 +1145,7 @@ fn case_over(first: &Ty, second: &Ty, binder: &Ty, result: &Ty) -> Case {
         tag: "expression",
         form: "case",
         operator: "case",
-        identity: "quire.op.control.case",
+        identity: "filament.op.control.case",
         member: Value::Null,
         semantic: &result,
         result: &result,
@@ -1235,7 +1235,7 @@ fn application_root(tag: &str, declared: &'static str, root: &str) -> Case {
         tag: role_tag,
         form,
         operator: "call",
-        identity: "quire.op.model.dispatch_call",
+        identity: "filament.op.model.dispatch_call",
         member: json!({"kind": "operation", "declaration": node_id(&ledger), "name": root}),
         semantic: &declared,
         result: &result,
@@ -1303,7 +1303,7 @@ fn function_call(
         tag: "expression",
         form: "call",
         operator: "call",
-        identity: "quire.op.function.call",
+        identity: "filament.op.function.call",
         member: Value::Null,
         semantic: &integer,
         result: &integer,
@@ -1506,7 +1506,7 @@ fn operation_mode_and_member_are_required_even_when_null_is_admitted() {
         tag: "expression",
         form: "binary",
         operator: "binary",
-        identity: "quire.op.integer.add",
+        identity: "filament.op.integer.add",
         member: Value::Null,
         semantic: &integer,
         result: &integer,
@@ -1550,7 +1550,7 @@ fn operation_mode_and_member_are_required_even_when_null_is_admitted() {
 
         // A catalog error cannot displace the containing object's shape error.
         case.package["semantic_graph"]["nodes"][case.node]["body"]["operation"]["identity"] =
-            json!("quire.op.unknown");
+            json!("filament.op.unknown");
         settle(&mut case.package);
         let CheckedPackageV2ReadResult::Refused(before_catalog) = case.read() else {
             panic!("omitting {field} with an unknown identity must refuse");
@@ -1563,7 +1563,7 @@ fn operation_mode_and_member_are_required_even_when_null_is_admitted() {
         );
 
         case.package["semantic_graph"]["nodes"][case.node]["body"]["operation"]["identity"] =
-            json!("quire.op.integer.add");
+            json!("filament.op.integer.add");
         case.package["semantic_graph"]["nodes"][case.node]["body"]["operation"][field] =
             Value::Null;
         settle(&mut case.package);

@@ -2,11 +2,11 @@
 // Copyright (C) 2026 Agent-IX
 
 //! FR-038-AC-99, AC-101 and AC-106, at the package: the union type, union
-//! value and `case` nodes of QSpec FR-440, `quire.op.structural.eq` over
+//! value and `case` nodes of FSpec FR-440, `filament.op.structural.eq` over
 //! unions, and the lowering of an admitted `expression`/`case` node.
 //!
 //! Every package is built here, node by node, from this crate's own
-//! vocabulary and keyed by `settle`; nothing of QSpec's fixtures is copied in
+//! vocabulary and keyed by `settle`; nothing of FSpec's fixtures is copied in
 //! (they are read by `make conformance-qspec`, FR-038-AC-107).
 
 use crate::support::checked_package::{
@@ -14,15 +14,15 @@ use crate::support::checked_package::{
     owned_structural_node, reassign_node_id, rebuild_source_map, refresh_identity, settle,
     source_owner, typed_node_id, v2_all_families, BOOLEAN_KEY, INTEGER_KEY,
 };
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     CheckedNodeTag, CheckedPackageReadLimits, CheckedPackageRefusalCause as Cause,
     CheckedPackageRefusalCode as Code, CheckedPackageV2, CheckedPackageV2ReadResult,
     CompleteLoweringProfileV2, CompleteLoweringRecordV2, ExactTypeProjectionErrorCode,
     SelectedExactIdentities, SelectedSourceRecordMemberRow, SelectedSourceRecordRow,
     SelectedSourceUnionRow, SelectedUnionMemberRow,
 };
-use quire_exact::{NodeKey, PathSegment, Presence, UnionMember, ValueType};
+use filament_exact::{NodeKey, PathSegment, Presence, UnionMember, ValueType};
+use ix_trace_rs::trace;
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
 
@@ -50,7 +50,7 @@ fn node(
     let dependencies: BTreeSet<String> = over.iter().map(|name| key(name)).collect();
     json!({
         "node_id": node_id(&key(name)),
-        "schema_version": "quire.checked-semantic-graph/v2",
+        "schema_version": "filament.checked-semantic-graph/v2",
         "node_tag": tag, "semantic_form": form,
         "semantic_type": node_id(&key(semantic_type)),
         "dependencies": dependencies.iter().map(|label| node_id(label)).collect::<Vec<_>>(),
@@ -104,7 +104,7 @@ fn nfc_text() -> Value {
     )
 }
 
-/// A parameter named `name`, at binder level `level`, typed at `ty` (QSL FR-092).
+/// A parameter named `name`, at binder level `level`, typed at `ty` (FSL FR-092).
 fn parameter(name: &str, level: &str, ty: &str) -> Value {
     node(
         name,
@@ -186,7 +186,7 @@ fn source_record_and_union_reject_one_opaque_type_handle_in_either_order() {
     nodes.push(source_record_type("point"));
     let wire = package_of(nodes);
     let (admitted, _, union) = union_witness(&wire);
-    let record_id: quire_contract_model::CheckedNodeId = serde_json::from_value(
+    let record_id: filament_contract_model::CheckedNodeId = serde_json::from_value(
         wire["semantic_graph"]["nodes"][position_of(&wire, "point")]["node_id"].clone(),
     )
     .expect("record node");
@@ -209,14 +209,14 @@ fn source_record_and_union_reject_one_opaque_type_handle_in_either_order() {
         .with_source_record_rows(
             &admitted,
             [record.clone()],
-            &mut quire_contract_model::NativeJoinBudget::new(100, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(100, u64::MAX),
         )
         .expect("record structural join");
     let union_after = record_first
         .with_source_union_rows(
             &admitted,
             [union.clone()],
-            &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
         )
         .unwrap_err();
     assert_eq!(
@@ -227,14 +227,14 @@ fn source_record_and_union_reject_one_opaque_type_handle_in_either_order() {
         .with_source_union_rows(
             &admitted,
             [union],
-            &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
         )
         .expect("union structural join");
     let record_after = union_first
         .with_source_record_rows(
             &admitted,
             [record],
-            &mut quire_contract_model::NativeJoinBudget::new(100, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(100, u64::MAX),
         )
         .unwrap_err();
     assert_eq!(
@@ -270,13 +270,13 @@ fn arm(member: &str, binders: &[&str], body: Value) -> Value {
     )
 }
 
-/// The `quire.op.control.case` application over `scrutinee` and `arms`.
+/// The `filament.op.control.case` application over `scrutinee` and `arms`.
 fn case_body(scrutinee: &str, arms: Vec<Value>, result_type: &str) -> Value {
     let mut arguments = vec![reference(scrutinee)];
     arguments.extend(arms);
     json!({
         "term": "application", "operator": "case",
-        "operation": {"identity": "quire.op.control.case", "laws": [], "mode": null,
+        "operation": {"identity": "filament.op.control.case", "laws": [], "mode": null,
                       "member": null, "leaves": []},
         "result_type": node_id(&key(result_type)), "arguments": arguments,
     })
@@ -494,11 +494,11 @@ fn union_witness(
     package: &Value,
 ) -> (
     CheckedPackageV2,
-    quire_contract_model::CheckedNodeId,
+    filament_contract_model::CheckedNodeId,
     SelectedSourceUnionRow,
 ) {
     let admitted = admitted("union witness", package);
-    let id: quire_contract_model::CheckedNodeId = serde_json::from_value(
+    let id: filament_contract_model::CheckedNodeId = serde_json::from_value(
         package["semantic_graph"]["nodes"][position_of(package, "shape")]["node_id"].clone(),
     )
     .expect("union node id");
@@ -506,7 +506,7 @@ fn union_witness(
     let authority = source["authority"].as_str().expect("source authority");
     let identity = source["identity"].as_str().expect("source identity");
     let key = |name: &str| {
-        NodeKey::new("qsl-union-stage", vec![PathSegment::Text(name.into())], 0).expect("stage key")
+        NodeKey::new("fsl-union-stage", vec![PathSegment::Text(name.into())], 0).expect("stage key")
     };
     let handle = key("shape-type-handle");
     let settled = key("shape-settled");
@@ -544,7 +544,7 @@ fn selected_source_union_projects_only_with_complete_member_witness() {
         .with_source_union_rows(
             &admitted,
             [row.clone()],
-            &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
         )
         .expect("complete source union row");
     assert_eq!(identities, budgeted);
@@ -555,7 +555,7 @@ fn selected_source_union_projects_only_with_complete_member_witness() {
         .project_exact_type(
             &id,
             &identities,
-            &mut quire_contract_model::NativeJoinBudget::new(8, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(8, u64::MAX),
         )
         .expect("projection");
     assert_eq!(
@@ -567,7 +567,7 @@ fn selected_source_union_projects_only_with_complete_member_witness() {
         admitted.clone().project_exact_type(
             &id,
             &identities,
-            &mut quire_contract_model::NativeJoinBudget::new(8, u64::MAX)
+            &mut filament_contract_model::NativeJoinBudget::new(8, u64::MAX)
         ),
         Ok(complete)
     );
@@ -575,7 +575,7 @@ fn selected_source_union_projects_only_with_complete_member_witness() {
         .project_exact_type(
             &id,
             &identities,
-            &mut quire_contract_model::NativeJoinBudget::new(7, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(7, u64::MAX),
         )
         .unwrap_err();
     assert_eq!(exhausted.code, ExactTypeProjectionErrorCode::ExhaustedWork);
@@ -591,7 +591,7 @@ fn selected_source_union_refuses_missing_and_mismatched_rows() {
         .project_exact_type(
             &id,
             &SelectedExactIdentities::empty(),
-            &mut quire_contract_model::NativeJoinBudget::new(8, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(8, u64::MAX),
         )
         .unwrap_err();
     assert_eq!(
@@ -666,7 +666,7 @@ fn selected_source_union_refuses_missing_and_mismatched_rows() {
             .with_source_union_rows(
                 &admitted,
                 [mismatch],
-                &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+                &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
             )
             .unwrap_err();
         assert_eq!(
@@ -678,7 +678,7 @@ fn selected_source_union_refuses_missing_and_mismatched_rows() {
         .with_source_union_rows(
             &admitted,
             [row.clone(), row.clone()],
-            &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
         )
         .unwrap_err();
     assert_eq!(
@@ -691,7 +691,7 @@ fn selected_source_union_refuses_missing_and_mismatched_rows() {
         .with_source_union_rows(
             &admitted,
             [foreign],
-            &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
         )
         .unwrap_err();
     assert_eq!(error.code, ExactTypeProjectionErrorCode::ForeignNode);
@@ -700,7 +700,7 @@ fn selected_source_union_refuses_missing_and_mismatched_rows() {
         .with_source_union_rows(
             &admitted,
             [union_witness(&package).2],
-            &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
         )
         .unwrap();
     let mut changed_nodes = common();
@@ -717,7 +717,7 @@ fn selected_source_union_refuses_missing_and_mismatched_rows() {
         .project_exact_type(
             &id,
             &selected,
-            &mut quire_contract_model::NativeJoinBudget::new(8, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(8, u64::MAX),
         )
         .unwrap_err();
     assert_eq!(
@@ -1060,7 +1060,7 @@ fn tc_048_a_grouped_union_has_public_reader_stage_controls() {
             "operation" => {
                 let at = position_of_form(&control, "expression", "case");
                 control["semantic_graph"]["nodes"][at]["body"]["operation"]["identity"] =
-                    json!("quire.op.unknown");
+                    json!("filament.op.unknown");
                 (
                     Code::InvalidPackage,
                     Some(Cause::UnknownOperation),
@@ -1117,7 +1117,7 @@ fn tc_048_a_grouped_union_has_public_reader_stage_controls() {
 
 fn text_law() -> Value {
     let catalog: Value = serde_json::from_str(
-        quire_verification_contracts::operation_catalog::CHECKED_OPERATION_CATALOG_V1,
+        filament_verification_contracts::operation_catalog::CHECKED_OPERATION_CATALOG_V1,
     )
     .expect("the catalog is JSON");
     catalog["law_roles"]["text_profile"][0].clone()
@@ -1131,7 +1131,7 @@ fn text_leaf(path: &[&str]) -> Value {
     })
 }
 
-/// `quire.op.structural.eq` over `left` and `right`, carrying `leaves`.
+/// `filament.op.structural.eq` over `left` and `right`, carrying `leaves`.
 fn equality(left: &str, right: &str, leaves: Vec<Value>) -> Value {
     node(
         "equality",
@@ -1142,7 +1142,7 @@ fn equality(left: &str, right: &str, leaves: Vec<Value>) -> Value {
         "expression",
         json!({
             "term": "application", "operator": "binary",
-            "operation": {"identity": "quire.op.structural.eq", "laws": [], "mode": null,
+            "operation": {"identity": "filament.op.structural.eq", "laws": [], "mode": null,
                           "member": null, "leaves": leaves},
             "result_type": node_id(&key("boolean")),
             "arguments": [reference(left), reference(right)],
@@ -1377,7 +1377,7 @@ fn option_chain_package(leaves: Vec<Value>) -> Value {
 }
 
 /// Over `Option<Chain>` the union is entered one segment in, so its recursion
-/// leaf reads `recursion:1` (QSpec FR-322 "Structural leaf walk"): the leaves
+/// leaf reads `recursion:1` (FSpec FR-322 "Structural leaf walk"): the leaves
 /// `["inner", "member:Link", "position:0"]` and `["inner", "member:Link",
 /// "position:1", "recursion:1"]` admit; the recursion leaf missing (the text
 /// leaf alone) and one reading `recursion:0` are refused.
@@ -1557,8 +1557,8 @@ fn lowers_as_data(case: &str, package: &Value, node: &str, tag: CheckedNodeTag) 
         CheckedNodeTag::Temporal,
     ];
     let supported = CompleteLoweringProfileV2 {
-        reference: quire_contract_model::LoweringProfileRef {
-            authority: "quire".into(),
+        reference: filament_contract_model::LoweringProfileRef {
+            authority: "filament".into(),
             identity: "complete-v1".into(),
         },
         required_source_selections: Vec::new(),

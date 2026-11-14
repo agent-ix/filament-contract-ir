@@ -9,12 +9,12 @@ use crate::support::checked_package::{
     bounds_body, canonical, evidence_for, node_id, nominal_fixture_members, nominal_package,
     over_body, settle, BOOLEAN_KEY, INTEGER_KEY,
 };
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     CheckedNodeId, CheckedNodeTag, CheckedPackageReadLimits, CheckedPackageRefusalCode,
     CheckedPackageV2, CheckedPackageV2ReadResult, CheckedTerm, CompleteLoweringProfileV2,
     CompleteLoweringRecordV2, LiteralKind,
 };
+use ix_trace_rs::trace;
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 use std::ops::Deref;
@@ -88,7 +88,7 @@ fn node(
     dependencies.sort_unstable();
     let node = json!({
         "node_id": node_id(&id),
-        "schema_version": "quire.checked-semantic-graph/v2",
+        "schema_version": "filament.checked-semantic-graph/v2",
         "node_tag": tag,
         "semantic_form": form,
         "semantic_type": node_id(&key(semantic_type)),
@@ -143,7 +143,7 @@ fn application(
     let body = json!({
         "term": "application",
         "operator": "binary",
-        "operation": {"identity": "quire.op.integer.add", "laws": [], "mode": null,
+        "operation": {"identity": "filament.op.integer.add", "laws": [], "mode": null,
             "member": null, "leaves": []},
         "result_type": node_id(&key(result)),
         "arguments": arguments,
@@ -245,8 +245,8 @@ fn assert_literal_dependency_refusal(value: &Fixture, name: &str) {
 
 fn bounded_profile() -> CompleteLoweringProfileV2 {
     CompleteLoweringProfileV2 {
-        reference: quire_contract_model::LoweringProfileRef {
-            authority: "quire".into(),
+        reference: filament_contract_model::LoweringProfileRef {
+            authority: "filament".into(),
             identity: "complete-v1".into(),
         },
         required_source_selections: Vec::new(),
@@ -515,7 +515,7 @@ fn tc_050_a_recursive_record_requires_a_bound() {
         scalar("integer", "integer"),
         scalar("text", "text"),
         int_0_9(),
-        // The record names its fields in its body, so the cycle is one of QSL
+        // The record names its fields in its body, so the cycle is one of FSL
         // FR-092's names graph and not only of `dependencies`.
         in_recursion_group(node(
             "tree",
@@ -582,7 +582,7 @@ fn tc_050_a_bound_over_one_parameter_does_not_cover_another_of_the_same_type() {
     );
 }
 
-/// A package, built from this crate's own vocabulary in QSL's shapes, holding
+/// A package, built from this crate's own vocabulary in FSL's shapes, holding
 /// the nominal dimension and unit `metre`, the compound unit `cu` over it, the
 /// scalars the bodies annotate, `int09`, and every node of the quantity
 /// cases below. Each request's closure is its own, so one package serves all.
@@ -718,7 +718,7 @@ fn quantity_power_package(parameter_exponent: bool) -> Fixture {
     let body = json!({
         "term": "application",
         "operator": "binary",
-        "operation": {"identity": "quire.op.quantity.pow", "laws": [], "mode": null,
+        "operation": {"identity": "filament.op.quantity.pow", "laws": [], "mode": null,
             "member": null, "leaves": []},
         "result_type": node_id(&key("cu")),
         "arguments": [reference("power_base"), reference(exponent)],
@@ -738,7 +738,7 @@ fn quantity_power_package(parameter_exponent: bool) -> Fixture {
         .as_array()
         .expect("nodes")
         .iter()
-        .find(|node| node["body"]["operation"]["identity"] == "quire.op.quantity.pow")
+        .find(|node| node["body"]["operation"]["identity"] == "filament.op.quantity.pow")
         .expect("quantity power");
     fixture.ids.insert(
         key("square"),
@@ -821,8 +821,8 @@ fn quantity_domain(name: &str, base: &str) -> (String, Value) {
 
 fn record_with(value: &Fixture, name: &str, require_bounds: bool) -> CompleteLoweringRecordV2 {
     let profile = CompleteLoweringProfileV2 {
-        reference: quire_contract_model::LoweringProfileRef {
-            authority: "quire".into(),
+        reference: filament_contract_model::LoweringProfileRef {
+            authority: "filament".into(),
             identity: "complete-v1".into(),
         },
         require_bounds,

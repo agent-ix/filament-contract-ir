@@ -4,103 +4,103 @@
 //! boundary validates a finite offered population before any harness can add a
 //! symbolic constraint, and preserves every non-success result as non-Boolean.
 //!
-//! FR-039-AC-3, TC-055: QSL owns the terminal result and record, so neither
+//! FR-039-AC-3, TC-055: FSL owns the terminal result and record, so neither
 //! provider type is available through this module:
 //!
 //! ```compile_fail,E0432
-//! use quire_contract_ir::kani::KaniProviderResult;
+//! use filament_contract_ir::kani::KaniProviderResult;
 //! ```
 //!
 //! ```compile_fail,E0432
-//! use quire_contract_ir::kani::KaniProviderRecord;
+//! use filament_contract_ir::kani::KaniProviderRecord;
 //! ```
 
 //! ```compile_fail,E0432
-//! use quire_contract_ir::kani::lower_checked_arithmetic;
+//! use filament_contract_ir::kani::lower_checked_arithmetic;
 //! ```
 
 //! ```compile_fail,E0432
-//! use quire_contract_ir::kani::lower_query;
+//! use filament_contract_ir::kani::lower_query;
 //! ```
 
 //! ```compile_fail,E0432
-//! use quire_contract_ir::kani::lower_reaches;
+//! use filament_contract_ir::kani::lower_reaches;
 //! ```
 
 //! ```compile_fail,E0432
-//! use quire_contract_ir::kani::ArithmeticLowering;
+//! use filament_contract_ir::kani::ArithmeticLowering;
 //! ```
 
 //! ```compile_fail,E0432
-//! use quire_contract_ir::kani::CheckedArithmeticRequest;
+//! use filament_contract_ir::kani::CheckedArithmeticRequest;
 //! ```
 
 //! ```compile_fail,E0432
-//! use quire_contract_ir::kani::CollectionLowering;
+//! use filament_contract_ir::kani::CollectionLowering;
 //! ```
 
 //! ```compile_fail,E0432
-//! use quire_contract_ir::kani::CollectionQuery;
+//! use filament_contract_ir::kani::CollectionQuery;
 //! ```
 
 //! ```compile_fail,E0432
-//! use quire_contract_ir::kani::QueryKind;
+//! use filament_contract_ir::kani::QueryKind;
 //! ```
 
 //! ```compile_fail,E0432
-//! use quire_contract_ir::kani::GraphLowering;
+//! use filament_contract_ir::kani::GraphLowering;
 //! ```
 
 //! ```compile_fail,E0432
-//! use quire_contract_ir::kani::GraphRequest;
+//! use filament_contract_ir::kani::GraphRequest;
 //! ```
 
 //! ```compile_fail,E0432
-//! use quire_contract_ir::kani::CounterexamplePacket;
+//! use filament_contract_ir::kani::CounterexamplePacket;
 //! ```
 
 //! ```compile_fail,E0432
-//! use quire_contract_ir::kani::PacketIdentity;
+//! use filament_contract_ir::kani::PacketIdentity;
 //! ```
 
 //! ```compile_fail,E0432
-//! use quire_contract_ir::kani::ReplaySource;
+//! use filament_contract_ir::kani::ReplaySource;
 //! ```
 
 //! ```compile_fail,E0432
-//! use quire_contract_ir::kani::ReplayAgreement;
+//! use filament_contract_ir::kani::ReplayAgreement;
 //! ```
 
 //! ```compile_fail,E0432
-//! use quire_contract_ir::kani::WitnessReplayAgreement;
+//! use filament_contract_ir::kani::WitnessReplayAgreement;
 //! ```
 
 //! ```compile_fail,E0432
-//! use quire_contract_ir::kani::InputReplayAgreement;
+//! use filament_contract_ir::kani::InputReplayAgreement;
 //! ```
 
 //! ```compile_fail,E0432
-//! use quire_contract_ir::kani::replay_counterexample;
+//! use filament_contract_ir::kani::replay_counterexample;
 //! ```
 
 //! ```compile_fail,E0432
-//! use quire_contract_ir::kani::Witness;
+//! use filament_contract_ir::kani::Witness;
 //! ```
 
 //! ```compile_fail,E0432
-//! use quire_contract_ir::kani::WitnessBinding;
+//! use filament_contract_ir::kani::WitnessBinding;
 //! ```
 
 //! ```compile_fail,E0432
-//! use quire_contract_ir::kani::WitnessCheck;
+//! use filament_contract_ir::kani::WitnessCheck;
 //! ```
 
 //! ```compile_fail,E0432
-//! use quire_contract_ir::kani::WitnessValue;
+//! use filament_contract_ir::kani::WitnessValue;
 //! ```
 
 //! ```compile_fail,E0432
-//! use quire_contract_ir::kani::WitnessValueType;
+//! use filament_contract_ir::kani::WitnessValueType;
 //! ```
 
 mod abi;

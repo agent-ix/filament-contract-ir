@@ -3,11 +3,11 @@ id: FR-047
 title: "Preserve the first evidence entry across repeated declarations"
 type: FR
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/StR-001
+  - target: ix://agent-ix/filament-contract-ir/StR-001
     type: traces_to
-  - target: ix://agent-ix/quire-contract-ir/FR-038
+  - target: ix://agent-ix/filament-contract-ir/FR-038
     type: references
-  - target: ix://agent-ix/quire-contract-ir/FR-019
+  - target: ix://agent-ix/filament-contract-ir/FR-019
     type: references
 ---
 # FR-047: Preserve the first evidence entry across repeated declarations
@@ -55,7 +55,7 @@ returns one of these closed variants:
 
 `support_feature` returns unit; it has no conflicting-value case.
 
-`quire_contract_model` exports `CheckedPackageEvidenceInsertionError` by name.
+`filament_contract_model` exports `CheckedPackageEvidenceInsertionError` by name.
 Its variants and fields determine the condition and key;
 formatted error text is not a classification source. This is an insertion
 error, not a `CheckedPackageRefusal`, reader cause or wire diagnostic.

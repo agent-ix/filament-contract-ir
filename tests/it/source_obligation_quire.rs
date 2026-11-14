@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Agent-IX
 
-//! FR-052-AC-16: IR's external consumer of the native Quire owner portion.
+//! FR-052-AC-16: IR's external consumer of the native Filament owner portion.
 //! This does not construct a neutral owner adapter or a four-owner census.
 
 use std::{fs, path::Path};
 
-use ix_trace_rs::trace;
-use quire_contract_model::source_obligation::{
+use filament_contract_model::source_obligation::{
     SourceAuthoredCriterionId, SourceContractAuthorId, SourceCriterionSourceBinding,
 };
-use quire_contract_model::{SourceDocumentId, SourceIdentity, SourceRevision};
+use filament_contract_model::{SourceDocumentId, SourceIdentity, SourceRevision};
+use ix_trace_rs::trace;
 use quire_rs::obligation::inventory::{
     inventory, CriterionEntry, CriterionOrigin, InventoryCauseCode, InventoryCauseDetail,
     InventoryInterruption, InventoryLookupError, InventoryOptions, InventoryTerminal,

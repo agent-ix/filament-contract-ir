@@ -8,14 +8,14 @@ use crate::support::checked_package::{
     fixture_source, model_owner, node_id, refresh_identity, settle, sha256_hex, source_owner,
     v2_all_families,
 };
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     encode_checked_package_v2, CheckedCapability, CheckedDiagnosticsV2, CheckedNodeId,
     CheckedOccurrence, CheckedPackageLimit, CheckedPackageLockV2, CheckedPackageReadLimits,
     CheckedPackageRefusal, CheckedPackageRefusalCause as Cause, CheckedPackageRefusalCode as Code,
     CheckedPackageV2, CheckedPackageV2ReadResult, CheckedSemanticGraphV2, CheckedSourceMapEntry,
     CheckedTerminalDuplicate,
 };
+use ix_trace_rs::trace;
 use serde::de::DeserializeOwned;
 use serde_json::{json, Value};
 use std::sync::OnceLock;
@@ -68,7 +68,7 @@ fn node(tag: &str, form: &str, body: Value, dependencies: &[String]) -> Value {
     });
     dependencies.dedup();
     json!({
-        "node_id": node_id(&id), "schema_version": "quire.checked-semantic-graph/v2",
+        "node_id": node_id(&id), "schema_version": "filament.checked-semantic-graph/v2",
         "node_tag": tag, "semantic_form": form, "semantic_type": node_id(&ty),
         "dependencies": dependencies,
         "occurrences": [{"role": "claim", "ordinal": 0}], "body": body,
@@ -109,10 +109,10 @@ fn malformed_abstraction() -> Value {
     let body = json!({"term": "abstraction_relation", "objects": [{}],
         "populations": [], "frames": []});
     let key = sha256_hex(&canonical(&json!({
-        "version": "quire.abstraction-relation-node/v1", "body": body
+        "version": "filament.abstraction-relation-node/v1", "body": body
     })));
     json!({
-        "node_id": node_id(&key), "schema_version": "quire.checked-semantic-graph/v2",
+        "node_id": node_id(&key), "schema_version": "filament.checked-semantic-graph/v2",
         "node_tag": "correspondence", "semantic_form": "abstraction_relation",
         "semantic_type": node_id(&key), "dependencies": [],
         "occurrences": [{"role": "declaration", "ordinal": 0}], "body": body,
@@ -132,12 +132,12 @@ fn malformed_hybrid_model() -> Value {
         binding("modes", json!({"term": "aggregate", "members": [reference(&target)]})),
     ]});
     let key = sha256_hex(&canonical(&json!({
-        "version": "quire.structural-node/v1", "node_tag": "hybrid",
+        "version": "filament.structural-node/v1", "node_tag": "hybrid",
         "semantic_form": "hybrid_model", "semantic_type": null,
         "declaration": declaration, "recursion": null, "owner": owner, "body": body,
     })));
     json!({
-        "node_id": node_id(&key), "schema_version": "quire.checked-semantic-graph/v2",
+        "node_id": node_id(&key), "schema_version": "filament.checked-semantic-graph/v2",
         "node_tag": "hybrid", "semantic_form": "hybrid_model",
         "semantic_type": node_id(&key), "declaration": declaration, "owner": owner,
         "dependencies": [node_id(&target)],
@@ -221,7 +221,7 @@ fn terminal_with_self(target_model: &str, parameter_name: &str, level: &str) -> 
 
 fn other_object_key() -> String {
     sha256_hex(&canonical(&json!({
-        "version": "quire.structural-node/v1", "node_tag": "model",
+        "version": "filament.structural-node/v1", "node_tag": "model",
         "semantic_form": "object_type", "semantic_type": null,
         "declaration": null, "recursion": null,
         "owner": model_owner("test/families", "ix://test/families/Other"),
@@ -232,7 +232,7 @@ fn other_object_key() -> String {
 fn other_object_node() -> Value {
     let key = other_object_key();
     json!({
-        "node_id": node_id(&key), "schema_version": "quire.checked-semantic-graph/v2",
+        "node_id": node_id(&key), "schema_version": "filament.checked-semantic-graph/v2",
         "node_tag": "model", "semantic_form": "object_type", "semantic_type": node_id(&key),
         "dependencies": [], "occurrences": [{"role": "generated", "ordinal": 0}],
         "owner": model_owner("test/families", "ix://test/families/Other"), "body": empty(),
@@ -270,7 +270,7 @@ fn population_document() -> Value {
         .expect("constructs")
         .push(json!({
             "kind": {"module": "test/families", "name": "population"},
-            "construct": {"meaning": "quire.meaning.model.population/v1"},
+            "construct": {"meaning": "filament.meaning.model.population/v1"},
         }));
     document["populations"] = json!([{
         "identity": "ix://test/families/Accounts", "displayName": "Accounts",
@@ -415,19 +415,19 @@ fn encoded(package: &Value) -> Vec<u8> {
     let source_map: Vec<CheckedSourceMapEntry> = typed(&package["source_map"]);
     let capabilities: Vec<CheckedCapability> = typed(&package["capability_report"]);
     let diagnostics: CheckedDiagnosticsV2 = typed(&package["diagnostics"]);
-    let temporal_bindings: Option<Vec<quire_contract_model::TemporalBinding>> =
+    let temporal_bindings: Option<Vec<filament_contract_model::TemporalBinding>> =
         package.get("temporal_bindings").map(typed);
-    let temporal_clause_names: Option<Vec<quire_contract_model::TemporalClauseName>> =
+    let temporal_clause_names: Option<Vec<filament_contract_model::TemporalClauseName>> =
         package.get("temporal_clause_names").map(typed);
     encode_checked_package_v2(
         package["name"].as_str().expect("package name"),
         &lock,
         &graph,
-        quire_contract_model::CheckedPackageSourceCorrespondenceRef {
+        filament_contract_model::CheckedPackageSourceCorrespondenceRef {
             source_map: &source_map,
             refinement_step_rows: None,
         },
-        quire_contract_model::CheckedPackageSidecarsRef {
+        filament_contract_model::CheckedPackageSidecarsRef {
             temporal_clause_names: temporal_clause_names.as_deref(),
             operation_effects: None,
             operation_bodies: None,
@@ -1126,14 +1126,14 @@ fn terminal_identity_and_uniqueness_per_model() {
     assert_eq!(
         first_occurrence,
         (CheckedOccurrence {
-            role: quire_contract_model::CheckedOccurrenceRole::Claim,
+            role: filament_contract_model::CheckedOccurrenceRole::Claim,
             ordinal: 0
         })
     );
     assert_eq!(
         second_occurrence,
         (CheckedOccurrence {
-            role: quire_contract_model::CheckedOccurrenceRole::Claim,
+            role: filament_contract_model::CheckedOccurrenceRole::Claim,
             ordinal: 1
         })
     );
@@ -1478,7 +1478,7 @@ fn graph_shape_then_state_graph_then_terminal_order() {
         .position(|node| node["node_tag"] == "function")
         .expect("function node");
     terminal_before_operations["semantic_graph"]["nodes"][function_position]["body"]["operation"]
-        ["identity"] = json!("quire.op.unknown");
+        ["identity"] = json!("filament.op.unknown");
     settle(&mut terminal_before_operations);
     refused(
         &terminal_before_operations,

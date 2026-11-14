@@ -5,7 +5,7 @@ type: ADR
 status: accepted
 owner: kreneskyp
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/AD-001
+  - target: ix://agent-ix/filament-contract-ir/AD-001
     type: relates_to
   - target: ix://agent-ix/quire-rs/FR-050
     type: relates_to
@@ -16,11 +16,11 @@ relationships:
 
 Accepted. Supersedes nothing.
 
-This record is the one layout convention that the `quire-contract-ir`,
-`quire-contract-codegen` and `quire-contract-runtime` specification trees
+This record is the one layout convention that the `filament-contract-ir`,
+`filament-contract-codegen` and `filament-contract-runtime` specification trees
 follow. It lives in this repository because Contract IR is the base of that
 pipeline. Codegen and Runtime reference it as
-`ix://agent-ix/quire-contract-ir/ADR-0056` and do not copy it.
+`ix://agent-ix/filament-contract-ir/ADR-0056` and do not copy it.
 
 ## Context
 
@@ -140,8 +140,8 @@ same document.
    another repository's artifact names the repository: frontmatter
    relationships use `ix://agent-ix/<repo>/<ID>`, and every other place —
    prose, matrix cells, trace tags and code comments — writes
-   `<repo>:<ID>` with the full repository name (`quire-specification:TC-280`,
-   `quire-specification:FR-340`). No short repository name stands in for the
+   `<repo>:<ID>` with the full repository name (`filament-specification:TC-280`,
+   `filament-specification:FR-340`). No short repository name stands in for the
    prefix.
 5. An author takes the next free ID; a collision found in review is
    renumbered in the later pull request.

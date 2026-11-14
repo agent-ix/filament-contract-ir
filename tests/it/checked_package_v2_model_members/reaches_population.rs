@@ -2,19 +2,19 @@
 // Copyright (C) 2026 Agent-IX
 
 //! FR-038 "Typed population of a reaches application": the `population` link of
-//! a `quire.op.model.reaches` application, its reader check, its dependency
+//! a `filament.op.model.reaches` application, its reader check, its dependency
 //! join and the `reaches_population` accessor.
 //!
 //! Every package is built here from the sibling builders and the authored
 //! domain document; expected values come from those fixtures, never from the
-//! accessor under test. Nothing of QSpec or QSL is copied in.
+//! accessor under test. Nothing of FSpec or FSL is copied in.
 
 use super::*;
-use quire_contract_model::selected_population::{
+use filament_contract_model::selected_population::{
     select_population, CheckedSelectedPopulationOutcome as Outcome,
     CheckedSelectedPopulationSelector as Selector, CheckedSelectedPopulationSource as Source,
 };
-use quire_contract_model::{
+use filament_contract_model::{
     CheckedOccurrence, CheckedOccurrenceRole, CheckedPackageEvidence, CheckedReachesPopulationError,
 };
 use std::collections::BTreeSet;
@@ -65,7 +65,7 @@ fn derived_node(
     deps.dedup();
     json!({
         "node_id": fixture_id(key),
-        "schema_version": "quire.checked-semantic-graph/v2",
+        "schema_version": "filament.checked-semantic-graph/v2",
         "node_tag": tag, "semantic_form": form,
         "semantic_type": fixture_id(semantic_type),
         "dependencies": deps,
@@ -322,7 +322,7 @@ pub(super) fn admitted_reaches_population_for_node_map() -> CheckedPackageV2 {
 }
 
 fn reaches_id(package: &CheckedPackageV2) -> CheckedNodeId {
-    application_of(package, "quire.op.model.reaches")
+    application_of(package, "filament.op.model.reaches")
 }
 
 #[trace("TC-048", "FR-038-AC-269")]
@@ -434,11 +434,11 @@ fn tc_048_reaches_population_refuses_every_node_that_is_not_a_reaches_applicatio
 
     let (navigate, evidence) = relationship_package(authored_relationship(), "links");
     let package = admitted(&navigate, &evidence);
-    let node = application_of(&package, "quire.op.model.navigate");
+    let node = application_of(&package, "filament.op.model.navigate");
     assert_eq!(package.reaches_population(&node), refusal, "navigate");
 
     let package = crate::checked_package_v2_model_fields::integer_add_control();
-    let add = application_of(&package, "quire.op.integer.add");
+    let add = application_of(&package, "filament.op.integer.add");
     assert_eq!(package.reaches_population(&add), refusal, "integer.add");
     let literal = package
         .resolved_graph()
@@ -682,7 +682,7 @@ fn tc_048_other_operations_keep_their_present_outcome_for_a_population_key() {
         &fixture_node_id("scalar_type/string"),
         &json!({"package": FIXTURE_PACKAGE, "path": ["scalar_type", "string"], "ordinal": 0}),
     );
-    let at = position_of(&field, "quire.op.record.project");
+    let at = position_of(&field, "filament.op.record.project");
     let field = with_member_population(field, at, key.clone());
     let field_result = read(&field, &evidence);
     assert!(
@@ -690,8 +690,8 @@ fn tc_048_other_operations_keep_their_present_outcome_for_a_population_key() {
         "record project control: {field_result:?}"
     );
 
-    let (operation, evidence) = model_member_control("quire.op.model.dispatch_call");
-    let at = position_of(&operation, "quire.op.model.dispatch_call");
+    let (operation, evidence) = model_member_control("filament.op.model.dispatch_call");
+    let at = position_of(&operation, "filament.op.model.dispatch_call");
     let operation = with_member_population(operation, at, key.clone());
     assert!(matches!(
         read(&operation, &evidence),
@@ -699,8 +699,8 @@ fn tc_048_other_operations_keep_their_present_outcome_for_a_population_key() {
     ));
 
     for (label, identity) in [
-        ("position", "quire.op.tuple.project"),
-        ("element", "quire.op.collection.index"),
+        ("position", "filament.op.tuple.project"),
+        ("element", "filament.op.collection.index"),
     ] {
         let package = crate::checked_package_v2_catalogue_differential::admitted_fixture(identity)
             .expect("catalogue member control");
@@ -888,7 +888,7 @@ fn tc_048_reaches_population_api_is_a_closed_error_and_exports_no_selected_popul
         Err("unknown")
     );
 
-    let root = include_str!("../../../crates/quire-contract-model/src/lib.rs");
+    let root = include_str!("../../../crates/filament-contract-model/src/lib.rs");
     let reexports: String = root
         .split("pub use ")
         .skip(1)
@@ -1108,7 +1108,7 @@ fn selected_population_result_provenance_and_work_boundary_hold() {
     assert_eq!((finite.minimum, finite.maximum.as_str()), (0, "3"));
     let mut authored_wire = scenario.package.clone();
     index_fixture_node_ids(&mut authored_wire);
-    let authored_sources: Vec<quire_contract_model::CheckedSourceMapEntry> =
+    let authored_sources: Vec<filament_contract_model::CheckedSourceMapEntry> =
         serde_json::from_value(authored_wire["source_map"].clone()).expect("authored sources");
     assert_eq!(package.source_map(), authored_sources);
     let selected_source = authored_sources
@@ -1162,7 +1162,7 @@ fn link_field_population(scenario: &mut Scenario, position: usize, identity: &st
 }
 
 fn field_application_id(package: &CheckedPackageV2) -> CheckedNodeId {
-    application_of(package, "quire.op.model.reaches_field")
+    application_of(package, "filament.op.model.reaches_field")
 }
 
 /// FR-038-AC-542: the field forms the edge accepts each link a population and
@@ -1219,7 +1219,7 @@ fn tc_048_reaches_population_over_a_reaches_field_without_a_link_is_none() {
     let (navigate, evidence) = relationship_package(authored_relationship(), "links");
     let package = admitted(&navigate, &evidence);
     assert_eq!(
-        package.reaches_population(&application_of(&package, "quire.op.model.navigate")),
+        package.reaches_population(&application_of(&package, "filament.op.model.navigate")),
         Err(CheckedReachesPopulationError::NotReachesApplication)
     );
 }

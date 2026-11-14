@@ -12,13 +12,13 @@ use crate::support::checked_package::{
     rename_node, select_model, selected_interface_model_node, settle, source_owner,
     v2_all_families,
 };
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     CheckedNodeId, CheckedPackageEvidence, CheckedPackageLimit, CheckedPackageReadLimits,
     CheckedPackageRefusal, CheckedPackageRefusalCause, CheckedPackageRefusalCode, CheckedPackageV2,
     CheckedPackageV2ReadResult, CheckedProtocolActivation, CheckedProtocolActivationRow,
     CheckedProtocolRefusalDetail, CheckedTerm,
 };
+use ix_trace_rs::trace;
 use serde_json::{json, Value};
 
 fn read(package: &Value) -> CheckedPackageV2ReadResult {
@@ -293,7 +293,7 @@ pub(super) fn decision_fact_fixture() -> (Value, usize, usize, usize) {
         .clone();
     let field_body = json!({
         "term": "application", "operator": "query",
-        "operation": {"identity": "quire.op.record.project", "laws": [], "mode": null,
+        "operation": {"identity": "filament.op.record.project", "laws": [], "mode": null,
             "member": {"kind": "field", "declaration": node_id(&record_key),
                 "name": "ok"}, "leaves": []},
         "result_type": node_id(&family_key("aaaa")),
@@ -448,7 +448,7 @@ fn decision_conjunction(package: &mut Value, left: &Value, right: &Value) -> Val
     expression["semantic_form"] = json!("binary");
     expression["body"] = json!({
         "term": "application", "operator": "binary",
-        "operation": {"identity": "quire.op.boolean.and", "laws": [], "mode": null,
+        "operation": {"identity": "filament.op.boolean.and", "laws": [], "mode": null,
             "member": null, "leaves": []},
         "result_type": node_id(&family_key("aaaa")),
         "arguments": [
@@ -772,7 +772,7 @@ fn activation_record_field_fixture() -> (Value, Value, Value) {
     field["semantic_type"] = node_id(&family_key("aaaa"));
     field["body"] = json!({
         "term": "application", "operator": "query",
-        "operation": {"identity": "quire.op.record.project", "laws": [], "mode": null,
+        "operation": {"identity": "filament.op.record.project", "laws": [], "mode": null,
             "member": {"kind": "field", "declaration": node_id(&record_key),
                 "name": "ready"}, "leaves": []},
         "result_type": node_id(&family_key("aaaa")),
@@ -1316,7 +1316,7 @@ fn decision_fact_other_role_and_composite_entry_do_not_grant_observation() {
     entry["semantic_form"] = json!("binary");
     entry["body"] = json!({
         "term": "application", "operator": "binary",
-        "operation": {"identity": "quire.op.boolean.and", "laws": [], "mode": null,
+        "operation": {"identity": "filament.op.boolean.and", "laws": [], "mode": null,
             "member": null, "leaves": []},
         "result_type": node_id(&family_key("aaaa")),
         "arguments": [
@@ -1956,7 +1956,7 @@ fn terminal_condition_package() -> (Value, usize, usize) {
     (package, clause, terminal_position)
 }
 
-/// QSpec #536 TC-947 TM9: removing the terminal disposition changes the
+/// FSpec #536 TC-947 TM9: removing the terminal disposition changes the
 /// clause body while its declared identity remains stable.
 #[trace("TC-947")]
 #[test]
@@ -2531,12 +2531,12 @@ fn protocol_owner_selected_state_machine_and_record_value_type_refuse_at_edge() 
         (
             "state machine",
             "state_machine",
-            "quire.meaning.model.state-machine/v1",
+            "filament.meaning.model.state-machine/v1",
         ),
         (
             "record value type",
             "record_value_type",
-            "quire.meaning.model.record-value-type/v1",
+            "filament.meaning.model.record-value-type/v1",
         ),
     ] {
         let mut package = admitted_protocol_families();
@@ -3587,7 +3587,7 @@ fn protocol_clause_requires_the_selected_profile_law_in_the_public_reader() {
         &key,
     );
     expected.document_pointer = Some(
-        quire_contract_model::JsonPointer::parse(&format!(
+        filament_contract_model::JsonPointer::parse(&format!(
             "/semantic_graph/nodes/{position}/body/operation/laws"
         ))
         .expect("test pointer"),
@@ -4056,7 +4056,7 @@ fn predicate_join_protocol_cycle(mixed_carrier_cycle: bool) -> (Value, Vec<usize
         let carrier_id = node_id(&carrier_key);
         let carrier = json!({
             "node_id": carrier_id,
-            "schema_version": "quire.checked-semantic-graph/v2",
+            "schema_version": "filament.checked-semantic-graph/v2",
             "node_tag": "protocol",
             "semantic_form": "protocol_reference",
             "semantic_type": boolean_type,
@@ -4140,7 +4140,7 @@ fn tc_946_predicate_join_function_cycle_uses_the_full_protocol_component() {
     assert!(plain.get("recursion_group").is_none_or(Value::is_null));
     let CheckedPackageV2ReadResult::Admitted(admitted) = read(&package) else {
         panic!(
-            "QSpec #536 K14 distinct-path predicate cycle admits: {:?}",
+            "FSpec #536 K14 distinct-path predicate cycle admits: {:?}",
             read(&package)
         );
     };
@@ -4207,7 +4207,7 @@ fn tc_946_mixed_protocol_carrier_and_function_cycle_admits() {
 }
 
 fn assert_exact_protocol_cycle_group(
-    nodes: &[quire_contract_model::CheckedSemanticNodeV2],
+    nodes: &[filament_contract_model::CheckedSemanticNodeV2],
     positions: &[usize],
 ) {
     let group = nodes[positions[0]]
@@ -4711,7 +4711,7 @@ fn repeat_non_boolean_guard_refuses_at_guard_not_wire() {
         &key,
     );
     expected.document_pointer = Some(
-        quire_contract_model::JsonPointer::parse(&format!(
+        filament_contract_model::JsonPointer::parse(&format!(
             "/semantic_graph/nodes/{holder}/body/arguments/4/value"
         ))
         .expect("guard pointer"),
@@ -4772,9 +4772,9 @@ fn await_checks_anchor_form_and_event_eligibility() {
         refusal.protocol_detail.as_deref(),
         Some(&CheckedProtocolRefusalDetail::AwaitedEvent {
             form: "send".into(),
-            profile: quire_contract_model::CheckedArtifactRef {
+            profile: filament_contract_model::CheckedArtifactRef {
                 authority: "agent-ix".into(),
-                identity: "quire.protocol.finite-global/v1".into(),
+                identity: "filament.protocol.finite-global/v1".into(),
             },
         })
     );
@@ -5726,7 +5726,7 @@ fn package_with_replicated_role() -> (Value, usize) {
         .expect("nodes")
         .push(json!({
             "node_id": node_id(&reference_type),
-            "schema_version": "quire.checked-semantic-graph/v2",
+            "schema_version": "filament.checked-semantic-graph/v2",
             "node_tag": "composite_type", "semantic_form": "reference",
             "semantic_type": node_id(&reference_type), "dependencies": [model],
             "occurrences": [{"role": "type", "ordinal": 0}],
@@ -6200,7 +6200,7 @@ fn effect_admits_a_referenced_attempt_in_the_same_control_tree() {
     else {
         panic!("cycle must name the effect and attempt");
     };
-    let expected: Vec<quire_contract_model::CheckedNodeId> = [effect, effect - 1]
+    let expected: Vec<filament_contract_model::CheckedNodeId> = [effect, effect - 1]
         .into_iter()
         .map(|position| {
             serde_json::from_value(reversed["semantic_graph"]["nodes"][position]["node_id"].clone())
@@ -6210,7 +6210,7 @@ fn effect_admits_a_referenced_attempt_in_the_same_control_tree() {
     assert_eq!(controls, &expected);
 }
 
-/// QSpec TC-946 K5: a declared effect keeps its structural id when `of`
+/// FSpec TC-946 K5: a declared effect keeps its structural id when `of`
 /// changes, while a non-attempt control target is refused at the exact edge.
 #[trace("TC-946", "FR-038-AC-288")]
 #[test]
@@ -6373,7 +6373,7 @@ pub(super) fn compensation_clock_case(
             .expect("selections");
         for selection in selections {
             if selection["role"] == "temporal_profile" {
-                selection["definition"]["identity"] = json!("quire.temporal.infinite-trace/v1");
+                selection["definition"]["identity"] = json!("filament.temporal.infinite-trace/v1");
             }
         }
         for node in package["semantic_graph"]["nodes"]
@@ -6388,7 +6388,8 @@ pub(super) fn compensation_clock_case(
             {
                 for law in laws {
                     if law["role"] == "temporal_profile" {
-                        law["definition"]["identity"] = json!("quire.temporal.infinite-trace/v1");
+                        law["definition"]["identity"] =
+                            json!("filament.temporal.infinite-trace/v1");
                     }
                 }
             }
@@ -6439,7 +6440,7 @@ pub(super) fn compensation_clock_case(
 }
 
 /// Trace: FR-038-AC-412, FR-038-AC-413, FR-038-AC-414, FR-038-AC-415,
-/// FR-038-AC-416, FR-019-AC-22; QSpec TC-233 TB-01..TB-03.
+/// FR-038-AC-416, FR-019-AC-22; FSpec TC-233 TB-01..TB-03.
 #[trace(
     "TC-048",
     "TC-058",
@@ -6452,10 +6453,10 @@ pub(super) fn compensation_clock_case(
 )]
 #[test]
 fn compensation_clock_rows_follow_published_cases() {
-    let root = match std::env::var_os("QUIRE_SPECIFICATION_DIR") {
+    let root = match std::env::var_os("FILAMENT_SPECIFICATION_DIR") {
         Some(root) => root,
         None if std::env::var_os("QSPEC_CONFORMANCE").is_none() => return,
-        None => panic!("QUIRE_SPECIFICATION_DIR required for compensation conformance"),
+        None => panic!("FILAMENT_SPECIFICATION_DIR required for compensation conformance"),
     };
     let root = std::path::PathBuf::from(root);
     let path = root.join("proposals/checked-package-v2/temporal-clock-binding-vectors.json");
@@ -6498,7 +6499,7 @@ fn compensation_clock_rows_follow_published_cases() {
                         published["clock_name"].as_str().expect("clock name"),
                         "{id}"
                     );
-                    let expected: quire_contract_model::ClockConfiguration =
+                    let expected: filament_contract_model::ClockConfiguration =
                         serde_json::from_value(published["clock"].clone()).expect("clock");
                     assert_eq!(row.clock, expected, "{id}");
                 }
@@ -7029,7 +7030,10 @@ fn compensation_refuses_a_commit_taken_before_its_forward_effect() {
     else {
         panic!("commit position detail must be retained");
     };
-    assert_eq!(profile.identity.as_ref(), "quire.protocol.finite-global/v1");
+    assert_eq!(
+        profile.identity.as_ref(),
+        "filament.protocol.finite-global/v1"
+    );
     assert_eq!(member.as_ref(), "commit");
     assert_eq!(
         serde_json::to_value(commit).expect("commit id"),
@@ -7633,7 +7637,7 @@ fn receive_accepts_its_send_channel_and_refuses_another_channel() {
         read(&package)
     );
 
-    // QSpec TC-948 S1: reversing a send/receive sequence changes its body,
+    // FSpec TC-948 S1: reversing a send/receive sequence changes its body,
     // while the declared Main identity remains attached to that control.
     let mut reversed = package.clone();
     let main_id = package["semantic_graph"]["nodes"][root]["node_id"].clone();
@@ -7661,7 +7665,7 @@ fn receive_accepts_its_send_channel_and_refuses_another_channel() {
     else {
         panic!("cycle must name its controls");
     };
-    let expected: Vec<quire_contract_model::CheckedNodeId> = [receive_position, send_position]
+    let expected: Vec<filament_contract_model::CheckedNodeId> = [receive_position, send_position]
         .into_iter()
         .map(|position| {
             serde_json::from_value(reversed["semantic_graph"]["nodes"][position]["node_id"].clone())
@@ -7726,7 +7730,7 @@ fn receive_accepts_its_send_channel_and_refuses_another_channel() {
     wrong_binder["semantic_graph"]["nodes"][receive_position]["body"]["arguments"][2]["value"]
         ["target"] = node_id(&text_key);
     settle(&mut wrong_binder);
-    let wrong_id: quire_contract_model::CheckedNodeId = serde_json::from_value(
+    let wrong_id: filament_contract_model::CheckedNodeId = serde_json::from_value(
         wrong_binder["semantic_graph"]["nodes"][receive_position]["node_id"].clone(),
     )
     .expect("receive identity");
@@ -7767,7 +7771,7 @@ fn receive_accepts_its_send_channel_and_refuses_another_channel() {
     package["semantic_graph"]["nodes"][receive_position]["body"]["arguments"][0]["value"]
         ["target"] = other_key;
     settle(&mut package);
-    let receive_id: quire_contract_model::CheckedNodeId = serde_json::from_value(
+    let receive_id: filament_contract_model::CheckedNodeId = serde_json::from_value(
         package["semantic_graph"]["nodes"][receive_position]["node_id"].clone(),
     )
     .expect("receive identity");
@@ -8132,7 +8136,7 @@ fn protocol_queue_rejects_negative_literal_capacity() {
     );
 }
 
-/// QSpec FR-465-AC-10 (TC-947 CH13a, CH14a): a channel's delivery text admits
+/// FSpec FR-465-AC-10 (TC-947 CH13a, CH14a): a channel's delivery text admits
 /// a canonical count interval `[lo,hi]` with `lo <= hi` beside the four policy
 /// words, and refuses every other spelling `malformed_wire` at the channel node.
 #[trace("TC-947", "FR-038-AC-286")]
@@ -8338,7 +8342,7 @@ fn protocol_channel_fifo_refuses_float_key() {
         .expect("nodes")
         .push(json!({
             "node_id": node_id(&digest),
-            "schema_version": "quire.checked-semantic-graph/v2",
+            "schema_version": "filament.checked-semantic-graph/v2",
             "node_tag": "scalar_type", "semantic_form": "float32",
             "semantic_type": node_id(&digest), "dependencies": [],
             "occurrences": [{"role": "generated", "ordinal": 0}],
@@ -9299,27 +9303,27 @@ fn nested_repeat_keeps_visible_composites_and_ordered_equalities_as_atoms() {
     let (a, b) = boolean_atoms(&mut package);
     let not_a = boolean_expression(
         &mut package,
-        "quire.op.boolean.not",
+        "filament.op.boolean.not",
         std::slice::from_ref(&a),
     );
     let not_b = boolean_expression(
         &mut package,
-        "quire.op.boolean.not",
+        "filament.op.boolean.not",
         std::slice::from_ref(&b),
     );
     let a_or_not_a = boolean_expression(
         &mut package,
-        "quire.op.boolean.or",
+        "filament.op.boolean.or",
         &[a.clone(), not_a.clone()],
     );
     let b_or_not_b = boolean_expression(
         &mut package,
-        "quire.op.boolean.or",
+        "filament.op.boolean.or",
         &[b.clone(), not_b.clone()],
     );
     let tautology = boolean_expression(
         &mut package,
-        "quire.op.boolean.and",
+        "filament.op.boolean.and",
         &[a_or_not_a, b_or_not_b],
     );
     set_nested_guard(&mut package, nested, &tautology, &[]);
@@ -9331,13 +9335,13 @@ fn nested_repeat_keeps_visible_composites_and_ordered_equalities_as_atoms() {
 
     let composite = boolean_expression(
         &mut package,
-        "quire.op.boolean.and",
+        "filament.op.boolean.and",
         &[a.clone(), b.clone()],
     );
-    let negations = boolean_expression(&mut package, "quire.op.boolean.or", &[not_a, not_b]);
+    let negations = boolean_expression(&mut package, "filament.op.boolean.or", &[not_a, not_b]);
     let composite_guard = boolean_expression(
         &mut package,
-        "quire.op.boolean.or",
+        "filament.op.boolean.or",
         &[composite.clone(), negations],
     );
     set_nested_guard(&mut package, nested, &composite_guard, &[composite]);
@@ -9356,16 +9360,20 @@ fn nested_repeat_keeps_visible_composites_and_ordered_equalities_as_atoms() {
         Some(format!("/semantic_graph/nodes/{outer}"))
     );
 
-    let equal = boolean_expression(&mut package, "quire.op.boolean.eq", &[a.clone(), b.clone()]);
-    let reversed = boolean_expression(&mut package, "quire.op.boolean.eq", &[b, a]);
+    let equal = boolean_expression(
+        &mut package,
+        "filament.op.boolean.eq",
+        &[a.clone(), b.clone()],
+    );
+    let reversed = boolean_expression(&mut package, "filament.op.boolean.eq", &[b, a]);
     let not_equal = boolean_expression(
         &mut package,
-        "quire.op.boolean.not",
+        "filament.op.boolean.not",
         std::slice::from_ref(&equal),
     );
     let same_identity = boolean_expression(
         &mut package,
-        "quire.op.boolean.or",
+        "filament.op.boolean.or",
         &[equal.clone(), not_equal],
     );
     set_nested_guard(
@@ -9381,12 +9389,12 @@ fn nested_repeat_keeps_visible_composites_and_ordered_equalities_as_atoms() {
     );
     let not_reversed = boolean_expression(
         &mut package,
-        "quire.op.boolean.not",
+        "filament.op.boolean.not",
         std::slice::from_ref(&reversed),
     );
     let distinct_identity = boolean_expression(
         &mut package,
-        "quire.op.boolean.or",
+        "filament.op.boolean.or",
         &[equal.clone(), not_reversed],
     );
     set_nested_guard(&mut package, nested, &distinct_identity, &[equal, reversed]);
@@ -9412,7 +9420,11 @@ fn nested_repeat_keeps_visible_composites_and_ordered_equalities_as_atoms() {
 fn nested_repeat_stops_at_first_false_two_atom_valuation() {
     let (mut package, outer, nested) = nested_repeat_case();
     let (a, b) = boolean_atoms(&mut package);
-    let guard = boolean_expression(&mut package, "quire.op.boolean.or", &[a.clone(), b.clone()]);
+    let guard = boolean_expression(
+        &mut package,
+        "filament.op.boolean.or",
+        &[a.clone(), b.clone()],
+    );
     set_nested_guard(&mut package, nested, &guard, &[]);
     let CheckedPackageV2ReadResult::Refused(refusal) = read(&package) else {
         panic!(
@@ -9447,22 +9459,24 @@ fn nested_repeat_valuation_charges_and_denial_precede_progress() {
     let (a, b) = boolean_atoms(&mut package);
     let not_a = boolean_expression(
         &mut package,
-        "quire.op.boolean.not",
+        "filament.op.boolean.not",
         std::slice::from_ref(&a),
     );
     let not_b = boolean_expression(
         &mut package,
-        "quire.op.boolean.not",
+        "filament.op.boolean.not",
         std::slice::from_ref(&b),
     );
-    let a_or_not_a = boolean_expression(&mut package, "quire.op.boolean.or", &[a.clone(), not_a]);
-    let b_or_not_b = boolean_expression(&mut package, "quire.op.boolean.or", &[b.clone(), not_b]);
+    let a_or_not_a =
+        boolean_expression(&mut package, "filament.op.boolean.or", &[a.clone(), not_a]);
+    let b_or_not_b =
+        boolean_expression(&mut package, "filament.op.boolean.or", &[b.clone(), not_b]);
     let tautology = boolean_expression(
         &mut package,
-        "quire.op.boolean.and",
+        "filament.op.boolean.and",
         &[a_or_not_a, b_or_not_b],
     );
-    let disjunction = boolean_expression(&mut package, "quire.op.boolean.or", &[a, b]);
+    let disjunction = boolean_expression(&mut package, "filament.op.boolean.or", &[a, b]);
     set_nested_guard(&mut package, nested, &disjunction, &[]);
     let first_decision = decision_work(&package);
     assert!(
@@ -9633,7 +9647,7 @@ fn nested_repeat_causal_cycle_precedes_valuation_and_progress() {
     outer_body["arguments"][6]["value"]["members"] = json!([]);
     package["semantic_graph"]["nodes"][outer]["body"] = outer_body;
     let (a, b) = boolean_atoms(&mut package);
-    let guard = boolean_expression(&mut package, "quire.op.boolean.or", &[a, b]);
+    let guard = boolean_expression(&mut package, "filament.op.boolean.or", &[a, b]);
     set_nested_guard(&mut package, nested, &guard, &[]);
     let decision = decision_work(&package);
     let CheckedPackageV2ReadResult::Refused(refusal) = read_at_work(&package, decision) else {
@@ -9908,7 +9922,11 @@ fn nested_repeat_referenced_boolean_literal_is_constant() {
         read(&package)
     );
     let (atom, _) = boolean_atoms(&mut package);
-    let guard = boolean_expression(&mut package, "quire.op.boolean.or", &[atom, literal_target]);
+    let guard = boolean_expression(
+        &mut package,
+        "filament.op.boolean.or",
+        &[atom, literal_target],
+    );
     set_nested_guard(&mut package, nested, &guard, &[]);
     assert!(
         matches!(read(&package), CheckedPackageV2ReadResult::Admitted(_)),
@@ -9947,17 +9965,17 @@ fn standalone_repeat_does_not_valuate_thirty_visible_atoms() {
         .push(literal);
     let mut visible = Vec::new();
     for _ in 0..30 {
-        previous = boolean_expression(&mut package, "quire.op.boolean.not", &[previous]);
+        previous = boolean_expression(&mut package, "filament.op.boolean.not", &[previous]);
         visible.push(previous.clone());
     }
     let guard = boolean_expression(
         &mut package,
-        "quire.op.boolean.and",
+        "filament.op.boolean.and",
         &[visible[0].clone(), true_literal.clone()],
     );
     let true_guard = boolean_expression(
         &mut package,
-        "quire.op.boolean.or",
+        "filament.op.boolean.or",
         &[visible[0].clone(), true_literal],
     );
     set_nested_guard(&mut package, repeat, &guard, &visible);
@@ -9999,7 +10017,7 @@ fn await_anchored_to_its_own_event_refuses_causal_cycle() {
     else {
         panic!("cycle must name its controls");
     };
-    let expected: Vec<quire_contract_model::CheckedNodeId> = [holder, children[0]]
+    let expected: Vec<filament_contract_model::CheckedNodeId> = [holder, children[0]]
         .into_iter()
         .map(|position| {
             serde_json::from_value(package["semantic_graph"]["nodes"][position]["node_id"].clone())
@@ -10041,7 +10059,7 @@ fn await_after_later_sibling_cycles_before_clause_guard_slot() {
         panic!("cycle must name the await and later anchor");
     };
     let holder = holder_position(&package);
-    let expected: Vec<quire_contract_model::CheckedNodeId> = [holder, children[0], children[1]]
+    let expected: Vec<filament_contract_model::CheckedNodeId> = [holder, children[0], children[1]]
         .into_iter()
         .map(|position| {
             serde_json::from_value(package["semantic_graph"]["nodes"][position]["node_id"].clone())
@@ -10076,7 +10094,7 @@ fn with_protocol_fairness(package: Value, member: Value) -> (Value, usize) {
 fn with_protocol_fairness_on(mut package: Value, member: Value, clause: usize) -> (Value, usize) {
     crate::checked_package_v2_temporal::select_profile(
         &mut package,
-        "quire.temporal.infinite-trace/v1",
+        "filament.temporal.infinite-trace/v1",
     );
     let fair = package["semantic_graph"]["nodes"].as_array().unwrap().len();
     package["semantic_graph"]["nodes"]
@@ -10183,7 +10201,7 @@ fn typed_protocol_fairness_preserves_each_selected_target() {
         let CheckedTerm::Application { operation, .. } = &admitted.graph().nodes[fair].body else {
             panic!("fairness application")
         };
-        let Some(quire_contract_model::CheckedOperationMember::Fairness { target, .. }) =
+        let Some(filament_contract_model::CheckedOperationMember::Fairness { target, .. }) =
             operation.read().unwrap().member
         else {
             panic!("typed fairness target")
@@ -10230,7 +10248,7 @@ fn external_temporal_compensation_fairness_uses_the_templates_owner() {
     let CheckedTerm::Application { operation, .. } = &admitted.graph().nodes[fair].body else {
         panic!("fairness application must be retained");
     };
-    let Some(quire_contract_model::CheckedOperationMember::Fairness { target, .. }) =
+    let Some(filament_contract_model::CheckedOperationMember::Fairness { target, .. }) =
         operation.read().expect("admitted operation").member
     else {
         panic!("fairness member must be retained");
@@ -10480,11 +10498,11 @@ fn typed_protocol_fairness_join_precedes_profile_and_interval_defects() {
         if bounded {
             crate::checked_package_v2_temporal::select_profile(
                 &mut package,
-                "quire.temporal.event-position.false-extension/v1",
+                "filament.temporal.event-position.false-extension/v1",
             );
         } else {
             for node in package["semantic_graph"]["nodes"].as_array_mut().unwrap() {
-                if node["body"]["operation"]["identity"] == "quire.op.temporal.eventually" {
+                if node["body"]["operation"]["identity"] == "filament.op.temporal.eventually" {
                     node["body"]["operation"]["member"]["interval"] =
                         json!({"lower":"3", "upper":"0"});
                 }
@@ -10657,10 +10675,10 @@ pub(super) fn instantiate_fairness_reader_vector(vector: &Value) -> (Value, usiz
 #[trace("TC-048", "FR-038-AC-98", "FR-038-AC-103")]
 #[test]
 fn qspec_typed_fairness_reader_vectors_match_owner_refusals() {
-    let root = match std::env::var_os("QUIRE_SPECIFICATION_DIR") {
+    let root = match std::env::var_os("FILAMENT_SPECIFICATION_DIR") {
         Some(root) => root,
         None if std::env::var_os("QSPEC_CONFORMANCE").is_none() => return,
-        None => panic!("QUIRE_SPECIFICATION_DIR required for owner conformance"),
+        None => panic!("FILAMENT_SPECIFICATION_DIR required for owner conformance"),
     };
     let path = std::path::PathBuf::from(root)
         .join("proposals/checked-package-v2/temporal-fairness-target-vectors.json");
@@ -10704,7 +10722,7 @@ fn slot_application(
     arguments: Value,
     member: Value,
 ) -> Value {
-    let target = boolean_expression(package, "quire.op.boolean.not", &[]);
+    let target = boolean_expression(package, "filament.op.boolean.not", &[]);
     let at = node_position_for_key(package, &target);
     let node = &mut package["semantic_graph"]["nodes"][at];
     node["semantic_form"] = json!(form);
@@ -10736,7 +10754,7 @@ fn slot_let_fixture(initializer_reads_local: bool) -> (Value, usize) {
     let expression = slot_application(
         &mut package,
         "let",
-        "quire.op.control.let",
+        "filament.op.control.let",
         &boolean,
         json!([{"term":"binding", "name":"slot_local", "value":initializer}, {"term":"reference", "target":local}]),
         Value::Null,
@@ -10764,7 +10782,7 @@ fn slot_case_fixture() -> (Value, usize, Value, Value, Value, Value) {
         .as_array_mut()
         .expect("nodes");
     nodes.push(owned_structural_node(json!({
-        "node_id":shape, "schema_version":"quire.checked-semantic-graph/v2",
+        "node_id":shape, "schema_version":"filament.checked-semantic-graph/v2",
         "node_tag":"composite_type", "semantic_form":"union", "semantic_type":shape,
         "dependencies":[integer], "occurrences":[{"role":"declaration","ordinal":0}],
         "declaration":{"qualified_name":["Shape"]},
@@ -10774,13 +10792,13 @@ fn slot_case_fixture() -> (Value, usize, Value, Value, Value, Value) {
         ]}
     }), source_owner(&fixture_source())));
     nodes.push(json!({
-        "node_id":two, "schema_version":"quire.checked-semantic-graph/v2",
+        "node_id":two, "schema_version":"filament.checked-semantic-graph/v2",
         "node_tag":"value", "semantic_form":"literal", "semantic_type":integer,
         "dependencies":[], "occurrences":[{"role":"expression","ordinal":0}],
         "body":{"term":"literal","type":integer,"value_kind":"integer","value":"2"}
     }));
     nodes.push(json!({
-        "node_id":circle, "schema_version":"quire.checked-semantic-graph/v2",
+        "node_id":circle, "schema_version":"filament.checked-semantic-graph/v2",
         "node_tag":"value", "semantic_form":"union_value", "semantic_type":shape,
         "dependencies":[two], "occurrences":[{"role":"expression","ordinal":0}],
         "body":{"term":"aggregate","members":[{"term":"binding","name":"Circle","value":
@@ -10792,7 +10810,7 @@ fn slot_case_fixture() -> (Value, usize, Value, Value, Value, Value) {
     let case = slot_application(
         &mut package,
         "case",
-        "quire.op.control.case",
+        "filament.op.control.case",
         &integer,
         json!([
             {"term":"reference","target":circle},
@@ -10803,7 +10821,7 @@ fn slot_case_fixture() -> (Value, usize, Value, Value, Value, Value) {
     );
     let predicate = boolean_expression(
         &mut package,
-        "quire.op.integer.ge",
+        "filament.op.integer.ge",
         &[case.clone(), two.clone()],
     );
     set_recovery_predicate(&mut package, compensation, &predicate);
@@ -10891,7 +10909,7 @@ fn recovery_case_arm_binder_does_not_escape_to_its_scrutinee() {
         .as_array_mut()
         .expect("nodes")
         .push(json!({
-            "node_id":empty, "schema_version":"quire.checked-semantic-graph/v2",
+            "node_id":empty, "schema_version":"filament.checked-semantic-graph/v2",
             "node_tag":"value", "semantic_form":"union_value", "semantic_type":shape,
             "dependencies":[], "occurrences":[{"role":"expression","ordinal":0}],
             "body":{"term":"aggregate","members":[
@@ -10976,7 +10994,7 @@ fn recovery_case_shared_body_is_checked_under_each_arm_scope() {
     let shared = slot_application(
         &mut package,
         "binary",
-        "quire.op.integer.add",
+        "filament.op.integer.add",
         &integer,
         json!([
             {"term":"reference","target":binder},
@@ -11015,7 +11033,7 @@ fn recovery_case_local_cannot_launder_a_known_stage_binder_or_barred_state() {
         .as_array_mut()
         .expect("nodes")
         .push(json!({
-            "node_id":literal, "schema_version":"quire.checked-semantic-graph/v2",
+            "node_id":literal, "schema_version":"filament.checked-semantic-graph/v2",
             "node_tag":"value", "semantic_form":"literal", "semantic_type":boolean,
             "dependencies":[], "occurrences":[{"role":"expression","ordinal":0}],
             "body":{"term":"literal","type":boolean,"value_kind":"boolean","value":true}
@@ -11043,7 +11061,7 @@ fn recovery_case_local_cannot_launder_a_known_stage_binder_or_barred_state() {
         json!({"term":"literal","type":boolean,"value_kind":"boolean","value":false});
     let at = node_position_for_key(&package, &former_predicate);
     package["semantic_graph"]["nodes"][at]["body"]["operation"]["identity"] =
-        json!("quire.op.boolean.and");
+        json!("filament.op.boolean.and");
     package["semantic_graph"]["nodes"][at]["body"]["arguments"][1]["target"] = literal;
     package["semantic_graph"]["nodes"][compensation]["body"]["arguments"][12]["value"]["members"]
         [1]["value"] = json!({"term":"reference","target":case});
@@ -11150,9 +11168,9 @@ fn role_accepts_a_selected_port_member_without_changing_legacy_roles() {
 #[test]
 fn recovery_slots_bind_sum_count_and_quantifier_parameters() {
     for operation in [
-        "quire.op.collection.sum.integer",
-        "quire.op.collection.count",
-        "quire.op.collection.forall",
+        "filament.op.collection.sum.integer",
+        "filament.op.collection.count",
+        "filament.op.collection.forall",
     ] {
         let (mut package, _, compensation) = package_with_admitted_compensation();
         let integer = node_id(&family_key("a3a3"));
@@ -11184,7 +11202,7 @@ fn recovery_slots_bind_sum_count_and_quantifier_parameters() {
         let source = slot_application(
             &mut package,
             "collection",
-            "quire.op.collection.sequence",
+            "filament.op.collection.sequence",
             &sequence_type,
             json!([literal("1"), literal("2")]),
             Value::Null,
@@ -11192,7 +11210,7 @@ fn recovery_slots_bind_sum_count_and_quantifier_parameters() {
         let predicate = slot_application(
             &mut package,
             "binary",
-            "quire.op.integer.ge",
+            "filament.op.integer.ge",
             &boolean,
             json!([{"term":"reference", "target":local},literal("0")]),
             Value::Null,
@@ -11222,7 +11240,7 @@ fn recovery_slots_bind_sum_count_and_quantifier_parameters() {
             slot_application(
                 &mut package,
                 "binary",
-                "quire.op.integer.ge",
+                "filament.op.integer.ge",
                 &boolean,
                 json!([{"term":"reference", "target":query},literal("0")]),
                 Value::Null,
@@ -11246,7 +11264,7 @@ fn local_scope_is_nested_and_does_not_leak_through_a_shared_node() {
         .as_array()
         .unwrap()
         .iter()
-        .position(|node| node["body"]["operation"]["identity"] == "quire.op.control.let")
+        .position(|node| node["body"]["operation"]["identity"] == "filament.op.control.let")
         .unwrap();
     let outer = package["semantic_graph"]["nodes"][first]["body"]["arguments"][1]["target"].clone();
     let boolean = node_id(&family_key("aaaa"));
@@ -11255,13 +11273,13 @@ fn local_scope_is_nested_and_does_not_leak_through_a_shared_node() {
     package["semantic_graph"]["nodes"][at]["semantic_type"] = boolean.clone();
     let conjunction = boolean_expression(
         &mut package,
-        "quire.op.boolean.and",
+        "filament.op.boolean.and",
         &[outer.clone(), inner.clone()],
     );
     let inner_let = slot_application(
         &mut package,
         "let",
-        "quire.op.control.let",
+        "filament.op.control.let",
         &boolean,
         json!([{"term":"binding","name":"slot_inner","value":{"term":"reference","target":outer}},{"term":"reference","target":conjunction}]),
         Value::Null,
@@ -11275,7 +11293,7 @@ fn local_scope_is_nested_and_does_not_leak_through_a_shared_node() {
         read(&package)
     );
     let let_id = package["semantic_graph"]["nodes"][first]["node_id"].clone();
-    let outside = boolean_expression(&mut package, "quire.op.boolean.and", &[let_id, outer]);
+    let outside = boolean_expression(&mut package, "filament.op.boolean.and", &[let_id, outer]);
     set_recovery_predicate(&mut package, compensation, &outside);
     settle(&mut package);
     let CheckedPackageV2ReadResult::Refused(refusal) = read(&package) else {
@@ -11302,7 +11320,7 @@ fn same_name_let_cannot_launder_a_forward_protocol_capture() {
     let expression = slot_application(
         &mut package,
         "let",
-        "quire.op.control.let",
+        "filament.op.control.let",
         &ty,
         json!([{"term":"binding","name":name,"value":initializer},{"term":"reference","target":binder}]),
         Value::Null,
@@ -11331,7 +11349,7 @@ fn unused_local_binding_does_not_hide_barred_initializer_model_state() {
     let expression = slot_application(
         &mut package,
         "let",
-        "quire.op.control.let",
+        "filament.op.control.let",
         &boolean,
         json!([{"term":"binding","name":"over","value":{"term":"reference","target":over}},{"term":"literal","type":boolean,"value_kind":"boolean","value":true}]),
         Value::Null,
@@ -11460,15 +11478,15 @@ fn port_member_borrowed_read_and_typed_writer_preserve_the_exact_pair() {
         admitted.protocol_role_model_member(&id),
         Some(("test/families", "ix://test/families/PumpOutlet"))
     );
-    let encoded = quire_contract_model::encode_checked_package_v2(
+    let encoded = filament_contract_model::encode_checked_package_v2(
         admitted.name(),
         admitted.lock(),
         admitted.graph(),
-        quire_contract_model::CheckedPackageSourceCorrespondenceRef {
+        filament_contract_model::CheckedPackageSourceCorrespondenceRef {
             source_map: admitted.source_map(),
             refinement_step_rows: admitted.refinement_step_rows(),
         },
-        quire_contract_model::CheckedPackageSidecarsRef {
+        filament_contract_model::CheckedPackageSidecarsRef {
             checked_term_data: admitted.checked_term_data(),
             temporal_bindings: admitted.temporal_bindings(),
             temporal_clause_names: admitted.temporal_clause_names(),
@@ -11520,7 +11538,7 @@ fn protocol_step_tables_and_walks_are_charged_to_the_read_budget() {
     use crate::checked_package_v2_graph_read_storage::{
         assert_exact_and_one_short, stage_requests,
     };
-    use quire_contract_model::{NativeJoinBudget, PackageReadStage};
+    use filament_contract_model::{NativeJoinBudget, PackageReadStage};
     let (package, ..) = decision_fact_fixture();
     let bytes = canonical(&package);
     let evidence = evidence_for(&package);

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Agent-IX
 
-//! TC-225: the V2 reader admits QSpec FR-451's `correspondence`/
+//! TC-225: the V2 reader admits FSpec FR-451's `correspondence`/
 //! `abstraction_relation` body and refuses every other shape with the code,
 //! cause and locus FR-346 names, in reader order.
 //!
@@ -16,13 +16,13 @@ use crate::support::checked_package::{
     canonical, evidence_with_document, node_id as fixture_node_id, nominal_package,
     rebuild_source_map, refresh_identity, select_model, settle, structural_id, INTEGER_KEY,
 };
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     CheckedNodeId, CheckedNodeKind, CheckedNodeTag, CheckedPackageReadLimits,
     CheckedPackageRefusal, CheckedPackageRefusalCause, CheckedPackageRefusalCode, CheckedPackageV2,
     CheckedPackageV2ReadResult, CheckedTerm, CompleteLoweringProfileV2, CompleteLoweringRecordV2,
     CorrespondenceForm,
 };
+use ix_trace_rs::trace;
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
 
@@ -36,7 +36,7 @@ const DRAFT: &str = "ix://acme/config/ConfigVersionDraft";
 const LEFT: &str = "ix://acme/config/Left";
 const RIGHT: &str = "ix://acme/config/Right";
 const BOTH: &str = "ix://acme/config/Both";
-const NATIVE_INTEGER: &str = "ix://quire/native/Integer";
+const NATIVE_INTEGER: &str = "ix://filament/native/Integer";
 const POPULATION_A: &str = "ix://acme/config/PopulationA";
 const POPULATION_B: &str = "ix://acme/config/PopulationB";
 
@@ -158,10 +158,10 @@ pub(crate) fn domain_document() -> Value {
         "package": {"identity": IDENTITY, "version": "1.0.0"},
         "constructs": [{
             "kind": {"module": IDENTITY, "name": "entity"},
-            "construct": {"meaning": "quire.meaning.model.object-type/v1"},
+            "construct": {"meaning": "filament.meaning.model.object-type/v1"},
         }, {
             "kind": {"module": IDENTITY, "name": "population"},
-            "construct": {"meaning": "quire.meaning.model.population/v1"},
+            "construct": {"meaning": "filament.meaning.model.population/v1"},
         }],
         "types": [
             domain_type(
@@ -212,7 +212,7 @@ fn plain(
 ) -> Value {
     json!({
         "node_id": node_id(path),
-        "schema_version": "quire.checked-semantic-graph/v2",
+        "schema_version": "filament.checked-semantic-graph/v2",
         "node_tag": tag,
         "semantic_form": form,
         "semantic_type": node_id(ty),
@@ -966,7 +966,7 @@ fn rooted_in(root: Value) -> (Value, usize) {
 fn tc_225_an_application_at_the_body_root_refuses_as_operator_ineligible() {
     let state_clause = json!({
         "term": "application", "operator": "state_clause",
-        "operation": {"identity": "quire.op.state.clause", "laws": [], "mode": null,
+        "operation": {"identity": "filament.op.state.clause", "laws": [], "mode": null,
             "member": {"kind": "state_clause", "clause": "invariant"}, "leaves": []},
         "result_type": node_id(INTEGER),
         "arguments": [
@@ -979,12 +979,12 @@ fn tc_225_an_application_at_the_body_root_refuses_as_operator_ineligible() {
     for (case, root, suffix) in [
         (
             "an ordinary class",
-            application("call", "quire.op.function.call"),
+            application("call", "filament.op.function.call"),
             "",
         ),
         (
             "a temporal_formula class",
-            application("temporal_formula", "quire.op.temporal.holds"),
+            application("temporal_formula", "filament.op.temporal.holds"),
             "",
         ),
         ("the state clause class", state_clause, ""),
@@ -1015,7 +1015,7 @@ fn tc_225_an_application_as_a_member_value_refuses_at_strict_wire_validation() {
     };
     expect(
         "a non-case application",
-        &with_type(application("call", "quire.op.function.call")),
+        &with_type(application("call", "filament.op.function.call")),
         Code::MalformedWire,
         None,
         &at_node(n, "/body/objects/0/type"),
@@ -1023,7 +1023,7 @@ fn tc_225_an_application_as_a_member_value_refuses_at_strict_wire_validation() {
     );
     expect(
         "a case application",
-        &with_type(application("case", "quire.op.expression.case")),
+        &with_type(application("case", "filament.op.expression.case")),
         Code::IllTyped,
         Some(Cause::OperatorIneligible),
         &at_node(n, "/body/objects/0/type/operator"),
@@ -1032,7 +1032,7 @@ fn tc_225_an_application_as_a_member_value_refuses_at_strict_wire_validation() {
     // The member that holds it is any member, not only a node key.
     let in_frame = mutated(value.clone(), n, |node| {
         node["body"]["frames"][0]["function"] =
-            json!([application("call", "quire.op.function.call")]);
+            json!([application("call", "filament.op.function.call")]);
     });
     expect(
         "an application inside a function path",
@@ -1096,8 +1096,8 @@ fn tc_225_a_deeply_nested_member_refuses_as_the_wrong_shape() {
 #[trace("TC-225", "FR-346-AC-2")]
 #[test]
 fn tc_225_a_root_application_is_refused_by_the_step_that_places_it() {
-    let temporal = application("temporal_formula", "quire.op.temporal.holds");
-    let ordinary = application("call", "quire.op.function.call");
+    let temporal = application("temporal_formula", "filament.op.temporal.holds");
+    let ordinary = application("call", "filament.op.function.call");
     let root_refusal = |case: &str, value: &Value, rooted_at: usize, root_key: &str| {
         expect(
             case,
@@ -1329,7 +1329,7 @@ fn tc_225_identity_members_that_do_not_hold_refuse_at_the_node() {
             Box::new(|node| {
                 let mut dependencies = vec![node_id(&config_version()), node_id(INTEGER)];
                 dependencies.sort_by_key(|id| {
-                    serde_json::from_value::<quire_contract_model::CheckedNodeId>(id.clone())
+                    serde_json::from_value::<filament_contract_model::CheckedNodeId>(id.clone())
                         .expect("structural id")
                 });
                 node["dependencies"] = Value::Array(dependencies);
@@ -1766,7 +1766,7 @@ fn tc_225_a_frame_operation_resolves_as_an_anchor_does_and_binds_its_parameters(
     }
 }
 
-/// QSpec FR-154-AC-14 validates declared parameter names at the selected domain
+/// FSpec FR-154-AC-14 validates declared parameter names at the selected domain
 /// document before the abstraction relation frame entry is reached.
 /// ACs: FR-346-AC-7
 #[trace("TC-225", "FR-346-AC-7")]
@@ -2057,7 +2057,7 @@ fn with_state(value: Value, frame_context: &str, anchor_context: &str) -> Value 
 /// A `call` application node: every earlier step admits it, and the
 /// operation step refuses it.
 fn call_node() -> Value {
-    let call = application("call", "quire.op.function.call");
+    let call = application("call", "filament.op.function.call");
     plain(
         "expression/call",
         "expression",
@@ -2194,7 +2194,7 @@ fn tc_225_an_abstraction_defect_is_reported_before_the_operation_step() {
     );
     // An ordinary-class application at an abstraction node's body root and an
     // operation defect: the body-root refusal.
-    let (rooted, rooted_at) = rooted_in(application("call", "quire.op.function.call"));
+    let (rooted, rooted_at) = rooted_in(application("call", "filament.op.function.call"));
     let both = settled_value(with_nodes(rooted, vec![call_node()]));
     expect(
         "a body root and an operation defect",
@@ -2319,8 +2319,8 @@ fn tc_225_an_admitted_relation_node_lowers_like_any_admitted_node() {
     let n = at(&value, &minimal);
     let id = typed_node_id(&relation_key(0));
     let profile = CompleteLoweringProfileV2 {
-        reference: quire_contract_model::LoweringProfileRef {
-            authority: "quire".into(),
+        reference: filament_contract_model::LoweringProfileRef {
+            authority: "filament".into(),
             identity: "complete-v1".into(),
         },
         required_source_selections: Vec::new(),

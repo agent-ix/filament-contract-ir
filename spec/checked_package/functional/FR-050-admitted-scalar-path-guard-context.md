@@ -3,29 +3,29 @@ id: FR-050
 title: "Expose admitted scalar path-guard context for an exact requirement occurrence"
 type: FR
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/StR-001
+  - target: ix://agent-ix/filament-contract-ir/StR-001
     type: traces_to
-  - target: ix://agent-ix/quire-contract-ir/FR-035
+  - target: ix://agent-ix/filament-contract-ir/FR-035
     type: depends_on
-  - target: ix://agent-ix/quire-contract-ir/FR-049
+  - target: ix://agent-ix/filament-contract-ir/FR-049
     type: references
-  - target: ix://agent-ix/quire-contract-ir/FR-038
+  - target: ix://agent-ix/filament-contract-ir/FR-038
     type: references
-  - target: ix://agent-ix/quire-specification/FR-330
+  - target: ix://agent-ix/filament-specification/FR-330
     type: references
-  - target: ix://agent-ix/quire-spec-language/FR-062
+  - target: ix://agent-ix/filament-spec-language/FR-062
     type: references
-  - target: ix://agent-ix/quire-spec-language/FR-075
+  - target: ix://agent-ix/filament-spec-language/FR-075
     type: references
 ---
 # FR-050: Expose admitted scalar path-guard context for an exact requirement occurrence
 
 ## Description
 
-When a driver requests a scalar proof for one QSL-checked requirement occurrence,
+When a driver requests a scalar proof for one FSL-checked requirement occurrence,
 Contract IR SHALL expose its ordered path guards only after validating their
 Boolean expressions against the same admitted `ContractPackageV1` as the
-application result. QSL owns the checked `RequirementItem::path_condition()`
+application result. FSL owns the checked `RequirementItem::path_condition()`
 sequence of `PathGuard { occurrence, holds }`, outermost first. The driver owns
 faithful per-item mapping of that sequence and the context-only lowering roots.
 Contract IR cannot infer whether a represented guard belongs to an application
@@ -33,9 +33,9 @@ occurrence from the FR-330 package, a shared expression key, or source regions.
 
 ## Inputs
 
-One reader-admitted FR-330 `ContractPackageV1`; the exact QSL-checked
+One reader-admitted FR-330 `ContractPackageV1`; the exact FSL-checked
 application occurrence and expression key for one routed item; the exact
-ordered QSL-checked guard sequence, each mapped to IR's typed
+ordered FSL-checked guard sequence, each mapped to IR's typed
 `ContractOccurrenceKeyV1` and Boolean `holds`; and the source package name
 and lowering profile selected for the application's IR lowering. Each guard
 occurrence retains its `expression` role and ordinal. The caller supplies
@@ -43,7 +43,7 @@ guard expression nodes as additional explicit lowering roots for that same
 call. An empty checked sequence is valid and yields an empty guard list.
 
 The guard sequence is supplied at the read-only query boundary. The original
-QSL graph is not a query input.
+FSL graph is not a query input.
 
 ## Outputs
 
@@ -86,7 +86,7 @@ remain distinct in the query. The ordinary forward `reached_closure` of the
 application does not acquire enclosing guards as reverse consumers. Adding
 guard roots may change the represented graph, accounting and canonical
 bytes while retaining the package name, as FR-035 requires. The output remains one ordinary five-member
-FR-330 package, with no added field or copied QSL schema.
+FR-330 package, with no added field or copied FSL schema.
 
 ### Admitted query
 
@@ -107,9 +107,9 @@ two occurrences of the same expression key with different paths or polarities.
 It SHALL NOT sort, deduplicate, change `false` to `true`, infer guards from
 source regions, or discover them from represented nodes. Contract IR cannot
 detect a swap between two separately valid represented guards of the same
-item or between items without a QSL-visible binding witness; the QSL checked
+item or between items without a FSL-visible binding witness; the FSL checked
 record and driver's per-item mapping are authoritative for membership and
-order. A caller-created list alone is not evidence that QSL checked those
+order. A caller-created list alone is not evidence that FSL checked those
 guards. A consumer SHALL use this view only with that faithful mapping.
 
 If any guard fails a check, Contract IR SHALL return the first failing guard
@@ -128,10 +128,10 @@ or result-context outcomes.
 
 | ID | Criteria | Verification |
 | --- | --- | --- |
-| FR-050-AC-1 | For QSL FR-062 RR-13, the checked `rational.div` item supplies the one `y != 0` guard with `holds = true`; after one lowering over application, any selected conversion, and guard roots, the admitted query returns one Boolean expression reference with that exact occurrence, polarity, source package, profile and source-map entry. For a checked else-path item over the same guard expression, `holds = false` is retained, and an empty checked path returns an empty list. | Test |
+| FR-050-AC-1 | For FSL FR-062 RR-13, the checked `rational.div` item supplies the one `y != 0` guard with `holds = true`; after one lowering over application, any selected conversion, and guard roots, the admitted query returns one Boolean expression reference with that exact occurrence, polarity, source package, profile and source-map entry. For a checked else-path item over the same guard expression, `holds = false` is retained, and an empty checked path returns an empty list. | Test |
 | FR-050-AC-2 | Two checked items sharing one application expression node but carrying different ordered guard occurrences retain separate lists and polarities even when all roots are represented in one package. An item with two nested guards returns them outermost first. Repetition of a node key does not collapse distinct occurrences. The query does not infer a guard association from the shared node or source regions. | Test |
 | FR-050-AC-3 | The public guard query returns the corresponding typed located cause for the first failing guard, with no returned prefix, substitute reference or panic, for these inputs against a reader-admitted package: an absent or non-lowered guard root; a typed key, `expression` role or ordinal lacking an exact admitted source-map entry; a represented non-expression node; or a non-Boolean expression. An application-only package refuses a supplied guard key lacking its lowering root despite a plausible source key. A malformed FR-330 package claiming a lowered guard root but omitting its represented node refuses at admission; a private admitted-then-mutated body/dependency inconsistency returns the existing typed view error without a partial list. | Test |
-| FR-050-AC-4 | Mutating only the supplied guard key to one with no admitted expression cannot produce a successful IR guard reference. Mutating only `holds` on an admitted Boolean guard changes only the returned polarity; mutating its ordinal or role to an unrepresented occurrence refuses. An independently valid represented guard substituted from another item's list is structurally valid in IR, so only the QSL checked item and faithful driver mapping establish its membership. | Test |
+| FR-050-AC-4 | Mutating only the supplied guard key to one with no admitted expression cannot produce a successful IR guard reference. Mutating only `holds` on an admitted Boolean guard changes only the returned polarity; mutating its ordinal or role to an unrepresented occurrence refuses. An independently valid represented guard substituted from another item's list is structurally valid in IR, so only the FSL checked item and faithful driver mapping establish its membership. | Test |
 | FR-050-AC-5 | Every guard root has an ordinary FR-035 accounting record. The query returns references from one reader-admitted five-member FR-330 package and changes neither its wire, package name nor the application's forward closure. Added roots may change that package's graph, accounting and complete canonical value. FR-049's application plus optional direct-narrow result outcomes remain unchanged when guards are also represented. | Test |
 
 ## Dependencies
@@ -139,10 +139,10 @@ or result-context outcomes.
 [FR-035](./FR-035-complete-v1-contract-package-lowering.md) owns the one
 lowering and reached closure; [FR-038](./FR-038-consume-checked-package-v2.md)
 owns checked-package/body admission; [FR-049](./FR-049-admitted-scalar-result-context.md)
-owns the independent scalar result-context selection. QSpec
-`ix://agent-ix/quire-specification/FR-330` owns the package wire. QSL
-`ix://agent-ix/quire-spec-language/FR-062` owns checked path conditions, and
-`ix://agent-ix/quire-spec-language/FR-075` owns the routed item. The driver
+owns the independent scalar result-context selection. FSpec
+`ix://agent-ix/filament-specification/FR-330` owns the package wire. FSL
+`ix://agent-ix/filament-spec-language/FR-062` owns checked path conditions, and
+`ix://agent-ix/filament-spec-language/FR-075` owns the routed item. The driver
 carries the exact guards and roots. CG IR-304 owns rendering a supported
 guard and its polarity as an assumption with the same symbolic variable
 assignment as the application, refusing unsupported guard forms or bindings

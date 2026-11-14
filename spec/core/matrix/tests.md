@@ -1,9 +1,9 @@
 ---
 id: TM-003
-title: "quire-contract-ir core test matrix"
+title: "filament-contract-ir core test matrix"
 type: TestMatrix
 ---
-# quire-contract-ir core test matrix
+# filament-contract-ir core test matrix
 
 ## Stakeholder Requirement Coverage
 

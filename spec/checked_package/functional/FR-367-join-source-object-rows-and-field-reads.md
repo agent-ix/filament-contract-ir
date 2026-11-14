@@ -3,19 +3,19 @@ id: FR-367
 title: "Join source-object identity rows and resolve fields on source object nodes"
 type: FR
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/StR-001
+  - target: ix://agent-ix/filament-contract-ir/StR-001
     type: traces_to
-  - target: ix://agent-ix/quire-contract-ir/FR-038
+  - target: ix://agent-ix/filament-contract-ir/FR-038
     type: depends_on
-  - target: ix://agent-ix/quire-contract-ir/FR-362
+  - target: ix://agent-ix/filament-contract-ir/FR-362
     type: depends_on
-  - target: ix://agent-ix/quire-contract-ir/FR-352
+  - target: ix://agent-ix/filament-contract-ir/FR-352
     type: depends_on
-  - target: ix://agent-ix/quire-spec-language/ADR-013
+  - target: ix://agent-ix/filament-spec-language/ADR-013
     type: references
-  - target: ix://agent-ix/quire-spec-language/FR-569
+  - target: ix://agent-ix/filament-spec-language/FR-569
     type: references
-  - target: ix://agent-ix/quire-specification/FR-322
+  - target: ix://agent-ix/filament-specification/FR-322
     type: references
 ---
 
@@ -29,7 +29,7 @@ member whose declaring node has the body `aggregate{[]}` is refused as
 `ill_typed`/`operator-ineligible`, and no reader joins a source-object
 identity row. The reader SHALL resolve a `field` member on a source-declared
 node by the binding of its name, and SHALL join the source-object identity
-rows to their nodes (QSL ADR-013 QC-30 items 2a and 4; the row is QSL
+rows to their nodes (FSL ADR-013 QC-30 items 2a and 4; the row is FSL
 FR-569's "Source-object identity rows").
 
 ## Inputs
@@ -55,7 +55,7 @@ read on an `aggregate{[]}` source type, as it refuses an absent field on a
 model-owned node.
 
 The reader SHALL classify every supplied row before it reports. The reader reports
-the first reason in the reason order of QSL FR-390-AC-67, at the `Package`
+the first reason in the reason order of FSL FR-390-AC-67, at the `Package`
 locus with no partial view and no meter charge. Foreign comes first: a row
 whose `source_authority` is the authority of no `SourceOwner` in the package.
 Unknown comes next: a row whose `structural_node` is not a source-declared
@@ -89,4 +89,4 @@ information against which to check them.
 ## Dependencies
 
 - [FR-352](./FR-352-project-admitted-exact-value-types.md) owns the stage-row convention and its closed outcomes.
-- QSL FR-569 owns the row content, FR-531 the file that carries it, and FR-390-AC-67 the reason order.
+- FSL FR-569 owns the row content, FR-531 the file that carries it, and FR-390-AC-67 the reason order.

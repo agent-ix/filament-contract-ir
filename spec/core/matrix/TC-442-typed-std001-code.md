@@ -3,7 +3,7 @@ id: TC-442
 title: "Std001Code is built only by validation, a checked literal, a registered constant or a DiagnosticCode, serializes as the bare string and spells every registered code once"
 type: TC
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/FR-044
+  - target: ix://agent-ix/filament-contract-ir/FR-044
     type: verifies
 ---
 # TC-442: Std001Code is built only by validation, a checked literal, a registered constant or a DiagnosticCode, serializes as the bare string and spells every registered code once
@@ -49,4 +49,4 @@ and `Err` with code `invalid_code_form` for the three others, with no panic.
 
 Implemented: `tests/it/std001_code.rs` holds one test per acceptance criterion
 (`tc_442_*`). The two compile probes are `compile_fail` doctests on the `code`
-module of `quire-contract-model`, each paired with the passing `const` form.
+module of `filament-contract-model`, each paired with the passing `const` form.

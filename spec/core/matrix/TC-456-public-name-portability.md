@@ -3,7 +3,7 @@ id: TC-456
 title: "Public schema and model names exclude implementation-specific vocabulary"
 type: TC
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/NFR-002
+  - target: ix://agent-ix/filament-contract-ir/NFR-002
     type: verifies
 ---
 # TC-456: Public schema and model names exclude implementation-specific vocabulary

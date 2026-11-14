@@ -1,5 +1,5 @@
 # =============================================================================
-# Quire Contract IR Makefile
+# Filament Contract IR Makefile
 #
 # Native orchestration. Every target calls the toolchain that owns the job:
 # cargo for the crate, the contract conformance runner for the domain corpus,
@@ -10,9 +10,9 @@ CARGO ?= cargo
 # --locked only when no local patch is active: a patch rewrites the resolution.
 LOCKED ?= $(if $(wildcard .cargo/config.toml),,--locked)
 QUIRE ?= quire
-STRING_EDGE ?= qsl-string-edge
-QUIRE_SPEC_LANGUAGE_BIN ?= $(QUIRE_SPEC_LANGUAGE_DIR)/target/debug/quire-spec
-QSL_EMIT_CHECKED_V2_BIN ?= $(QUIRE_SPEC_LANGUAGE_DIR)/target/debug/examples/emit_checked_v2
+STRING_EDGE ?= fsl-string-edge
+FILAMENT_SPEC_LANGUAGE_BIN ?= $(FILAMENT_SPEC_LANGUAGE_DIR)/target/debug/fsl
+FSL_EMIT_CHECKED_V2_BIN ?= $(FILAMENT_SPEC_LANGUAGE_DIR)/target/debug/examples/emit_checked_v2
 
 .PHONY: help
 help:
@@ -25,14 +25,14 @@ help:
 	@echo "  make spec             - Validate and cover all Quire artifacts"
 	@echo "  make release-check    - Run every local release gate"
 	@echo "  make test             - Run cargo test"
-	@echo "  make conformance-qspec-compile - Compile the QSpec conformance target without fixtures (CI gate)"
-	@echo "  make conformance-qspec - QSpec's positive fixtures admit, adverse mutations refuse as recorded, selection identity derives (needs QUIRE_SPECIFICATION_DIR; not in ci)"
-	@echo "  make conformance-qsl-ir703 - Fresh ConfigVersion V2 producer/IR accessor check (needs QUIRE_SPEC_LANGUAGE_DIR and its current binaries)"
-	@echo "  make conformance-qsl-ir769 - Fresh QSL scalar result context through admitted IR (needs QUIRE_SPEC_LANGUAGE_DIR and its current binary)"
-	@echo "  make conformance-qsl-ir779 - QSL FR-062 RR-13 path conditions through admitted IR (needs QUIRE_SPEC_LANGUAGE_DIR and its current binary)"
-	@echo "  make conformance-qsl-exact-producer - Real QSL selected identities and execution points through IR (needs QUIRE_SPEC_LANGUAGE_DIR and QUIRE_SPECIFICATION_DIR; sequential native helpers)"
-	@echo "  make conformance-qsl-ir760 - QSL-emitted Population<T>[N] through the default-feature model consumer (needs QUIRE_SPEC_LANGUAGE_DIR)"
-	@echo "  make conformance-qsl-ir1052 - Fresh QSL Boolean transition V2 readback (needs QSL emitter)"
+	@echo "  make conformance-qspec-compile - Compile the FSpec conformance target without fixtures (CI gate)"
+	@echo "  make conformance-qspec - FSpec's positive fixtures admit, adverse mutations refuse as recorded, selection identity derives (needs FILAMENT_SPECIFICATION_DIR; not in ci)"
+	@echo "  make conformance-fsl-ir703 - Fresh ConfigVersion V2 producer/IR accessor check (needs FILAMENT_SPEC_LANGUAGE_DIR and its current binaries)"
+	@echo "  make conformance-fsl-ir769 - Fresh FSL scalar result context through admitted IR (needs FILAMENT_SPEC_LANGUAGE_DIR and its current binary)"
+	@echo "  make conformance-fsl-ir779 - FSL FR-062 RR-13 path conditions through admitted IR (needs FILAMENT_SPEC_LANGUAGE_DIR and its current binary)"
+	@echo "  make conformance-fsl-exact-producer - Real FSL selected identities and execution points through IR (needs FILAMENT_SPEC_LANGUAGE_DIR and FILAMENT_SPECIFICATION_DIR; sequential native helpers)"
+	@echo "  make conformance-fsl-ir760 - FSL-emitted Population<T>[N] through the default-feature model consumer (needs FILAMENT_SPEC_LANGUAGE_DIR)"
+	@echo "  make conformance-fsl-ir1052 - Fresh FSL Boolean transition V2 readback (needs FSL emitter)"
 	@echo "  make build            - Release build"
 	@echo "  make clean            - cargo clean"
 	@echo "  make deny             - Run all cargo-deny policy checks"
@@ -54,7 +54,7 @@ fmt-check:
 
 .PHONY: string-edge
 string-edge:
-	$(STRING_EDGE) --base-dir . --crate-root src --crate-root crates/quire-contract-model/src --rules string-edge-rules.json
+	$(STRING_EDGE) --base-dir . --crate-root src --crate-root crates/filament-contract-model/src --rules string-edge-rules.json
 
 .PHONY: lint
 lint: string-edge
@@ -62,11 +62,11 @@ lint: string-edge
 	# The workspace lane turns on the model's test-only fault-injection feature
 	# through the root dev-dependency; this lane checks the model as a consumer
 	# builds it, with the feature off.
-	$(CARGO) clippy $(LOCKED) -p quire-contract-model -- -D warnings
+	$(CARGO) clippy $(LOCKED) -p filament-contract-model -- -D warnings
 
 .PHONY: corpus
 corpus:
-	$(CARGO) run $(LOCKED) --quiet --features conformance-cli --bin quire-contract-conformance -- run --corpus corpus/contract-v0.1 --schemas schemas
+	$(CARGO) run $(LOCKED) --quiet --features conformance-cli --bin filament-contract-conformance -- run --corpus corpus/contract-v0.1 --schemas schemas
 
 .PHONY: check-corpus
 check-corpus: corpus
@@ -81,15 +81,15 @@ test:
 	$(CARGO) test $(LOCKED) --workspace --all-targets --features conformance-cli -- --include-ignored
 	# The model's own doctests with its test-only fault-injection feature off:
 	# they prove a default build does not export that surface (FR-019-AC-4).
-	$(CARGO) test $(LOCKED) -p quire-contract-model --doc
-	$(CARGO) test $(LOCKED) -p quire-contract-model --test source_obligation_public
+	$(CARGO) test $(LOCKED) -p filament-contract-model --doc
+	$(CARGO) test $(LOCKED) -p filament-contract-model --test source_obligation_public
 	# The root crate's doctests, which `--all-targets` leaves out: the
 	# `compile_fail` probes of the non-success constructor (FR-030-AC-6).
-	$(CARGO) test $(LOCKED) -p quire-contract-ir --doc
+	$(CARGO) test $(LOCKED) -p filament-contract-ir --doc
 
-# FR-038-AC-107/176: QSpec's CheckedPackage V2 fixtures, structural node ids,
+# FR-038-AC-107/176: FSpec's CheckedPackage V2 fixtures, structural node ids,
 # owners and complete bodies agree with the production reader. Reads the
-# checkout named by QUIRE_SPECIFICATION_DIR and fails, never skips, when it is
+# checkout named by FILAMENT_SPECIFICATION_DIR and fails, never skips, when it is
 # unset, empty, or holds no proposals/checked-package-v2/fixtures/, or when a
 # fixture does not admit. Fixture execution stays outside `test` and `ci`:
 # they have no checkout.
@@ -100,92 +100,92 @@ conformance-qspec-compile:
 .PHONY: conformance-qspec
 conformance-qspec:
 	$(CARGO) test $(LOCKED) --workspace --lib ir1083_
-	$(CARGO) test $(LOCKED) -p quire-contract-model --lib --features qspec-conformance selected_closure_walk -- --include-ignored
+	$(CARGO) test $(LOCKED) -p filament-contract-model --lib --features qspec-conformance selected_closure_walk -- --include-ignored
 	$(CARGO) test $(LOCKED) --test conformance_qspec
-	$(CARGO) test $(LOCKED) -p quire-contract-model --test monitor_plan_public
+	$(CARGO) test $(LOCKED) -p filament-contract-model --test monitor_plan_public
 	@output=$$(QSPEC_CONFORMANCE=1 $(CARGO) test $(LOCKED) --test conformance_qspec tc_048_qspec_all_positive_packages_and_owner_identities -- --exact 2>&1); \
 	status=$$?; printf '%s\n' "$$output"; \
 	[ "$$status" -eq 0 ] || exit "$$status"; \
 	passed=$$(printf '%s\n' "$$output" | grep -c '^test result: ok\. 1 passed; 0 failed; 0 ignored; 0 measured;' || true); \
-	[ "$$passed" -eq 1 ] || { echo 'required QSpec positive package identity test did not run exactly once' >&2; exit 1; }
+	[ "$$passed" -eq 1 ] || { echo 'required FSpec positive package identity test did not run exactly once' >&2; exit 1; }
 	@output=$$(QSPEC_CONFORMANCE=1 $(CARGO) test $(LOCKED) --features conformance-cli --test it checked_package_v2_owners::tc_229_qspec_ 2>&1); \
 	status=$$?; printf '%s\n' "$$output"; \
 	[ "$$status" -eq 0 ] || exit "$$status"; \
 	passed=$$(printf '%s\n' "$$output" | grep -c '^test result: ok\. 2 passed; 0 failed; 0 ignored; 0 measured;' || true); \
-	[ "$$passed" -eq 1 ] || { echo 'required QSpec population fixture tests did not run exactly once' >&2; exit 1; }
+	[ "$$passed" -eq 1 ] || { echo 'required FSpec population fixture tests did not run exactly once' >&2; exit 1; }
 	@output=$$(QSPEC_CONFORMANCE=1 $(CARGO) test $(LOCKED) --features conformance-cli --test it checked_package_v2_protocol_body::compensation_clock_rows_follow_published_cases -- --exact 2>&1); \
 	status=$$?; printf '%s\n' "$$output"; \
 	[ "$$status" -eq 0 ] || exit "$$status"; \
 	passed=$$(printf '%s\n' "$$output" | grep -c '^test result: ok\. 1 passed; 0 failed; 0 ignored; 0 measured;' || true); \
-	[ "$$passed" -eq 1 ] || { echo 'required QSpec compensation clock vector test did not run exactly once' >&2; exit 1; }
-	@output=$$(QSPEC_CONFORMANCE=1 $(CARGO) test $(LOCKED) -p quire-contract-model --test temporal_binding_public default_feature_consumer_borrows_admitted_clock_rows -- --exact 2>&1); \
+	[ "$$passed" -eq 1 ] || { echo 'required FSpec compensation clock vector test did not run exactly once' >&2; exit 1; }
+	@output=$$(QSPEC_CONFORMANCE=1 $(CARGO) test $(LOCKED) -p filament-contract-model --test temporal_binding_public default_feature_consumer_borrows_admitted_clock_rows -- --exact 2>&1); \
 	status=$$?; printf '%s\n' "$$output"; \
 	[ "$$status" -eq 0 ] || exit "$$status"; \
 	passed=$$(printf '%s\n' "$$output" | grep -c '^test result: ok\. 1 passed; 0 failed; 0 ignored; 0 measured;' || true); \
-	[ "$$passed" -eq 1 ] || { echo 'required QSpec temporal binding public consumer did not run exactly once' >&2; exit 1; }
+	[ "$$passed" -eq 1 ] || { echo 'required FSpec temporal binding public consumer did not run exactly once' >&2; exit 1; }
 
-# TC-445's producer-origin case is explicit: the QSL checkout supplies its own
+# TC-445's producer-origin case is explicit: the FSL checkout supplies its own
 # current fixture and compiler executables, and the test records the revision
-# and commands. Ordinary IR tests have no external QSL build dependency.
-.PHONY: conformance-qsl-ir703
-conformance-qsl-ir703:
-	@test -n "$(QUIRE_SPEC_LANGUAGE_DIR)" || { echo 'QUIRE_SPEC_LANGUAGE_DIR is required' >&2; exit 1; }
-	@test -x "$(QUIRE_SPEC_LANGUAGE_DIR)/target/debug/examples/config_version_fixtures" || { echo 'build the current QSL config_version_fixtures example first' >&2; exit 1; }
-	@test -x "$(QUIRE_SPEC_LANGUAGE_DIR)/target/debug/quire-spec" || { echo 'build the current QSL quire-spec binary first' >&2; exit 1; }
-	@output=$$(IR703_QSL_CONFORMANCE=1 $(CARGO) test $(LOCKED) --workspace --test it checked_package_v2_comparison_operands::tc_445_fresh_qsl_config_version_has_shared_field_with_post_and_pre_observations -- --exact --nocapture 2>&1); \
+# and commands. Ordinary IR tests have no external FSL build dependency.
+.PHONY: conformance-fsl-ir703
+conformance-fsl-ir703:
+	@test -n "$(FILAMENT_SPEC_LANGUAGE_DIR)" || { echo 'FILAMENT_SPEC_LANGUAGE_DIR is required' >&2; exit 1; }
+	@test -x "$(FILAMENT_SPEC_LANGUAGE_DIR)/target/debug/examples/config_version_fixtures" || { echo 'build the current FSL config_version_fixtures example first' >&2; exit 1; }
+	@test -x "$(FILAMENT_SPEC_LANGUAGE_DIR)/target/debug/fsl" || { echo 'build the current FSL fsl binary first' >&2; exit 1; }
+	@output=$$(IR703_FSL_CONFORMANCE=1 $(CARGO) test $(LOCKED) --workspace --test it checked_package_v2_comparison_operands::tc_445_fresh_fsl_config_version_has_shared_field_with_post_and_pre_observations -- --exact --nocapture 2>&1); \
 	status=$$?; printf '%s\n' "$$output"; \
 	[ "$$status" -eq 0 ] || exit "$$status"; \
 	passed=$$(printf '%s\n' "$$output" | grep -c '^test result: ok\. 1 passed; 0 failed; 0 ignored; 0 measured;' || true); \
-	[ "$$passed" -eq 1 ] || { echo 'required TC-445 QSL producer test did not run exactly once' >&2; exit 1; }
+	[ "$$passed" -eq 1 ] || { echo 'required TC-445 FSL producer test did not run exactly once' >&2; exit 1; }
 
-.PHONY: conformance-qsl-ir769
-conformance-qsl-ir769:
-	@test -n "$(QUIRE_SPEC_LANGUAGE_DIR)" || { echo 'QUIRE_SPEC_LANGUAGE_DIR is required' >&2; exit 1; }
-	@test -x "$(QUIRE_SPEC_LANGUAGE_BIN)" || { echo 'build the current QSL quire-spec binary first' >&2; exit 1; }
-	@output=$$(QUIRE_SPEC_LANGUAGE_BIN="$(QUIRE_SPEC_LANGUAGE_BIN)" $(CARGO) test $(LOCKED) --test conformance_qsl_ir769 -- --nocapture 2>&1); \
+.PHONY: conformance-fsl-ir769
+conformance-fsl-ir769:
+	@test -n "$(FILAMENT_SPEC_LANGUAGE_DIR)" || { echo 'FILAMENT_SPEC_LANGUAGE_DIR is required' >&2; exit 1; }
+	@test -x "$(FILAMENT_SPEC_LANGUAGE_BIN)" || { echo 'build the current FSL fsl binary first' >&2; exit 1; }
+	@output=$$(FILAMENT_SPEC_LANGUAGE_BIN="$(FILAMENT_SPEC_LANGUAGE_BIN)" $(CARGO) test $(LOCKED) --test conformance_fsl_ir769 -- --nocapture 2>&1); \
 	status=$$?; printf '%s\n' "$$output"; \
 	[ "$$status" -eq 0 ] || exit "$$status"; \
 	passed=$$(printf '%s\n' "$$output" | grep -c '^test result: ok\. 1 passed; 0 failed; 0 ignored; 0 measured;' || true); \
-	[ "$$passed" -eq 1 ] || { echo 'required TC-447 QSL producer test did not run exactly once' >&2; exit 1; }
+	[ "$$passed" -eq 1 ] || { echo 'required TC-447 FSL producer test did not run exactly once' >&2; exit 1; }
 
-.PHONY: conformance-qsl-exact-producer-compile conformance-qsl-exact-producer
-conformance-qsl-exact-producer-compile:
-	$(CARGO) test $(LOCKED) --workspace --no-run --test conformance_qsl_exact_producer
+.PHONY: conformance-fsl-exact-producer-compile conformance-fsl-exact-producer
+conformance-fsl-exact-producer-compile:
+	$(CARGO) test $(LOCKED) --workspace --no-run --test conformance_fsl_exact_producer
 
 # Finish outer Cargo before its native binary starts the isolated Cargo helper.
-conformance-qsl-exact-producer:
-	@test -n "$(QUIRE_SPEC_LANGUAGE_DIR)" || { echo 'QUIRE_SPEC_LANGUAGE_DIR is required' >&2; exit 1; }
-	@test -n "$(QUIRE_SPECIFICATION_DIR)" || { echo 'QUIRE_SPECIFICATION_DIR is required' >&2; exit 1; }
-	@artifacts=$$($(CARGO) test $(LOCKED) --workspace --no-run --test conformance_qsl_exact_producer --message-format=json) || exit $$?; \
-	binary=$$(printf '%s\n' "$$artifacts" | python3 -c 'import json,sys; rows=[json.loads(line) for line in sys.stdin]; bins=[row["executable"] for row in rows if row.get("reason")=="compiler-artifact" and row.get("target",{}).get("name")=="conformance_qsl_exact_producer" and row.get("executable")]; assert len(bins)==1, bins; print(bins[0])') || exit $$?; \
+conformance-fsl-exact-producer:
+	@test -n "$(FILAMENT_SPEC_LANGUAGE_DIR)" || { echo 'FILAMENT_SPEC_LANGUAGE_DIR is required' >&2; exit 1; }
+	@test -n "$(FILAMENT_SPECIFICATION_DIR)" || { echo 'FILAMENT_SPECIFICATION_DIR is required' >&2; exit 1; }
+	@artifacts=$$($(CARGO) test $(LOCKED) --workspace --no-run --test conformance_fsl_exact_producer --message-format=json) || exit $$?; \
+	binary=$$(printf '%s\n' "$$artifacts" | python3 -c 'import json,sys; rows=[json.loads(line) for line in sys.stdin]; bins=[row["executable"] for row in rows if row.get("reason")=="compiler-artifact" and row.get("target",{}).get("name")=="conformance_fsl_exact_producer" and row.get("executable")]; assert len(bins)==1, bins; print(bins[0])') || exit $$?; \
 	"$$binary" --nocapture --test-threads=1
 
-.PHONY: conformance-qsl-ir779
-conformance-qsl-ir779:
-	@test -n "$(QUIRE_SPEC_LANGUAGE_DIR)" || { echo 'QUIRE_SPEC_LANGUAGE_DIR is required' >&2; exit 1; }
-	@test -x "$(QUIRE_SPEC_LANGUAGE_BIN)" || { echo 'build the current QSL quire-spec binary first' >&2; exit 1; }
-	@output=$$(QUIRE_SPEC_LANGUAGE_DIR="$(QUIRE_SPEC_LANGUAGE_DIR)" QUIRE_SPEC_LANGUAGE_BIN="$(QUIRE_SPEC_LANGUAGE_BIN)" QUIRE_SPEC_LANGUAGE_TARGET_DIR="$(QUIRE_SPEC_LANGUAGE_TARGET_DIR)" $(CARGO) test $(LOCKED) --test conformance_qsl_ir779 -- --nocapture 2>&1); \
+.PHONY: conformance-fsl-ir779
+conformance-fsl-ir779:
+	@test -n "$(FILAMENT_SPEC_LANGUAGE_DIR)" || { echo 'FILAMENT_SPEC_LANGUAGE_DIR is required' >&2; exit 1; }
+	@test -x "$(FILAMENT_SPEC_LANGUAGE_BIN)" || { echo 'build the current FSL fsl binary first' >&2; exit 1; }
+	@output=$$(FILAMENT_SPEC_LANGUAGE_DIR="$(FILAMENT_SPEC_LANGUAGE_DIR)" FILAMENT_SPEC_LANGUAGE_BIN="$(FILAMENT_SPEC_LANGUAGE_BIN)" FILAMENT_SPEC_LANGUAGE_TARGET_DIR="$(FILAMENT_SPEC_LANGUAGE_TARGET_DIR)" $(CARGO) test $(LOCKED) --test conformance_fsl_ir779 -- --nocapture 2>&1); \
 	status=$$?; printf '%s\n' "$$output"; \
 	[ "$$status" -eq 0 ] || exit "$$status"; \
 	passed=$$(printf '%s\n' "$$output" | grep -c '^test result: ok\. 1 passed; 0 failed; 0 ignored; 0 measured;' || true); \
-	[ "$$passed" -eq 1 ] || { echo 'required TC-450 QSL producer test did not run exactly once' >&2; exit 1; }
+	[ "$$passed" -eq 1 ] || { echo 'required TC-450 FSL producer test did not run exactly once' >&2; exit 1; }
 
-.PHONY: conformance-qsl-ir760
-conformance-qsl-ir760:
-	@test -n "$(QUIRE_SPEC_LANGUAGE_DIR)" || { echo 'QUIRE_SPEC_LANGUAGE_DIR is required' >&2; exit 1; }
-	@QUIRE_SPEC_LANGUAGE_DIR="$(QUIRE_SPEC_LANGUAGE_DIR)" QUIRE_SPEC_LANGUAGE_TARGET_DIR="$(CURDIR)/target/qsl-producer" CARGO_TARGET_DIR="$(CURDIR)/target" $(CARGO) test $(LOCKED) --manifest-path crates/quire-contract-model/Cargo.toml --test selected_population_public -- --nocapture
-	@QUIRE_SPEC_LANGUAGE_DIR="$(QUIRE_SPEC_LANGUAGE_DIR)" QUIRE_SPEC_LANGUAGE_TARGET_DIR="$(CURDIR)/target/qsl-producer" CARGO_TARGET_DIR="$(CURDIR)/target" $(CARGO) test $(LOCKED) --test conformance_qsl_ir760 -- --nocapture
+.PHONY: conformance-fsl-ir760
+conformance-fsl-ir760:
+	@test -n "$(FILAMENT_SPEC_LANGUAGE_DIR)" || { echo 'FILAMENT_SPEC_LANGUAGE_DIR is required' >&2; exit 1; }
+	@FILAMENT_SPEC_LANGUAGE_DIR="$(FILAMENT_SPEC_LANGUAGE_DIR)" FILAMENT_SPEC_LANGUAGE_TARGET_DIR="$(CURDIR)/target/fsl-producer" CARGO_TARGET_DIR="$(CURDIR)/target" $(CARGO) test $(LOCKED) --manifest-path crates/filament-contract-model/Cargo.toml --test selected_population_public -- --nocapture
+	@FILAMENT_SPEC_LANGUAGE_DIR="$(FILAMENT_SPEC_LANGUAGE_DIR)" FILAMENT_SPEC_LANGUAGE_TARGET_DIR="$(CURDIR)/target/fsl-producer" CARGO_TARGET_DIR="$(CURDIR)/target" $(CARGO) test $(LOCKED) --test conformance_fsl_ir760 -- --nocapture
 
-.PHONY: conformance-qsl-ir1052
-conformance-qsl-ir1052:
-	@test -n "$(QUIRE_SPEC_LANGUAGE_DIR)" || { echo 'QUIRE_SPEC_LANGUAGE_DIR is required' >&2; exit 1; }
-	@test -x "$(QSL_EMIT_CHECKED_V2_BIN)" || { echo 'QSL_EMIT_CHECKED_V2_BIN must name the current QSL emit_checked_v2 example binary' >&2; exit 1; }
-	@QUIRE_SPEC_LANGUAGE_DIR="$(QUIRE_SPEC_LANGUAGE_DIR)" QSL_EMIT_CHECKED_V2_BIN="$(QSL_EMIT_CHECKED_V2_BIN)" $(CARGO) test $(LOCKED) --test conformance_qsl_ir1052 -- --nocapture
+.PHONY: conformance-fsl-ir1052
+conformance-fsl-ir1052:
+	@test -n "$(FILAMENT_SPEC_LANGUAGE_DIR)" || { echo 'FILAMENT_SPEC_LANGUAGE_DIR is required' >&2; exit 1; }
+	@test -x "$(FSL_EMIT_CHECKED_V2_BIN)" || { echo 'FSL_EMIT_CHECKED_V2_BIN must name the current FSL emit_checked_v2 example binary' >&2; exit 1; }
+	@FILAMENT_SPEC_LANGUAGE_DIR="$(FILAMENT_SPEC_LANGUAGE_DIR)" FSL_EMIT_CHECKED_V2_BIN="$(FSL_EMIT_CHECKED_V2_BIN)" $(CARGO) test $(LOCKED) --test conformance_fsl_ir1052 -- --nocapture
 
 .PHONY: build
 build:
 	$(CARGO) build $(LOCKED) --workspace --release
-	$(CARGO) build $(LOCKED) -p quire-contract-ir --release --features conformance-cli --bin quire-contract-conformance
+	$(CARGO) build $(LOCKED) -p filament-contract-ir --release --features conformance-cli --bin filament-contract-conformance
 
 .PHONY: clean
 clean:
@@ -222,7 +222,7 @@ cargo-audit:
 # =============================================================================
 
 SIBLINGS ?= $(abspath $(shell git rev-parse --path-format=absolute --git-common-dir)/../..)
-LOCAL_PATCHES ?= quire-verification-contracts:quire-verification-contracts:. ix-trace-rs:ix-trace-rs:. quire-canonical:quire-canonical:. quire-canonical:quire-canonical-derive:quire-canonical-derive quire-walk:quire-walk:.
+LOCAL_PATCHES ?= filament-verification-contracts:filament-verification-contracts:. ix-trace-rs:ix-trace-rs:. quire-canonical:quire-canonical:. quire-canonical:quire-canonical-derive:quire-canonical-derive filament-walk:filament-walk:.
 
 .PHONY: use-local
 use-local:
@@ -283,8 +283,8 @@ release-check: ci
 model-boundary-builds:
 	$(CARGO) test $(LOCKED) --workspace --test it cycle_free_model::production_default_all_feature_and_msrv_builds -- --ignored --exact --nocapture
 
-.PHONY: conformance-qsl-ir1384
-conformance-qsl-ir1384:
-	@test -n "$(QUIRE_SPEC_LANGUAGE_DIR)" || { echo "conformance-qsl-ir1384 reads the owner's domain package: set QUIRE_SPEC_LANGUAGE_DIR"; exit 2; }
-	cp Cargo.lock tests/conformance_qsl_ir1384/Cargo.lock
-	QUIRE_SPEC_LANGUAGE_DIR="$(QUIRE_SPEC_LANGUAGE_DIR)" $(CARGO) test --workspace --manifest-path tests/conformance_qsl_ir1384/Cargo.toml -- --nocapture
+.PHONY: conformance-fsl-ir1384
+conformance-fsl-ir1384:
+	@test -n "$(FILAMENT_SPEC_LANGUAGE_DIR)" || { echo "conformance-fsl-ir1384 reads the owner's domain package: set FILAMENT_SPEC_LANGUAGE_DIR"; exit 2; }
+	cp Cargo.lock tests/conformance_fsl_ir1384/Cargo.lock
+	FILAMENT_SPEC_LANGUAGE_DIR="$(FILAMENT_SPEC_LANGUAGE_DIR)" $(CARGO) test --workspace --manifest-path tests/conformance_fsl_ir1384/Cargo.toml -- --nocapture

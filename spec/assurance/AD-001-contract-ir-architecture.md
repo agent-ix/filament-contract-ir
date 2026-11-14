@@ -1,35 +1,35 @@
 ---
 id: AD-001
-title: "quire-contract-ir repository architecture and versioning"
+title: "filament-contract-ir repository architecture and versioning"
 type: ArchitectureDescription
 status: accepted
 owner: kreneskyp
-system: quire-contract-ir workspace (quire-contract-model and quire-contract-ir crates), its versioned contracts and its boundaries with QSpec, QSL, codegen and runtime
+system: filament-contract-ir workspace (filament-contract-model and filament-contract-ir crates), its versioned contracts and its boundaries with FSpec, FSL, codegen and runtime
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/AD-002
+  - target: ix://agent-ix/filament-contract-ir/AD-002
     type: references
-  - target: ix://agent-ix/quire-contract-ir/AD-003
+  - target: ix://agent-ix/filament-contract-ir/AD-003
     type: references
-  - target: ix://agent-ix/quire-contract-ir/FR-019
+  - target: ix://agent-ix/filament-contract-ir/FR-019
     type: references
-  - target: ix://agent-ix/quire-contract-ir/FR-028
+  - target: ix://agent-ix/filament-contract-ir/FR-028
     type: references
-  - target: ix://agent-ix/quire-contract-ir/FR-039
+  - target: ix://agent-ix/filament-contract-ir/FR-039
     type: references
-  - target: ix://agent-ix/quire-contract-ir/FR-350
+  - target: ix://agent-ix/filament-contract-ir/FR-350
     type: references
-  - target: ix://agent-ix/quire-spec-language/FR-045
+  - target: ix://agent-ix/filament-spec-language/FR-045
     type: references
-  - target: ix://agent-ix/quire-specification/FR-095
+  - target: ix://agent-ix/filament-specification/FR-095
     type: references
-  - target: ix://agent-ix/quire-specification/AD-016
+  - target: ix://agent-ix/filament-specification/AD-016
     type: references
-  - target: ix://agent-ix/quire-spec-language/ADR-011
+  - target: ix://agent-ix/filament-spec-language/ADR-011
     type: references
-  - target: ix://agent-ix/quire-spec-language/ADR-013
+  - target: ix://agent-ix/filament-spec-language/ADR-013
     type: references
 ---
-# quire-contract-ir repository architecture and versioning
+# filament-contract-ir repository architecture and versioning
 
 This is the one architecture description for the repository. AD-002 (the
 bounded-Kani profile) and AD-003 (complete-V1 backend delivery) are views of
@@ -40,22 +40,22 @@ one boundary each inside it.
 The workspace holds two crates. Each public item has one owning crate and
 one import path.
 
-`quire-contract-model` is the cycle-free semantic substrate. It owns
+`filament-contract-model` is the cycle-free semantic substrate. It owns
 unvalidated wire values, validated semantic values, identity and source-span
 types, type and definedness checking, dependency derivation,
 canonicalization, digests, coverage classification, the conformance
 registries, the target-neutral output-mapping foundation (FR-032 through
-FR-034), and the `quire.checked-package/v2` reader and lowerer (FR-038,
+FR-034), and the `filament.checked-package/v2` reader and lowerer (FR-038,
 FR-040) with the `ContractPackage` it emits (FR-035). Its crate root
 re-exports each public item by name from its module, and the items it
 re-exports are exactly FR-019's public item table. It has no dependency on
-QSL, Quire Observation, Quire Protocol, tl-syntax, tl-mltl or
-`quire-contract-ir` (FR-028).
+FSL, Filament Observation, Filament Protocol, tl-syntax, tl-mltl or
+`filament-contract-ir` (FR-028).
 
-`quire-contract-ir` is the root crate. Its public API is its own owner
+`filament-contract-ir` is the root crate. Its public API is its own owner
 integrations, which need other owners' crates (FR-039), and it re-exports no
-`quire-contract-model` item. A consumer that needs a model type depends on
-`quire-contract-model` and imports it from there.
+`filament-contract-model` item. A consumer that needs a model type depends on
+`filament-contract-model` and imports it from there.
 
 | Module | Owns | Requirement |
 | --- | --- | --- |
@@ -68,10 +68,10 @@ package.
 
 | Owner | Holds | Contract IR's relation |
 | --- | --- | --- |
-| QSpec (`quire-specification`) | the normative language, the `quire.checked-package/v2` wire contract (FR-322, FR-340 through FR-342), the FR-331 backend-provider envelope, AD-016 | Contract IR reads QSpec's contracts and cites them; it copies none of QSpec's files |
-| QSL (`quire-spec-language`) | the compiler that produces checked packages, QSL FR-527's `mapping_support` classification, FR-050's strict `/2` package and FR-043/FR-052's native temporal evaluator and report; also the `qsl-replay` crate and replay facade | QSL depends on `quire-contract-model`; Contract IR defines no replay types and implements no temporal bridge; the FR-350 native temporal to TL bridge is in `agent-ix/quire-integration` (AD-009) |
-| codegen (`quire-contract-codegen`) | provider generation, bounded Kani harness emission, the active collection and finite-reference-graph lowerings in its backend adapter (checked arithmetic retired under CG FR-015-AC-109, CG AD-004:327), the Kani transcript parser in that adapter, and the replay adapter that builds QSL's request and currently calls `qsl_replay::replay`; QSL ADR-011 E9 assigns the call to the orchestrating driver (IR-492 residual) | codegen depends on the root crate for the `kani` profile, input ABI, dispatch index and outcomes, and on `quire-contract-model` for model types |
-| runtime (`quire-contract-runtime`) | the `no_std` support library generated oracles link | no dependency in either direction |
+| FSpec (`filament-specification`) | the normative language, the `filament.checked-package/v2` wire contract (FR-322, FR-340 through FR-342), the FR-331 backend-provider envelope, AD-016 | Contract IR reads FSpec's contracts and cites them; it copies none of FSpec's files |
+| FSL (`filament-spec-language`) | the compiler that produces checked packages, FSL FR-527's `mapping_support` classification, FR-050's strict `/2` package and FR-043/FR-052's native temporal evaluator and report; also the `fsl-replay` crate and replay facade | FSL depends on `filament-contract-model`; Contract IR defines no replay types and implements no temporal bridge; the FR-350 native temporal to TL bridge is in `agent-ix/filament-integration` (AD-009) |
+| codegen (`filament-contract-codegen`) | provider generation, bounded Kani harness emission, the active collection and finite-reference-graph lowerings in its backend adapter (checked arithmetic retired under CG FR-015-AC-109, CG AD-004:327), the Kani transcript parser in that adapter, and the replay adapter that builds FSL's request and currently calls `fsl_replay::replay`; FSL ADR-011 E9 assigns the call to the orchestrating driver (IR-492 residual) | codegen depends on the root crate for the `kani` profile, input ABI, dispatch index and outcomes, and on `filament-contract-model` for model types |
+| runtime (`filament-contract-runtime`) | the `no_std` support library generated oracles link | no dependency in either direction |
 
 ### Kani boundary
 
@@ -85,36 +85,36 @@ constructs; the lowering behind a module is codegen's.
 
 A construct for which the profile has no qualified interpretation is settled
 at negotiation: the capability matrix records it `unsupported`, its item
-settles `unsupported` in the QSpec FR-331 `dispositions` vocabulary with a
-warning naming the item's capability kind from the closed `quire.capability-kind/v1` vocabulary (QSpec FR-290), and no artifact, `KaniOutcome` or
+settles `unsupported` in the FSpec FR-331 `dispositions` vocabulary with a
+warning naming the item's capability kind from the closed `filament.capability-kind/v1` vocabulary (FSpec FR-290), and no artifact, `KaniOutcome` or
 `TerminalValue` exists for it (FR-029). Resource exhaustion, cancellation and
 an absent solver or backend are run outcomes only (FR-030).
 
 ### Replay ownership
 
 The counterexample envelope, witness, replay source, FR-331 terminal record
-and obligation identity are QSL's `qsl-replay` types, and Contract IR defines
+and obligation identity are FSL's `fsl-replay` types, and Contract IR defines
 none of them. The root crate has no `replay` or `witness` module, and
-[FR-039](../kani/functional/FR-039-root-crate-public-interface.md) "Items QSL owns"
+[FR-039](../kani/functional/FR-039-root-crate-public-interface.md) "Items FSL owns"
 names each item that therefore has no place in its interface. Kani
 transcript parsing is the codegen backend adapter's.
 
 Contract IR's part ends at its own typed `KaniOutcome`. The map from a Kani
-outcome to a QSL `TerminalValue` is owned by `agent-ix/quire-contract-codegen`,
+outcome to a FSL `TerminalValue` is owned by `agent-ix/filament-contract-codegen`,
 which depends on both sides, and is tracked there under Linear IR-358.
 Contract IR exposes only its own Kani outcome types. An `Unavailable` outcome
 carries one of two cause codes, solver absent or backend absent, and the only
 `Inconclusive` outcome is a vacuous proof, a run whose obligation completed
 with zero SUCCESS checks (FR-030).
 
-Replay runs through QSL's `qsl_replay::replay` facade. Today CG's replay adapter
-builds the request and calls the facade (`quire-contract-codegen` `bec3f380`,
-`src/replay/function.rs:180-197,809-817`). QSL ADR-011 E9 assigns the facade call
+Replay runs through FSL's `fsl_replay::replay` facade. Today CG's replay adapter
+builds the request and calls the facade (`filament-contract-codegen` `bec3f380`,
+`src/replay/function.rs:180-197,809-817`). FSL ADR-011 E9 assigns the facade call
 to the orchestrating driver, with CG constructing the request (`adde683e`,
 `spec/decisions/ADR-011-stage-dag-and-dependency-architecture.md:264-266`);
 IR-492 tracks the current CG call as a transition residual. Contract IR has no
-dependency on `quire_spec_language::runtime` and calls no executor. The root crate depends on no QSL crate (FR-028), so the
-outcome map to `qsl_replay::TerminalValue` is not here; codegen owns it.
+dependency on `filament_spec_language::runtime` and calls no executor. The root crate depends on no FSL crate (FR-028), so the
+outcome map to `fsl_replay::TerminalValue` is not here; codegen owns it.
 
 ## Views
 
@@ -141,9 +141,9 @@ it.
 
 | Contract | Version | Direction | Requirement |
 | --- | --- | --- | --- |
-| Contract IR wire schema | `contract-package-reference-v1.schema.json`, `schema_version` 1.1 | authored contract in, canonical JSON (`quire.contract.canonical-json/v1`) out | FR-011 through FR-020 |
-| Checked package | `quire.checked-package/v2` only, parsed once from `contract_version`; every other version refuses `unknown_contract_version` | QSL-produced input | FR-038, FR-040 |
-| ContractPackage | `quire.contract-package/v1`; one key-ordered `semantic_graph` with `package`, `source_map`, `feature_accounting` and `identity` | Contract IR output to backend providers; codegen consumer adoption remains IR-744 | FR-035, QSpec FR-330 |
+| Contract IR wire schema | `contract-package-reference-v1.schema.json`, `schema_version` 1.1 | authored contract in, canonical JSON (`filament.contract.canonical-json/v1`) out | FR-011 through FR-020 |
+| Checked package | `filament.checked-package/v2` only, parsed once from `contract_version`; every other version refuses `unknown_contract_version` | FSL-produced input | FR-038, FR-040 |
+| ContractPackage | `filament.contract-package/v1`; one key-ordered `semantic_graph` with `package`, `source_map`, `feature_accounting` and `identity` | Contract IR output to backend providers; codegen consumer adoption remains IR-744 | FR-035, FSpec FR-330 |
 | Bounded Kani profile | `kani-bounded/1`, whose profile revision, capability matrix, input ABI and module revisions are selected together | checked clause and finite input in, `KaniOutcome` out | FR-029 through FR-031 |
 
 The checked package is the only input from which a `ContractPackage` is
@@ -167,14 +167,14 @@ the authored-contract interchange.
   included in diagnostics and package-level provenance.
 - Refuse a contract version the reader does not know; never interpret it.
 - Keep owner integrations in the root crate and keep the model crate free of
-  QSL, observation, protocol, TL, and self dependencies.
+  FSL, observation, protocol, TL, and self dependencies.
 - Give every public item one owning crate and one import path. The model
   crate re-exports its items by name, as FR-019 lists them, with no glob
   re-export. The root crate re-exports nothing from the model: a root
   re-export would duplicate the model's whole public surface under a second
   path and would let two copies of the model crate coexist in one
   dependency graph. Consumers that need model types depend on
-  `quire-contract-model` directly.
+  `filament-contract-model` directly.
 - Keep the shared bounded-Kani contract in Contract IR: the `kani-bounded/1`
   profile, the finite input ABI, the dispatch index and the typed outcome
   (`profile`, `abi`, `dispatch`, `outcome`), so any
@@ -182,16 +182,16 @@ the authored-contract interchange.
   Active Kani-specific collection and finite-reference-graph lowerings belong
   to codegen's backend adapter, which emits the harness; the former arithmetic
   lowerer and corpus arm retired under CG FR-015-AC-109.
-- Leave the map from a Kani outcome to a QSL `TerminalValue` to
-  `agent-ix/quire-contract-codegen` (Linear IR-358), so the root crate
-  depends on no QSL crate. Contract IR keeps the outcome's cause codes that map
+- Leave the map from a Kani outcome to a FSL `TerminalValue` to
+  `agent-ix/filament-contract-codegen` (Linear IR-358), so the root crate
+  depends on no FSL crate. Contract IR keeps the outcome's cause codes that map
   reads: `Unavailable` splits by its cause code into solver absence and backend
   absence, a vacuous proof is the only `Inconclusive` outcome, and a construct
   the profile cannot interpret settles `unsupported` at negotiation, before
   any run, and never becomes an outcome.
 - Construct and strict-read owner artifacts without parsing or evaluating an
   owner language inside Contract IR; preserve typed non-values at every join.
-- Use QSL's `qsl-replay` types for every replay, witness, envelope,
+- Use FSL's `fsl-replay` types for every replay, witness, envelope,
   terminal-record and obligation-identity concept; define none locally.
 - Make the budget-charged strict V2 read (FR-038 "Budget-charged strict
   read") the single V2 read. It takes the caller's `NativeJoinBudget`
@@ -210,8 +210,8 @@ the authored-contract interchange.
 - Read the package bytes and every selected model document with the one
   shared strict JSON reader owned by `agent-ix/quire-canonical`, and compare
   canonical bytes with its writer, both through their caller-reservation
-  entries; run the read's term walks on quire-walk and its exact numeric
-  checks on quire-exact, also through caller-reservation entries. Decode the
+  entries; run the read's term walks on filament-walk and its exact numeric
+  checks on filament-exact, also through caller-reservation entries. Decode the
   typed wire from the reader's arena document with containers whose request
   size is computed before the request, and retain JSON payloads as
   `CheckedJson` handles into that document. `serde_json` and `num-bigint` are
@@ -225,7 +225,7 @@ the authored-contract interchange.
 - Canonicalization ambiguity: controlled by golden bytes and property tests.
 - Partial-operation unsoundness: controlled by definedness rules and negative fixtures.
 - Orphan false coverage: controlled by exact revision identities and separate class.
-- Owner-contract drift against QSpec and QSL: controlled by
+- Owner-contract drift against FSpec and FSL: controlled by
   constructor-private inputs and strict re-derivation.
 - Native/TL semantic disagreement: retained as a typed conflict rather than
   repaired, coerced, or hidden behind either owner's result vocabulary.

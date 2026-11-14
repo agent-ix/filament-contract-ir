@@ -1,21 +1,21 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Agent-IX
 
-//! QSpec XP-01..XP-15 dimension-equivalence vectors through the strict reader.
+//! FSpec XP-01..XP-15 dimension-equivalence vectors through the strict reader.
 
 use super::{fixtures_dir, proposal_dir_of, read_json};
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     CheckedNodeId, CheckedPackageEvidence, CheckedPackageReadLimits, CheckedPackageRefusalCode,
     CheckedPackageV2, CheckedPackageV2ReadResult,
 };
+use ix_trace_rs::trace;
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
 fn vectors() -> Value {
     read_json(&proposal_dir_of(&fixtures_dir()).join("dimension-equivalence-vectors.json"))
-        .expect("QSpec dimension equivalence vectors")
+        .expect("FSpec dimension equivalence vectors")
 }
 
 fn id_for(row: &Value) -> Value {
@@ -81,7 +81,7 @@ fn dimension_node(name: &str, row: &Value, all: &Value) -> Value {
     };
     json!({
         "node_id": id,
-        "schema_version": "quire.checked-semantic-graph/v2",
+        "schema_version": "filament.checked-semantic-graph/v2",
         "node_tag": "scalar_type",
         "semantic_form": form,
         "semantic_type": semantic_type,
@@ -112,7 +112,7 @@ fn equivalence_node(package: &str, case: &Value, index: usize) -> Value {
         .collect::<Vec<_>>();
     json!({
         "node_id": id,
-        "schema_version": "quire.checked-semantic-graph/v2",
+        "schema_version": "filament.checked-semantic-graph/v2",
         "node_tag": "scalar_type",
         "semantic_form": "dimension_equivalence",
         "semantic_type": id,
@@ -163,7 +163,7 @@ fn package(name: &str, nodes: &[Value], imports: &[&str]) -> Value {
 
 fn read(wire: &Value, imports: &[(&str, Arc<CheckedPackageV2>)]) -> CheckedPackageV2ReadResult {
     let mut evidence = CheckedPackageEvidence::new();
-    evidence.support_feature("quire.value.complete/v1");
+    evidence.support_feature("filament.value.complete/v1");
     for (name, dependency) in imports {
         evidence
             .insert_dependency_package(*name, Arc::clone(dependency))
@@ -384,7 +384,7 @@ fn xp_adverse_pairs_refuse_at_the_published_equivalence() {
                     );
                 }
             }
-            other => panic!("unrecognized QSpec outcome {other}"),
+            other => panic!("unrecognized FSpec outcome {other}"),
         }
     }
 }

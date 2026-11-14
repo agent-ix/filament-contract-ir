@@ -4,19 +4,19 @@ title: "Bound checked-package V2 producer memory"
 type: NFR
 quality_attribute: performance_efficiency
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/FR-051
+  - target: ix://agent-ix/filament-contract-ir/FR-051
     type: constrains
-  - target: ix://agent-ix/quire-contract-ir/FR-038
+  - target: ix://agent-ix/filament-contract-ir/FR-038
     type: references
 ---
 # NFR-006: Bound checked-package V2 producer memory
 
 ## Statement
 
-When a producer encodes a `quire.checked-package/v2` artifact, the Contract IR
+When a producer encodes a `filament.checked-package/v2` artifact, the Contract IR
 identity-projection encoding path SHALL permit it to borrow each semantic graph
 node body without retaining a second owned `serde_json::Value` body per node.
-When QSL emits with that view, the integrated producer SHALL reduce the median
+When FSL emits with that view, the integrated producer SHALL reduce the median
 incremental peak resident memory in the fixed TC-455 emission window by at
 least 65,536 KiB (64 MiB) relative to a freshly measured owned-projection
 baseline on the same host, while preserving the exact canonical package bytes
@@ -26,10 +26,10 @@ and package `name`.
 
 This requirement covers production of the complete V2
 envelope from an already checked graph. The performance measurement begins
-immediately before QSL's `emit_checked` call and ends when it returns. The
+immediately before FSL's `emit_checked` call and ends when it returns. The
 reader's separate FR-038-AC-214 memory ceiling does not measure this path.
 
-The Contract IR encoder supplies the borrowing boundary. The QSL-owned
+The Contract IR encoder supplies the borrowing boundary. The FSL-owned
 `emit_checked` path must adopt the borrowed view before the integrated memory
 criterion can pass; the available IR API alone does not establish the saving.
 Neither a new
@@ -45,9 +45,9 @@ part of this requirement.
 | Canonical package bytes and package `name` for the same checked input | Exact equality with the baseline | Any difference fails | Compare complete byte sequences and the typed package name across the baseline and candidate producer; admit both through the existing V2 reader |
 
 The fixed TC-455 source has 12,500 sum terms, 50,138 source bytes, 12,505
-semantic graph nodes, and 40,631,408 emitted bytes. A fresh QSL-main
+semantic graph nodes, and 40,631,408 emitted bytes. A fresh FSL-main
 owned-projection control measured incremental peaks of 339,076, 339,124, and
-339,256 KiB (median 339,124 KiB; range 180 KiB). A local, uncommitted QSL
+339,256 KiB (median 339,124 KiB; range 180 KiB). A local, uncommitted FSL
 `emit_checked` change using the merged borrowed IR view measured 253,432,
 254,692, and 254,796 KiB (median 254,692 KiB; range 1,364 KiB). The observed
 median reduction is 84,432 KiB (82.45 MiB, 24.90%), leaving 18,896 KiB below
@@ -55,8 +55,8 @@ the 64 MiB target ceiling. All six complete byte sequences and typed
 package names were identical, and the V2 reader admitted each envelope.
 Median process high-water RSS was 449,996 KiB for the control and 365,296 KiB
 for the candidate.
-This local candidate is measurement evidence, not completed QSL adoption.
-The trial changed QSL's emitter and envelope call path and advanced its IR
+This local candidate is measurement evidence, not completed FSL adoption.
+The trial changed FSL's emitter and envelope call path and advanced its IR
 dependency to the merged borrowed API; the measured delta is for that
 integrated candidate, not an IR-only microbenchmark.
 
@@ -70,12 +70,12 @@ a fresh control on one host, not an absolute cross-machine memory limit. An
 earlier owned-only control measured 337,672, 337,700, and 337,736 KiB; the
 fresh control above is the one used to derive and evaluate this target.
 
-To remeasure, build one temporary Rust probe against the QSL checkout's public
-`qsl-cst`, `qsl-forms`, `qsl-foundation`, `qsl-semantics`, and `qsl-package`
-crates, or as an uncommitted `qsl-package` example. Implement the exact source
+To remeasure, build one temporary Rust probe against the FSL checkout's public
+`fsl-cst`, `fsl-forms`, `fsl-foundation`, `fsl-semantics`, and `fsl-package`
+crates, or as an uncommitted `fsl-package` example. Implement the exact source
 construction, pre-emission staging, and 1 ms RSS sampler in TC-455. Build the
-same probe source in release profile for both the owned QSL-main control and
-the candidate QSL emit path, using each checkout's lockfile. Record the compiler
+same probe source in release profile for both the owned FSL-main control and
+the candidate FSL emit path, using each checkout's lockfile. Record the compiler
 version and use the same compiler, host, and default allocator for all six
 fresh processes, with no custom `RUSTFLAGS` or `MALLOC_ARENA_MAX`. Run the
 three processes while other large builds are idle. For each, record the probe's

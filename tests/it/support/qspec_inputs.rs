@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Agent-IX
 
-//! Existing QSpec fixture setup shared by its conformance driver and the
+//! Existing FSpec fixture setup shared by its conformance driver and the
 //! whole-read allocation registry. These functions only prepare inputs.
 
 use crate::support::checked_package as fixture_support;
-use fixture_support::retention_definition;
-use quire_contract_model::{
+use filament_contract_model::{
     CheckedArtifactRef, CheckedExtensionClauseSchema, CheckedExtensionDefinition,
     CheckedExtensionGrammarSchema, CheckedExtensionNodeSchema, CheckedExtensionProduction,
     CheckedExtensionTypedNodeSchema, CheckedPackageEvidence, CheckedPackageReadLimits,
     CheckedPackageV2ReadResult,
 };
+use fixture_support::retention_definition;
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -399,7 +399,7 @@ pub(crate) fn apply_node_index_patch(package: &mut Value, patch: &Value) {
 pub(crate) fn operand_checks_pass(actual: &CheckedPackageV2ReadResult) -> bool {
     match actual {
         CheckedPackageV2ReadResult::Refused(refusal) => {
-            refusal.code != quire_contract_model::CheckedPackageRefusalCode::MalformedWire
+            refusal.code != filament_contract_model::CheckedPackageRefusalCode::MalformedWire
                 && refusal.loci.iter().all(|locus| {
                     locus
                         .path
@@ -429,7 +429,7 @@ pub(crate) fn replace_at(
 pub(crate) fn flat_body_control_passes(actual: &CheckedPackageV2ReadResult) -> bool {
     match actual {
         CheckedPackageV2ReadResult::Refused(refusal) => {
-            refusal.code != quire_contract_model::CheckedPackageRefusalCode::MalformedWire
+            refusal.code != filament_contract_model::CheckedPackageRefusalCode::MalformedWire
         }
         CheckedPackageV2ReadResult::CatalogUnavailable(_) => false,
         _ => true,

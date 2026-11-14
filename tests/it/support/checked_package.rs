@@ -11,7 +11,7 @@
 //! are regenerated below: every document they return is *built* by
 //! [`build_v2_all_families`]/[`nominal_package`]/[`build_operation_identities`]
 //! from this crate's own public vocabulary (`CheckedNodeTag`, the
-//! `quire.application-node/v1` key-derivation formula the reader implements in
+//! `filament.application-node/v1` key-derivation formula the reader implements in
 //! `v2/operations.rs`, and the nominal identity preimages `v2/identity.rs`
 //! implements) — SHA-256/RFC-8785 canonicalization done with the same
 //! `sha256_hex`/`canonical` helpers every other test in this module already
@@ -23,7 +23,7 @@
 
 #![allow(dead_code)] // Each test binary uses a different subset of these helpers.
 
-use quire_contract_model::{
+use filament_contract_model::{
     CheckedExtensionClauseSchema, CheckedExtensionDefinition, CheckedExtensionGrammarSchema,
     CheckedExtensionNodeSchema, CheckedExtensionProduction, CheckedExtensionTypedNodeSchema,
     CheckedNodeId, CheckedNodePathSegment, CheckedPackageEvidence, CheckedPackageIncomplete,
@@ -65,7 +65,7 @@ pub fn retention_definition() -> CheckedExtensionDefinition {
     }
 }
 
-pub const COMPLETE_VALUE_FEATURE: &str = "quire.value.complete/v1";
+pub const COMPLETE_VALUE_FEATURE: &str = "filament.value.complete/v1";
 pub const FIXTURE_PACKAGE: &str = "test/families";
 const FAMILY_MODEL_IDENTITY: &str = "test/families";
 const FAMILY_OBJECT: &str = "ix://test/families/Account";
@@ -79,7 +79,7 @@ pub fn family_model_document() -> Value {
         .map(|name| {
             json!({
                 "identity": format!("{FAMILY_OBJECT}/{name}"),
-                "name": name, "typeRef": "ix://quire/native/Integer",
+                "name": name, "typeRef": "ix://filament/native/Integer",
                 "presence": "required", "nullable": false, "defaultKind": "none",
                 "multiplicity": {"lower": 1, "upper": 1, "ordered": false, "unique": true},
             })
@@ -94,13 +94,13 @@ pub fn family_model_document() -> Value {
         "package": {"identity": FAMILY_MODEL_IDENTITY, "version": "1"},
         "constructs": [{
             "kind": {"module": FAMILY_MODEL_IDENTITY, "name": "entity"},
-            "construct": {"meaning": "quire.meaning.model.object-type/v1"},
+            "construct": {"meaning": "filament.meaning.model.object-type/v1"},
         }, {
             "kind": {"module": FAMILY_MODEL_IDENTITY, "name": "interface"},
-            "construct": {"meaning": "quire.meaning.systems.interface/v1"},
+            "construct": {"meaning": "filament.meaning.systems.interface/v1"},
         }, {
             "kind": {"module": FAMILY_MODEL_IDENTITY, "name": "process"},
-            "construct": {"meaning": "quire.meaning.model.process/v1"},
+            "construct": {"meaning": "filament.meaning.model.process/v1"},
         }],
         "types": [{
             "identity": FAMILY_OBJECT, "displayName": "Account",
@@ -131,7 +131,7 @@ pub fn family_model_document() -> Value {
             "supertypes": [],
             "fields": [{
                 "identity": format!("{FAMILY_PROCESS}/balance"), "name": "balance",
-                "typeRef": "ix://quire/native/Integer",
+                "typeRef": "ix://filament/native/Integer",
                 "presence": "required", "nullable": false, "defaultKind": "none",
                 "multiplicity": {"lower": 1, "upper": 1, "ordered": false, "unique": true}
             }],
@@ -210,7 +210,7 @@ pub fn v2_nominal() -> Value {
 /// expression `length` nodes deep. Each node costs one node, one edge and one
 /// occurrence, so a limit sized for the node count decides nothing else, and the
 /// body grammar keeps the document's JSON depth at that of a one-node chain
-/// (FR-038-AC-117, merged QSpec FR-322-AC-41).
+/// (FR-038-AC-117, merged FSpec FR-322-AC-41).
 ///
 /// Returned as the canonical document's bytes, built as text one node at a time
 /// and spliced into the family's document at three markers, with `package_id`
@@ -274,7 +274,7 @@ pub fn v2_reference_chain(length: usize) -> (Vec<u8>, String) {
     (text.into_bytes(), previous)
 }
 
-/// A `quire.checked-package/v2` document exercising `declaration`,
+/// A `filament.checked-package/v2` document exercising `declaration`,
 /// `literal.type` and `application.operation`/`application.result_type` —
 /// the shape `tc_048_deleting_a_declared_wire_member_refuses_before_the_projection_compare`
 /// needs a node carrying each of, so it can delete one member at a time and
@@ -285,7 +285,7 @@ pub fn positive_operation_identities() -> Value {
 
 /// RFC 8785 bytes for the ASCII, integer-only fixtures (sorted members).
 pub fn canonical(value: &Value) -> Vec<u8> {
-    if value["contract_version"] == "quire.checked-package/v2" {
+    if value["contract_version"] == "filament.checked-package/v2" {
         let mut wire = value.clone();
         wire_operands(&mut wire);
         return serde_json::to_vec(&wire).expect("canonical test JSON");
@@ -360,7 +360,7 @@ fn for_each_segment(value: &mut Value, rewrite: &mut impl FnMut(&mut Value)) {
 /// occurrence with the node's operand row. A package that already has rows is
 /// left as it is.
 pub fn wire_operands(package: &mut Value) {
-    if package["contract_version"] != "quire.checked-package/v2" {
+    if package["contract_version"] != "filament.checked-package/v2" {
         return;
     }
     if !package["semantic_graph"]["nodes"].is_array() {
@@ -468,7 +468,7 @@ pub fn resolve_vector_rows(value: &mut Value) {
 /// inverse of [`wire_operands`]: each operand slot becomes the index segment
 /// its node's row names and `operand_rows` is dropped.
 pub fn resolve_operands(package: &mut Value) {
-    if package["contract_version"] != "quire.checked-package/v2"
+    if package["contract_version"] != "filament.checked-package/v2"
         || !package["semantic_graph"]["nodes"].is_array()
     {
         return;
@@ -516,9 +516,9 @@ pub fn node_id(path_label: &str) -> Value {
 
 /// The typed source key of one structural test-authored node identity.
 pub fn source_key(
-    key: &quire_contract_model::CheckedNodeId,
-) -> quire_contract_model::ContractSourceKeyV1 {
-    quire_contract_model::ContractSourceKeyV1::from_structural(key)
+    key: &filament_contract_model::CheckedNodeId,
+) -> filament_contract_model::ContractSourceKeyV1 {
+    filament_contract_model::ContractSourceKeyV1::from_structural(key)
         .expect("fixture node id is structural")
 }
 
@@ -686,7 +686,7 @@ pub fn owned_structural_node(mut node: Value, owner: Value) -> Value {
     node
 }
 
-pub fn typed_node_id(digest: &str) -> quire_contract_model::CheckedNodeId {
+pub fn typed_node_id(digest: &str) -> filament_contract_model::CheckedNodeId {
     serde_json::from_value(node_id(digest)).expect("node id")
 }
 
@@ -834,7 +834,7 @@ pub fn select_model(package: &mut Value, identity: &str) {
     let body = json!({"term": "aggregate", "members": []});
     let node_id = json!({"package": identity, "path": ["model", "model_root"], "ordinal": 0});
     let node = json!({
-        "node_id": node_id, "schema_version": "quire.checked-semantic-graph/v2",
+        "node_id": node_id, "schema_version": "filament.checked-semantic-graph/v2",
         "node_tag": "model", "semantic_form": "model_root",
         "semantic_type": node_id, "dependencies": [],
         "occurrences": [{"role": "generated", "ordinal": 0}],
@@ -960,7 +960,7 @@ pub fn rename_node(package: &mut Value, stale: &str, fresh: &str) {
     replace_digest(package, stale, fresh);
 }
 
-/// Mint QSL FR-092/FR-094 keys for a builder's ungrouped structural nodes,
+/// Mint FSL FR-092/FR-094 keys for a builder's ungrouped structural nodes,
 /// including owner-bearing and declared nodes. Each rename reaches every
 /// reference in the test package; repeated passes let a node built before a
 /// type it names pick up the type's real key. Nominal and grouped keys,
@@ -986,7 +986,7 @@ pub fn mint_ungrouped_structural_keys(package: &mut Value) {
             }
             let stale = node["node_id"]["digest"].as_str().expect("node digest");
             let mut preimage = json!({
-                "version": "quire.structural-node/v1",
+                "version": "filament.structural-node/v1",
                 "node_tag": tag,
                 "semantic_form": form,
                 "semantic_type": (node["semantic_type"] != node["node_id"])
@@ -1140,7 +1140,7 @@ pub fn grouped_local_key(
     let version = if application {
         APPLICATION_NODE_VERSION
     } else {
-        "quire.structural-node/v1"
+        "filament.structural-node/v1"
     };
     let mut preimage = json!({
         "version": version,
@@ -1152,7 +1152,7 @@ pub fn grouped_local_key(
         "body": body,
     });
     if let Some(owner) = node.get("owner") {
-        if version == "quire.structural-node/v1" {
+        if version == "filament.structural-node/v1" {
             preimage["owner"] = owner.clone();
         }
     }
@@ -1195,7 +1195,7 @@ pub fn nominal_package(members: &[(Value, String)]) -> Value {
         let declaration_name = preimage["qualified_declaration"].clone();
         let (tag, form, semantic_type, dependencies, body, declaration) =
             match preimage["version"].as_str().expect("preimage version") {
-                "quire.enum-declaration-node/v1" => (
+                "filament.enum-declaration-node/v1" => (
                     "scalar_type",
                     "enum",
                     id.clone(),
@@ -1207,7 +1207,7 @@ pub fn nominal_package(members: &[(Value, String)]) -> Value {
                     }),
                     Some(json!({"qualified_name": declaration_name})),
                 ),
-                "quire.enum-member-node/v1" => (
+                "filament.enum-member-node/v1" => (
                     "value",
                     "enum_value",
                     preimage["declaration_node_id"].clone(),
@@ -1220,7 +1220,7 @@ pub fn nominal_package(members: &[(Value, String)]) -> Value {
                     }),
                     None,
                 ),
-                "quire.dimension-node/v1" => (
+                "filament.dimension-node/v1" => (
                     "scalar_type",
                     "dimension",
                     id.clone(),
@@ -1234,7 +1234,7 @@ pub fn nominal_package(members: &[(Value, String)]) -> Value {
                     ),
                     // These local fixture preimages contain base declarations
                     // only when their authored terms are empty. Keep `base`
-                    // outside the structural preimage: QSpec assigns the same
+                    // outside the structural preimage: FSpec assigns the same
                     // declaration-path ID regardless of the body flag.
                     json!({
                         "term": "dimension",
@@ -1243,7 +1243,7 @@ pub fn nominal_package(members: &[(Value, String)]) -> Value {
                     }),
                     Some(json!({"qualified_name": declaration_name})),
                 ),
-                "quire.dimension-equivalence-node/v1" => (
+                "filament.dimension-equivalence-node/v1" => (
                     "scalar_type",
                     "dimension_equivalence",
                     id.clone(),
@@ -1255,7 +1255,7 @@ pub fn nominal_package(members: &[(Value, String)]) -> Value {
                     }),
                     None,
                 ),
-                "quire.unit-node/v1" => {
+                "filament.unit-node/v1" => {
                     let mut dependencies = vec![preimage["dimension_node_id"].clone()];
                     if !preimage["target_unit_node_id"].is_null() {
                         dependencies.push(preimage["target_unit_node_id"].clone());
@@ -1292,7 +1292,7 @@ pub fn nominal_package(members: &[(Value, String)]) -> Value {
         };
         let mut node = json!({
             "node_id": id,
-            "schema_version": "quire.checked-semantic-graph/v2",
+            "schema_version": "filament.checked-semantic-graph/v2",
             "node_tag": tag,
             "semantic_form": form,
             "semantic_type": semantic_type,
@@ -1468,24 +1468,24 @@ pub fn incomplete(
 //
 // Every document below is *built*, here, from this crate's own public
 // vocabulary: `CheckedNodeTag`'s closed families and forms, the
-// `quire.application-node/v1` key-derivation formula
+// `filament.application-node/v1` key-derivation formula
 // `v2::operations::validate_application_keys` implements (re-derived in
 // `application_key` below with the same `sha256_hex`/`canonical` this module
 // already used for nominal preimages), and the catalogued operation
-// identities `quire-verification-contracts` publishes and this crate's own
-// `v2::operations` module validates against (`quire.op.function.call`,
-// `quire.op.temporal.clause`, `quire.op.protocol.control`,
-// `quire.op.claim.clause` — all four are catalogued with a fixed,
+// identities `filament-verification-contracts` publishes and this crate's own
+// `v2::operations` module validates against (`filament.op.function.call`,
+// `filament.op.temporal.clause`, `filament.op.protocol.control`,
+// `filament.op.claim.clause` — all four are catalogued with a fixed,
 // zero-or-one-law shape this generator matches exactly). No fixture node's
 // digest, body or lock entry is read from a file or copied from anywhere
 // else; every one is computed by the functions below.
 
 const FIXTURE_SOURCE_AUTHORITY: &str = "agent-ix";
-const FIXTURE_SOURCE_IDENTITY: &str = "quire.fixture.source/v1";
-const APPLICATION_NODE_VERSION: &str = "quire.application-node/v1";
+const FIXTURE_SOURCE_IDENTITY: &str = "filament.fixture.source/v1";
+const APPLICATION_NODE_VERSION: &str = "filament.application-node/v1";
 
 /// A `CheckedArtifactRef`-shaped definition reference: exactly `{authority,
-/// identity}` (QSpec `DefinitionRef`).
+/// identity}` (FSpec `DefinitionRef`).
 pub fn definition_ref(authority: &str, identity: &str) -> Value {
     json!({
         "authority": authority,
@@ -1501,7 +1501,7 @@ pub fn source_ref(authority: &str, identity: &str) -> Value {
     })
 }
 
-/// The `quire.application-node/v1` key this crate's reader
+/// The `filament.application-node/v1` key this crate's reader
 /// (`v2::operations::validate_application_keys`) re-derives for every node
 /// whose body is an `application` term: SHA-256 of the RFC-8785 canonical
 /// bytes of `{version, node_tag, semantic_form, semantic_type, declaration,
@@ -1525,8 +1525,8 @@ fn application_key(
     )
 }
 
-/// The key QSL FR-092 and FR-094 give an anonymous structural node
-/// (`quire.structural-node/v1`: no `declaration`, no `recursion`, no `owner`;
+/// The key FSL FR-092 and FR-094 give an anonymous structural node
+/// (`filament.structural-node/v1`: no `declaration`, no `recursion`, no `owner`;
 /// `semantic_type` `null` for a node typed by itself). Written here from that
 /// preimage, independently of the reader, so a fixture's derived keys are not
 /// the reader's own output.
@@ -1537,7 +1537,7 @@ pub fn structural_key(
     body: &Value,
 ) -> String {
     let preimage = json!({
-        "version": "quire.structural-node/v1",
+        "version": "filament.structural-node/v1",
         "node_tag": node_tag,
         "semantic_form": semantic_form,
         "semantic_type": semantic_type.map_or(Value::Null, node_id),
@@ -1662,7 +1662,7 @@ pub fn integer_range_key(min: &str, max: &str) -> String {
     )
 }
 
-/// The `quire.application-node/v1` key of an undeclared application node of
+/// The `filament.application-node/v1` key of an undeclared application node of
 /// `node_tag`/`semantic_form` typed at the node `semantic_type`, over `body`.
 pub fn application_node_key(
     node_tag: &str,
@@ -1673,7 +1673,7 @@ pub fn application_node_key(
     application_key(node_tag, semantic_form, &node_id(semantic_type), body)
 }
 
-/// SHA-256 of the RFC-8785 bytes of FR-322's `quire.application-node/v1`
+/// SHA-256 of the RFC-8785 bytes of FR-322's `filament.application-node/v1`
 /// preimage, the one builder both fixture keys and grouped keys use.
 fn application_preimage_key(
     node_tag: &str,
@@ -1698,7 +1698,7 @@ fn application_preimage_key(
     }
     format!("application/{preimage}")
 }
-/// QSpec FR-322's `quire.application-node/v1` key for a node inside a
+/// FSpec FR-322's `filament.application-node/v1` key for a node inside a
 /// recursion group: `recursion` is `{size, ordinal}` of `node` among
 /// `group` (member node ids in graph order), and each body `reference` to a
 /// group member is keyed as `{term: "group_reference", ordinal}`. Written
@@ -1744,15 +1744,15 @@ pub fn family_key(prefix: &str) -> String {
     match prefix {
         "aaaa" | "a6a6" => boolean_key(),
         "a3a3" => integer_key(),
-        "ffff" => "application/function/pure_function/quire.op.function.call".into(),
-        "4040" => "application/temporal/temporal_clause/quire.op.temporal.clause".into(),
-        "a2a2" => "application/temporal/formula/quire.op.temporal.eventually".into(),
-        "a5a5" => "application/temporal/formula/quire.op.temporal.holds".into(),
+        "ffff" => "application/function/pure_function/filament.op.function.call".into(),
+        "4040" => "application/temporal/temporal_clause/filament.op.temporal.clause".into(),
+        "a2a2" => "application/temporal/formula/filament.op.temporal.eventually".into(),
+        "a5a5" => "application/temporal/formula/filament.op.temporal.holds".into(),
         "5050" => "qualified:Example/OrderFlow".into(),
         "p-run" => "qualified:Example/OrderFlow/run/Main".into(),
         "p-finish" => "qualified:Example/OrderFlow/finish/Closed".into(),
         "p-close" => "value/parameter/closed".into(),
-        "6060" => "application/claim/verification_claim/quire.op.claim.clause".into(),
+        "6060" => "application/claim/verification_claim/filament.op.claim.clause".into(),
         "8080" => "qualified:Example/Function".into(),
         other => format!("fixture/{other}"),
     }
@@ -1763,7 +1763,7 @@ fn function_call_body() -> Value {
         "term": "application",
         "operator": "call",
         "operation": {
-            "identity": "quire.op.function.call",
+            "identity": "filament.op.function.call",
             "laws": Value::Array(Vec::new()),
             "mode": Value::Null,
             "member": Value::Null,
@@ -1780,14 +1780,14 @@ fn function_call_body() -> Value {
 /// `CheckedArtifactRef` value in both places, so the operation-law lock join
 /// (`is_profile_role` → `lock.profile_selections`) is satisfied by
 /// construction rather than by two independently-typed copies. The profile is
-/// one of QSpec FR-250's five, a bounded one, which fits the fixture's closed
+/// one of FSpec FR-250's five, a bounded one, which fits the fixture's closed
 /// interval `{0, 3}` (FR-038-AC-104, FR-038-AC-108).
 fn temporal_profile_law() -> Value {
     json!({
         "role": "temporal_profile",
         "definition": definition_ref(
             FIXTURE_SOURCE_AUTHORITY,
-            "quire.temporal.event-position.false-extension/v1",
+            "filament.temporal.event-position.false-extension/v1",
         ),
     })
 }
@@ -1798,24 +1798,24 @@ fn protocol_profile_law() -> Value {
         "role": "protocol_profile",
         "definition": definition_ref(
             FIXTURE_SOURCE_AUTHORITY,
-            "quire.protocol.finite-global/v1",
+            "filament.protocol.finite-global/v1",
         ),
     })
 }
 
-/// The shared fixture's `quire.op.temporal.clause` body, in the shape the
+/// The shared fixture's `filament.op.temporal.clause` body, in the shape the
 /// catalog fixes (FR-038-AC-68): six arguments and no member. The first is a
 /// `reference` to the `over` `value`/`parameter` node (`a4a4`), the second a
 /// `text` literal, the next three empty aggregates, and the sixth a
 /// `reference` to the `temporal`/`formula` node (`a2a2`) applying
-/// `quire.op.temporal.eventually` with the interval `{0, 3}` over a second
-/// formula node (`a5a5`) applying `quire.op.temporal.holds` (FR-038-AC-96).
+/// `filament.op.temporal.eventually` with the interval `{0, 3}` over a second
+/// formula node (`a5a5`) applying `filament.op.temporal.holds` (FR-038-AC-96).
 fn temporal_clause_body() -> Value {
     json!({
         "term": "application",
         "operator": "temporal",
         "operation": {
-            "identity": "quire.op.temporal.clause",
+            "identity": "filament.op.temporal.clause",
             "laws": [temporal_profile_law()],
             "mode": Value::Null,
             "member": Value::Null,
@@ -1860,12 +1860,12 @@ fn formula_body(identity: &str, member: Value, arguments: Vec<Value>) -> Value {
     })
 }
 
-/// The fixture's inner formula (`a5a5`): `quire.op.temporal.holds` over a
+/// The fixture's inner formula (`a5a5`): `filament.op.temporal.holds` over a
 /// Boolean literal typed at the fixture's own Boolean node (`a6a6`), which
 /// no test mutates the way `aaaa`, the family nodes' shared type, is.
 fn holds_formula_body() -> Value {
     formula_body(
-        "quire.op.temporal.holds",
+        "filament.op.temporal.holds",
         Value::Null,
         vec![
             json!({"term": "literal", "type": node_id(&family_key("a6a6")),
@@ -1874,11 +1874,11 @@ fn holds_formula_body() -> Value {
     )
 }
 
-/// The fixture's root formula (`a2a2`): `quire.op.temporal.eventually` with
+/// The fixture's root formula (`a2a2`): `filament.op.temporal.eventually` with
 /// the interval `{0, 3}` over the `holds` node.
 fn eventually_formula_body() -> Value {
     formula_body(
-        "quire.op.temporal.eventually",
+        "filament.op.temporal.eventually",
         json!({"kind": "temporal_interval", "interval": {"lower": "0", "upper": "3"}}),
         vec![json!({"term": "reference", "target": node_id(&family_key("a5a5"))})],
     )
@@ -1897,7 +1897,7 @@ fn protocol_control_body() -> Value {
         "term": "application",
         "operator": "protocol_control",
         "operation": {
-            "identity": "quire.op.protocol.control",
+            "identity": "filament.op.protocol.control",
             "laws": [protocol_profile_law()],
             "mode": Value::Null,
             "member": {"kind": "profile_operator", "operator": "protocol"},
@@ -1969,7 +1969,7 @@ pub fn protocol_role_node() -> Value {
         json!({
             "term": "application", "operator": "protocol_control",
             "operation": {
-                "identity": "quire.op.protocol.control", "laws": [protocol_profile_law()],
+                "identity": "filament.op.protocol.control", "laws": [protocol_profile_law()],
                 "mode": Value::Null,
                 "member": {"kind": "profile_operator", "operator": "role"},
                 "leaves": []
@@ -1992,7 +1992,7 @@ fn protocol_run_body() -> Value {
     json!({
         "term": "application", "operator": "protocol_control",
         "operation": {
-            "identity": "quire.op.protocol.control", "laws": [protocol_profile_law()],
+            "identity": "filament.op.protocol.control", "laws": [protocol_profile_law()],
             "mode": Value::Null, "member": {"kind": "profile_operator", "operator": "sequence"},
             "leaves": []
         },
@@ -2030,7 +2030,7 @@ fn protocol_finish_body() -> Value {
     json!({
         "term": "application", "operator": "protocol_control",
         "operation": {
-            "identity": "quire.op.protocol.control", "laws": [protocol_profile_law()],
+            "identity": "filament.op.protocol.control", "laws": [protocol_profile_law()],
             "mode": Value::Null, "member": {"kind": "profile_operator", "operator": "finish"},
             "leaves": []
         },
@@ -2058,7 +2058,7 @@ fn claim_clause_body() -> Value {
         "term": "application",
         "operator": "claim",
         "operation": {
-            "identity": "quire.op.claim.clause",
+            "identity": "filament.op.claim.clause",
             "laws": [temporal_profile_law()],
             "mode": Value::Null,
             "member": {"kind": "profile_operator"},
@@ -2084,7 +2084,7 @@ fn plain_node(
 ) -> Value {
     json!({
         "node_id": node_id(digest),
-        "schema_version": "quire.checked-semantic-graph/v2",
+        "schema_version": "filament.checked-semantic-graph/v2",
         "node_tag": node_tag,
         "semantic_form": semantic_form,
         "semantic_type": node_id(semantic_type),
@@ -2148,7 +2148,7 @@ fn application_node(
     };
     json!({
         "node_id": node_id(&key),
-        "schema_version": "quire.checked-semantic-graph/v2",
+        "schema_version": "filament.checked-semantic-graph/v2",
         "node_tag": node_tag,
         "semantic_form": semantic_form,
         "semantic_type": semantic_type,
@@ -2172,7 +2172,7 @@ pub fn fixture_source() -> Value {
 fn fixture_secondary_source() -> Value {
     source_ref(
         FIXTURE_SOURCE_AUTHORITY,
-        "quire.fixture.source.secondary/v1",
+        "filament.fixture.source.secondary/v1",
     )
 }
 
@@ -2191,18 +2191,18 @@ fn fixture_secondary_source() -> Value {
 fn fixture_definition_selection() -> Value {
     definition_ref(
         FIXTURE_SOURCE_AUTHORITY,
-        "quire.fixture.definition.selection/v1",
+        "filament.fixture.definition.selection/v1",
     )
 }
 
 fn fixture_edition_definition() -> Value {
-    definition_ref(FIXTURE_SOURCE_AUTHORITY, "quire.fixture.edition/v1")
+    definition_ref(FIXTURE_SOURCE_AUTHORITY, "filament.fixture.edition/v1")
 }
 
 fn fixture_diagnostics_catalog() -> Value {
     definition_ref(
         FIXTURE_SOURCE_AUTHORITY,
-        "quire.fixture.diagnostics-catalog/v1",
+        "filament.fixture.diagnostics-catalog/v1",
     )
 }
 
@@ -2350,7 +2350,7 @@ fn join_targets(
             }
             if matches!(
                 term["operation"]["identity"].as_str(),
-                Some("quire.op.model.reaches" | "quire.op.model.navigate")
+                Some("filament.op.model.reaches" | "filament.op.model.navigate")
             ) {
                 if let Some(population) = term["operation"]["member"]
                     .get("population")
@@ -2479,16 +2479,16 @@ pub fn refresh_temporal_bindings(package: &mut Value) {
                 return None;
             };
             let clock = match profile {
-                "quire.temporal.event-position.false-extension/v1" => {
+                "filament.temporal.event-position.false-extension/v1" => {
                     json!({"kind": "event_position", "sequence_authority": "fixture-events"})
                 }
-                "quire.temporal.fixed-sample.false-extension/v1" => json!({
+                "filament.temporal.fixed-sample.false-extension/v1" => json!({
                     "kind": "fixed_sample",
                     "epoch": {"kind": "integer", "decimal": "0"},
                     "period": {"kind": "integer", "decimal": "1"},
                     "unit": "tick",
                 }),
-                "quire.temporal.timestamped-event.finite-window/v1" => {
+                "filament.temporal.timestamped-event.finite-window/v1" => {
                     json!({"kind": "timestamped_event", "timestamp_unit": "tick"})
                 }
                 _ => return None,
@@ -2625,11 +2625,11 @@ fn nominal_skeleton() -> Value {
     lock["sources"] = json!([fixture_source(), fixture_secondary_source()]);
     lock["definition_selections"] = json!([fixture_definition_selection()]);
     json!({
-        "contract_version": "quire.checked-package/v2",
+        "contract_version": "filament.checked-package/v2",
         "name": FIXTURE_PACKAGE,
         "lock": lock,
         "semantic_graph": {
-            "graph_version": "quire.checked-semantic-graph/v2",
+            "graph_version": "filament.checked-semantic-graph/v2",
             "nodes": Value::Array(Vec::new()),
         },
         "source_map": Value::Array(Vec::new()),
@@ -2655,7 +2655,7 @@ pub fn nominal_fixture_members() -> Vec<(Value, String)> {
         "identity": FIXTURE_SOURCE_IDENTITY,
     });
     let declaration_preimage = json!({
-        "version": "quire.enum-declaration-node/v1",
+        "version": "filament.enum-declaration-node/v1",
         "owner": owner,
         "qualified_declaration": ["Example", "Status"],
         "ordered": false,
@@ -2664,14 +2664,14 @@ pub fn nominal_fixture_members() -> Vec<(Value, String)> {
     let declaration_key = "qualified:Example/Status".to_owned();
 
     let member_preimage = json!({
-        "version": "quire.enum-member-node/v1",
+        "version": "filament.enum-member-node/v1",
         "declaration_node_id": node_id(&declaration_key),
         "case": "ACTIVE",
     });
     let member_key = "value/enum_value/ACTIVE".to_owned();
 
     let dimension_preimage = json!({
-        "version": "quire.dimension-node/v1",
+        "version": "filament.dimension-node/v1",
         "owner": owner,
         "qualified_declaration": ["Example", "Length"],
         "terms": Value::Array(Vec::new()),
@@ -2679,7 +2679,7 @@ pub fn nominal_fixture_members() -> Vec<(Value, String)> {
     let dimension_key = "qualified:Example/Length".to_owned();
 
     let unit_preimage = json!({
-        "version": "quire.unit-node/v1",
+        "version": "filament.unit-node/v1",
         "owner": owner,
         "qualified_declaration": ["Example", "Metre"],
         "dimension_node_id": node_id(&dimension_key),
@@ -2717,7 +2717,7 @@ pub fn nominal_fixture_members() -> Vec<(Value, String)> {
 /// families) also depend on node 3 (`dddd`). The function/temporal/protocol/
 /// claim family nodes (`ffff`/`4040`/`5050`/`6060`) are the only nodes with a
 /// real `application` body — the four catalogued operations
-/// (`quire.op.function.call`/`.temporal.clause`/`.protocol.control`/
+/// (`filament.op.function.call`/`.temporal.clause`/`.protocol.control`/
 /// `.claim.clause`) this generator's own `plain_node` counterparts would
 /// otherwise never exercise.
 fn build_v2_all_families() -> Value {
@@ -2962,7 +2962,7 @@ fn build_v2_all_families() -> Value {
             &[],
             empty_aggregate(),
         ),
-        // The clause's `over` parameter: QSL FR-092's `{name, level}` body,
+        // The clause's `over` parameter: FSL FR-092's `{name, level}` body,
         // typed at the Boolean node, carrying the `expression` role.
         {
             let mut parameter = plain_node(
@@ -3015,10 +3015,10 @@ fn build_v2_all_families() -> Value {
     let source = fixture_source();
     let profile_selections = vec![temporal_profile_law(), protocol_profile_law()];
     let mut package = json!({
-        "contract_version": "quire.checked-package/v2",
+        "contract_version": "filament.checked-package/v2",
         "name": FIXTURE_PACKAGE,
         "lock": fixture_lock(profile_selections),
-        "semantic_graph": {"graph_version": "quire.checked-semantic-graph/v2", "nodes": nodes},
+        "semantic_graph": {"graph_version": "filament.checked-semantic-graph/v2", "nodes": nodes},
         "source_map": Value::Array(Vec::new()),
         "capability_report": fixture_capability_report(),
         "diagnostics": {"catalog": fixture_diagnostics_catalog(), "entries": Value::Array(Vec::new())},
@@ -3100,7 +3100,7 @@ fn build_operation_identities() -> Value {
         "call",
         "call",
         json!({
-            "identity": "quire.op.function.call", "laws": Value::Array(Vec::new()),
+            "identity": "filament.op.function.call", "laws": Value::Array(Vec::new()),
             "mode": Value::Null, "member": Value::Null, "leaves": Value::Array(Vec::new()),
         }),
         &root,
@@ -3117,10 +3117,10 @@ fn build_operation_identities() -> Value {
     ];
     let source = fixture_source();
     let mut package = json!({
-        "contract_version": "quire.checked-package/v2",
+        "contract_version": "filament.checked-package/v2",
         "name": FIXTURE_PACKAGE,
         "lock": fixture_lock(Vec::new()),
-        "semantic_graph": {"graph_version": "quire.checked-semantic-graph/v2", "nodes": nodes},
+        "semantic_graph": {"graph_version": "filament.checked-semantic-graph/v2", "nodes": nodes},
         "source_map": Value::Array(Vec::new()),
         "capability_report": fixture_capability_report(),
         "diagnostics": {"catalog": fixture_diagnostics_catalog(), "entries": Value::Array(Vec::new())},

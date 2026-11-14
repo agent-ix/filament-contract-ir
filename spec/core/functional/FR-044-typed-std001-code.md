@@ -3,13 +3,13 @@ id: FR-044
 title: "Export a typed STD-001 code from the model crate"
 type: FR
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/StR-001
+  - target: ix://agent-ix/filament-contract-ir/StR-001
     type: traces_to
-  - target: ix://agent-ix/quire-contract-ir/STD-001
+  - target: ix://agent-ix/filament-contract-ir/STD-001
     type: references
-  - target: ix://agent-ix/quire-contract-ir/FR-019
+  - target: ix://agent-ix/filament-contract-ir/FR-019
     type: references
-  - target: ix://agent-ix/quire-contract-ir/FR-030
+  - target: ix://agent-ix/filament-contract-ir/FR-030
     type: references
 ---
 # FR-044: Export a typed STD-001 code from the model crate
@@ -18,8 +18,8 @@ relationships:
 
 ```yaml
 name: TypedStd001Code
-ownership: quire-contract-ir
-crate: quire-contract-model
+ownership: filament-contract-ir
+crate: filament-contract-model
 module: code
 types: [Std001Code, Std001CodeError]
 macros: [std001_code]
@@ -35,7 +35,7 @@ invariants:
 
 ## Description
 
-The `quire-contract-model` crate shall export `Std001Code`, one typed value for
+The `filament-contract-model` crate shall export `Std001Code`, one typed value for
 a machine-readable code in the STD-001 form, so a consumer that carries a code
 carries this type and not a `String`. This requirement states the type, its
 form, its constructors, its wire form and its stability rules. STD-001 lists
@@ -63,22 +63,22 @@ because a consumer that mints codes of its own (codegen's corpus refusals) keeps
 them in its own registry. A consumer that carries a `Std001Code` therefore
 carries an IR-family code, from IR's registry or from the registry of a producer
 that builds `KaniOutcome`s, and `is_registered()` is the only way to tell the
-two apart. A consumer that needs the issuing registry, as QSL's `Declined`
-`Ir` arm may (QSL's ruling is that a code names the registry that issued it),
+two apart. A consumer that needs the issuing registry, as FSL's `Declined`
+`Ir` arm may (FSL's ruling is that a code names the registry that issued it),
 must carry that attribution itself, for example as a variant or a field beside
 the code, or must refuse a code for which `is_registered()` is false. That
-choice is QSL's, and this requirement does not make the `Ir` arm an IR-registry
+choice is FSL's, and this requirement does not make the `Ir` arm an IR-registry
 claim.
 
 ### Home
 
 `Std001Code`, `Std001CodeError` and the `std001_code!` macro live in a new `code`
-module of `quire-contract-model`, exported by name at the crate root and listed
-in FR-019's Public items table. They are not in the `quire-contract-ir` root
+module of `filament-contract-model`, exported by name at the crate root and listed
+in FR-019's Public items table. They are not in the `filament-contract-ir` root
 crate: the root crate re-exports no model item (FR-039), so a consumer,
-including `quire-contract-codegen` and QSL, imports them from
-`quire_contract_model`. QSL already depends on the model crate, so it adds no
-edge. The type depends on no QSL, codegen or runtime type.
+including `filament-contract-codegen` and FSL, imports them from
+`filament_contract_model`. FSL already depends on the model crate, so it adds no
+edge. The type depends on no FSL, codegen or runtime type.
 
 ### Form and constructors
 
@@ -169,15 +169,15 @@ FR-015-AC-109. IR-347 also removed `KaniProviderRecord`, whose `cause` was a
 [STD-001](./STD-001-diagnostic-registry.md) registers the codes.
 [FR-019](../../model/functional/FR-019-rust-library-interface.md) lists the
 model crate's public items. [FR-030](../../kani/functional/FR-030-bounded-kani-domain-and-outcomes.md)
-makes `KaniOutcome.code` this type. QSL's `DeclineCode` takes this type for its
+makes `KaniOutcome.code` this type. FSL's `DeclineCode` takes this type for its
 `Ir` arm (QSL-351); that arm, and whether it records the issuing registry, is
-QSL's and is not specified here beyond the limit stated under "What the type
+FSL's and is not specified here beyond the limit stated under "What the type
 guarantees".
 
 ## Status
 
 Implemented through AC-1 to AC-5, verified by TC-442. The `code` module of
-`quire-contract-model` exports `Std001Code`, `Std001CodeError` and `std001_code!`;
+`filament-contract-model` exports `Std001Code`, `Std001CodeError` and `std001_code!`;
 `KaniOutcome.code`, `KaniOutcomeError.code` and the
 `CapabilityDisposition` codes are `Std001Code`. The former IR family lowerings
 were removed under IR-347. The `compile_fail` probes of AC-4 are doctests on the `code` module, paired with the

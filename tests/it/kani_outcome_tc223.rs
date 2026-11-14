@@ -1,8 +1,8 @@
 //! The count and cause rules of the public bounded-Kani outcome.
 
+use filament_contract_ir::kani::{KaniCancellationSource, KaniOutcome, KaniOutcomeKind};
+use filament_contract_model::{std001_code, Std001Code};
 use ix_trace_rs::trace;
-use quire_contract_ir::kani::{KaniCancellationSource, KaniOutcome, KaniOutcomeKind};
-use quire_contract_model::{std001_code, Std001Code};
 
 #[trace("TC-223", "FR-030-AC-4")]
 #[test]

@@ -28,7 +28,7 @@ impl Scratch {
         fs::create_dir(&root).expect("unique consumer directory");
         let scratch = Self(root);
         fs::create_dir(scratch.0.join("src")).expect("consumer source directory");
-        let model = Path::new(env!("CARGO_MANIFEST_DIR")).join("crates/quire-contract-model");
+        let model = Path::new(env!("CARGO_MANIFEST_DIR")).join("crates/filament-contract-model");
         // A TOML literal string preserves the actual path without escape conversion.
         let model = model.to_str().expect("UTF-8 model path");
         assert!(
@@ -39,7 +39,7 @@ impl Scratch {
             scratch.0.join("Cargo.toml"),
             format!(
                 "[workspace]\n[package]\nname = '{CONSUMER}'\nversion = '0.0.0'\nedition = '2021'\n\
-                 [dependencies]\nquire-contract-model = {{ path = '{model}' }}\n"
+                 [dependencies]\nfilament-contract-model = {{ path = '{model}' }}\n"
             ),
         )
         .expect("independent default-feature consumer manifest");
@@ -137,20 +137,21 @@ fn diagnostic(output: &Output) -> String {
 #[trace("TC-018", "FR-019-AC-4")]
 fn default_mapping_surface_excludes_allocation_fault_injection() {
     let consumer = Scratch::new();
-    let healthy = consumer
-        .check("fn main() { let _ = quire_contract_model::MappingExecutionControl::active(); }\n");
+    let healthy = consumer.check(
+        "fn main() { let _ = filament_contract_model::MappingExecutionControl::active(); }\n",
+    );
     assert!(
         healthy.status.success(),
         "healthy default consumer: {}",
         diagnostic(&healthy)
     );
     consumer.assert_absent(
-        "use quire_contract_model::MappingAllocationPoint; fn main() {}\n",
-        "quire_contract_model::MappingAllocationPoint",
+        "use filament_contract_model::MappingAllocationPoint; fn main() {}\n",
+        "filament_contract_model::MappingAllocationPoint",
         "E0432",
     );
     consumer.assert_absent(
-        "fn main() { let _ = quire_contract_model::MappingExecutionControl::fail_allocation_at; }\n",
+        "fn main() { let _ = filament_contract_model::MappingExecutionControl::fail_allocation_at; }\n",
         "fail_allocation_at",
         "E0599",
     );

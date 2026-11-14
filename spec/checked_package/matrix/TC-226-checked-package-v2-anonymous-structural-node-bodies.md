@@ -3,14 +3,14 @@ id: TC-226
 title: "CheckedPackage V2 refuses a tampered anonymous structural node body"
 type: TC
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/FR-038
+  - target: ix://agent-ix/filament-contract-ir/FR-038
     type: verifies
 ---
 # TC-226: CheckedPackage V2 structural nodes and recursion groups
 
 ## Description
 
-Verify FR-038's independent closed body, owner, graph, dependency and recursion-group rules under QSpec #517 structural identity. The test covers structural identity without content-derived stale-key or expected-key assertions. Current QSpec fixtures are read directly from `QUIRE_SPECIFICATION_DIR`, never copied.
+Verify FR-038's independent closed body, owner, graph, dependency and recursion-group rules under FSpec #517 structural identity. The test covers structural identity without content-derived stale-key or expected-key assertions. Current FSpec fixtures are read directly from `FILAMENT_SPECIFICATION_DIR`, never copied.
 
 ## Test Procedure
 
@@ -22,7 +22,7 @@ Verify FR-038's independent closed body, owner, graph, dependency and recursion-
    require admission without deriving or demanding a declaration path. Separately add
    one non-empty label to an otherwise valid acyclic protocol node whose
    closed shape permits it and require admission without inventing a cycle
-   refusal (QSpec TC-946 K10).
+   refusal (FSpec TC-946 K10).
    Include self and internal references, an outside reference and an off-cycle
    member; verify every reference names its exact structural target ID. Permute
    otherwise valid group members without changing any ID, label or reference;
@@ -38,7 +38,7 @@ Verify FR-038's independent closed body, owner, graph, dependency and recursion-
    ordinal unrelated to graph position admits. The former group-position,
    size and group-reference-ordinal mutation branches are withdrawn in place;
    no such carrier exists in the checked wire.
-4. Read every current QSpec positive and adverse fixture through the production reader, including FR-322-AC-274's `positive-recursive-records`, `positive-two-owners-a`, `positive-two-owners-b` and `positive-integer-literal-references` fixtures. Each of these groups has exactly one declared member: assert that member keeps its declaration path and every anonymous derived member uses it, while `node_id.ordinal` retains its producer-assigned value and exact references resolve by structural ID. Read TC-946 K14 directly from the QSpec checkout: `Flow`, `joinPred` and `Holder` form one cyclic component under one label but retain three distinct declaration paths, and acyclic `Plain` remains separate. Assemble a complete reader package using the K14 node set and its selected source evidence; that package admits. Starting from that admitted package, independently change only one declared member's path to another member's declaration path while assigning a distinct valid ordinal, change only one member's label to a different non-empty label, and replace one exact in-cycle target with a nonexistent structural ID. Require `invalid_package`/`declaration-nominal-mismatch` at the changed declared node id (FR-038-AC-21), then the independent cycle-label and unresolved-reference refusals at their own QSpec loci, without accepting a duplicate-id refusal as the path oracle. No group position is computed. Require each published admission or refusal with exact code, cause, pointer and authentic node locus. A missing checkout, fixture, case or wrong outcome fails; no expected-failure entry silently substitutes for a QSpec result.
+4. Read every current FSpec positive and adverse fixture through the production reader, including FR-322-AC-274's `positive-recursive-records`, `positive-two-owners-a`, `positive-two-owners-b` and `positive-integer-literal-references` fixtures. Each of these groups has exactly one declared member: assert that member keeps its declaration path and every anonymous derived member uses it, while `node_id.ordinal` retains its producer-assigned value and exact references resolve by structural ID. Read TC-946 K14 directly from the FSpec checkout: `Flow`, `joinPred` and `Holder` form one cyclic component under one label but retain three distinct declaration paths, and acyclic `Plain` remains separate. Assemble a complete reader package using the K14 node set and its selected source evidence; that package admits. Starting from that admitted package, independently change only one declared member's path to another member's declaration path while assigning a distinct valid ordinal, change only one member's label to a different non-empty label, and replace one exact in-cycle target with a nonexistent structural ID. Require `invalid_package`/`declaration-nominal-mismatch` at the changed declared node id (FR-038-AC-21), then the independent cycle-label and unresolved-reference refusals at their own FSpec loci, without accepting a duplicate-id refusal as the path oracle. No group position is computed. Require each published admission or refusal with exact code, cause, pointer and authentic node locus. A missing checkout, fixture, case or wrong outcome fails; no expected-failure entry silently substitutes for a FSpec result.
 5. Measure the first unpaid reader work charge in a 100000-node chain and a large recursion group. The exact work setting admits, one unit less returns `Incomplete` at the attempted member or reference with no partial package. A continuation-after-unpaid-charge mutant must fail the observation control. No group digest work exists.
 
 ## Expected Results

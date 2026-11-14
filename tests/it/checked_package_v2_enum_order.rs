@@ -2,12 +2,12 @@
 // Copyright (C) 2026 Agent-IX
 
 //! IR-482: an enum's operand family is `ordered_enum` when its nominal
-//! preimage is ordered and `enum` otherwise (QSpec FR-322), so
-//! `quire.op.enum.lt/le/gt/ge` (catalog family `ordered_enum`) admit over an
-//! ordered enum and refuse over an unordered one (QSpec FR-141-AC-5), while
-//! `quire.op.enum.eq/ne` (`enum_kind`) admit over both.
+//! preimage is ordered and `enum` otherwise (FSpec FR-322), so
+//! `filament.op.enum.lt/le/gt/ge` (catalog family `ordered_enum`) admit over an
+//! ordered enum and refuse over an unordered one (FSpec FR-141-AC-5), while
+//! `filament.op.enum.eq/ne` (`enum_kind`) admit over both.
 //!
-//! Every package is built here, node by node, in the shapes QSL's emitter
+//! Every package is built here, node by node, in the shapes FSL's emitter
 //! writes: an enum `scalar_type` carrying its `enum-declaration-node/v1`
 //! preimage, its member `value` nodes, and a `binary` application of the
 //! operation over two operands of that enum.
@@ -15,11 +15,11 @@
 use crate::support::checked_package::{
     canonical, evidence_for, node_id, nominal_package, refusal_at_id, settle, ExpectedRefusal,
 };
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     CheckedPackageReadLimits, CheckedPackageRefusal, CheckedPackageRefusalCause,
     CheckedPackageRefusalCode, CheckedPackageV2ReadResult,
 };
+use ix_trace_rs::trace;
 use serde_json::{json, Value};
 
 /// How the application's operands are formed.
@@ -32,7 +32,7 @@ enum Operands {
 }
 
 fn owner() -> Value {
-    json!({"kind": "source", "authority": "agent-ix", "identity": "quire.fixture.source/v1"})
+    json!({"kind": "source", "authority": "agent-ix", "identity": "filament.fixture.source/v1"})
 }
 
 /// `(preimage, key)` of an enum declaration.
@@ -50,7 +50,7 @@ fn declaration(name: &str, ordered: bool) -> (Value, String) {
 /// An enum declaration with its members in the given order.
 fn declaration_with(name: &str, ordered: bool, members: [&str; 2]) -> (Value, String) {
     let preimage = json!({
-        "version": "quire.enum-declaration-node/v1",
+        "version": "filament.enum-declaration-node/v1",
         "owner": owner(),
         "qualified_declaration": [name],
         "ordered": ordered,
@@ -63,7 +63,7 @@ fn declaration_with(name: &str, ordered: bool, members: [&str; 2]) -> (Value, St
 /// `(preimage, key)` of one member of the enum keyed `declaration`.
 fn member(declaration: &str, case: &str) -> (Value, String) {
     let preimage = json!({
-        "version": "quire.enum-member-node/v1",
+        "version": "filament.enum-member-node/v1",
         "declaration_node_id": node_id(declaration),
         "case": case,
     });
@@ -81,7 +81,7 @@ fn plain_node(
 ) -> Value {
     json!({
         "node_id": node_id(key),
-        "schema_version": "quire.checked-semantic-graph/v2",
+        "schema_version": "filament.checked-semantic-graph/v2",
         "node_tag": tag,
         "semantic_form": form,
         "semantic_type": node_id(semantic_type),
@@ -243,12 +243,12 @@ fn refused(package: &Value) -> CheckedPackageRefusal {
 }
 
 const ORDERING: [&str; 4] = [
-    "quire.op.enum.lt",
-    "quire.op.enum.le",
-    "quire.op.enum.gt",
-    "quire.op.enum.ge",
+    "filament.op.enum.lt",
+    "filament.op.enum.le",
+    "filament.op.enum.gt",
+    "filament.op.enum.ge",
 ];
-const EQUALITY: [&str; 2] = ["quire.op.enum.eq", "quire.op.enum.ne"];
+const EQUALITY: [&str; 2] = ["filament.op.enum.eq", "filament.op.enum.ne"];
 const FORMS: [Operands; 2] = [Operands::Members, Operands::Parameters];
 
 #[trace("FR-038-AC-238")]
@@ -256,7 +256,7 @@ const FORMS: [Operands; 2] = [Operands::Members, Operands::Parameters];
 fn ordinary_scalar_enum_still_refuses_nonidentifier_cases() {
     let declaration = declaration("Status", false);
     let mut package = package(
-        "quire.op.enum.eq",
+        "filament.op.enum.eq",
         &declaration,
         &declaration,
         Operands::Members,
@@ -330,7 +330,7 @@ fn tc_048_ordering_across_two_enums_refuses() {
     let left = declaration("Status", true);
     let right = declaration("Phase", true);
     for form in FORMS {
-        let package = package("quire.op.enum.lt", &left, &right, form);
+        let package = package("filament.op.enum.lt", &left, &right, form);
         assert_eq!(refused(&package), ineligible(&package, 1));
     }
 }

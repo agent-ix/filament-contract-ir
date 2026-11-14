@@ -3,17 +3,17 @@ id: FR-036
 title: "Negotiate exact backend capability before artifact emission"
 type: FR
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/StR-001
+  - target: ix://agent-ix/filament-contract-ir/StR-001
     type: traces_to
-  - target: ix://agent-ix/quire-contract-ir/AD-003
+  - target: ix://agent-ix/filament-contract-ir/AD-003
     type: references
-  - target: ix://agent-ix/quire-contract-ir/FR-035
+  - target: ix://agent-ix/filament-contract-ir/FR-035
     type: depends_on
-  - target: ix://agent-ix/quire-specification/FR-196
+  - target: ix://agent-ix/filament-specification/FR-196
     type: references
-  - target: ix://agent-ix/quire-specification/FR-331
+  - target: ix://agent-ix/filament-specification/FR-331
     type: references
-  - target: ix://agent-ix/quire-specification/FR-290
+  - target: ix://agent-ix/filament-specification/FR-290
     type: references
 ---
 # FR-036: Negotiate exact backend capability before artifact emission
@@ -64,19 +64,19 @@ domain, and bounds in each emitted artifact.
 ## Dependencies
 
 [FR-035](../../checked_package/functional/FR-035-complete-v1-contract-package-lowering.md) owns the input
-package. QSpec FR-196 and I13 own the normative provider contract. FR-029
+package. FSpec FR-196 and I13 own the normative provider contract. FR-029
 through FR-031 remain credited only for their closed `kani-bounded/1`
 profile: Contract IR supplies that profile, its finite input ABI, dispatch
 index and typed outcome, and the family lowerings that turn a
 negotiated item into Kani harness input belong to the backend adapter in
 codegen. A construct the `kani-bounded/1` capability matrix records
 `unsupported` settles its item `unsupported` here, with a warning naming the
-item's capability kind from the closed `quire.capability-kind/v1` vocabulary (QSpec FR-290) (FR-029). QSpec FR-290 owns the closed ten-label `quire.capability-kind/v1` capability vocabulary named
+item's capability kind from the closed `filament.capability-kind/v1` vocabulary (FSpec FR-290) (FR-029). FSpec FR-290 owns the closed ten-label `filament.capability-kind/v1` capability vocabulary named
 by an `unsupported` warning. A negotiated item's later Kani outcome is typed by
-[FR-030](../../kani/functional/FR-030-bounded-kani-domain-and-outcomes.md); its QSL `TerminalValue`
-is codegen's (tracked in agent-ix/quire-contract-codegen under Linear IR-358),
+[FR-030](../../kani/functional/FR-030-bounded-kani-domain-and-outcomes.md); its FSL `TerminalValue`
+is codegen's (tracked in agent-ix/filament-contract-codegen under Linear IR-358),
 and replay of a
-counterexample is QSL's ([FR-037](./FR-037-canonical-backend-replay-and-qualification.md)).
+counterexample is FSL's ([FR-037](./FR-037-canonical-backend-replay-and-qualification.md)).
 
 ## Status
 

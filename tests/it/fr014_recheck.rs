@@ -1,8 +1,7 @@
 //! FR-014-AC-4: rechecking identical declarations, context, expression and expected type
 //! produces structurally equal typed output, ordered diagnostics and dependency identities.
 
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     AnchorName, BooleanOperator, ComparisonOperator, DeclarationEnvironment, DependencyKind,
     Diagnostic, DiagnosticCode, EnumDeclaration, EnumVariantDeclaration, ExecutionPoint,
     Expression, ExpressionKind, FunctionParameter, IntegerDomain, IntegerType, NumericOperator,
@@ -11,6 +10,7 @@ use quire_contract_model::{
     SourceIdentity, SourceLocation, SourceRevision, SourceSpan, StateObservation, SymbolName,
     TypeDeclaration, TypedExpression, ValueDeclaration, ValueDeclarationKind, ValueType,
 };
+use ix_trace_rs::trace;
 
 fn name(value: &str) -> SymbolName {
     SymbolName::new(value).unwrap()

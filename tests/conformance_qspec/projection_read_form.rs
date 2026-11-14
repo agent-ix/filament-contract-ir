@@ -6,18 +6,18 @@
 use super::{
     fixtures_dir, positive_document, proposal_dir_of, read_json, read_package_with_document,
 };
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     encode_checked_package_v2, CheckedFieldReadForm, CheckedOperationMember,
     CheckedPackageRefusalCode, CheckedPackageSourceCorrespondenceRef, CheckedPackageV2,
     CheckedPackageV2ReadResult, CheckedTerm,
 };
+use ix_trace_rs::trace;
 use serde_json::Value;
 
 fn fill_model_read_forms(value: &mut Value) {
     match value {
         Value::Object(map) => {
-            if map.get("identity").and_then(Value::as_str) == Some("quire.op.record.project") {
+            if map.get("identity").and_then(Value::as_str) == Some("filament.op.record.project") {
                 if let Some(member) = map.get_mut("member").and_then(Value::as_object_mut) {
                     let model_object = member
                         .get("declaration")
@@ -50,7 +50,7 @@ fn first_projection_read_form(package: &CheckedPackageV2) -> Option<CheckedField
         let CheckedTerm::Application { operation, .. } = &node.body else {
             return None;
         };
-        if operation.identity() != Some("quire.op.record.project") {
+        if operation.identity() != Some("filament.op.record.project") {
             return None;
         }
         let read = operation.read().ok()?;
@@ -61,7 +61,7 @@ fn first_projection_read_form(package: &CheckedPackageV2) -> Option<CheckedField
     })
 }
 
-/// Trace: FR-349-AC-8, QSpec FR-322-AC-34.
+/// Trace: FR-349-AC-8, FSpec FR-322-AC-34.
 #[trace("FR-349-AC-8", "FR-322-AC-34")]
 #[test]
 fn published_model_field_read_forms_survive_admission_and_round_trip() {
@@ -92,7 +92,7 @@ fn published_model_field_read_forms_survive_admission_and_round_trip() {
         let projection = nodes
             .iter_mut()
             .find(|node| {
-                node["body"]["operation"]["identity"] == "quire.op.record.project"
+                node["body"]["operation"]["identity"] == "filament.op.record.project"
                     && node["body"]["operation"]["member"]["declaration"]["path"][1]
                         == "object_type"
             })
@@ -149,7 +149,7 @@ fn published_model_field_read_forms_survive_admission_and_round_trip() {
                         source_map: package.source_map(),
                         refinement_step_rows: package.refinement_step_rows(),
                     },
-                    quire_contract_model::CheckedPackageSidecarsRef {
+                    filament_contract_model::CheckedPackageSidecarsRef {
                         temporal_clause_names: package.temporal_clause_names(),
                         operation_effects: None,
                         operation_bodies: None,
@@ -185,7 +185,7 @@ fn published_model_field_read_forms_survive_admission_and_round_trip() {
     }
 }
 
-/// Trace: FR-349-AC-8, QSpec FR-322-AC-34.
+/// Trace: FR-349-AC-8, FSpec FR-322-AC-34.
 #[trace("FR-349-AC-8", "FR-322-AC-34")]
 #[test]
 fn published_record_projection_rejects_inapplicable_read_form() {
@@ -210,7 +210,7 @@ fn published_record_projection_rejects_inapplicable_read_form() {
         .as_array_mut()
         .expect("graph nodes")
         .iter_mut()
-        .find(|node| node["body"]["operation"]["identity"] == "quire.op.record.project")
+        .find(|node| node["body"]["operation"]["identity"] == "filament.op.record.project")
         .expect("record projection");
     projection["body"]["operation"]["member"]["read_form"] = row["member"]["read_form"].clone();
     let result = read_package_with_document(&wire, "RP-14", &document)

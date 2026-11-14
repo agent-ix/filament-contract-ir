@@ -3,9 +3,9 @@ id: FR-028
 title: "Separate the cycle-free Contract IR model package"
 type: FR
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/StR-001
+  - target: ix://agent-ix/filament-contract-ir/StR-001
     type: traces_to
-  - target: ix://agent-ix/quire-contract-ir/FR-019
+  - target: ix://agent-ix/filament-contract-ir/FR-019
     type: depends_on
   - target: ix://agent-ix/tl-syntax/IF-008
     type: implements
@@ -14,26 +14,26 @@ relationships:
 
 ## Description
 
-The Contract IR repository SHALL expose its stable semantic substrate only from a dependency-free `quire-contract-model` package, which the `quire-contract-ir` package consumes without re-exporting it, so the production Cargo graph remains acyclic, the root package depends on no crate from the agent-ix/quire-spec-language repository, and every model item has one import path.
+The Contract IR repository SHALL expose its stable semantic substrate only from a dependency-free `filament-contract-model` package, which the `filament-contract-ir` package consumes without re-exporting it, so the production Cargo graph remains acyclic, the root package depends on no crate from the agent-ix/filament-spec-language repository, and every model item has one import path.
 
 ## Package architecture
 
 The repository becomes one Cargo workspace with:
 
-- `quire-contract-model`: the existing package/requirement/clause, type,
+- `filament-contract-model`: the existing package/requirement/clause, type,
   expression, definedness, canonicalization, identity, binding, limit,
-  diagnostic, wire and conformance model. It has no dependency on QSL,
+  diagnostic, wire and conformance model. It has no dependency on FSL,
   observation, protocol or TL crates.
-- `quire-contract-ir`: the root package. It depends on the model package and
-  on no crate from the agent-ix/quire-spec-language repository, in any dependency kind, re-exports none of its items, and owns the bounded-Kani subsystem from
+- `filament-contract-ir`: the root package. It depends on the model package and
+  on no crate from the agent-ix/filament-spec-language repository, in any dependency kind, re-exports none of its items, and owns the bounded-Kani subsystem from
   FR-029 through FR-031 (FR-039).
 
 A model type, function, error, feature, canonical byte, diagnostic and
-conformance outcome is reached through `quire_contract_model` only (FR-019).
+conformance outcome is reached through `filament_contract_model` only (FR-019).
 The package split changes no wire/schema/profile/identity.
 
-QSL's production graph depends on `quire-contract-model` and not on
-`quire-contract-ir`. The root package depends on no crate from the agent-ix/quire-spec-language repository, so no path or git
+FSL's production graph depends on `filament-contract-model` and not on
+`filament-contract-ir`. The root package depends on no crate from the agent-ix/filament-spec-language repository, so no path or git
 split of the model crate can arise in this repository's `Cargo.lock`: the
 workspace path model is the only copy. Test-only dependencies cannot enter
 production code.
@@ -43,9 +43,9 @@ production code.
 The workspace Cargo graph SHALL have these directions:
 
 ```text
-quire-verification-contracts -> quire-contract-model
-quire-contract-model -> quire-contract-ir
-quire-semantic-value -> quire-contract-model  (planned for FR-353 / IR-1223)
+filament-verification-contracts -> filament-contract-model
+filament-contract-model -> filament-contract-ir
+filament-semantic-value -> filament-contract-model  (planned for FR-353 / IR-1223)
 ```
 
 Arrows point from dependency to consumer. No package may depend, directly or
@@ -53,20 +53,20 @@ transitively, on itself. The model package admits no optional feature that
 reintroduces an owner/bridge dependency. The bridge accepts owner values only
 through their constructor-private public APIs; the package split adds no
 callback, trait-object validator, wire mirror, trust flag or local owner parser.
-The planned QSV semantic-value edge is lower than the model package and does
-not add a QSL, observation, protocol or TL owner dependency. It is a planned
-edge until the FR-353 admitted-decision read and QSV IR-1223 code land; the
+The planned FSV semantic-value edge is lower than the model package and does
+not add a FSL, observation, protocol or TL owner dependency. It is a planned
+edge until the FR-353 admitted-decision read and FSV IR-1223 code land; the
 implemented FR-028/TC-041 graph claim does not assert that edge already exists.
 
 ## Acceptance Criteria
 
 | ID | Criteria | Verification |
 |---|---|---|
-| FR-028-AC-1 | Cargo metadata for every production feature combination is acyclic and contains no owner or TL dependency reachable from `quire-contract-model`. | Test (TC-041) |
-| FR-028-AC-2 | Schemas, canonical bytes, identities, diagnostics and the conformance corpus are byte/result identical through `quire_contract_model` paths, and the root package's runner produces the same results from them. | Test (TC-041) |
-| FR-028-AC-3 | The root package's own manifest names no dependency in any kind on a crate from the agent-ix/quire-spec-language repository, by name or by git source. | Test (TC-041) |
+| FR-028-AC-1 | Cargo metadata for every production feature combination is acyclic and contains no owner or TL dependency reachable from `filament-contract-model`. | Test (TC-041) |
+| FR-028-AC-2 | Schemas, canonical bytes, identities, diagnostics and the conformance corpus are byte/result identical through `filament_contract_model` paths, and the root package's runner produces the same results from them. | Test (TC-041) |
+| FR-028-AC-3 | The root package's own manifest names no dependency in any kind on a crate from the agent-ix/filament-spec-language repository, by name or by git source. | Test (TC-041) |
 | FR-028-AC-4 | Default, all-feature and minimum-version builds prove that no optional, dev or historical dependency leaks into the production graph. | Test (TC-041) |
-| FR-028-AC-5 | The split introduces no copied owner wire type, public validation constructor, callback, trait object, trust flag or local QSL/observation/protocol/TL parser. The only callbacks and trait objects permitted are budget plumbing, by exact shape: a scoped thunk `FnOnce() -> R`, the `fn(NativeBudgetEvent)` budget observer, the `Fn(usize) -> &CheckedNodeId` position accessor and `dyn ReadStorage`; a callback that takes or returns any other value is refused. | Test (TC-041) |
+| FR-028-AC-5 | The split introduces no copied owner wire type, public validation constructor, callback, trait object, trust flag or local FSL/observation/protocol/TL parser. The only callbacks and trait objects permitted are budget plumbing, by exact shape: a scoped thunk `FnOnce() -> R`, the `fn(NativeBudgetEvent)` budget observer, the `Fn(usize) -> &CheckedNodeId` position accessor and `dyn ReadStorage`; a callback that takes or returns any other value is refused. | Test (TC-041) |
 
 ## Dependencies
 
@@ -85,7 +85,7 @@ for byte, including canonical identities and typed diagnostics, with a changed
 schema refusal control. The source-boundary control checks for owner mirrors,
 parsers and admission escape surfaces.
 
-Planned work outside this repository includes proving that QSL's production graph has no
-`quire-contract-ir` and building the cross-repo composition that imports both
-the root package and the real QSL owner API in agent-ix/quire-integration
+Planned work outside this repository includes proving that FSL's production graph has no
+`filament-contract-ir` and building the cross-repo composition that imports both
+the root package and the real FSL owner API in agent-ix/filament-integration
 (Linear IR-358).

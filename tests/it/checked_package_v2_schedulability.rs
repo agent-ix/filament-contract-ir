@@ -4,13 +4,13 @@
 //! Independent local task claims through the public authenticated reader.
 
 use crate::support::checked_package as fixtures;
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     encode_checked_package_v2, CheckedLiteralRead, CheckedLiteralValue, CheckedNodeId,
     CheckedPackageReadLimits, CheckedPackageSidecarsRef, CheckedPackageSourceCorrespondenceRef,
     CheckedPackageV2, CheckedPackageV2ReadResult, CheckedSchedulabilityClaimRow,
     CheckedSchedulabilityKind, CheckedSchedulingPolicy, CheckedTaskArrival, CheckedTaskCriticality,
 };
+use ix_trace_rs::trace;
 use serde_json::{json, Value};
 
 fn aggregate(members: Vec<Value>) -> Value {
@@ -121,7 +121,7 @@ pub(super) fn package(policy: &str, response: bool, high: bool, occurrences: u64
     ]);
     let id = fixtures::node_id("fixture/schedulability/worker");
     package["semantic_graph"]["nodes"].as_array_mut().unwrap().push(json!({
-        "node_id":id, "schema_version":"quire.checked-semantic-graph/v2",
+        "node_id":id, "schema_version":"filament.checked-semantic-graph/v2",
         "node_tag":"claim", "semantic_form":"schedulability", "semantic_type":boolean,
         "dependencies":[], "occurrences":(0..occurrences).map(|ordinal| json!({"role":"claim","ordinal":ordinal})).collect::<Vec<_>>(),
         "body":body
@@ -311,11 +311,11 @@ fn absent_index_stays_absent_and_raw_rows_do_not_authenticate_claims() {
     };
     assert_eq!(
         refusal.code,
-        quire_contract_model::CheckedPackageRefusalCode::InvalidPackage
+        filament_contract_model::CheckedPackageRefusalCode::InvalidPackage
     );
     assert_eq!(
         refusal.cause,
-        Some(quire_contract_model::CheckedPackageRefusalCause::InvalidValue)
+        Some(filament_contract_model::CheckedPackageRefusalCause::InvalidValue)
     );
     assert_eq!(
         refusal.loci[0].path.as_ref().unwrap().as_str(),
@@ -367,11 +367,11 @@ fn complete_writer_preserves_supplied_index_order_without_repair() {
     };
     assert_eq!(
         refusal.code,
-        quire_contract_model::CheckedPackageRefusalCode::InvalidPackage
+        filament_contract_model::CheckedPackageRefusalCode::InvalidPackage
     );
     assert_eq!(
         refusal.cause,
-        Some(quire_contract_model::CheckedPackageRefusalCause::InvalidValue)
+        Some(filament_contract_model::CheckedPackageRefusalCause::InvalidValue)
     );
     assert_eq!(
         refusal.loci[0].path.as_ref().unwrap().as_str(),
@@ -395,7 +395,7 @@ fn explicit_empty_identity_index_is_malformed_even_without_claim_nodes() {
     };
     assert_eq!(
         refusal.code,
-        quire_contract_model::CheckedPackageRefusalCode::MalformedWire
+        filament_contract_model::CheckedPackageRefusalCode::MalformedWire
     );
     assert_eq!(refusal.cause, None);
     assert_eq!(
@@ -425,11 +425,11 @@ fn carrier_work_is_charged_before_a_row_is_resolved() {
             CheckedPackageV2ReadResult::Refused(refusal) => {
                 assert_eq!(
                     refusal.code,
-                    quire_contract_model::CheckedPackageRefusalCode::InvalidPackage
+                    filament_contract_model::CheckedPackageRefusalCode::InvalidPackage
                 );
                 assert_eq!(
                     refusal.cause,
-                    Some(quire_contract_model::CheckedPackageRefusalCause::InvalidValue)
+                    Some(filament_contract_model::CheckedPackageRefusalCause::InvalidValue)
                 );
                 assert_eq!(
                     refusal.loci[0].path.as_ref().unwrap().as_str(),
@@ -445,7 +445,7 @@ fn carrier_work_is_charged_before_a_row_is_resolved() {
     };
     assert_eq!(
         report.limit_kind,
-        quire_contract_model::CheckedPackageLimit::Work
+        filament_contract_model::CheckedPackageLimit::Work
     );
     assert_eq!(
         report.path.as_ref().unwrap().as_str(),
@@ -456,8 +456,8 @@ fn carrier_work_is_charged_before_a_row_is_resolved() {
 
 fn refuses(
     wire: &Value,
-    code: quire_contract_model::CheckedPackageRefusalCode,
-    cause: Option<quire_contract_model::CheckedPackageRefusalCause>,
+    code: filament_contract_model::CheckedPackageRefusalCode,
+    cause: Option<filament_contract_model::CheckedPackageRefusalCause>,
     path: &str,
 ) {
     let result = crate::read_and_account(
@@ -481,7 +481,7 @@ fn refuses(
 #[trace("TC-048", "FR-038-AC-398", "FR-038-AC-399")]
 #[test]
 fn claim_body_refusals_follow_structural_order_among_nonclaim_nodes() {
-    use quire_contract_model::{
+    use filament_contract_model::{
         CheckedPackageRefusalCause as Cause, CheckedPackageRefusalCode as Code,
     };
 
@@ -515,7 +515,7 @@ fn claim_body_refusals_follow_structural_order_among_nonclaim_nodes() {
 #[trace("TC-048", "FR-038-AC-397", "FR-038-AC-400")]
 #[test]
 fn carrier_join_checks_have_deterministic_precedence() {
-    use quire_contract_model::{
+    use filament_contract_model::{
         CheckedPackageRefusalCause as Cause, CheckedPackageRefusalCode as Code,
     };
     for case in [
@@ -630,7 +630,7 @@ fn exact_measured_work_admits_and_one_less_has_no_admitted_view() {
     };
     assert_eq!(
         report.limit_kind,
-        quire_contract_model::CheckedPackageLimit::Work
+        filament_contract_model::CheckedPackageLimit::Work
     );
     assert_eq!(report.limit, high - 1);
 }
@@ -702,7 +702,7 @@ fn sparse_high_occurrence_ordinals_resolve_independently_of_array_position() {
 #[trace("TC-048", "FR-038-AC-399")]
 #[test]
 fn malformed_exact_task_literals_refuse_at_payload_before_interpretation() {
-    use quire_contract_model::{
+    use filament_contract_model::{
         CheckedPackageRefusalCause as Cause, CheckedPackageRefusalCode as Code,
     };
     for (member, spelling) in [
@@ -758,7 +758,7 @@ fn claim_carrier_tables_and_order_are_charged_exactly() {
     use crate::checked_package_v2_graph_read_storage::{
         assert_exact_and_one_short, stage_requests,
     };
-    use quire_contract_model::{NativeJoinBudget, PackageReadStage};
+    use filament_contract_model::{NativeJoinBudget, PackageReadStage};
     let graph_requests = |wire: &Value| {
         let bytes = fixtures::canonical(wire);
         let evidence = fixtures::evidence_for(wire);

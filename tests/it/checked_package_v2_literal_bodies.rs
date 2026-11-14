@@ -6,11 +6,11 @@
 use crate::support::checked_package::{
     canonical, evidence_for, family_key, node_id, v2_all_families,
 };
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     CheckedPackageReadLimits, CheckedPackageRefusalCode, CheckedPackageV2,
     CheckedPackageV2ReadResult, CheckedTerm, LiteralKind,
 };
+use ix_trace_rs::trace;
 use serde_json::{json, Value};
 
 fn read(value: &Value) -> CheckedPackageV2ReadResult {

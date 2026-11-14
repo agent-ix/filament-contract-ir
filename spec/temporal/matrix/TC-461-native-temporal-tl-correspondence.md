@@ -3,40 +3,40 @@ id: TC-461
 title: "Project native temporal subjects and join owner results through correspondence"
 type: TC
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/FR-350
+  - target: ix://agent-ix/filament-contract-ir/FR-350
     type: verifies
-  - target: ix://agent-ix/quire-spec-language/FR-045
+  - target: ix://agent-ix/filament-spec-language/FR-045
     type: references
-  - target: ix://agent-ix/quire-spec-language/FR-050
+  - target: ix://agent-ix/filament-spec-language/FR-050
     type: references
-  - target: ix://agent-ix/quire-spec-language/FR-052
+  - target: ix://agent-ix/filament-spec-language/FR-052
     type: references
-  - target: ix://agent-ix/quire-spec-language/FR-526
+  - target: ix://agent-ix/filament-spec-language/FR-526
     type: references
-  - target: ix://agent-ix/quire-specification/FR-095
+  - target: ix://agent-ix/filament-specification/FR-095
     type: references
-  - target: ix://agent-ix/quire-specification/FR-092
+  - target: ix://agent-ix/filament-specification/FR-092
     type: references
-  - target: ix://agent-ix/quire-mltl/FR-001
+  - target: ix://agent-ix/filament-mltl/FR-001
     type: references
-  - target: ix://agent-ix/quire-mltl/FR-003
+  - target: ix://agent-ix/filament-mltl/FR-003
     type: references
 ---
 # TC-461: Project native temporal subjects and join owner results through correspondence
 
 ## Description
 
-Verify the `agent-ix/quire-integration` temporal bridge against the native
-owner inputs of FR-350: an admitted checked package, QSL's checked subject and
+Verify the `agent-ix/filament-integration` temporal bridge against the native
+owner inputs of FR-350: an admitted checked package, FSL's checked subject and
 classification, the original native `EvidenceRequest` and exact occurrence,
-the admitted observation revision and QObs views, and the original whole
+the admitted observation revision and FObs views, and the original whole
 `Result<EvaluatedEvidence, CallFailure>` call outcome; and against
-the TL owners' public producers and readers, including the quire-mltl mapped
+the TL owners' public producers and readers, including the filament-mltl mapped
 result and its non-evaluating predecessor validation. The case executes in
-`agent-ix/quire-integration`, which owns the QSL-typed bridge; neither Contract
-IR package gains a QSL dependency. Every fixture value is produced by its
-genuine owner: native opaque carriers by `EvidencePackage::evaluate_temporal_evidence`, TL results by the quire-mltl
-producer and reader, QObs views by their owner readers. No test constructs a
+`agent-ix/filament-integration`, which owns the FSL-typed bridge; neither Contract
+IR package gains a FSL dependency. Every fixture value is produced by its
+genuine owner: native opaque carriers by `EvidencePackage::evaluate_temporal_evidence`, TL results by the filament-mltl
+producer and reader, FObs views by their owner readers. No test constructs a
 fake owner result. Expected bytes are computed by the test from the inputs by
 FR-350's encoding rules; no frozen byte vector or digest is used.
 
@@ -108,7 +108,7 @@ FR-350's encoding rules; no frozen byte vector or digest is used.
    event counts and require native-premise `clock`; omit a sample and require
    incomplete `position`. With a millisecond unit, require native-premise
    `clock-representation` for a future target and `tl-projection-owner`
-   carrying quire-mltl `ExpectedMismatch("clockBinding")` for a past target,
+   carrying filament-mltl `ExpectedMismatch("clockBinding")` for a past target,
    with no converted value.
 7. **Record members (AC-3, AC-10, AC-11).** Compute the expected
    correspondence record from the inputs by FR-350's member table and encoding
@@ -139,19 +139,19 @@ FR-350's encoding rules; no frozen byte vector or digest is used.
    bytes in every join record. Keep original admission refusal/incomplete and
    fault outcomes distinct from absence and from result `NonValue`. Build
    the expected join record by FR-350's rules and require byte equality.
-10. **Corrections (AC-5, AC-10).** Advance a real QObs progress fact and
+10. **Corrections (AC-5, AC-10).** Advance a real FObs progress fact and
     change native request inputs, using the original evaluator-written ledger
     and issued predecessor identity. Require R7 with both direct predecessors;
     require R6 for one-sided correction, original with `previous`, correction
     without `previous`, a previous join whose native side was not admitted,
     another prior issued carrier, and TL `missing-predecessor`,
     `unexpected-predecessor` and `predecessor-mismatch`. A relation-only change
-    is refused by QSL. Require native subject, occurrence, source-map and request
+    is refused by FSL. Require native subject, occurrence, source-map and request
     mismatch to remain R1. Verify actual changed truth, support, settlement,
     latest ledger and lineage through immutable result borrows, with original
     carrier/ledger unchanged. A changed read snapshot cannot substitute for a
     carrier. TL equal-identity different-content predecessors remain refused.
-    Exercise QSL's exact/one-short `lineage` limit, not retired native
+    Exercise FSL's exact/one-short `lineage` limit, not retired native
     predecessor-byte budgets; the stopped result is incomplete with no Boolean.
 11. **Limits (AC-8).** Require `TlLimits::default()` to equal FR-350's
     defaults. For each limit and each operation that charges it, compute the
@@ -173,7 +173,7 @@ FR-350's encoding rules; no frozen byte vector or digest is used.
     native outcome to be the original supplied outcome, with immutable result
     borrows retaining truth, support, settlement, checked subject and ledger. Inspect the bridge's call graph
     and require no call path from any bridge operation to `evaluate_temporal_evidence`,
-    `quire_mltl::report::evaluate` or `quire_mltl::report::read`.
+    `filament_mltl::report::evaluate` or `filament_mltl::report::read`.
 
 ## Expected Results
 

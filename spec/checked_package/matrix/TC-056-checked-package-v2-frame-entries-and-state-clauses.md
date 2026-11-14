@@ -3,22 +3,22 @@ id: TC-056
 title: "CheckedPackage V2 frame entries, operation anchors and state clauses admit or refuse exactly"
 type: TC
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/FR-040
+  - target: ix://agent-ix/filament-contract-ir/FR-040
     type: verifies
-  - target: ix://agent-ix/quire-specification/FR-340
+  - target: ix://agent-ix/filament-specification/FR-340
     type: references
-  - target: ix://agent-ix/quire-specification/FR-341
+  - target: ix://agent-ix/filament-specification/FR-341
     type: references
-  - target: ix://agent-ix/quire-specification/FR-342
+  - target: ix://agent-ix/filament-specification/FR-342
     type: references
-  - target: ix://agent-ix/quire-spec-language/TC-1043
+  - target: ix://agent-ix/filament-spec-language/TC-1043
     type: references
 ---
 # TC-056: CheckedPackage V2 frame entries, operation anchors and state clauses admit or refuse exactly
 
 ## Description
 
-Verify FR-040-AC-1 through FR-040-AC-39: the V2 reader admits QSpec FR-340's
+Verify FR-040-AC-1 through FR-040-AC-39: the V2 reader admits FSpec FR-340's
 `FrameModifiesEntry` values, FR-342's operation anchor body, FR-341's state
 clause and parameter bodies and exactly the fifteen `model` forms, and
 refuses every other shape with the code, cause and locus those requirements
@@ -53,7 +53,7 @@ operation clauses binding `self`, result and own operation parameters for
 both new contexts. A bad reference parameter of a valid process or
 state-machine anchor refuses at the frame node in the state step. This
 replaces the former unresolved invalid-context admission oracle of AC-30;
-the earlier text remains available in revision history. Use QSpec
+the earlier text remains available in revision history. Use FSpec
 FR-340-AC-12/19/20 and FR-342-AC-2/7/8/9 as the independent oracle.
 
 Build, from this repository's own public vocabulary, checked packages
@@ -91,7 +91,7 @@ optional record field, a bounded sequence of records and finite recursion
 through an optional field. Assert that each derived inner type retains the
 selected record declaration node and never becomes an object reference.
 Compare the reader's effective field outcomes with independently authored
-selected-domain declarations, not a copy of QSpec's vector bytes. Pair a
+selected-domain declarations, not a copy of FSpec's vector bytes. Pair a
 record name defect with a canonical-order defect, a lower-key frame defect,
 and a pre-frame graph or owner defect to assert the specified
 first refusal. Read the selected owner table at the exact work limit and one
@@ -103,7 +103,7 @@ repository's own public vocabulary, the in-repo `Account` fixture with
 `balance` and `total` fields, and
 the selected `Order` fixture with a `scaled` operation whose named `n`
 parameter has Integer type and a `reset` operation with no parameters.
-Oracle: quire-spec-language TC-1043 (wire vectors W1 to W6 and reader rows X1 to
+Oracle: filament-spec-language TC-1043 (wire vectors W1 to W6 and reader rows X1 to
 X9), referenced by id and re-authored here, never copied. Read frames, each
 carrying all four members and its anchor, in these cases: a receiver entry and
 an every-object entry with `deletes_scoped` of `receiver` (W1); a frame with
@@ -133,11 +133,11 @@ applicability to clause kind, operation name, and clause/anchor
 point agreement. Mutate valid point bodies under retained structural ids and separately test malformed or duplicate ids.
 Pair each point defect with an earlier graph-shape, frame, anchor or signature
 defect and a later operation-catalog defect to test first-refusal order.
-For source-name agreement, run a fresh QSL producer vector from its
+For source-name agreement, run a fresh FSL producer vector from its
 authoritative checkout with an invariant or constraint bound to a named
 initialization or handler. Compare the produced point name to the producer's
 checked source anchor name and then read the package, asserting the IR reader
-retains that name exactly. A producer mismatch fails the QSL-origin vector;
+retains that name exactly. A producer mismatch fails the FSL-origin vector;
 it is not treated as an IR reader refusal because the wire has no independent
 source-anchor name to compare.
 Assert the exact code, cause and RFC 6901 locus of the first IR refusal, and no
@@ -162,7 +162,7 @@ object-type cases; the corrected process/state-machine cases are planned
 under AC-38/39 and are not credited as implemented. FR-040-AC-28 supersedes
 the former shared-frame refusal of FR-040-AC-7. Their tests are in
 `tests/it/checked_package_v2_frame_entries.rs` and the entry eligibility
-tests in `crates/quire-contract-model/src/checked_package/v2/frame.rs`.
+tests in `crates/filament-contract-model/src/checked_package/v2/frame.rs`.
 FR-040-AC-31 through FR-040-AC-36 are planned under IR-1040; no implemented
 coverage is claimed. FR-040-AC-17 through FR-040-AC-30 are implemented by tagged reader tests in
 `tests/it/checked_package_v2_frame_entries.rs`. FR-040-AC-14 through FR-040-AC-16 are implemented by the tagged public-reader

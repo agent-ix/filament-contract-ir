@@ -3,14 +3,14 @@
 use crate::support::checked_package::{
     canonical, evidence_for, positive_operation_identities, v2_all_families,
 };
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     encode_checked_package_v2, CheckedApplicationOperation, CheckedBindingName,
     CheckedBindingNameKind, CheckedFairnessGranularity, CheckedFairnessKind, CheckedLiteralValue,
     CheckedOperationMember, CheckedOperationViewError, CheckedPackageReadLimits,
     CheckedPackageSourceCorrespondenceRef, CheckedPackageV2ReadResult, CheckedTerm, ExecutionPoint,
     ExecutionPointName, OperationMemberKind, StateClauseKind,
 };
+use ix_trace_rs::trace;
 use serde_json::json;
 use std::collections::BTreeSet;
 
@@ -66,7 +66,7 @@ fn public_deserialization_does_not_admit_operation_views() {
     );
 
     let clause = json!({
-        "identity": "quire.op.state.clause", "laws": [], "mode": null,
+        "identity": "filament.op.state.clause", "laws": [], "mode": null,
         "member": {"kind": "state_clause", "clause": "invariant"}, "leaves": []
     });
     let decoded: CheckedApplicationOperation =
@@ -86,7 +86,7 @@ fn public_deserialization_does_not_admit_operation_views() {
     );
 
     let absent: CheckedApplicationOperation = serde_json::from_value(json!({
-        "identity": "quire.op.function.call", "laws": [], "mode": null,
+        "identity": "filament.op.function.call", "laws": [], "mode": null,
         "member": null, "leaves": []
     }))
     .expect("closed operation record");
@@ -251,7 +251,7 @@ fn public_literal_and_binding_reads_preserve_exact_values() {
             source_map: admitted.source_map(),
             refinement_step_rows: admitted.refinement_step_rows(),
         },
-        quire_contract_model::CheckedPackageSidecarsRef {
+        filament_contract_model::CheckedPackageSidecarsRef {
             temporal_clause_names: admitted.temporal_clause_names(),
             operation_effects: None,
             operation_bodies: None,
@@ -270,9 +270,9 @@ fn public_literal_and_binding_reads_preserve_exact_values() {
 #[trace("FR-349-AC-6")]
 #[test]
 fn public_literal_read_covers_the_closed_payload_vocabulary() {
-    let type_id = quire_contract_model::CheckedNodeId {
+    let type_id = filament_contract_model::CheckedNodeId {
         package: "literal-test".into(),
-        path: vec![quire_contract_model::CheckedNodePathSegment::Name(
+        path: vec![filament_contract_model::CheckedNodePathSegment::Name(
             "type".into(),
         )],
         ordinal: 0,
@@ -295,13 +295,14 @@ fn public_literal_read_covers_the_closed_payload_vocabulary() {
         ("enum", json!("READY")),
         ("none", json!(null)),
     ];
-    assert_eq!(cases.len(), quire_contract_model::LiteralKind::ALL.len());
+    assert_eq!(cases.len(), filament_contract_model::LiteralKind::ALL.len());
     for (kind, value) in cases {
         let term = CheckedTerm::Literal {
             type_id: type_id.clone(),
-            value_kind: quire_contract_model::LiteralKind::from_wire(kind)
+            value_kind: filament_contract_model::LiteralKind::from_wire(kind)
                 .expect("closed literal kind"),
-            value: quire_contract_model::CheckedJson::from_serializable(&value).expect("a literal"),
+            value: filament_contract_model::CheckedJson::from_serializable(&value)
+                .expect("a literal"),
         };
         let read = term
             .literal_read()
@@ -410,7 +411,7 @@ fn public_operation_read_exposes_admitted_records_and_rejects_forgery() {
     assert!(count > 0, "fixture contains applications");
 
     let forged: CheckedApplicationOperation = serde_json::from_value(json!({
-        "identity": "quire.op.function.call", "laws": [], "mode": null,
+        "identity": "filament.op.function.call", "laws": [], "mode": null,
         "member": null, "leaves": []
     }))
     .expect("direct decode");
@@ -421,7 +422,7 @@ fn public_operation_read_exposes_admitted_records_and_rejects_forgery() {
 
     #[cfg(feature = "test-support")]
     {
-        let fixture = quire_contract_model::CheckedApplicationOperationFixture::default();
+        let fixture = filament_contract_model::CheckedApplicationOperationFixture::default();
         let operation =
             CheckedApplicationOperation::from_test_fixture(fixture).expect("valid test fixture");
         assert!(matches!(
@@ -435,27 +436,30 @@ fn public_operation_read_exposes_admitted_records_and_rejects_forgery() {
 #[test]
 fn admitted_controls_expose_missing_catalog_constraint_productions() {
     let catalog: serde_json::Value = serde_json::from_str(
-        quire_verification_contracts::operation_catalog::CHECKED_OPERATION_CATALOG_V1,
+        filament_verification_contracts::operation_catalog::CHECKED_OPERATION_CATALOG_V1,
     )
     .expect("authoritative catalog");
     let controls = [
-        ("quire.op.collection.fold", "bound_is_member"),
-        ("quire.op.reference.eq", "conforming_reference"),
-        ("quire.op.numeric.convert", "exact_conversion"),
-        ("quire.op.numeric.narrow", "range_narrowing"),
-        ("quire.op.rational.narrow", "rational_narrowing"),
-        ("quire.op.quantity.convert", "same_dimension"),
-        ("quire.op.numeric.convert_rounding", "scale_reduction"),
-        ("quire.op.collection.sequence", "uniform_rest"),
-        ("quire.op.model.reaches_field", "reference_edge"),
-        ("quire.op.collection.sum.carried_quantity", "carried_member"),
+        ("filament.op.collection.fold", "bound_is_member"),
+        ("filament.op.reference.eq", "conforming_reference"),
+        ("filament.op.numeric.convert", "exact_conversion"),
+        ("filament.op.numeric.narrow", "range_narrowing"),
+        ("filament.op.rational.narrow", "rational_narrowing"),
+        ("filament.op.quantity.convert", "same_dimension"),
+        ("filament.op.numeric.convert_rounding", "scale_reduction"),
+        ("filament.op.collection.sequence", "uniform_rest"),
+        ("filament.op.model.reaches_field", "reference_edge"),
+        (
+            "filament.op.collection.sum.carried_quantity",
+            "carried_member",
+        ),
     ];
     for (identity, required_kind) in controls {
         let package = match identity {
-            "quire.op.collection.sequence" => {
+            "filament.op.collection.sequence" => {
                 crate::checked_package_v2_composite_operands::admitted_sequence_control()
             }
-            "quire.op.model.reaches_field" => {
+            "filament.op.model.reaches_field" => {
                 crate::checked_package_v2_model_members::admitted_reaches_field_control()
             }
             _ => crate::checked_package_v2_catalogue_differential::admitted_catalogue_control(
@@ -538,7 +542,7 @@ fn admitted_controls_expose_missing_catalog_constraint_productions() {
 #[test]
 fn admitted_controls_expose_element_and_fairness_members() {
     let package = crate::checked_package_v2_catalogue_differential::admitted_catalogue_control(
-        "quire.op.collection.index",
+        "filament.op.collection.index",
     );
     let operation = package
         .graph()
@@ -546,7 +550,7 @@ fn admitted_controls_expose_element_and_fairness_members() {
         .iter()
         .find_map(|node| match &node.body {
             CheckedTerm::Application { operation, .. }
-                if operation.identity() == Some("quire.op.collection.index") =>
+                if operation.identity() == Some("filament.op.collection.index") =>
             {
                 Some(operation)
             }
@@ -570,7 +574,7 @@ fn admitted_controls_expose_element_and_fairness_members() {
         .iter()
         .find_map(|node| match &node.body {
             CheckedTerm::Application { operation, .. }
-                if operation.identity() == Some("quire.op.temporal.fair") =>
+                if operation.identity() == Some("filament.op.temporal.fair") =>
             {
                 Some(operation)
             }
@@ -592,7 +596,8 @@ fn admitted_controls_expose_element_and_fairness_members() {
         serde_json::to_value(target).unwrap(),
         wire["member"]["target"]
     );
-    let quire_contract_model::CheckedFairnessTarget::Operation { declaration, .. } = target else {
+    let filament_contract_model::CheckedFairnessTarget::Operation { declaration, .. } = target
+    else {
         panic!("operation target")
     };
     assert_eq!(operation.member_declaration().unwrap(), Some(declaration));

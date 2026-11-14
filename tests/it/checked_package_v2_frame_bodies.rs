@@ -2,18 +2,18 @@
 // Copyright (C) 2026 Agent-IX
 
 //! FR-340 frame-body semantics: entry eligibility, canonical member order,
-//! and cross-defect refusal precedence for `quire.checked-package/v2`'s
+//! and cross-defect refusal precedence for `filament.checked-package/v2`'s
 //! `state`/`frame` nodes.
 
 use crate::support::checked_package::{
     canonical, evidence_for, node_id, refresh_identity, v2_all_families,
 };
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     CheckedNodeId, CheckedPackageEvidence, CheckedPackageReadLimits, CheckedPackageRefusal,
     CheckedPackageRefusalCause, CheckedPackageRefusalCode, CheckedPackageV2,
     CheckedPackageV2ReadResult, CheckedTerm,
 };
+use ix_trace_rs::trace;
 use serde_json::{json, Value};
 
 /// A `modifies` entry granting the relationship `declaration` names.

@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Agent-IX
-//! Read the owning QSpec probabilistic-claim vectors through the strict reader.
+//! Read the owning FSpec probabilistic-claim vectors through the strict reader.
 
 use crate::fixture_support::{canonical, evidence_for, refresh_identity, settle, v2_all_families};
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     encode_checked_package_v2, CheckedCapability, CheckedDiagnosticsV2, CheckedNodeId,
     CheckedOccurrenceRole, CheckedPackageLimit, CheckedPackageLockV2, CheckedPackageReadLimits,
     CheckedPackageRefusalCause, CheckedPackageRefusalCode, CheckedPackageSidecarsRef,
@@ -12,17 +11,18 @@ use quire_contract_model::{
     CheckedRefinementStepRowRegion, CheckedSemanticGraphV2, CheckedSourceMapEntry,
     CheckedTermDataV2, TemporalBinding,
 };
+use ix_trace_rs::trace;
 use serde_json::{json, Value};
 use std::{fs, path::PathBuf};
 
 fn vectors() -> Value {
     let root = PathBuf::from(
-        std::env::var_os("QUIRE_SPECIFICATION_DIR")
-            .expect("QUIRE_SPECIFICATION_DIR must select the owning QSpec checkout"),
+        std::env::var_os("FILAMENT_SPECIFICATION_DIR")
+            .expect("FILAMENT_SPECIFICATION_DIR must select the owning FSpec checkout"),
     );
     let path = root.join("proposals/checked-package-v2/checked-term-data-vectors.json");
     serde_json::from_slice(&fs::read(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display())))
-        .expect("QSpec checked-term vectors")
+        .expect("FSpec checked-term vectors")
 }
 
 fn row(value: &Value, package: &str) -> Value {
@@ -69,7 +69,7 @@ fn fixture(rows: Vec<Value>, vectors: &Value) -> Value {
         };
         nodes.push(json!({
             "node_id": declaration,
-            "schema_version": "quire.checked-semantic-graph/v2",
+            "schema_version": "filament.checked-semantic-graph/v2",
             "node_tag": positive["resolved_node"]["node_tag"],
             "semantic_form": positive["resolved_node"]["semantic_form"],
             "semantic_type": ty,
@@ -93,7 +93,7 @@ fn fixture(rows: Vec<Value>, vectors: &Value) -> Value {
     let mut other = other_node["node_id"].clone();
     other["package"] = json!(package);
     nodes.push(json!({
-        "node_id": other, "schema_version": "quire.checked-semantic-graph/v2",
+        "node_id": other, "schema_version": "filament.checked-semantic-graph/v2",
         "node_tag": other_node["node_tag"], "semantic_form": other_node["semantic_form"], "semantic_type": ty,
         "dependencies": [], "occurrences": other_node["occurrences"],
         "body": {"term":"aggregate", "members":[]}
@@ -177,7 +177,7 @@ fn encode_producer(wire: &Value, sidecar: Option<&CheckedTermDataV2>) -> Vec<u8>
     let temporal_bindings: Option<Vec<TemporalBinding>> = wire
         .get("temporal_bindings")
         .map(|value| serde_json::from_value(value.clone()).expect("temporal bindings"));
-    let temporal_clause_names: Option<Vec<quire_contract_model::TemporalClauseName>> = wire
+    let temporal_clause_names: Option<Vec<filament_contract_model::TemporalClauseName>> = wire
         .get("temporal_clause_names")
         .map(|value| serde_json::from_value(value.clone()).expect("temporal names"));
     let capabilities: Vec<CheckedCapability> =

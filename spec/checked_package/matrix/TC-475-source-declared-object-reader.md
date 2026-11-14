@@ -3,19 +3,19 @@ id: TC-475
 title: "Checked-package reader changes for source-declared objects"
 type: TC
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/FR-362
+  - target: ix://agent-ix/filament-contract-ir/FR-362
     type: verifies
-  - target: ix://agent-ix/quire-contract-ir/FR-363
+  - target: ix://agent-ix/filament-contract-ir/FR-363
     type: verifies
-  - target: ix://agent-ix/quire-contract-ir/FR-364
+  - target: ix://agent-ix/filament-contract-ir/FR-364
     type: verifies
-  - target: ix://agent-ix/quire-contract-ir/FR-365
+  - target: ix://agent-ix/filament-contract-ir/FR-365
     type: verifies
-  - target: ix://agent-ix/quire-contract-ir/FR-366
+  - target: ix://agent-ix/filament-contract-ir/FR-366
     type: verifies
-  - target: ix://agent-ix/quire-contract-ir/FR-367
+  - target: ix://agent-ix/filament-contract-ir/FR-367
     type: verifies
-  - target: ix://agent-ix/quire-contract-ir/FR-368
+  - target: ix://agent-ix/filament-contract-ir/FR-368
     type: verifies
 ---
 # TC-475: Checked-package reader changes for source-declared objects
@@ -25,7 +25,7 @@ relationships:
 Verify every AC of FR-362 through FR-368, FR-365-AC-6, FR-367-AC-6 and FR-368-AC-6 included at the public V2 reader boundary over
 in-repo packages that declare a source object type with a field, an operation,
 a query, a population and a subtype. Build every package in the test; copy no
-fixture from QSL or QSpec.
+fixture from FSL or FSpec.
 
 ## Test Procedure
 

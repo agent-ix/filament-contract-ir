@@ -3,16 +3,16 @@ id: TC-225
 title: "CheckedPackage V2 abstraction relation bodies admit or refuse exactly"
 type: TC
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/FR-346
+  - target: ix://agent-ix/filament-contract-ir/FR-346
     type: verifies
-  - target: ix://agent-ix/quire-specification/FR-451
+  - target: ix://agent-ix/filament-specification/FR-451
     type: references
 ---
 # TC-225: CheckedPackage V2 abstraction relation bodies admit or refuse exactly
 
 ## Description
 
-Verify FR-346-AC-1 through FR-346-AC-9: the V2 reader admits QSpec FR-451's
+Verify FR-346-AC-1 through FR-346-AC-9: the V2 reader admits FSpec FR-451's
 `correspondence`/`abstraction_relation` body and refuses every other shape
 with the code, cause and locus FR-346 names, which are FR-451's where FR-451
 states them and FR-346's marked IR readings where it does not.
@@ -66,8 +66,8 @@ two steps or two checks reports the earlier one.
 Partially implemented in `tests/it/checked_package_v2_abstraction_relation.rs`
 (the existing FR-346-AC-1 to AC-10 cases and one lowering test that asserts no
 AC) and the Rust spelling and body grammar unit tests in
-`crates/quire-contract-model/src/checked_package/v2/rust_spelling.rs` and
-`crates/quire-contract-model/src/checked_package/v2/mod.rs`. The new
+`crates/filament-contract-model/src/checked_package/v2/rust_spelling.rs` and
+`crates/filament-contract-model/src/checked_package/v2/mod.rs`. The new
 FR-154-AC-14 selection-row refusals, collision precedence, and admitted
 case-only name control remain planned; the existing parameter-name test still
 asserts the former frame-entry refusal until the IR-571 code change lands.

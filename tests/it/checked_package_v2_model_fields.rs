@@ -10,8 +10,7 @@ use crate::support::checked_package::{
     node_id as fixture_node_id, nominal_package, rebuild_source_map, select_model, settle,
     structural_fixture_id, structural_id,
 };
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     CheckedCollectionKind, CheckedMemberType, CheckedModelFieldsError, CheckedModelObjectFields,
     CheckedModelPopulationCatalogError, CheckedModelPopulationCatalogLimitKind,
     CheckedModelPopulationCatalogLimits, CheckedModelPopulationMemberUnresolved,
@@ -24,11 +23,12 @@ use quire_contract_model::{
     SelectedFactIds, SelectedFactRows, SelectedFactsErrorCode, SelectedSourceCollectionRow,
     SelectedTupleDeclarationRow,
 };
-use quire_exact::{
+use filament_exact::{
     record, CardinalityBound, CollectionKind, CollectionType, ConstructionCause, EffectiveId,
     FieldValue, Integer, MemberId, MemberOwner, NodeKey, OriginalDeclarationKey, PathSegment,
     Presence, UnitId, Value as ExactValue, ValueType,
 };
+use ix_trace_rs::trace;
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 
@@ -51,7 +51,7 @@ fn selected_population_catalog_keeps_unused_origins_and_full_effective_type_ids(
         .expect("constructs")
         .push(json!({
             "kind": {"module": IDENTITY, "name": "population"},
-            "construct": {"meaning": "quire.meaning.model.population/v1"},
+            "construct": {"meaning": "filament.meaning.model.population/v1"},
         }));
     selected["populations"] = json!([
         {"identity": orders("Active"), "displayName": "Active",
@@ -209,7 +209,7 @@ fn selected_population_catalog_refuses_wrong_kind_without_partial_result() {
         .expect("constructs")
         .push(json!({
             "kind": {"module": IDENTITY, "name": "population"},
-            "construct": {"meaning": "quire.meaning.model.population/v1"},
+            "construct": {"meaning": "filament.meaning.model.population/v1"},
         }));
     selected["populations"] = json!([{
         "identity": orders("Numbers"), "displayName": "Numbers",
@@ -256,9 +256,9 @@ fn selected_population_catalog_classifies_retained_namespace_as_wrong_kind() {
         .expect("constructs")
         .extend([
             json!({"kind": {"module": IDENTITY, "name": "namespace"},
-                "construct": {"meaning": "quire.meaning.model.namespace/v1"}}),
+                "construct": {"meaning": "filament.meaning.model.namespace/v1"}}),
             json!({"kind": {"module": IDENTITY, "name": "population"},
-                "construct": {"meaning": "quire.meaning.model.population/v1"}}),
+                "construct": {"meaning": "filament.meaning.model.population/v1"}}),
         ]);
     selected["populations"] = json!([{
         "identity": orders("Areas"), "displayName": "Areas",
@@ -287,24 +287,24 @@ fn selected_population_catalog_classifies_retained_namespace_as_wrong_kind() {
 #[test]
 fn selected_record_fields_expose_presence_and_shape_without_exact_member_projection() {
     let mut selected = document(vec![
-        json!({"identity": orders("OptInt"), "kind": "option", "inner": "ix://quire/native/Integer"}),
+        json!({"identity": orders("OptInt"), "kind": "option", "inner": "ix://filament/native/Integer"}),
         typed_object(
             "Receipt",
             "record",
             &[],
             &[
                 field("link", &orders("Other")),
-                field("note", "ix://quire/native/String").optional(),
+                field("note", "ix://filament/native/String").optional(),
                 field("maybe_count", &orders("OptInt")),
                 field("nested", &orders("OptInt")).many((0, Some(3), true, false)),
-                field("text", "ix://quire/native/Text"),
+                field("text", "ix://filament/native/Text"),
             ],
         ),
         object("Other", &[], &[]),
     ]);
     selected["constructs"].as_array_mut().unwrap().push(json!({
         "kind": {"module": IDENTITY, "name": "record"},
-        "construct": {"meaning": "quire.meaning.model.record-value-type/v1"},
+        "construct": {"meaning": "filament.meaning.model.record-value-type/v1"},
     }));
     let admitted = admit(&selected, &[("Receipt", "record_value_type")], &[]);
     let receipt: CheckedNodeId =
@@ -397,7 +397,7 @@ fn selected_record_fields_expose_presence_and_shape_without_exact_member_project
         &admitted,
         [declaration],
         field_rows,
-        &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+        &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
     )
     .expect("record identity rows");
     assert_eq!(identities, budgeted);
@@ -405,7 +405,7 @@ fn selected_record_fields_expose_presence_and_shape_without_exact_member_project
         .project_exact_type(
             &receipt,
             &identities,
-            &mut quire_contract_model::NativeJoinBudget::new(100, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(100, u64::MAX),
         )
         .expect_err("unselected object member cannot complete Exact projection");
     assert_eq!(
@@ -423,25 +423,25 @@ fn selected_record_fields_distinguish_missing_wrong_kind_and_ambiguous_declarati
             "Receipt",
             "record",
             &[],
-            &[field("id", "ix://quire/native/Integer")],
+            &[field("id", "ix://filament/native/Integer")],
         ),
         object("Other", &[], &[]),
         typed_object(
             "Base",
             "record",
             &[],
-            &[field("a", "ix://quire/native/Integer")],
+            &[field("a", "ix://filament/native/Integer")],
         ),
         typed_object(
             "Ambiguous",
             "record",
             &["Base"],
-            &[field("a", "ix://quire/native/Integer")],
+            &[field("a", "ix://filament/native/Integer")],
         ),
     ]);
     selected["constructs"].as_array_mut().unwrap().push(json!({
         "kind": {"module": IDENTITY, "name": "record"},
-        "construct": {"meaning": "quire.meaning.model.record-value-type/v1"},
+        "construct": {"meaning": "filament.meaning.model.record-value-type/v1"},
     }));
     let admitted = admit(
         &selected,
@@ -478,23 +478,23 @@ fn selected_record_projects_nested_collection_and_option_members_with_bounded_wo
         .stack_size(256 * 1024)
         .spawn(|| {
             let mut selected = document(vec![
-                json!({"identity": orders("OptInt"), "kind": "option", "inner": "ix://quire/native/Integer"}),
+                json!({"identity": orders("OptInt"), "kind": "option", "inner": "ix://filament/native/Integer"}),
                 typed_object("Wrapped", "record", &[], &[
-                    field("sequence", "ix://quire/native/Integer").many((0, None, true, false)),
-                    field("set", "ix://quire/native/Integer").many((0, None, false, true)),
-                    field("bag", "ix://quire/native/Integer").many((0, None, false, false)),
-                    field("ordered", "ix://quire/native/Integer").many((0, Some(3), true, true)),
+                    field("sequence", "ix://filament/native/Integer").many((0, None, true, false)),
+                    field("set", "ix://filament/native/Integer").many((0, None, false, true)),
+                    field("bag", "ix://filament/native/Integer").many((0, None, false, false)),
+                    field("ordered", "ix://filament/native/Integer").many((0, Some(3), true, true)),
                     field("nested", &orders("OptInt")).many((0, Some(3), true, false)),
                     field("option", &orders("OptInt")),
-                    field("optional_collection", "ix://quire/native/Integer").optional().many((0, Some(3), false, true)),
-                    field("optional_string", "ix://quire/native/String").optional(),
+                    field("optional_collection", "ix://filament/native/Integer").optional().many((0, Some(3), false, true)),
+                    field("optional_string", "ix://filament/native/String").optional(),
                 ]),
             ]);
             selected["constructs"].as_array_mut().unwrap().push(json!({
                 "kind": {"module": IDENTITY, "name": "record"},
-                "construct": {"meaning": "quire.meaning.model.record-value-type/v1"},
+                "construct": {"meaning": "filament.meaning.model.record-value-type/v1"},
             }));
-            let mut item = "ix://quire/native/Integer".to_owned();
+            let mut item = "ix://filament/native/Integer".to_owned();
             for depth in 0..64 {
                 let identity = orders(&format!("Deep{depth}"));
                 selected["types"].as_array_mut().unwrap().push(if depth % 2 == 0 {
@@ -522,12 +522,12 @@ fn selected_record_projects_nested_collection_and_option_members_with_bounded_wo
                 format!("{}/{name}", orders("Wrapped")),
                 MemberId::new(MemberOwner::Node(key.clone()), name).unwrap(),
             ));
-            let identities = SelectedExactIdentities::from_stage_rows(&admitted, [declaration], fields, &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX)).unwrap();
+            let identities = SelectedExactIdentities::from_stage_rows(&admitted, [declaration], fields, &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX)).unwrap();
             let clone = admitted.clone();
-            let projection = admitted.project_exact_type(&structural, &identities, &mut quire_contract_model::NativeJoinBudget::new(200, u64::MAX)).unwrap();
+            let projection = admitted.project_exact_type(&structural, &identities, &mut filament_contract_model::NativeJoinBudget::new(200, u64::MAX)).unwrap();
             let work = projection.work();
-            assert_eq!(admitted.project_exact_type(&structural, &identities, &mut quire_contract_model::NativeJoinBudget::new(work, u64::MAX)), Ok(projection.clone()));
-            assert_eq!(clone.project_exact_type(&structural, &identities, &mut quire_contract_model::NativeJoinBudget::new(work, u64::MAX)), Ok(projection.clone()));
+            assert_eq!(admitted.project_exact_type(&structural, &identities, &mut filament_contract_model::NativeJoinBudget::new(work, u64::MAX)), Ok(projection.clone()));
+            assert_eq!(clone.project_exact_type(&structural, &identities, &mut filament_contract_model::NativeJoinBudget::new(work, u64::MAX)), Ok(projection.clone()));
             let view = projection.record_view().unwrap();
             assert_eq!(view.record_key(), &key);
             let bounded = Some(CardinalityBound::new(0, 3).unwrap());
@@ -561,11 +561,11 @@ fn selected_record_projects_nested_collection_and_option_members_with_bounded_wo
                 assert_eq!(field.presence(), if (6..8).contains(&index) { Presence::Optional } else { Presence::Required });
             }
             let mut exhausted_budget =
-                quire_contract_model::NativeJoinBudget::new(work - 1, u64::MAX);
+                filament_contract_model::NativeJoinBudget::new(work - 1, u64::MAX);
             let exhausted = admitted
                 .project_exact_type(&structural, &identities, &mut exhausted_budget)
                 .unwrap_err();
-            assert_eq!(clone.project_exact_type(&structural, &identities, &mut quire_contract_model::NativeJoinBudget::new(work - 1, u64::MAX)), Err(exhausted.clone()));
+            assert_eq!(clone.project_exact_type(&structural, &identities, &mut filament_contract_model::NativeJoinBudget::new(work - 1, u64::MAX)), Err(exhausted.clone()));
             assert_eq!(exhausted.code, ExactTypeProjectionErrorCode::ExhaustedWork);
             assert_eq!(exhausted.requested, None);
             assert_eq!(exhausted.at, None);
@@ -573,7 +573,7 @@ fn selected_record_projects_nested_collection_and_option_members_with_bounded_wo
             assert_eq!(exhausted.denied, exhausted_budget.first_unpaid());
             assert_eq!(
                 exhausted.denied.unwrap().kind,
-                quire_contract_model::NativeJoinChargeKind::Work
+                filament_contract_model::NativeJoinChargeKind::Work
             );
             assert_eq!(exhausted.work, work - 1);
         })
@@ -597,12 +597,12 @@ fn nested_collection_of_nominal_record_keeps_target_identity_and_refuses_missing
             "Bad",
             "record",
             &[],
-            &[field("float", "ix://quire/native/Float32").many((0, None, false, true))],
+            &[field("float", "ix://filament/native/Float32").many((0, None, false, true))],
         ),
     ]);
     selected["constructs"].as_array_mut().unwrap().push(json!({
         "kind": {"module": IDENTITY, "name": "record"},
-        "construct": {"meaning": "quire.meaning.model.record-value-type/v1"},
+        "construct": {"meaning": "filament.meaning.model.record-value-type/v1"},
     }));
     let admitted = admit(
         &selected,
@@ -640,14 +640,14 @@ fn nested_collection_of_nominal_record_keeps_target_identity_and_refuses_missing
         &admitted,
         rows.clone(),
         fields.clone(),
-        &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+        &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
     )
     .unwrap();
     let projection = admitted
         .project_exact_type(
             &structural("A"),
             &witnesses,
-            &mut quire_contract_model::NativeJoinBudget::new(100, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(100, u64::MAX),
         )
         .unwrap();
     assert_eq!(
@@ -667,14 +667,14 @@ fn nested_collection_of_nominal_record_keeps_target_identity_and_refuses_missing
             .clone()
             .into_iter()
             .filter(|row| row.record_node != structural("B")),
-        &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+        &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
     )
     .unwrap();
     let refused = admitted
         .project_exact_type(
             &structural("A"),
             &missing,
-            &mut quire_contract_model::NativeJoinBudget::new(100, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(100, u64::MAX),
         )
         .unwrap_err();
     assert_eq!(
@@ -688,7 +688,7 @@ fn nested_collection_of_nominal_record_keeps_target_identity_and_refuses_missing
     let assert_stage_refusal = |declarations: Vec<SelectedExactDeclarationRow>,
                                 expected_code,
                                 expected_node: &CheckedNodeId| {
-        let mut budget = quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX);
+        let mut budget = filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX);
         let error = SelectedExactIdentities::from_stage_rows(
             &admitted,
             declarations,
@@ -727,7 +727,7 @@ fn nested_collection_of_nominal_record_keeps_target_identity_and_refuses_missing
         .project_exact_type(
             &structural("Bad"),
             &witnesses,
-            &mut quire_contract_model::NativeJoinBudget::new(100, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(100, u64::MAX),
         )
         .unwrap_err();
     assert_eq!(
@@ -903,7 +903,7 @@ fn wire_node(
 ) -> Value {
     json!({
         "node_id": node_id(key),
-        "schema_version": "quire.checked-semantic-graph/v2",
+        "schema_version": "filament.checked-semantic-graph/v2",
         "node_tag": tag,
         "semantic_form": form,
         "semantic_type": node_id(semantic_type),
@@ -1263,7 +1263,7 @@ impl Field {
     }
 }
 
-const NATIVE: &str = "ix://quire/native/";
+const NATIVE: &str = "ix://filament/native/";
 
 fn object(short: &str, supertypes: &[&str], fields: &[Field]) -> Value {
     typed_object(short, "entity", supertypes, fields)
@@ -1306,7 +1306,7 @@ fn process(short: &str, supertypes: &[&str], fields: &[Field]) -> Value {
     } else {
         fields[0].name
     };
-    let default_fields = [field("run", "ix://quire/native/UUID")];
+    let default_fields = [field("run", "ix://filament/native/UUID")];
     let mut declared = typed_object(
         short,
         "process",
@@ -1350,13 +1350,13 @@ fn document(types: Vec<Value>) -> Value {
         "package": {"identity": IDENTITY, "version": "1.0.0"},
         "constructs": [
             {"kind": {"module": "acme/orders", "name": "entity"},
-             "construct": {"meaning": "quire.meaning.model.object-type/v1"}},
+             "construct": {"meaning": "filament.meaning.model.object-type/v1"}},
             {"kind": {"module": "acme/orders", "name": "digit"},
-             "construct": {"meaning": "quire.meaning.model.value-type/v1"}},
+             "construct": {"meaning": "filament.meaning.model.value-type/v1"}},
             {"kind": {"module": "acme/orders", "name": "interface"},
-             "construct": {"meaning": "quire.meaning.systems.interface/v1"}},
+             "construct": {"meaning": "filament.meaning.systems.interface/v1"}},
             {"kind": {"module": "acme/orders", "name": "event"},
-             "construct": {"meaning": "quire.meaning.model.event-type/v1"}},
+             "construct": {"meaning": "filament.meaning.model.event-type/v1"}},
         ],
         "types": types,
     })
@@ -1369,7 +1369,7 @@ fn thousand() -> Value {
 // --- the package ------------------------------------------------------------------
 
 /// A read of `field` on `owner`, typed `ty`: an `expression`/`query`
-/// application of `quire.op.record.project` over the owner's declaration node.
+/// application of `filament.op.record.project` over the owner's declaration node.
 struct Read {
     owner: &'static str,
     field: &'static str,
@@ -1433,7 +1433,7 @@ fn package(
             let deref_key = format!("expression/deref/{}/{read_index}", read.owner);
             let deref_body = json!({
                 "term": "application", "operator": "deref",
-                "operation": {"identity": "quire.op.model.deref", "laws": [],
+                "operation": {"identity": "filament.op.model.deref", "laws": [],
                     "mode": null, "member": null, "leaves": []},
                 "result_type": node_id(&owner),
                 "arguments": [reference(&reference_type)]
@@ -1457,7 +1457,7 @@ fn package(
             "term": "application",
             "operator": "query",
             "operation": {
-                "identity": "quire.op.record.project", "laws": [], "mode": null,
+                "identity": "filament.op.record.project", "laws": [], "mode": null,
                 "member": member,
                 "leaves": [],
             },
@@ -1533,7 +1533,7 @@ fn admit(document: &Value, declared: &[(&str, &str)], reads: &[Read]) -> Checked
     }
 }
 
-/// Trace: FR-038-AC-420, QSpec FR-322-AC-68, TC-281 EV-01/EV-02.
+/// Trace: FR-038-AC-420, FSpec FR-322-AC-68, TC-281 EV-01/EV-02.
 #[trace("TC-048", "TC-281", "FR-038-AC-420")]
 #[test]
 fn tc_281_event_type_model_owner_joins_only_selected_event_declarations() {
@@ -1541,7 +1541,7 @@ fn tc_281_event_type_model_owner_joins_only_selected_event_declarations() {
         "OrderPlaced",
         "event",
         &[],
-        &[field("occurred_at", "ix://quire/native/Timestamp")],
+        &[field("occurred_at", "ix://filament/native/Timestamp")],
     );
     event["occurrenceField"] = json!(format!("{}/occurred_at", orders("OrderPlaced")));
     let mut selected = document(vec![
@@ -1554,7 +1554,7 @@ fn tc_281_event_type_model_owner_joins_only_selected_event_declarations() {
         .expect("construct catalog")
         .push(json!({
             "kind": {"module": IDENTITY, "name": "record"},
-            "construct": {"meaning": "quire.meaning.model.record-value-type/v1"},
+            "construct": {"meaning": "filament.meaning.model.record-value-type/v1"},
         }));
     let (base, evidence, _) = package(&selected, &[("OrderPlaced", "event_type")], &[]);
     let position = base["semantic_graph"]["nodes"]
@@ -1641,17 +1641,17 @@ fn selected_runtime_types_keep_record_and_object_fields_and_parents() {
             "Receipt",
             "record",
             &[],
-            &[field("total", "ix://quire/native/Integer")],
+            &[field("total", "ix://filament/native/Integer")],
         ),
         object(
             "Base",
             &[],
-            &[field("enabled", "ix://quire/native/Boolean")],
+            &[field("enabled", "ix://filament/native/Boolean")],
         ),
         object(
             "Child",
             &["Base"],
-            &[field("count", "ix://quire/native/Integer")],
+            &[field("count", "ix://filament/native/Integer")],
         ),
     ]);
     selected["constructs"]
@@ -1659,7 +1659,7 @@ fn selected_runtime_types_keep_record_and_object_fields_and_parents() {
         .expect("construct catalog")
         .push(json!({
             "kind": {"module": IDENTITY, "name": "record"},
-            "construct": {"meaning": "quire.meaning.model.record-value-type/v1"},
+            "construct": {"meaning": "filament.meaning.model.record-value-type/v1"},
         }));
     let admitted = admit(
         &selected,
@@ -1713,7 +1713,7 @@ fn selected_runtime_types_keep_record_and_object_fields_and_parents() {
         &admitted,
         [record_row.clone(), base_row.clone(), child_row.clone()],
         [record_field.clone()],
-        &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+        &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
     )
     .expect("selected rows join");
     let complete = admitted
@@ -1721,7 +1721,7 @@ fn selected_runtime_types_keep_record_and_object_fields_and_parents() {
             &witnessed,
             &[],
             &[],
-            &mut quire_contract_model::NativeJoinBudget::new(1000, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(1000, u64::MAX),
         )
         .expect("selected record/object view");
     assert_eq!(complete.records().len(), 1);
@@ -1762,7 +1762,7 @@ fn selected_runtime_types_keep_record_and_object_fields_and_parents() {
             &witnessed,
             &[],
             &[],
-            &mut quire_contract_model::NativeJoinBudget::new(1000, u64::MAX)
+            &mut filament_contract_model::NativeJoinBudget::new(1000, u64::MAX)
         ),
         Ok(complete.clone())
     );
@@ -1786,7 +1786,7 @@ fn selected_runtime_types_keep_record_and_object_fields_and_parents() {
         &incomplete_graph,
         [record_row.clone(), base_row.clone(), child_row.clone()],
         [record_field.clone()],
-        &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+        &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
     )
     .expect("represented rows still join");
     let unrepresented = incomplete_graph
@@ -1794,7 +1794,7 @@ fn selected_runtime_types_keep_record_and_object_fields_and_parents() {
             &same_rows,
             &[],
             &[],
-            &mut quire_contract_model::NativeJoinBudget::new(1000, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(1000, u64::MAX),
         )
         .expect_err("an unrepresented selected object refuses the whole view");
     assert_eq!(
@@ -1806,7 +1806,7 @@ fn selected_runtime_types_keep_record_and_object_fields_and_parents() {
         &admitted,
         [record_row, base_row],
         [record_field],
-        &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+        &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
     )
     .expect("other selected rows join");
     let refusal = admitted
@@ -1814,7 +1814,7 @@ fn selected_runtime_types_keep_record_and_object_fields_and_parents() {
             &missing_child,
             &[],
             &[],
-            &mut quire_contract_model::NativeJoinBudget::new(1000, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(1000, u64::MAX),
         )
         .expect_err("missing object witness refuses the whole view");
     assert_eq!(
@@ -1827,7 +1827,7 @@ fn selected_runtime_types_keep_record_and_object_fields_and_parents() {
             &witnessed,
             &[],
             &[],
-            &mut quire_contract_model::NativeJoinBudget::new(1, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(1, u64::MAX),
         )
         .expect_err("finite work limit is charged before a view exists");
     assert_eq!(exhausted.code, ExactTypeProjectionErrorCode::ExhaustedWork);
@@ -1842,14 +1842,14 @@ fn selected_facts_join_only_explicit_model_field_and_charge_full_emission_rows()
         "record",
         &[],
         &[
-            field("total", "ix://quire/native/Integer"),
-            field("note", "ix://quire/native/String").optional(),
-            field("raw", "ix://quire/native/Float32"),
+            field("total", "ix://filament/native/Integer"),
+            field("note", "ix://filament/native/String").optional(),
+            field("raw", "ix://filament/native/Float32"),
         ],
     )]);
     selected["constructs"].as_array_mut().unwrap().push(json!({
         "kind": {"module": IDENTITY, "name": "record"},
-        "construct": {"meaning": "quire.meaning.model.record-value-type/v1"},
+        "construct": {"meaning": "filament.meaning.model.record-value-type/v1"},
     }));
     let (mut wire, evidence, _) =
         self::package(&selected, &[("Receipt", "record_value_type")], &[]);
@@ -1873,7 +1873,7 @@ fn selected_facts_join_only_explicit_model_field_and_charge_full_emission_rows()
         boolean,
         &[boolean],
         json!({"term":"application", "operator":"binary",
-            "operation":{"identity":"quire.op.boolean.eq", "laws":[], "mode":null,
+            "operation":{"identity":"filament.op.boolean.eq", "laws":[], "mode":null,
                 "member":null, "leaves":[]},
             "result_type":node_id(boolean),
             "arguments":[reference(boolean), reference(boolean)]}),
@@ -1970,7 +1970,7 @@ fn selected_facts_join_only_explicit_model_field_and_charge_full_emission_rows()
             ids,
             rows,
             100_000,
-            &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
         )
         .unwrap();
     assert_eq!(complete.declarations, vec![declaration.clone()]);
@@ -2003,9 +2003,9 @@ fn selected_facts_join_only_explicit_model_field_and_charge_full_emission_rows()
         occurrence.clone(),
         source_map_entry,
         original_application.clone(),
-        quire_exact::Location::new(
+        filament_exact::Location::new(
             original_application.clone(),
-            quire_exact::Origin::new(quire_exact::Role::from("expression"), 0),
+            filament_exact::Origin::new(filament_exact::Role::from("expression"), 0),
         ),
     );
     let selected_equality = SelectedFactEqualityId {
@@ -2031,7 +2031,7 @@ fn selected_facts_join_only_explicit_model_field_and_charge_full_emission_rows()
             combined_ids(),
             combined_rows(),
             100_000,
-            &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
         )
         .expect("one admitted read retains model, field and equality facts");
     assert_eq!(combined.declarations, complete.declarations);
@@ -2052,7 +2052,7 @@ fn selected_facts_join_only_explicit_model_field_and_charge_full_emission_rows()
             combined_ids(),
             combined_rows(),
             combined.work,
-            &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX)
+            &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX)
         ),
         Ok(combined.clone()),
     );
@@ -2061,7 +2061,7 @@ fn selected_facts_join_only_explicit_model_field_and_charge_full_emission_rows()
             combined_ids(),
             combined_rows(),
             combined.work - 1,
-            &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
         )
         .expect_err("one less than complete selected-fact work refuses");
     assert_eq!(combined_short.code, SelectedFactsErrorCode::ExhaustedWork);
@@ -2087,7 +2087,7 @@ fn selected_facts_join_only_explicit_model_field_and_charge_full_emission_rows()
                 equality_facts: &[],
             },
             100_000,
-            &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
         )
         .unwrap();
     assert_eq!(exact.declarations.len(), 1);
@@ -2108,7 +2108,7 @@ fn selected_facts_join_only_explicit_model_field_and_charge_full_emission_rows()
                 equality_facts: &[],
             },
             complete.work,
-            &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
         )
         .unwrap();
     assert_eq!(replay, complete);
@@ -2127,7 +2127,7 @@ fn selected_facts_join_only_explicit_model_field_and_charge_full_emission_rows()
                 equality_facts: &[],
             },
             complete.work - 1,
-            &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
         )
         .unwrap_err();
     assert_eq!(exhausted.code, SelectedFactsErrorCode::ExhaustedWork);
@@ -2150,7 +2150,7 @@ fn selected_facts_join_only_explicit_model_field_and_charge_full_emission_rows()
             equality_facts: &[],
         },
         100_000,
-        &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+        &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
     );
     let longer = longer.unwrap();
     assert_eq!(longer.declarations, complete.declarations);
@@ -2175,7 +2175,7 @@ fn selected_facts_join_only_explicit_model_field_and_charge_full_emission_rows()
                 selected_once(),
                 with_rows(&[], &fields),
                 100_000,
-                &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX)
+                &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX)
             )
             .unwrap_err()
             .code,
@@ -2187,7 +2187,7 @@ fn selected_facts_join_only_explicit_model_field_and_charge_full_emission_rows()
                 selected_once(),
                 with_rows(&declarations, &[]),
                 100_000,
-                &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX)
+                &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX)
             )
             .unwrap_err()
             .code,
@@ -2200,7 +2200,7 @@ fn selected_facts_join_only_explicit_model_field_and_charge_full_emission_rows()
                 selected_once(),
                 with_rows(&duplicate_declarations, &fields),
                 100_000,
-                &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX)
+                &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX)
             )
             .unwrap_err()
             .code,
@@ -2214,7 +2214,7 @@ fn selected_facts_join_only_explicit_model_field_and_charge_full_emission_rows()
             selected_once(),
             with_rows(&wrong_document_rows, &fields),
             100_000,
-            &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
         )
         .unwrap_err();
     assert_eq!(wrong.code, SelectedFactsErrorCode::Exact);
@@ -2231,7 +2231,7 @@ fn selected_facts_join_only_explicit_model_field_and_charge_full_emission_rows()
             selected_once(),
             with_rows(&stale_rows, &fields),
             100_000,
-            &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
         )
         .unwrap_err();
     assert_eq!(stale_error.code, SelectedFactsErrorCode::Exact);
@@ -2253,7 +2253,7 @@ fn selected_facts_join_only_explicit_model_field_and_charge_full_emission_rows()
             selected_once(),
             with_rows(&declarations, &wrong_field_rows),
             100_000,
-            &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
         )
         .unwrap_err();
     assert_eq!(wrong_field_error.code, SelectedFactsErrorCode::Exact);
@@ -2276,7 +2276,7 @@ fn selected_facts_join_only_explicit_model_field_and_charge_full_emission_rows()
             },
             with_rows(&declarations, &fields),
             100_000,
-            &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
         )
         .unwrap_err();
     assert_eq!(foreign_result.code, SelectedFactsErrorCode::ForeignNode);
@@ -2288,7 +2288,7 @@ fn selected_facts_join_only_explicit_model_field_and_charge_full_emission_rows()
             selected_once(),
             with_rows(&mixed_declarations, &fields),
             100_000,
-            &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
         )
         .unwrap_err();
     assert_eq!(mixed_declaration.code, SelectedFactsErrorCode::DuplicateRow);
@@ -2304,7 +2304,7 @@ fn selected_facts_join_only_explicit_model_field_and_charge_full_emission_rows()
             selected_once(),
             with_rows(&declarations, &mixed_fields),
             100_000,
-            &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
         )
         .unwrap_err();
     assert_eq!(mixed_field.code, SelectedFactsErrorCode::DuplicateRow);
@@ -2322,7 +2322,7 @@ fn selected_facts_join_only_explicit_model_field_and_charge_full_emission_rows()
             selected_once(),
             with_rows(&oversized_rows, &fields),
             10,
-            &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
         )
         .unwrap_err();
     assert_eq!(denied.code, SelectedFactsErrorCode::ExhaustedWork);
@@ -2339,7 +2339,7 @@ fn selected_facts_join_only_explicit_model_field_and_charge_full_emission_rows()
             },
             with_rows(&declarations, &fields),
             100_000,
-            &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
         )
         .unwrap_err();
     assert_eq!(
@@ -2356,7 +2356,7 @@ fn selected_facts_join_only_explicit_model_field_and_charge_full_emission_rows()
             },
             with_rows(&declarations, &fields),
             100_000,
-            &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
         )
         .unwrap_err();
     assert_eq!(unrepresentable.code, SelectedFactsErrorCode::Exact);
@@ -2374,7 +2374,7 @@ fn selected_facts_join_only_explicit_model_field_and_charge_full_emission_rows()
             selected_once(),
             with_rows(&declarations, &fields),
             complete.work,
-            &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX)
+            &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX)
         ),
         Ok(complete),
         "unselected unsupported forms and fields must not change the selected result",
@@ -2388,12 +2388,12 @@ fn selected_runtime_types_refuse_unprojected_object_redefinition() {
         object(
             "Base",
             &[],
-            &[field("enabled", "ix://quire/native/Boolean")],
+            &[field("enabled", "ix://filament/native/Boolean")],
         ),
         object(
             "Child",
             &["Base"],
-            &[field("active", "ix://quire/native/Boolean")
+            &[field("active", "ix://filament/native/Boolean")
                 .redefining(&format!("{}/enabled", orders("Base")))],
         ),
     ]);
@@ -2415,7 +2415,7 @@ fn selected_runtime_types_refuse_unprojected_object_redefinition() {
         &admitted,
         rows,
         [],
-        &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+        &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
     )
     .expect("selected object rows join");
     let error = admitted
@@ -2423,7 +2423,7 @@ fn selected_runtime_types_refuse_unprojected_object_redefinition() {
             &witnessed,
             &[],
             &[],
-            &mut quire_contract_model::NativeJoinBudget::new(1000, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(1000, u64::MAX),
         )
         .expect_err("redefinition needs its own admitted join");
     assert_eq!(
@@ -2457,7 +2457,7 @@ fn selected_runtime_types_refuse_object_operations_without_callable_facts() {
             )),
         )],
         [],
-        &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+        &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
     )
     .expect("selected object row joins");
     let error = admitted
@@ -2465,7 +2465,7 @@ fn selected_runtime_types_refuse_object_operations_without_callable_facts() {
             &witnessed,
             &[],
             &[],
-            &mut quire_contract_model::NativeJoinBudget::new(1000, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(1000, u64::MAX),
         )
         .expect_err("operation-bearing object cannot yield a partial type view");
     assert_eq!(
@@ -2485,7 +2485,7 @@ fn selected_runtime_types_refuse_tuple_without_stage_identity() {
         "kind": {"module": IDENTITY, "name": "tuple"},
         "positions": [{
             "identity": format!("{tuple}/p0"),
-            "typeRef": "ix://quire/native/Boolean"
+            "typeRef": "ix://filament/native/Boolean"
         }]
     })]);
     selected["constructs"]
@@ -2493,14 +2493,14 @@ fn selected_runtime_types_refuse_tuple_without_stage_identity() {
         .expect("construct catalog")
         .push(json!({
             "kind": {"module": IDENTITY, "name": "tuple"},
-            "construct": {"meaning": "quire.meaning.model.tuple-value-type/v1"}
+            "construct": {"meaning": "filament.meaning.model.tuple-value-type/v1"}
         }));
     let admitted = admit(&selected, &[("Pair", "tuple_value_type")], &[]);
     let witnessed = SelectedExactIdentities::from_stage_rows(
         &admitted,
         [],
         [],
-        &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+        &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
     )
     .expect("no supplied row can witness a tuple yet");
     let error = admitted
@@ -2508,7 +2508,7 @@ fn selected_runtime_types_refuse_tuple_without_stage_identity() {
             &witnessed,
             &[],
             &[],
-            &mut quire_contract_model::NativeJoinBudget::new(1000, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(1000, u64::MAX),
         )
         .expect_err("a tuple cannot produce a partial environment view");
     assert_eq!(
@@ -2535,13 +2535,13 @@ fn selected_tuple_positions_require_matching_unique_stage_rows() {
         "identity": tuple, "displayName": "Pair",
         "kind": {"module": IDENTITY, "name": "tuple"},
         "positions": [
-            {"identity": format!("{tuple}/p0"), "typeRef": "ix://quire/native/Boolean"},
-            {"identity": format!("{tuple}/p1"), "typeRef": "ix://quire/native/Integer"}
+            {"identity": format!("{tuple}/p0"), "typeRef": "ix://filament/native/Boolean"},
+            {"identity": format!("{tuple}/p1"), "typeRef": "ix://filament/native/Integer"}
         ]
     })]);
     selected["constructs"].as_array_mut().unwrap().push(json!({
         "kind": {"module": IDENTITY, "name": "tuple"},
-        "construct": {"meaning": "quire.meaning.model.tuple-value-type/v1"}
+        "construct": {"meaning": "filament.meaning.model.tuple-value-type/v1"}
     }));
     let admitted = admit(&selected, &[("Pair", "tuple_value_type")], &[]);
     let node: CheckedNodeId =
@@ -2549,7 +2549,7 @@ fn selected_tuple_positions_require_matching_unique_stage_rows() {
     let key = NodeKey::new("tuple-stage", vec![PathSegment::Text("Pair".into())], 0).unwrap();
     let row = SelectedTupleDeclarationRow::new(node.clone(), IDENTITY, tuple.clone(), key.clone());
     let identities = SelectedExactIdentities::empty();
-    let mut measured_budget = quire_contract_model::NativeJoinBudget::new(1000, u64::MAX);
+    let mut measured_budget = filament_contract_model::NativeJoinBudget::new(1000, u64::MAX);
     let view = admitted
         .project_selected_type_declarations(
             &identities,
@@ -2559,7 +2559,7 @@ fn selected_tuple_positions_require_matching_unique_stage_rows() {
         )
         .unwrap();
     let measured = measured_budget.last_success_delta().unwrap();
-    let mut exact = quire_contract_model::NativeJoinBudget::new(measured.work, measured.storage);
+    let mut exact = filament_contract_model::NativeJoinBudget::new(measured.work, measured.storage);
     assert_eq!(
         admitted.clone().project_selected_type_declarations(
             &identities,
@@ -2572,7 +2572,7 @@ fn selected_tuple_positions_require_matching_unique_stage_rows() {
     assert_eq!(exact.last_success_delta(), Some(measured));
     let mut observed_restored_native_mode = false;
     for work in 0..measured.work {
-        let mut limited = quire_contract_model::NativeJoinBudget::new(work, measured.storage);
+        let mut limited = filament_contract_model::NativeJoinBudget::new(work, measured.storage);
         let error = admitted
             .project_selected_type_declarations(
                 &identities,
@@ -2592,7 +2592,7 @@ fn selected_tuple_positions_require_matching_unique_stage_rows() {
                 .denied_locus
                 .is_some_and(|locus| locus.form == "admitted_tuple_row")
         {
-            let mut reusable = quire_contract_model::NativeJoinBudget::new(work, u64::MAX);
+            let mut reusable = filament_contract_model::NativeJoinBudget::new(work, u64::MAX);
             let scoped = admitted
                 .project_selected_type_declarations(
                     &identities,
@@ -2621,7 +2621,7 @@ fn selected_tuple_positions_require_matching_unique_stage_rows() {
         "work prefixes must reach the scoped native witness join"
     );
     let mut shared =
-        quire_contract_model::NativeJoinBudget::new(measured.work * 2, measured.storage * 2);
+        filament_contract_model::NativeJoinBudget::new(measured.work * 2, measured.storage * 2);
     for _ in 0..2 {
         assert_eq!(
             admitted.project_selected_type_declarations(
@@ -2637,7 +2637,7 @@ fn selected_tuple_positions_require_matching_unique_stage_rows() {
     assert_eq!(shared.consumed().work, measured.work * 2);
     assert_eq!(shared.consumed().storage, measured.storage * 2);
     for storage in 0..measured.storage {
-        let mut limited = quire_contract_model::NativeJoinBudget::new(measured.work, storage);
+        let mut limited = filament_contract_model::NativeJoinBudget::new(measured.work, storage);
         let error = admitted
             .project_selected_type_declarations(
                 &identities,
@@ -2656,7 +2656,7 @@ fn selected_tuple_positions_require_matching_unique_stage_rows() {
         assert_eq!(limited.last_success_delta(), None);
     }
     let mut one_below_storage =
-        quire_contract_model::NativeJoinBudget::new(measured.work, measured.storage - 1);
+        filament_contract_model::NativeJoinBudget::new(measured.work, measured.storage - 1);
     let denied = admitted
         .clone()
         .project_selected_type_declarations(
@@ -2671,7 +2671,7 @@ fn selected_tuple_positions_require_matching_unique_stage_rows() {
     assert_eq!(one_below_storage.last_success_delta(), None);
     let mut wrong_row = row.clone();
     wrong_row.selected_document = "another-document".into();
-    let mut semantic_budget = quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX);
+    let mut semantic_budget = filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX);
     let semantic = admitted
         .project_selected_type_declarations(
             &identities,
@@ -2690,7 +2690,7 @@ fn selected_tuple_positions_require_matching_unique_stage_rows() {
     assert_eq!(semantic_budget.last_success_delta(), None);
     let diagnostic = semantic_budget.consumed();
     let mut diagnostic_short =
-        quire_contract_model::NativeJoinBudget::new(diagnostic.work, diagnostic.storage - 1);
+        filament_contract_model::NativeJoinBudget::new(diagnostic.work, diagnostic.storage - 1);
     let compact = admitted
         .project_selected_type_declarations(
             &identities,
@@ -2714,7 +2714,7 @@ fn selected_tuple_positions_require_matching_unique_stage_rows() {
         ),
         Ok(view.clone())
     );
-    let mut plain = quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX);
+    let mut plain = filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX);
     let plain_error = identities
         .with_admitted_type_rows(&admitted, std::slice::from_ref(&wrong_row), &[], &mut plain)
         .unwrap_err();
@@ -2760,7 +2760,7 @@ fn selected_tuple_positions_require_matching_unique_stage_rows() {
             &identities,
             std::slice::from_ref(&row),
             &[],
-            &mut quire_contract_model::NativeJoinBudget::new(1000, u64::MAX)
+            &mut filament_contract_model::NativeJoinBudget::new(1000, u64::MAX)
         ),
         Ok(view.clone())
     );
@@ -2769,7 +2769,7 @@ fn selected_tuple_positions_require_matching_unique_stage_rows() {
             &identities,
             &[],
             &[],
-            &mut quire_contract_model::NativeJoinBudget::new(1000, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(1000, u64::MAX),
         )
         .unwrap_err();
     assert_eq!(
@@ -2781,7 +2781,7 @@ fn selected_tuple_positions_require_matching_unique_stage_rows() {
             &identities,
             &[row.clone(), row.clone()],
             &[],
-            &mut quire_contract_model::NativeJoinBudget::new(1000, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(1000, u64::MAX),
         )
         .unwrap_err();
     assert_eq!(
@@ -2795,7 +2795,7 @@ fn selected_tuple_positions_require_matching_unique_stage_rows() {
             &identities,
             &[foreign],
             &[],
-            &mut quire_contract_model::NativeJoinBudget::new(1000, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(1000, u64::MAX),
         )
         .unwrap_err();
     assert_eq!(
@@ -2810,7 +2810,7 @@ fn selected_tuple_positions_require_matching_unique_stage_rows() {
             &identities,
             &[foreign],
             &[],
-            &mut quire_contract_model::NativeJoinBudget::new(1000, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(1000, u64::MAX),
         )
         .unwrap_err();
     assert_eq!(refusal.code, ExactTypeProjectionErrorCode::ForeignNode);
@@ -2819,7 +2819,7 @@ fn selected_tuple_positions_require_matching_unique_stage_rows() {
             &identities,
             std::slice::from_ref(&row),
             &[],
-            &mut quire_contract_model::NativeJoinBudget::new(view.work() - 1, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(view.work() - 1, u64::MAX),
         )
         .unwrap_err();
     assert_eq!(exhausted.code, ExactTypeProjectionErrorCode::ExhaustedWork);
@@ -2837,7 +2837,7 @@ fn selected_tuple_positions_require_matching_unique_stage_rows() {
             &identities,
             std::slice::from_ref(&long_row),
             &[],
-            &mut quire_contract_model::NativeJoinBudget::new(20_000, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(20_000, u64::MAX),
         )
         .unwrap();
     assert!(long_view.work() > view.work() + 4000);
@@ -2846,7 +2846,7 @@ fn selected_tuple_positions_require_matching_unique_stage_rows() {
             &identities,
             std::slice::from_ref(&long_row),
             &[],
-            &mut quire_contract_model::NativeJoinBudget::new(long_view.work(), u64::MAX)
+            &mut filament_contract_model::NativeJoinBudget::new(long_view.work(), u64::MAX)
         )
         .is_ok());
     let one_less = admitted
@@ -2854,7 +2854,7 @@ fn selected_tuple_positions_require_matching_unique_stage_rows() {
             &identities,
             std::slice::from_ref(&long_row),
             &[],
-            &mut quire_contract_model::NativeJoinBudget::new(long_view.work() - 1, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(long_view.work() - 1, u64::MAX),
         )
         .unwrap_err();
     assert_eq!(one_less.code, ExactTypeProjectionErrorCode::ExhaustedWork);
@@ -2863,7 +2863,7 @@ fn selected_tuple_positions_require_matching_unique_stage_rows() {
             &identities,
             std::slice::from_ref(&long_row),
             &[],
-            &mut quire_contract_model::NativeJoinBudget::new(view.work() + 100, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(view.work() + 100, u64::MAX),
         )
         .unwrap_err();
     assert_eq!(tight.code, ExactTypeProjectionErrorCode::ExhaustedWork);
@@ -2871,9 +2871,9 @@ fn selected_tuple_positions_require_matching_unique_stage_rows() {
     assert_eq!(tight.form, None);
     assert_eq!(
         tight.denied.unwrap().kind,
-        quire_contract_model::NativeJoinChargeKind::Work
+        filament_contract_model::NativeJoinChargeKind::Work
     );
-    use quire_contract_model::{NativeJoinLocus, NativeJoinLocusSource};
+    use filament_contract_model::{NativeJoinLocus, NativeJoinLocusSource};
     assert_eq!(
         tight.denied_locus,
         Some(NativeJoinLocus {
@@ -2886,7 +2886,8 @@ fn selected_tuple_positions_require_matching_unique_stage_rows() {
         Some(&long_row.structural_node)
     );
     let two_rows = [row.clone(), long_row.clone()];
-    let mut row_budget = quire_contract_model::NativeJoinBudget::new(view.work() + 500, u64::MAX);
+    let mut row_budget =
+        filament_contract_model::NativeJoinBudget::new(view.work() + 500, u64::MAX);
     let second_row = admitted
         .project_selected_type_declarations(&identities, &two_rows, &[], &mut row_budget)
         .unwrap_err();
@@ -2903,7 +2904,7 @@ fn selected_tuple_positions_require_matching_unique_stage_rows() {
     );
     assert_eq!(second_row.denied, row_budget.first_unpaid());
     assert_eq!(second_row.denied_locus, row_budget.first_unpaid_locus());
-    let mut zero_storage = quire_contract_model::NativeJoinBudget::new(u64::MAX, 0);
+    let mut zero_storage = filament_contract_model::NativeJoinBudget::new(u64::MAX, 0);
     let zero = admitted
         .project_selected_type_declarations(
             &identities,
@@ -2923,7 +2924,7 @@ fn selected_tuple_positions_require_matching_unique_stage_rows() {
     assert_eq!(zero.form, None);
     assert_eq!(zero_storage.consumed().storage, 0);
     assert_eq!(zero.denied_locus, zero_storage.first_unpaid_locus());
-    let mut zero_work = quire_contract_model::NativeJoinBudget::new(0, u64::MAX);
+    let mut zero_work = filament_contract_model::NativeJoinBudget::new(0, u64::MAX);
     let zero = admitted
         .project_selected_type_declarations(
             &identities,
@@ -2962,13 +2963,13 @@ fn selected_record_field_uses_witnessed_tuple_key() {
         json!({
             "identity": tuple, "displayName": "Pair",
             "kind": {"module": IDENTITY, "name": "tuple"},
-            "positions": [{"identity": format!("{tuple}/p0"), "typeRef": "ix://quire/native/Boolean"}]
+            "positions": [{"identity": format!("{tuple}/p0"), "typeRef": "ix://filament/native/Boolean"}]
         }),
         typed_object("Receipt", "record", &[], &[field("pair", &tuple)]),
     ]);
     for (kind, meaning) in [
-        ("tuple", "quire.meaning.model.tuple-value-type/v1"),
-        ("record", "quire.meaning.model.record-value-type/v1"),
+        ("tuple", "filament.meaning.model.tuple-value-type/v1"),
+        ("record", "filament.meaning.model.record-value-type/v1"),
     ] {
         selected["constructs"].as_array_mut().unwrap().push(json!({
             "kind": {"module": IDENTITY, "name": kind},
@@ -3006,7 +3007,7 @@ fn selected_record_field_uses_witnessed_tuple_key() {
             format!("{record}/pair"),
             MemberId::new(MemberOwner::Node(record_key.clone()), "pair").unwrap(),
         )],
-        &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+        &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
     )
     .unwrap();
     let tuple_row =
@@ -3016,7 +3017,7 @@ fn selected_record_field_uses_witnessed_tuple_key() {
             &identities,
             std::slice::from_ref(&tuple_row),
             &[],
-            &mut quire_contract_model::NativeJoinBudget::new(1000, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(1000, u64::MAX),
         )
         .unwrap();
     assert_eq!(view.tuples()[0].positions(), &[ValueType::Boolean]);
@@ -3035,7 +3036,7 @@ fn selected_record_field_uses_witnessed_tuple_key() {
             &identities,
             &[competing],
             &[],
-            &mut quire_contract_model::NativeJoinBudget::new(1000, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(1000, u64::MAX),
         )
         .unwrap_err();
     assert_eq!(
@@ -3051,7 +3052,7 @@ fn selected_record_many_fields_respects_exact_work_boundary() {
     let mut selected = document(vec![typed_object("Receipt", "record", &[], &[])]);
     selected["constructs"].as_array_mut().unwrap().push(json!({
         "kind": {"module": IDENTITY, "name": "record"},
-        "construct": {"meaning": "quire.meaning.model.record-value-type/v1"}
+        "construct": {"meaning": "filament.meaning.model.record-value-type/v1"}
     }));
     let names = (0..128)
         .map(|index| format!("field{index:03}{}", "x".repeat(96)))
@@ -3062,7 +3063,7 @@ fn selected_record_many_fields_respects_exact_work_boundary() {
             .unwrap()
             .push(json!({
                 "identity": format!("{record}/{name}"), "name": name,
-                "typeRef": "ix://quire/native/Boolean", "presence": "required",
+                "typeRef": "ix://filament/native/Boolean", "presence": "required",
                 "nullable": false, "defaultKind": "none",
                 "multiplicity": {"lower": 1, "upper": 1, "ordered": false, "unique": true}
             }));
@@ -3095,7 +3096,7 @@ fn selected_record_many_fields_respects_exact_work_boundary() {
         &admitted,
         [declaration],
         fields,
-        &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+        &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
     )
     .unwrap();
     assert_eq!(identities.field_rows().len(), names.len());
@@ -3104,7 +3105,7 @@ fn selected_record_many_fields_respects_exact_work_boundary() {
             &identities,
             &[],
             &[],
-            &mut quire_contract_model::NativeJoinBudget::new(30_000, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(30_000, u64::MAX),
         )
         .unwrap();
     assert_eq!(view.records()[0].view().fields().len(), names.len());
@@ -3116,7 +3117,7 @@ fn selected_record_many_fields_respects_exact_work_boundary() {
             &identities,
             &[],
             &[],
-            &mut quire_contract_model::NativeJoinBudget::new(view.work(), u64::MAX)
+            &mut filament_contract_model::NativeJoinBudget::new(view.work(), u64::MAX)
         )
         .is_ok());
     let one_less = admitted
@@ -3124,7 +3125,7 @@ fn selected_record_many_fields_respects_exact_work_boundary() {
             &identities,
             &[],
             &[],
-            &mut quire_contract_model::NativeJoinBudget::new(view.work() - 1, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(view.work() - 1, u64::MAX),
         )
         .unwrap_err();
     assert_eq!(one_less.code, ExactTypeProjectionErrorCode::ExhaustedWork);
@@ -3137,11 +3138,11 @@ fn admitted_selected_declared_unit_projects_only_with_matching_witness() {
         "Receipt",
         "record",
         &[],
-        &[field("duration", "ix://quire/unit/acme/orders/second")],
+        &[field("duration", "ix://filament/unit/acme/orders/second")],
     )]);
     selected["constructs"].as_array_mut().unwrap().push(json!({
         "kind": {"module": IDENTITY, "name": "record"},
-        "construct": {"meaning": "quire.meaning.model.record-value-type/v1"},
+        "construct": {"meaning": "filament.meaning.model.record-value-type/v1"},
     }));
     selected["dimensions"] = json!([{
         "identity": "ix://acme/orders/dimension/Time", "name": "Time", "base": true, "terms": []
@@ -3171,14 +3172,14 @@ fn admitted_selected_declared_unit_projects_only_with_matching_witness() {
     );
     let nodes = wire["semantic_graph"]["nodes"].as_array_mut().unwrap();
     nodes.push(json!({
-        "node_id": dimension, "schema_version": "quire.checked-semantic-graph/v2",
+        "node_id": dimension, "schema_version": "filament.checked-semantic-graph/v2",
         "node_tag": "scalar_type", "semantic_form": "dimension", "semantic_type": dimension,
         "dependencies": [], "occurrences": [{"role": "generated", "ordinal": 0}],
         "owner": {"kind": "model", "identity": IDENTITY, "node": "ix://acme/orders/dimension/Time"},
         "body": {"term": "aggregate", "members": []}
     }));
     nodes.push(json!({
-        "node_id": unit, "schema_version": "quire.checked-semantic-graph/v2",
+        "node_id": unit, "schema_version": "filament.checked-semantic-graph/v2",
         "node_tag": "scalar_type", "semantic_form": "unit", "semantic_type": dimension,
         "dependencies": [dimension], "occurrences": [{"role": "generated", "ordinal": 0}],
         "owner": {"kind": "model", "identity": IDENTITY, "node": "ix://acme/orders/unit/second"},
@@ -3213,7 +3214,7 @@ fn admitted_selected_declared_unit_projects_only_with_matching_witness() {
         0,
     );
     nodes.push(json!({
-        "node_id": parameter, "schema_version": "quire.checked-semantic-graph/v2",
+        "node_id": parameter, "schema_version": "filament.checked-semantic-graph/v2",
         "node_tag": "value", "semantic_form": "parameter", "semantic_type": unit,
         "dependencies": [], "occurrences": [{"role": "expression", "ordinal": 0}],
         "body": {"term": "aggregate", "members": [
@@ -3243,7 +3244,7 @@ fn admitted_selected_declared_unit_projects_only_with_matching_witness() {
             &SelectedExactIdentities::empty(),
             &[],
             &[],
-            &mut quire_contract_model::NativeJoinBudget::new(1000, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(1000, u64::MAX),
         )
         .expect_err("a unit-bearing package cannot claim a complete runtime type view yet");
     assert_eq!(
@@ -3272,7 +3273,7 @@ fn admitted_selected_declared_unit_projects_only_with_matching_witness() {
         "ix://acme/orders/unit/second",
         SelectedExactIdentity::DeclaredUnit(unit_id.clone()),
     );
-    let mut short_lookup = quire_contract_model::NativeJoinBudget::new(128, u64::MAX);
+    let mut short_lookup = filament_contract_model::NativeJoinBudget::new(128, u64::MAX);
     let lookup_error = SelectedExactIdentities::from_stage_rows(
         &admitted,
         [unit_row.clone()],
@@ -3302,14 +3303,14 @@ fn admitted_selected_declared_unit_projects_only_with_matching_witness() {
         &admitted,
         [record_row.clone()],
         [field_row.clone()],
-        &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+        &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
     )
     .unwrap();
     let missing_error = admitted
         .project_exact_type(
             &record,
             &missing,
-            &mut quire_contract_model::NativeJoinBudget::new(100, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(100, u64::MAX),
         )
         .unwrap_err();
     assert_eq!(
@@ -3325,7 +3326,7 @@ fn admitted_selected_declared_unit_projects_only_with_matching_witness() {
             &admitted,
             [record_row.clone(), wrong_original],
             [field_row.clone()],
-            &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX)
+            &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX)
         )
         .unwrap_err()
         .code,
@@ -3338,7 +3339,7 @@ fn admitted_selected_declared_unit_projects_only_with_matching_witness() {
             &admitted,
             [record_row.clone(), wrong_document],
             [field_row.clone()],
-            &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX)
+            &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX)
         )
         .unwrap_err()
         .code,
@@ -3351,7 +3352,7 @@ fn admitted_selected_declared_unit_projects_only_with_matching_witness() {
             &admitted,
             [record_row.clone(), wrong_form],
             [field_row.clone()],
-            &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX)
+            &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX)
         )
         .unwrap_err()
         .code,
@@ -3364,7 +3365,7 @@ fn admitted_selected_declared_unit_projects_only_with_matching_witness() {
             &admitted,
             [record_row.clone(), foreign],
             [field_row.clone()],
-            &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX)
+            &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX)
         )
         .unwrap_err()
         .code,
@@ -3377,7 +3378,7 @@ fn admitted_selected_declared_unit_projects_only_with_matching_witness() {
         &admitted,
         [record_row.clone(), shared_key],
         [field_row.clone()],
-        &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+        &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
     )
     .unwrap_err();
     assert_eq!(
@@ -3390,14 +3391,14 @@ fn admitted_selected_declared_unit_projects_only_with_matching_witness() {
         &admitted,
         [record_row, unit_row],
         [field_row],
-        &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+        &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
     )
     .unwrap();
     let projected = admitted
         .project_exact_type(
             &record,
             &witnessed,
-            &mut quire_contract_model::NativeJoinBudget::new(100, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(100, u64::MAX),
         )
         .unwrap();
     assert_eq!(
@@ -3405,7 +3406,7 @@ fn admitted_selected_declared_unit_projects_only_with_matching_witness() {
             .project_exact_type(
                 &parameter,
                 &witnessed,
-                &mut quire_contract_model::NativeJoinBudget::new(10, u64::MAX)
+                &mut filament_contract_model::NativeJoinBudget::new(10, u64::MAX)
             )
             .unwrap()
             .value_type(),
@@ -3414,7 +3415,7 @@ fn admitted_selected_declared_unit_projects_only_with_matching_witness() {
     let view = projected.record_view().unwrap();
     assert_eq!(view.fields().len(), 1);
     assert_eq!(view.fields()[0].value_type(), &ValueType::Quantity(unit_id));
-    let mut exhausted_budget = quire_contract_model::NativeJoinBudget::new(4, u64::MAX);
+    let mut exhausted_budget = filament_contract_model::NativeJoinBudget::new(4, u64::MAX);
     let exhausted = admitted
         .project_exact_type(&record, &witnessed, &mut exhausted_budget)
         .unwrap_err();
@@ -3425,7 +3426,7 @@ fn admitted_selected_declared_unit_projects_only_with_matching_witness() {
     assert_eq!(exhausted.denied, exhausted_budget.first_unpaid());
     assert_eq!(
         exhausted.denied.unwrap().kind,
-        quire_contract_model::NativeJoinChargeKind::Work
+        filament_contract_model::NativeJoinChargeKind::Work
     );
     assert_eq!(exhausted.work, 4);
 }
@@ -3441,22 +3442,22 @@ fn admitted_selected_records_project_complete_exact_views() {
             "Receipt",
             "record",
             &[],
-            &[field("total", "ix://quire/native/Integer")],
+            &[field("total", "ix://filament/native/Integer")],
         ),
         typed_object(
             "Attempt",
             "record",
             &["Receipt"],
-            &[field("note", "ix://quire/native/String").optional()],
+            &[field("note", "ix://filament/native/String").optional()],
         ),
         typed_object(
             "Flag",
             "record",
             &["Receipt"],
             &[
-                field("total", "ix://quire/native/Boolean")
+                field("total", "ix://filament/native/Boolean")
                     .redefining(&format!("{}/total", orders("Receipt"))),
-                field("set", "ix://quire/native/Boolean"),
+                field("set", "ix://filament/native/Boolean"),
             ],
         ),
         typed_object("Tick", "record", &[], &[field("count", &orders("Digit"))]),
@@ -3466,7 +3467,7 @@ fn admitted_selected_records_project_complete_exact_views() {
         .expect("construct catalog")
         .push(json!({
             "kind": {"module": IDENTITY, "name": "record"},
-            "construct": {"meaning": "quire.meaning.model.record-value-type/v1"},
+            "construct": {"meaning": "filament.meaning.model.record-value-type/v1"},
         }));
     let declared = [
         ("Receipt", "record_value_type"),
@@ -3517,7 +3518,7 @@ fn admitted_selected_records_project_complete_exact_views() {
                 row.field_original_identity.as_ref() != format!("{}/count", orders("Tick"))
             })
             .cloned(),
-        &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+        &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
     )
     .expect("the other rows join");
     let tick_node = &records[3].1;
@@ -3525,7 +3526,7 @@ fn admitted_selected_records_project_complete_exact_views() {
         .project_exact_type(
             tick_node,
             &missing_tick,
-            &mut quire_contract_model::NativeJoinBudget::new(100, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(100, u64::MAX),
         )
         .expect_err("unwitnessed count refuses the whole view");
     assert_eq!(
@@ -3543,7 +3544,7 @@ fn admitted_selected_records_project_complete_exact_views() {
             &admitted,
             declaration_rows.clone(),
             conflicting_fields,
-            &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX)
+            &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX)
         )
         .expect_err("distinct effective fields cannot share one Exact member")
         .code,
@@ -3554,7 +3555,7 @@ fn admitted_selected_records_project_complete_exact_views() {
         &admitted,
         declaration_rows,
         field_rows,
-        &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+        &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
     )
     .expect("all selected rows join the admitted package");
     let projections = records
@@ -3564,7 +3565,7 @@ fn admitted_selected_records_project_complete_exact_views() {
                 .project_exact_type(
                     structural,
                     &witnesses,
-                    &mut quire_contract_model::NativeJoinBudget::new(100, u64::MAX),
+                    &mut filament_contract_model::NativeJoinBudget::new(100, u64::MAX),
                 )
                 .expect("complete selected record");
             assert_eq!(projection.value_type(), &ValueType::Composite(key.clone()));
@@ -3576,7 +3577,7 @@ fn admitted_selected_records_project_complete_exact_views() {
         })
         .collect::<Vec<_>>();
     let digit = ValueType::Int(
-        quire_exact::IntegerInterval::new(Integer::from(0_i64), Integer::from(9_i64)).unwrap(),
+        filament_exact::IntegerInterval::new(Integer::from(0_i64), Integer::from(9_i64)).unwrap(),
     );
     for (index, expected_fields) in [
         vec![("Receipt", "total", ValueType::Integer, Presence::Required)],
@@ -3657,7 +3658,7 @@ fn admitted_selected_records_project_complete_exact_views() {
             format!("{}/set", orders("Flag")),
         ],
     );
-    let mut exhausted_budget = quire_contract_model::NativeJoinBudget::new(
+    let mut exhausted_budget = filament_contract_model::NativeJoinBudget::new(
         witnesses.field_rows().len() as u64 + 2,
         u64::MAX,
     );
@@ -3671,7 +3672,7 @@ fn admitted_selected_records_project_complete_exact_views() {
     assert_eq!(exhausted.denied, exhausted_budget.first_unpaid());
     assert_eq!(
         exhausted.denied.unwrap().kind,
-        quire_contract_model::NativeJoinChargeKind::Work
+        filament_contract_model::NativeJoinChargeKind::Work
     );
     assert_eq!(
         projections[1]
@@ -3710,7 +3711,7 @@ fn admitted_selected_records_project_complete_exact_views() {
     assert_eq!(
         count.value_type(),
         &ValueType::Int(
-            quire_exact::IntegerInterval::new(
+            filament_exact::IntegerInterval::new(
                 "0".parse().expect("lower"),
                 "9".parse().expect("upper"),
             )
@@ -3740,7 +3741,7 @@ fn admitted_selected_records_project_complete_exact_views() {
             .project_exact_type(
                 &foreign,
                 &witnesses,
-                &mut quire_contract_model::NativeJoinBudget::new(100, u64::MAX)
+                &mut filament_contract_model::NativeJoinBudget::new(100, u64::MAX)
             )
             .expect_err("a similarly named foreign record is not selected")
             .code,
@@ -3756,14 +3757,14 @@ fn admitted_record_with_unsupported_field_refuses_without_view() {
         "Unsupported",
         "record",
         &[],
-        &[field("value", "ix://quire/native/Float32")],
+        &[field("value", "ix://filament/native/Float32")],
     )]);
     selected["constructs"]
         .as_array_mut()
         .expect("construct catalog")
         .push(json!({
             "kind": {"module": IDENTITY, "name": "record"},
-            "construct": {"meaning": "quire.meaning.model.record-value-type/v1"},
+            "construct": {"meaning": "filament.meaning.model.record-value-type/v1"},
         }));
     let admitted = admit(&selected, &[("Unsupported", "record_value_type")], &[]);
     let structural: CheckedNodeId = serde_json::from_value(node_id(&declaration_key(
@@ -3789,14 +3790,14 @@ fn admitted_record_with_unsupported_field_refuses_without_view() {
             format!("{}/value", orders("Unsupported")),
             MemberId::new(MemberOwner::Node(key), "value").expect("Exact member ID"),
         )],
-        &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+        &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
     )
     .expect("selected rows");
     let refusal = admitted
         .project_exact_type(
             &structural,
             &witnesses,
-            &mut quire_contract_model::NativeJoinBudget::new(100, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(100, u64::MAX),
         )
         .expect_err("Float32 mode is not represented by this field projection");
     assert_eq!(
@@ -3813,15 +3814,15 @@ fn admitted_native_record_late_unsupported_field_respects_exact_work_boundary() 
     const COMPLETE_WORK: u64 = 6;
     const BEFORE_SECOND_FIELD: u64 = 5;
     for (name, second_type) in [
-        ("LateUnsupported", "ix://quire/native/Float32"),
-        ("CompleteInteger", "ix://quire/native/Integer"),
+        ("LateUnsupported", "ix://filament/native/Float32"),
+        ("CompleteInteger", "ix://filament/native/Integer"),
     ] {
         let mut selected = document(vec![typed_object(
             name,
             "record",
             &[],
             &[
-                field("first", "ix://quire/native/Integer"),
+                field("first", "ix://filament/native/Integer"),
                 field("second", second_type),
             ],
         )]);
@@ -3830,7 +3831,7 @@ fn admitted_native_record_late_unsupported_field_respects_exact_work_boundary() 
             .expect("construct catalog")
             .push(json!({
                 "kind": {"module": IDENTITY, "name": "record"},
-                "construct": {"meaning": "quire.meaning.model.record-value-type/v1"},
+                "construct": {"meaning": "filament.meaning.model.record-value-type/v1"},
             }));
         let admitted = admit(&selected, &[(name, "record_value_type")], &[]);
         let structural: CheckedNodeId =
@@ -3864,20 +3865,20 @@ fn admitted_native_record_late_unsupported_field_respects_exact_work_boundary() 
                 SelectedExactIdentity::Record(key.clone()),
             )],
             field_rows,
-            &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
         )
         .expect("both native field witnesses join this independently admitted record");
         let cloned = admitted.clone();
         drop(selected);
-        let exhausted = quire_contract_model::ExactTypeProjectionError {
+        let exhausted = filament_contract_model::ExactTypeProjectionError {
             code: ExactTypeProjectionErrorCode::ExhaustedWork,
             requested: None,
             at: None,
             form: None,
             work: BEFORE_SECOND_FIELD,
             configured_bound: Some(BEFORE_SECOND_FIELD),
-            denied: Some(quire_contract_model::NativeJoinDeniedCharge {
-                kind: quire_contract_model::NativeJoinChargeKind::Work,
+            denied: Some(filament_contract_model::NativeJoinDeniedCharge {
+                kind: filament_contract_model::NativeJoinChargeKind::Work,
                 amount: 1,
             }),
         };
@@ -3887,7 +3888,7 @@ fn admitted_native_record_late_unsupported_field_respects_exact_work_boundary() 
                     package.project_exact_type(
                         &structural,
                         &witnesses,
-                        &mut quire_contract_model::NativeJoinBudget::new(
+                        &mut filament_contract_model::NativeJoinBudget::new(
                             BEFORE_SECOND_FIELD,
                             u64::MAX
                         )
@@ -3898,7 +3899,7 @@ fn admitted_native_record_late_unsupported_field_respects_exact_work_boundary() 
             }
         }
         if name == "LateUnsupported" {
-            let unsupported = quire_contract_model::ExactTypeProjectionError {
+            let unsupported = filament_contract_model::ExactTypeProjectionError {
                 code: ExactTypeProjectionErrorCode::UnsupportedExactType,
                 requested: Some(Box::new(structural.clone())),
                 at: Some(Box::new(structural.clone())),
@@ -3912,7 +3913,7 @@ fn admitted_native_record_late_unsupported_field_respects_exact_work_boundary() 
                     admitted.project_exact_type(
                         &structural,
                         &witnesses,
-                        &mut quire_contract_model::NativeJoinBudget::new(limit, u64::MAX)
+                        &mut filament_contract_model::NativeJoinBudget::new(limit, u64::MAX)
                     ),
                     Err(unsupported.clone()),
                 );
@@ -3924,7 +3925,7 @@ fn admitted_native_record_late_unsupported_field_respects_exact_work_boundary() 
                         cloned.project_exact_type(
                             &structural,
                             &witnesses,
-                            &mut quire_contract_model::NativeJoinBudget::new(limit, u64::MAX)
+                            &mut filament_contract_model::NativeJoinBudget::new(limit, u64::MAX)
                         ),
                         Err(unsupported.clone()),
                         "a late unsupported field refuses the entire result",
@@ -3936,7 +3937,7 @@ fn admitted_native_record_late_unsupported_field_respects_exact_work_boundary() 
                 .project_exact_type(
                     &structural,
                     &witnesses,
-                    &mut quire_contract_model::NativeJoinBudget::new(COMPLETE_WORK, u64::MAX),
+                    &mut filament_contract_model::NativeJoinBudget::new(COMPLETE_WORK, u64::MAX),
                 )
                 .expect("both Integer fields fit the independently counted allowance");
             assert_eq!(projected.node(), &structural);
@@ -3976,7 +3977,7 @@ fn admitted_native_record_late_unsupported_field_respects_exact_work_boundary() 
                 admitted.project_exact_type(
                     &structural,
                     &witnesses,
-                    &mut quire_contract_model::NativeJoinBudget::new(COMPLETE_WORK, u64::MAX)
+                    &mut filament_contract_model::NativeJoinBudget::new(COMPLETE_WORK, u64::MAX)
                 ),
                 Ok(projected.clone())
             );
@@ -3986,7 +3987,10 @@ fn admitted_native_record_late_unsupported_field_respects_exact_work_boundary() 
                     cloned.project_exact_type(
                         &structural,
                         &witnesses,
-                        &mut quire_contract_model::NativeJoinBudget::new(COMPLETE_WORK, u64::MAX)
+                        &mut filament_contract_model::NativeJoinBudget::new(
+                            COMPLETE_WORK,
+                            u64::MAX
+                        )
                     ),
                     Ok(projected.clone())
                 );
@@ -4017,7 +4021,7 @@ fn admitted_nested_record_and_reference_fields_require_target_witnesses_and_work
         .expect("construct catalog")
         .push(json!({
             "kind": {"module": IDENTITY, "name": "record"},
-            "construct": {"meaning": "quire.meaning.model.record-value-type/v1"},
+            "construct": {"meaning": "filament.meaning.model.record-value-type/v1"},
         }));
     let admitted = admit(
         &selected,
@@ -4084,14 +4088,14 @@ fn admitted_nested_record_and_reference_fields_require_target_witnesses_and_work
             envelope_row.clone(),
         ],
         field_rows.clone(),
-        &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+        &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
     )
     .expect("selected target and field rows");
     let projection = admitted
         .project_exact_type(
             &envelope,
             &complete,
-            &mut quire_contract_model::NativeJoinBudget::new(100, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(100, u64::MAX),
         )
         .expect("complete nested field types");
     let fields = projection.record_view().expect("record view").fields();
@@ -4107,14 +4111,14 @@ fn admitted_nested_record_and_reference_fields_require_target_witnesses_and_work
             &admitted,
             declarations,
             field_rows.clone(),
-            &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
         )
         .expect("incomplete target rows retain valid field joins");
         let refusal = admitted
             .project_exact_type(
                 &envelope,
                 &missing,
-                &mut quire_contract_model::NativeJoinBudget::new(100, u64::MAX),
+                &mut filament_contract_model::NativeJoinBudget::new(100, u64::MAX),
             )
             .expect_err("missing target witness refuses the complete view");
         assert_eq!(
@@ -4124,7 +4128,7 @@ fn admitted_nested_record_and_reference_fields_require_target_witnesses_and_work
         assert_eq!(refusal.at.as_deref(), Some(failed_target));
     }
     for limit in [5, 7] {
-        let mut refusal_budget = quire_contract_model::NativeJoinBudget::new(limit, u64::MAX);
+        let mut refusal_budget = filament_contract_model::NativeJoinBudget::new(limit, u64::MAX);
         let refusal = admitted
             .project_exact_type(&envelope, &complete, &mut refusal_budget)
             .expect_err("nested target read must consume the remaining work");
@@ -4135,7 +4139,7 @@ fn admitted_nested_record_and_reference_fields_require_target_witnesses_and_work
         assert_eq!(refusal.denied, refusal_budget.first_unpaid());
         assert_eq!(
             refusal.denied.unwrap().kind,
-            quire_contract_model::NativeJoinChargeKind::Work
+            filament_contract_model::NativeJoinChargeKind::Work
         );
         assert_eq!(refusal.work, limit);
     }
@@ -4145,7 +4149,7 @@ pub(crate) fn record_project_control() -> (Value, CheckedPackageEvidence) {
     let document = document(vec![object(
         ORDER,
         &[],
-        &[field("string", "ix://quire/native/String")],
+        &[field("string", "ix://filament/native/String")],
     )]);
     let read = Read {
         owner: ORDER,
@@ -4156,7 +4160,7 @@ pub(crate) fn record_project_control() -> (Value, CheckedPackageEvidence) {
     (package, evidence)
 }
 
-/// Trace: FR-349-AC-8, QSpec FR-322-AC-34.
+/// Trace: FR-349-AC-8, FSpec FR-322-AC-34.
 #[trace("FR-349-AC-8", "FR-322-AC-34")]
 #[test]
 fn model_field_reference_without_deref_refuses_by_read_form() {
@@ -4165,7 +4169,7 @@ fn model_field_reference_without_deref_refuses_by_read_form() {
         .as_array_mut()
         .expect("nodes")
         .iter_mut()
-        .find(|node| node["body"]["operation"]["identity"] == "quire.op.record.project")
+        .find(|node| node["body"]["operation"]["identity"] == "filament.op.record.project")
         .expect("model projection");
     let declaration = projection["body"]["operation"]["member"]["declaration"].clone();
     projection["body"]["arguments"][0]["target"] = declaration;
@@ -4180,7 +4184,7 @@ fn model_field_reference_without_deref_refuses_by_read_form() {
         .as_array_mut()
         .expect("nodes")
         .iter_mut()
-        .find(|node| node["body"]["operation"]["identity"] == "quire.op.record.project")
+        .find(|node| node["body"]["operation"]["identity"] == "filament.op.record.project")
         .expect("model projection");
     projection["body"]["operation"]["member"]
         .as_object_mut()
@@ -4247,7 +4251,7 @@ fn range(lower: i128, upper: i128) -> CheckedMemberType {
 /// bounds and application key use the same independently built preimages as
 /// this module's model-field cases.
 fn scalar_operand_package(arguments: Vec<Value>) -> (CheckedPackageV2, CheckedNodeId) {
-    scalar_operand_package_for("quire.op.integer.add", "binary", arguments)
+    scalar_operand_package_for("filament.op.integer.add", "binary", arguments)
 }
 
 fn scalar_operand_package_for(
@@ -4365,7 +4369,7 @@ fn scalar_operand_package_named(
             "value_kind": "integer", "value": "7"});
         let nested_body = json!({
             "term": "application", "operator": "binary",
-            "operation": {"identity": "quire.op.integer.add", "laws": [],
+            "operation": {"identity": "filament.op.integer.add", "laws": [],
                 "mode": null, "member": null, "leaves": []},
             "result_type": node_id(&bounded), "arguments": [inline.clone(), inline],
         });
@@ -4440,7 +4444,7 @@ fn scalar_operand_package_named(
 #[trace("TC-048", "FR-038-AC-261")]
 #[test]
 fn tc_048_parameter_declarations_follow_scalar_operand_order() {
-    use quire_contract_model::{
+    use filament_contract_model::{
         CheckedOccurrence, CheckedOccurrenceRole, CheckedParameterDeclarationError,
         CheckedScalarOperandChild,
     };
@@ -4451,7 +4455,7 @@ fn tc_048_parameter_declarations_follow_scalar_operand_order() {
     let argument = |placeholder: char| json!({"term": "reference", "target": node_id(&format!("placeholder/{placeholder}"))});
     let declared = |arguments: Vec<Value>| {
         let (package, application) = scalar_operand_package_named(
-            "quire.op.integer.add",
+            "filament.op.integer.add",
             "binary",
             arguments,
             Some(("0", "9")),
@@ -4480,7 +4484,7 @@ fn tc_048_parameter_declarations_follow_scalar_operand_order() {
     // An inline literal operand carries no operand node id: its only id is the
     // containing application's, which is not a parameter.
     let (package, application) = scalar_operand_package_named(
-        "quire.op.integer.add",
+        "filament.op.integer.add",
         "binary",
         vec![
             argument('a'),
@@ -4527,7 +4531,7 @@ fn scalar_fixture_child_id(form: &str, value: &str) -> Value {
 )]
 #[test]
 fn tc_048_scalar_operands_keep_argument_identity_and_exact_range() {
-    use quire_contract_model::{
+    use filament_contract_model::{
         CheckedOccurrence, CheckedOccurrenceRole, CheckedScalarOperand, CheckedScalarOperandChild,
         CheckedScalarOperandError,
     };
@@ -4696,7 +4700,7 @@ fn tc_048_scalar_operands_keep_argument_identity_and_exact_range() {
 #[trace("TC-048", "FR-038-AC-161", "FR-038-AC-162")]
 #[test]
 fn tc_048_scalar_operands_refuse_unknown_node_nonapplication_and_missing_occurrence() {
-    use quire_contract_model::{
+    use filament_contract_model::{
         CheckedOccurrence, CheckedOccurrenceRole, CheckedScalarOperandError,
     };
     let integer = "scalar_type/integer".to_owned();
@@ -4738,7 +4742,7 @@ fn tc_048_scalar_operands_refuse_unknown_node_nonapplication_and_missing_occurre
 #[trace("TC-048", "FR-038-AC-159", "FR-038-AC-163")]
 #[test]
 fn tc_048_scalar_operand_eligibility_uses_catalogued_integer_operations() {
-    use quire_contract_model::{
+    use filament_contract_model::{
         CheckedOccurrence, CheckedOccurrenceRole, CheckedScalarOperandError,
     };
     let occurrence = CheckedOccurrence {
@@ -4749,10 +4753,10 @@ fn tc_048_scalar_operand_eligibility_uses_catalogued_integer_operations() {
     let literal = json!({"term": "literal", "type": node_id(&integer),
         "value_kind": "integer", "value": "7"});
     for (identity, operator, count) in [
-        ("quire.op.integer.add", "binary", 2),
-        ("quire.op.integer.sub", "binary", 2),
-        ("quire.op.integer.mul", "binary", 2),
-        ("quire.op.integer.negate", "unary", 1),
+        ("filament.op.integer.add", "binary", 2),
+        ("filament.op.integer.sub", "binary", 2),
+        ("filament.op.integer.mul", "binary", 2),
+        ("filament.op.integer.negate", "unary", 1),
     ] {
         let (package, node) =
             scalar_operand_package_for(identity, operator, vec![literal.clone(); count]);
@@ -4767,7 +4771,7 @@ fn tc_048_scalar_operand_eligibility_uses_catalogued_integer_operations() {
         }));
     }
     let (package, node) = scalar_operand_package_for(
-        "quire.op.integer.mod",
+        "filament.op.integer.mod",
         "binary",
         vec![literal.clone(), literal],
     );
@@ -4780,7 +4784,7 @@ fn tc_048_scalar_operand_eligibility_uses_catalogued_integer_operations() {
 #[trace("TC-048", "FR-038-AC-162")]
 #[test]
 fn tc_048_scalar_operands_refuse_unbounded_and_out_of_i128_ranges() {
-    use quire_contract_model::{
+    use filament_contract_model::{
         CheckedOccurrence, CheckedOccurrenceRole, CheckedScalarOperandError,
     };
     let occurrence = CheckedOccurrence {
@@ -4792,7 +4796,7 @@ fn tc_048_scalar_operands_refuse_unbounded_and_out_of_i128_ranges() {
     let inline = json!({"term": "literal", "type": node_id(&integer),
         "value_kind": "integer", "value": "7"});
     let (unbounded, node) = scalar_operand_package_with_bounds(
-        "quire.op.integer.add",
+        "filament.op.integer.add",
         "binary",
         vec![first.clone(), inline.clone()],
         None,
@@ -4807,7 +4811,7 @@ fn tc_048_scalar_operands_refuse_unbounded_and_out_of_i128_ranges() {
         ("-170141183460469231731687303715884105729", "0"),
     ] {
         let (package, node) = scalar_operand_package_with_bounds(
-            "quire.op.integer.add",
+            "filament.op.integer.add",
             "binary",
             vec![first.clone(), inline.clone()],
             Some((lower, upper)),
@@ -4829,7 +4833,7 @@ fn tc_048_scalar_operands_refuse_unbounded_and_out_of_i128_ranges() {
     );
 
     let (package, node) = scalar_operand_package_with_literal(
-        "quire.op.integer.add",
+        "filament.op.integer.add",
         "binary",
         vec![
             json!({"term": "reference", "target": node_id("placeholder/c")}),
@@ -4847,7 +4851,7 @@ fn tc_048_scalar_operands_refuse_unbounded_and_out_of_i128_ranges() {
     let minimum = i128::MIN.to_string();
     let maximum = i128::MAX.to_string();
     let (package, node) = scalar_operand_package_with_bounds(
-        "quire.op.integer.add",
+        "filament.op.integer.add",
         "binary",
         vec![
             first,
@@ -4876,9 +4880,9 @@ fn selected_native_fields_keep_distinct_member_types() {
         ORDER,
         &[],
         &[
-            field("string", "ix://quire/native/String"),
-            field("uuid", "ix://quire/native/UUID"),
-            field("timestamp", "ix://quire/native/Timestamp"),
+            field("string", "ix://filament/native/String"),
+            field("uuid", "ix://filament/native/UUID"),
+            field("timestamp", "ix://filament/native/Timestamp"),
         ],
     )]);
     let reads = [
@@ -5032,7 +5036,7 @@ fn tc_056_record_projection_unknown_field_remains_ineligible() {
         .expect("constructs")
         .push(json!({
             "kind": {"module": IDENTITY, "name": "record"},
-            "construct": {"meaning": "quire.meaning.model.record-value-type/v1"},
+            "construct": {"meaning": "filament.meaning.model.record-value-type/v1"},
         }));
     let declared = [("Address", "record_value_type")];
     let (package, evidence, positions) = package(
@@ -5067,7 +5071,7 @@ fn tc_056_record_projection_unknown_field_remains_ineligible() {
     }
 }
 
-/// Trace: FR-068-AC-2, FR-068-AC-4, QSpec FR-322-AC-63, FR-322-AC-65
+/// Trace: FR-068-AC-2, FR-068-AC-4, FSpec FR-322-AC-63, FR-322-AC-65
 #[trace("TC-463")]
 #[test]
 fn selected_record_address_street_has_profiled_text_and_account_keeps_record_type() {
@@ -5092,7 +5096,7 @@ fn selected_record_address_street_has_profiled_text_and_account_keeps_record_typ
         .expect("constructs")
         .push(json!({
             "kind":{"module":IDENTITY,"name":"record"},
-            "construct":{"meaning":"quire.meaning.model.record-value-type/v1"}
+            "construct":{"meaning":"filament.meaning.model.record-value-type/v1"}
         }));
     let address = declaration_key("Address", "record_value_type");
     let reads = [Read {
@@ -5145,21 +5149,21 @@ fn selected_record_address_street_has_profiled_text_and_account_keeps_record_typ
     );
 }
 
-/// Trace: FR-068-AC-2, QSpec FR-322-AC-72
+/// Trace: FR-068-AC-2, FSpec FR-322-AC-72
 #[trace("TC-463")]
 #[test]
 fn selected_process_field_n_resolves_through_the_model_member_step() {
     let mut document = document(vec![process(
         "Flow",
         &[],
-        &[field("n", "ix://quire/native/Integer")],
+        &[field("n", "ix://filament/native/Integer")],
     )]);
     document["constructs"]
         .as_array_mut()
         .expect("constructs")
         .push(json!({
             "kind":{"module":IDENTITY,"name":"process"},
-            "construct":{"meaning":"quire.meaning.model.process/v1"}
+            "construct":{"meaning":"filament.meaning.model.process/v1"}
         }));
     let (wire, evidence, positions) = package(
         &document,
@@ -5183,12 +5187,12 @@ fn selected_process_field_n_resolves_through_the_model_member_step() {
     );
 }
 
-/// Trace: FR-068-AC-2, QSpec FR-322-AC-72
+/// Trace: FR-068-AC-2, FSpec FR-322-AC-72
 #[trace("TC-463")]
 #[test]
 fn selected_subprocess_inherits_only_process_members() {
     let mut document = document(vec![
-        process("Flow", &[], &[field("n", "ix://quire/native/Integer")]),
+        process("Flow", &[], &[field("n", "ix://filament/native/Integer")]),
         process("SubFlow", &["Flow"], &[]),
     ]);
     document["constructs"]
@@ -5196,7 +5200,7 @@ fn selected_subprocess_inherits_only_process_members() {
         .expect("constructs")
         .push(json!({
             "kind":{"module":IDENTITY,"name":"process"},
-            "construct":{"meaning":"quire.meaning.model.process/v1"}
+            "construct":{"meaning":"filament.meaning.model.process/v1"}
         }));
     let reads = [Read {
         owner: "SubFlow",
@@ -5222,19 +5226,19 @@ fn selected_subprocess_inherits_only_process_members() {
     );
 }
 
-/// Trace: FR-068-AC-4, QSpec FR-322-AC-65
+/// Trace: FR-068-AC-4, FSpec FR-322-AC-65
 #[trace("TC-463")]
 #[test]
 fn selected_record_field_refuses_each_non_value_object_meaning_at_intake() {
     for (kind, meaning) in [
-        ("event", "quire.meaning.model.event-type/v1"),
-        ("process", "quire.meaning.model.process/v1"),
-        ("machine", "quire.meaning.model.state-machine/v1"),
+        ("event", "filament.meaning.model.event-type/v1"),
+        ("process", "filament.meaning.model.process/v1"),
+        ("machine", "filament.meaning.model.state-machine/v1"),
         (
             "persistence",
-            "quire.meaning.model.persistence-interface/v1",
+            "filament.meaning.model.persistence-interface/v1",
         ),
-        ("namespace", "quire.meaning.model.namespace/v1"),
+        ("namespace", "filament.meaning.model.namespace/v1"),
     ] {
         let mut other = match kind {
             "process" => process("Other", &[], &[]),
@@ -5242,7 +5246,7 @@ fn selected_record_field_refuses_each_non_value_object_meaning_at_intake() {
                 "Other",
                 kind,
                 &[],
-                &[field("at", "ix://quire/native/Timestamp")],
+                &[field("at", "ix://filament/native/Timestamp")],
             ),
             _ => typed_object("Other", kind, &[], &[]),
         };
@@ -5276,7 +5280,7 @@ fn selected_record_field_refuses_each_non_value_object_meaning_at_intake() {
             }
             _ => {}
         }
-        let mut account = object("Account", &[], &[field("id", "ix://quire/native/UUID")]);
+        let mut account = object("Account", &[], &[field("id", "ix://filament/native/UUID")]);
         account["identityFields"] = json!([format!("{}/id", orders("Account"))]);
         let mut document = document(vec![
             typed_object(
@@ -5293,7 +5297,7 @@ fn selected_record_field_refuses_each_non_value_object_meaning_at_intake() {
             .expect("constructs")
             .extend([
                 json!({"kind":{"module":IDENTITY,"name":"record"},
-                "construct":{"meaning":"quire.meaning.model.record-value-type/v1"}}),
+                "construct":{"meaning":"filament.meaning.model.record-value-type/v1"}}),
                 json!({"kind":{"module":IDENTITY,"name":kind},"construct":{"meaning":meaning}}),
             ]);
         let (wire, evidence, _) = package(&document, &[("Address", "record_value_type")], &[]);
@@ -5320,7 +5324,7 @@ fn selected_record_field_refuses_each_non_value_object_meaning_at_intake() {
     }
 }
 
-/// Trace: FR-068-AC-4, QSpec FR-322-AC-65
+/// Trace: FR-068-AC-4, FSpec FR-322-AC-65
 #[trace("TC-463")]
 #[test]
 fn selected_record_node_cannot_be_an_object_reference_target() {
@@ -5330,7 +5334,7 @@ fn selected_record_node_cannot_be_an_object_reference_target() {
         .expect("constructs")
         .push(json!({
             "kind":{"module":IDENTITY,"name":"record"},
-            "construct":{"meaning":"quire.meaning.model.record-value-type/v1"}
+            "construct":{"meaning":"filament.meaning.model.record-value-type/v1"}
         }));
     let (mut wire, evidence, _) = package(&document, &[("Address", "record_value_type")], &[]);
     let target = declaration_key("Address", "record_value_type");
@@ -6343,7 +6347,7 @@ fn model_fields_source_map_and_work_boundary_hold() {
     assert_eq!(string.member_type(), Some(&CheckedMemberType::String));
     let missing = admitted.model_object_fields(&declaration_id("Absent"));
     assert_eq!(missing, Err(CheckedModelFieldsError::UnknownNode));
-    let authored_sources: Vec<quire_contract_model::CheckedSourceMapEntry> =
+    let authored_sources: Vec<filament_contract_model::CheckedSourceMapEntry> =
         serde_json::from_value(indexed_wire["source_map"].clone()).expect("authored sources");
     assert_eq!(admitted.source_map(), authored_sources);
     let mut low = 0;
@@ -6584,7 +6588,7 @@ fn exact_projection_identity_joins_refuse_changed_and_competing_owners() {
     ]);
     selected["constructs"].as_array_mut().unwrap().push(json!({
         "kind": {"module": IDENTITY, "name": "record"},
-        "construct": {"meaning": "quire.meaning.model.record-value-type/v1"},
+        "construct": {"meaning": "filament.meaning.model.record-value-type/v1"},
     }));
     selected["types"][1]["displayName"] = json!("Receipt");
     let (mut wire, evidence, _) = package(
@@ -6630,7 +6634,7 @@ fn exact_projection_identity_joins_refuse_changed_and_competing_owners() {
     let other = row("OtherReceipt");
     let mut long_original = receipt.clone();
     long_original.original_identity = "x".repeat(4096).into();
-    let mut short = quire_contract_model::NativeJoinBudget::new(128, u64::MAX);
+    let mut short = filament_contract_model::NativeJoinBudget::new(128, u64::MAX);
     let error =
         SelectedExactIdentities::from_stage_rows(&admitted, [long_original], [], &mut short)
             .expect_err("stage text must be charged before comparison");
@@ -6638,14 +6642,14 @@ fn exact_projection_identity_joins_refuse_changed_and_competing_owners() {
     assert_eq!(error.at.as_deref(), Some(&receipt.structural_node));
     assert_eq!(
         short.first_unpaid().unwrap().kind,
-        quire_contract_model::NativeJoinChargeKind::Work
+        filament_contract_model::NativeJoinChargeKind::Work
     );
     assert!(short.first_unpaid().unwrap().amount >= 4096);
     let identities = SelectedExactIdentities::from_stage_rows(
         &admitted,
         [receipt.clone(), other.clone()],
         [],
-        &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+        &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
     )
     .unwrap();
     for expected in [&receipt, &other] {
@@ -6657,7 +6661,7 @@ fn exact_projection_identity_joins_refuse_changed_and_competing_owners() {
                 .project_exact_type(
                     &expected.structural_node,
                     &identities,
-                    &mut quire_contract_model::NativeJoinBudget::new(100, u64::MAX)
+                    &mut filament_contract_model::NativeJoinBudget::new(100, u64::MAX)
                 )
                 .unwrap()
                 .value_type(),
@@ -6665,7 +6669,7 @@ fn exact_projection_identity_joins_refuse_changed_and_competing_owners() {
         );
     }
     let check = |rows: Vec<SelectedExactDeclarationRow>, locus: &CheckedNodeId, code| {
-        let mut budget = quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX);
+        let mut budget = filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX);
         let error = SelectedExactIdentities::from_stage_rows(&admitted, rows, [], &mut budget)
             .expect_err("invalid identity join");
         assert_eq!(error.code, code);
@@ -6702,7 +6706,7 @@ fn exact_projection_identity_joins_refuse_changed_and_competing_owners() {
             .project_exact_type(
                 &changed.structural_node,
                 &identities,
-                &mut quire_contract_model::NativeJoinBudget::new(100, u64::MAX),
+                &mut filament_contract_model::NativeJoinBudget::new(100, u64::MAX),
             )
             .expect_err("structural key must resolve exactly");
         assert_eq!(error.code, ExactTypeProjectionErrorCode::ForeignNode);
@@ -6817,7 +6821,7 @@ fn exact_reference_projection_preserves_each_selected_object_identity() {
         &admitted,
         rows.clone(),
         [],
-        &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+        &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
     )
     .unwrap();
     let references = wire["semantic_graph"]["nodes"]
@@ -6836,7 +6840,7 @@ fn exact_reference_projection_preserves_each_selected_object_identity() {
             .project_exact_type(
                 &references[index],
                 &identities,
-                &mut quire_contract_model::NativeJoinBudget::new(100, u64::MAX),
+                &mut filament_contract_model::NativeJoinBudget::new(100, u64::MAX),
             )
             .unwrap();
         assert_eq!(
@@ -6848,7 +6852,7 @@ fn exact_reference_projection_preserves_each_selected_object_identity() {
             .project_exact_type(
                 &row.structural_node,
                 &identities,
-                &mut quire_contract_model::NativeJoinBudget::new(100, u64::MAX),
+                &mut filament_contract_model::NativeJoinBudget::new(100, u64::MAX),
             )
             .expect_err("an object is not a standalone Exact ValueType");
         assert_eq!(own.code, ExactTypeProjectionErrorCode::UnsupportedExactType);
@@ -6860,14 +6864,14 @@ fn exact_reference_projection_preserves_each_selected_object_identity() {
             &admitted,
             [rows[1 - index].clone()],
             [],
-            &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
         )
         .unwrap();
         let error = admitted
             .project_exact_type(
                 &references[index],
                 &missing,
-                &mut quire_contract_model::NativeJoinBudget::new(100, u64::MAX),
+                &mut filament_contract_model::NativeJoinBudget::new(100, u64::MAX),
             )
             .expect_err("another object cannot witness this reference");
         assert_eq!(
@@ -6884,7 +6888,7 @@ fn exact_reference_projection_preserves_each_selected_object_identity() {
             .project_exact_type(
                 &references[0],
                 &identities,
-                &mut quire_contract_model::NativeJoinBudget::new(100, u64::MAX)
+                &mut filament_contract_model::NativeJoinBudget::new(100, u64::MAX)
             )
             .unwrap()
             .value_type(),
@@ -6892,7 +6896,7 @@ fn exact_reference_projection_preserves_each_selected_object_identity() {
             .project_exact_type(
                 &references[1],
                 &identities,
-                &mut quire_contract_model::NativeJoinBudget::new(100, u64::MAX)
+                &mut filament_contract_model::NativeJoinBudget::new(100, u64::MAX)
             )
             .unwrap()
             .value_type()
@@ -6903,7 +6907,7 @@ fn exact_reference_projection_preserves_each_selected_object_identity() {
         .project_exact_type(
             &foreign,
             &identities,
-            &mut quire_contract_model::NativeJoinBudget::new(100, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(100, u64::MAX),
         )
         .expect_err("foreign reference");
     assert_eq!(error.code, ExactTypeProjectionErrorCode::ForeignNode);
@@ -6959,7 +6963,7 @@ fn source_collection_fixture() -> (
     ];
     let mut fields = shapes
         .map(|(name, _, bound, ordered, unique)| {
-            field(name, "ix://quire/native/Integer").many((
+            field(name, "ix://filament/native/Integer").many((
                 0,
                 bound.map(|(_, upper)| upper),
                 ordered,
@@ -6968,7 +6972,7 @@ fn source_collection_fixture() -> (
         })
         .into_iter()
         .collect::<Vec<_>>();
-    fields.push(field("unrelated", "ix://quire/native/Float32"));
+    fields.push(field("unrelated", "ix://filament/native/Float32"));
     let selected = document(vec![object("Collect", &[], &fields)]);
     let mut reads = shapes
         .map(|(name, kind, bound, _, _)| Read {
@@ -7075,12 +7079,12 @@ fn source_collection_rows_project_all_kinds_and_bounds() {
                 .with_source_collection_rows(
                     &package,
                     [first_row.clone()],
-                    &mut quire_contract_model::NativeJoinBudget::new(limit, u64::MAX),
+                    &mut filament_contract_model::NativeJoinBudget::new(limit, u64::MAX),
                 )
                 .is_ok()
         })
         .expect("finite exact join allowance");
-    let mut join_budget = quire_contract_model::NativeJoinBudget::new(join_exact - 1, u64::MAX);
+    let mut join_budget = filament_contract_model::NativeJoinBudget::new(join_exact - 1, u64::MAX);
     let join_exhausted = SelectedExactIdentities::empty()
         .with_source_collection_rows(&package, [first_row], &mut join_budget)
         .expect_err("one below join allowance");
@@ -7096,13 +7100,13 @@ fn source_collection_rows_project_all_kinds_and_bounds() {
     );
     assert_eq!(
         join_budget.first_unpaid().unwrap().kind,
-        quire_contract_model::NativeJoinChargeKind::Work
+        filament_contract_model::NativeJoinChargeKind::Work
     );
     let selected = SelectedExactIdentities::empty()
         .with_source_collection_rows(
             &package,
             rows.iter().map(|(row, _)| row.clone()),
-            &mut quire_contract_model::NativeJoinBudget::new(500, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(500, u64::MAX),
         )
         .expect("complete collection rows join");
     assert_eq!(selected.source_collection_rows().count(), rows.len());
@@ -7111,7 +7115,7 @@ fn source_collection_rows_project_all_kinds_and_bounds() {
             .project_exact_type(
                 requested,
                 &selected,
-                &mut quire_contract_model::NativeJoinBudget::new(500, u64::MAX),
+                &mut filament_contract_model::NativeJoinBudget::new(500, u64::MAX),
             )
             .expect("collection projection");
         assert_eq!(projection.type_node(), &row.structural_node);
@@ -7121,7 +7125,7 @@ fn source_collection_rows_project_all_kinds_and_bounds() {
             package.project_exact_type(
                 requested,
                 &selected,
-                &mut quire_contract_model::NativeJoinBudget::new(exact, u64::MAX)
+                &mut filament_contract_model::NativeJoinBudget::new(exact, u64::MAX)
             ),
             Ok(projection.clone())
         );
@@ -7129,7 +7133,7 @@ fn source_collection_rows_project_all_kinds_and_bounds() {
             .project_exact_type(
                 requested,
                 &selected,
-                &mut quire_contract_model::NativeJoinBudget::new(exact - 1, u64::MAX),
+                &mut filament_contract_model::NativeJoinBudget::new(exact - 1, u64::MAX),
             )
             .expect_err("one below exact allowance");
         assert_eq!(exhausted.code, ExactTypeProjectionErrorCode::ExhaustedWork);
@@ -7137,13 +7141,13 @@ fn source_collection_rows_project_all_kinds_and_bounds() {
         assert_eq!(exhausted.at, None);
         assert_eq!(
             exhausted.denied.as_ref().unwrap().kind,
-            quire_contract_model::NativeJoinChargeKind::Work
+            filament_contract_model::NativeJoinChargeKind::Work
         );
         assert_eq!(
             package.clone().project_exact_type(
                 requested,
                 &selected,
-                &mut quire_contract_model::NativeJoinBudget::new(exact - 1, u64::MAX)
+                &mut filament_contract_model::NativeJoinBudget::new(exact - 1, u64::MAX)
             ),
             Err(exhausted)
         );
@@ -7151,7 +7155,7 @@ fn source_collection_rows_project_all_kinds_and_bounds() {
             package.clone().project_exact_type(
                 requested,
                 &selected,
-                &mut quire_contract_model::NativeJoinBudget::new(exact, u64::MAX)
+                &mut filament_contract_model::NativeJoinBudget::new(exact, u64::MAX)
             ),
             Ok(projection)
         );
@@ -7169,7 +7173,7 @@ fn source_collection_rows_project_all_kinds_and_bounds() {
             .project_exact_type(
                 &unrelated.node_id,
                 &selected,
-                &mut quire_contract_model::NativeJoinBudget::new(500, u64::MAX)
+                &mut filament_contract_model::NativeJoinBudget::new(500, u64::MAX)
             )
             .unwrap_err()
             .code,
@@ -7180,7 +7184,7 @@ fn source_collection_rows_project_all_kinds_and_bounds() {
 #[trace("FR-358-AC-1", "FR-358-AC-3", "FR-358-AC-4")]
 #[test]
 fn native_collection_joins_share_budget_and_precharge_nonempty_prior_map_copy() {
-    use quire_contract_model::{NativeJoinBudget, NativeJoinCharge, NativeJoinChargeKind};
+    use filament_contract_model::{NativeJoinBudget, NativeJoinCharge, NativeJoinChargeKind};
 
     let (package, rows) = source_collection_fixture();
     let first = rows[0].0.clone();
@@ -7275,7 +7279,7 @@ fn native_collection_joins_share_budget_and_precharge_nonempty_prior_map_copy() 
 #[trace("FR-358-AC-4")]
 #[test]
 fn native_budget_counts_stage_and_each_join_on_one_admitted_package() {
-    use quire_contract_model::{
+    use filament_contract_model::{
         NativeJoinBudget, NativeJoinCharge, SelectedSourceEnumRow, SelectedSourceRecordRow,
         SelectedSourceTupleRow, SelectedSourceUnionRow,
     };
@@ -7330,7 +7334,7 @@ fn source_collection_incremental_join_charges_prior_rows_before_copy() {
         .with_source_collection_rows(
             &package,
             prior,
-            &mut quire_contract_model::NativeJoinBudget::new(500, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(500, u64::MAX),
         )
         .expect("two prior collection rows");
     let next = rows[2].0.clone();
@@ -7340,7 +7344,7 @@ fn source_collection_incremental_join_charges_prior_rows_before_copy() {
                 .with_source_collection_rows(
                     &package,
                     [next.clone()],
-                    &mut quire_contract_model::NativeJoinBudget::new(limit, u64::MAX),
+                    &mut filament_contract_model::NativeJoinBudget::new(limit, u64::MAX),
                 )
                 .is_ok()
         })
@@ -7351,7 +7355,7 @@ fn source_collection_incremental_join_charges_prior_rows_before_copy() {
                 .with_source_collection_rows(
                     &package,
                     [next.clone()],
-                    &mut quire_contract_model::NativeJoinBudget::new(limit, u64::MAX),
+                    &mut filament_contract_model::NativeJoinBudget::new(limit, u64::MAX),
                 )
                 .is_ok()
         })
@@ -7361,7 +7365,7 @@ fn source_collection_incremental_join_charges_prior_rows_before_copy() {
         .with_source_collection_rows(
             &package,
             [next.clone()],
-            &mut quire_contract_model::NativeJoinBudget::new(populated_exact, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(populated_exact, u64::MAX),
         )
         .expect("exact allowance charges both prior entries");
     assert_eq!(joined.source_collection_rows().count(), 3);
@@ -7374,7 +7378,7 @@ fn source_collection_incremental_join_charges_prior_rows_before_copy() {
         .with_source_collection_rows(
             &package,
             [next.clone()],
-            &mut quire_contract_model::NativeJoinBudget::new(populated_exact - 1, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(populated_exact - 1, u64::MAX),
         )
         .expect_err("one below the populated-table allowance");
     assert_eq!(refusal.code, ExactTypeProjectionErrorCode::ExhaustedWork);
@@ -7384,7 +7388,7 @@ fn source_collection_incremental_join_charges_prior_rows_before_copy() {
         populated.clone().with_source_collection_rows(
             &package,
             [next],
-            &mut quire_contract_model::NativeJoinBudget::new(populated_exact - 1, u64::MAX)
+            &mut filament_contract_model::NativeJoinBudget::new(populated_exact - 1, u64::MAX)
         ),
         Err(refusal)
     );
@@ -7401,7 +7405,7 @@ fn source_collection_rows_refuse_missing_and_changed_structural_facts() {
             .project_exact_type(
                 requested,
                 &SelectedExactIdentities::empty(),
-                &mut quire_contract_model::NativeJoinBudget::new(500, u64::MAX)
+                &mut filament_contract_model::NativeJoinBudget::new(500, u64::MAX)
             )
             .unwrap_err()
             .code,
@@ -7412,7 +7416,7 @@ fn source_collection_rows_refuse_missing_and_changed_structural_facts() {
             .with_source_collection_rows(
                 &package,
                 [candidate],
-                &mut quire_contract_model::NativeJoinBudget::new(500, u64::MAX),
+                &mut filament_contract_model::NativeJoinBudget::new(500, u64::MAX),
             )
             .expect_err("changed collection row")
     };
@@ -7465,7 +7469,7 @@ fn source_collection_rows_refuse_missing_and_changed_structural_facts() {
             .with_source_collection_rows(
                 &package,
                 [row.clone(), row.clone()],
-                &mut quire_contract_model::NativeJoinBudget::new(500, u64::MAX)
+                &mut filament_contract_model::NativeJoinBudget::new(500, u64::MAX)
             )
             .unwrap_err()
             .code,
@@ -7481,14 +7485,14 @@ fn source_collection_rows_refuse_missing_and_changed_structural_facts() {
         .with_source_collection_rows(
             &package,
             [changed_opaque_element],
-            &mut quire_contract_model::NativeJoinBudget::new(500, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(500, u64::MAX),
         )
         .expect("structural row joins before element projection");
     let refusal = package
         .project_exact_type(
             requested,
             &selected,
-            &mut quire_contract_model::NativeJoinBudget::new(500, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(500, u64::MAX),
         )
         .expect_err("opaque element mismatch");
     assert_eq!(
@@ -7503,7 +7507,7 @@ fn source_collection_rows_refuse_missing_and_changed_structural_facts() {
 #[test]
 fn source_collection_with_unprojectable_option_element_keeps_native_refusal() {
     let selected = document(vec![
-        json!({"identity": orders("OptInt"), "kind": "option", "inner": "ix://quire/native/Integer"}),
+        json!({"identity": orders("OptInt"), "kind": "option", "inner": "ix://filament/native/Integer"}),
         object(
             "Collect",
             &[],
@@ -7561,10 +7565,10 @@ fn source_collection_with_unprojectable_option_element_keeps_native_refusal() {
         .with_source_collection_rows(
             &package,
             [row],
-            &mut quire_contract_model::NativeJoinBudget::new(500, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(500, u64::MAX),
         )
         .expect("structural collection row joins");
-    let mut ample = quire_contract_model::NativeJoinBudget::new(500, u64::MAX);
+    let mut ample = filament_contract_model::NativeJoinBudget::new(500, u64::MAX);
     let refusal = package
         .project_exact_type(&requested, &selected, &mut ample)
         .expect_err("option element has no general Exact projection yet");
@@ -7574,19 +7578,19 @@ fn source_collection_with_unprojectable_option_element_keeps_native_refusal() {
     );
     assert_eq!(refusal.at.as_deref(), Some(&option));
     let cloned = package.clone();
-    let mut repeated_budget = quire_contract_model::NativeJoinBudget::new(500, u64::MAX);
+    let mut repeated_budget = filament_contract_model::NativeJoinBudget::new(500, u64::MAX);
     assert_eq!(
         cloned.project_exact_type(&requested, &selected, &mut repeated_budget),
         Err(refusal.clone())
     );
     assert_eq!(repeated_budget.consumed(), ample.consumed());
     let exact_storage = ample.consumed().storage;
-    let mut exact = quire_contract_model::NativeJoinBudget::new(500, exact_storage);
+    let mut exact = filament_contract_model::NativeJoinBudget::new(500, exact_storage);
     assert_eq!(
         package.project_exact_type(&requested, &selected, &mut exact),
         Err(refusal.clone())
     );
-    let mut short = quire_contract_model::NativeJoinBudget::new(500, exact_storage - 1);
+    let mut short = filament_contract_model::NativeJoinBudget::new(500, exact_storage - 1);
     let unpaid = package
         .project_exact_type(&requested, &selected, &mut short)
         .unwrap_err();
@@ -7595,7 +7599,7 @@ fn source_collection_with_unprojectable_option_element_keeps_native_refusal() {
     assert_eq!(unpaid.at, None);
     assert_eq!(unpaid.form, None);
     assert_eq!(short.last_success_delta(), None);
-    let mut repeated_short = quire_contract_model::NativeJoinBudget::new(500, exact_storage - 1);
+    let mut repeated_short = filament_contract_model::NativeJoinBudget::new(500, exact_storage - 1);
     assert_eq!(
         cloned.project_exact_type(&requested, &selected, &mut repeated_short),
         Err(unpaid)
@@ -7679,14 +7683,14 @@ fn nested_collection_rows_follow_final_element_nodes_without_recursion() {
         .with_source_collection_rows(
             &admitted,
             [outer_row, inner_row],
-            &mut quire_contract_model::NativeJoinBudget::new(500, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(500, u64::MAX),
         )
         .expect("both nested rows join");
     let projected = admitted
         .project_exact_type(
             &outer,
             &identities,
-            &mut quire_contract_model::NativeJoinBudget::new(500, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(500, u64::MAX),
         )
         .expect("iterative nested projection");
     assert_eq!(projected.value_type(), &outer_type);
@@ -7700,14 +7704,14 @@ fn nested_collection_rows_follow_final_element_nodes_without_recursion() {
                 element_node: inner.clone(),
                 value_type: outer_type,
             }],
-            &mut quire_contract_model::NativeJoinBudget::new(500, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(500, u64::MAX),
         )
         .expect("outer structural row joins alone");
     let refusal = admitted
         .project_exact_type(
             &outer,
             &without_inner,
-            &mut quire_contract_model::NativeJoinBudget::new(500, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(500, u64::MAX),
         )
         .expect_err("reached inner row required");
     assert_eq!(
@@ -7726,18 +7730,18 @@ pub(crate) fn complete_witness_model_wire() -> (Value, Value) {
             "record",
             &[],
             &[
-                field("count", "ix://quire/native/Boolean"),
+                field("count", "ix://filament/native/Boolean"),
                 field("pair", &orders("Pair")),
-                field("distance", "ix://quire/unit/Example/Metre"),
+                field("distance", "ix://filament/unit/Example/Metre"),
             ],
         ),
         object("Node", &[], &[]),
         json!({"identity":tuple,"displayName":"Pair", "kind":{"module":IDENTITY,"name":"tuple"},
-            "positions":[{"identity":format!("{tuple}/p0"),"typeRef":"ix://quire/native/Boolean"}]}),
+            "positions":[{"identity":format!("{tuple}/p0"),"typeRef":"ix://filament/native/Boolean"}]}),
     ]);
     for (name, meaning) in [
-        ("record", "quire.meaning.model.record-value-type/v1"),
-        ("tuple", "quire.meaning.model.tuple-value-type/v1"),
+        ("record", "filament.meaning.model.record-value-type/v1"),
+        ("tuple", "filament.meaning.model.tuple-value-type/v1"),
     ] {
         selected["constructs"].as_array_mut().unwrap().push(json!({
             "kind":{"module":IDENTITY,"name":name},"construct":{"meaning":meaning}
@@ -7763,7 +7767,7 @@ pub(crate) fn complete_witness_model_rows(
     Vec<SelectedTupleDeclarationRow>,
 ) {
     let id = |original: &str| {
-        package.resolved_graph().nodes.iter().find(|node| matches!(&node.owner, Some(quire_contract_model::CheckedNodeOwner::Model { identity, node }) if identity.as_ref() == IDENTITY && node.as_ref() == original)).unwrap().node_id.clone()
+        package.resolved_graph().nodes.iter().find(|node| matches!(&node.owner, Some(filament_contract_model::CheckedNodeOwner::Model { identity, node }) if identity.as_ref() == IDENTITY && node.as_ref() == original)).unwrap().node_id.clone()
     };
     let record_key = NodeKey::new(
         "complete-stage",
@@ -7815,7 +7819,7 @@ pub(crate) fn complete_witness_model_rows(
 #[trace("TC-467", "FR-352-AC-22", "FR-352-AC-28", "FR-352-AC-29")]
 #[test]
 fn complete_identity_witness_reuses_checked_private_channels_for_runtime_projection() {
-    use quire_contract_model::{CheckedNodeOwner, SelectedSourceUnitRow};
+    use filament_contract_model::{CheckedNodeOwner, SelectedSourceUnitRow};
     let (mut wire, document) = complete_witness_model_wire();
     let unit_wire = nominal_package(
         &crate::support::checked_package::nominal_fixture_members()
@@ -7865,7 +7869,7 @@ fn complete_identity_witness_reuses_checked_private_channels_for_runtime_project
             )
         })
         .collect();
-    let mut budget = quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX);
+    let mut budget = filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX);
     let witness =
         SelectedExactIdentities::from_stage_rows(&package, declarations, fields, &mut budget)
             .unwrap()
@@ -7893,14 +7897,15 @@ fn complete_identity_witness_reuses_checked_private_channels_for_runtime_project
 fn complete_identity_witness_collection_helper_base_is_not_an_independent_obligation() {
     let build = |independent: bool, metadata_only: bool| {
         let mut fields =
-            vec![field("bounded", "ix://quire/native/Integer").many((0, Some(3), true, false))];
+            vec![field("bounded", "ix://filament/native/Integer").many((0, Some(3), true, false))];
         let mut reads = vec![Read {
             owner: "Collect",
             field: "bounded",
             ty: Ty::Collection(Kind::Sequence, Box::new(Ty::Integer), Some((0, 3))),
         }];
         if independent {
-            fields.push(field("plain", "ix://quire/native/Integer").many((0, None, true, false)));
+            fields
+                .push(field("plain", "ix://filament/native/Integer").many((0, None, true, false)));
             reads.push(Read {
                 owner: "Collect",
                 field: "plain",
@@ -7982,7 +7987,7 @@ fn complete_identity_witness_collection_helper_base_is_not_an_independent_obliga
                 OriginalDeclarationKey::new(IDENTITY, orders("Collect")),
             )),
         );
-        let mut budget = quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX);
+        let mut budget = filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX);
         let witness =
             SelectedExactIdentities::from_stage_rows(&admitted, [declaration], [], &mut budget)
                 .unwrap()
@@ -7995,7 +8000,7 @@ fn complete_identity_witness_collection_helper_base_is_not_an_independent_obliga
         assert_eq!(
             witness.validate_and_rebind(
                 &package,
-                &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX)
+                &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX)
             ),
             Ok(witness.clone()),
             "a helper or dependency-only edge is not an independent type use"
@@ -8005,7 +8010,7 @@ fn complete_identity_witness_collection_helper_base_is_not_an_independent_obliga
     let refusal = witness
         .validate_and_rebind(
             &package,
-            &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
         )
         .unwrap_err();
     assert_eq!(
@@ -8028,13 +8033,13 @@ fn complete_identity_witness_collection_helper_base_is_not_an_independent_obliga
         .with_source_collection_rows(
             &package,
             [plain],
-            &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
         )
         .unwrap();
     assert_eq!(
         complete.validate_and_rebind(
             &package,
-            &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX)
+            &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX)
         ),
         Ok(complete.clone())
     );
@@ -8062,13 +8067,13 @@ fn complete_identity_witness_refuses_unemitted_and_unsupported_selected_identity
         &package,
         [row],
         [],
-        &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+        &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
     )
     .unwrap();
     let error = witness
         .validate_and_rebind(
             &package,
-            &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
         )
         .unwrap_err();
     assert_eq!(
@@ -8086,9 +8091,9 @@ fn complete_identity_witness_refuses_unemitted_and_unsupported_selected_identity
     let mut selected = document(vec![process(
         "Flow",
         &[],
-        &[field("n", "ix://quire/native/Integer")],
+        &[field("n", "ix://filament/native/Integer")],
     )]);
-    selected["constructs"].as_array_mut().unwrap().push(json!({"kind":{"module":IDENTITY,"name":"process"},"construct":{"meaning":"quire.meaning.model.process/v1"}}));
+    selected["constructs"].as_array_mut().unwrap().push(json!({"kind":{"module":IDENTITY,"name":"process"},"construct":{"meaning":"filament.meaning.model.process/v1"}}));
     let package = admit(&selected, &[("Flow", "process")], &[]);
     let id = &package
         .resolved_graph()
@@ -8103,7 +8108,7 @@ fn complete_identity_witness_refuses_unemitted_and_unsupported_selected_identity
             .project_exact_type(
                 id,
                 &empty,
-                &mut quire_contract_model::NativeJoinBudget::new(10_000, u64::MAX),
+                &mut filament_contract_model::NativeJoinBudget::new(10_000, u64::MAX),
             )
             .unwrap_err()
             .code,
@@ -8112,7 +8117,7 @@ fn complete_identity_witness_refuses_unemitted_and_unsupported_selected_identity
     let error = empty
         .validate_and_rebind(
             &package,
-            &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
         )
         .unwrap_err();
     assert_eq!(
@@ -8128,11 +8133,11 @@ fn complete_review_model_unit(original: &str, extra_nodes: usize) -> CheckedPack
         "Receipt",
         "record",
         &[],
-        &[field("count", "ix://quire/native/Boolean")],
+        &[field("count", "ix://filament/native/Boolean")],
     )]);
     selected["constructs"].as_array_mut().unwrap().push(json!({
         "kind":{"module":IDENTITY,"name":"record"},
-        "construct":{"meaning":"quire.meaning.model.record-value-type/v1"}
+        "construct":{"meaning":"filament.meaning.model.record-value-type/v1"}
     }));
     let dimension_original = "ix://acme/orders/dimension/Time";
     selected["dimensions"] =
@@ -8159,7 +8164,7 @@ fn complete_review_model_unit(original: &str, extra_nodes: usize) -> CheckedPack
         (&unit, "unit", original, &dimension),
     ] {
         nodes.push(
-            json!({"node_id":id,"schema_version":"quire.checked-semantic-graph/v2",
+            json!({"node_id":id,"schema_version":"filament.checked-semantic-graph/v2",
             "node_tag":"scalar_type","semantic_form":form,"semantic_type":ty,"dependencies":if form == "unit" { vec![dimension.clone()] } else { vec![] },
             "occurrences":[{"role":"generated","ordinal":0}],
             "owner":{"kind":"model","identity":IDENTITY,"node":original},"body":empty()}),
@@ -8215,13 +8220,13 @@ fn complete_identity_witness_missing_model_unit_precedes_unread_field() {
             ),
         )],
         [],
-        &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+        &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
     )
     .unwrap();
     let error = witness
         .validate_and_rebind(
             &package,
-            &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
         )
         .unwrap_err();
     assert_eq!(
@@ -8247,7 +8252,7 @@ fn complete_identity_witness_precharges_long_model_unit_owner_text() {
     let mut expected_amount = None;
     for node in nodes {
         prefix += 1;
-        if let Some(quire_contract_model::CheckedNodeOwner::Model {
+        if let Some(filament_contract_model::CheckedNodeOwner::Model {
             identity,
             node: owner,
         }) = &node.owner
@@ -8257,7 +8262,7 @@ fn complete_identity_witness_precharges_long_model_unit_owner_text() {
             break;
         }
     }
-    let mut budget = quire_contract_model::NativeJoinBudget::new(prefix as u64, u64::MAX);
+    let mut budget = filament_contract_model::NativeJoinBudget::new(prefix as u64, u64::MAX);
     let error = SelectedExactIdentities::empty()
         .validate_and_rebind(&package, &mut budget)
         .unwrap_err();
@@ -8291,7 +8296,7 @@ fn complete_identity_witness_precharges_every_unrelated_census_candidate() {
         };
         // Outer binding and content-stage binding each consume eight;
         // even an empty selected model costs one.
-        let mut empty_model = quire_contract_model::NativeJoinBudget::new(16, u64::MAX);
+        let mut empty_model = filament_contract_model::NativeJoinBudget::new(16, u64::MAX);
         let error = SelectedExactIdentities::empty()
             .validate_and_rebind(&package, &mut empty_model)
             .unwrap_err();
@@ -8302,7 +8307,7 @@ fn complete_identity_witness_precharges_every_unrelated_census_candidate() {
         assert_eq!(empty_model.first_unpaid().unwrap().amount, 1);
         // The next unit-declaration candidate must be paid before node_kind,
         // even when all candidates happen to be unrelated non-units.
-        let mut candidate = quire_contract_model::NativeJoinBudget::new(17, u64::MAX);
+        let mut candidate = filament_contract_model::NativeJoinBudget::new(17, u64::MAX);
         let error = SelectedExactIdentities::empty()
             .validate_and_rebind(&package, &mut candidate)
             .unwrap_err();
@@ -8340,7 +8345,7 @@ fn complete_identity_witness_tuple_validation_matches_projection() {
             &package,
             std::slice::from_ref(&row),
             &[],
-            &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
         )
         .unwrap_err();
     let projection = package
@@ -8348,7 +8353,7 @@ fn complete_identity_witness_tuple_validation_matches_projection() {
             &empty,
             &[row],
             &[],
-            &mut quire_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
         )
         .unwrap_err();
     assert_eq!(
@@ -8362,16 +8367,16 @@ fn complete_identity_witness_tuple_validation_matches_projection() {
 #[test]
 #[trace("TC-470", "FR-360-AC-2", "FR-360-AC-3", "FR-360-AC-5")]
 fn runtime_two_tuple_indices_activate_the_first_row_after_witness_join() {
-    use quire_contract_model::{NativeJoinBudget, NativeJoinLocus, NativeJoinLocusSource};
+    use filament_contract_model::{NativeJoinBudget, NativeJoinLocus, NativeJoinLocusSource};
     let tuple = |name: &str| {
         json!({"identity":orders(name),"displayName":name,
         "kind":{"module":IDENTITY,"name":"tuple"},
-        "positions":[{"identity":format!("{}/p0",orders(name)),"typeRef":"ix://quire/native/Boolean"}]})
+        "positions":[{"identity":format!("{}/p0",orders(name)),"typeRef":"ix://filament/native/Boolean"}]})
     };
     let mut selected = document(vec![tuple("First"), tuple("Second")]);
     selected["constructs"].as_array_mut().unwrap().push(json!({
         "kind":{"module":IDENTITY,"name":"tuple"},
-        "construct":{"meaning":"quire.meaning.model.tuple-value-type/v1"}
+        "construct":{"meaning":"filament.meaning.model.tuple-value-type/v1"}
     }));
     let package = admit(
         &selected,

@@ -7,12 +7,12 @@ use crate::support::checked_package::{
     canonical, evidence_for, evidence_with_document, family_model_document, refresh_identity,
     refresh_identity_projection, select_model, v2_all_families, v2_nominal,
 };
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     encode_checked_package_v2, CheckedNodeOwner, CheckedNodeProjectionV2, CheckedPackageReadLimits,
     CheckedPackageRefusalCause, CheckedPackageRefusalCode, CheckedPackageSourceCorrespondenceRef,
     CheckedPackageV2, CheckedPackageV2ReadResult, ModelForm,
 };
+use ix_trace_rs::trace;
 use serde_json::{json, Value};
 
 fn selected_package() -> Value {
@@ -133,7 +133,7 @@ fn selected_root_roundtrips_through_public_typed_writer_and_reader() {
     let node = &first.graph().nodes[root];
     assert_eq!(
         first.node_kinds()[root],
-        quire_contract_model::CheckedNodeKind::Model(ModelForm::ModelRoot)
+        filament_contract_model::CheckedNodeKind::Model(ModelForm::ModelRoot)
     );
     assert!(
         matches!(&node.owner, Some(CheckedNodeOwner::ModelRoot { identity })
@@ -158,7 +158,7 @@ fn selected_root_roundtrips_through_public_typed_writer_and_reader() {
             source_map: first.source_map(),
             refinement_step_rows: first.refinement_step_rows(),
         },
-        quire_contract_model::CheckedPackageSidecarsRef {
+        filament_contract_model::CheckedPackageSidecarsRef {
             temporal_clause_names: first.temporal_clause_names(),
             operation_effects: None,
             operation_bodies: None,
@@ -429,7 +429,7 @@ fn root_graph_shape_is_closed_before_key_checking() {
         ),
         (
             "nominal_identity_preimage",
-            json!({"version": "quire.enum-declaration-node/v1"}),
+            json!({"version": "filament.enum-declaration-node/v1"}),
             format!("{root_at}/nominal_identity_preimage"),
             CheckedPackageRefusalCode::UnknownMember,
         ),

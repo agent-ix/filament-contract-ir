@@ -1,18 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Agent-IX
 
-//! Published single-body V2 wire packages, read from the owning QSpec checkout.
+//! Published single-body V2 wire packages, read from the owning FSpec checkout.
 
 use super::{
     fixtures_dir, positive_document, proposal_dir_of, read_json, read_package,
     read_package_with_document, vector_selected_documents, POSITIVE_ALL,
 };
-use ix_trace_rs::trace;
-use quire_canonical::Limits;
-use quire_contract_model::{
+use filament_contract_model::{
     encode_checked_package_v2, CheckedPackageRefusalCode, CheckedPackageV2,
     CheckedPackageV2ReadResult,
 };
+use ix_trace_rs::trace;
+use quire_canonical::Limits;
 use serde_json::{json, Value};
 
 fn fixture(name: &str) -> Value {
@@ -62,11 +62,11 @@ fn published_single_body_packages_round_trip_through_the_writer() {
             read.name(),
             read.lock(),
             read.graph(),
-            quire_contract_model::CheckedPackageSourceCorrespondenceRef {
+            filament_contract_model::CheckedPackageSourceCorrespondenceRef {
                 source_map: read.source_map(),
                 refinement_step_rows: read.refinement_step_rows(),
             },
-            quire_contract_model::CheckedPackageSidecarsRef {
+            filament_contract_model::CheckedPackageSidecarsRef {
                 temporal_clause_names: read.temporal_clause_names(),
                 operation_effects: None,
                 operation_bodies: None,

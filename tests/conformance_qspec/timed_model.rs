@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Agent-IX
 
-//! Timed-model wire evidence read from the owning QSpec checkout.
+//! Timed-model wire evidence read from the owning FSpec checkout.
 //! Clause and aggregate-order controls exercise the public V2 reader.
 use super::*;
-use quire_canonical::Limits;
-use quire_contract_model::{
+use filament_contract_model::{
     encode_checked_package_v2, CheckedCollectionKind, CheckedMemberType, CheckedNodeId,
     CheckedOccurrenceRole, CheckedTerm,
 };
+use quire_canonical::Limits;
 
 fn published() -> Value {
     read_json(&fixtures_dir().join("positive-timed-model-nodes.json"))
@@ -350,7 +350,7 @@ fn timed_equal_region_rational_order_charges_before_big_integer_work() {
     };
     assert_eq!(
         incomplete.limit_kind,
-        quire_contract_model::CheckedPackageLimit::Work
+        filament_contract_model::CheckedPackageLimit::Work
     );
     assert_eq!(incomplete.limit, low - 1);
     assert_eq!(incomplete.consumed, low);
@@ -361,7 +361,7 @@ fn timed_equal_region_rational_order_charges_before_big_integer_work() {
 }
 
 /// Trace: FR-038-AC-357, FR-038-AC-358, FR-038-AC-359, FR-038-AC-360, FR-038-AC-361, FR-038-AC-362, FR-038-AC-385, FR-038-AC-386, TC-048.
-/// Provenance: IR-1109 and IR-1234; QSpec CL-25 through CL-62.
+/// Provenance: IR-1109 and IR-1234; FSpec CL-25 through CL-62.
 #[test]
 fn timed_clause_published_vectors_match_reader() {
     let fixtures = fixtures_dir();
@@ -692,7 +692,7 @@ fn sort_timed_graph_dependencies(package: &mut Value) {
     }
 }
 
-/// Public-reader evidence over QSpec's selected package and exact AO patches.
+/// Public-reader evidence over FSpec's selected package and exact AO patches.
 #[trace("TC-048", "FR-038-AC-342")]
 #[test]
 fn timed_aggregate_order_published_vectors_read_at_exact_loci() {
@@ -1112,7 +1112,7 @@ fn timed_aggregate_each_root_branch_enforces_source_order() {
     }
 }
 
-/// QSpec FR-322-AC-265 orders equal-region clauses by structural member key.
+/// FSpec FR-322-AC-265 orders equal-region clauses by structural member key.
 #[trace("TC-048", "FR-038-AC-342")]
 #[test]
 fn timed_clause_equal_regions_use_structural_order_before_refusing_repetition() {
@@ -1148,7 +1148,7 @@ fn timed_clause_equal_regions_use_structural_order_before_refusing_repetition() 
         }
         if binding == 5 {
             // The published guard pair is source-ordered touch, arm. At a
-            // region tie, QSpec's operation-name key orders arm before touch.
+            // region tie, FSpec's operation-name key orders arm before touch.
             let nodes = package["semantic_graph"]["nodes"]
                 .as_array()
                 .expect("nodes");
@@ -1257,7 +1257,7 @@ fn timed_slot_selected_package_admits_nested_and_optional_clock_places() {
             node.node_tag.as_ref() == "model"
                 && node.semantic_form.as_ref() == "object_type"
                 && node.owner.as_ref().is_some_and(|owner| {
-                    matches!(owner, quire_contract_model::CheckedNodeOwner::Model { node, .. }
+                    matches!(owner, filament_contract_model::CheckedNodeOwner::Model { node, .. }
                         if node.as_ref() == "ix://acme/orders/Order")
                 })
         })
@@ -1306,11 +1306,11 @@ fn encode_package(package: &CheckedPackageV2) -> Vec<u8> {
         package.name(),
         package.lock(),
         package.graph(),
-        quire_contract_model::CheckedPackageSourceCorrespondenceRef {
+        filament_contract_model::CheckedPackageSourceCorrespondenceRef {
             source_map: package.source_map(),
             refinement_step_rows: package.refinement_step_rows(),
         },
-        quire_contract_model::CheckedPackageSidecarsRef {
+        filament_contract_model::CheckedPackageSidecarsRef {
             temporal_clause_names: package.temporal_clause_names(),
             operation_effects: None,
             operation_bodies: None,
@@ -1391,7 +1391,7 @@ fn timed_model_published_fixture_round_trips_complete_nodes() {
     assert_eq!(
         wire["semantic_graph"]["nodes"][42]["body"],
         json!({"term":"dimension","base":true,"terms":[]}),
-        "QSpec #625 source Time carries an explicit base flag"
+        "FSpec #625 source Time carries an explicit base flag"
     );
     assert_eq!(
         wire["semantic_graph"]["nodes"].as_array().unwrap().len(),
@@ -1480,7 +1480,7 @@ fn timed_model_published_schema_vectors_refuse_before_semantic_validation() {
     }
 }
 
-#[trace("TC-048", "QSpec-TM-09", "QSpec-TM-21", "QSpec-TM-30", "FR-038-AC-342")]
+#[trace("TC-048", "FSpec-TM-09", "FSpec-TM-21", "FSpec-TM-30", "FR-038-AC-342")]
 #[test]
 fn timed_model_semantic_vectors_refuse_at_the_published_cause_and_locus() {
     let vectors = read_json(&fixtures_dir().join("../timed-model-node-vectors.json")).unwrap();
@@ -1621,7 +1621,7 @@ fn timed_model_semantic_vectors_refuse_at_the_published_cause_and_locus() {
             }
             "wrong-terminal-clock-type" => {
                 wire["semantic_graph"]["nodes"][45]["body"]["members"][2]["value"]["members"][0]
-                    ["members"][3]["value"]["value"] = json!("ix://quire/native/Integer")
+                    ["members"][3]["value"]["value"] = json!("ix://filament/native/Integer")
             }
             "coherent-forged-selected-chain" => {
                 let place = &mut wire["semantic_graph"]["nodes"][45]["body"]["members"];
@@ -1887,7 +1887,7 @@ fn timed_model_stage_precedence_has_independent_defect_controls() {
 
     let mut operation = original.clone();
     operation["semantic_graph"]["nodes"][5]["body"]["operation"]["identity"] =
-        json!("quire.op.unknown");
+        json!("filament.op.unknown");
     fixture_support::settle(&mut operation);
 
     let mut hybrid = original.clone();
@@ -1903,7 +1903,7 @@ fn timed_model_stage_precedence_has_independent_defect_controls() {
         };
         assert_eq!((refusal.code, refusal.cause), (code, cause));
         if cause == Some(Cause::OperationLawMismatch) {
-            // QSpec protocol V10 keeps the primary node and independently
+            // FSpec protocol V10 keeps the primary node and independently
             // supplies the law-row document pointer, not the role pointer.
             assert_eq!(
                 refusal
@@ -2239,7 +2239,7 @@ fn timed_model_rebuilt_semantic_defects_keep_paired_causes() {
 /// A root that stops listing an existing guard still leaves a real guard node.
 /// This control checks GD-03's published code, cause and locus after
 /// authenticated package identities are rebuilt.
-/// Provenance: IR-1083, QSpec STD-526 GD-03.
+/// Provenance: IR-1083, FSpec STD-526 GD-03.
 #[trace("TC-048", "FR-038-AC-358")]
 #[test]
 fn timed_model_unlisted_guard_refuses_at_the_timed_join() {

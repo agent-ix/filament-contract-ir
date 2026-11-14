@@ -1,20 +1,20 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Agent-IX
 
-//! Public-reader controls for QSpec's protocol vector rows.
+//! Public-reader controls for FSpec's protocol vector rows.
 
 use super::{
     fixture_support, fixtures_dir, proposal_dir_of, read_json, read_package_with_document,
     DOMAIN_DOCUMENT,
 };
+use filament_contract_model::{CheckedPackageReadLimits, CheckedPackageV2ReadResult};
 use ix_trace_rs::trace;
-use quire_contract_model::{CheckedPackageReadLimits, CheckedPackageV2ReadResult};
 use serde_json::{json, Value};
 
 fn vector(id: &str) -> Value {
     let path = proposal_dir_of(&fixtures_dir()).join("fixtures/protocol-node-vectors.json");
-    let vectors = read_json(&path).expect("QSpec protocol vectors");
-    let cases = vectors["cases"].as_array().expect("QSpec cases");
+    let vectors = read_json(&path).expect("FSpec protocol vectors");
+    let cases = vectors["cases"].as_array().expect("FSpec cases");
     let rows = cases
         .iter()
         .filter(|row| row["id"] == id)
@@ -79,7 +79,7 @@ fn qspec_k2_role_rename_changes_declared_and_operand_ids() {
         .as_array_mut()
         .expect("nodes")
         .push(json!({
-            "schema_version": "quire.checked-semantic-graph/v2",
+            "schema_version": "filament.checked-semantic-graph/v2",
             "node_id": derived_id,
             "node_tag": "expression",
             "semantic_form": "reference",
@@ -358,12 +358,12 @@ fn qspec_k10_acyclic_protocol_member_admits_a_lone_group_label() {
 #[trace("TC-048", "FR-038-AC-463", "FR-038-AC-464")]
 #[test]
 fn qspec_role_port_member_cases_use_the_selected_declaration_kind() {
-    use quire_contract_model::{
+    use filament_contract_model::{
         CheckedPackageRefusalCause as Cause, CheckedPackageRefusalCode as Code,
         CheckedProtocolRefusalDetail,
     };
     let path = proposal_dir_of(&fixtures_dir()).join("fixtures/protocol-node-vectors.json");
-    let vectors = read_json(&path).expect("QSpec protocol vectors");
+    let vectors = read_json(&path).expect("FSpec protocol vectors");
     let mut exercised = std::collections::BTreeSet::new();
     for row in vectors["cases"].as_array().unwrap().iter().filter(|row| {
         row["section"] == "Role vectors"
@@ -551,7 +551,7 @@ fn qspec_role_port_member_cases_use_the_selected_declaration_kind() {
     for id in ["RL26", "RL27", "RL28", "RL29", "RL30", "RL31"] {
         assert!(
             exercised.contains(id),
-            "QSpec Port-role vector {id} missing"
+            "FSpec Port-role vector {id} missing"
         );
     }
 }

@@ -3,7 +3,7 @@ id: TC-466
 title: "Selected-model population catalog includes unused declarations under finite limits"
 type: TC
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/FR-038
+  - target: ix://agent-ix/filament-contract-ir/FR-038
     type: verifies
 ---
 # TC-466: Selected-model population catalog includes unused declarations under finite limits

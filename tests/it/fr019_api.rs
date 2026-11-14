@@ -1,19 +1,19 @@
 //! Focused public API evidence for FR-019's split interface criteria.
 
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     ContractPackage, DiagnosticCode, ValidationOptions, MAX_SEMANTIC_COLLECTION_ITEMS,
     MAX_SEMANTIC_DEPTH, MAX_SEMANTIC_NODES, MAX_WIRE_JSON_DEPTH,
 };
+use ix_trace_rs::trace;
 use serde_json::{json, Value};
 use syn::{visit::Visit, Fields, FnArg, ImplItem, Item, ReturnType, Type, Visibility};
 
-const IDENTITY: &str = include_str!("../../crates/quire-contract-model/src/identity.rs");
-const EXPRESSION: &str = include_str!("../../crates/quire-contract-model/src/expression.rs");
-const CANONICAL: &str = include_str!("../../crates/quire-contract-model/src/canonical.rs");
-const COVERAGE: &str = include_str!("../../crates/quire-contract-model/src/coverage.rs");
-const BINDING: &str = include_str!("../../crates/quire-contract-model/src/binding.rs");
-const WIRE: &str = include_str!("../../crates/quire-contract-model/src/wire.rs");
+const IDENTITY: &str = include_str!("../../crates/filament-contract-model/src/identity.rs");
+const EXPRESSION: &str = include_str!("../../crates/filament-contract-model/src/expression.rs");
+const CANONICAL: &str = include_str!("../../crates/filament-contract-model/src/canonical.rs");
+const COVERAGE: &str = include_str!("../../crates/filament-contract-model/src/coverage.rs");
+const BINDING: &str = include_str!("../../crates/filament-contract-model/src/binding.rs");
+const WIRE: &str = include_str!("../../crates/filament-contract-model/src/wire.rs");
 
 fn parse(source: &str) -> syn::File {
     syn::parse_file(source).expect("model source must parse")
@@ -316,8 +316,8 @@ fn tc_018_every_canonical_entrypoint_requires_the_closed_profile() {
     assert_eq!(profile.variants.len(), 1);
     assert_eq!(profile.variants[0].ident, "V1");
     assert_eq!(
-        quire_contract_model::CanonicalProfile::V1.as_str(),
-        "quire.contract.canonical-json/v1"
+        filament_contract_model::CanonicalProfile::V1.as_str(),
+        "filament.contract.canonical-json/v1"
     );
     let mut omitted = method(&canonical, "ContractPackage", "canonical_package")
         .sig
@@ -354,7 +354,7 @@ impl<'ast> Visit<'ast> for ForbiddenTypes {
                 "Path", "PathBuf", "File", "Mutex", "RwLock", "RefCell", "usize", "isize",
             ]
             .contains(&name.as_str())
-                || name.starts_with("Qsl")
+                || name.starts_with("Fsl")
                 || name.starts_with("ObservationWire")
                 || name.starts_with("ProtocolWire")
         }) || full.contains("serde_json::Value")

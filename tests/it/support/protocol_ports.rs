@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! Original selected-model Port fixture shared by native and QSpec reader controls.
+//! Original selected-model Port fixture shared by native and FSpec reader controls.
 
 use super::{
     admitted_protocol_families, family_key, family_model_document, node_id, protocol_role_node,
@@ -31,7 +31,7 @@ pub fn role_port_fixture() -> (Value, Value, usize) {
         ("part", "part"),
         ("connection", "connection"),
     ] {
-        document["constructs"].as_array_mut().unwrap().push(json!({"kind":{"module":"test/families", "name":name}, "construct":{"meaning":format!("quire.meaning.systems.{meaning}/v1")}}));
+        document["constructs"].as_array_mut().unwrap().push(json!({"kind":{"module":"test/families", "name":name}, "construct":{"meaning":format!("filament.meaning.systems.{meaning}/v1")}}));
     }
     for (name, kind) in [
         ("PumpOutlet", "port"),

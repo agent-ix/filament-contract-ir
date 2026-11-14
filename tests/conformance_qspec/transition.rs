@@ -1,18 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Agent-IX
 
-//! TC-064: the published QSpec transition is read through the public typed carrier.
+//! TC-064: the published FSpec transition is read through the public typed carrier.
 
 use super::*;
-use quire_canonical::Limits;
-use quire_contract_model::{
+use filament_contract_model::{
     encode_checked_package_v2, ApplicationOperator, CheckedNodeId, CheckedTerm,
 };
+use quire_canonical::Limits;
 use std::collections::BTreeMap;
 
 fn published() -> Value {
     read_json(&fixtures_dir().join("positive-state-transition.json"))
-        .expect("QSpec state-transition fixture")
+        .expect("FSpec state-transition fixture")
 }
 
 fn transition_position(package: &Value) -> usize {
@@ -29,11 +29,11 @@ fn write(read: &CheckedPackageV2) -> Value {
         read.name(),
         read.lock(),
         read.graph(),
-        quire_contract_model::CheckedPackageSourceCorrespondenceRef {
+        filament_contract_model::CheckedPackageSourceCorrespondenceRef {
             source_map: read.source_map(),
             refinement_step_rows: read.refinement_step_rows(),
         },
-        quire_contract_model::CheckedPackageSidecarsRef {
+        filament_contract_model::CheckedPackageSidecarsRef {
             temporal_clause_names: read.temporal_clause_names(),
             operation_effects: None,
             operation_bodies: None,
@@ -148,14 +148,14 @@ fn read_with_selected_model_document(
     )
 }
 
-/// The QSpec-owned half of AC-7 reads the selected checkout; its QSL-authored
+/// The FSpec-owned half of AC-7 reads the selected checkout; its FSL-authored
 /// source/claim half remains separate evidence.
 #[trace("TC-064", "FR-067-AC-1", "FR-067-AC-6", "FR-067-AC-7")]
 #[test]
 fn published_boolean_transition_retains_five_typed_bindings_through_writer() {
     let fixture = published();
     let CheckedPackageV2ReadResult::Admitted(read) =
-        read_package(&fixture).expect("selected QSpec evidence")
+        read_package(&fixture).expect("selected FSpec evidence")
     else {
         panic!("published Boolean transition must admit");
     };
@@ -188,13 +188,13 @@ fn published_boolean_transition_retains_five_typed_bindings_through_writer() {
     assert_eq!(transition.occurrences.len(), 1);
     assert_eq!(
         transition.occurrences[0].role,
-        quire_contract_model::CheckedOccurrenceRole::Claim
+        filament_contract_model::CheckedOccurrenceRole::Claim
     );
 
     let written = write(&read);
     assert_eq!(written, crate::fixture_support::wire_form(&fixture));
     let CheckedPackageV2ReadResult::Admitted(second) =
-        read_package(&written).expect("selected QSpec evidence")
+        read_package(&written).expect("selected FSpec evidence")
     else {
         panic!("written transition must read again");
     };
@@ -250,13 +250,13 @@ fn pointed_clause_anchors_and_a_distinct_unpointed_transition_anchor_round_trip(
     }
     refresh_transition(&mut package, transition);
     let CheckedPackageV2ReadResult::Admitted(read) =
-        read_package(&package).expect("selected QSpec evidence")
+        read_package(&package).expect("selected FSpec evidence")
     else {
         panic!("pointed clauses with separate unpointed transition anchor must admit");
     };
     assert_eq!(write(&read), crate::fixture_support::wire_form(&package));
     assert!(matches!(
-        read_package(&write(&read)).expect("selected QSpec evidence"),
+        read_package(&write(&read)).expect("selected FSpec evidence"),
         CheckedPackageV2ReadResult::Admitted(_)
     ));
 }
@@ -291,7 +291,7 @@ fn two_source_claims_share_one_transition_identity_and_retain_regions() {
         "occurrences do not rename the package"
     );
     let CheckedPackageV2ReadResult::Admitted(read) =
-        read_package(&package).expect("selected QSpec evidence")
+        read_package(&package).expect("selected FSpec evidence")
     else {
         panic!("two checked source declarations must admit");
     };
@@ -315,7 +315,7 @@ fn two_source_claims_share_one_transition_identity_and_retain_regions() {
     let written = write(&read);
     assert_eq!(written, crate::fixture_support::wire_form(&package));
     let CheckedPackageV2ReadResult::Admitted(second_read) =
-        read_package(&written).expect("selected QSpec evidence")
+        read_package(&written).expect("selected FSpec evidence")
     else {
         panic!("two written source claims must read again");
     };
@@ -408,7 +408,7 @@ fn published_transition_join_mutations_refuse_at_the_first_target() {
         };
         refresh_transition(&mut package, position);
         let CheckedPackageV2ReadResult::Refused(refusal) =
-            read_package(&package).expect("selected QSpec evidence")
+            read_package(&package).expect("selected FSpec evidence")
         else {
             panic!("{case} must refuse");
         };
@@ -474,11 +474,11 @@ fn published_transition_closed_shape_mutations_refuse_before_identity() {
                 node["occurrences"][0]["role"] = json!("declaration");
             }
             "wrong_role" => node["occurrences"][0]["role"] = json!("declaration"),
-            _ => unreachable!("closed QSpec shape mutation list"),
+            _ => unreachable!("closed FSpec shape mutation list"),
         }
         fixture_support::settle(&mut package);
         let CheckedPackageV2ReadResult::Refused(refusal) =
-            read_package(&package).expect("selected QSpec evidence")
+            read_package(&package).expect("selected FSpec evidence")
         else {
             panic!("{case} must refuse");
         };
@@ -506,7 +506,7 @@ fn transition_schema_defect_precedes_a_wrong_anchor() {
     node["body"]["arguments"][1]["value"]["target"] = target(&published(), "model", "object_type");
     fixture_support::settle(&mut package);
     let CheckedPackageV2ReadResult::Refused(refusal) =
-        read_package(&package).expect("selected QSpec evidence")
+        read_package(&package).expect("selected FSpec evidence")
     else {
         panic!("schema defect must refuse before state joins");
     };
@@ -527,7 +527,7 @@ fn transition_member_and_profile_mutations_refuse() {
         json!("sequence");
     refresh_transition(&mut member, position);
     let CheckedPackageV2ReadResult::Refused(refusal) =
-        read_package(&member).expect("selected QSpec evidence")
+        read_package(&member).expect("selected FSpec evidence")
     else {
         panic!("wrong transition operator member must refuse");
     };
@@ -541,7 +541,7 @@ fn transition_member_and_profile_mutations_refuse() {
     );
 
     let mut control = read_json(&fixtures_dir().join("positive-clause-operations.json"))
-        .expect("QSpec clause and protocol fixture");
+        .expect("FSpec clause and protocol fixture");
     let control_position = control["semantic_graph"]["nodes"]
         .as_array()
         .expect("published nodes")
@@ -549,13 +549,13 @@ fn transition_member_and_profile_mutations_refuse() {
         .position(|node| {
             node["node_tag"] == "protocol"
                 && node["semantic_form"] == "control"
-                && node["body"]["operation"]["identity"] == "quire.op.protocol.control"
+                && node["body"]["operation"]["identity"] == "filament.op.protocol.control"
         })
         .expect("published control");
     control["semantic_graph"]["nodes"][control_position]["body"]["operation"]["member"]
         ["operator"] = json!("transition");
     let CheckedPackageV2ReadResult::Refused(refusal) =
-        read_package(&control).expect("selected QSpec evidence")
+        read_package(&control).expect("selected FSpec evidence")
     else {
         panic!("protocol control cannot name the transition operator");
     };
@@ -572,7 +572,7 @@ fn transition_member_and_profile_mutations_refuse() {
     profile["lock"]["profile_selections"] = json!([]);
     fixture_support::settle(&mut profile);
     let CheckedPackageV2ReadResult::Refused(refusal) =
-        read_package(&profile).expect("selected QSpec evidence")
+        read_package(&profile).expect("selected FSpec evidence")
     else {
         panic!("unselected protocol_profile must refuse");
     };
@@ -650,7 +650,7 @@ fn a_transition_binds_one_clause_while_its_anchor_has_several_pre_or_post_clause
         let bound = package["semantic_graph"]["nodes"][original]["node_id"].clone();
         append_second_clause(&mut package, original, alternative);
         let CheckedPackageV2ReadResult::Admitted(read) =
-            read_package(&package).expect("selected QSpec evidence")
+            read_package(&package).expect("selected FSpec evidence")
         else {
             panic!("a second {name} clause must not invalidate the transition");
         };
@@ -708,7 +708,7 @@ fn a_second_transition_for_the_same_anchor_and_subject_refuses() {
     };
     let later_id = &package["semantic_graph"]["nodes"][later]["node_id"];
     let CheckedPackageV2ReadResult::Refused(refusal) =
-        read_package(&package).expect("selected QSpec evidence")
+        read_package(&package).expect("selected FSpec evidence")
     else {
         panic!("duplicate anchor and subject must refuse");
     };
@@ -750,7 +750,7 @@ fn two_transition_defects_refuse_in_ascending_structural_node_order() {
         second_position
     };
     let CheckedPackageV2ReadResult::Refused(refusal) =
-        read_package(&package).expect("selected QSpec evidence")
+        read_package(&package).expect("selected FSpec evidence")
     else {
         panic!("both bad transitions must refuse");
     };
@@ -797,7 +797,7 @@ fn integer_model_field_cannot_be_a_boolean_transition_subject() {
         .push(source);
     refresh_transition(&mut package, position);
     let CheckedPackageV2ReadResult::Refused(refusal) =
-        read_package(&package).expect("selected QSpec evidence")
+        read_package(&package).expect("selected FSpec evidence")
     else {
         panic!("Integer level cannot be a Boolean state subject");
     };
@@ -934,7 +934,7 @@ fn transition_application_nested_in_boolean_or_refuses_at_the_inner_application(
     package["semantic_graph"]["nodes"][9]["body"]["arguments"][0] = transition;
     fixture_support::settle(&mut package);
     let CheckedPackageV2ReadResult::Refused(refusal) =
-        read_package(&package).expect("selected QSpec evidence")
+        read_package(&package).expect("selected FSpec evidence")
     else {
         panic!("nested transition must refuse");
     };
@@ -960,7 +960,7 @@ fn a_frame_member_defect_precedes_a_transition_anchor_defect() {
     package["semantic_graph"]["nodes"][position]["body"]["arguments"][0]["value"]["target"] = model;
     refresh_transition(&mut package, position);
     let CheckedPackageV2ReadResult::Refused(refusal) =
-        read_package(&package).expect("selected QSpec evidence")
+        read_package(&package).expect("selected FSpec evidence")
     else {
         panic!("bad frame must refuse before transition anchor");
     };
@@ -992,7 +992,7 @@ fn graph_dependency_and_selected_model_owner_refuse_before_a_frame_defect() {
     let mut graph = with_bad_frame();
     graph["semantic_graph"]["nodes"][9]["dependencies"] = json!([]);
     let CheckedPackageV2ReadResult::Refused(refusal) =
-        read_package(&graph).expect("selected QSpec evidence")
+        read_package(&graph).expect("selected FSpec evidence")
     else {
         panic!("graph dependency defect must refuse before frame");
     };
@@ -1007,7 +1007,7 @@ fn graph_dependency_and_selected_model_owner_refuse_before_a_frame_defect() {
     selected["semantic_graph"]["nodes"][3]["owner"]["node"] = json!("ix://acme/orders/Missing");
     fixture_support::settle(&mut selected);
     let CheckedPackageV2ReadResult::Refused(refusal) =
-        read_package(&selected).expect("selected QSpec evidence")
+        read_package(&selected).expect("selected FSpec evidence")
     else {
         panic!("selected-model owner defect must refuse before frame");
     };
@@ -1034,7 +1034,7 @@ fn anchor_refusal_precedes_transition_and_state_refusal_precedes_operation_catal
     anchor["semantic_graph"]["nodes"][position]["body"]["arguments"][0]["value"]["target"] = model;
     refresh_transition(&mut anchor, position);
     let CheckedPackageV2ReadResult::Refused(refusal) =
-        read_package(&anchor).expect("selected QSpec evidence")
+        read_package(&anchor).expect("selected FSpec evidence")
     else {
         panic!("anchor defect must refuse before transition defect");
     };
@@ -1053,7 +1053,7 @@ fn anchor_refusal_precedes_transition_and_state_refusal_precedes_operation_catal
         ["identity"] = json!("missing-profile");
     refresh_transition(&mut operation, position);
     let CheckedPackageV2ReadResult::Refused(refusal) =
-        read_package(&operation).expect("selected QSpec evidence")
+        read_package(&operation).expect("selected FSpec evidence")
     else {
         panic!("unselected law must reach the operation step by itself");
     };
@@ -1070,7 +1070,7 @@ fn anchor_refusal_precedes_transition_and_state_refusal_precedes_operation_catal
         model;
     refresh_transition(&mut operation, position);
     let CheckedPackageV2ReadResult::Refused(refusal) =
-        read_package(&operation).expect("selected QSpec evidence")
+        read_package(&operation).expect("selected FSpec evidence")
     else {
         panic!("transition state defect must refuse before operation law defect");
     };
@@ -1102,7 +1102,7 @@ fn a_clause_anchor_defect_precedes_a_transition_anchor_defect() {
     package["semantic_graph"]["nodes"][position]["body"]["arguments"][0]["value"]["target"] = model;
     refresh_transition(&mut package, position);
     let CheckedPackageV2ReadResult::Refused(refusal) =
-        read_package(&package).expect("selected QSpec evidence")
+        read_package(&package).expect("selected FSpec evidence")
     else {
         panic!("bad clause must refuse before transition");
     };
@@ -1128,7 +1128,7 @@ fn transition_application_at_a_binary_expression_root_refuses_before_anchor_join
     package["semantic_graph"]["nodes"][position]["body"]["arguments"][0]["value"]["target"] = model;
     fixture_support::settle(&mut package);
     let CheckedPackageV2ReadResult::Refused(refusal) =
-        read_package(&package).expect("selected QSpec evidence")
+        read_package(&package).expect("selected FSpec evidence")
     else {
         panic!("transition application on expression node must refuse");
     };
@@ -1182,7 +1182,7 @@ fn transition_joins_refuse_in_anchor_subject_input_clause_order() {
         };
         refresh_transition(&mut package, position);
         let CheckedPackageV2ReadResult::Refused(refusal) =
-            read_package(&package).expect("selected QSpec evidence")
+            read_package(&package).expect("selected FSpec evidence")
         else {
             panic!("{earlier} and later defect must refuse");
         };

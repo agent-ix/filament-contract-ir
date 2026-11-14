@@ -6,8 +6,7 @@
 use crate::support::checked_package::{
     canonical, evidence_for, v2_all_families, v2_reference_chain,
 };
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     encode_checked_package_v2, CheckedAbstractionFrame, CheckedAbstractionObject,
     CheckedAbstractionPopulation, CheckedArtifactRef, CheckedDimensionOperand,
     CheckedFairnessTarget, CheckedNodeId, CheckedNodePathSegment, CheckedOperationMember,
@@ -20,6 +19,7 @@ use quire_contract_model::{
     RefinementPackageNodeKey, RefinementPopulation, RefinementStep, RefinementStepArgument,
     RefinementStepTarget,
 };
+use ix_trace_rs::trace;
 use serde_json::Value;
 use std::sync::Arc;
 
@@ -93,7 +93,7 @@ fn public_node_and_term_mapping_visits_original_slots_once_in_order() {
     let literal_data = serde_json::to_value(&a).expect("node id JSON");
     let mut node = CheckedSemanticNodeV2 {
         node_id: a.clone(),
-        schema_version: "quire.checked-semantic-graph/v2".into(),
+        schema_version: "filament.checked-semantic-graph/v2".into(),
         node_tag: "expression".into(),
         semantic_form: "test".into(),
         semantic_type: b.clone(),
@@ -109,7 +109,7 @@ fn public_node_and_term_mapping_visits_original_slots_once_in_order() {
             CheckedTerm::Literal {
                 type_id: a.clone(),
                 value_kind: LiteralKind::String,
-                value: quire_contract_model::CheckedJson::from_serializable(&literal_data)
+                value: filament_contract_model::CheckedJson::from_serializable(&literal_data)
                     .expect("a literal"),
             },
         ]),
@@ -181,7 +181,7 @@ fn public_node_and_term_mapping_visits_original_slots_once_in_order() {
 #[test]
 fn admitted_operation_member_maps_whole_nested_id_and_typed_mirror() {
     let package = crate::checked_package_v2_catalogue_differential::admitted_catalogue_control(
-        "quire.op.collection.index",
+        "filament.op.collection.index",
     );
     let mut term = package
         .graph()
@@ -189,7 +189,7 @@ fn admitted_operation_member_maps_whole_nested_id_and_typed_mirror() {
         .iter()
         .find_map(|node| match &node.body {
             CheckedTerm::Application { operation, .. }
-                if operation.identity() == Some("quire.op.collection.index") =>
+                if operation.identity() == Some("filament.op.collection.index") =>
             {
                 Some(node.body.clone())
             }
@@ -458,70 +458,70 @@ fn external_admitted_operation_member_census_maps_structural_ids() {
     let (field_wire, field_evidence) =
         crate::checked_package_v2_model_fields::record_project_control();
     let (relationship_wire, relationship_evidence) =
-        crate::checked_package_v2_model_members::model_member_control("quire.op.model.navigate");
+        crate::checked_package_v2_model_members::model_member_control("filament.op.model.navigate");
     let (operation_wire, operation_evidence) =
         crate::checked_package_v2_model_members::model_member_control(
-            "quire.op.model.dispatch_call",
+            "filament.op.model.dispatch_call",
         );
     for (package, identity, kind, target_kind, slots) in [
         (
             admitted_with_evidence(field_wire, field_evidence),
-            "quire.op.record.project",
+            "filament.op.record.project",
             "field",
             None,
             1,
         ),
         (
             crate::checked_package_v2_catalogue_differential::admitted_catalogue_control(
-                "quire.op.tuple.project",
+                "filament.op.tuple.project",
             ),
-            "quire.op.tuple.project",
+            "filament.op.tuple.project",
             "position",
             None,
             1,
         ),
         (
             crate::checked_package_v2_catalogue_differential::admitted_catalogue_control(
-                "quire.op.collection.index",
+                "filament.op.collection.index",
             ),
-            "quire.op.collection.index",
+            "filament.op.collection.index",
             "element",
             None,
             1,
         ),
         (
             admitted_with_evidence(relationship_wire, relationship_evidence),
-            "quire.op.model.navigate",
+            "filament.op.model.navigate",
             "relationship_end",
             None,
             2,
         ),
         (
             crate::checked_package_v2_model_members::admitted_reaches_population_for_node_map(),
-            "quire.op.model.reaches",
+            "filament.op.model.reaches",
             "relationship_end",
             None,
             3,
         ),
         (
             admitted_with_evidence(operation_wire, operation_evidence),
-            "quire.op.model.dispatch_call",
+            "filament.op.model.dispatch_call",
             "operation",
             None,
             1,
         ),
         (
             crate::checked_package_v2_catalogue_differential::admitted_catalogue_control(
-                "quire.op.numeric.convert",
+                "filament.op.numeric.convert",
             ),
-            "quire.op.numeric.convert",
+            "filament.op.numeric.convert",
             "type_argument",
             None,
             1,
         ),
         (
             crate::checked_package_v2_temporal::admitted_fairness_source_for_contract(),
-            "quire.op.temporal.fair",
+            "filament.op.temporal.fair",
             "fairness",
             Some("operation"),
             1,
@@ -530,7 +530,7 @@ fn external_admitted_operation_member_census_maps_structural_ids() {
             crate::checked_package_v2_protocol_body::admitted_protocol_fairness_for_node_map(
                 "protocol_root",
             ),
-            "quire.op.temporal.fair",
+            "filament.op.temporal.fair",
             "fairness",
             Some("protocol_root"),
             1,
@@ -539,7 +539,7 @@ fn external_admitted_operation_member_census_maps_structural_ids() {
             crate::checked_package_v2_protocol_body::admitted_protocol_fairness_for_node_map(
                 "attempt_node",
             ),
-            "quire.op.temporal.fair",
+            "filament.op.temporal.fair",
             "fairness",
             Some("attempt_node"),
             1,
@@ -548,7 +548,7 @@ fn external_admitted_operation_member_census_maps_structural_ids() {
             crate::checked_package_v2_protocol_body::admitted_protocol_fairness_for_node_map(
                 "parallel_branch",
             ),
-            "quire.op.temporal.fair",
+            "filament.op.temporal.fair",
             "fairness",
             Some("parallel_branch"),
             1,
@@ -557,7 +557,7 @@ fn external_admitted_operation_member_census_maps_structural_ids() {
             crate::checked_package_v2_protocol_body::admitted_protocol_fairness_for_node_map(
                 "compensation_template",
             ),
-            "quire.op.temporal.fair",
+            "filament.op.temporal.fair",
             "fairness",
             Some("compensation_template"),
             1,
@@ -574,13 +574,13 @@ fn frame_maps_only_typed_ids() {
     let replacement = id("replacement");
     let mut frame = CheckedTerm::Frame {
         modifies: vec![
-            quire_contract_model::CheckedFrameModification::Relationship {
+            filament_contract_model::CheckedFrameModification::Relationship {
                 declaration: original.clone(),
             },
         ],
         creates: vec![original.clone()],
         deletes: vec![original.clone()],
-        deletes_scoped: vec![quire_contract_model::CheckedScopedDeletion::Parameter {
+        deletes_scoped: vec![filament_contract_model::CheckedScopedDeletion::Parameter {
             name: "original".into(),
         }],
     };
@@ -601,14 +601,14 @@ fn frame_maps_only_typed_ids() {
         panic!("frame changed form");
     };
     assert!(
-        matches!(&modifies[0], quire_contract_model::CheckedFrameModification::Relationship { declaration }
+        matches!(&modifies[0], filament_contract_model::CheckedFrameModification::Relationship { declaration }
         if declaration == &replacement)
     );
     assert_eq!(creates, vec![replacement.clone()]);
     assert_eq!(deletes, vec![replacement]);
     assert_eq!(
         deletes_scoped,
-        vec![quire_contract_model::CheckedScopedDeletion::Parameter {
+        vec![filament_contract_model::CheckedScopedDeletion::Parameter {
             name: "original".into()
         }]
     );
@@ -900,7 +900,7 @@ fn hundred_thousand_node_position_remap_preserves_admitted_references() {
             source_map: &source_map,
             refinement_step_rows: original.refinement_step_rows(),
         },
-        quire_contract_model::CheckedPackageSidecarsRef {
+        filament_contract_model::CheckedPackageSidecarsRef {
             temporal_clause_names: original.temporal_clause_names(),
             operation_effects: None,
             operation_bodies: None,
@@ -973,7 +973,7 @@ fn mapped_duplicate_is_refused_by_the_package_reader() {
             source_map: admitted.source_map(),
             refinement_step_rows: admitted.refinement_step_rows(),
         },
-        quire_contract_model::CheckedPackageSidecarsRef {
+        filament_contract_model::CheckedPackageSidecarsRef {
             temporal_clause_names: admitted.temporal_clause_names(),
             operation_effects: None,
             operation_bodies: None,

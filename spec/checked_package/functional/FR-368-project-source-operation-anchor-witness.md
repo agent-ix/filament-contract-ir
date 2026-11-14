@@ -3,21 +3,21 @@ id: FR-368
 title: "Project the source operation anchor witness"
 type: FR
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/StR-001
+  - target: ix://agent-ix/filament-contract-ir/StR-001
     type: traces_to
-  - target: ix://agent-ix/quire-contract-ir/FR-038
+  - target: ix://agent-ix/filament-contract-ir/FR-038
     type: depends_on
-  - target: ix://agent-ix/quire-contract-ir/FR-352
+  - target: ix://agent-ix/filament-contract-ir/FR-352
     type: depends_on
-  - target: ix://agent-ix/quire-contract-ir/FR-362
+  - target: ix://agent-ix/filament-contract-ir/FR-362
     type: depends_on
-  - target: ix://agent-ix/quire-contract-ir/FR-365
+  - target: ix://agent-ix/filament-contract-ir/FR-365
     type: depends_on
-  - target: ix://agent-ix/quire-spec-language/ADR-013
+  - target: ix://agent-ix/filament-spec-language/ADR-013
     type: references
-  - target: ix://agent-ix/quire-spec-language/FR-569
+  - target: ix://agent-ix/filament-spec-language/FR-569
     type: references
-  - target: ix://agent-ix/quire-specification/FR-322
+  - target: ix://agent-ix/filament-specification/FR-322
     type: references
 ---
 
@@ -29,14 +29,14 @@ relationships:
 unavailable-witness outcome for a state `operation_anchor` whose context is a
 source-declared node, until a distinct source-operation identity witness
 exists. This requirement adds that witness kind for the operation anchor
-(QSL ADR-013 QC-30 item 4). Exact type projection of a source-declared type
+(FSL ADR-013 QC-30 item 4). Exact type projection of a source-declared type
 (a reference to it, a record view) is not part of this change and keeps FR-352's
 unavailable-witness outcome.
 
 ## Inputs
 
 A `SelectedSourceOperationRow` supplied beside the package, with the fields of
-QSL FR-390-AC-70: `source_authority`, `source_identity` (`<type>::<operation>`),
+FSL FR-390-AC-70: `source_authority`, `source_identity` (`<type>::<operation>`),
 `anchor_id` and `structural_node`. IR mints no operation identity and adds no
 opaque field. The IR public inventory (FR-019) gains the row type and its read.
 

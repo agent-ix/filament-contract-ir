@@ -3,9 +3,9 @@ id: TC-472
 title: "Exact budget charging of the strict V2 checked-package read"
 type: TC
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/FR-038
+  - target: ix://agent-ix/filament-contract-ir/FR-038
     type: verifies
-  - target: ix://agent-ix/quire-contract-ir/FR-358
+  - target: ix://agent-ix/filament-contract-ir/FR-358
     type: verifies
 ---
 # TC-472: Exact budget charging of the strict V2 checked-package read
@@ -40,7 +40,7 @@ and that every sufficient budget returns the unlimited budget's outcome.
    drop, unchanged and independently prove full worker realloc requests.
    Measure dropping a returned outcome in a separate counter interval, so
    destructor requests cannot be mistaken for during-call accounting.
-2. Corpus: every positive TC-048 fixture, the QSpec checked-package
+2. Corpus: every positive TC-048 fixture, the FSpec checked-package
    conformance packages this repository reads by reference, one refused input
    per refusal code, and the adverse shapes of FR-038-AC-511 generated in the
    test from the repository's public fixture builders. Select original tests
@@ -53,7 +53,7 @@ and that every sufficient budget returns the unlimited budget's outcome.
    reject zero-test, omitted-test, ignored-test and unexplained-entry runs.
    Persisted per-test reports retain aggregate counts, mode and outcome only;
    do not serialize original-site records, test/callsite provenance or a
-   source/QSpec revision id.
+   source/FSpec revision id.
 3. Read each input through `CheckedPackageV2::read_with_budget` under
    `NativeJoinBudget::unlimited()`, and through the unbudgeted
    `CheckedPackageV2::read` and `read_checked_package` at ample, exact and
@@ -83,7 +83,7 @@ and that every sufficient budget returns the unlimited budget's outcome.
    then, for each stage S the input reaches, with the read-storage limit one
    below the cumulative read storage at S's last charge (work ample), and, for
    each stage that charges work, with the work limit one below its cumulative
-   work (read storage ample). Include walker stack growths and quire-exact
+   work (read storage ample). Include walker stack growths and filament-exact
    limb requests as denied requests (FR-038-AC-516). Repeat with the denied allocation class chosen as each case of
    FR-038-AC-497 through FR-038-AC-507 lists. Select stage-last requests and
    the first/last request of each reached stage/form/allocation class from
@@ -123,7 +123,7 @@ and that every sufficient budget returns the unlimited budget's outcome.
    precedence pairs, the 300-level body) under the unlimited and exact budgets.
 8. Exercise `CheckedJson` (FR-038-AC-514): constructors, `node()`, equality,
    `Debug`, serde round trips of `CheckedTerm` and `CheckedDiagnosticV2`.
-9. Enumerate the QSpec adverse corpus for vectors whose expected outcome
+9. Enumerate the FSpec adverse corpus for vectors whose expected outcome
    depends on byte-stream fault order (FR-038-AC-509).
 10. (Planned: no automated check yet.) Inspect the read path for the absence of `serde_json` parsing, `Value`,
    `RawValue`, `num-bigint` arithmetic, stable sorts, `BTreeMap`, `BTreeSet`,

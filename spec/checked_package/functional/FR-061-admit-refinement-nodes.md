@@ -3,13 +3,13 @@ id: FR-061
 title: "Admit closed checked-package refinement nodes"
 type: FR
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/StR-001
+  - target: ix://agent-ix/filament-contract-ir/StR-001
     type: traces_to
-  - target: ix://agent-ix/quire-contract-ir/FR-038
+  - target: ix://agent-ix/filament-contract-ir/FR-038
     type: depends_on
-  - target: ix://agent-ix/quire-specification/FR-375
+  - target: ix://agent-ix/filament-specification/FR-375
     type: references
-  - target: ix://agent-ix/quire-specification/FR-322
+  - target: ix://agent-ix/filament-specification/FR-322
     type: references
 ---
 
@@ -19,7 +19,7 @@ relationships:
 
 When a V2 checked package carries a `relation`/`refinement` node, the
 Contract IR reader SHALL admit the exact closed body, identity, graph joins
-and occurrences published by QSpec FR-375, FR-322 and the checked-package
+and occurrences published by FSpec FR-375, FR-322 and the checked-package
 schemas, or refuse the whole package with a typed, located defect. The
 canonical writer SHALL retain every admitted member. The reader SHALL keep
 the family and body vocabularies closed; it does not infer missing rows or
@@ -27,13 +27,13 @@ interpret an unknown term as a refinement.
 
 ## Inputs
 
-The untrusted `quire.checked-package/v2` bytes, directly selected dependency
+The untrusted `filament.checked-package/v2` bytes, directly selected dependency
 packages, definition selections, model evidence and limits of
 [FR-038](./FR-038-consume-checked-package-v2.md). The normative shapes are
-`ix://agent-ix/quire-specification/FR-375` and
-`ix://agent-ix/quire-specification/FR-322`, including the published
+`ix://agent-ix/filament-specification/FR-375` and
+`ix://agent-ix/filament-specification/FR-322`, including the published
 `proposals/checked-package-v2/schema.json` and
-`schema.json` at the selected QSpec source.
+`schema.json` at the selected FSpec source.
 
 ## Outputs
 
@@ -59,7 +59,7 @@ selected subject contributes a protocol or memory step class, and is absent
 for a model-only refinement with neither kind of class. No field outside
 this body is admitted.
 
-The row entries SHALL match QSpec's closed `RefinementPopulationEntry`,
+The row entries SHALL match FSpec's closed `RefinementPopulationEntry`,
 `RefinementObjectEntry`, `RefinementStepEntry`,
 `RefinementHistoryEntry`, `RefinementAssumeEntry` and
 `RefinementEnsureEntry` shapes. A population pairs abstract and concrete
@@ -92,7 +92,7 @@ change either checked-package catalog or package name. The drain class
 means that the thread's pending writes become visible according to the
 selected model's visibility rule: `sc` is a no-op, `tso` flushes the store
 buffer in FIFO order, and `ra` has no store-buffer entries to remove and
-grants no additional visibility or ordering beyond QSpec FR-437. The
+grants no additional visibility or ordering beyond FSpec FR-437. The
 separate TSO flush class removes only the oldest buffered write for one
 thread.
 
@@ -159,7 +159,7 @@ unless another listed body key names the same local node. A dependency
 mismatch SHALL refuse `invalid_semantic_graph` at `/dependencies` in
 FR-322's graph-shape stage, before refinement meaning joins.
 
-The node SHALL carry its structural id under QSpec FR-322. The complete body and ordered rows SHALL be retained. A valid body edit can retain the same structural id; the reader checks catalog, dependency, type and row meaning independently of the id.
+The node SHALL carry its structural id under FSpec FR-322. The complete body and ordered rows SHALL be retained. A valid body edit can retain the same structural id; the reader checks catalog, dependency, type and row meaning independently of the id.
 
 The `steps`
 array SHALL retain the producer's source declaration order, including tied
@@ -275,8 +275,8 @@ and its refusal order remain as specified above.
 
 - [FR-038](./FR-038-consume-checked-package-v2.md) owns the V2 reader,
   writer, shared refusal types, identity and selected-dependency stages.
-- `ix://agent-ix/quire-specification/FR-375` owns the refinement's emitted
-  node, row grammar and identity; `ix://agent-ix/quire-specification/FR-322`
+- `ix://agent-ix/filament-specification/FR-375` owns the refinement's emitted
+  node, row grammar and identity; `ix://agent-ix/filament-specification/FR-322`
   owns graph shape, occurrence admission and reader order.
 
 ## Status

@@ -24,7 +24,7 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Install authoritative string-edge scanner
-        run: cargo install --git https://github.com/agent-ix/quire-spec-language.git qsl-string-edge
+        run: cargo install --git https://github.com/agent-ix/filament-spec-language.git fsl-string-edge
 
       - name: Lint
         run: make lint
@@ -40,7 +40,7 @@ jobs:
 
       - name: Install declared minimum Rust toolchain
         run: |
-          msrv=$(cargo metadata --locked --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "quire-contract-ir") | .rust_version')
+          msrv=$(cargo metadata --locked --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "filament-contract-ir") | .rust_version')
           test -n "$msrv" && test "$msrv" != null
           rustup toolchain install "$msrv" --profile minimal
 

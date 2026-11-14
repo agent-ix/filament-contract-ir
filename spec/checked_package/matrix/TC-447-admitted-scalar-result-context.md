@@ -3,7 +3,7 @@ id: TC-447
 title: "Admitted scalar result context identifies the exact reverse bound"
 type: TC
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/FR-049
+  - target: ix://agent-ix/filament-contract-ir/FR-049
     type: verifies
 ---
 # TC-447: Admitted scalar result context identifies the exact reverse bound
@@ -13,7 +13,7 @@ relationships:
 IR-769 implements the admitted IR result-context query. Four focused TC-447
 IR cases pass for the authored direct and selected bounds, missing or invalid
 context, shared expression occurrences and unchanged forward closure. A named
-QSL compiler check passes for the authored `a + 1` package and IR two-root
+FSL compiler check passes for the authored `a + 1` package and IR two-root
 result with independently expected operand `[0, 9]` and result `[0, 10]`.
 That check selects the direct narrow from emitted graph structure. The
 checked `RequirementItem::conversion_context()` pairing by request item,
@@ -23,7 +23,7 @@ through FR-049-AC-6 across those boundaries.
 
 ## Test Procedure
 
-Check and emit the QSL function in FR-049-AC-1, admit its checked package,
+Check and emit the FSL function in FR-049-AC-1, admit its checked package,
 and record the driver's item occurrence, add key and
 `conversion_context() -> Option<&OccurrenceKey>`. Require `Some` of the
 direct narrow occurrence and retain its role and ordinal. First lower only
@@ -36,10 +36,10 @@ source occurrences for the narrow and result bound. Query the admitted
 context with that item's application and direct-narrow occurrences. Assert
 that the add-only package returns `IncompleteContext` for the same `Some`
 input. Independently derive expected
-`[0, 10]` and `[0, 9]` from the QSL declaration, not from the context accessor.
+`[0, 10]` and `[0, 9]` from the FSL declaration, not from the context accessor.
 
-For separate reader-admitted packages, exercise QSL `None` with an own bounded
-type, an own scalar type, and a wrong-form own bounded type. Exercise QSL
+For separate reader-admitted packages, exercise FSL `None` with an own bounded
+type, an own scalar type, and a wrong-form own bounded type. Exercise FSL
 `Some` with a valid direct narrow over an own bounded type, a wrong-form or
 incompatible target, and unrelated represented conversions or other local
 consumers. Confirm only the selected occurrence determines the result. In
@@ -51,15 +51,15 @@ occurrence absent from the source map or naming another expression key and
 assert typed refusal; a different represented application occurrence of the
 same add key remains structurally valid to IR. Preserve each admitted
 source-map key and region without
-requiring the application's and narrow's regions to be equal. Check QSL's
+requiring the application's and narrow's regions to be equal. Check FSL's
 zero/multiple directly wrapping narrow failure as
-a QSL pre-admission refusal, rather than manufacturing an admitted IR package
-for a source QSL could not emit.
+a FSL pre-admission refusal, rather than manufacturing an admitted IR package
+for a source FSL could not emit.
 
-Build the QSL case with two requirement occurrences sharing one add key and
+Build the FSL case with two requirement occurrences sharing one add key and
 different narrow occurrences and result bounds. Keep both narrows represented
 in one FR-330 package and query each item using its own application and
-conversion occurrences. Assert that the QSL driver preserves this pairing
+conversion occurrences. Assert that the FSL driver preserves this pairing
 by request index and occurrence key. Show that substituting the other
 represented direct narrow over the shared add key is not detectably invalid
 from the IR package and pair alone; do not expect an IR refusal for that
@@ -85,7 +85,7 @@ routed item, claim or proof obligation.
 
 ## Expected Results
 
-The QSL positive lowers `[add, narrow]` and returns the exact result bound
+The FSL positive lowers `[add, narrow]` and returns the exact result bound
 `[0, 10]`, while the operand bound remains `[0, 9]`. Lowering `[add]` alone
 cannot satisfy the same `Some` context. The other cases produce the exact
 `DirectBounded`, `Unnarrowed`, `Narrowed`, `MissingBound`, `IncompleteContext`,

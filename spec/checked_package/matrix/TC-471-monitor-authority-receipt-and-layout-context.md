@@ -3,11 +3,11 @@ id: TC-471
 title: "Monitor authority receipt, layout context and map collection closure"
 type: TC
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/FR-361
+  - target: ix://agent-ix/filament-contract-ir/FR-361
     type: verifies
-  - target: ix://agent-ix/quire-contract-ir/FR-357
+  - target: ix://agent-ix/filament-contract-ir/FR-357
     type: verifies
-  - target: ix://agent-ix/quire-contract-ir/FR-358
+  - target: ix://agent-ix/filament-contract-ir/FR-358
     type: verifies
 ---
 # TC-471: Monitor authority receipt, layout context and map collection closure
@@ -52,9 +52,9 @@ key node, and charges every external and native step to one budget.
    the exact allowance and one below the first seed charge (FR-357-AC-18).
 
 Tag the tests `#[trace("TC-471", "<criterion id>")]`. The explicit IR lane
-`make conformance-qsl-ir1384` exercises genuine published QSL plan roots and
+`make conformance-fsl-ir1384` exercises genuine published FSL plan roots and
 admitted authority for the receipt slice of steps 1, 2 and 4. It supplies local
-handoff evidence; FR-361-AC-6's final `quire-integration` qualification remains
+handoff evidence; FR-361-AC-6's final `filament-integration` qualification remains
 with that owner. The layout context and clock binding are implemented (steps 3 and 4, with
 `LayoutIdentityUnavailable` for a missing, ambiguous or unsupported subject or
 unit identity); the genuine `monitor-base.json` tick source supplies the
@@ -73,7 +73,7 @@ tick-source model, operation and period evidence.
   after; clones agree.
 - Step 8 returns each unit's own admitted dimension; one below refuses at the
   first unpaid seed charge.
-- Step 5 finds a required field, private row fields, no QSL, observation or
+- Step 5 finds a required field, private row fields, no FSL, observation or
   runtime edge, and no decode, digest or second identity.
 - Step 6 retains the map's key, value and `ValueType::Map`; each defective row
   refuses `CollectionKey` at the collection node; the unreached row does not

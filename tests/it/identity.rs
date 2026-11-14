@@ -1,11 +1,11 @@
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     AnchorName, Clause, ClauseId, ClauseKind, ClauseRef, ContractPackage, DependencyIdentity,
     DependencyKind, DependencyName, DependencySource, DiagnosticCode, ExecutionPoint,
     ExecutionPointName, PackageId, ReferenceBody, Requirement, RequirementId, RequirementRef,
     RequirementRevision, SchemaVersion, SemanticIdentity, SourceDocumentId, SourceIdentity,
     SourceLocation, SourceRevision, SourceSpan, ValidationOptions,
 };
+use ix_trace_rs::trace;
 
 const FORBIDDEN_PUBLIC_VOCABULARY: [&str; 8] = [
     "rust", "gumbo", "aadl", "hamr", "solver", "runtime", "usize", "pathbuf",
@@ -144,7 +144,7 @@ fn valid_package() -> ContractPackage<ReferenceBody> {
     valid_package_at(3)
 }
 
-fn package_error(value: &serde_json::Value) -> Vec<quire_contract_model::Diagnostic> {
+fn package_error(value: &serde_json::Value) -> Vec<filament_contract_model::Diagnostic> {
     ContractPackage::from_json_str(
         &serde_json::to_string(value).unwrap(),
         ValidationOptions::strict(),
@@ -153,7 +153,7 @@ fn package_error(value: &serde_json::Value) -> Vec<quire_contract_model::Diagnos
 }
 
 fn diagnostic_code<T: std::fmt::Debug>(
-    result: Result<T, quire_contract_model::Diagnostic>,
+    result: Result<T, filament_contract_model::Diagnostic>,
 ) -> DiagnosticCode {
     result.unwrap_err().code
 }

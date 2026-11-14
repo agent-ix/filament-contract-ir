@@ -3,7 +3,7 @@ id: TC-464
 title: "Complete effective operation census through public admission"
 type: TC
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/FR-355
+  - target: ix://agent-ix/filament-contract-ir/FR-355
     type: verifies
 ---
 # TC-464: Complete effective operation census through public admission
@@ -21,11 +21,11 @@ census of a two-operation context without bodies or anchors, an empty context, a
 inherited/redefined contexts including a diamond. Check producer parameter order,
 canonical member domains, result presence and unsupported domains. Independently
 exercise ambiguous names, missing and duplicate declaring nodes, foreign/unknown/
-wrong-kind contexts, and sufficient versus one-below/zero work provisions. In the explicit producer lane, compile authored QSL selecting `Node::alpha`
+wrong-kind contexts, and sufficient versus one-below/zero work provisions. In the explicit producer lane, compile authored FSL selecting `Node::alpha`
 from a model also declaring unreferenced `Node::zeta`; read the exact producer
 bytes with the selected model and require both census entries while the graph
-contains only alpha's operation anchor. `IR1236_QSL_PACKAGE` and
-`IR1236_QSL_MODEL` name these live inputs for the explicit `conformance_qsl_ir1236` target;
+contains only alpha's operation anchor. `IR1236_FSL_PACKAGE` and
+`IR1236_FSL_MODEL` name these live inputs for the explicit `conformance_fsl_ir1236` target;
 that test must be run explicitly before its evidence is credited. Compile
 and execute the calls through the public model facade; run TC-058 and TC-456 for
 inventory and portable public names.

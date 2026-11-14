@@ -3,16 +3,16 @@
 
 //! FR-052-AC-25: owner-native IR V2 source inventory.
 
-use ix_trace_rs::trace;
-use quire_contract_model::source_obligation::{
+use filament_contract_model::source_obligation::{
     source_inventory_from_ir_v2, SourceInventoryCompleteness, SourceInventoryIdentity,
     SourceInventoryIncompleteReason, SourceInventoryOwner, SourceInventoryRow,
     SourceInventoryScope, SourceIrV2InventoryError, SourceSemanticOccurrenceId,
 };
-use quire_contract_model::{
+use filament_contract_model::{
     CheckedPackageReadLimits, CheckedPackageRefusalCode, CheckedPackageV2,
     CheckedPackageV2ReadResult, SourceDocumentId, SourceIdentity, SourceRevision,
 };
+use ix_trace_rs::trace;
 use serde_json::json;
 
 use crate::support::checked_package::{canonical, evidence_for, refresh_identity, v2_all_families};

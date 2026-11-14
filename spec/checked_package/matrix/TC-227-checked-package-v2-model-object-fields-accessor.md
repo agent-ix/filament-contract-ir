@@ -3,7 +3,7 @@ id: TC-227
 title: "CheckedPackage V2 returns a model object type's fields and derived member types as values"
 type: TC
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/FR-038
+  - target: ix://agent-ix/filament-contract-ir/FR-038
     type: verifies
 ---
 # TC-227: CheckedPackage V2 returns a model object type's fields and derived member types as values
@@ -35,7 +35,7 @@ graph. Build the checked packages in the test, selecting every read's type node 
 node, and compare the result with the declared values and graph declaration ids.
 Look up `alpha` from the unsorted returned slice. Separately remove Base's
 declaration node while Leaf still inherits `Base.b`; this package admits
-under QSpec FR-322-AC-30, but `model_object_fields(Leaf)` must return the
+under FSpec FR-322-AC-30, but `model_object_fields(Leaf)` must return the
 named typed `MissingDeclaringNode` for `Base.b`, with no partial result. Add
 Base’s authentic graph node and require success with its ID. Two admitted
 object declaration nodes matching the same selected owner identity but with
@@ -80,7 +80,7 @@ IR-1164/IR-1165 declaration-order, genuine declaring-node identity and
 typed missing/ambiguous declaring-node controls (AC-370 through AC-373 and the revised
 AC-136/AC-142 portions) are PLANNED/UNRUN. The independent table and accessor controls remain implemented (IR-628) in `tests/it/checked_package_v2_model_fields.rs` (AC-136 to
 AC-139, AC-141 to AC-144 over packages the reader admits, using the earlier content-derived type-node fixture, which must be updated for structural ids) and the unit tests
-of `crates/quire-contract-model/src/checked_package/v2/model_fields.rs` (the
+of `crates/filament-contract-model/src/checked_package/v2/model_fields.rs` (the
 tables, charges, cycles, read charges, node-body independence) and
 `model_members.rs` (the `resolve` answers recorded before the change, run
 against the field tables). Frame-entry, abstraction-field-entry and

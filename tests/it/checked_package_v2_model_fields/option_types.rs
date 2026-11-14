@@ -15,13 +15,13 @@ fn options(inner: Value, presence: bool) -> Value {
                 } else {
                     field("named", &orders("Opt"))
                 },
-                field("optional", "ix://quire/native/Integer").optional(),
+                field("optional", "ix://filament/native/Integer").optional(),
             ],
         ),
     ])
 }
 
-fn refusal(doc: &Value) -> quire_contract_model::CheckedPackageRefusal {
+fn refusal(doc: &Value) -> filament_contract_model::CheckedPackageRefusal {
     let (wire, evidence, _) = package(doc, &[("Node", OBJECT)], &[]);
     match read_with(&wire, &evidence, CheckedPackageReadLimits::bounded()) {
         CheckedPackageV2ReadResult::Refused(refusal) => refusal,
@@ -32,7 +32,7 @@ fn refusal(doc: &Value) -> quire_contract_model::CheckedPackageRefusal {
 #[trace("TC-465", "FR-356-AC-1", "FR-356-AC-2")]
 #[test]
 fn named_and_presence_options_share_the_public_reader_result_node() {
-    let doc = options(json!("ix://quire/native/Integer"), false);
+    let doc = options(json!("ix://filament/native/Integer"), false);
     let admitted = admit(
         &doc,
         &[("Node", OBJECT)],
@@ -71,7 +71,7 @@ fn named_and_presence_options_share_the_public_reader_result_node() {
                 return None;
             }
             match admitted.term(&node.node_id) {
-                Some(quire_contract_model::CheckedTerm::Application { result_type, .. }) => {
+                Some(filament_contract_model::CheckedTerm::Application { result_type, .. }) => {
                     Some(result_type)
                 }
                 _ => None,
@@ -105,10 +105,10 @@ fn invalid_option_inners_and_single_presence_retain_document_loci() {
         Value::Null,
         json!(""),
         json!(true),
-        json!(["ix://quire/native/Integer"]),
+        json!(["ix://filament/native/Integer"]),
         json!({}),
         json!("Integer"),
-        json!("ix://quire/native/Clock"),
+        json!("ix://filament/native/Clock"),
         json!(orders("Opt")),
     ] {
         let refused = refusal(&options(inner.clone(), false));
@@ -134,7 +134,7 @@ fn invalid_option_inners_and_single_presence_retain_document_loci() {
     let refused = refusal(&options(json!(orders("Missing")), false));
     assert_eq!(refused.code, CheckedPackageRefusalCode::MissingDeclaration);
     assert_eq!(refused.cause, Some(CheckedPackageRefusalCause::MissingName));
-    let refused = refusal(&options(json!("ix://quire/native/Integer"), true));
+    let refused = refusal(&options(json!("ix://filament/native/Integer"), true));
     assert_eq!(
         refused
             .document_pointer
@@ -143,8 +143,8 @@ fn invalid_option_inners_and_single_presence_retain_document_loci() {
             .as_deref(),
         Some("/types/1/fields/0/presence")
     );
-    let mut malformed = options(json!("ix://quire/native/Integer"), true);
-    malformed["types"][1]["fields"][0]["typeRef"] = json!("ix://quire/native/Option<Integer>");
+    let mut malformed = options(json!("ix://filament/native/Integer"), true);
+    malformed["types"][1]["fields"][0]["typeRef"] = json!("ix://filament/native/Option<Integer>");
     let refused = refusal(&malformed);
     assert_eq!(
         refused
@@ -159,7 +159,7 @@ fn invalid_option_inners_and_single_presence_retain_document_loci() {
 #[trace("TC-465", "FR-356-AC-4")]
 #[test]
 fn option_shape_precedes_constraints_and_inner_kind() {
-    let mut doc = options(json!("ix://quire/native/Clock"), false);
+    let mut doc = options(json!("ix://filament/native/Clock"), false);
     doc["types"][0]["fields"] = json!([]);
     doc["types"][0]["constraints"] = json!([{"keyword":"bad"}]);
     let refused = refusal(&doc);
@@ -186,13 +186,13 @@ fn option_shape_precedes_constraints_and_inner_kind() {
 #[trace("TC-465", "FR-356-AC-1", "FR-356-AC-2", "FR-356-AC-3")]
 #[test]
 fn aliases_and_collection_wrapping_preserve_single_option_layers() {
-    let mut doc = options(json!("ix://quire/native/Integer"), false);
+    let mut doc = options(json!("ix://filament/native/Integer"), false);
     doc["types"]
         .as_array_mut()
         .unwrap()
         .push(json!({"identity":orders("AO"),"kind":"alias","target":orders("Opt")}));
     doc["types"].as_array_mut().unwrap().push(json!({
-        "identity":orders("AI"),"kind":"alias","target":"ix://quire/native/Integer"
+        "identity":orders("AI"),"kind":"alias","target":"ix://filament/native/Integer"
     }));
     doc["types"][1]["fields"][1]["typeRef"] = json!(orders("AI"));
     doc["types"][1]["fields"][0]["typeRef"] = json!(orders("AO"));

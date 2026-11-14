@@ -2,11 +2,11 @@
 //! Complete native witness checks through the public default-feature API.
 
 use crate::checked_package_v2_owners::{complete_witness_fixture, CompleteWitnessFixture};
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     ExactTypeProjectionErrorCode as Code, NativeJoinBudget, NativeJoinCharge, NativeJoinChargeKind,
     SelectedExactIdentities,
 };
+use ix_trace_rs::trace;
 
 fn ample() -> NativeJoinBudget {
     NativeJoinBudget::new(u64::MAX, u64::MAX)
@@ -524,7 +524,7 @@ fn complete_identity_witness_private_acquisition_is_checked_incremental_and_boun
         "failed COW publishes no extension"
     );
     let mut compound = fixture.units[0].clone();
-    compound.unit_id = quire_exact::UnitId::compound(Vec::new());
+    compound.unit_id = filament_exact::UnitId::compound(Vec::new());
     assert_eq!(
         stage
             .with_admitted_type_rows(&fixture.package, &[], &[compound], &mut ample())
@@ -563,11 +563,13 @@ fn complete_identity_witness_private_acquisition_is_checked_incremental_and_boun
     conflict.node_key = match &fixture
         .identities
         .declaration_rows()
-        .find(|row| row.form == quire_contract_model::SelectedExactDeclarationForm::RecordValueType)
+        .find(|row| {
+            row.form == filament_contract_model::SelectedExactDeclarationForm::RecordValueType
+        })
         .unwrap()
         .exact_identity
     {
-        quire_contract_model::SelectedExactIdentity::Record(key) => key.clone(),
+        filament_contract_model::SelectedExactIdentity::Record(key) => key.clone(),
         _ => unreachable!(),
     };
     assert_eq!(
@@ -621,7 +623,9 @@ fn complete_identity_witness_retains_private_value_identities_after_producer_row
     let record = fixture
         .identities
         .declaration_rows()
-        .find(|row| row.form == quire_contract_model::SelectedExactDeclarationForm::RecordValueType)
+        .find(|row| {
+            row.form == filament_contract_model::SelectedExactDeclarationForm::RecordValueType
+        })
         .unwrap()
         .structural_node
         .clone();
@@ -644,7 +648,7 @@ fn complete_identity_witness_retains_private_value_identities_after_producer_row
             .find(|field| field.name() == "pair")
             .unwrap()
             .value_type(),
-        &quire_exact::ValueType::Composite(tuple)
+        &filament_exact::ValueType::Composite(tuple)
     );
     assert_eq!(
         fields
@@ -652,7 +656,7 @@ fn complete_identity_witness_retains_private_value_identities_after_producer_row
             .find(|field| field.name() == "distance")
             .unwrap()
             .value_type(),
-        &quire_exact::ValueType::Quantity(unit)
+        &filament_exact::ValueType::Quantity(unit)
     );
 }
 
@@ -677,7 +681,7 @@ fn complete_identity_witness_source_joins_preserve_private_handle_ownership() {
         )
         .unwrap();
     let before = private.clone();
-    let quire_exact::UnitId::Declared(unit_key) = &fixture.units[0].unit_id else {
+    let filament_exact::UnitId::Declared(unit_key) = &fixture.units[0].unit_id else {
         panic!("declared producer unit");
     };
     for claimed in [&fixture.tuples[0].node_key, unit_key] {
@@ -756,7 +760,7 @@ fn complete_identity_witness_source_joins_preserve_private_handle_ownership() {
     assert_eq!(error.code, Code::ConflictingIdentityWitness);
     assert_eq!(error.at.as_deref(), Some(&tuple_id));
     let mut unit = fixture.units[0].clone();
-    unit.unit_id = quire_exact::UnitId::Declared(record.record_key);
+    unit.unit_id = filament_exact::UnitId::Declared(record.record_key);
     let unit_id = unit.structural_node.clone();
     let error = source
         .with_admitted_type_rows(&fixture.package, &[], &[unit], &mut ample())

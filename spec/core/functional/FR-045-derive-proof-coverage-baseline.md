@@ -3,13 +3,13 @@ id: FR-045
 title: "Derive a qualified proof-coverage baseline"
 type: FR
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/StR-004
+  - target: ix://agent-ix/filament-contract-ir/StR-004
     type: traces_to
-  - target: ix://agent-ix/quire-contract-ir/FR-029
+  - target: ix://agent-ix/filament-contract-ir/FR-029
     type: depends_on
-  - target: ix://agent-ix/quire-contract-ir/FR-030
+  - target: ix://agent-ix/filament-contract-ir/FR-030
     type: depends_on
-  - target: ix://agent-ix/quire-contract-ir/AD-008
+  - target: ix://agent-ix/filament-contract-ir/AD-008
     type: references
 ---
 # FR-045: Derive a qualified proof-coverage baseline

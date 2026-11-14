@@ -9,11 +9,11 @@ use crate::support::checked_package::{
     boolean_key, canonical, evidence_for, node_id, pointer, refresh_identity, settle,
     v2_all_families,
 };
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     CheckedPackageReadLimits, CheckedPackageRefusalCause, CheckedPackageRefusalCode,
     CheckedPackageV2ReadResult,
 };
+use ix_trace_rs::trace;
 use serde_json::{json, Value};
 
 fn read(package: &Value) -> CheckedPackageV2ReadResult {
@@ -35,7 +35,7 @@ fn with_ieee_literal(kind: &str, declared_family: &str) -> (Value, usize) {
         let id = ieee_type_id(family);
         json!({
             "node_id": id,
-            "schema_version": "quire.checked-semantic-graph/v2",
+            "schema_version": "filament.checked-semantic-graph/v2",
             "node_tag": "scalar_type", "semantic_form": family,
             "semantic_type": id, "dependencies": [],
             "occurrences": [{"role": "generated", "ordinal": 0}],
@@ -62,7 +62,7 @@ fn with_ieee_literal(kind: &str, declared_family: &str) -> (Value, usize) {
     });
     let literal = json!({
         "node_id": node_id("ieee/literal"),
-        "schema_version": "quire.checked-semantic-graph/v2",
+        "schema_version": "filament.checked-semantic-graph/v2",
         "node_tag": "value", "semantic_form": "literal",
         "semantic_type": semantic_type,
         "dependencies": [],
@@ -122,7 +122,7 @@ fn with_ieee_float_operands(
     let (mut package, _) = with_ieee_literal("float32_bits", "float32");
     let declared = ieee_type_id(declared_family);
     let law = json!({
-        "authority": "agent-ix", "identity": "quire.value.ieee754-2019-default/v1",
+        "authority": "agent-ix", "identity": "filament.value.ieee754-2019-default/v1",
     });
     package["lock"]["definition_selections"] = json!([law.clone()]);
     let literal = |value_kind: &str| {
@@ -135,7 +135,7 @@ fn with_ieee_float_operands(
     let body = json!({
         "term": "application", "operator": "call",
         "operation": {
-            "identity": "quire.op.ieee.numeric_equal",
+            "identity": "filament.op.ieee.numeric_equal",
             "laws": [{"role": "ieee_profile", "definition": law}],
             "mode": null, "member": null, "leaves": [],
         },
@@ -144,7 +144,7 @@ fn with_ieee_float_operands(
     });
     let application = json!({
         "node_id": node_id("ieee/numeric_equal"),
-        "schema_version": "quire.checked-semantic-graph/v2",
+        "schema_version": "filament.checked-semantic-graph/v2",
         "node_tag": "expression", "semantic_form": "call",
         "semantic_type": node_id(&boolean_key()), "dependencies": [],
         "occurrences": [{"role": "generated", "ordinal": 0}],
@@ -321,7 +321,7 @@ pub(crate) fn with_ieee_conversion_source(
     };
     if member_family == "rational" || result_family == "rational" {
         package["semantic_graph"]["nodes"].as_array_mut().expect("nodes").push(json!({
-            "node_id": ieee_type_id("rational"), "schema_version": "quire.checked-semantic-graph/v2",
+            "node_id": ieee_type_id("rational"), "schema_version": "filament.checked-semantic-graph/v2",
             "node_tag": "scalar_type", "semantic_form": "rational", "semantic_type": ieee_type_id("rational"),
             "dependencies": [], "occurrences": [{"role": "generated", "ordinal": 0}],
             "body": {"term": "aggregate", "members": []}
@@ -330,7 +330,7 @@ pub(crate) fn with_ieee_conversion_source(
     let destination = type_id(member_family);
     let result = type_id(result_family);
     let ieee_definition = json!({
-        "authority": "agent-ix", "identity": "quire.value.ieee754-2019-default/v1",
+        "authority": "agent-ix", "identity": "filament.value.ieee754-2019-default/v1",
     });
     package["lock"]["definition_selections"] = json!([ieee_definition.clone()]);
     let operation = json!({
@@ -355,7 +355,7 @@ pub(crate) fn with_ieee_conversion_source(
     });
     let application = json!({
         "node_id": node_id("ieee/conversion"),
-        "schema_version": "quire.checked-semantic-graph/v2",
+        "schema_version": "filament.checked-semantic-graph/v2",
         "node_tag": "expression", "semantic_form": "call",
         "semantic_type": result,
         "dependencies": [destination],
@@ -375,8 +375,8 @@ pub(crate) fn with_ieee_conversion_source(
 #[test]
 fn tc_048_cross_width_ieee_result_is_the_type_argument_of_the_catalogued_family() {
     for (identity, destination, other) in [
-        ("quire.op.ieee.to_float32", "float32", "float64"),
-        ("quire.op.ieee.to_float64", "float64", "float32"),
+        ("filament.op.ieee.to_float32", "float32", "float64"),
+        ("filament.op.ieee.to_float64", "float64", "float32"),
     ] {
         let (positive, _) = with_ieee_conversion(identity, destination, destination);
         match read(&positive) {
@@ -462,7 +462,7 @@ fn assert_member_result_refusal(
 fn tc_048_to_rational_member_result_and_family_for_both_widths() {
     for source in ["float32", "float64"] {
         let (valid, _) = with_ieee_conversion_source(
-            "quire.op.ieee.to_rational",
+            "filament.op.ieee.to_rational",
             source,
             "rational",
             "rational",
@@ -473,7 +473,7 @@ fn tc_048_to_rational_member_result_and_family_for_both_widths() {
         );
         for (member, result) in [(source, "rational"), ("rational", source), (source, source)] {
             let (adverse, position) =
-                with_ieee_conversion_source("quire.op.ieee.to_rational", source, member, result);
+                with_ieee_conversion_source("filament.op.ieee.to_rational", source, member, result);
             assert_member_result_refusal(
                 &adverse,
                 position,
@@ -488,7 +488,8 @@ fn tc_048_to_rational_member_result_and_family_for_both_widths() {
 #[trace("TC-048", "FR-038-AC-249")]
 #[test]
 fn tc_048_type_argument_member_requires_closed_declaration() {
-    let (valid, position) = with_ieee_conversion("quire.op.ieee.to_float32", "float32", "float32");
+    let (valid, position) =
+        with_ieee_conversion("filament.op.ieee.to_float32", "float32", "float32");
     for member in [
         json!({"kind": "type_argument"}),
         json!({"kind": "type_argument", "declaration": "bad"}),

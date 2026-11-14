@@ -4,14 +4,14 @@ title: "Produce deterministic semantic results"
 type: NFR
 quality_attribute: reliability
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/StR-002
+  - target: ix://agent-ix/filament-contract-ir/StR-002
     type: traces_to
 ---
 # NFR-001: Produce deterministic semantic results
 
 ## Statement
 
-The quire-contract-ir library shall reproduce validation results, diagnostics,
+The filament-contract-ir library shall reproduce validation results, diagnostics,
 canonical bytes, digests, dependency sets, and coverage classes across supported
 operating systems and process runs when input bytes, supported profiles, and
 dependency versions are fixed.

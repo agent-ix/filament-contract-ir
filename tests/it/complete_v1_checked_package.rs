@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Agent-IX
 
 //! FR-035/TC-044 complete-V1 lowering qualification against the current
-//! `quire.checked-package/v2` reader: exact per-family lowering, refusal of
+//! `filament.checked-package/v2` reader: exact per-family lowering, refusal of
 //! source/type/anchor/identity/bound/dependency/version mutations before any
 //! backend artifact is emitted, and exact/one-over resource accounting.
 //!
@@ -13,13 +13,13 @@ use crate::support::checked_package::{
     all_families_read_work, canonical, evidence_for, incomplete, node_id, refresh_identity,
     refusal, refusal_bytes, typed_node_id, unknown_version, v2_all_families,
 };
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     CheckedNodeId, CheckedNodeTag, CheckedPackageEvidence, CheckedPackageLimit,
     CheckedPackageReadLimits, CheckedPackageRefusal, CheckedPackageRefusalCode, CheckedPackageV2,
     CheckedPackageV2ReadResult, CompleteContractNodeV2, CompleteLoweringProfileV2,
     CompleteLoweringRecordV2,
 };
+use ix_trace_rs::trace;
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
 
@@ -70,8 +70,8 @@ fn refused_bytes(bytes: &[u8], evidence: &CheckedPackageEvidence) -> CheckedPack
 
 fn profile(work_limit: u64) -> CompleteLoweringProfileV2 {
     CompleteLoweringProfileV2 {
-        reference: quire_contract_model::LoweringProfileRef {
-            authority: "quire".into(),
+        reference: filament_contract_model::LoweringProfileRef {
+            authority: "filament".into(),
             identity: "complete-v1".into(),
         },
         required_source_selections: Vec::new(),
@@ -207,7 +207,7 @@ fn tc_044_reader_refuses_strict_wire_and_identity_mutations() {
     assert_eq!(
         refused_bytes(
             format!(
-                "{{\"contract_version\":\"quire.checked-package/v2\",{}",
+                "{{\"contract_version\":\"filament.checked-package/v2\",{}",
                 &text[1..]
             )
             .as_bytes(),
@@ -228,10 +228,10 @@ fn tc_044_reader_refuses_strict_wire_and_identity_mutations() {
     // version: an unrecognised contract_version refuses before any node,
     // lock, or identity member is examined, naming the version it read.
     let mut wrong_version = base.clone();
-    wrong_version["contract_version"] = json!("quire.checked-package/v1");
+    wrong_version["contract_version"] = json!("filament.checked-package/v1");
     assert_eq!(
         refused(&wrong_version, &evidence),
-        unknown_version("quire.checked-package/v1")
+        unknown_version("filament.checked-package/v1")
     );
 
     // A shipped package identity is an unknown envelope member.

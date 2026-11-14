@@ -4,19 +4,19 @@ title: "Contract IR diagnostic code registry"
 type: Standard
 code: contract-ir-diagnostics
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/FR-011
+  - target: ix://agent-ix/filament-contract-ir/FR-011
     type: references
-  - target: ix://agent-ix/quire-contract-ir/FR-012
+  - target: ix://agent-ix/filament-contract-ir/FR-012
     type: references
-  - target: ix://agent-ix/quire-contract-ir/FR-013
+  - target: ix://agent-ix/filament-contract-ir/FR-013
     type: references
-  - target: ix://agent-ix/quire-contract-ir/FR-014
+  - target: ix://agent-ix/filament-contract-ir/FR-014
     type: references
-  - target: ix://agent-ix/quire-contract-ir/FR-015
+  - target: ix://agent-ix/filament-contract-ir/FR-015
     type: references
-  - target: ix://agent-ix/quire-contract-ir/FR-030
+  - target: ix://agent-ix/filament-contract-ir/FR-030
     type: references
-  - target: ix://agent-ix/quire-contract-ir/FR-044
+  - target: ix://agent-ix/filament-contract-ir/FR-044
     type: references
 ---
 # STD-001: Contract IR diagnostic code registry
@@ -97,7 +97,7 @@ reused for another condition or removed while a release names it.
 ## Typed Code Form
 
 Every registered code is carried as a `Std001Code` (FR-044), a type of
-`quire-contract-model` that is a validated lowercase-ASCII-snake-case string and
+`filament-contract-model` that is a validated lowercase-ASCII-snake-case string and
 not a membership claim: the registered codes outside `DiagnosticCode` are
 constants of that type. The code below is the `code` of a `Std001CodeError`.
 
@@ -110,15 +110,15 @@ constants of that type. The code below is the `code` of a `Std001CodeError`.
 These codes are the stable cause codes of the `KaniOutcome` the root crate's
 `kani` module returns, typed as `Std001Code` (FR-030, FR-044). A code of an
 outcome kind other than `proved` and `counterexample` is the outcome's cause.
-The map from an outcome to a QSL terminal value reads a code only where its
-requirement says so, and no code becomes a QSL `TerminalValue`.
+The map from an outcome to a FSL terminal value reads a code only where its
+requirement says so, and no code becomes a FSL `TerminalValue`.
 
 | Code | Condition | Required location |
 | --- | --- | --- |
 | `kani_proved` | The code every `proved` outcome carries | outcome source identity |
 | `kani_counterexample` | The code every `counterexample` outcome carries | outcome source identity |
 | `kani_identity_invalid` | A finite input has an empty model or source identity (`invalid_input`) | outcome source identity |
-| `kani_population_incomplete` | A finite input declares an incomplete population (`incomplete_input`); this is not a missing replay input, which QSpec owns | outcome source identity |
+| `kani_population_incomplete` | A finite input declares an incomplete population (`incomplete_input`); this is not a missing replay input, which FSpec owns | outcome source identity |
 | `kani_bound_invalid` | A finite input has a zero object or byte bound (`invalid_input`) | outcome source identity |
 | `kani_bound_exhausted` | A finite input exceeds a selected byte, object or reference bound (`resource_exhausted`) | outcome source identity |
 | `kani_population_invalid` | A finite input holds an object with an empty identity, type or snapshot, or a duplicate object identity (`invalid_input`) | outcome source identity |
@@ -141,7 +141,7 @@ are not registered here: they leave this repository with those lowerings
 
 This code is the `code` of the `KaniOutcomeError` the root crate's `kani`
 module returns. It is raised only by the validated `KaniOutcome` constructors
-(FR-030) and never becomes a `KaniOutcome` cause code or a QSL
+(FR-030) and never becomes a `KaniOutcome` cause code or a FSL
 `TerminalValue`.
 
 | Code | Condition | Required location |

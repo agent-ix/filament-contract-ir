@@ -3,9 +3,9 @@ id: FR-014
 title: "Type and validate executable contract expressions"
 type: FR
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/FR-013
+  - target: ix://agent-ix/filament-contract-ir/FR-013
     type: depends_on
-  - target: ix://agent-ix/quire-contract-ir/FR-012
+  - target: ix://agent-ix/filament-contract-ir/FR-012
     type: depends_on
 ---
 # FR-014: Type and validate executable contract expressions

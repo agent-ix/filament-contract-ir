@@ -3,15 +3,15 @@ id: FR-359
 title: "Bound clock and type-projection refusal payloads under the native join budget"
 type: FR
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/StR-001
+  - target: ix://agent-ix/filament-contract-ir/StR-001
     type: traces_to
-  - target: ix://agent-ix/quire-contract-ir/FR-352
+  - target: ix://agent-ix/filament-contract-ir/FR-352
     type: depends_on
-  - target: ix://agent-ix/quire-contract-ir/FR-354
+  - target: ix://agent-ix/filament-contract-ir/FR-354
     type: depends_on
-  - target: ix://agent-ix/quire-contract-ir/FR-358
+  - target: ix://agent-ix/filament-contract-ir/FR-358
     type: depends_on
-  - target: ix://agent-ix/quire-contract-ir/FR-019
+  - target: ix://agent-ix/filament-contract-ir/FR-019
     type: references
 ---
 # FR-359: Bound clock and Exact-projection refusals under the native join budget
@@ -69,7 +69,7 @@ not reserve a worst-case diagnostic that a successful read never uses.
 
 Selected facts and type decisions remain governed by
 [FR-352](./FR-352-project-admitted-exact-value-types.md). The clock read retains
-its admitted clause, occurrence, binding and name checks. No QSL identity
+its admitted clause, occurrence, binding and name checks. No FSL identity
 judgment, source reparse, evaluator, compatibility entry point, copied
 artifact or fixed fallback allowance is introduced.
 
@@ -87,7 +87,7 @@ not claim that runtime path as complete.
 | FR-359-AC-2 | For a real admitted success in each qualified read family, measuring work and storage with ample limits and rerunning at both exact limits returns the same complete value. One unit below either measured requirement returns the typed exhausted kind, first unpaid charge and no partial value; cumulative counters stay within the limits. | Test |
 | FR-359-AC-3 | A semantic refusal in each qualified family whose owned diagnostic includes a dynamic node path or form retains its stable category and first locus at ample limits. Zero storage returns fixed-size storage exhaustion; exact diagnostic storage returns the full semantic refusal, and one below it returns storage exhaustion. No refusal exposes a partial owned payload or successful delta. | Test, Inspection |
 | FR-359-AC-4 | Nested Exact projection and its error propagation charge each newly owned payload once. A payable semantic refusal retains its category and locus; an unpaid conversion returns fixed-size storage exhaustion. Repeated inputs and limits, including an admitted package clone, give equal values or first stops and equal counters. | Test |
-| FR-359-AC-5 | Existing selected clock and Exact success and non-budget refusal decisions remain unchanged at sufficient limits. Neither qualified read has uncharged owned result, scratch or refusal allocation, a second accounting scheme, or a QSL or runtime dependency in the IR model. Runtime full-precharge evidence is not credited by this criterion. | Test, Inspection |
+| FR-359-AC-5 | Existing selected clock and Exact success and non-budget refusal decisions remain unchanged at sufficient limits. Neither qualified read has uncharged owned result, scratch or refusal allocation, a second accounting scheme, or a FSL or runtime dependency in the IR model. Runtime full-precharge evidence is not credited by this criterion. | Test, Inspection |
 
 ## Dependencies
 

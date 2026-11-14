@@ -1,20 +1,20 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! FR-354 nominal joins over reader-admitted canonical nominal fixtures.
-//! Opaque stage keys below are explicit row fixtures, not QSL provenance evidence.
+//! Opaque stage keys below are explicit row fixtures, not FSL provenance evidence.
 
 use crate::support::checked_package::{
     canonical, evidence_for, node_id, nominal_fixture_members, nominal_package, refresh_identity,
 };
-use ix_trace_rs::trace;
-use quire_contract_model::nominal_reads::{
+use filament_contract_model::nominal_reads::{
     EnumMemberRow, NominalDeclarationRow, NominalIdentity, NominalReadCode,
 };
-use quire_contract_model::{
+use filament_contract_model::{
     CheckedNodeOwner, CheckedPackageReadLimits, CheckedPackageV2, CheckedPackageV2ReadResult,
     CheckedSemanticNodeV2, ExactTypeProjectionErrorCode, SelectedEnumDeclarationRow,
     SelectedEnumMemberRow, SelectedExactIdentities, SelectedSourceEnumRow, SelectedSourceUnitRow,
 };
-use quire_exact::{EnumShape, NodeKey, PathSegment, UnitId, ValueType, VariantId};
+use filament_exact::{EnumShape, NodeKey, PathSegment, UnitId, ValueType, VariantId};
+use ix_trace_rs::trace;
 use serde_json::{json, Value};
 
 fn fixture(ordered: bool) -> Box<CheckedPackageV2> {
@@ -143,7 +143,7 @@ fn source_enum_exact_projection_requires_complete_canonical_rows() {
             .with_source_enum_rows(
                 &package,
                 [row.clone()],
-                &mut quire_contract_model::NativeJoinBudget::new(1000, u64::MAX),
+                &mut filament_contract_model::NativeJoinBudget::new(1000, u64::MAX),
             )
             .expect("complete source enum join");
         assert_eq!(selected, budgeted);
@@ -153,7 +153,7 @@ fn source_enum_exact_projection_requires_complete_canonical_rows() {
                     .with_source_enum_rows(
                         &package,
                         [row.clone()],
-                        &mut quire_contract_model::NativeJoinBudget::new(limit, u64::MAX),
+                        &mut filament_contract_model::NativeJoinBudget::new(limit, u64::MAX),
                     )
                     .is_ok()
             })
@@ -164,7 +164,7 @@ fn source_enum_exact_projection_requires_complete_canonical_rows() {
                 .with_source_enum_rows(
                     &package,
                     [row.clone()],
-                    &mut quire_contract_model::NativeJoinBudget::new(join_exact - 1, u64::MAX)
+                    &mut filament_contract_model::NativeJoinBudget::new(join_exact - 1, u64::MAX)
                 )
                 .unwrap_err()
                 .code,
@@ -175,7 +175,7 @@ fn source_enum_exact_projection_requires_complete_canonical_rows() {
             .project_exact_type(
                 &id,
                 &selected,
-                &mut quire_contract_model::NativeJoinBudget::new(1000, u64::MAX),
+                &mut filament_contract_model::NativeJoinBudget::new(1000, u64::MAX),
             )
             .unwrap();
         assert_eq!(
@@ -193,7 +193,7 @@ fn source_enum_exact_projection_requires_complete_canonical_rows() {
                 .project_exact_type(
                     &id,
                     &selected,
-                    &mut quire_contract_model::NativeJoinBudget::new(exact, u64::MAX)
+                    &mut filament_contract_model::NativeJoinBudget::new(exact, u64::MAX)
                 )
                 .unwrap(),
             projection
@@ -203,7 +203,7 @@ fn source_enum_exact_projection_requires_complete_canonical_rows() {
                 .project_exact_type(
                     &id,
                     &selected,
-                    &mut quire_contract_model::NativeJoinBudget::new(exact - 1, u64::MAX)
+                    &mut filament_contract_model::NativeJoinBudget::new(exact - 1, u64::MAX)
                 )
                 .unwrap_err()
                 .code,
@@ -215,7 +215,7 @@ fn source_enum_exact_projection_requires_complete_canonical_rows() {
                 .project_exact_type(
                     &id,
                     &selected,
-                    &mut quire_contract_model::NativeJoinBudget::new(exact, u64::MAX)
+                    &mut filament_contract_model::NativeJoinBudget::new(exact, u64::MAX)
                 )
                 .unwrap(),
             projection
@@ -226,7 +226,7 @@ fn source_enum_exact_projection_requires_complete_canonical_rows() {
             .with_source_enum_rows(
                 &minimal,
                 [minimal_row],
-                &mut quire_contract_model::NativeJoinBudget::new(1000, u64::MAX),
+                &mut filament_contract_model::NativeJoinBudget::new(1000, u64::MAX),
             )
             .unwrap();
         assert_eq!(
@@ -234,7 +234,7 @@ fn source_enum_exact_projection_requires_complete_canonical_rows() {
                 .project_exact_type(
                     &id,
                     &minimal_selected,
-                    &mut quire_contract_model::NativeJoinBudget::new(exact, u64::MAX)
+                    &mut filament_contract_model::NativeJoinBudget::new(exact, u64::MAX)
                 )
                 .unwrap(),
             projection
@@ -244,7 +244,7 @@ fn source_enum_exact_projection_requires_complete_canonical_rows() {
                 .project_exact_type(
                     &id,
                     &SelectedExactIdentities::empty(),
-                    &mut quire_contract_model::NativeJoinBudget::new(1000, u64::MAX)
+                    &mut filament_contract_model::NativeJoinBudget::new(1000, u64::MAX)
                 )
                 .unwrap_err()
                 .code,
@@ -257,7 +257,7 @@ fn source_enum_exact_projection_requires_complete_canonical_rows() {
             .with_source_enum_rows(
                 &package,
                 [changed_case],
-                &mut quire_contract_model::NativeJoinBudget::new(1000, u64::MAX),
+                &mut filament_contract_model::NativeJoinBudget::new(1000, u64::MAX),
             )
             .unwrap_err();
         assert_eq!(
@@ -273,7 +273,7 @@ fn source_enum_exact_projection_requires_complete_canonical_rows() {
                 .with_source_enum_rows(
                     &package,
                     [changed_variant],
-                    &mut quire_contract_model::NativeJoinBudget::new(1000, u64::MAX)
+                    &mut filament_contract_model::NativeJoinBudget::new(1000, u64::MAX)
                 )
                 .unwrap_err()
                 .code,
@@ -286,7 +286,7 @@ fn source_enum_exact_projection_requires_complete_canonical_rows() {
                 .with_source_enum_rows(
                     &package,
                     [reordered],
-                    &mut quire_contract_model::NativeJoinBudget::new(1000, u64::MAX)
+                    &mut filament_contract_model::NativeJoinBudget::new(1000, u64::MAX)
                 )
                 .unwrap_err()
                 .code,
@@ -299,7 +299,7 @@ fn source_enum_exact_projection_requires_complete_canonical_rows() {
                 .with_source_enum_rows(
                     &package,
                     [incomplete],
-                    &mut quire_contract_model::NativeJoinBudget::new(1000, u64::MAX)
+                    &mut filament_contract_model::NativeJoinBudget::new(1000, u64::MAX)
                 )
                 .unwrap_err()
                 .code,
@@ -312,7 +312,7 @@ fn source_enum_exact_projection_requires_complete_canonical_rows() {
                 .with_source_enum_rows(
                     &package,
                     [extra],
-                    &mut quire_contract_model::NativeJoinBudget::new(1000, u64::MAX)
+                    &mut filament_contract_model::NativeJoinBudget::new(1000, u64::MAX)
                 )
                 .unwrap_err()
                 .code,
@@ -324,7 +324,7 @@ fn source_enum_exact_projection_requires_complete_canonical_rows() {
             .with_source_enum_rows(
                 &package,
                 [duplicate_key],
-                &mut quire_contract_model::NativeJoinBudget::new(1000, u64::MAX),
+                &mut filament_contract_model::NativeJoinBudget::new(1000, u64::MAX),
             )
             .unwrap_err();
         assert_eq!(
@@ -339,7 +339,7 @@ fn source_enum_exact_projection_requires_complete_canonical_rows() {
                 .with_source_enum_rows(
                     &package,
                     [wrong_source],
-                    &mut quire_contract_model::NativeJoinBudget::new(1000, u64::MAX)
+                    &mut filament_contract_model::NativeJoinBudget::new(1000, u64::MAX)
                 )
                 .unwrap_err()
                 .code,
@@ -352,7 +352,7 @@ fn source_enum_exact_projection_requires_complete_canonical_rows() {
                 .with_source_enum_rows(
                     &package,
                     [wrong_form],
-                    &mut quire_contract_model::NativeJoinBudget::new(1000, u64::MAX)
+                    &mut filament_contract_model::NativeJoinBudget::new(1000, u64::MAX)
                 )
                 .unwrap_err()
                 .code,
@@ -365,7 +365,7 @@ fn source_enum_exact_projection_requires_complete_canonical_rows() {
             .with_source_enum_rows(
                 &package,
                 [wrong_member_node],
-                &mut quire_contract_model::NativeJoinBudget::new(1000, u64::MAX),
+                &mut filament_contract_model::NativeJoinBudget::new(1000, u64::MAX),
             )
             .unwrap_err();
         assert_eq!(
@@ -384,7 +384,7 @@ fn source_enum_exact_projection_requires_complete_canonical_rows() {
                 .with_source_enum_rows(
                     &package,
                     [wrong_ordered],
-                    &mut quire_contract_model::NativeJoinBudget::new(1000, u64::MAX)
+                    &mut filament_contract_model::NativeJoinBudget::new(1000, u64::MAX)
                 )
                 .unwrap_err()
                 .code,
@@ -397,7 +397,7 @@ fn source_enum_exact_projection_requires_complete_canonical_rows() {
             .with_source_enum_rows(
                 &package,
                 [foreign],
-                &mut quire_contract_model::NativeJoinBudget::new(1000, u64::MAX),
+                &mut filament_contract_model::NativeJoinBudget::new(1000, u64::MAX),
             )
             .unwrap_err();
         assert_eq!(refusal.code, ExactTypeProjectionErrorCode::ForeignNode);
@@ -407,7 +407,7 @@ fn source_enum_exact_projection_requires_complete_canonical_rows() {
                 .with_source_enum_rows(
                     &package,
                     [row.clone(), row],
-                    &mut quire_contract_model::NativeJoinBudget::new(2000, u64::MAX)
+                    &mut filament_contract_model::NativeJoinBudget::new(2000, u64::MAX)
                 )
                 .unwrap_err()
                 .code,
@@ -443,7 +443,7 @@ fn source_enum_member_from_another_selected_source_refuses() {
         .with_source_enum_rows(
             &package,
             [row],
-            &mut quire_contract_model::NativeJoinBudget::new(1000, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(1000, u64::MAX),
         )
         .unwrap_err();
     assert_eq!(
@@ -457,12 +457,12 @@ fn source_enum_member_from_another_selected_source_refuses() {
 /// Provenance: IR-1209 scoped source-unit join before unavailable dimension identity.
 #[test]
 fn equality_source_unit_row_joins_before_missing_dimension_key() {
-    use quire_contract_model::{
+    use filament_contract_model::{
         AdmittedEqualityReadErrorCode, CheckedOccurrence, CheckedOccurrenceRole,
         EqualityFactWitness, EqualityUnitRole, EqualityWitnessKind, SelectedEqualityApplicationRow,
         SelectedEqualityFactRow,
     };
-    use quire_exact::{Location, Origin, Role};
+    use filament_exact::{Location, Origin, Role};
 
     let members = nominal_fixture_members()
         .into_iter()
@@ -478,17 +478,17 @@ fn equality_source_unit_row_joins_before_missing_dimension_key() {
         .as_array_mut()
         .expect("nodes");
     graph_nodes.push(json!({
-        "node_id":boolean,"schema_version":"quire.checked-semantic-graph/v2",
+        "node_id":boolean,"schema_version":"filament.checked-semantic-graph/v2",
         "node_tag":"scalar_type","semantic_form":"boolean","semantic_type":boolean,
         "dependencies":[],"occurrences":[{"role":"type","ordinal":0}],
         "body":{"term":"aggregate","members":[]}
     }));
     graph_nodes.push(json!({
-        "node_id":application,"schema_version":"quire.checked-semantic-graph/v2",
+        "node_id":application,"schema_version":"filament.checked-semantic-graph/v2",
         "node_tag":"expression","semantic_form":"binary","semantic_type":boolean,
         "dependencies":[unit],"occurrences":[{"role":"expression","ordinal":0}],
         "body":{"term":"application","operator":"binary",
-            "operation":{"identity":"quire.op.quantity.eq","laws":[],"mode":null,
+            "operation":{"identity":"filament.op.quantity.eq","laws":[],"mode":null,
                 "member":null,"leaves":[]},
             "result_type":boolean,
             "arguments":[{"term":"reference","target":unit},{"term":"reference","target":unit}]}
@@ -581,7 +581,7 @@ fn equality_source_unit_row_joins_before_missing_dimension_key() {
             std::slice::from_ref(&app_row),
             std::slice::from_ref(&fact_row),
             &[],
-            &mut quire_contract_model::NativeJoinBudget::new(10_000, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(10_000, u64::MAX),
         )
         .expect_err("source UnitId is required");
     assert_eq!(
@@ -601,7 +601,7 @@ fn equality_source_unit_row_joins_before_missing_dimension_key() {
             std::slice::from_ref(&app_row),
             std::slice::from_ref(&fact_row),
             std::slice::from_ref(&unit_row),
-            &mut quire_contract_model::NativeJoinBudget::new(10_000, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(10_000, u64::MAX),
         )
         .expect_err("dimension key is unavailable");
     assert_eq!(
@@ -661,7 +661,7 @@ fn selected_source_units_join_owner_declaration_and_complete_conversion() {
     let converted_row = stage_row(converted, "Centimetre");
     let rows = [root_row.clone(), converted_row.clone()];
     let identities = SelectedExactIdentities::empty();
-    let mut measured_budget = quire_contract_model::NativeJoinBudget::new(10_000, u64::MAX);
+    let mut measured_budget = filament_contract_model::NativeJoinBudget::new(10_000, u64::MAX);
     let view = package
         .project_selected_type_declarations(&identities, &[], &rows, &mut measured_budget)
         .unwrap();
@@ -669,13 +669,13 @@ fn selected_source_units_join_owner_declaration_and_complete_conversion() {
     let measured = measured_budget.consumed();
     let mut saw_first_insertion = false;
     for storage in 0..measured.storage {
-        let mut short = quire_contract_model::NativeJoinBudget::new(measured.work, storage);
+        let mut short = filament_contract_model::NativeJoinBudget::new(measured.work, storage);
         let error = package
             .project_selected_type_declarations(&identities, &[], &rows, &mut short)
             .unwrap_err();
         if error.denied_locus
-            == Some(quire_contract_model::NativeJoinLocus {
-                source: quire_contract_model::NativeJoinLocusSource::SourceUnitRow(0),
+            == Some(filament_contract_model::NativeJoinLocus {
+                source: filament_contract_model::NativeJoinLocusSource::SourceUnitRow(0),
                 form: "selected_source_unit_index",
             })
         {
@@ -714,12 +714,12 @@ fn selected_source_units_join_owner_declaration_and_complete_conversion() {
             &identities,
             &[],
             &rows,
-            &mut quire_contract_model::NativeJoinBudget::new(10_000, u64::MAX)
+            &mut filament_contract_model::NativeJoinBudget::new(10_000, u64::MAX)
         ),
         Ok(view.clone())
     );
     let mut last_storage =
-        quire_contract_model::NativeJoinBudget::new(measured.work, measured.storage - 1);
+        filament_contract_model::NativeJoinBudget::new(measured.work, measured.storage - 1);
     let late = package
         .project_selected_type_declarations(&identities, &[], &rows, &mut last_storage)
         .unwrap_err();
@@ -732,8 +732,8 @@ fn selected_source_units_join_owner_declaration_and_complete_conversion() {
         .unwrap();
     assert_eq!(
         late.denied_locus,
-        Some(quire_contract_model::NativeJoinLocus {
-            source: quire_contract_model::NativeJoinLocusSource::Package,
+        Some(filament_contract_model::NativeJoinLocus {
+            source: filament_contract_model::NativeJoinLocusSource::Package,
             form: "runtime_model_units"
         })
     );
@@ -741,14 +741,14 @@ fn selected_source_units_join_owner_declaration_and_complete_conversion() {
     assert_eq!(late.denied, last_storage.first_unpaid());
     // The last output-container header follows the paid dimension copy.
     let mut dimension_storage =
-        quire_contract_model::NativeJoinBudget::new(measured.work, measured.storage - 2);
+        filament_contract_model::NativeJoinBudget::new(measured.work, measured.storage - 2);
     let dimension_denied = package
         .project_selected_type_declarations(&identities, &[], &rows, &mut dimension_storage)
         .unwrap_err();
     assert_eq!(
         dimension_denied.denied_locus,
-        Some(quire_contract_model::NativeJoinLocus {
-            source: quire_contract_model::NativeJoinLocusSource::GraphNode(position),
+        Some(filament_contract_model::NativeJoinLocus {
+            source: filament_contract_model::NativeJoinLocusSource::GraphNode(position),
             form: "selected_dimension",
         })
     );
@@ -762,7 +762,7 @@ fn selected_source_units_join_owner_declaration_and_complete_conversion() {
             &identities,
             &[],
             std::slice::from_ref(&root_row),
-            &mut quire_contract_model::NativeJoinBudget::new(10_000, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(10_000, u64::MAX),
         )
         .unwrap_err();
     assert_eq!(
@@ -774,7 +774,7 @@ fn selected_source_units_join_owner_declaration_and_complete_conversion() {
             &identities,
             &[],
             &[root_row.clone(), root_row.clone(), converted_row.clone()],
-            &mut quire_contract_model::NativeJoinBudget::new(10_000, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(10_000, u64::MAX),
         )
         .unwrap_err();
     assert_eq!(
@@ -793,7 +793,7 @@ fn selected_source_units_join_owner_declaration_and_complete_conversion() {
             &identities,
             &[],
             &[root_row.clone(), foreign],
-            &mut quire_contract_model::NativeJoinBudget::new(10_000, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(10_000, u64::MAX),
         )
         .unwrap_err();
     assert_eq!(
@@ -814,7 +814,7 @@ fn selected_source_units_join_owner_declaration_and_complete_conversion() {
             &identities,
             &[],
             &[root_row.clone(), foreign],
-            &mut quire_contract_model::NativeJoinBudget::new(10_000, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(10_000, u64::MAX),
         )
         .unwrap_err();
     assert_eq!(refusal.code, ExactTypeProjectionErrorCode::ForeignNode);
@@ -830,7 +830,7 @@ fn selected_source_units_join_owner_declaration_and_complete_conversion() {
             &identities,
             &[],
             &[root_row, duplicate_key],
-            &mut quire_contract_model::NativeJoinBudget::new(10_000, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(10_000, u64::MAX),
         )
         .unwrap_err();
     assert_eq!(
@@ -842,7 +842,7 @@ fn selected_source_units_join_owner_declaration_and_complete_conversion() {
             &identities,
             &[],
             &rows,
-            &mut quire_contract_model::NativeJoinBudget::new(view.work() - 1, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(view.work() - 1, u64::MAX),
         )
         .unwrap_err();
     assert_eq!(exhausted.code, ExactTypeProjectionErrorCode::ExhaustedWork);
@@ -856,7 +856,7 @@ fn selected_source_units_join_owner_declaration_and_complete_conversion() {
             &identities,
             &[],
             &long_rows,
-            &mut quire_contract_model::NativeJoinBudget::new(20_000, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(20_000, u64::MAX),
         )
         .unwrap();
     assert!(long_view.work() > view.work() + 4000);
@@ -865,7 +865,7 @@ fn selected_source_units_join_owner_declaration_and_complete_conversion() {
             &identities,
             &[],
             &long_rows,
-            &mut quire_contract_model::NativeJoinBudget::new(long_view.work(), u64::MAX)
+            &mut filament_contract_model::NativeJoinBudget::new(long_view.work(), u64::MAX)
         )
         .is_ok());
     let one_less = package
@@ -873,7 +873,7 @@ fn selected_source_units_join_owner_declaration_and_complete_conversion() {
             &identities,
             &[],
             &long_rows,
-            &mut quire_contract_model::NativeJoinBudget::new(long_view.work() - 1, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(long_view.work() - 1, u64::MAX),
         )
         .unwrap_err();
     assert_eq!(one_less.code, ExactTypeProjectionErrorCode::ExhaustedWork);
@@ -882,7 +882,7 @@ fn selected_source_units_join_owner_declaration_and_complete_conversion() {
             &identities,
             &[],
             &long_rows,
-            &mut quire_contract_model::NativeJoinBudget::new(view.work() + 100, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(view.work() + 100, u64::MAX),
         )
         .unwrap_err();
     assert_eq!(tight.code, ExactTypeProjectionErrorCode::ExhaustedWork);
@@ -894,13 +894,13 @@ fn selected_source_units_join_owner_declaration_and_complete_conversion() {
     );
     assert_eq!(
         tight.denied_locus.unwrap().source,
-        quire_contract_model::NativeJoinLocusSource::SourceUnitRow(1)
+        filament_contract_model::NativeJoinLocusSource::SourceUnitRow(1)
     );
     assert_eq!(tight.denied_locus.unwrap().form, "selected_source_unit_row");
 
     assert_eq!(
         tight.denied.unwrap().kind,
-        quire_contract_model::NativeJoinChargeKind::Work
+        filament_contract_model::NativeJoinChargeKind::Work
     );
     let mut long_declaration = converted_row;
     long_declaration.qualified_declaration = vec!["x".repeat(4096).into()];
@@ -909,7 +909,7 @@ fn selected_source_units_join_owner_declaration_and_complete_conversion() {
             &identities,
             &[],
             &[rows[0].clone(), long_declaration],
-            &mut quire_contract_model::NativeJoinBudget::new(view.work() + 100, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(view.work() + 100, u64::MAX),
         )
         .unwrap_err();
     assert_eq!(refusal.code, ExactTypeProjectionErrorCode::ExhaustedWork);
@@ -917,7 +917,7 @@ fn selected_source_units_join_owner_declaration_and_complete_conversion() {
     assert_eq!(refusal.form, None);
     assert_eq!(
         refusal.denied.unwrap().kind,
-        quire_contract_model::NativeJoinChargeKind::Work
+        filament_contract_model::NativeJoinChargeKind::Work
     );
 }
 fn row<'a>(
@@ -947,7 +947,8 @@ fn member_rows<'a>(
                 .find(|node| {
                     node.body.literal_read().is_some_and(|read| {
                         read.type_id == &declaration.node_id
-                            && read.value == quire_contract_model::CheckedLiteralValue::Enum(case)
+                            && read.value
+                                == filament_contract_model::CheckedLiteralValue::Enum(case)
                     })
                 })
                 .unwrap();
@@ -984,19 +985,19 @@ fn unit_read_borrows_root_target_exact_scale_offset_and_stage_identity() {
         row(converted, NominalIdentity::Unit(&identities[1])),
     ];
     let requested = [root.node_id.clone(), converted.node_id.clone()];
-    let mut measured_budget = quire_contract_model::NativeJoinBudget::new(10_000, u64::MAX);
+    let mut measured_budget = filament_contract_model::NativeJoinBudget::new(10_000, u64::MAX);
     let view = package
         .read_unit_definition(&requested, &rows, &mut measured_budget)
         .unwrap();
     let measured = measured_budget.last_success_delta().unwrap();
-    let mut exact = quire_contract_model::NativeJoinBudget::new(measured.work, measured.storage);
+    let mut exact = filament_contract_model::NativeJoinBudget::new(measured.work, measured.storage);
     assert_eq!(
         package.read_unit_definition(&requested, &rows, &mut exact),
         Ok(view.clone())
     );
     assert_eq!(exact.last_success_delta(), Some(measured));
     for work in 0..measured.work {
-        let mut short = quire_contract_model::NativeJoinBudget::new(work, measured.storage);
+        let mut short = filament_contract_model::NativeJoinBudget::new(work, measured.storage);
         let denied = package
             .read_unit_definition(&requested, &rows, &mut short)
             .unwrap_err();
@@ -1004,20 +1005,20 @@ fn unit_read_borrows_root_target_exact_scale_offset_and_stage_identity() {
         assert_eq!(denied.work, short.consumed().work);
         assert_eq!(
             short.first_unpaid().unwrap().kind,
-            quire_contract_model::NativeJoinChargeKind::Work
+            filament_contract_model::NativeJoinChargeKind::Work
         );
         assert!(short.consumed().work <= work);
         assert_eq!(short.last_success_delta(), None);
     }
     for storage in 0..measured.storage {
-        let mut short = quire_contract_model::NativeJoinBudget::new(measured.work, storage);
+        let mut short = filament_contract_model::NativeJoinBudget::new(measured.work, storage);
         let denied = package
             .read_unit_definition(&requested, &rows, &mut short)
             .unwrap_err();
         assert_eq!(denied.work, short.consumed().work);
         assert_eq!(
             short.first_unpaid().unwrap().kind,
-            quire_contract_model::NativeJoinChargeKind::Storage
+            filament_contract_model::NativeJoinChargeKind::Storage
         );
         assert!(short.consumed().storage <= storage);
         assert_eq!(short.last_success_delta(), None);
@@ -1031,7 +1032,7 @@ fn unit_read_borrows_root_target_exact_scale_offset_and_stage_identity() {
         );
     }
     let mut shared =
-        quire_contract_model::NativeJoinBudget::new(measured.work * 2, measured.storage * 2);
+        filament_contract_model::NativeJoinBudget::new(measured.work * 2, measured.storage * 2);
     assert_eq!(
         package.read_unit_definition(&requested, &rows, &mut shared),
         Ok(view.clone())
@@ -1065,7 +1066,7 @@ fn unit_read_borrows_root_target_exact_scale_offset_and_stage_identity() {
             .read_unit_definition(
                 &requested,
                 &rows,
-                &mut quire_contract_model::NativeJoinBudget::new(view.work, u64::MAX)
+                &mut filament_contract_model::NativeJoinBudget::new(view.work, u64::MAX)
             )
             .unwrap(),
         view
@@ -1074,7 +1075,7 @@ fn unit_read_borrows_root_target_exact_scale_offset_and_stage_identity() {
         .read_unit_definition(
             &requested,
             &rows,
-            &mut quire_contract_model::NativeJoinBudget::new(view.work - 1, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(view.work - 1, u64::MAX),
         )
         .unwrap_err();
     assert_eq!(error.code, NominalReadCode::LimitReached);
@@ -1086,7 +1087,7 @@ fn unit_read_borrows_root_target_exact_scale_offset_and_stage_identity() {
             .read_unit_definition(
                 &requested,
                 &rows,
-                &mut quire_contract_model::NativeJoinBudget::new(10_000, u64::MAX)
+                &mut filament_contract_model::NativeJoinBudget::new(10_000, u64::MAX)
             )
             .unwrap(),
         view
@@ -1111,7 +1112,7 @@ fn unit_read_refuses_missing_foreign_and_competing_selected_rows() {
             .read_unit_definition(
                 &requested,
                 &[],
-                &mut quire_contract_model::NativeJoinBudget::new(10_000, u64::MAX)
+                &mut filament_contract_model::NativeJoinBudget::new(10_000, u64::MAX)
             )
             .unwrap_err()
             .code,
@@ -1122,7 +1123,7 @@ fn unit_read_refuses_missing_foreign_and_competing_selected_rows() {
             .read_unit_definition(
                 &requested[1..],
                 std::slice::from_ref(&converted_row),
-                &mut quire_contract_model::NativeJoinBudget::new(10_000, u64::MAX)
+                &mut filament_contract_model::NativeJoinBudget::new(10_000, u64::MAX)
             )
             .unwrap_err()
             .code,
@@ -1141,7 +1142,7 @@ fn unit_read_refuses_missing_foreign_and_competing_selected_rows() {
             .read_unit_definition(
                 &requested,
                 &[wrong, converted_row.clone()],
-                &mut quire_contract_model::NativeJoinBudget::new(10_000, u64::MAX)
+                &mut filament_contract_model::NativeJoinBudget::new(10_000, u64::MAX)
             )
             .unwrap_err()
             .code,
@@ -1152,7 +1153,7 @@ fn unit_read_refuses_missing_foreign_and_competing_selected_rows() {
             .read_unit_definition(
                 &requested,
                 &[root_row.clone(), root_row.clone()],
-                &mut quire_contract_model::NativeJoinBudget::new(10_000, u64::MAX)
+                &mut filament_contract_model::NativeJoinBudget::new(10_000, u64::MAX)
             )
             .unwrap_err()
             .code,
@@ -1167,7 +1168,7 @@ fn unit_read_refuses_missing_foreign_and_competing_selected_rows() {
             .read_unit_definition(
                 &requested,
                 &[root_row, competing],
-                &mut quire_contract_model::NativeJoinBudget::new(10_000, u64::MAX)
+                &mut filament_contract_model::NativeJoinBudget::new(10_000, u64::MAX)
             )
             .unwrap_err()
             .code,
@@ -1321,7 +1322,7 @@ fn names_do_not_substitute_for_selected_node_or_member_identity() {
             .read_unit_definition(
                 std::slice::from_ref(&missing),
                 &[wrong],
-                &mut quire_contract_model::NativeJoinBudget::new(10_000, u64::MAX)
+                &mut filament_contract_model::NativeJoinBudget::new(10_000, u64::MAX)
             )
             .unwrap_err()
             .code,
@@ -1336,7 +1337,7 @@ fn malformed_rows_cannot_walk_empty_segments_or_copy_a_locus_after_exhaustion() 
     let root = node(&package, "unit", "Metre");
     let identity = UnitId::Declared(key("Metre"));
     let requested = [root.node_id.clone()];
-    let malformed = quire_contract_model::CheckedDeclaration {
+    let malformed = filament_contract_model::CheckedDeclaration {
         qualified_name: vec!["".into(); 1_000],
     };
     let rows = [NominalDeclarationRow {
@@ -1347,7 +1348,7 @@ fn malformed_rows_cannot_walk_empty_segments_or_copy_a_locus_after_exhaustion() 
         .read_unit_definition(
             &requested,
             &rows,
-            &mut quire_contract_model::NativeJoinBudget::new(500, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(500, u64::MAX),
         )
         .unwrap_err();
     assert_eq!(error.code, NominalReadCode::LimitReached);
@@ -1357,7 +1358,7 @@ fn malformed_rows_cannot_walk_empty_segments_or_copy_a_locus_after_exhaustion() 
         .read_unit_definition(
             &requested,
             &rows,
-            &mut quire_contract_model::NativeJoinBudget::new(0, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(0, u64::MAX),
         )
         .unwrap_err();
     assert_eq!(error.code, NominalReadCode::LimitReached);
@@ -1378,7 +1379,7 @@ fn derived_dimension_dependencies_are_returned_as_borrowed_canonical_terms() {
         .read_unit_definition(
             &requested,
             &rows,
-            &mut quire_contract_model::NativeJoinBudget::new(10_000, u64::MAX),
+            &mut filament_contract_model::NativeJoinBudget::new(10_000, u64::MAX),
         )
         .unwrap();
     assert_eq!(view.dimensions.len(), 2);
@@ -1397,7 +1398,7 @@ fn derived_dimension_dependencies_are_returned_as_borrowed_canonical_terms() {
 #[test]
 #[trace("TC-470", "FR-360-AC-2", "FR-360-AC-3")]
 fn dimension_sibling_term_denial_restores_the_paid_parent_coordinate() {
-    use quire_contract_model::{NativeJoinBudget, NativeJoinChargeKind, NativeJoinLocusSource};
+    use filament_contract_model::{NativeJoinBudget, NativeJoinChargeKind, NativeJoinLocusSource};
     let mut members = nominal_fixture_members()
         .into_iter()
         .skip(2)

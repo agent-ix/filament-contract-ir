@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Agent-IX
-"""Check actual QSpec read invocations from an unfiltered llvm-cov export.
+"""Check actual FSpec read invocations from an unfiltered llvm-cov export.
 
 This is an executed-corpus proof, not the AC-513 static reachability proof.
 A missed alias, function item or external helper contributes a production
@@ -31,8 +31,8 @@ BOUNDARIES = {
      "caller_budget_observation_preserves_prior_charges_and_outer_capture"): "budgeted-calibration",
 }
 PRODUCTION = {
-    ("crates/quire-contract-model/src/checked_package/v2/budgeted_read.rs", "read"): "plain",
-    ("crates/quire-contract-model/src/checked_package/v2/budgeted_read.rs", "read_with_budget"): "budgeted",
+    ("crates/filament-contract-model/src/checked_package/v2/budgeted_read.rs", "read"): "plain",
+    ("crates/filament-contract-model/src/checked_package/v2/budgeted_read.rs", "read_with_budget"): "budgeted",
 }
 
 
@@ -120,7 +120,7 @@ def check(export, root):
     def count(file, name):
         return counts[(file, name)]
     wrapper = "tests/it/support/qspec_read_proof.rs"
-    production = "crates/quire-contract-model/src/checked_package/v2/budgeted_read.rs"
+    production = "crates/filament-contract-model/src/checked_package/v2/budgeted_read.rs"
     plain = count(production, "read")
     budgeted = count(production, "read_with_budget")
     measured_plain = count(wrapper, "read_and_account")

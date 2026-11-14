@@ -4,8 +4,8 @@
 //! One allocation oracle shared by the dedicated counter binary and the
 //! existing integration binary's global allocation-counter backend.
 
-use quire_contract_model::NativeJoinLocusSource;
-use quire_contract_model::{
+use filament_contract_model::NativeJoinLocusSource;
+use filament_contract_model::{
     initialize_operation_catalog, CheckedPackageEvidence, CheckedPackageReadLimits,
     CheckedPackageRefusalCode, CheckedPackageV2, CheckedPackageV2BudgetedReadResult,
     CheckedPackageV2ReadResult, NativeJoinBudget,
@@ -191,7 +191,7 @@ fn every_request_from_observer<C: Counter>(bytes: &[u8], evidence: &CheckedPacka
     let mut last_storage_event = None;
     let mut storage_requests = 0_usize;
     for event in &events {
-        if event.resource != quire_contract_model::NativeBudgetResource::ReadStorage {
+        if event.resource != filament_contract_model::NativeBudgetResource::ReadStorage {
             continue;
         }
         assert_eq!(
@@ -404,16 +404,16 @@ pub(crate) fn work_denials<C: Counter>(
         .expect("actual first unpaid work charge");
     assert_eq!(
         denied.kind,
-        quire_contract_model::NativeJoinChargeKind::Work
+        filament_contract_model::NativeJoinChargeKind::Work
     );
-    let quire_contract_model::CheckedPackageV2BudgetedReadResult::BudgetIncomplete(diagnostic) =
+    let filament_contract_model::CheckedPackageV2BudgetedReadResult::BudgetIncomplete(diagnostic) =
         &short.result
     else {
         panic!("ample storage affords work diagnostic: {:?}", short.result);
     };
     assert_eq!(
         diagnostic.denied.resource,
-        quire_contract_model::PackageReadResource::Work
+        filament_contract_model::PackageReadResource::Work
     );
     assert_eq!(diagnostic.denied.amount, denied.amount);
     let repeated = measure_at::<C>(bytes, evidence, limits, work - 1, u64::MAX);
@@ -450,7 +450,7 @@ pub(crate) fn work_denials<C: Counter>(
             .expect("work charge before semantic outcome");
         assert_eq!(
             unpaid.kind,
-            quire_contract_model::NativeJoinChargeKind::Work
+            filament_contract_model::NativeJoinChargeKind::Work
         );
         let next = observation
             .budget
@@ -484,11 +484,9 @@ pub(crate) fn work_denials<C: Counter>(
             eprintln!("{label}: storage boundary probes={storage_probes} prefix={before_pointer}");
         }
         let observation = measure_at::<C>(bytes, evidence, limits, prefix, before_pointer);
-        if observation
-            .budget
-            .first_unpaid()
-            .is_some_and(|charge| charge.kind == quire_contract_model::NativeJoinChargeKind::Work)
-        {
+        if observation.budget.first_unpaid().is_some_and(|charge| {
+            charge.kind == filament_contract_model::NativeJoinChargeKind::Work
+        }) {
             break observation;
         }
         let asked = observation

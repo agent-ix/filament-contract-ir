@@ -7,11 +7,11 @@
 
 #[path = "it/support/qspec_read_proof.rs"]
 mod qspec_read_proof;
-use qspec_read_proof::read_and_account;
-use quire_contract_model::{
+use filament_contract_model::{
     CheckedPackageEvidence, CheckedPackageReadLimits, CheckedPackageRefusalCode, CheckedPackageV2,
     CheckedPackageV2ReadResult,
 };
+use qspec_read_proof::read_and_account;
 
 fn measure_qspec_read_requests(read: impl FnOnce()) -> u64 {
     allocation_counter::measure(read).bytes_total
@@ -109,15 +109,16 @@ fn unwrapped_shared_helper_after_trusted_read_must_fail_census() {
 
 fn unwrapped_budgeted_function_item(evidence: &CheckedPackageEvidence) {
     let entry = CheckedPackageV2::read_with_budget;
-    let mut budget =
-        quire_contract_model::NativeJoinBudget::new(u64::MAX, 0).with_read_storage_limit(u64::MAX);
+    let mut budget = filament_contract_model::NativeJoinBudget::new(u64::MAX, 0)
+        .with_read_storage_limit(u64::MAX);
     let result = entry(
         b"not json",
         CheckedPackageReadLimits::bounded(),
         evidence,
         &mut budget,
     );
-    let quire_contract_model::CheckedPackageV2BudgetedReadResult::Refused(refusal) = result else {
+    let filament_contract_model::CheckedPackageV2BudgetedReadResult::Refused(refusal) = result
+    else {
         panic!("the original malformed budgeted-input oracle must refuse");
     };
     assert_eq!(refusal.code, CheckedPackageRefusalCode::MalformedWire);

@@ -3,17 +3,17 @@ id: FR-352
 title: "Project admitted checked-package types to Exact value types"
 type: FR
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/StR-001
+  - target: ix://agent-ix/filament-contract-ir/StR-001
     type: traces_to
-  - target: ix://agent-ix/quire-contract-ir/FR-038
+  - target: ix://agent-ix/filament-contract-ir/FR-038
     type: depends_on
-  - target: ix://agent-ix/quire-contract-ir/FR-349
+  - target: ix://agent-ix/filament-contract-ir/FR-349
     type: depends_on
-  - target: ix://agent-ix/quire-contract-ir/FR-358
+  - target: ix://agent-ix/filament-contract-ir/FR-358
     type: depends_on
-  - target: ix://agent-ix/quire-spec-language/FR-390
+  - target: ix://agent-ix/filament-spec-language/FR-390
     type: references
-  - target: ix://agent-ix/quire-spec-language/FR-400
+  - target: ix://agent-ix/filament-spec-language/FR-400
     type: references
 ---
 # FR-352: Project admitted checked-package types to Exact value types
@@ -22,7 +22,7 @@ relationships:
 
 When a consumer requests the type of a node in an admitted `CheckedPackageV2`,
 Contract IR SHALL expose a public, read-only projection from that node's
-`semantic_type: CheckedNodeId` to `quire_exact::ValueType`. The result SHALL
+`semantic_type: CheckedNodeId` to `filament_exact::ValueType`. The result SHALL
 retain the identity and domain of the admitted type or return a typed refusal
 or incomplete result before exposing any partial value-type view. This is an
 IR-model read over [FR-038](./FR-038-consume-checked-package-v2.md)'s admitted
@@ -35,7 +35,7 @@ admission authority.
 - An owner-admitted `CheckedPackageV2`, a `CheckedNodeId` identifying a node in
   that package, and a finite projection work limit.
 - For an identity-bearing type, a read-only `SelectedExactIdentities` input
-  produced by the QSL checking/model identity stage for the selected documents
+  produced by the FSL checking/model identity stage for the selected documents
   used to construct this admitted package. Its entries associate each selected
   document identity, original IR declaration identity and declaration form with
   the stage's Exact `NodeKey` or `EffectiveId`; record field entries associate
@@ -43,40 +43,40 @@ admission authority.
   this input from that stage alongside the checked package. It is a trusted
   producer input, not a value minted or authenticated from arbitrary bytes by
   Contract IR; a caller-created table has no authoritative status.
-- For an admitted model-owned state operation anchor, a QSL checking/model stage
+- For an admitted model-owned state operation anchor, a FSL checking/model stage
   `SelectedOperationMemberRow` from the same selected documents. The row
   carries the full anchor `CheckedNodeId`, selected domain document identity,
   declaring model's original IR identity and closed declaration form, the
   selected operation member's original IR identity, and the stage's selected
   operation identity. The latter is the stage's existing operation identity;
   this contract does not mint an Exact key for an operation. The row is
-  producer input alongside the package, not a new QSpec wire member.
-- For a source-owned selected union, one QSL checking/emission-stage
+  producer input alongside the package, not a new FSpec wire member.
+- For a source-owned selected union, one FSL checking/emission-stage
   `SelectedSourceUnionRow` from the same final checked-package emission. It
   carries the full union structural node, selected source authority and
-  identity, original qualified declaration, QSL-issued union type handle
+  identity, original qualified declaration, FSL-issued union type handle
   (`AdmittedComposite::key()`), settled union key
-  (`AdmittedComposite::node()`), and every QSL-issued sealed `UnionMember`
+  (`AdmittedComposite::node()`), and every FSL-issued sealed `UnionMember`
   binding with its ordered final-emission IR payload `CheckedNodeId`s and
-  corresponding QSL-issued payload `ValueType`s. The type handle and settled
+  corresponding FSL-issued payload `ValueType`s. The type handle and settled
   key are distinct roles even when their values happen to agree.
-- For a source-owned selected tuple, one QSL checking/emission-stage
+- For a source-owned selected tuple, one FSL checking/emission-stage
   `SelectedSourceTupleRow` from the same final emission. It carries the final
   admitted tuple node, selected source authority and identity, original
-  qualified declaration, QSL-issued `AdmittedComposite::key()` type handle,
+  qualified declaration, FSL-issued `AdmittedComposite::key()` type handle,
   and every position in declaration order. Each `SelectedTuplePositionRow`
   carries its zero-based original ordinal, final emitted IR type node and
-  QSL-issued opaque Exact `ValueType`. A tuple position has no invented field
+  FSL-issued opaque Exact `ValueType`. A tuple position has no invented field
   name or `MemberId`; `AdmittedComposite::node()` is not substituted for the
   type handle.
 - For a selected source enum, one complete checking/emission-stage
   `SelectedSourceEnumRow` joins a `SelectedEnumDeclarationRow` and all
   `SelectedEnumMemberRow`s in admitted canonical case order. The declaration
   carries its final structural node, selected source, original qualified
-  declaration, QSL-issued declaration `NodeKey`, and QSL-issued opaque
+  declaration, FSL-issued declaration `NodeKey`, and FSL-issued opaque
   `EnumShape`. Each case carries its final emitted enum-value node, original
-  case, QSL-issued member `NodeKey` and `VariantId`. IR does not derive a
-  `VariantId` from a key or case spelling. The current QSL `AdmittedEnum`
+  case, FSL-issued member `NodeKey` and `VariantId`. IR does not derive a
+  `VariantId` from a key or case spelling. The current FSL `AdmittedEnum`
   facade does not expose the shape; a future same-emission producer handoff
   must supply it from checking-stage authority.
 - For a reached source collection type, one final-emission
@@ -88,31 +88,31 @@ admission authority.
   the base. Collection nodes are anonymous structural types, so the row has
   no invented declaration, member or source owner. A map without an emitted
   collection type node has no such row.
-- For an admitted equality application, QSL checking/emission-stage identity
+- For an admitted equality application, FSL checking/emission-stage identity
   rows from the same package construction. An application row carries the full
   emitted `CheckedNodeId`, its exact authored occurrence, the selected producer
-  document/context and QSL's original application `NodeKey` and `Location`. Quantity
+  document/context and FSL's original application `NodeKey` and `Location`. Quantity
   identity rows carry the full emitted structural nodes and selected producer
   documents/contexts for
   the dimension declaration, base-dimension terms and each ordered
-  conversion-edge target, together with their original QSL-issued `NodeKey`s.
+  conversion-edge target, together with their original FSL-issued `NodeKey`s.
   The rows distinguish each occurrence and each unit fact role;
-  they are producer input alongside the package, not QSpec wire members.
+  they are producer input alongside the package, not FSpec wire members.
 
 The public IR-model entry point SHALL take the admitted package, requested
 `CheckedNodeId`, `&SelectedExactIdentities`, and finite work limit, and return
-`ExactTypeProjection` or the closed typed outcome. The QSL-facing
+`ExactTypeProjection` or the closed typed outcome. The FSL-facing
 `SelectedExactIdentities` acquisition interface SHALL accept the stage's
 selected-document identity plus declaration-form/original-identity/Exact-id
 rows and record-field original-identity/`MemberId` rows. It SHALL expose no
 constructor that treats a bare Exact id or display name as a selected row.
-The producing QSL stage supplies these rows from the same selected documents
+The producing FSL stage supplies these rows from the same selected documents
 it used for checked-package construction; IR uses their original identities
 for the admitted-declaration join. The opaque Exact identities themselves
 remain trusted producer facts: IR cannot derive their provenance from their
 payloads.
 
-The QSL-facing operation-member acquisition interface SHALL emit one row per
+The FSL-facing operation-member acquisition interface SHALL emit one row per
 selected admitted model-owned anchor, including distinct admitted execution
 points for one operation. It SHALL NOT use a matching operation name alone to identify a
 selected member. The operation-member rows are a separate stage-row kind;
@@ -120,10 +120,10 @@ the current `SelectedExactIdentities` declaration and field rows do not
 contain them. A source-declared anchor whose context is not a selected model
 declaration has no FR-040 model member and SHALL NOT be assigned a model-member
 row. The callable view SHALL return a typed unavailable-witness outcome for
-that anchor until the QSL source stage supplies a distinct source-operation
+that anchor until the FSL source stage supplies a distinct source-operation
 identity witness.
 
-The QSL-facing equality identity acquisition interface SHALL emit the
+The FSL-facing equality identity acquisition interface SHALL emit the
 application row for each produced equality occurrence and the complete
 quantity identity rows used by its selected unit facts. The application key
 and authored `Location` SHALL come from the checking stage's retained
@@ -138,7 +138,7 @@ row at its first structural locus before constructing an Exact descriptor.
 It SHALL charge each inspected row against the finite work limit. No
 `CheckedNodeId`-to-`NodeKey` conversion or display-name lookup establishes an
 identity. The already witnessed `UnitId` supplies its own declared key and
-compound root terms to QSV's private admitted construction; QSV obtains a
+compound root terms to FSV's private admitted construction; FSV obtains a
 declared root from the last retained path target or declared key when the path
 is empty. IR SHALL NOT mint these keys. The equality read and
 its closed `UnavailableEqualityWitness` refusal are owned by
@@ -148,7 +148,7 @@ its closed `UnavailableEqualityWitness` refusal are owned by
 ## Outputs
 
 - A public `ExactTypeProjection` result containing a complete
-  `quire_exact::ValueType` and the selected structural `CheckedNodeId` to Exact
+  `filament_exact::ValueType` and the selected structural `CheckedNodeId` to Exact
   identity correspondence. For a selected record it also contains a public,
   read-only `SelectedRecordView`: its witnessed record `NodeKey` and every
   effective field in selected declaration order, each with its selected IR
@@ -173,9 +173,9 @@ before exposing a selected operation read. Two admitted model-owned anchors for 
 operation at distinct execution points MAY carry the same selected operation
 identity; the anchor identity distinguishes their rows. Contract IR SHALL
 NOT infer the stage identity from an operation display name, parse source
-again, or construct a QSL operation checker. The callable read of
+again, or construct a FSL operation checker. The callable read of
 [FR-354](./FR-354-project-admitted-runtime-context.md) consumes this joined
-row and returns a typed refusal while the QSL stage does not supply it.
+row and returns a typed refusal while the FSL stage does not supply it.
 Contract IR SHALL NOT match a source-declared anchor to a model operation
 member because their names happen to agree.
 
@@ -240,7 +240,7 @@ field's Exact `ValueType`. A required field SHALL retain
 `Presence::Required`. The projection SHALL NOT discard a wrapper, flatten a
 collection, change its kind or bounds, or treat an admitted complete member
 type as unsupported merely because it contains an `Option` or collection.
-This projection consumes only QSpec FR-154 admitted member types. It SHALL NOT
+This projection consumes only FSpec FR-154 admitted member types. It SHALL NOT
 admit `Option<Option<T>>`, including an alias path to the inner `Option`, or
 an optional `[1,1]` field typed by an option value type; those shapes are
 refused before projection.
@@ -289,7 +289,7 @@ members in admitted declaration order by identifier and every positional
 payload structural node, require equal payload `ValueType` and node counts,
 and require each binding's declaration and variant owner to equal the
 settled union key, and refuse a missing, foreign, stale, wrong-form, duplicate,
-conflicting or incomplete row before projection. The QSL-issued payload
+conflicting or incomplete row before projection. The FSL-issued payload
 `ValueType`s and opaque keys remain producer facts; IR SHALL NOT mint them,
 recheck source, or infer payload types from display names. The validated row SHALL
 retain its settled key and full ordered member bindings for a downstream
@@ -298,17 +298,17 @@ type handle only after this complete join; a bare `NodeKey` or declaration-only
 row SHALL remain `UnavailableIdentityWitness`. The join and projection SHALL
 be read-only, deterministic, bounded by the finite inspected row and admitted
 body, and charge each inspected union member and payload position against the
-caller's projection work limit. No union row is added to the QSpec wire.
-The missing-witness refusal does not satisfy QSL's required successful union
+caller's projection work limit. No union row is added to the FSpec wire.
+The missing-witness refusal does not satisfy FSL's required successful union
 reader and evaluation parity under
-[FR-390](ix://agent-ix/quire-spec-language/FR-390) AC-27.
+[FR-390](ix://agent-ix/filament-spec-language/FR-390) AC-27.
 For a source-owned tuple, IR SHALL join the complete selected tuple row to the
 admitted tuple's full structural node, selected source, source owner, original
 qualified declaration and exact tuple form. It SHALL compare every admitted
 position with one row in source order by ordinal and final type-node reference,
 require a complete equal-length census, and refuse a missing, foreign, stale,
 wrong-form, duplicate, reordered or incomplete row before projecting
-`Composite` with the QSL-issued type handle. The row SHALL retain the ordered
+`Composite` with the FSL-issued type handle. The row SHALL retain the ordered
 opaque position `ValueType`s for a downstream `TypeEnvironment`; IR SHALL NOT
 infer them, mint the handle or treat arbitrary caller rows as producer authority.
 The join and projection SHALL charge every inspected row and position under a
@@ -318,7 +318,7 @@ enum declaration's exact form, source owner, selected source and original
 qualified declaration. It SHALL compare the admitted ordered flag and every
 canonical case in position order, join each case to its final admitted
 enum-value node and declaring enum, and require the opaque `EnumShape` to have
-the same ordered flag, count and corresponding QSL-issued `VariantId` at each
+the same ordered flag, count and corresponding FSL-issued `VariantId` at each
 rank. Admitted `value/enum_value` nodes have no `owner` field; IR SHALL join
 every admitted source-map occurrence region of each case node to the selected
 declaring source. A missing, foreign, stale, wrong-form, duplicate, reordered, extra or
@@ -327,7 +327,7 @@ Exact enum value type or partial view is returned. The read SHALL charge
 inspected rows and cases under a finite allowance, preserve the opaque
 declaration/member keys and case identities, and ignore unrelated admitted
 nodes. Structural correspondence SHALL NOT authenticate caller-created
-opaque keys, shape or variants as QSL output.
+opaque keys, shape or variants as FSL output.
 For a reached collection type, Contract IR SHALL join one complete selected
 collection row by its full emitted structural node. The joined node SHALL be
 either a `composite_type` of the admitted sequence, set, bag or ordered-set
@@ -348,22 +348,22 @@ under one finite projection allowance; the exact allowance SHALL succeed and
 one less SHALL refuse with charged work. Equal admitted inputs and rows,
 including a package clone, SHALL give equal values or equal first stops. This
 structural join does not authenticate caller-created opaque Exact values as
-QSL output and does not certify a complete four-entry monitor closure.
+FSL output and does not certify a complete four-entry monitor closure.
 The projection SHALL
 terminate or report work exhaustion within the caller's finite limit;
 neither recursion depth nor expansion of a cyclic type may bypass the limit.
 
 [FR-349](./FR-349-retain-typed-checked-v2-terms.md)'s read-only term boundary
 continues to apply. Contract IR SHALL NOT define a mirror expression
-`ValueType`, construct QSL checked terms, or implement QSL's checker or
-evaluator. QSL owns supplied-value and observation admission and the result
-and charge-log parity of [FR-390](ix://agent-ix/quire-spec-language/FR-390)
+`ValueType`, construct FSL checked terms, or implement FSL's checker or
+evaluator. FSL owns supplied-value and observation admission and the result
+and charge-log parity of [FR-390](ix://agent-ix/filament-spec-language/FR-390)
 AC-6 and AC-11; this projection alone does not satisfy those criteria.
 
 ### Complete existing-witness validation and rebinding
 
 This read is planned under IR-1360 for the complete identity supplier required by
-[QSL FR-390](ix://agent-ix/quire-spec-language/FR-390) AC-66. It is not the
+[FSL FR-390](ix://agent-ix/filament-spec-language/FR-390) AC-66. It is not the
 monitor-root reachability or runtime-environment projection of
 [FR-357](./FR-357-project-selected-generated-type-closure.md). A family join
 validates its new input rows; it does not certify that an existing whole witness
@@ -533,7 +533,7 @@ IR SHALL expose no new public private-map getter, unchecked rebinding setter or
 caller-supplied completeness flag for this operation. Cloning a witness SHALL
 preserve its existing binding without validating it for another package. The
 operation SHALL preserve the trusted-producer boundary: a structurally matching
-caller-created opaque Exact identity is not authenticated as QSL output.
+caller-created opaque Exact identity is not authenticated as FSL output.
 
 ### Refusals, order and shared allowance
 
@@ -588,7 +588,7 @@ Using the shared join budget SHALL NOT claim that existing diagnostic
 allocations are precharged, that zero-storage refusals allocate nothing, or
 that an allocation failure can already be represented without allocation.
 No compatibility wrapper, pin, new wire identity, copied producer artifact or
-alternate QSL-side validator is introduced by this requirement.
+alternate FSL-side validator is introduced by this requirement.
 
 ## Acceptance Criteria
 
@@ -601,19 +601,19 @@ alternate QSL-side validator is introduced by this requirement.
 | FR-352-AC-5 | Admitted String, Uuid, and Timestamp scalar types map to their respective Exact variants when present. A selected declared unit maps through a witnessed declared `UnitId`; a compound unit without its authoritative identity refuses. A selected union uses `Composite` only with a verified union witness; dimension and alias shapes without faithful Exact representations return `UnsupportedExactType` with their own form and node. | Test |
 | FR-352-AC-6 | Every other admitted V2 type form either projects to an Exact variant with its full bounds, mode, members and identity, returns `UnsupportedExactType` when that complete shape cannot be faithfully represented, or returns `UnavailableIdentityWitness` when a required authoritative opaque identity witness is absent. Each refusal names the requested node, first failing type node and form, and charged work, before exposing any partial view. An admitted union without its authoritative declaration and payload identity witness takes the missing-witness outcome; a declaration key alone does not establish a complete union projection. Unsupported shape and missing identity remain distinct causes; neither outcome replaces a required successful projection whose complete representation and witnesses are available. No unmatched form maps to Boolean, Integer, Text, Composite or Reference as a default. | Test, Inspection |
 | FR-352-AC-7 | Repeated reads of one admitted package and its clone return equal complete values or equal typed outcomes. A nested or cyclic type either completes within the finite limit or reports typed exhaustion with the charged work and locus; no call reparses wire/source, grows the call stack with type depth, or grants admission to an unadmitted fixture. | Test |
-| FR-352-AC-8 | The public-item and dependency inventories show the projection in `quire-contract-model`, its cycle-free dependency on `quire-exact`, and no QSL checked-expression constructor, checker, evaluator or mirror expression type in IR; Exact has no IR admission dependency. QSL FR-390 AC-6 and AC-11 remain separately verified in QSL. | Test |
-| FR-352-AC-9 | A QSL-side selected-model identity producer supplies `SelectedExactIdentities` alongside a checked package; an external caller passes it to the public projection API. The IR join accepts identities only for matching admitted selected-document, declaration form and original IR declaration or field identities. Absent, conflicting, foreign-document and wrong-form entries return the named typed outcome; a caller-supplied bare `NodeKey`, `EffectiveId`, `MemberId`, or node-name pair cannot enter the projection as an authoritative witness. | Test, Inspection |
-| FR-352-AC-10 | A QSL-stage `SelectedOperationMemberRow` for an admitted model-owned operation anchor joins its full structural node, selected document, declaring model form and original model/operation member identities to the selected operation identity; the FR-354 callable read uses the joined row to find the admitted body and frame. Two admitted anchors of one operation at distinct execution points remain distinct rows. A missing row, wrong document/form/member, foreign anchor, duplicate conflicting row, or name-only match returns a named typed outcome without a callable view. A source-declared anchor with no selected model member returns typed unavailable-witness rather than accepting a same-name model-member row; no new QSpec wire member or invented Exact operation key is used. | Test, Inspection |
-| FR-352-AC-11 | QSL checking/emission supplies one original application `NodeKey` and authored `Location` per emitted equality application occurrence, and original dimension-declaration, base-dimension-term and ordered conversion-edge-target `NodeKey`s for every selected quantity fact. Each row carries a full emitted structural node, selected producer document/context and its fact role; application rows also carry exact occurrence. The FR-353 join refuses absent, foreign, wrong-form, duplicate, conflicting or mismatched rows with a typed structural locus and bounded work. Neither `CheckedNodeId`, display name nor the general FR-352 type projection produces a missing key. QSV privately unwraps the already witnessed `UnitId` for a declared key or compound root terms and obtains a declared root from the retained path, without checking or minting identity in IR. No row is added to QSpec V2 wire. | Test, Inspection |
+| FR-352-AC-8 | The public-item and dependency inventories show the projection in `filament-contract-model`, its cycle-free dependency on `filament-exact`, and no FSL checked-expression constructor, checker, evaluator or mirror expression type in IR; Exact has no IR admission dependency. FSL FR-390 AC-6 and AC-11 remain separately verified in FSL. | Test |
+| FR-352-AC-9 | A FSL-side selected-model identity producer supplies `SelectedExactIdentities` alongside a checked package; an external caller passes it to the public projection API. The IR join accepts identities only for matching admitted selected-document, declaration form and original IR declaration or field identities. Absent, conflicting, foreign-document and wrong-form entries return the named typed outcome; a caller-supplied bare `NodeKey`, `EffectiveId`, `MemberId`, or node-name pair cannot enter the projection as an authoritative witness. | Test, Inspection |
+| FR-352-AC-10 | A FSL-stage `SelectedOperationMemberRow` for an admitted model-owned operation anchor joins its full structural node, selected document, declaring model form and original model/operation member identities to the selected operation identity; the FR-354 callable read uses the joined row to find the admitted body and frame. Two admitted anchors of one operation at distinct execution points remain distinct rows. A missing row, wrong document/form/member, foreign anchor, duplicate conflicting row, or name-only match returns a named typed outcome without a callable view. A source-declared anchor with no selected model member returns typed unavailable-witness rather than accepting a same-name model-member row; no new FSpec wire member or invented Exact operation key is used. | Test, Inspection |
+| FR-352-AC-11 | FSL checking/emission supplies one original application `NodeKey` and authored `Location` per emitted equality application occurrence, and original dimension-declaration, base-dimension-term and ordered conversion-edge-target `NodeKey`s for every selected quantity fact. Each row carries a full emitted structural node, selected producer document/context and its fact role; application rows also carry exact occurrence. The FR-353 join refuses absent, foreign, wrong-form, duplicate, conflicting or mismatched rows with a typed structural locus and bounded work. Neither `CheckedNodeId`, display name nor the general FR-352 type projection produces a missing key. FSV privately unwraps the already witnessed `UnitId` for a declared key or compound root terms and obtains a declared root from the retained path, without checking or minting identity in IR. No row is added to FSpec V2 wire. | Test, Inspection |
 | FR-352-AC-12 | IMPLEMENTED (IR-1324). For an admitted selected record with a plain `Collection<Integer>` member, the public record view returns a witnessed Exact `MemberId`, the original IR field identity and `Presence::Required`, and an Exact collection whose kind, integer element and cardinality bound equal the admitted member. Distinct sequence, set, bag and ordered-set kinds remain distinct, as do unbounded and `[0,3]` cardinality. The complete view can be formed from checked-package bytes and selected producer rows without a source recheck. | Test |
 | FR-352-AC-13 | IMPLEMENTED (IR-1324). An admitted selected record with a required collection field whose element type is an option alias returns an Exact `Collection<Option<Integer>>` with its admitted kind and bound and the inner Exact `Option<Integer>` intact. An optional collection field of native Integer reports `Presence::Optional` after consuming its outer presence layer and retains Exact `Collection<Integer>` with its kind and bound. A required `[1,1]` field typed by an admitted option alias retains Exact `Option<Integer>`. The already supported optional field of native String reports `Presence::Optional` and Exact `String`. No positive case uses an optional `[1,1]` field typed by an option value type or an `Option<Option<T>>` alias chain. | Test |
 | FR-352-AC-14 | IMPLEMENTED (IR-1324). A nested member reference to a witnessed record in a selected cyclic nominal graph retains `Composite` with that record's original Exact `NodeKey` and terminates without expanding the cycle. A missing, foreign, conflicting or wrong-form nested identity refuses with its native typed cause and first referenced declaration; an unrepresentable nested leaf refuses as `UnsupportedExactType`. Neither refusal exposes a partial record view. | Test |
 | FR-352-AC-15 | IMPLEMENTED (IR-1324). A selected record with a deep admitted chain of sequence member types, including an alternating sequence and option chain in which each option's inner target is a sequence rather than an option directly or through aliases, projects using bounded iterative work and a small host stack. At the exact work allowance it returns the complete view; one less refuses with typed work exhaustion, charged work and first uncharged member locus. Equal admitted inputs and allowances, including a package clone, return equal views or equal first stops. | Test |
-| FR-352-AC-16 | A complete IR-side selected source union row joins one admitted union by structural node, selected source authority and identity, source owner, original qualified declaration, QSL-issued type handle and settled key, and all sealed members with ordered final-emission payload `CheckedNodeId`s and corresponding `ValueType`s. An IR caller can inspect the validated settled key and ordered bindings; the general projection returns `Composite` with the type handle, including when it differs from the settled key. A projection at the exact finite allowance succeeds, one unit less exhausts with charged work, and equal reads of a package clone agree. This IR-side row test does not assert that QSL currently emits the row. | Test |
-| FR-352-AC-17 | A missing row or a bare union declaration key returns `UnavailableIdentityWitness`. A foreign or stale structural node or payload node, unselected or mismatched source, wrong declaration form or qualified name, duplicate union row, missing/reordered/extra member, wrong member identifier, settled-key owner or payload count refuses with a named typed outcome before `Composite` or a partial union view. A caller-created row is not authenticated as QSL output by the IR join. | Test |
-| FR-352-AC-18 | A complete IR-owned selected source tuple row joins the selected source, admitted tuple form and original qualified declaration, one QSL-issued `AdmittedComposite::key()` type handle, and every ordered zero-based position with its final emitted type node and opaque `ValueType`. Exact projection returns `Composite` of that handle and the complete ordered tuple view, with exact-limit and clone equality. Missing, foreign, duplicate, stale, wrong-form, reordered, changed-type or incomplete rows refuse at a typed structural locus with no partial view; a bare key and caller-created opaque values do not establish QSL producer authority. This IR-owned row qualification does not claim the final QSL producer supplies positions or satisfy FR-357's monitor closure. | Test |
-| FR-352-AC-19 | A selected source enum row with one QSL-issued declaration key, opaque `EnumShape`, and all case rows in admitted canonical order joins the selected source, original declaration, ordered flag, final declaration and enum-value nodes, case names, member keys and `VariantId`s at their exact ranks. Exact projection returns `Enum` of the supplied shape and a complete ordered view; exact allowance and package clone agree. Missing, foreign, duplicate, wrong-form, reordered, changed-case, changed-variant, extra or incomplete rows, or a case whose admitted source-map region belongs to another selected source, refuse with typed locus and no partial view; unrelated admitted nodes do not affect the result. The IR-owned fixture proves structural joins but does not authenticate a caller as QSL or satisfy FR-357 AC1-4/AC11. | Test |
-| FR-352-AC-20 | Implemented (IR-721 source collection prerequisite; IR-owned strict fixture). A selected collection row with final structural, base and element nodes and the checked complete `ValueType::Collection` joins admitted unbounded sequence, set, bag and ordered-set types and a bounded `[0,3]` sequence, preserving exact kind, element and cardinality. A requested node typed by each collection returns the supplied complete Exact value; a bounded collection node is distinct from its base. The exact work allowance succeeds, one less refuses with charged work and first uncharged locus, and a package clone agrees. This IR-owned fixture does not prove same-emission QSL producer authority or FR-357 closure. | Test |
+| FR-352-AC-16 | A complete IR-side selected source union row joins one admitted union by structural node, selected source authority and identity, source owner, original qualified declaration, FSL-issued type handle and settled key, and all sealed members with ordered final-emission payload `CheckedNodeId`s and corresponding `ValueType`s. An IR caller can inspect the validated settled key and ordered bindings; the general projection returns `Composite` with the type handle, including when it differs from the settled key. A projection at the exact finite allowance succeeds, one unit less exhausts with charged work, and equal reads of a package clone agree. This IR-side row test does not assert that FSL currently emits the row. | Test |
+| FR-352-AC-17 | A missing row or a bare union declaration key returns `UnavailableIdentityWitness`. A foreign or stale structural node or payload node, unselected or mismatched source, wrong declaration form or qualified name, duplicate union row, missing/reordered/extra member, wrong member identifier, settled-key owner or payload count refuses with a named typed outcome before `Composite` or a partial union view. A caller-created row is not authenticated as FSL output by the IR join. | Test |
+| FR-352-AC-18 | A complete IR-owned selected source tuple row joins the selected source, admitted tuple form and original qualified declaration, one FSL-issued `AdmittedComposite::key()` type handle, and every ordered zero-based position with its final emitted type node and opaque `ValueType`. Exact projection returns `Composite` of that handle and the complete ordered tuple view, with exact-limit and clone equality. Missing, foreign, duplicate, stale, wrong-form, reordered, changed-type or incomplete rows refuse at a typed structural locus with no partial view; a bare key and caller-created opaque values do not establish FSL producer authority. This IR-owned row qualification does not claim the final FSL producer supplies positions or satisfy FR-357's monitor closure. | Test |
+| FR-352-AC-19 | A selected source enum row with one FSL-issued declaration key, opaque `EnumShape`, and all case rows in admitted canonical order joins the selected source, original declaration, ordered flag, final declaration and enum-value nodes, case names, member keys and `VariantId`s at their exact ranks. Exact projection returns `Enum` of the supplied shape and a complete ordered view; exact allowance and package clone agree. Missing, foreign, duplicate, wrong-form, reordered, changed-case, changed-variant, extra or incomplete rows, or a case whose admitted source-map region belongs to another selected source, refuse with typed locus and no partial view; unrelated admitted nodes do not affect the result. The IR-owned fixture proves structural joins but does not authenticate a caller as FSL or satisfy FR-357 AC1-4/AC11. | Test |
+| FR-352-AC-20 | Implemented (IR-721 source collection prerequisite; IR-owned strict fixture). A selected collection row with final structural, base and element nodes and the checked complete `ValueType::Collection` joins admitted unbounded sequence, set, bag and ordered-set types and a bounded `[0,3]` sequence, preserving exact kind, element and cardinality. A requested node typed by each collection returns the supplied complete Exact value; a bounded collection node is distinct from its base. The exact work allowance succeeds, one less refuses with charged work and first uncharged locus, and a package clone agrees. This IR-owned fixture does not prove same-emission FSL producer authority or FR-357 closure. | Test |
 | FR-352-AC-21 | Implemented (IR-721 source collection prerequisite; IR-owned strict fixture). Missing, foreign, duplicate, stale, wrong-form, changed-base, changed-element, changed-kind or changed-bound collection rows refuse with a named typed code at the first native node and no partial value. A collection with an unrepresentable or unwitnessed element retains the native unsupported-type or unavailable-witness refusal; a caller-created opaque element identity is not authenticated by the IR join. An unrelated unsupported declaration does not affect a selected collection read, and a map with no admitted collection type node is never fabricated as one. | Test |
 | FR-352-AC-22 | Implemented (IR-1360). A default-feature external consumer constructs a complete admitted fixture's witness through `from_stage_rows`, all five source joins and the checked public `with_admitted_type_rows`, using actual selected model-tuple and source-unit producer rows and one shared `NativeJoinBudget`. `validate_and_rebind` succeeds with an ample allowance; all rows, ordered payloads, opaque identities and both privately retained channels remain equal. Repeating against an admitted package clone gives an equal result and budget deltas. A genuinely obligation-free admitted package accepts an empty witness. | Test |
 | FR-352-AC-23 | Implemented (IR-1360). Omitting, in turn, a required declaration, unread effective field, source-family row, selected model-tuple acquisition row or source-unit acquisition row returns `IncompleteIdentityWitness` at the first missing native obligation during complete validation. The latter two cases exercise missing private-map entries through public acquisition, without a getter or unchecked mutation. Retaining only a valid subset or removing an entire family cannot shrink the package-derived domain. Each refusal returns no rebound witness and leaves the input unchanged. | Test |
@@ -621,9 +621,9 @@ alternate QSL-side validator is introduced by this requirement.
 | FR-352-AC-25 | Implemented (IR-1360). A complete mixed-family witness succeeds at separately measured exact work and storage requirements. One unit below either requirement refuses at the exact first unpaid kind, amount and native locus with no rebound value. Prior acquisition charges remain consumed when the same budget is reused; two individually affordable operations whose combined cost exceeds its remaining allowance cannot reset the budget. Counters and first stops are deterministic and checked arithmetic cannot wrap. | Test |
 | FR-352-AC-26 | Implemented (IR-1360). Complete-witness validation detects stale forms, missing/reordered/extra members, positions or cases inside a supplied row, wrong tuple/source-unit domains and cross-family identity conflicts with the existing typed causes. A fixture with two independent defects demonstrates binding-before-content-before-completeness ordering and the defined family/native order; the later defect never masks the first. All refusal paths preserve the immutable input. | Test |
 | FR-352-AC-27 | Implemented (IR-1360). A nonempty witness is checked using borrowed retained facts; success precharges its returned shared handles and any newly retained binding provenance. Actual acquisition copy-on-write map/key/entry/handle copies are charged before each copy/reserve/insert; one unit below an identified copy or returned-handle charge refuses without publishing any part of the output. Merely borrowing retained facts charges work but no storage; owned scratch state is precharged under FR-358. Success deltas and refused-call cumulative counters follow FR-358 without claiming IR-1359 diagnostic allocation qualification. | Test, Inspection |
-| FR-352-AC-28 | Implemented (IR-1360). A default-feature external consumer calls the checked public `with_admitted_type_rows` and single `validate_and_rebind` signatures with `&mut NativeJoinBudget`. The selected-type declaration projection uses the same checked admitted-type join; the old unchecked copy path is absent. The public surface exposes no private-map getter, unchecked rebind, completeness flag, wrapper or second validator. Full finite package-local checks use native admitted facts, terminate iteratively, perform no source parse, and acquire no QSL/runtime dependency or pin. Missing emitted declarations or unsupported native identity channels refuse truthfully rather than yielding a partial complete witness. | Test, Inspection |
+| FR-352-AC-28 | Implemented (IR-1360). A default-feature external consumer calls the checked public `with_admitted_type_rows` and single `validate_and_rebind` signatures with `&mut NativeJoinBudget`. The selected-type declaration projection uses the same checked admitted-type join; the old unchecked copy path is absent. The public surface exposes no private-map getter, unchecked rebind, completeness flag, wrapper or second validator. Full finite package-local checks use native admitted facts, terminate iteratively, perform no source parse, and acquire no FSL/runtime dependency or pin. Missing emitted declarations or unsupported native identity channels refuse truthfully rather than yielding a partial complete witness. | Test, Inspection |
 | FR-352-AC-29 | Implemented (IR-1360). The checked admitted-type acquisition joins a genuine selected model tuple and source-owned declared unit, preserving their complete private provenance and other witness families. Foreign nodes, wrong selected document/source, wrong tuple/unit form, changed owner/original declaration, compound `UnitId`, duplicate rows and cross-family handle conflicts refuse with the typed first native cause and no partial extension. Exact measured work and storage allowances succeed; one unit below either requirement refuses at the first unpaid kind, amount and locus before the corresponding copy. Incremental calls reuse cumulative budget consumption, and a package clone gives equal results or first stops. | Test |
-| FR-352-AC-30 | Direct projection of an admitted selected `model/variant_type` with its complete installed model enum shape returns `ValueType::Enum` equal to that shape, retaining ordering and every opaque variant identity. A package clone agrees. The reached-model join and following projection share one `NativeJoinBudget`: their measured exact cumulative work and storage succeed, and one unit below either refuses at the first unpaid kind and locus without a partial projection. An absent shape returns `UnavailableIdentityWitness`, and identities installed for an independent admission refuse `ForeignNode`. A committed genuine QSL Tier emission and its exported original declaration, case and shape rows exercise strict admission, row authentication, installation and direct value projection in the normal test lane. An authored IR fixture separately establishes the owner refusal boundary; full same-emission closure qualification remains owned by FR-357. | Test |
+| FR-352-AC-30 | Direct projection of an admitted selected `model/variant_type` with its complete installed model enum shape returns `ValueType::Enum` equal to that shape, retaining ordering and every opaque variant identity. A package clone agrees. The reached-model join and following projection share one `NativeJoinBudget`: their measured exact cumulative work and storage succeed, and one unit below either refuses at the first unpaid kind and locus without a partial projection. An absent shape returns `UnavailableIdentityWitness`, and identities installed for an independent admission refuse `ForeignNode`. A committed genuine FSL Tier emission and its exported original declaration, case and shape rows exercise strict admission, row authentication, installation and direct value projection in the normal test lane. An authored IR fixture separately establishes the owner refusal boundary; full same-emission closure qualification remains owned by FR-357. | Test |
 
 ## Dependencies
 
@@ -635,6 +635,6 @@ alternate QSL-side validator is introduced by this requirement.
   anchor admission and the selected-model operation/member join.
 - [FR-354](./FR-354-project-admitted-runtime-context.md) owns the callable
   view that consumes the operation-member witness.
-- QSL [FR-390](ix://agent-ix/quire-spec-language/FR-390) owns evaluator and
-  supplied-value parity; QSL [FR-400](ix://agent-ix/quire-spec-language/FR-400)
+- FSL [FR-390](ix://agent-ix/filament-spec-language/FR-390) owns evaluator and
+  supplied-value parity; FSL [FR-400](ix://agent-ix/filament-spec-language/FR-400)
   owns checked-term construction.

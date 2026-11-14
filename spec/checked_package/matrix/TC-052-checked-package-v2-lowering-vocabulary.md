@@ -3,7 +3,7 @@ id: TC-052
 title: "CheckedPackage V2 lowering vocabulary and outcome selection conform"
 type: TC
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/FR-038
+  - target: ix://agent-ix/filament-contract-ir/FR-038
     type: verifies
 ---
 # TC-052: CheckedPackage V2 lowering vocabulary and outcome selection conform

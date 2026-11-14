@@ -1,19 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Agent-IX
 
-//! TC-978 monitor recipes are read from the selected QSpec checkout by reference.
+//! TC-978 monitor recipes are read from the selected FSpec checkout by reference.
 
 use super::monitor_plan_fixtures::*;
 use super::*;
-use quire_contract_model::CheckedMonitorPlanRef;
-use quire_contract_model::{
+use filament_contract_model::CheckedMonitorPlanRef;
+use filament_contract_model::{
     CheckedMonitorClock, CheckedMonitorClockReadErrorCode, CheckedOccurrence,
     CheckedOccurrenceRole, ClockConfiguration, NativeJoinBudget, NativeJoinChargeKind,
 };
 use std::collections::BTreeSet;
 
 fn admitted(wire: &Value) -> Box<CheckedPackageV2> {
-    match read_package(wire).expect("QSpec selection evidence") {
+    match read_package(wire).expect("FSpec selection evidence") {
         CheckedPackageV2ReadResult::Admitted(package) => package,
         other => panic!("monitor recipe must admit: {other:?}"),
     }
@@ -114,7 +114,7 @@ fn monitor_plan_binds_selected_claim_occurrence_to_its_admitted_clock() {
         .expect("admitted monitor root");
     assert_eq!(
         package.temporal_bindings().unwrap()[1].clock,
-        quire_contract_model::ClockConfiguration::EventPosition {
+        filament_contract_model::ClockConfiguration::EventPosition {
             sequence_authority: "second-events".into()
         }
     );
@@ -287,8 +287,10 @@ fn monitor_plan_binds_selected_claim_occurrence_to_its_admitted_clock() {
 
     fn use_infinite_trace(value: &mut Value) {
         match value {
-            Value::String(text) if text == "quire.temporal.event-position.false-extension/v1" => {
-                *text = "quire.temporal.infinite-trace/v1".into();
+            Value::String(text)
+                if text == "filament.temporal.event-position.false-extension/v1" =>
+            {
+                *text = "filament.temporal.infinite-trace/v1".into();
             }
             Value::Array(values) => values.iter_mut().for_each(use_infinite_trace),
             Value::Object(values) => values.values_mut().for_each(use_infinite_trace),
@@ -354,7 +356,7 @@ fn monitor_plan_reads_timed_model_source_and_exact_unit() {
     let (mut wire, _) = materialize(&recipes()["base"]);
     for selection in wire["lock"]["profile_selections"].as_array_mut().unwrap() {
         if selection["role"] == "temporal_profile" {
-            selection["definition"]["identity"] = json!("quire.temporal.timed/v1");
+            selection["definition"]["identity"] = json!("filament.temporal.timed/v1");
         }
     }
     for node in wire["semantic_graph"]["nodes"].as_array_mut().unwrap() {
@@ -366,7 +368,7 @@ fn monitor_plan_reads_timed_model_source_and_exact_unit() {
         {
             for law in laws {
                 if law["role"] == "temporal_profile" {
-                    law["definition"]["identity"] = json!("quire.temporal.timed/v1");
+                    law["definition"]["identity"] = json!("filament.temporal.timed/v1");
                 }
             }
         }
@@ -478,7 +480,7 @@ fn assert_reads(plan: CheckedMonitorPlanRef<'_>, facts: &Value) {
         );
         assert!(matches!(
             entry.body(),
-            quire_contract_model::CheckedTerm::Aggregate { .. }
+            filament_contract_model::CheckedTerm::Aggregate { .. }
         ));
     }
 }
@@ -548,7 +550,7 @@ fn monitor_plan_published_reader_recipes_have_exact_outcomes() {
                 facts["state"]["activation_status"].as_str().unwrap(),
             );
         }
-        let result = read_package(&wire).expect("QSpec evidence");
+        let result = read_package(&wire).expect("FSpec evidence");
         if case["expected"] == "admitted" {
             let CheckedPackageV2ReadResult::Admitted(package) = result else {
                 panic!("{}: {result:?}", case["id"]);
@@ -604,7 +606,7 @@ fn monitor_plan_published_reader_recipes_have_exact_outcomes() {
             assert_eq!(
                 refusal.locus.as_ref(),
                 Some(
-                    &serde_json::from_value::<quire_contract_model::CheckedNodeId>(
+                    &serde_json::from_value::<filament_contract_model::CheckedNodeId>(
                         wire["semantic_graph"]["nodes"][n]["node_id"].clone()
                     )
                     .unwrap()
@@ -658,7 +660,7 @@ fn monitor_plan_published_reader_recipes_have_exact_outcomes() {
 }
 
 fn refusal(wire: &Value, code: Code, cause: Option<Cause>, path: &str, root: usize) {
-    let result = read_package(wire).expect("selected QSpec evidence");
+    let result = read_package(wire).expect("selected FSpec evidence");
     let CheckedPackageV2ReadResult::Refused(refusal) = result else {
         panic!("expected {path}: {result:?}");
     };
@@ -671,7 +673,7 @@ fn refusal(wire: &Value, code: Code, cause: Option<Cause>, path: &str, root: usi
     assert_eq!(
         refusal.locus.as_ref(),
         Some(
-            &serde_json::from_value::<quire_contract_model::CheckedNodeId>(
+            &serde_json::from_value::<filament_contract_model::CheckedNodeId>(
                 wire["semantic_graph"]["nodes"][root]["node_id"].clone()
             )
             .unwrap()
@@ -776,7 +778,7 @@ fn monitor_plan_adjacent_stages_and_premises_keep_first_refusal() {
         &wire["semantic_graph"]["nodes"][entry]["body"]["members"][1]["value"]["target"],
     );
     wire["semantic_graph"]["nodes"][expression]["body"]["operation"]["identity"] =
-        json!("quire.op.no_such_operation");
+        json!("filament.op.no_such_operation");
     let result = read_package(&wire).unwrap();
     let CheckedPackageV2ReadResult::Refused(refused) = result else {
         panic!("expression defect must precede plan: {result:?}")
@@ -1036,7 +1038,7 @@ fn monitor_plan_exact_work_limit_admits_and_one_less_has_no_partial_package() {
     };
     assert_eq!(
         incomplete.limit_kind,
-        quire_contract_model::CheckedPackageLimit::Work
+        filament_contract_model::CheckedPackageLimit::Work
     );
     assert_eq!(incomplete.limit, low - 1);
     assert!(incomplete.consumed > incomplete.limit);
@@ -1050,8 +1052,8 @@ fn monitor_plan_mp32_uses_existing_flatten_and_sequence_operations() {
     assert_eq!(
         vectors["append"]["operations"],
         json!([
-            "quire.op.collection.flatten",
-            "quire.op.collection.sequence"
+            "filament.op.collection.flatten",
+            "filament.op.collection.sequence"
         ])
     );
     let (mut wire, _) = materialize(&vectors["base"]);
@@ -1075,7 +1077,7 @@ fn monitor_plan_mp32_uses_existing_flatten_and_sequence_operations() {
         "expression",
         "collection",
         Some(&sequence),
-        op("quire.op.collection.sequence", &sequence, vec![]),
+        op("filament.op.collection.sequence", &sequence, vec![]),
         "append s",
     );
     let singleton = append(
@@ -1084,7 +1086,7 @@ fn monitor_plan_mp32_uses_existing_flatten_and_sequence_operations() {
         "collection",
         Some(&sequence),
         op(
-            "quire.op.collection.sequence",
+            "filament.op.collection.sequence",
             &sequence,
             vec![reference(&x)],
         ),
@@ -1096,7 +1098,7 @@ fn monitor_plan_mp32_uses_existing_flatten_and_sequence_operations() {
         "collection",
         Some(&nested),
         op(
-            "quire.op.collection.sequence",
+            "filament.op.collection.sequence",
             &nested,
             vec![reference(&s), reference(&singleton)],
         ),
@@ -1108,7 +1110,7 @@ fn monitor_plan_mp32_uses_existing_flatten_and_sequence_operations() {
         "collection",
         Some(&sequence),
         op(
-            "quire.op.collection.flatten",
+            "filament.op.collection.flatten",
             &sequence,
             vec![reference(&pairs)],
         ),
@@ -1118,7 +1120,7 @@ fn monitor_plan_mp32_uses_existing_flatten_and_sequence_operations() {
     let package = admitted(&wire);
     assert!(matches!(
         package.term(&serde_json::from_value(flattened).unwrap()),
-        Some(quire_contract_model::CheckedTerm::Application { .. })
+        Some(filament_contract_model::CheckedTerm::Application { .. })
     ));
 }
 
@@ -1226,7 +1228,7 @@ fn monitor_plan_rational_work_denial_stays_incomplete() {
     };
     assert_eq!(
         incomplete.limit_kind,
-        quire_contract_model::CheckedPackageLimit::Work
+        filament_contract_model::CheckedPackageLimit::Work
     );
     assert_eq!(
         incomplete.path.as_ref().unwrap().as_str(),
@@ -1313,7 +1315,7 @@ fn monitor_plan_tick_unit_uses_the_admitted_model_dimension_identity() {
         ),
     ] {
         wire["semantic_graph"]["nodes"].as_array_mut().unwrap().push(json!({
-            "schema_version":"quire.checked-semantic-graph/v2","node_tag":"scalar_type","semantic_form":form,
+            "schema_version":"filament.checked-semantic-graph/v2","node_tag":"scalar_type","semantic_form":form,
             "node_id":id,"semantic_type":ty,"dependencies":deps,"body":aggregate(vec![]),"occurrences":[{"role":"generated","ordinal":0}],
             "owner":{"kind":"model","identity":"acme/orders","node":format!("ix://acme/orders/{form}/{}",if form=="unit" {"tick"} else {"Time"})}
         }));

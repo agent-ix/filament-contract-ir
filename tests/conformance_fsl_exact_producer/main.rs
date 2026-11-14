@@ -1,0 +1,625 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Agent-IX
+
+//! Explicit live FSL producer lane. Compile this target first, then execute its
+//! native test binary; only its isolated helper owns Cargo during execution.
+
+use std::{
+    env, fs,
+    path::{Path, PathBuf},
+    process::{Command, Output},
+};
+
+use ix_trace_rs::trace;
+use serde_json::Value;
+
+struct Scratch(PathBuf);
+
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        fs::remove_dir_all(&self.0).expect("remove owned producer helper scratch");
+    }
+}
+
+fn cargo(helper: &Path, target: &Path, arguments: &[&str]) -> Output {
+    Command::new("flock")
+        .args([
+            "/tmp/titan-cargo.lock",
+            "nice",
+            "-n",
+            "10",
+            "ionice",
+            "-c2",
+            "-n7",
+        ])
+        .arg(env!("CARGO"))
+        .current_dir(helper)
+        .args(arguments)
+        .env("CARGO_TARGET_DIR", target)
+        // Keep the invoking toolchain across path dependencies with their own
+        // rustup directory overrides; this selects no new toolchain version.
+        .env(
+            "RUSTC",
+            Path::new(env!("CARGO")).with_file_name(format!("rustc{}", env::consts::EXE_SUFFIX)),
+        )
+        .env(
+            "RUSTDOC",
+            Path::new(env!("CARGO")).with_file_name(format!("rustdoc{}", env::consts::EXE_SUFFIX)),
+        )
+        .output()
+        .expect("run isolated typed producer consumer")
+}
+
+fn prepare_consumer(
+    label: &str,
+    source: &str,
+    additional_packages: &[&str],
+) -> (Scratch, PathBuf, PathBuf) {
+    let fsl = env::var_os("FILAMENT_SPEC_LANGUAGE_DIR")
+        .map(PathBuf::from)
+        .expect("explicit producer lane requires FILAMENT_SPEC_LANGUAGE_DIR");
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let target = env::var_os("CARGO_TARGET_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| root.join("target"));
+    assert!(
+        target.is_absolute(),
+        "producer target must be an absolute owned path"
+    );
+    let scratch_path = env::temp_dir().join(format!("ir1003-{label}-{}", std::process::id()));
+    fs::create_dir(&scratch_path).expect("create owned scratch");
+    let scratch = Scratch(scratch_path);
+    let helper = scratch.0.join("helper");
+    fs::create_dir_all(helper.join("src/bin")).expect("create helper bins");
+    let mut manifest = String::from(
+        "[package]\nname = \"ir1003-exact-producer\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\n",
+    );
+    for name in [
+        "fsl-cst",
+        "fsl-forms",
+        "fsl-foundation",
+        "fsl-semantics",
+        "fsl-package",
+    ] {
+        manifest.push_str(&format!("{name} = {{ path = {:?} }}\n", fsl.join(name)));
+    }
+    for name in additional_packages {
+        manifest.push_str(&format!("{name} = {{ path = {:?} }}\n", fsl.join(name)));
+    }
+    manifest.push_str(&format!(
+        "filament-contract-model = {{ path = {:?} }}\n\
+         filament-exact = {{ git = \"https://github.com/agent-ix/filament-exact\", branch = \"main\" }}\n\
+         filament-semantic-value = {{ git = \"https://github.com/agent-ix/filament-semantic-value\", branch = \"main\" }}\n\
+         serde_json = \"1\"\n\n\
+         [patch.\"https://github.com/agent-ix/filament-contract-ir\"]\n\
+         filament-contract-model = {{ path = {:?} }}\n",
+        root.join("crates/filament-contract-model"), root.join("crates/filament-contract-model"),
+    ));
+    fs::write(helper.join("Cargo.toml"), manifest).expect("write isolated consumer manifest");
+    fs::copy(fsl.join("Cargo.lock"), helper.join("Cargo.lock"))
+        .expect("seed scratch resolution from the actual owner workspace");
+    fs::copy(root.join(source), helper.join("src/bin/producer.rs"))
+        .expect("copy tracked consumer program, never producer rows or model fixtures");
+    // The scratch package changes the workspace root and patches one dependency;
+    // resolve its own lock before all build/run/check commands use --locked.
+    let resolved = cargo(
+        &helper,
+        &target,
+        &["metadata", "--offline", "--format-version=1"],
+    );
+    assert!(
+        resolved.status.success(),
+        "scratch dependency resolution: {}",
+        String::from_utf8_lossy(&resolved.stderr)
+    );
+    let metadata: Value =
+        serde_json::from_slice(&resolved.stdout).expect("resolved Cargo metadata");
+    let models = metadata["packages"]
+        .as_array()
+        .expect("resolved packages")
+        .iter()
+        .filter(|package| package["name"] == "filament-contract-model")
+        .collect::<Vec<_>>();
+    assert_eq!(
+        models.len(),
+        1,
+        "the typed producer and consumer must share one model crate"
+    );
+    assert_eq!(
+        Path::new(models[0]["manifest_path"].as_str().expect("model manifest")),
+        root.join("crates/filament-contract-model/Cargo.toml")
+    );
+    (scratch, helper, target)
+}
+
+#[trace("FR-352-AC-9")]
+#[test]
+fn genuine_fsl_model_identities_join_admitted_record_and_reference_projection() {
+    let (_scratch, helper, target) = prepare_consumer(
+        "exact-producer",
+        "tests/conformance_fsl_exact_producer/producer.rs",
+        &[],
+    );
+    let emitted = cargo(
+        &helper,
+        &target,
+        &["run", "--offline", "--locked", "-j2", "--bin", "producer"],
+    );
+    assert!(
+        emitted.status.success(),
+        "typed producer consumer failed:\n{}\n{}",
+        String::from_utf8_lossy(&emitted.stdout),
+        String::from_utf8_lossy(&emitted.stderr)
+    );
+    assert!(String::from_utf8_lossy(&emitted.stdout).contains(
+        "FR-352-AC-9 producer, record/reference projections and typed adverse joins passed"
+    ));
+
+    print!("{}", String::from_utf8_lossy(&emitted.stdout));
+
+    // The public projection signature requires the joined table. These probes
+    // establish that typed boundary, not unforgeability of public stage rows.
+    for (name, supplied) in [
+        ("bare_node_key", "filament_exact::NodeKey"),
+        ("bare_effective_id", "filament_exact::EffectiveId"),
+        ("bare_member_id", "filament_exact::MemberId"),
+        ("bare_name_pair", "(&str, &str)"),
+    ] {
+        let source = format!(
+            "fn consume(package: &filament_contract_model::CheckedPackageV2, node: &filament_contract_model::CheckedNodeId, supplied: &{supplied}) {{\n\
+             let _ = package.project_exact_type(node, supplied, &mut filament_contract_model::NativeJoinBudget::new(256, u64::MAX));\n}}\nfn main() {{}}\n"
+        );
+        fs::write(helper.join(format!("src/bin/{name}.rs")), source)
+            .expect("write compile-negative consumer");
+        let result = cargo(
+            &helper,
+            &target,
+            &[
+                "check",
+                "--offline",
+                "--locked",
+                "-j2",
+                "--bin",
+                name,
+                "--message-format=json",
+            ],
+        );
+        assert!(
+            !result.status.success(),
+            "{name} entered projection without a joined witness"
+        );
+        let messages = String::from_utf8(result.stdout).expect("Cargo diagnostic JSON");
+        let errors = messages
+            .lines()
+            .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+            .filter(|message| {
+                message["reason"] == "compiler-message" && message["message"]["level"] == "error"
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            errors.len(),
+            1,
+            "{name}: wrong failure: {errors:?}\n{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        assert_eq!(errors[0]["message"]["code"]["code"], "E0308", "{name}");
+        assert!(
+            errors[0]["message"]["rendered"]
+                .as_str()
+                .expect("rendered diagnostic")
+                .contains("SelectedExactIdentities"),
+            "{name}: {errors:?}"
+        );
+        println!("{name}: E0308 rejects a bare input at the joined-witness boundary");
+    }
+}
+
+#[trace("TC-462", "FR-058-AC-1", "FR-058-AC-6")]
+#[test]
+fn fresh_fsl_four_points_survive_source_drop_at_the_public_accessor() {
+    assert_accessor_reads_only_admitted_terms();
+    let (_scratch, helper, target) = prepare_consumer(
+        "execution-points",
+        "tests/conformance_fsl_exact_producer/execution_points.rs",
+        &["fsl-replay"],
+    );
+    let produced = cargo(
+        &helper,
+        &target,
+        &["run", "--offline", "--locked", "-j2", "--bin", "producer"],
+    );
+    assert!(
+        produced.status.success(),
+        "four-point producer and public consumer: {}\n{}",
+        String::from_utf8_lossy(&produced.stdout),
+        String::from_utf8_lossy(&produced.stderr)
+    );
+    let wire: Value = serde_json::from_slice(&produced.stdout).expect("fresh producer envelope");
+    let qspec = env::var_os("FILAMENT_SPECIFICATION_DIR")
+        .map(PathBuf::from)
+        .expect("explicit producer lane requires FILAMENT_SPECIFICATION_DIR");
+    let schema: Value = serde_json::from_slice(
+        &fs::read(qspec.join("proposals/checked-package-v2/schema.json"))
+            .expect("authoritative FSpec carrier schema by reference"),
+    )
+    .expect("FSpec schema JSON");
+    let body_schema =
+        serde_json::json!({"$ref":"#/$defs/StateClauseBody", "$defs":schema["$defs"]});
+    let validator = jsonschema::JSONSchema::options()
+        .with_draft(jsonschema::Draft::Draft7)
+        .compile(&body_schema)
+        .expect("published state-clause carrier schema");
+    let bodies = wire["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("graph nodes")
+        .iter()
+        .filter(|node| node["semantic_form"] == "state_clause")
+        .map(|node| &node["body"])
+        .collect::<Vec<_>>();
+    assert_eq!(
+        bodies.len(),
+        4,
+        "one fresh package contains all four clauses"
+    );
+    let mut points = Vec::new();
+    for body in bodies {
+        if let Err(errors) = validator.validate(body) {
+            panic!(
+                "fresh state clause violates FSpec: {:?}",
+                errors.map(|error| error.to_string()).collect::<Vec<_>>()
+            );
+        }
+        points.push(body["operation"]["member"]["execution_point"].to_string());
+    }
+    points.sort();
+    let mut expected = [
+        serde_json::json!({"kind":"initialization", "name":"startup"}).to_string(),
+        serde_json::json!({"kind":"handler", "name":"tick"}).to_string(),
+        serde_json::json!({"kind":"pre", "operation":"adjust"}).to_string(),
+        serde_json::json!({"kind":"post", "operation":"adjust"}).to_string(),
+    ];
+    expected.sort();
+    assert_eq!(
+        points, expected,
+        "exact points in the authoritative carrier"
+    );
+
+    for (name, source, code) in [
+        ("caller_point", "fn consume(p: &filament_contract_model::CheckedPackageV2, n: &filament_contract_model::CheckedNodeId, c: &filament_contract_model::CheckedOccurrence, supplied: filament_contract_model::ExecutionPoint) { let _ = p.clause_execution_point(n, (n,c), supplied); } fn main() {}\n", "E0061"),
+        ("caller_bindings", "fn consume(p: &filament_contract_model::CheckedPackageV2, n: &filament_contract_model::CheckedNodeId, supplied: &fsl_replay::spine::StateClauseExecutionPoints) { let _ = p.clause_execution_point(n, supplied); } fn main() {}\n", "E0308"),
+    ] {
+        let consumer = helper.join(format!("src/bin/{name}.rs"));
+        fs::write(&consumer, source).expect("external caller-input rejection control");
+        let refused = cargo(&helper, &target, &["check", "--offline", "--locked", "-j2", "--bin", name, "--message-format=json"]);
+        assert_eq!(refused.status.code(), Some(101), "{name} must not enter accessor");
+        let messages = String::from_utf8(refused.stdout).expect("compiler JSON");
+        let errors = messages.lines().filter_map(|line| serde_json::from_str::<Value>(line).ok()).filter(|message| message["reason"] == "compiler-message" && message["message"]["level"] == "error").collect::<Vec<_>>();
+        assert_eq!(errors.len(), 1, "only the intended {name} signature refusal: {errors:?}\n{}", String::from_utf8_lossy(&refused.stderr));
+        assert_eq!(errors[0]["target"]["name"], name);
+        assert_eq!(errors[0]["target"]["src_path"].as_str().map(Path::new), Some(consumer.as_path()));
+        assert_eq!(errors[0]["message"]["code"]["code"], code);
+        assert!(errors[0]["message"]["rendered"].as_str().expect("compiler diagnostic").contains("clause_execution_point"), "{name} must refuse at the admitted accessor");
+    }
+}
+
+fn assert_accessor_reads_only_admitted_terms() {
+    use std::collections::BTreeSet;
+    use syn::visit::Visit;
+
+    #[derive(Default)]
+    struct Calls {
+        methods: BTreeSet<String>,
+        functions: BTreeSet<String>,
+    }
+    impl<'ast> Visit<'ast> for Calls {
+        fn visit_expr_method_call(&mut self, call: &'ast syn::ExprMethodCall) {
+            self.methods.insert(call.method.to_string());
+            syn::visit::visit_expr_method_call(self, call);
+        }
+        fn visit_expr_call(&mut self, call: &'ast syn::ExprCall) {
+            let syn::Expr::Path(path) = call.func.as_ref() else {
+                panic!("accessor cannot dispatch through a supplied callback");
+            };
+            self.functions.insert(
+                path.path
+                    .segments
+                    .last()
+                    .expect("call path")
+                    .ident
+                    .to_string(),
+            );
+            syn::visit::visit_expr_call(self, call);
+        }
+    }
+    let source = include_str!(
+        "../../crates/filament-contract-model/src/checked_package/v2/execution_point_accessor.rs"
+    );
+    let file = syn::parse_file(source).expect("accessor Rust syntax");
+    let functions = file
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            syn::Item::Impl(item) => Some(item),
+            _ => None,
+        })
+        .flat_map(|item| &item.items)
+        .filter_map(|item| match item {
+            syn::ImplItem::Fn(function) if function.sig.ident == "clause_execution_point" => {
+                Some(function)
+            }
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        functions.len(),
+        1,
+        "one admitted accessor, no overload path"
+    );
+    assert_eq!(
+        functions[0].sig.inputs.len(),
+        3,
+        "self, clause, owner-bound claim only"
+    );
+    let mut calls = Calls::default();
+    calls.visit_block(&functions[0].block);
+    assert_eq!(
+        calls.functions,
+        ["Err", "Some", "State", "error"]
+            .map(str::to_owned)
+            .into_iter()
+            .collect()
+    );
+    assert_eq!(calls.methods, ["clone", "cloned", "contains", "execution_point", "node", "node_kind", "ok_or_else", "term"].map(str::to_owned).into_iter().collect(), "the accessor obtains only admitted typed nodes/terms, never source bindings or a fallback producer path");
+}
+
+#[trace("TC-048", "FR-038-AC-232")]
+#[test]
+fn fresh_fsl_bounded_record_narrow_is_a_closed_composite_literal() {
+    let (_scratch, helper, target) = prepare_consumer(
+        "narrow-record",
+        "tests/conformance_fsl_exact_producer/narrow_record.rs",
+        &["fsl-replay"],
+    );
+    let result = cargo(
+        &helper,
+        &target,
+        &["run", "--offline", "--locked", "-j2", "--bin", "producer"],
+    );
+    assert!(
+        result.status.success(),
+        "fresh narrow producer/reader: {}\n{}",
+        String::from_utf8_lossy(&result.stdout),
+        String::from_utf8_lossy(&result.stderr)
+    );
+    assert!(String::from_utf8_lossy(&result.stdout)
+        .contains("fresh bounded-record eq and ne preserve closed authentic operands"));
+}
+
+#[trace("TC-226", "FR-038-AC-130")]
+#[test]
+fn fresh_fsl_all_ten_derived_shapes_match_selected_model_members() {
+    let (_scratch, helper, target) = prepare_consumer(
+        "derived-shapes",
+        "tests/conformance_fsl_exact_producer/derived_shapes.rs",
+        &[],
+    );
+    let result = cargo(
+        &helper,
+        &target,
+        &["run", "--offline", "--locked", "-j2", "--bin", "producer"],
+    );
+    assert!(
+        result.status.success(),
+        "genuine derived producer/reader: {}\n{}",
+        String::from_utf8_lossy(&result.stdout),
+        String::from_utf8_lossy(&result.stderr)
+    );
+    assert!(String::from_utf8_lossy(&result.stdout)
+        .contains("correspondence passed for all ten derived shapes"));
+    for (name, source, code) in [
+        ("member_node_key", "fn consume(member: &filament_contract_model::CheckedMemberType) { let _ = member.node_key(); } fn main() {}", "E0599"),
+        ("private_member_type", "use filament_contract_model::MemberType; fn main() {}", "E0432"),
+    ] {
+        fs::write(helper.join(format!("src/bin/{name}.rs")), source).expect("negative public consumer");
+        let result = cargo(&helper, &target, &["check", "--offline", "--locked", "-j2", "--bin", name, "--message-format=json"]);
+        assert!(!result.status.success(), "{name}: private type-to-key surface must not be exported");
+        let messages = String::from_utf8(result.stdout).expect("compiler JSON");
+        let errors = messages.lines().filter_map(|line| serde_json::from_str::<Value>(line).ok()).filter(|message| message["reason"] == "compiler-message" && message["message"]["level"] == "error").collect::<Vec<_>>();
+        assert_eq!(errors.len(), 1, "{name}: {errors:?}\n{}", String::from_utf8_lossy(&result.stderr));
+        assert_eq!(errors[0]["message"]["code"]["code"], code, "{name}: intended public boundary");
+    }
+}
+
+// This byte producer uses FSL's own dependency resolution. Exact-identity
+// witness tests above still require their existing shared typed model.
+fn prepare_literal_emitter() -> (Scratch, PathBuf, PathBuf) {
+    let fsl = PathBuf::from(env::var_os("FILAMENT_SPEC_LANGUAGE_DIR").expect("FSL checkout"));
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let target = env::var_os("CARGO_TARGET_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| root.join("target"))
+        .join("ir1350-literal-body-producer");
+    assert!(target.is_absolute(), "producer target must be absolute");
+    let scratch =
+        Scratch(env::temp_dir().join(format!("ir-literal-emitter-{}", std::process::id())));
+    fs::create_dir(&scratch.0).expect("create emitter scratch");
+    let helper = scratch.0.join("helper");
+    fs::create_dir_all(helper.join("src/bin")).expect("create emitter source directory");
+    let mut manifest = String::from("[package]\nname = \"ir-literal-emitter\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\n");
+    for name in [
+        "fsl-cst",
+        "fsl-forms",
+        "fsl-foundation",
+        "fsl-semantics",
+        "fsl-package",
+    ] {
+        manifest.push_str(&format!("{name} = {{ path = {:?} }}\n", fsl.join(name)));
+    }
+    manifest.push_str("filament-semantic-value = { git = \"https://github.com/agent-ix/filament-semantic-value\", branch = \"main\" }\n");
+    fs::write(helper.join("Cargo.toml"), manifest).expect("write producer-only manifest");
+    fs::copy(fsl.join("Cargo.lock"), helper.join("Cargo.lock"))
+        .expect("seed owner lock resolution");
+    fs::copy(
+        root.join("tests/conformance_fsl_exact_producer/literal_bodies.rs"),
+        helper.join("src/bin/producer.rs"),
+    )
+    .expect("copy independently authored producer program");
+    let resolved = cargo(&helper, &target, &["metadata", "--format-version=1"]);
+    assert!(
+        resolved.status.success(),
+        "producer dependency resolution: {}",
+        String::from_utf8_lossy(&resolved.stderr)
+    );
+    (scratch, helper, target)
+}
+
+#[trace("FR-038-AC-471", "FR-038-AC-472")]
+#[test]
+fn genuine_u12_literal_exponent_admits_and_nonliteral_bodies_refuse() {
+    let (_scratch, helper, target) = prepare_literal_emitter();
+    let built = cargo(
+        &helper,
+        &target,
+        &[
+            "build",
+            "--workspace",
+            "--offline",
+            "--locked",
+            "-j2",
+            "--bin",
+            "producer",
+        ],
+    );
+    assert!(
+        built.status.success(),
+        "literal emitter build:\n{}\n{}",
+        String::from_utf8_lossy(&built.stdout),
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let emitted = Command::new(
+        target
+            .join("debug")
+            .join(format!("producer{}", env::consts::EXE_SUFFIX)),
+    )
+    .output()
+    .expect("run emitter");
+    assert!(
+        emitted.status.success(),
+        "literal emitter failed:\n{}",
+        String::from_utf8_lossy(&emitted.stderr)
+    );
+    verify_literal_bodies(&emitted.stdout);
+}
+
+fn verify_literal_bodies(bytes: &[u8]) {
+    use filament_contract_model::{
+        CheckedNodeId, CheckedNodeTag, CheckedPackageEvidence, CheckedPackageReadLimits,
+        CheckedPackageRefusalCode, CheckedPackageV2, CheckedPackageV2ReadResult, CheckedTerm,
+        CompleteLoweringProfileV2, CompleteLoweringRecordV2, LiteralKind, LoweringProfileRef,
+    };
+    use serde_json::json;
+    let wire: Value = serde_json::from_slice(bytes).expect("emitted V2");
+    let mut evidence = CheckedPackageEvidence::new();
+    for feature in wire["lock"]["required_features"]
+        .as_array()
+        .expect("features")
+    {
+        evidence.support_feature(feature.as_str().expect("feature name"));
+    }
+    let package =
+        match CheckedPackageV2::read(bytes, CheckedPackageReadLimits::bounded(), &evidence) {
+            CheckedPackageV2ReadResult::Admitted(package) => package,
+            other => panic!("genuine U12 square must admit: {other:?}"),
+        };
+    let nodes = wire["semantic_graph"]["nodes"].as_array().expect("nodes");
+    let square_position = nodes
+        .iter()
+        .position(|node| node["body"]["operation"]["identity"] == "filament.op.quantity.pow")
+        .expect("square application");
+    let exponent_id: CheckedNodeId =
+        serde_json::from_value(nodes[square_position]["body"]["arguments"][1]["target"].clone())
+            .expect("referenced exponent");
+    let exponent_position = nodes
+        .iter()
+        .position(|node| {
+            node["node_id"] == serde_json::to_value(&exponent_id).expect("exponent id")
+        })
+        .expect("exponent node");
+    let exponent = &package.graph().nodes[exponent_position];
+    assert_eq!(exponent.node_id, exponent_id);
+    assert_eq!(exponent.node_tag.as_ref(), "value");
+    assert_eq!(exponent.semantic_form.as_ref(), "literal");
+    assert!(exponent.dependencies.is_empty());
+    let CheckedTerm::Literal {
+        type_id,
+        value_kind,
+        value,
+    } = &exponent.body
+    else {
+        panic!("Integer literal exponent")
+    };
+    assert_eq!(*value_kind, LiteralKind::Integer);
+    assert_eq!(*value, json!("2"));
+    assert_eq!(*type_id, exponent.semantic_type);
+    let integer = package
+        .graph()
+        .nodes
+        .iter()
+        .find(|node| node.node_id == *type_id)
+        .expect("Integer type");
+    assert_eq!(integer.semantic_form.as_ref(), "integer");
+    assert_eq!(integer.node_tag.as_ref(), "scalar_type");
+    let request = package
+        .document_held_id(square_position)
+        .expect("graph node")
+        .clone();
+    let result = package.lower(
+        std::slice::from_ref(&request),
+        &CompleteLoweringProfileV2 {
+            reference: LoweringProfileRef {
+                authority: "filament".into(),
+                identity: "literal-admission".into(),
+            },
+            required_source_selections: Vec::new(),
+            supported_tags: CheckedNodeTag::ALL.iter().copied().collect(),
+            require_bounds: true,
+            work_limit: 100_000,
+        },
+    );
+    let [CompleteLoweringRecordV2::Lowered { node }] = result.records.as_slice() else {
+        panic!(
+            "genuine square lowers with literal exponent: {:?}",
+            result.records
+        )
+    };
+    assert!(node.dependencies.contains(&exponent_id));
+    assert!(node.dependencies.contains(type_id));
+    for body in [
+        json!({"term": "reference", "target": nodes[square_position]["body"]["arguments"][0]["target"]}),
+        json!({"term": "aggregate", "members": []}),
+    ] {
+        let mut invalid = wire.clone();
+        invalid["semantic_graph"]["nodes"][exponent_position]["body"] = body;
+        // Preserve every other producer member. Strict body refusal must win
+        // without rekeying, repairing the envelope, or reaching lowering.
+        let bytes = serde_json::to_vec(&invalid).expect("canonical mutation");
+        match CheckedPackageV2::read(&bytes, CheckedPackageReadLimits::bounded(), &evidence) {
+            CheckedPackageV2ReadResult::Refused(refusal) => {
+                assert_eq!(refusal.code, CheckedPackageRefusalCode::MalformedWire);
+                assert_eq!(refusal.cause, None);
+                assert_eq!(
+                    refusal.loci[0]
+                        .path
+                        .as_ref()
+                        .expect("body pointer")
+                        .as_str(),
+                    format!("/semantic_graph/nodes/{exponent_position}/body")
+                );
+            }
+            other => panic!("nonliteral exponent must refuse before bounds lowering: {other:?}"),
+        }
+    }
+    println!(
+        "FR-038-AC-472 genuine U12 literal admitted; body-only reference and aggregate refused"
+    );
+}

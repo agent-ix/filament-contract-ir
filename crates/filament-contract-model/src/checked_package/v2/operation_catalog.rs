@@ -1,0 +1,717 @@
+//! The closed `filament.checked-operation-catalog/v1` every V2 `application`
+//! term's `operation` member is validated against (`validate_operations`).
+//!
+//! This module reads the catalog from its home and holds no copy of it. The
+//! bytes it used to embed were copied from a private repository into this
+//! public one; both copies were deleted, and neither is coming back. A copy is
+//! a copy wherever it is spelled, and `schemas/` was not a different rule from
+//! `tests/fixtures/`.
+//!
+//! Between that deletion and this module's current form the build did not
+//! compile, deliberately (agent-ix/filament-contract-ir#169). The alternatives
+//! were to keep the copy, or to drop catalog-driven validation and let this
+//! reader start admitting `operation` members it used to refuse — a silent
+//! weakening of the contract, decided by an agent, in a crate other
+//! repositories depend on. A build that stops and says why was the honest one
+//! of the three.
+//!
+//! What unblocked it was the third option asked for on #166: a published source
+//! to depend on rather than copy. `filament-verification-contracts` is now the
+//! catalog's home; this crate depends on it and owns only the reader. Restoring
+//! the deleted bytes here, under any name or path, is still not one of the
+//! options.
+
+use super::{
+    ApplicationOperator, LawRole, OperationConstraintKind, OperationMemberKind, OperationModeKind,
+};
+use serde::Deserialize;
+use std::sync::Arc;
+
+#[cfg(test)]
+use super::operation_catalog_index::OperationCatalogWire;
+pub(super) use super::operation_catalog_index::{read_catalog, OperationCatalog};
+
+/// The catalog, read from its home rather than copied here.
+///
+/// `filament-verification-contracts` owns `filament.checked-operation-catalog/v1` and
+/// publishes the bytes; this crate owns the reader that
+/// decides what they admit. That split is the point: one definition of the closed
+/// vocabulary, one implementation of the rules it drives. A copy of these bytes in
+/// this repository, under any name or path, is a defect — it is what left this
+/// module unable to compile at all.
+pub(super) const CATALOG_BYTES: &str =
+    filament_verification_contracts::operation_catalog::CHECKED_OPERATION_CATALOG_V1;
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(from = "Box<str>")]
+pub(super) enum CatalogResult {
+    Member,
+    Clause,
+    Inner(usize),
+    Other(Box<str>),
+}
+
+impl From<Box<str>> for CatalogResult {
+    fn from(text: Box<str>) -> Self {
+        Self::from_wire(text)
+    }
+}
+
+impl CatalogResult {
+    #[ix_trace_rs::string_edge]
+    fn from_wire(text: Box<str>) -> Self {
+        match text.as_ref() {
+            "member" => Self::Member,
+            "clause" => Self::Clause,
+            _ => match text
+                .strip_prefix("inner:")
+                .and_then(|value| value.parse().ok())
+            {
+                Some(index) => Self::Inner(index),
+                None => Self::Other(text),
+            },
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(from = "Box<str>")]
+pub(super) enum CatalogLeafSource {
+    OperandZero,
+    InnerZero,
+    ResultInner,
+    Other(Box<str>),
+}
+
+impl From<Box<str>> for CatalogLeafSource {
+    fn from(text: Box<str>) -> Self {
+        Self::from_wire(text)
+    }
+}
+
+impl CatalogLeafSource {
+    #[ix_trace_rs::string_edge]
+    fn from_wire(text: Box<str>) -> Self {
+        match text.as_ref() {
+            "operand:0" => Self::OperandZero,
+            "inner:0" => Self::InnerZero,
+            "result_inner" => Self::ResultInner,
+            _ => Self::Other(text),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum FamilyClass {
+    Reference,
+    String,
+    Other,
+}
+
+impl FamilyClass {
+    #[ix_trace_rs::string_edge]
+    pub(super) fn from_wire(text: &str) -> Self {
+        match text {
+            "reference" => Self::Reference,
+            "string" => Self::String,
+            _ => Self::Other,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(from = "Box<str>")]
+pub(super) struct CatalogFamily {
+    text: Box<str>,
+    pub(super) class: FamilyClass,
+}
+
+impl From<Box<str>> for CatalogFamily {
+    fn from(text: Box<str>) -> Self {
+        let class = FamilyClass::from_wire(&text);
+        Self { text, class }
+    }
+}
+
+impl std::ops::Deref for CatalogFamily {
+    type Target = str;
+    fn deref(&self) -> &str {
+        &self.text
+    }
+}
+
+/// One `operation-catalog.json` `operations[]` entry.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct OperationCatalogEntry {
+    /// Catalogued `OperationIdentity`.
+    pub(super) identity: Box<str>,
+    /// Closed decisions derived once when the authoritative catalog is admitted.
+    #[serde(skip)]
+    pub(super) known: Option<super::KnownOperation>,
+    /// Required application `operator` class.
+    pub(super) operator: ApplicationOperator,
+    /// Fixed leading operand families or group names, in order.
+    #[serde(deserialize_with = "super::document_de::exact_vec")]
+    pub(super) operands: Vec<CatalogFamily>,
+    /// The family or group name every operand past `operands` must fit, or
+    /// `None` when no further operand is admitted.
+    pub(super) rest: Option<CatalogFamily>,
+    /// The result form; `inner:<n>` over a `reference` operand is checked
+    /// (`check_inner_result`), the other forms are not.
+    pub(super) result: CatalogResult,
+    /// Required law roles, in order.
+    #[serde(deserialize_with = "super::document_de::exact_vec")]
+    pub(super) laws: Vec<LawRole>,
+    /// Required mode kind, or `None` when the operation carries no mode.
+    pub(super) mode: Option<OperationModeKind>,
+    /// Required member kind, or `None` when the operation carries no member.
+    pub(super) member: Option<OperationMemberKind>,
+    /// Cross-operand constraints.
+    #[serde(deserialize_with = "super::document_de::exact_vec")]
+    pub(super) constraints: Vec<OperationConstraint>,
+    /// The leaf source this operation compares, or `None` when it carries no
+    /// leaves.
+    pub(super) leaves: Option<CatalogLeafSource>,
+}
+
+/// One `operations[].constraints[]` entry.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct OperationConstraint {
+    pub(super) kind: OperationConstraintKind,
+    #[serde(deserialize_with = "super::document_de::exact_vec")]
+    pub(super) operands: Vec<u64>,
+    #[allow(dead_code)]
+    pub(super) family: Option<Box<str>>,
+}
+
+/// Reads a fresh production catalog, owned by the caller.
+pub(super) fn production_catalog() -> Result<CatalogRef, CatalogReadError> {
+    read_catalog(CATALOG_BYTES).map(|catalog| CatalogRef(Arc::new(catalog)))
+}
+
+/// Reads a fresh production catalog through the read's caller budget.
+pub(super) fn read_catalog_budgeted(
+    budget: &mut super::NativeJoinBudget,
+) -> Result<CatalogRef, super::operation_catalog_index::CatalogStop> {
+    super::operation_catalog_index::read_catalog_budgeted(CATALOG_BYTES, budget)
+}
+
+/// Owns a catalog supplied by a test that injects an unavailable catalog.
+#[cfg(test)]
+pub(super) fn available(
+    read: &'static Result<OperationCatalog, CatalogReadError>,
+) -> Result<CatalogRef, CatalogReadError> {
+    read.as_ref()
+        .map(|catalog| CatalogRef(Arc::new(catalog.clone())))
+        .map_err(Clone::clone)
+}
+
+/// Validates the published operation catalog now. Every package read still
+/// owns and charges its own catalog; this call creates no process cache.
+///
+/// # Errors
+/// [`CatalogReadError`] when the published catalog cannot be read.
+pub fn initialize_operation_catalog() -> Result<(), CatalogReadError> {
+    production_catalog().map(drop)
+}
+
+/// The owned catalog an admitted package was read against. Packages compare
+/// equal by content, not by catalog allocation.
+#[derive(Clone)]
+pub(super) struct CatalogRef(pub(super) Arc<OperationCatalog>);
+
+impl std::ops::Deref for CatalogRef {
+    type Target = OperationCatalog;
+    fn deref(&self) -> &OperationCatalog {
+        &self.0
+    }
+}
+
+impl std::fmt::Debug for CatalogRef {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("CatalogRef")
+    }
+}
+
+impl PartialEq for CatalogRef {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
+}
+impl Eq for CatalogRef {}
+
+/// The production catalog, for tests that read an operation's entry.
+#[cfg(test)]
+pub(super) fn operation_catalog() -> &'static OperationCatalog {
+    Box::leak(Box::new(
+        read_catalog(CATALOG_BYTES).expect("the production catalog reads"),
+    ))
+}
+
+/// An owned catalog for admitted-package fixture construction.
+#[cfg(test)]
+pub(super) fn owned_operation_catalog() -> CatalogRef {
+    production_catalog().expect("the production catalog reads")
+}
+
+/// The production operation catalog could not be read: the member the bytes
+/// failed at and why, for example `operations[3].constraints[1].kind`. It is
+/// a skew between this reader and the catalog it depends on, never a defect of
+/// a package, so a package read reports it instead of a refusal.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CatalogReadError {
+    pub(super) path: String,
+    pub(super) message: String,
+}
+
+impl std::fmt::Display for CatalogReadError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "at `{}`: {}", self.path, self.message)
+    }
+}
+
+impl std::error::Error for CatalogReadError {}
+
+impl CatalogReadError {
+    /// A catalog read error for the member at `path`, failing with `message`.
+    pub fn new(path: impl Into<String>, message: impl Into<String>) -> Self {
+        Self {
+            path: path.into(),
+            message: message.into(),
+        }
+    }
+
+    /// The path of the entry the read failed at.
+    pub fn path(&self) -> &str {
+        &self.path
+    }
+
+    /// Why the entry could not be read.
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ix_trace_rs::trace;
+
+    #[test]
+    fn catalog_read_error_new_carries_path_and_message() {
+        let error = CatalogReadError::new("operations[3].kind", String::from("unknown kind"));
+        assert_eq!(error.path(), "operations[3].kind");
+        assert_eq!(error.message(), "unknown kind");
+        assert_eq!(error.to_string(), "at `operations[3].kind`: unknown kind");
+    }
+
+    #[trace("TC-460")]
+    #[test]
+    fn catalog_intake_retains_known_operation_class() {
+        let catalog = read_catalog(CATALOG_BYTES).expect("authoritative catalog");
+        for (identity, expected) in [
+            (
+                "filament.op.state.clause",
+                super::super::KnownOperation::StateClause,
+            ),
+            (
+                "filament.op.state.transition",
+                super::super::KnownOperation::StateTransition,
+            ),
+            (
+                "filament.op.protocol.control",
+                super::super::KnownOperation::ProtocolControl,
+            ),
+            (
+                "filament.op.numeric.narrow",
+                super::super::KnownOperation::NumericNarrow,
+            ),
+            (
+                "filament.op.model.navigate",
+                super::super::KnownOperation::ModelNavigate,
+            ),
+            (
+                "filament.op.model.reaches",
+                super::super::KnownOperation::ModelReaches,
+            ),
+            (
+                "filament.op.function.call",
+                super::super::KnownOperation::FunctionCall,
+            ),
+        ] {
+            assert_eq!(catalog.known(identity), Some(expected));
+        }
+        assert_eq!(catalog.known("filament.op.boolean.not"), None);
+    }
+
+    /// FR-038-AC-65: each of the six new words converts wire string to enum
+    /// member and back; the operator classes the catalog's entries name are
+    /// exactly the enum's members (read from the catalog this build depends
+    /// on, no copy); and the production catalog reads.
+    #[trace("TC-048", "FR-038-AC-65")]
+    #[test]
+    fn tc_048_the_new_catalog_words_round_trip_and_the_catalog_reads() {
+        use std::collections::BTreeSet;
+        for (wire, member) in [
+            ("case", ApplicationOperator::Case),
+            ("temporal_formula", ApplicationOperator::TemporalFormula),
+            ("temporal_fairness", ApplicationOperator::TemporalFairness),
+        ] {
+            assert_eq!(ApplicationOperator::from_wire(wire), Some(member));
+            assert_eq!(member.as_wire(), wire);
+        }
+        for (wire, member) in [
+            ("temporal_interval", OperationMemberKind::TemporalInterval),
+            ("fairness", OperationMemberKind::Fairness),
+        ] {
+            assert_eq!(OperationMemberKind::from_wire(wire), Some(member));
+            assert_eq!(member.as_wire(), wire);
+        }
+        assert_eq!(
+            OperationConstraintKind::from_wire("union_arms"),
+            Some(OperationConstraintKind::UnionArms)
+        );
+        assert_eq!(OperationConstraintKind::UnionArms.as_wire(), "union_arms");
+
+        let supplied: serde_json::Value =
+            serde_json::from_str(CATALOG_BYTES).expect("the production catalog is JSON");
+        let operators: BTreeSet<&str> = supplied["operations"]
+            .as_array()
+            .expect("operations")
+            .iter()
+            .filter_map(|entry| entry["operator"].as_str())
+            .collect();
+        let enum_operators: BTreeSet<&str> = ApplicationOperator::ALL
+            .iter()
+            .map(|o| o.as_wire())
+            .collect();
+        assert_eq!(operators, enum_operators);
+        assert!(read_catalog(CATALOG_BYTES).is_ok());
+    }
+
+    /// FR-038-AC-65: catalog bytes naming an operator class, a member kind or
+    /// a constraint kind outside its vocabulary return the typed error naming
+    /// the word, with no panic.
+    #[trace("TC-048", "FR-038-AC-65")]
+    #[test]
+    fn tc_048_a_catalog_word_outside_its_vocabulary_is_a_typed_error_naming_it() {
+        let supplied: serde_json::Value =
+            serde_json::from_str(CATALOG_BYTES).expect("the production catalog is JSON");
+        let position = |identity: &str| {
+            supplied["operations"]
+                .as_array()
+                .expect("operations")
+                .iter()
+                .position(|entry| entry["identity"] == identity)
+                .expect("catalogued identity")
+        };
+        let not = position("filament.op.boolean.not");
+        let eventually = position("filament.op.temporal.eventually");
+        let case = position("filament.op.control.case");
+        for (index, member, word) in [
+            (not, "operator", "not_an_operator"),
+            (eventually, "member", "not_a_member_kind"),
+            (case, "constraints", "not_a_constraint_kind"),
+        ] {
+            let mut edited = supplied.clone();
+            let entry = &mut edited["operations"][index];
+            match member {
+                "member" => entry["member"] = serde_json::json!(word),
+                "constraints" => entry["constraints"][0]["kind"] = serde_json::json!(word),
+                other => entry[other] = serde_json::json!(word),
+            }
+            let error = match read_catalog(&edited.to_string()) {
+                Ok(_) => panic!("`{word}` must not read"),
+                Err(error) => error,
+            };
+            assert!(
+                error.path().starts_with(&format!("operations[{index}]")),
+                "{error}"
+            );
+            assert!(error.to_string().contains(word), "{error}");
+        }
+    }
+
+    /// FR-038-AC-519: the production catalog declares `carried_member`, the
+    /// word decodes to its enum member and back, and the carried-quantity sum
+    /// reads with that constraint, which names no operand and no family.
+    #[trace("TC-048", "FR-038-AC-519")]
+    #[test]
+    fn tc_048_the_carried_member_constraint_reads_from_the_production_catalog() {
+        assert_eq!(
+            OperationConstraintKind::from_wire("carried_member"),
+            Some(OperationConstraintKind::CarriedMember)
+        );
+        assert_eq!(
+            OperationConstraintKind::CarriedMember.as_wire(),
+            "carried_member"
+        );
+        let catalog = read_catalog(CATALOG_BYTES).expect("the production catalog reads");
+        let entry = catalog
+            .entry("filament.op.collection.sum.carried_quantity")
+            .expect("the carried-quantity sum is catalogued");
+        let carried: Vec<_> = entry
+            .constraints
+            .iter()
+            .filter(|constraint| constraint.kind == OperationConstraintKind::CarriedMember)
+            .collect();
+        assert_eq!(carried.len(), 1);
+        assert!(carried[0].operands.is_empty());
+        assert_eq!(carried[0].family, None);
+    }
+
+    /// FR-038-AC-519: a constraint kind outside the vocabulary on the
+    /// carried-quantity sum returns the typed read error naming its entry and
+    /// word, not a panic.
+    #[trace("TC-048", "FR-038-AC-519")]
+    #[test]
+    fn tc_048_an_unknown_constraint_kind_on_the_carried_sum_is_a_typed_read_error() {
+        let mut edited: serde_json::Value =
+            serde_json::from_str(CATALOG_BYTES).expect("the production catalog is JSON");
+        let index = edited["operations"]
+            .as_array()
+            .expect("operations")
+            .iter()
+            .position(|entry| entry["identity"] == "filament.op.collection.sum.carried_quantity")
+            .expect("the carried-quantity sum is catalogued");
+        edited["operations"][index]["constraints"][1]["kind"] = serde_json::json!("not_carried");
+        let error = match read_catalog(&edited.to_string()) {
+            Ok(_) => panic!("an unknown constraint kind must not read"),
+            Err(error) => error,
+        };
+        assert_eq!(
+            error.path(),
+            format!("operations[{index}].constraints[1].kind")
+        );
+        assert!(error.to_string().contains("not_carried"), "{error}");
+    }
+
+    /// FR-038-AC-58, FR-038-AC-519: unreadable production catalog bytes make a
+    /// package read return `CatalogUnavailable` with the offending path and
+    /// message, before any node is checked, and never a package refusal. The
+    /// injected bytes are the production catalog with the carried sum's
+    /// constraint kind replaced, and take the path the production read takes.
+    #[trace("TC-048", "FR-038-AC-58", "FR-038-AC-519")]
+    #[test]
+    fn tc_048_unreadable_production_catalog_bytes_make_the_package_read_catalog_unavailable() {
+        use super::super::CheckedPackageV2ReadResult as Result_;
+        use super::super::{CheckedPackageEvidence, CheckedPackageReadLimits, CheckedPackageV2};
+        let mut edited: serde_json::Value =
+            serde_json::from_str(CATALOG_BYTES).expect("the production catalog is JSON");
+        let index = edited["operations"]
+            .as_array()
+            .expect("operations")
+            .iter()
+            .position(|entry| entry["identity"] == "filament.op.collection.sum.carried_quantity")
+            .expect("the carried-quantity sum is catalogued");
+        edited["operations"][index]["constraints"][1]["kind"] = serde_json::json!("not_carried");
+        let unreadable: &'static Result<OperationCatalog, CatalogReadError> =
+            Box::leak(Box::new(read_catalog(&edited.to_string())));
+        let expected = unreadable
+            .as_ref()
+            .err()
+            .cloned()
+            .expect("unreadable bytes");
+        let result = CheckedPackageV2::read_against(
+            unreadable,
+            b"not even a package",
+            CheckedPackageReadLimits::bounded(),
+            &CheckedPackageEvidence::default(),
+        );
+        let Result_::CatalogUnavailable(error) = result else {
+            panic!("an unreadable catalog must be CatalogUnavailable, got {result:?}");
+        };
+        assert_eq!(error, expected);
+        assert_eq!(
+            error.path(),
+            format!("operations[{index}].constraints[1].kind")
+        );
+        assert!(error.message().contains("not_carried"), "{error}");
+    }
+
+    /// FR-038-AC-515: on the budgeted entry an unreadable catalog returns
+    /// `CatalogUnavailable` before any charge, leaving every counter as it was.
+    // This injects an already-produced catalog error to check outcome dispatch.
+    // Fresh catalog allocation accounting is exercised by operation_catalog_index.
+    #[trace("TC-472", "FR-038-AC-515")]
+    #[test]
+    fn tc_472_an_unreadable_catalog_leaves_the_budgeted_entrys_counters_unchanged() {
+        use super::super::{
+            CheckedPackageEvidence, CheckedPackageReadLimits, CheckedPackageV2,
+            CheckedPackageV2BudgetedReadResult, NativeJoinBudget,
+        };
+        let mut edited: serde_json::Value =
+            serde_json::from_str(CATALOG_BYTES).expect("the production catalog is JSON");
+        let index = edited["operations"]
+            .as_array()
+            .expect("operations")
+            .iter()
+            .position(|entry| entry["identity"] == "filament.op.collection.sum.carried_quantity")
+            .expect("the carried-quantity sum is catalogued");
+        edited["operations"][index]["constraints"][1]["kind"] = serde_json::json!("not_carried");
+        let unreadable: &'static Result<OperationCatalog, CatalogReadError> =
+            Box::leak(Box::new(read_catalog(&edited.to_string())));
+        let mut budget = NativeJoinBudget::new(5, 6).with_read_storage_limit(7);
+        let result = CheckedPackageV2::read_with_budget_against(
+            unreadable,
+            b"not even a package",
+            CheckedPackageReadLimits::bounded(),
+            &CheckedPackageEvidence::default(),
+            &mut budget,
+        );
+        assert!(matches!(
+            result,
+            CheckedPackageV2BudgetedReadResult::CatalogUnavailable(_)
+        ));
+        assert_eq!(budget.consumed(), NativeJoinBudget::new(5, 6).consumed());
+        assert_eq!(budget.read_storage_consumed(), 0);
+        assert_eq!(budget.first_unpaid(), None);
+        assert_eq!(budget.first_unpaid_read_storage(), None);
+        assert_eq!(budget.last_success_delta(), None);
+        assert_eq!(budget.last_success_read_storage_delta(), None);
+    }
+
+    /// FR-035-AC-36, FR-038-AC-519: the FR-330 contract-package read gates on
+    /// the same catalog result, returning `CatalogUnavailable` with the
+    /// offending path before it judges any byte, never a refusal.
+    #[trace("TC-048", "FR-035-AC-36")]
+    #[test]
+    fn tc_048_unreadable_production_catalog_bytes_make_the_contract_package_read_catalog_unavailable(
+    ) {
+        use super::super::contract_package::{ContractPackageReadResult, ContractPackageWireV1};
+        use super::super::{CheckedPackageReadLimits, ContractDependencies};
+        let mut edited: serde_json::Value =
+            serde_json::from_str(CATALOG_BYTES).expect("the production catalog is JSON");
+        let index = edited["operations"]
+            .as_array()
+            .expect("operations")
+            .iter()
+            .position(|entry| entry["identity"] == "filament.op.collection.sum.carried_quantity")
+            .expect("the carried-quantity sum is catalogued");
+        edited["operations"][index]["constraints"][1]["kind"] = serde_json::json!("not_carried");
+        let unreadable: &'static Result<OperationCatalog, CatalogReadError> =
+            Box::leak(Box::new(read_catalog(&edited.to_string())));
+        let result = ContractPackageWireV1::read_against(
+            unreadable,
+            b"not even a package",
+            CheckedPackageReadLimits::bounded(),
+            &ContractDependencies::default(),
+        );
+        let ContractPackageReadResult::CatalogUnavailable(error) = result else {
+            panic!("an unreadable catalog must be CatalogUnavailable, got {result:?}");
+        };
+        assert_eq!(
+            error.path(),
+            format!("operations[{index}].constraints[1].kind")
+        );
+    }
+
+    /// FR-038-AC-58: the catalog read over supplied bytes whose `law_roles`
+    /// entries are exactly `{authority, identity}` returns the catalog, and
+    /// over bytes in which an entry carries `revision`, `digest_domain` or
+    /// `digest` returns an error naming the entry, without a panic. The
+    /// supplied bytes are the production catalog's own, with one entry edited.
+    #[trace("TC-048", "FR-038-AC-58")]
+    #[test]
+    fn tc_048_the_catalog_read_names_a_law_role_entry_that_is_not_authority_and_identity() {
+        let supplied: serde_json::Value =
+            serde_json::from_str(CATALOG_BYTES).expect("the production catalog is JSON");
+        assert!(read_catalog(&supplied.to_string()).is_ok());
+        let entries = supplied["law_roles"]["integer_division"]
+            .as_array()
+            .expect("integer_division is catalogued");
+        assert!(entries.iter().all(|entry| {
+            entry.as_object().is_some_and(|members| {
+                members.len() == 2
+                    && members.contains_key("authority")
+                    && members.contains_key("identity")
+            })
+        }));
+        for (member, value) in [
+            (
+                "revision",
+                serde_json::json!({"namespace": "n", "value": "v"}),
+            ),
+            (
+                "digest_domain",
+                serde_json::json!("filament.definition.bytes/v1"),
+            ),
+            ("digest", serde_json::json!("0".repeat(64))),
+        ] {
+            let mut edited = supplied.clone();
+            edited["law_roles"]["integer_division"][1][member] = value;
+            let error = match read_catalog(&edited.to_string()) {
+                Ok(_) => panic!("an entry carrying `{member}` must not read"),
+                Err(error) => error,
+            };
+            assert!(
+                error.path().starts_with("law_roles.integer_division[1]"),
+                "{member}: {error}"
+            );
+        }
+    }
+
+    /// Every catalog vocabulary the reader decodes into an enum is exactly
+    /// the enum's member set, and `LawRole::selection_role` is `Some` for
+    /// exactly the catalog's profile law roles.
+    #[trace("TC-048", "FR-038-AC-65")]
+    #[test]
+    fn tc_048_the_catalog_vocabularies_are_the_decoded_enums() {
+        use std::collections::BTreeSet;
+        let wire: OperationCatalogWire =
+            serde_json::from_str(CATALOG_BYTES).expect("the catalog is valid");
+        let words = |list: &[Box<str>]| -> BTreeSet<String> {
+            list.iter().map(|word| word.to_string()).collect()
+        };
+        let members = |all: Vec<&'static str>| -> BTreeSet<String> {
+            all.into_iter().map(str::to_owned).collect()
+        };
+        assert_eq!(
+            words(&wire.member_kinds),
+            members(
+                OperationMemberKind::ALL
+                    .iter()
+                    .map(|k| k.as_wire())
+                    .collect()
+            )
+        );
+        assert_eq!(
+            words(&wire.constraint_kinds),
+            members(
+                OperationConstraintKind::ALL
+                    .iter()
+                    .map(|k| k.as_wire())
+                    .collect()
+            )
+        );
+        assert_eq!(
+            wire.modes
+                .iter()
+                .map(|(k, _)| k.to_string())
+                .collect::<BTreeSet<_>>(),
+            members(OperationModeKind::ALL.iter().map(|k| k.as_wire()).collect())
+        );
+        let value_roles: BTreeSet<String> = wire
+            .law_roles
+            .iter()
+            .map(|(role, _)| role.as_wire().to_owned())
+            .collect();
+        let profile_roles = words(&wire.profile_law_roles);
+        assert_eq!(
+            value_roles
+                .union(&profile_roles)
+                .cloned()
+                .collect::<BTreeSet<_>>(),
+            members(LawRole::ALL.iter().map(|k| k.as_wire()).collect())
+        );
+        for role in LawRole::ALL {
+            assert_eq!(
+                role.selection_role().is_some(),
+                profile_roles.contains(role.as_wire()),
+                "{role:?}: a selection role exactly for a catalog profile role"
+            );
+        }
+    }
+}

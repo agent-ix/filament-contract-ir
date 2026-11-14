@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Agent-IX
 
-//! TC-976 index recipes and TC-967 body recipes, read from QSpec by reference.
+//! TC-976 index recipes and TC-967 body recipes, read from FSpec by reference.
 
 use super::*;
-use quire_contract_model::{CheckedSchedulabilityKind, CheckedSchedulingPolicy};
+use filament_contract_model::{CheckedSchedulabilityKind, CheckedSchedulingPolicy};
 
 fn aggregate(members: Vec<Value>) -> Value {
     json!({"term":"aggregate","members":members})
@@ -19,15 +19,15 @@ fn literal(type_id: &Value, kind: &str, value: &str) -> Value {
 fn recipes() -> Value {
     let proposal = proposal_dir_of(&fixtures_dir())
         .canonicalize()
-        .expect("QSpec proposal directory");
+        .expect("FSpec proposal directory");
     let root = proposal
         .parent()
         .and_then(Path::parent)
-        .expect("QSpec root");
+        .expect("FSpec root");
     let text = std::fs::read_to_string(
         root.join("spec/test-cases/TC-967-checked-package-schedulability-claim-node.md"),
     )
-    .expect("QSpec TC-967 body recipes");
+    .expect("FSpec TC-967 body recipes");
     let published = text
         .lines()
         .filter_map(|line| line.strip_prefix("| SC-"))
@@ -46,7 +46,7 @@ fn recipes() -> Value {
         "every published body recipe is accounted for"
     );
     let vectors = read_json(&proposal.join("schedulability-claim-vectors.json"))
-        .expect("QSpec carrier recipes");
+        .expect("FSpec carrier recipes");
     for (list, count) in [
         ("positive", 2),
         ("schema_refusals", 4),
@@ -66,7 +66,7 @@ fn recipes() -> Value {
 
 fn row_schema() -> jsonschema::JSONSchema {
     let schema = read_json(&proposal_dir_of(&fixtures_dir()).join("schema.json"))
-        .expect("QSpec schema by reference");
+        .expect("FSpec schema by reference");
     let row = json!({"$ref":"#/$defs/SchedulabilityClaimRef","$defs":schema["$defs"]});
     jsonschema::JSONSchema::options()
         .with_draft(jsonschema::Draft::Draft7)
@@ -76,7 +76,7 @@ fn row_schema() -> jsonschema::JSONSchema {
 
 fn base() -> Value {
     read_json(&fixtures_dir().join("positive-timed-model-nodes.json"))
-        .expect("QSpec published Time and unit")
+        .expect("FSpec published Time and unit")
 }
 fn position(package: &Value) -> usize {
     package["semantic_graph"]["nodes"]
@@ -166,7 +166,7 @@ fn append_claim(
     })
     .collect();
     package["semantic_graph"]["nodes"].as_array_mut().unwrap().push(json!({
-        "node_id":declaration,"schema_version":"quire.checked-semantic-graph/v2","node_tag":"claim","semantic_form":"schedulability",
+        "node_id":declaration,"schema_version":"filament.checked-semantic-graph/v2","node_tag":"claim","semantic_form":"schedulability",
         "semantic_type":boolean,"dependencies":[],"occurrences":occurrences.into_iter().map(|ordinal| json!({"role":"claim","ordinal":ordinal})).collect::<Vec<_>>(),
         "body":aggregate(vec![binding("kind",word(if response {"response"} else {"schedulable"})),binding("policy",word(policy)),
             binding("task",if response {word("t3")} else {aggregate(vec![])}),binding("bound",if response {quantity("12/1")} else {aggregate(vec![])}),binding("tasks",aggregate(tasks))])

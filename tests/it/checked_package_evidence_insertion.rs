@@ -7,12 +7,12 @@ use crate::support::checked_package::{
     canonical, domain_package_document, evidence_for, pointer, refresh_identity, select_model,
     settle, structural_id, v2_all_families, v2_nominal, COMPLETE_VALUE_FEATURE,
 };
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     read_checked_package, CheckedNodeId, CheckedPackageDispatchResult, CheckedPackageEvidence,
     CheckedPackageEvidenceInsertionError, CheckedPackageReadLimits, CheckedPackageRefusalCause,
     CheckedPackageRefusalCode, CheckedPackageV2, CheckedPackageV2ReadResult,
 };
+use ix_trace_rs::trace;
 use serde_json::{json, Value};
 use std::sync::Arc;
 
@@ -398,7 +398,7 @@ fn equal_package_names_do_not_hide_independently_admitted_metadata_conflicts() {
     let mut renamed_source = original.clone();
     let old_source = original["lock"]["sources"][1].clone();
     renamed_source["lock"]["sources"][1]["identity"] =
-        json!("quire.fixture.source.secondary-renamed/v1");
+        json!("filament.fixture.source.secondary-renamed/v1");
     let new_source = renamed_source["lock"]["sources"][1].clone();
     for entry in renamed_source["source_map"].as_array_mut().unwrap() {
         for region in entry["regions"].as_array_mut().unwrap() {

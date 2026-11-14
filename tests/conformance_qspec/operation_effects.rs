@@ -1,20 +1,20 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! TC-977: QSpec's operation-effect vectors against the production reader.
+//! TC-977: FSpec's operation-effect vectors against the production reader.
 
 use super::{
     cause_word, code_word, fixture_support as fixture, fixtures_dir, proposal_dir_of, read_json,
 };
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     CheckedOperationEffectRow, CheckedPackageEvidence, CheckedPackageReadLimits,
     CheckedPackageV2ReadResult,
 };
+use ix_trace_rs::trace;
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
 
 fn vectors() -> Value {
     read_json(&proposal_dir_of(&fixtures_dir()).join("operation-effect-vectors.json"))
-        .expect("current QSpec TC-977 vectors")
+        .expect("current FSpec TC-977 vectors")
 }
 
 pub(super) fn patch(value: &mut Value, patch: &Value) {
@@ -71,7 +71,7 @@ pub(super) fn expand_document(sketch: &Value) -> Value {
                 slot(
                     &owner,
                     field.as_str().expect("field name"),
-                    "ix://quire/native/Integer",
+                    "ix://filament/native/Integer",
                 )
             })
             .collect::<Vec<_>>();
@@ -135,8 +135,8 @@ pub(super) fn expand_document(sketch: &Value) -> Value {
     }
     json!({"contractVersion":"2.0.0","package":{"identity":identity,"version":"1.0.0"},
         "constructs":[
-            {"kind":{"module":identity,"name":"entity"},"construct":{"meaning":"quire.meaning.model.object-type/v1"}},
-            {"kind":{"module":identity,"name":"store"},"construct":{"meaning":"quire.meaning.model.persistence-interface/v1"}}
+            {"kind":{"module":identity,"name":"entity"},"construct":{"meaning":"filament.meaning.model.object-type/v1"}},
+            {"kind":{"module":identity,"name":"store"},"construct":{"meaning":"filament.meaning.model.persistence-interface/v1"}}
         ],"types":types})
 }
 
@@ -153,7 +153,7 @@ pub(super) fn normalize_relationship(value: &mut Value) {
 
 fn read(case: &Value) -> CheckedPackageV2ReadResult {
     let mut case = case.clone();
-    // QSpec sketches use a short relationship identifier; the selected FCD's
+    // FSpec sketches use a short relationship identifier; the selected FCD's
     // relationship grammar requires its /relationship/ segment.
     normalize_relationship(&mut case);
     let mut package = fixture::nominal_package(&[]);
@@ -172,7 +172,7 @@ fn read(case: &Value) -> CheckedPackageV2ReadResult {
                 0,
             );
             package["semantic_graph"]["nodes"].as_array_mut().unwrap().push(json!({
-                "node_id":key,"schema_version":"quire.checked-semantic-graph/v2","node_tag":"model",
+                "node_id":key,"schema_version":"filament.checked-semantic-graph/v2","node_tag":"model",
                 "semantic_form":form,"semantic_type":key,"dependencies":[],
                 "occurrences":[{"role":"type","ordinal":0}],
                 "owner":{"kind":"model","identity":identity,"node":member},
@@ -190,7 +190,7 @@ fn read(case: &Value) -> CheckedPackageV2ReadResult {
                 0,
             );
             package["semantic_graph"]["nodes"].as_array_mut().unwrap().push(json!({
-                "node_id":key,"schema_version":"quire.checked-semantic-graph/v2","node_tag":"relation",
+                "node_id":key,"schema_version":"filament.checked-semantic-graph/v2","node_tag":"relation",
                 "semantic_form":"relationship","semantic_type":key,"dependencies":[],
                 "occurrences":[{"role":"type","ordinal":0}],
                 "owner":{"kind":"model","identity":identity,"node":member},
@@ -202,7 +202,7 @@ fn read(case: &Value) -> CheckedPackageV2ReadResult {
             .insert_domain_package_document(identity, fixture::canonical(&document))
             .expect("one document per identity");
     }
-    evidence.support_feature("quire.value.complete/v1");
+    evidence.support_feature("filament.value.complete/v1");
     fixture::settle(&mut package);
     crate::read_and_account(
         &fixture::canonical(&package),

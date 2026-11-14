@@ -20,16 +20,16 @@ impl Scratch {
     fn new(label: &str, source: &str) -> Self {
         let serial = NEXT_SCRATCH.fetch_add(1, Ordering::Relaxed);
         let root = std::env::temp_dir().join(format!(
-            "quire-contract-ir-fr056-{}-{serial}-{label}",
+            "filament-contract-ir-fr056-{}-{serial}-{label}",
             std::process::id()
         ));
         fs::create_dir(&root).expect("unique scratch directory");
         fs::create_dir_all(root.join("src")).expect("first source root");
-        fs::create_dir_all(root.join("crates/quire-contract-model/src"))
+        fs::create_dir_all(root.join("crates/filament-contract-model/src"))
             .expect("second source root");
         fs::write(root.join("src/lib.rs"), source).expect("first source");
         fs::write(
-            root.join("crates/quire-contract-model/src/lib.rs"),
+            root.join("crates/filament-contract-model/src/lib.rs"),
             "pub enum Kind { Closed }\n",
         )
         .expect("second source");
@@ -76,9 +76,9 @@ impl Drop for Scratch {
 }
 
 fn scanner() -> PathBuf {
-    std::env::var_os("QSL_STRING_EDGE_BIN")
+    std::env::var_os("FSL_STRING_EDGE_BIN")
         .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("qsl-string-edge"))
+        .unwrap_or_else(|| PathBuf::from("fsl-string-edge"))
 }
 
 fn diagnostic(output: &Output) -> String {
@@ -125,13 +125,13 @@ fn normal_gate_uses_both_roots_and_refuses_unmarked_dispatch() {
     let plan = clean.plan("lint");
     assert!(plan.status.success(), "{}", diagnostic(&plan));
     let plan_text = String::from_utf8_lossy(&plan.stdout);
-    assert!(plan_text.contains("qsl-string-edge --base-dir ."));
+    assert!(plan_text.contains("fsl-string-edge --base-dir ."));
     assert!(plan_text.contains("cargo clippy"));
     assert_eq!(plan_text.matches("--crate-root").count(), 2);
     let ci_plan = clean.plan("ci");
     assert!(ci_plan.status.success(), "{}", diagnostic(&ci_plan));
     assert!(
-        String::from_utf8_lossy(&ci_plan.stdout).contains("qsl-string-edge --base-dir ."),
+        String::from_utf8_lossy(&ci_plan.stdout).contains("fsl-string-edge --base-dir ."),
         "ci must retain lint's scanner prerequisite: {}",
         diagnostic(&ci_plan)
     );
@@ -142,7 +142,7 @@ fn normal_gate_uses_both_roots_and_refuses_unmarked_dispatch() {
     for argument in [
         "--base-dir .",
         "--crate-root src",
-        "--crate-root crates/quire-contract-model/src",
+        "--crate-root crates/filament-contract-model/src",
         "--rules string-edge-rules.json",
     ] {
         assert!(invocation.contains(argument), "{argument}: {invocation}");
@@ -266,10 +266,10 @@ fn normal_prerequisite_propagates_command_and_input_failures() {
     fixture.write("string-edge-rules.json", "{");
     assert_command_error(&fixture.run(&binary));
     fixture.write("string-edge-rules.json", "{\"allow_list\":[]}");
-    fs::remove_dir_all(fixture.0.join("crates/quire-contract-model/src"))
+    fs::remove_dir_all(fixture.0.join("crates/filament-contract-model/src"))
         .expect("remove controlled root");
     assert_command_error(&fixture.run(&binary));
-    fs::create_dir_all(fixture.0.join("crates/quire-contract-model/src"))
+    fs::create_dir_all(fixture.0.join("crates/filament-contract-model/src"))
         .expect("restore controlled root");
     fixture.write("src/lib.rs", "pub fn invalid( {\n");
     assert_command_error(&fixture.run(&binary));
@@ -277,7 +277,7 @@ fn normal_prerequisite_propagates_command_and_input_failures() {
 
 #[test]
 #[trace("FR-056-AC-6")]
-fn marked_intake_depends_on_neutral_trace_without_scanner_or_qsl_dependency() {
+fn marked_intake_depends_on_neutral_trace_without_scanner_or_fsl_dependency() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let output = Command::new("cargo")
         .args([
@@ -295,7 +295,7 @@ fn marked_intake_depends_on_neutral_trace_without_scanner_or_qsl_dependency() {
     let metadata: serde_json::Value =
         serde_json::from_slice(&output.stdout).expect("cargo metadata JSON");
     let packages = metadata["packages"].as_array().expect("packages");
-    for package_name in ["quire-contract-ir", "quire-contract-model"] {
+    for package_name in ["filament-contract-ir", "filament-contract-model"] {
         let package = packages
             .iter()
             .find(|package| package["name"] == package_name)
@@ -311,10 +311,10 @@ fn marked_intake_depends_on_neutral_trace_without_scanner_or_qsl_dependency() {
             deps.iter().all(|dependency| {
                 !matches!(
                     dependency["name"].as_str(),
-                    Some("quire-spec-language" | "qsl-string-edge")
+                    Some("filament-spec-language" | "fsl-string-edge")
                 )
             }),
-            "{package_name} cannot acquire QSL or scanner as a Cargo dependency"
+            "{package_name} cannot acquire FSL or scanner as a Cargo dependency"
         );
     }
 }

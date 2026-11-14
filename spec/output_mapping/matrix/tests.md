@@ -1,9 +1,9 @@
 ---
 id: TM-006
-title: "quire-contract-ir output mapping test matrix"
+title: "filament-contract-ir output mapping test matrix"
 type: TestMatrix
 ---
-# quire-contract-ir output mapping test matrix
+# filament-contract-ir output mapping test matrix
 
 ## Functional Requirement Coverage
 

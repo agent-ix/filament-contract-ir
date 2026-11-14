@@ -7,15 +7,15 @@ use crate::support::checked_package::{
     admitted_protocol_families, canonical, evidence_for, selected_interface_model_node, settle,
     v2_all_families, v2_nominal,
 };
-use ix_trace_rs::trace;
-use quire_canonical::{Error, Limits};
-use quire_contract_model::{
+use filament_contract_model::{
     encode_checked_package_v2, AdmissionBinding, CheckedCapability, CheckedDiagnosticsV2,
     CheckedJson, CheckedJsonError, CheckedNodeProjectionV2, CheckedPackageLockV2,
     CheckedPackageReadLimits, CheckedPackageRefusalCode, CheckedPackageSourceCorrespondenceRef,
     CheckedPackageV2ReadResult, CheckedRefinementStepRowRegion, CheckedSemanticGraphV2,
     CheckedSourceMapEntry, CHECKED_PACKAGE_V2,
 };
+use ix_trace_rs::trace;
+use quire_canonical::{Error, Limits};
 use serde::de::DeserializeOwned;
 use serde_json::{json, Value};
 
@@ -33,9 +33,9 @@ fn encode(value: &Value, limits: Limits) -> Result<Vec<u8>, Error> {
         value.get("refinement_step_rows").map(typed);
     let capabilities: Vec<CheckedCapability> = typed(&value["capability_report"]);
     let diagnostics: CheckedDiagnosticsV2 = typed(&value["diagnostics"]);
-    let temporal_bindings: Option<Vec<quire_contract_model::TemporalBinding>> =
+    let temporal_bindings: Option<Vec<filament_contract_model::TemporalBinding>> =
         value.get("temporal_bindings").map(typed);
-    let temporal_clause_names: Option<Vec<quire_contract_model::TemporalClauseName>> =
+    let temporal_clause_names: Option<Vec<filament_contract_model::TemporalClauseName>> =
         value.get("temporal_clause_names").map(typed);
     encode_checked_package_v2(
         name,
@@ -45,7 +45,7 @@ fn encode(value: &Value, limits: Limits) -> Result<Vec<u8>, Error> {
             source_map: &source_map,
             refinement_step_rows: refinement_step_rows.as_deref(),
         },
-        quire_contract_model::CheckedPackageSidecarsRef {
+        filament_contract_model::CheckedPackageSidecarsRef {
             temporal_clause_names: temporal_clause_names.as_deref(),
             operation_effects: None,
             operation_bodies: None,

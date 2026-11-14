@@ -4,7 +4,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
-use quire_contract_model::Std001Code;
+use filament_contract_model::Std001Code;
 
 use super::{KaniOutcome, NonSuccessKind, ProfileSelection};
 

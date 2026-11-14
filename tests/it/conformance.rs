@@ -7,14 +7,14 @@ use std::{
     process::{Command, Output},
 };
 
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     expected_inventory, ClauseRef, ContractPackage, DeclarationEnvironment, DiagnosticCode,
     PackageId, RequirementId, RequirementRef, RequirementRevision, SourceDocumentId,
     SourceIdentity, SourceLocation, SourceRevision, SourceSpan, SymbolName, ValidationOptions,
     ValueDeclaration, ValueDeclarationKind, ValueType, MAX_SEMANTIC_COLLECTION_ITEMS,
     MAX_SEMANTIC_DEPTH, MAX_WIRE_JSON_DEPTH,
 };
+use ix_trace_rs::trace;
 use serde_json::{json, Value};
 
 use crate::support::corpus::{
@@ -25,7 +25,7 @@ fn error_code(output: &Output) -> String {
     assert_eq!(output.status.code(), Some(2));
     assert!(output.stdout.is_empty());
     let error: Value = serde_json::from_slice(&output.stderr).unwrap();
-    assert_eq!(error["protocol"], "quire.contract.conformance-jsonl/v1");
+    assert_eq!(error["protocol"], "filament.contract.conformance-jsonl/v1");
     error["code"].as_str().unwrap().to_owned()
 }
 
@@ -38,12 +38,12 @@ fn input_count(corpus: &Path) -> usize {
 #[test]
 fn tc_018_generated_corpus_executes_as_conformance_data() {
     let scratch = Scratch::empty("rust-generation");
-    let generator = env!("CARGO_BIN_EXE_quire-contract-corpus-generator");
+    let generator = env!("CARGO_BIN_EXE_filament-contract-corpus-generator");
     let output = Command::new(generator)
         .arg("--output")
         .arg(&scratch.0)
         .arg("--runner")
-        .arg(env!("CARGO_BIN_EXE_quire-contract-conformance"))
+        .arg(env!("CARGO_BIN_EXE_filament-contract-conformance"))
         .output()
         .unwrap();
     assert!(
@@ -79,7 +79,7 @@ fn tc_018_generated_corpus_executes_as_conformance_data() {
 fn tc_018_the_corpus_runs_deterministically_and_every_fixture_matches() {
     // FR-019-AC-3: expected_inventory is exactly the five published registries
     // under their five stable prefixes, sorted, and nothing else.
-    let mut rebuilt = quire_contract_model::PUBLIC_CONSTRUCT_TAGS
+    let mut rebuilt = filament_contract_model::PUBLIC_CONSTRUCT_TAGS
         .iter()
         .map(|tag| format!("construct:{tag}"))
         .chain(
@@ -98,12 +98,12 @@ fn tc_018_the_corpus_runs_deterministically_and_every_fixture_matches() {
             .map(|obligation| format!("obligation:{obligation}")),
         )
         .chain(
-            quire_contract_model::CONFORMANCE_BOUNDARIES
+            filament_contract_model::CONFORMANCE_BOUNDARIES
                 .iter()
                 .map(|boundary| format!("boundary:{boundary}")),
         )
         .chain(
-            quire_contract_model::ConformanceOperation::ALL
+            filament_contract_model::ConformanceOperation::ALL
                 .iter()
                 .map(|operation| format!("operation:{}", operation.as_str())),
         )
@@ -285,7 +285,7 @@ fn tc_018_all_mismatch_kinds_and_exit_classes_are_stable() {
     assert_eq!(error_code(&uncovered.run()), "invalid_corpus");
 
     let controls = Scratch::corpus("controls");
-    let bare = Command::new(env!("CARGO_BIN_EXE_quire-contract-conformance"))
+    let bare = Command::new(env!("CARGO_BIN_EXE_filament-contract-conformance"))
         .current_dir(&controls.0)
         .args(["run", "--corpus", ".", "--schemas"])
         .arg(controls.schemas())
@@ -362,7 +362,7 @@ fn tc_018_all_mismatch_kinds_and_exit_classes_are_stable() {
     #[cfg(unix)]
     {
         use std::os::unix::ffi::OsStringExt as _;
-        let output = Command::new(env!("CARGO_BIN_EXE_quire-contract-conformance"))
+        let output = Command::new(env!("CARGO_BIN_EXE_filament-contract-conformance"))
             .arg(OsString::from_vec(vec![0xff]))
             .output()
             .unwrap();
@@ -378,8 +378,8 @@ fn tc_018_canonical_byte_mismatch_detects_same_value_in_different_order() {
     let path = scratch.0.join("canonical/package-constructs-0.json");
     let original = fs::read_to_string(&path).unwrap();
     let changed = original.replacen(
-        "{\"kind\":\"package\",\"profile\":\"quire.contract.canonical-json/v1\",",
-        "{\"profile\":\"quire.contract.canonical-json/v1\",\"kind\":\"package\",",
+        "{\"kind\":\"package\",\"profile\":\"filament.contract.canonical-json/v1\",",
+        "{\"profile\":\"filament.contract.canonical-json/v1\",\"kind\":\"package\",",
         1,
     );
     assert_ne!(changed, original);
@@ -414,7 +414,7 @@ fn tc_018_runner_refuses_unsafe_paths_foreign_schemas_and_stray_entries() {
     assert_eq!(
         String::from_utf8(version.stdout).unwrap(),
         format!(
-            "quire-contract-ir {} quire.contract.conformance-jsonl/v1\n",
+            "filament-contract-ir {} filament.contract.conformance-jsonl/v1\n",
             env!("CARGO_PKG_VERSION")
         )
     );
@@ -481,14 +481,14 @@ fn tc_018_runner_refuses_unsafe_paths_foreign_schemas_and_stray_entries() {
 #[trace("TC-018", "FR-019-AC-2")]
 #[test]
 fn tc_018_semantic_depth_and_collection_edges_preflight_without_panic() {
-    let linked_run = catch_unwind(|| quire_contract_model::run_corpus(&corpus(), &schemas()));
+    let linked_run = catch_unwind(|| filament_contract_model::run_corpus(&corpus(), &schemas()));
     let linked_results = linked_run
         .expect("the linked runner panicked over the complete corpus")
         .expect("the linked runner rejected the published corpus");
     assert_eq!(linked_results.len(), input_count(&corpus()));
     assert!(linked_results
         .iter()
-        .all(|result| result.status() == quire_contract_model::FixtureStatus::Match));
+        .all(|result| result.status() == filament_contract_model::FixtureStatus::Match));
 
     let mut deeply_nested_package = String::from(
         r#"{"id":"agent-ix/depth","schema_version":{"major":1,"minor":1},"source":{"document":"depth","revision":1},"requirements":[],"ignored":"#,
@@ -1149,14 +1149,14 @@ fn tc_018_the_recorded_canonical_files_spell_the_eight_members_as_strings() {
         (
             "<EXPRESSION>",
             concat!(
-                r#"{"kind":"expression","profile":"quire.contract.canonical-json/v1","#,
+                r#"{"kind":"expression","profile":"filament.contract.canonical-json/v1","#,
                 r#""value":{"result_type":<RESULT>,"tree":<TREE>}}"#
             ),
         ),
         (
             "<DECLARATION>",
             concat!(
-                r#"{"kind":"declaration","profile":"quire.contract.canonical-json/v1","value":{"#,
+                r#"{"kind":"declaration","profile":"filament.contract.canonical-json/v1","value":{"#,
                 r#""functions":[{"name":"identity","parameters":[{"name":"argument","#,
                 r#""value_type":<INT>}],"result_type":<INT>}],"#,
                 r#""owner":{"package":"agent-ix/conformance","requirement":"REQ_alpha","revision":1},"#,
@@ -1502,7 +1502,7 @@ fn tc_018_shared_cli_preserves_version_and_closed_argv() {
     assert_eq!(
         version.stdout,
         format!(
-            "quire-contract-ir {} quire.contract.conformance-jsonl/v1\n",
+            "filament-contract-ir {} filament.contract.conformance-jsonl/v1\n",
             env!("CARGO_PKG_VERSION")
         )
         .as_bytes()
@@ -1522,7 +1522,7 @@ fn tc_018_shared_cli_preserves_version_and_closed_argv() {
 #[trace("TC-018", "FR-020-AC-16", "FR-020-AC-17")]
 #[test]
 fn tc_018_shared_cli_stdout_failure_preserves_the_existing_error_record() {
-    let output = Command::new(env!("CARGO_BIN_EXE_quire-contract-conformance"))
+    let output = Command::new(env!("CARGO_BIN_EXE_filament-contract-conformance"))
         .arg("run")
         .arg("--corpus")
         .arg(corpus())
@@ -1537,5 +1537,5 @@ fn tc_018_shared_cli_stdout_failure_preserves_the_existing_error_record() {
         .output()
         .unwrap();
     assert_eq!(output.status.code(), Some(2));
-    assert_eq!(output.stderr, b"{\"protocol\":\"quire.contract.conformance-jsonl/v1\",\"code\":\"fixture_io\",\"path\":\"stdout\",\"detail\":\"result stream is unwritable\"}\n");
+    assert_eq!(output.stderr, b"{\"protocol\":\"filament.contract.conformance-jsonl/v1\",\"code\":\"fixture_io\",\"path\":\"stdout\",\"detail\":\"result stream is unwritable\"}\n");
 }

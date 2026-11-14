@@ -3,17 +3,17 @@ id: FR-364
 title: "Admit a source population reference node"
 type: FR
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/StR-001
+  - target: ix://agent-ix/filament-contract-ir/StR-001
     type: traces_to
-  - target: ix://agent-ix/quire-contract-ir/FR-038
+  - target: ix://agent-ix/filament-contract-ir/FR-038
     type: depends_on
-  - target: ix://agent-ix/quire-contract-ir/FR-362
+  - target: ix://agent-ix/filament-contract-ir/FR-362
     type: depends_on
-  - target: ix://agent-ix/quire-spec-language/ADR-013
+  - target: ix://agent-ix/filament-spec-language/ADR-013
     type: references
-  - target: ix://agent-ix/quire-spec-language/FR-569
+  - target: ix://agent-ix/filament-spec-language/FR-569
     type: references
-  - target: ix://agent-ix/quire-specification/FR-322
+  - target: ix://agent-ix/filament-specification/FR-322
     type: references
 ---
 
@@ -21,11 +21,11 @@ relationships:
 
 ## Description
 
-QSpec FR-322 admits a `relation`/`population` population reference only with a
+FSpec FR-322 admits a `relation`/`population` population reference only with a
 selected-document owner (FR-322-AC-82/83). The reader SHALL also admit a
 `relation`/`population` node that carries a `declaration`
 `{qualified_name: [<population name>]}` and a `SourceOwner`, for a
-source-declared population (QSL ADR-013 QC-30 items 2c and 4).
+source-declared population (FSL ADR-013 QC-30 items 2c and 4).
 
 ## Inputs
 

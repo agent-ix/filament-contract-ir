@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Agent-IX
 
-//! FR-348 / QSpec TC-951 selected-checkout extension-node vectors.
+//! FR-348 / FSpec TC-951 selected-checkout extension-node vectors.
 
 use super::*;
 
@@ -65,7 +65,7 @@ fn record_extension_case(actual: &str) -> (Value, Value, usize) {
         .expect("constructs")
         .push(json!({
             "kind":{"module":"acme/orders","name":"record"},
-            "construct":{"meaning":"quire.meaning.model.record-value-type/v1"}
+            "construct":{"meaning":"filament.meaning.model.record-value-type/v1"}
         }));
     for (name, supertypes) in [
         ("Base", vec![]),
@@ -220,7 +220,7 @@ fn tc_459_extension_composite_record_name_is_not_selected_model_type() {
 #[test]
 fn tc_459_unheld_extension_refuses_at_its_definition() {
     let package = read_json(&fixtures_dir().join("positive-extension-nodes.json"))
-        .expect("published QSpec extension fixture");
+        .expect("published FSpec extension fixture");
     let nodes = package["semantic_graph"]["nodes"]
         .as_array()
         .expect("published graph nodes");
@@ -267,7 +267,7 @@ fn tc_459_held_extension_fixtures_admit() {
         "positive-extension-nodes.json",
         "positive-all-families.json",
     ] {
-        let package = read_json(&fixtures_dir().join(name)).expect("published QSpec fixture");
+        let package = read_json(&fixtures_dir().join(name)).expect("published FSpec fixture");
         let selected = package["lock"]["definition_selections"]
             .as_array()
             .expect("definitions");
@@ -339,7 +339,7 @@ fn tc_459_held_extension_fixtures_admit() {
             panic!("{name}: {read:?}");
         };
         let node_id = serde_json::from_value(form["node_id"].clone()).expect("form node id");
-        let Some(quire_contract_model::CheckedTerm::ExtensionForm { clauses, .. }) =
+        let Some(filament_contract_model::CheckedTerm::ExtensionForm { clauses, .. }) =
             admitted.term(&node_id)
         else {
             panic!("{name}: admitted extension form has typed body");
@@ -393,7 +393,7 @@ fn tc_459_extension_evidence_conflict_retains_first_definition() {
 
 fn extension_fixture() -> (Value, usize) {
     let package = read_json(&fixtures_dir().join("positive-extension-nodes.json"))
-        .expect("published QSpec extension fixture");
+        .expect("published FSpec extension fixture");
     let position = package["semantic_graph"]["nodes"]
         .as_array()
         .expect("nodes")
@@ -456,7 +456,7 @@ fn append_structural_node(
     position
 }
 
-// FR-348-AC-2 is withdrawn under QSpec #517: content edits retain a valid
+// FR-348-AC-2 is withdrawn under FSpec #517: content edits retain a valid
 // structural id. The remaining TC-459 cases assert the independent schema,
 // dependency, owner, clause and selected-definition checks.
 
@@ -465,7 +465,7 @@ fn assert_extension_refusal(
     code: Code,
     cause: Option<Cause>,
     path: String,
-) -> quire_contract_model::CheckedPackageRefusal {
+) -> filament_contract_model::CheckedPackageRefusal {
     let read = read_package(package).expect("production read");
     let CheckedPackageV2ReadResult::Refused(refusal) = read else {
         panic!("extension mutation must refuse: {read:?}");
@@ -705,7 +705,7 @@ fn tc_459_extension_has_one_whole_form_source_region() {
 #[test]
 fn tc_459_extension_and_record_share_the_types_namespace() {
     let mut package = read_json(&fixtures_dir().join("positive-all-families.json"))
-        .expect("published QSpec package");
+        .expect("published FSpec package");
     let nodes = package["semantic_graph"]["nodes"]
         .as_array()
         .expect("nodes");

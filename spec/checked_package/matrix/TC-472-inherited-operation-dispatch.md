@@ -3,7 +3,7 @@ id: TC-472
 title: "Inherited operation dispatch witness admission"
 type: TC
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/FR-354
+  - target: ix://agent-ix/filament-contract-ir/FR-354
     type: verifies
 ---
 # TC-472: Inherited operation dispatch witness admission

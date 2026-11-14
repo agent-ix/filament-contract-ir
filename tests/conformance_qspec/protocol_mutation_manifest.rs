@@ -1,30 +1,30 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Agent-IX
 
-//! By-reference reader conformance for QSpec protocol mutations and layouts.
+//! By-reference reader conformance for FSpec protocol mutations and layouts.
 
 use super::{
     fixture_support, fixtures_dir, positive_document, proposal_dir_of, read_json,
     read_package_with_document, read_positive, vector_selected_documents,
 };
+use filament_contract_model::CheckedPackageV2ReadResult;
 use ix_trace_rs::trace;
-use quire_contract_model::CheckedPackageV2ReadResult;
 use serde_json::Value;
 
 fn read(wire: &Value, document: &std::path::Path) -> CheckedPackageV2ReadResult {
     read_package_with_document(wire, "STD-609 protocol mutation", document)
-        .expect("QSpec protocol package read")
+        .expect("FSpec protocol package read")
 }
 
 fn assert_manifest_refusal(id: &str, expected_locus: &str, node_index: usize) {
     let fixtures = fixtures_dir();
     let manifest = read_json(&fixtures.join("protocol-node-mutation-manifest.json"))
-        .expect("QSpec STD-609 manifest");
+        .expect("FSpec STD-609 manifest");
     let base_name = manifest["base"]["fixture"]
         .as_str()
         .expect("manifest base fixture");
     assert_eq!(base_name, "protocol-node-base.json");
-    let base = read_json(&fixtures.join(base_name)).expect("QSpec protocol base fixture");
+    let base = read_json(&fixtures.join(base_name)).expect("FSpec protocol base fixture");
     let document = fixtures.join(
         manifest["base"]["domain_document"]
             .as_str()
@@ -33,7 +33,7 @@ fn assert_manifest_refusal(id: &str, expected_locus: &str, node_index: usize) {
     let base_result = read(&base, &document);
     assert!(
         matches!(&base_result, CheckedPackageV2ReadResult::Admitted(_)),
-        "QSpec protocol base must admit before applying mutations: {base_result:?}"
+        "FSpec protocol base must admit before applying mutations: {base_result:?}"
     );
 
     let rows = manifest["rows"].as_array().expect("manifest rows");
@@ -41,7 +41,7 @@ fn assert_manifest_refusal(id: &str, expected_locus: &str, node_index: usize) {
         .iter()
         .filter(|row| row["id"] == id)
         .collect::<Vec<_>>();
-    assert_eq!(selected.len(), 1, "{id}: one QSpec manifest row");
+    assert_eq!(selected.len(), 1, "{id}: one FSpec manifest row");
     let row = selected[0];
     assert_eq!(row["expect"]["decision"], "refuse", "{id}");
     assert_eq!(row["expect"]["stage"], "reader", "{id}");
@@ -74,10 +74,10 @@ fn assert_manifest_refusal(id: &str, expected_locus: &str, node_index: usize) {
     let refusal = match read(&mutated, &document) {
         CheckedPackageV2ReadResult::Refused(refusal) => refusal,
         CheckedPackageV2ReadResult::Admitted(_) => {
-            panic!("{id}: reader admitted; QSpec FR-464 requires refusal")
+            panic!("{id}: reader admitted; FSpec FR-464 requires refusal")
         }
         CheckedPackageV2ReadResult::Incomplete(incomplete) => {
-            panic!("{id}: reader incomplete ({incomplete:?}); QSpec FR-464 requires refusal")
+            panic!("{id}: reader incomplete ({incomplete:?}); FSpec FR-464 requires refusal")
         }
         CheckedPackageV2ReadResult::CatalogUnavailable(error) => {
             panic!("{id}: production operation catalog unavailable: {error:?}")
@@ -140,9 +140,9 @@ fn qspec_protocol_mutation_v14_refuses_state_clause_protocol_member() {
 fn current_qspec_protocol_reader_refusals_preserve_published_provenance() {
     let fixtures = fixtures_dir();
     let manifest = read_json(&fixtures.join("protocol-node-mutation-manifest.json"))
-        .expect("QSpec protocol mutation manifest");
+        .expect("FSpec protocol mutation manifest");
     let base_name = manifest["base"]["fixture"].as_str().expect("base fixture");
-    let base = read_json(&fixtures.join(base_name)).expect("QSpec protocol base");
+    let base = read_json(&fixtures.join(base_name)).expect("FSpec protocol base");
     let document = fixtures.join(
         manifest["base"]["domain_document"]
             .as_str()
@@ -247,10 +247,10 @@ fn earlier_protocol_law_refusal_precedes_missing_temporal_selection() {
 fn assert_paired_reader_refusal(first: &str, second: &str, first_node: usize) {
     let fixtures = fixtures_dir();
     let manifest = read_json(&fixtures.join("protocol-node-mutation-manifest.json"))
-        .expect("QSpec protocol mutation manifest");
+        .expect("FSpec protocol mutation manifest");
     let base =
         read_json(&fixtures.join(manifest["base"]["fixture"].as_str().expect("base fixture")))
-            .expect("QSpec protocol base");
+            .expect("FSpec protocol base");
     let document = fixtures.join(
         manifest["base"]["domain_document"]
             .as_str()
@@ -351,11 +351,11 @@ fn apply_layout_edit(package: &mut Value, edit: &Value) {
 fn current_qspec_protocol_layout_rows_refuse_at_exact_node_pointer() {
     let fixtures = fixtures_dir();
     let layout = read_json(&fixtures.join("protocol-node-layout-rows.json"))
-        .expect("current QSpec protocol layout rows");
+        .expect("current FSpec protocol layout rows");
     let manifest = read_json(&fixtures.join("protocol-node-mutation-manifest.json"))
-        .expect("QSpec protocol mutation manifest");
+        .expect("FSpec protocol mutation manifest");
     let base_name = manifest["base"]["fixture"].as_str().expect("base fixture");
-    let base = read_json(&fixtures.join(base_name)).expect("QSpec protocol base");
+    let base = read_json(&fixtures.join(base_name)).expect("FSpec protocol base");
     let document = fixtures.join(
         manifest["base"]["domain_document"]
             .as_str()
@@ -364,10 +364,10 @@ fn current_qspec_protocol_layout_rows_refuse_at_exact_node_pointer() {
     let base_result = read(&base, &document);
     assert!(
         matches!(base_result, CheckedPackageV2ReadResult::Admitted(_)),
-        "QSpec protocol base must admit: {base_result:?}"
+        "FSpec protocol base must admit: {base_result:?}"
     );
     let rows = layout["rows"].as_array().expect("published layout rows");
-    assert!(!rows.is_empty(), "QSpec layout rows must be present");
+    assert!(!rows.is_empty(), "FSpec layout rows must be present");
     let mut failures = Vec::new();
     for row in rows {
         let id = row["id"].as_str().expect("row id");
@@ -413,13 +413,13 @@ fn current_qspec_protocol_layout_rows_refuse_at_exact_node_pointer() {
 fn current_qspec_protocol_positive_packages_remain_admitted() {
     let fixtures = fixtures_dir();
     let proposal = proposal_dir_of(&fixtures);
-    let documents = vector_selected_documents(&proposal).expect("QSpec document selections");
+    let documents = vector_selected_documents(&proposal).expect("FSpec document selections");
     let vectors =
-        read_json(&fixtures.join("protocol-node-vectors.json")).expect("QSpec protocol vectors");
+        read_json(&fixtures.join("protocol-node-vectors.json")).expect("FSpec protocol vectors");
     let positives = vectors["positive"].as_array().expect("published positives");
     assert!(
         !positives.is_empty(),
-        "QSpec protocol positives must be present"
+        "FSpec protocol positives must be present"
     );
     for row in positives {
         let id = row["id"].as_str().expect("positive id");
@@ -469,10 +469,10 @@ fn protocol_node_index(package: &Value, operator: &str) -> usize {
 fn current_qspec_protocol_enumerations_remain_admitted() {
     let fixtures = fixtures_dir();
     let proposal = proposal_dir_of(&fixtures);
-    let schema = read_json(&proposal.join("schema.json")).expect("QSpec checked-package schema");
-    let base = read_json(&fixtures.join("protocol-node-base.json")).expect("QSpec protocol base");
+    let schema = read_json(&proposal.join("schema.json")).expect("FSpec checked-package schema");
+    let base = read_json(&fixtures.join("protocol-node-base.json")).expect("FSpec protocol base");
     let manifest = read_json(&fixtures.join("protocol-node-mutation-manifest.json"))
-        .expect("QSpec protocol mutation manifest");
+        .expect("FSpec protocol mutation manifest");
     let document = fixtures.join(
         manifest["base"]["domain_document"]
             .as_str()
@@ -598,9 +598,9 @@ fn append_protocol_control(package: &mut Value, node: Value, name: &str) {
 #[trace("TC-048", "FR-038-AC-286")]
 fn current_qspec_schema_valid_delivery_bounds_refuse_at_channel_node() {
     let fixtures = fixtures_dir();
-    let base = read_json(&fixtures.join("protocol-node-base.json")).expect("QSpec protocol base");
+    let base = read_json(&fixtures.join("protocol-node-base.json")).expect("FSpec protocol base");
     let manifest = read_json(&fixtures.join("protocol-node-mutation-manifest.json"))
-        .expect("QSpec protocol manifest");
+        .expect("FSpec protocol manifest");
     let document = fixtures.join(
         manifest["base"]["domain_document"]
             .as_str()
@@ -665,7 +665,7 @@ fn fresh_parameter(package: &mut Value, template: &Value, name: &str, level: &st
 
 fn published_operator_arguments(fixtures: &std::path::Path, operator: &str) -> Vec<String> {
     let vectors = read_json(&fixtures.join("protocol-node-vectors.json"))
-        .expect("current QSpec protocol vectors");
+        .expect("current FSpec protocol vectors");
     vectors["operators"]
         .as_array()
         .expect("published operators")
@@ -693,7 +693,7 @@ fn published_bindings(fixtures: &std::path::Path, operator: &str, values: Vec<Va
 
 fn assert_current_qspec_protocol_bodies_valid(package: &Value, operator: &str) {
     let schema = read_json(&proposal_dir_of(&fixtures_dir()).join("schema.json"))
-        .expect("current QSpec checked-package schema");
+        .expect("current FSpec checked-package schema");
     let application_schema = serde_json::json!({
         "$schema":schema["$schema"],
         "$defs":schema["$defs"],
@@ -702,7 +702,7 @@ fn assert_current_qspec_protocol_bodies_valid(package: &Value, operator: &str) {
     let validator = jsonschema::JSONSchema::options()
         .with_draft(jsonschema::Draft::Draft202012)
         .compile(&application_schema)
-        .expect("QSpec schema compiles");
+        .expect("FSpec schema compiles");
     let mut found = false;
     for node in package["semantic_graph"]["nodes"]
         .as_array()
@@ -719,7 +719,7 @@ fn assert_current_qspec_protocol_bodies_valid(package: &Value, operator: &str) {
                 .take(3)
                 .map(|error| error.to_string())
                 .collect::<Vec<_>>();
-            panic!("{operator} body must satisfy current QSpec schema: {details:?}");
+            panic!("{operator} body must satisfy current FSpec schema: {details:?}");
         };
     }
     assert!(found, "published {operator} body exists");
@@ -727,9 +727,9 @@ fn assert_current_qspec_protocol_bodies_valid(package: &Value, operator: &str) {
 
 fn qspec_event_package() -> (Value, std::path::PathBuf, Value) {
     let fixtures = fixtures_dir();
-    let base = read_json(&fixtures.join("protocol-node-base.json")).expect("QSpec protocol base");
+    let base = read_json(&fixtures.join("protocol-node-base.json")).expect("FSpec protocol base");
     let manifest = read_json(&fixtures.join("protocol-node-mutation-manifest.json"))
-        .expect("QSpec protocol manifest");
+        .expect("FSpec protocol manifest");
     let document = fixtures.join(
         manifest["base"]["domain_document"]
             .as_str()
@@ -876,7 +876,7 @@ fn current_qspec_appended_await_layout_remains_admitted() {
         .expect("fence template")["edit"][0]["value"]
         .clone();
     let schema =
-        read_json(&proposal_dir_of(&fixtures).join("schema.json")).expect("current QSpec schema");
+        read_json(&proposal_dir_of(&fixtures).join("schema.json")).expect("current FSpec schema");
     fence["body"]["arguments"][0]["value"]["value"] = protocol_enum_values(
         &schema,
         "fence",
@@ -940,11 +940,11 @@ fn current_qspec_appended_await_layout_remains_admitted() {
 #[trace("TC-048", "FR-038-AC-454")]
 fn current_qspec_appended_fence_layouts_remain_admitted() {
     let fixtures = fixtures_dir();
-    let base = read_json(&fixtures.join("protocol-node-base.json")).expect("QSpec protocol base");
+    let base = read_json(&fixtures.join("protocol-node-base.json")).expect("FSpec protocol base");
     let layout = read_json(&fixtures.join("protocol-node-layout-rows.json"))
-        .expect("QSpec protocol layout rows");
+        .expect("FSpec protocol layout rows");
     let manifest = read_json(&fixtures.join("protocol-node-mutation-manifest.json"))
-        .expect("QSpec protocol mutation manifest");
+        .expect("FSpec protocol mutation manifest");
     let document = fixtures.join(
         manifest["base"]["domain_document"]
             .as_str()
@@ -958,7 +958,7 @@ fn current_qspec_appended_fence_layouts_remain_admitted() {
         .expect("published fence row")["edit"][0]["value"]
         .clone();
     let schema = read_json(&proposal_dir_of(&fixtures).join("schema.json"))
-        .expect("QSpec checked-package schema");
+        .expect("FSpec checked-package schema");
     let orderings = protocol_enum_values(
         &schema,
         "fence",

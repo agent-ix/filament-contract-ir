@@ -4,7 +4,7 @@ title: "Remain portable and implementation-language independent"
 type: NFR
 quality_attribute: portability
 relationships:
-  - target: ix://agent-ix/quire-contract-ir/StR-002
+  - target: ix://agent-ix/filament-contract-ir/StR-002
     type: traces_to
 ---
 # NFR-002: Remain portable and implementation-language independent

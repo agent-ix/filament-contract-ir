@@ -1,26 +1,26 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Agent-IX
 
-//! Structural dimension-equivalence admission and refusal controls. QSpec's
+//! Structural dimension-equivalence admission and refusal controls. FSpec's
 //! three-package XP-01 graph runs in the conformance target.
 
 use crate::support::checked_package::{
     admitted_dependency, canonical, evidence_for, fixture_source, index_fixture_node_ids, pointer,
     read_with_dependencies, refresh_identity, v2_all_families,
 };
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     encode_checked_package_v2, CheckedPackageReadLimits, CheckedPackageRefusalCause as Cause,
     CheckedPackageRefusalCode as Code, CheckedPackageSourceCorrespondenceRef, CheckedPackageV2,
     CheckedPackageV2ReadResult,
 };
+use ix_trace_rs::trace;
 use serde_json::{json, Value};
 
 fn dimension(name: &str, source: &Value) -> Value {
     let id = json!({"package":"test/families","path":["Measure",name],"ordinal":0});
     json!({
         "node_id":id,
-        "schema_version":"quire.checked-semantic-graph/v2",
+        "schema_version":"filament.checked-semantic-graph/v2",
         "node_tag":"scalar_type", "semantic_form":"dimension",
         "semantic_type":id, "dependencies":[],
         "declaration":{"qualified_name":["Measure",name]},
@@ -38,7 +38,7 @@ fn equivalence(left: &Value, right: &Value, source: &Value) -> Value {
     });
     json!({
         "node_id":id,
-        "schema_version":"quire.checked-semantic-graph/v2",
+        "schema_version":"filament.checked-semantic-graph/v2",
         "node_tag":"scalar_type", "semantic_form":"dimension_equivalence",
         "semantic_type":id, "dependencies":[left,right],
         "occurrences":[{"role":"anchor","ordinal":0}],
@@ -159,7 +159,7 @@ fn selected_dimension_operand_admits_and_retains_package_form() {
             source_map: admitted.source_map(),
             refinement_step_rows: admitted.refinement_step_rows(),
         },
-        quire_contract_model::CheckedPackageSidecarsRef {
+        filament_contract_model::CheckedPackageSidecarsRef {
             temporal_clause_names: admitted.temporal_clause_names(),
             operation_effects: None,
             operation_bodies: None,
@@ -440,7 +440,7 @@ fn wide_root_scale_arithmetic_is_charged_to_the_read_budget() {
     use crate::checked_package_v2_graph_read_storage::{
         assert_exact_and_one_short, stage_requests,
     };
-    use quire_contract_model::{NativeJoinBudget, PackageReadStage};
+    use filament_contract_model::{NativeJoinBudget, PackageReadStage};
     let mut wide = package();
     wide["semantic_graph"]["nodes"][3]["body"]["root_scale"] =
         json!({"numerator":"100000000000000000000000000000000000000000","denominator":"1"});
@@ -486,7 +486,7 @@ fn imported_nominal_records_are_charged_at_the_imported_node() {
     use crate::checked_package_v2_graph_read_storage::{
         assert_exact_and_one_short, stage_requests,
     };
-    use quire_contract_model::{NativeJoinBudget, PackageReadStage};
+    use filament_contract_model::{NativeJoinBudget, PackageReadStage};
     let (wire, name, dependency) = mixed_package();
     let bytes = canonical(&wire);
     let mut evidence = evidence_for(&wire);

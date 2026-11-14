@@ -1,13 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Agent-IX
 
-//! FR-035/TC-047 and QSpec FR-330: the single six-member package value.
+//! FR-035/TC-047 and FSpec FR-330: the single six-member package value.
 
 use crate::support::checked_package::{
     self, canonical, evidence_for, refresh_identity, settle, typed_node_id, v2_all_families,
 };
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     CheckedNodeId, CheckedNodeKind, CheckedNodeTag, CheckedOperationViewError, CheckedPackageLimit,
     CheckedPackageReadLimits, CheckedPackageRefusalCause as Cause,
     CheckedPackageRefusalCode as Code, CheckedPackageV2, CheckedPackageV2ReadResult, CheckedTerm,
@@ -16,6 +15,7 @@ use quire_contract_model::{
     ContractSourceHandoffError, ContractSourceKeyV1, ContractUnsupportedSourceKindError,
     TemporalForm, CONTRACT_PACKAGE_VERSION,
 };
+use ix_trace_rs::trace;
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
@@ -60,8 +60,8 @@ fn mixed_fixture() -> Value {
 
 fn profile() -> CompleteLoweringProfileV2 {
     CompleteLoweringProfileV2 {
-        reference: quire_contract_model::LoweringProfileRef {
-            authority: "quire".into(),
+        reference: filament_contract_model::LoweringProfileRef {
+            authority: "filament".into(),
             identity: "complete-v1".into(),
         },
         required_source_selections: Vec::new(),
@@ -93,11 +93,11 @@ fn request() -> Vec<CheckedNodeId> {
 fn lower(
     value: &Value,
     requested: &[CheckedNodeId],
-) -> quire_contract_model::CompleteLoweringResultV2 {
+) -> filament_contract_model::CompleteLoweringResultV2 {
     admit(value).lower(requested, &profile())
 }
 
-fn bytes(result: &quire_contract_model::CompleteLoweringResultV2) -> &[u8] {
+fn bytes(result: &filament_contract_model::CompleteLoweringResultV2) -> &[u8] {
     result.package.canonical_bytes().expect("package bytes")
 }
 
@@ -113,7 +113,7 @@ fn read_with_limits(bytes: &[u8], limits: CheckedPackageReadLimits) -> ContractP
     ContractPackageWireV1::read(bytes, limits, &ContractDependencies::new())
 }
 
-fn operation(term: &CheckedTerm) -> &quire_contract_model::CheckedApplicationOperation {
+fn operation(term: &CheckedTerm) -> &filament_contract_model::CheckedApplicationOperation {
     let CheckedTerm::Application { operation, .. } = term else {
         panic!("represented operation term");
     };
@@ -261,9 +261,9 @@ fn v1_operation_views_require_authenticated_source() {
 #[test]
 fn v1_handoff_preserves_populated_mode_laws_and_member_declaration() {
     for identity in [
-        "quire.op.ieee.from_exact",
-        "quire.op.quantity.convert",
-        "quire.op.numeric.convert_rounding",
+        "filament.op.ieee.from_exact",
+        "filament.op.quantity.convert",
+        "filament.op.numeric.convert_rounding",
     ] {
         let fixture = crate::checked_package_v2_catalogue_differential::admitted_fixture(identity)
             .expect("catalog fixture");
@@ -419,13 +419,13 @@ fn v1_source_handoff_is_atomic_and_preserves_plain_refusal_precedence() {
 
     let original_operation = admit(
         &crate::checked_package_v2_catalogue_differential::admitted_fixture(
-            "quire.op.numeric.convert_rounding",
+            "filament.op.numeric.convert_rounding",
         )
         .expect("rounding operation source"),
     );
     let changed_operation = admit(
         &crate::checked_package_v2_catalogue_differential::admitted_fixture(
-            "quire.op.ieee.from_exact",
+            "filament.op.ieee.from_exact",
         )
         .expect("different admitted operation source"),
     );
@@ -435,7 +435,7 @@ fn v1_source_handoff_is_atomic_and_preserves_plain_refusal_precedence() {
         .iter()
         .find_map(|node| match &node.body {
             CheckedTerm::Application { operation, .. }
-                if operation.identity() == Some("quire.op.ieee.from_exact") =>
+                if operation.identity() == Some("filament.op.ieee.from_exact") =>
             {
                 Some(node.node_id.clone())
             }
@@ -534,7 +534,7 @@ fn lowered_package_retains_typed_terms_by_admitted_node_key() {
         if let Some(term) = source_term {
             typed_terms += 1;
             assert_eq!(
-                quire_contract_model::CheckedJson::from_serializable(
+                filament_contract_model::CheckedJson::from_serializable(
                     &serde_json::to_value(term).expect("term json")
                 )
                 .expect("term JSON is canonical"),
@@ -592,7 +592,7 @@ fn reader_refuses_each_missing_required_top_level_member() {
     }
 }
 
-/// FR-035-AC-33 / QSpec FR-330-AC-15: the two index tables and the
+/// FR-035-AC-33 / FSpec FR-330-AC-15: the two index tables and the
 /// source-key references have a fixed refusal order before semantic joins.
 #[trace("TC-047", "FR-035-AC-33")]
 #[test]
@@ -803,7 +803,7 @@ fn indexed_reached_closure_uses_a_typed_source_structural_key() {
             node.node_id.path.iter().any(|segment| {
                 matches!(
                     segment,
-                    quire_contract_model::CheckedNodePathSegment::Operand(_)
+                    filament_contract_model::CheckedNodePathSegment::Operand(_)
                 )
             })
         })
@@ -825,7 +825,7 @@ fn indexed_reached_closure_uses_a_typed_source_structural_key() {
     let mut absent_indexed = root.clone();
     absent_indexed
         .path
-        .push(quire_contract_model::CheckedNodePathSegment::Name(
+        .push(filament_contract_model::CheckedNodePathSegment::Name(
             "absent".into(),
         ));
     assert!(source.structural_key(&absent_indexed).is_none());
@@ -839,11 +839,11 @@ fn indexed_reached_closure_uses_a_typed_source_structural_key() {
         .find(|segment| {
             matches!(
                 segment,
-                quire_contract_model::CheckedNodePathSegment::Index(_)
+                filament_contract_model::CheckedNodePathSegment::Index(_)
             )
         })
         .expect("indexed fixture path");
-    *index = quire_contract_model::CheckedNodePathSegment::Index(
+    *index = filament_contract_model::CheckedNodePathSegment::Index(
         u64::try_from(source.graph().nodes.len()).expect("fixture graph size"),
     );
     assert!(ContractSourceKeyV1::from_v2_request(&source, &out_of_range).is_none());
@@ -878,7 +878,7 @@ fn indexed_reached_closure_uses_a_typed_source_structural_key() {
         .path
         .iter()
         .find_map(|segment| match segment {
-            quire_contract_model::CheckedNodePathSegment::Index(index) => {
+            filament_contract_model::CheckedNodePathSegment::Index(index) => {
                 usize::try_from(*index).ok()
             }
             _ => None,
@@ -1021,7 +1021,7 @@ fn typed_source_key_rejects_malformed_structural_ids() {
     let mut malformed_operand = valid;
     malformed_operand
         .path
-        .push(quire_contract_model::CheckedNodePathSegment::Node(
+        .push(filament_contract_model::CheckedNodePathSegment::Node(
             std::sync::Arc::new(empty_package),
         ));
     assert!(ContractSourceKeyV1::from_structural(&malformed_operand).is_none());
@@ -1147,7 +1147,7 @@ fn reader_refuses_first_accounting_record_for_later_requested_items() {
 fn reader_refuses_wrong_string_version_before_shape_identity_and_nodes() {
     let output = lower(&mixed_fixture(), &request());
     let mut wire: Value = serde_json::from_slice(bytes(&output)).expect("wire json");
-    let wrong = "quire.contract-package/v9";
+    let wrong = "filament.contract-package/v9";
     wire["contract_version"] = json!(wrong);
     let canonical_wrong = canonical(&wire);
     let ContractPackageReadResult::Refused(refusal) = read(&canonical_wrong) else {
@@ -1902,7 +1902,7 @@ fn unsupported_source_kind_tracks_requested_root_across_mixed_accounting() {
         .find(|selection| selection["role"] == "temporal_profile")
         .expect("temporal profile selection");
     temporal_profile["definition"]["identity"] =
-        json!("quire.temporal.event-position.false-extension/v1");
+        json!("filament.temporal.event-position.false-extension/v1");
     let wrong_lock = canonical(&wrong_lock);
     assert!(matches!(
         read(&wrong_lock),
@@ -2022,7 +2022,7 @@ fn canonical_package_retains_request_order_and_source_coordinates() {
 #[trace("TC-047", "FR-035-AC-31")]
 #[test]
 fn reader_refuses_malformed_outer_shape_and_identity_member() {
-    use quire_contract_model::{
+    use filament_contract_model::{
         CheckedPackageRefusalCause as Cause, CheckedPackageRefusalCode as Code,
     };
     let output = lower(&mixed_fixture(), &request());
@@ -2086,7 +2086,7 @@ fn reader_refuses_malformed_outer_shape_and_identity_member() {
 #[trace("TC-047", "FR-035-AC-9")]
 #[test]
 fn reader_keeps_lowering_profile_reference_closed() {
-    use quire_contract_model::{
+    use filament_contract_model::{
         CheckedPackageRefusalCause as Cause, CheckedPackageRefusalCode as Code,
     };
     let output = lower(&mixed_fixture(), &request());
@@ -2112,7 +2112,7 @@ fn reader_keeps_lowering_profile_reference_closed() {
 #[trace("TC-047", "FR-035-AC-2")]
 #[test]
 fn reader_locates_malformed_nested_source_value() {
-    use quire_contract_model::{
+    use filament_contract_model::{
         CheckedPackageRefusalCause as Cause, CheckedPackageRefusalCode as Code,
     };
     let output = lower(&mixed_fixture(), &request());
@@ -2138,7 +2138,7 @@ fn reader_locates_malformed_nested_source_value() {
 #[trace("TC-047", "FR-035-AC-4")]
 #[test]
 fn reader_distinguishes_unknown_occurrence_role_from_wrong_value_kind() {
-    use quire_contract_model::{
+    use filament_contract_model::{
         CheckedPackageRefusalCause as Cause, CheckedPackageRefusalCode as Code,
     };
     let output = lower(&mixed_fixture(), &request());
@@ -2166,7 +2166,7 @@ fn reader_distinguishes_unknown_occurrence_role_from_wrong_value_kind() {
 #[trace("TC-047", "FR-035-AC-4")]
 #[test]
 fn reader_requires_total_source_correspondence_and_request_order() {
-    use quire_contract_model::{
+    use filament_contract_model::{
         CheckedPackageRefusalCause as Cause, CheckedPackageRefusalCode as Code,
     };
     let output = lower(&mixed_fixture(), &request());
@@ -2243,7 +2243,7 @@ fn failed_wire(limit: &str, consumed: &str) -> Value {
 #[trace("TC-047", "FR-035-AC-11")]
 #[test]
 fn canonical_decimal_counters_keep_the_full_u64_range() {
-    use quire_contract_model::{CheckedPackageRefusalCause, CheckedPackageRefusalCode};
+    use filament_contract_model::{CheckedPackageRefusalCause, CheckedPackageRefusalCode};
     for counter in ["0", "18446744073709551615"] {
         assert!(matches!(
             read(&canonical(&failed_wire(counter, counter))),
@@ -2279,7 +2279,7 @@ fn canonical_decimal_counters_keep_the_full_u64_range() {
 #[trace("TC-047", "FR-035-AC-17")]
 #[test]
 fn defensive_body_payloads_are_closed_and_omitted_pointers_stay_omitted() {
-    use quire_contract_model::CheckedPackageRefusalCause;
+    use filament_contract_model::CheckedPackageRefusalCause;
     let mut wire = failed_wire("0", "0");
     let source_ref = wire["feature_accounting"][1]["node_id"].clone();
     wire["feature_accounting"][1] = json!({
@@ -2457,7 +2457,7 @@ fn reader_refuses_causes_on_causeless_nested_reader_codes() {
 #[trace("TC-047", "FR-035-AC-13")]
 #[test]
 fn duplicate_member_and_noncanonical_bytes_refuse() {
-    use quire_contract_model::{CheckedPackageRefusalCause, CheckedPackageRefusalCode};
+    use filament_contract_model::{CheckedPackageRefusalCause, CheckedPackageRefusalCode};
     let wire = canonical(&failed_wire("0", "0"));
     let text = std::str::from_utf8(&wire).expect("utf8");
     let duplicate = text.replacen("\"limit\":\"0\"", "\"limit\":\"0\",\"limit\":\"0\"", 1);
@@ -2474,7 +2474,7 @@ fn duplicate_member_and_noncanonical_bytes_refuse() {
 #[trace("TC-047", "FR-035-AC-2", "FR-035-AC-19")]
 #[test]
 fn selected_dependencies_are_bound_by_library_identity_before_graph_checks() {
-    use quire_contract_model::{
+    use filament_contract_model::{
         CheckedPackageRefusalCause, CheckedPackageRefusalCode, ContractDependencyInput,
     };
     let (dependency, wire) = wire_selecting_lib_a();
@@ -2559,7 +2559,7 @@ fn wire_selecting_lib_a() -> (CheckedPackageV2, Value) {
 #[test]
 fn contract_reader_refuses_unequal_complete_values_in_dependency_diamond() {
     use crate::support::checked_package::read_with_dependencies;
-    use quire_contract_model::ContractDependencyInput;
+    use filament_contract_model::ContractDependencyInput;
 
     let mut first_wire = mixed_fixture();
     first_wire["name"] = json!("lib/leaf");
@@ -2627,7 +2627,7 @@ fn contract_reader_refuses_unequal_complete_values_in_dependency_diamond() {
 #[trace("TC-047", "FR-035-AC-2")]
 #[test]
 fn reader_refuses_wrong_named_selected_dependency_at_selection() {
-    use quire_contract_model::{
+    use filament_contract_model::{
         CheckedPackageRefusalCause, CheckedPackageRefusalCode, ContractDependencyInput,
     };
     let (dependency, mut wire) = wire_selecting_lib_a();
@@ -2662,7 +2662,7 @@ fn reader_refuses_wrong_named_selected_dependency_at_selection() {
 #[trace("TC-047", "FR-035-AC-4")]
 #[test]
 fn reader_refuses_reference_type_targeting_an_existing_scalar_node() {
-    use quire_contract_model::{
+    use filament_contract_model::{
         CheckedPackageRefusalCause as Cause, CheckedPackageRefusalCode as Code,
     };
     let output = lower(&mixed_fixture(), &request());

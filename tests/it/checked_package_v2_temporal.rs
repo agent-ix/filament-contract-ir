@@ -2,13 +2,13 @@
 // Copyright (C) 2026 Agent-IX
 
 //! FR-038-AC-96 through AC-105 and AC-108, at the package: the temporal step
-//! of the reader order (QSpec FR-370) over temporal clauses, formulas and
+//! of the reader order (FSpec FR-370) over temporal clauses, formulas and
 //! fairness nodes.
 //!
 //! Every package is built here from this crate's own vocabulary, by editing
 //! the in-repo all-families fixture (a clause over `eventually {0, 3}` over
 //! `holds`) and re-deriving its application keys, dependency joins and
-//! identity with `settle`; nothing of QSpec's fixtures is copied in (the
+//! identity with `settle`; nothing of FSpec's fixtures is copied in (the
 //! fixtures are read by `make conformance-qspec`, FR-038-AC-107).
 
 use crate::support::checked_package::{
@@ -16,12 +16,12 @@ use crate::support::checked_package::{
     node_id as fixture_node_id, owned_structural_node, reassign_node_id, select_model, settle,
     source_owner, v2_all_families,
 };
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     CheckedNodeId, CheckedNodeTag, CheckedPackageLimit, CheckedPackageReadLimits,
     CheckedPackageRefusalCause as Cause, CheckedPackageRefusalCode as Code, CheckedPackageV2,
     CheckedPackageV2ReadResult, CompleteLoweringProfileV2, CompleteLoweringRecordV2,
 };
+use ix_trace_rs::trace;
 use serde_json::{json, Value};
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -38,7 +38,7 @@ pub(super) const SUB_NODE: &str = "ix://acme/orders/Sub";
 pub(super) const LEFT_NODE: &str = "ix://acme/orders/Left";
 const RIGHT_NODE: &str = "ix://acme/orders/Right";
 const BOTH_NODE: &str = "ix://acme/orders/Both";
-const NATIVE_INTEGER: &str = "ix://quire/native/Integer";
+const NATIVE_INTEGER: &str = "ix://filament/native/Integer";
 
 fn slot(type_ref: &str) -> Value {
     json!({"typeRef": type_ref,
@@ -63,7 +63,7 @@ pub(super) fn orders_document() -> Value {
         "package": {"identity": ORDERS, "version": ORDERS_VERSION},
         "constructs": [{
             "kind": {"module": ORDERS, "name": "entity"},
-            "construct": {"meaning": "quire.meaning.model.object-type/v1"},
+            "construct": {"meaning": "filament.meaning.model.object-type/v1"},
         }],
         "types": [
             domain_type(ORDER_NODE, &[], json!([
@@ -257,7 +257,7 @@ fn fresh() -> String {
 pub(super) fn node_with_key(key: &str, tag: &str, form: &str, body: Value) -> Value {
     json!({
         "node_id": node_id(key),
-        "schema_version": "quire.checked-semantic-graph/v2",
+        "schema_version": "filament.checked-semantic-graph/v2",
         "node_tag": tag, "semantic_form": form, "semantic_type": node_id(&aaaa()),
         "dependencies": [], "occurrences": [{"role": "generated", "ordinal": 0}],
         "body": body,
@@ -274,10 +274,10 @@ fn application(operator: &str, identity: &str, member: Value, arguments: Vec<Val
 }
 
 fn temporal_identity(short: &str) -> String {
-    format!("quire.op.temporal.{short}")
+    format!("filament.op.temporal.{short}")
 }
 
-/// A `temporal_formula` application of `quire.op.temporal.<short>`.
+/// A `temporal_formula` application of `filament.op.temporal.<short>`.
 fn formula_body(short: &str, member: Value, arguments: Vec<Value>) -> Value {
     application(
         "temporal_formula",
@@ -287,7 +287,7 @@ fn formula_body(short: &str, member: Value, arguments: Vec<Value>) -> Value {
     )
 }
 
-/// A `temporal`/`formula` node applying `quire.op.temporal.<short>`.
+/// A `temporal`/`formula` node applying `filament.op.temporal.<short>`.
 fn formula(short: &str, member: Value, arguments: Vec<Value>) -> Value {
     node_with_key(
         &fresh(),
@@ -322,13 +322,13 @@ fn lower_bounded(lower: &str) -> Value {
     interval(json!(lower), Value::Null)
 }
 
-const BOUNDED: &str = "quire.temporal.event-position.false-extension/v1";
-pub(super) const INFINITE: &str = "quire.temporal.infinite-trace/v1";
-const TIMED: &str = "quire.temporal.timed/v1";
+const BOUNDED: &str = "filament.temporal.event-position.false-extension/v1";
+pub(super) const INFINITE: &str = "filament.temporal.infinite-trace/v1";
+const TIMED: &str = "filament.temporal.timed/v1";
 const FIVE_PROFILES: [&str; 5] = [
     BOUNDED,
-    "quire.temporal.fixed-sample.false-extension/v1",
-    "quire.temporal.timestamped-event.finite-window/v1",
+    "filament.temporal.fixed-sample.false-extension/v1",
+    "filament.temporal.timestamped-event.finite-window/v1",
     INFINITE,
     TIMED,
 ];
@@ -372,7 +372,7 @@ pub(super) fn select_profile(package: &mut Value, identity: &str) {
 }
 
 /// The fixture, its clause's formula argument naming the application of
-/// `quire.op.temporal.<short>` over `arguments` (default: the fixture's
+/// `filament.op.temporal.<short>` over `arguments` (default: the fixture's
 /// `holds` node, `arity` times) with `member`, under `profile`. The position
 /// of that root formula node.
 fn with_root(
@@ -436,7 +436,7 @@ fn fairness_member(declaration: &str, name: &str) -> Value {
     Value::Object(closed_object)
 }
 
-/// A `temporal`/`fairness` node applying `quire.op.temporal.fair` with `member`.
+/// A `temporal`/`fairness` node applying `filament.op.temporal.fair` with `member`.
 pub(super) fn fairness(member: Value) -> Value {
     node_with_key(
         &fresh(),
@@ -488,8 +488,8 @@ pub(crate) fn admitted_fairness_source_for_contract() -> CheckedPackageV2 {
 
 fn profile_supporting(tags: &[CheckedNodeTag]) -> CompleteLoweringProfileV2 {
     CompleteLoweringProfileV2 {
-        reference: quire_contract_model::LoweringProfileRef {
-            authority: "quire".into(),
+        reference: filament_contract_model::LoweringProfileRef {
+            authority: "filament".into(),
             identity: "complete-v1".into(),
         },
         required_source_selections: Vec::new(),
@@ -703,7 +703,7 @@ fn tc_048_an_interval_member_admits_and_refuses_on_each_interval_operator() {
     ];
     // A bound outside the non-negative integer pattern, malformed as well as
     // negative, is `invalid-value` at that bound in the early stage (merged
-    // QSpec FR-370: strict wire validation, before the temporal step), first
+    // FSpec FR-370: strict wire validation, before the temporal step), first
     // in member order; a JSON integer is no string.
     let mut outside_pattern = vec![
         ("an integer lower", interval(json!(0), json!("3")), "lower"),
@@ -761,7 +761,7 @@ fn tc_048_an_interval_member_admits_and_refuses_on_each_interval_operator() {
             );
         }
         // A `null` member on an interval-capable operator is refused at the
-        // application, not at `operation.member` (merged QSpec FR-370 text).
+        // application, not at `operation.member` (merged FSpec FR-370 text).
         let (package, root) = with_root(INFINITE, short, Value::Null, None, arity);
         expect(
             &format!("{short} a null member"),
@@ -968,7 +968,7 @@ fn tc_048_a_placed_application_in_another_form_refuses_at_its_node() {
 fn tc_048_a_formula_fairness_or_clause_node_needs_its_own_application() {
     let literal = json!({"term": "literal", "type": node_id(&aaaa()),
                          "value_kind": "boolean", "value": true});
-    let other_class = application("call", "quire.op.function.call", Value::Null, vec![]);
+    let other_class = application("call", "filament.op.function.call", Value::Null, vec![]);
     for (tag, form) in [
         ("temporal", "formula"),
         ("temporal", "fairness"),
@@ -1033,7 +1033,7 @@ fn tc_048_a_reference_to_a_formula_or_fairness_node_refuses_where_it_may_not_sta
             "case",
             application(
                 "case",
-                "quire.op.control.case",
+                "filament.op.control.case",
                 Value::Null,
                 vec![refer(&formula_key)],
             ),
@@ -1066,7 +1066,7 @@ fn tc_048_a_reference_to_a_formula_or_fairness_node_refuses_where_it_may_not_sta
 #[trace("TC-048", "FR-038-AC-100")]
 #[test]
 fn tc_048_a_case_application_stands_only_at_the_root_of_a_case_node() {
-    let case_body = || application("case", "quire.op.control.case", Value::Null, vec![]);
+    let case_body = || application("case", "filament.op.control.case", Value::Null, vec![]);
     let mut package = v2_all_families();
     let position = push(
         &mut package,
@@ -1336,7 +1336,7 @@ fn tc_048_a_details_reference_to_a_formula_or_fairness_node_refuses_at_the_entry
 #[test]
 fn forbidden_diagnostic_reference_precedes_unknown_temporal_profile() {
     let mut package = v2_all_families();
-    select_profile(&mut package, "quire.fixture.temporal-profile/v1");
+    select_profile(&mut package, "filament.fixture.temporal-profile/v1");
     settle(&mut package);
     let formula = node_label(
         &package,
@@ -1359,7 +1359,7 @@ fn forbidden_diagnostic_reference_precedes_unknown_temporal_profile() {
     );
 }
 
-/// A diagnostics entry whose `code` is `unsupported_construct` reads, as QSpec's
+/// A diagnostics entry whose `code` is `unsupported_construct` reads, as FSpec's
 /// schema allows: the diagnostics wire vocabulary keeps the word.
 #[trace("TC-048", "FR-038-AC-101")]
 #[test]
@@ -1401,7 +1401,7 @@ fn unknown_identity_call() -> Value {
         "pure_function",
         application(
             "call",
-            "quire.op.function.not-catalogued",
+            "filament.op.function.not-catalogued",
             Value::Null,
             vec![],
         ),
@@ -1434,7 +1434,7 @@ fn tc_048_a_placement_defect_is_reported_ahead_of_every_other_defect() {
         // Beside a clause defect (an unknown profile), whatever the key order.
         let mut package = v2_all_families();
         let placement = push(&mut package, misplaced_formula(key));
-        select_profile(&mut package, "quire.fixture.temporal-profile/v1");
+        select_profile(&mut package, "filament.fixture.temporal-profile/v1");
         settle(&mut package);
         misplaced(
             &format!("beside a clause defect, {key}"),
@@ -1470,7 +1470,7 @@ fn tc_048_a_placement_defect_is_reported_ahead_of_every_other_defect() {
 }
 
 /// A `function` node whose application has an unknown identity, and one whose
-/// `operator` differs from its entry's class (`quire.op.control.case` under
+/// `operator` differs from its entry's class (`filament.op.control.case` under
 /// `unary`). Their IDs are assigned independently of their bodies.
 fn operation_defects() -> [(&'static str, Value); 2] {
     let defect = |operator: &str, identity: &str| {
@@ -1490,9 +1490,12 @@ fn operation_defects() -> [(&'static str, Value); 2] {
     [
         (
             "an unknown identity",
-            defect("call", "quire.op.function.not-catalogued"),
+            defect("call", "filament.op.function.not-catalogued"),
         ),
-        ("a class mismatch", defect("unary", "quire.op.control.case")),
+        (
+            "a class mismatch",
+            defect("unary", "filament.op.control.case"),
+        ),
     ]
 }
 
@@ -2008,7 +2011,7 @@ fn tc_048_a_fairness_member_resolves_on_its_declaring_model_node() {
 
 /// A selected systems interface is an authentic model declaration, but it
 /// cannot declare the operation named by a temporal fairness member. A value
-/// node cannot declare one either (QSpec FR-370-AC-11, TC-303 step 9).
+/// node cannot declare one either (FSpec FR-370-AC-11, TC-303 step 9).
 #[trace("TC-048", "FR-038-AC-103")]
 #[test]
 fn tc_048_wrong_declaring_nodes_cannot_name_a_fairness_operation() {
@@ -2019,7 +2022,7 @@ fn tc_048_wrong_declaring_nodes_cannot_name_a_fairness_operation() {
         .expect("constructs")
         .push(json!({
             "kind": {"module": ORDERS, "name": "interface"},
-            "construct": {"meaning": "quire.meaning.systems.interface/v1"},
+            "construct": {"meaning": "filament.meaning.systems.interface/v1"},
         }));
     let mut declared = domain_type(INTERFACE, &[], json!([]));
     declared["kind"]["name"] = json!("interface");
@@ -2141,12 +2144,12 @@ fn tc_048_the_profile_fit_admits_each_interval_shape_per_profile() {
     for (profile, bounded, finite_upper) in [
         (BOUNDED, true, false),
         (
-            "quire.temporal.fixed-sample.false-extension/v1",
+            "filament.temporal.fixed-sample.false-extension/v1",
             true,
             false,
         ),
         (
-            "quire.temporal.timestamped-event.finite-window/v1",
+            "filament.temporal.timestamped-event.finite-window/v1",
             true,
             false,
         ),
@@ -2202,7 +2205,7 @@ fn tc_048_the_profile_fit_admits_each_interval_shape_per_profile() {
 #[trace("TC-048", "FR-038-AC-104")]
 #[test]
 fn tc_048_finite_window_refuses_timed_and_open_interval_members() {
-    const FINITE_WINDOW: &str = "quire.temporal.timestamped-event.finite-window/v1";
+    const FINITE_WINDOW: &str = "filament.temporal.timestamped-event.finite-window/v1";
     let (baseline, _) = with_root(FINITE_WINDOW, "eventually", closed("0", "3"), None, 1);
     admitted(
         "a closed interval under the finite-window profile",
@@ -2393,14 +2396,14 @@ fn tc_048_an_identity_outside_the_five_is_an_unknown_profile() {
     };
     unknown(
         "the fixture profile",
-        "quire.fixture.temporal-profile/v1",
+        "filament.fixture.temporal-profile/v1",
         None,
         Cause::UnsupportedSelection,
     );
     unknown("an empty identity", "", None, Cause::UnsupportedSelection);
     unknown(
         "a differently spelled identity",
-        "quire.temporal.infinite-trace/v2",
+        "filament.temporal.infinite-trace/v2",
         None,
         Cause::UnsupportedSelection,
     );
@@ -2408,25 +2411,25 @@ fn tc_048_an_identity_outside_the_five_is_an_unknown_profile() {
     // role, are the wrong role; selected under none, unsupported.
     unknown(
         "composed, selected as a binding contract",
-        "quire.package.composed/v1",
-        Some(("binding_contract", "quire.package.composed/v1")),
+        "filament.package.composed/v1",
+        Some(("binding_contract", "filament.package.composed/v1")),
         Cause::WrongSelectionRole,
     );
     unknown(
         "complete, selected as a protocol profile",
-        "quire.protocol.complete/v1",
-        Some(("protocol_profile", "quire.protocol.complete/v1")),
+        "filament.protocol.complete/v1",
+        Some(("protocol_profile", "filament.protocol.complete/v1")),
         Cause::WrongSelectionRole,
     );
     unknown(
         "composed, selected nowhere else",
-        "quire.package.composed/v1",
+        "filament.package.composed/v1",
         None,
         Cause::UnsupportedSelection,
     );
     unknown(
         "complete, selected nowhere else",
-        "quire.protocol.complete/v1",
+        "filament.protocol.complete/v1",
         None,
         Cause::UnsupportedSelection,
     );
@@ -2470,13 +2473,13 @@ fn tc_048_the_cause_matches_the_edition_row_and_the_authority_of_a_definition() 
     );
 
     // A profile row of another role carries the identity under another authority.
-    let (mut package, clause_at) = clause_law("quire.package.composed/v1", None);
+    let (mut package, clause_at) = clause_law("filament.package.composed/v1", None);
     package["lock"]["profile_selections"]
         .as_array_mut()
         .expect("selections")
         .push(json!({"role": "binding_contract",
                      "definition": {"authority": "other",
-                                    "identity": "quire.package.composed/v1"}}));
+                                    "identity": "filament.package.composed/v1"}}));
     settle(&mut package);
     expect(
         "a profile row under another authority",
@@ -2498,7 +2501,7 @@ fn tc_048_an_unknown_profile_is_checked_first_and_is_not_read_as_bounded() {
     package["semantic_graph"]["nodes"][root]["body"]["operation"]["member"] = unbounded();
     let clause_at = clause(&package);
     package["semantic_graph"]["nodes"][clause_at]["body"]["operation"]["laws"][0]["definition"]
-        ["identity"] = json!("quire.fixture.temporal-profile/v1");
+        ["identity"] = json!("filament.fixture.temporal-profile/v1");
     package["semantic_graph"]["nodes"][clause_at]["body"]["arguments"][0] = refer(&aaaa());
     settle(&mut package);
     expect(
@@ -2520,7 +2523,7 @@ fn tc_048_unknown_profile_precedes_temporal_binding_profile_join() {
     let mut binding = package["temporal_bindings"][0].clone();
     let clause_at = clause(&package);
     package["semantic_graph"]["nodes"][clause_at]["body"]["operation"]["laws"][0]["definition"]
-        ["identity"] = json!("quire.fixture.temporal-profile/v1");
+        ["identity"] = json!("filament.fixture.temporal-profile/v1");
     settle(&mut package);
 
     let current_clause = clause(&package);
@@ -2550,7 +2553,7 @@ fn tc_048_a_clause_without_exactly_one_profile_law_skips_the_profile_check() {
     let clause_at = clause(&package);
     let own = package["semantic_graph"]["nodes"][clause_at]["body"]["operation"]["laws"][0].clone();
     let mut unknown = own.clone();
-    unknown["definition"]["identity"] = json!("quire.fixture.temporal-profile/v1");
+    unknown["definition"]["identity"] = json!("filament.fixture.temporal-profile/v1");
     package["semantic_graph"]["nodes"][clause_at]["body"]["operation"]["laws"] =
         json!([unknown, own.clone()]);
     settle(&mut package);
@@ -2610,10 +2613,10 @@ fn tc_048_the_lower_key_clause_is_read_first_whatever_its_defect() {
             let own = clause(&package);
             if own_is_unknown {
                 package["semantic_graph"]["nodes"][own]["body"]["operation"]["laws"][0]
-                    ["definition"]["identity"] = json!("quire.fixture.temporal-profile/v1");
+                    ["definition"]["identity"] = json!("filament.fixture.temporal-profile/v1");
             } else {
                 package["semantic_graph"]["nodes"][added]["body"]["operation"]["laws"][0]
-                    ["definition"]["identity"] = json!("quire.fixture.temporal-profile/v1");
+                    ["definition"]["identity"] = json!("filament.fixture.temporal-profile/v1");
                 package["semantic_graph"]["nodes"][own]["body"]["arguments"][0] = refer(&aaaa());
             }
             if lower_is_own {
@@ -3233,7 +3236,9 @@ fn tc_048_a_member_set_defect_is_reported_after_a_profile_fit_defect_of_a_later_
     order_pair(&mut package, own, added);
     let added_root = nodes(&package)
         .iter()
-        .rposition(|node| node["body"]["operation"]["identity"] == "quire.op.temporal.eventually")
+        .rposition(|node| {
+            node["body"]["operation"]["identity"] == "filament.op.temporal.eventually"
+        })
         .expect("the added clause's formula");
     expect(
         "the fit defect of the higher clause",
@@ -3332,7 +3337,7 @@ fn tc_048_the_first_non_reduced_bound_is_the_lower_key_nodes() {
 }
 
 // ---------------------------------------------------------------------------
-// FR-038-AC-530 (QSpec FR-370-AC-21): fairness references of a hyperproperty
+// FR-038-AC-530 (FSpec FR-370-AC-21): fairness references of a hyperproperty
 // ---------------------------------------------------------------------------
 
 fn text(value: &str) -> Value {
@@ -4012,8 +4017,8 @@ fn tc_346_a_subjects_or_finite_body_refusal_is_located_at_the_target_with_its_ke
 // Window aggregate arguments (FR-038-AC-461, AC-462)
 // ---------------------------------------------------------------------------
 
-const POSITIONS: &str = "quire.temporal.event-position.false-extension/v1";
-const DURATION: &str = "quire.temporal.timestamped-event.finite-window/v1";
+const POSITIONS: &str = "filament.temporal.event-position.false-extension/v1";
+const DURATION: &str = "filament.temporal.timestamped-event.finite-window/v1";
 
 fn typed(kind: &str, type_key: Value, value: &str) -> Value {
     json!({"term": "literal", "type": type_key, "value_kind": kind, "value": value})
@@ -4040,7 +4045,7 @@ fn binding(name: &str, value: Value) -> Value {
 }
 
 /// The all-families package with its `holds` formula rewritten to apply
-/// `quire.op.temporal.aggregate` to `members`, under `profile`. A duration
+/// `filament.op.temporal.aggregate` to `members`, under `profile`. A duration
 /// window also declares the fixture's `tick` clock unit the quantity bounds are typed by.
 fn aggregate_package(profile: &str, members: Vec<Value>) -> (Value, usize) {
     let mut package = v2_all_families();
@@ -4050,23 +4055,23 @@ fn aggregate_package(profile: &str, members: Vec<Value>) -> (Value, usize) {
                                "path": ["scalar_type", "dimension", "Time"], "ordinal": 0});
         for node in [
             json!({
-                "node_id": dimension, "schema_version": "quire.checked-semantic-graph/v2",
+                "node_id": dimension, "schema_version": "filament.checked-semantic-graph/v2",
                 "node_tag": "scalar_type", "semantic_form": "dimension",
                 "semantic_type": dimension,
                 "declaration": {"qualified_name": ["scalar_type", "dimension", "Time"]},
                 "dependencies": [],
                 "occurrences": [{"role": "declaration", "ordinal": 0}],
-                "owner": {"kind": "source", "authority": "agent-ix", "identity": "quire.fixture.source/v1"},
+                "owner": {"kind": "source", "authority": "agent-ix", "identity": "filament.fixture.source/v1"},
                 "body": {"term": "dimension", "base": true, "terms": []},
             }),
             json!({
-                "node_id": clock_unit("tick"), "schema_version": "quire.checked-semantic-graph/v2",
+                "node_id": clock_unit("tick"), "schema_version": "filament.checked-semantic-graph/v2",
                 "node_tag": "scalar_type", "semantic_form": "unit",
                 "semantic_type": dimension,
                 "declaration": {"qualified_name": ["scalar_type", "unit", "tick"]},
                 "dependencies": [dimension],
                 "occurrences": [{"role": "declaration", "ordinal": 0}],
-                "owner": {"kind": "source", "authority": "agent-ix", "identity": "quire.fixture.source/v1"},
+                "owner": {"kind": "source", "authority": "agent-ix", "identity": "filament.fixture.source/v1"},
                 "body": {"term": "unit", "dimension_node_id": dimension,
                          "target_unit_node_id": null,
                          "scale": {"numerator": "1", "denominator": "1"},
@@ -4075,7 +4080,7 @@ fn aggregate_package(profile: &str, members: Vec<Value>) -> (Value, usize) {
         ] {
             let row = json!({
                 "node_id": node["node_id"], "role": "declaration", "ordinal": 0,
-                "regions": [{"source": {"authority": "agent-ix", "identity": "quire.fixture.source/v1"},
+                "regions": [{"source": {"authority": "agent-ix", "identity": "filament.fixture.source/v1"},
                              "start": 0, "end": 1}],
             });
             package["source_map"]
@@ -4087,7 +4092,7 @@ fn aggregate_package(profile: &str, members: Vec<Value>) -> (Value, usize) {
     }
     let formula = find_identity(&package, &temporal_identity("holds"));
     let body = &mut package["semantic_graph"]["nodes"][formula]["body"];
-    body["operation"]["identity"] = json!("quire.op.temporal.aggregate");
+    body["operation"]["identity"] = json!("filament.op.temporal.aggregate");
     body["arguments"] = json!([{"term": "aggregate", "members": members}]);
     package["semantic_graph"]["nodes"][formula]["dependencies"] =
         json!([fixture_node_id(&family_key("eeee"))]);
@@ -4128,7 +4133,7 @@ fn retained_argument(package: &Value, formula: usize) -> Value {
     let CheckedPackageV2ReadResult::Admitted(admitted) = result else {
         panic!("the aggregate package admits");
     };
-    let quire_contract_model::CheckedTerm::Application { arguments, .. } =
+    let filament_contract_model::CheckedTerm::Application { arguments, .. } =
         &admitted.graph().nodes[formula].body
     else {
         panic!("the formula body is an application");

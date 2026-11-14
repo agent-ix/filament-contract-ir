@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Agent-IX
 
-//! IR-289: the `dependency_reference` term (QSpec FR-322-AC-36 and
+//! IR-289: the `dependency_reference` term (FSpec FR-322-AC-36 and
 //! FR-322-AC-37, native-diagnostics step 7). A call to a function a
 //! dependency package declares carries `{term: "dependency_reference",
 //! package, node}` as its callee; the term names a structural target, is
@@ -16,8 +16,7 @@ use crate::support::checked_package::{
     reassign_node_id, rebuild_source_map, refresh_identity, settle, source_key, v2_all_families,
     v2_nominal,
 };
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     BoundedDomainForm, CheckedNodeId, CheckedNodeTag, CheckedOccurrenceRole,
     CheckedPackageReadLimits, CheckedPackageRefusal, CheckedPackageRefusalCause,
     CheckedPackageRefusalCode, CheckedPackageV2, CheckedPackageV2ReadResult, CheckedTerm,
@@ -25,6 +24,7 @@ use quire_contract_model::{
     ContractOccurrenceKeyV1, ContractPackageReadResult, ContractPackageWireV1,
     ContractResultContextV1, ContractResultViewV1, ContractRootViewV1, LoweringProfileRef,
 };
+use ix_trace_rs::trace;
 use serde_json::{json, Value};
 
 const LIBRARY: &str = "test/families";
@@ -66,7 +66,7 @@ fn node(
 ) -> Value {
     let mut node = json!({
         "node_id": node_id(key),
-        "schema_version": "quire.checked-semantic-graph/v2",
+        "schema_version": "filament.checked-semantic-graph/v2",
         "node_tag": tag,
         "semantic_form": form,
         "semantic_type": node_id(semantic_type),
@@ -315,7 +315,7 @@ fn reached_view_retains_selected_dependency_pair_at_package_boundary() {
     .expect("call key");
     let profile = CompleteLoweringProfileV2 {
         reference: LoweringProfileRef {
-            authority: "quire".into(),
+            authority: "filament".into(),
             identity: "complete-v1".into(),
         },
         required_source_selections: Vec::new(),
@@ -327,7 +327,7 @@ fn reached_view_retains_selected_dependency_pair_at_package_boundary() {
     let emitted = result.package.wire().expect("lowered package");
     let ContractRootViewV1::Lowered(view) = emitted
         .reached_closure(
-            &quire_contract_model::ContractSourceKeyV1::from_structural(&root)
+            &filament_contract_model::ContractSourceKeyV1::from_structural(&root)
                 .expect("structural source key"),
         )
         .expect("view")
@@ -370,7 +370,7 @@ fn reached_view_retains_selected_dependency_pair_at_package_boundary() {
     assert_eq!(
         read_back
             .reached_closure(
-                &quire_contract_model::ContractSourceKeyV1::from_structural(&root)
+                &filament_contract_model::ContractSourceKeyV1::from_structural(&root)
                     .expect("structural source key")
             )
             .expect("view"),
@@ -1177,7 +1177,7 @@ fn tc_048_a_binding_value_refuses_and_a_nested_call_is_outside_the_grammar() {
         json!({
             "term": "application", "operator": "call",
             "operation": {
-                "identity": "quire.op.function.call", "laws": [], "mode": null,
+                "identity": "filament.op.function.call", "laws": [], "mode": null,
                 "member": null, "leaves": [],
             },
             "result_type": node_id(&boolean_key()),

@@ -8,8 +8,7 @@ use crate::support::checked_package::{
     protocol_named_node, rebuild_source_map, refresh_identity, select_model, settle, source_owner,
     structural_fixture_id, v2_all_families, v2_nominal,
 };
-use ix_trace_rs::trace;
-use quire_contract_model::{
+use filament_contract_model::{
     encode_checked_package_v2, CheckedCapability, CheckedDiagnosticsV2, CheckedOccurrenceRole,
     CheckedPackageEvidence, CheckedPackageLockV2, CheckedPackageReadLimits,
     CheckedPackageRefusalCause, CheckedPackageRefusalCode, CheckedPackageV2,
@@ -17,6 +16,7 @@ use quire_contract_model::{
     CheckedSourceMapEntry, CheckedTerm, RefinementClassCatalog, RefinementConcreteClass,
     RefinementDrain, RefinementMemoryClass, RefinementMemoryModel, RefinementTsoModel,
 };
+use ix_trace_rs::trace;
 use serde_json::{json, Value};
 
 const MODEL_IDENTITY: &str = "test/refinement";
@@ -98,7 +98,7 @@ fn model_document() -> Value {
         "package": {"identity": MODEL_IDENTITY, "version": "1"},
         "constructs": [{
             "kind": {"module": MODEL_IDENTITY, "name": "machine"},
-            "construct": {"meaning": "quire.meaning.model.state-machine/v1"}
+            "construct": {"meaning": "filament.meaning.model.state-machine/v1"}
         }],
         "types": [{
             "identity": MODEL_NODE, "displayName": "Machine",
@@ -130,7 +130,7 @@ fn selected_form_node_owned(form: &str, owner_identity: &str, identity: &str) ->
         "ordinal": 0,
     });
     json!({
-        "node_id":key, "schema_version":"quire.checked-semantic-graph/v2",
+        "node_id":key, "schema_version":"filament.checked-semantic-graph/v2",
         "node_tag":"model", "semantic_form":form, "semantic_type":key,
         "dependencies":[], "occurrences":[{"role":"type", "ordinal":0}],
         "owner":owner, "body":body
@@ -141,14 +141,14 @@ fn selected_form_document() -> Value {
     let mut document = model_document();
     let constructs = document["constructs"].as_array_mut().expect("constructs");
     for (name, meaning) in [
-        ("process", "quire.meaning.model.process/v1"),
-        ("record", "quire.meaning.model.record-value-type/v1"),
+        ("process", "filament.meaning.model.process/v1"),
+        ("record", "filament.meaning.model.record-value-type/v1"),
         (
             "persistence",
-            "quire.meaning.model.persistence-interface/v1",
+            "filament.meaning.model.persistence-interface/v1",
         ),
-        ("object", "quire.meaning.model.object-type/v1"),
-        ("value", "quire.meaning.model.value-type/v1"),
+        ("object", "filament.meaning.model.object-type/v1"),
+        ("value", "filament.meaning.model.value-type/v1"),
     ] {
         constructs.push(json!({"kind":{"module":MODEL_IDENTITY,"name":name},
             "construct":{"meaning":meaning}}));
@@ -165,16 +165,16 @@ fn selected_form_document() -> Value {
         .remove("transitions");
     declared["fields"] = json!([{
         "identity":format!("ix://{MODEL_IDENTITY}/Flow/n"),
-        "name":"n", "typeRef":"ix://quire/native/Integer",
+        "name":"n", "typeRef":"ix://filament/native/Integer",
         "presence":"required", "nullable":false, "defaultKind":"none",
         "multiplicity":{"lower":1,"upper":1,"ordered":false,"unique":true}
     }]);
     declared["operations"] = json!([{
         "identity":format!("ix://{MODEL_IDENTITY}/Flow/go"),
         "params":[{"identity":format!("ix://{MODEL_IDENTITY}/Flow/go/step"),
-            "name":"step", "typeRef":"ix://quire/native/Integer",
+            "name":"step", "typeRef":"ix://filament/native/Integer",
             "multiplicity":{"lower":1,"upper":1,"ordered":false,"unique":true}}],
-        "returns":{"typeRef":"ix://quire/native/Integer",
+        "returns":{"typeRef":"ix://filament/native/Integer",
             "multiplicity":{"lower":1,"upper":1,"ordered":false,"unique":true}}
     }]);
     declared["identityFields"] = json!([format!("ix://{MODEL_IDENTITY}/Flow/n")]);
@@ -223,7 +223,7 @@ fn selected_form_document() -> Value {
         "multiplicity":{"lower":1,"upper":1,"ordered":false,"unique":true}
     }, {
         "identity":format!("ix://{MODEL_IDENTITY}/Account/id"),
-        "name":"id", "typeRef":"ix://quire/native/UUID",
+        "name":"id", "typeRef":"ix://filament/native/UUID",
         "presence":"required", "nullable":false, "defaultKind":"none",
         "multiplicity":{"lower":1,"upper":1,"ordered":false,"unique":true}
     }]);
@@ -289,7 +289,7 @@ fn selected_forms_package_with(document: Value) -> (Value, CheckedPackageEvidenc
             .as_array_mut()
             .expect("nodes")
             .push(json!({
-                "node_id":id, "schema_version":"quire.checked-semantic-graph/v2",
+                "node_id":id, "schema_version":"filament.checked-semantic-graph/v2",
                 "node_tag":"composite_type", "semantic_form":"reference",
                 "semantic_type":id, "dependencies":[target],
                 "occurrences":[{"role":"type", "ordinal":0}], "body":body
@@ -320,7 +320,7 @@ fn root_owner_path(package: &Value, identity: &str) -> String {
     format!("/semantic_graph/nodes/{position}/owner")
 }
 
-/// Trace: FR-068-AC-1, FR-068-AC-3, QSpec FR-208-AC-5..7
+/// Trace: FR-068-AC-1, FR-068-AC-3, FSpec FR-208-AC-5..7
 #[trace("TC-463")]
 #[test]
 fn selected_process_machine_and_persistence_require_complete_meaning_declarations() {
@@ -397,7 +397,7 @@ fn selected_process_machine_and_persistence_require_complete_meaning_declaration
     }
 }
 
-/// Trace: FR-068-AC-1, FR-068-AC-2, QSpec FR-322-AC-63, FR-322-AC-72
+/// Trace: FR-068-AC-1, FR-068-AC-2, FSpec FR-322-AC-63, FR-322-AC-72
 #[trace("TC-463")]
 #[test]
 fn selected_process_persistence_state_and_record_keep_owner_and_reference_identity() {
@@ -418,7 +418,7 @@ fn selected_process_persistence_state_and_record_keep_owner_and_reference_identi
             .iter()
             .find(|node| node["semantic_form"] == form)
             .expect("selected form");
-        let id: quire_contract_model::CheckedNodeId =
+        let id: filament_contract_model::CheckedNodeId =
             serde_json::from_value(node["node_id"].clone()).expect("id");
         assert!(
             admitted.graph().nodes.iter().any(|node| node.node_id == id),
@@ -468,7 +468,7 @@ fn selected_process_persistence_state_and_record_keep_owner_and_reference_identi
             .iter()
             .find(|node| node["semantic_form"] == form)
             .expect("form");
-        let id: quire_contract_model::CheckedNodeId =
+        let id: filament_contract_model::CheckedNodeId =
             serde_json::from_value(node["node_id"].clone()).expect("id");
         assert!(
             again.graph().nodes.iter().any(|node| node.node_id == id),
@@ -481,7 +481,7 @@ fn selected_process_persistence_state_and_record_keep_owner_and_reference_identi
     }
 }
 
-/// Trace: FR-068-AC-3, QSpec FR-322-AC-65, FR-322-AC-72
+/// Trace: FR-068-AC-3, FSpec FR-322-AC-65, FR-322-AC-72
 #[trace("TC-463")]
 #[test]
 fn selected_form_owner_join_refuses_wrong_meaning_absence_and_missing_owner() {
@@ -572,7 +572,7 @@ fn selected_form_owner_join_refuses_wrong_meaning_absence_and_missing_owner() {
     }
 }
 
-/// Trace: FR-068-AC-5, FR-064-AC-4, QSpec FR-322-AC-72
+/// Trace: FR-068-AC-5, FR-064-AC-4, FSpec FR-322-AC-72
 #[trace("TC-463", "TC-048")]
 #[test]
 fn selected_non_object_clause_owners_reach_the_clause_edge_refusal() {
@@ -597,7 +597,7 @@ fn selected_non_object_clause_owners_reach_the_clause_edge_refusal() {
         .expect("constructs")
         .push(json!({
             "kind":{"module":MODEL_IDENTITY,"name":"gate"},
-            "construct":{"meaning":"quire.meaning.model.state-machine/v1"}
+            "construct":{"meaning":"filament.meaning.model.state-machine/v1"}
         }));
     document["types"].as_array_mut().expect("types").push(gate);
     let extra = [
@@ -617,7 +617,7 @@ fn selected_non_object_clause_owners_reach_the_clause_edge_refusal() {
     );
     let mut selected_nodes = extra.to_vec();
     selected_nodes.push(json!({
-        "node_id":gate_reference, "schema_version":"quire.checked-semantic-graph/v2",
+        "node_id":gate_reference, "schema_version":"filament.checked-semantic-graph/v2",
         "node_tag":"composite_type", "semantic_form":"reference",
         "semantic_type":gate_reference, "dependencies":[gate],
         "occurrences":[{"role":"type", "ordinal":0}], "body":gate_reference_body
@@ -795,21 +795,21 @@ fn writer_bytes(package: &Value) -> Vec<u8> {
         serde_json::from_value(package["capability_report"].clone()).expect("capabilities");
     let diagnostics: CheckedDiagnosticsV2 =
         serde_json::from_value(package["diagnostics"].clone()).expect("diagnostics");
-    let temporal_bindings: Option<Vec<quire_contract_model::TemporalBinding>> = package
+    let temporal_bindings: Option<Vec<filament_contract_model::TemporalBinding>> = package
         .get("temporal_bindings")
         .map(|value| serde_json::from_value(value.clone()).expect("temporal bindings"));
-    let temporal_clause_names: Option<Vec<quire_contract_model::TemporalClauseName>> = package
+    let temporal_clause_names: Option<Vec<filament_contract_model::TemporalClauseName>> = package
         .get("temporal_clause_names")
         .map(|value| serde_json::from_value(value.clone()).expect("temporal names"));
     encode_checked_package_v2(
         name,
         &lock,
         &graph,
-        quire_contract_model::CheckedPackageSourceCorrespondenceRef {
+        filament_contract_model::CheckedPackageSourceCorrespondenceRef {
             source_map: &source_map,
             refinement_step_rows: rows.as_deref(),
         },
-        quire_contract_model::CheckedPackageSidecarsRef {
+        filament_contract_model::CheckedPackageSidecarsRef {
             temporal_clause_names: temporal_clause_names.as_deref(),
             operation_effects: None,
             operation_bodies: None,
@@ -834,7 +834,7 @@ fn row_empty_refinement(package: &mut Value) {
         })
         .expect("selected root")["node_id"]
         .clone();
-    let profile = json!({"authority": "test", "identity": "quire.temporal.infinite-trace/v1"});
+    let profile = json!({"authority": "test", "identity": "filament.temporal.infinite-trace/v1"});
     package["lock"]["profile_selections"] = json!([{
         "role": "temporal_profile", "definition": profile
     }]);
@@ -848,7 +848,7 @@ fn row_empty_refinement(package: &mut Value) {
         .as_array_mut()
         .expect("nodes")
         .push(json!({
-            "node_id": id, "schema_version": "quire.checked-semantic-graph/v2",
+            "node_id": id, "schema_version": "filament.checked-semantic-graph/v2",
             "node_tag": "relation", "semantic_form": "refinement",
             "semantic_type": model_root, "dependencies": [model_root],
             "occurrences": [
@@ -958,7 +958,7 @@ fn catalog_free_operation_package_config(
     let mut document = selected_form_document();
     document["types"][0]["fields"] = json!([{
         "identity":format!("{MODEL_NODE}/openFlag"), "name":"openFlag",
-        "typeRef":"ix://quire/native/Integer", "presence":"required",
+        "typeRef":"ix://filament/native/Integer", "presence":"required",
         "nullable":false, "defaultKind":"none",
         "multiplicity":{"lower":1,"upper":1,"ordered":false,"unique":true}
     }]);
@@ -968,7 +968,7 @@ fn catalog_free_operation_package_config(
         "multiplicity":{"lower":1,"upper":1,"ordered":false,"unique":true}
     }]);
     document["types"][0]["operations"][0]["returns"] = json!({
-        "typeRef":"ix://quire/native/Integer",
+        "typeRef":"ix://filament/native/Integer",
         "multiplicity":{"lower":1,"upper":1,"ordered":false,"unique":true}
     });
     document["types"][1]["operations"][0]["params"][0]["typeRef"] =
@@ -1003,7 +1003,7 @@ fn catalog_free_operation_package_config(
         parent["displayName"] = json!(parent_name);
         parent["fields"] = json!([{
             "identity":format!("{parent_identity}/inherited"), "name":"inherited",
-            "typeRef":"ix://quire/native/Integer", "presence":"required",
+            "typeRef":"ix://filament/native/Integer", "presence":"required",
             "nullable":false, "defaultKind":"none",
             "multiplicity":{"lower":1,"upper":1,"ordered":false,"unique":true}
         }]);
@@ -1054,7 +1054,7 @@ fn catalog_free_operation_package_config(
         if form == "process" {
             child["fields"] = json!([{
                 "identity":format!("{child_identity}/subId"), "name":"subId",
-                "typeRef":"ix://quire/native/Integer", "presence":"required",
+                "typeRef":"ix://filament/native/Integer", "presence":"required",
                 "nullable":false, "defaultKind":"none",
                 "multiplicity":{"lower":1,"upper":1,"ordered":false,"unique":true}
             }]);
@@ -1138,13 +1138,13 @@ fn catalog_free_operation_package_config(
         .as_array_mut()
         .expect("nodes")
         .extend([
-            json!({"node_id":text_type, "schema_version":"quire.checked-semantic-graph/v2",
+            json!({"node_id":text_type, "schema_version":"filament.checked-semantic-graph/v2",
                 "node_tag":"scalar_type", "semantic_form":"text", "semantic_type":text_type,
                 "dependencies":[], "occurrences":[{"role":"type","ordinal":0}], "body":text_body}),
-            json!({"node_id":frame, "schema_version":"quire.checked-semantic-graph/v2",
+            json!({"node_id":frame, "schema_version":"filament.checked-semantic-graph/v2",
                 "node_tag":"state", "semantic_form":"frame", "semantic_type":declaring,
                 "dependencies":[], "occurrences":[{"role":"generated","ordinal":0}], "body":frame_body}),
-            json!({"node_id":anchor, "schema_version":"quire.checked-semantic-graph/v2",
+            json!({"node_id":anchor, "schema_version":"filament.checked-semantic-graph/v2",
                 "node_tag":"state", "semantic_form":"operation_anchor", "semantic_type":declaring,
                 "dependencies":dependencies, "occurrences":[{"role":"anchor","ordinal":0}],
                 "body":anchor_body}),
@@ -1364,7 +1364,7 @@ fn process_and_machine_anchors_refuse_non_object_context_forms() {
                         .as_array_mut()
                         .expect("nodes")
                         .push(json!({
-                            "node_id":id,"schema_version":"quire.checked-semantic-graph/v2",
+                            "node_id":id,"schema_version":"filament.checked-semantic-graph/v2",
                             "node_tag":"model","semantic_form":"event_type","semantic_type":id,
                             "dependencies":[],
                             "occurrences":[{"role":"declaration","ordinal":0}],
@@ -1747,7 +1747,7 @@ fn assert_concrete_row_binding(
         Some(path),
         "{refusal:?}"
     );
-    let expected: quire_contract_model::CheckedNodeId =
+    let expected: filament_contract_model::CheckedNodeId =
         serde_json::from_value(package["semantic_graph"]["nodes"][position]["node_id"].clone())
             .expect("refinement node id");
     assert_eq!(refusal.locus, Some(expected), "{refusal:?}");
@@ -1839,14 +1839,14 @@ fn selected_population_package() -> (Value, CheckedPackageEvidence, Value, Value
         .expect("constructs")
         .push(json!({
             "kind":{"module":MODEL_IDENTITY,"name":"population"},
-            "construct":{"meaning":"quire.meaning.model.population/v1"}
+            "construct":{"meaning":"filament.meaning.model.population/v1"}
         }));
     document["constructs"]
         .as_array_mut()
         .expect("constructs")
         .push(json!({
             "kind":{"module":MODEL_IDENTITY,"name":"entity"},
-            "construct":{"meaning":"quire.meaning.model.object-type/v1"}
+            "construct":{"meaning":"filament.meaning.model.object-type/v1"}
         }));
     let object_identity = format!("ix://{MODEL_IDENTITY}/Account");
     document["types"]
@@ -1877,7 +1877,7 @@ fn selected_population_package() -> (Value, CheckedPackageEvidence, Value, Value
         .as_array_mut()
         .expect("nodes")
         .push(json!({
-            "node_id":id,"schema_version":"quire.checked-semantic-graph/v2",
+            "node_id":id,"schema_version":"filament.checked-semantic-graph/v2",
             "node_tag":"relation","semantic_form":"population","semantic_type":id,
             "dependencies":[],"occurrences":[{"role":"generated","ordinal":0}],
             "owner":owner,"body":body
@@ -2025,7 +2025,7 @@ fn assert_refinement_dependency_matrix(
     );
 }
 
-/// QSpec FR-375 excludes literal types and the concrete semantic type from
+/// FSpec FR-375 excludes literal types and the concrete semantic type from
 /// dependencies; reference targets remain necessary even inside history rows.
 #[trace("TC-062", "FR-061-AC-6")]
 #[test]
@@ -2038,7 +2038,7 @@ fn refinement_history_reference_dependencies_exclude_type_annotations() {
         .as_array_mut()
         .expect("nodes")
         .push(json!({
-            "node_id":literal_id, "schema_version":"quire.checked-semantic-graph/v2",
+            "node_id":literal_id, "schema_version":"filament.checked-semantic-graph/v2",
             "node_tag":"value", "semantic_form":"literal", "semantic_type":type_id,
             "dependencies":[], "occurrences":[{"role":"generated","ordinal":0}],
             "body":initial
@@ -2097,7 +2097,7 @@ fn refinement_history_reference_dependencies_exclude_type_annotations() {
 
 /// Dependency validation precedes expression and row meaning. These controls
 /// keep an invalid row while distinguishing references/member operands from
-/// literal/result annotations (QSpec FR-375's exact local-list rule).
+/// literal/result annotations (FSpec FR-375's exact local-list rule).
 #[trace("TC-062", "FR-061-AC-6")]
 #[test]
 fn refinement_expression_operands_enter_dependencies_before_row_meaning() {
@@ -2123,7 +2123,7 @@ fn refinement_expression_operands_enter_dependencies_before_row_meaning() {
         "independent reference, member, population, annotation controls"
     );
     let term = json!({"term":"application", "operator":"reaches",
-    "operation":{"identity":"quire.op.model.reaches", "laws":[], "mode":null,
+    "operation":{"identity":"filament.op.model.reaches", "laws":[], "mode":null,
         "member":{"kind":"relationship", "declaration":operands[1], "population":operands[2]},
         "leaves":[]},
     "result_type":operands[3], "arguments":[
@@ -2289,7 +2289,7 @@ fn refinement_dependency_only_protocol_argument_reference_is_required() {
         .as_array_mut()
         .expect("nodes")
         .push(json!({
-            "node_id":literal, "schema_version":"quire.checked-semantic-graph/v2",
+            "node_id":literal, "schema_version":"filament.checked-semantic-graph/v2",
             "node_tag":"value", "semantic_form":"literal", "semantic_type":boolean,
             "dependencies":[], "occurrences":[{"role":"generated", "ordinal":0}],
             "body":{"term":"literal", "type":boolean, "value_kind":"boolean", "value":true}
@@ -2404,13 +2404,13 @@ fn complete_model_refinement_retains_all_rows_through_public_roundtrip() {
     anchor_dependencies.sort_by(node_id_order);
     let source = package["lock"]["sources"][0].clone();
     for node in [
-        json!({"node_id":text_type, "schema_version":"quire.checked-semantic-graph/v2",
+        json!({"node_id":text_type, "schema_version":"filament.checked-semantic-graph/v2",
             "node_tag":"scalar_type", "semantic_form":"text", "semantic_type":text_type,
             "dependencies":[], "occurrences":[{"role":"type","ordinal":0}], "body":text_body}),
-        json!({"node_id":frame, "schema_version":"quire.checked-semantic-graph/v2",
+        json!({"node_id":frame, "schema_version":"filament.checked-semantic-graph/v2",
             "node_tag":"state", "semantic_form":"frame", "semantic_type":machine,
             "dependencies":[], "occurrences":[{"role":"generated","ordinal":0}], "body":frame_body}),
-        json!({"node_id":anchor, "schema_version":"quire.checked-semantic-graph/v2",
+        json!({"node_id":anchor, "schema_version":"filament.checked-semantic-graph/v2",
             "node_tag":"state", "semantic_form":"operation_anchor", "semantic_type":machine,
             "dependencies":anchor_dependencies, "occurrences":[{"role":"anchor","ordinal":0}],
             "body":anchor_body}),
@@ -2491,7 +2491,7 @@ fn complete_model_refinement_retains_all_rows_through_public_roundtrip() {
     for absent in ["protocol", "abstract_internal", "class_catalog"] {
         assert!(!body.contains_key(absent), "{absent}");
     }
-    let refinement_id: quire_contract_model::CheckedNodeId =
+    let refinement_id: filament_contract_model::CheckedNodeId =
         serde_json::from_value(expected["node_id"].clone()).expect("refinement id");
     let CheckedPackageV2ReadResult::Admitted(first) = read(&package, &evidence) else {
         panic!(
@@ -2575,7 +2575,7 @@ fn model_step_targets_keep_operation_stutter_and_any_through_public_writer() {
         if name == "any" {
             keep_refinement_declaration_occurrence(&mut package, position);
         }
-        let key: quire_contract_model::CheckedNodeId =
+        let key: filament_contract_model::CheckedNodeId =
             serde_json::from_value(package["semantic_graph"]["nodes"][position]["node_id"].clone())
                 .expect("refinement id");
         let CheckedPackageV2ReadResult::Admitted(admitted) = read(&package, &evidence) else {
@@ -2687,7 +2687,7 @@ fn directly_selected_abstract_operation_target_uses_declaring_owner() {
     node["dependencies"] = json!([source_anchor]);
     settle_refinement(&mut package, position);
     assert_refinement_dependency_matrix(&package, &evidence, position);
-    let key: quire_contract_model::CheckedNodeId =
+    let key: filament_contract_model::CheckedNodeId =
         serde_json::from_value(package["semantic_graph"]["nodes"][position]["node_id"].clone())
             .expect("refinement id");
     let CheckedPackageV2ReadResult::Admitted(admitted) = read(&package, &evidence) else {
@@ -2763,7 +2763,7 @@ fn declared_protocol_target_package() -> (Value, CheckedPackageEvidence, usize, 
 fn declared_protocol_step_target_roundtrips_and_refuses_wrong_row_keys() {
     let (package, evidence, position, finish) = declared_protocol_target_package();
     let node = &package["semantic_graph"]["nodes"][position];
-    let key: quire_contract_model::CheckedNodeId =
+    let key: filament_contract_model::CheckedNodeId =
         serde_json::from_value(node["node_id"].clone()).expect("refinement id");
     let target = node["body"]["steps"][0]["target"].clone();
     let CheckedPackageV2ReadResult::Admitted(admitted) = read(&package, &evidence) else {
@@ -3163,7 +3163,7 @@ fn history_initial_literal_and_local_literal_reference_roundtrip() {
     );
     let literal = json!({
         "node_id":node_id("refinement/history-initial-literal"),
-        "schema_version":"quire.checked-semantic-graph/v2", "node_tag":"value",
+        "schema_version":"filament.checked-semantic-graph/v2", "node_tag":"value",
         "semantic_form":"literal", "semantic_type":type_id,
         "dependencies":[], "occurrences":[{"role":"generated","ordinal":0}],
         "body":initial
@@ -3209,7 +3209,7 @@ fn history_and_fairness_reject_closed_shape_and_canonical_order_defects() {
     let literal = history["initial"].clone();
     let mut package = base.clone();
     package["semantic_graph"]["nodes"][position]["body"]["histories"][0]["initial"] = json!({"term":"application","operator":"state_clause",
-            "operation":{"identity":"quire.op.state.clause","laws":[],"mode":null,
+            "operation":{"identity":"filament.op.state.clause","laws":[],"mode":null,
                 "member":{"kind":"state_clause","clause":anchor},"leaves":[]},
             "result_type":type_id,"arguments":[]});
     settle_refinement(&mut package, position);
@@ -3783,10 +3783,10 @@ fn catalog_free_operation_step_refuses_foreign_selected_model_anchor() {
     let mut dependencies = vec![context.clone(), frame.clone()];
     dependencies.sort_by(node_id_order);
     package["semantic_graph"]["nodes"].as_array_mut().expect("nodes").extend([
-        json!({"node_id":frame, "schema_version":"quire.checked-semantic-graph/v2",
+        json!({"node_id":frame, "schema_version":"filament.checked-semantic-graph/v2",
             "node_tag":"state", "semantic_form":"frame", "semantic_type":context,
             "dependencies":[], "occurrences":[{"role":"generated","ordinal":0}], "body":frame_body}),
-        json!({"node_id":anchor, "schema_version":"quire.checked-semantic-graph/v2",
+        json!({"node_id":anchor, "schema_version":"filament.checked-semantic-graph/v2",
             "node_tag":"state", "semantic_form":"operation_anchor", "semantic_type":context,
             "dependencies":dependencies, "occurrences":[{"role":"anchor","ordinal":0}],
             "body":anchor_body}),
@@ -3857,7 +3857,7 @@ fn catalog_free_operation_step_respects_earlier_reader_stages() {
 
     let mut header = mismatch.clone();
     header["semantic_graph"]["nodes"][position]["body"]["profile"]["identity"] =
-        json!("quire.temporal.unselected/v1");
+        json!("filament.temporal.unselected/v1");
     settle_refinement(&mut header, position);
     assert_step_refusal(
         read(&header, &evidence),
@@ -3866,7 +3866,7 @@ fn catalog_free_operation_step_respects_earlier_reader_stages() {
         &format!("{at}/body/profile"),
     );
     header["semantic_graph"]["nodes"][position]["body"]["profile"]["identity"] =
-        json!("quire.temporal.infinite-trace/v1");
+        json!("filament.temporal.infinite-trace/v1");
     settle_refinement(&mut header, position);
     assert_row(&header);
 
@@ -4119,7 +4119,7 @@ fn record_declaration_node(record: &Value) -> Value {
         0,
     );
     json!({
-        "node_id":key, "schema_version":"quire.checked-semantic-graph/v2",
+        "node_id":key, "schema_version":"filament.checked-semantic-graph/v2",
         "node_tag":"model", "semantic_form":"record_value_type",
         "semantic_type":key, "dependencies":[],
         "occurrences":[{"role":"type", "ordinal":0}],
@@ -4144,7 +4144,7 @@ fn record_activation_case(
         .expect("constructs")
         .push(json!({
             "kind":{"module":MODEL_IDENTITY,"name":"record"},
-            "construct":{"meaning":"quire.meaning.model.record-value-type/v1"}
+            "construct":{"meaning":"filament.meaning.model.record-value-type/v1"}
         }));
     document["types"]
         .as_array_mut()
@@ -4413,19 +4413,29 @@ fn refinement_catalog_activate_record_follows_authored_inherited_field_order() {
                 base_fields
                     .iter()
                     .map(|(name, ty)| {
-                        record_field(&base, name, &format!("ix://quire/native/{ty}"), None)
+                        record_field(&base, name, &format!("ix://filament/native/{ty}"), None)
                     })
                     .collect(),
             ),
             record_type(
                 "Mid",
                 &[&base],
-                vec![record_field(&mid, "c", "ix://quire/native/Boolean", None)],
+                vec![record_field(
+                    &mid,
+                    "c",
+                    "ix://filament/native/Boolean",
+                    None,
+                )],
             ),
             record_type(
                 "Leaf",
                 &[&mid],
-                vec![record_field(&leaf, "d", "ix://quire/native/Integer", None)],
+                vec![record_field(
+                    &leaf,
+                    "d",
+                    "ix://filament/native/Integer",
+                    None,
+                )],
             ),
         ];
         let (package, evidence, position) = record_activation_case(records, "Leaf", &expected);
@@ -4481,17 +4491,22 @@ fn refinement_catalog_activate_record_respects_supertype_order_and_diamond_hidin
             record_type(
                 "P",
                 &[],
-                vec![record_field(&p, "p", "ix://quire/native/Boolean", None)],
+                vec![record_field(&p, "p", "ix://filament/native/Boolean", None)],
             ),
             record_type(
                 "Q",
                 &[],
-                vec![record_field(&q, "q", "ix://quire/native/Integer", None)],
+                vec![record_field(&q, "q", "ix://filament/native/Integer", None)],
             ),
             record_type(
                 "Both",
                 &supertypes,
-                vec![record_field(&both, "r", "ix://quire/native/Boolean", None)],
+                vec![record_field(
+                    &both,
+                    "r",
+                    "ix://filament/native/Boolean",
+                    None,
+                )],
             ),
         ];
         let (package, evidence, _) = record_activation_case(records, "Both", &expected);
@@ -4512,22 +4527,37 @@ fn refinement_catalog_activate_record_respects_supertype_order_and_diamond_hidin
             left_fields.push(record_field(
                 &left,
                 "t_prime",
-                "ix://quire/native/Integer",
+                "ix://filament/native/Integer",
                 Some(&format!("{top}/t")),
             ));
         }
-        left_fields.push(record_field(&left, "l", "ix://quire/native/Integer", None));
+        left_fields.push(record_field(
+            &left,
+            "l",
+            "ix://filament/native/Integer",
+            None,
+        ));
         let records = vec![
             record_type(
                 "Top",
                 &[],
-                vec![record_field(&top, "t", "ix://quire/native/Boolean", None)],
+                vec![record_field(
+                    &top,
+                    "t",
+                    "ix://filament/native/Boolean",
+                    None,
+                )],
             ),
             record_type("Left", &[&top], left_fields),
             record_type(
                 "Right",
                 &[&top],
-                vec![record_field(&right, "r", "ix://quire/native/Boolean", None)],
+                vec![record_field(
+                    &right,
+                    "r",
+                    "ix://filament/native/Boolean",
+                    None,
+                )],
             ),
             record_type(
                 "Bottom",
@@ -4535,7 +4565,7 @@ fn refinement_catalog_activate_record_respects_supertype_order_and_diamond_hidin
                 vec![record_field(
                     &bottom,
                     "z",
-                    "ix://quire/native/Integer",
+                    "ix://filament/native/Integer",
                     None,
                 )],
             ),
@@ -4581,17 +4611,22 @@ fn refinement_catalog_activate_ambiguous_record_refuses_at_binder_types() {
         record_type(
             "P",
             &[],
-            vec![record_field(&p, "x", "ix://quire/native/Boolean", None)],
+            vec![record_field(&p, "x", "ix://filament/native/Boolean", None)],
         ),
         record_type(
             "Q",
             &[],
-            vec![record_field(&q, "x", "ix://quire/native/Integer", None)],
+            vec![record_field(&q, "x", "ix://filament/native/Integer", None)],
         ),
         record_type(
             "Both",
             &[&p, &q],
-            vec![record_field(&both, "z", "ix://quire/native/Boolean", None)],
+            vec![record_field(
+                &both,
+                "z",
+                "ix://filament/native/Boolean",
+                None,
+            )],
         ),
     ];
     let (package, evidence, position) = record_activation_case(records, "Both", &[]);
@@ -4811,7 +4846,7 @@ fn tied_protocol_and_memory_step_rows_keep_declaration_order_and_node_presence()
         }))
         .collect::<Vec<_>>());
     refresh_identity(&mut package);
-    let key: quire_contract_model::CheckedNodeId =
+    let key: filament_contract_model::CheckedNodeId =
         serde_json::from_value(key).expect("refinement id");
     let CheckedPackageV2ReadResult::Admitted(admitted) = read(&package, &evidence) else {
         panic!(
@@ -4850,7 +4885,7 @@ fn tied_protocol_and_memory_step_rows_keep_declaration_order_and_node_presence()
         );
         permuted["semantic_graph"]["nodes"][position]["body"]["steps"] = received.clone();
         settle_refinement(&mut permuted, position);
-        let key: quire_contract_model::CheckedNodeId = serde_json::from_value(
+        let key: filament_contract_model::CheckedNodeId = serde_json::from_value(
             permuted["semantic_graph"]["nodes"][position]["node_id"].clone(),
         )
         .expect("permuted refinement id");
@@ -4910,7 +4945,7 @@ fn tied_protocol_and_memory_step_rows_keep_declaration_order_and_node_presence()
     dependencies.sort_by(node_id_order);
     dependencies.dedup();
     settle_refinement(&mut memory_target, position);
-    let memory_key: quire_contract_model::CheckedNodeId = serde_json::from_value(
+    let memory_key: filament_contract_model::CheckedNodeId = serde_json::from_value(
         memory_target["semantic_graph"]["nodes"][position]["node_id"].clone(),
     )
     .expect("memory refinement id");
@@ -4967,7 +5002,7 @@ fn tied_protocol_and_memory_step_rows_keep_declaration_order_and_node_presence()
 #[test]
 fn memory_drain_catalog_roundtrips_and_joins_source_defaults() {
     let (package, evidence, position) = memory_catalog_package();
-    let refinement_id: quire_contract_model::CheckedNodeId =
+    let refinement_id: filament_contract_model::CheckedNodeId =
         serde_json::from_value(package["semantic_graph"]["nodes"][position]["node_id"].clone())
             .expect("refinement id");
     let CheckedPackageV2ReadResult::Admitted(admitted) = read(&package, &evidence) else {
@@ -5399,7 +5434,7 @@ fn operation_model_nodes() -> (Value, Value, Value, Value) {
         .expect("constructs")
         .push(json!({
             "kind": {"module": MODEL_IDENTITY, "name": "worker"},
-            "construct": {"meaning": "quire.meaning.model.object-type/v1"}
+            "construct": {"meaning": "filament.meaning.model.object-type/v1"}
         }));
     document["types"]
         .as_array_mut()
@@ -5412,8 +5447,8 @@ fn operation_model_nodes() -> (Value, Value, Value, Value) {
             "operations": [{
                 "identity": "ix://test/refinement/Worker/run",
                 "params": [
-                    {"identity":"ix://test/refinement/Worker/run/count", "name":"count", "typeRef":"ix://quire/native/Integer", "multiplicity":{"lower":1,"upper":1,"ordered":false,"unique":true}},
-                    {"identity":"ix://test/refinement/Worker/run/confirmed", "name":"confirmed", "typeRef":"ix://quire/native/Boolean", "multiplicity":{"lower":1,"upper":1,"ordered":false,"unique":true}}
+                    {"identity":"ix://test/refinement/Worker/run/count", "name":"count", "typeRef":"ix://filament/native/Integer", "multiplicity":{"lower":1,"upper":1,"ordered":false,"unique":true}},
+                    {"identity":"ix://test/refinement/Worker/run/confirmed", "name":"confirmed", "typeRef":"ix://filament/native/Boolean", "multiplicity":{"lower":1,"upper":1,"ordered":false,"unique":true}}
                 ]
             }]
         }));
@@ -5432,7 +5467,7 @@ fn operation_model_nodes() -> (Value, Value, Value, Value) {
         0,
     );
     let reference = json!({
-        "node_id": reference_key, "schema_version": "quire.checked-semantic-graph/v2",
+        "node_id": reference_key, "schema_version": "filament.checked-semantic-graph/v2",
         "node_tag": "composite_type", "semantic_form": "reference",
         "semantic_type": reference_key, "dependencies": [worker_key],
         "occurrences": [{"role": "type", "ordinal": 0}], "body": reference_body
@@ -5486,7 +5521,8 @@ fn concrete_protocol_refinement_with_model(
         .find(|node| node["semantic_form"] == "state_machine")
         .expect("state machine")
         .clone();
-    document["constructs"][0]["construct"]["meaning"] = json!("quire.meaning.model.object-type/v1");
+    document["constructs"][0]["construct"]["meaning"] =
+        json!("filament.meaning.model.object-type/v1");
     // The concrete refinement's selected root is an object with no operation
     // classes. The complete state-machine members belong to machine_package.
     document["types"][0]["operations"] = json!([]);
@@ -5821,7 +5857,7 @@ fn refinement_occurrences_follow_proof_eligibility_and_step_count() {
     let CheckedPackageV2ReadResult::Admitted(admitted) = read(&two, &two_evidence) else {
         panic!("permuted proof-eligible steps refused");
     };
-    let key: quire_contract_model::CheckedNodeId =
+    let key: filament_contract_model::CheckedNodeId =
         serde_json::from_value(id).expect("refinement id");
     let Some(CheckedTerm::Refinement { steps, .. }) = admitted.term(&key) else {
         panic!("permuted refinement missing");
@@ -6195,7 +6231,7 @@ fn refinement_source_map_precedes_invalid_refinement_profile() {
         .expect("nodes")
         .last_mut()
         .expect("refinement");
-    node["body"]["profile"]["identity"] = json!("quire.temporal.other/v1");
+    node["body"]["profile"]["identity"] = json!("filament.temporal.other/v1");
     settle_refinement(&mut package, 0);
     let CheckedPackageV2ReadResult::Refused(profile) = read(&package, &evidence) else {
         panic!("unselected refinement profile admitted");
@@ -8554,7 +8590,7 @@ fn process_and_machine_clause_signatures_use_declared_context() {
                     deps: Vec<Value>,
                     role: &str,
                     body: Value| {
-            json!({"node_id":id_for(key),"schema_version":"quire.checked-semantic-graph/v2",
+            json!({"node_id":id_for(key),"schema_version":"filament.checked-semantic-graph/v2",
                 "node_tag":tag,"semantic_form":semantic_form,"semantic_type":id_for(ty),
                 "dependencies":deps,"occurrences":[{"role":role,"ordinal":0}],"body":body})
         };
@@ -8644,7 +8680,7 @@ fn process_and_machine_clause_signatures_use_declared_context() {
                 .map(|key| json!({"term":"reference","target":id_for(key)}))
                 .collect();
             let body = json!({"term":"application","operator":"state_clause",
-            "operation":{"identity":"quire.op.state.clause","laws":[],"mode":null,
+            "operation":{"identity":"filament.op.state.clause","laws":[],"mode":null,
                 "member":{"kind":"state_clause","clause":clause},"leaves":[]},
             "result_type":node_id(BOOLEAN_KEY),"arguments":[
                 {"term":"aggregate","members":members},
@@ -8731,7 +8767,7 @@ fn refinement_tables_are_charged_to_the_read_budget() {
     use crate::checked_package_v2_graph_read_storage::{
         assert_exact_and_one_short, stage_requests,
     };
-    use quire_contract_model::{NativeJoinBudget, PackageReadStage};
+    use filament_contract_model::{NativeJoinBudget, PackageReadStage};
     let (mut package, evidence, position) = memory_catalog_package();
     let rows = json!([
         {"source_class":"memory drain", "target":{"kind":"stutter"}},
@@ -8796,7 +8832,7 @@ fn refinement_local_dependencies_are_charged_exactly() {
     use crate::checked_package_v2_graph_read_storage::{
         assert_exact_and_one_short, stage_requests,
     };
-    use quire_contract_model::{NativeJoinBudget, PackageReadStage};
+    use filament_contract_model::{NativeJoinBudget, PackageReadStage};
     let graph_requests = |package: &Value, evidence: &CheckedPackageEvidence| {
         let bytes = canonical_indexed(package);
         let read = move |budget: &mut NativeJoinBudget| {
