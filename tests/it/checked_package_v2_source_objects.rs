@@ -684,3 +684,439 @@ fn model_rows_read_unchanged_beside_a_source_row_and_a_source_type_needs_no_row(
     only_model["operation_effects"] = json!([model_rows("deposit"), model_rows("withdraw")]);
     admitted(&only_model);
 }
+
+fn source_population(name: &str) -> Value {
+    let mut node = plain(
+        &format!("qualified:{name}"),
+        "relation",
+        "population",
+        &node_id(&format!("qualified:{name}")),
+        &[],
+        "declaration",
+        json!({"term": "aggregate", "members": []}),
+    );
+    node["declaration"] = json!({"qualified_name": [name]});
+    node["owner"] = json!({"kind": "source", "authority": fixture_source()["authority"],
+        "identity": fixture_source()["identity"]});
+    node
+}
+
+/// A `Set<Reference<Order>>` result type.
+fn add_set_of_orders(package: &mut Value) -> Value {
+    let reference_type = plain(
+        "query/type/reference",
+        "composite_type",
+        "reference",
+        &node_id("query/type/reference"),
+        &[],
+        "type",
+        json!({"term": "aggregate", "members": [reference(&order_id())]}),
+    );
+    let set_type = plain(
+        "query/type/set",
+        "composite_type",
+        "set",
+        &node_id("query/type/set"),
+        &[],
+        "type",
+        json!({"term": "aggregate", "members": [reference(&node_id("query/type/reference"))]}),
+    );
+    nodes_mut(package).extend([reference_type, set_type]);
+    node_id("query/type/set")
+}
+
+/// `all_instances` over `population`, typed `Set<Reference<Order>>`.
+fn all_instances(population: &Value, set: &Value, label: &str) -> Value {
+    plain(
+        label,
+        "expression",
+        "query",
+        set,
+        &[],
+        "expression",
+        json!({"term": "application", "operator": "query",
+            "operation": {"identity": "filament.op.model.all_instances", "laws": [],
+                "mode": null,
+                "member": {"kind": "type_argument", "declaration": order_id()}, "leaves": []},
+            "result_type": set, "arguments": [reference(population)]}),
+    )
+}
+
+fn node_id_at(package: &Value, label: &str) -> usize {
+    nodes(package)
+        .iter()
+        .position(|node| node["node_id"] == node_id(label))
+        .unwrap_or_else(|| panic!("node {label}"))
+}
+
+/// The source package with the source populations `names`.
+fn population_package(names: &[&str]) -> Value {
+    let mut package = source_package();
+    for name in names {
+        nodes_mut(&mut package).push(source_population(name));
+    }
+    settle(&mut package);
+    package
+}
+
+/// Trace: FR-364-AC-1.
+#[trace("TC-475", "FR-364-AC-1")]
+#[test]
+fn source_population_reference_admits_self_typed_and_distinct_per_name() {
+    let package = population_package(&["Orders", "Archive"]);
+    let read_package = admitted(&package);
+    let populations: Vec<_> = read_package
+        .graph()
+        .nodes
+        .iter()
+        .filter(|node| node.semantic_form.as_ref() == "population")
+        .collect();
+    assert_eq!(populations.len(), 2);
+    for node in &populations {
+        assert_eq!(node.semantic_type, node.node_id, "self-typed");
+        assert!(matches!(node.owner, Some(CheckedNodeOwner::Source { .. })));
+    }
+    assert_ne!(populations[0].node_id, populations[1].node_id);
+}
+
+fn add_lookup(package: &mut Value, population: &Value) {
+    let set = add_set_of_orders(package);
+    let reference_type = node_id("query/type/reference");
+    let option = plain(
+        "query/type/option",
+        "composite_type",
+        "option",
+        &node_id("query/type/option"),
+        &[],
+        "type",
+        json!({"term": "aggregate", "members": [reference(&reference_type)]}),
+    );
+    let identity = plain(
+        "query/expression/object",
+        "expression",
+        "reference",
+        &reference_type,
+        &[],
+        "expression",
+        reference(&order_id()),
+    );
+    let lookup = plain(
+        "query/app/lookup",
+        "expression",
+        "query",
+        &node_id("query/type/option"),
+        &[],
+        "expression",
+        json!({"term": "application", "operator": "query",
+            "operation": {"identity": "filament.op.model.lookup", "laws": [],
+                "mode": {"kind": "absence", "value": "option"},
+                "member": {"kind": "type_argument", "declaration": order_id()}, "leaves": []},
+            "result_type": node_id("query/type/option"),
+            "arguments": [reference(population), reference(&node_id("query/expression/object"))]}),
+    );
+    nodes_mut(package).extend([option, identity, lookup]);
+    nodes_mut(package).push(all_instances(population, &set, "query/app/all"));
+}
+
+/// Trace: FR-364-AC-2.
+#[trace("TC-475", "FR-364-AC-2")]
+#[test]
+fn all_instances_and_lookup_over_a_source_population_admit() {
+    let mut package = population_package(&["Orders"]);
+    let population = node_id("qualified:Orders");
+    add_lookup(&mut package, &population);
+    settle(&mut package);
+    let read_package = admitted(&package);
+    for label in ["query/app/all", "query/app/lookup"] {
+        let application = read_package
+            .graph()
+            .nodes
+            .iter()
+            .find(|node| node.node_id == id(label))
+            .expect("application");
+        assert!(
+            application.dependencies.contains(&id("qualified:Orders")),
+            "{label} depends on the population"
+        );
+    }
+}
+
+const MODEL_POPULATION: &str = "ix://test/families/Pop";
+
+fn population_document() -> Value {
+    let mut document = crate::support::checked_package::family_model_document();
+    document["constructs"]
+        .as_array_mut()
+        .expect("constructs")
+        .push(json!({
+            "kind": {"module": "test/families", "name": "population"},
+            "construct": {"meaning": "filament.meaning.model.population/v1"},
+        }));
+    document["populations"] = json!([{
+        "identity": MODEL_POPULATION, "displayName": "Pop",
+        "kind": {"module": "test/families", "name": "population"},
+        "members": ["ix://test/families/Account"], "extent": "closed",
+        "origin": {"source": {"sourceIdentity": "ix://test/families/spec",
+            "path": "spec/populations.md", "startLine": 1, "startColumn": 1}},
+    }]);
+    document
+}
+
+/// The id of the population `Pop` and the package that declares it, owned
+/// by the selected model or declared in source.
+fn forbidden_position_package(source: bool, application: &dyn Fn(&Value) -> Value) -> Value {
+    let mut package = if source { mixed_package() } else { v2_all_families() };
+    let (population, node) = if source {
+        (node_id("qualified:Pop"), source_population("Pop"))
+    } else {
+        let id = json!({"package": "test/families",
+            "path": ["relation", "population", MODEL_POPULATION], "ordinal": 0});
+        let mut node = plain(
+            "fixture/model-pop",
+            "relation",
+            "population",
+            &id,
+            &[],
+            "generated",
+            json!({"term": "aggregate", "members": []}),
+        );
+        node["node_id"] = id.clone();
+        node["owner"] = json!({"kind": "model", "identity": "test/families",
+            "node": MODEL_POPULATION});
+        (id, node)
+    };
+    // A `Reference<Account>` parameter, the receiver the member checks expect.
+    let account = node_id("fixture/1515");
+    let reference_type = plain(
+        "fixture/src/ref-account",
+        "composite_type",
+        "reference",
+        &node_id("fixture/src/ref-account"),
+        &[&account],
+        "type",
+        json!({"term": "aggregate", "members": [reference(&account)]}),
+    );
+    let receiver = plain(
+        "fixture/src/receiver",
+        "value",
+        "parameter",
+        &node_id("fixture/src/ref-account"),
+        &[],
+        "expression",
+        json!({"term": "aggregate", "members": [
+            binding("name", text("self")),
+            binding("level", json!({"term": "literal", "type": integer(),
+                "value_kind": "integer", "value": "0"})),
+        ]}),
+    );
+    nodes_mut(&mut package).extend([reference_type, receiver, node]);
+    nodes_mut(&mut package).push(application(&population));
+    settle(&mut package);
+    package
+}
+
+fn read_forbidden(package: &Value) -> CheckedPackageRefusal {
+    let evidence = crate::support::checked_package::evidence_with_document(
+        package,
+        "test/families",
+        &population_document(),
+    );
+    match crate::read_and_account(&canonical(package), CheckedPackageReadLimits::bounded(), &evidence) {
+        CheckedPackageV2ReadResult::Refused(refusal) => refusal,
+        other => panic!("expected a refusal, read {other:?}"),
+    }
+}
+
+fn boolean() -> Value {
+    node_id(&family_key("aaaa"))
+}
+
+fn application(label: &str, form: &str, operator: &str, identity: &str, member: Value, arguments: Vec<Value>) -> Value {
+    plain(
+        label,
+        "expression",
+        form,
+        &boolean(),
+        &[],
+        "expression",
+        json!({"term": "application", "operator": operator,
+            "operation": {"identity": identity, "laws": [], "mode": null,
+                "member": member, "leaves": []},
+            "result_type": boolean(), "arguments": arguments}),
+    )
+}
+
+/// Trace: FR-364-AC-3.
+#[trace("TC-475", "FR-364-AC-3")]
+#[test]
+fn forbidden_population_positions_refuse_for_source_as_for_model_populations() {
+    type Case = (&'static str, Box<dyn Fn(&Value) -> Value>, &'static str);
+    let receiver = || reference(&node_id("fixture/src/receiver"));
+    let cases: Vec<Case> = vec![
+        (
+            "relationship declaration",
+            Box::new(move |pop| {
+                application(
+                    "q/app",
+                    "reachability",
+                    "reaches",
+                    "filament.op.model.reaches",
+                    json!({"kind": "relationship_end", "declaration": pop, "name": "order",
+                        "destination_type": order_id()}),
+                    vec![receiver(), receiver()],
+                )
+            }),
+            "/body/operation/member/declaration",
+        ),
+        (
+            "field declaration",
+            Box::new(move |pop| {
+                application(
+                    "q/app",
+                    "query",
+                    "query",
+                    "filament.op.record.project",
+                    json!({"kind": "field", "declaration": pop, "name": "n"}),
+                    vec![receiver()],
+                )
+            }),
+            "/body/arguments/0",
+        ),
+        (
+            "operation declaration",
+            Box::new(move |pop| {
+                application(
+                    "q/app",
+                    "call",
+                    "call",
+                    "filament.op.model.dispatch_call",
+                    json!({"kind": "operation", "declaration": pop, "name": "run"}),
+                    vec![receiver()],
+                )
+            }),
+            "/body/operation/member/name",
+        ),
+        (
+            "collection operand",
+            Box::new(move |pop| {
+                application(
+                    "q/app",
+                    "collection",
+                    "collection",
+                    "filament.op.collection.contains",
+                    Value::Null,
+                    vec![reference(pop), reference(&boolean())],
+                )
+            }),
+            "/body/arguments/0",
+        ),
+    ];
+    for (case, build, suffix) in &cases {
+        let model = read_forbidden(&forbidden_position_package(false, build.as_ref()));
+        let source = read_forbidden(&forbidden_position_package(true, build.as_ref()));
+        assert_eq!(
+            (model.code, model.cause),
+            (Code::IllTyped, Some(Cause::OperatorIneligible)),
+            "{case}: the model-owned oracle"
+        );
+        assert_eq!((source.code, source.cause), (model.code, model.cause), "{case}");
+        let pointer = |refusal: &CheckedPackageRefusal| {
+            refusal.loci[0]
+                .path
+                .as_ref()
+                .expect("path")
+                .as_str()
+                .split_once("/nodes/")
+                .and_then(|(_, rest)| rest.split_once('/'))
+                .map(|(_, tail)| format!("/{tail}"))
+                .expect("a node pointer")
+        };
+        assert_eq!(pointer(&model), *suffix, "{case}: the model locus");
+        assert_eq!(pointer(&source), pointer(&model), "{case}");
+        assert_eq!(source.locus, model.locus, "{case}");
+    }
+}
+
+/// A source-declared record `name`, an existing declared construct whose
+/// repeated declaration the reader already refuses.
+fn source_record(name: &str) -> Value {
+    let mut record = plain(
+        &format!("qualified:{name}"),
+        "composite_type",
+        "record",
+        &node_id(&format!("qualified:{name}")),
+        &[&integer()],
+        "declaration",
+        json!({"term": "aggregate", "members": [binding("n", reference(&integer()))]}),
+    );
+    record["declaration"] = json!({"qualified_name": [name]});
+    record["owner"] = json!({"kind": "source", "authority": fixture_source()["authority"],
+        "identity": fixture_source()["identity"]});
+    record
+}
+
+/// Trace: FR-364-AC-4.
+#[trace("TC-475", "FR-364-AC-4")]
+#[test]
+fn population_owner_and_declaration_defects_refuse_as_the_owner_join_does() {
+    let at = |package: &Value| position(package, "relation", "population");
+    // A `declaration` beside a `ModelOwner` of no selected declaration.
+    let mut package = population_package(&["Orders"]);
+    let position = at(&package);
+    nodes_mut(&mut package)[position]["owner"] = json!({"kind": "model",
+        "identity": "test/families", "node": "ix://test/families/Orders"});
+    settle(&mut package);
+    expect(
+        "model owner with a declaration",
+        &package,
+        Code::MalformedWire,
+        None,
+        &format!("/semantic_graph/nodes/{position}/owner"),
+    );
+    // A `SourceOwner` and no `declaration`.
+    let mut package = population_package(&["Orders"]);
+    let position = at(&package);
+    let node = &mut nodes_mut(&mut package)[position];
+    node.as_object_mut().expect("node").remove("declaration");
+    node["occurrences"] = json!([{"role": "generated", "ordinal": 0}]);
+    settle(&mut package);
+    expect(
+        "source owner without a declaration",
+        &package,
+        Code::MalformedWire,
+        None,
+        &format!("/semantic_graph/nodes/{position}/owner"),
+    );
+}
+
+/// Trace: FR-364-AC-5.
+#[trace("TC-475", "FR-364-AC-5")]
+#[test]
+fn source_populations_key_by_name_and_a_repeated_name_refuses_as_a_repeated_declaration() {
+    let package = population_package(&["Orders", "Archive"]);
+    let keys: Vec<_> = nodes(&package)
+        .iter()
+        .filter(|node| node["semantic_form"] == "population")
+        .map(|node| node["node_id"].clone())
+        .collect();
+    assert_eq!(keys.len(), 2);
+    assert_ne!(keys[0], keys[1]);
+    admitted(&package);
+
+    let mut repeated = population_package(&["Orders"]);
+    nodes_mut(&mut repeated).push(source_population("Orders"));
+    settle(&mut repeated);
+    let refusal = refused(&repeated);
+    // The oracle: a repeated declaration of any other declared construct.
+    let mut record_pair = source_package();
+    nodes_mut(&mut record_pair).extend([source_record("Line"), source_record("Line")]);
+    settle(&mut record_pair);
+    let oracle = refused(&record_pair);
+    assert_eq!(refusal.code, oracle.code);
+    assert_eq!(refusal.cause, oracle.cause);
+    let tail = |refusal: &CheckedPackageRefusal| {
+        refusal.loci[0].path.as_ref().expect("path").as_str().rsplit('/').next().map(str::to_owned)
+    };
+    assert_eq!(tail(&refusal), tail(&oracle));
+    assert_eq!(refusal.locus.is_some(), oracle.locus.is_some());
+}

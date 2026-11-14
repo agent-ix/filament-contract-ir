@@ -1729,10 +1729,21 @@ fn operation_defect(
     if let Some(kind) = member_kind {
         let declaring = member_declaration(&operation).and_then(|declaration| {
             let position = *index.get(declaration)?;
-            Some((&nodes[position], kinds[position].tag()))
+            Some((&nodes[position], kinds[position]))
         });
         match declaring {
-            Some((declaring, tag)) if owners.is_model_declaration_node(declaring, tag) => {
+            Some((declaring, declaring_kind))
+                if super::source_object::is_source_population(declaring, declaring_kind) =>
+            {
+                if let Some(failure) =
+                    check_source_population_member(application, kind, graph)
+                {
+                    return Ok(Some(failure));
+                }
+            }
+            Some((declaring, declaring_kind))
+                if owners.is_model_declaration_node(declaring, declaring_kind.tag()) =>
+            {
                 if let Some(failure) = check_model_member(
                     application,
                     &operation,
@@ -3774,6 +3785,9 @@ fn check_relationship_member(
         return refuse(member_at("declaration"), ModelRefusal::unselected());
     };
     let node = &graph.nodes[declaring];
+    if super::source_object::is_source_population(node, graph.kinds[declaring]) {
+        return ineligible(member_at("declaration"));
+    }
     if !owners.is_model_declaration_node(node, graph.kinds[declaring].tag()) {
         return refuse(member_at("declaration"), ModelRefusal::unselected());
     }
@@ -4468,6 +4482,28 @@ fn check_model_member(
         return ineligible(application.body(&["result_type"]));
     }
     Ok(None)
+}
+
+/// A source-declared population reference as the `declaration` of a `field` or
+/// `operation` member: refused exactly where the model-owned check refuses a
+/// model population, at the receiver operand of a field read and at the
+/// member's `name` of an operation member.
+fn check_source_population_member(
+    application: Application<'_>,
+    kind: MemberKind,
+    graph: &Graph<'_>,
+) -> Option<ValidationFailure> {
+    admitted_arguments(application, graph)?;
+    let path = if kind == MemberKind::Field {
+        application.body(&["arguments"]).index(0)
+    } else {
+        application.body(&["operation", "member", "name"])
+    };
+    Some(application.refuse(
+        CheckedPackageRefusalCode::IllTyped,
+        path,
+        CheckedPackageRefusalCause::OperatorIneligible,
+    ))
 }
 
 /// The one `operation.member` shape an upstream mutation exercises in full: a
