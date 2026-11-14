@@ -1735,9 +1735,7 @@ fn operation_defect(
             Some((declaring, declaring_kind))
                 if super::source_object::is_source_population(declaring, declaring_kind) =>
             {
-                if let Some(failure) =
-                    check_source_population_member(application, kind, graph)
-                {
+                if let Some(failure) = check_source_population_member(application, kind, graph) {
                     return Ok(Some(failure));
                 }
             }
@@ -1757,7 +1755,7 @@ fn operation_defect(
                 }
             }
             _ if kind == MemberKind::Field => {
-                if let Some(failure) = check_field_member(application, &operation, graph) {
+                if let Some(failure) = check_field_member(application, &operation, graph, meter)? {
                     return Ok(Some(failure));
                 }
             }
@@ -4515,32 +4513,69 @@ fn check_field_member(
     application: Application<'_>,
     operation: &OperationWire,
     graph: &Graph<'_>,
-) -> Option<ValidationFailure> {
-    let member = operation.member_node()?;
-    let declaration = operation.member_key("declaration")?;
-    let name = member.get("name")?.as_str()?;
+    meter: &mut WorkMeter,
+) -> Result<Option<ValidationFailure>, ValidationFailure> {
+    let Some(member) = operation.member_node() else {
+        return Ok(None);
+    };
+    let Some(declaration) = operation.member_key("declaration") else {
+        return Ok(None);
+    };
+    let Some(name) = member.get("name").and_then(|name| name.as_str()) else {
+        return Ok(None);
+    };
     let Some(&position) = graph.index.get(declaration) else {
-        return Some(application.refuse(
+        return Ok(Some(application.refuse(
             CheckedPackageRefusalCode::IllTyped,
             application.body(&["operation", "member", "declaration"]),
             CheckedPackageRefusalCause::OperatorIneligible,
-        ));
+        )));
     };
-    let CheckedTerm::Aggregate { members } = graph.terms.get(position)?.as_ref()? else {
-        return None;
+    let Some(Some(CheckedTerm::Aggregate { members })) = graph.terms.get(position) else {
+        return Ok(None);
     };
-    let declared = members.iter().any(
-        |entry| matches!(entry, CheckedTerm::Binding { name: found, .. } if found.as_ref() == name),
-    );
-    if declared {
-        None
-    } else {
-        Some(application.refuse(
+    let bound = members.iter().find_map(|entry| match entry {
+        CheckedTerm::Binding { name: found, value } if found.as_ref() == name => {
+            Some(value.as_ref())
+        }
+        _ => None,
+    });
+    let Some(bound) = bound else {
+        return Ok(Some(application.refuse(
             CheckedPackageRefusalCode::IllTyped,
             application.body(&["operation", "member", "name"]),
             CheckedPackageRefusalCause::OperatorIneligible,
-        ))
+        )));
+    };
+    // FR-367: a field of a source-declared object type reads at the type its
+    // binding names.
+    if !super::source_object::is_source_declared_object_type(
+        &graph.nodes[position],
+        graph.kinds[position],
+    ) {
+        return Ok(None);
     }
+    let result_type = graph
+        .terms
+        .get(application.position)
+        .and_then(Option::as_ref)
+        .and_then(|term| match term {
+            CheckedTerm::Application { result_type, .. } => Some(result_type),
+            _ => None,
+        });
+    let expected = super::source_object::bound_type(bound).and_then(|id| graph.structural_id(id));
+    let held = result_type.and_then(|id| graph.structural_id(id));
+    let matches = match expected {
+        Some(expected) => same_key(held, expected, meter)?,
+        None => false,
+    };
+    Ok((!matches).then(|| {
+        application.refuse(
+            CheckedPackageRefusalCode::IllTyped,
+            application.body(&["result_type"]),
+            CheckedPackageRefusalCause::OperatorIneligible,
+        )
+    }))
 }
 
 /// The type-node id an operand resolves to: a `literal` names its declared

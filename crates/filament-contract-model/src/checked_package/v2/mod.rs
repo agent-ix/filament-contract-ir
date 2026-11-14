@@ -252,6 +252,10 @@ pub use schedulability::{
     CheckedSchedulabilityTaskRef, CheckedSchedulingPolicy, CheckedTaskArrival,
     CheckedTaskCriticality,
 };
+pub use source_object::{
+    SelectedSourceObjectError, SelectedSourceObjectErrorCode, SelectedSourceObjectMember,
+    SelectedSourceObjectRow, SelectedSourceObjects, SelectedSourcePopulation,
+};
 pub use step_relation::{
     CheckedStepExecution, CheckedStepRelationBody, CheckedStepRelationCapability,
     CheckedStepRelationObligationIdentity,

@@ -9,8 +9,8 @@ use super::native_join_budget::PackageReadStage;
 use super::source_object::is_source_declared_object_type;
 use super::stage_storage::{self, Path, Refusal, Site};
 use super::{
-    ApplicationOperator, CheckedNodeKind, CheckedNodeOwner, CheckedPackageV2, CheckedPackageWireV2, CheckedTerm,
-    ClaimForm, ExpressionForm, FunctionForm, ModelForm, ScalarTypeForm, WorkMeter,
+    ApplicationOperator, CheckedNodeKind, CheckedNodeOwner, CheckedPackageV2, CheckedPackageWireV2,
+    CheckedTerm, ClaimForm, ExpressionForm, FunctionForm, ModelForm, ScalarTypeForm, WorkMeter,
 };
 use crate::checked_package::common::ValidationFailure;
 use crate::checked_package::shared::{
@@ -223,8 +223,10 @@ pub(super) fn validate_checked_term_data<Body>(
         let source_context = context_position.is_some_and(|position| {
             is_source_declared_object_type(&nodes[position], kinds[position])
         });
-        let source_declaring = position_of(&index, &table.operation.declaring)
-            .is_some_and(|position| is_source_declared_object_type(&nodes[position], kinds[position]));
+        let source_declaring =
+            position_of(&index, &table.operation.declaring).is_some_and(|position| {
+                is_source_declared_object_type(&nodes[position], kinds[position])
+            });
         let context_is_model = context_position.is_some_and(|position| {
             matches!(
                 kinds.get(position),
@@ -378,11 +380,7 @@ pub(super) fn validate_checked_term_data<Body>(
                             "effective_precondition",
                         )
                     }) {
-                        return Err(invalid(
-                            meter,
-                            row_index,
-                            at.key("effective_precondition"),
-                        ));
+                        return Err(invalid(meter, row_index, at.key("effective_precondition")));
                     }
                 }
             }

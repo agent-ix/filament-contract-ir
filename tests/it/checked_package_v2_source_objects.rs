@@ -13,6 +13,8 @@ use filament_contract_model::{
     CheckedPackageReadLimits, CheckedPackageRefusal, CheckedPackageRefusalCause as Cause,
     CheckedPackageRefusalCode as Code, CheckedPackageSidecarsRef,
     CheckedPackageSourceCorrespondenceRef, CheckedPackageV2, CheckedPackageV2ReadResult,
+    SelectedSourceObjectErrorCode as RowError, SelectedSourceObjectMember, SelectedSourceObjectRow,
+    SelectedSourceObjects, SelectedSourcePopulation,
 };
 use ix_trace_rs::trace;
 use quire_canonical::Limits;
@@ -901,7 +903,11 @@ fn population_document() -> Value {
 /// The id of the population `Pop` and the package that declares it, owned
 /// by the selected model or declared in source.
 fn forbidden_position_package(source: bool, application: &dyn Fn(&Value) -> Value) -> Value {
-    let mut package = if source { mixed_package() } else { v2_all_families() };
+    let mut package = if source {
+        mixed_package()
+    } else {
+        v2_all_families()
+    };
     let (population, node) = if source {
         (node_id("qualified:Pop"), source_population("Pop"))
     } else {
@@ -958,7 +964,11 @@ fn read_forbidden(package: &Value) -> CheckedPackageRefusal {
         "test/families",
         &population_document(),
     );
-    match crate::read_and_account(&canonical(package), CheckedPackageReadLimits::bounded(), &evidence) {
+    match crate::read_and_account(
+        &canonical(package),
+        CheckedPackageReadLimits::bounded(),
+        &evidence,
+    ) {
         CheckedPackageV2ReadResult::Refused(refusal) => refusal,
         other => panic!("expected a refusal, read {other:?}"),
     }
@@ -968,7 +978,14 @@ fn boolean() -> Value {
     node_id(&family_key("aaaa"))
 }
 
-fn application(label: &str, form: &str, operator: &str, identity: &str, member: Value, arguments: Vec<Value>) -> Value {
+fn application(
+    label: &str,
+    form: &str,
+    operator: &str,
+    identity: &str,
+    member: Value,
+    arguments: Vec<Value>,
+) -> Value {
     plain(
         label,
         "expression",
@@ -1056,7 +1073,11 @@ fn forbidden_population_positions_refuse_for_source_as_for_model_populations() {
             (Code::IllTyped, Some(Cause::OperatorIneligible)),
             "{case}: the model-owned oracle"
         );
-        assert_eq!((source.code, source.cause), (model.code, model.cause), "{case}");
+        assert_eq!(
+            (source.code, source.cause),
+            (model.code, model.cause),
+            "{case}"
+        );
         let pointer = |refusal: &CheckedPackageRefusal| {
             refusal.loci[0]
                 .path
@@ -1152,7 +1173,14 @@ fn source_populations_key_by_name_and_a_repeated_name_refuses_as_a_repeated_decl
     assert_eq!(refusal.code, oracle.code);
     assert_eq!(refusal.cause, oracle.cause);
     let tail = |refusal: &CheckedPackageRefusal| {
-        refusal.loci[0].path.as_ref().expect("path").as_str().rsplit('/').next().map(str::to_owned)
+        refusal.loci[0]
+            .path
+            .as_ref()
+            .expect("path")
+            .as_str()
+            .rsplit('/')
+            .next()
+            .map(str::to_owned)
     };
     assert_eq!(tail(&refusal), tail(&oracle));
     assert_eq!(refusal.locus.is_some(), oracle.locus.is_some());
@@ -1283,7 +1311,11 @@ fn add_dispatch_nodes(package: &mut Value) {
     nodes_mut(package).extend([
         sub,
         clause_function(&owner, &["Order", "deposit", "body"], &integer()),
-        clause_function(&owner, &["Order", "deposit", "effective_precondition"], &boolean),
+        clause_function(
+            &owner,
+            &["Order", "deposit", "effective_precondition"],
+            &boolean,
+        ),
         clause_function(&owner, &["Sub", "deposit", "body"], &integer()),
         reference_type,
         receiver,
@@ -1326,8 +1358,8 @@ fn dispatch_row(package: &Value) -> &Value {
 fn source_dispatch_table_reads_context_candidate_order_and_clause_identities() {
     let package = dispatch_package();
     let read_package = admitted(&package);
-    let occurrence = serde_json::from_value(dispatch_row(&package)["occurrence"].clone())
-        .expect("occurrence");
+    let occurrence =
+        serde_json::from_value(dispatch_row(&package)["occurrence"].clone()).expect("occurrence");
     let view = read_package
         .dispatch_candidates(&id(DISPATCH_CALL), &occurrence, 16)
         .expect("the source table");
@@ -1339,12 +1371,18 @@ fn source_dispatch_table_reads_context_candidate_order_and_clause_identities() {
         .map(|candidate| candidate.selection_key.original.node.to_string())
         .collect();
     assert_eq!(keys, ["Order", "Sub"]);
-    assert_eq!(view.candidates()[0].operation_body, id("qualified:Order/deposit/body"));
+    assert_eq!(
+        view.candidates()[0].operation_body,
+        id("qualified:Order/deposit/body")
+    );
     assert_eq!(
         view.candidates()[0].effective_precondition,
         Some(id("qualified:Order/deposit/effective_precondition"))
     );
-    assert_eq!(view.candidates()[1].operation_body, id("qualified:Sub/deposit/body"));
+    assert_eq!(
+        view.candidates()[1].operation_body,
+        id("qualified:Sub/deposit/body")
+    );
     assert_eq!(view.candidates()[1].effective_precondition, None);
 }
 
@@ -1466,7 +1504,13 @@ fn dispatch_rows_mixing_a_source_and_a_model_family_refuse() {
     add_dispatch_nodes(&mut source_over_model);
     let mut package = with_tables(source_over_model, vec![source_table(&order_id(), &account)]);
     settle(&mut package);
-    expect("source context, model declaring", &package, Code::InvalidPackage, Some(Cause::InvalidValue), operation);
+    expect(
+        "source context, model declaring",
+        &package,
+        Code::InvalidPackage,
+        Some(Cause::InvalidValue),
+        operation,
+    );
     // A model context with a source declaring node.
     let mut model_over_source = mixed_package();
     add_dispatch_nodes(&mut model_over_source);
@@ -1481,7 +1525,13 @@ fn dispatch_rows_mixing_a_source_and_a_model_family_refuse() {
     row["application"] = node_id(MODEL_CALL);
     let mut package = with_tables(model_over_source, vec![row]);
     settle(&mut package);
-    expect("model context, source declaring", &package, Code::InvalidPackage, Some(Cause::InvalidValue), operation);
+    expect(
+        "model context, source declaring",
+        &package,
+        Code::InvalidPackage,
+        Some(Cause::InvalidValue),
+        operation,
+    );
 }
 
 /// Trace: FR-366-AC-5.
@@ -1506,15 +1556,21 @@ fn a_model_dispatch_table_reads_unchanged_beside_a_source_table() {
         "effective_precondition": null,
     });
     let model_table = table(MODEL_CALL, &account, &account, vec![model_candidate]);
-    let source_only = with_tables(package.clone(), vec![source_table(&order_id(), &order_id())]);
-    let both = with_tables(package.clone(), vec![model_table.clone(), source_table(&order_id(), &order_id())]);
+    let source_only = with_tables(
+        package.clone(),
+        vec![source_table(&order_id(), &order_id())],
+    );
+    let both = with_tables(
+        package.clone(),
+        vec![model_table.clone(), source_table(&order_id(), &order_id())],
+    );
     let model_only = with_tables(package, vec![model_table]);
     let read_model = |package: &Value| {
         let mut package = package.clone();
         settle(&mut package);
         let admitted_package = admitted(&package);
-        let occurrence = serde_json::from_value(
-            json!({"role": "expression", "ordinal": 0})).expect("occurrence");
+        let occurrence = serde_json::from_value(json!({"role": "expression", "ordinal": 0}))
+            .expect("occurrence");
         let table = admitted_package
             .dispatch_candidates(&id(MODEL_CALL), &occurrence, 16)
             .expect("the model table")
@@ -1535,4 +1591,348 @@ fn admitted_settled(package: &Value) -> CheckedPackageV2 {
     let mut package = package.clone();
     settle(&mut package);
     admitted(&package)
+}
+
+/// A `self.<field>` read of `declaring`'s field through a `deref` of a
+/// reference-typed value, typed `result`.
+fn field_read(
+    label: &str,
+    reference_type: &Value,
+    declaring: &Value,
+    field: &str,
+    result: &Value,
+) -> [Value; 2] {
+    let deref_label = format!("{label}-deref");
+    let deref = plain(
+        &deref_label,
+        "expression",
+        "deref",
+        declaring,
+        &[reference_type],
+        "expression",
+        json!({"term": "application", "operator": "deref",
+            "operation": {"identity": "filament.op.model.deref", "laws": [],
+                "mode": null, "member": null, "leaves": []},
+            "result_type": declaring,
+            "arguments": [reference(reference_type)]}),
+    );
+    let read = plain(
+        label,
+        "expression",
+        "query",
+        result,
+        &[declaring, &node_id(&deref_label)],
+        "expression",
+        json!({"term": "application", "operator": "query",
+            "operation": {"identity": "filament.op.record.project", "laws": [],
+                "mode": null,
+                "member": {"kind": "field", "declaration": declaring, "name": field,
+                    "read_form": "bare"},
+                "leaves": []},
+            "result_type": result,
+            "arguments": [reference(&node_id(&deref_label))]}),
+    );
+    [deref, read]
+}
+
+fn reference_type_of(target: &Value) -> Value {
+    json!({"package": FIXTURE_PACKAGE_NAME,
+        "path": ["composite_type", "reference", target], "ordinal": 0})
+}
+
+/// The source package with the field-less source type `Empty` and a read of
+/// `field` on `declaring`, typed `result`.
+fn read_package(declaring: &str, field: &str, result: &Value) -> Value {
+    let mut package = source_package();
+    let sub = source_type("Sub", &["total"], &fixture_source());
+    let empty = source_type("Empty", &[], &fixture_source());
+    let declaring = node_id(&format!("qualified:{declaring}"));
+    let [reference_type, _receiver] = receiver_nodes(&declaring, "fixture/src/read-receiver");
+    let reference_id = reference_type_of(&declaring);
+    nodes_mut(&mut package).extend([sub, empty, reference_type]);
+    let [deref, read] = field_read("fixture/src/read", &reference_id, &declaring, field, result);
+    nodes_mut(&mut package).extend([deref, read]);
+    settle(&mut package);
+    package
+}
+
+/// Trace: FR-367-AC-1.
+#[trace("TC-475", "FR-367-AC-1")]
+#[test]
+fn a_field_read_resolves_to_the_type_of_its_binding_inherited_fields_included() {
+    for declaring in ["Order", "Sub"] {
+        admitted(&read_package(declaring, "total", &integer()));
+        // The read's type is the binding's type.
+        let refusal = refused(&read_package(declaring, "total", &boolean()));
+        assert_eq!(refusal.code, Code::IllTyped, "{declaring}");
+        assert_eq!(
+            refusal.cause,
+            Some(Cause::OperatorIneligible),
+            "{declaring}"
+        );
+        assert!(refusal.loci[0]
+            .path
+            .as_ref()
+            .expect("path")
+            .as_str()
+            .ends_with("/body/result_type"));
+    }
+}
+
+/// Trace: FR-367-AC-2.
+#[trace("TC-475", "FR-367-AC-2")]
+#[test]
+fn an_unbound_field_and_any_read_on_an_empty_source_type_refuse() {
+    for (declaring, field) in [("Order", "absent"), ("Empty", "total")] {
+        let package = read_package(declaring, field, &integer());
+        let read = position(&package, "expression", "query");
+        expect(
+            declaring,
+            &package,
+            Code::IllTyped,
+            Some(Cause::OperatorIneligible),
+            &format!("/semantic_graph/nodes/{read}/body/operation/member/name"),
+        );
+    }
+}
+
+/// Trace: FR-367-AC-6.
+#[trace("TC-475", "FR-367-AC-6")]
+#[test]
+fn a_model_field_read_is_unchanged_beside_a_source_type() {
+    let account = node_id("fixture/1515");
+    let build = |mixed: bool, field: &str, result: &Value| {
+        let mut package = if mixed {
+            mixed_package()
+        } else {
+            v2_all_families()
+        };
+        let [reference_type, _receiver] =
+            receiver_nodes(&account, "fixture/src/model-read-receiver");
+        let reference_id = reference_type_of(&account);
+        nodes_mut(&mut package).extend([reference_type, derived_integer()]);
+        let [deref, read] = field_read(
+            "fixture/src/model-read",
+            &reference_id,
+            &account,
+            field,
+            result,
+        );
+        nodes_mut(&mut package).extend([deref, read]);
+        settle(&mut package);
+        package
+    };
+    let derived = node_id("qualified:scalar_type/integer");
+    for mixed in [false, true] {
+        admitted(&build(mixed, "balance", &derived));
+    }
+    let outcome = |mixed: bool, field: &str, result: &Value| {
+        let refusal = refused(&build(mixed, field, result));
+        let tail = refusal.loci[0]
+            .path
+            .as_ref()
+            .expect("path")
+            .as_str()
+            .to_owned();
+        let tail = tail
+            .split_once("/nodes/")
+            .map(|(_, rest)| rest.split_once('/').map(|(_, t)| t.to_owned()));
+        (refusal.code, refusal.cause, tail)
+    };
+    for (field, result) in [("absent", derived.clone()), ("balance", boolean())] {
+        assert_eq!(
+            outcome(true, field, &result),
+            outcome(false, field, &result),
+            "{field}"
+        );
+    }
+}
+
+/// An admitted package holding the source types `Order` and `Sub`.
+fn two_types() -> CheckedPackageV2 {
+    let mut package = source_package();
+    nodes_mut(&mut package).push(source_type("Sub", &["total"], &fixture_source()));
+    settle(&mut package);
+    admitted(&package)
+}
+
+fn row(
+    name: &str,
+    supertypes: Vec<CheckedNodeId>,
+    populations: &[&str],
+) -> SelectedSourceObjectRow {
+    SelectedSourceObjectRow {
+        structural_node: id(&format!("qualified:{name}")),
+        source_authority: fixture_source()["authority"]
+            .as_str()
+            .expect("authority")
+            .into(),
+        source_identity: name.into(),
+        is_abstract: false,
+        supertypes,
+        identity_fields: vec!["total".into()],
+        members: vec![SelectedSourceObjectMember {
+            name: "total".into(),
+            type_node: id(&family_key("a3a3")),
+            optional: false,
+        }],
+        populations: populations
+            .iter()
+            .map(|name| SelectedSourcePopulation {
+                name: (*name).into(),
+                symmetric: false,
+            })
+            .collect(),
+    }
+}
+
+fn complete_rows() -> Vec<SelectedSourceObjectRow> {
+    vec![
+        row("Order", vec![], &["Orders"]),
+        row("Sub", vec![id("qualified:Order")], &[]),
+    ]
+}
+
+fn code_of(package: &CheckedPackageV2, rows: Vec<SelectedSourceObjectRow>) -> RowError {
+    SelectedSourceObjects::from_stage_rows(package, rows)
+        .expect_err("the supply must be refused")
+        .code
+}
+
+/// Trace: FR-367-AC-5.
+#[trace("TC-475", "FR-367-AC-5")]
+#[test]
+fn a_complete_row_set_exposes_every_source_type_through_a_typed_read() {
+    let package = two_types();
+    let rows = SelectedSourceObjects::from_stage_rows(&package, complete_rows())
+        .expect("the complete supply");
+    assert_eq!(rows.rows().len(), 2);
+    let order = rows
+        .read(&package, &id("qualified:Order"))
+        .expect("Order row");
+    assert!(!order.is_abstract);
+    assert!(order.supertypes.is_empty());
+    assert_eq!(order.identity_fields, ["total".into()] as [Box<str>; 1]);
+    assert_eq!(order.members.len(), 1);
+    assert_eq!(order.populations[0].name.as_ref(), "Orders");
+    let sub = rows.read(&package, &id("qualified:Sub")).expect("Sub row");
+    assert_eq!(sub.supertypes, [id("qualified:Order")]);
+    assert!(rows.read(&package, &id(&family_key("a3a3"))).is_none());
+}
+
+/// Trace: FR-367-AC-3.
+#[trace("TC-475", "FR-367-AC-3")]
+#[test]
+fn a_supply_reports_the_first_reason_in_foreign_unknown_conflicting_missing_order() {
+    let package = two_types();
+    let foreign = || {
+        let mut row = row("Order", vec![], &[]);
+        row.source_authority = "foreign".into();
+        row
+    };
+    let unknown = || {
+        let mut row = row("Sub", vec![id("qualified:Order")], &[]);
+        row.structural_node = id(&family_key("a3a3"));
+        row
+    };
+    let [order, sub] = <[_; 2]>::try_from(complete_rows()).expect("two rows");
+    // Foreign comes first, whatever the order of the rows.
+    for rows in [vec![foreign(), unknown()], vec![unknown(), foreign()]] {
+        assert_eq!(code_of(&package, rows), RowError::ForeignIdentityWitness);
+    }
+    // Unknown outranks a duplicate-key pair.
+    assert_eq!(
+        code_of(&package, vec![unknown(), order.clone(), order.clone()]),
+        RowError::UnknownIdentityWitness
+    );
+    // A duplicate-key pair outranks an omitted type.
+    assert_eq!(
+        code_of(&package, vec![order.clone(), order.clone()]),
+        RowError::ConflictingIdentityWitness
+    );
+    // An omitted type is missing.
+    assert_eq!(
+        code_of(&package, vec![order.clone()]),
+        RowError::MissingIdentityWitness
+    );
+    assert_eq!(code_of(&package, vec![]), RowError::MissingIdentityWitness);
+    let _ = sub;
+}
+
+/// Trace: FR-367-AC-4.
+#[trace("TC-475", "FR-367-AC-4")]
+#[test]
+fn rows_whose_members_or_supertypes_the_package_does_not_support_are_unknown() {
+    let package = two_types();
+    let [order, sub] = <[_; 2]>::try_from(complete_rows()).expect("two rows");
+    let edits: Vec<(&str, Box<dyn Fn(&mut SelectedSourceObjectRow)>)> = vec![
+        ("name", Box::new(|row| row.members[0].name = "other".into())),
+        (
+            "type node",
+            Box::new(|row| row.members[0].type_node = id(&family_key("aaaa"))),
+        ),
+        ("optional", Box::new(|row| row.members[0].optional = true)),
+        ("missing member", Box::new(|row| row.members.clear())),
+        (
+            "extra member",
+            Box::new(|row| {
+                let member = row.members[0].clone();
+                row.members.push(member);
+            }),
+        ),
+        (
+            "non-source supertype",
+            Box::new(|row| row.supertypes = vec![id(&family_key("a3a3"))]),
+        ),
+        (
+            "own supertype",
+            Box::new(|row| row.supertypes = vec![row.structural_node.clone()]),
+        ),
+        (
+            "identity",
+            Box::new(|row| row.source_identity = "Other".into()),
+        ),
+    ];
+    for (case, edit) in &edits {
+        let mut edited = order.clone();
+        edit(&mut edited);
+        assert_eq!(
+            code_of(&package, vec![edited, sub.clone()]),
+            RowError::UnknownIdentityWitness,
+            "{case}"
+        );
+    }
+    // Members in another order.
+    let mut package_two_fields = source_package();
+    let mut pair = source_type("Order", &["total", "count"], &fixture_source());
+    pair["declaration"] = json!({"qualified_name": ["Pair"]});
+    pair["node_id"] = node_id("qualified:Pair");
+    pair["semantic_type"] = node_id("qualified:Pair");
+    nodes_mut(&mut package_two_fields).push(pair);
+    settle(&mut package_two_fields);
+    let two_fields = admitted(&package_two_fields);
+    let member = |name: &str| SelectedSourceObjectMember {
+        name: name.into(),
+        type_node: id(&family_key("a3a3")),
+        optional: false,
+    };
+    let mut pair_row = row("Pair", vec![], &[]);
+    pair_row.members = vec![member("total"), member("count")];
+    let order_row = row("Order", vec![], &[]);
+    SelectedSourceObjects::from_stage_rows(&two_fields, [order_row.clone(), pair_row.clone()])
+        .expect("members in body order");
+    pair_row.members = vec![member("count"), member("total")];
+    assert_eq!(
+        code_of(&two_fields, vec![order_row, pair_row]),
+        RowError::UnknownIdentityWitness,
+        "order"
+    );
+    // A cycle.
+    let mut cyclic_order = order;
+    cyclic_order.supertypes = vec![id("qualified:Sub")];
+    assert_eq!(
+        code_of(&package, vec![cyclic_order, sub]),
+        RowError::UnknownIdentityWitness,
+        "cycle"
+    );
 }
