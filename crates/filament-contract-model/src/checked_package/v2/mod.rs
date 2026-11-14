@@ -2062,10 +2062,9 @@ fn validate(
     validate_diagnostics(wire, limits, &mut meter)?;
     let models = RetainedModels::build(declarations, models, &mut Budget::node(&mut meter, 0))?;
     operation_effects::validate(wire.operation_effects.as_deref(), &models, &mut meter)?;
-    // Runs before `checked_term_data` validation: FSpec's OBR-20 records the
-    // carrier locus for a package whose candidate body is also missing from the
-    // graph. Candidates whose receiver is outside the table's family are
-    // skipped here and refused by dispatch validation.
+    // Runs before `checked_term_data` validation (FR-322 check order).
+    // Candidates whose receiver is outside the table's family are skipped here
+    // and refused by dispatch validation.
     operation_bodies::validate(
         wire.operation_bodies.as_deref(),
         wire,

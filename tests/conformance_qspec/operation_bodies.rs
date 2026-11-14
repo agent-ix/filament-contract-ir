@@ -54,17 +54,6 @@ fn graph_node(entry: &Value) -> Value {
     node
 }
 
-/// A function node whose owner member lies outside its owner document.
-fn foreign_owner(entry: &Value) -> bool {
-    entry["form"] == "function"
-        && !entry["owner"]["node"].as_str().is_some_and(|node| {
-            node.starts_with(&format!(
-                "ix://{}/",
-                entry["owner"]["identity"].as_str().unwrap_or_default()
-            ))
-        })
-}
-
 /// The effect vectors' document expansion, with `process` types given the
 /// process meaning they would otherwise lose to the object-type construct.
 fn expand_document_with_processes(sketch: &Value) -> Value {
@@ -81,26 +70,33 @@ fn expand_document_with_processes(sketch: &Value) -> Value {
                     && ty["identity"]
                         == format!("ix://{identity}/{}", declared["name"].as_str().unwrap())
             });
-        let is_premium = ty["identity"] == format!("ix://{identity}/Premium");
-        for operation in ty["operations"].as_array_mut().expect("operations") {
+        let declared = sketch["types"]
+            .as_array()
+            .expect("sketch types")
+            .iter()
+            .find(|declared| {
+                ty["identity"] == format!("ix://{identity}/{}", declared["name"].as_str().unwrap())
+            })
+            .expect("expanded type has a sketch");
+        for (operation, sketched) in ty["operations"]
+            .as_array_mut()
+            .expect("operations")
+            .iter_mut()
+            .zip(
+                declared["operations"]
+                    .as_array()
+                    .expect("sketch operations"),
+            )
+        {
             // A dispatched call is typed by its operation's result.
             operation["returns"] = json!({"typeRef": "ix://filament/native/Integer",
                 "multiplicity": {"lower": 1, "upper": 1, "ordered": false, "unique": true}});
-            if is_premium {
-                operation["redefines"] = json!(format!(
-                    "ix://{identity}/Order/{}",
-                    operation["name"].as_str().unwrap()
-                ));
+            if let Some(target) = sketched.get("redefines") {
+                operation["redefines"] = target.clone();
             }
         }
-        if ty["identity"] == format!("ix://{identity}/Premium")
-            && sketch["types"]
-                .as_array()
-                .expect("types")
-                .iter()
-                .any(|t| t["name"] == "Order")
-        {
-            ty["supertypes"] = json!([format!("ix://{identity}/Order")]);
+        if let Some(supertypes) = declared.get("extends") {
+            ty["supertypes"] = supertypes.clone();
         }
         if is_process {
             ty["kind"] = json!({"module": identity, "name": "process"});
@@ -235,9 +231,7 @@ fn add_dispatch_table(package: &mut Value, candidates: &[Value]) {
             "operation": candidate["selected_operation"], "context": declaring,
             "candidates": candidates.iter().map(|held| json!({
                 "selected_operation": held["selected_operation"],
-                "selection_key": {"owner_effective_type": null,
-                    "original": {"package": held["selection_type"]["package"],
-                        "node": held["selection_type"]["path"][2]}},
+                "selection_key": held["selection_key"],
                 "operation_body": held["operation_body"], "effective_precondition": null,
             })).collect::<Vec<_>>(),
         }],
@@ -304,37 +298,14 @@ fn read(case: &Value) -> (Value, CheckedPackageEvidence, CheckedPackageV2ReadRes
             .insert_domain_package_document(identity, fixture::canonical(&document))
             .expect("one document per identity");
     }
-    let referenced = |entry: &Value| {
-        case["operation_bodies"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .any(|row| row["body"]["node"] == entry["node"])
-    };
     for entry in case["graph_nodes"].as_array().expect("graph nodes") {
-        // The owner join refuses a function node whose owner member is not
-        // declared by its owner document before any carrier row is read, so
-        // such a node is in the package only when a row names it.
-        if foreign_owner(entry) && !referenced(entry) {
-            continue;
-        }
         package["semantic_graph"]["nodes"]
             .as_array_mut()
             .unwrap()
             .push(graph_node(entry));
     }
     if let Some(candidates) = case["dispatch_candidates"].as_array() {
-        let candidates: Vec<Value> = candidates
-            .iter()
-            .map(|held| {
-                let mut held = held.clone();
-                if held.get("selection_type").is_none() {
-                    held["selection_type"] = held["selected_operation"]["declaring"].clone();
-                }
-                held
-            })
-            .collect();
-        add_dispatch_table(&mut package, &candidates);
+        add_dispatch_table(&mut package, candidates);
     }
     evidence.support_feature("filament.value.complete/v1");
     fixture::settle(&mut package);
@@ -364,7 +335,7 @@ fn case(vectors: &Value, id: &str) -> Value {
 fn tc_987_positive_operation_body_vectors_read_and_round_trip() {
     let vectors = vectors();
     let positives = vectors["positive"].as_array().expect("positive vectors");
-    assert_eq!(positives.len(), 6);
+    assert_eq!(positives.len(), 7);
     for positive in positives {
         let id = positive["id"].as_str().expect("vector id");
         let input = case(&vectors, id);
@@ -442,19 +413,6 @@ fn tc_987_published_refusal_vectors_refuse_with_the_recorded_code_and_locus() {
             let CheckedPackageV2ReadResult::Refused(refusal) = actual else {
                 panic!("{id}: unexpectedly admitted");
             };
-            if id.starts_with("OBR-21") {
-                // STD-661: the vector cannot reach its recorded code and locus,
-                // because the package's own owner join refuses the node first.
-                assert_eq!(code_word(refusal.code), "missing_declaration", "{id}");
-                assert_eq!(
-                    refusal.cause.map(cause_word),
-                    Some("missing-selection"),
-                    "{id}"
-                );
-                let path = refusal.loci[0].path.as_ref().expect("path").to_string();
-                assert!(path.ends_with("/node_id"), "{id}: {path}");
-                continue;
-            }
             assert_eq!(
                 code_word(refusal.code),
                 row["expected_code"].as_str().unwrap(),
@@ -499,74 +457,6 @@ fn a_package_without_the_member_has_no_operation_bodies() {
     );
 }
 
-fn orders_type(name: &str) -> Value {
-    fixture::structural_id(
-        "acme/orders",
-        vec![
-            json!("model"),
-            json!("object_type"),
-            json!(format!("ix://acme/orders/{name}")),
-        ],
-        0,
-    )
-}
-
-fn settle_body(owner: &str, leaf: &str) -> Value {
-    fixture::structural_id(
-        "acme/orders",
-        vec![
-            json!("function"),
-            json!("pure_function"),
-            json!(format!("ix://acme/orders/{owner}/settle/{leaf}")),
-        ],
-        0,
-    )
-}
-
-/// OBC-05 with a second dispatch candidate whose receiver is `Premium`. When
-/// `redefines`, Premium redefines `settle` with its own body node and its own
-/// row (row 4); otherwise it inherits Order's `settle` and has no row.
-fn premium_candidate(redefines: bool, premium_body: Value) -> Value {
-    let vectors = vectors();
-    let mut input = case(&vectors, "OBC-05-dispatch-candidate");
-    if redefines {
-        let documents = input["documents"].as_array_mut().unwrap();
-        let orders = documents
-            .iter_mut()
-            .find(|document| document["identity"] == "acme/orders")
-            .unwrap();
-        let premium = orders["types"]
-            .as_array_mut()
-            .unwrap()
-            .iter_mut()
-            .find(|ty| ty["name"] == "Premium")
-            .unwrap();
-        premium["operations"] = json!([{"name": "settle", "params": [], "has_body": true}]);
-        input["graph_nodes"].as_array_mut().unwrap().push(json!({
-            "node": settle_body("Premium", "body"), "form": "function",
-            "owner": {"kind": "model", "identity": "acme/orders",
-                "node": "ix://acme/orders/Premium/settle"},
-            "clause": "body"
-        }));
-        input["operation_bodies"]
-            .as_array_mut()
-            .unwrap()
-            .push(json!({
-                "document": "acme/orders", "declaring": orders_type("Premium"),
-                "operation": "settle",
-                "body": {"kind": "function", "node": settle_body("Premium", "body")}
-            }));
-    }
-    let mut second = input["dispatch_candidates"][0].clone();
-    second["selection_type"] = orders_type("Premium");
-    second["operation_body"] = premium_body;
-    input["dispatch_candidates"]
-        .as_array_mut()
-        .unwrap()
-        .push(second);
-    input
-}
-
 fn refused_at(input: &Value) -> String {
     let (_, _, result) = read(input);
     let CheckedPackageV2ReadResult::Refused(refusal) = result else {
@@ -577,79 +467,83 @@ fn refused_at(input: &Value) -> String {
     refusal.loci[0].path.as_ref().expect("path").to_string()
 }
 
-/// A receiver that redefines the operation has its own row, and its candidate
-/// is joined to that row, not to the ancestor's.
+/// An inheriting receiver is joined to the inherited declaration's row, so a
+/// candidate carrying a redefining sibling's body refuses at that row.
 #[trace("TC-987", "FR-322-AC-397", "FR-038-AC-541")]
 #[test]
-fn a_redefining_receivers_candidate_is_joined_to_its_own_row() {
-    let input = premium_candidate(true, settle_body("Premium", "body"));
-    let (_, _, result) = read(&input);
-    assert!(
-        matches!(result, CheckedPackageV2ReadResult::Admitted(_)),
-        "{result:?}"
-    );
-}
-
-#[trace("TC-987", "FR-322-AC-397", "FR-038-AC-541")]
-#[test]
-fn a_redefining_receivers_candidate_carrying_the_ancestors_body_refuses() {
-    let input = premium_candidate(true, settle_body("Order", "body"));
-    assert_eq!(refused_at(&input), "/operation_bodies/4/body");
-}
-
-/// A receiver that inherits the operation is joined to the declaration it
-/// inherits from, so its candidate must carry that row's body.
-#[trace("TC-987", "FR-322-AC-397", "FR-038-AC-541")]
-#[test]
-fn an_inheriting_receivers_candidate_is_joined_to_the_inherited_row() {
-    let input = premium_candidate(false, settle_body("Order", "body"));
-    let (_, _, result) = read(&input);
-    assert!(
-        matches!(result, CheckedPackageV2ReadResult::Admitted(_)),
-        "{result:?}"
-    );
-    let input = premium_candidate(false, settle_body("Order", "other"));
+fn an_inheriting_receivers_candidate_must_carry_the_inherited_rows_body() {
+    let vectors = vectors();
+    let mut input = case(&vectors, "OBC-07-candidates-per-redefinition");
+    let candidates = input["dispatch_candidates"].as_array_mut().unwrap();
+    let plain = candidates
+        .iter_mut()
+        .find(|held| held["selection_key"]["original"]["node"] == "ix://acme/svc/Plain")
+        .expect("inheriting candidate");
+    plain["operation_body"]["path"][2] = json!("ix://acme/svc/FastService/run/body");
     assert_eq!(refused_at(&input), "/operation_bodies/2/body");
 }
 
-/// A receiver outside the dispatch table's family is not joined to a row; the
-/// dispatch stage refuses it at its own locus.
+/// A candidate outside its table's family is admitted by the carrier and
+/// refused by the dispatch join at its own selection key.
 #[trace("TC-987", "FR-322-AC-397", "FR-038-AC-541")]
 #[test]
-fn a_candidate_outside_the_tables_family_is_refused_by_dispatch_validation() {
-    let mut input = premium_candidate(false, settle_body("Order", "body"));
-    input["dispatch_candidates"][1]["selection_type"] = orders_type("Invoice");
-    let path = refused_at(&input);
-    assert!(
-        path.starts_with("/checked_term_data/dispatch_tables/0/candidates/1"),
-        "{path}"
-    );
+fn tc_987_dispatch_join_refusal_vectors_refuse_at_the_dispatch_join() {
+    let vectors = vectors();
+    let rows = vectors["dispatch_join_refusals"]
+        .as_array()
+        .expect("dispatch join vectors");
+    assert_eq!(rows.len(), 1);
+    for row in rows {
+        let id = row["id"].as_str().expect("vector id");
+        assert_eq!(row["carrier"], "admits", "{id}");
+        let mut input = case(&vectors, row["base"].as_str().expect("base id"));
+        for mutation in row["patch"].as_array().expect("patches") {
+            patch(&mut input, mutation);
+        }
+        input["dispatch_candidates"] = row["dispatch_candidates"].clone();
+        let (_, _, actual) = read(&input);
+        let CheckedPackageV2ReadResult::Refused(refusal) = actual else {
+            panic!("{id}: unexpectedly admitted");
+        };
+        assert_eq!(
+            code_word(refusal.code),
+            row["expected_code"].as_str().unwrap(),
+            "{id}"
+        );
+        assert_eq!(
+            refusal.cause.map(cause_word),
+            row["expected_cause"].as_str(),
+            "{id}"
+        );
+        assert_eq!(
+            refusal.loci[0].path.as_ref().expect("path").to_string(),
+            row["locus"],
+            "{id}"
+        );
+    }
 }
 
-/// A candidate joined to a row through its selection key must carry that row's
-/// body node; a candidate of another declaration is not joined.
+/// A receiver outside the table's family that declares its own same-named
+/// operation, with its own row, is skipped by the carrier. Without the
+/// family check the candidate would join that row and the carrier would
+/// refuse it at the row's `body`; the dispatch join refuses it at its own
+/// `selection_key`.
 #[trace("TC-987", "FR-322-AC-397", "FR-038-AC-541")]
 #[test]
-fn a_candidate_joined_through_its_selection_key_must_carry_the_rows_body() {
+fn an_out_of_family_receiver_with_its_own_operation_is_left_to_the_dispatch_join() {
     let vectors = vectors();
-    let mut input = case(&vectors, "OBC-05-dispatch-candidate");
-    input["dispatch_candidates"][0]["operation_body"] = fixture::structural_id(
-        "acme/orders",
-        vec![
-            json!("function"),
-            json!("pure_function"),
-            json!("ix://acme/orders/Order/settle/other"),
-        ],
-        0,
-    );
-    let (_, _, result) = read(&input);
-    let CheckedPackageV2ReadResult::Refused(refusal) = result else {
-        panic!("a mismatching joined candidate must refuse");
-    };
-    assert_eq!(code_word(refusal.code), "invalid_package");
-    assert_eq!(refusal.cause.map(cause_word), Some("invalid-value"));
+    let mut input = case(&vectors, "OBC-04-same-member-name");
+    let order = json!({"package": "acme/orders", "path": ["model", "object_type", "ix://acme/orders/Order"], "ordinal": 0});
+    input["dispatch_candidates"] = json!([{
+        "selected_operation": {"declaring": order, "operation": "settle"},
+        "selection_key": {"owner_effective_type": null,
+            "original": {"package": "acme/orders", "node": "ix://acme/orders/Invoice"}},
+        "operation_body": {"package": "acme/orders",
+            "path": ["function", "pure_function", "ix://acme/orders/Order/settle/body"],
+            "ordinal": 0},
+    }]);
     assert_eq!(
-        refusal.loci[0].path.as_ref().expect("path").to_string(),
-        "/operation_bodies/2/body"
+        refused_at(&input),
+        "/checked_term_data/dispatch_tables/0/candidates/0/selection_key"
     );
 }
