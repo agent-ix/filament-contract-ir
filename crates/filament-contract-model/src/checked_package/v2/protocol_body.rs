@@ -6537,23 +6537,27 @@ pub(super) fn validate_protocol_nodes(
                 &node.node_id,
             ));
         }
-        let owner = owners.recover(target).map_err(|failure| {
-            refuse_at(
-                meter,
-                failure.code,
-                Some(failure.cause),
-                owner_at(),
-                &node.node_id,
-            )
-        })?;
-        if owner.form != super::model_members::DeclarationForm::ObjectType {
-            return Err(refuse_at(
-                meter,
-                Code::InvalidModelBinding,
-                Some(Cause::MalformedDeclaration),
-                owner_at(),
-                &node.node_id,
-            ));
+        // A source-declared object type joins its lock entry in the owner
+        // step, so the clause edge needs no selected model row.
+        if !super::source_object::is_source_declared_object_type(target, kinds[owner_position]) {
+            let owner = owners.recover(target).map_err(|failure| {
+                refuse_at(
+                    meter,
+                    failure.code,
+                    Some(failure.cause),
+                    owner_at(),
+                    &node.node_id,
+                )
+            })?;
+            if owner.form != super::model_members::DeclarationForm::ObjectType {
+                return Err(refuse_at(
+                    meter,
+                    Code::InvalidModelBinding,
+                    Some(Cause::MalformedDeclaration),
+                    owner_at(),
+                    &node.node_id,
+                ));
+            }
         }
         let Some((operator, arguments)) = validated[position] else {
             return Err(body_defect(

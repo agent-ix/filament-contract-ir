@@ -86,6 +86,7 @@ mod selected_document;
 mod selected_facts;
 mod selection_equality;
 mod source_map;
+mod source_object;
 mod stage_storage;
 mod state;
 mod step_relation;
@@ -2061,7 +2062,14 @@ fn validate(
 
     validate_diagnostics(wire, limits, &mut meter)?;
     let models = RetainedModels::build(declarations, models, &mut Budget::node(&mut meter, 0))?;
-    operation_effects::validate(wire.operation_effects.as_deref(), &models, &mut meter)?;
+    operation_effects::validate(
+        wire.operation_effects.as_deref(),
+        wire,
+        &kinds,
+        &terms,
+        &models,
+        &mut meter,
+    )?;
     // Runs before `checked_term_data` validation (FR-322 check order).
     // Candidates whose receiver is outside the table's family are skipped here
     // and refused by dispatch validation.

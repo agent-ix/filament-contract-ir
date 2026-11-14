@@ -68,6 +68,7 @@ mod checked_package_v2_recursive_leaves;
 mod checked_package_v2_refinement;
 mod checked_package_v2_require_bounds;
 mod checked_package_v2_schedulability;
+mod checked_package_v2_source_objects;
 mod checked_package_v2_stage_read_storage;
 mod checked_package_v2_structural_keys;
 mod checked_package_v2_temporal;
