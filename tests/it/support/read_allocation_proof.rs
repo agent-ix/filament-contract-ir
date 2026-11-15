@@ -11,8 +11,8 @@ use filament_contract_model::{
     CheckedPackageV2ReadResult, NativeJoinBudget,
 };
 
-use crate::qspec_read_proof::observation;
-pub(crate) use crate::qspec_read_proof::ReadViewScope;
+use crate::fspec_read_proof::observation;
+pub(crate) use crate::fspec_read_proof::ReadViewScope;
 #[cfg(feature = "test-support")]
 pub(crate) use observation::REFUSAL_DIAGNOSTIC_UNPAID_BOUND;
 pub(crate) use observation::{
@@ -167,7 +167,7 @@ fn every_request_from_observer<C: Counter>(bytes: &[u8], evidence: &CheckedPacka
     initialize_operation_catalog().expect("catalogue gate");
     let limits = generous_limits();
     let (reference, events) =
-        crate::qspec_read_proof::observe_native::<C>(bytes, evidence, limits, u64::MAX, u64::MAX);
+        crate::fspec_read_proof::observe_native::<C>(bytes, evidence, limits, u64::MAX, u64::MAX);
     assert!(
         !matches!(
             reference.result,
@@ -230,7 +230,7 @@ fn every_request_from_observer<C: Counter>(bytes: &[u8], evidence: &CheckedPacka
     );
 
     let exact = measure_read::<C>(bytes, evidence, limits, consumed);
-    crate::qspec_read_proof::assert_budgeted_results_equal(
+    crate::fspec_read_proof::assert_budgeted_results_equal(
         &exact.result,
         &reference.result,
         "final exact storage boundary",

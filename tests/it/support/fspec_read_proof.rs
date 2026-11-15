@@ -274,7 +274,7 @@ fn provider_json(
 struct DriverCounter;
 impl Counter for DriverCounter {
     fn measure(read: impl FnOnce()) -> u64 {
-        crate::measure_qspec_read_requests(read)
+        crate::measure_fspec_read_requests(read)
     }
 }
 
@@ -985,7 +985,7 @@ pub(crate) fn read_and_account(
 ) -> Plain {
     let location = std::panic::Location::caller();
     let provider = provider_for_input(bytes, evidence, location);
-    let (mode, test_name) = crate::without_qspec_instrumentation(|| {
+    let (mode, test_name) = crate::without_fspec_instrumentation(|| {
         let mode = std::env::var("IR1404_READ_PROOF_MODE").unwrap_or_else(|_| "sample".into());
         assert!(
             matches!(mode.as_str(), "sample" | "full"),
@@ -1005,7 +1005,7 @@ pub(crate) fn read_and_account(
     // The first public read is measured on a fresh worker. Only worker
     // startup/join is outside the caller's enclosing allocation measurement;
     // the worker's own thread-local allocator counter remains fully armed.
-    let reference = crate::without_qspec_instrumentation(|| {
+    let reference = crate::without_fspec_instrumentation(|| {
         std::thread::scope(|scope| {
             std::thread::Builder::new()
                 .name(format!(
@@ -1023,7 +1023,7 @@ pub(crate) fn read_and_account(
         })
     });
     let plain = CheckedPackageV2::read(bytes, limits, evidence);
-    crate::without_qspec_instrumentation(|| {
+    crate::without_fspec_instrumentation(|| {
         std::thread::scope(|scope| {
             let plain = &plain;
             std::thread::Builder::new()
@@ -1223,8 +1223,8 @@ mod tests {
     #[test]
     fn worker_counts_full_reallocation_while_caller_ignores_only_instrumentation() {
         let mut worker_requested = 0;
-        let caller_requested = crate::measure_qspec_read_requests(|| {
-            worker_requested = crate::without_qspec_instrumentation(|| {
+        let caller_requested = crate::measure_fspec_read_requests(|| {
+            worker_requested = crate::without_fspec_instrumentation(|| {
                 std::thread::scope(|scope| {
                     scope
                         .spawn(|| {
@@ -1262,7 +1262,7 @@ pub(crate) fn read_budget_and_account(
 ) -> Budgeted {
     let location = std::panic::Location::caller();
     let provider = provider_for_input(bytes, evidence, location);
-    let mode = crate::without_qspec_instrumentation(|| {
+    let mode = crate::without_fspec_instrumentation(|| {
         let mode = std::env::var("IR1404_READ_PROOF_MODE").unwrap_or_else(|_| "sample".into());
         assert!(
             matches!(mode.as_str(), "sample" | "full"),
@@ -1274,7 +1274,7 @@ pub(crate) fn read_budget_and_account(
     #[cfg(feature = "test-support")]
     let seed = budget.read_proof_snapshot();
     #[cfg(feature = "test-support")]
-    let reference = crate::without_qspec_instrumentation(|| {
+    let reference = crate::without_fspec_instrumentation(|| {
         std::thread::scope(|scope| {
             std::thread::Builder::new()
                 .name(format!(
@@ -1314,7 +1314,7 @@ pub(crate) fn read_budget_and_account(
     );
     #[cfg(feature = "test-support")]
     let (native_events, boundary_results, complete_reference) =
-        crate::without_qspec_instrumentation(|| {
+        crate::without_fspec_instrumentation(|| {
             std::thread::scope(|scope| {
                 let original = result.as_ref().expect("original caller read ran");
                 let full = mode == "full";
@@ -1362,7 +1362,7 @@ pub(crate) fn read_budget_and_account(
                     .expect("exact caller-state repeat proof")
             })
         });
-    crate::without_qspec_instrumentation(|| {
+    crate::without_fspec_instrumentation(|| {
         let log = std::env::var_os("IR1404_READ_PROOF_LOG")
             .map(std::path::PathBuf::from)
             .unwrap_or_else(|| {

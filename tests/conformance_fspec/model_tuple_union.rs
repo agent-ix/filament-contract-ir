@@ -16,7 +16,7 @@ use serde_json::{json, Value};
 use std::collections::BTreeSet;
 use std::path::Path;
 
-#[path = "../it/support/qspec_tuple_inputs.rs"]
+#[path = "../it/support/fspec_tuple_inputs.rs"]
 mod inputs;
 pub(super) use inputs::apply_wire_patch;
 use inputs::selected_evidence;

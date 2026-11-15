@@ -13,7 +13,7 @@ use ix_trace_rs::trace;
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
 
-#[path = "../it/support/qspec_text_inputs.rs"]
+#[path = "../it/support/fspec_text_inputs.rs"]
 mod inputs;
 use inputs::{bounded_literal, text_bounds_package};
 
@@ -55,7 +55,7 @@ fn assert_text_shape_refusal(package: &Value, position: usize, context: &str) {
 
 #[trace("TC-048", "FR-038-AC-417", "FR-038-AC-418", "FR-038-AC-419")]
 #[test]
-fn qspec_text_bounds_shape_vectors_match_reader() {
+fn fspec_text_bounds_shape_vectors_match_reader() {
     let vectors =
         read_json(&proposal_dir_of(&fixtures_dir()).join("text-bounds-shape-vectors.json"))
             .expect("FSpec Text bounds shape vectors");
@@ -202,7 +202,7 @@ fn canonical_text_bounds_above_u64_are_shapes_and_check_literal_membership() {
 
 #[trace("TC-048", "FR-038-AC-409", "FR-038-AC-410", "FR-038-AC-411")]
 #[test]
-fn qspec_text_literal_vectors_match_reader() {
+fn fspec_text_literal_vectors_match_reader() {
     let vectors = read_json(&proposal_dir_of(&fixtures_dir()).join("text-literal-vectors.json"))
         .expect("FSpec text literal vectors");
     let types = vectors["types"].as_object().expect("FSpec types");

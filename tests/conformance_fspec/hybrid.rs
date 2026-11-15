@@ -32,7 +32,7 @@ fn published_hybrid_package() -> Value {
 
 #[trace("TC-048", "FR-038-AC-311", "FR-038-AC-317")]
 #[test]
-fn qspec_hybrid_family_in_published_package_admits() {
+fn fspec_hybrid_family_in_published_package_admits() {
     let package = published_hybrid_package();
     let read = read_package(&package).expect("published evidence");
     let CheckedPackageV2ReadResult::Admitted(admitted) = read else {
@@ -51,7 +51,7 @@ fn qspec_hybrid_family_in_published_package_admits() {
 
 #[trace("TC-048", "FR-038-AC-311")]
 #[test]
-fn qspec_hybrid_schema_defects_refuse_before_identity() {
+fn fspec_hybrid_schema_defects_refuse_before_identity() {
     for (form, change, locus) in [
         ("hybrid_transition", "declaration", ""),
         ("hybrid_mode", "occurrence_role", "/occurrences/0/role"),
@@ -317,7 +317,7 @@ fn refresh_tank_hybrid_graph(package: &mut Value) {
 
 #[trace("TC-048", "FR-038-AC-312")]
 #[test]
-fn qspec_hybrid_body_edit_preserves_structural_identity_and_checks_body() {
+fn fspec_hybrid_body_edit_preserves_structural_identity_and_checks_body() {
     let mut package = published_hybrid_package();
     let model = model_position(&package);
     let original = package.clone();
@@ -341,7 +341,7 @@ fn qspec_hybrid_body_edit_preserves_structural_identity_and_checks_body() {
 
 #[trace("TC-048", "FR-038-AC-312")]
 #[test]
-fn qspec_hybrid_dependency_shape_precedes_body_checks() {
+fn fspec_hybrid_dependency_shape_precedes_body_checks() {
     let mut package = published_hybrid_package();
     let model = model_position(&package);
     let mode_id = package["semantic_graph"]["nodes"][model]["body"]["members"][1]["value"]
@@ -376,7 +376,7 @@ fn qspec_hybrid_dependency_shape_precedes_body_checks() {
 
 #[trace("TC-048", "FR-038-AC-316")]
 #[test]
-fn qspec_hybrid_capture_initializer_must_match_capture_type() {
+fn fspec_hybrid_capture_initializer_must_match_capture_type() {
     let mut package = restored_package();
     let claim = timed_claim_position(&package);
     let old = package["semantic_graph"]["nodes"][claim]["body"]["arguments"][3]["members"][0]
@@ -427,7 +427,7 @@ fn qspec_hybrid_capture_initializer_must_match_capture_type() {
 
 #[trace("TC-048", "FR-038-AC-316")]
 #[test]
-fn qspec_hybrid_capture_ignores_unrelated_same_name_and_level() {
+fn fspec_hybrid_capture_ignores_unrelated_same_name_and_level() {
     let mut package = restored_package();
     let nodes = package["semantic_graph"]["nodes"]
         .as_array()
@@ -478,7 +478,7 @@ fn timed_claim_position(package: &Value) -> usize {
 
 #[trace("TC-048", "FR-038-AC-313", "FR-038-AC-316", "FR-038-AC-317")]
 #[test]
-fn qspec_hybrid_braking_model_and_claim_admit_from_published_nodes() {
+fn fspec_hybrid_braking_model_and_claim_admit_from_published_nodes() {
     let package = braking_package();
     let read = read_package(&package).expect("published evidence");
     assert!(
@@ -489,7 +489,7 @@ fn qspec_hybrid_braking_model_and_claim_admit_from_published_nodes() {
 
 #[trace("TC-048", "FR-038-AC-315", "FR-038-AC-317")]
 #[test]
-fn qspec_hybrid_restored_model_and_claims_admit_from_published_nodes() {
+fn fspec_hybrid_restored_model_and_claims_admit_from_published_nodes() {
     let package = restored_package();
     let read = read_package(&package).expect("published evidence");
     let CheckedPackageV2ReadResult::Admitted(admitted) = read else {
@@ -538,7 +538,7 @@ fn qspec_hybrid_restored_model_and_claims_admit_from_published_nodes() {
 
 #[trace("FR-048-AC-7")]
 #[test]
-fn qspec_admitted_hybrid_fairness_maps_whole_nested_member_id() {
+fn fspec_admitted_hybrid_fairness_maps_whole_nested_member_id() {
     let package = restored_package();
     let read = read_package(&package).expect("published evidence");
     let CheckedPackageV2ReadResult::Admitted(admitted) = read else {
@@ -647,7 +647,7 @@ fn qspec_admitted_hybrid_fairness_maps_whole_nested_member_id() {
 
 #[trace("TC-048", "FR-038-AC-315")]
 #[test]
-fn qspec_hybrid_timed_open_upper_admits_under_timed_profile() {
+fn fspec_hybrid_timed_open_upper_admits_under_timed_profile() {
     let mut package = restored_package();
     let clause = timed_claim_position(&package);
     let formula_id =
@@ -675,7 +675,7 @@ fn qspec_hybrid_timed_open_upper_admits_under_timed_profile() {
 
 #[trace("TC-048", "FR-038-AC-315")]
 #[test]
-fn qspec_hybrid_package_keeps_nonhybrid_timed_null_wire_refusal() {
+fn fspec_hybrid_package_keeps_nonhybrid_timed_null_wire_refusal() {
     let mut package = braking_package();
     let formula = package["semantic_graph"]["nodes"]
         .as_array()
@@ -704,7 +704,7 @@ fn qspec_hybrid_package_keeps_nonhybrid_timed_null_wire_refusal() {
 
 #[trace("TC-048", "FR-038-AC-316")]
 #[test]
-fn qspec_hybrid_claim_refuses_clock_outside_model_vocabulary() {
+fn fspec_hybrid_claim_refuses_clock_outside_model_vocabulary() {
     let mut package = braking_package();
     let position = package["semantic_graph"]["nodes"]
         .as_array()
@@ -732,7 +732,7 @@ fn qspec_hybrid_claim_refuses_clock_outside_model_vocabulary() {
 
 #[trace("TC-048", "FR-038-AC-316")]
 #[test]
-fn qspec_hybrid_claim_refuses_unknown_fairness_mode() {
+fn fspec_hybrid_claim_refuses_unknown_fairness_mode() {
     let mut package = restored_package();
     let fair = package["semantic_graph"]["nodes"]
         .as_array()
@@ -757,7 +757,7 @@ fn qspec_hybrid_claim_refuses_unknown_fairness_mode() {
 
 #[trace("TC-048", "FR-038-AC-316")]
 #[test]
-fn qspec_hybrid_claim_refuses_trigger_typed_as_scalar() {
+fn fspec_hybrid_claim_refuses_trigger_typed_as_scalar() {
     let mut package = restored_package();
     let claim_position = timed_claim_position(&package);
     let model_key = package["semantic_graph"]["nodes"][claim_position]["body"]["arguments"][0]
@@ -795,7 +795,7 @@ fn qspec_hybrid_claim_refuses_trigger_typed_as_scalar() {
 
 #[trace("TC-048", "FR-038-AC-316")]
 #[test]
-fn qspec_hybrid_claim_refuses_holds_read_of_over_parameter() {
+fn fspec_hybrid_claim_refuses_holds_read_of_over_parameter() {
     let mut package = braking_package();
     let nodes = package["semantic_graph"]["nodes"]
         .as_array()
@@ -838,7 +838,7 @@ fn qspec_hybrid_claim_refuses_holds_read_of_over_parameter() {
 
 #[trace("TC-048", "FR-038-AC-313", "FR-038-AC-314")]
 #[test]
-fn qspec_hybrid_model_checks_duplicate_modes_and_clock_rates() {
+fn fspec_hybrid_model_checks_duplicate_modes_and_clock_rates() {
     for change in ["duplicate_mode", "clock_non_literal_rate"] {
         let mut package = published_hybrid_package();
         let position = model_position(&package);
@@ -887,7 +887,7 @@ fn qspec_hybrid_model_checks_duplicate_modes_and_clock_rates() {
 /// refuses at the selected variable class after the package keys are rebuilt.
 #[trace("TC-048", "FR-038-AC-314")]
 #[test]
-fn qspec_hybrid_clock_rate_requires_exact_rational_one() {
+fn fspec_hybrid_clock_rate_requires_exact_rational_one() {
     let mut package = published_hybrid_package();
     let model = model_position(&package);
     package["semantic_graph"]["nodes"][model]["body"]["members"][0]["value"]["members"][1]
@@ -938,7 +938,7 @@ fn qspec_hybrid_clock_rate_requires_exact_rational_one() {
 
 #[trace("TC-048", "FR-038-AC-313", "FR-038-AC-314")]
 #[test]
-fn qspec_hybrid_model_rebuilt_key_boundaries() {
+fn fspec_hybrid_model_rebuilt_key_boundaries() {
     for change in [
         "variable_level",
         "rate_count",
@@ -1029,7 +1029,7 @@ fn qspec_hybrid_model_rebuilt_key_boundaries() {
 
 #[trace("TC-048", "FR-038-AC-313")]
 #[test]
-fn qspec_hybrid_initial_and_reset_checks_after_rekey() {
+fn fspec_hybrid_initial_and_reset_checks_after_rekey() {
     for change in [
         "written_default",
         "initial_mode",
@@ -1122,7 +1122,7 @@ fn qspec_hybrid_initial_and_reset_checks_after_rekey() {
 
 #[trace("TC-048", "FR-038-AC-314")]
 #[test]
-fn qspec_hybrid_model_refuses_foreign_parameter_read() {
+fn fspec_hybrid_model_refuses_foreign_parameter_read() {
     let mut package = published_hybrid_package();
     let nodes = package["semantic_graph"]["nodes"]
         .as_array()
@@ -1200,7 +1200,7 @@ fn qspec_hybrid_model_refuses_foreign_parameter_read() {
 
 #[trace("TC-048", "FR-038-AC-314")]
 #[test]
-fn qspec_hybrid_call_refuses_ineligible_function_signature() {
+fn fspec_hybrid_call_refuses_ineligible_function_signature() {
     for defect in ["result", "parameter"] {
         let mut package = published_hybrid_package();
         let nodes = package["semantic_graph"]["nodes"]
@@ -1319,7 +1319,7 @@ fn qspec_hybrid_call_refuses_ineligible_function_signature() {
 
 #[trace("TC-048")]
 #[test]
-fn qspec_protocol_reference_join_refuses_at_its_target() {
+fn fspec_protocol_reference_join_refuses_at_its_target() {
     let mut package = published_hybrid_package();
     let boolean = package["semantic_graph"]["nodes"]
         .as_array()
@@ -1372,7 +1372,7 @@ fn qspec_protocol_reference_join_refuses_at_its_target() {
 
 #[trace("TC-048", "FR-038-AC-316")]
 #[test]
-fn qspec_hybrid_step_precedes_later_protocol_body_defect() {
+fn fspec_hybrid_step_precedes_later_protocol_body_defect() {
     let mut package = braking_package();
     let claim = package["semantic_graph"]["nodes"]
         .as_array()
@@ -1449,7 +1449,7 @@ fn qspec_hybrid_step_precedes_later_protocol_body_defect() {
 
 #[trace("TC-048", "FR-038-AC-315")]
 #[test]
-fn qspec_hybrid_wrong_interval_profile_precedes_fairness_defect() {
+fn fspec_hybrid_wrong_interval_profile_precedes_fairness_defect() {
     let mut package = restored_package();
     let claim = timed_claim_position(&package);
     let formula_id =
@@ -1489,7 +1489,7 @@ fn qspec_hybrid_wrong_interval_profile_precedes_fairness_defect() {
 
 #[trace("TC-048", "FR-038-AC-98", "FR-038-AC-316")]
 #[test]
-fn qspec_hybrid_fairness_rejects_a_wrong_declaring_model() {
+fn fspec_hybrid_fairness_rejects_a_wrong_declaring_model() {
     let mut package = restored_package();
     let nodes = package["semantic_graph"]["nodes"].as_array().unwrap();
     let fair = nodes

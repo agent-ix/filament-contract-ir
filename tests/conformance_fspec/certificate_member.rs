@@ -117,7 +117,7 @@ fn malformed_member_enum(schema: &Value) -> Result<Vec<String>, String> {
 
 #[trace("FR-070-AC-1", "FR-070-AC-2", "FR-070-AC-3", "FR-070-AC-4")]
 #[test]
-fn model_certificate_members_match_qspec_schema() {
+fn model_certificate_members_match_fspec_schema() {
     let root = std::env::var(SPECIFICATION_DIR)
         .ok()
         .filter(|root| !root.is_empty())

@@ -283,12 +283,12 @@ impl CheckedMonitorPlanRef<'_> {
     }
 }
 
-#[cfg(all(test, feature = "qspec-conformance"))]
+#[cfg(all(test, feature = "fspec-conformance"))]
 #[allow(unused_imports)] // The shared fixture module serves several test binaries.
 #[path = "../../../../../../tests/it/support/checked_package.rs"]
 mod fixture_support;
 
-#[cfg(all(test, feature = "qspec-conformance"))]
+#[cfg(all(test, feature = "fspec-conformance"))]
 fn fixture_read(
     bytes: &[u8],
     limits: crate::CheckedPackageReadLimits,
@@ -297,35 +297,35 @@ fn fixture_read(
     crate::CheckedPackageV2::read(bytes, limits, evidence)
 }
 
-#[cfg(all(test, feature = "qspec-conformance"))]
+#[cfg(all(test, feature = "fspec-conformance"))]
 fn fixtures_dir() -> std::path::PathBuf {
     std::path::PathBuf::from(std::env::var("FILAMENT_SPECIFICATION_DIR").expect("FSpec checkout"))
         .join("proposals/checked-package-v2/fixtures")
 }
 
-#[cfg(all(test, feature = "qspec-conformance"))]
+#[cfg(all(test, feature = "fspec-conformance"))]
 fn proposal_dir_of(fixtures: &std::path::Path) -> std::path::PathBuf {
     fixtures.join("..")
 }
 
-#[cfg(all(test, feature = "qspec-conformance"))]
+#[cfg(all(test, feature = "fspec-conformance"))]
 fn read_json(path: &std::path::Path) -> Result<serde_json::Value, String> {
     let bytes = std::fs::read(path).map_err(|error| error.to_string())?;
     serde_json::from_slice(&bytes).map_err(|error| error.to_string())
 }
 
-#[cfg(all(test, feature = "qspec-conformance"))]
+#[cfg(all(test, feature = "fspec-conformance"))]
 #[path = "../../../../../../tests/it/support/monitor_plan.rs"]
 mod monitor_plan_fixtures;
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[cfg(feature = "qspec-conformance")]
+    #[cfg(feature = "fspec-conformance")]
     use crate::checked_package::v2::{CheckedPackageReadLimits, CheckedPackageV2ReadResult};
     use ix_trace_rs::trace;
 
-    #[cfg(feature = "qspec-conformance")]
+    #[cfg(feature = "fspec-conformance")]
     fn admitted_seeded_package(extra: bool) -> CheckedPackageV2 {
         let (mut wire, _) =
             monitor_plan_fixtures::materialize(&monitor_plan_fixtures::recipes()["base"]);
@@ -358,7 +358,7 @@ mod tests {
         *package
     }
 
-    #[cfg(feature = "qspec-conformance")]
+    #[cfg(feature = "fspec-conformance")]
     fn id_for(package: &CheckedPackageV2, tag: &str, form: &str) -> CheckedNodeId {
         package
             .resolved_graph()
@@ -371,7 +371,7 @@ mod tests {
     }
 
     /// Trace: FR-357-AC-12.
-    #[cfg(feature = "qspec-conformance")]
+    #[cfg(feature = "fspec-conformance")]
     #[test]
     #[ignore = "requires FILAMENT_SPECIFICATION_DIR checkout; run in FSpec conformance lane"]
     fn selected_walk_is_bounded_deduplicated_and_clone_stable() {
@@ -419,7 +419,7 @@ mod tests {
 
     /// Trace: FR-357-AC-12. Corrupt a reached typed term after strict admission
     /// to exercise the walk's foreign-reference guard at its native locus.
-    #[cfg(feature = "qspec-conformance")]
+    #[cfg(feature = "fspec-conformance")]
     #[test]
     #[ignore = "requires FILAMENT_SPECIFICATION_DIR checkout; run in FSpec conformance lane"]
     fn selected_walk_refuses_reached_foreign_typed_dependency() {
@@ -462,7 +462,7 @@ mod tests {
 
     /// Trace: FR-357-AC-12. Specialized frames remain a typed stop for this
     /// prerequisite even when a caller reaches one from a selected entry.
-    #[cfg(feature = "qspec-conformance")]
+    #[cfg(feature = "fspec-conformance")]
     #[test]
     #[ignore = "requires FILAMENT_SPECIFICATION_DIR checkout; run in FSpec conformance lane"]
     fn selected_walk_refuses_specialized_frame() {
@@ -504,7 +504,7 @@ mod tests {
 
     /// Trace: FR-357-AC-12. A second identical reference visits one more
     /// term, while the already visited graph edge costs no additional work.
-    #[cfg(feature = "qspec-conformance")]
+    #[cfg(feature = "fspec-conformance")]
     #[test]
     #[ignore = "requires FILAMENT_SPECIFICATION_DIR checkout; run in FSpec conformance lane"]
     fn repeated_reference_edge_is_charged_once() {

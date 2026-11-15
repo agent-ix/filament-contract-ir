@@ -7,7 +7,7 @@
 //!
 //! Every package is built here, node by node, from this crate's own
 //! vocabulary and keyed by `settle`; nothing of FSpec's fixtures is copied in
-//! (they are read by `make conformance-qspec`, FR-038-AC-107).
+//! (they are read by `make conformance-fspec`, FR-038-AC-107).
 
 use crate::support::checked_package::{
     canonical, evidence_for, family_key, fixture_source, node_id, nominal_package,

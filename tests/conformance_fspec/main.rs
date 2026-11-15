@@ -16,7 +16,7 @@
 //! named by `FILAMENT_SPECIFICATION_DIR`; nothing of them is copied into this
 //! repository. This target is outside the run of `make test` (its manifest
 //! entry has `test = false`, and a plain `make test` has no checkout). CI
-//! compiles this target without running it. `make conformance-qspec` runs its
+//! compiles this target without running it. `make conformance-fspec` runs its
 //! fixture tests; they fail, and never skip, when the
 //! variable is unset or empty, when it names a path that does not hold
 //! `proposals/checked-package-v2/fixtures/`, when a file cannot be read or is
@@ -36,9 +36,9 @@ use ix_trace_rs::trace;
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 
-#[path = "../it/support/qspec_inputs.rs"]
-mod qspec_inputs;
-use qspec_inputs::{
+#[path = "../it/support/fspec_inputs.rs"]
+mod fspec_inputs;
+use fspec_inputs::{
     positive_document, read_json, read_json_wire, selected_document_assignments,
     vector_selected_documents, DOMAIN_DOCUMENT, POSITIVE_ALL,
 };
@@ -125,7 +125,7 @@ const FIXTURES: &str = "proposals/checked-package-v2/fixtures";
 
 #[trace("TC-048", "FR-038-AC-107")]
 #[test]
-fn tc_048_positive_document_selection_follows_qspec_map() {
+fn tc_048_positive_document_selection_follows_fspec_map() {
     let proposal = proposal_dir_of(&fixtures_dir());
     vector_selected_documents(&proposal).expect("published document selections");
     let fixture = "fixtures/positive-model-tuple-union.json";
@@ -249,7 +249,7 @@ fn read_package_with_document_override(
     document_override: Option<&[u8]>,
 ) -> Result<CheckedPackageV2ReadResult, String> {
     let bytes = fixture_support::canonical(package);
-    let evidence = qspec_inputs::evidence_for_published(
+    let evidence = fspec_inputs::evidence_for_published(
         package,
         name,
         domain_document,
@@ -390,7 +390,7 @@ struct ExpectedFailure {
 /// rule of AC-112 holds for it.
 const EXPECTED_FAILURES: &[ExpectedFailure] = &[];
 
-use qspec_inputs::replace_at;
+use fspec_inputs::replace_at;
 
 /// Sort fixture-authored structural ids by their typed wire order.
 fn typed_node_id(value: &Value) -> CheckedNodeId {
@@ -449,7 +449,7 @@ fn adverse_problems(base: &Value, adverse: &Value, expected: &[ExpectedFailure])
                 let flattened = entry.get("flattened").ok_or("no flattened member")?;
                 let mut control = base.clone();
                 replace_at(&mut control, pointer, flattened)?;
-                if !qspec_inputs::flat_body_control_passes(&read_package(&control)?) {
+                if !fspec_inputs::flat_body_control_passes(&read_package(&control)?) {
                     return Err("the flattened positive control is refused malformed_wire".into());
                 }
             }
@@ -488,7 +488,7 @@ fn adverse_problems(base: &Value, adverse: &Value, expected: &[ExpectedFailure])
 
 #[trace("TC-048", "FR-038-AC-107", "FR-038-AC-133")]
 #[test]
-fn tc_048_qspec_positive_fixtures_admit() {
+fn tc_048_fspec_positive_fixtures_admit() {
     let dir = fixtures_dir();
     let proposal = proposal_dir_of(&dir);
     let documents = vector_selected_documents(&proposal).expect("published document selections");
@@ -502,7 +502,7 @@ fn tc_048_qspec_positive_fixtures_admit() {
 
 #[trace("FR-349-AC-6", "FR-349-AC-8", "FR-349-AC-9")]
 #[test]
-fn qspec_positive_fixtures_expose_complete_public_typed_reads() {
+fn fspec_positive_fixtures_expose_complete_public_typed_reads() {
     let dir = fixtures_dir();
     let proposal = proposal_dir_of(&dir);
     let documents = vector_selected_documents(&proposal).expect("published document selections");
@@ -524,7 +524,7 @@ fn qspec_positive_fixtures_expose_complete_public_typed_reads() {
             .expect("published nodes");
         assert_eq!(wire_nodes.len(), admitted.graph().nodes.len());
         for (wire_node, node) in wire_nodes.iter().zip(&admitted.resolved_graph().nodes) {
-            assert_qspec_term_record(&node.body, &wire_node["body"], &catalog);
+            assert_fspec_term_record(&node.body, &wire_node["body"], &catalog);
         }
         let mut pending: Vec<&CheckedTerm> = admitted
             .graph()
@@ -623,15 +623,15 @@ fn qspec_positive_fixtures_expose_complete_public_typed_reads() {
     );
 }
 
-fn assert_qspec_term_record(term: &CheckedTerm, wire: &Value, catalog: &Value) {
+fn assert_fspec_term_record(term: &CheckedTerm, wire: &Value, catalog: &Value) {
     match term {
-        CheckedTerm::Literal { .. } => assert_qspec_literal_read(term, wire),
+        CheckedTerm::Literal { .. } => assert_fspec_literal_read(term, wire),
         CheckedTerm::Application {
             operation,
             arguments,
             ..
         } => {
-            assert_qspec_operation_record(
+            assert_fspec_operation_record(
                 operation.read().expect("admitted operation"),
                 &wire["operation"],
                 catalog,
@@ -639,24 +639,24 @@ fn assert_qspec_term_record(term: &CheckedTerm, wire: &Value, catalog: &Value) {
             let wire_arguments = wire["arguments"].as_array().expect("ordered arguments");
             assert_eq!(arguments.len(), wire_arguments.len());
             for (argument, expected) in arguments.iter().zip(wire_arguments) {
-                assert_qspec_term_record(argument, expected, catalog);
+                assert_fspec_term_record(argument, expected, catalog);
             }
         }
         CheckedTerm::Aggregate { members } => {
             let wire_members = wire["members"].as_array().expect("ordered members");
             assert_eq!(members.len(), wire_members.len());
             for (member, expected) in members.iter().zip(wire_members) {
-                assert_qspec_term_record(member, expected, catalog);
+                assert_fspec_term_record(member, expected, catalog);
             }
         }
         CheckedTerm::Binding { value, .. } => {
-            assert_qspec_term_record(value, &wire["value"], catalog);
+            assert_fspec_term_record(value, &wire["value"], catalog);
         }
         _ => {}
     }
 }
 
-fn assert_qspec_literal_read(term: &CheckedTerm, wire: &Value) {
+fn assert_fspec_literal_read(term: &CheckedTerm, wire: &Value) {
     let read = term.literal_read().expect("admitted literal read");
     assert_eq!(serde_json::to_value(read.type_id).unwrap(), wire["type"]);
     assert_eq!(read.kind.as_wire(), wire["value_kind"].as_str().unwrap());
@@ -713,7 +713,7 @@ fn assert_qspec_literal_read(term: &CheckedTerm, wire: &Value) {
     }
 }
 
-fn assert_qspec_operation_record(
+fn assert_fspec_operation_record(
     read: filament_contract_model::CheckedOperationRead<'_>,
     wire: &Value,
     catalog: &Value,
@@ -918,7 +918,7 @@ fn assert_qspec_operation_record(
 
 #[trace("FR-349-AC-6", "FR-349-AC-8", "FR-349-AC-9")]
 #[test]
-fn qspec_admitted_values_members_and_catalog_constraints_are_exact() {
+fn fspec_admitted_values_members_and_catalog_constraints_are_exact() {
     let dir = fixtures_dir();
     let proposal = proposal_dir_of(&dir);
     let documents = vector_selected_documents(&proposal).expect("published document selections");
@@ -1006,7 +1006,7 @@ fn qspec_admitted_values_members_and_catalog_constraints_are_exact() {
 
 #[trace("FR-349-AC-8", "FR-349-AC-9")]
 #[test]
-fn qspec_indexed_operation_member_follows_projected_graph_positions() {
+fn fspec_indexed_operation_member_follows_projected_graph_positions() {
     let dir = fixtures_dir();
     let proposal = proposal_dir_of(&dir);
     let documents = vector_selected_documents(&proposal).expect("published document selections");
@@ -1093,7 +1093,7 @@ fn qspec_indexed_operation_member_follows_projected_graph_positions() {
 
 #[trace("TC-048", "FR-038-AC-225")]
 #[test]
-fn tc_048_qspec_union_values_admit_under_their_application_keys() {
+fn tc_048_fspec_union_values_admit_under_their_application_keys() {
     let (wire, admitted) = read_positive(
         &fixtures_dir(),
         "positive-union-nodes.json",
@@ -1134,7 +1134,7 @@ fn tc_048_qspec_union_values_admit_under_their_application_keys() {
 
 #[trace("TC-048", "FR-038-AC-226")]
 #[test]
-fn tc_048_qspec_union_values_refuse_duplicate_ids_and_invalid_bodies() {
+fn tc_048_fspec_union_values_refuse_duplicate_ids_and_invalid_bodies() {
     let fixtures = fixtures_dir();
     let base = read_json(&fixtures.join("positive-union-nodes.json")).expect("FSpec fixture");
     assert!(matches!(
@@ -1227,7 +1227,7 @@ fn read_positive_package(
 
 #[trace("TC-048", "FR-038-AC-176")]
 #[test]
-fn tc_048_qspec_all_positive_packages_and_owner_identities() {
+fn tc_048_fspec_all_positive_packages_and_owner_identities() {
     let fixtures = fixtures_dir();
     let proposal = proposal_dir_of(&fixtures);
     let documents = vector_selected_documents(&proposal).expect("published document selections");
@@ -1395,7 +1395,7 @@ fn tc_048_published_nominal_structural_ids_survive_reader_and_writer() {
 /// semantics merely because its term list is empty.
 #[trace("TC-280", "FR-038-AC-479", "FR-038-AC-480")]
 #[test]
-fn qspec_dimensionless_derived_is_not_a_base_root_or_term_target() {
+fn fspec_dimensionless_derived_is_not_a_base_root_or_term_target() {
     let fixtures = fixtures_dir();
     let name = "positive-nominal-identities.json";
     let document = proposal_dir_of(&fixtures).join(DOMAIN_DOCUMENT);
@@ -1456,7 +1456,7 @@ fn qspec_dimensionless_derived_is_not_a_base_root_or_term_target() {
 /// the reader must refuse the exact dimension-body defect at its own locus.
 #[trace("FR-038-AC-478", "FR-038-AC-480")]
 #[test]
-fn qspec_explicit_dimension_base_adverses_refuse_at_body_loci() {
+fn fspec_explicit_dimension_base_adverses_refuse_at_body_loci() {
     let fixtures = fixtures_dir();
     let baseline = read_json(&fixtures.join("positive-nominal-identities.json"))
         .expect("published nominal package");
@@ -1518,7 +1518,7 @@ fn qspec_explicit_dimension_base_adverses_refuse_at_body_loci() {
 
 #[trace("TC-048", "FR-038-AC-176")]
 #[test]
-fn tc_048_qspec_positive_inputs_fail_closed() {
+fn tc_048_fspec_positive_inputs_fail_closed() {
     let fixtures = fixtures_dir();
     let document = proposal_dir_of(&fixtures).join(DOMAIN_DOCUMENT);
     let missing = read_positive(&fixtures, "positive-absent.json", &document)
@@ -1624,7 +1624,7 @@ fn tc_048_package_name_is_required_and_retired_identity_members_refuse() {
 
 #[trace("FR-038-AC-145")]
 #[test]
-fn tc_226_qspec_recursive_records_admit() {
+fn tc_226_fspec_recursive_records_admit() {
     let path = fixtures_dir().join(RECURSIVE);
     let package = read_json(&path).unwrap_or_else(|why| panic!("{why}"));
     assert_eq!(reading_of(&package).expect("fixture reading"), "admitted");
@@ -1649,7 +1649,7 @@ fn assert_no_problems(problems: &[String]) {
 /// `malformed_wire`, with no identity refreshed.
 #[trace("TC-048", "FR-038-AC-112", "FR-038-AC-118", "FR-038-AC-133")]
 #[test]
-fn tc_048_qspec_adverse_mutations_refuse_as_recorded() {
+fn tc_048_fspec_adverse_mutations_refuse_as_recorded() {
     let (base, adverse) = adverse_inputs();
     assert_no_problems(&adverse_problems(&base, &adverse, EXPECTED_FAILURES));
     let grammar = adverse["body_grammar_mutations"].as_array().expect("list");
@@ -1709,7 +1709,7 @@ fn tc_048_a_recorded_outcome_without_a_cause_is_met_by_its_code() {
 
 #[trace("TC-048", "FR-038-AC-112")]
 #[test]
-fn tc_048_qspec_adverse_run_fails_closed() {
+fn tc_048_fspec_adverse_run_fails_closed() {
     // The checkout: unset, empty and a path without the fixtures all fail.
     assert!(fixtures_dir_of(None).is_err());
     assert!(fixtures_dir_of(Some("")).is_err());
@@ -1717,7 +1717,7 @@ fn tc_048_qspec_adverse_run_fails_closed() {
     // The file: missing and not JSON both fail.
     let dir = fixtures_dir();
     assert!(read_json(&dir.join("no-such-adverse.json")).is_err());
-    let scratch = std::env::temp_dir().join(format!("conformance-qspec-{}", std::process::id()));
+    let scratch = std::env::temp_dir().join(format!("conformance-fspec-{}", std::process::id()));
     std::fs::write(&scratch, b"not json").expect("the scratch file is written");
     let unreadable = read_json(&scratch);
     std::fs::remove_file(&scratch).expect("the scratch file is removed");
@@ -1828,16 +1828,16 @@ fn tc_048_qspec_adverse_run_fails_closed() {
     );
 }
 
-#[path = "../it/support/qspec_read_proof.rs"]
-mod qspec_read_proof;
-use qspec_read_proof::read_and_account;
-use qspec_read_proof::read_and_account as fixture_read;
+#[path = "../it/support/fspec_read_proof.rs"]
+mod fspec_read_proof;
+use fspec_read_proof::read_and_account;
+use fspec_read_proof::read_and_account as fixture_read;
 
-fn measure_qspec_read_requests(read: impl FnOnce()) -> u64 {
+fn measure_fspec_read_requests(read: impl FnOnce()) -> u64 {
     allocation_counter::measure(read).bytes_total
 }
 
-fn without_qspec_instrumentation<T>(operation: impl FnOnce() -> T) -> T {
+fn without_fspec_instrumentation<T>(operation: impl FnOnce() -> T) -> T {
     let mut result = None;
     allocation_counter::opt_out(|| {
         result = Some(std::panic::catch_unwind(std::panic::AssertUnwindSafe(

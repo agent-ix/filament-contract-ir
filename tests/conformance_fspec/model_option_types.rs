@@ -15,7 +15,7 @@ fn vectors() -> Value {
         .expect("the current FSpec option corpus")
 }
 
-#[path = "../it/support/qspec_option_inputs.rs"]
+#[path = "../it/support/fspec_option_inputs.rs"]
 mod inputs;
 use inputs::{apply, document, model_id, Input};
 

@@ -28,7 +28,7 @@ pub type Reader<'a> = &'a dyn Fn(&mut NativeJoinBudget) -> CheckedPackageV2Budge
 
 fn all_families(budget: &mut NativeJoinBudget) -> CheckedPackageV2BudgetedReadResult {
     let value = v2_all_families();
-    crate::qspec_read_proof::read_budget_and_account(
+    crate::fspec_read_proof::read_budget_and_account(
         &canonical(&value),
         CheckedPackageReadLimits::bounded(),
         &evidence_for(&value),

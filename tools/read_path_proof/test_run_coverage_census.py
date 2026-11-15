@@ -152,7 +152,7 @@ class ArtifactCustody(unittest.TestCase):
             binary = root / "red-original"
             binary.write_text("#!/usr/bin/python3\nprint('test original::red ... FAILED')\nprint('assertion failed: reader')\nraise SystemExit(1)\n")
             binary.chmod(0o700)
-            args = SimpleNamespace(out=root, mode="sample", repo=root, original_test=[], corpus="qspec")
+            args = SimpleNamespace(out=root, mode="sample", repo=root, original_test=[], corpus="fspec")
             with patch.object(runner, "LOCKED", []), patch.object(runner, "validate_snapshot"), patch.object(runner, "require_space"):
                 with self.assertRaises(runner.RunError) as raised:
                     runner.run_original_corpus(args, binary, {}, {}, ["original::red"])

@@ -118,13 +118,13 @@ fn assert_manifest_refusal(id: &str, expected_locus: &str, node_index: usize) {
 
 #[test]
 #[trace("TC-946", "FR-038-AC-435")]
-fn qspec_protocol_mutation_v13_refuses_wrong_result_type() {
+fn fspec_protocol_mutation_v13_refuses_wrong_result_type() {
     assert_manifest_refusal("V13", "/semantic_graph/nodes/64", 64);
 }
 
 #[test]
 #[trace("TC-946", "FR-038-AC-436")]
-fn qspec_protocol_mutation_v14_refuses_state_clause_protocol_member() {
+fn fspec_protocol_mutation_v14_refuses_state_clause_protocol_member() {
     assert_manifest_refusal("V14", "/semantic_graph/nodes/54", 54);
 }
 
@@ -137,7 +137,7 @@ fn qspec_protocol_mutation_v14_refuses_state_clause_protocol_member() {
     "FR-038-AC-458",
     "FR-038-AC-459"
 )]
-fn current_qspec_protocol_reader_refusals_preserve_published_provenance() {
+fn current_fspec_protocol_reader_refusals_preserve_published_provenance() {
     let fixtures = fixtures_dir();
     let manifest = read_json(&fixtures.join("protocol-node-mutation-manifest.json"))
         .expect("FSpec protocol mutation manifest");
@@ -348,7 +348,7 @@ fn apply_layout_edit(package: &mut Value, edit: &Value) {
 
 #[test]
 #[trace("TC-048", "FR-038-AC-453")]
-fn current_qspec_protocol_layout_rows_refuse_at_exact_node_pointer() {
+fn current_fspec_protocol_layout_rows_refuse_at_exact_node_pointer() {
     let fixtures = fixtures_dir();
     let layout = read_json(&fixtures.join("protocol-node-layout-rows.json"))
         .expect("current FSpec protocol layout rows");
@@ -410,7 +410,7 @@ fn current_qspec_protocol_layout_rows_refuse_at_exact_node_pointer() {
 
 #[test]
 #[trace("TC-048", "FR-038-AC-454")]
-fn current_qspec_protocol_positive_packages_remain_admitted() {
+fn current_fspec_protocol_positive_packages_remain_admitted() {
     let fixtures = fixtures_dir();
     let proposal = proposal_dir_of(&fixtures);
     let documents = vector_selected_documents(&proposal).expect("FSpec document selections");
@@ -466,7 +466,7 @@ fn protocol_node_index(package: &Value, operator: &str) -> usize {
 
 #[test]
 #[trace("TC-048", "FR-038-AC-454")]
-fn current_qspec_protocol_enumerations_remain_admitted() {
+fn current_fspec_protocol_enumerations_remain_admitted() {
     let fixtures = fixtures_dir();
     let proposal = proposal_dir_of(&fixtures);
     let schema = read_json(&proposal.join("schema.json")).expect("FSpec checked-package schema");
@@ -596,7 +596,7 @@ fn append_protocol_control(package: &mut Value, node: Value, name: &str) {
 
 #[test]
 #[trace("TC-048", "FR-038-AC-286")]
-fn current_qspec_schema_valid_delivery_bounds_refuse_at_channel_node() {
+fn current_fspec_schema_valid_delivery_bounds_refuse_at_channel_node() {
     let fixtures = fixtures_dir();
     let base = read_json(&fixtures.join("protocol-node-base.json")).expect("FSpec protocol base");
     let manifest = read_json(&fixtures.join("protocol-node-mutation-manifest.json"))
@@ -612,7 +612,7 @@ fn current_qspec_schema_valid_delivery_bounds_refuse_at_channel_node() {
         let channel = protocol_node_index(&package, "channel");
         package["semantic_graph"]["nodes"][channel]["body"]["arguments"][4]["value"]["value"] =
             Value::from(spelling);
-        assert_current_qspec_protocol_bodies_valid(&package, "channel");
+        assert_current_fspec_protocol_bodies_valid(&package, "channel");
 
         let result = read(&package, &document);
         let CheckedPackageV2ReadResult::Refused(refusal) = result else {
@@ -642,7 +642,7 @@ fn assert_appended_protocol_node_admits(
 ) {
     let mut package = base.clone();
     append_protocol_control(&mut package, node, "Fence");
-    assert_current_qspec_protocol_bodies_valid(&package, "fence");
+    assert_current_fspec_protocol_bodies_valid(&package, "fence");
     let result = read(&package, document);
     assert!(
         matches!(&result, CheckedPackageV2ReadResult::Admitted(_)),
@@ -691,7 +691,7 @@ fn published_bindings(fixtures: &std::path::Path, operator: &str, values: Vec<Va
     )
 }
 
-fn assert_current_qspec_protocol_bodies_valid(package: &Value, operator: &str) {
+fn assert_current_fspec_protocol_bodies_valid(package: &Value, operator: &str) {
     let schema = read_json(&proposal_dir_of(&fixtures_dir()).join("schema.json"))
         .expect("current FSpec checked-package schema");
     let application_schema = serde_json::json!({
@@ -725,7 +725,7 @@ fn assert_current_qspec_protocol_bodies_valid(package: &Value, operator: &str) {
     assert!(found, "published {operator} body exists");
 }
 
-fn qspec_event_package() -> (Value, std::path::PathBuf, Value) {
+fn fspec_event_package() -> (Value, std::path::PathBuf, Value) {
     let fixtures = fixtures_dir();
     let base = read_json(&fixtures.join("protocol-node-base.json")).expect("FSpec protocol base");
     let manifest = read_json(&fixtures.join("protocol-node-mutation-manifest.json"))
@@ -800,9 +800,9 @@ fn qspec_event_package() -> (Value, std::path::PathBuf, Value) {
 
 #[test]
 #[trace("TC-048", "FR-038-AC-454")]
-fn current_qspec_appended_event_layout_remains_admitted() {
-    let (package, document, _) = qspec_event_package();
-    assert_current_qspec_protocol_bodies_valid(&package, "event");
+fn current_fspec_appended_event_layout_remains_admitted() {
+    let (package, document, _) = fspec_event_package();
+    assert_current_fspec_protocol_bodies_valid(&package, "event");
     let result = read(&package, &document);
     assert!(
         matches!(&result, CheckedPackageV2ReadResult::Admitted(_)),
@@ -830,9 +830,9 @@ fn append_nested_control(
 
 #[test]
 #[trace("TC-048", "FR-038-AC-454")]
-fn current_qspec_appended_await_layout_remains_admitted() {
+fn current_fspec_appended_await_layout_remains_admitted() {
     let fixtures = fixtures_dir();
-    let (mut package, document, event_template) = qspec_event_package();
+    let (mut package, document, event_template) = fspec_event_package();
     let anchor = package["semantic_graph"]["nodes"][protocol_node_index(&package, "event")]
         ["node_id"]
         .clone();
@@ -926,9 +926,9 @@ fn current_qspec_appended_await_layout_remains_admitted() {
         ],
     );
     append_protocol_control(&mut package, awaited, "Await");
-    assert_current_qspec_protocol_bodies_valid(&package, "await");
-    assert_current_qspec_protocol_bodies_valid(&package, "event");
-    assert_current_qspec_protocol_bodies_valid(&package, "fence");
+    assert_current_fspec_protocol_bodies_valid(&package, "await");
+    assert_current_fspec_protocol_bodies_valid(&package, "event");
+    assert_current_fspec_protocol_bodies_valid(&package, "fence");
     let result = read(&package, &document);
     assert!(
         matches!(&result, CheckedPackageV2ReadResult::Admitted(_)),
@@ -938,7 +938,7 @@ fn current_qspec_appended_await_layout_remains_admitted() {
 
 #[test]
 #[trace("TC-048", "FR-038-AC-454")]
-fn current_qspec_appended_fence_layouts_remain_admitted() {
+fn current_fspec_appended_fence_layouts_remain_admitted() {
     let fixtures = fixtures_dir();
     let base = read_json(&fixtures.join("protocol-node-base.json")).expect("FSpec protocol base");
     let layout = read_json(&fixtures.join("protocol-node-layout-rows.json"))

@@ -207,9 +207,9 @@ fn expected_body(body: &ShapeBody) -> Value {
 }
 
 fn main() {
-    let qspec =
+    let fspec =
         std::env::var_os("FILAMENT_SPECIFICATION_DIR").expect("FSpec source checkout is required");
-    let proposal = Path::new(&qspec).join("proposals/checked-package-v2");
+    let proposal = Path::new(&fspec).join("proposals/checked-package-v2");
     let vectors = read(&proposal.join("collection-population-type-vectors.json"));
     let members = read(&proposal.join("model-member-type-vectors.json"));
     assert_eq!(

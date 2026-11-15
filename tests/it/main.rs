@@ -100,8 +100,8 @@ mod nfr003_invalid_input;
 mod output_mapping;
 mod public_interface;
 mod source_obligation;
+mod source_obligation_filament;
 mod source_obligation_ir_v2;
-mod source_obligation_quire;
 mod std001_code;
 mod string_edge_gate;
 
@@ -109,15 +109,15 @@ mod nominal_reads;
 
 mod checked_package_v2_whole_read_accounting;
 
-#[path = "support/qspec_read_proof.rs"]
-mod qspec_read_proof;
-use qspec_read_proof::read_and_account;
+#[path = "support/fspec_read_proof.rs"]
+mod fspec_read_proof;
+use fspec_read_proof::read_and_account;
 
-fn measure_qspec_read_requests(read: impl FnOnce()) -> u64 {
+fn measure_fspec_read_requests(read: impl FnOnce()) -> u64 {
     allocation_counter::measure(read).bytes_total
 }
 
-fn without_qspec_instrumentation<T>(operation: impl FnOnce() -> T) -> T {
+fn without_fspec_instrumentation<T>(operation: impl FnOnce() -> T) -> T {
     let mut result = None;
     allocation_counter::opt_out(|| {
         result = Some(std::panic::catch_unwind(std::panic::AssertUnwindSafe(

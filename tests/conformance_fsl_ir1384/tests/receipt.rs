@@ -8,15 +8,15 @@
 use std::{env, fs, path::PathBuf};
 
 use ix_trace_rs::trace;
-use qsl_analyze::monitor_root::{
+use fsl_analyze::monitor_root::{
     emit_plan_root, AdmittedPlanAuthority, PlanAuthoritySelection, PlanAuthorityValidationCaps,
     PlanRoot, PlanRootRequest,
 };
-use qsl_foundation::SourceIdentity;
-use qsl_replay::spine::SpineLimits;
-use qsl_replay::{MonitorTarget, TimingObligationSettings};
-use qsl_semantics::check::TimeSourceKind;
-use qsl_semantics::library::LibraryName;
+use fsl_foundation::SourceIdentity;
+use fsl_replay::spine::SpineLimits;
+use fsl_replay::{MonitorTarget, TimingObligationSettings};
+use fsl_semantics::check::TimeSourceKind;
+use fsl_semantics::library::LibraryName;
 use filament_contract_model::{
     read_checked_package, CheckedMonitorClock, CheckedNodeId, CheckedOccurrence,
     CheckedOccurrenceRole, CheckedPackageDispatchResult, CheckedPackageReadLimits,
@@ -27,7 +27,7 @@ use filament_contract_model::{
     SelectedMonitorTypeClosureErrorCode,
 };
 use filament_exact::{Cancel, Integer, Rational};
-use quire_observation::authority::{self, clock, progress, SubjectSelection};
+use filament_observation::authority::{self, clock, progress, SubjectSelection};
 use serde_json::{json, Value};
 
 #[path = "support/observation.rs"]
@@ -61,9 +61,9 @@ fn target() -> MonitorTarget {
     }
 }
 
-fn domain_document(qsl: &std::path::Path) -> Vec<u8> {
+fn domain_document(fsl: &std::path::Path) -> Vec<u8> {
     let mut document: Value = serde_json::from_slice(
-        &fs::read(qsl.join("examples/config-version/model.semantic-ir.json"))
+        &fs::read(fsl.join("examples/config-version/model.semantic-ir.json"))
             .expect("owner domain package by reference"),
     )
     .expect("domain package JSON");
@@ -89,9 +89,9 @@ fn authored(time_source: &str) -> String {
     )
 }
 
-fn root_of(qsl: &std::path::Path, time_source: &str) -> PlanRoot {
-    let document = domain_document(qsl);
-    let packages = qsl_semantics::model::intake::package_input([document.as_slice()]).unwrap();
+fn root_of(fsl: &std::path::Path, time_source: &str) -> PlanRoot {
+    let document = domain_document(fsl);
+    let packages = fsl_semantics::model::intake::package_input([document.as_slice()]).unwrap();
     let source = SourceIdentity::new("agent-ix", "monitor-root");
     let name = LibraryName::new("fixture").unwrap();
     let text = authored(time_source);
@@ -158,8 +158,8 @@ struct Emitted {
     expected_progress: Vec<u8>,
 }
 
-fn emit(qsl: &std::path::Path, time_source: &str) -> Emitted {
-    let root = root_of(qsl, time_source);
+fn emit(fsl: &std::path::Path, time_source: &str) -> Emitted {
+    let root = root_of(fsl, time_source);
     let (progress, subject) = observation::admitted(Some(vec![row(&root)]));
     let expected_progress = progress.association_canonical_bytes().unwrap().to_vec();
     let expected_order = root
@@ -186,7 +186,7 @@ fn emit(qsl: &std::path::Path, time_source: &str) -> Emitted {
             &mut NativeJoinBudget::new(100_000_000, 100_000_000).with_read_storage_limit(1 << 28),
             NativeJoinLocus {
                 source: NativeJoinLocusSource::ReachedRow(0),
-                form: "qsl_authority_selection",
+                form: "fsl_authority_selection",
             },
         )
         .expect("FSL admits the same-emission authority");
@@ -305,7 +305,7 @@ fn code(error: &SelectedMonitorTypeClosureError) -> SelectedMonitorAuthorityErro
     }
 }
 
-fn qsl_dir() -> PathBuf {
+fn fsl_dir() -> PathBuf {
     env::var_os("FILAMENT_SPEC_LANGUAGE_DIR")
         .map(PathBuf::from)
         .expect("the lane reads the owner's domain package from FILAMENT_SPEC_LANGUAGE_DIR")
@@ -313,9 +313,9 @@ fn qsl_dir() -> PathBuf {
 
 #[trace("TC-471", "FR-361-AC-1", "FR-361-AC-4", "FR-361-AC-6")]
 #[test]
-fn genuine_qsl_authority_binds_dense_and_tick_emissions() {
-    let qsl = qsl_dir();
-    let qsl = qsl.as_path();
+fn genuine_fsl_authority_binds_dense_and_tick_emissions() {
+    let fsl = fsl_dir();
+    let fsl = fsl.as_path();
     for (label, declaration, period) in [
         (
             "tick",
@@ -324,7 +324,7 @@ fn genuine_qsl_authority_binds_dense_and_tick_emissions() {
         ),
         ("dense", "time M dense unit ms;", None),
     ] {
-        let emitted = emit(qsl, declaration);
+        let emitted = emit(fsl, declaration);
         let authority = &emitted.authority;
         let package = authority.admitted_package();
         let row = ir_row(authority);
@@ -450,10 +450,10 @@ fn genuine_qsl_authority_binds_dense_and_tick_emissions() {
 #[trace("TC-471", "FR-361-AC-2", "FR-361-AC-6")]
 #[test]
 fn mismatched_emissions_refuse_with_typed_authority_errors() {
-    let qsl = qsl_dir();
-    let qsl = qsl.as_path();
+    let fsl = fsl_dir();
+    let fsl = fsl.as_path();
     let emitted = emit(
-        qsl,
+        fsl,
         "time M tick M::ConfigVersion::attemptUpdate period 2 ms unit ms;",
     );
     let authority = &emitted.authority;
@@ -578,7 +578,7 @@ fn mismatched_emissions_refuse_with_typed_authority_errors() {
     );
 
     // The dense emission's authority refuses the tick emission's package.
-    let dense = emit(qsl, "time M dense unit ms;");
+    let dense = emit(fsl, "time M dense unit ms;");
     let dense_row = ir_row(&dense.authority);
     let error = project(authority, package, &dense_row, &mut big()).unwrap_err();
     assert_eq!(
@@ -617,14 +617,14 @@ fn mismatched_emissions_refuse_with_typed_authority_errors() {
 #[test]
 fn genuine_authority_prepays_a_large_clause_and_its_refusal_diagnostic() {
     let emitted = emit(
-        qsl_dir().as_path(),
+        fsl_dir().as_path(),
         "time M tick M::ConfigVersion::attemptUpdate period 2 ms unit ms;",
     );
     let authority = &emitted.authority;
     let package = authority.admitted_package();
     let plan = package.monitor_plans().next().unwrap();
     let mut clause = plan.clause().clone();
-    let prefix = "selected-qsl-clause".repeat(2048);
+    let prefix = "selected-fsl-clause".repeat(2048);
     clause
         .path
         .push(filament_contract_model::CheckedNodePathSegment::Name(

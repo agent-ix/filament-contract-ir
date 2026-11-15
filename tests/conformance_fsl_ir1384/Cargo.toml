@@ -14,12 +14,12 @@ ix-trace-rs = { git = "https://github.com/agent-ix/ix-trace-rs", branch = "main"
 filament-contract-model = { path = "../../crates/filament-contract-model" }
 filament-exact = { git = "https://github.com/agent-ix/filament-exact", branch = "main" }
 quire-canonical = { git = "https://github.com/agent-ix/quire-canonical", branch = "main" }
-quire-observation = { git = "https://github.com/agent-ix/filament-observation", branch = "main" }
+filament-observation = { git = "https://github.com/agent-ix/filament-observation", branch = "main" }
 serde_json = "1"
-qsl-analyze = { git = "https://github.com/agent-ix/filament-spec-language", branch = "main" }
-qsl-foundation = { git = "https://github.com/agent-ix/filament-spec-language", branch = "main" }
-qsl-replay = { git = "https://github.com/agent-ix/filament-spec-language", branch = "main" }
-qsl-semantics = { git = "https://github.com/agent-ix/filament-spec-language", branch = "main" }
+fsl-analyze = { git = "https://github.com/agent-ix/filament-spec-language", branch = "main" }
+fsl-foundation = { git = "https://github.com/agent-ix/filament-spec-language", branch = "main" }
+fsl-replay = { git = "https://github.com/agent-ix/filament-spec-language", branch = "main" }
+fsl-semantics = { git = "https://github.com/agent-ix/filament-spec-language", branch = "main" }
 
 # The producer and the consumer must share this checkout's model crate.
 [patch."https://github.com/agent-ix/filament-contract-ir"]

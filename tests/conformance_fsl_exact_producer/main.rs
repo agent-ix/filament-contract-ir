@@ -235,11 +235,11 @@ fn fresh_fsl_four_points_survive_source_drop_at_the_public_accessor() {
         String::from_utf8_lossy(&produced.stderr)
     );
     let wire: Value = serde_json::from_slice(&produced.stdout).expect("fresh producer envelope");
-    let qspec = env::var_os("FILAMENT_SPECIFICATION_DIR")
+    let fspec = env::var_os("FILAMENT_SPECIFICATION_DIR")
         .map(PathBuf::from)
         .expect("explicit producer lane requires FILAMENT_SPECIFICATION_DIR");
     let schema: Value = serde_json::from_slice(
-        &fs::read(qspec.join("proposals/checked-package-v2/schema.json"))
+        &fs::read(fspec.join("proposals/checked-package-v2/schema.json"))
             .expect("authoritative FSpec carrier schema by reference"),
     )
     .expect("FSpec schema JSON");

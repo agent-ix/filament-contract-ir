@@ -22,7 +22,7 @@ path = "tests/selected_population_public.rs"
 test = false
 
 # By-reference consumer qualification needs the selected FSpec checkout and
-# runs explicitly with conformance-qspec, outside ordinary workspace tests.
+# runs explicitly with conformance-fspec, outside ordinary workspace tests.
 [[test]]
 name = "monitor_plan_public"
 path = "tests/monitor_plan_public.rs"
@@ -37,8 +37,8 @@ fault-injection = []
 # Typed operation inputs for downstream test consumers only.
 test-support = []
 # Strict selected monitor unit tests use FSpec fixtures by reference only in
-# the explicit conformance-qspec lane, not the default workspace test gate.
-qspec-conformance = []
+# the explicit conformance-fspec lane, not the default workspace test gate.
+fspec-conformance = []
 
 [dependencies]
 ix-trace-rs = { version = "0.1", git = "https://github.com/agent-ix/ix-trace-rs", branch = "main" }

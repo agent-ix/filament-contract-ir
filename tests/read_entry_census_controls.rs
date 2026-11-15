@@ -5,18 +5,18 @@
 //! The bypass tests pass their original reader oracle but MUST fail the
 //! separate compiler census; this binary is outside the default test suite.
 
-#[path = "it/support/qspec_read_proof.rs"]
-mod qspec_read_proof;
+#[path = "it/support/fspec_read_proof.rs"]
+mod fspec_read_proof;
 use filament_contract_model::{
     CheckedPackageEvidence, CheckedPackageReadLimits, CheckedPackageRefusalCode, CheckedPackageV2,
     CheckedPackageV2ReadResult,
 };
-use qspec_read_proof::read_and_account;
+use fspec_read_proof::read_and_account;
 
-fn measure_qspec_read_requests(read: impl FnOnce()) -> u64 {
+fn measure_fspec_read_requests(read: impl FnOnce()) -> u64 {
     allocation_counter::measure(read).bytes_total
 }
-fn without_qspec_instrumentation<T>(operation: impl FnOnce() -> T) -> T {
+fn without_fspec_instrumentation<T>(operation: impl FnOnce() -> T) -> T {
     let mut result = None;
     allocation_counter::opt_out(|| {
         result = Some(std::panic::catch_unwind(std::panic::AssertUnwindSafe(

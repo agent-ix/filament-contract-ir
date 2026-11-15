@@ -8795,7 +8795,7 @@ fn refinement_tables_are_charged_to_the_read_budget() {
     );
     let bytes = canonical_indexed(&package);
     let reader = |budget: &mut NativeJoinBudget| {
-        crate::qspec_read_proof::read_budget_and_account(
+        crate::fspec_read_proof::read_budget_and_account(
             &bytes,
             CheckedPackageReadLimits::bounded(),
             &evidence,
@@ -8836,7 +8836,7 @@ fn refinement_local_dependencies_are_charged_exactly() {
     let graph_requests = |package: &Value, evidence: &CheckedPackageEvidence| {
         let bytes = canonical_indexed(package);
         let read = move |budget: &mut NativeJoinBudget| {
-            crate::qspec_read_proof::read_budget_and_account(
+            crate::fspec_read_proof::read_budget_and_account(
                 &bytes,
                 CheckedPackageReadLimits::bounded(),
                 evidence,
@@ -8869,7 +8869,7 @@ fn refinement_local_dependencies_are_charged_exactly() {
 #[trace("TC-472", "FR-038-AC-511")]
 #[test]
 fn refinement_rows_leave_no_more_unpaid_memory_than_the_empty_refinement() {
-    use crate::qspec_read_proof::observation::{measure_at, unpaid, Counter, UNPAID_BOUND};
+    use crate::fspec_read_proof::observation::{measure_at, unpaid, Counter, UNPAID_BOUND};
     struct Allocations;
     impl Counter for Allocations {
         fn measure(read: impl FnOnce()) -> u64 {

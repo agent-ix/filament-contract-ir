@@ -441,7 +441,7 @@ fn exact_and_above_native_budgets_preserve_the_original_model_views_and_lowering
         );
         // Shared oracle executes every node's kind/term/model/operation views,
         // population projections, lowering result and canonical output bytes.
-        qspec_read_proof::assert_budgeted_results_equal(
+        fspec_read_proof::assert_budgeted_results_equal(
             &reference.result,
             &sufficient.result,
             "original all-families exact/above views",
@@ -473,7 +473,7 @@ fn full_native_boundaries_cover_seeded_work_on_the_original_genuine_package() {
     seed.accounted_charge(NativeJoinChargeKind::Storage, 2, locus)
         .expect("prior logical storage");
     let reference =
-        qspec_read_proof::measure_seeded(&bytes, &evidence, limits, seed.read_proof_snapshot());
+        fspec_read_proof::measure_seeded(&bytes, &evidence, limits, seed.read_proof_snapshot());
     assert!(
         matches!(
             reference.result,
@@ -481,7 +481,7 @@ fn full_native_boundaries_cover_seeded_work_on_the_original_genuine_package() {
         ),
         "the original genuine package must admit"
     );
-    let (_, results, complete) = qspec_read_proof::full_native_boundaries(
+    let (_, results, complete) = fspec_read_proof::full_native_boundaries(
         &bytes,
         limits,
         &evidence,
@@ -553,12 +553,12 @@ fn consecutive_reads_charge_each_delta_to_the_same_caller_budget() {
     );
 }
 
-#[path = "it/support/qspec_read_proof.rs"]
-mod qspec_read_proof;
-use qspec_read_proof::read_and_account;
-use qspec_read_proof::read_and_account as fixture_read;
+#[path = "it/support/fspec_read_proof.rs"]
+mod fspec_read_proof;
+use fspec_read_proof::read_and_account;
+use fspec_read_proof::read_and_account as fixture_read;
 
-fn measure_qspec_read_requests(read: impl FnOnce()) -> u64 {
+fn measure_fspec_read_requests(read: impl FnOnce()) -> u64 {
     if REQUESTED.with(Cell::get) {
         allocation_counter::measure(read).bytes_total
     } else {
@@ -566,7 +566,7 @@ fn measure_qspec_read_requests(read: impl FnOnce()) -> u64 {
     }
 }
 
-fn without_qspec_instrumentation<T>(operation: impl FnOnce() -> T) -> T {
+fn without_fspec_instrumentation<T>(operation: impl FnOnce() -> T) -> T {
     let previous = REQUESTED.with(|requested| requested.replace(false));
     let restore = RestoreRequested(previous);
     let mut result = None;

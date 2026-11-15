@@ -6,8 +6,8 @@
 //! five-stratum grammar of merged FSpec FR-322 "Body grammar"), the order of
 //! its refusals ahead of every identity check, the fixed 128-container depth
 //! cap, and the absence of recursion that follows the package's size.
-//! FR-038-AC-118 is `tests/conformance_qspec`, which runs FSpec's own
-//! mutations through `make conformance-qspec`.
+//! FR-038-AC-118 is `tests/conformance_fspec`, which runs FSpec's own
+//! mutations through `make conformance-fspec`.
 //!
 //! Every case builds its package in-repo from this crate's public vocabulary;
 //! every expectation is written out.

@@ -5,20 +5,20 @@
 //! The dedicated binary retains its own allocator; this binary already has
 //! allocation-counter's global allocator. Both use exactly the same oracle.
 
+#[path = "support/fspec_fma_inputs.rs"]
+mod fspec_fma_inputs;
+#[path = "support/fspec_inputs.rs"]
+mod fspec_inputs;
+#[path = "support/fspec_option_inputs.rs"]
+mod fspec_option_inputs;
+#[path = "support/fspec_protocol_location_inputs.rs"]
+mod fspec_protocol_location_inputs;
+#[path = "support/fspec_text_inputs.rs"]
+mod fspec_text_inputs;
+#[path = "support/fspec_tuple_inputs.rs"]
+mod fspec_tuple_inputs;
 #[path = "support/read_allocation_proof.rs"]
 mod proof;
-#[path = "support/qspec_fma_inputs.rs"]
-mod qspec_fma_inputs;
-#[path = "support/qspec_inputs.rs"]
-mod qspec_inputs;
-#[path = "support/qspec_option_inputs.rs"]
-mod qspec_option_inputs;
-#[path = "support/qspec_protocol_location_inputs.rs"]
-mod qspec_protocol_location_inputs;
-#[path = "support/qspec_text_inputs.rs"]
-mod qspec_text_inputs;
-#[path = "support/qspec_tuple_inputs.rs"]
-mod qspec_tuple_inputs;
 use crate::support::checked_package::{
     canonical, evidence_for, index_fixture_node_ids, positive_operation_identities, settle,
     v2_all_families, v2_nominal,
@@ -124,7 +124,7 @@ fn original_protocol_term_tree_prepays_each_reserved_walk_growth() {
     let evidence = evidence_for(&wire);
     let limits = CheckedPackageReadLimits::bounded();
     let plain = crate::read_and_account(&bytes, limits, &evidence);
-    let (reference, events) = crate::qspec_read_proof::observe_native::<IntegrationCounter>(
+    let (reference, events) = crate::fspec_read_proof::observe_native::<IntegrationCounter>(
         &bytes,
         &evidence,
         limits,
@@ -203,7 +203,7 @@ fn original_protocol_term_tree_prepays_each_reserved_walk_growth() {
             .consumed_before
             .checked_add(u64::try_from(event.amount).expect("bounded growth request"))
             .expect("bounded cumulative read storage");
-        let (exact, exact_events) = crate::qspec_read_proof::observe_native::<IntegrationCounter>(
+        let (exact, exact_events) = crate::fspec_read_proof::observe_native::<IntegrationCounter>(
             &bytes,
             &evidence,
             limits,
@@ -215,7 +215,7 @@ fn original_protocol_term_tree_prepays_each_reserved_walk_growth() {
             events.get(..=index),
             "the exact allowance admits the same complete event prefix"
         );
-        let (short, short_events) = crate::qspec_read_proof::observe_native::<IntegrationCounter>(
+        let (short, short_events) = crate::fspec_read_proof::observe_native::<IntegrationCounter>(
             &bytes,
             &evidence,
             limits,
@@ -247,7 +247,7 @@ fn original_protocol_term_tree_prepays_each_reserved_walk_growth() {
             }),
             "no later walker allocation runs after the unpaid growth"
         );
-        let (repeat, repeat_events) = crate::qspec_read_proof::observe_native::<IntegrationCounter>(
+        let (repeat, repeat_events) = crate::fspec_read_proof::observe_native::<IntegrationCounter>(
             &bytes,
             &evidence,
             limits,
@@ -369,15 +369,15 @@ fn dependency_call_cases() -> (Vec<DependencyCallCase>, BTreeSet<String>) {
     );
     let proposal = root.join("proposals/checked-package-v2");
     let fixtures = proposal.join("fixtures");
-    let document = proposal.join(qspec_inputs::DOMAIN_DOCUMENT);
-    let vectors = qspec_inputs::read_json(&proposal.join("dependency-call-vectors.json"))
+    let document = proposal.join(fspec_inputs::DOMAIN_DOCUMENT);
+    let vectors = fspec_inputs::read_json(&proposal.join("dependency-call-vectors.json"))
         .expect("published dependency-call vectors");
     assert_eq!(vectors["base"], "fixtures/positive-dependency-call.json");
     assert_eq!(
         vectors["library"]["package"],
         "fixtures/positive-dependency-library.json"
     );
-    let base = qspec_inputs::read_json_wire(&fixtures.join("positive-dependency-call.json"))
+    let base = fspec_inputs::read_json_wire(&fixtures.join("positive-dependency-call.json"))
         .expect("original raw importer base");
     let mut cases = Vec::new();
     let mut providers = BTreeSet::new();
@@ -388,9 +388,9 @@ fn dependency_call_cases() -> (Vec<DependencyCallCase>, BTreeSet<String>) {
         let wire = if name == "positive-dependency-call.json" {
             base.clone()
         } else {
-            qspec_inputs::read_json(&fixtures.join(name)).expect("original library input")
+            fspec_inputs::read_json(&fixtures.join(name)).expect("original library input")
         };
-        let evidence = qspec_inputs::evidence_for_published(
+        let evidence = fspec_inputs::evidence_for_published(
             &wire,
             "checked package",
             &document,
@@ -409,7 +409,7 @@ fn dependency_call_cases() -> (Vec<DependencyCallCase>, BTreeSet<String>) {
             mutation: None,
         });
         providers.insert(format!(
-            "conformance_qspec/dependency_call.rs: fixtures/{name}"
+            "conformance_fspec/dependency_call.rs: fixtures/{name}"
         ));
     }
     let mutations = vectors["mutations"]
@@ -424,12 +424,12 @@ fn dependency_call_cases() -> (Vec<DependencyCallCase>, BTreeSet<String>) {
         let id = row["id"].as_str().expect("mutation id");
         let mut wire = base.clone();
         for patch in row["patch"].as_array().expect("original patch list") {
-            qspec_inputs::apply_dependency_call_patch(&mut wire, patch);
+            fspec_inputs::apply_dependency_call_patch(&mut wire, patch);
         }
         let evidence = if row["supplied"] == false {
-            qspec_inputs::dependency_call_evidence_without_dependency(&wire)
+            fspec_inputs::dependency_call_evidence_without_dependency(&wire)
         } else {
-            qspec_inputs::evidence_for_published(
+            fspec_inputs::evidence_for_published(
                 &wire,
                 "checked package",
                 &document,
@@ -458,7 +458,7 @@ fn dependency_call_cases() -> (Vec<DependencyCallCase>, BTreeSet<String>) {
             mutation: Some(row.clone()),
         });
         providers.insert(format!(
-            "conformance_qspec/dependency_call.rs: dependency-call-vectors.json#/mutations#{id}"
+            "conformance_fspec/dependency_call.rs: dependency-call-vectors.json#/mutations#{id}"
         ));
     }
     (cases, providers)
@@ -523,7 +523,7 @@ fn dependency_call_providers_preserve_original_outcomes_and_loci() {
 
 /// The same files and construction functions the existing FSpec drivers use.
 /// Files are read by reference; no copy of a published vector is stored here.
-fn qspec_cases() -> (Vec<Case>, BTreeSet<String>) {
+fn fspec_cases() -> (Vec<Case>, BTreeSet<String>) {
     let root = std::path::PathBuf::from(
         std::env::var_os("FILAMENT_SPECIFICATION_DIR")
             .expect("FILAMENT_SPECIFICATION_DIR is required: it names the selected FSpec checkout"),
@@ -532,13 +532,13 @@ fn qspec_cases() -> (Vec<Case>, BTreeSet<String>) {
     let mut providers = BTreeSet::new();
     let mut cases = Vec::new();
     let fixtures = proposal.join("fixtures");
-    let selections = qspec_inputs::vector_selected_documents(&proposal)
+    let selections = fspec_inputs::vector_selected_documents(&proposal)
         .expect("actual published fixture-to-document selections");
-    for name in qspec_inputs::POSITIVE_ALL {
-        let wire = qspec_inputs::read_json(&fixtures.join(name)).expect("actual positive fixture");
-        let document = proposal.join(qspec_inputs::positive_document(name, &selections));
+    for name in fspec_inputs::POSITIVE_ALL {
+        let wire = fspec_inputs::read_json(&fixtures.join(name)).expect("actual positive fixture");
+        let document = proposal.join(fspec_inputs::positive_document(name, &selections));
         let evidence =
-            qspec_inputs::evidence_for_published(&wire, name, &document, true, None, &fixtures)
+            fspec_inputs::evidence_for_published(&wire, name, &document, true, None, &fixtures)
                 .expect("same conformance evidence construction");
         cases.push(Case {
             label: format!("FSpec/POSITIVE_ALL/{name}"),
@@ -546,7 +546,7 @@ fn qspec_cases() -> (Vec<Case>, BTreeSet<String>) {
             evidence,
             expected: Expected::Admitted,
         });
-        providers.insert(format!("conformance_qspec/main.rs: fixtures/{name}"));
+        providers.insert(format!("conformance_fspec/main.rs: fixtures/{name}"));
     }
     let read = |_driver: &str, file: &str| -> Value {
         let bytes = std::fs::read(proposal.join(file))
@@ -683,7 +683,7 @@ fn qspec_cases() -> (Vec<Case>, BTreeSet<String>) {
         ("text-literal-vectors.json", false),
     ] {
         let vectors =
-            qspec_inputs::read_json(&proposal.join(file)).expect("published Text vectors");
+            fspec_inputs::read_json(&proposal.join(file)).expect("published Text vectors");
         for row in vectors["cases"].as_array().expect("published Text cases") {
             let id = row["id"].as_str().expect("Text case id");
             let (wire, _) = if shapes {
@@ -692,13 +692,13 @@ fn qspec_cases() -> (Vec<Case>, BTreeSet<String>) {
                     "TS-03" => "e\u{301}",
                     _ => "outside-bounds",
                 };
-                qspec_text_inputs::text_bounds_package(
+                fspec_text_inputs::text_bounds_package(
                     row["members"].as_array().expect("shape members"),
                     literal,
                 )
             } else {
                 let ty = &vectors["types"][row["type"].as_str().expect("Text type key")];
-                qspec_text_inputs::bounded_literal(
+                fspec_text_inputs::bounded_literal(
                     ty["min"].as_u64().expect("minimum"),
                     ty["max"].as_u64().expect("maximum"),
                     ty["text_profile"].as_str().expect("Text profile"),
@@ -712,7 +712,7 @@ fn qspec_cases() -> (Vec<Case>, BTreeSet<String>) {
                 other => panic!("{file}#{id}: unknown outcome {other}"),
             };
             providers.insert(format!(
-                "conformance_qspec/text_literals.rs: {file}#/cases#{id}"
+                "conformance_fspec/text_literals.rs: {file}#/cases#{id}"
             ));
             cases.push(Case {
                 label: format!("FSpec/{file}#{id}"),
@@ -722,16 +722,16 @@ fn qspec_cases() -> (Vec<Case>, BTreeSet<String>) {
             });
         }
     }
-    let vectors = qspec_inputs::read_json(&proposal.join("model-root-vectors.json"))
+    let vectors = fspec_inputs::read_json(&proposal.join("model-root-vectors.json"))
         .expect("published model-root vectors");
     assert_eq!(vectors["base"], "fixtures/positive-all-families.json");
-    let base = qspec_inputs::read_json_wire(&fixtures.join("positive-all-families.json"))
+    let base = fspec_inputs::read_json_wire(&fixtures.join("positive-all-families.json"))
         .expect("published model-root base");
     for row in vectors["vectors"].as_array().expect("model-root vectors") {
         let id = row["id"].as_str().expect("model-root case id");
         let mut wire = base.clone();
         for patch in row["patch"].as_array().expect("model-root patches") {
-            qspec_inputs::apply_vector_patch(&mut wire, patch);
+            fspec_inputs::apply_vector_patch(&mut wire, patch);
         }
         let expected = match row["outcome"].as_str().expect("model-root outcome") {
             "admitted" => Expected::Admitted,
@@ -746,15 +746,15 @@ fn qspec_cases() -> (Vec<Case>, BTreeSet<String>) {
             ),
         };
         providers.insert(format!(
-            "conformance_qspec/model_root.rs: model-root-vectors.json#/vectors#{id}"
+            "conformance_fspec/model_root.rs: model-root-vectors.json#/vectors#{id}"
         ));
         cases.push(Case {
             label: format!("FSpec/model-root/{id}"),
             bytes: canonical(&wire),
-            evidence: qspec_inputs::evidence_for_published(
+            evidence: fspec_inputs::evidence_for_published(
                 &wire,
                 id,
-                &proposal.join(qspec_inputs::DOMAIN_DOCUMENT),
+                &proposal.join(fspec_inputs::DOMAIN_DOCUMENT),
                 true,
                 None,
                 &fixtures,
@@ -763,16 +763,16 @@ fn qspec_cases() -> (Vec<Case>, BTreeSet<String>) {
             expected,
         });
     }
-    let vectors = qspec_inputs::read_json(&proposal.join("node-ordinal-vectors.json"))
+    let vectors = fspec_inputs::read_json(&proposal.join("node-ordinal-vectors.json"))
         .expect("published ordinal vectors");
-    let base = qspec_inputs::read_json(&fixtures.join("positive-all-families.json"))
+    let base = fspec_inputs::read_json(&fixtures.join("positive-all-families.json"))
         .expect("published ordinal base");
     for row in vectors["uniqueness_cases"]
         .as_array()
         .expect("ordinal uniqueness cases")
     {
         let id = row["id"].as_str().expect("ordinal case id");
-        let (wire, _) = qspec_inputs::ordinal_case_package(&base, row);
+        let (wire, _) = fspec_inputs::ordinal_case_package(&base, row);
         let expected = match row["expected"].as_str().expect("ordinal outcome") {
             "admitted" => Expected::Admitted,
             code => Expected::Refused(
@@ -781,15 +781,15 @@ fn qspec_cases() -> (Vec<Case>, BTreeSet<String>) {
             ),
         };
         providers.insert(format!(
-            "conformance_qspec/node_ordinal.rs: node-ordinal-vectors.json#/uniqueness_cases#{id}"
+            "conformance_fspec/node_ordinal.rs: node-ordinal-vectors.json#/uniqueness_cases#{id}"
         ));
         cases.push(Case {
             label: format!("FSpec/node-ordinal/{id}"),
             bytes: canonical(&wire),
-            evidence: qspec_inputs::evidence_for_published(
+            evidence: fspec_inputs::evidence_for_published(
                 &wire,
                 id,
-                &proposal.join(qspec_inputs::DOMAIN_DOCUMENT),
+                &proposal.join(fspec_inputs::DOMAIN_DOCUMENT),
                 true,
                 None,
                 &fixtures,
@@ -798,11 +798,11 @@ fn qspec_cases() -> (Vec<Case>, BTreeSet<String>) {
             expected,
         });
     }
-    let vectors = qspec_inputs::read_json(&proposal.join("fma-application-vectors.json"))
+    let vectors = fspec_inputs::read_json(&proposal.join("fma-application-vectors.json"))
         .expect("published FMA vectors");
     for row in vectors["cases"].as_array().expect("FMA cases") {
         let id = row["id"].as_str().expect("FMA case id");
-        let (wire, _) = qspec_fma_inputs::package_for(row);
+        let (wire, _) = fspec_fma_inputs::package_for(row);
         let expected = match row["expected"].as_str().expect("FMA outcome") {
             "admitted" => Expected::Admitted,
             "refused" => Expected::Refused(
@@ -811,7 +811,7 @@ fn qspec_cases() -> (Vec<Case>, BTreeSet<String>) {
             other => panic!("{id}: unknown FMA outcome {other}"),
         };
         providers.insert(format!(
-            "conformance_qspec/fma_application.rs: fma-application-vectors.json#/cases#{id}"
+            "conformance_fspec/fma_application.rs: fma-application-vectors.json#/cases#{id}"
         ));
         cases.push(Case {
             label: format!("FSpec/FMA/{id}"),
@@ -820,16 +820,16 @@ fn qspec_cases() -> (Vec<Case>, BTreeSet<String>) {
             expected,
         });
     }
-    let vectors = qspec_inputs::read_json(&proposal.join("node-index-vectors.json"))
+    let vectors = fspec_inputs::read_json(&proposal.join("node-index-vectors.json"))
         .expect("published operand vectors");
     assert_eq!(vectors["base"], "fixtures/positive-dependency-call.json");
-    let base = qspec_inputs::read_json_wire(&fixtures.join("positive-dependency-call.json"))
+    let base = fspec_inputs::read_json_wire(&fixtures.join("positive-dependency-call.json"))
         .expect("published operand base");
     for row in vectors["cases"].as_array().expect("operand cases") {
         let id = row["id"].as_str().expect("operand case id");
         let expected = row["expected"].as_str().expect("operand outcome");
         let expected = if expected.starts_with("passes_") {
-            Expected::OriginalOracle(qspec_inputs::operand_checks_pass)
+            Expected::OriginalOracle(fspec_inputs::operand_checks_pass)
         } else {
             Expected::Refused(
                 serde_json::from_value(Value::String(expected.into()))
@@ -838,18 +838,18 @@ fn qspec_cases() -> (Vec<Case>, BTreeSet<String>) {
         };
         let mut wire = base.clone();
         for patch in row["patch"].as_array().expect("operand patches") {
-            qspec_inputs::apply_node_index_patch(&mut wire, patch);
+            fspec_inputs::apply_node_index_patch(&mut wire, patch);
         }
         providers.insert(format!(
-            "conformance_qspec/node_index.rs: node-index-vectors.json#/cases#{id}"
+            "conformance_fspec/node_index.rs: node-index-vectors.json#/cases#{id}"
         ));
         cases.push(Case {
             label: format!("FSpec/node-index/{id}"),
             bytes: canonical(&wire),
-            evidence: qspec_inputs::evidence_for_published(
+            evidence: fspec_inputs::evidence_for_published(
                 &wire,
                 id,
-                &proposal.join(qspec_inputs::DOMAIN_DOCUMENT),
+                &proposal.join(fspec_inputs::DOMAIN_DOCUMENT),
                 true,
                 None,
                 &fixtures,
@@ -858,7 +858,7 @@ fn qspec_cases() -> (Vec<Case>, BTreeSet<String>) {
             expected,
         });
     }
-    let vectors = qspec_inputs::read_json_wire(&proposal.join("checked-term-data-vectors.json"))
+    let vectors = fspec_inputs::read_json_wire(&proposal.join("checked-term-data-vectors.json"))
         .expect("published protocol-location vectors");
     let positives = vectors["positive"]["protocol_locations"]
         .as_array()
@@ -878,8 +878,8 @@ fn qspec_cases() -> (Vec<Case>, BTreeSet<String>) {
                 row
             })
             .collect();
-        let (wire, _) = qspec_protocol_location_inputs::fixture(rows);
-        providers.insert(format!("conformance_qspec/protocol_locations.rs: checked-term-data-vectors.json#/positive/protocol_locations#{id}"));
+        let (wire, _) = fspec_protocol_location_inputs::fixture(rows);
+        providers.insert(format!("conformance_fspec/protocol_locations.rs: checked-term-data-vectors.json#/positive/protocol_locations#{id}"));
         cases.push(positive(format!("FSpec/protocol-location/{id}"), wire));
     }
     for category in ["schema_invalid", "reader_refusals"] {
@@ -891,19 +891,19 @@ fn qspec_cases() -> (Vec<Case>, BTreeSet<String>) {
         {
             let id = row["id"].as_str().expect("location refusal id");
             let wire = if id.starts_with("PL-R3-") {
-                qspec_protocol_location_inputs::published_leaf_fixture(row)
+                fspec_protocol_location_inputs::published_leaf_fixture(row)
             } else {
                 let rows = row["value"]
                     .as_array()
                     .cloned()
                     .unwrap_or_else(|| vec![row["value"].clone()]);
-                qspec_protocol_location_inputs::fixture(rows).0
+                fspec_protocol_location_inputs::fixture(rows).0
             };
             let expected = Expected::Refused(
                 serde_json::from_value(row["expected_code"].clone())
                     .expect("published location refusal code"),
             );
-            providers.insert(format!("conformance_qspec/protocol_locations.rs: checked-term-data-vectors.json#/{category}#{id}"));
+            providers.insert(format!("conformance_fspec/protocol_locations.rs: checked-term-data-vectors.json#/{category}#{id}"));
             cases.push(Case {
                 label: format!("FSpec/protocol-location/{id}"),
                 bytes: canonical(&wire),
@@ -912,16 +912,16 @@ fn qspec_cases() -> (Vec<Case>, BTreeSet<String>) {
             });
         }
     }
-    let base = qspec_inputs::read_json(&fixtures.join("positive-all-families.json"))
+    let base = fspec_inputs::read_json(&fixtures.join("positive-all-families.json"))
         .expect("published structural/body base");
-    let adverse = qspec_inputs::read_json(&fixtures.join("adverse.json"))
+    let adverse = fspec_inputs::read_json(&fixtures.join("adverse.json"))
         .expect("published structural/body mutations");
     for list in ["structural_mutations", "body_grammar_mutations"] {
         for row in adverse[list].as_array().expect("published mutation list") {
             let id = row["id"].as_str().expect("mutation id");
             let pointer = row["pointer"].as_str().expect("mutation pointer");
             let mut wire = base.clone();
-            qspec_inputs::replace_at(&mut wire, pointer, &row["replacement"])
+            fspec_inputs::replace_at(&mut wire, pointer, &row["replacement"])
                 .expect("published mutation target");
             let outcome = row["outcome"].as_str().expect("mutation outcome");
             let code = outcome
@@ -935,12 +935,12 @@ fn qspec_cases() -> (Vec<Case>, BTreeSet<String>) {
                     .expect("published mutation code"),
             );
             providers.insert(format!(
-                "conformance_qspec/main.rs: fixtures/adverse.json#/{list}#{id}"
+                "conformance_fspec/main.rs: fixtures/adverse.json#/{list}#{id}"
             ));
-            let evidence = qspec_inputs::evidence_for_published(
+            let evidence = fspec_inputs::evidence_for_published(
                 &wire,
                 id,
-                &proposal.join(qspec_inputs::DOMAIN_DOCUMENT),
+                &proposal.join(fspec_inputs::DOMAIN_DOCUMENT),
                 true,
                 None,
                 &fixtures,
@@ -954,16 +954,16 @@ fn qspec_cases() -> (Vec<Case>, BTreeSet<String>) {
             });
             if list == "body_grammar_mutations" {
                 let mut control = base.clone();
-                qspec_inputs::replace_at(
+                fspec_inputs::replace_at(
                     &mut control,
                     pointer,
                     row.get("flattened").expect("flattened control"),
                 )
                 .expect("flattened target");
-                let evidence = qspec_inputs::evidence_for_published(
+                let evidence = fspec_inputs::evidence_for_published(
                     &control,
                     id,
-                    &proposal.join(qspec_inputs::DOMAIN_DOCUMENT),
+                    &proposal.join(fspec_inputs::DOMAIN_DOCUMENT),
                     true,
                     None,
                     &fixtures,
@@ -973,15 +973,15 @@ fn qspec_cases() -> (Vec<Case>, BTreeSet<String>) {
                     label: format!("FSpec/{list}/{id}/flattened-control"),
                     bytes: canonical(&control),
                     evidence,
-                    expected: Expected::OriginalOracle(qspec_inputs::flat_body_control_passes),
+                    expected: Expected::OriginalOracle(fspec_inputs::flat_body_control_passes),
                 });
             }
         }
     }
-    let vectors = qspec_inputs::read_json(&proposal.join("model-option-type-vectors.json"))
+    let vectors = fspec_inputs::read_json(&proposal.join("model-option-type-vectors.json"))
         .expect("published option vectors");
-    let (base, field_queries) = qspec_option_inputs::field_query_inputs(&vectors);
-    let (wire, evidence) = qspec_option_inputs::prepare(&base);
+    let (base, field_queries) = fspec_option_inputs::field_query_inputs(&vectors);
+    let (wire, evidence) = fspec_option_inputs::prepare(&base);
     cases.push(Case {
         label: format!(
             "FSpec/option/base-fields/{}-projected-types",
@@ -995,7 +995,7 @@ fn qspec_cases() -> (Vec<Case>, BTreeSet<String>) {
     // source sharing establishes input provenance without crediting extra reads.
     for query in field_queries {
         let id = query["name"].as_str().expect("option field query name");
-        providers.insert(format!("conformance_qspec/model_option_types.rs: model-option-type-vectors.json#/field_type_cases#{id}"));
+        providers.insert(format!("conformance_fspec/model_option_types.rs: model-option-type-vectors.json#/field_type_cases#{id}"));
     }
     for row in vectors["intake_cases"]
         .as_array()
@@ -1004,10 +1004,10 @@ fn qspec_cases() -> (Vec<Case>, BTreeSet<String>) {
         let id = row["name"].as_str().expect("option case name");
         let mut projection = vectors["domain_package"].clone();
         for patch in row["patch"].as_array().expect("option projection patch") {
-            qspec_option_inputs::apply(&mut projection, patch);
+            fspec_option_inputs::apply(&mut projection, patch);
         }
-        let input = qspec_option_inputs::document(&projection);
-        let (wire, evidence) = qspec_option_inputs::prepare(&input);
+        let input = fspec_option_inputs::document(&projection);
+        let (wire, evidence) = fspec_option_inputs::prepare(&input);
         let expected = if row["expected"]["admitted"] == true {
             Expected::Admitted
         } else {
@@ -1016,7 +1016,7 @@ fn qspec_cases() -> (Vec<Case>, BTreeSet<String>) {
                     .expect("published option refusal code"),
             )
         };
-        providers.insert(format!("conformance_qspec/model_option_types.rs: model-option-type-vectors.json#/intake_cases#{id}"));
+        providers.insert(format!("conformance_fspec/model_option_types.rs: model-option-type-vectors.json#/intake_cases#{id}"));
         cases.push(Case {
             label: format!("FSpec/option/{id}"),
             bytes: canonical(&wire),
@@ -1024,12 +1024,12 @@ fn qspec_cases() -> (Vec<Case>, BTreeSet<String>) {
             expected,
         });
     }
-    let vectors = qspec_inputs::read_json(&proposal.join("model-tuple-union-vectors.json"))
+    let vectors = fspec_inputs::read_json(&proposal.join("model-tuple-union-vectors.json"))
         .expect("published tuple/union vectors");
     assert_eq!(vectors["base"], "fixtures/positive-model-tuple-union.json");
-    let base = qspec_inputs::read_json(&fixtures.join("positive-model-tuple-union.json"))
+    let base = fspec_inputs::read_json(&fixtures.join("positive-model-tuple-union.json"))
         .expect("published tuple/union base");
-    let selected = qspec_inputs::read_json(&proposal.join(qspec_inputs::positive_document(
+    let selected = fspec_inputs::read_json(&proposal.join(fspec_inputs::positive_document(
         "positive-model-tuple-union.json",
         &selections,
     )))
@@ -1041,7 +1041,7 @@ fn qspec_cases() -> (Vec<Case>, BTreeSet<String>) {
         let id = row["id"].as_str().expect("tuple/union case id");
         let mut wire = base.clone();
         for patch in row["patch"].as_array().expect("tuple/union patches") {
-            qspec_tuple_inputs::apply_wire_patch(&mut wire, patch);
+            fspec_tuple_inputs::apply_wire_patch(&mut wire, patch);
         }
         let expected = match row["outcome"].as_str().expect("tuple/union outcome") {
             "admitted" => Expected::Admitted,
@@ -1055,8 +1055,8 @@ fn qspec_cases() -> (Vec<Case>, BTreeSet<String>) {
                 .expect("published tuple/union code"),
             ),
         };
-        let evidence = qspec_tuple_inputs::selected_evidence(&selected);
-        providers.insert(format!("conformance_qspec/model_tuple_union.rs: model-tuple-union-vectors.json#/wire_cases#{id}"));
+        let evidence = fspec_tuple_inputs::selected_evidence(&selected);
+        providers.insert(format!("conformance_fspec/model_tuple_union.rs: model-tuple-union-vectors.json#/wire_cases#{id}"));
         cases.push(Case {
             label: format!("FSpec/tuple-union/wire/{id}"),
             bytes: canonical(&wire),
@@ -1291,7 +1291,7 @@ fn every_registered_positive_and_refusal_is_a_genuine_public_input() {
     let mut native_providers = Vec::new();
     let (mut admitted, mut refused, mut stage_contracts) = (0, 0, 0);
     let mut positives = positive_cases();
-    let (published, _) = qspec_cases();
+    let (published, _) = fspec_cases();
     positives.extend(published);
     let refusals = refusal_cases();
     for input in positives.iter().chain(&refusals) {
@@ -1372,7 +1372,7 @@ fn every_registered_positive_and_refusal_is_a_genuine_public_input() {
 }
 
 fn registered_cases() -> Vec<Case> {
-    let (published, _) = qspec_cases();
+    let (published, _) = fspec_cases();
     positive_cases()
         .into_iter()
         .chain(published)
@@ -1407,7 +1407,7 @@ fn every_registered_input_is_accounted_within_the_bound_at_core_bounds() {
 #[cfg(feature = "test-support")]
 #[trace("TC-472", "FR-038-AC-511")]
 #[test]
-fn named_qspec_refusal_diagnostics_stay_within_the_separate_bound() {
+fn named_fspec_refusal_diagnostics_stay_within_the_separate_bound() {
     initialize_operation_catalog().expect("catalog gate");
     let named = [
         "OP-21",
@@ -1419,7 +1419,7 @@ fn named_qspec_refusal_diagnostics_stay_within_the_separate_bound() {
         "population-as-a-reaches-population-link",
         "population-as-a-collection-operand",
     ];
-    let selected = qspec_cases()
+    let selected = fspec_cases()
         .0
         .into_iter()
         .filter(|input| named.iter().any(|case_id| input.label.contains(case_id)))

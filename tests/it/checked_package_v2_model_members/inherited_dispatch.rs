@@ -20,7 +20,7 @@ fn d10_model_document() -> Value {
                 "nullable": false,
             },
             "pre": [], "post": [],
-            "origin": {"source": {"sourceIdentity": format!("ix://{PACKAGE}/spec"), "path": "spec.qspec", "startLine": 1, "startColumn": 1}},
+            "origin": {"source": {"sourceIdentity": format!("ix://{PACKAGE}/spec"), "path": "spec.fspec", "startLine": 1, "startColumn": 1}},
             "frame": {"modifies": [], "creates": [], "deletes": []},
         })
     }

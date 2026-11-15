@@ -814,7 +814,7 @@ mod timed_model_vocabulary_tests {
 
     #[trace("TC-048")]
     #[test]
-    fn timed_model_vocabulary_matches_qspec_eight_forms() {
+    fn timed_model_vocabulary_matches_fspec_eight_forms() {
         let tag = CheckedNodeTag::from_wire("timed_model").expect("timed-model family");
         assert_eq!(tag, CheckedNodeTag::TimedModel);
         for form in [

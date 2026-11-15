@@ -447,7 +447,7 @@ fn wide_root_scale_arithmetic_is_charged_to_the_read_budget() {
     let bytes = canonical(&wide);
     let evidence = evidence_for(&wide);
     let read = |budget: &mut NativeJoinBudget| {
-        crate::qspec_read_proof::read_budget_and_account(
+        crate::fspec_read_proof::read_budget_and_account(
             &bytes,
             CheckedPackageReadLimits::bounded(),
             &evidence,
@@ -494,7 +494,7 @@ fn imported_nominal_records_are_charged_at_the_imported_node() {
         .insert_dependency_package(name.as_str(), dependency.clone())
         .expect("dependency evidence agrees on admitted content");
     let read = |budget: &mut NativeJoinBudget| {
-        crate::qspec_read_proof::read_budget_and_account(
+        crate::fspec_read_proof::read_budget_and_account(
             &bytes,
             CheckedPackageReadLimits::bounded(),
             &evidence,

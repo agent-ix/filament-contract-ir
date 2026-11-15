@@ -14,11 +14,11 @@ ROOT = Path(__file__).resolve().parents[2]
 
 def export_counts(plain=3, probes=20, caller=2, calibration=1):
     counts = {
-        ("tests/it/support/qspec_read_proof.rs", "read_and_account"): plain,
+        ("tests/it/support/fspec_read_proof.rs", "read_and_account"): plain,
         ("tests/it/support/read_observation.rs", "measure_at"): probes,
-        ("tests/it/support/qspec_read_proof.rs", "read_budget_and_account"): caller,
-        ("tests/it/support/qspec_read_proof.rs", "measure_seeded"): 6*caller,
-        ("tests/it/support/qspec_read_proof.rs",
+        ("tests/it/support/fspec_read_proof.rs", "read_budget_and_account"): caller,
+        ("tests/it/support/fspec_read_proof.rs", "measure_seeded"): 6*caller,
+        ("tests/it/support/fspec_read_proof.rs",
          "caller_budget_observation_preserves_prior_charges_and_outer_capture"): calibration,
         ("crates/filament-contract-model/src/checked_package/v2/budgeted_read.rs", "read"): plain,
         ("crates/filament-contract-model/src/checked_package/v2/budgeted_read.rs", "read_with_budget"):
@@ -31,8 +31,8 @@ def export_counts(plain=3, probes=20, caller=2, calibration=1):
                           "filenames": [str(ROOT / file)],
                           "regions": [[line, 1, line + 1, 1, count, 0, 0, 0]]})
     source_sites = []
-    for file, text in [("tests/conformance_qspec/main.rs", "crate::read_and_account("),
-                       ("tests/it/checked_package_v2_graph_read_storage.rs", "crate::qspec_read_proof::read_budget_and_account(")]:
+    for file, text in [("tests/conformance_fspec/main.rs", "crate::read_and_account("),
+                       ("tests/it/checked_package_v2_graph_read_storage.rs", "crate::fspec_read_proof::read_budget_and_account(")]:
         lines = (ROOT / file).read_text().splitlines()
         line = next(i for i, value in enumerate(lines, 1) if text in value)
         source_sites.append((file, line, len(lines[line - 1]) + 1))
@@ -65,7 +65,7 @@ class ActualEntryCensus(unittest.TestCase):
     def test_compiler_path_attribute_spelling_resolves_exact_source(self):
         data = export_counts()
         for row in data["data"][0]["functions"]:
-            row["filenames"] = [name.replace("tests/it/support/", "tests/conformance_qspec/../it/support/")
+            row["filenames"] = [name.replace("tests/it/support/", "tests/conformance_fspec/../it/support/")
                                 for name in row["filenames"]]
         self.assertEqual(census.check(data, ROOT)["measured_probes"], 20)
         next(row for row in data["data"][0]["functions"] if "read_with_budget" in row["name"])["count"] += 1
@@ -79,10 +79,10 @@ class ActualEntryCensus(unittest.TestCase):
         self.assertEqual(census.check(data, ROOT)["budgeted"], 38)
         with tempfile.TemporaryDirectory() as directory:
             link = Path(directory) / "source-alias.rs"
-            link.symlink_to(ROOT / "tests/it/support/qspec_read_proof.rs")
+            link.symlink_to(ROOT / "tests/it/support/fspec_read_proof.rs")
             data["data"][0]["functions"][0]["filenames"] = [str(link)]
             self.assertEqual(census.check(data, ROOT)["measured_plain"], 3)
-            foreign = Path(directory) / "qspec_read_proof.rs"
+            foreign = Path(directory) / "fspec_read_proof.rs"
             foreign.write_text("fn read_and_account() {}")
             link.unlink(); link.symlink_to(foreign)
             with self.assertRaisesRegex(census.CensusError, "missing compiled function"):
@@ -91,7 +91,7 @@ class ActualEntryCensus(unittest.TestCase):
     def test_equal_suffix_in_other_source_tree_cannot_supply_boundary(self):
         data = export_counts()
         row = data["data"][0]["functions"][0]
-        row["filenames"] = [str(ROOT.parent / "foreign-tree/tests/it/support/qspec_read_proof.rs")]
+        row["filenames"] = [str(ROOT.parent / "foreign-tree/tests/it/support/fspec_read_proof.rs")]
         with self.assertRaisesRegex(census.CensusError, "missing compiled function"):
             census.check(data, ROOT)
 
@@ -154,8 +154,8 @@ class FullRunEvidence(unittest.TestCase):
             line = next(i for i, value in enumerate(lines, 1) if spelling in value)
             return {"driver": file, "line": line, "column": lines[line - 1].index("crate::") + 1,
                     "test": "original::first", "mode": "sample", "entry": entry, "snapshot_replay": "exact-entire-caller-state"}
-        plain = site("tests/conformance_qspec/main.rs", "crate::read_and_account(", "plain")
-        caller = site("tests/it/checked_package_v2_graph_read_storage.rs", "crate::qspec_read_proof::read_budget_and_account(", "caller-budget")
+        plain = site("tests/conformance_fspec/main.rs", "crate::read_and_account(", "plain")
+        caller = site("tests/it/checked_package_v2_graph_read_storage.rs", "crate::fspec_read_proof::read_budget_and_account(", "caller-budget")
         return [dict(plain) for _ in range(3)] + [dict(caller) for _ in range(2)]
 
     def test_sample_is_not_normative_or_static_proof(self):

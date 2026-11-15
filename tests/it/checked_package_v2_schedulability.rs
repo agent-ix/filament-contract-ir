@@ -763,7 +763,7 @@ fn claim_carrier_tables_and_order_are_charged_exactly() {
         let bytes = fixtures::canonical(wire);
         let evidence = fixtures::evidence_for(wire);
         let read = move |budget: &mut NativeJoinBudget| {
-            crate::qspec_read_proof::read_budget_and_account(
+            crate::fspec_read_proof::read_budget_and_account(
                 &bytes,
                 CheckedPackageReadLimits::bounded(),
                 &evidence,

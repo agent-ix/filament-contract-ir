@@ -3406,7 +3406,7 @@ mod tests {
     fn published_dimension_operands_keep_their_authored_wire_forms() {
         let root = match std::env::var("FILAMENT_SPECIFICATION_DIR") {
             Ok(root) => root,
-            Err(_) if std::env::var_os("QSPEC_CONFORMANCE").is_none() => return,
+            Err(_) if std::env::var_os("FSPEC_CONFORMANCE").is_none() => return,
             Err(_) => panic!("FILAMENT_SPECIFICATION_DIR is required for FSpec conformance"),
         };
         let path = std::path::Path::new(&root)
@@ -3565,7 +3565,7 @@ mod tests {
 
     #[trace("TC-048", "FR-038-AC-5")]
     #[test]
-    fn merged_qspec_structural_nominal_fixture_reads() {
+    fn merged_fspec_structural_nominal_fixture_reads() {
         let Some(root) = std::env::var_os("FILAMENT_SPECIFICATION_DIR") else {
             return;
         };

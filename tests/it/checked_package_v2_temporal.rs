@@ -9,7 +9,7 @@
 //! the in-repo all-families fixture (a clause over `eventually {0, 3}` over
 //! `holds`) and re-deriving its application keys, dependency joins and
 //! identity with `settle`; nothing of FSpec's fixtures is copied in (the
-//! fixtures are read by `make conformance-qspec`, FR-038-AC-107).
+//! fixtures are read by `make conformance-fspec`, FR-038-AC-107).
 
 use crate::support::checked_package::{
     canonical, evidence_with_document, family_key, fixture_source, model_owner,
