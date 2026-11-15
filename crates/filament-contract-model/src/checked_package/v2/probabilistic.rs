@@ -120,6 +120,7 @@ fn visit(budget: &mut NativeJoinBudget, at: Path) -> Result<(), Fail> {
     Ok(())
 }
 
+#[ix_trace_rs::string_edge]
 fn check_node(
     node: &CheckedSemanticNodeV2,
     form: ProbabilisticForm,
@@ -302,6 +303,7 @@ fn literal((value, at): Bound<'_>) -> Result<(), Fail> {
 
 /// Whether `spelling` is an exact non-negative rational `n` or `n/d`, and
 /// whether it is zero.
+#[ix_trace_rs::string_edge]
 fn exact_zero(spelling: &str) -> Option<bool> {
     let natural = |s: &str| {
         s == "0"
