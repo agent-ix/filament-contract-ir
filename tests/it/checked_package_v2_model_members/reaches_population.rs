@@ -1250,3 +1250,29 @@ fn tc_048_a_reaches_field_population_of_another_type_than_the_owner_is_refused()
         &format!("/semantic_graph/nodes/{position}/body/operation/member/population"),
     );
 }
+
+/// FR-364-AC-3: a source-declared population linked as the `population` of a
+/// reaches application refuses as a model population that is not a
+/// `model_population` node does, at the member's `population`.
+#[trace("TC-475", "FR-364-AC-3")]
+#[test]
+fn tc_475_a_source_population_as_a_reaches_link_refuses_at_the_population_member() {
+    let source = crate::support::checked_package::fixture_source();
+    let population = node_id("qualified:Pop");
+    let mut scenario = Scenario::standard();
+    scenario.nodes().push(json!({
+        "node_id": population,
+        "schema_version": "filament.checked-semantic-graph/v2",
+        "node_tag": "relation",
+        "semantic_form": "population",
+        "semantic_type": population,
+        "dependencies": [],
+        "occurrences": [{"role": "declaration", "ordinal": 0}],
+        "body": {"term": "aggregate", "members": []},
+        "declaration": {"qualified_name": ["Pop"]},
+        "owner": {"kind": "source", "authority": source["authority"],
+            "identity": source["identity"]},
+    }));
+    scenario.link(Some(population.clone()), Some(&handle(&population)));
+    scenario.assert_refused(ILL_TYPED, POPULATION_AT);
+}

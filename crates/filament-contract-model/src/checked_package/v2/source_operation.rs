@@ -185,7 +185,9 @@ impl CheckedPackageV2 {
     ) -> Result<CheckedCallableRead, CheckedCallableReadError> {
         let mut budget = super::callable::Budget::new(work_limit);
         budget.charge(anchor)?;
-        let error = |code| super::callable::Budget::refusal(code, anchor, 0);
+        let refuse = |budget: &super::callable::Budget, code| {
+            super::callable::Budget::refusal(code, anchor, budget.work())
+        };
         let row = source_operations.read(self, anchor).map_err(|error| {
             super::callable::Budget::refusal(
                 match error.code {
@@ -207,11 +209,15 @@ impl CheckedPackageV2 {
         let body = self
             .term(anchor)
             .and_then(typed_anchor_body)
-            .ok_or_else(|| error(CheckedCallableReadErrorCode::MalformedBody))?;
-        let owner = self
-            .node(body.context)
+            .ok_or_else(|| refuse(&budget, CheckedCallableReadErrorCode::MalformedBody))?;
+        let context = self.node(body.context);
+        let owner = context
             .and_then(|context| context.owner.as_ref())
-            .ok_or_else(|| error(CheckedCallableReadErrorCode::MalformedBody))?;
+            .ok_or_else(|| refuse(&budget, CheckedCallableReadErrorCode::MalformedBody))?;
+        let type_name = context
+            .and_then(|context| context.declaration.as_ref())
+            .and_then(|declaration| declaration.qualified_name.last())
+            .ok_or_else(|| refuse(&budget, CheckedCallableReadErrorCode::MalformedBody))?;
         let mut function = None;
         for node in &self.resolved_graph().nodes {
             budget.charge(&node.node_id)?;
@@ -223,8 +229,10 @@ impl CheckedPackageV2 {
                 && node.declaration.as_ref().is_some_and(|declaration| {
                     matches!(
                         declaration.qualified_name.as_slice(),
-                        [_, name, clause]
-                            if name.as_ref() == body.operation && clause.as_ref() == "body"
+                        [declaring, name, clause]
+                            if declaring == type_name
+                                && name.as_ref() == body.operation
+                                && clause.as_ref() == "body"
                     )
                 })
             {
@@ -232,16 +240,16 @@ impl CheckedPackageV2 {
                 break;
             }
         }
-        let function =
-            function.ok_or_else(|| error(CheckedCallableReadErrorCode::MissingSelectedJoin))?;
+        let function = function
+            .ok_or_else(|| refuse(&budget, CheckedCallableReadErrorCode::MissingSelectedJoin))?;
         let parsed = super::callable::parse_function(self, function, &mut budget)?;
         let callable_body = parsed
             .body
-            .ok_or_else(|| error(CheckedCallableReadErrorCode::MissingBody))?;
+            .ok_or_else(|| refuse(&budget, CheckedCallableReadErrorCode::MissingBody))?;
         if self.node_kind(body.frame) != Some(CheckedNodeKind::State(StateForm::Frame))
             || !matches!(self.term(body.frame), Some(CheckedTerm::Frame { .. }))
         {
-            return Err(error(CheckedCallableReadErrorCode::MissingFrame));
+            return Err(refuse(&budget, CheckedCallableReadErrorCode::MissingFrame));
         }
         Ok(CheckedCallableRead::new(
             Some(CheckedCallable {

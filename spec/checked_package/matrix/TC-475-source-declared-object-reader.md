@@ -47,10 +47,16 @@ fixture from FSL or FSpec.
    and `effect` against the anchor frame; the three clause-function forms,
    dispatch candidate and clause identities, a mixed source and model row, and
    the FR-367 family check; row key, `members`, `supertypes`, supply order of
-   foreign, unknown, duplicate and missing rows; anchor rows and the
-   `operation_effects` present and absent cases.
+   foreign, unknown, duplicate and missing rows; a dispatch candidate and clause
+   function outside the context's family, ranked after missing; a same-named
+   type under a second owner of one authority; anchor rows, the body function
+   of the anchor's own type among two types of one owner, the work a refusal
+   reports, and the `operation_effects` present and absent cases. Add the
+   candidate `selection_key` cases of FR-366 (owner identity, source type name)
+   and the reaches population link, the role `model` and the unselected target.
 4. Re-run the existing TC-048, TC-228, TC-229, TC-463 and TC-472 suites and
-   the FR-064 protocol-owner tests with no expectation edit.
+   the FR-064 protocol-owner tests with no expectation edit. That unedited
+   pass is the evidence for the unchanged-behaviour half of FR-362-AC-1.
 
 ## Expected Results
 

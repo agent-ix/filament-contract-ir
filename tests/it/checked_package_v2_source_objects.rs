@@ -32,6 +32,7 @@ type EffectCase = (
     String,
 );
 type DispatchCase = (&'static str, Box<dyn Fn(&mut Value)>, String);
+type KeyEdit = (&'static str, Box<dyn Fn(&mut Value)>);
 type RowEdit = (&'static str, Box<dyn Fn(&mut SelectedSourceObjectRow)>);
 type OperationEdit = (
     &'static str,
@@ -297,10 +298,13 @@ fn with_effects(mut package: Value, rows: Value) -> Value {
     package
 }
 
-/// Trace: FR-362-AC-1.
+/// Trace: FR-362-AC-1. This test proves the package-level half: a package that
+/// declares none of the source constructs holds no source-declared node and
+/// re-encodes stably. The unchanged-behaviour half is TC-475 step 4: the
+/// existing TC-048, TC-228, TC-229, TC-463 and TC-472 suites pass unedited.
 #[trace("TC-475", "FR-362-AC-1")]
 #[test]
-fn a_package_without_a_source_object_reads_and_re_encodes_unchanged() {
+fn a_package_without_a_source_object_reads_and_re_encodes_stably() {
     let package = v2_all_families();
     let admitted_package = admitted(&package);
     assert!(!admitted_package.graph().nodes.iter().any(is_source_node));
@@ -457,13 +461,8 @@ fn missing_lock_entry_refuses_at_the_source_type_not_the_clause() {
     );
 }
 
-/// Trace: FR-363-AC-4.
-#[trace("TC-475", "FR-363-AC-4")]
-#[test]
-fn clause_edge_to_a_source_node_that_is_no_object_type_refuses() {
-    let mut package = source_package();
-    let clause = position(&package, "protocol", "protocol_clause");
-    // A source record: a declared composite_type/record node.
+/// A declared source record `Line`, added to `package`.
+fn add_source_record(package: &mut Value) {
     let mut record = plain(
         "qualified:Line",
         "composite_type",
@@ -476,16 +475,57 @@ fn clause_edge_to_a_source_node_that_is_no_object_type_refuses() {
     record["declaration"] = json!({"qualified_name": ["Line"]});
     record["owner"] = json!({"kind": "source", "authority": fixture_source()["authority"],
         "identity": fixture_source()["identity"]});
-    nodes_mut(&mut package).push(record);
-    nodes_mut(&mut package)[clause]["owner_model"] = node_id("qualified:Line");
-    settle(&mut package);
-    expect(
-        "record owner_model",
-        &package,
-        Code::InvalidModelBinding,
-        Some(Cause::MalformedDeclaration),
-        &format!("/semantic_graph/nodes/{clause}/owner_model"),
-    );
+    nodes_mut(package).push(record);
+}
+
+/// Trace: FR-363-AC-4.
+#[trace("TC-475", "FR-363-AC-4")]
+#[test]
+fn a_clause_or_role_model_naming_a_source_node_that_is_no_object_type_refuses() {
+    let expected = (Code::InvalidModelBinding, Some(Cause::MalformedDeclaration));
+    for (case, target) in [
+        ("source record", node_id("qualified:Line")),
+        ("population reference", node_id("qualified:Pop")),
+    ] {
+        let mut package = source_package();
+        add_source_record(&mut package);
+        nodes_mut(&mut package).push(source_population("Pop"));
+        let role = crate::support::checked_package::protocol_role_node();
+        let role_id = role["node_id"].clone();
+        nodes_mut(&mut package).push(role);
+        let clause = position(&package, "protocol", "protocol_clause");
+        nodes_mut(&mut package)[clause]["body"]["arguments"][3]["value"]["members"] =
+            json!([reference(&role_id)]);
+        let role = position(&package, "protocol", "role");
+        nodes_mut(&mut package)[role]["body"]["arguments"][0]["value"] = reference(&target);
+        settle(&mut package);
+        let refusal = refused(&package);
+        assert_eq!(
+            (refusal.code, refusal.cause),
+            expected,
+            "role model: {case}"
+        );
+        let at = refusal.loci[0].path.as_ref().expect("path");
+        assert!(
+            at.as_str()
+                .starts_with(&format!("/semantic_graph/nodes/{role}/")),
+            "role model: {case}: {at:?}"
+        );
+
+        let mut package = source_package();
+        add_source_record(&mut package);
+        nodes_mut(&mut package).push(source_population("Pop"));
+        let clause = position(&package, "protocol", "protocol_clause");
+        nodes_mut(&mut package)[clause]["owner_model"] = target;
+        settle(&mut package);
+        expect(
+            &format!("owner_model: {case}"),
+            &package,
+            expected.0,
+            expected.1,
+            &format!("/semantic_graph/nodes/{clause}/owner_model"),
+        );
+    }
 }
 
 /// Trace: FR-363-AC-5.
@@ -516,6 +556,21 @@ fn model_owned_clause_refusals_are_unchanged_beside_a_source_type() {
         assert_eq!(actual.loci, expected.loci, "{case}");
         assert_eq!(actual.locus, expected.locus, "{case}");
     }
+    // An unselected target: the clause's model node names an owner identity the
+    // lock does not select.
+    let unselect = |package: &Value| {
+        let mut package = package.clone();
+        let object = position(&package, "model", "object_type");
+        nodes_mut(&mut package)[object]["owner"]["identity"] = json!("unselected");
+        settle(&mut package);
+        refused(&package)
+    };
+    let expected = unselect(&base);
+    let actual = unselect(&mixed);
+    assert_eq!(actual.code, expected.code, "unselected target");
+    assert_eq!(actual.cause, expected.cause, "unselected target");
+    assert_eq!(actual.loci, expected.loci, "unselected target");
+    assert_eq!(actual.locus, expected.locus, "unselected target");
 }
 
 /// Trace: FR-365-AC-1.
@@ -1332,7 +1387,7 @@ fn candidate(declaring: &Value, key: &str, body: &Value, precondition: Value) ->
     json!({
         "selected_operation": {"declaring": declaring, "operation": "deposit"},
         "selection_key": {"owner_effective_type": null,
-            "original": {"package": "test/families", "node": key}},
+            "original": {"package": source_identity(), "node": key}},
         "operation_body": body,
         "effective_precondition": precondition,
     })
@@ -1543,6 +1598,187 @@ fn source_clause_functions_of_another_form_operation_or_owner_refuse() {
         invalid.0,
         invalid.1,
         &format!("{base}/operation_body"),
+    );
+}
+
+/// Trace: FR-366-AC-3.
+#[trace("TC-475", "FR-366-AC-3")]
+#[test]
+fn source_candidate_selection_keys_refuse_unless_they_name_a_source_type_of_the_owner() {
+    let at = "/checked_term_data/dispatch_tables/0/candidates/0/selection_key";
+    let cases: Vec<KeyEdit> = vec![
+        (
+            "package of another identity",
+            Box::new(|key| key["original"]["package"] = json!("test/families")),
+        ),
+        (
+            "node naming no source type",
+            Box::new(|key| key["original"]["node"] = json!("Missing")),
+        ),
+        (
+            "node naming a source node that is no type",
+            Box::new(|key| key["original"]["node"] = json!("Line")),
+        ),
+        (
+            "node naming a model type",
+            Box::new(|key| key["original"]["node"] = json!("ix://test/families/Account")),
+        ),
+    ];
+    for (case, edit) in cases {
+        let mut package = dispatch_package();
+        add_source_record(&mut package);
+        edit(
+            &mut package["checked_term_data"]["dispatch_tables"][0]["candidates"][0]
+                ["selection_key"],
+        );
+        settle(&mut package);
+        expect(
+            case,
+            &package,
+            Code::InvalidPackage,
+            Some(Cause::InvalidValue),
+            at,
+        );
+    }
+}
+
+/// Trace: FR-366-AC-6.
+#[trace("TC-475", "FR-366-AC-6")]
+#[test]
+fn the_source_object_read_refuses_a_candidate_outside_the_context_family() {
+    // `Sub` redefines `deposit` for `Order`: the base table admits.
+    let base = admitted(&dispatch_package());
+    SelectedSourceObjects::from_stage_rows(&base, complete_rows()).expect("Sub is a subtype");
+
+    // `Other` is a third source type with its own `deposit` body.
+    let mut package = dispatch_package();
+    nodes_mut(&mut package).extend([
+        source_type("Other", &["total"], &fixture_source()),
+        clause_function(&source_owner(), &["Other", "deposit", "body"], &integer()),
+    ]);
+    package["checked_term_data"]["dispatch_tables"][0]["candidates"]
+        .as_array_mut()
+        .expect("candidates")
+        .push(candidate(
+            &order_id(),
+            "Other",
+            &node_id("qualified:Other/deposit/body"),
+            Value::Null,
+        ));
+    settle(&mut package);
+    let package = admitted(&package);
+    let rows_with = |other_supertypes: Vec<CheckedNodeId>, sub_supertypes: Vec<CheckedNodeId>| {
+        vec![
+            row("Order", vec![], &["Orders"]),
+            row("Sub", sub_supertypes, &[]),
+            row("Other", other_supertypes, &[]),
+        ]
+    };
+    let order = || vec![id("qualified:Order")];
+    assert_eq!(
+        code_of(&package, rows_with(vec![], order())),
+        RowError::MismatchedIdentityWitness,
+        "a type outside the family"
+    );
+    assert_eq!(
+        code_of(&package, rows_with(order(), vec![])),
+        RowError::MismatchedIdentityWitness,
+        "a subtype row that does not reach the context"
+    );
+    // Reaching the context through a transitive supertype admits.
+    SelectedSourceObjects::from_stage_rows(&package, rows_with(vec![id("qualified:Sub")], order()))
+        .expect("Other reaches Order through Sub");
+    // A clause function is declared under the candidate's type or a supertype.
+    let with_body = |candidate: usize, body: &str| {
+        let mut package = dispatch_package();
+        package["checked_term_data"]["dispatch_tables"][0]["candidates"][candidate]
+            ["operation_body"] = node_id(body);
+        settle(&mut package);
+        admitted(&package)
+    };
+    let inherited = with_body(1, "qualified:Order/deposit/body");
+    SelectedSourceObjects::from_stage_rows(&inherited, complete_rows())
+        .expect("Sub inherits Order's deposit");
+    let upside_down = with_body(0, "qualified:Sub/deposit/body");
+    assert_eq!(
+        code_of(&upside_down, complete_rows()),
+        RowError::MismatchedIdentityWitness,
+        "a clause declared under a subtype of the candidate"
+    );
+    // The family check needs the complete row set, so missing ranks first.
+    let mut rows = rows_with(vec![], order());
+    rows.pop();
+    assert_eq!(
+        code_of(&package, rows),
+        RowError::MissingIdentityWitness,
+        "missing before mismatched"
+    );
+}
+
+fn body_position(package: &Value) -> usize {
+    nodes(package)
+        .iter()
+        .position(|node| node["node_id"] == node_id("qualified:Order/deposit/body"))
+        .expect("Order's deposit body")
+}
+
+/// The two types of one unit share one `SourceOwner`; the anchor reads only the
+/// `[<type>, <operation>, "body"]` function of its own type.
+///
+/// Trace: FR-368-AC-1.
+#[trace("TC-475", "FR-368-AC-1")]
+#[test]
+fn an_anchor_reads_only_the_body_function_of_its_own_type() {
+    let mut package = callable_package();
+    // `Sub` also carries a `deposit` body, ahead of `Order`'s in graph order and
+    // without a body expression, so reading it would refuse.
+    let at = body_position(&package);
+    let sub_body = clause_function(&source_owner(), &["Sub", "deposit", "body"], &boolean());
+    let sub = source_type("Sub", &["total"], &fixture_source());
+    nodes_mut(&mut package).splice(at..at, [sub, sub_body]);
+    settle(&mut package);
+    let package = admitted(&package);
+    let anchor = anchor_of(&package);
+    let rows = SelectedSourceOperations::from_stage_rows(
+        &package,
+        [operation_row(&package, "Order::deposit")],
+        64,
+    )
+    .expect("the valid row");
+    let read = package
+        .source_operation_callable(&rows, &anchor, 256)
+        .expect("Order's own body");
+    assert_eq!(
+        read.callable().expect("callable").body,
+        id(&family_key("dddd"))
+    );
+
+    // With only `Sub`'s body present the `Order` anchor has none, and the
+    // refusal reports every unit charged.
+    let mut only_sub = callable_package();
+    let at = body_position(&only_sub);
+    nodes_mut(&mut only_sub)[at] =
+        clause_function(&source_owner(), &["Sub", "deposit", "body"], &boolean());
+    nodes_mut(&mut only_sub).push(source_type("Sub", &["total"], &fixture_source()));
+    settle(&mut only_sub);
+    let only_sub = admitted(&only_sub);
+    let rows = SelectedSourceOperations::from_stage_rows(
+        &only_sub,
+        [operation_row(&only_sub, "Order::deposit")],
+        64,
+    )
+    .expect("the valid row");
+    let error = only_sub
+        .source_operation_callable(&rows, &anchor_of(&only_sub), 4096)
+        .expect_err("no Order body");
+    assert_eq!(
+        error.code,
+        CheckedCallableReadErrorCode::MissingSelectedJoin
+    );
+    assert_eq!(
+        error.work,
+        1 + only_sub.graph().nodes.len() as u64,
+        "the anchor plus one unit per scanned node"
     );
 }
 
@@ -1871,6 +2107,35 @@ fn a_complete_row_set_exposes_every_source_type_through_a_typed_read() {
     let sub = rows.read(&package, &id("qualified:Sub")).expect("Sub row");
     assert_eq!(sub.supertypes, [id("qualified:Order")]);
     assert!(rows.read(&package, &id(&family_key("a3a3"))).is_none());
+}
+
+/// Two `SourceOwner`s of one authority cannot each declare a type of one name,
+/// so the (authority, `source_identity`) row key never collides across owners.
+///
+/// Trace: FR-367-AC-3.
+#[trace("TC-475", "FR-367-AC-3")]
+#[test]
+fn a_same_named_type_under_a_second_owner_of_one_authority_refuses() {
+    let mut package = source_package();
+    let other = json!({"authority": fixture_source()["authority"],
+        "identity": "filament.fixture.other-source/v1"});
+    package["lock"]["sources"]
+        .as_array_mut()
+        .expect("sources")
+        .push(other.clone());
+    let mut second = source_type("Order", &["total"], &fixture_source());
+    second["owner"] = json!({"kind": "source", "authority": other["authority"],
+        "identity": other["identity"]});
+    nodes_mut(&mut package).push(second);
+    settle(&mut package);
+    let at = nodes(&package).len() - 1;
+    expect(
+        "second owner, same type name",
+        &package,
+        Code::InvalidSemanticGraph,
+        None,
+        &format!("/semantic_graph/nodes/{at}/node_id"),
+    );
 }
 
 /// Trace: FR-367-AC-3.

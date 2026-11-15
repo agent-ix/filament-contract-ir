@@ -37,7 +37,7 @@ owner that joins a selected domain document. The strict V2 reader SHALL admit
 such a type, and the six reader changes of
 [FR-363](./FR-363-join-protocol-owner-model-to-source-declared-type.md) through
 [FR-368](./FR-368-project-source-operation-anchor-witness.md), as one change set
-under FSL ADR-013 QC-30 item 4. The reader and encoder SHALL read, encode and refuse a package that declares no source object type exactly as it did before this change set.
+under FSL ADR-013 QC-30 item 4. The reader and encoder SHALL read, encode and refuse a package that declares none of the source constructs (no source-declared object type, no `SourceOwner`-owned population node and no `source_declaration_operation_frame` effects row) exactly as it did before this change set.
 
 ## Inputs
 
@@ -56,9 +56,20 @@ The reader SHALL treat a node as a source-declared object type exactly when it
 is a `model`/`object_type` node whose `owner` is a `SourceOwner` and whose
 `declaration` is present. The reader SHALL apply every source-object rule of
 FR-363 through FR-368 only to such a node, or to a row, reference or anchor
-that names one. Where a package has no such node, the reader SHALL NOT
-evaluate any rule of FR-363 through FR-368 and SHALL NOT introduce a new code,
-cause, locus, work charge or ordering.
+that names one, except the rules of [FR-364](./FR-364-admit-source-population-reference.md)
+and [FR-365](./FR-365-read-source-declared-operation-effects.md), which apply to
+a `SourceOwner`-owned population node and to a source-origin effects row as
+they state. Where a package has none of the source constructs, the reader SHALL
+NOT evaluate any rule of FR-363 through FR-368 and SHALL NOT introduce a new
+code, cause, locus, work charge or ordering.
+
+A package that has a source population node or a source-origin effects row but
+no source-declared object type is outside that guarantee, and behaves as
+follows. A `SourceOwner`-owned population node with a `declaration` admits as
+FR-364 states, where before this change set it refused. A source-origin effects
+row whose declaring node is not a source-declared object type refuses
+`invalid_package`/`invalid-value` at `provenance/origin`, where before this
+change set the origin was outside the closed schema.
 
 The reader SHALL NOT join a source-declared node, directly or by name, to a
 selected domain document or a selected model row, and SHALL NOT match a source
@@ -72,7 +83,7 @@ wire member and no wire shape.
 
 | ID | Criteria | Verification |
 | --- | --- | --- |
-| FR-362-AC-1 | The existing suites of TC-048, TC-228, TC-229, TC-463 and TC-472, FR-064's protocol-owner tests and the published FSpec checked-package fixtures pass with no edit to any expectation, including every exact work-charge assertion, and none of those packages declares a source object type. | Test |
+| FR-362-AC-1 | The existing suites of TC-048, TC-228, TC-229, TC-463 and TC-472, FR-064's protocol-owner tests and the published FSpec checked-package fixtures pass with no edit to any expectation, including every exact work-charge assertion, and none of those packages declares a source construct; and a package that declares none of the source constructs holds no source-declared node and re-encodes stably. | Test |
 | FR-362-AC-2 | A checked package that declares one source object type with one field and one operation, with every other source-object construct absent, admits through the public reader and exposes the type as a source-declared node with its `SourceOwner`. | Test |
 | FR-362-AC-3 | A source-declared type is never resolved against a selected domain document: a package whose lock selects no domain document admits the type, and a package with a source type and a selected model of the same name keeps two distinct nodes with distinct owners. | Test |
 

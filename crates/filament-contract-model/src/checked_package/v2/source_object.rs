@@ -111,6 +111,10 @@ pub enum SelectedSourceObjectErrorCode {
     /// A source-declared object type has no row.
     #[error("source-declared object type has no identity row")]
     MissingIdentityWitness,
+    /// A dispatch candidate of a source context names a type that is neither
+    /// the context nor a transitive subtype of it (FR-366-AC-6).
+    #[error("dispatch candidate is outside the source context's type family")]
+    MismatchedIdentityWitness,
 }
 
 /// A refused supply, at the `Package` locus, with no partial view.
@@ -145,15 +149,17 @@ impl<'a> SelectedSourceObjects<'a> {
                 .zip(package.kinds.get(position))
                 .is_some_and(|(node, kind)| is_source_declared_object_type(node, *kind))
         };
-        let owners_authority = |authority: &str| {
-            graph.nodes.iter().any(|node| {
-                matches!(&node.owner, Some(CheckedNodeOwner::Source { authority: held, .. })
-                    if held.as_ref() == authority)
+        let authorities: std::collections::BTreeSet<&str> = graph
+            .nodes
+            .iter()
+            .filter_map(|node| match &node.owner {
+                Some(CheckedNodeOwner::Source { authority, .. }) => Some(authority.as_ref()),
+                _ => None,
             })
-        };
+            .collect();
         if rows
             .iter()
-            .any(|row| !owners_authority(&row.source_authority))
+            .any(|row| !authorities.contains(row.source_authority.as_ref()))
         {
             return fail(SelectedSourceObjectErrorCode::ForeignIdentityWitness);
         }
@@ -190,6 +196,9 @@ impl<'a> SelectedSourceObjects<'a> {
         {
             return fail(SelectedSourceObjectErrorCode::MissingIdentityWitness);
         }
+        if !dispatch_families_hold(package, &joined) {
+            return fail(SelectedSourceObjectErrorCode::MismatchedIdentityWitness);
+        }
         Ok(Self {
             package,
             rows: joined,
@@ -213,6 +222,86 @@ impl<'a> SelectedSourceObjects<'a> {
     pub fn rows(&self) -> impl ExactSizeIterator<Item = &SelectedSourceObjectRow> {
         self.rows.values()
     }
+}
+
+/// Whether every candidate of every source-context dispatch table names the
+/// context's type or a transitive subtype of it by its `selection_key`
+/// (`original.node` is the type's `source_identity`), and its clause functions
+/// are declared under the candidate's type or one of its supertypes (FR-366).
+fn dispatch_families_hold(
+    package: &super::CheckedPackageV2,
+    joined: &std::collections::BTreeMap<usize, SelectedSourceObjectRow>,
+) -> bool {
+    let Some(data) = package.wire.checked_term_data.as_ref() else {
+        return true;
+    };
+    let named = |authority: &str, identity: &str| {
+        joined
+            .iter()
+            .find(|(_, row)| {
+                *row.source_authority == *authority && *row.source_identity == *identity
+            })
+            .map(|(&position, _)| position)
+    };
+    // The type segment of a clause function's `declaration`.
+    let declared_under = |clause: &CheckedNodeId| {
+        package
+            .position_of(clause)
+            .and_then(|position| {
+                package.resolved_graph().nodes[position]
+                    .declaration
+                    .as_ref()
+            })
+            .and_then(|declaration| declaration.qualified_name.first())
+    };
+    data.dispatch_tables.iter().all(|table| {
+        let Some(context) = package.position_of(&table.context) else {
+            return true;
+        };
+        let Some(context_row) = joined.get(&context) else {
+            return true;
+        };
+        let authority = context_row.source_authority.as_ref();
+        table.candidates.iter().all(|candidate| {
+            let Some(own) = named(authority, &candidate.selection_key.original.node) else {
+                return false;
+            };
+            reaches(package, joined, own, context)
+                && std::iter::once(&candidate.operation_body)
+                    .chain(candidate.effective_precondition.as_ref())
+                    .all(|clause| {
+                        declared_under(clause)
+                            .and_then(|type_name| named(authority, type_name))
+                            .is_some_and(|under| reaches(package, joined, own, under))
+                    })
+        })
+    })
+}
+
+/// Whether `from` is `target` or reaches it through `supertypes`.
+fn reaches(
+    package: &super::CheckedPackageV2,
+    joined: &std::collections::BTreeMap<usize, SelectedSourceObjectRow>,
+    from: usize,
+    target: usize,
+) -> bool {
+    let mut seen = std::collections::BTreeSet::new();
+    let mut pending = vec![from];
+    while let Some(position) = pending.pop() {
+        if position == target {
+            return true;
+        }
+        if seen.insert(position) {
+            if let Some(row) = joined.get(&position) {
+                pending.extend(
+                    row.supertypes
+                        .iter()
+                        .filter_map(|id| package.position_of(id)),
+                );
+            }
+        }
+    }
+    false
 }
 
 /// The field bindings of a source-declared type's body, in order.

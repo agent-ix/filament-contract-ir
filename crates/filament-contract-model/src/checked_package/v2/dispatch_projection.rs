@@ -331,6 +331,32 @@ pub(super) fn validate_checked_term_data<Body>(
                     return Err(invalid(meter, row_index, at.key("selection_key")));
                 }
             }
+            if let Route::Source { owner } = &route {
+                // FR-366: the key is `{package: <owner identity>, node: <the
+                // `source_identity` of a source type under that owner>}`.
+                stage_storage::work(
+                    meter,
+                    &data_site(row_index, at.key("selection_key")),
+                    nodes.len() as u64,
+                )?;
+                let original = &candidate.selection_key.original;
+                let named = matches!(
+                    owner,
+                    CheckedNodeOwner::Source { identity, .. }
+                        if identity.as_ref() == original.package.as_ref()
+                ) && nodes.iter().zip(kinds).any(|(node, kind)| {
+                    node.owner.as_ref() == Some(*owner)
+                        && is_source_declared_object_type(node, *kind)
+                        && node
+                            .declaration
+                            .as_ref()
+                            .and_then(|declaration| declaration.qualified_name.last())
+                            .is_some_and(|name| name.as_ref() == original.node.as_ref())
+                });
+                if !named {
+                    return Err(invalid(meter, row_index, at.key("selection_key")));
+                }
+            }
             let body_position = position_of(&index, &candidate.operation_body);
             let body_kind = body_position.and_then(|position| kinds.get(position));
             // Model declarations can belong to a dependency package, so the
