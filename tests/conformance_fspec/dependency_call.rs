@@ -16,10 +16,10 @@ use ix_trace_rs::trace;
 use serde_json::Value;
 use std::collections::BTreeSet;
 
-use super::qspec_inputs::apply_dependency_call_patch as apply_patch;
+use super::fspec_inputs::apply_dependency_call_patch as apply_patch;
 
 fn without_dependency(package: &Value) -> CheckedPackageV2ReadResult {
-    let evidence = super::qspec_inputs::dependency_call_evidence_without_dependency(package);
+    let evidence = super::fspec_inputs::dependency_call_evidence_without_dependency(package);
     crate::read_and_account(
         &crate::fixture_support::canonical(package),
         CheckedPackageReadLimits::bounded(),

@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Agent-IX
 
 //! Public V2 structural identity and canonical-byte controls over an authored
-//! single-node fixture. The published FSpec readback runs in conformance_qspec.
+//! single-node fixture. The published FSpec readback runs in conformance_fspec.
 
 use filament_contract_model::{
     encode_checked_package_v2, CheckedPackageEvidence, CheckedPackageLimit,

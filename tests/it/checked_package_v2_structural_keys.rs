@@ -3,7 +3,7 @@
 
 //! Structural V2 node identities: the reader retains authored positions,
 //! rejects duplicates, and does not derive identifiers from node bodies.
-//! The published multi-package and graph-order vectors run in conformance_qspec.
+//! The published multi-package and graph-order vectors run in conformance_fspec.
 
 use crate::support::checked_package::{
     canonical, evidence_for, evidence_with_document, family_model_document, index_fixture_node_ids,

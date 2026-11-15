@@ -25,8 +25,8 @@ help:
 	@echo "  make spec             - Validate and cover all Quire artifacts"
 	@echo "  make release-check    - Run every local release gate"
 	@echo "  make test             - Run cargo test"
-	@echo "  make conformance-qspec-compile - Compile the FSpec conformance target without fixtures (CI gate)"
-	@echo "  make conformance-qspec - FSpec's positive fixtures admit, adverse mutations refuse as recorded, selection identity derives (needs FILAMENT_SPECIFICATION_DIR; not in ci)"
+	@echo "  make conformance-fspec-compile - Compile the FSpec conformance target without fixtures (CI gate)"
+	@echo "  make conformance-fspec - FSpec's positive fixtures admit, adverse mutations refuse as recorded, selection identity derives (needs FILAMENT_SPECIFICATION_DIR; not in ci)"
 	@echo "  make conformance-fsl-ir703 - Fresh ConfigVersion V2 producer/IR accessor check (needs FILAMENT_SPEC_LANGUAGE_DIR and its current binaries)"
 	@echo "  make conformance-fsl-ir769 - Fresh FSL scalar result context through admitted IR (needs FILAMENT_SPEC_LANGUAGE_DIR and its current binary)"
 	@echo "  make conformance-fsl-ir779 - FSL FR-062 RR-13 path conditions through admitted IR (needs FILAMENT_SPEC_LANGUAGE_DIR and its current binary)"
@@ -93,32 +93,32 @@ test:
 # unset, empty, or holds no proposals/checked-package-v2/fixtures/, or when a
 # fixture does not admit. Fixture execution stays outside `test` and `ci`:
 # they have no checkout.
-.PHONY: conformance-qspec-compile
-conformance-qspec-compile:
-	$(CARGO) test $(LOCKED) --workspace --features conformance-cli --no-run --test conformance_qspec --test monitor_plan_public --test temporal_binding_public --test it
+.PHONY: conformance-fspec-compile
+conformance-fspec-compile:
+	$(CARGO) test $(LOCKED) --workspace --features conformance-cli --no-run --test conformance_fspec --test monitor_plan_public --test temporal_binding_public --test it
 
-.PHONY: conformance-qspec
-conformance-qspec:
+.PHONY: conformance-fspec
+conformance-fspec:
 	$(CARGO) test $(LOCKED) --workspace --lib ir1083_
-	$(CARGO) test $(LOCKED) -p filament-contract-model --lib --features qspec-conformance selected_closure_walk -- --include-ignored
-	$(CARGO) test $(LOCKED) --test conformance_qspec
+	$(CARGO) test $(LOCKED) -p filament-contract-model --lib --features fspec-conformance selected_closure_walk -- --include-ignored
+	$(CARGO) test $(LOCKED) --test conformance_fspec
 	$(CARGO) test $(LOCKED) -p filament-contract-model --test monitor_plan_public
-	@output=$$(QSPEC_CONFORMANCE=1 $(CARGO) test $(LOCKED) --test conformance_qspec tc_048_qspec_all_positive_packages_and_owner_identities -- --exact 2>&1); \
+	@output=$$(FSPEC_CONFORMANCE=1 $(CARGO) test $(LOCKED) --test conformance_fspec tc_048_fspec_all_positive_packages_and_owner_identities -- --exact 2>&1); \
 	status=$$?; printf '%s\n' "$$output"; \
 	[ "$$status" -eq 0 ] || exit "$$status"; \
 	passed=$$(printf '%s\n' "$$output" | grep -c '^test result: ok\. 1 passed; 0 failed; 0 ignored; 0 measured;' || true); \
 	[ "$$passed" -eq 1 ] || { echo 'required FSpec positive package identity test did not run exactly once' >&2; exit 1; }
-	@output=$$(QSPEC_CONFORMANCE=1 $(CARGO) test $(LOCKED) --features conformance-cli --test it checked_package_v2_owners::tc_229_qspec_ 2>&1); \
+	@output=$$(FSPEC_CONFORMANCE=1 $(CARGO) test $(LOCKED) --features conformance-cli --test it checked_package_v2_owners::tc_229_fspec_ 2>&1); \
 	status=$$?; printf '%s\n' "$$output"; \
 	[ "$$status" -eq 0 ] || exit "$$status"; \
 	passed=$$(printf '%s\n' "$$output" | grep -c '^test result: ok\. 2 passed; 0 failed; 0 ignored; 0 measured;' || true); \
 	[ "$$passed" -eq 1 ] || { echo 'required FSpec population fixture tests did not run exactly once' >&2; exit 1; }
-	@output=$$(QSPEC_CONFORMANCE=1 $(CARGO) test $(LOCKED) --features conformance-cli --test it checked_package_v2_protocol_body::compensation_clock_rows_follow_published_cases -- --exact 2>&1); \
+	@output=$$(FSPEC_CONFORMANCE=1 $(CARGO) test $(LOCKED) --features conformance-cli --test it checked_package_v2_protocol_body::compensation_clock_rows_follow_published_cases -- --exact 2>&1); \
 	status=$$?; printf '%s\n' "$$output"; \
 	[ "$$status" -eq 0 ] || exit "$$status"; \
 	passed=$$(printf '%s\n' "$$output" | grep -c '^test result: ok\. 1 passed; 0 failed; 0 ignored; 0 measured;' || true); \
 	[ "$$passed" -eq 1 ] || { echo 'required FSpec compensation clock vector test did not run exactly once' >&2; exit 1; }
-	@output=$$(QSPEC_CONFORMANCE=1 $(CARGO) test $(LOCKED) -p filament-contract-model --test temporal_binding_public default_feature_consumer_borrows_admitted_clock_rows -- --exact 2>&1); \
+	@output=$$(FSPEC_CONFORMANCE=1 $(CARGO) test $(LOCKED) -p filament-contract-model --test temporal_binding_public default_feature_consumer_borrows_admitted_clock_rows -- --exact 2>&1); \
 	status=$$?; printf '%s\n' "$$output"; \
 	[ "$$status" -eq 0 ] || exit "$$status"; \
 	passed=$$(printf '%s\n' "$$output" | grep -c '^test result: ok\. 1 passed; 0 failed; 0 ignored; 0 measured;' || true); \
@@ -272,7 +272,7 @@ use-remote:
 # =============================================================================
 
 .PHONY: ci
-ci: fmt-check lint test conformance-qspec-compile corpus spec deny cargo-audit
+ci: fmt-check lint test conformance-fspec-compile corpus spec deny cargo-audit
 
 .PHONY: release-check
 release-check: ci

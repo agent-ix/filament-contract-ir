@@ -6455,7 +6455,7 @@ pub(super) fn compensation_clock_case(
 fn compensation_clock_rows_follow_published_cases() {
     let root = match std::env::var_os("FILAMENT_SPECIFICATION_DIR") {
         Some(root) => root,
-        None if std::env::var_os("QSPEC_CONFORMANCE").is_none() => return,
+        None if std::env::var_os("FSPEC_CONFORMANCE").is_none() => return,
         None => panic!("FILAMENT_SPECIFICATION_DIR required for compensation conformance"),
     };
     let root = std::path::PathBuf::from(root);
@@ -10674,10 +10674,10 @@ pub(super) fn instantiate_fairness_reader_vector(vector: &Value) -> (Value, usiz
 
 #[trace("TC-048", "FR-038-AC-98", "FR-038-AC-103")]
 #[test]
-fn qspec_typed_fairness_reader_vectors_match_owner_refusals() {
+fn fspec_typed_fairness_reader_vectors_match_owner_refusals() {
     let root = match std::env::var_os("FILAMENT_SPECIFICATION_DIR") {
         Some(root) => root,
-        None if std::env::var_os("QSPEC_CONFORMANCE").is_none() => return,
+        None if std::env::var_os("FSPEC_CONFORMANCE").is_none() => return,
         None => panic!("FILAMENT_SPECIFICATION_DIR required for owner conformance"),
     };
     let path = std::path::PathBuf::from(root)
@@ -11543,7 +11543,7 @@ fn protocol_step_tables_and_walks_are_charged_to_the_read_budget() {
     let bytes = canonical(&package);
     let evidence = evidence_for(&package);
     let reader = |budget: &mut NativeJoinBudget| {
-        crate::qspec_read_proof::read_budget_and_account(
+        crate::fspec_read_proof::read_budget_and_account(
             &bytes,
             CheckedPackageReadLimits::bounded(),
             &evidence,

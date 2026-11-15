@@ -19,7 +19,7 @@ use serde_json::{json, Value};
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
-use super::qspec_inputs::apply_node_index_patch as apply_patch;
+use super::fspec_inputs::apply_node_index_patch as apply_patch;
 
 /// Trace: FR-038-AC-377, FR-038-AC-378, FR-038-AC-520, FR-038-AC-521
 #[trace(
@@ -59,7 +59,7 @@ fn published_operand_vectors_refuse_in_the_fr322_check_order() {
             // a later semantic refusal is allowed, an operand or duplicate-id
             // refusal is not.
             assert!(
-                super::qspec_inputs::operand_checks_pass(&actual),
+                super::fspec_inputs::operand_checks_pass(&actual),
                 "{id}: operand and duplicate-id stage checks: {actual:?}"
             );
             continue;

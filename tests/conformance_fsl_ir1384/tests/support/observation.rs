@@ -4,11 +4,11 @@
 //! Genuine observation-owner admission of a progress association, through the
 //! owner's public API.
 
-use quire_observation::authority::{
+use filament_observation::authority::{
     self, clock, progress, AuthoritySelection, Context, History, Limits, OpenClosed,
     SubjectSelection, TemporalBoundary,
 };
-use quire_observation::{
+use filament_observation::{
     admit, AdmissionOutcome, AdmissionRequest, AdmittedRecord, Anchor, ClockRange, Digest,
     Identity, Member, ObservationBinding, PackageSelection, ProducerConfiguration,
     QualifiedSubject, ResourceLimits, Revision, ScopeKind, ScopeSelection, StaticProducerBundle,

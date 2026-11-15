@@ -204,7 +204,7 @@
           "origin": {
             "source": {
               "sourceIdentity": "ix://example/config-version/spec",
-              "path": "spec.qspec",
+              "path": "spec.fspec",
               "startLine": 1,
               "startColumn": 1
             }

@@ -23,11 +23,11 @@ class CensusError(ValueError):
 # entry performs exactly one corresponding real API call; the actual helper
 # source and calibration tests must be reviewed with this arithmetic.
 BOUNDARIES = {
-    ("tests/it/support/qspec_read_proof.rs", "read_and_account"): "plain",
+    ("tests/it/support/fspec_read_proof.rs", "read_and_account"): "plain",
     ("tests/it/support/read_observation.rs", "measure_at"): "budgeted",
-    ("tests/it/support/qspec_read_proof.rs", "measure_seeded"): "budgeted",
-    ("tests/it/support/qspec_read_proof.rs", "read_budget_and_account"): "budgeted",
-    ("tests/it/support/qspec_read_proof.rs",
+    ("tests/it/support/fspec_read_proof.rs", "measure_seeded"): "budgeted",
+    ("tests/it/support/fspec_read_proof.rs", "read_budget_and_account"): "budgeted",
+    ("tests/it/support/fspec_read_proof.rs",
      "caller_budget_observation_preserves_prior_charges_and_outer_capture"): "budgeted-calibration",
 }
 PRODUCTION = {
@@ -119,7 +119,7 @@ def check(export, root):
     counts = tally(export, root)
     def count(file, name):
         return counts[(file, name)]
-    wrapper = "tests/it/support/qspec_read_proof.rs"
+    wrapper = "tests/it/support/fspec_read_proof.rs"
     production = "crates/filament-contract-model/src/checked_package/v2/budgeted_read.rs"
     plain = count(production, "read")
     budgeted = count(production, "read_with_budget")

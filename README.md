@@ -151,7 +151,7 @@ make ci             # every local gate: fmt-check, lint, test, corpus, spec, den
 make help           # all targets, including the lanes that need a FSL or FSpec checkout
 ```
 
-Some conformance lanes (`make conformance-qspec`, `conformance-fsl-ir769` and
+Some conformance lanes (`make conformance-fspec`, `conformance-fsl-ir769` and
 others) need a checkout of [`filament-specification`](https://github.com/agent-ix/filament-specification) or
 `filament-spec-language` and are outside `make test`; `make help` names what each
 one needs.

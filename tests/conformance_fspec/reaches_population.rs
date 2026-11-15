@@ -198,7 +198,7 @@ fn candidate(base: &Value, case: &Value) -> Value {
     "FR-038-AC-276"
 )]
 #[test]
-fn tc_048_qspec_reaches_population_cases_match_the_reader() {
+fn tc_048_fspec_reaches_population_cases_match_the_reader() {
     let dir = fixtures_dir();
     let adverse = read_json(&dir.join(ADVERSE)).expect("FSpec adverse fixture");
     let rows = mutations(&adverse, "reaches_population_cases").expect("published cases");
@@ -230,7 +230,7 @@ fn tc_048_qspec_reaches_population_cases_match_the_reader() {
 /// retain distinct structural population identities.
 #[trace("TC-233", "FR-322-AC-74")]
 #[test]
-fn tc_233_qspec_unbounded_population_rows_read_with_exact_sources() {
+fn tc_233_fspec_unbounded_population_rows_read_with_exact_sources() {
     let fixtures = fixtures_dir();
     let adverse = read_json(&fixtures.join(ADVERSE)).expect("FSpec adverse fixture");
     let rows = adverse["unbounded_population_cases"]

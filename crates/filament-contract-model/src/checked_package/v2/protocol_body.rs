@@ -6977,7 +6977,7 @@ mod tests {
         )
     }
 
-    type QSpecFrame = (ProtocolForm, &'static str, &'static [(&'static str, Shape)]);
+    type FSpecFrame = (ProtocolForm, &'static str, &'static [(&'static str, Shape)]);
 
     fn id(name: char) -> Value {
         json!({"package": "test/protocol", "path": [name.to_string()], "ordinal": 0})
@@ -7276,8 +7276,8 @@ mod tests {
     /// FSpec TC-946, TC-947 and TC-948 supply these independent representative frames.
     #[trace("TC-048")]
     #[test]
-    fn protocol_outer_layout_accepts_independent_qspec_frames() {
-        let cases: &[QSpecFrame] = &[
+    fn protocol_outer_layout_accepts_independent_fspec_frames() {
+        let cases: &[FSpecFrame] = &[
             (
                 ProtocolForm::ProtocolClause,
                 "protocol",

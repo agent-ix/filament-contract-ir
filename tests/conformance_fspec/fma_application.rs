@@ -10,14 +10,14 @@ use filament_contract_model::{
 use ix_trace_rs::trace;
 use std::collections::BTreeSet;
 
-#[path = "../it/support/qspec_fma_inputs.rs"]
+#[path = "../it/support/fspec_fma_inputs.rs"]
 mod inputs;
 use inputs::{literal_id, operand_type_id, package_for};
 
 /// Trace: FR-038-AC-431, FR-038-AC-432; FSpec FR-322-AC-307.
 #[trace("TC-048", "FR-038-AC-431", "FR-038-AC-432")]
 #[test]
-fn tc_048_fma_applications_follow_published_qspec_cases() {
+fn tc_048_fma_applications_follow_published_fspec_cases() {
     let vectors = read_json(&proposal_dir_of(&fixtures_dir()).join("fma-application-vectors.json"))
         .expect("published FSpec FMA application vectors");
     let cases = vectors["cases"].as_array().expect("published cases");

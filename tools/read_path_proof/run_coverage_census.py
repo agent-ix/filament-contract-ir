@@ -23,8 +23,8 @@ import coverage_census as census
 LOCKED = ["flock", "--no-fork", "/tmp/titan-cargo.lock", "nice", "-n", "10", "ionice", "-c", "3"]
 CONTROL_CASES = {
     "wrapped_function_item_has_no_unaccounted_entry": True,
-    "qspec_read_proof::provider_scope_tests::provider_designated_read_preserves_the_original_scalar_refusal": True,
-    "qspec_read_proof::caller_budget_tests::caller_budget_observation_preserves_prior_charges_and_outer_capture": True,
+    "fspec_read_proof::provider_scope_tests::provider_designated_read_preserves_the_original_scalar_refusal": True,
+    "fspec_read_proof::caller_budget_tests::caller_budget_observation_preserves_prior_charges_and_outer_capture": True,
     "unwrapped_type_alias_before_trusted_read_must_fail_census": False,
     "unwrapped_function_item_after_trusted_read_must_fail_census": False,
     "unwrapped_shared_helper_before_trusted_read_must_fail_census": False,
@@ -159,8 +159,8 @@ def persisted_test_summary(report):
 def validate_snapshot(root, config):
     if git(root, "status", "--porcelain"):
         raise RunError("source tree changed after the clean build")
-    qspec = Path(config["qspec"]["path"])
-    if git(qspec, "status", "--porcelain"):
+    fspec = Path(config["fspec"]["path"])
+    if git(fspec, "status", "--porcelain"):
         raise RunError("selected FSpec tree changed during proof")
 
 
@@ -406,7 +406,7 @@ def run_controls(args, binary, config, env, compiled_tests):
         evidence = merge_export(args, output, profiles, binary, env)
         try:
             result = census.check(evidence, args.repo)
-            if name == "qspec_read_proof::provider_scope_tests::provider_designated_read_preserves_the_original_scalar_refusal":
+            if name == "fspec_read_proof::provider_scope_tests::provider_designated_read_preserves_the_original_scalar_refusal":
                 census.validate_provenance(evidence, args.repo, {name}, records)
         except census.CensusError as error:
             if should_pass or not str(error).startswith("unaccounted "):
@@ -562,9 +562,9 @@ def main():
     parser.add_argument("--controls", action="store_true")
     parser.add_argument("--control-test", action="append", default=[], help="exact entry-control symbol; requires --controls, selected-only evidence")
     parser.add_argument("--class-controls",action="store_true")
-    parser.add_argument("--corpus", choices=["qspec", "tc048"], default="qspec")
+    parser.add_argument("--corpus", choices=["fspec", "tc048"], default="fspec")
     parser.add_argument("--features", action="append", default=[])
-    parser.add_argument("--qspec-dir", type=Path, required=True)
+    parser.add_argument("--fspec-dir", type=Path, required=True)
     parser.add_argument("--test-timeout-seconds", type=float,
                         help="per original process; sample defaults to120s, full requires an adequate explicit value")
     args = parser.parse_args()
@@ -579,7 +579,7 @@ def main():
     if not math.isfinite(args.test_timeout_seconds) or args.test_timeout_seconds <= 0:
         parser.error("test timeout must be positive")
     args.target_dir = owned_target(args.repo, args.target_dir)
-    for field in ["repo", "out", "target_dir", "toolchain_bin", "llvm_bin", "qspec_dir"]:
+    for field in ["repo", "out", "target_dir", "toolchain_bin", "llvm_bin", "fspec_dir"]:
         setattr(args, field, getattr(args, field).resolve())
     if args.out.exists():
         raise SystemExit("output directory already exists; preserve each run separately")
@@ -591,7 +591,7 @@ def main():
             raise RunError("freeze and commit the source before compiler evidence")
         if "test-support" not in set(",".join(args.features).split(",")):
             raise RunError("compiler proof requires explicit test-support for checked passive/seeded boundaries")
-        if git(args.qspec_dir, "status", "--porcelain"):
+        if git(args.fspec_dir, "status", "--porcelain"):
             raise RunError("select a clean FSpec checkout for the one recorded input snapshot")
         require_space(args.repo, "before compiler build")
         rustc = subprocess.check_output([str(args.toolchain_bin / "rustc"), "-vV"], text=True)
@@ -609,16 +609,16 @@ def main():
                    CARGO_PROFILE_DEV_OPT_LEVEL="0", CARGO_PROFILE_TEST_OPT_LEVEL="0",
                    CARGO_TARGET_DIR=str(args.target_dir), RUSTFLAGS=flags,
                    RUSTC=str(args.toolchain_bin / "rustc"), RUSTDOC=str(args.toolchain_bin / "rustdoc"),
-                   CARGO=str(args.toolchain_bin / "cargo"), FILAMENT_SPECIFICATION_DIR=str(args.qspec_dir))
+                   CARGO=str(args.toolchain_bin / "cargo"), FILAMENT_SPECIFICATION_DIR=str(args.fspec_dir))
         env["PATH"] = str(args.toolchain_bin) + os.pathsep + env["PATH"]
         config = {"rustc": rustc, "llvm": llvm,
                   "mode": args.mode, "controls": args.controls, "class_controls":args.class_controls, "corpus": args.corpus, "features": args.features,
                   "test_timeout_seconds":args.test_timeout_seconds, "original_tests":args.original_test, "control_tests":args.control_test,
                   **selection_metadata(args),
-                  "qspec": {"path": str(args.qspec_dir)},
+                  "fspec": {"path": str(args.fspec_dir)},
                   "environment": safe_environment(env)}
         target = ("read_storage_alloc" if args.class_controls else "read_entry_census_controls" if args.controls else
-                  "it" if args.corpus == "tc048" else "conformance_qspec")
+                  "it" if args.corpus == "tc048" else "conformance_fspec")
         binary = build(args, target, env, config)
         intended = discover_tests(args, binary, env)
         if not args.controls and args.corpus == "tc048":

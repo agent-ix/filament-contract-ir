@@ -9,7 +9,7 @@ use ix_trace_rs::trace;
 use serde_json::json;
 use std::collections::BTreeSet;
 
-use super::qspec_inputs::apply_vector_patch;
+use super::fspec_inputs::apply_vector_patch;
 
 /// Trace: FR-065-AC-3
 #[trace("TC-233", "FR-065-AC-3")]

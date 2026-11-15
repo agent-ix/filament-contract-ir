@@ -32,7 +32,7 @@ fn positive(id: &str) -> Value {
     row.as_object_mut().unwrap().remove("id");
     row
 }
-#[path = "../it/support/qspec_protocol_location_inputs.rs"]
+#[path = "../it/support/fspec_protocol_location_inputs.rs"]
 mod inputs;
 use inputs::{fixture, published_leaf_fixture};
 

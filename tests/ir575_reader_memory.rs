@@ -204,15 +204,15 @@ fn tc_048_ir575_metadata_only_peak() {
     );
 }
 
-#[path = "it/support/qspec_read_proof.rs"]
-mod qspec_read_proof;
-use qspec_read_proof::read_and_account;
+#[path = "it/support/fspec_read_proof.rs"]
+mod fspec_read_proof;
+use fspec_read_proof::read_and_account;
 
-fn measure_qspec_read_requests(read: impl FnOnce()) -> u64 {
+fn measure_fspec_read_requests(read: impl FnOnce()) -> u64 {
     allocation_counter::measure(read).bytes_total
 }
 
-fn without_qspec_instrumentation<T>(operation: impl FnOnce() -> T) -> T {
+fn without_fspec_instrumentation<T>(operation: impl FnOnce() -> T) -> T {
     let mut result = None;
     allocation_counter::opt_out(|| {
         result = Some(std::panic::catch_unwind(std::panic::AssertUnwindSafe(

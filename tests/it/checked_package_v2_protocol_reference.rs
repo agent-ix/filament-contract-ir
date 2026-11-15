@@ -508,7 +508,7 @@ fn mismatched_grouped_protocol_reference_label_is_rejected() {
 
 #[trace("FR-038-AC-241", "TC-048", "TC-946")]
 #[test]
-fn acyclic_protocol_reference_with_group_matches_qspec_k10() {
+fn acyclic_protocol_reference_with_group_matches_fspec_k10() {
     let mut package = v2_all_families();
     let target = node_id(&family_key("5050"));
     let position = add_carrier(&mut package, &target, &node_id(&family_key("aaaa")));
@@ -528,7 +528,7 @@ fn acyclic_protocol_reference_with_group_matches_qspec_k10() {
 
 #[trace("FR-038-AC-241", "TC-048", "TC-946")]
 #[test]
-fn qspec_k14_plain_protocol_stays_outside_the_cyclic_group() {
+fn fspec_k14_plain_protocol_stays_outside_the_cyclic_group() {
     let mut package = v2_all_families();
     for node in package["semantic_graph"]["nodes"]
         .as_array_mut()

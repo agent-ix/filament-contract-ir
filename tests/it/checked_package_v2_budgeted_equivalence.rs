@@ -3,7 +3,7 @@
 
 //! A sufficient budget returns the unlimited budget's outcome (TC-472).
 
-use crate::qspec_read_proof::assert_admitted_views_equal;
+use crate::fspec_read_proof::assert_admitted_views_equal;
 use crate::support::checked_package::{
     canonical, evidence_for, index_fixture_node_ids, v2_all_families, v2_nominal,
     v2_reference_chain,
@@ -303,7 +303,7 @@ fn sufficient_budgets_preserve_the_first_refusal_with_two_header_faults() {
 #[trace("TC-472", "FR-038-AC-512")]
 #[test]
 fn core_outcome_comparison_does_not_lower_but_explicit_view_proof_visits_every_node() {
-    use crate::qspec_read_proof::equivalence::{take_oracle_visits, OracleVisits, ReadViewScope};
+    use crate::fspec_read_proof::equivalence::{take_oracle_visits, OracleVisits, ReadViewScope};
     let input = input("original nominal scope control", &v2_nominal());
     let left = plain(&input);
     let right = budgeted(&input, &mut NativeJoinBudget::unlimited());
@@ -335,16 +335,16 @@ fn core_outcome_comparison_does_not_lower_but_explicit_view_proof_visits_every_n
 #[trace("TC-472", "FR-038-AC-512")]
 #[test]
 fn core_observer_keeps_reader_values_and_full_observer_checks_every_node() {
-    use crate::qspec_read_proof::{equivalence::take_oracle_visits, Counter, ReadViewScope};
+    use crate::fspec_read_proof::{equivalence::take_oracle_visits, Counter, ReadViewScope};
     struct ScopeCounter;
     impl Counter for ScopeCounter {
         fn measure(read: impl FnOnce()) -> u64 {
-            crate::measure_qspec_read_requests(read)
+            crate::measure_fspec_read_requests(read)
         }
     }
     let input = input("original nominal observer scope", &v2_nominal());
     take_oracle_visits();
-    let (core, core_events) = crate::qspec_read_proof::observe_native_with_scope::<ScopeCounter>(
+    let (core, core_events) = crate::fspec_read_proof::observe_native_with_scope::<ScopeCounter>(
         &input.bytes,
         &input.evidence,
         input.limits,
@@ -359,7 +359,7 @@ fn core_observer_keeps_reader_values_and_full_observer_checks_every_node() {
     assert!(nodes > 0);
     assert!(!core_events.is_empty());
     assert_eq!(take_oracle_visits().lower_calls, 0);
-    let (full, full_events) = crate::qspec_read_proof::observe_native_with_scope::<ScopeCounter>(
+    let (full, full_events) = crate::fspec_read_proof::observe_native_with_scope::<ScopeCounter>(
         &input.bytes,
         &input.evidence,
         input.limits,
@@ -380,7 +380,7 @@ fn core_observer_keeps_reader_values_and_full_observer_checks_every_node() {
     assert_eq!(full_visits.lower_calls, 4 * nodes);
     // Existing explicit AC512 providers use this unscoped API. Its strong
     // semantics remain independent of any process proof-mode environment.
-    let (legacy, legacy_events) = crate::qspec_read_proof::observe_native::<ScopeCounter>(
+    let (legacy, legacy_events) = crate::fspec_read_proof::observe_native::<ScopeCounter>(
         &input.bytes,
         &input.evidence,
         input.limits,
@@ -401,15 +401,15 @@ fn core_observer_keeps_reader_values_and_full_observer_checks_every_node() {
 #[trace("TC-472", "FR-038-AC-512")]
 #[test]
 fn direct_full_native_reference_checks_admitted_views_without_a_mode_environment() {
-    use crate::qspec_read_proof::{equivalence::take_oracle_visits, Counter};
+    use crate::fspec_read_proof::{equivalence::take_oracle_visits, Counter};
     struct ScopeCounter;
     impl Counter for ScopeCounter {
         fn measure(read: impl FnOnce()) -> u64 {
-            crate::measure_qspec_read_requests(read)
+            crate::measure_fspec_read_requests(read)
         }
     }
     let input = input("original nominal direct full proof", &v2_nominal());
-    let reference = crate::qspec_read_proof::measure_at::<ScopeCounter>(
+    let reference = crate::fspec_read_proof::measure_at::<ScopeCounter>(
         &input.bytes,
         &input.evidence,
         input.limits,
@@ -421,7 +421,7 @@ fn direct_full_native_reference_checks_admitted_views_without_a_mode_environment
     };
     let nodes = package.resolved_graph().nodes.len();
     take_oracle_visits();
-    let (_, events, complete) = crate::qspec_read_proof::full_native_reference(
+    let (_, events, complete) = crate::fspec_read_proof::full_native_reference(
         &input.bytes,
         input.limits,
         &input.evidence,

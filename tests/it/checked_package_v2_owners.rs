@@ -751,7 +751,7 @@ fn read_with_selected_model(
     )
 }
 
-fn retarget_qspec_application_argument(package: &mut Value, operation: &str, target: &Value) {
+fn retarget_fspec_application_argument(package: &mut Value, operation: &str, target: &Value) {
     // The published package holds the wire; this edit works on index segments.
     crate::support::checked_package::resolve_operands(package);
     let nodes = package["semantic_graph"]["nodes"]
@@ -1452,10 +1452,10 @@ fn tc_229_declared_population_is_query_operand() {
 
 #[trace("TC-229", "FR-038-AC-305", "FR-038-AC-307")]
 #[test]
-fn tc_229_qspec_published_population_binding_fixture_admits() {
+fn tc_229_fspec_published_population_binding_fixture_admits() {
     let root = match std::env::var("FILAMENT_SPECIFICATION_DIR") {
         Ok(root) if !root.is_empty() => root,
-        _ if std::env::var_os("QSPEC_CONFORMANCE").is_none() => return,
+        _ if std::env::var_os("FSPEC_CONFORMANCE").is_none() => return,
         _ => panic!("FILAMENT_SPECIFICATION_DIR is required for FSpec conformance"),
     };
     let proposal = std::path::Path::new(&root).join("proposals/checked-package-v2");
@@ -1634,11 +1634,11 @@ pub(super) fn population_reference_fixture(
     } else if case["member_population"] == true {
         application["body"]["operation"]["member"]["population"] = population.clone();
     } else {
-        retarget_qspec_application_argument(&mut package, &operation, &population);
+        retarget_fspec_application_argument(&mut package, &operation, &population);
     }
     if let Some(also) = case["also"].as_str() {
         let also = format!("filament.op.{also}");
-        retarget_qspec_application_argument(&mut package, &also, &population);
+        retarget_fspec_application_argument(&mut package, &also, &population);
     }
     settle(&mut package);
     // Model-owned population IDs gain their package during projection.
@@ -1688,10 +1688,10 @@ pub(super) fn population_reference_fixture(
     "FR-038-AC-307"
 )]
 #[test]
-fn tc_229_qspec_population_reference_cases_match_reader() {
+fn tc_229_fspec_population_reference_cases_match_reader() {
     let root = match std::env::var("FILAMENT_SPECIFICATION_DIR") {
         Ok(root) if !root.is_empty() => root,
-        _ if std::env::var_os("QSPEC_CONFORMANCE").is_none() => return,
+        _ if std::env::var_os("FSPEC_CONFORMANCE").is_none() => return,
         _ => panic!("FILAMENT_SPECIFICATION_DIR is required for FSpec conformance"),
     };
     let proposal = std::path::Path::new(&root).join("proposals/checked-package-v2");

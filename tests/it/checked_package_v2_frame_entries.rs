@@ -5663,7 +5663,7 @@ fn model_operation_callable_joins_selected_body_and_frame() {
 #[trace("TC-472", "FR-038-AC-511")]
 #[test]
 fn step_relation_reads_and_refusals_stay_within_the_unpaid_bound() {
-    use crate::qspec_read_proof::observation::{measure_at, unpaid, Counter, UNPAID_BOUND};
+    use crate::fspec_read_proof::observation::{measure_at, unpaid, Counter, UNPAID_BOUND};
     use filament_contract_model::CheckedPackageV2BudgetedReadResult as Budgeted;
     struct Allocations;
     impl Counter for Allocations {
@@ -5734,7 +5734,7 @@ fn step_relation_tables_are_charged_to_the_read_budget_at_the_relation_node() {
     let evidence = step_relation_evidence(&package);
     let bytes = canonical(&package);
     let read = |budget: &mut filament_contract_model::NativeJoinBudget| {
-        crate::qspec_read_proof::read_budget_and_account(
+        crate::fspec_read_proof::read_budget_and_account(
             &bytes,
             CheckedPackageReadLimits::bounded(),
             &evidence,

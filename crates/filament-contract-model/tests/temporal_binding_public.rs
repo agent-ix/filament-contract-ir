@@ -40,7 +40,7 @@ fn resolve_clause(value: &mut Value, clause: &Value) {
 fn default_feature_consumer_borrows_admitted_clock_rows() {
     let root = match std::env::var_os("FILAMENT_SPECIFICATION_DIR") {
         Some(root) => root,
-        None if std::env::var_os("QSPEC_CONFORMANCE").is_none() => return,
+        None if std::env::var_os("FSPEC_CONFORMANCE").is_none() => return,
         None => panic!("FILAMENT_SPECIFICATION_DIR required for temporal binding conformance"),
     };
     let proposal = PathBuf::from(root).join("proposals/checked-package-v2");

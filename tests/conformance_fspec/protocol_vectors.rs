@@ -33,7 +33,7 @@ fn read_authored(package: &Value) -> CheckedPackageV2ReadResult {
 
 #[trace("TC-946")]
 #[test]
-fn qspec_k2_role_rename_changes_declared_and_operand_ids() {
+fn fspec_k2_role_rename_changes_declared_and_operand_ids() {
     let row = vector("K2");
     assert_eq!(row["test_case"], "TC-946");
     assert_eq!(
@@ -130,7 +130,7 @@ fn qspec_k2_role_rename_changes_declared_and_operand_ids() {
 
 #[trace("TC-946")]
 #[test]
-fn qspec_k4_poll_maximum_changes_body_without_changing_declared_id() {
+fn fspec_k4_poll_maximum_changes_body_without_changing_declared_id() {
     let row = vector("K4");
     assert_eq!(row["test_case"], "TC-946");
     assert_eq!(row["Edit to the base"], "change `max 3` to `max 4`");
@@ -245,7 +245,7 @@ fn qspec_k4_poll_maximum_changes_body_without_changing_declared_id() {
 
 #[trace("TC-946")]
 #[test]
-fn qspec_c4_removing_scheduling_retains_declared_clause_id() {
+fn fspec_c4_removing_scheduling_retains_declared_clause_id() {
     let row = vector("C4");
     assert_eq!(row["test_case"], "TC-946");
     assert_eq!(
@@ -307,7 +307,7 @@ fn qspec_c4_removing_scheduling_retains_declared_clause_id() {
 
 #[trace("TC-946")]
 #[test]
-fn qspec_k10_acyclic_protocol_member_admits_a_lone_group_label() {
+fn fspec_k10_acyclic_protocol_member_admits_a_lone_group_label() {
     let row = vector("K10");
     assert_eq!(row["test_case"], "TC-946");
     assert!(row["Expected"]
@@ -357,7 +357,7 @@ fn qspec_k10_acyclic_protocol_member_admits_a_lone_group_label() {
 
 #[trace("TC-048", "FR-038-AC-463", "FR-038-AC-464")]
 #[test]
-fn qspec_role_port_member_cases_use_the_selected_declaration_kind() {
+fn fspec_role_port_member_cases_use_the_selected_declaration_kind() {
     use filament_contract_model::{
         CheckedPackageRefusalCause as Cause, CheckedPackageRefusalCode as Code,
         CheckedProtocolRefusalDetail,

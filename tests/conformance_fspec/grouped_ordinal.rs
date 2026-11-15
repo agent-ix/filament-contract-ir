@@ -14,7 +14,7 @@ use serde_json::Value;
 /// its producer-assigned node ordinal is distinct from the recursion position.
 #[trace("TC-048", "FR-038-AC-107", "FR-038-AC-176")]
 #[test]
-fn corrected_qspec_grouped_fixtures_admit_with_declared_paths() {
+fn corrected_fspec_grouped_fixtures_admit_with_declared_paths() {
     let fixtures = fixtures_dir();
     let document = proposal_dir_of(&fixtures).join(DOMAIN_DOCUMENT);
     for name in [

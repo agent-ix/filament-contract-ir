@@ -36,10 +36,10 @@ test-support = ["filament-contract-model/test-support"]
 # FR-038-AC-107: reads FSpec's positive fixtures from a `filament-specification`
 # checkout, which `make test` has not got. `test = false` keeps it outside
 # `cargo test --workspace --all-targets`; CI compiles it with `--no-run`, and
-# only `make conformance-qspec` runs its fixture tests.
+# only `make conformance-fspec` runs its fixture tests.
 [[test]]
-name = "conformance_qspec"
-path = "tests/conformance_qspec/main.rs"
+name = "conformance_fspec"
+path = "tests/conformance_fspec/main.rs"
 test = false
 
 # FR-355/TC-464: exact live FSL producer output and its selected model are

@@ -518,7 +518,7 @@ fn admitted_controls_expose_missing_catalog_constraint_productions() {
         .flat_map(|entry| entry["constraints"].as_array().unwrap())
         .map(|constraint| constraint["kind"].as_str().unwrap())
         .collect();
-    let qspec_positive_kinds = [
+    let fspec_positive_kinds = [
         "bound_family",
         "inner_type",
         "member_family",
@@ -528,7 +528,7 @@ fn admitted_controls_expose_missing_catalog_constraint_productions() {
         "same_type",
         "union_arms",
     ];
-    let covered: BTreeSet<&str> = qspec_positive_kinds
+    let covered: BTreeSet<&str> = fspec_positive_kinds
         .into_iter()
         .chain(controls.into_iter().map(|(_, kind)| kind))
         .collect();

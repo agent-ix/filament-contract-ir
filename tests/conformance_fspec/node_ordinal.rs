@@ -5,12 +5,12 @@
 
 use super::*;
 
-use super::qspec_inputs::ordinal_case_package as case_package;
+use super::fspec_inputs::ordinal_case_package as case_package;
 
 /// Trace: TC-233, FR-322-AC-272, FR-322-AC-273.
 #[trace("TC-233", "FR-322-AC-272", "FR-322-AC-273", "FR-038-AC-133")]
 #[test]
-fn qspec_node_ordinal_uniqueness_cases_read_exactly() {
+fn fspec_node_ordinal_uniqueness_cases_read_exactly() {
     let fixtures = fixtures_dir();
     let proposal = proposal_dir_of(&fixtures);
     let vectors = read_json(&proposal.join("node-ordinal-vectors.json"))
