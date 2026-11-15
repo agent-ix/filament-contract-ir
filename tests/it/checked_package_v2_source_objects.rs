@@ -1782,6 +1782,62 @@ fn an_anchor_reads_only_the_body_function_of_its_own_type() {
     );
 }
 
+/// The least `work` limit under which the package reads.
+fn least_work(package: &Value) -> u64 {
+    let package = indexed(package);
+    let bytes = canonical(&package);
+    let evidence = evidence_of(&package);
+    let admits = |work: u64| {
+        let limits = CheckedPackageReadLimits {
+            work,
+            ..CheckedPackageReadLimits::bounded()
+        };
+        matches!(
+            CheckedPackageV2::read(&bytes, limits, &evidence),
+            CheckedPackageV2ReadResult::Admitted(_)
+        )
+    };
+    let (mut low, mut high) = (0, 1 << 20);
+    assert!(admits(high), "the package must admit");
+    while low < high {
+        let mid = (low + high) / 2;
+        if admits(mid) {
+            high = mid;
+        } else {
+            low = mid + 1;
+        }
+    }
+    low
+}
+
+/// Each source candidate adds the same work whatever the graph size: the
+/// `selection_key` lookup is indexed, not a scan of the graph.
+///
+/// Trace: FR-366-AC-3.
+#[trace("TC-475", "FR-366-AC-3")]
+#[test]
+fn a_source_candidate_adds_work_independent_of_the_graph_size() {
+    let candidate_cost = |padding: usize| {
+        let mut one = dispatch_package();
+        for at in 0..padding {
+            nodes_mut(&mut one).push(source_type(
+                &format!("Pad{at}"),
+                &["total"],
+                &fixture_source(),
+            ));
+        }
+        let mut two = one.clone();
+        one["checked_term_data"]["dispatch_tables"][0]["candidates"]
+            .as_array_mut()
+            .expect("candidates")
+            .pop();
+        settle(&mut one);
+        settle(&mut two);
+        least_work(&two) - least_work(&one)
+    };
+    assert_eq!(candidate_cost(0), candidate_cost(60));
+}
+
 /// Trace: FR-366-AC-4.
 #[trace("TC-475", "FR-366-AC-4")]
 #[test]

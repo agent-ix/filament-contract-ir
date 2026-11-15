@@ -125,6 +125,36 @@ fn is_source_clause_function<Body>(
         })
 }
 
+/// The (owner identity, `source_identity`) of every source-declared object
+/// type, sorted, built once per read.
+fn source_type_index<'w, Body>(
+    wire: &'w CheckedPackageWireV2<Body>,
+    kinds: &[CheckedNodeKind],
+    meter: &mut WorkMeter,
+) -> Result<Vec<(&'w str, &'w str)>, ValidationFailure> {
+    let mut held = stage_storage::vec(
+        meter,
+        &data_site(0, Path::root().key("checked_term_data")),
+        wire.semantic_graph.nodes.len(),
+    )?;
+    held.extend(
+        wire.semantic_graph
+            .nodes
+            .iter()
+            .zip(kinds)
+            .filter(|(node, kind)| is_source_declared_object_type(node, **kind))
+            .filter_map(|(node, _)| match (&node.owner, &node.declaration) {
+                (Some(CheckedNodeOwner::Source { identity, .. }), Some(declaration)) => declaration
+                    .qualified_name
+                    .last()
+                    .map(|name| (identity.as_ref(), name.as_ref())),
+                _ => None,
+            }),
+    );
+    held.sort_unstable();
+    Ok(held)
+}
+
 pub(super) type Occurrence<'a> = (&'a CheckedNodeId, &'a CheckedOccurrenceRole, u64);
 
 /// The source map's occurrences, ascending.
@@ -163,6 +193,7 @@ pub(super) fn validate_checked_term_data<Body>(
     let index = node_positions(wire, meter)?;
     let source_occurrences = source_occurrences(wire, meter)?;
     let tables = root.key("dispatch_tables");
+    let mut source_types: Option<Vec<(&str, &str)>> = None;
     let repeated_table = stage_storage::first_repeat(
         meter,
         &data_site(0, tables),
@@ -331,28 +362,22 @@ pub(super) fn validate_checked_term_data<Body>(
                     return Err(invalid(meter, row_index, at.key("selection_key")));
                 }
             }
-            if let Route::Source { owner } = &route {
+            if let Route::Source {
+                owner: CheckedNodeOwner::Source { identity, .. },
+            } = &route
+            {
                 // FR-366: the key is `{package: <owner identity>, node: <the
-                // `source_identity` of a source type under that owner>}`.
-                stage_storage::work(
-                    meter,
-                    &data_site(row_index, at.key("selection_key")),
-                    nodes.len() as u64,
-                )?;
+                // `source_identity` of a source type under that owner>}`; the
+                // candidate's own charge covers one lookup.
+                let types = match &source_types {
+                    Some(types) => types,
+                    None => source_types.insert(source_type_index(wire, kinds, meter)?),
+                };
                 let original = &candidate.selection_key.original;
-                let named = matches!(
-                    owner,
-                    CheckedNodeOwner::Source { identity, .. }
-                        if identity.as_ref() == original.package.as_ref()
-                ) && nodes.iter().zip(kinds).any(|(node, kind)| {
-                    node.owner.as_ref() == Some(*owner)
-                        && is_source_declared_object_type(node, *kind)
-                        && node
-                            .declaration
-                            .as_ref()
-                            .and_then(|declaration| declaration.qualified_name.last())
-                            .is_some_and(|name| name.as_ref() == original.node.as_ref())
-                });
+                let named = identity.as_ref() == original.package.as_ref()
+                    && types
+                        .binary_search(&(identity.as_ref(), original.node.as_ref()))
+                        .is_ok();
                 if !named {
                     return Err(invalid(meter, row_index, at.key("selection_key")));
                 }
