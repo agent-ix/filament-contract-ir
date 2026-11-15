@@ -76,6 +76,9 @@ impl<'a> SelectedSourceOperations<'a> {
     /// inspected. Each defect has the outcome the model operation-member row
     /// gets for it. No partially validated index escapes on refusal. An empty
     /// index is valid and makes every later read return `UnavailableWitness`.
+    // The string comparisons check a row's `source_identity` against
+    // `<type>::<operation>`.
+    #[ix_trace_rs::string_edge]
     pub fn from_stage_rows(
         package: &'a CheckedPackageV2,
         rows: impl IntoIterator<Item = SelectedSourceOperationRow>,

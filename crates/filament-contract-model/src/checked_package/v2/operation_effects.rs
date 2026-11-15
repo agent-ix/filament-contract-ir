@@ -926,6 +926,8 @@ impl<'a, Body> SourceJoin<'a, Body> {
 
 /// FR-365 over one row whose origin is `source_declaration_operation_frame`.
 /// Each refusal has the code, cause and locus of the matching model-row check.
+// The string comparisons check a row's wire `provenance.member` against `<type>::<operation>`.
+#[ix_trace_rs::string_edge]
 fn validate_source_row<Body>(
     row: &CheckedOperationEffectRow,
     join: &SourceJoin<'_, Body>,

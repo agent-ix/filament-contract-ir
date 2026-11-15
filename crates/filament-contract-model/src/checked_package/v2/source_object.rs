@@ -34,6 +34,8 @@ pub(super) fn is_source_population<Body>(
 
 /// The type node a record-style field binding names: the reference target of
 /// `name -> reference` or of `name -> aggregate{optional -> reference}`.
+// The one string comparison is the closed `optional` group name of a record binding, not an open key.
+#[ix_trace_rs::string_edge]
 pub(super) fn bound_type(value: &CheckedTerm) -> Option<&CheckedNodeId> {
     match value {
         CheckedTerm::Reference { target } => Some(target),
