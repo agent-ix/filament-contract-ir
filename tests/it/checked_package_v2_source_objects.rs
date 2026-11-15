@@ -25,6 +25,20 @@ use ix_trace_rs::trace;
 use quire_canonical::Limits;
 use serde_json::{json, Value};
 
+type EffectCase = (
+    &'static str,
+    Box<dyn Fn(&mut Value)>,
+    (Code, Option<Cause>),
+    String,
+);
+type DispatchCase = (&'static str, Box<dyn Fn(&mut Value)>, String);
+type RowEdit = (&'static str, Box<dyn Fn(&mut SelectedSourceObjectRow)>);
+type OperationEdit = (
+    &'static str,
+    Box<dyn Fn(&mut SelectedSourceOperationRow)>,
+    OperationError,
+);
+
 const SOURCE_FRAME_ROW: &str = "source_declaration_operation_frame";
 const MODEL_FRAME_ROW: &str = "model_document_operation_frame";
 
@@ -283,6 +297,47 @@ fn with_effects(mut package: Value, rows: Value) -> Value {
     package
 }
 
+/// Trace: FR-362-AC-1.
+#[trace("TC-475", "FR-362-AC-1")]
+#[test]
+fn a_package_without_a_source_object_reads_and_re_encodes_unchanged() {
+    let package = v2_all_families();
+    let admitted_package = admitted(&package);
+    assert!(!admitted_package.graph().nodes.iter().any(is_source_node));
+    let evidence = evidence_of(&indexed(&package));
+    let name = package["name"].as_str().expect("name").to_owned();
+    let encode = |package: &CheckedPackageV2| {
+        encode_checked_package_v2(
+            &name,
+            package.lock(),
+            package.graph(),
+            CheckedPackageSourceCorrespondenceRef {
+                source_map: package.source_map(),
+                refinement_step_rows: package.refinement_step_rows(),
+            },
+            CheckedPackageSidecarsRef {
+                temporal_clause_names: package.temporal_clause_names(),
+                schedulability_claims: None,
+                operation_effects: package.operation_effect_rows(),
+                operation_bodies: None,
+                checked_term_data: package.checked_term_data(),
+                temporal_bindings: package.temporal_bindings(),
+            },
+            package.capability_report(),
+            package.diagnostics(),
+            Limits::new(1 << 24),
+        )
+        .expect("typed package encodes")
+    };
+    let first = encode(&admitted_package);
+    let CheckedPackageV2ReadResult::Admitted(reread) =
+        CheckedPackageV2::read(&first, CheckedPackageReadLimits::bounded(), &evidence)
+    else {
+        panic!("the encoded package must admit");
+    };
+    assert_eq!(encode(&reread), first);
+}
+
 /// Trace: FR-362-AC-2.
 #[trace("TC-475", "FR-362-AC-2")]
 #[test]
@@ -530,7 +585,7 @@ fn source_effect_rows_admit_read_in_order_and_re_encode_identically() {
 fn edited_source_effect_rows_refuse_at_the_first_failing_check() {
     let invalid = (Code::InvalidPackage, Some(Cause::InvalidValue));
     let at = |member: &str| format!("/operation_effects/0/{member}");
-    let cases: Vec<(&str, Box<dyn Fn(&mut Value)>, (Code, Option<Cause>), String)> = vec![
+    let cases: Vec<EffectCase> = vec![
         (
             "document",
             Box::new(|row| row["document"] = json!("filament.fixture.other/v1")),
@@ -783,13 +838,6 @@ fn all_instances(population: &Value, set: &Value, label: &str) -> Value {
                 "member": {"kind": "type_argument", "declaration": order_id()}, "leaves": []},
             "result_type": set, "arguments": [reference(population)]}),
     )
-}
-
-fn node_id_at(package: &Value, label: &str) -> usize {
-    nodes(package)
-        .iter()
-        .position(|node| node["node_id"] == node_id(label))
-        .unwrap_or_else(|| panic!("node {label}"))
 }
 
 /// The source package with the source populations `names`.
@@ -1426,7 +1474,7 @@ fn the_three_clause_function_forms_admit_together_and_each_segment_is_an_identif
 fn source_clause_functions_of_another_form_operation_or_owner_refuse() {
     let invalid = (Code::InvalidPackage, Some(Cause::InvalidValue));
     let base = "/checked_term_data/dispatch_tables/0/candidates/0";
-    let cases: Vec<(&str, Box<dyn Fn(&mut Value)>, String)> = vec![
+    let cases: Vec<DispatchCase> = vec![
         (
             "body naming another declaration form",
             Box::new(|row| {
@@ -1870,7 +1918,7 @@ fn a_supply_reports_the_first_reason_in_foreign_unknown_conflicting_missing_orde
 fn rows_whose_members_or_supertypes_the_package_does_not_support_are_unknown() {
     let package = two_types();
     let [order, sub] = <[_; 2]>::try_from(complete_rows()).expect("two rows");
-    let edits: Vec<(&str, Box<dyn Fn(&mut SelectedSourceObjectRow)>)> = vec![
+    let edits: Vec<RowEdit> = vec![
         ("name", Box::new(|row| row.members[0].name = "other".into())),
         (
             "type node",
@@ -2052,11 +2100,7 @@ fn a_source_anchor_reads_its_joined_row_and_is_unavailable_without_one() {
 fn a_row_that_does_not_name_the_anchor_its_type_its_operation_or_authority_is_refused() {
     let package = admitted(&callable_package());
     let valid = operation_row(&package, "Order::deposit");
-    let edits: Vec<(
-        &str,
-        Box<dyn Fn(&mut SelectedSourceOperationRow)>,
-        OperationError,
-    )> = vec![
+    let edits: Vec<OperationEdit> = vec![
         (
             "foreign anchor",
             Box::new(|row| {
@@ -2175,15 +2219,11 @@ fn source_and_model_rows_do_not_cross_and_model_rows_read_unchanged() {
         OperationError::UnavailableWitness
     );
     // A model row for a source anchor.
-    let source_anchor = {
-        let source = admitted(&callable_package());
-        let anchor = anchor_of(&source);
-        let refused_row =
-            SelectedOperationMembers::from_stage_rows(&source, [model_row(anchor)], 16)
-                .expect_err("a source anchor has no model member");
-        assert_eq!(refused_row.code, OperationError::UnavailableWitness);
-    };
-    let _ = source_anchor;
+    let source = admitted(&callable_package());
+    let refused_row =
+        SelectedOperationMembers::from_stage_rows(&source, [model_row(anchor_of(&source))], 16)
+            .expect_err("a source anchor has no model member");
+    assert_eq!(refused_row.code, OperationError::UnavailableWitness);
     // The model row for the model anchor still reads beside the source type.
     let rows =
         SelectedOperationMembers::from_stage_rows(&package, [model_row(model_anchor.clone())], 16)

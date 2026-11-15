@@ -216,10 +216,10 @@ impl<'a> SelectedSourceObjects<'a> {
 }
 
 /// The field bindings of a source-declared type's body, in order.
-fn body_bindings<'p>(
-    package: &'p super::CheckedPackageV2,
+fn body_bindings(
+    package: &super::CheckedPackageV2,
     position: usize,
-) -> Option<Vec<(&'p str, &'p CheckedNodeId, bool)>> {
+) -> Option<Vec<(&str, &CheckedNodeId, bool)>> {
     let CheckedTerm::Aggregate { members } = package.term_at(position)? else {
         return None;
     };
