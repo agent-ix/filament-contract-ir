@@ -1134,7 +1134,7 @@ impl NominalKind {
     fn required_by(kind: CheckedNodeKind) -> Option<Self> {
         use CheckedNodeKind as K;
         match kind {
-            K::Extension(_) | K::Hybrid(_) | K::TimedModel(_) => None,
+            K::Extension(_) | K::Hybrid(_) | K::TimedModel(_) | K::Probabilistic(_) => None,
             K::ScalarType(ScalarTypeForm::Enum) => Some(Self::EnumDeclaration),
             K::Value(ValueForm::EnumValue) => Some(Self::EnumMember),
             K::ScalarType(ScalarTypeForm::Dimension) => Some(Self::Dimension),

@@ -472,6 +472,12 @@ pub(super) fn check(
                 };
                 super::timed_model::check_wire(node, form, position, &mut meter.budget())
             }
+            BodyGrammar::Probabilistic => {
+                let CheckedNodeKind::Probabilistic(form) = kind else {
+                    unreachable!("probabilistic grammar requires a probabilistic kind")
+                };
+                super::probabilistic::check_wire(node, form, position, &mut meter.budget())
+            }
             BodyGrammar::Hybrid => {
                 let super::CheckedNodeKind::Hybrid(form) = kind else {
                     unreachable!("hybrid grammar is selected only for hybrid nodes")
@@ -592,6 +598,7 @@ pub(super) fn check_interval_bounds(
             BodyGrammar::Frame
                 | BodyGrammar::Extension
                 | BodyGrammar::TimedModel
+                | BodyGrammar::Probabilistic
                 | BodyGrammar::Hybrid
         ) || body.kind() != Some(BodyTerm::Application)
         {

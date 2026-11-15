@@ -198,6 +198,7 @@ enum StructuralForm {
     Extension,
     Hybrid,
     TimedModel,
+    Probabilistic,
     Parameter,
     CompoundUnit,
     CarriedQuantity,
@@ -225,6 +226,7 @@ impl StructuralForm {
             Self::StateClause | Self::StateTransition => Some(CheckedOccurrenceRole::Claim),
             Self::AbstractionRelation => Some(CheckedOccurrenceRole::Declaration),
             Self::ProtocolReference => Some(CheckedOccurrenceRole::Expression),
+            Self::Probabilistic => Some(CheckedOccurrenceRole::Declaration),
             Self::Hybrid
             | Self::TimedModel
             | Self::CompoundUnit
@@ -244,6 +246,7 @@ impl StructuralForm {
             K::Extension(_) => Some(Self::Extension),
             K::Hybrid(_) => Some(Self::Hybrid),
             K::TimedModel(_) => Some(Self::TimedModel),
+            K::Probabilistic(_) => Some(Self::Probabilistic),
             K::Value(ValueForm::Parameter) => Some(Self::Parameter),
             K::ScalarType(ScalarTypeForm::CompoundUnit) => Some(Self::CompoundUnit),
             K::ScalarType(ScalarTypeForm::CarriedQuantity) => Some(Self::CarriedQuantity),
@@ -702,7 +705,9 @@ pub(super) fn validate_structural_nodes_with_keys(
                     None
                 }
             }
-            Some(StructuralForm::Hybrid | StructuralForm::TimedModel) => {
+            Some(
+                StructuralForm::Hybrid | StructuralForm::TimedModel | StructuralForm::Probabilistic,
+            ) => {
                 let Some(term) = term else {
                     return Err(malformed(meter));
                 };

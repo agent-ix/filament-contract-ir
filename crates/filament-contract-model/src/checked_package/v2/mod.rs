@@ -61,6 +61,7 @@ mod native_join_storage;
 mod natural;
 mod node_index;
 mod node_lookup;
+mod probabilistic;
 mod retained_index;
 pub(in crate::checked_package) use node_index::StructuralOrder;
 mod operation_catalog;
@@ -2515,6 +2516,7 @@ fn declaration_forbidden(kind: CheckedNodeKind) -> bool {
     match kind {
         K::Extension(_) => false,
         K::TimedModel(form) => form != TimedModelForm::Model,
+        K::Probabilistic(_) => true,
         K::Hybrid(HybridForm::Model | HybridForm::Mode) => false,
         K::Hybrid(HybridForm::Transition) => true,
         K::ScalarType(
@@ -2884,6 +2886,7 @@ fn validate_body<'a, V: TermSource<'a>>(
         BodyGrammar::Literal
         | BodyGrammar::Term
         | BodyGrammar::TimedModel
+        | BodyGrammar::Probabilistic
         | BodyGrammar::Hybrid => validate_term(node, TermGrammar::V2, true, at, visit, ids),
     }
 }
@@ -2935,6 +2938,8 @@ enum BodyGrammar {
     Hybrid,
     /// Closed timed-model bodies.
     TimedModel,
+    /// The closed FR-640 probabilistic bodies.
+    Probabilistic,
 }
 
 /// Every form is listed explicitly,
@@ -2945,6 +2950,7 @@ fn body_grammar(kind: CheckedNodeKind) -> BodyGrammar {
         K::Extension(_) => BodyGrammar::Extension,
         K::Hybrid(_) => BodyGrammar::Hybrid,
         K::TimedModel(_) => BodyGrammar::TimedModel,
+        K::Probabilistic(_) => BodyGrammar::Probabilistic,
         K::ScalarType(
             ScalarTypeForm::Boolean
             | ScalarTypeForm::Integer
@@ -3735,6 +3741,7 @@ fn validate_graph(
             BodyGrammar::Literal
             | BodyGrammar::Term
             | BodyGrammar::TimedModel
+            | BodyGrammar::Probabilistic
             | BodyGrammar::Hybrid
             | BodyGrammar::AbstractionRelation
             | BodyGrammar::FlatCorrespondence => validate_body(
