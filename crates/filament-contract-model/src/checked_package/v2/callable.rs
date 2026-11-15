@@ -22,6 +22,15 @@ pub enum CheckedCallableIdentity {
         /// The selected entry function.
         entry: CheckedNodeId,
     },
+    /// A source-declared operation anchor joined to its source-operation row.
+    SourceOperation {
+        /// The admitted operation anchor.
+        anchor: CheckedNodeId,
+        /// Authority of the declaring type's `SourceOwner`.
+        source_authority: Box<str>,
+        /// `<type>::<operation>` as the producer's row states it.
+        source_identity: Box<str>,
+    },
     /// An operation anchor joined to its original and stage-selected member identities.
     Operation {
         /// The admitted operation anchor.
@@ -58,6 +67,10 @@ pub struct CheckedCallableRead {
 }
 
 impl CheckedCallableRead {
+    pub(super) fn new(callable: Option<CheckedCallable>, work: u64) -> Self {
+        Self { callable, work }
+    }
+
     /// The selected callable, if the requested node defines one.
     pub fn callable(&self) -> Option<&CheckedCallable> {
         self.callable.as_ref()
@@ -123,13 +136,33 @@ pub struct CheckedCallableReadError {
     pub work: u64,
 }
 
-struct Budget {
+pub(super) struct Budget {
     work: u64,
     limit: u64,
 }
 
 impl Budget {
-    fn charge(&mut self, locus: &CheckedNodeId) -> Result<(), CheckedCallableReadError> {
+    pub(super) fn new(limit: u64) -> Self {
+        Self { work: 0, limit }
+    }
+
+    pub(super) fn work(&self) -> u64 {
+        self.work
+    }
+
+    pub(super) fn refusal(
+        code: CheckedCallableReadErrorCode,
+        locus: &CheckedNodeId,
+        work: u64,
+    ) -> CheckedCallableReadError {
+        CheckedCallableReadError {
+            code,
+            locus: locus.clone(),
+            work,
+        }
+    }
+
+    pub(super) fn charge(&mut self, locus: &CheckedNodeId) -> Result<(), CheckedCallableReadError> {
         self.work = self.work.saturating_add(1);
         if self.work > self.limit {
             return Err(self.error(CheckedCallableReadErrorCode::WorkLimit, locus));
@@ -150,10 +183,19 @@ impl Budget {
     }
 }
 
-struct ParsedFunction<'a> {
-    parameters: Vec<CheckedNodeId>,
-    body: Option<CheckedNodeId>,
+pub(super) struct ParsedFunction<'a> {
+    pub(super) parameters: Vec<CheckedNodeId>,
+    pub(super) body: Option<CheckedNodeId>,
     clause: Option<&'a str>,
+}
+
+/// An ordinary function's parameters and body root.
+pub(super) fn parse_function<'a>(
+    package: &'a CheckedPackageV2,
+    node: &CheckedNodeId,
+    budget: &mut Budget,
+) -> Result<ParsedFunction<'a>, CheckedCallableReadError> {
+    function_body(package, node, budget, BodyRootPolicy::Ordinary)
 }
 
 #[derive(Clone, Copy)]

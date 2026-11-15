@@ -46,29 +46,47 @@ refusal.
 The strict reader SHALL join `context` and `operation.declaring` through their
 `SourceOwner`, not through a selected model owner. It SHALL require the call's
 member declaration to equal `context` as it does for a model row, every
-candidate's `selection_key.original` to name a source-declared type node, each
-`operation_body` to name a clause function node with `declaration`
+candidate's `selection_key` to have a null `owner_effective_type` and an
+`original` that names a source-declared type of the context's `SourceOwner`,
+each `operation_body` to name a clause function node with `declaration`
 `[<type>, <operation>, "body"]` and each `effective_precondition`, when
 present, to name one with `[<type>, <operation>, "effective_precondition"]`,
 every such node carrying the same `SourceOwner`, and candidate order and
 witnesses to follow the model row's checks. The refusal code, cause and locus
 of each failure SHALL be those of the matching model-row check.
 
+A source candidate's `selection_key.original` is `{package, node}` with
+`package` equal to the `identity` of the context's `SourceOwner` (the rule
+[FR-365](./FR-365-read-source-declared-operation-effects.md) applies to
+`document`) and `node` equal to the final `declaration` segment, the
+`source_identity`, of a source-declared object type under that same
+`SourceOwner`. Any other key refuses `invalid_package`/`invalid-value` at
+`selection_key`, as the model check does. The strict reader checks the
+`<operation>` and clause kind of a clause function and its owner, and does not
+check `<type>`: `<type>` is the type that declares the effective operation, and
+the package carries no operation list or `extends` information from which to
+know it. The check of `<type>` and the family check run in the source-object
+read of [FR-367](./FR-367-join-source-object-rows-and-field-reads.md).
+
 The candidates of a source context are the context type or one of its
-subtypes, since a redefining subtype is a valid candidate. The package carries
-no `extends` information, so the strict reader does not check that family. The
-family check runs in the source-object read of
-[FR-367](./FR-367-join-source-object-rows-and-field-reads.md), which holds the
-supertype rows: it SHALL require each candidate's `selection_key.original` to
-be the context or a transitive subtype of it, and refuse otherwise with the
-FR-352 outcome for a stale or mismatched stage row. A row mixing a
-source-declared `context` and a model-owned `operation.declaring`, or the
-reverse, SHALL refuse as a model row whose context and declaring family differ
-does. The reader SHALL admit the three clause-function `declaration` forms of one
-package, with the authored-precondition form
-`[<type>, <operation>, "precondition", <label>]`, as sibling clause functions under the existing
-one-holder-per-qualified-name rule, with no change to the qualified-name
-identifier rule.
+subtypes, since a redefining subtype is a valid candidate. The source-object
+read of FR-367 holds the supertype rows and the package's dispatch tables. For
+each dispatch table whose `context` is a source-declared type it SHALL map each
+candidate's `selection_key.original.node` to the row of that
+`source_identity` under the context row's authority, and SHALL require that
+row to be the context's row or to reach it through `supertypes`. It SHALL
+also require the `<type>` of the candidate's `operation_body` and
+`effective_precondition`, when present, to name a row that the candidate's row
+is, or reaches through `supertypes`. Otherwise it SHALL refuse with
+`MismatchedIdentityWitness`, the FR-352 outcome for a stale or mismatched
+stage row. This check needs the complete row set, so it ranks after the
+missing outcome of FR-367. A row mixing a source-declared `context` and a
+model-owned `operation.declaring`, or the reverse, SHALL refuse as a model row
+whose context and declaring family differ does. The reader SHALL admit the
+three clause-function `declaration` forms of one package, with the
+authored-precondition form `[<type>, <operation>, "precondition", <label>]`,
+as sibling clause functions under the existing one-holder-per-qualified-name
+rule, with no change to the qualified-name identifier rule.
 
 ## Acceptance Criteria
 
@@ -76,12 +94,12 @@ identifier rule.
 | --- | --- | --- |
 | FR-366-AC-1 | A package with a source type `Order`, a redefining subtype `Sub` and a dispatched call on `Order` whose candidates are `Order` and `Sub` admits, and the dispatch read returns the context, candidate order and clause identities in the model row's order. | Test |
 | FR-366-AC-2 | The three clause-function declaration forms for one operation, with an authored-precondition label, admit together and each qualified-name segment is an identifier. | Test |
-| FR-366-AC-3 | A candidate `selection_key` naming a non-source node, an `operation_body` or `effective_precondition` naming a node of another declaration form or another operation, and a clause node with a different `SourceOwner` each refuse with the matching model-row check's code, cause and locus. | Test |
+| FR-366-AC-3 | A candidate `selection_key` whose `original.package` is not the context `SourceOwner`'s `identity` or whose `original.node` names no source-declared type of that owner, an `operation_body` or `effective_precondition` naming a node of another declaration form or another operation, and a clause node with a different `SourceOwner` each refuse with the matching model-row check's code, cause and locus. | Test |
 | FR-366-AC-4 | A row mixing a source context and a model-owned declaring family, and the reverse, refuses. | Test |
 | FR-366-AC-5 | A model-owned dispatch table reads unchanged when a source table is in the same package. | Test |
-| FR-366-AC-6 | In the FR-367 read with its supertype rows, a candidate that is neither the context nor a transitive subtype of it refuses, and `Sub` for context `Order` admits. | Test |
+| FR-366-AC-6 | In the FR-367 read with its supertype rows and the package's dispatch tables, a candidate that is neither the context nor a transitive subtype of it, and a clause function declared under a type that the candidate neither is nor reaches through `supertypes`, each refuse with `MismatchedIdentityWitness`; `Sub` for context `Order` admits, also with `Order`'s clause functions; and a missing row ranks first. | Test |
 
 ## Dependencies
 
-- [FR-367](./FR-367-join-source-object-rows-and-field-reads.md) supplies the supertype rows for the family check.
+- [FR-367](./FR-367-join-source-object-rows-and-field-reads.md) supplies the supertype rows for the family check and the `<type>` check.
 - FSpec FR-322 owns the dispatch row.

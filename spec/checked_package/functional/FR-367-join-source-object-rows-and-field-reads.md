@@ -63,8 +63,19 @@ object type, or whose `source_identity` disagrees with that node's
 `declaration`, or whose `members` or `supertypes` fail the checks below.
 Conflicting follows: two rows for one (`source_authority`, `source_identity`)
 key, even with equal contents, as FR-352 returns `ConflictingIdentityWitness`.
-Missing comes last, after all rows are classified: a source-declared type with
-no row. Each outcome is the FR-352 outcome of the same name.
+Missing follows, after all rows are classified: a source-declared type with
+no row. Mismatched comes last, because it needs the complete row set: the
+family check of [FR-366](./FR-366-admit-source-operation-dispatch-tables.md)
+over the package's dispatch tables, which refuses with
+`MismatchedIdentityWitness`. Each outcome is the FR-352 outcome of the same
+name, `MismatchedIdentityWitness` being the FR-352 outcome for a stale or
+mismatched stage row.
+
+The key (`source_authority`, `source_identity`) identifies one type. The
+`declaration` of a source-declared type names it within the package whatever
+its `SourceOwner`, so two `SourceOwner`s of one authority cannot each declare a
+type of one name: the package already refuses the second node as a repeated
+declaration, and no two rows can then share a key across owners.
 
 The row `members` check compares, in order, each member's name, field type
 node and optional presence with the node body's bindings: the binding name,
@@ -81,7 +92,7 @@ information against which to check them.
 | --- | --- | --- |
 | FR-367-AC-1 | `self.total` on a source type with a field `total` resolves to the type of the binding, and an inherited field resolves through the field view. | Test |
 | FR-367-AC-2 | A field name with no binding, and any field read on an `aggregate{[]}` source type, refuse `ill_typed`/`operator-ineligible` at the member. | Test |
-| FR-367-AC-3 | A supply holding a foreign row and an unknown row reports foreign whatever their order; one holding an unknown row and a duplicate-key pair reports unknown; one holding a duplicate-key pair and an omitted type reports conflicting; one omitting a type reports missing. | Test |
+| FR-367-AC-3 | A supply holding a foreign row and an unknown row reports foreign whatever their order; one holding an unknown row and a duplicate-key pair reports unknown; one holding a duplicate-key pair and an omitted type reports conflicting; one omitting a type reports missing; one whose dispatch candidate lies outside its context's family reports mismatched only when no type is missing. A second type of the same name under another `SourceOwner` of the same authority refuses at admission. | Test |
 | FR-367-AC-4 | A row whose `members` differ from the body bindings in name, type node, optional presence or order refuses unknown. A row whose `supertypes` name a non-source node, the row's own node, or form a cycle refuses unknown. | Test |
 | FR-367-AC-5 | A complete row set exposes abstractness, supertypes, identity fields, members and populations for each source type through a typed read. | Test |
 | FR-367-AC-6 | A field read on a model-owned node reads unchanged in a package that also holds a source type. | Test |

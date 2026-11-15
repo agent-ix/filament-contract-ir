@@ -86,6 +86,8 @@ mod selected_document;
 mod selected_facts;
 mod selection_equality;
 mod source_map;
+mod source_object;
+mod source_operation;
 mod stage_storage;
 mod state;
 mod step_relation;
@@ -251,6 +253,11 @@ pub use schedulability::{
     CheckedSchedulabilityTaskRef, CheckedSchedulingPolicy, CheckedTaskArrival,
     CheckedTaskCriticality,
 };
+pub use source_object::{
+    SelectedSourceObjectError, SelectedSourceObjectErrorCode, SelectedSourceObjectMember,
+    SelectedSourceObjectRow, SelectedSourceObjects, SelectedSourcePopulation,
+};
+pub use source_operation::{SelectedSourceOperationRow, SelectedSourceOperations};
 pub use step_relation::{
     CheckedStepExecution, CheckedStepRelationBody, CheckedStepRelationCapability,
     CheckedStepRelationObligationIdentity,
@@ -2061,7 +2068,14 @@ fn validate(
 
     validate_diagnostics(wire, limits, &mut meter)?;
     let models = RetainedModels::build(declarations, models, &mut Budget::node(&mut meter, 0))?;
-    operation_effects::validate(wire.operation_effects.as_deref(), &models, &mut meter)?;
+    operation_effects::validate(
+        wire.operation_effects.as_deref(),
+        wire,
+        &kinds,
+        &terms,
+        &models,
+        &mut meter,
+    )?;
     // Runs before `checked_term_data` validation (FR-322 check order).
     // Candidates whose receiver is outside the table's family are skipped here
     // and refused by dispatch validation.
@@ -2455,14 +2469,19 @@ fn validate_recursion_group_paths(
 /// (FR-208): `declaration` is forbidden on `expression`, `relation`, `state`,
 /// `temporal` and `correspondence` nodes and on `value`/`enum_value` nodes;
 /// for every other family it is present exactly when the node carries a
-/// `declaration`-role occurrence.
+/// `declaration`-role occurrence. A `relation`/`population` node that carries a
+/// `SourceOwner` is a source-declared population reference and may carry one.
 fn validate_declaration(
     kind: CheckedNodeKind,
+    owner: Option<&CheckedNodeOwner>,
     occurrences: &[CheckedOccurrence],
     declaration: Option<&CheckedDeclaration>,
     position: usize,
 ) -> Result<(), ValidationFailure> {
-    let forced_absent = declaration_forbidden(kind);
+    // A source-declared population reference carries its declaration (FR-364).
+    let source_population = kind == CheckedNodeKind::Relation(RelationForm::Population)
+        && matches!(owner, Some(CheckedNodeOwner::Source { .. }));
+    let forced_absent = declaration_forbidden(kind) && !source_population;
     let required = !forced_absent
         && occurrences
             .iter()
@@ -3588,7 +3607,13 @@ fn validate_graph(
             }
         }
         kinds.push(kind);
-        validate_declaration(kind, &node.occurrences, node.declaration.as_ref(), position)?;
+        validate_declaration(
+            kind,
+            node.owner.as_ref(),
+            &node.occurrences,
+            node.declaration.as_ref(),
+            position,
+        )?;
         validate_node_id(&node.semantic_type, || at("semantic_type"))?;
         if kind == CheckedNodeKind::Value(ValueForm::Literal) && !node.dependencies.is_empty() {
             return Err(refuse(

@@ -9,9 +9,12 @@ use super::model_members::{
     member_name, DeclarationForm, DomainModel, FieldBearingTypeDecl, OperationDecl, Owner,
 };
 use super::native_join_budget::PackageReadStage;
+use super::source_object::is_source_declared_object_type;
 use super::stage_storage::{self, Path, Refusal, Site};
+use super::structural::typed_anchor_body;
 use super::{
-    CheckedFieldScope, CheckedFrameModification, CheckedNodeId, CheckedScopedDeletion, WorkMeter,
+    CheckedFieldScope, CheckedFrameModification, CheckedNodeId, CheckedNodeKind, CheckedNodeOwner,
+    CheckedPackageWireV2, CheckedScopedDeletion, CheckedTerm, StateForm, WorkMeter,
 };
 use crate::checked_package::common::ValidationFailure;
 use crate::checked_package::shared::{
@@ -38,19 +41,22 @@ pub struct CheckedOperationEffect {
     pub deletes_scoped: Vec<CheckedScopedDeletion>,
 }
 
-/// The sole admitted source of a model operation's declared effect.
+/// The admitted source of an operation's declared effect; it matches the
+/// owner kind of the declaring node.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize, FixedShape)]
 #[serde(rename_all = "snake_case")]
 pub enum CheckedOperationEffectOrigin {
-    /// The selected document's operation frame.
+    /// The selected document's operation frame of a model-owned declaring node.
     ModelDocumentOperationFrame,
+    /// The operation frame of a source-declared object type.
+    SourceDeclarationOperationFrame,
 }
 
 /// Source member identity and origin supplied with an effect row.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, FixedShape)]
 #[serde(deny_unknown_fields)]
 pub struct CheckedOperationEffectProvenance {
-    /// Fixed selected-document origin.
+    /// Origin of the declared effect.
     pub origin: CheckedOperationEffectOrigin,
     /// Original identity of the operation member.
     pub member: Box<str>,
@@ -60,15 +66,17 @@ pub struct CheckedOperationEffectProvenance {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CheckedOperationEffectRow {
-    /// Selected document identity.
+    /// Selected document identity, or the `SourceOwner` identity of a
+    /// source-declared declaring type.
     pub document: Box<str>,
-    /// Structural ID of the declaring model object, process or state machine.
+    /// Structural ID of the declaring model object, process or state machine,
+    /// or of the declaring source-declared object type.
     pub declaring: CheckedNodeId,
     /// Original operation name on that declaring node.
     pub operation: Box<str>,
     /// Complete frame lift, including intentionally empty effects.
     pub effect: CheckedOperationEffect,
-    /// Selected member identity and fixed source origin.
+    /// Member identity and origin.
     pub provenance: CheckedOperationEffectProvenance,
 }
 
@@ -828,10 +836,210 @@ pub(super) fn has_uncovered_operation(
     false
 }
 
+/// The positions of the graph's nodes by structural id, ascending.
+type NodePositions<'a> = Vec<(&'a CheckedNodeId, usize)>;
+
+/// The operation anchors that name a source-declared context, as
+/// `(context, operation, frame)` ascending.
+type SourceAnchors<'a> = Vec<(&'a CheckedNodeId, &'a str, &'a CheckedNodeId)>;
+
+/// What the source-row checks of FR-365 read.
+struct SourceJoin<'a, Body> {
+    wire: &'a CheckedPackageWireV2<Body>,
+    kinds: &'a [CheckedNodeKind],
+    terms: &'a [CheckedTerm],
+    positions: NodePositions<'a>,
+    anchors: SourceAnchors<'a>,
+}
+
+impl<'a, Body> SourceJoin<'a, Body> {
+    fn build(
+        wire: &'a CheckedPackageWireV2<Body>,
+        kinds: &'a [CheckedNodeKind],
+        terms: &'a [CheckedTerm],
+        meter: &mut WorkMeter,
+    ) -> Result<Self, ValidationFailure> {
+        let nodes = &wire.semantic_graph.nodes;
+        let mut positions: NodePositions<'a> =
+            stage_storage::vec(meter, &site(0, rows_at()), nodes.len())?;
+        positions.extend(
+            nodes
+                .iter()
+                .enumerate()
+                .map(|(position, node)| (&node.node_id, position)),
+        );
+        positions.sort_unstable();
+        let anchor_count = kinds
+            .iter()
+            .filter(|kind| **kind == CheckedNodeKind::State(StateForm::OperationAnchor))
+            .count();
+        let mut anchors: SourceAnchors<'a> =
+            stage_storage::vec(meter, &site(0, rows_at()), anchor_count)?;
+        for (position, kind) in kinds.iter().enumerate() {
+            if *kind != CheckedNodeKind::State(StateForm::OperationAnchor) {
+                continue;
+            }
+            if let Some(body) = terms.get(position).and_then(typed_anchor_body) {
+                anchors.push((body.context, body.operation, body.frame));
+            }
+        }
+        anchors.sort_unstable();
+        Ok(Self {
+            wire,
+            kinds,
+            terms,
+            positions,
+            anchors,
+        })
+    }
+
+    fn position(&self, id: &CheckedNodeId) -> Option<usize> {
+        self.positions
+            .binary_search_by(|(held, _)| (*held).cmp(id))
+            .ok()
+            .map(|found| self.positions[found].1)
+    }
+
+    /// The declaring node and its position when `id` names a source-declared
+    /// object type.
+    fn source_type(&self, id: &CheckedNodeId) -> Option<&'a super::CheckedSemanticNodeV2<Body>> {
+        let position = self.position(id)?;
+        let node = self.wire.semantic_graph.nodes.get(position)?;
+        is_source_declared_object_type(node, *self.kinds.get(position)?).then_some(node)
+    }
+
+    /// The frames of the anchors that name `operation` on `declaring`.
+    fn frames<'s>(
+        &'s self,
+        declaring: &'s CheckedNodeId,
+        operation: &'s str,
+    ) -> impl Iterator<Item = &'a CheckedNodeId> + 's {
+        let start = self
+            .anchors
+            .partition_point(|(context, name, _)| (*context, *name) < (declaring, operation));
+        self.anchors[start..]
+            .iter()
+            .take_while(move |(context, name, _)| *context == declaring && *name == operation)
+            .map(|(_, _, frame)| *frame)
+    }
+}
+
+/// FR-365 over one row whose origin is `source_declaration_operation_frame`.
+/// Each refusal has the code, cause and locus of the matching model-row check.
+// The string comparisons check a row's wire `provenance.member` against `<type>::<operation>`.
+#[ix_trace_rs::string_edge]
+fn validate_source_row<Body>(
+    row: &CheckedOperationEffectRow,
+    join: &SourceJoin<'_, Body>,
+    meter: &mut WorkMeter,
+    index: usize,
+) -> Result<(), ValidationFailure> {
+    let at = rows_at().index(index);
+    let Some(declaring) = join.source_type(&row.declaring) else {
+        return Err(match join.position(&row.declaring) {
+            Some(_) => refused(
+                meter,
+                index,
+                Code::InvalidPackage,
+                Cause::InvalidValue,
+                at.key("provenance").key("origin"),
+            ),
+            None => refused(
+                meter,
+                index,
+                Code::MissingDeclaration,
+                Cause::MissingName,
+                at.key("declaring"),
+            ),
+        });
+    };
+    let Some(CheckedNodeOwner::Source { identity, .. }) = declaring.owner.as_ref() else {
+        return Err(refused(
+            meter,
+            index,
+            Code::InvalidPackage,
+            Cause::InvalidValue,
+            at.key("declaring"),
+        ));
+    };
+    if row.document != *identity {
+        return Err(refused(
+            meter,
+            index,
+            Code::InvalidPackage,
+            Cause::InvalidValue,
+            at.key("document"),
+        ));
+    }
+    let type_name = declaring
+        .declaration
+        .as_ref()
+        .and_then(|declaration| declaration.qualified_name.last());
+    let member_matches = type_name.is_some_and(|name| {
+        row.provenance
+            .member
+            .strip_prefix(name.as_ref())
+            .and_then(|rest| rest.strip_prefix("::"))
+            == Some(row.operation.as_ref())
+    });
+    if !member_matches {
+        return Err(refused(
+            meter,
+            index,
+            Code::InvalidPackage,
+            Cause::InvalidValue,
+            at.key("provenance").key("member"),
+        ));
+    }
+    let effect_at = at.key("effect");
+    for frame in join.frames(&row.declaring, &row.operation) {
+        stage_storage::work(meter, &site(index, effect_at), 1)?;
+        let Some(CheckedTerm::Frame {
+            modifies,
+            creates,
+            deletes,
+            deletes_scoped,
+        }) = join
+            .position(frame)
+            .and_then(|position| join.terms.get(position))
+        else {
+            continue;
+        };
+        let effect = &row.effect;
+        let member = if effect.modifies != *modifies {
+            Some("modifies")
+        } else if effect.creates != *creates {
+            Some("creates")
+        } else if effect.deletes != *deletes {
+            Some("deletes")
+        } else if effect.deletes_scoped != *deletes_scoped {
+            Some("deletes_scoped")
+        } else {
+            None
+        };
+        if let Some(member) = member {
+            return Err(refused(
+                meter,
+                index,
+                Code::InvalidPackage,
+                Cause::InvalidValue,
+                effect_at.key(member),
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// Validate a present carrier against selected declarations and the selected
-/// document's parsed operation frames before exposing any borrowed row.
-pub(super) fn validate(
+/// document's parsed operation frames before exposing any borrowed row. A row
+/// whose declaring node is a source-declared object type is joined to that
+/// node instead (FR-365); a package with no such node and no source-origin
+/// row is read exactly as before.
+pub(super) fn validate<Body>(
     rows: Option<&[CheckedOperationEffectRow]>,
+    wire: &CheckedPackageWireV2<Body>,
+    kinds: &[CheckedNodeKind],
+    terms: &[CheckedTerm],
     models: &RetainedModels,
     meter: &mut WorkMeter,
 ) -> Result<(), ValidationFailure> {
@@ -841,6 +1049,19 @@ pub(super) fn validate(
     if rows.is_empty() {
         return Err(malformed(meter, 0, rows_at()));
     }
+    let source_aware = rows.iter().any(|row| {
+        row.provenance.origin == CheckedOperationEffectOrigin::SourceDeclarationOperationFrame
+    }) || wire
+        .semantic_graph
+        .nodes
+        .iter()
+        .zip(kinds)
+        .any(|(node, kind)| is_source_declared_object_type(node, *kind));
+    let join = if source_aware {
+        Some(SourceJoin::build(wire, kinds, terms, meter)?)
+    } else {
+        None
+    };
     // The first row that repeats an earlier row's operation, and the sorted
     // table the final coverage check searches.
     let covered = sorted_keys(
@@ -855,34 +1076,21 @@ pub(super) fn validate(
         let at = rows_at().index(index);
         stage_storage::work(meter, &site(index, at), 1)?;
         check_shape(row, meter, index)?;
-        let (owner, operation) = join_member(
-            models,
-            &row.document,
-            &row.declaring,
-            &row.operation,
-            at,
-            meter,
-            &mut |meter, code, cause, locus| refused(meter, index, code, cause, locus),
-        )?;
-        if row.provenance.member != operation.identity {
-            return Err(refused(
-                meter,
-                index,
-                Code::InvalidPackage,
-                Cause::InvalidValue,
-                at.key("provenance").key("member"),
-            ));
+        let source_origin =
+            row.provenance.origin == CheckedOperationEffectOrigin::SourceDeclarationOperationFrame;
+        match &join {
+            Some(join) if source_origin => validate_source_row(row, join, meter, index)?,
+            Some(join) if join.source_type(&row.declaring).is_some() => {
+                return Err(refused(
+                    meter,
+                    index,
+                    Code::InvalidPackage,
+                    Cause::InvalidValue,
+                    at.key("provenance").key("origin"),
+                ));
+            }
+            _ => validate_model_row(row, models, meter, index)?,
         }
-        validate_effect_entries(
-            row,
-            operation,
-            models,
-            owner.selection,
-            owner.form,
-            meter,
-            index,
-        )?;
-        compare_source_frame(row, operation, models, owner.package, meter, index)?;
         if repeated == Some(index) {
             return Err(refused(
                 meter,
@@ -914,4 +1122,43 @@ pub(super) fn validate(
         ));
     }
     Ok(())
+}
+
+/// The model-row checks of one row: the selected document, declaring node,
+/// operation member, provenance, entries and source frame.
+fn validate_model_row(
+    row: &CheckedOperationEffectRow,
+    models: &RetainedModels,
+    meter: &mut WorkMeter,
+    index: usize,
+) -> Result<(), ValidationFailure> {
+    let at = rows_at().index(index);
+    let (owner, operation) = join_member(
+        models,
+        &row.document,
+        &row.declaring,
+        &row.operation,
+        at,
+        meter,
+        &mut |meter, code, cause, locus| refused(meter, index, code, cause, locus),
+    )?;
+    if row.provenance.member != operation.identity {
+        return Err(refused(
+            meter,
+            index,
+            Code::InvalidPackage,
+            Cause::InvalidValue,
+            at.key("provenance").key("member"),
+        ));
+    }
+    validate_effect_entries(
+        row,
+        operation,
+        models,
+        owner.selection,
+        owner.form,
+        meter,
+        index,
+    )?;
+    compare_source_frame(row, operation, models, owner.package, meter, index)
 }
