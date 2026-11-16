@@ -18,6 +18,18 @@ const ARMED: &str = "ix://acme/orders/variant/Phase-Armed";
 const PAIR: &str = "ix://acme/orders/Pair";
 const WRAP: &str = "ix://acme/orders/Wrap";
 const HELD: &str = "ix://acme/orders/Held";
+const TIMER: &str = "ix://acme/orders/Timer";
+const PLAIN_REC: &str = "ix://acme/orders/PlainRec";
+const OPT_SLOT: &str = "ix://acme/orders/OptSlot";
+const OPT_TIMER: &str = "ix://acme/orders/OptTimer";
+const OPT_INT: &str = "ix://acme/orders/OptInt";
+const OPT_POS: &str = "ix://acme/orders/OptPos";
+const REC_POS: &str = "ix://acme/orders/RecPos";
+const OPT_REC_POS: &str = "ix://acme/orders/OptRecPos";
+const PLAIN_OPT_POS: &str = "ix://acme/orders/PlainOptPos";
+const PLAIN_REC_POS: &str = "ix://acme/orders/PlainRecPos";
+const REC_HELD: &str = "ix://acme/orders/RecHeld";
+const PLAIN_HELD: &str = "ix://acme/orders/PlainHeld";
 const CLOCK: &str = "ix://filament/native/Clock";
 const SET_OF_SLOT: &str = "Set<ix://acme/orders/Slot>";
 
@@ -247,6 +259,53 @@ fn selected_document(proposal: &Path) -> Value {
             {"identity": "ix://acme/orders/variant/Held-None", "name": "Nothing",
                 "origin": origin}]}),
     );
+    // Options and records that do or do not carry a clock, each used as a
+    // tuple position or a union payload.
+    let option = |name: &str, identity: &str, inner: &str| {
+        json!({"constraints": [], "displayName": name, "extensions": [],
+            "identity": identity, "kind": "option", "origin": origin, "roles": [],
+            "unknownPolicy": "reject", "inner": inner})
+    };
+    types.push(option("OptSlot", OPT_SLOT, SLOT));
+    types.push(option("OptTimer", OPT_TIMER, TIMER));
+    types.push(option("OptInt", OPT_INT, "ix://filament/native/Integer"));
+    types.push(
+        json!({"constraints": [], "displayName": "PlainRec", "extensions": [],
+        "identity": PLAIN_REC, "kind": module("record"), "origin": origin, "roles": [],
+        "unknownPolicy": "reject",
+        "fields": [{"defaultKind": "none", "identity": format!("{PLAIN_REC}/n"),
+            "multiplicity": {"lower": 1, "ordered": false, "unique": true, "upper": 1},
+            "name": "n", "nullable": false, "origin": origin, "presence": "required",
+            "typeRef": "ix://filament/native/Integer"}]}),
+    );
+    for (name, identity, first) in [
+        ("OptPos", OPT_POS, OPT_SLOT),
+        ("RecPos", REC_POS, TIMER),
+        ("OptRecPos", OPT_REC_POS, OPT_TIMER),
+        ("PlainOptPos", PLAIN_OPT_POS, OPT_INT),
+        ("PlainRecPos", PLAIN_REC_POS, PLAIN_REC),
+    ] {
+        types.push(tuple_type(
+            name,
+            identity,
+            [first, "ix://filament/native/Integer"],
+        ));
+    }
+    for (name, identity, payload) in [
+        ("RecHeld", REC_HELD, TIMER),
+        ("PlainHeld", PLAIN_HELD, PLAIN_REC),
+    ] {
+        types.push(
+            json!({"constraints": [], "displayName": name, "extensions": [],
+            "identity": identity, "kind": module("variant"), "origin": origin, "roles": [],
+            "unknownPolicy": "reject",
+            "variants": [
+                {"identity": format!("{identity}/Has"), "name": "Has",
+                    "origin": origin, "payloadType": payload},
+                {"identity": format!("{identity}/None"), "name": "Nothing",
+                    "origin": origin}]}),
+        );
+    }
     let order = types
         .iter_mut()
         .find(|ty| ty["identity"] == ORDER)
@@ -411,6 +470,20 @@ fn add_declarations(wire: &mut Value) {
     push_node(wire, declaration_node("tuple_value_type", PAIR), 9102);
     push_node(wire, declaration_node("tuple_value_type", WRAP), 9103);
     push_node(wire, declaration_node("variant_type", HELD), 9104);
+    for (offset, (form, identity)) in [
+        ("tuple_value_type", OPT_POS),
+        ("tuple_value_type", REC_POS),
+        ("tuple_value_type", OPT_REC_POS),
+        ("tuple_value_type", PLAIN_OPT_POS),
+        ("tuple_value_type", PLAIN_REC_POS),
+        ("variant_type", REC_HELD),
+        ("variant_type", PLAIN_HELD),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        push_node(wire, declaration_node(form, identity), 9110 + offset as u64);
+    }
 }
 
 /// A `value`/`union_value` of `Phase` selecting `case` over `payload` terms.
@@ -1052,6 +1125,39 @@ fn equality_over_a_clock_bearing_tuple_or_union_refuses_clock_read_outside_const
         // The clock sits one level down, in a nested position or payload.
         ((tuple, WRAP), (tuple, WRAP), structural_eq, true),
         ((variant, HELD), (variant, HELD), structural_ne, true),
+        // The clock sits behind an option or a record; clock-free counterparts admit.
+        ((tuple, OPT_POS), (tuple, OPT_POS), structural_eq, true),
+        ((tuple, REC_POS), (tuple, REC_POS), structural_ne, true),
+        (
+            (tuple, OPT_REC_POS),
+            (tuple, OPT_REC_POS),
+            structural_eq,
+            true,
+        ),
+        (
+            (variant, REC_HELD),
+            (variant, REC_HELD),
+            structural_eq,
+            true,
+        ),
+        (
+            (tuple, PLAIN_OPT_POS),
+            (tuple, PLAIN_OPT_POS),
+            structural_eq,
+            false,
+        ),
+        (
+            (tuple, PLAIN_REC_POS),
+            (tuple, PLAIN_REC_POS),
+            structural_ne,
+            false,
+        ),
+        (
+            (variant, PLAIN_HELD),
+            (variant, PLAIN_HELD),
+            structural_ne,
+            false,
+        ),
         // Either operand alone carries the clock, in both operand orders.
         ((tuple, SLOT), (tuple, PAIR), structural_eq, true),
         ((tuple, PAIR), (tuple, SLOT), structural_eq, true),

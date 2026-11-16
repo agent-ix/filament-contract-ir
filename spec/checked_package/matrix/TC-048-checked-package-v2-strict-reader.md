@@ -2914,7 +2914,9 @@ empty payload and require admission, and with one payload term and require
 modifies `ph`. Add a `tuple.project` of position `0` and `1` of `Slot`. Add a map
 type keyed by `Slot`, by `Phase` and by `Text`. Add `structural.eq` and
 `structural.ne` over two parameters of `Slot`, `Phase`, `Wrap` (a tuple holding a
-`Slot`), `Held` (a union holding a `Slot`) and `Pair` (no clock), and over mixed
+`Slot`), `Held` (a union holding a `Slot`), tuples and a union holding an option of
+`Slot` or a record with a clock field, their clock-free counterparts, and `Pair`
+(no clock), and over mixed
 clock and clock-free operands in both orders; require
 `clock-read-outside-constraint` at the application for each clock-bearing case
 and admission for `Pair`. Forge the member type of the non-terminal row of

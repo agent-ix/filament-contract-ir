@@ -2514,8 +2514,9 @@ impl DomainModel {
             .map(|rendered| (identity, rendered)))
     }
 
-    /// Whether the declared tuple or variant `name` carries a `Clock` at any
-    /// depth, through nested tuples, variants and collection element types.
+    /// Whether the declared tuple, variant or record `name` carries a `Clock` at any
+    /// depth, through nested tuples, variants, options, records and collection
+    /// element types.
     /// FR-322 refuses `=` and `!=` over such a value because equality would
     /// read its clocks. Every list the walk grows is paid through `budget`.
     pub(super) fn bears_clock<'a>(
@@ -2545,6 +2546,17 @@ impl DomainModel {
                     }
                 }
             }
+            if let Some(record) = self.record_types.get(name) {
+                for member in record
+                    .fields
+                    .iter()
+                    .filter_map(|f| f.slot.type_ref.as_ref())
+                {
+                    if self.member_bears_clock(member, &mut pending, budget)? {
+                        return Ok(true);
+                    }
+                }
+            }
         }
         Ok(false)
     }
@@ -2565,7 +2577,8 @@ impl DomainModel {
                 SelectedTypeRef::Declared(next) => match self.collection_types.get(next) {
                     Some(SelectedTypeDefinition::Sequence(items)) => current = items,
                     Some(SelectedTypeDefinition::Map(map)) => current = &map.values,
-                    Some(_) => return Ok(false),
+                    Some(SelectedTypeDefinition::Option(inner)) => current = inner,
+                    Some(SelectedTypeDefinition::Reference(_)) => return Ok(false),
                     None => {
                         budget.push(pending, next.as_ref(), "clock_bearing")?;
                         return Ok(false);
@@ -2863,7 +2876,9 @@ impl<'m> ModelOwners<'m> {
         };
         if !matches!(
             owner.form,
-            DeclarationForm::TupleValueType | DeclarationForm::VariantType
+            DeclarationForm::TupleValueType
+                | DeclarationForm::VariantType
+                | DeclarationForm::RecordValueType
         ) {
             return Ok(false);
         }
