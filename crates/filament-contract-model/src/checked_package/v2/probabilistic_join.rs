@@ -202,11 +202,11 @@ fn outside_bounds(package: &DomainModel, slot: &TypedSlot, term: &CheckedTerm) -
         return true;
     };
     match package.slot_type(slot) {
-        Some(MemberType::IntRange(bounds)) => spelled.parse::<BigInt>().map_or(true, |found| {
+        Some(MemberType::IntRange(bounds)) => spelled.parse::<BigInt>().ok().is_none_or(|found| {
             found < BigInt::from(bounds.lower) || found > BigInt::from(bounds.upper)
         }),
         Some(MemberType::RationalRange(bounds) | MemberType::CarriedRational(bounds, _)) => {
-            exact_rational(spelled).map_or(true, |(numerator, denominator)| {
+            exact_rational(spelled).is_none_or(|(numerator, denominator)| {
                 numerator < BigInt::from(bounds.numerator_min)
                     || numerator > BigInt::from(bounds.numerator_max)
                     || denominator < BigInt::from(bounds.denominator_min)
@@ -215,9 +215,9 @@ fn outside_bounds(package: &DomainModel, slot: &TypedSlot, term: &CheckedTerm) -
         }
         Some(MemberType::TextBounds(bounds)) => {
             let length = text_length(spelled, &bounds.profile);
-            u64::try_from(length).map_or(true, |length| {
-                length < bounds.lower || length > bounds.upper
-            })
+            u64::try_from(length)
+                .ok()
+                .is_none_or(|length| length < bounds.lower || length > bounds.upper)
         }
         _ => false,
     }
