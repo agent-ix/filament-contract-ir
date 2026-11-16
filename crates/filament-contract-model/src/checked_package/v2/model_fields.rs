@@ -939,9 +939,12 @@ impl<'a> CheckedModelVariantCase<'a> {
         self.position
     }
 
-    /// Zero for a nullary case, one for a case with a payload.
+    /// Zero for a nullary case or a case whose payload is a clock, which
+    /// holds no data value; one for a case with a data payload.
     pub fn arity(&self) -> usize {
-        usize::from(self.payload.is_some())
+        usize::from(self.payload.is_some_and(|payload| {
+            payload != CheckedVariantPayloadType::Native("ix://filament/native/Clock")
+        }))
     }
 
     /// The alias-resolved type at position zero, if this case has a payload.

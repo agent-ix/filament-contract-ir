@@ -2914,17 +2914,24 @@ fn selected_union_members<'m>(
             else {
                 return Ok(None);
             };
-            let id = member_type
-                .node_id_in(&owner.package.checked_package, &mut budget)?
-                .ok_or_else(|| {
-                    ValidationFailure::refused(
-                        CheckedPackageRefusalCode::InvalidSemanticGraph,
-                        budget.row(),
-                    )
-                })?;
-            let mut payload = budget.vec(1, "union_payload")?;
-            payload.push(id);
-            payload
+            // A clock holds no data value and has no type node: the case is a
+            // member of payload arity 0 in every data read (FR-322 "Clock
+            // positions and payloads").
+            if matches!(member_type, MemberType::Clock) {
+                budget.vec(0, "union_payload")?
+            } else {
+                let id = member_type
+                    .node_id_in(&owner.package.checked_package, &mut budget)?
+                    .ok_or_else(|| {
+                        ValidationFailure::refused(
+                            CheckedPackageRefusalCode::InvalidSemanticGraph,
+                            budget.row(),
+                        )
+                    })?;
+                let mut payload = budget.vec(1, "union_payload")?;
+                payload.push(id);
+                payload
+            }
         } else {
             Vec::new()
         };
@@ -3733,6 +3740,16 @@ fn check_tuple_position(
     };
     if operand_type != Some(&declaration.node_id) {
         return ineligible();
+    }
+    // A clock position is read only as the clock operand of an atomic clock
+    // constraint, never projected into a value position (FR-322 "Clock
+    // positions and payloads").
+    if matches!(position_type, MemberType::Clock) {
+        return Ok(Some(application.refuse(
+            CheckedPackageRefusalCode::InvalidTimedModel,
+            member_at(),
+            CheckedPackageRefusalCause::ClockReadOutsideConstraint,
+        )));
     }
     let mut budget = Budget::new(meter, owner.package.root, owner.package.bytes);
     budget.charge(1)?;

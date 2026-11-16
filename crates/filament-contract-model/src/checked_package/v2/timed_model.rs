@@ -1173,10 +1173,8 @@ fn check_resolved_path(
             Some(PathStepKind::Field) => {
                 text_member(step, 1).is_some_and(|name| concat_is(identity, &[declared, "/", name]))
             }
-            Some(PathStepKind::Tuple) => text_member(step, 1)
-                .is_some_and(|slot| concat_is(identity, &[declared, "/tuple/", slot])),
-            Some(PathStepKind::Union) => text_member(step, 1)
-                .is_some_and(|case| concat_is(identity, &[declared, "/union/", case])),
+            // Joined against the selected tuple or variant below.
+            Some(PathStepKind::Tuple | PathStepKind::Union) => true,
             Some(PathStepKind::Slot) => {
                 parent_type.is_some_and(|name| concat_is(identity, &[name, "[slot]"]))
             }
@@ -1261,6 +1259,30 @@ fn check_resolved_path(
                 }) {
                     return Err(fail(meter, at));
                 }
+            }
+        }
+        if matches!(step_kind, Some(PathStepKind::Tuple | PathStepKind::Union)) {
+            let path_at = binding_at(position, 1).key("members").index(index);
+            let model_owner = owners
+                .recover(model_node)
+                .map_err(|_| fail(meter, path_at))?;
+            let (tuple_index, case) = if step_kind == Some(PathStepKind::Tuple) {
+                (bound(step, 1).and_then(integer_value), None)
+            } else {
+                (None, text_member(step, 1))
+            };
+            let mut budget =
+                Budget::new(meter, model_owner.package.root, model_owner.package.bytes);
+            let joined = model_owner.package.aggregate_step_member(
+                declared,
+                tuple_index,
+                case,
+                &mut budget,
+            )?;
+            if !joined.is_some_and(|(selected, rendered)| {
+                identity == Some(selected.as_str()) && member_type == Some(rendered.as_str())
+            }) {
+                return Err(fail(meter, at));
             }
         }
         if !identity_matches {

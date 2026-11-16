@@ -783,7 +783,7 @@ fn apply_published_intake_patch(document: &mut Value, row: &Value) {
 
 /// Replay every published intake row through the selected document join.
 /// Trace: TC-048, FR-069-AC-8.
-#[trace("TC-048", "FR-069-AC-8")]
+#[trace("TC-048", "FR-069-AC-8", "FR-069-AC-9")]
 #[test]
 fn published_model_tuple_union_intake_cases_refuse_at_exact_member() {
     let fixtures = fixtures_dir();

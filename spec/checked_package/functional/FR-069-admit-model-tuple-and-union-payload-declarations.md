@@ -62,6 +62,19 @@ resolve only an existing position of its named tuple declaration and derive the
 result from that position's `typeRef` under required presence and `[1, 1]`
 multiplicity. An anonymous `composite_type`/`tuple` remains a different type.
 
+### Clock positions and payloads
+
+A tuple position `typeRef` or a variant case `payloadType` that is
+`ix://filament/native/Clock` is admitted as a clock member (FSpec
+FR-322-AC-399; TK-08 and TK-09). It holds no data value and has no type node;
+the tuple keeps all its positions in the selected document and the variant is
+family `union` when it has such a case. A case whose payload is a clock has
+arity zero in every data read, and a `filament.op.tuple.project` of a clock
+position refuses `invalid_timed_model`/`clock-read-outside-constraint`. The
+clock places that reach these members are FR-038's. The other payload types
+that remain refused (`Rational`, `Decimal`, `Text`, an unresolved reference)
+keep their intake refusals.
+
 ### Variant payloads and uses
 
 The selected-document intake SHALL retain each variant case's optional
@@ -143,6 +156,7 @@ silently skipped by an in-repo fixed count or range.
 | FR-069-AC-5 | The published `union_value`, `enum_value`, equality, case-arm and structural-leaf cases pass through the production reader: a nullary union case uses an empty-payload `union_value`; union-family `enum_value` and enum-family `union_value` refuse with the specified typed mismatch; recursive tuple/union declarations admit without a graph recursion group and their leaf walk terminates with FSpec's reachable-text rule. | Test |
 | FR-069-AC-7 | `encode_checked_package_v2` emits the supplied tuple and payload-variant nodes under the FSpec closed V2 envelope and preserves the supplied package name and selection rows. The positive typed package encodes canonically and its bytes read back with the same admitted positions, payload types, structural node ids and package name; a malformed or duplicate node id is refused by the reader. | Test |
 | FR-069-AC-8 | PLANNED/UNRUN (IR-1141; bounded Rational slice planned until IR-1059). make conformance-qspec loads the current positive fixture, model-tuple-union vectors and selected document directly from FILAMENT_SPECIFICATION_DIR; it replays every published tuple/union intake and wire case against production intake and reader paths, compares admission or refusal code, cause, RFC 6901 location and reader stage with the published result, and fails on an admitted partial package or panic for a malformed declaration. The published `TK-36` case admits through both production paths with its tuple position and variant payload resolving to `Rational[-3, 7; 1, 12]` and the selected `bounded_domain`/`rational_range` shape; `TK-22` continues to refuse `unsupported_construct`/`declaration-form` at `/variant_types/0/cases/0/payloadType`, and `TK-24` continues to refuse `invalid_model_binding`/`malformed-declaration` at `/tuple_types/0/positions/0`, each at its published reader stage. Missing or malformed files and omitted cases fail. No FSpec artifact is copied into IR, and no identity hash is computed. | Test, Inspection |
+| FR-069-AC-9 | IMPLEMENTED (IR-1552). The published TK-08 (a variant payload) and TK-09 (a tuple position) typed `ix://filament/native/Clock` admit through the production reader; the arity of the clock case is zero, and the position and payload types of the selected declarations are unchanged by the clock members. | Test (TC-940; FSpec FR-322-AC-399) |
 
 ## Dependencies
 

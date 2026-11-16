@@ -1756,6 +1756,33 @@ after aggregate order and before the repeated-path check. The
 rows all join; no conforming package can reach it, because two such nodes have
 one body and key, while listing one node twice fails aggregate order first.
 
+A tuple position or variant payload typed `ix://filament/native/Clock` is a
+clock member (FSpec FR-322-AC-399, FR-069), and a clock place reaches it
+through a `tuple(index)` or `union(case)` path step. A `tuple` step's `index` is
+an integer literal. The reader SHALL join each such step's `resolved_path` row
+to the selected declaration rather than to the step text: the row's declaring
+type is the preceding row's member type, its member identity is the selected
+position identity `<tuple identity>/p<index>` or the selected case identity,
+and its member type is the position's `typeRef` or the case's `payloadType`
+rendered as a field type is. A position past the tuple, a case the variant does
+not declare, a case with no payload, a member type or identity that is not the
+declared one, and a path that does not end at the `Clock` terminal refuse
+`invalid_package`/`malformed-clock-place` at that resolved-path row. A `slot`
+step before a `tuple` step admits `Set<Slot>[0, 2]` as a clock collection, its
+row bounds equal to the field's. No node stands for a clock position or
+payload, and the place has no presence member: the place of a union case is live
+exactly while that case is the union's active member, which the union value
+states. A `union_value` of a case whose payload is a clock has the empty
+payload `aggregate`, and a payload term on it refuses `ill_typed`/
+`type-mismatch` at the value; the case's arity is zero in the typed variant
+body and in the case arms. A `clock_reset` of such a place is admitted when the
+operation's frame modifies the root field it begins at. A
+`filament.op.tuple.project` of a clock position refuses
+`invalid_timed_model`/`clock-read-outside-constraint` at the application node,
+the pair that the typed refusal cause `ClockReadOutsideConstraint` carries.
+A map type keyed by a clock-bearing tuple or variant refuses
+`ill_typed`/`operator-ineligible` at the key type, as for every non-scalar key.
+
 For each timed root's `clock_places`, `resets`, `guards`, `invariants`,
 `urgencies` and `constraints` aggregate, each guard part's constraints and
 each invariant's bounds, the reader SHALL require strictly ascending order
@@ -6599,6 +6626,12 @@ the minimum the read uses.
 | FR-038-AC-545 | IMPLEMENTED (QSL-2254). The `timed` clock alternative is exactly `{kind: "timed", unit}` with a non-empty `unit`: the strict reader decodes it to `ClockConfiguration::Timed { unit }`, the canonical writer emits the same bytes, and a decode of those bytes equals the original; a missing `unit`, a non-text `unit`, an empty `unit` and an extra member each refuse, and none is defaulted. | Test (TC-048) |
 | FR-038-AC-546 | IMPLEMENTED (QSL-2254). An IR document whose `clock.kind` is not one of `event_position`, `fixed_sample`, `timestamped_event` or `timed` is refused `malformed_wire` at `/temporal_bindings/{i}/clock/kind`; a `timed` row whose `unit` is not text is refused at `/temporal_bindings/{i}/clock/unit`, as for `fixed_sample`; an empty `unit` is refused `malformed_wire` at the same member. | Test (TC-048) |
 | FR-038-AC-547 | IMPLEMENTED (QSL-2254). A Timed clause whose `over` parameter is typed by a hybrid model counts as a model subject: with `clock_name` `model-time` and no row it admits, a row naming it refuses `invalid_package`/`timed-node-reference` at the whole row, and a monitor clock read of it refuses `MissingClock`; a Timed clause over a trace subject reads its configured `timed` row through the monitor clock read. | Test (TC-048) |
+| FR-038-AC-548 | IMPLEMENTED (IR-1552). A selected timed document whose tuple `Slot` has `p0` typed `Clock` and `p1` typed `Integer` and whose variant `Phase` has `Armed` with a `Clock` payload and `Idle` with none admits clock places with the paths `field(sl), tuple(0)` and `field(ph), union(Armed)`, each with a `resolved_path` row per step ending at the `Clock` terminal, no node for either clock, no presence member, and the `Slot` and `Phase` declaration nodes unchanged. A position past the tuple, another position's identity, a data position as the terminal, a nullary or undeclared case, another case's identity, and a document whose position or payload is no longer a clock each refuse `invalid_package`/`malformed-clock-place` at the first differing row `/semantic_graph/nodes/{i}/body/members/2/value/members/{j}`. | Test (TC-048; FSpec FR-322-AC-399) |
+| FR-038-AC-549 | IMPLEMENTED (IR-1552). `Phase::Armed` is a `union_value` with the empty payload `aggregate` and admits, as does the bare `Idle`; the typed variant body reports arity zero for `Armed` and the family `union`. `Armed` with one payload term refuses `ill_typed`/`type-mismatch` at the value node. | Test (TC-048; FSpec FR-322-AC-399) |
+| FR-038-AC-550 | IMPLEMENTED (IR-1552). A `clock_reset` of the `field(ph), union(Armed)` place beside the `union_value` with the empty payload admits when the operation's frame modifies `ph`, and refuses `invalid_package`/`timed-node-reference` when the frame modifies another field. | Test (TC-048; FSpec FR-322-AC-399) |
+| FR-038-AC-551 | IMPLEMENTED (IR-1552). A `filament.op.tuple.project` of position `0` of `Slot` refuses `invalid_timed_model`/`clock-read-outside-constraint` at `/semantic_graph/nodes/{i}`, and position `1` (`Integer`) admits. | Test (TC-048; FSpec FR-322-AC-399) |
+| FR-038-AC-552 | IMPLEMENTED (IR-1552). A field `Set<Slot>[0, 2]` admits the clock place `field(sls), slot(set, Integer, 0, 2), tuple(0)` with a row for each of its three steps; a slot step whose maximum differs from the field's refuses `invalid_package`/`malformed-clock-place` at the field's row. | Test (TC-048; FSpec FR-322-AC-399) |
+| FR-038-AC-553 | IMPLEMENTED (IR-1552). A map type keyed by `Slot` or by `Phase` refuses `ill_typed`/`operator-ineligible` at the selected document's `keys` pointer; the same map keyed by `Text` admits. | Test (TC-048; FSpec FR-322-AC-399) |
 | FR-038-AC-540 | A dependency position naming an unsupplied package or a `node` past the dependency's last node refuses `malformed_wire` at the row entry; a `{package, node}` object written as an id path segment refuses `malformed_wire` at the segment; a local index segment in a foreign id refuses `missing_declaration`/`missing-name` at the member holding it. | Test (TC-474) |
 | FR-038-AC-492 | An admitted `CheckedPackageV2` shall issue a cloneable, opaque `AdmissionBinding` capability and report whether it retains that capability. Clones from one read are members; an independent read of equal canonical bytes is not. | Test (TC-048) |
 | FR-038-AC-493 | The public capability shall use the reader's original admission binding and expose no construction path, buffer contents, copied carrier, or compatibility representation. | Review (IR-1370) |

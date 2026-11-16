@@ -2461,6 +2461,59 @@ impl DomainModel {
         Ok(Some(rendered))
     }
 
+    /// The member a `tuple(index)` or `union(case)` clock-place step names
+    /// under the declaring type `declaring`: its selected identity and the
+    /// rendering of its declared type, or `None` when the declaring type has
+    /// no such position or case, or the member has no clock-path rendering
+    /// (a nullary case, a data type no path continues through).
+    #[ix_trace_rs::string_edge]
+    pub(super) fn aggregate_step_member(
+        &self,
+        declaring: &str,
+        tuple_index: Option<u64>,
+        case: Option<&str>,
+        budget: &mut Budget<'_, '_>,
+    ) -> Result<Option<(String, String)>, ValidationFailure> {
+        let (identity, type_ref) = match (tuple_index, case) {
+            (Some(index), None) => {
+                let Some(positions) = self.tuple_types.get(declaring) else {
+                    return Ok(None);
+                };
+                let Ok(index) = usize::try_from(index) else {
+                    return Ok(None);
+                };
+                let Some(type_ref) = positions.get(index) else {
+                    return Ok(None);
+                };
+                let ordinal = index.to_string();
+                (
+                    budget.concat(&[declaring, "/p", &ordinal], "clock_path")?,
+                    type_ref,
+                )
+            }
+            (None, Some(case)) => {
+                let Some(selected) = self
+                    .variant_types
+                    .get(declaring)
+                    .and_then(|cases| cases.get(case))
+                else {
+                    return Ok(None);
+                };
+                let Some(type_ref) = selected.payload.as_ref() else {
+                    return Ok(None);
+                };
+                (
+                    budget.concat(&[&selected.identity], "clock_path")?,
+                    type_ref,
+                )
+            }
+            _ => return Ok(None),
+        };
+        Ok(self
+            .clock_type_name_in(type_ref, budget)?
+            .map(|rendered| (identity, rendered)))
+    }
+
     /// FR-322 step 4 over one declared `typeRef` and multiplicity; `None`
     /// when the tables give the slot no type.
     pub(super) fn slot_type(&self, slot: &TypedSlot) -> Option<MemberType> {
@@ -5033,10 +5086,7 @@ pub(super) fn read_semantic_ir(
                     };
                     let mapped = match &admitted {
                         SelectedTypeRef::Native(
-                            NativeTypeRef::Clock
-                            | NativeTypeRef::Rational
-                            | NativeTypeRef::Decimal
-                            | NativeTypeRef::Text,
+                            NativeTypeRef::Rational | NativeTypeRef::Decimal | NativeTypeRef::Text,
                         )
                         | SelectedTypeRef::Map(..) => false,
                         SelectedTypeRef::Declared(name)
@@ -5213,13 +5263,13 @@ pub(super) fn read_semantic_ir(
                                 | NativeTypeRef::Timestamp
                                 | NativeTypeRef::Bytes
                                 | NativeTypeRef::JsonObject
-                                | NativeTypeRef::Duration,
+                                | NativeTypeRef::Duration
+                                | NativeTypeRef::Clock,
                             ) => true,
                             SelectedTypeRef::Native(
                                 NativeTypeRef::Rational
                                 | NativeTypeRef::Decimal
-                                | NativeTypeRef::Text
-                                | NativeTypeRef::Clock,
+                                | NativeTypeRef::Text,
                             )
                             | SelectedTypeRef::Map(..) => false,
                             SelectedTypeRef::Unit(name) => model.unit_refs.contains_key(name),
