@@ -33,36 +33,69 @@ The admitted package, or the typed located refusal.
 
 ## Behavior
 
-A `probabilistic` node SHALL carry no `declaration`, no `owner` and no
-`recursion_group`, and exactly one occurrence, with role `declaration`. Its body
-SHALL be an aggregate of exactly the bindings FSpec FR-640 lists for its form,
-in that order, each of the term kind FR-640 gives it. A missing member, an extra
-member, a member out of order or a member of another term kind refuses
-`malformed_wire` at the failing member.
+The strict V2 reader SHALL refuse a `probabilistic` node that carries a
+`declaration`, an `owner` or a `recursion_group`, or that does not have exactly
+one occurrence, with role `declaration`. FSpec FR-640 states the missing
+`declaration` and the single `declaration` occurrence. It states that the node
+has the derived-node path shape of FSpec FR-322; FR-322 gives a derived node no
+`declaration`, `owner` or `recursion_group`, its owner-presence rule lists no
+probabilistic form, and the reader treats the non-root `timed_model` forms the
+same way. The `owner` and `recursion_group` refusals, and the reader's reuse of
+the derived-node rule that `semantic_type` is the node's own id and
+`dependencies` are its referenced targets, are therefore IR's reading of
+FR-322, not FR-640 text.
 
-A body that is well shaped but holds a value outside the rules that need no
-other node refuses `invalid_package` with cause `invalid-value` at that value:
-an empty support, a support, `discrete` delay or `exponential` rate weight that
-is not above 0, an exact weight or rate that is not an exact rational, and a
-`family` outside `uniform`, `uniform_interval`, `exponential` and `discrete`. A
-workload weight of 0 is admitted. The reader charges one validation visit per
-node and per support, weight or delay member before inspecting it.
+The strict V2 reader SHALL refuse with `malformed_wire`, at the failing member,
+a node whose body is not an aggregate of exactly the bindings FR-640 lists for
+its form, in that order, each bound to the term kind FR-640 gives it: a missing
+member, an extra member, a member out of order, a `reference` or literal of
+another kind, or a damaged support or workload weight row.
+
+The strict V2 reader SHALL refuse with `invalid_package` and cause
+`invalid-value`, at the failing value, a well-shaped body that holds a value
+outside the rules of FSpec FR-640 that need no other node:
+
+- an empty support, a support value that repeats an earlier one, a support
+  weight, `discrete` delay weight or `exponential` rate that is not above 0, a
+  workload weight that is negative, and a weight or rate that is not an exact
+  rational in lowest terms;
+- a `family` outside `uniform`, `uniform_interval`, `exponential` and
+  `discrete`, and `parameters` that do not hold exactly the members the family
+  states, including a member row of `discrete` that does.
+
+A workload weight of 0 is admitted. The reader SHALL charge one validation
+visit of the caller's budget per node and per support, weight or delay member
+before inspecting it, and SHALL stop at the first uncharged member with no
+partial view.
 
 A `node_tag` outside the closed vocabulary keeps the decoder's existing
 `unsupported_node_tag` refusal.
 
-The checks of FR-640 that join other nodes (operation references, parameter
-types, reward functions, duplicates across nodes, workload order and the typed
-read) are not part of this requirement.
+### Planned
+
+The strict reader SHALL also give the FR-640 checks that join other nodes, as
+a planned follow-up that the planner assigns; this requirement is therefore
+PARTIAL until they land. They are: rule 1 (an operation reference's `declaring`
+node is present, local and a `model` node that names the operation), rule 2
+(`parameter` names a parameter of the operation and each support value is of
+its type), rule 3 (a workload omits, repeats or misnames no operation of its
+model, and its members are in ascending order), rule 4 (a reward `value_type`
+is an integer or quantity type, and its `expression` is a clause function of
+the operation that reads no state), rule 5 (a delay distribution is on a `time
+dense` model, and quantities are in the model's time unit), the
+`conflicting-definition` refusals between two nodes, and the typed read of
+FSpec FR-640 "Typed read". Until then a package that breaks those rules is
+admitted. Owner: planner to assign.
 
 ## Acceptance Criteria
 
 | ID | Criteria | Verification |
 | --- | --- | --- |
-| FR-369-AC-1 | `probabilistic` and each of its four forms decode, `CheckedNodeKind::all` lists them, and a node of each form (each delay family included) reads and re-encodes to the document it was read from. | Test |
-| FR-369-AC-2 | A probabilistic node with a missing member, an extra member, members out of order, a `declaration`, or a short or extended nested support, weight or delay row refuses `malformed_wire` at the failing member. | Test |
-| FR-369-AC-3 | An empty support, a zero support or discrete weight, a zero exponential rate and an unknown delay family refuse `invalid_package`/`invalid-value`; a zero workload weight is admitted. | Test |
+| FR-369-AC-1 | `probabilistic` and each of its four forms decode, `CheckedNodeKind::all` lists them, a node of each form (each delay family included) reads and re-encodes to the document it was read from, and the public reader admits a package holding a node of each form. | Test |
+| FR-369-AC-2 | A probabilistic node with a missing member, an extra member, members out of order, a `declaration`, an `owner`, a `recursion_group`, no or two occurrences, an occurrence of another role, a binding of another term kind, or a short or extended support row or workload weights row refuses `malformed_wire` at the failing member. | Test |
+| FR-369-AC-3 | An empty support, a repeated support value, a zero support or discrete weight, a zero or negative rate, a negative workload weight, a weight not in lowest terms, an unknown delay family and delay parameters that do not match the family refuse `invalid_package`/`invalid-value`; a zero workload weight is admitted. | Test |
 | FR-369-AC-4 | An unknown `node_tag`, and a form outside the probabilistic family, still fail decode with the existing error. | Test |
+| FR-369-AC-5 | The reader charges one work visit per node and per support, weight or delay member, and a budget one unit short is denied at the first uncharged member. | Test |
 
 ## Dependencies
 

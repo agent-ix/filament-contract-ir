@@ -10,8 +10,8 @@ relationships:
 
 ## Description
 
-Verify every AC of FR-369 at the flat wire check of the strict V2 reader over
-packages built in the test.
+Verify every AC of FR-369 at the flat wire check and through the public strict V2
+reader (`CheckedPackageV2::read`) over packages built in the test.
 
 ## Test Procedure
 
@@ -24,6 +24,8 @@ packages built in the test.
    (FR-369-AC-3).
 4. Change the tag and a form to words outside the vocabulary; expect the
    existing decode failures (FR-369-AC-4).
+5. Count the work charged per node and per member, and deny a budget one unit
+   short (FR-369-AC-5).
 
 ## Expected Results
 
@@ -32,4 +34,4 @@ member with the stated code and cause.
 
 ## Status
 
-Implemented (IR-1549).
+Partial (IR-1549): the join checks of FR-640 are Planned in FR-369.
