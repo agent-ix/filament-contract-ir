@@ -57,3 +57,11 @@ Round 1, at head 0f400cd7.
 | ID | Severity | Summary | Refs |
 | --- | --- | --- | --- |
 | FND-002 | low | Removing `denominator < Exact::from(bounds.denominator_min)` alone survives all 29 `probabilistic` tests. Both rational types in the test, `Ratio` and `Money`, declare `minDenominator` 1, and every canonical rational has a positive denominator. So the lower denominator bound is never the rule a case breaks. A type such as `Rational[1, 3; 2, 4]` with the support value `1` (denominator 1) would cover it. | tests/it/checked_package_v2_probabilistic.rs:118-124,160-175, crates/filament-contract-model/src/checked_package/v2/probabilistic_join.rs:209 |
+
+## Dispositions (round 2)
+
+Round 2, at head 27060075 (fix commit b78d7e9a).
+
+| FND | Outcome | Reason |
+| --- | --- | --- |
+| FND-002 | fixed | The new parameter `r2: Rational[1, 3; 2, 4]` (`RatioFrom2`) admits `1/2`, `3/2` and `1/4`, and refuses `1`, `3` and `1/5` at the literal. The denominator-min mutant (N2), which survived round 1, is now killed. All 18 env-gated mutants are killed at 27060075: each bound comparison on its own (N1 to N8), `CarriedRational`, bytes-as-chars, normalization ignored, non-canonical rational and integer admitted, unit comparison, both visits, the spelling pointer (P1) and integer-at-`value` (P3). |

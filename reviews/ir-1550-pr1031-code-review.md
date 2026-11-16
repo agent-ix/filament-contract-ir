@@ -80,3 +80,11 @@ Round 1, at head 0f400cd7. Each row was checked against the fix commit 0f400cd7 
 | ID | Severity | Summary | Refs |
 | --- | --- | --- | --- |
 | FND-006 | low | A non-canonical spelling is refused at two different pointers depending on the literal kind. For a quantity (`c`), the earlier literal stage refuses `2/4`, `+1` or `1/0` at `.../members/0/value/value`. That is the literal's `value` member, the place FR-322 names ("refuse `invalid_package`/`invalid-value` at the literal's `value`"). For a rational (`r`) or an integer (`d`), the same spelling is refused by the join at `.../members/0/value`. `support_case` then accepts either pointer for every `c` case, including bound cases such as `4` and `1/5`, which the join refuses at `.../value`. The looseness is justified only for the spelling cases. Either pin the expected pointer per case, or refuse rational and integer spellings at the `value` member too. | tests/it/checked_package_v2_probabilistic.rs:1383-1406, crates/filament-contract-model/src/checked_package/v2/probabilistic_join.rs:200-213 |
+
+## Dispositions (round 2)
+
+Round 2, at head 27060075 (fix commit b78d7e9a).
+
+| FND | Outcome | Reason |
+| --- | --- | --- |
+| FND-006 | fixed | `not_member` now returns `NotMember::Literal` or `NotMember::Spelling`. A non-canonical rational or quantity magnitude (`2/4`, `3/1`, `+1`, `01`, `1/0`, `0/5`, `1/-2`, {`1/2`, `2/4`}) is refused at `value_at.key("value")`, the literal's `value` member, which is where FR-322 "Scalar literal values" places a spelling defect. A value outside the bounds stays at the literal. `support_case` pins one exact pointer per case (`Refused::Not`, `Literal(n)` or `Spelling(n)`) for both `r` and `c`. The probe at 27060075 confirms both pointers. Mutant P1 (spelling refused at the literal) is killed. Integer misspellings (`+5`, `05`, `-0`, {`5`, `05`}) stay at the literal. FR-322 "Integers" only says an integer literal value "is an `IntegerString`, the canonical decimal string", and gives no refusal or pointer. FR-369 records the choice as its own, and mutant P3 (integer at `value`) is killed. Placing the integer at the literal is consistent with FR-369's stated rule but not by analogy with FR-322's other spelling rules, which are all at `value`. That is a defensible reading, not a defect. |
