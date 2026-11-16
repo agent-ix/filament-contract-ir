@@ -72,7 +72,7 @@ family `union` when it has such a case. A case whose payload is a clock has
 arity zero in every data read, and a `filament.op.tuple.project` of a clock
 position refuses `invalid_timed_model`/`clock-read-outside-constraint`, as
 does `filament.op.structural.eq`/`filament.op.structural.ne` with an operand typed
-by a tuple or union that carries a `Clock` at any depth (through nested tuples, unions, options, records and collection element types), because equality would
+by a tuple or union that carries a `Clock` at any depth (through nested tuples, unions, options, records and collection element types), as does a bare record with a clock field read whole (FSpec FR-415-AC-6), because equality would
 read its clocks (FR-038, TC-1361 CP-07). The `present(self.p.Armed)` guard half
 of TC-1361 CP-03 is not a declaration obligation: its `unproved-presence`
 refusal belongs to the producer and the FR-415 checker, and the reader sees the

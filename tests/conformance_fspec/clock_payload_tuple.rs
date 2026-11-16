@@ -478,6 +478,8 @@ fn add_declarations(wire: &mut Value) {
         ("tuple_value_type", PLAIN_REC_POS),
         ("variant_type", REC_HELD),
         ("variant_type", PLAIN_HELD),
+        ("record_value_type", TIMER),
+        ("record_value_type", PLAIN_REC),
     ]
     .into_iter()
     .enumerate()
@@ -1112,6 +1114,7 @@ fn map_keyed_by_a_clock_bearing_type_refuses_at_the_key() {
 fn equality_over_a_clock_bearing_tuple_or_union_refuses_clock_read_outside_constraint() {
     let tuple = "tuple_value_type";
     let variant = "variant_type";
+    let record = "record_value_type";
     let structural_eq = "filament.op.structural.eq";
     let structural_ne = "filament.op.structural.ne";
     // (left side, right side, operation, clock-bearing)
@@ -1125,6 +1128,15 @@ fn equality_over_a_clock_bearing_tuple_or_union_refuses_clock_read_outside_const
         // The clock sits one level down, in a nested position or payload.
         ((tuple, WRAP), (tuple, WRAP), structural_eq, true),
         ((variant, HELD), (variant, HELD), structural_ne, true),
+        // A bare record read whole (FSpec FR-415-AC-6), with a clock-free control.
+        ((record, TIMER), (record, TIMER), structural_eq, true),
+        ((record, TIMER), (record, TIMER), structural_ne, true),
+        (
+            (record, PLAIN_REC),
+            (record, PLAIN_REC),
+            structural_eq,
+            false,
+        ),
         // The clock sits behind an option or a record; clock-free counterparts admit.
         ((tuple, OPT_POS), (tuple, OPT_POS), structural_eq, true),
         ((tuple, REC_POS), (tuple, REC_POS), structural_ne, true),

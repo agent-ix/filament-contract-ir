@@ -2915,7 +2915,7 @@ modifies `ph`. Add a `tuple.project` of position `0` and `1` of `Slot`. Add a ma
 type keyed by `Slot`, by `Phase` and by `Text`. Add `structural.eq` and
 `structural.ne` over two parameters of `Slot`, `Phase`, `Wrap` (a tuple holding a
 `Slot`), `Held` (a union holding a `Slot`), tuples and a union holding an option of
-`Slot` or a record with a clock field, their clock-free counterparts, and `Pair`
+`Slot` or a record with a clock field, their clock-free counterparts, a bare `Timer` record and a bare clock-free record, and `Pair`
 (no clock), and over mixed
 clock and clock-free operands in both orders; require
 `clock-read-outside-constraint` at the application for each clock-bearing case
