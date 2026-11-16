@@ -71,7 +71,7 @@ and SHALL stop at the first uncharged member with no partial view.
 A `node_tag` outside the closed vocabulary keeps the decoder's existing
 `unsupported_node_tag` refusal.
 
-After the owner join, the strict V2 reader SHALL check each `probabilistic`
+When the owner join has admitted a package, the strict V2 reader SHALL check each `probabilistic`
 node in ascending node-id order against the nodes it joins and refuse the first
 failure with `invalid_package` and cause `invalid-value`, at the failing member:
 
