@@ -43,3 +43,17 @@ Changes requested on coverage. Every flipped row has a test, and each of the cod
 | ID | Severity | Summary | Refs |
 | --- | --- | --- | --- |
 | FND-001 | medium | The FR-369-AC-18 test declares only `Rational[1, 3; 1, 4]` with no unit, and `Text[2, 3; nfc]`. The FR-369 statement also covers "the magnitude of a quantity over a rational" (`MemberType::CarriedRational`) and every text profile. No test declares a `Quantity<u, Rational[..]>` parameter, or a `binary-utf8`, `unicode-scalars`, `nfd`, `nfkc` or `nfkd` text. So dropping `CarriedRational` from the rational pattern would survive, and the wrong `binary-utf8` length (code-review FND-001) passes the suite. | tests/it/checked_package_v2_probabilistic.rs:1343-1378 |
+
+## Dispositions
+
+Round 1, at head 0f400cd7.
+
+| FND | Outcome | Reason |
+| --- | --- | --- |
+| FND-001 | fixed | The AC-18 test now declares `Text[2, 3; profile]` for all six profiles: `l` nfc, `ld` nfd, `lk` nfkc, `lq` nfkd, `ls` unicode-scalars and `lb` binary-utf8. It also declares `c: Quantity<ms, Rational[1, 3; 1, 4]>` (`Money`), and covers each one's admitted values, values outside the bounds, non-canonical spellings and duplicates. Dropping `CarriedRational` from the rational arm is now killed, as is bytes-as-chars. I also mutated each bound comparison on its own. Numerator min, numerator max, denominator max, integer lower, integer upper, text lower and text upper are all killed. Denominator min survives: see FND-002. |
+
+## New findings (disposition pass 1)
+
+| ID | Severity | Summary | Refs |
+| --- | --- | --- | --- |
+| FND-002 | low | Removing `denominator < Exact::from(bounds.denominator_min)` alone survives all 29 `probabilistic` tests. Both rational types in the test, `Ratio` and `Money`, declare `minDenominator` 1, and every canonical rational has a positive denominator. So the lower denominator bound is never the rule a case breaks. A type such as `Rational[1, 3; 2, 4]` with the support value `1` (denominator 1) would cover it. | tests/it/checked_package_v2_probabilistic.rs:118-124,160-175, crates/filament-contract-model/src/checked_package/v2/probabilistic_join.rs:209 |
