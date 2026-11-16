@@ -313,7 +313,10 @@ fn check_shape(
     Ok(())
 }
 
-fn own_operation<'a>(declared: &'a FieldBearingTypeDecl, name: &str) -> Option<&'a OperationDecl> {
+pub(super) fn own_operation<'a>(
+    declared: &'a FieldBearingTypeDecl,
+    name: &str,
+) -> Option<&'a OperationDecl> {
     declared
         .operations
         .iter()

@@ -11,7 +11,8 @@ relationships:
 ## Description
 
 Verify every AC of FR-369 at the flat wire check and through the public strict V2
-reader (`CheckedPackageV2::read`) over packages built in the test.
+reader (`CheckedPackageV2::read`) over packages built in the test, and the
+delay join over the published timed model.
 
 ## Test Procedure
 
@@ -26,12 +27,28 @@ reader (`CheckedPackageV2::read`) over packages built in the test.
    existing decode failures (FR-369-AC-4).
 5. Count the work charged per node and per member, and deny a budget one unit
    short (FR-369-AC-5).
+6. Point an operation reference at a node that is no model node and at an
+   operation the model lacks; expect `invalid-value` at the member
+   (FR-369-AC-6).
+7. Name a parameter the operation lacks and give a support value of another
+   literal kind; expect `invalid-value` (FR-369-AC-7).
+8. Omit, repeat, reorder and misname a workload operation; expect
+   `invalid-value` at the row (FR-369-AC-8).
+9. Give a reward a Boolean `value_type`, a function of another operation, no
+   parameters, another type, and a function that reaches a `pre_read`; expect
+   `invalid-value` (FR-369-AC-9).
+10. Put a delay distribution on a model with no timed root; expect
+    `invalid-value`; admit one on a `dense` source (FR-369-AC-10).
+11. Declare a second parameter distribution, workload name, reward and delay;
+    expect `conflicting-definition` at the later node (FR-369-AC-11).
+12. Read the admitted declarations back by node, with the exact probability of
+    each support value (FR-369-AC-12).
 
 ## Expected Results
 
 Each shape reads and re-encodes; each damaged node refuses at its first failing
-member with the stated code and cause.
+member with the stated code and cause; a valid package is admitted.
 
 ## Status
 
-Partial (IR-1549): the join checks of FR-640 are Planned in FR-369.
+Partial (IR-1550): a bounded parameter type's range, a delay quantity's time unit and a supertype model's inherited workload operations are Planned in FR-369.

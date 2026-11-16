@@ -62,6 +62,12 @@ mod natural;
 mod node_index;
 mod node_lookup;
 mod probabilistic;
+mod probabilistic_join;
+mod probabilistic_read;
+pub use probabilistic_read::{
+    CheckedDelayDistribution, CheckedDelayFamily, CheckedRandomParameter, CheckedReward,
+    CheckedSupportValue, CheckedWorkload, CheckedWorkloadWeight,
+};
 mod retained_index;
 pub(in crate::checked_package) use node_index::StructuralOrder;
 mod operation_catalog;
@@ -2088,6 +2094,7 @@ fn validate(
         &models,
         &mut meter,
     )?;
+    probabilistic_join::validate(wire, &kinds, &terms, &models, &structural_keys, &mut meter)?;
     if let Some(data) = wire.checked_term_data.as_ref() {
         dispatch_projection::validate_checked_term_data(
             data, wire, &kinds, &terms, &models, &mut meter,
