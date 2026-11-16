@@ -45,6 +45,7 @@ Round 1 checks FR-369, TC-476 and tests.md at head d0c796b0. `quire validate` no
 | FND-001 | fixed | FR-369 Behavior now assigns `invalid_package`/`invalid-value` to a negative workload weight, a weight or rate not an exact rational in lowest terms, and `parameters` that do not hold exactly the members the family states. This matches FR-640 Reader rules 3 and 5. |
 | FND-002 | fixed | FR-369 now cites FR-322's derived-node shape and owner-presence rule, and the non-root `timed_model` precedent. It says the `owner`, `recursion_group` and `semantic_type` rules are IR's reading of FR-322, not FR-640 text. |
 | FND-003 | fixed | Every SHALL now names "The strict V2 reader", and the FR-369 grammar warnings are gone. |
+| FND-004 | fixed | Round 2 at 948346bf adds a total-minus-one check to `one_visit_is_charged_per_node_and_per_member` over a 2-row workload, a 2-row support and a 2-row discrete delay. `total` is measured with an ample budget, the read runs under `limited(total - 1)`, and it asserts a `Budget` failure, consumed < total and `first_unpaid` set. That exercises AC-5 as worded: the first charge left unpaid falls in the last row. The AC wording is unchanged, and the test now matches it. |
 
 ## New findings (disposition pass 1)
 
