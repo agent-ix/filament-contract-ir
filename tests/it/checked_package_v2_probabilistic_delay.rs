@@ -356,41 +356,70 @@ fn a_delay_quantity_in_another_unit_than_the_time_source_is_refused() {
     );
 }
 
-/// FR-369-AC-22: the join charges one validation visit for each delay
-/// quantity it compares: a longer discrete list costs exactly 16 units a row,
-/// one of them the join's and the rest the earlier stages'.
+/// FR-369-AC-22: the join charges one validation visit for each delay quantity,
+/// ahead of inspecting it, at the quantity's pointer: some budget stops the
+/// read as incomplete at exactly the delay of each row. No earlier stage charges
+/// at that pointer, so the totals of the other stages are not part of the check.
 #[trace("TC-476", "FR-369-AC-22")]
 #[test]
 fn the_join_charges_each_delay_quantity() {
     let Some(proposal) = proposal() else { return };
-    let rows = |count: usize| {
-        let members: Vec<Value> = (1..=count)
-            .map(|delay| {
-                json!({"term": "aggregate", "members": [
-                    binding("delay", quantity(&json!("UNIT"), &delay.to_string())),
-                    binding("weight", json!({"term": "literal", "type": "RATIONAL",
-                        "value_kind": "rational", "value": "1"})),
-                ]})
-            })
-            .collect();
-        let wire = with_delays(
-            &proposal,
-            &[(
-                "a",
-                "discrete",
-                json!({"term": "aggregate", "members": members}),
-            )],
-        );
-        assert!(matches!(
-            read(&proposal, &wire),
-            CheckedPackageV2ReadResult::Admitted(_)
-        ));
-        least_work(&proposal, &wire)
-    };
-    let (short, long) = (rows(1), rows(21));
-    assert_eq!(
-        long - short,
-        16 * 20,
-        "work for 1 then 21 rows: {short}, {long}"
+    let members: Vec<Value> = (1..=3)
+        .map(|delay| {
+            json!({"term": "aggregate", "members": [
+                binding("delay", quantity(&json!("UNIT"), &delay.to_string())),
+                binding("weight", json!({"term": "literal", "type": "RATIONAL",
+                    "value_kind": "rational", "value": "1"})),
+            ]})
+        })
+        .collect();
+    let wire = with_delays(
+        &proposal,
+        &[(
+            "a",
+            "discrete",
+            json!({"term": "aggregate", "members": members}),
+        )],
     );
+    assert!(matches!(
+        read(&proposal, &wire),
+        CheckedPackageV2ReadResult::Admitted(_)
+    ));
+    let evidence = evidence_for_published(
+        &wire,
+        "checked package",
+        &proposal.join(DOMAIN_DOCUMENT),
+        true,
+        None,
+        &proposal.join("fixtures"),
+    )
+    .expect("evidence");
+    let bytes = canonical(&wire);
+    let top = least_work(&proposal, &wire);
+    let stopped: Vec<String> = (top - 40..top)
+        .filter_map(|work| {
+            let mut limits = CheckedPackageReadLimits::bounded();
+            limits.work = work;
+            match CheckedPackageV2::read(&bytes, limits, &evidence) {
+                CheckedPackageV2ReadResult::Incomplete(stop) => {
+                    stop.path.map(|path| path.as_str().to_owned())
+                }
+                _ => None,
+            }
+        })
+        .collect();
+    let node = wire["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .len()
+        - 1;
+    for row in 0..3 {
+        let pointer = format!(
+            "/semantic_graph/nodes/{node}/body/members/3/value/members/{row}/members/0/value"
+        );
+        assert!(
+            stopped.contains(&pointer),
+            "no budget stops at {pointer}: {stopped:?}"
+        );
+    }
 }

@@ -8,10 +8,7 @@
 //!
 //! Implements: FR-369 "Behavior" (join checks).
 
-use num_bigint::BigInt;
-use num_integer::Integer;
-use num_traits::Zero;
-use unicode_normalization::UnicodeNormalization;
+use unicode_normalization::{is_nfc, is_nfd, is_nfkc, is_nfkd};
 
 use super::model_fields::RetainedModels;
 use super::model_members::{
@@ -160,67 +157,66 @@ fn literal_unit(package: &DomainModel, slot: &TypedSlot) -> Option<CheckedNodeId
     }
 }
 
-/// The exact rational a literal spells, `n` or `n/d`, in lowest terms with a
-/// positive denominator.
-fn exact_rational(value: &str) -> Option<(BigInt, BigInt)> {
-    let (numerator, denominator) = value.split_once('/').unwrap_or((value, "1"));
-    let (numerator, denominator): (BigInt, BigInt) =
-        (numerator.parse().ok()?, denominator.parse().ok()?);
-    if denominator.is_zero() {
-        return None;
-    }
-    let divisor = numerator.gcd(&denominator);
-    let divisor = if denominator < BigInt::zero() {
-        -divisor
-    } else {
-        divisor
-    };
-    Some((numerator / &divisor, denominator / divisor))
-}
-
-/// The scalar count of `value` under the text `profile` (FSpec FR-141). The
-/// profile is the declaration's wire text, so its words gate the branch.
+/// The scalar count of `value` as written, or its UTF-8 byte count under
+/// `binary-utf8`, when `value` is in the normal form `profile` names; `None`
+/// when it is not (FSpec FR-322 "Text literal membership": the reader applies
+/// no normalization). The profile is the declaration's wire text, so its words
+/// gate the branch.
 #[ix_trace_rs::string_edge]
-fn text_length(value: &str, profile: &str) -> usize {
-    match profile {
-        "nfc" => value.nfc().count(),
-        "nfd" => value.nfd().count(),
-        "nfkc" => value.nfkc().count(),
-        "nfkd" => value.nfkd().count(),
+fn text_length(value: &str, profile: &str) -> Option<usize> {
+    let normal = match profile {
+        "nfc" => is_nfc(value),
+        "nfd" => is_nfd(value),
+        "nfkc" => is_nfkc(value),
+        "nfkd" => is_nfkd(value),
+        _ => true,
+    };
+    normal.then(|| match profile {
+        "binary-utf8" => value.len(),
         _ => value.chars().count(),
-    }
+    })
 }
 
-/// Whether the support value `term` lies outside the bounds of the parameter
-/// type `slot` has, when that type is a bounded integer, a bounded rational,
-/// a quantity over a bounded rational or bounded text (FSpec FR-322 step 4).
-fn outside_bounds(package: &DomainModel, slot: &TypedSlot, term: &CheckedTerm) -> bool {
+/// Whether the support value `term` is no member of the bounded type `slot`
+/// has: a spelling that is not the one canonical spelling of an integer or
+/// rational (FSpec FR-322), a number outside `Int[lo, hi]` or the bounds of
+/// `Rational[n1, n2; d1, d2]` (also for a quantity over one), or a text that is
+/// not in its profile's normal form or whose length is outside
+/// `Text[min, max; profile]`.
+fn outside_bounds(
+    meter: &mut WorkMeter,
+    package: &DomainModel,
+    slot: &TypedSlot,
+    term: &CheckedTerm,
+) -> Result<bool, ValidationFailure> {
+    use filament_exact::Integer as Exact;
     let CheckedTerm::Literal { value, .. } = term else {
-        return false;
+        return Ok(false);
     };
     let Some(spelled) = value.as_str() else {
-        return true;
+        return Ok(true);
     };
-    match package.slot_type(slot) {
-        Some(MemberType::IntRange(bounds)) => spelled.parse::<BigInt>().ok().is_none_or(|found| {
-            found < BigInt::from(bounds.lower) || found > BigInt::from(bounds.upper)
-        }),
+    Ok(match package.slot_type(slot) {
+        Some(MemberType::IntRange(bounds)) => match meter.exact_integer(spelled)? {
+            Some(found) => found < Exact::from(bounds.lower) || found > Exact::from(bounds.upper),
+            None => true,
+        },
         Some(MemberType::RationalRange(bounds) | MemberType::CarriedRational(bounds, _)) => {
-            exact_rational(spelled).is_none_or(|(numerator, denominator)| {
-                numerator < BigInt::from(bounds.numerator_min)
-                    || numerator > BigInt::from(bounds.numerator_max)
-                    || denominator < BigInt::from(bounds.denominator_min)
-                    || denominator > BigInt::from(bounds.denominator_max)
-            })
+            match meter.canonical_rational(spelled)? {
+                Some((numerator, denominator)) => {
+                    numerator < Exact::from(bounds.numerator_min)
+                        || numerator > Exact::from(bounds.numerator_max)
+                        || denominator < Exact::from(bounds.denominator_min)
+                        || denominator > Exact::from(bounds.denominator_max)
+                }
+                None => true,
+            }
         }
-        Some(MemberType::TextBounds(bounds)) => {
-            let length = text_length(spelled, &bounds.profile);
-            u64::try_from(length)
-                .ok()
-                .is_none_or(|length| length < bounds.lower || length > bounds.upper)
-        }
+        Some(MemberType::TextBounds(bounds)) => text_length(spelled, &bounds.profile)
+            .and_then(|length| u64::try_from(length).ok())
+            .is_none_or(|length| length < bounds.lower || length > bounds.upper),
         _ => false,
-    }
+    })
 }
 
 /// The literal kind a support value of a parameter of `slot`'s type has: the
@@ -491,7 +487,6 @@ impl<'a> Join<'a> {
             .enumerate()
         {
             let member_at = parameters_at.key("members").index(index);
-            visit(meter, holder, member_at)?;
             let (quantity, quantity_at) = match member {
                 CheckedTerm::Binding { value, .. } => {
                     (Some(value.as_ref()), member_at.key("value"))
@@ -501,6 +496,7 @@ impl<'a> Join<'a> {
                     member_at.key("members").index(0).key("value"),
                 ),
             };
+            visit(meter, holder, quantity_at)?;
             if !in_unit(quantity) {
                 return Err(invalid(meter, holder, quantity_at));
             }
@@ -696,8 +692,10 @@ pub(super) fn validate(
                     if kind.is_none()
                         || kind != expected
                         || unit.as_ref().is_some_and(|unit| typed_at != Some(unit))
-                        || bound(entry, 0)
-                            .is_some_and(|value| outside_bounds(package, declared, value))
+                        || match bound(entry, 0) {
+                            Some(value) => outside_bounds(meter, package, declared, value)?,
+                            None => false,
+                        }
                     {
                         return Err(invalid(meter, position, value_at));
                     }

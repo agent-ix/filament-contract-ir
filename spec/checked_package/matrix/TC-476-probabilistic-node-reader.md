@@ -61,19 +61,22 @@ repeats the delay cases).
 17. Pad the graph before a delay's timed root, and lengthen a workload model's
     supertype chain, and compare the work each costs; expect it to grow by at
     least the padding and the added edges (FR-369-AC-17).
-18. Give a declared `Int[1, 12]`, `Rational[1, 3; 1, 4]` and `Text[2, 3; nfc]`
-    parameter support values at and outside the bounds; expect `invalid-value`
-    at each outside value (FR-369-AC-18).
-19. Give a reward function a body root of another type than `value_type`;
-    expect `ill_typed`/`type-mismatch` at the function; admit one of that type
-    (FR-369-AC-19).
-20. Lengthen a support and compare the work; expect 16 units a value
-    (FR-369-AC-20).
+18. Give declared `Int[1, 12]`, `Rational[1, 3; 1, 4]`, a quantity over that
+    rational and `Text[2, 3; profile]` parameters (each of the six profiles)
+    support values at and outside the bounds, non-canonical integer and
+    rational spellings, text not in normal form, `binary-utf8` text of 4 and 5
+    bytes, and two spellings of one value; expect `invalid-value` at each
+    non-member (FR-369-AC-18).
+19. Give a reward function with a `body` binding a root of another type than
+    `value_type`; expect `ill_typed`/`type-mismatch` at the function; admit one
+    of that type (FR-369-AC-19).
+20. Cut the work budget one unit at a time near its end; expect a stop at the
+    value pointer of each support row (FR-369-AC-20).
 21. Type a discrete delay and an interval bound at a second unit of the
     published timed model's dimension; expect `invalid-value` at the quantity
     (FR-369-AC-21).
-22. Lengthen a discrete delay list and compare the work; expect 16
-    units a row (FR-369-AC-22).
+22. Cut the work budget the same way; expect a stop at the quantity pointer of
+    each discrete delay row (FR-369-AC-22).
 
 ## Expected Results
 
@@ -82,4 +85,4 @@ member with the stated code and cause; a valid package is admitted.
 
 ## Status
 
-Implemented (IR-1550): ACs 1-22 are tested.
+Partial (IR-1550): ACs 1-22 tested; the computed type of a reward expression without a `body` binding is Planned in FR-369, open on QSL-2310.
