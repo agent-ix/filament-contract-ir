@@ -138,17 +138,31 @@ keyed by its node.
 The rules read the node's own bindings, so the position of each refusal is the
 member of the node that fails.
 
-### Planned
+The strict V2 reader SHALL refuse, with `invalid_package` and cause
+`invalid-value` at the value, a `random_parameter` support value outside its
+parameter's declared type: an integer outside `Int[lo, hi]`; a rational, or the
+magnitude of a quantity over a rational, whose lowest-terms numerator is outside
+`[n1, n2]` or whose positive denominator is outside `[d1, d2]` of
+`Rational[n1, n2; d1, d2]`; and a text whose scalar count after its profile's
+normalization (FSpec FR-141) is outside `[min, max]` of `Text[min, max; profile]`.
 
-The checks of FSpec FR-640 that need more than the nodes joined above are not yet
-made, and a package that breaks them is admitted: that a support value of a
-bounded or declared parameter type lies inside that type (the literal kind and,
-for a quantity, its unit are checked, not the value's range), that a delay's
-quantities are in the time unit of the model's `dense` source (the reader
-exposes each quantity's unit but does not compare it), and that a `reward`'s
-function body computes a value of `value_type` (its own type is checked, not
-its expression). A support value of a declared record, tuple, variant, option or
-collection type has no literal kind and is refused. Owner: titan:IR:code.
+The strict V2 reader SHALL refuse, with `invalid_package` and cause
+`invalid-value` at the quantity, a time quantity of a `delay_distribution` that
+is not typed at the unit of the `dense` time source of the model's `timed_model`
+root, as FSpec FR-640 states "Time quantities are in the timed model's time
+unit".
+
+A `reward` whose function has a `body` binding is refused `ill_typed` and cause
+`type-mismatch` at the function when the body root has another `semantic_type`
+than the function, by the reader's general result comparison of FSpec FR-322
+"Results"; the join adds no second check of the body. A function with no `body`
+binding (a clause function) is outside that comparison, as FR-322 states, so it
+computes no checked type and is admitted. The join SHALL charge one further
+validation visit for each support value and each delay parameter member it
+checks.
+
+A support value of a declared record, tuple, variant, option or collection type
+has no literal kind and is refused.
 
 ## Acceptance Criteria
 
@@ -171,6 +185,11 @@ collection type has no literal kind and is refused. Owner: titan:IR:code.
 | FR-369-AC-15 | A `workload` is admitted when it names the model's own operations and those it inherits through supertypes of supertypes; one that omits the model's own operation although the model has supertypes, one that omits an inherited operation, and one that names a model that is no ancestor refuse `invalid_package`/`invalid-value` at the member. | Test |
 | FR-369-AC-16 | A `reward` whose function reaches a `pre_read`, `presence_read`, `value_read`, `deref`, `query` or `reachability` expression, a `state` node, a `model` node, or a parameter it does not list refuses `invalid_package`/`invalid-value` at `expression`; one that reaches a constant is admitted. | Test |
 | FR-369-AC-17 | The join charges one validation visit for each node scanned for a delay's `dense` root and one for each supertype edge followed for a workload: the work grows by at least the nodes added before the root and the edges added to the chain. | Test |
+| FR-369-AC-18 | A support value outside the declared `Int[lo, hi]`, `Rational[n1, n2; d1, d2]` or `Text[min, max; profile]` type of its parameter refuses `invalid_package`/`invalid-value` at the value; the bounds themselves, a rational not in lowest terms that reduces into range and a text whose normalized length is in range are admitted. | Test |
+| FR-369-AC-19 | A `reward` whose function body root has another type than `value_type` refuses `ill_typed`/`type-mismatch` at the function; a body of that type is admitted. | Test |
+| FR-369-AC-20 | The join charges one validation visit for each support value: a longer support costs 16 work units a value, one of them the join's. | Test |
+| FR-369-AC-21 | A delay quantity, of `uniform_interval` or `discrete`, typed at another unit than the `dense` source's refuses `invalid_package`/`invalid-value` at the quantity; quantities in the source's unit are admitted. | Test |
+| FR-369-AC-22 | The join charges one validation visit for each delay parameter member: a longer discrete list costs 16 work units a row, one of them the join's. | Test |
 
 ## Dependencies
 

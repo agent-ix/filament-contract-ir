@@ -8,6 +8,11 @@
 //!
 //! Implements: FR-369 "Behavior" (join checks).
 
+use num_bigint::BigInt;
+use num_integer::Integer;
+use num_traits::Zero;
+use unicode_normalization::UnicodeNormalization;
+
 use super::model_fields::RetainedModels;
 use super::model_members::{
     member_name, DeclarationForm, DomainModel, MemberType, NativeTypeRef, OperationDecl,
@@ -155,6 +160,67 @@ fn literal_unit(package: &DomainModel, slot: &TypedSlot) -> Option<CheckedNodeId
     }
 }
 
+/// The exact rational a literal spells, `n` or `n/d`, in lowest terms with a
+/// positive denominator.
+fn exact_rational(value: &str) -> Option<(BigInt, BigInt)> {
+    let (numerator, denominator) = value.split_once('/').unwrap_or((value, "1"));
+    let (numerator, denominator): (BigInt, BigInt) =
+        (numerator.parse().ok()?, denominator.parse().ok()?);
+    if denominator.is_zero() {
+        return None;
+    }
+    let divisor = numerator.gcd(&denominator);
+    let divisor = if denominator < BigInt::zero() {
+        -divisor
+    } else {
+        divisor
+    };
+    Some((numerator / &divisor, denominator / divisor))
+}
+
+/// The scalar count of `value` under the text `profile` (FSpec FR-141).
+fn text_length(value: &str, profile: &str) -> usize {
+    match profile {
+        "nfc" => value.nfc().count(),
+        "nfd" => value.nfd().count(),
+        "nfkc" => value.nfkc().count(),
+        "nfkd" => value.nfkd().count(),
+        _ => value.chars().count(),
+    }
+}
+
+/// Whether the support value `term` lies outside the bounds of the parameter
+/// type `slot` has, when that type is a bounded integer, a bounded rational,
+/// a quantity over a bounded rational or bounded text (FSpec FR-322 step 4).
+fn outside_bounds(package: &DomainModel, slot: &TypedSlot, term: &CheckedTerm) -> bool {
+    let CheckedTerm::Literal { value, .. } = term else {
+        return false;
+    };
+    let Some(spelled) = value.as_str() else {
+        return true;
+    };
+    match package.slot_type(slot) {
+        Some(MemberType::IntRange(bounds)) => spelled.parse::<BigInt>().map_or(true, |found| {
+            found < BigInt::from(bounds.lower) || found > BigInt::from(bounds.upper)
+        }),
+        Some(MemberType::RationalRange(bounds) | MemberType::CarriedRational(bounds, _)) => {
+            exact_rational(spelled).map_or(true, |(numerator, denominator)| {
+                numerator < BigInt::from(bounds.numerator_min)
+                    || numerator > BigInt::from(bounds.numerator_max)
+                    || denominator < BigInt::from(bounds.denominator_min)
+                    || denominator > BigInt::from(bounds.denominator_max)
+            })
+        }
+        Some(MemberType::TextBounds(bounds)) => {
+            let length = text_length(spelled, &bounds.profile);
+            u64::try_from(length).map_or(true, |length| {
+                length < bounds.lower || length > bounds.upper
+            })
+        }
+        _ => false,
+    }
+}
+
 /// The literal kind a support value of a parameter of `slot`'s type has: the
 /// kind of the member type FR-322 step 4 derives, and for a type that step
 /// gives no member type, the kind of the declared name (a native Rational,
@@ -234,29 +300,32 @@ impl<'a> Join<'a> {
         }
     }
 
-    /// Whether a timed model rooted on `model` has a `dense` time source.
-    /// One validation visit is charged for each graph node scanned for the
-    /// root.
-    fn is_dense(
+    /// The unit node of the `dense` time source of the timed model rooted on
+    /// `model`, or `None` when the model has no timed root or its source is
+    /// not `dense`. One validation visit is charged for each graph node
+    /// scanned for the root.
+    fn dense_unit(
         &self,
         meter: &mut WorkMeter,
         holder: usize,
         model: &CheckedNodeId,
-    ) -> Result<bool, ValidationFailure> {
+    ) -> Result<Option<&'a CheckedNodeId>, ValidationFailure> {
         for position in 0..self.nodes.len() {
             visit(meter, holder, node_at(holder))?;
             if self.kinds.get(position) == Some(&CheckedNodeKind::TimedModel(TimedModelForm::Model))
                 && bound(&self.terms[position], 0).and_then(target) == Some(model)
             {
-                return Ok(bound(&self.terms[position], 2)
+                let source = bound(&self.terms[position], 2)
                     .and_then(target)
-                    .and_then(|source| self.position(source))
-                    .is_some_and(|source| {
-                        bound(&self.terms[source], 0).and_then(text) == Some("dense")
-                    }));
+                    .and_then(|source| self.position(source));
+                return Ok(source.and_then(|source| {
+                    (bound(&self.terms[source], 0).and_then(text) == Some("dense"))
+                        .then(|| bound(&self.terms[source], 1).and_then(target))
+                        .flatten()
+                }));
             }
         }
-        Ok(false)
+        Ok(None)
     }
 
     /// Whether a function reads anything but the operation's parameters and
@@ -390,17 +459,51 @@ impl<'a> Join<'a> {
         Ok(())
     }
 
-    /// FR-640 Reader rule 5: the delay's model is `time dense`.
+    /// FR-640 Reader rule 5: the delay's model is `time dense`, and each time
+    /// quantity of its parameters is in the unit of that source (FR-640
+    /// "Time quantities are in the timed model's time unit"). One validation
+    /// visit is charged for each parameter member inspected.
     fn delay(
         &self,
         meter: &mut WorkMeter,
         holder: usize,
         model: &CheckedNodeId,
+        body: &CheckedTerm,
     ) -> Result<(), ValidationFailure> {
-        match self.is_dense(meter, holder, model)? {
-            true => Ok(()),
-            false => Err(invalid(meter, holder, binding_at(holder, 0).key("target"))),
+        let Some(unit) = self.dense_unit(meter, holder, model)? else {
+            return Err(invalid(meter, holder, binding_at(holder, 0).key("target")));
+        };
+        let parameters_at = binding_at(holder, 3);
+        let in_unit = |term: Option<&CheckedTerm>| match term {
+            Some(CheckedTerm::Literal {
+                value_kind: LiteralKind::Quantity,
+                type_id,
+                ..
+            }) => type_id == unit,
+            _ => true,
+        };
+        for (index, member) in bound(body, 3)
+            .map(members)
+            .unwrap_or_default()
+            .iter()
+            .enumerate()
+        {
+            let member_at = parameters_at.key("members").index(index);
+            visit(meter, holder, member_at)?;
+            let (quantity, quantity_at) = match member {
+                CheckedTerm::Binding { value, .. } => {
+                    (Some(value.as_ref()), member_at.key("value"))
+                }
+                row => (
+                    bound(row, 0),
+                    member_at.key("members").index(0).key("value"),
+                ),
+            };
+            if !in_unit(quantity) {
+                return Err(invalid(meter, holder, quantity_at));
+            }
         }
+        Ok(())
     }
 
     /// The selected declaration `node` and its supertypes, transitively, as
@@ -579,6 +682,7 @@ pub(super) fn validate(
                         .key("members")
                         .index(0)
                         .key("value");
+                    visit(meter, position, value_at)?;
                     let (kind, typed_at) = match bound(entry, 0) {
                         Some(CheckedTerm::Literal {
                             value_kind,
@@ -590,6 +694,8 @@ pub(super) fn validate(
                     if kind.is_none()
                         || kind != expected
                         || unit.as_ref().is_some_and(|unit| typed_at != Some(unit))
+                        || bound(entry, 0)
+                            .is_some_and(|value| outside_bounds(package, declared, value))
                     {
                         return Err(invalid(meter, position, value_at));
                     }
@@ -617,7 +723,7 @@ pub(super) fn validate(
             }
             ProbabilisticForm::DelayDistribution => {
                 let (model, operation, _) = join.operation(meter, position, body, 0, 1)?;
-                join.delay(meter, position, model)?;
+                join.delay(meter, position, model, body)?;
                 (3, Some(model), member_name(&operation.identity), "")
             }
         };

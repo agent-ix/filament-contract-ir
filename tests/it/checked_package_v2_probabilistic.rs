@@ -39,6 +39,8 @@ fn document_with(chain: usize) -> Value {
     document["types"][0]["operations"][1]["params"] = json!([
         {"name": "d", "typeRef": "ix://test/families/Millis", "multiplicity": one},
         {"name": "t", "typeRef": "ix://filament/unit/ms", "multiplicity": one},
+        {"name": "r", "typeRef": "ix://test/families/Ratio", "multiplicity": one},
+        {"name": "l", "typeRef": "ix://test/families/Label", "multiplicity": one},
     ]);
     let above = |index: usize| format!("ix://{PACKAGE}/Up{index}");
     let base_supers = if chain == 0 {
@@ -102,6 +104,39 @@ fn document_with(chain: usize) -> Value {
             "constraints": [
                 {"keyword": "min", "operands": {"value": 1}},
                 {"keyword": "max", "operands": {"value": 12}},
+            ],
+        }));
+    // `Rational[1, 3; 1, 4]` and `Text[2, 3; nfc]`.
+    let ratio = "ix://test/families/Ratio";
+    let bounds = [
+        ("minNumerator", 1),
+        ("maxNumerator", 3),
+        ("minDenominator", 1),
+        ("maxDenominator", 4),
+    ]
+    .map(|(keyword, value)| {
+        json!({"keyword": keyword, "appliesTo": ratio, "operands": {"value": value}})
+    });
+    document["types"]
+        .as_array_mut()
+        .expect("types")
+        .push(json!({
+            "identity": ratio, "displayName": "Ratio",
+            "kind": {"module": PACKAGE, "name": "millis"},
+            "roles": [], "extensions": [], "unknownPolicy": "reject", "scalar": "rational",
+            "constraints": bounds,
+        }));
+    document["types"]
+        .as_array_mut()
+        .expect("types")
+        .push(json!({
+            "identity": "ix://test/families/Label", "displayName": "Label",
+            "kind": {"module": PACKAGE, "name": "millis"},
+            "roles": [], "extensions": [], "unknownPolicy": "reject", "scalar": "string",
+            "constraints": [
+                {"keyword": "minLength", "operands": {"value": 2}},
+                {"keyword": "maxLength", "operands": {"value": 3}},
+                {"keyword": "format", "operands": {"name": "text-profile:nfc"}},
             ],
         }));
     document
@@ -1170,7 +1205,7 @@ fn the_public_reader_admits_a_reward_over_a_compound_unit() {
 }
 
 /// A reward on `withdraw` whose function lists `listed` of the parameters
-/// `d` and `t` (every reference legal), owned by `withdraw`.
+/// `d`, `t`, `r` and `l` (every reference legal), owned by `withdraw`.
 fn withdraw_reward(listed: &[&str]) -> Value {
     let body = with(
         vec![
@@ -1184,7 +1219,7 @@ fn withdraw_reward(listed: &[&str]) -> Value {
         ],
     );
     let mut value = package("reward", body, |_| {});
-    for name in ["d", "t"] {
+    for name in ["d", "t", "r", "l"] {
         let parameter = plain_node(
             &["reward", name],
             "value",
@@ -1203,7 +1238,7 @@ fn withdraw_reward(listed: &[&str]) -> Value {
         .iter()
         .map(|name| reference(id(&["reward", name])))
         .collect::<Vec<_>>());
-    function["dependencies"] = json!(["d", "t"]
+    function["dependencies"] = json!(["d", "t", "r", "l"]
         .into_iter()
         .filter(|name| listed.contains(name))
         .map(|name| id(&["reward", name]))
@@ -1217,10 +1252,10 @@ fn withdraw_reward(listed: &[&str]) -> Value {
 #[trace("TC-476", "FR-369-AC-9")]
 #[test]
 fn the_public_reader_refuses_a_reward_function_that_lists_the_wrong_parameters() {
-    admitted(&withdraw_reward(&["d", "t"]));
-    refuse_invalid(&withdraw_reward(&["t", "d"]), &bad_target(4));
+    admitted(&withdraw_reward(&["d", "t", "r", "l"]));
+    refuse_invalid(&withdraw_reward(&["t", "d", "r", "l"]), &bad_target(4));
     refuse_invalid(&withdraw_reward(&["d"]), &bad_target(4));
-    refuse_invalid(&withdraw_reward(&["d", "d"]), &bad_target(4));
+    refuse_invalid(&withdraw_reward(&["d", "d", "r", "l"]), &bad_target(4));
 }
 
 /// FR-369-AC-8: two rows that name one operation name through different
@@ -1297,5 +1332,119 @@ fn the_join_charges_each_supertype_edge() {
     assert!(
         long >= short + u64::try_from(extra).expect("count"),
         "the edges are charged: {short} then {long}"
+    );
+}
+
+/// FR-369-AC-18: a support value outside the range of a declared integer,
+/// rational or text type refuses at the value; the bounds themselves are
+/// admitted.
+#[trace("TC-476", "FR-369-AC-18")]
+#[test]
+fn the_public_reader_refuses_a_support_value_outside_its_declared_type() {
+    let at = "body/members/3/value/members/0/members/0/value";
+    let integers = |values: &[&str]| -> Vec<Value> {
+        values
+            .iter()
+            .map(|value| literal("integer", json!(value)))
+            .collect()
+    };
+    admitted(&package_of("withdraw", "d", integers(&["1", "12"])));
+    for outside in ["0", "13", "-1"] {
+        refuse_invalid(&package_of("withdraw", "d", integers(&[outside])), at);
+    }
+    let rationals =
+        |values: &[&str]| -> Vec<Value> { values.iter().map(|value| rational(value)).collect() };
+    // `Rational[1, 3; 1, 4]`, in lowest terms: 2/4 is 1/2.
+    admitted(&package_of(
+        "withdraw",
+        "r",
+        rationals(&["1", "3", "3/4", "2/4"]),
+    ));
+    for outside in ["0", "4", "1/5", "5/4", "-1"] {
+        refuse_invalid(&package_of("withdraw", "r", rationals(&[outside])), at);
+    }
+    // `Text[2, 3; nfc]`: the length is the scalar count after normalization,
+    // so `e` and a combining acute accent count as one scalar.
+    let texts =
+        |values: &[&str]| -> Vec<Value> { values.iter().map(|value| text(value)).collect() };
+    admitted(&package_of(
+        "withdraw",
+        "l",
+        texts(&["ab", "abc", "e\u{301}b"]),
+    ));
+    for outside in ["a", "abcd", "e\u{301}"] {
+        refuse_invalid(&package_of("withdraw", "l", texts(&[outside])), at);
+    }
+}
+
+/// A reward whose function has the root node `root` of type `root_type` as
+/// its body.
+fn reward_with_body(root_type: Value) -> Value {
+    reward_package(|value| {
+        let root = plain_node(
+            &["reward", "root"],
+            "value",
+            "literal",
+            root_type,
+            literal("integer", json!("1")),
+        );
+        append(value, root, "generated");
+        let function = node_by_label(value, &["reward", "function"]);
+        function["body"]["members"]
+            .as_array_mut()
+            .expect("members")
+            .insert(1, binding("body", reference(id(&["reward", "root"]))));
+        function["dependencies"]
+            .as_array_mut()
+            .expect("dependencies")
+            .push(id(&["reward", "root"]));
+    })
+}
+
+/// FR-369-AC-19: a reward function whose body computes another type than the
+/// reward's `value_type` is refused `ill_typed`/`type-mismatch` at the function
+/// (FSpec FR-322 "Results"); a body of that type is admitted.
+#[trace("TC-476", "FR-369-AC-19")]
+#[test]
+fn the_public_reader_refuses_a_reward_body_of_another_type() {
+    admitted(&reward_with_body(integer()));
+    let refusal = refused(&reward_with_body(id(&["builtin/rational"])));
+    assert_eq!(refusal.code, CheckedPackageRefusalCode::IllTyped);
+    assert_eq!(
+        refusal.cause,
+        Some(CheckedPackageRefusalCause::TypeMismatch)
+    );
+    let function: filament_contract_model::CheckedNodeId =
+        serde_json::from_value(id(&["reward", "function"])).expect("function id");
+    assert_eq!(refusal.locus.as_ref(), Some(&function));
+}
+
+/// FR-369-AC-20: the join charges one validation visit for each support value
+/// it checks: a longer support costs the reader exactly 16 units a value, one
+/// of them the join's and the rest the earlier stages' (the term, the member
+/// and the row).
+#[trace("TC-476", "FR-369-AC-20")]
+#[test]
+fn the_join_charges_each_support_value() {
+    let cost = |count: usize| {
+        let rows: Vec<Value> = (1..=count)
+            .map(|value| {
+                aggregate(vec![
+                    binding("value", literal("integer", json!(value.to_string()))),
+                    binding("weight", rational("1")),
+                ])
+            })
+            .collect();
+        let mut body = parameter_on("withdraw", "d", vec![]);
+        body["members"][3]["value"] = aggregate(rows);
+        let with = package("random_parameter", body, |_| {});
+        let without = assemble(vec![]);
+        least_work(&with, 0) - least_work(&without, 0)
+    };
+    let (short, long) = (cost(1), cost(11));
+    assert_eq!(
+        long - short,
+        16 * 10,
+        "work for 1 then 11 values: {short}, {long}"
     );
 }
