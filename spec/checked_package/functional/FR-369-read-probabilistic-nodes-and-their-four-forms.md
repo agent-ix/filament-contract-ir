@@ -146,7 +146,10 @@ literal spelling and not as FSpec FR-141 evaluates at run time:
 - an integer, or a rational, or the magnitude of a quantity over a rational,
   that is not the one canonical spelling FR-322 gives it (`+5`, `05`, `2/4`,
   `3/1` and `01` refuse), so that two spellings of one number cannot both stand
-  in a support;
+  in a support. A misspelt rational or quantity refuses at the literal's `value`
+  member, as FR-322 "Scalar literal values" places it; every other refusal here,
+  a misspelt integer included (FR-322 names no pointer for one), refuses at the
+  literal;
 - an integer outside `Int[lo, hi]`; a rational, or the magnitude of a quantity
   over a rational, whose numerator is outside `[n1, n2]` or whose positive
   denominator is outside `[d1, d2]` of `Rational[n1, n2; d1, d2]`; and
@@ -208,7 +211,7 @@ QSL-2310.
 | FR-369-AC-15 | A `workload` is admitted when it names the model's own operations and those it inherits through supertypes of supertypes; one that omits the model's own operation although the model has supertypes, one that omits an inherited operation, and one that names a model that is no ancestor refuse `invalid_package`/`invalid-value` at the member. | Test |
 | FR-369-AC-16 | A `reward` whose function reaches a `pre_read`, `presence_read`, `value_read`, `deref`, `query` or `reachability` expression, a `state` node, a `model` node, or a parameter it does not list refuses `invalid_package`/`invalid-value` at `expression`; one that reaches a constant is admitted. | Test |
 | FR-369-AC-17 | The join charges one validation visit for each node scanned for a delay's `dense` root and one for each supertype edge followed for a workload: the work grows by at least the nodes added before the root and the edges added to the chain. | Test |
-| FR-369-AC-18 | A support value that is no member of its parameter's declared type refuses `invalid_package`/`invalid-value` at the value: outside `Int[lo, hi]` or `Rational[n1, n2; d1, d2]` (also for a quantity over one), a non-canonical integer or rational spelling (`+5`, `05`, `2/4`, `3/1`, `+1`, `01`, `1/0`), a text not in the normal form of `nfc`, `nfd`, `nfkc` or `nfkd`, or a text whose length is outside `Text[min, max; profile]` (scalars as written, bytes under `binary-utf8`); the bounds themselves and a text in normal form with a length in range are admitted, and two spellings of one value refuse at the second. | Test |
+| FR-369-AC-18 | A support value that is no member of its parameter's declared type refuses `invalid_package`/`invalid-value` (at the literal, and at the literal's `value` member for a misspelt rational or quantity): outside `Int[lo, hi]` or `Rational[n1, n2; d1, d2]` (also for a quantity over one), a non-canonical integer or rational spelling (`+5`, `05`, `2/4`, `3/1`, `+1`, `01`, `1/0`), a text not in the normal form of `nfc`, `nfd`, `nfkc` or `nfkd`, or a text whose length is outside `Text[min, max; profile]` (scalars as written, bytes under `binary-utf8`); the bounds themselves and a text in normal form with a length in range are admitted, and two spellings of one value refuse at the second. | Test |
 | FR-369-AC-19 | A `reward` whose function has a `body` binding whose root has another type than `value_type` refuses `ill_typed`/`type-mismatch` at the function by FR-322 "Results"; a body of that type is admitted. The AC pins that existing comparison for a reward with a `body`; it does not cover the bodyless clause function FR-640 describes (see Planned). | Test |
 | FR-369-AC-20 | The join charges one validation visit for each support value at the value's pointer: a budget exists that stops the read as incomplete at exactly the value of each row. | Test |
 | FR-369-AC-21 | A delay quantity, of `uniform_interval` or `discrete`, typed at another unit than the `dense` source's refuses `invalid_package`/`invalid-value` at the quantity; quantities in the source's unit are admitted. | Test |

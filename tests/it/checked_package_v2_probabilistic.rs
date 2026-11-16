@@ -22,7 +22,7 @@ const PACKAGE: &str = "test/families";
 const DEPOSIT: &str = "ix://test/families/Account/deposit";
 const WITHDRAW: &str = "ix://test/families/Account/withdraw";
 /// The parameters of `withdraw`, in declared order.
-const PARAMETERS: [&str; 10] = ["d", "t", "r", "l", "lb", "ls", "ld", "lk", "lq", "c"];
+const PARAMETERS: [&str; 11] = ["d", "t", "r", "r2", "l", "lb", "ls", "ld", "lk", "lq", "c"];
 
 /// The family model document with the parameter `n: Integer` on `deposit`,
 /// the parameters `d: Millis` (a value type `Int[1, 12]`) and
@@ -42,6 +42,7 @@ fn document_with(chain: usize) -> Value {
         {"name": "d", "typeRef": "ix://test/families/Millis", "multiplicity": one},
         {"name": "t", "typeRef": "ix://filament/unit/ms", "multiplicity": one},
         {"name": "r", "typeRef": "ix://test/families/Ratio", "multiplicity": one},
+        {"name": "r2", "typeRef": "ix://test/families/RatioFrom2", "multiplicity": one},
         {"name": "l", "typeRef": "ix://test/families/Label", "multiplicity": one},
         {"name": "lb", "typeRef": "ix://test/families/LabelBytes", "multiplicity": one},
         {"name": "ls", "typeRef": "ix://test/families/LabelScalars", "multiplicity": one},
@@ -114,26 +115,28 @@ fn document_with(chain: usize) -> Value {
                 {"keyword": "max", "operands": {"value": 12}},
             ],
         }));
-    // `Rational[1, 3; 1, 4]` and `Text[2, 3; nfc]`.
-    let ratio = "ix://test/families/Ratio";
-    let bounds = [
-        ("minNumerator", 1),
-        ("maxNumerator", 3),
-        ("minDenominator", 1),
-        ("maxDenominator", 4),
-    ]
-    .map(|(keyword, value)| {
-        json!({"keyword": keyword, "appliesTo": ratio, "operands": {"value": value}})
-    });
-    document["types"]
-        .as_array_mut()
-        .expect("types")
-        .push(json!({
-            "identity": ratio, "displayName": "Ratio",
-            "kind": {"module": PACKAGE, "name": "millis"},
-            "roles": [], "extensions": [], "unknownPolicy": "reject", "scalar": "rational",
-            "constraints": bounds,
-        }));
+    // `Rational[1, 3; 1, 4]`, `Rational[1, 3; 2, 4]` and `Text[2, 3; profile]`.
+    for (name, min_denominator) in [("Ratio", 1), ("RatioFrom2", 2)] {
+        let ratio = format!("ix://test/families/{name}");
+        let bounds = [
+            ("minNumerator", 1),
+            ("maxNumerator", 3),
+            ("minDenominator", min_denominator),
+            ("maxDenominator", 4),
+        ]
+        .map(|(keyword, value)| {
+            json!({"keyword": keyword, "appliesTo": ratio, "operands": {"value": value}})
+        });
+        document["types"]
+            .as_array_mut()
+            .expect("types")
+            .push(json!({
+                "identity": ratio, "displayName": name,
+                "kind": {"module": PACKAGE, "name": "millis"},
+                "roles": [], "extensions": [], "unknownPolicy": "reject", "scalar": "rational",
+                "constraints": bounds,
+            }));
+    }
     for (name, profile) in [
         ("Label", "nfc"),
         ("LabelBytes", "binary-utf8"),
@@ -1378,30 +1381,32 @@ fn value_at(row: usize) -> String {
     format!("body/members/3/value/members/{row}/members/0/value")
 }
 
-/// Reads `parameter` of `withdraw` with the support `values`: admitted, or
-/// refused `invalid-value` at the value of row `refused`.
-fn support_case(parameter: &str, values: Vec<Value>, row: Option<usize>) {
+/// Where a support value is refused.
+#[derive(Clone, Copy)]
+enum Refused {
+    /// Admitted.
+    Not,
+    /// `invalid-value` at the literal of row `n`: outside its type, a
+    /// non-canonical integer, or a text that is not a member.
+    Literal(usize),
+    /// `invalid-value` at the `value` member of the literal of row `n`: a
+    /// rational or quantity not spelled canonically (FSpec FR-322 "Scalar
+    /// literal values": a rational has one spelling, and a bad one refuses at
+    /// the literal's `value`).
+    Spelling(usize),
+}
+
+/// Reads `parameter` of `withdraw` with the support `values`, and expects
+/// `outcome`.
+fn support_case(parameter: &str, values: Vec<Value>, outcome: Refused) {
     let value = package_of("withdraw", parameter, values);
-    match row {
-        None => {
+    match outcome {
+        Refused::Not => {
             admitted(&value);
         }
-        Some(row) => {
-            // A quantity's magnitude is refused either by the join at the
-            // quantity or by the wire stage at its `value` member.
-            let refusal = refused(&value);
-            assert_eq!(refusal.code, CheckedPackageRefusalCode::InvalidPackage);
-            assert_eq!(
-                refusal.cause,
-                Some(CheckedPackageRefusalCause::InvalidValue)
-            );
-            let at = refusal.loci[0].path.as_ref().map(|path| path.as_str());
-            let own = location(&value, &value_at(row));
-            let magnitude = format!("{own}/value");
-            assert!(
-                at == Some(own.as_str()) || (parameter == "c" && at == Some(magnitude.as_str())),
-                "{refusal:?}"
-            );
+        Refused::Literal(row) => refuse_invalid(&value, &value_at(row)),
+        Refused::Spelling(row) => {
+            refuse_invalid(&value, &format!("{}/value", value_at(row)));
         }
     }
 }
@@ -1420,12 +1425,13 @@ fn the_public_reader_refuses_a_support_value_outside_its_declared_type() {
             .map(|value| literal("integer", json!(value)))
             .collect()
     };
-    // `Int[1, 12]`.
-    support_case("d", integers(&["1", "12"]), None);
+    // `Int[1, 12]`. FR-322 places no pointer for a misspelt integer literal,
+    // so FR-369's own is the literal.
+    support_case("d", integers(&["1", "12"]), Refused::Not);
     for outside in ["0", "13", "-1", "+5", "05"] {
-        support_case("d", integers(&[outside]), Some(0));
+        support_case("d", integers(&[outside]), Refused::Literal(0));
     }
-    support_case("d", integers(&["5", "05"]), Some(1));
+    support_case("d", integers(&["5", "05"]), Refused::Literal(1));
     // `Rational[1, 3; 1, 4]`, and the same bounds over the unit `ms`.
     let rationals =
         |values: &[&str]| -> Vec<Value> { values.iter().map(|value| rational(value)).collect() };
@@ -1439,13 +1445,22 @@ fn the_public_reader_refuses_a_support_value_outside_its_declared_type() {
         ("r", &rationals as &dyn Fn(&[&str]) -> Vec<Value>),
         ("c", &quantities),
     ] {
-        support_case(parameter, make(&["1", "3", "1/2", "3/4"]), None);
-        for outside in [
-            "0", "4", "1/5", "5/4", "-1", "2/4", "3/1", "+1", "01", "1/0",
-        ] {
-            support_case(parameter, make(&[outside]), Some(0));
+        support_case(parameter, make(&["1", "3", "1/2", "3/4"]), Refused::Not);
+        // Outside the bounds: refused at the literal.
+        for outside in ["0", "4", "1/5", "5/4", "-1"] {
+            support_case(parameter, make(&[outside]), Refused::Literal(0));
         }
-        support_case(parameter, make(&["1/2", "2/4"]), Some(1));
+        // Not the one spelling of a rational: refused at the literal's `value`.
+        for misspelt in ["2/4", "3/1", "+1", "01", "1/0"] {
+            support_case(parameter, make(&[misspelt]), Refused::Spelling(0));
+        }
+        support_case(parameter, make(&["1/2", "2/4"]), Refused::Spelling(1));
+    }
+    // `Rational[1, 3; 2, 4]`: the denominator minimum is 2, so `1` (denominator
+    // 1) is outside and `1/2` (denominator 2) is the lowest member.
+    support_case("r2", rationals(&["1/2", "3/2", "1/4"]), Refused::Not);
+    for outside in ["1", "3", "1/5"] {
+        support_case("r2", rationals(&[outside]), Refused::Literal(0));
     }
     // `Text[2, 3; profile]`: `é` is U+00E9 and `é` below is `e` U+0301.
     let texts =
@@ -1485,13 +1500,13 @@ fn the_public_reader_refuses_a_support_value_outside_its_declared_type() {
         ),
     ];
     for (parameter, admitted, refused) in cases {
-        support_case(parameter, texts(admitted), None);
+        support_case(parameter, texts(admitted), Refused::Not);
         for value in refused {
-            support_case(parameter, texts(&[value]), Some(0));
+            support_case(parameter, texts(&[value]), Refused::Literal(0));
         }
     }
     // Two spellings of one text under the profile: the second is no member.
-    support_case("l", texts(&[composed, decomposed]), Some(1));
+    support_case("l", texts(&[composed, decomposed]), Refused::Literal(1));
 }
 
 /// A reward whose function has the root node `root` of type `root_type` as

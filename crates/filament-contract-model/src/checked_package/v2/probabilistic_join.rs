@@ -177,26 +177,35 @@ fn text_length(value: &str, profile: &str) -> Option<usize> {
     })
 }
 
-/// Whether the support value `term` is no member of the bounded type `slot`
-/// has: a spelling that is not the one canonical spelling of an integer or
-/// rational (FSpec FR-322), a number outside `Int[lo, hi]` or the bounds of
-/// `Rational[n1, n2; d1, d2]` (also for a quantity over one), or a text that is
-/// not in its profile's normal form or whose length is outside
+/// Where a support value that is no member of its parameter's type is refused.
+enum NotMember {
+    /// At the literal: outside the bounds, or a non-canonical integer or text.
+    Literal,
+    /// At the literal's `value` member: a rational spelled other than its one
+    /// canonical spelling (FSpec FR-322 "Scalar literal values").
+    Spelling,
+}
+
+/// Why the support value `term` is no member of the bounded type `slot` has,
+/// or `None` when it is one: a spelling that is not the one canonical spelling
+/// of an integer or rational (FSpec FR-322), a number outside `Int[lo, hi]` or
+/// the bounds of `Rational[n1, n2; d1, d2]` (also for a quantity over one), or
+/// a text that is not in its profile's normal form or whose length is outside
 /// `Text[min, max; profile]`.
-fn outside_bounds(
+fn not_member(
     meter: &mut WorkMeter,
     package: &DomainModel,
     slot: &TypedSlot,
     term: &CheckedTerm,
-) -> Result<bool, ValidationFailure> {
+) -> Result<Option<NotMember>, ValidationFailure> {
     use filament_exact::Integer as Exact;
     let CheckedTerm::Literal { value, .. } = term else {
-        return Ok(false);
+        return Ok(None);
     };
     let Some(spelled) = value.as_str() else {
-        return Ok(true);
+        return Ok(Some(NotMember::Literal));
     };
-    Ok(match package.slot_type(slot) {
+    let outside = match package.slot_type(slot) {
         Some(MemberType::IntRange(bounds)) => match meter.exact_integer(spelled)? {
             Some(found) => found < Exact::from(bounds.lower) || found > Exact::from(bounds.upper),
             None => true,
@@ -209,14 +218,15 @@ fn outside_bounds(
                         || denominator < Exact::from(bounds.denominator_min)
                         || denominator > Exact::from(bounds.denominator_max)
                 }
-                None => true,
+                None => return Ok(Some(NotMember::Spelling)),
             }
         }
         Some(MemberType::TextBounds(bounds)) => text_length(spelled, &bounds.profile)
             .and_then(|length| u64::try_from(length).ok())
             .is_none_or(|length| length < bounds.lower || length > bounds.upper),
         _ => false,
-    })
+    };
+    Ok(outside.then_some(NotMember::Literal))
 }
 
 /// The literal kind a support value of a parameter of `slot`'s type has: the
@@ -692,12 +702,21 @@ pub(super) fn validate(
                     if kind.is_none()
                         || kind != expected
                         || unit.as_ref().is_some_and(|unit| typed_at != Some(unit))
-                        || match bound(entry, 0) {
-                            Some(value) => outside_bounds(meter, package, declared, value)?,
-                            None => false,
-                        }
                     {
                         return Err(invalid(meter, position, value_at));
+                    }
+                    let verdict = match bound(entry, 0) {
+                        Some(value) => not_member(meter, package, declared, value)?,
+                        None => None,
+                    };
+                    match verdict {
+                        Some(NotMember::Literal) => {
+                            return Err(invalid(meter, position, value_at));
+                        }
+                        Some(NotMember::Spelling) => {
+                            return Err(invalid(meter, position, value_at.key("value")));
+                        }
+                        None => {}
                     }
                 }
                 (0, Some(model), member_name(&operation.identity), name)
