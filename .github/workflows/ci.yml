@@ -11,6 +11,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Check out authoritative FSpec fixtures
+        uses: actions/checkout@v4
+        with:
+          repository: agent-ix/filament-specification
+          ref: main
+          path: filament-specification
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@master
         with:
@@ -47,6 +54,7 @@ jobs:
       - name: Test
         env:
           QUIRE_LOCK_CHECKER: ${{ runner.temp }}/quire-check-lock/quire
+          FILAMENT_SPECIFICATION_DIR: ${{ github.workspace }}/filament-specification
         run: make test
 
   supply-chain:
