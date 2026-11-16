@@ -138,17 +138,57 @@ keyed by its node.
 The rules read the node's own bindings, so the position of each refusal is the
 member of the node that fails.
 
+The strict V2 reader SHALL refuse, with `invalid_package` and cause
+`invalid-value` at the value, a `random_parameter` support value that is no
+member of its parameter's declared type, as FSpec FR-322 states membership and
+literal spelling and not as FSpec FR-141 evaluates at run time:
+
+- an integer, or a rational, or the magnitude of a quantity over a rational,
+  that is not the one canonical spelling FR-322 gives it (`+5`, `05`, `2/4`,
+  `3/1` and `01` refuse), so that two spellings of one number cannot both stand
+  in a support. A misspelt rational or quantity refuses at the literal's `value`
+  member, as FR-322 "Scalar literal values" places it; every other refusal here,
+  a misspelt integer included (FR-322 names no pointer for one), refuses at the
+  literal;
+- an integer outside `Int[lo, hi]`; a rational, or the magnitude of a quantity
+  over a rational, whose numerator is outside `[n1, n2]` or whose positive
+  denominator is outside `[d1, d2]` of `Rational[n1, n2; d1, d2]`; and
+- a text that, under `nfc`, `nfd`, `nfkc` or `nfkd`, does not already equal its
+  own normalization (the reader applies no normalization, FR-322 "Text literal
+  membership"), or whose length is outside `[min, max]` of
+  `Text[min, max; profile]`. The length is the scalar count of the value as
+  written, and under `binary-utf8` its UTF-8 byte count.
+
+The strict V2 reader SHALL refuse, with `invalid_package` and cause
+`invalid-value` at the quantity, a time quantity of a `delay_distribution` that
+is not typed at the unit of the `dense` time source of the model's `timed_model`
+root, as FSpec FR-640 states "Time quantities are in the timed model's time
+unit".
+
+The join SHALL charge one validation visit, at the value's pointer and ahead of
+inspecting it, for each support value and for each delay parameter member it
+checks.
+
+A `reward` whose function has a `body` binding is refused `ill_typed` and cause
+`type-mismatch` at the function when the body root has another `semantic_type`
+than the function, by the reader's general result comparison of FSpec FR-322
+"Results"; the join adds no second check of the body.
+
+A support value of a declared record, tuple, variant, option or collection type
+has no literal kind and is refused.
+
 ### Planned
 
-The checks of FSpec FR-640 that need more than the nodes joined above are not yet
-made, and a package that breaks them is admitted: that a support value of a
-bounded or declared parameter type lies inside that type (the literal kind and,
-for a quantity, its unit are checked, not the value's range), that a delay's
-quantities are in the time unit of the model's `dense` source (the reader
-exposes each quantity's unit but does not compare it), and that a `reward`'s
-function body computes a value of `value_type` (its own type is checked, not
-its expression). A support value of a declared record, tuple, variant, option or
-collection type has no literal kind and is refused. Owner: titan:IR:code.
+IR reads FSpec FR-322 "Results" as leaving a function with no `body` binding (a
+clause function) outside the comparison of a body root with the function's
+type, and FSpec FR-640 as silent on whether a reward function has a `body`
+binding. Under that reading the reader admits a reward function with no `body`,
+which is the shape FR-640 describes, and the type its expression computes is
+never checked: only the function's own `semantic_type` is compared with
+`value_type` (FR-369-AC-9). Whether a reward function SHALL carry a `body`
+binding, so that its computed type can be checked, is a spec question for
+QSL-2310; until FSpec states it, this check is open. Owner: titan:IR:code after
+QSL-2310.
 
 ## Acceptance Criteria
 
@@ -171,6 +211,11 @@ collection type has no literal kind and is refused. Owner: titan:IR:code.
 | FR-369-AC-15 | A `workload` is admitted when it names the model's own operations and those it inherits through supertypes of supertypes; one that omits the model's own operation although the model has supertypes, one that omits an inherited operation, and one that names a model that is no ancestor refuse `invalid_package`/`invalid-value` at the member. | Test |
 | FR-369-AC-16 | A `reward` whose function reaches a `pre_read`, `presence_read`, `value_read`, `deref`, `query` or `reachability` expression, a `state` node, a `model` node, or a parameter it does not list refuses `invalid_package`/`invalid-value` at `expression`; one that reaches a constant is admitted. | Test |
 | FR-369-AC-17 | The join charges one validation visit for each node scanned for a delay's `dense` root and one for each supertype edge followed for a workload: the work grows by at least the nodes added before the root and the edges added to the chain. | Test |
+| FR-369-AC-18 | A support value that is no member of its parameter's declared type refuses `invalid_package`/`invalid-value` (at the literal, and at the literal's `value` member for a misspelt rational or quantity): outside `Int[lo, hi]` or `Rational[n1, n2; d1, d2]` (also for a quantity over one), a non-canonical integer or rational spelling (`+5`, `05`, `2/4`, `3/1`, `+1`, `01`, `1/0`), a text not in the normal form of `nfc`, `nfd`, `nfkc` or `nfkd`, or a text whose length is outside `Text[min, max; profile]` (scalars as written, bytes under `binary-utf8`); the bounds themselves and a text in normal form with a length in range are admitted, and two spellings of one value refuse at the second. | Test |
+| FR-369-AC-19 | A `reward` whose function has a `body` binding whose root has another type than `value_type` refuses `ill_typed`/`type-mismatch` at the function by FR-322 "Results"; a body of that type is admitted. The AC pins that existing comparison for a reward with a `body`; it does not cover the bodyless clause function FR-640 describes (see Planned). | Test |
+| FR-369-AC-20 | The join charges one validation visit for each support value at the value's pointer: a budget exists that stops the read as incomplete at exactly the value of each row. | Test |
+| FR-369-AC-21 | A delay quantity, of `uniform_interval` or `discrete`, typed at another unit than the `dense` source's refuses `invalid_package`/`invalid-value` at the quantity; quantities in the source's unit are admitted. | Test |
+| FR-369-AC-22 | The join charges one validation visit for each delay quantity of a `discrete` list at the quantity's pointer: a budget exists that stops the read as incomplete at exactly the delay of each row. | Test |
 
 ## Dependencies
 

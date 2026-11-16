@@ -21,6 +21,8 @@ use serde_json::{json, Value};
 const PACKAGE: &str = "test/families";
 const DEPOSIT: &str = "ix://test/families/Account/deposit";
 const WITHDRAW: &str = "ix://test/families/Account/withdraw";
+/// The parameters of `withdraw`, in declared order.
+const PARAMETERS: [&str; 11] = ["d", "t", "r", "r2", "l", "lb", "ls", "ld", "lk", "lq", "c"];
 
 /// The family model document with the parameter `n: Integer` on `deposit`,
 /// the parameters `d: Millis` (a value type `Int[1, 12]`) and
@@ -39,6 +41,15 @@ fn document_with(chain: usize) -> Value {
     document["types"][0]["operations"][1]["params"] = json!([
         {"name": "d", "typeRef": "ix://test/families/Millis", "multiplicity": one},
         {"name": "t", "typeRef": "ix://filament/unit/ms", "multiplicity": one},
+        {"name": "r", "typeRef": "ix://test/families/Ratio", "multiplicity": one},
+        {"name": "r2", "typeRef": "ix://test/families/RatioFrom2", "multiplicity": one},
+        {"name": "l", "typeRef": "ix://test/families/Label", "multiplicity": one},
+        {"name": "lb", "typeRef": "ix://test/families/LabelBytes", "multiplicity": one},
+        {"name": "ls", "typeRef": "ix://test/families/LabelScalars", "multiplicity": one},
+        {"name": "ld", "typeRef": "ix://test/families/LabelNfd", "multiplicity": one},
+        {"name": "lk", "typeRef": "ix://test/families/LabelNfkc", "multiplicity": one},
+        {"name": "lq", "typeRef": "ix://test/families/LabelNfkd", "multiplicity": one},
+        {"name": "c", "typeRef": "ix://test/families/Money", "multiplicity": one},
     ]);
     let above = |index: usize| format!("ix://{PACKAGE}/Up{index}");
     let base_supers = if chain == 0 {
@@ -102,6 +113,67 @@ fn document_with(chain: usize) -> Value {
             "constraints": [
                 {"keyword": "min", "operands": {"value": 1}},
                 {"keyword": "max", "operands": {"value": 12}},
+            ],
+        }));
+    // `Rational[1, 3; 1, 4]`, `Rational[1, 3; 2, 4]` and `Text[2, 3; profile]`.
+    for (name, min_denominator) in [("Ratio", 1), ("RatioFrom2", 2)] {
+        let ratio = format!("ix://test/families/{name}");
+        let bounds = [
+            ("minNumerator", 1),
+            ("maxNumerator", 3),
+            ("minDenominator", min_denominator),
+            ("maxDenominator", 4),
+        ]
+        .map(|(keyword, value)| {
+            json!({"keyword": keyword, "appliesTo": ratio, "operands": {"value": value}})
+        });
+        document["types"]
+            .as_array_mut()
+            .expect("types")
+            .push(json!({
+                "identity": ratio, "displayName": name,
+                "kind": {"module": PACKAGE, "name": "millis"},
+                "roles": [], "extensions": [], "unknownPolicy": "reject", "scalar": "rational",
+                "constraints": bounds,
+            }));
+    }
+    for (name, profile) in [
+        ("Label", "nfc"),
+        ("LabelBytes", "binary-utf8"),
+        ("LabelScalars", "unicode-scalars"),
+        ("LabelNfd", "nfd"),
+        ("LabelNfkc", "nfkc"),
+        ("LabelNfkd", "nfkd"),
+    ] {
+        document["types"]
+            .as_array_mut()
+            .expect("types")
+            .push(json!({
+                "identity": format!("ix://test/families/{name}"), "displayName": name,
+                "kind": {"module": PACKAGE, "name": "millis"},
+                "roles": [], "extensions": [], "unknownPolicy": "reject", "scalar": "string",
+                "constraints": [
+                    {"keyword": "minLength", "operands": {"value": 2}},
+                    {"keyword": "maxLength", "operands": {"value": 3}},
+                    {"keyword": "format", "operands": {"name": format!("text-profile:{profile}")}},
+                ],
+            }));
+    }
+    // `Quantity<ms, Rational[1, 3; 1, 4]>`.
+    let money = "ix://test/families/Money";
+    document["types"]
+        .as_array_mut()
+        .expect("types")
+        .push(json!({
+            "identity": money, "displayName": "Money",
+            "kind": {"module": PACKAGE, "name": "millis"},
+            "roles": [], "extensions": [], "unknownPolicy": "reject", "scalar": "rational",
+            "unit": "ix://filament/unit/ms",
+            "constraints": [
+                {"keyword": "minNumerator", "appliesTo": money, "operands": {"value": 1}},
+                {"keyword": "maxNumerator", "appliesTo": money, "operands": {"value": 3}},
+                {"keyword": "minDenominator", "appliesTo": money, "operands": {"value": 1}},
+                {"keyword": "maxDenominator", "appliesTo": money, "operands": {"value": 4}},
             ],
         }));
     document
@@ -1170,7 +1242,7 @@ fn the_public_reader_admits_a_reward_over_a_compound_unit() {
 }
 
 /// A reward on `withdraw` whose function lists `listed` of the parameters
-/// `d` and `t` (every reference legal), owned by `withdraw`.
+/// `d`, `t`, `r` and `l` (every reference legal), owned by `withdraw`.
 fn withdraw_reward(listed: &[&str]) -> Value {
     let body = with(
         vec![
@@ -1184,7 +1256,7 @@ fn withdraw_reward(listed: &[&str]) -> Value {
         ],
     );
     let mut value = package("reward", body, |_| {});
-    for name in ["d", "t"] {
+    for name in PARAMETERS {
         let parameter = plain_node(
             &["reward", name],
             "value",
@@ -1203,7 +1275,7 @@ fn withdraw_reward(listed: &[&str]) -> Value {
         .iter()
         .map(|name| reference(id(&["reward", name])))
         .collect::<Vec<_>>());
-    function["dependencies"] = json!(["d", "t"]
+    function["dependencies"] = json!(PARAMETERS
         .into_iter()
         .filter(|name| listed.contains(name))
         .map(|name| id(&["reward", name]))
@@ -1217,10 +1289,14 @@ fn withdraw_reward(listed: &[&str]) -> Value {
 #[trace("TC-476", "FR-369-AC-9")]
 #[test]
 fn the_public_reader_refuses_a_reward_function_that_lists_the_wrong_parameters() {
-    admitted(&withdraw_reward(&["d", "t"]));
-    refuse_invalid(&withdraw_reward(&["t", "d"]), &bad_target(4));
+    admitted(&withdraw_reward(&PARAMETERS));
+    let mut swapped = PARAMETERS;
+    swapped.swap(0, 1);
+    refuse_invalid(&withdraw_reward(&swapped), &bad_target(4));
     refuse_invalid(&withdraw_reward(&["d"]), &bad_target(4));
-    refuse_invalid(&withdraw_reward(&["d", "d"]), &bad_target(4));
+    let mut repeated = PARAMETERS;
+    repeated[1] = "d";
+    refuse_invalid(&withdraw_reward(&repeated), &bad_target(4));
 }
 
 /// FR-369-AC-8: two rows that name one operation name through different
@@ -1298,4 +1374,222 @@ fn the_join_charges_each_supertype_edge() {
         long >= short + u64::try_from(extra).expect("count"),
         "the edges are charged: {short} then {long}"
     );
+}
+
+/// The pointer of the value of support row `row`.
+fn value_at(row: usize) -> String {
+    format!("body/members/3/value/members/{row}/members/0/value")
+}
+
+/// Where a support value is refused.
+#[derive(Clone, Copy)]
+enum Refused {
+    /// Admitted.
+    Not,
+    /// `invalid-value` at the literal of row `n`: outside its type, a
+    /// non-canonical integer, or a text that is not a member.
+    Literal(usize),
+    /// `invalid-value` at the `value` member of the literal of row `n`: a
+    /// rational or quantity not spelled canonically (FSpec FR-322 "Scalar
+    /// literal values": a rational has one spelling, and a bad one refuses at
+    /// the literal's `value`).
+    Spelling(usize),
+}
+
+/// Reads `parameter` of `withdraw` with the support `values`, and expects
+/// `outcome`.
+fn support_case(parameter: &str, values: Vec<Value>, outcome: Refused) {
+    let value = package_of("withdraw", parameter, values);
+    match outcome {
+        Refused::Not => {
+            admitted(&value);
+        }
+        Refused::Literal(row) => refuse_invalid(&value, &value_at(row)),
+        Refused::Spelling(row) => {
+            refuse_invalid(&value, &format!("{}/value", value_at(row)));
+        }
+    }
+}
+
+/// FR-369-AC-18: a support value that is no member of its parameter's declared
+/// type refuses at the value: outside the bounds, not the one canonical
+/// spelling of an integer or rational, or a text that is not in its profile's
+/// normal form or has the wrong length (a byte count under `binary-utf8`). The
+/// bounds themselves are admitted.
+#[trace("TC-476", "FR-369-AC-18")]
+#[test]
+fn the_public_reader_refuses_a_support_value_outside_its_declared_type() {
+    let integers = |values: &[&str]| -> Vec<Value> {
+        values
+            .iter()
+            .map(|value| literal("integer", json!(value)))
+            .collect()
+    };
+    // `Int[1, 12]`. FR-322 places no pointer for a misspelt integer literal,
+    // so FR-369's own is the literal.
+    support_case("d", integers(&["1", "12"]), Refused::Not);
+    for outside in ["0", "13", "-1", "+5", "05"] {
+        support_case("d", integers(&[outside]), Refused::Literal(0));
+    }
+    support_case("d", integers(&["5", "05"]), Refused::Literal(1));
+    // `Rational[1, 3; 1, 4]`, and the same bounds over the unit `ms`.
+    let rationals =
+        |values: &[&str]| -> Vec<Value> { values.iter().map(|value| rational(value)).collect() };
+    let quantities = |values: &[&str]| -> Vec<Value> {
+        values
+            .iter()
+            .map(|value| typed_literal(node_id("ms"), "quantity", value))
+            .collect()
+    };
+    for (parameter, make) in [
+        ("r", &rationals as &dyn Fn(&[&str]) -> Vec<Value>),
+        ("c", &quantities),
+    ] {
+        support_case(parameter, make(&["1", "3", "1/2", "3/4"]), Refused::Not);
+        // Outside the bounds: refused at the literal.
+        for outside in ["0", "4", "1/5", "5/4", "-1"] {
+            support_case(parameter, make(&[outside]), Refused::Literal(0));
+        }
+        // Not the one spelling of a rational: refused at the literal's `value`.
+        for misspelt in ["2/4", "3/1", "+1", "01", "1/0"] {
+            support_case(parameter, make(&[misspelt]), Refused::Spelling(0));
+        }
+        support_case(parameter, make(&["1/2", "2/4"]), Refused::Spelling(1));
+    }
+    // `Rational[1, 3; 2, 4]`: the denominator minimum is 2, so `1` (denominator
+    // 1) is outside and `1/2` (denominator 2) is the lowest member.
+    support_case("r2", rationals(&["1/2", "3/2", "1/4"]), Refused::Not);
+    for outside in ["1", "3", "1/5"] {
+        support_case("r2", rationals(&[outside]), Refused::Literal(0));
+    }
+    // `Text[2, 3; profile]`: `é` is U+00E9 and `é` below is `e` U+0301.
+    let texts =
+        |values: &[&str]| -> Vec<Value> { values.iter().map(|value| text(value)).collect() };
+    let composed = "\u{e9}b";
+    let decomposed = "e\u{301}b";
+    let ligature = "\u{fb01}b";
+    // (parameter, admitted, refused)
+    let cases: [(&str, &[&str], &[&str]); 6] = [
+        (
+            "l",
+            &["ab", "abc", composed, ligature],
+            &["a", "abcd", decomposed],
+        ),
+        ("ld", &["ab", decomposed], &["a", "abcd", composed]),
+        (
+            "lk",
+            &["ab", composed],
+            &["a", "abcd", decomposed, ligature],
+        ),
+        (
+            "lq",
+            &["ab", decomposed],
+            &["a", "abcd", composed, ligature],
+        ),
+        // Scalars as written, with no normal form: `e` U+0301 is two scalars.
+        (
+            "ls",
+            &["ab", "e\u{301}", composed, decomposed],
+            &["a", "abcd"],
+        ),
+        // UTF-8 bytes: `é` is two bytes.
+        (
+            "lb",
+            &["ab", "\u{e9}", "a\u{e9}", composed],
+            &["a", "\u{e9}\u{e9}", "a\u{e9}\u{e9}", "abcd"],
+        ),
+    ];
+    for (parameter, admitted, refused) in cases {
+        support_case(parameter, texts(admitted), Refused::Not);
+        for value in refused {
+            support_case(parameter, texts(&[value]), Refused::Literal(0));
+        }
+    }
+    // Two spellings of one text under the profile: the second is no member.
+    support_case("l", texts(&[composed, decomposed]), Refused::Literal(1));
+}
+
+/// A reward whose function has the root node `root` of type `root_type` as
+/// its body.
+fn reward_with_body(root_type: Value) -> Value {
+    reward_package(|value| {
+        let root = plain_node(
+            &["reward", "root"],
+            "value",
+            "literal",
+            root_type,
+            literal("integer", json!("1")),
+        );
+        append(value, root, "generated");
+        let function = node_by_label(value, &["reward", "function"]);
+        function["body"]["members"]
+            .as_array_mut()
+            .expect("members")
+            .insert(1, binding("body", reference(id(&["reward", "root"]))));
+        function["dependencies"]
+            .as_array_mut()
+            .expect("dependencies")
+            .push(id(&["reward", "root"]));
+    })
+}
+
+/// FR-369-AC-19: a reward function whose body computes another type than the
+/// reward's `value_type` is refused `ill_typed`/`type-mismatch` at the function
+/// (FSpec FR-322 "Results"); a body of that type is admitted.
+#[trace("TC-476", "FR-369-AC-19")]
+#[test]
+fn the_public_reader_refuses_a_reward_body_of_another_type() {
+    admitted(&reward_with_body(integer()));
+    let refusal = refused(&reward_with_body(id(&["builtin/rational"])));
+    assert_eq!(refusal.code, CheckedPackageRefusalCode::IllTyped);
+    assert_eq!(
+        refusal.cause,
+        Some(CheckedPackageRefusalCause::TypeMismatch)
+    );
+    let function: filament_contract_model::CheckedNodeId =
+        serde_json::from_value(id(&["reward", "function"])).expect("function id");
+    assert_eq!(refusal.locus.as_ref(), Some(&function));
+}
+
+/// FR-369-AC-20: the join charges one validation visit for each support value,
+/// ahead of inspecting it, at the value's pointer: some budget stops the read
+/// as incomplete at exactly the value of each row. No earlier stage charges at
+/// that pointer, so the totals of the other stages are not part of the check.
+#[trace("TC-476", "FR-369-AC-20")]
+#[test]
+fn the_join_charges_each_support_value() {
+    let rows: Vec<Value> = (1..=3)
+        .map(|value| {
+            aggregate(vec![
+                binding("value", literal("integer", json!(value.to_string()))),
+                binding("weight", rational("1")),
+            ])
+        })
+        .collect();
+    let mut body = parameter_on("withdraw", "d", vec![]);
+    body["members"][3]["value"] = aggregate(rows);
+    let with = package("random_parameter", body, |_| {});
+    let bytes = canonical(&with);
+    let evidence = evidence_with_document(&with, PACKAGE, &document_with(0));
+    let top = least_work(&with, 0);
+    let stopped: Vec<String> = (top - 40..top)
+        .filter_map(|work| {
+            let mut limits = CheckedPackageReadLimits::bounded();
+            limits.work = work;
+            match CheckedPackageV2::read(&bytes, limits, &evidence) {
+                CheckedPackageV2ReadResult::Incomplete(stop) => {
+                    stop.path.map(|path| path.as_str().to_owned())
+                }
+                _ => None,
+            }
+        })
+        .collect();
+    let node = node_index(&with);
+    for row in 0..3 {
+        let pointer = format!("/semantic_graph/nodes/{node}/{}", value_at(row));
+        assert!(
+            stopped.contains(&pointer),
+            "no budget stops at {pointer}: {stopped:?}"
+        );
+    }
 }
