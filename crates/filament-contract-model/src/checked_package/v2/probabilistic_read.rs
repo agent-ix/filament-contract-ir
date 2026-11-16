@@ -243,6 +243,7 @@ impl CheckedPackageV2 {
 
     /// The delay distributions of the operations of the model node `model`,
     /// each keyed by its node.
+    #[ix_trace_rs::string_edge]
     pub fn delay_distributions(&self, model: &CheckedNodeId) -> Vec<CheckedDelayDistribution<'_>> {
         self.probabilistic(ProbabilisticForm::DelayDistribution)
             .filter(|(_, body)| bound(body, 0).and_then(target) == Some(model))
