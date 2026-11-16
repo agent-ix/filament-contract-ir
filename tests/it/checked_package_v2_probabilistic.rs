@@ -8,7 +8,8 @@
 //! package, whose `Account` object type is the declaring model.
 
 use crate::support::checked_package::{
-    canonical, evidence_with_document, family_model_document, refresh_identity, v2_all_families,
+    canonical, evidence_with_document, family_key, family_model_document, model_owner, node_id,
+    nominal_fixture_members, nominal_package, refresh_identity, v2_all_families,
 };
 use filament_contract_model::{
     CheckedPackageReadLimits, CheckedPackageRefusal, CheckedPackageRefusalCause,
@@ -21,13 +22,56 @@ const PACKAGE: &str = "test/families";
 const DEPOSIT: &str = "ix://test/families/Account/deposit";
 const WITHDRAW: &str = "ix://test/families/Account/withdraw";
 
-/// The family model document with the parameter `n: Integer` on `deposit`.
+/// The family model document with the parameter `n: Integer` on `deposit`,
+/// the parameters `d: Millis` (a value type `Int[1, 12]`) and
+/// `t: Quantity<ms>` on `withdraw`.
 fn document() -> Value {
     let mut document = family_model_document();
+    let one = json!({"lower": 1, "upper": 1, "ordered": false, "unique": true});
     document["types"][0]["operations"][0]["params"] = json!([{
-        "name": "n", "typeRef": "ix://filament/native/Integer",
-        "multiplicity": {"lower": 1, "upper": 1, "ordered": false, "unique": true},
+        "name": "n", "typeRef": "ix://filament/native/Integer", "multiplicity": one,
     }]);
+    document["types"][0]["operations"][1]["params"] = json!([
+        {"name": "d", "typeRef": "ix://test/families/Millis", "multiplicity": one},
+        {"name": "t", "typeRef": "ix://filament/unit/ms", "multiplicity": one},
+    ]);
+    for (name, supertypes, operation) in [
+        ("Base", json!([]), "ping"),
+        ("Mid", json!([format!("ix://{PACKAGE}/Base")]), "pong"),
+        ("Leaf", json!([format!("ix://{PACKAGE}/Mid")]), "run"),
+    ] {
+        document["types"]
+            .as_array_mut()
+            .expect("types")
+            .push(json!({
+                "identity": format!("ix://{PACKAGE}/{name}"), "displayName": name,
+                "kind": {"module": PACKAGE, "name": "entity"},
+                "roles": [], "constraints": [], "extensions": [], "unknownPolicy": "reject",
+                "supertypes": supertypes, "fields": [], "relationships": [],
+                "operations": [{
+                    "identity": format!("ix://{PACKAGE}/{name}/{operation}"), "params": [],
+                }],
+            }));
+    }
+    document["constructs"]
+        .as_array_mut()
+        .expect("constructs")
+        .push(json!({
+            "kind": {"module": PACKAGE, "name": "millis"},
+            "construct": {"meaning": "filament.meaning.model.value-type/v1"},
+        }));
+    document["types"]
+        .as_array_mut()
+        .expect("types")
+        .push(json!({
+            "identity": "ix://test/families/Millis", "displayName": "Millis",
+            "kind": {"module": PACKAGE, "name": "millis"},
+            "roles": [], "extensions": [], "unknownPolicy": "reject", "scalar": "integer",
+            "constraints": [
+                {"keyword": "min", "operands": {"value": 1}},
+                {"keyword": "max", "operands": {"value": 12}},
+            ],
+        }));
     document
 }
 
@@ -181,9 +225,62 @@ fn probabilistic(label: &str, form: &str, body: Value) -> Value {
     })
 }
 
+/// The unit `ms` and the nominal nodes beside it, added to `value`; the id of
+/// the unit node.
+fn add_units(value: &mut Value) -> Value {
+    let mut members = nominal_fixture_members();
+    let unit = members
+        .iter_mut()
+        .find(|(preimage, _)| preimage["version"] == "filament.unit-node/v1")
+        .expect("unit");
+    unit.0["qualified_declaration"] = json!(["ms"]);
+    unit.1 = "ms".to_owned();
+    let mut second = unit.0.clone();
+    second["qualified_declaration"] = json!(["s"]);
+    second["target_unit_node_id"] = node_id("ms");
+    second["scale"]["numerator"] = json!("1000");
+    members.push((second, "s".to_owned()));
+    let nominal = nominal_package(&members);
+    value["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .extend(
+            nominal["semantic_graph"]["nodes"]
+                .as_array()
+                .expect("nodes")
+                .iter()
+                .cloned(),
+        );
+    value["source_map"]
+        .as_array_mut()
+        .expect("source map")
+        .extend(
+            nominal["source_map"]
+                .as_array()
+                .expect("map")
+                .iter()
+                .cloned(),
+        );
+    node_id("ms")
+}
+
 /// The family package with the nodes a reward joins and `nodes` added.
 fn assemble(nodes: Vec<(Value, &str)>) -> Value {
     let mut value = v2_all_families();
+    add_units(&mut value);
+    for name in ["Base", "Mid", "Leaf"] {
+        let identity = format!("ix://{PACKAGE}/{name}");
+        let mut model = plain_node(
+            &["model", "object_type", &identity],
+            "model",
+            "object_type",
+            id(&["model", "object_type", &identity]),
+            aggregate(vec![]),
+        );
+        model["dependencies"] = json!([id(&[&family_key("aaaa")])]);
+        model["owner"] = model_owner(PACKAGE, &identity);
+        append(&mut value, model, "generated");
+    }
     append(
         &mut value,
         plain_node(
@@ -695,19 +792,307 @@ fn the_public_reader_exposes_the_typed_read() {
         serde_json::from_value(account()).expect("model id");
     let parameters = package.random_parameters(&model, "deposit");
     assert_eq!(parameters.len(), 1);
-    let probabilities: Vec<&str> = parameters[0]
+    let probabilities: Vec<(&str, &str)> = parameters[0]
         .support
         .iter()
-        .map(|row| &*row.probability)
+        .map(|row| (&*row.probability.numerator, &*row.probability.denominator))
         .collect();
-    assert_eq!(probabilities, ["90/97", "7/97"]);
+    assert_eq!(probabilities, [("90", "97"), ("7", "97")]);
     assert_eq!(parameters[0].parameter, "n");
     let rewards = package.rewards(&model, "deposit");
     assert_eq!(rewards.len(), 1);
     assert_eq!(rewards[0].name, "duration");
+    let typed: filament_contract_model::CheckedNodeId =
+        serde_json::from_value(integer()).expect("type id");
+    let function: filament_contract_model::CheckedNodeId =
+        serde_json::from_value(id(&["reward", "function"])).expect("function id");
+    assert_eq!(rewards[0].value_type, &typed);
+    assert_eq!(rewards[0].function, &function);
     let workloads = package.workloads(&model);
     assert_eq!(workloads[0].name, "Steady");
-    assert_eq!(workloads[0].weights.len(), 2);
-    assert_eq!(workloads[0].weights[0].weight, "0");
+    let weights: Vec<(&str, &str, &str)> = workloads[0]
+        .weights
+        .iter()
+        .map(|row| {
+            (
+                row.operation,
+                &*row.weight.numerator,
+                &*row.weight.denominator,
+            )
+        })
+        .collect();
+    assert_eq!(weights, [("deposit", "0", "1"), ("withdraw", "1", "1")]);
+    assert!(workloads[0]
+        .weights
+        .iter()
+        .all(|row| row.declaring == &model));
     assert!(package.random_parameters(&model, "withdraw").is_empty());
+}
+
+fn typed_literal(type_id: Value, kind: &str, value: &str) -> Value {
+    json!({"term": "literal", "type": type_id, "value_kind": kind, "value": value})
+}
+
+/// A `random_parameter` of `parameter` on `operation` of the account whose
+/// support values are `values`, each at weight 1.
+fn parameter_on(operation: &str, parameter: &str, values: Vec<Value>) -> Value {
+    with(
+        vec![
+            binding("declaring", reference(account())),
+            binding("operation", text(operation)),
+        ],
+        vec![
+            binding("parameter", text(parameter)),
+            binding(
+                "support",
+                aggregate(
+                    values
+                        .into_iter()
+                        .map(|value| {
+                            aggregate(vec![
+                                binding("value", value),
+                                binding("weight", rational("1")),
+                            ])
+                        })
+                        .collect(),
+                ),
+            ),
+        ],
+    )
+}
+
+fn millis() -> Vec<Value> {
+    ["1", "3", "12"]
+        .into_iter()
+        .map(|value| literal("integer", json!(value)))
+        .collect()
+}
+
+/// A reward over `type_id`, its function typed the same way.
+fn reward_over(type_id: Value) -> Value {
+    let body = with(
+        operation(),
+        vec![
+            binding("name", text("duration")),
+            binding("value_type", reference(type_id.clone())),
+            binding("expression", reference(id(&["reward", "function"]))),
+        ],
+    );
+    let mut value = package("reward", body, |_| {});
+    node_by_label(&mut value, &["reward", "function"])["semantic_type"] = type_id;
+    refresh_identity(&mut value);
+    value
+}
+
+fn admitted(value: &Value) -> CheckedPackageV2 {
+    match read(value) {
+        CheckedPackageV2ReadResult::Admitted(package) => *package,
+        other => panic!("expected admission, read {other:?}"),
+    }
+}
+
+/// FR-369-AC-13: a random parameter of a declared value type or a quantity
+/// type, and a reward of a quantity or integer-range type, are admitted.
+#[trace("TC-476", "FR-369-AC-13")]
+#[test]
+fn the_public_reader_admits_declared_and_quantity_typed_parameters_and_rewards() {
+    let model: filament_contract_model::CheckedNodeId =
+        serde_json::from_value(account()).expect("model id");
+    // `d: Millis`, a declared `Int[1, 12]`.
+    let value = package(
+        "random_parameter",
+        parameter_on("withdraw", "d", millis()),
+        |_| {},
+    );
+    let package = admitted(&value);
+    assert_eq!(
+        package.random_parameters(&model, "withdraw")[0]
+            .support
+            .len(),
+        3
+    );
+    // `t: Quantity<ms>`.
+    let milliseconds = vec![typed_literal(node_id("ms"), "quantity", "5")];
+    admitted(&package_of("withdraw", "t", milliseconds));
+    // A reward whose type is a unit, and one whose type is an integer range.
+    for type_id in [node_id("ms"), node_id(&family_key("cccc"))] {
+        let value = reward_over(type_id.clone());
+        let package = admitted(&value);
+        assert_eq!(
+            serde_json::to_value(package.rewards(&model, "deposit")[0].value_type).expect("id"),
+            type_id
+        );
+    }
+}
+
+fn package_of(operation: &str, parameter: &str, values: Vec<Value>) -> Value {
+    package(
+        "random_parameter",
+        parameter_on(operation, parameter, values),
+        |_| {},
+    )
+}
+
+/// FR-369-AC-14: a support value of another literal kind than the declared
+/// type, or a quantity in another unit than the parameter's, refuses.
+#[trace("TC-476", "FR-369-AC-14")]
+#[test]
+fn the_public_reader_refuses_a_support_value_of_another_kind_or_unit() {
+    let at = "body/members/3/value/members/0/members/0/value";
+    refuse_invalid(&package_of("withdraw", "d", vec![text("one")]), at);
+    refuse_invalid(
+        &package_of(
+            "withdraw",
+            "t",
+            vec![typed_literal(node_id("s"), "quantity", "5")],
+        ),
+        at,
+    );
+    refuse_invalid(
+        &package_of("withdraw", "t", vec![literal("integer", json!("5"))]),
+        at,
+    );
+}
+
+fn workload_of(model: &str, rows: &[(&str, &str)]) -> Value {
+    let declaring = |name: &str| id(&["model", "object_type", &format!("ix://{PACKAGE}/{name}")]);
+    with(
+        vec![
+            binding("model", reference(declaring(model))),
+            binding("name", text("Steady")),
+        ],
+        vec![binding(
+            "weights",
+            aggregate(
+                rows.iter()
+                    .map(|(owner, operation)| {
+                        aggregate(vec![
+                            binding("declaring", reference(declaring(owner))),
+                            binding("operation", text(operation)),
+                            binding("weight", rational("1")),
+                        ])
+                    })
+                    .collect(),
+            ),
+        )],
+    )
+}
+
+/// FR-369-AC-15: a workload covers the model's own and inherited operations,
+/// through supertypes of supertypes; an omitted own operation, an omitted
+/// inherited one and an operation of an unrelated model each refuse.
+#[trace("TC-476", "FR-369-AC-15")]
+#[test]
+fn the_public_reader_checks_own_and_transitively_inherited_operations() {
+    let whole = [("Base", "ping"), ("Leaf", "run"), ("Mid", "pong")];
+    admitted(&package("workload", workload_of("Leaf", &whole), |_| {}));
+    let rows = "body/members/2/value/members";
+    // The model's own operation is omitted although it has supertypes.
+    refuse_invalid(
+        &package(
+            "workload",
+            workload_of("Leaf", &[("Base", "ping"), ("Mid", "pong")]),
+            |_| {},
+        ),
+        rows,
+    );
+    // The grandparent's operation is omitted.
+    refuse_invalid(
+        &package(
+            "workload",
+            workload_of("Leaf", &[("Leaf", "run"), ("Mid", "pong")]),
+            |_| {},
+        ),
+        rows,
+    );
+    // A model that is no ancestor of Leaf.
+    let mut foreign = workload_of("Leaf", &whole);
+    foreign["members"][2]["value"]["members"][1]["members"][0]["value"] = reference(account());
+    refuse_invalid(
+        &package("workload", foreign, |_| {}),
+        &format!("{rows}/1/members/0/value/target"),
+    );
+    // Mid does not inherit from Leaf.
+    refuse_invalid(
+        &package(
+            "workload",
+            workload_of("Mid", &[("Base", "ping"), ("Leaf", "run"), ("Mid", "pong")]),
+            |_| {},
+        ),
+        &format!("{rows}/1/members/0/value/target"),
+    );
+}
+
+/// FR-369-AC-16: FR-405's rule that a reward reads only the operation's
+/// parameters and constants, positively: every other kind a function
+/// reaches refuses, among them the seven kinds that read state.
+#[trace("TC-476", "FR-369-AC-16")]
+#[test]
+fn the_public_reader_admits_only_the_reads_fr_405_allows() {
+    for (tag, form) in [
+        ("expression", "pre_read"),
+        ("expression", "presence_read"),
+        ("expression", "value_read"),
+        ("expression", "deref"),
+        ("expression", "query"),
+        ("expression", "reachability"),
+        ("state", "snapshot"),
+    ] {
+        let value = reward_package(|value| {
+            let read = plain_node(&["reward", "read"], tag, form, integer(), aggregate(vec![]));
+            append(value, read, "generated");
+            node_by_label(value, &["reward", "function"])["dependencies"]
+                .as_array_mut()
+                .expect("dependencies")
+                .push(id(&["reward", "read"]));
+        });
+        refuse_invalid(&value, &bad_target(4));
+    }
+    // A read through a model member: the function depends on the model.
+    refuse_invalid(
+        &reward_package(|value| {
+            node_by_label(value, &["reward", "function"])["dependencies"]
+                .as_array_mut()
+                .expect("dependencies")
+                .push(account());
+        }),
+        &bad_target(4),
+    );
+    // A parameter that is not the operation's.
+    refuse_invalid(
+        &reward_package(|value| {
+            let other = plain_node(
+                &["reward", "other"],
+                "value",
+                "parameter",
+                integer(),
+                aggregate(vec![
+                    binding("name", text("other")),
+                    binding("level", literal("integer", json!("0"))),
+                ]),
+            );
+            append(value, other, "expression");
+            node_by_label(value, &["reward", "function"])["dependencies"]
+                .as_array_mut()
+                .expect("dependencies")
+                .push(id(&["reward", "other"]));
+        }),
+        &bad_target(4),
+    );
+    // A constant is allowed.
+    let value = reward_package(|value| {
+        let constant = plain_node(
+            &["reward", "constant"],
+            "value",
+            "literal",
+            integer(),
+            literal("integer", json!("1")),
+        );
+        append(value, constant, "generated");
+        node_by_label(value, &["reward", "function"])["dependencies"]
+            .as_array_mut()
+            .expect("dependencies")
+            .push(id(&["reward", "constant"]));
+    });
+    admitted(&value);
 }

@@ -65,8 +65,8 @@ mod probabilistic;
 mod probabilistic_join;
 mod probabilistic_read;
 pub use probabilistic_read::{
-    CheckedDelayDistribution, CheckedDelayFamily, CheckedRandomParameter, CheckedReward,
-    CheckedSupportValue, CheckedWorkload, CheckedWorkloadWeight,
+    CheckedDelayDistribution, CheckedDelayFamily, CheckedDelayQuantity, CheckedRandomParameter,
+    CheckedReward, CheckedSupportValue, CheckedWorkload, CheckedWorkloadWeight,
 };
 mod retained_index;
 pub(in crate::checked_package) use node_index::StructuralOrder;

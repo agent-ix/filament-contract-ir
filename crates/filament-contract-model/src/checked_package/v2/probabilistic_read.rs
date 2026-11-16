@@ -7,7 +7,10 @@
 //! Implements: FR-369 "Behavior" (typed read).
 
 use super::probabilistic_join::{binding_name, bound, members, target, text};
-use super::{CheckedNodeId, CheckedNodeKind, CheckedPackageV2, CheckedTerm, ProbabilisticForm};
+use super::{
+    CheckedNodeId, CheckedNodeKind, CheckedPackageV2, CheckedRational, CheckedTerm,
+    ProbabilisticForm,
+};
 use num_bigint::BigInt;
 use num_integer::Integer;
 use num_traits::{One, Zero};
@@ -18,10 +21,10 @@ pub struct CheckedSupportValue<'a> {
     /// The support value, a literal of the parameter's type.
     pub value: &'a CheckedTerm,
     /// The exact weight.
-    pub weight: &'a str,
+    pub weight: CheckedRational,
     /// The exact probability, the weight over the sum of the weights, in
     /// lowest terms.
-    pub probability: Box<str>,
+    pub probability: CheckedRational,
 }
 
 /// A random parameter of one model operation.
@@ -49,14 +52,14 @@ pub struct CheckedReward<'a> {
 }
 
 /// One operation's weight in a workload.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CheckedWorkloadWeight<'a> {
     /// The node that declares the operation.
     pub declaring: &'a CheckedNodeId,
     /// The operation's name.
     pub operation: &'a str,
     /// The exact weight.
-    pub weight: &'a str,
+    pub weight: CheckedRational,
 }
 
 /// A workload of one model.
@@ -70,6 +73,15 @@ pub struct CheckedWorkload<'a> {
     pub weights: Vec<CheckedWorkloadWeight<'a>>,
 }
 
+/// A time quantity of a delay distribution.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CheckedDelayQuantity<'a> {
+    /// The exact magnitude in `unit`.
+    pub magnitude: CheckedRational,
+    /// The unit node the quantity is in.
+    pub unit: &'a CheckedNodeId,
+}
+
 /// The family of a delay distribution with its parameters.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CheckedDelayFamily<'a> {
@@ -78,17 +90,17 @@ pub enum CheckedDelayFamily<'a> {
     /// `uniform_interval` over two time quantities.
     UniformInterval {
         /// The lower bound.
-        lower: &'a str,
+        lower: CheckedDelayQuantity<'a>,
         /// The upper bound.
-        upper: &'a str,
+        upper: CheckedDelayQuantity<'a>,
     },
     /// `exponential` with an exact rate per time unit.
     Exponential {
         /// The rate.
-        rate: &'a str,
+        rate: CheckedRational,
     },
     /// `discrete`: delays with exact weights in declared order.
-    Discrete(Vec<(&'a str, &'a str)>),
+    Discrete(Vec<(CheckedDelayQuantity<'a>, CheckedRational)>),
 }
 
 /// A delay distribution of one model operation.
@@ -102,7 +114,7 @@ pub struct CheckedDelayDistribution<'a> {
     pub family: CheckedDelayFamily<'a>,
 }
 
-fn quantity(term: &CheckedTerm) -> Option<&str> {
+fn spelling(term: &CheckedTerm) -> Option<&str> {
     match term {
         CheckedTerm::Literal { value, .. } => value.as_str(),
         _ => None,
@@ -115,10 +127,30 @@ fn rational(spelling: &str) -> Option<(BigInt, BigInt)> {
     Some((n.parse().ok()?, d.parse().ok()?))
 }
 
+fn exact(term: &CheckedTerm) -> Option<CheckedRational> {
+    let (numerator, denominator) = rational(spelling(term)?)?;
+    Some(CheckedRational {
+        numerator: numerator.to_string().into(),
+        denominator: denominator.to_string().into(),
+    })
+}
+
+fn time_quantity(term: &CheckedTerm) -> Option<CheckedDelayQuantity<'_>> {
+    match term {
+        CheckedTerm::Literal { type_id, .. } => Some(CheckedDelayQuantity {
+            magnitude: exact(term)?,
+            unit: type_id,
+        }),
+        _ => None,
+    }
+}
+
 /// Each weight over the sum of the weights, in lowest terms.
-fn probabilities(weights: &[&str]) -> Option<Vec<Box<str>>> {
-    let parts: Vec<(BigInt, BigInt)> =
-        weights.iter().map(|w| rational(w)).collect::<Option<_>>()?;
+fn probabilities(weights: &[CheckedRational]) -> Option<Vec<CheckedRational>> {
+    let parts: Vec<(BigInt, BigInt)> = weights
+        .iter()
+        .map(|w| Some((w.numerator.parse().ok()?, w.denominator.parse().ok()?)))
+        .collect::<Option<_>>()?;
     let common = parts
         .iter()
         .fold(BigInt::one(), |common, (_, d)| common.lcm(d));
@@ -132,11 +164,9 @@ fn probabilities(weights: &[&str]) -> Option<Vec<Box<str>>> {
             .iter()
             .map(|n| {
                 let g = n.gcd(&sum);
-                let (n, d) = (n / &g, &sum / &g);
-                if d.is_one() {
-                    n.to_string().into()
-                } else {
-                    format!("{n}/{d}").into()
+                CheckedRational {
+                    numerator: (n / &g).to_string().into(),
+                    denominator: (&sum / &g).to_string().into(),
                 }
             })
             .collect(),
@@ -172,9 +202,9 @@ impl CheckedPackageV2 {
             })
             .filter_map(|(node, body)| {
                 let rows = members(bound(body, 3)?);
-                let weights: Vec<&str> = rows
+                let weights: Vec<CheckedRational> = rows
                     .iter()
-                    .map(|row| bound(row, 1).and_then(quantity))
+                    .map(|row| bound(row, 1).and_then(exact))
                     .collect::<Option<_>>()?;
                 let probabilities = probabilities(&weights)?;
                 let support = rows
@@ -228,7 +258,7 @@ impl CheckedPackageV2 {
                         Some(CheckedWorkloadWeight {
                             declaring: bound(row, 0).and_then(target)?,
                             operation: bound(row, 1).and_then(text)?,
-                            weight: bound(row, 2).and_then(quantity)?,
+                            weight: bound(row, 2).and_then(exact)?,
                         })
                     })
                     .collect::<Option<_>>()?;
@@ -254,26 +284,26 @@ impl CheckedPackageV2 {
                         .iter()
                         .find(|member| binding_name(member) == Some(name))
                         .and_then(|member| match member {
-                            CheckedTerm::Binding { value, .. } => quantity(value),
+                            CheckedTerm::Binding { value, .. } => Some(value.as_ref()),
                             _ => None,
                         })
                 };
                 let family = match bound(body, 2).and_then(text)? {
                     "uniform" => CheckedDelayFamily::Uniform,
                     "uniform_interval" => CheckedDelayFamily::UniformInterval {
-                        lower: named("lower")?,
-                        upper: named("upper")?,
+                        lower: time_quantity(named("lower")?)?,
+                        upper: time_quantity(named("upper")?)?,
                     },
                     "exponential" => CheckedDelayFamily::Exponential {
-                        rate: named("rate")?,
+                        rate: exact(named("rate")?)?,
                     },
                     "discrete" => CheckedDelayFamily::Discrete(
                         members(parameters)
                             .iter()
                             .map(|row| {
                                 Some((
-                                    bound(row, 0).and_then(quantity)?,
-                                    bound(row, 1).and_then(quantity)?,
+                                    time_quantity(bound(row, 0)?)?,
+                                    bound(row, 1).and_then(exact)?,
                                 ))
                             })
                             .collect::<Option<_>>()?,

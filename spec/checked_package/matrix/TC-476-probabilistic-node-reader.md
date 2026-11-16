@@ -12,7 +12,9 @@ relationships:
 
 Verify every AC of FR-369 at the flat wire check and through the public strict V2
 reader (`CheckedPackageV2::read`) over packages built in the test, and the
-delay join over the published timed model.
+delay join over the published timed model (the `it` target reads it from
+`FILAMENT_SPECIFICATION_DIR`, as CI sets it; the `conformance_fspec` target
+repeats the delay cases).
 
 ## Test Procedure
 
@@ -35,14 +37,27 @@ delay join over the published timed model.
 8. Omit, repeat, reorder and misname a workload operation; expect
    `invalid-value` at the row (FR-369-AC-8).
 9. Give a reward a Boolean `value_type`, a function of another operation, no
-   parameters, another type, and a function that reaches a `pre_read`; expect
-   `invalid-value` (FR-369-AC-9).
+   parameters, and another type; expect `invalid-value` (FR-369-AC-9).
 10. Put a delay distribution on a model with no timed root; expect
     `invalid-value`; admit one on a `dense` source (FR-369-AC-10).
 11. Declare a second parameter distribution, workload name, reward and delay;
     expect `conflicting-definition` at the later node (FR-369-AC-11).
-12. Read the admitted declarations back by node, with the exact probability of
-    each support value (FR-369-AC-12).
+12. Read the admitted declarations back by node: the exact probability of each
+    support value, a reward's type and function, every workload weight, and
+    each delay family with its exact numbers and units (FR-369-AC-12).
+13. Admit a parameter of a declared `Int[1, 12]` type and of a `Quantity<ms>`
+    type, and a reward of a unit type and of an integer-range type
+    (FR-369-AC-13).
+14. Give a declared integer parameter a text value, and a quantity parameter a
+    quantity in another unit and an integer; expect `invalid-value`
+    (FR-369-AC-14).
+15. Cover a model's own and transitively inherited operations; omit its own,
+    omit an inherited one, and name a non-ancestor (FR-369-AC-15).
+16. Make a reward's function reach each of the six state-reading expressions, a
+    `state` node, a `model` node and a parameter it does not list; expect
+    `invalid-value`; admit a constant (FR-369-AC-16).
+17. Pad the graph before a delay's timed root and compare the work the delay
+    costs; expect it to grow by at least the padding (FR-369-AC-17).
 
 ## Expected Results
 
@@ -51,4 +66,4 @@ member with the stated code and cause; a valid package is admitted.
 
 ## Status
 
-Partial (IR-1550): a bounded parameter type's range, a delay quantity's time unit and a supertype model's inherited workload operations are Planned in FR-369.
+Partial (IR-1550): a bounded parameter type's range, a delay quantity's time unit and a reward function's computed value type are Planned in FR-369.

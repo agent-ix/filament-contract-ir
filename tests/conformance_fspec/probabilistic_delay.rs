@@ -92,10 +92,12 @@ fn a_delay_on_a_dense_model_is_admitted_and_read() {
     let delays = package.delay_distributions(&order);
     assert_eq!(delays.len(), 1);
     assert_eq!(delays[0].operation, "reset");
-    assert_eq!(
-        delays[0].family,
-        CheckedDelayFamily::Discrete(vec![("1", "90")])
-    );
+    let CheckedDelayFamily::Discrete(rows) = &delays[0].family else {
+        panic!("discrete family");
+    };
+    assert_eq!(rows.len(), 1);
+    assert_eq!(&*rows[0].0.magnitude.numerator, "1");
+    assert_eq!(&*rows[0].1.numerator, "90");
 }
 
 /// FR-369-AC-11: a second delay of one operation refuses at the later node.

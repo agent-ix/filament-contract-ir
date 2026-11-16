@@ -8,7 +8,7 @@
 #[path = "support/fspec_fma_inputs.rs"]
 mod fspec_fma_inputs;
 #[path = "support/fspec_inputs.rs"]
-mod fspec_inputs;
+pub(crate) mod fspec_inputs;
 #[path = "support/fspec_option_inputs.rs"]
 mod fspec_option_inputs;
 #[path = "support/fspec_protocol_location_inputs.rs"]

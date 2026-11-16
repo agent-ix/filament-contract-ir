@@ -160,7 +160,7 @@ pub use checked_package::{
     CheckedCompositeDomainPosition, CheckedCompositeOperand, CheckedCompositeOperandDomain,
     CheckedCompositeOperandError, CheckedCompositeOperands, CheckedCompositeOperator,
     CheckedCompositeShapeEntry, CheckedCompoundEqualityUnitTerm, CheckedDeclaration,
-    CheckedDeclaredNodeId, CheckedDelayDistribution, CheckedDelayFamily,
+    CheckedDeclaredNodeId, CheckedDelayDistribution, CheckedDelayFamily, CheckedDelayQuantity,
     CheckedDependencySelection, CheckedDiagnosticCause, CheckedDiagnosticCode,
     CheckedDiagnosticStage, CheckedDiagnosticV2, CheckedDiagnosticsV2, CheckedDimensionOperand,
     CheckedDispatchCandidate, CheckedDispatchCandidateTable, CheckedDispatchReadError,
