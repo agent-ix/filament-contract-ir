@@ -2884,6 +2884,20 @@ admitted or partial map view. Read MT-07 as the published clock-bearing
 model-type control, joining its Map key to the symbolic clock-place slot
 under FSpec FR-415; it does not require a Clock value node.
 
+## Timed clock configuration (FR-038-AC-545 through FR-038-AC-547)
+
+Status: IMPLEMENTED (QSL-2254). Decode `{"kind":"timed","unit":"ms"}`, require
+`ClockConfiguration::Timed`, re-encode it to the same bytes and decode it
+again. Then decode a `timed` object without `unit`, with `unit` `3`, with an
+extra member and, in a complete package row, with an empty `unit`; require a
+refusal each time and no defaulted unit. Send a row whose `clock.kind` is
+`wall_clock` and a row whose `timed` unit is not text through the package
+reader and compare the located pointers (`/clock/kind`, `/clock/unit`). Build
+a Timed clause over a hybrid-model `over` parameter with no row and require
+admission; add a row for it and require the whole-row refusal. Read the clock
+of a monitor plan over a Timed trace clause and require its `timed` row, and of
+a monitor plan over the hybrid-subject clause and require `MissingClock`.
+
 ## Carried-quantity sum admission (FR-038-AC-524 through FR-038-AC-529)
 
 Status: qualified on the unmerged IR-1396 owner stack (IR-1398); merged-main

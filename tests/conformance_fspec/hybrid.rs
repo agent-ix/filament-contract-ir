@@ -162,7 +162,7 @@ fn braking_package() -> Value {
 
 // Published component vectors have their own graph-local index table. Relocate
 // those coordinates before composing them with the full package fixture.
-fn append_indexed_published_nodes(package: &mut Value, nodes: &[Value]) {
+pub(super) fn append_indexed_published_nodes(package: &mut Value, nodes: &[Value]) {
     let current = package["semantic_graph"]["nodes"]
         .as_array()
         .expect("nodes");
@@ -1557,4 +1557,49 @@ fn hybrid_join_preserves_extra_target_member_refusal_order() {
             assert_locus(&refusal, fair, "/body/operation/member");
         }
     }
+}
+
+/// A Timed clause over a hybrid-model subject takes `model-time` and no
+/// clock row; a row naming it refuses at the whole row.
+#[trace("TC-048", "FR-038-AC-547")]
+#[test]
+fn hybrid_subject_timed_clause_takes_no_clock_row() {
+    let package = restored_package();
+    let clause = timed_claim_position(&package);
+    assert_eq!(
+        package["semantic_graph"]["nodes"][clause]["body"]["arguments"][1]["value"],
+        "model-time"
+    );
+    assert!(package.get("temporal_bindings").is_none());
+    let read = read_package(&package).expect("published evidence");
+    assert!(
+        matches!(read, CheckedPackageV2ReadResult::Admitted(_)),
+        "{read:?}"
+    );
+
+    let mut with_row = package.clone();
+    with_row["temporal_bindings"] = json!([{
+        "declaration": with_row["semantic_graph"]["nodes"][clause]["node_id"],
+        "occurrence": 0,
+        "clock_name": "model-time",
+        "clock": {"kind": "timed", "unit": "ms"},
+    }]);
+    fixture_support::refresh_identity_projection(&mut with_row);
+    let CheckedPackageV2ReadResult::Refused(refusal) =
+        read_package(&with_row).expect("published evidence")
+    else {
+        panic!("a row for a hybrid-subject Timed clause must refuse");
+    };
+    assert_eq!(
+        (
+            refusal.code,
+            refusal.cause,
+            refusal.loci[0].path.as_ref().map(ToString::to_string)
+        ),
+        (
+            Code::InvalidPackage,
+            Some(Cause::TimedNodeReference),
+            Some("/temporal_bindings/0".to_owned())
+        )
+    );
 }

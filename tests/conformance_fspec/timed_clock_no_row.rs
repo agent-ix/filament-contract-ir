@@ -82,7 +82,14 @@ fn refusal(wire: &Value) -> filament_contract_model::CheckedPackageRefusal {
     }
 }
 
-#[trace("TC-048", "FR-038-AC-482", "FR-038-AC-483", "FR-038-AC-484")]
+#[trace(
+    "TC-048",
+    "FR-038-AC-482",
+    "FR-038-AC-483",
+    "FR-038-AC-484",
+    "FR-038-AC-545",
+    "FR-038-AC-546"
+)]
 #[test]
 fn timed_clock_no_row_vectors_join_model_and_refuse_extra_row() {
     let published = vectors();
@@ -243,6 +250,7 @@ fn timed_clock_no_row_vectors_join_model_and_refuse_extra_row() {
     let refused: Vec<_> = [
         json!({"kind": "timed", "unit": ""}),
         json!({"kind": "timed"}),
+        json!({"kind": "timed", "unit": 3}),
         json!({"kind": "timed", "unit": "ms", "period": "1"}),
         json!({"kind": "wall_clock", "unit": "ms"}),
     ]
@@ -265,6 +273,10 @@ fn timed_clock_no_row_vectors_join_model_and_refuse_extra_row() {
             (
                 Code::MalformedWire,
                 Some("/temporal_bindings/0/clock".to_owned())
+            ),
+            (
+                Code::MalformedWire,
+                Some("/temporal_bindings/0/clock/unit".to_owned())
             ),
             (
                 Code::UnknownMember,

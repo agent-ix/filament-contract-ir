@@ -1948,7 +1948,11 @@ canonical-writer form of that alternative, and a `timed` row round-trips
 through both.
 
 For `filament.temporal.timed/v1`, the reader SHALL decide by the clause's
-`over` parameter. When it has a model subject, the clause has `clock_name`
+`over` parameter. An `over` parameter typed by a model, by a reference to a
+model, or by a hybrid model has a model subject; any other `over` parameter has
+a trace subject. FSpec FR-322 does not name the hybrid-model case: counting a
+hybrid-model parameter as a model subject is this repository's reading, because
+a hybrid model supplies its own time and has no clock role to bind. When it has a model subject, the clause has `clock_name`
 `model-time` and no `temporal_bindings` row: the reader SHALL join the
 subject's model root to a checked `timed_model` root and its `time_source`,
 and without a matching source SHALL refuse `invalid_package`/
@@ -1960,7 +1964,11 @@ clause has exactly one row per `claim` occurrence whose `clock_name` is the
 clause's clock role and whose `clock` is `timed`; a missing row refuses at the
 clause body as for the other configured profiles, and a row whose `clock` is
 not `timed`, or whose `clock_name` is `model-time` or `model-steps`, refuses
-`invalid_package`/`timed-node-reference` at the whole row. A trace subject
+`invalid_package`/`timed-node-reference` at the whole row. This places a
+non-`timed` row (TN-09) at `/temporal_bindings/{i}`, following the published
+vector, where FSpec FR-322's general kind-mismatch rule names
+`/temporal_bindings/{i}/clock/kind`; the difference is to be raised with the
+planner for the spec lane to align. A trace subject
 takes its time-stamped positions and order from the temporal profile input and
 requires no checked time source. The other three configured profiles keep
 their row requirements and kind joins. Validation and join visits consume the
@@ -1971,7 +1979,10 @@ model subject, checked timed-model root, time source and exact admitted unit
 by reference for a Timed model clause, and absence for a Timed trace clause.
 The borrowed monitor clock read SHALL represent a Timed model clause as a
 model-time binding carrying those same admitted references, and a Timed trace
-clause as the configured `timed` row, as for any other configured profile. Its
+clause as the configured `timed` row, as for any other configured profile. A
+Timed clause over a hybrid-model subject has no row and no checked time
+source, so its monitor clock read refuses with the typed `MissingClock` code
+and manufactures no clock. Its
 lookup SHALL charge each inspected root and source against the caller's finite
 work limit; one below the required allowance refuses with a typed work limit
 and no partial view. The read SHALL not manufacture a temporal row or a clock
@@ -6585,6 +6596,9 @@ the minimum the read uses.
 | FR-038-AC-542 | PLANNED/UNRUN (IR-1533). For an admitted `filament.op.model.reaches_field` application whose `field` member carries `population` naming a `model_population` node over the field owner `T`, with `max` 3, over each of a `Reference<T>`, an `Option<Reference<T>>` and a bounded `Sequence<Reference<T>>` field, and over an inherited field whose member `declaration` is a subtype of `T`, `reaches_population` returns `Ok(Some(selector))` with the package's name, the node id the member holds and its least-ordinal `Type` occurrence, and `select_population` over it is `Finite` with maximum "3" and object type `T`. | Test (TC-048) |
 | FR-038-AC-543 | PLANNED/UNRUN (IR-1533). `reaches_population` over an admitted `reaches_field` application whose member has no `population` key returns `Ok(None)` and infers none; an object declaration node and a `filament.op.model.navigate` application still refuse `NotReachesApplication`. | Test (TC-048) |
 | FR-038-AC-544 | PLANNED/UNRUN (IR-1533). A `reaches_field` application whose `population` names a `model_population` node over another object type than the field owner `T` (including the member's subtype `declaration`), or a node that is not a population node, is refused `ill_typed`/`operator-ineligible` at the member's `population` pointer, with no partial package. | Test (TC-048) |
+| FR-038-AC-545 | IMPLEMENTED (QSL-2254). The `timed` clock alternative is exactly `{kind: "timed", unit}` with a non-empty `unit`: the strict reader decodes it to `ClockConfiguration::Timed { unit }`, the canonical writer emits the same bytes, and a decode of those bytes equals the original; a missing `unit`, a non-text `unit`, an empty `unit` and an extra member each refuse, and none is defaulted. | Test (TC-048) |
+| FR-038-AC-546 | IMPLEMENTED (QSL-2254). An IR document whose `clock.kind` is not one of `event_position`, `fixed_sample`, `timestamped_event` or `timed` is refused `malformed_wire` at `/temporal_bindings/{i}/clock/kind`; a `timed` row whose `unit` is not text is refused at `/temporal_bindings/{i}/clock/unit`, as for `fixed_sample`; an empty `unit` is refused `malformed_wire` at the same member. | Test (TC-048) |
+| FR-038-AC-547 | IMPLEMENTED (QSL-2254). A Timed clause whose `over` parameter is typed by a hybrid model counts as a model subject: with `clock_name` `model-time` and no row it admits, a row naming it refuses `invalid_package`/`timed-node-reference` at the whole row, and a monitor clock read of it refuses `MissingClock`; a Timed clause over a trace subject reads its configured `timed` row through the monitor clock read. | Test (TC-048) |
 | FR-038-AC-540 | A dependency position naming an unsupplied package or a `node` past the dependency's last node refuses `malformed_wire` at the row entry; a `{package, node}` object written as an id path segment refuses `malformed_wire` at the segment; a local index segment in a foreign id refuses `missing_declaration`/`missing-name` at the member holding it. | Test (TC-474) |
 | FR-038-AC-492 | An admitted `CheckedPackageV2` shall issue a cloneable, opaque `AdmissionBinding` capability and report whether it retains that capability. Clones from one read are members; an independent read of equal canonical bytes is not. | Test (TC-048) |
 | FR-038-AC-493 | The public capability shall use the reader's original admission binding and expose no construction path, buffer contents, copied carrier, or compatibility representation. | Review (IR-1370) |

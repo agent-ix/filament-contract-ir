@@ -494,7 +494,7 @@ fn invalid_clock_field(document: &Document, at: &[Step<'_>]) -> Option<&'static 
     let field = match clock.get("kind")?.as_str()? {
         "event_position" => "sequence_authority",
         "timestamped_event" => "timestamp_unit",
-        "fixed_sample" | "timed" => "unit",
+        "fixed_sample" => "unit",
         _ => return None,
     };
     clock

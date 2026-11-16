@@ -1186,7 +1186,7 @@ mod timed_clock_tests {
     /// The `timed` alternative is exactly `{kind, unit}`: it round-trips, and
     /// a missing or mistyped unit, an extra member and an unknown kind are
     /// refused rather than defaulted or substituted.
-    #[trace("TC-048", "FR-038-AC-437", "FR-038-AC-482")]
+    #[trace("TC-048", "FR-038-AC-545", "FR-038-AC-546")]
     #[test]
     fn timed_clock_round_trips_and_refuses_violating_documents() {
         let timed: ClockConfiguration =
