@@ -63,10 +63,10 @@ outside the rules of FSpec FR-640 that need no other node:
   `discrete`, and `parameters` that do not hold exactly the members the family
   states, including a member row of `discrete` that does.
 
-A workload weight of 0 is admitted. The reader SHALL charge one validation
-visit of the caller's budget per node and per support, weight or delay member
-before inspecting it, and SHALL stop at the first uncharged member with no
-partial view.
+A workload weight of 0 is admitted. The strict V2 reader SHALL charge one
+validation visit of the caller's budget for each node and for each support,
+weight or delay member, SHALL make that charge ahead of inspecting the member,
+and SHALL stop at the first uncharged member with no partial view.
 
 A `node_tag` outside the closed vocabulary keeps the decoder's existing
 `unsupported_node_tag` refusal.
@@ -95,7 +95,7 @@ admitted. Owner: planner to assign.
 | FR-369-AC-2 | A probabilistic node with a missing member, an extra member, members out of order, a `declaration`, an `owner`, a `recursion_group`, no or two occurrences, an occurrence of another role, a binding of another term kind, or a short or extended support row or workload weights row refuses `malformed_wire` at the failing member. | Test |
 | FR-369-AC-3 | An empty support, a repeated support value, a zero support or discrete weight, a zero or negative rate, a negative workload weight, a weight not in lowest terms, an unknown delay family and delay parameters that do not match the family refuse `invalid_package`/`invalid-value`; a zero workload weight is admitted. | Test |
 | FR-369-AC-4 | An unknown `node_tag`, and a form outside the probabilistic family, still fail decode with the existing error. | Test |
-| FR-369-AC-5 | The reader charges one work visit per node and per support, weight or delay member, and a budget one unit short is denied at the first uncharged member. | Test |
+| FR-369-AC-5 | The reader charges one work unit for each node and for each row of a support, a workload weights list or a discrete delay list, and a budget one unit short of the total is denied at the first uncharged row. | Test |
 
 ## Dependencies
 

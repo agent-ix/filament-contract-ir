@@ -392,6 +392,7 @@ fn exact_parts(spelling: &str) -> Option<(bool, &str, &str)> {
 /// An exact weight or rate (FR-205): an exact rational in lowest terms. A
 /// spelling that is not one, a negative value and, when `positive`, zero are
 /// `invalid-value` (FR-640 Reader rules 2, 3 and 5).
+#[ix_trace_rs::string_edge]
 fn weight(budget: &mut NativeJoinBudget, bound: Bound<'_>, positive: bool) -> Result<(), Fail> {
     let at = bound.1;
     let spelling = spelling(bound, LiteralKind::Rational)?;
