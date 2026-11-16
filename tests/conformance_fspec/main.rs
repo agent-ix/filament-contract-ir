@@ -91,6 +91,7 @@ mod node_ordinal;
 mod operation_bodies;
 mod operation_effects;
 mod probabilistic_claims;
+mod probabilistic_delay;
 mod projection_read_form;
 mod protocol_locations;
 mod protocol_mutation_manifest;
