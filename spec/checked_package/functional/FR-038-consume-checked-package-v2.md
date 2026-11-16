@@ -1869,6 +1869,8 @@ emit a declaration-only row.
 
 Each clock-configured `temporal`/`temporal_clause` node SHALL have exactly one
 row for every one of its source-map `claim` occurrences. A
+`filament.temporal.timed/v1` clause is clock-configured when its `over`
+parameter has a trace subject and is not when it has a model subject (below). A
 `protocol`/`compensation` node with operator `compensate` SHALL have exactly
 one row for its source-map `declaration` occurrence when the lock's
 `temporal_profile` selects a clock configuration; no `await`, `attempt` or
@@ -1935,31 +1937,47 @@ reference for CB-01..08 and the existing clause cases, constructing full
 compensation packages around the abstract cases. It SHALL keep no local copy
 of either vector, schema or fixture.
 
-For `filament.temporal.timed/v1`, the reader SHALL admit a clause with
-`clock_name` `model-time` and no `temporal_bindings` row. It SHALL refuse any
-row naming that clause as `invalid_package`/`timed-node-reference` at the
-whole `/temporal_bindings/{i}` row, with the clause node as locus. When the
-clause's `over` parameter has a model subject, the reader SHALL join the
-subject's model root to a checked `timed_model` root and its `time_source`.
-Without a matching source it SHALL refuse `invalid_package`/
+The `ClockConfiguration` alternatives are the four closed kinds of FSpec
+FR-322: `event_position`, `fixed_sample`, `timestamped_event` and `timed`. The
+`timed` alternative is exactly `{kind: "timed", unit}` with a non-empty `unit`
+(FSpec FR-322 "Temporal clock bindings", FR-540). A `timed` object with a
+missing or non-text `unit`, an extra member, or an empty `unit` refuses
+`malformed_wire`; an unknown `kind` is refused and no kind is substituted. The
+public `ClockConfiguration::Timed { unit }` variant is the typed reader and
+canonical-writer form of that alternative, and a `timed` row round-trips
+through both.
+
+For `filament.temporal.timed/v1`, the reader SHALL decide by the clause's
+`over` parameter. When it has a model subject, the clause has `clock_name`
+`model-time` and no `temporal_bindings` row: the reader SHALL join the
+subject's model root to a checked `timed_model` root and its `time_source`,
+and without a matching source SHALL refuse `invalid_package`/
 `timed-node-reference` at `/semantic_graph/nodes/{clause}/body`, with the
-clause node as locus. A trace subject takes timestamped positions and order
-from the temporal profile input and requires no checked time source. The
-existing three configured profiles keep their row requirements and kind
-joins. Validation and join visits consume the existing finite work meter.
+clause node as locus. It SHALL refuse any row naming such a clause as
+`invalid_package`/`timed-node-reference` at the whole `/temporal_bindings/{i}`
+row, with the clause node as locus. When the parameter has a trace subject, the
+clause has exactly one row per `claim` occurrence whose `clock_name` is the
+clause's clock role and whose `clock` is `timed`; a missing row refuses at the
+clause body as for the other configured profiles, and a row whose `clock` is
+not `timed`, or whose `clock_name` is `model-time` or `model-steps`, refuses
+`invalid_package`/`timed-node-reference` at the whole row. A trace subject
+takes its time-stamped positions and order from the temporal profile input and
+requires no checked time source. The other three configured profiles keep
+their row requirements and kind joins. Validation and join visits consume the
+existing finite work meter.
 
 The bounded package `model_time_for_clause` read SHALL return the selected
 model subject, checked timed-model root, time source and exact admitted unit
 by reference for a Timed model clause, and absence for a Timed trace clause.
-The borrowed monitor clock read SHALL represent the Timed alternative as a
-model-time binding carrying those same admitted references,
-distinct from the three closed `ClockConfiguration` kinds. Its lookup SHALL
-charge each inspected root and source against the caller's finite work limit;
-one below the required allowance refuses with a typed work limit and no
-partial view. The read SHALL not manufacture a temporal row or a clock unit
-for a trace subject. TC-048 SHALL read FSpec's
+The borrowed monitor clock read SHALL represent a Timed model clause as a
+model-time binding carrying those same admitted references, and a Timed trace
+clause as the configured `timed` row, as for any other configured profile. Its
+lookup SHALL charge each inspected root and source against the caller's finite
+work limit; one below the required allowance refuses with a typed work limit
+and no partial view. The read SHALL not manufacture a temporal row or a clock
+unit for a trace subject. TC-048 SHALL read FSpec's
 `proposals/checked-package-v2/timed-clock-no-row-vectors.json` by reference
-and test TN-01 through TN-05 against admission or exact refusal, including
+and test TN-01 through TN-09 against admission or exact refusal, including
 the primary pointer and node locus.
 
 ### Temporal clause names (planned until IR-1278)
@@ -6533,9 +6551,9 @@ the minimum the read uses.
 | FR-038-AC-479 | PLANNED/UNRUN (IR-1362). Source and selected-model dimension reads use the explicit admitted or selected-document `base` flag when identifying a base `Time`, validating a dimension term target, choosing a base equivalence root and normalizing a dimension. An empty `base: false` dimension normalizes to a dimensionless derived map; it is never treated as a base dimension or a base `Time`, even when its selected name is `Time`. A `base: true` dimension remains a base only when its terms are empty. Changing only a source dimension's `base` flag does not change its assigned node id, but the reader still validates its body and semantic joins. | Test (TC-280; FSpec FR-322-AC-387) |
 | FR-038-AC-480 | PLANNED/UNRUN (IR-1362). Tests read FSpec main's `positive-timed-model-nodes.json`, `positive-nominal-identities.json`, `dimension-equivalence-vectors.json` and `adverse.json` by `FILAMENT_SPECIFICATION_DIR`, without copying their bytes into IR. The FSpec #625 positive timed-model dimension at node 42 no longer refuses `malformed_wire` at `/semantic_graph/nodes/42/body`; the reader reaches the subsequent timed checks. The positive nominal base and dimensionless-derived dimensions retain their distinct meanings, and NB-07 through NB-09 yield their published strict-wire refusals. | Test (TC-233; TC-280; TC-367) |
 | FR-038-AC-481 | PLANNED/UNRUN (IR-1362). A public typed writer constructs base and derived source dimension bodies with explicit `base` values, including a derived empty-term body, and emits `true` and `false` verbatim in the canonical checked-package V2 wire. Strict reader admission retains the same flag; the public package writer followed by another strict read returns an equal admitted package and the same declaration-path node identities without a producer-side JSON or lock rewrite. A typed constructor rejects `base: true` with nonempty terms at its body-relative locus before it can emit a package. The round-trip tests use the selected FSpec #625 positive nominal and timed fixtures by reference. | Test (TC-233; TC-367; FSpec FR-322-AC-387) |
-| FR-038-AC-482 | IMPLEMENTED (IR-1361; TN focused tests pass). A `filament.temporal.timed/v1` clause with `clock_name` `model-time` and no `temporal_bindings` row admits for a trace subject and for a model subject whose model root joins one checked `timed_model` root and `time_source`; the configured profiles retain their current row behavior (TN-01, TN-02, TN-05). A model subject with no matching source refuses `invalid_package`/`timed-node-reference` at its clause body with the clause node locus (TN-03). | Test (TC-048) |
-| FR-038-AC-483 | IMPLEMENTED (IR-1361; TN focused tests pass). Any `temporal_bindings` row naming a Timed clause refuses `invalid_package`/`timed-node-reference` at the whole row with the clause node locus (TN-04), before a row clock-name or configuration-kind comparison; no row is synthesized. | Test (TC-048) |
-| FR-038-AC-484 | IMPLEMENTED (IR-1361; TN focused tests pass). A bounded public package read of a Timed model clause returns the selected model subject, checked timed-model root, time source and exact unit; it returns absence for a Timed trace clause. The monitor claim clock read exposes the same model-time binding as a distinct alternative, with selected monitor root, clause, occurrence, clock name and claim name. Inspected root/source visits consume finite work; exact allowance succeeds and one below yields a typed limit refusal with no partial value. TC-048 reads FSpec's TN-01..TN-05 vectors by reference without copying them. | Test (TC-048) |
+| FR-038-AC-482 | IMPLEMENTED (IR-1361, QSL-2254; TN focused tests pass). A `filament.temporal.timed/v1` clause with `clock_name` `model-time` and no `temporal_bindings` row admits for a model subject whose model root joins one checked `timed_model` root and `time_source` (TN-01); a trace-subject clause with no row refuses `invalid_package`/`timed-node-reference` at its clause body (TN-02), and with one row `{kind: "timed", unit}` naming its clock role admits (TN-06); the other configured profiles retain their current row behavior (TN-05). A model subject with no matching source refuses `invalid_package`/`timed-node-reference` at its clause body with the clause node locus (TN-03). | Test (TC-048) |
+| FR-038-AC-483 | IMPLEMENTED (IR-1361, QSL-2254; TN focused tests pass). Any `temporal_bindings` row naming a Timed model-subject clause refuses `invalid_package`/`timed-node-reference` at the whole row with the clause node locus (TN-04, TN-07), before a row clock-name or configuration-kind comparison; a row of a Timed trace-subject clause that is not `timed`, or is named `model-time`, refuses the same pair at the whole row (TN-08, TN-09); no row is synthesized. | Test (TC-048) |
+| FR-038-AC-484 | IMPLEMENTED (IR-1361, QSL-2254; TN focused tests pass). A bounded public package read of a Timed model clause returns the selected model subject, checked timed-model root, time source and exact unit; it returns absence for a Timed trace clause. The monitor claim clock read exposes the same model-time binding as a distinct alternative for a Timed model clause and the configured `timed` row for a Timed trace clause, with selected monitor root, clause, occurrence, clock name and claim name. Inspected root/source visits consume finite work; exact allowance succeeds and one below yields a typed limit refusal with no partial value. TC-048 reads FSpec's TN-01..TN-09 vectors by reference without copying them. | Test (TC-048) |
 | FR-038-AC-485 | Implemented. The strict reader admits FSpec FR-322-AC-384's self-typed `bounded_quantity` with ordered unit, min and max bindings, exact canonical rational endpoints, structural identity and dependencies; it refuses a reversed or noncanonical interval as `invalid_package`/`invalid-derived-shape`. The public node kind and typed body expose the admitted values. | Test (TC-048; FSpec TC-280 BQ-01..BQ-06) |
 | FR-038-AC-486 | Implemented. Under a bounds-required profile, a bounded-quantity parameter lowers while a parameter at a bare unit or compound unit still returns `requires_bound`. The strict reader admits bounded operands to quantity add, convert and lt with the existing dimension and mode rules; add returns a unit type, an incompatible comparison refuses, and a carried quantity remains ineligible for add and lt. | Test (TC-048, TC-050; FSpec TC-280 BQ-07..BQ-10) |
 | FR-038-AC-487 | IMPLEMENTED (IR-1364; focused selected-document tests pass). Selected-model Rational value-type constraints admit exact integer bounds as JSON integers of magnitude at most 2^53 or canonical signed-64 decimal strings, including `-9223372036854775808` and `9223372036854775807`. The derived rational-range node and public member type retain those exact bounds. A non-canonical, fractional or out-of-range string refuses `invalid_model_binding`/`malformed-declaration` at the selected `Constraint.operands`; a JSON integer beyond 2^53 refuses earlier as `noncanonical_wire`/`inexact-integer` at its selected-document pointer. TC-981 RV-01..RV-03 supply the source vectors by reference. | Test (TC-981) |

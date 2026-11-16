@@ -2712,26 +2712,71 @@ fn check_timed_reference_order(
 
 /// Resolve a clause's model subject, leaving trace subjects without a model join.
 fn clause_model_subject<'a>(graph: &'a Graph<'_>, position: usize) -> Option<&'a CheckedNodeId> {
-    let CheckedTerm::Application { arguments, .. } = graph.terms.get(position)?.as_ref()? else {
+    model_subject_of(graph.nodes, graph.kinds, graph.terms, graph.index, position)
+}
+
+/// Whether the clause at `position` ranges over a model subject, as opposed to
+/// a trace subject.
+pub(super) fn is_model_subject_clause<B>(
+    nodes: &[super::CheckedSemanticNodeV2<B>],
+    kinds: &[CheckedNodeKind],
+    terms: &[Option<CheckedTerm>],
+    index: &GraphIndex<'_>,
+    position: usize,
+) -> bool {
+    model_subject_of(nodes, kinds, terms, index, position).is_some()
+        || hybrid_subject(nodes, kinds, terms, index, position)
+}
+
+/// Whether the clause's `over` parameter is typed by a hybrid model, whose
+/// time is the model's and which carries no clock row.
+fn hybrid_subject<B>(
+    nodes: &[super::CheckedSemanticNodeV2<B>],
+    kinds: &[CheckedNodeKind],
+    terms: &[Option<CheckedTerm>],
+    index: &GraphIndex<'_>,
+    position: usize,
+) -> bool {
+    let Some(Some(CheckedTerm::Application { arguments, .. })) = terms.get(position) else {
+        return false;
+    };
+    let Some(&parameter) = arguments
+        .first()
+        .and_then(typed_target)
+        .and_then(|target| index.get(target))
+    else {
+        return false;
+    };
+    kinds.get(parameter) == Some(&CheckedNodeKind::Value(ValueForm::Parameter))
+        && index
+            .get(&nodes[parameter].semantic_type)
+            .and_then(|&at| kinds.get(at))
+            == Some(&CheckedNodeKind::Hybrid(super::HybridForm::Model))
+}
+
+fn model_subject_of<'a, B>(
+    nodes: &'a [super::CheckedSemanticNodeV2<B>],
+    kinds: &[CheckedNodeKind],
+    terms: &'a [Option<CheckedTerm>],
+    index: &GraphIndex<'_>,
+    position: usize,
+) -> Option<&'a CheckedNodeId> {
+    let CheckedTerm::Application { arguments, .. } = terms.get(position)?.as_ref()? else {
         return None;
     };
-    let parameter = *graph.index.get(typed_target(arguments.first()?)?)?;
-    if graph.kinds.get(parameter) != Some(&CheckedNodeKind::Value(ValueForm::Parameter)) {
+    let parameter = *index.get(typed_target(arguments.first()?)?)?;
+    if kinds.get(parameter) != Some(&CheckedNodeKind::Value(ValueForm::Parameter)) {
         return None;
     }
-    let type_id = &graph.nodes[parameter].semantic_type;
-    let type_position = *graph.index.get(type_id)?;
-    match graph.kinds.get(type_position)? {
+    let type_id = &nodes[parameter].semantic_type;
+    let type_position = *index.get(type_id)?;
+    match kinds.get(type_position)? {
         CheckedNodeKind::Model(_) => Some(type_id),
         CheckedNodeKind::CompositeType(CompositeTypeForm::Reference) => {
-            let target = typed_members(graph.terms.get(type_position)?.as_ref()?).first()?;
+            let target = typed_members(terms.get(type_position)?.as_ref()?).first()?;
             let model = typed_target(target)?;
-            let model_position = *graph.index.get(model)?;
-            matches!(
-                graph.kinds.get(model_position),
-                Some(CheckedNodeKind::Model(_))
-            )
-            .then_some(model)
+            let model_position = *index.get(model)?;
+            matches!(kinds.get(model_position), Some(CheckedNodeKind::Model(_))).then_some(model)
         }
         _ => None,
     }
@@ -2920,7 +2965,7 @@ pub struct CheckedModelTimeReadError {
 
 impl super::CheckedPackageV2 {
     /// Read the checked source for one Timed model clause under a finite work limit.
-    /// A Timed trace clause returns `None`: its timestamps come from profile input.
+    /// A Timed trace clause returns `None`: it reads no checked model, and its clock is its `timed` row.
     pub fn model_time_for_clause(
         &self,
         clause: &CheckedNodeId,
@@ -3760,6 +3805,10 @@ pub(super) fn validate_models<'a>(
         }
         let at = node_path(position).key("body");
         work(meter, at, 1)?;
+        if !is_model_subject_clause(nodes, kinds, terms, index, position) {
+            // A trace subject takes its clock from its `temporal_bindings` row.
+            continue;
+        }
         if super::temporal_binding::clock_name(meter, position, 1) != Some("model-time") {
             return Err(graph.issue(meter, position, Cause::TimedNodeReference, at));
         }

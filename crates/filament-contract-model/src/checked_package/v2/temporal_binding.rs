@@ -33,7 +33,7 @@ pub enum ClockExactNumber {
     },
 }
 
-/// The three closed clock configurations selected by temporal profiles.
+/// The four closed clock configurations selected by temporal profiles.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, FixedShape)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ClockConfiguration {
@@ -55,6 +55,11 @@ pub enum ClockConfiguration {
     TimestampedEvent {
         /// Nonempty timestamp unit.
         timestamp_unit: Box<str>,
+    },
+    /// Time-stamped positions of a trace subject under the timed profile.
+    Timed {
+        /// Nonempty time unit the caller's clock selection binds the role to.
+        unit: Box<str>,
     },
 }
 
@@ -253,6 +258,11 @@ fn validate_shape(
                     return Err(malformed(meter, clock_at().key("timestamp_unit")));
                 }
             }
+            ClockConfiguration::Timed { unit } => {
+                if unit.is_empty() {
+                    return Err(malformed(meter, clock_at().key("unit")));
+                }
+            }
         }
     }
     Ok(())
@@ -383,13 +393,23 @@ fn clock_configured(profile: TemporalProfile) -> Option<TemporalProfile> {
     .then_some(profile)
 }
 
+/// The clock-configured profile of the clause at `position`. The timed
+/// profile is clock-configured only over a trace subject: a timed-model
+/// subject takes its time binding from the model and has no row.
 fn configured_profile(
     position: usize,
+    model_subject: bool,
     meter: &mut WorkMeter,
 ) -> Result<Option<TemporalProfile>, ValidationFailure> {
     Ok(profile_law(position, meter)?
         .and_then(|law| TemporalProfile::from_wire(&law.identity))
-        .and_then(clock_configured))
+        .and_then(|profile| {
+            if profile == TemporalProfile::Timed {
+                (!model_subject).then_some(profile)
+            } else {
+                clock_configured(profile)
+            }
+        }))
 }
 
 fn selected_profile(lock: &CheckedPackageLockV2) -> Option<TemporalProfile> {
@@ -431,6 +451,9 @@ fn clock_matches(profile: Option<TemporalProfile>, clock: &ClockConfiguration) -
         ) | (
             Some(TemporalProfile::TimestampedEventFiniteWindow),
             ClockConfiguration::TimestampedEvent { .. }
+        ) | (
+            Some(TemporalProfile::Timed),
+            ClockConfiguration::Timed { .. }
         )
     )
 }
@@ -440,6 +463,7 @@ pub(super) fn validate<B>(
     rows: Option<&[TemporalBinding]>,
     nodes: &[CheckedSemanticNodeV2<B>],
     kinds: &[CheckedNodeKind],
+    terms: &[Option<super::CheckedTerm>],
     index: &GraphIndex<'_>,
     structural_keys: &[std::sync::Arc<CheckedNodeId>],
     lock: &CheckedPackageLockV2,
@@ -468,6 +492,7 @@ pub(super) fn validate<B>(
                 .as_ref()
                 .and_then(|law| TemporalProfile::from_wire(&law.identity))
                 == Some(TemporalProfile::Timed)
+            && super::timed_model::is_model_subject_clause(nodes, kinds, terms, index, position)
         {
             return Err(invalid(meter, at(), &row.declaration));
         }
@@ -519,7 +544,12 @@ pub(super) fn validate<B>(
     let mut missing = None;
     for (position, node) in nodes.iter().enumerate() {
         let role = if kinds[position] == CheckedNodeKind::Temporal(TemporalForm::TemporalClause)
-            && configured_profile(position, meter)?.is_some()
+            && configured_profile(
+                position,
+                super::timed_model::is_model_subject_clause(nodes, kinds, terms, index, position),
+                meter,
+            )?
+            .is_some()
         {
             CheckedOccurrenceRole::Claim
         } else if kinds[position] == CheckedNodeKind::Protocol(ProtocolForm::Compensation)
@@ -587,7 +617,16 @@ pub(super) fn validate<B>(
         if clock_name(meter, position, 1) != Some(row.clock_name.as_ref()) {
             return Err(invalid(meter, at().key("clock_name"), &row.declaration));
         }
-        let profile = configured_profile(position, meter)?;
+        let profile = configured_profile(position, false, meter)?;
+        if profile == Some(TemporalProfile::Timed)
+            && (!matches!(row.clock, ClockConfiguration::Timed { .. })
+                || matches!(row.clock_name.as_ref(), "model-time" | "model-steps"))
+        {
+            // A trace-subject timed clause takes a `timed` row, and a clock
+            // role never takes a model-subject binding name: the whole row
+            // is refused, as FSpec's TN vectors place it.
+            return Err(invalid(meter, at(), &row.declaration));
+        }
         let mut selected = false;
         if let Some(law) = law.as_ref() {
             for selection in &lock.profile_selections {
@@ -772,6 +811,7 @@ mod tests {
                     Some(&rows),
                     &nodes,
                     &kinds,
+                    &[None],
                     &index,
                     &keys,
                     &lock,
@@ -850,6 +890,7 @@ mod tests {
                         Some(&refused_rows),
                         &nodes,
                         &kinds,
+                        &[None],
                         &index,
                         &keys,
                         &lock,
@@ -996,6 +1037,9 @@ impl<'de> Deserialize<'de> for ClockConfiguration {
             TimestampedEvent {
                 timestamp_unit: Box<str>,
             },
+            Timed {
+                unit: Box<str>,
+            },
         }
         #[derive(Deserialize)]
         #[serde(rename_all = "snake_case")]
@@ -1003,6 +1047,7 @@ impl<'de> Deserialize<'de> for ClockConfiguration {
             EventPosition,
             FixedSample,
             TimestampedEvent,
+            Timed,
         }
         struct Visitor;
         impl<'de> serde::de::Visitor<'de> for Visitor {
@@ -1030,6 +1075,7 @@ impl<'de> Deserialize<'de> for ClockConfiguration {
                     Wire::TimestampedEvent { timestamp_unit } => {
                         ClockConfiguration::TimestampedEvent { timestamp_unit }
                     }
+                    Wire::Timed { unit } => ClockConfiguration::Timed { unit },
                 })
             }
             fn visit_enum<A: serde::de::EnumAccess<'de>>(
@@ -1076,6 +1122,15 @@ impl<'de> Deserialize<'de> for ClockConfiguration {
                         let Fields { timestamp_unit } = fields.newtype_variant::<Fields>()?;
                         Ok(ClockConfiguration::TimestampedEvent { timestamp_unit })
                     }
+                    Tag::Timed => {
+                        #[derive(Deserialize)]
+                        #[serde(deny_unknown_fields)]
+                        struct Fields {
+                            unit: Box<str>,
+                        }
+                        let Fields { unit } = fields.newtype_variant::<Fields>()?;
+                        Ok(ClockConfiguration::Timed { unit })
+                    }
                 }
             }
         }
@@ -1096,6 +1151,7 @@ mod closed_record_storage_tests {
         for bytes in [
             br#"{"kind":"event_position","sequence_authority":"orders"}"#.as_slice(),
             br#"{"kind":"timestamped_event","timestamp_unit":"seconds"}"#.as_slice(),
+            br#"{"kind":"timed","unit":"ms"}"#.as_slice(),
             br#"{"epoch":{"decimal":"0","kind":"integer"},"kind":"fixed_sample","period":{"denominator":"2","kind":"rational","numerator":"1"},"unit":"s"}"#.as_slice(),
         ] {
             let expected: ClockConfiguration = serde_json::from_slice(bytes).unwrap();
@@ -1118,6 +1174,38 @@ mod closed_record_storage_tests {
             assert!(matches!(result,Err(ValidationFailure::Budget(_))));
             assert_eq!(allocated,budget.read_storage_consumed());
             assert!(budget.first_unpaid_read_storage().is_some());
+        }
+    }
+}
+
+#[cfg(test)]
+mod timed_clock_tests {
+    use super::*;
+    use ix_trace_rs::trace;
+
+    /// The `timed` alternative is exactly `{kind, unit}`: it round-trips, and
+    /// a missing or mistyped unit, an extra member and an unknown kind are
+    /// refused rather than defaulted or substituted.
+    #[trace("TC-048", "FR-038-AC-437", "FR-038-AC-482")]
+    #[test]
+    fn timed_clock_round_trips_and_refuses_violating_documents() {
+        let timed: ClockConfiguration =
+            serde_json::from_str(r#"{"kind":"timed","unit":"ms"}"#).unwrap();
+        assert_eq!(timed, ClockConfiguration::Timed { unit: "ms".into() });
+        assert_eq!(
+            serde_json::to_string(&timed).unwrap(),
+            r#"{"kind":"timed","unit":"ms"}"#
+        );
+        for violating in [
+            r#"{"kind":"timed"}"#,
+            r#"{"kind":"timed","unit":3}"#,
+            r#"{"kind":"timed","unit":"ms","period":"1"}"#,
+            r#"{"kind":"wall_clock","unit":"ms"}"#,
+        ] {
+            assert!(
+                serde_json::from_str::<ClockConfiguration>(violating).is_err(),
+                "{violating}"
+            );
         }
     }
 }
