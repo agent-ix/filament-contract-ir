@@ -15,6 +15,9 @@ const ORDER: &str = "ix://acme/orders/Order";
 const SLOT: &str = "ix://acme/orders/Slot";
 const PHASE: &str = "ix://acme/orders/Phase";
 const ARMED: &str = "ix://acme/orders/variant/Phase-Armed";
+const PAIR: &str = "ix://acme/orders/Pair";
+const WRAP: &str = "ix://acme/orders/Wrap";
+const HELD: &str = "ix://acme/orders/Held";
 const CLOCK: &str = "ix://filament/native/Clock";
 const SET_OF_SLOT: &str = "Set<ix://acme/orders/Slot>";
 
@@ -206,6 +209,44 @@ fn selected_document(proposal: &Path) -> Value {
             {"identity": "ix://acme/orders/variant/Phase-Idle", "name": "Idle",
                 "origin": origin}]}),
     );
+    let tuple_type = |name: &str, identity: &str, positions: [&str; 2]| {
+        let rows: Vec<Value> = positions
+            .iter()
+            .enumerate()
+            .map(|(index, type_ref)| {
+                json!({"identity": format!("{identity}/p{index}"),
+                    "typeRef": type_ref, "origin": origin})
+            })
+            .collect();
+        json!({"constraints": [], "displayName": name, "extensions": [],
+            "identity": identity, "kind": module("tuple"), "origin": origin, "roles": [],
+            "unknownPolicy": "reject", "positions": rows})
+    };
+    types.push(tuple_type(
+        "Pair",
+        PAIR,
+        [
+            "ix://filament/native/Integer",
+            "ix://filament/native/Integer",
+        ],
+    ));
+    // A tuple whose clock is one level down, inside the `Slot` position.
+    types.push(tuple_type(
+        "Wrap",
+        WRAP,
+        [SLOT, "ix://filament/native/Integer"],
+    ));
+    // A union whose clock is one level down, inside the `Slot` payload.
+    types.push(
+        json!({"constraints": [], "displayName": "Held", "extensions": [],
+        "identity": HELD, "kind": module("variant"), "origin": origin, "roles": [],
+        "unknownPolicy": "reject",
+        "variants": [
+            {"identity": "ix://acme/orders/variant/Held-Has", "name": "Has",
+                "origin": origin, "payloadType": SLOT},
+            {"identity": "ix://acme/orders/variant/Held-None", "name": "Nothing",
+                "origin": origin}]}),
+    );
     let order = types
         .iter_mut()
         .find(|ty| ty["identity"] == ORDER)
@@ -214,6 +255,8 @@ fn selected_document(proposal: &Path) -> Value {
         ("sl", SLOT, 1, 1, false),
         ("ph", PHASE, 1, 1, false),
         ("sls", SLOT, 0, 2, false),
+        ("w", WRAP, 1, 1, false),
+        ("h", HELD, 1, 1, false),
     ] {
         order["fields"].as_array_mut().expect("fields").push(json!({
             "defaultKind": "none",
@@ -365,6 +408,9 @@ fn declaration_id(form: &str, identity: &str) -> Value {
 fn add_declarations(wire: &mut Value) {
     push_node(wire, declaration_node("tuple_value_type", SLOT), 9100);
     push_node(wire, declaration_node("variant_type", PHASE), 9101);
+    push_node(wire, declaration_node("tuple_value_type", PAIR), 9102);
+    push_node(wire, declaration_node("tuple_value_type", WRAP), 9103);
+    push_node(wire, declaration_node("variant_type", HELD), 9104);
 }
 
 /// A `value`/`union_value` of `Phase` selecting `case` over `payload` terms.
@@ -502,6 +548,47 @@ fn project(position: u64, result: Value) -> Vec<Value> {
         "semantic_type": result,
     });
     vec![parameter, application]
+}
+
+/// `left <operation> right` over two parameters, each typed by its `sides`
+/// declaration (form, identity); returns the two parameters and the comparison, in that order.
+fn equality(operation: &str, sides: [(&str, &str); 2], names: [&str; 2]) -> Vec<Value> {
+    let parameter = |name: &str, (form, identity): (&str, &str)| {
+        json!({
+            "body": aggregate(vec![bind("name", text(name)), bind("level", json!({"term": "literal", "type": integer_type(), "value": "0", "value_kind": "integer"}))]),
+            "dependencies": [],
+            "node_id": {"ordinal": 0, "package": "example", "path": ["value", "parameter", name]},
+            "node_tag": "value",
+            "occurrences": [{"ordinal": 0, "role": "expression"}],
+            "schema_version": "filament.checked-semantic-graph/v2",
+            "semantic_form": "parameter",
+            "semantic_type": declaration_id(form, identity),
+        })
+    };
+    let left = parameter(names[0], sides[0]);
+    let right = parameter(names[1], sides[1]);
+    let mut dependencies = vec![left["node_id"].clone(), right["node_id"].clone()];
+    sort_ids(&mut dependencies);
+    let application = json!({
+        "body": {
+            "arguments": [
+                {"term": "reference", "target": left["node_id"]},
+                {"term": "reference", "target": right["node_id"]}],
+            "operation": {"identity": operation, "laws": [], "leaves": [],
+                "member": null, "mode": null},
+            "operator": "binary",
+            "result_type": integer_type(),
+            "term": "application"},
+        "dependencies": dependencies,
+        "node_id": {"ordinal": 0, "package": "example",
+            "path": ["expression", "binary", names[0], names[1]]},
+        "node_tag": "expression",
+        "occurrences": [{"ordinal": 0, "role": "expression"}],
+        "schema_version": "filament.checked-semantic-graph/v2",
+        "semantic_form": "binary",
+        "semantic_type": integer_type(),
+    });
+    vec![left, right, application]
 }
 
 fn refused(
@@ -945,4 +1032,211 @@ fn map_keyed_by_a_clock_bearing_type_refuses_at_the_key() {
             "{keys}"
         );
     }
+}
+
+#[trace("TC-048", "FR-038-AC-554", "FR-069-AC-10")]
+#[test]
+fn equality_over_a_clock_bearing_tuple_or_union_refuses_clock_read_outside_constraint() {
+    let tuple = "tuple_value_type";
+    let variant = "variant_type";
+    let structural_eq = "filament.op.structural.eq";
+    let structural_ne = "filament.op.structural.ne";
+    // (left side, right side, operation, clock-bearing)
+    let cases = [
+        ((tuple, PAIR), (tuple, PAIR), structural_eq, false),
+        ((tuple, PAIR), (tuple, PAIR), structural_ne, false),
+        ((tuple, SLOT), (tuple, SLOT), structural_eq, true),
+        ((tuple, SLOT), (tuple, SLOT), structural_ne, true),
+        ((variant, PHASE), (variant, PHASE), structural_eq, true),
+        ((variant, PHASE), (variant, PHASE), structural_ne, true),
+        // The clock sits one level down, in a nested position or payload.
+        ((tuple, WRAP), (tuple, WRAP), structural_eq, true),
+        ((variant, HELD), (variant, HELD), structural_ne, true),
+        // Either operand alone carries the clock, in both operand orders.
+        ((tuple, SLOT), (tuple, PAIR), structural_eq, true),
+        ((tuple, PAIR), (tuple, SLOT), structural_eq, true),
+        ((variant, PHASE), (variant, HELD), structural_ne, true),
+        ((variant, HELD), (variant, PHASE), structural_ne, true),
+    ];
+    for (left, right, operation, clock_bearing) in cases {
+        let (mut wire, document, proposal) = admitted_with(&[]);
+        add_declarations(&mut wire);
+        let mut at = 0;
+        for (offset, node) in equality(operation, [left, right], ["a", "b"])
+            .into_iter()
+            .enumerate()
+        {
+            at = push_node(&mut wire, node, 9500 + offset as u64);
+        }
+        let label = format!("{operation} over {} and {}", left.1, right.1);
+        let result = read(&wire, &document, &proposal, "equality");
+        if !clock_bearing {
+            assert_eq!(describe(&result), "admitted", "{label}");
+            continue;
+        }
+        let refusal = refused(result, &label);
+        assert_eq!(
+            (refusal.code, refusal.cause),
+            (
+                Code::InvalidTimedModel,
+                Some(Cause::ClockReadOutsideConstraint)
+            ),
+            "{label}"
+        );
+        assert_eq!(
+            pointer_of(&refusal),
+            format!("/semantic_graph/nodes/{at}"),
+            "{label}"
+        );
+    }
+}
+
+fn wrap_place() -> Place {
+    Place {
+        name: "w-tuple-0-tuple-0",
+        steps: vec![field("w"), tuple(0), tuple(0)],
+        rows: vec![
+            row(0, ORDER, "ix://acme/orders/Order/w", WRAP, "none", "", ""),
+            row(1, WRAP, "ix://acme/orders/Wrap/p0", SLOT, "none", "", ""),
+            row(2, SLOT, "ix://acme/orders/Slot/p0", CLOCK, "none", "", ""),
+        ],
+    }
+}
+
+fn held_place() -> Place {
+    Place {
+        name: "h-union-has-tuple-0",
+        steps: vec![field("h"), union_case("Has"), tuple(0)],
+        rows: vec![
+            row(0, ORDER, "ix://acme/orders/Order/h", HELD, "none", "", ""),
+            row(
+                1,
+                HELD,
+                "ix://acme/orders/variant/Held-Has",
+                SLOT,
+                "none",
+                "",
+                "",
+            ),
+            row(2, SLOT, "ix://acme/orders/Slot/p0", CLOCK, "none", "", ""),
+        ],
+    }
+}
+
+#[trace("TC-048", "FR-038-AC-548")]
+#[test]
+fn non_terminal_tuple_and_union_rows_join_the_declared_member_type() {
+    // The nested places admit when every row is the selected one.
+    let (wire, document, proposal) = admitted_with(&[wrap_place(), held_place()]);
+    assert_eq!(
+        describe(&read(&wire, &document, &proposal, "nested")),
+        "admitted"
+    );
+    // A non-terminal row typed other than the declared position or payload
+    // refuses at that row, though its identity is the selected one and the
+    // Clock terminal is intact.
+    for (label, place, forged_type) in [
+        ("tuple position typed as another tuple", wrap_place(), PAIR),
+        (
+            "tuple position typed as a data type",
+            wrap_place(),
+            "ix://filament/native/Integer",
+        ),
+        ("union payload typed as another tuple", held_place(), PAIR),
+        (
+            "union payload typed as a data type",
+            held_place(),
+            "ix://filament/native/Integer",
+        ),
+    ] {
+        let mut place = place;
+        let kept = place.rows[1].to_string();
+        place.rows[1] =
+            serde_json::from_str::<Value>(&kept.replace(SLOT, forged_type)).expect("forged row");
+        // The next row's declaring type is left at the declared one.
+        let name: &'static str = Box::leak(format!("forged-{label}").into_boxed_str());
+        place.name = name;
+        let (mut wire, document, proposal) = published();
+        let id = add_place(&mut wire, &place, 9000);
+        let position = wire["semantic_graph"]["nodes"]
+            .as_array()
+            .expect("nodes")
+            .iter()
+            .position(|node| node["node_id"] == id)
+            .expect("added place");
+        let refusal = refused(read(&wire, &document, &proposal, label), label);
+        assert_eq!(
+            (refusal.code, refusal.cause),
+            (Code::InvalidPackage, Some(Cause::MalformedClockPlace)),
+            "{label}"
+        );
+        assert_eq!(
+            pointer_of(&refusal),
+            format!("/semantic_graph/nodes/{position}/body/members/2/value/members/1"),
+            "{label}"
+        );
+    }
+}
+
+#[trace("TC-048", "FR-038-AC-552")]
+#[test]
+fn set_of_clock_bearing_tuples_is_a_clock_collection_bound_to_the_field() {
+    let (wire, document, proposal) = admitted_with(&[set_place()]);
+    let CheckedPackageV2ReadResult::Admitted(package) = read(&wire, &document, &proposal, "set")
+    else {
+        panic!("the Set<Slot>[0, 2] clock place must admit");
+    };
+    let place = package
+        .resolved_graph()
+        .nodes
+        .iter()
+        .find(|node| {
+            node.semantic_form.as_ref() == "clock_place"
+                && serde_json::to_value(&node.body)
+                    .expect("body")
+                    .to_string()
+                    .contains("sls")
+        })
+        .expect("the Set<Slot> place");
+    let body = serde_json::to_value(&place.body).expect("body");
+    let rows = body["members"][2]["value"]["members"]
+        .as_array()
+        .expect("rows");
+    assert_eq!(
+        rows.len(),
+        3,
+        "a row for the field, the slot and the position"
+    );
+    let row_text = |at: usize, name: &str| {
+        rows[at]["members"]
+            .as_array()
+            .and_then(|members| members.iter().find(|member| member["name"] == name))
+            .map(|member| member["value"]["value"].clone())
+    };
+    assert_eq!(row_text(0, "collection_kind"), Some(json!("set")));
+    assert_eq!(row_text(0, "minimum"), Some(json!("0")));
+    assert_eq!(row_text(0, "maximum"), Some(json!("2")));
+    // A slot step whose maximum differs from the field's refuses at row 0.
+    let differing = Place {
+        name: "set-bound-3-dedicated",
+        steps: vec![field("sls"), slot("set", 0, 3), tuple(0)],
+        rows: set_place().rows,
+    };
+    let (mut wire, document, proposal) = published();
+    let id = add_place(&mut wire, &differing, 9000);
+    let position = wire["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .position(|node| node["node_id"] == id)
+        .expect("added place");
+    let refusal = refused(read(&wire, &document, &proposal, "bound"), "bound");
+    assert_eq!(
+        (refusal.code, refusal.cause),
+        (Code::InvalidPackage, Some(Cause::MalformedClockPlace))
+    );
+    assert_eq!(
+        pointer_of(&refusal),
+        format!("/semantic_graph/nodes/{position}/body/members/2/value/members/0")
+    );
 }

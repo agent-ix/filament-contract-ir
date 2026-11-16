@@ -2514,6 +2514,69 @@ impl DomainModel {
             .map(|rendered| (identity, rendered)))
     }
 
+    /// Whether the declared tuple or variant `name` carries a `Clock` at any
+    /// depth, through nested tuples, variants and collection element types.
+    /// FR-322 refuses `=` and `!=` over such a value because equality would
+    /// read its clocks. Every list the walk grows is paid through `budget`.
+    pub(super) fn bears_clock<'a>(
+        &'a self,
+        name: &'a str,
+        budget: &mut Budget<'_, '_>,
+    ) -> Result<bool, ValidationFailure> {
+        let mut pending: Vec<&'a str> = Vec::new();
+        budget.push(&mut pending, name, "clock_bearing")?;
+        let mut seen: Vec<&'a str> = Vec::new();
+        while let Some(name) = pending.pop() {
+            if seen.contains(&name) {
+                continue;
+            }
+            budget.push(&mut seen, name, "clock_bearing")?;
+            if let Some(positions) = self.tuple_types.get(name) {
+                for position in positions {
+                    if self.member_bears_clock(position, &mut pending, budget)? {
+                        return Ok(true);
+                    }
+                }
+            }
+            if let Some(cases) = self.variant_types.get(name) {
+                for payload in cases.values().filter_map(|case| case.payload.as_ref()) {
+                    if self.member_bears_clock(payload, &mut pending, budget)? {
+                        return Ok(true);
+                    }
+                }
+            }
+        }
+        Ok(false)
+    }
+
+    /// Whether one position or payload type is a `Clock` through its
+    /// collection layers; a declared tuple or variant it reaches is queued.
+    fn member_bears_clock<'a>(
+        &'a self,
+        member: &'a SelectedTypeRef,
+        pending: &mut Vec<&'a str>,
+        budget: &mut Budget<'_, '_>,
+    ) -> Result<bool, ValidationFailure> {
+        let mut current = member;
+        // A collection chain longer than the collection table repeats a layer.
+        for _ in 0..=self.collection_types.len() {
+            match current {
+                SelectedTypeRef::Native(NativeTypeRef::Clock) => return Ok(true),
+                SelectedTypeRef::Declared(next) => match self.collection_types.get(next) {
+                    Some(SelectedTypeDefinition::Sequence(items)) => current = items,
+                    Some(SelectedTypeDefinition::Map(map)) => current = &map.values,
+                    Some(_) => return Ok(false),
+                    None => {
+                        budget.push(pending, next.as_ref(), "clock_bearing")?;
+                        return Ok(false);
+                    }
+                },
+                _ => return Ok(false),
+            }
+        }
+        Ok(false)
+    }
+
     /// FR-322 step 4 over one declared `typeRef` and multiplicity; `None`
     /// when the tables give the slot no type.
     pub(super) fn slot_type(&self, slot: &TypedSlot) -> Option<MemberType> {
@@ -2787,6 +2850,25 @@ impl<'m> ModelOwners<'m> {
         } else {
             "enum"
         })
+    }
+
+    /// Whether the selected tuple or variant `key` carries a `Clock`.
+    pub(super) fn bears_clock(
+        &self,
+        key: &CheckedNodeId,
+        meter: &mut WorkMeter<'_>,
+    ) -> Result<bool, ValidationFailure> {
+        let Some(owner) = self.owner_by_key(key) else {
+            return Ok(false);
+        };
+        if !matches!(
+            owner.form,
+            DeclarationForm::TupleValueType | DeclarationForm::VariantType
+        ) {
+            return Ok(false);
+        }
+        let mut budget = Budget::new(meter, owner.package.root, owner.package.bytes);
+        owner.package.bears_clock(owner.node, &mut budget)
     }
 
     /// Whether a domain package of `identity` is selected.

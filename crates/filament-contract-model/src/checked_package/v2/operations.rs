@@ -1618,6 +1618,31 @@ fn operation_defect(
         )));
     }
 
+    // FR-322: `=` and `!=` over a clock-bearing tuple or union would read its
+    // clocks, which only a clock constraint may do.
+    if matches!(
+        operation.identity.as_ref(),
+        "filament.op.structural.eq"
+            | "filament.op.structural.ne"
+            | "filament.op.enum.eq"
+            | "filament.op.enum.ne"
+    ) {
+        for argument in admitted_arguments(application, graph).unwrap_or_default() {
+            let Some(type_id) =
+                operand_type_node_typed(argument, graph.nodes, graph.kinds, graph.index)
+            else {
+                continue;
+            };
+            if owners.bears_clock(type_id, meter)? {
+                return Ok(Some(application.refuse(
+                    CheckedPackageRefusalCode::InvalidTimedModel,
+                    node_pointer(application.position),
+                    CheckedPackageRefusalCause::ClockReadOutsideConstraint,
+                )));
+            }
+        }
+    }
+
     // Carried sums pin their mode from the summand bound and result before
     // comparing either with the type argument (FR-322, carried-quantity sum).
     if operation.identity.as_ref() == "filament.op.collection.sum.carried_quantity" {

@@ -2898,7 +2898,7 @@ admission; add a row for it and require the whole-row refusal. Read the clock
 of a monitor plan over a Timed trace clause and require its `timed` row, and of
 a monitor plan over the hybrid-subject clause and require `MissingClock`.
 
-## Clock tuple positions and union payloads (FR-038-AC-548 through FR-038-AC-553)
+## Clock tuple positions and union payloads (FR-038-AC-548 through FR-038-AC-554)
 
 Status: IMPLEMENTED (IR-1552). Extend the published timed-slot selected
 document with the tuple `Slot` (`p0` a `Clock`, `p1` an `Integer`), the variant
@@ -2912,7 +2912,14 @@ step and document member the cases of FR-038-AC-548 name and require the
 empty payload and require admission, and with one payload term and require
 `type-mismatch`. Add a reset of the `Armed` place with and without a frame that
 modifies `ph`. Add a `tuple.project` of position `0` and `1` of `Slot`. Add a map
-type keyed by `Slot`, by `Phase` and by `Text`.
+type keyed by `Slot`, by `Phase` and by `Text`. Add `structural.eq` and
+`structural.ne` over two parameters of `Slot`, `Phase`, `Wrap` (a tuple holding a
+`Slot`), `Held` (a union holding a `Slot`) and `Pair` (no clock), and over mixed
+clock and clock-free operands in both orders; require
+`clock-read-outside-constraint` at the application for each clock-bearing case
+and admission for `Pair`. Forge the member type of the non-terminal row of
+`field(w).tuple(0).tuple(0)` and `field(h).union(Has).tuple(0)` and require
+`malformed-clock-place` at that row.
 
 ## Carried-quantity sum admission (FR-038-AC-524 through FR-038-AC-529)
 
