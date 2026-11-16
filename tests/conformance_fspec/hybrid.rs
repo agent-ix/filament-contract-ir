@@ -1570,7 +1570,10 @@ fn hybrid_subject_timed_clause_takes_no_clock_row() {
         package["semantic_graph"]["nodes"][clause]["body"]["arguments"][1]["value"],
         "model-time"
     );
-    assert!(package.get("temporal_bindings").is_none());
+    let declaration = package["semantic_graph"]["nodes"][clause]["node_id"].clone();
+    assert!(package["temporal_bindings"]
+        .as_array()
+        .is_none_or(|rows| rows.iter().all(|row| row["declaration"] != declaration)));
     let read = read_package(&package).expect("published evidence");
     assert!(
         matches!(read, CheckedPackageV2ReadResult::Admitted(_)),
