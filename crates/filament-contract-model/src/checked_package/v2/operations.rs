@@ -1913,7 +1913,7 @@ fn is_clause_application(argument: &CheckedTerm, catalog: &OperationCatalog) -> 
 fn operand_family(kind: CheckedNodeKind) -> Option<&'static str> {
     use CheckedNodeKind as K;
     match kind {
-        K::Extension(_) | K::Hybrid(_) | K::TimedModel(_) => None,
+        K::Extension(_) | K::Hybrid(_) | K::TimedModel(_) | K::Probabilistic(_) => None,
         K::ScalarType(
             form @ (ScalarTypeForm::Boolean
             | ScalarTypeForm::Integer
@@ -2081,7 +2081,7 @@ fn operand_family(kind: CheckedNodeKind) -> Option<&'static str> {
 pub(super) fn is_type_shaped(kind: CheckedNodeKind) -> bool {
     use CheckedNodeKind as K;
     match kind {
-        K::Extension(_) | K::Hybrid(_) | K::TimedModel(_) => false,
+        K::Extension(_) | K::Hybrid(_) | K::TimedModel(_) | K::Probabilistic(_) => false,
         K::ScalarType(
             ScalarTypeForm::Boolean
             | ScalarTypeForm::Integer

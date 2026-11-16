@@ -121,6 +121,7 @@ closed_vocabulary! {
         Extension => "extension",
         Hybrid => "hybrid",
         TimedModel => "timed_model",
+        Probabilistic => "probabilistic",
     }
 }
 
@@ -264,6 +265,16 @@ closed_vocabulary! {
         Transition => "transition",
         OperationAnchor => "operation_anchor",
         Snapshot => "snapshot",
+    }
+}
+
+closed_vocabulary! {
+    /// The closed `probabilistic` semantic forms of FSpec FR-640.
+    pub ProbabilisticForm {
+        RandomParameter => "random_parameter",
+        Workload => "workload",
+        Reward => "reward",
+        DelayDistribution => "delay_distribution",
     }
 }
 
@@ -620,6 +631,8 @@ pub enum CheckedNodeKind {
     Hybrid(HybridForm),
     /// A checked timed model, source, place or clause.
     TimedModel(TimedModelForm),
+    /// A `probabilistic` node.
+    Probabilistic(ProbabilisticForm),
     /// A `scalar_type` node.
     ScalarType(ScalarTypeForm),
     /// A `composite_type` node.
@@ -657,6 +670,9 @@ impl CheckedNodeKind {
             CheckedNodeTag::Extension => ExtensionForm::from_wire(form).map(Self::Extension),
             CheckedNodeTag::Hybrid => HybridForm::from_wire(form).map(Self::Hybrid),
             CheckedNodeTag::TimedModel => TimedModelForm::from_wire(form).map(Self::TimedModel),
+            CheckedNodeTag::Probabilistic => {
+                ProbabilisticForm::from_wire(form).map(Self::Probabilistic)
+            }
             CheckedNodeTag::ScalarType => ScalarTypeForm::from_wire(form).map(Self::ScalarType),
             CheckedNodeTag::CompositeType => {
                 CompositeTypeForm::from_wire(form).map(Self::CompositeType)
@@ -685,6 +701,7 @@ impl CheckedNodeKind {
             Self::Extension(_) => CheckedNodeTag::Extension,
             Self::Hybrid(_) => CheckedNodeTag::Hybrid,
             Self::TimedModel(_) => CheckedNodeTag::TimedModel,
+            Self::Probabilistic(_) => CheckedNodeTag::Probabilistic,
             Self::ScalarType(_) => CheckedNodeTag::ScalarType,
             Self::CompositeType(_) => CheckedNodeTag::CompositeType,
             Self::BoundedDomain(_) => CheckedNodeTag::BoundedDomain,
@@ -707,6 +724,7 @@ impl CheckedNodeKind {
             Self::Extension(form) => form.as_wire(),
             Self::Hybrid(form) => form.as_wire(),
             Self::TimedModel(form) => form.as_wire(),
+            Self::Probabilistic(form) => form.as_wire(),
             Self::ScalarType(form) => form.as_wire(),
             Self::CompositeType(form) => form.as_wire(),
             Self::BoundedDomain(form) => form.as_wire(),
@@ -740,6 +758,11 @@ impl CheckedNodeKind {
                         .iter()
                         .copied()
                         .map(Self::TimedModel)
+                        .collect(),
+                    CheckedNodeTag::Probabilistic => ProbabilisticForm::ALL
+                        .iter()
+                        .copied()
+                        .map(Self::Probabilistic)
                         .collect(),
                     CheckedNodeTag::Hybrid => {
                         HybridForm::ALL.iter().copied().map(Self::Hybrid).collect()
