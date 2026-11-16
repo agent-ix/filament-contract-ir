@@ -178,7 +178,9 @@ fn exact_rational(value: &str) -> Option<(BigInt, BigInt)> {
     Some((numerator / &divisor, denominator / divisor))
 }
 
-/// The scalar count of `value` under the text `profile` (FSpec FR-141).
+/// The scalar count of `value` under the text `profile` (FSpec FR-141). The
+/// profile is the declaration's wire text, so its words gate the branch.
+#[ix_trace_rs::string_edge]
 fn text_length(value: &str, profile: &str) -> usize {
     match profile {
         "nfc" => value.nfc().count(),
