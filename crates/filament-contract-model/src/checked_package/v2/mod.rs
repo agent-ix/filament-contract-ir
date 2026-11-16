@@ -3851,6 +3851,7 @@ fn validate_graph(
         wire.temporal_bindings.as_deref(),
         &graph.nodes,
         &kinds,
+        &terms,
         &index,
         structural_keys,
         &wire.lock,

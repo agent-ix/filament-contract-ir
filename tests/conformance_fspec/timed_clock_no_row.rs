@@ -55,6 +55,19 @@ fn timed_model_clause() -> Value {
     wire
 }
 
+/// The timed fixture with its clause ranging over a trace parameter and
+/// naming `clock` as its role, and no `temporal_bindings` row.
+fn trace_clause(clock: &str) -> Value {
+    let mut trace = timed_model_clause();
+    trace["semantic_graph"]["nodes"][8]["body"]["arguments"][0]["target"] =
+        trace["semantic_graph"]["nodes"][36]["node_id"].clone();
+    trace["semantic_graph"]["nodes"][8]["body"]["arguments"][1]["value"] = json!(clock);
+    fixture_support::settle(&mut trace);
+    fixture_support::refresh_temporal_bindings(&mut trace);
+    fixture_support::refresh_identity(&mut trace);
+    trace
+}
+
 fn admitted(wire: &Value) -> Box<CheckedPackageV2> {
     match read_package(wire).expect("published selection evidence") {
         CheckedPackageV2ReadResult::Admitted(package) => package,
@@ -69,8 +82,14 @@ fn refusal(wire: &Value) -> filament_contract_model::CheckedPackageRefusal {
     }
 }
 
-/// Trace: FR-038-AC-482, FR-038-AC-483, FR-038-AC-484, TC-048.
-#[trace("TC-048", "FR-038-AC-482", "FR-038-AC-483", "FR-038-AC-484")]
+#[trace(
+    "TC-048",
+    "FR-038-AC-482",
+    "FR-038-AC-483",
+    "FR-038-AC-484",
+    "FR-038-AC-545",
+    "FR-038-AC-546"
+)]
 #[test]
 fn timed_clock_no_row_vectors_join_model_and_refuse_extra_row() {
     let published = vectors();
@@ -80,7 +99,9 @@ fn timed_clock_no_row_vectors_join_model_and_refuse_extra_row() {
             .iter()
             .map(|case| case["id"].as_str().expect("case id"))
             .collect::<BTreeSet<_>>(),
-        BTreeSet::from(["TN-01", "TN-02", "TN-03", "TN-04", "TN-05"])
+        BTreeSet::from([
+            "TN-01", "TN-02", "TN-03", "TN-04", "TN-05", "TN-06", "TN-07", "TN-08", "TN-09"
+        ])
     );
     let case = |id: &str| cases.iter().find(|case| case["id"] == id).expect("TN case");
     assert_eq!(case("TN-01")["clock_name"], "model-time");
@@ -138,23 +159,135 @@ fn timed_clock_no_row_vectors_join_model_and_refuse_extra_row() {
     );
     assert_eq!(*wrong_clause.at, *binding.source());
 
-    // TN-02: a non-model parameter supplies trace timestamps through the
-    // selected profile; the checked package manufactures no source or unit.
-    let mut trace = wire.clone();
-    trace["semantic_graph"]["nodes"][8]["body"]["arguments"][0]["target"] =
-        trace["semantic_graph"]["nodes"][36]["node_id"].clone();
-    fixture_support::settle(&mut trace);
-    fixture_support::refresh_temporal_bindings(&mut trace);
-    fixture_support::refresh_identity(&mut trace);
-    let trace_package = admitted(&trace);
-    let trace_clause = &trace_package
-        .document_held_id(8)
-        .expect("graph node")
-        .clone();
-    assert!(trace_package
-        .model_time_for_clause(trace_clause, 100)
-        .unwrap()
-        .is_none());
+    // TN-02, TN-06 to TN-09: a clause over a trace subject takes exactly one
+    // closed `timed {unit}` row naming its clock role.
+    let mut trace = trace_clause("plant");
+    trace
+        .as_object_mut()
+        .expect("package")
+        .remove("temporal_bindings");
+    fixture_support::refresh_identity_projection(&mut trace);
+    let absent_row = refusal(&trace);
+    assert_eq!(
+        (
+            absent_row.code,
+            absent_row.cause,
+            absent_row.loci[0].path.as_ref().map(ToString::to_string)
+        ),
+        (
+            Code::InvalidPackage,
+            Some(Cause::TimedNodeReference),
+            Some(
+                case("TN-02")["expected"]["pointer"]
+                    .as_str()
+                    .unwrap()
+                    .replace("{clause-index}", "8")
+            )
+        )
+    );
+    let timed_row = |name: &str, clock: Value| {
+        let mut package = trace_clause(name);
+        let declaration = package["semantic_graph"]["nodes"][8]["node_id"].clone();
+        package["temporal_bindings"] = json!([{
+            "declaration": declaration,
+            "occurrence": 0,
+            "clock_name": name,
+            "clock": clock,
+        }]);
+        fixture_support::refresh_identity_projection(&mut package);
+        package
+    };
+    let row_of = |id: &str| case(id)["row"].clone();
+    for id in ["TN-06"] {
+        let row = row_of(id);
+        let trace_row = timed_row(row["clock_name"].as_str().unwrap(), row["clock"].clone());
+        let trace_package = admitted(&trace_row);
+        let trace_clause = trace_package
+            .document_held_id(8)
+            .expect("graph node")
+            .clone();
+        assert_eq!(
+            trace_package.temporal_bindings().unwrap(),
+            [filament_contract_model::TemporalBinding {
+                declaration: trace_clause.clone(),
+                occurrence: 0,
+                clock_name: "plant".into(),
+                clock: filament_contract_model::ClockConfiguration::Timed { unit: "ms".into() },
+            }]
+        );
+        assert!(
+            trace_package
+                .model_time_for_clause(&trace_clause, 100)
+                .unwrap()
+                .is_none(),
+            "{id}: a trace clause reads no checked model time"
+        );
+    }
+    for id in ["TN-08", "TN-09"] {
+        let row = row_of(id);
+        let name = row["clock_name"].as_str().unwrap();
+        let rejected = refusal(&timed_row(name, row["clock"].clone()));
+        assert_eq!(
+            (
+                rejected.code,
+                rejected.cause,
+                rejected.loci[0].path.as_ref().map(ToString::to_string)
+            ),
+            (
+                Code::InvalidPackage,
+                Some(Cause::TimedNodeReference),
+                case(id)["expected"]["pointer"]
+                    .as_str()
+                    .map(|pointer| pointer.to_owned())
+            ),
+            "{id}"
+        );
+    }
+
+    // The `timed` alternative is closed: an empty unit is malformed, a missing
+    // unit, an extra member and an unknown clock kind are each refused, and
+    // none is defaulted or substituted.
+    let refused: Vec<_> = [
+        json!({"kind": "timed", "unit": ""}),
+        json!({"kind": "timed"}),
+        json!({"kind": "timed", "unit": 3}),
+        json!({"kind": "timed", "unit": "ms", "period": "1"}),
+        json!({"kind": "wall_clock", "unit": "ms"}),
+    ]
+    .into_iter()
+    .map(|clock| {
+        let rejected = refusal(&timed_row("plant", clock));
+        (
+            rejected.code,
+            rejected.loci[0].path.as_ref().map(ToString::to_string),
+        )
+    })
+    .collect();
+    assert_eq!(
+        refused,
+        vec![
+            (
+                Code::MalformedWire,
+                Some("/temporal_bindings/0/clock/unit".to_owned())
+            ),
+            (
+                Code::MalformedWire,
+                Some("/temporal_bindings/0/clock".to_owned())
+            ),
+            (
+                Code::MalformedWire,
+                Some("/temporal_bindings/0/clock/unit".to_owned())
+            ),
+            (
+                Code::UnknownMember,
+                Some("/temporal_bindings/0/clock/period".to_owned())
+            ),
+            (
+                Code::MalformedWire,
+                Some("/temporal_bindings/0/clock/kind".to_owned())
+            ),
+        ]
+    );
 
     // TN-03: the clause selects a second admitted model type while the only
     // checked timed-model root still belongs to the original model subject.
@@ -260,6 +393,31 @@ fn timed_clock_no_row_vectors_join_model_and_refuse_extra_row() {
         actual.locus,
         Some(
             serde_json::from_value(extra["semantic_graph"]["nodes"][8]["node_id"].clone()).unwrap()
+        )
+    );
+
+    // TN-07: a `timed` row for a clause over a model subject refuses at the row.
+    let mut model_row = wire.clone();
+    let mut row = case("TN-07")["row"].clone();
+    row["declaration"] = model_row["semantic_graph"]["nodes"][8]["node_id"].clone();
+    model_row["temporal_bindings"] = json!([row]);
+    fixture_support::refresh_identity_projection(&mut model_row);
+    let model_timed = refusal(&model_row);
+    assert_eq!(
+        (
+            model_timed.code,
+            model_timed.cause,
+            model_timed.loci[0].path.as_ref().map(ToString::to_string)
+        ),
+        (
+            Code::InvalidPackage,
+            Some(Cause::TimedNodeReference),
+            Some(
+                case("TN-07")["expected"]["pointer"]
+                    .as_str()
+                    .unwrap()
+                    .to_owned()
+            )
         )
     );
 

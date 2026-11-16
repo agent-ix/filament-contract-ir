@@ -349,10 +349,9 @@ fn monitor_plan_binds_selected_claim_occurrence_to_its_admitted_clock() {
     assert_eq!(extended_read.clock(), read1.clock());
 }
 
-/// Trace: FR-038-AC-484, TC-048.
-#[trace("TC-048", "FR-038-AC-484")]
-#[test]
-fn monitor_plan_reads_timed_model_source_and_exact_unit() {
+/// The base monitor recipe with its clause under the timed profile, naming
+/// `clock` and with a `null` interval; settled by the caller.
+fn timed_monitor_recipe(clock: &str) -> Value {
     let (mut wire, _) = materialize(&recipes()["base"]);
     for selection in wire["lock"]["profile_selections"].as_array_mut().unwrap() {
         if selection["role"] == "temporal_profile" {
@@ -373,7 +372,7 @@ fn monitor_plan_reads_timed_model_source_and_exact_unit() {
             }
         }
         if node["node_tag"] == "temporal" && node["semantic_form"] == "temporal_clause" {
-            node["body"]["arguments"][1]["value"] = json!("model-time");
+            node["body"]["arguments"][1]["value"] = json!(clock);
         }
         if node["node_tag"] == "temporal"
             && node["semantic_form"] == "formula"
@@ -382,6 +381,14 @@ fn monitor_plan_reads_timed_model_source_and_exact_unit() {
             node["body"]["operation"]["member"]["interval"] = Value::Null;
         }
     }
+    wire
+}
+
+/// Trace: FR-038-AC-484, TC-048.
+#[trace("TC-048", "FR-038-AC-484")]
+#[test]
+fn monitor_plan_reads_timed_model_source_and_exact_unit() {
+    let mut wire = timed_monitor_recipe("model-time");
     fixture_support::settle(&mut wire);
     finish(&mut wire);
     assert!(wire.get("temporal_bindings").is_none());
@@ -1628,4 +1635,118 @@ fn monitor_plan_event_position_is_the_exact_final_integer_field() {
             root,
         );
     }
+}
+
+fn clause_position(wire: &Value) -> usize {
+    wire["semantic_graph"]["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .position(|n| n["node_tag"] == "temporal" && n["semantic_form"] == "temporal_clause")
+        .expect("monitored clause")
+}
+
+fn clock_read_of(wire: &Value) -> Result<(), CheckedMonitorClockReadErrorCode> {
+    let package = admitted(wire);
+    let plan = package.monitor_plans().next().expect("monitor root");
+    let occurrence = CheckedOccurrence {
+        role: CheckedOccurrenceRole::Claim,
+        ordinal: 0,
+    };
+    plan.clock_for_claim(
+        plan.clause(),
+        &occurrence,
+        &mut NativeJoinBudget::new(100, u64::MAX),
+    )
+    .map(|_| ())
+    .map_err(|error| error.code)
+}
+
+#[trace("TC-048", "FR-038-AC-484", "FR-038-AC-547")]
+#[test]
+fn monitor_plan_reads_the_timed_row_of_a_trace_clause() {
+    let mut wire = timed_monitor_recipe("plant");
+    let clause = clause_position(&wire);
+    let nodes = wire["semantic_graph"]["nodes"].as_array().unwrap();
+    let trace_parameter = nodes
+        .iter()
+        .find(|parameter| {
+            parameter["semantic_form"] == "parameter"
+                && nodes.iter().any(|ty| {
+                    ty["node_id"] == parameter["semantic_type"] && ty["node_tag"] == "scalar_type"
+                })
+        })
+        .expect("a scalar-typed parameter")["node_id"]
+        .clone();
+    wire["semantic_graph"]["nodes"][clause]["body"]["arguments"][0]["target"] = trace_parameter;
+    fixture_support::settle(&mut wire);
+    finish(&mut wire);
+    let package = admitted(&wire);
+    let row = &package.temporal_bindings().expect("timed row")[0];
+    assert_eq!(
+        row.clock,
+        ClockConfiguration::Timed {
+            unit: "tick".into()
+        }
+    );
+    let plan = package.monitor_plans().next().expect("monitor root");
+    let occurrence = CheckedOccurrence {
+        role: CheckedOccurrenceRole::Claim,
+        ordinal: 0,
+    };
+    let read = plan
+        .clock_for_claim(
+            plan.clause(),
+            &occurrence,
+            &mut NativeJoinBudget::new(100, u64::MAX),
+        )
+        .expect("Timed trace clock");
+    assert_eq!(read.clock_name(), "plant");
+    assert_eq!(read.clock(), CheckedMonitorClock::Configured(&row.clock));
+}
+
+/// A timed clause over a hybrid-model subject has neither a row nor a checked
+/// time source, so the monitor clock read refuses with `MissingClock` rather
+/// than manufacturing a clock.
+#[trace("TC-048", "FR-038-AC-484", "FR-038-AC-547")]
+#[test]
+fn monitor_plan_refuses_a_clock_read_of_a_hybrid_subject_timed_clause() {
+    let mut wire = timed_monitor_recipe("model-time");
+    let vectors = read_json(&proposal_dir_of(&fixtures_dir()).join("hybrid-node-vectors.json"))
+        .expect("FSpec TC-966 vectors");
+    super::hybrid::append_indexed_published_nodes(
+        &mut wire,
+        vectors["nodes"].as_array().expect("hybrid nodes"),
+    );
+    wire["lock"]["profile_selections"]
+        .as_array_mut()
+        .expect("profile selections")
+        .push(json!({
+            "role": "temporal_profile",
+            "definition": {"authority": "agent-ix", "identity": "filament.temporal.infinite-trace/v1"},
+        }));
+    let hybrid_model = wire["semantic_graph"]["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|n| n["node_tag"] == "hybrid" && n["semantic_form"] == "hybrid_model")
+        .expect("hybrid model")["node_id"]
+        .clone();
+    let clause = clause_position(&wire);
+    let parameter =
+        wire["semantic_graph"]["nodes"][clause]["body"]["arguments"][0]["target"].clone();
+    let parameter = wire["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|n| n["node_id"] == parameter)
+        .expect("over parameter");
+    parameter["semantic_type"] = hybrid_model;
+    fixture_support::settle(&mut wire);
+    finish(&mut wire);
+    assert!(wire.get("temporal_bindings").is_none());
+    assert_eq!(
+        clock_read_of(&wire),
+        Err(CheckedMonitorClockReadErrorCode::MissingClock)
+    );
 }

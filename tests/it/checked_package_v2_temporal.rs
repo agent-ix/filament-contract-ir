@@ -352,7 +352,7 @@ pub(super) fn select_profile(package: &mut Value, identity: &str) {
             && node["node_tag"] == "temporal"
             && node["semantic_form"] == "temporal_clause"
         {
-            node["body"]["arguments"][1]["value"] = json!("model-time");
+            node["body"]["arguments"][1]["value"] = json!("fixture-clock");
         }
         // `get_mut`, not indexing: indexing a body without an `operation`
         // would insert one.

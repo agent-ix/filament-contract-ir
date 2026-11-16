@@ -168,10 +168,11 @@ pub struct CheckedMonitorBufferRef<'a> {
     buffer: &'a Buffer,
 }
 
-/// One admitted monitor clock binding. Timed clauses do not carry a clock row.
+/// One admitted monitor clock binding. A timed clause over a model subject
+/// carries no clock row; every other clause carries its row.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CheckedMonitorClock<'a> {
-    /// One of the three admitted temporal binding configurations.
+    /// The admitted temporal binding configuration of the clause occurrence.
     Configured(&'a ClockConfiguration),
     /// The checked model time binding and exact source unit.
     ModelTime {
@@ -184,8 +185,6 @@ pub enum CheckedMonitorClock<'a> {
         /// The exact checked time unit.
         unit: &'a CheckedNodeId,
     },
-    /// Timestamped trace positions supplied to the temporal profile.
-    TraceTime,
 }
 
 /// An admitted clock and claim name for one selected monitor clause occurrence.
@@ -464,17 +463,17 @@ impl<'a> CheckedMonitorPlanRef<'a> {
             if operation.law_definitions().ok().is_some_and(|laws|
                 matches!(laws, [law] if TemporalProfile::from_wire(&law.identity)
                     == Some(TemporalProfile::Timed))));
-        let clock = if timed {
-            match super::timed_model::admitted_model_time(self.package, clause, |_| {
-                budget.charge()
-            })? {
-                Some(binding) => CheckedMonitorClock::ModelTime {
-                    timed_root: binding.timed_root,
-                    model: binding.model,
-                    source: binding.source,
-                    unit: binding.unit,
-                },
-                None => CheckedMonitorClock::TraceTime,
+        let model_time = if timed {
+            super::timed_model::admitted_model_time(self.package, clause, |_| budget.charge())?
+        } else {
+            None
+        };
+        let clock = if let Some(binding) = model_time {
+            CheckedMonitorClock::ModelTime {
+                timed_root: binding.timed_root,
+                model: binding.model,
+                source: binding.source,
+                unit: binding.unit,
             }
         } else {
             let binding = selected_row(
