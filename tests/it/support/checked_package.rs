@@ -2491,6 +2491,15 @@ pub fn refresh_temporal_bindings(package: &mut Value) {
                 "filament.temporal.timestamped-event.finite-window/v1" => {
                     json!({"kind": "timestamped_event", "timestamp_unit": "tick"})
                 }
+                // A clause over a trace subject takes a `timed` row for its
+                // clock role; `model-time` names the model-subject binding,
+                // which has none.
+                "filament.temporal.timed/v1"
+                    if node["semantic_form"] == "temporal_clause"
+                        && !matches!(name, "model-time" | "model-steps") =>
+                {
+                    json!({"kind": "timed", "unit": "tick"})
+                }
                 _ => return None,
             };
             Some(
