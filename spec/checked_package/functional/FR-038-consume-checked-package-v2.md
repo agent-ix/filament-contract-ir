@@ -1951,7 +1951,7 @@ For `filament.temporal.timed/v1`, the reader SHALL decide by the clause's
 `over` parameter. An `over` parameter typed by a model, by a reference to a
 model, or by a hybrid model has a model subject; any other `over` parameter has
 a trace subject. FSpec FR-322 does not name the hybrid-model case: counting a
-hybrid-model parameter as a model subject is this repository's reading, because
+hybrid-model parameter as a model subject is this repository's reading (QSL-2310 item 2), because
 a hybrid model supplies its own time and has no clock role to bind. When it has a model subject, the clause has `clock_name`
 `model-time` and no `temporal_bindings` row: the reader SHALL join the
 subject's model root to a checked `timed_model` root and its `time_source`,
@@ -1967,8 +1967,8 @@ not `timed`, or whose `clock_name` is `model-time` or `model-steps`, refuses
 `invalid_package`/`timed-node-reference` at the whole row. This places a
 non-`timed` row (TN-09) at `/temporal_bindings/{i}`, following the published
 vector, where FSpec FR-322's general kind-mismatch rule names
-`/temporal_bindings/{i}/clock/kind`; the difference is to be raised with the
-planner for the spec lane to align. A trace subject
+`/temporal_bindings/{i}/clock/kind`; the difference is tracked as QSL-2310 item 1
+for the spec lane to align. A trace subject
 takes its time-stamped positions and order from the temporal profile input and
 requires no checked time source. The other three configured profiles keep
 their row requirements and kind joins. Validation and join visits consume the
