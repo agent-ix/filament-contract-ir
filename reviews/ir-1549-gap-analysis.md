@@ -38,3 +38,13 @@ Changes requested. IR-1549's "Done when" asks only for the tag, the forms and st
 | FND-001 | high | FR-640's node-joining Reader rules are absent from this repo's spec, with no planned record, no owner and no ticket. FR-369 only says they "are not part of this requirement", and the matrix row is ✅ Implemented. The missing rules are: rule 1 operation references; rule 2 parameter name and type; rule 3 workload omit, repeat, misname and member order; rule 4 reward value_type, clause function and state reads; rule 5 delay on a non-`time dense` model; `conflicting-definition` across nodes; and the Typed read. The public strict reader therefore admits an out-of-order workload and operation references to a non-`model` node (probe). Record them as 🚧 Planned (FR-369 PARTIAL, or a planned FR plus matrix row) with owner "planner to assign". | spec/checked_package/functional/FR-369-read-probabilistic-nodes-and-their-four-forms.md:55-57 |
 | FND-002 | medium | Two FR-640 rules need no other node, yet they are neither implemented nor listed among FR-369's exclusions. An exact weight "in lowest terms" (FR-640 Properties) is not checked: `2/2` is admitted. A support that "repeats a value" (Reader rule 2) is not checked: a support of `1, 1` is admitted. FR-369's claim to cover "the rules that need no other node" is therefore incomplete. | crates/filament-contract-model/src/checked_package/v2/probabilistic.rs:158-168 |
 | FND-003 | low | FR-369-AC-2 names "a short or extended nested support, weight or delay row", but no test damages a workload `weights` row. Only a support row (short) and a discrete row (extended) are exercised. | crates/filament-contract-model/src/checked_package/v2/probabilistic.rs:595-617 |
+
+## Dispositions
+
+Round 1 checks the fix commits 6d0eb621 and d0c796b0 at head d0c796b0. `quire coverage --scope . --strict` reports FR-369 5/5 backed. It still reports the 61 unbacked rows that `origin/main` has.
+
+| FND | Outcome | Reason |
+| --- | --- | --- |
+| FND-001 | fixed | FR-369 now has a `### Planned` section listing rule 1 to rule 5 joins, `conflicting-definition` and the Typed read. It marks the requirement PARTIAL with "Owner: planner to assign". The tests.md FR-369 and TC-476 rows and the TC-476 Status now read Partial / Planned. |
+| FND-002 | fixed | `weight()` checks lowest terms with `natural::coprime`, and the support check refuses a repeated value at the later row. Tests cover 2/2, 0/5 and a support of 1, 3, 1, and the public reader refuses 2/2. Mutations M18 and M19 are killed. |
+| FND-003 | fixed | `a_missing_or_extra_member_is_refused` now pops and extends a workload weights row, and refuses `malformed_wire` at `/body/members/2/value/members/0/members`. |

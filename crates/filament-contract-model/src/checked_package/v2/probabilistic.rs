@@ -916,6 +916,16 @@ mod tests {
             &wire(vec![node("delay_distribution", interval)]),
             "/semantic_graph/nodes/0/body/members/3/value/members/0/value",
         );
+        // A `discrete` delay is a quantity literal too.
+        let mut row = discrete_row("1", "90");
+        row["members"][0]["value"] = literal("rational", "1");
+        wire_refusal(
+            &wire(vec![node(
+                "delay_distribution",
+                delay("discrete", aggregate(vec![row])),
+            )]),
+            "/semantic_graph/nodes/0/body/members/3/value/members/0/members/0/value",
+        );
         // A weight is a rational literal.
         let mut row = support_row("1", "9");
         row["members"][1]["value"] = literal("integer", "9");
@@ -923,6 +933,33 @@ mod tests {
             &wire(vec![node("random_parameter", random_parameter(vec![row]))]),
             "/semantic_graph/nodes/0/body/members/3/value/members/0/members/1/value",
         );
+    }
+
+    /// A time quantity is not negative.
+    #[trace("TC-476", "FR-369-AC-2")]
+    #[test]
+    fn a_negative_time_quantity_is_refused() {
+        let interval = delay(
+            "uniform_interval",
+            aggregate(vec![quantity("lower", "-1"), quantity("upper", "4")]),
+        );
+        wire_refusal(
+            &wire(vec![node("delay_distribution", interval)]),
+            "/semantic_graph/nodes/0/body/members/3/value/members/0/value/value",
+        );
+        let discrete = delay("discrete", aggregate(vec![discrete_row("-3", "10")]));
+        wire_refusal(
+            &wire(vec![node("delay_distribution", discrete)]),
+            "/semantic_graph/nodes/0/body/members/3/value/members/0/members/0/value/value",
+        );
+        read(&wire(vec![node(
+            "delay_distribution",
+            delay(
+                "uniform_interval",
+                aggregate(vec![quantity("lower", "0"), quantity("upper", "4")]),
+            ),
+        )]))
+        .expect("a zero lower bound admits");
     }
 
     /// The reader charges one visit per node and one per support, weight or
@@ -1034,5 +1071,21 @@ mod tests {
         let mut none = limited(0);
         run(&mut none, "reward", reward()).expect_err("no allowance for the node");
         assert_eq!(none.consumed().work, 0);
+        // A budget one unit short of the total is denied at the last charge.
+        for (form, body) in [
+            ("workload", workload_rows(2)),
+            ("random_parameter", support(vec!["1", "2"])),
+            ("delay_distribution", discrete(vec!["1", "2"])),
+        ] {
+            let total = work(form, body.clone());
+            let mut short = limited(total - 1);
+            let failure = run(&mut short, form, body).expect_err("one unit short");
+            assert!(
+                matches!(failure, ValidationFailure::Budget(_)),
+                "{form}: {failure:?}"
+            );
+            assert!(short.consumed().work < total, "{form}");
+            assert!(short.first_unpaid().is_some(), "{form}");
+        }
     }
 }

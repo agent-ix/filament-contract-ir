@@ -61,3 +61,22 @@ Changes requested. The tag, the four forms, the binding order and the outer reco
 | FND-002 | medium | Delay `parameters` that do not match the family (a `uniform` delay with members, an `exponential` delay without exactly `rate`, an interval without lower/upper) refuse `malformed_wire`. FR-640 Reader rule 5 lists "parameters that do not match the family" as `invalid_package`/`invalid-value`. | crates/filament-contract-model/src/checked_package/v2/probabilistic.rs:205-228 |
 | FND-003 | medium | Guards with no test that can fail: the owner, recursion_group, occurrence-count and occurrence-role checks; `uniform` with parameters; the reward value_type/expression term kinds; the quantity kind; and the per-node and per-row budget charges. Mutations M04-M07, M10, M11, M13, M15 and M16 each survive. The charge rule is stated in FR-369 Behavior but has no AC or test, and FR-640 requires `incomplete` at the first uncharged member. | crates/filament-contract-model/src/checked_package/v2/probabilistic.rs:118-232 |
 | FND-004 | medium | Every TC-476 test calls the private `flat_wire::check`. None reads a package through the public strict reader (`CheckedPackageV2::read` / `read_checked_package`), so the structural.rs dependency/role rule and admission through every later stage are untested. FSL's `a_random_parameter_is_emitted_and_read_back` (IR-1549 AC 4) depends on exactly that whole read. The scratch probe shows it admits today. | crates/filament-contract-model/src/checked_package/v2/probabilistic.rs:459-469 |
+
+## Dispositions
+
+Round 1 checks the fix commits 6d0eb621 and d0c796b0 at head d0c796b0. I re-ran the mutation set on a copy of the new `probabilistic.rs`: the original 16 mutations, adapted to the new signatures, and 8 more for the new rules. 22 of the 24 are killed. Two survive: M16 (the discrete-row `delay` quantity kind) and M23 (the new negative-quantity refusal).
+
+A scratch probe read the public `CheckedPackageV2::read` over unit-typed quantities. It admits `uniform`, `uniform_interval 1..4` and `discrete {1: 90, 3: 10}`.
+
+| FND | Outcome | Reason |
+| --- | --- | --- |
+| FND-001 | fixed | `weight()` now refuses `invalid-value` for a non-exact spelling, a negative value and a value not in lowest terms. The unit test covers -1, -1/2, -0, 2/2, 0/5, 01, 1/0 and x, plus a rate of -1. The public reader refuses a workload weight of -1 as `invalid_package`/`invalid-value`. Mutations M17 and M22 are killed. |
+| FND-002 | fixed | `family_bind` maps a family-parameter shape failure to `invalid-value`, and `uniform` with members refuses `invalid-value`. The tests cover uniform, interval, exponential, lambda and a discrete-row case, plus a public-reader `uniform`+rate case. Mutations M13, M20 and M21 are killed. |
+| FND-003 | still-open | The owner, recursion_group, occurrence-count and occurrence-role guards, the reward term kinds and the node and row charges are now killed (M04-M07, M10, M11a-c, M15, M24). I accept the unit-level budget test, which checks exact counts and a `Budget` failure at the first uncharged row: the public `incomplete` mapping is the shared stage machinery. One survivor remains, M16: removing `quantity(r[0])` from the discrete row. No test gives a `discrete` row's `delay` another term kind; only the `uniform_interval` lower bound is tested. |
+| FND-004 | fixed | `tests/it/checked_package_v2_probabilistic.rs` reads each of the four forms through `CheckedPackageV2::read` (AC-1) and covers missing/extra/owner (AC-2), value refusals (AC-3) and the unknown tag (AC-4). The scratch probe also confirmed the public reader admits `uniform_interval` and `discrete` with unit-typed quantities. |
+
+## New findings (disposition pass 1)
+
+| ID | Severity | Summary | Refs |
+| --- | --- | --- | --- |
+| FND-005 | low | The fix adds a negative-quantity refusal (`quantity()` now matches `Some((false, _, _))`), but no test gives a time quantity a negative spelling. Mutation M23, which admits a negative quantity, survives. | crates/filament-contract-model/src/checked_package/v2/probabilistic.rs:418-424 |
