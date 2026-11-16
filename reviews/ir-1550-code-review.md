@@ -52,3 +52,34 @@ Changes requested. The join's structure, ordering, conflict keys and typed-read 
 | FND-007 | medium | The join stage's work is not specified and not tested. It charges a second visit per `probabilistic` node and per workload row, one visit per node the reward walk reaches, and storage for `by_id`, `seen` and `named`. `is_dense` scans every graph node per delay node with no charge. FR-369 says one visit per node and per member, and the AC-5 test covers `check_wire` only. | crates/filament-contract-model/src/checked_package/v2/probabilistic_join.rs:217-224,243,374,495 |
 | FND-008 | low | `#[ix_trace_rs::string_edge]` on `probabilistic_join::validate` is not needed: the CI scanner (FSL 95fbb139) reports the tree clean with it removed. The marker exempts the whole function from the string-edge gate. The marker on `delay_distributions` is legitimate: removing it gives 4 branch-gating hits at probabilistic_read.rs:261-269. | crates/filament-contract-model/src/checked_package/v2/probabilistic_join.rs:460 |
 | FND-009 | low | The typed read gives weights, probabilities, rates and delay quantities as `&str` and `Box<str>`, although the crate already exports the exact `CheckedRational`. Delay quantities are given without their unit, so each consumer has to parse them again. | crates/filament-contract-model/src/checked_package/v2/probabilistic_read.rs:15-103 |
+
+## Dispositions
+
+Round 1 checks the fix commit 20f4f457 against the review head 966952c3. Gate at 20f4f457:
+
+- fmt, clippy `-D warnings`, `cargo deny --locked check` and `quire validate` pass.
+- `quire coverage --strict` has the same 61 unbacked rows as `origin/main`, and FR-369 is 17/17.
+- `make string-edge` with the CI-installed scanner (FSL 0dce20ba) is clean.
+- The whole `cargo test --locked --workspace --features conformance-cli`, with `FILAMENT_SPECIFICATION_DIR` set to an `origin/main` extract, has only the 2 `lock_coherence` environment failures.
+
+Twenty-nine env-gated mutants of `probabilistic_join.rs` were run against the probabilistic `it` tests. Twenty-six were killed. The three survivors are gap-analysis New finding FND-005.
+
+`conformance_fspec` was run against the same `origin/main` 959a1982 spec extract. In parallel, the head gives 436 passed and 9 failed and contract-ir `origin/main` 9155a127 gives 435 passed and 8 failed. Run serially (`--test-threads=1`), both give only the same 2 failures, `model_tuple_union` and `timed_clock_no_row`. The `monitor_plan` failures are `repeated allocation requests` drift between threads in parallel runs: they pass serially on both, and their count varies from run to run. PR #1029 causes none of these failures.
+
+| FND | Outcome | Reason |
+| --- | --- | --- |
+| FND-001 | fixed | `reward` now admits `scalar_type` `integer`, `unit`, `carried_quantity`, `bounded_quantity` and `bounded_domain`/`integer_range`. The FR-369-AC-13 test admits a reward of the `ms` unit and of an `Int` range, and removing the unit and integer-range arms fails it. |
+| FND-002 | fixed | `literal_kind` takes the kind from `DomainModel::slot_type` (an integer or integer range gives `integer`, a quantity gives `quantity`, and so on). It falls back to `enum` only for a declared type with no member type. The FR-369-AC-13 test admits `d: Millis` (`Int[1, 12]`) with support 1, 3 and 12, and removing `slot_type` fails 6 tests. |
+| FND-003 | fixed | `Join::lineage` follows supertypes transitively, and each row's `declaring` node must be in that lineage within the same package. The FR-369-AC-15 test admits Leaf/Mid/Base. Restricting to direct supertypes fails it, and so does accepting any ancestor. |
+| FND-004 | fixed | Coverage now loops over every node in the lineage for every model. FR-369-AC-15 refuses a model that leaves out its own operation, and one that leaves out the grandparent's. Removing the coverage check fails 2 tests. |
+| FND-005 | fixed | A support value of a quantity type must have its literal typed at the parameter's unit (`literal_unit`). FR-369-AC-14 refuses a value in `s` on a `ms` parameter, and removing the check fails it. |
+| FND-006 | fixed | `reads_beyond_parameters` is now an allow-list that cites FR-405. It admits type nodes, listed parameters, values, functions and ten value-computing expressions, and refuses every other kind. FR-369-AC-16 has one case per forbidden form, plus a `state` node, a `model` node and an unlisted parameter. Each per-form mutant is killed. |
+| FND-007 | fixed | FR-369 now states the join's charges, and `is_dense` charges one visit per node it scans. FR-369-AC-17 (`the_join_charges_the_dense_root_scan`) measures the differential cost, and dropping the scan charge fails it. The supertype-edge charge has no test: see gap-analysis New finding FND-005. |
+| FND-008 | fixed | The marker on `validate` is removed, and the marker on `delay_distributions` is kept. `make string-edge` is clean. |
+| FND-009 | fixed | Weights, probabilities and rates are `CheckedRational`. Delay quantities are `CheckedDelayQuantity { magnitude, unit }`. The new type is in `lib.rs` and the FR-019 row. |
+
+## New findings (disposition pass 1)
+
+| ID | Severity | Summary | Refs |
+| --- | --- | --- | --- |
+| FND-010 | medium | The reward value-type allow-list still leaves out `scalar_type`/`compound_unit`, which FR-322 uses for a quantity formed over a compound unit. FR-405 admits any quantity type (FR-142), so a reward typed by a compound-unit quantity is refused. FR-369 Behavior has the same omission. | crates/filament-contract-model/src/checked_package/v2/probabilistic_join.rs:335-345 |

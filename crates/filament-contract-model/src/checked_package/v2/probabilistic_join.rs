@@ -338,6 +338,7 @@ impl<'a> Join<'a> {
                 CheckedNodeKind::ScalarType(
                     ScalarTypeForm::Integer
                         | ScalarTypeForm::Unit
+                        | ScalarTypeForm::CompoundUnit
                         | ScalarTypeForm::CarriedQuantity
                         | ScalarTypeForm::BoundedQuantity
                 ) | CheckedNodeKind::BoundedDomain(BoundedDomainForm::IntegerRange)

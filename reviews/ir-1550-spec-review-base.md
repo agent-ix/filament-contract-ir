@@ -36,3 +36,14 @@ Changes requested. FR-369 restates FR-640's reward value type more narrowly than
 | FND-002 | medium | The Planned paragraph is incomplete and partly inaccurate. It says "only the literal kind is checked", but for a declared parameter type the reader assumes kind `enum`. It omits the unit of a `Quantity<u>` support value. It says a supertype model's inherited operations go unjudged, when its own operations go unjudged too. It does not say that only direct supertypes are recognised. | spec/checked_package/functional/FR-369-read-probabilistic-nodes-and-their-four-forms.md:112-120 |
 | FND-003 | low | FR-640 does not define "reads state". FR-369's set (a `state` node, or a `pre_read`, `presence_read`, `value_read`, `deref`, `query` or `reachability` expression reached through functions, expressions and values) is a documented, minimal IR reading. It cites no source, and it is a deny-list where FR-405 gives a positive rule: the reward "reads only the operation's parameters". | spec/checked_package/functional/FR-369-read-probabilistic-nodes-and-their-four-forms.md:89-94 |
 | FND-004 | low | FR-369 states one validation visit per node and per member, but says nothing about the join stage's own charges: a re-visit per node and per workload row, the reward walk, and the scan for a timed root. The join's total budget therefore has no stated formula and no AC. | spec/checked_package/functional/FR-369-read-probabilistic-nodes-and-their-four-forms.md:66-69,74-110 |
+
+## Dispositions
+
+Round 1 checks FR-369, TC-476, tests.md and FR-019 at 20f4f457. `quire validate` exits 0.
+
+| FND | Outcome | Reason |
+| --- | --- | --- |
+| FND-001 | fixed | The FR-369 reward clause now lists `integer`, `carried_quantity`, `bounded_quantity`, unit (`Quantity<u>`, `Duration`) and `integer_range` as FR-322's integer and quantity type nodes. The `compound_unit` gap that remains is code-review New finding FND-010. |
+| FND-002 | fixed | The Planned paragraph is rewritten, and it matches the code: a bounded or declared type's range, the delay unit and a reward function's computed type are open, and declared record, tuple, variant, option and collection support values are refused. The inheritance and quantity-unit items are now implemented, not Planned. |
+| FND-003 | fixed | FR-369 quotes FR-405 ("reads only the operation's parameters, random parameters included ... reads no state"). It states the rule as a positive walk with the admitted kinds listed and every other kind refused. |
+| FND-004 | fixed | FR-369 now states the join's charges: one per `probabilistic` node, workload row, supertype edge, node reached in the reward walk, and node scanned for the dense root. FR-369-AC-17 tests the scan charge. |

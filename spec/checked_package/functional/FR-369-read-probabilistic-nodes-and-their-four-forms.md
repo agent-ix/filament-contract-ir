@@ -88,10 +88,12 @@ failure with `invalid_package` and cause `invalid-value`, at the failing member:
 - a `workload` whose `model` is not a `model` node, whose weights are not in
   strictly ascending order of (`declaring` node id, `operation` name), whose
   row names an operation that is neither the model's own nor inherited through
-  its supertypes, followed transitively, or that omits an operation the model
+  its supertypes, followed transitively, or repeats an operation name another row
+  already names, or that omits an operation the model
   declares or inherits;
 - a `reward` whose `value_type` is none of an `integer`, a `carried_quantity`,
-  a `bounded_quantity` or a unit (`Quantity<u>`, `Duration`) type node, or an
+  a `bounded_quantity` or a unit (`Quantity<u>`, `Duration`) type node, a `compound_unit` node (a
+  quantity over a compound unit), or an
   `integer_range` node (`Int[lo, hi]`), the type nodes FSpec FR-322 gives an
   integer or quantity type, or whose `expression` is not a `function` node
   owned by the model operation member, that lists exactly the operation's
@@ -159,16 +161,16 @@ collection type has no literal kind and is refused. Owner: titan:IR:code.
 | FR-369-AC-5 | The reader charges one work unit for each node and for each row of a support, a workload weights list or a discrete delay list, and a budget one unit short of the total is denied at the first uncharged row. | Test |
 | FR-369-AC-6 | An operation reference of each form whose `declaring` node is no `model` node, or which names an operation that node does not declare, refuses `invalid_package`/`invalid-value` at the member; a package whose references all name declared operations is admitted. | Test |
 | FR-369-AC-7 | A `random_parameter` whose `parameter` is not a parameter of the operation, or whose support value has another literal kind than the parameter's type, refuses `invalid_package`/`invalid-value` at the member. | Test |
-| FR-369-AC-8 | A `workload` that omits an operation of its model, repeats one, lists its rows out of order, names an operation the declaring node lacks, or names a `model` that is no model node refuses `invalid_package`/`invalid-value` at the member; a workload covering every operation in order is admitted. | Test |
-| FR-369-AC-9 | A `reward` whose `value_type` is a Boolean type, whose `expression` function is owned by another operation, lists no parameters, or has another type than `value_type` refuses `invalid_package`/`invalid-value` at the member; a reward whose function is owned by its operation with its parameters is admitted. | Test |
+| FR-369-AC-8 | A `workload` that omits an operation of its model, repeats one (also through another declaring model), lists its rows out of order, names an operation the declaring node lacks, or names a `model` that is no model node refuses `invalid_package`/`invalid-value` at the member; a workload covering every operation in order is admitted. | Test |
+| FR-369-AC-9 | A `reward` whose `value_type` is a Boolean type, whose `expression` function is owned by another operation, lists no parameters or the operation's parameters in another count or order, or has another type than `value_type` refuses `invalid_package`/`invalid-value` at the member; a reward whose function is owned by its operation with its parameters is admitted. | Test |
 | FR-369-AC-10 | A `delay_distribution` on a model that has no `timed_model` root refuses `invalid_package`/`invalid-value` at `declaring`; one on the published timed model's `dense` source is admitted. | Test |
 | FR-369-AC-11 | A second `random_parameter` of one operation parameter, `workload` of one name, `reward` of one name on one operation and `delay_distribution` of one operation refuse `invalid_package`/`conflicting-definition` at the later node. | Test |
 | FR-369-AC-12 | An admitted package gives the support of a random parameter with the exact probability of each value, a reward with its name, type and function, a workload with all its weights in order, and a delay distribution of each family with its exact numbers and the unit of each time quantity, each keyed by its node. | Test |
-| FR-369-AC-13 | A `random_parameter` of a declared value type (`Int[1, 12]`) with integer support, and one of a `Quantity<u>` type with quantities in `u`, are admitted; a `reward` whose `value_type` is a unit type or an `integer_range` type is admitted. | Test |
+| FR-369-AC-13 | A `random_parameter` of a declared value type (`Int[1, 12]`) with integer support, and one of a `Quantity<u>` type with quantities in `u`, are admitted; a `reward` whose `value_type` is a unit type, a compound-unit type or an `integer_range` type is admitted. | Test |
 | FR-369-AC-14 | A support value of a declared integer type given as text, a quantity in another unit than the parameter's, and a quantity given as an integer refuse `invalid_package`/`invalid-value` at the value. | Test |
 | FR-369-AC-15 | A `workload` is admitted when it names the model's own operations and those it inherits through supertypes of supertypes; one that omits the model's own operation although the model has supertypes, one that omits an inherited operation, and one that names a model that is no ancestor refuse `invalid_package`/`invalid-value` at the member. | Test |
 | FR-369-AC-16 | A `reward` whose function reaches a `pre_read`, `presence_read`, `value_read`, `deref`, `query` or `reachability` expression, a `state` node, a `model` node, or a parameter it does not list refuses `invalid_package`/`invalid-value` at `expression`; one that reaches a constant is admitted. | Test |
-| FR-369-AC-17 | The join charges one validation visit for each node scanned for a delay's `dense` root: the work a delay costs grows by at least the number of nodes added before the root. | Test |
+| FR-369-AC-17 | The join charges one validation visit for each node scanned for a delay's `dense` root and one for each supertype edge followed for a workload: the work grows by at least the nodes added before the root and the edges added to the chain. | Test |
 
 ## Dependencies
 

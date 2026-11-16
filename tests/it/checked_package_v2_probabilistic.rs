@@ -26,6 +26,11 @@ const WITHDRAW: &str = "ix://test/families/Account/withdraw";
 /// the parameters `d: Millis` (a value type `Int[1, 12]`) and
 /// `t: Quantity<ms>` on `withdraw`.
 fn document() -> Value {
+    document_with(0)
+}
+
+/// [`document`] with `chain` supertypes without operations above `Base`.
+fn document_with(chain: usize) -> Value {
     let mut document = family_model_document();
     let one = json!({"lower": 1, "upper": 1, "ordered": false, "unique": true});
     document["types"][0]["operations"][0]["params"] = json!([{
@@ -35,11 +40,40 @@ fn document() -> Value {
         {"name": "d", "typeRef": "ix://test/families/Millis", "multiplicity": one},
         {"name": "t", "typeRef": "ix://filament/unit/ms", "multiplicity": one},
     ]);
-    for (name, supertypes, operation) in [
-        ("Base", json!([]), "ping"),
-        ("Mid", json!([format!("ix://{PACKAGE}/Base")]), "pong"),
-        ("Leaf", json!([format!("ix://{PACKAGE}/Mid")]), "run"),
-    ] {
+    let above = |index: usize| format!("ix://{PACKAGE}/Up{index}");
+    let base_supers = if chain == 0 {
+        json!([])
+    } else {
+        json!([above(0)])
+    };
+    let mut declared = vec![
+        ("Base".to_owned(), base_supers, vec!["ping"]),
+        (
+            "Mid".to_owned(),
+            json!([format!("ix://{PACKAGE}/Base")]),
+            vec!["ping", "pong"],
+        ),
+        (
+            "Leaf".to_owned(),
+            json!([format!("ix://{PACKAGE}/Mid")]),
+            vec!["run"],
+        ),
+    ];
+    for index in 0..chain {
+        let supers = if index + 1 < chain {
+            json!([above(index + 1)])
+        } else {
+            json!([])
+        };
+        declared.push((format!("Up{index}"), supers, vec![]));
+    }
+    for (name, supertypes, operations) in declared {
+        let operations: Vec<Value> = operations
+            .into_iter()
+            .map(|operation| {
+                json!({"identity": format!("ix://{PACKAGE}/{name}/{operation}"), "params": []})
+            })
+            .collect();
         document["types"]
             .as_array_mut()
             .expect("types")
@@ -48,9 +82,7 @@ fn document() -> Value {
                 "kind": {"module": PACKAGE, "name": "entity"},
                 "roles": [], "constraints": [], "extensions": [], "unknownPolicy": "reject",
                 "supertypes": supertypes, "fields": [], "relationships": [],
-                "operations": [{
-                    "identity": format!("ix://{PACKAGE}/{name}/{operation}"), "params": [],
-                }],
+                "operations": operations,
             }));
     }
     document["constructs"]
@@ -266,9 +298,15 @@ fn add_units(value: &mut Value) -> Value {
 
 /// The family package with the nodes a reward joins and `nodes` added.
 fn assemble(nodes: Vec<(Value, &str)>) -> Value {
+    assemble_with(0, nodes)
+}
+
+fn assemble_with(chain: usize, nodes: Vec<(Value, &str)>) -> Value {
     let mut value = v2_all_families();
     add_units(&mut value);
-    for name in ["Base", "Mid", "Leaf"] {
+    let mut names = vec!["Base".to_owned(), "Mid".to_owned(), "Leaf".to_owned()];
+    names.extend((0..chain).map(|index| format!("Up{index}")));
+    for name in names {
         let identity = format!("ix://{PACKAGE}/{name}");
         let mut model = plain_node(
             &["model", "object_type", &identity],
@@ -1095,4 +1133,169 @@ fn the_public_reader_admits_only_the_reads_fr_405_allows() {
             .push(id(&["reward", "constant"]));
     });
     admitted(&value);
+}
+
+/// FR-369-AC-13: a reward over a compound-unit quantity type is admitted.
+#[trace("TC-476", "FR-369-AC-13")]
+#[test]
+fn the_public_reader_admits_a_reward_over_a_compound_unit() {
+    let compound = id(&["reward", "compound"]);
+    let mut node = plain_node(
+        &["reward", "compound"],
+        "scalar_type",
+        "compound_unit",
+        compound.clone(),
+        aggregate(vec![aggregate(vec![
+            binding("unit", reference(node_id("ms"))),
+            binding("exponent", literal("integer", json!("2"))),
+        ])]),
+    );
+    node["dependencies"] = json!([node_id("ms")]);
+    let body = with(
+        operation(),
+        vec![
+            binding("name", text("area")),
+            binding("value_type", reference(compound.clone())),
+            binding("expression", reference(id(&["reward", "function"]))),
+        ],
+    );
+    // The compound unit precedes the reward that depends on it.
+    let mut value = assemble(vec![
+        (node, "generated"),
+        (probabilistic("only", "reward", body), "declaration"),
+    ]);
+    node_by_label(&mut value, &["reward", "function"])["semantic_type"] = compound;
+    refresh_identity(&mut value);
+    admitted(&value);
+}
+
+/// A reward on `withdraw` whose function lists `listed` of the parameters
+/// `d` and `t` (every reference legal), owned by `withdraw`.
+fn withdraw_reward(listed: &[&str]) -> Value {
+    let body = with(
+        vec![
+            binding("declaring", reference(account())),
+            binding("operation", text("withdraw")),
+        ],
+        vec![
+            binding("name", text("duration")),
+            binding("value_type", reference(integer())),
+            binding("expression", reference(id(&["reward", "function"]))),
+        ],
+    );
+    let mut value = package("reward", body, |_| {});
+    for name in ["d", "t"] {
+        let parameter = plain_node(
+            &["reward", name],
+            "value",
+            "parameter",
+            integer(),
+            aggregate(vec![
+                binding("name", text(name)),
+                binding("level", literal("integer", json!("0"))),
+            ]),
+        );
+        append(&mut value, parameter, "expression");
+    }
+    let function = node_by_label(&mut value, &["reward", "function"]);
+    function["owner"]["node"] = json!(WITHDRAW);
+    function["body"]["members"][0]["value"]["members"] = json!(listed
+        .iter()
+        .map(|name| reference(id(&["reward", name])))
+        .collect::<Vec<_>>());
+    function["dependencies"] = json!(["d", "t"]
+        .into_iter()
+        .filter(|name| listed.contains(name))
+        .map(|name| id(&["reward", name]))
+        .collect::<Vec<_>>());
+    refresh_identity(&mut value);
+    value
+}
+
+/// FR-369-AC-9: a function that lists the operation's parameters in another
+/// count or order refuses although it reads only parameters it lists.
+#[trace("TC-476", "FR-369-AC-9")]
+#[test]
+fn the_public_reader_refuses_a_reward_function_that_lists_the_wrong_parameters() {
+    admitted(&withdraw_reward(&["d", "t"]));
+    refuse_invalid(&withdraw_reward(&["t", "d"]), &bad_target(4));
+    refuse_invalid(&withdraw_reward(&["d"]), &bad_target(4));
+    refuse_invalid(&withdraw_reward(&["d", "d"]), &bad_target(4));
+}
+
+/// FR-369-AC-8: two rows that name one operation name through different
+/// declaring models refuse, each row being valid alone.
+#[trace("TC-476", "FR-369-AC-8")]
+#[test]
+fn the_public_reader_refuses_one_operation_name_declared_by_two_models() {
+    let rows = "body/members/2/value/members";
+    admitted(&package(
+        "workload",
+        workload_of(
+            "Leaf",
+            &[("Base", "ping"), ("Leaf", "run"), ("Mid", "pong")],
+        ),
+        |_| {},
+    ));
+    refuse_invalid(
+        &package(
+            "workload",
+            workload_of(
+                "Leaf",
+                &[
+                    ("Base", "ping"),
+                    ("Leaf", "run"),
+                    ("Mid", "ping"),
+                    ("Mid", "pong"),
+                ],
+            ),
+            |_| {},
+        ),
+        &format!("{rows}/2"),
+    );
+}
+
+/// The least work limit under which `value` reads to a verdict.
+fn least_work(value: &Value, chain: usize) -> u64 {
+    let bytes = canonical(value);
+    let evidence = evidence_with_document(value, PACKAGE, &document_with(chain));
+    let (mut low, mut high) = (0_u64, 1_u64 << 40);
+    while low < high {
+        let middle = low + (high - low) / 2;
+        let mut limits = CheckedPackageReadLimits::bounded();
+        limits.work = middle;
+        match CheckedPackageV2::read(&bytes, limits, &evidence) {
+            CheckedPackageV2ReadResult::Incomplete(_) => low = middle + 1,
+            _ => high = middle,
+        }
+    }
+    low
+}
+
+/// FR-369-AC-17: the join charges one validation visit for each supertype
+/// edge it follows, so a workload costs more over a longer supertype chain.
+#[trace("TC-476", "FR-369-AC-17")]
+#[test]
+fn the_join_charges_each_supertype_edge() {
+    let whole = [("Base", "ping"), ("Leaf", "run"), ("Mid", "pong")];
+    let cost = |chain: usize| {
+        let node = probabilistic("only", "workload", workload_of("Leaf", &whole));
+        let with = assemble_with(chain, vec![(node, "declaration")]);
+        let without = assemble_with(chain, vec![]);
+        match CheckedPackageV2::read(
+            &canonical(&with),
+            CheckedPackageReadLimits::bounded(),
+            &evidence_with_document(&with, PACKAGE, &document_with(chain)),
+        ) {
+            CheckedPackageV2ReadResult::Admitted(_) => {}
+            other => panic!("expected admission, read {other:?}"),
+        }
+        least_work(&with, chain) - least_work(&without, chain)
+    };
+    let extra = 20;
+    let (short, long) = (cost(0), cost(extra));
+    assert!(
+        long >= short + u64::try_from(extra).expect("count"),
+        "the edges are charged: {short} then {long}"
+    );
 }
