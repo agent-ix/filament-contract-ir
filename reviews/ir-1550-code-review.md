@@ -62,7 +62,7 @@ Round 1 checks the fix commit 20f4f457 against the review head 966952c3. Gate at
 - `make string-edge` with the CI-installed scanner (FSL 0dce20ba) is clean.
 - The whole `cargo test --locked --workspace --features conformance-cli`, with `FILAMENT_SPECIFICATION_DIR` set to an `origin/main` extract, has only the 2 `lock_coherence` environment failures.
 
-Twenty-nine env-gated mutants of `probabilistic_join.rs` were run against the probabilistic `it` tests. Twenty-six were killed. The three survivors are gap-analysis New finding FND-005.
+Twenty-eight env-gated mutants of `probabilistic_join.rs` were run against the probabilistic `it` tests. They were the eleven round-0 rule removals adapted to the new code, `params` among them, plus seventeen for the new checks. Twenty-five were killed. The three survivors, `params`, `repeat` and `lineagecharge`, are gap-analysis New finding FND-005. (This count was corrected in round 2: the round-1 text and comment said 29 run and 26 killed.)
 
 `conformance_fspec` was run against the same `origin/main` 959a1982 spec extract. In parallel, the head gives 436 passed and 9 failed and contract-ir `origin/main` 9155a127 gives 435 passed and 8 failed. Run serially (`--test-threads=1`), both give only the same 2 failures, `model_tuple_union` and `timed_clock_no_row`. The `monitor_plan` failures are `repeated allocation requests` drift between threads in parallel runs: they pass serially on both, and their count varies from run to run. PR #1029 causes none of these failures.
 
@@ -83,3 +83,16 @@ Twenty-nine env-gated mutants of `probabilistic_join.rs` were run against the pr
 | ID | Severity | Summary | Refs |
 | --- | --- | --- | --- |
 | FND-010 | medium | The reward value-type allow-list still leaves out `scalar_type`/`compound_unit`, which FR-322 uses for a quantity formed over a compound unit. FR-405 admits any quantity type (FR-142), so a reward typed by a compound-unit quantity is refused. FR-369 Behavior has the same omission. | crates/filament-contract-model/src/checked_package/v2/probabilistic_join.rs:335-345 |
+
+## Dispositions (round 2)
+
+Round 2 checks the fix commit 0ef9e0ec. Gate at 0ef9e0ec:
+
+- fmt, clippy `-D warnings`, `cargo deny --locked check` and `quire validate` pass.
+- `quire coverage --strict` has the same 61 unbacked rows as `origin/main`, and FR-369 is 17/17.
+- `make string-edge` with the CI-installed scanner (FSL 61afe659) is clean.
+- The whole `cargo test --locked --workspace --features conformance-cli`, with `FILAMENT_SPECIFICATION_DIR` set to an `origin/main` 959a1982 extract and the scanner on PATH, gives 2288 passed and 2 failed. The 2 are the `lock_coherence` environment failures.
+
+| FND | Outcome | Reason |
+| --- | --- | --- |
+| FND-010 | fixed | `reward` now admits `ScalarTypeForm::CompoundUnit`. FR-369 Behavior and FR-369-AC-13 name the `compound_unit` node. Removing the arm fails `the_public_reader_admits_a_reward_over_a_compound_unit` and nothing else. |

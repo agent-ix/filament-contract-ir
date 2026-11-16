@@ -55,3 +55,11 @@ Round 1 checks the fix commit 20f4f457. The probabilistic tests (18 in `it`) pas
 | ID | Severity | Summary | Refs |
 | --- | --- | --- | --- |
 | FND-005 | low | Three join mutants survive the tests. Removing the parameter-list match in `reward` survives, because the unlisted-parameter walk refuses the "no parameters" case first, so the list check is never the only rule a test breaks. Removing the cross-declaring repeated-name check (`named.contains`) survives. So does dropping the visit FR-369 states for each supertype edge. | crates/filament-contract-model/src/checked_package/v2/probabilistic_join.rs:367-388,423,489 |
+
+## Dispositions (round 2)
+
+Round 2 checks the fix commit 0ef9e0ec. The probabilistic `it` tests (22) pass at the head. The three round-1 survivors were rerun as env-gated mutants, and each is now killed by exactly the new test named below.
+
+| FND | Outcome | Reason |
+| --- | --- | --- |
+| FND-005 | fixed | `params` is killed by `the_public_reader_refuses_a_reward_function_that_lists_the_wrong_parameters`. `repeat` is killed by `the_public_reader_refuses_one_operation_name_declared_by_two_models`. `lineagecharge` is killed by `the_join_charges_each_supertype_edge`. FR-369-AC-8, AC-9 and AC-17 and the TC-476 steps name these cases. |
