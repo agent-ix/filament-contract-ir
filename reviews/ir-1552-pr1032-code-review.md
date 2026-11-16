@@ -47,3 +47,15 @@ Gate at 7852391e: whole `cargo test --locked --workspace --features conformance-
 | ID | Severity | Summary | Refs |
 | --- | --- | --- | --- |
 | FND-001 | medium | The join's member-type comparison (`member_type == Some(rendered.as_str())`) survives mutation: with it replaced by `true`, all 18 focused tests pass. No forged case has a tuple or union row whose identity is the selected one but whose member type is not, on a row that the Clock-terminal check does not already catch (a non-terminal tuple/union row, e.g. a position typed by a record with a clock field). FR-038 names "a member type ... that is not the declared one" as a refusal | crates/filament-contract-model/src/checked_package/v2/timed_model.rs:1282-1286; tests/conformance_fspec/clock_payload_tuple.rs:646-809 |
+
+## New findings (disposition pass 1)
+
+| ID | Severity | Summary | Refs |
+| --- | --- | --- | --- |
+| FND-002 | medium | The CP-07 clock-bearing walk (`bears_clock` / `member_bears_clock`) follows only `Clock`, declared tuples and variants, and sequence/map element layers; an option layer and a record value type return false. Probed at 3e8b9913 with a scratch test (reverted): `structural.eq` over a tuple `(Option<Slot>, Integer)` and over a tuple `(Timer, Integer)` (the published timed-slot record `Timer { x: Clock; n: Integer }`) both admit, while FR-322 says a clock-bearing position or payload makes the tuple or union clock-bearing and FR-415 counts `Option<Clock>` and a record with a clock field as clock-bearing. FR-038's new sentence ("through nested tuples, unions and collection element types") states the same narrower rule | crates/filament-contract-model/src/checked_package/v2/model_members.rs:2554-2575; spec/checked_package/functional/FR-038-consume-checked-package-v2.md:1789-1792 |
+
+## Dispositions
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-001 | fixed | At b869112b `non_terminal_tuple_and_union_rows_join_the_declared_member_type` forges the non-terminal row of `field(w).tuple(0).tuple(0)` and `field(h).union(Has).tuple(0)` to another tuple or a data type, identity and Clock terminal intact, and requires `malformed-clock-place` at row 1. Rerun at 3e8b9913: the member-type-comparison mutant (M1c) now fails exactly that test; join off (M1) fails it and the forged test; identity removed (M1b) fails the forged test. |

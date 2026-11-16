@@ -32,3 +32,9 @@ Every new criterion has a test that can fail; one criterion has no trace tag. Th
 | ID | Severity | Summary | Refs |
 | --- | --- | --- | --- |
 | FND-001 | medium | FR-038-AC-552 (`Set<Slot>[0, 2]` clock collection and the differing-maximum refusal) has no `#[trace]`-tagged test: its evidence sits inside the AC-548 admission and forged tests, tagged only FR-038-AC-548 (and FR-069-AC-9). The tests.md range row "FR-038-AC-548 through FR-038-AC-553" hides the gap from `quire coverage --strict` | tests/conformance_fspec/clock_payload_tuple.rs:545,644; spec/checked_package/matrix/tests.md:169 |
+
+## Dispositions
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-001 | fixed | At b869112b `set_of_clock_bearing_tuples_is_a_clock_collection_bound_to_the_field` is tagged `#[trace("TC-048", "FR-038-AC-552")]`, asserts three rows, the field row's `set`/0/2, and the differing-maximum refusal at row 0; tests.md now has one row per AC, FR-038-AC-548 through FR-038-AC-554. `quire coverage --strict` at 3e8b9913: 61 unbacked, unchanged from main. |
