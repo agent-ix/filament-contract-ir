@@ -30,3 +30,11 @@ The FR-038 text is a faithful consumer of FR-322 and the TN vectors. Following T
 | --- | --- | --- | --- |
 | FND-001 | low | FR-038 places a non-`timed` trace row (TN-09) at the whole row without noting that this departs from FR-322's general rule (kind mismatch at `/temporal_bindings/{i}/clock/kind`); FR-322's timed bullet says only "at the clause body or the row". Neither FR-038 nor the PR body flags the discrepancy for the spec lane | spec/checked_package/functional/FR-038-consume-checked-package-v2.md:1958-1963 |
 | FND-002 | medium | FR-038 splits timed clauses into "model subject" and "trace subject" but does not say a hybrid-model `over` parameter counts as a model subject (no row, model-time); the code decides it in `hybrid_subject`, and FSpec FR-322 is silent too, so a second implementer could require a row for it | spec/checked_package/functional/FR-038-consume-checked-package-v2.md:1950-1966; crates/filament-contract-model/src/checked_package/v2/timed_model.rs:2713-2783 |
+
+## Dispositions
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-001 | fixed | FR-038 now records that TN-09 is placed at `/temporal_bindings/{i}` following the vector, where FR-322's general rule names `/clock/kind`, and the PR body records it too. Both still say "to be raised with the planner". The planner has since filed QSL-2310 (item 1), so the text should cite QSL-2310 instead. That is a wording refresh, not a blocker. |
+| FND-002 | fixed | FR-038 now states that an `over` parameter typed by a model, a model reference or a hybrid model has a model subject. It marks the hybrid case as this repository's reading because FR-322 does not name it. FR-038-AC-547 and `hybrid_subject_timed_clause_takes_no_clock_row` pin the rule, and mutation H3 makes the pin test fail. The upstream statement is QSL-2310 item 2; citing it here is the same wording refresh as FND-001. |
+

@@ -35,3 +35,16 @@ Mergeable, with findings. The serde form, the closed-shape refusals, the trace-s
 | ID | Severity | Summary | Refs |
 | --- | --- | --- | --- |
 | FND-001 | medium | A timed clause over a hybrid-model subject now has no row (is_model_subject_clause counts hybrid) and no ModelTime join (admitted_model_time resolves only Model/Reference kinds), so clock_for_claim on it returns MissingClock where it returned TraceTime before; no spec text or test covers it | crates/filament-contract-model/src/checked_package/v2/monitor_plan.rs:466-488; crates/filament-contract-model/src/checked_package/v2/timed_model.rs:2713-2783,2800-2826 |
+
+## New findings (disposition pass 1)
+
+| ID | Severity | Summary | Refs |
+| --- | --- | --- | --- |
+| FND-002 | medium | Removing the public `CheckedMonitorClock::TraceTime` breaks filament-driver at its next filament-contract-model update: origin/main 009a5b5 `src/monitor/selection.rs` matches `CheckedMonitorClock::TraceTime => false` exhaustively in `matches_configured_clock` (line 62) and its FR-015-AC-13 test `configured_clock_expectation_refuses_trace_time_binding` constructs `CheckedMonitorClock::TraceTime` (line 450). Driver is locked to contract-ir 80e3f67f, so it stays green until it updates. The round-0 statement that filament-driver uses only the error types was wrong (the grep output was truncated) | crates/filament-contract-model/src/checked_package/v2/monitor_plan.rs:172-188 |
+
+## Dispositions
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-001 | fixed | At 6b0735f1, FR-038 states that a hybrid-subject Timed clause's monitor clock read refuses `MissingClock`, and new FR-038-AC-547 records it. `monitor_plan_refuses_a_clock_read_of_a_hybrid_subject_timed_clause` reaches the read through a real monitor plan, so the case is reachable. Changing the MissingClock code makes it fail (mutation H1), and so does dropping the hybrid rule (H3). MissingClock is the right behaviour. TraceTime meant "trace timestamps supplied to the profile", which is wrong for a hybrid model, whose time is the model's own. FR-038 forbids manufacturing a clock. fsl-analyze already rejects any non-ModelTime clock (`let ModelTime else`), so no consumer relied on TraceTime for a hybrid clause. A hybrid timed claim therefore cannot be monitored; that rule belongs to the spec lane (QSL-2310 item 2). |
+
