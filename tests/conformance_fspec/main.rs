@@ -78,6 +78,7 @@ mod complete_identity_witness;
 mod checked_package_v2_graph_read_storage;
 #[path = "../it/checked_package_v2_map_type.rs"]
 mod checked_package_v2_map_type;
+mod clock_payload_tuple;
 use checked_package_v2_map_type as map_type;
 mod model_root;
 mod model_tuple_union;
@@ -356,6 +357,7 @@ fn cause_word(cause: Cause) -> &'static str {
         Cause::WrongExport => "wrong-export",
         Cause::WrongObservation => "wrong-observation",
         Cause::InvalidTaskSet => "invalid-task-set",
+        Cause::ClockReadOutsideConstraint => "clock-read-outside-constraint",
     }
 }
 

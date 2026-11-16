@@ -1618,6 +1618,31 @@ fn operation_defect(
         )));
     }
 
+    // FR-322: `=` and `!=` over a clock-bearing tuple or union would read its
+    // clocks, which only a clock constraint may do.
+    if matches!(
+        operation.identity.as_ref(),
+        "filament.op.structural.eq"
+            | "filament.op.structural.ne"
+            | "filament.op.enum.eq"
+            | "filament.op.enum.ne"
+    ) {
+        for argument in admitted_arguments(application, graph).unwrap_or_default() {
+            let Some(type_id) =
+                operand_type_node_typed(argument, graph.nodes, graph.kinds, graph.index)
+            else {
+                continue;
+            };
+            if owners.bears_clock(type_id, meter)? {
+                return Ok(Some(application.refuse(
+                    CheckedPackageRefusalCode::InvalidTimedModel,
+                    node_pointer(application.position),
+                    CheckedPackageRefusalCause::ClockReadOutsideConstraint,
+                )));
+            }
+        }
+    }
+
     // Carried sums pin their mode from the summand bound and result before
     // comparing either with the type argument (FR-322, carried-quantity sum).
     if operation.identity.as_ref() == "filament.op.collection.sum.carried_quantity" {
@@ -2914,17 +2939,24 @@ fn selected_union_members<'m>(
             else {
                 return Ok(None);
             };
-            let id = member_type
-                .node_id_in(&owner.package.checked_package, &mut budget)?
-                .ok_or_else(|| {
-                    ValidationFailure::refused(
-                        CheckedPackageRefusalCode::InvalidSemanticGraph,
-                        budget.row(),
-                    )
-                })?;
-            let mut payload = budget.vec(1, "union_payload")?;
-            payload.push(id);
-            payload
+            // A clock holds no data value and has no type node: the case is a
+            // member of payload arity 0 in every data read (FR-322 "Clock
+            // positions and payloads").
+            if matches!(member_type, MemberType::Clock) {
+                budget.vec(0, "union_payload")?
+            } else {
+                let id = member_type
+                    .node_id_in(&owner.package.checked_package, &mut budget)?
+                    .ok_or_else(|| {
+                        ValidationFailure::refused(
+                            CheckedPackageRefusalCode::InvalidSemanticGraph,
+                            budget.row(),
+                        )
+                    })?;
+                let mut payload = budget.vec(1, "union_payload")?;
+                payload.push(id);
+                payload
+            }
         } else {
             Vec::new()
         };
@@ -3733,6 +3765,16 @@ fn check_tuple_position(
     };
     if operand_type != Some(&declaration.node_id) {
         return ineligible();
+    }
+    // A clock position is read only as the clock operand of an atomic clock
+    // constraint, never projected into a value position (FR-322 "Clock
+    // positions and payloads").
+    if matches!(position_type, MemberType::Clock) {
+        return Ok(Some(application.refuse(
+            CheckedPackageRefusalCode::InvalidTimedModel,
+            member_at(),
+            CheckedPackageRefusalCause::ClockReadOutsideConstraint,
+        )));
     }
     let mut budget = Budget::new(meter, owner.package.root, owner.package.bytes);
     budget.charge(1)?;

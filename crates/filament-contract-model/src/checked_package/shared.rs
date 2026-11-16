@@ -252,6 +252,10 @@ pub enum CheckedPackageRefusalCause {
     InexactNumber,
     /// A schedulability task set violates its declared premises.
     InvalidTaskSet,
+    /// `clock-read-outside-constraint`: a clock is read in a value position
+    /// rather than as the clock operand of an atomic clock constraint;
+    /// paired with `invalid_timed_model` (FSpec FR-272).
+    ClockReadOutsideConstraint,
 }
 
 /// An RFC 6901 JSON pointer into the checked-package document the reader
