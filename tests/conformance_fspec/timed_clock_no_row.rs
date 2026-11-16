@@ -154,8 +154,12 @@ fn timed_clock_no_row_vectors_join_model_and_refuse_extra_row() {
 
     // TN-02, TN-06 to TN-09: a clause over a trace subject takes exactly one
     // closed `timed {unit}` row naming its clock role.
-    let trace = trace_clause("plant");
-    assert!(trace.get("temporal_bindings").is_none());
+    let mut trace = trace_clause("plant");
+    trace
+        .as_object_mut()
+        .expect("package")
+        .remove("temporal_bindings");
+    fixture_support::refresh_identity_projection(&mut trace);
     let absent_row = refusal(&trace);
     assert_eq!(
         (
