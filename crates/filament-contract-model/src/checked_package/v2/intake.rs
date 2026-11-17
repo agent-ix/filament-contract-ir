@@ -379,7 +379,7 @@ fn classify_wire_fault(
                 Step::Key("semantic_graph"),
                 Step::Key("nodes"),
                 Step::Index(_),
-                Step::Key("owner" | "owner_model" | "check_mode"),
+                Step::Key("owner" | "owner_model"),
                 ..
             ]
         );

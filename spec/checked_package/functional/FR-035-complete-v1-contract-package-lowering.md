@@ -291,6 +291,14 @@ The V1 reader SHALL preserve canonical package bytes and admitted package values
 When the reader returns `Refused` or `Incomplete`, Contract IR SHALL
 admit no `ContractPackageV1`.
 
+**Open question (unspecified, not a requirement).** FR-330 reuses FR-322 node
+forms for `filament.contract-package/v1`; whether FR-770 `check_mode` (required
+on function nodes, forbidden elsewhere, `kernel` refused on `invariant` and
+`precondition` clause functions) applies to V1 is unspecified. This repo
+currently admits `check_mode` optionally on V1 nodes, validates its value when
+present, and lowering copies it from the admitted V2 node. It is tracked as a
+question to the planner; no acceptance criterion states this behaviour.
+
 ## Acceptance Criteria
 
 | ID | Criteria | Verification |

@@ -120,7 +120,9 @@ fn operation(term: &CheckedTerm) -> &filament_contract_model::CheckedApplication
     operation
 }
 
-#[trace("TC-047", "FR-038-AC-555")]
+/// Open question (FR-035): V1 `check_mode` is unspecified, so no criterion is
+/// cited here.
+#[trace("TC-047")]
 #[test]
 fn v1_package_carries_function_check_mode_and_refuses_an_invalid_value() {
     let source = admit(&checked_package::positive_operation_identities());

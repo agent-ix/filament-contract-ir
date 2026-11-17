@@ -6,9 +6,9 @@
 
 use crate::support::checked_package::{canonical, evidence_for, v2_all_families};
 use filament_contract_model::{
-    encode_checked_package_v2, CheckMode, CheckedPackageReadLimits, CheckedPackageRefusalCode,
-    CheckedPackageSidecarsRef, CheckedPackageSourceCorrespondenceRef, CheckedPackageV2,
-    CheckedPackageV2ReadResult,
+    encode_checked_package_v2, CheckMode, CheckedNodeProjectionV2, CheckedPackageReadLimits,
+    CheckedPackageRefusalCode, CheckedPackageSidecarsRef, CheckedPackageSourceCorrespondenceRef,
+    CheckedPackageV2, CheckedPackageV2ReadResult,
 };
 use ix_trace_rs::trace;
 use serde_json::{json, Value};
@@ -74,44 +74,105 @@ fn written(package: &CheckedPackageV2) -> Value {
     serde_json::from_slice(&bytes).expect("written JSON")
 }
 
+fn function_positions(package: &Value) -> Vec<usize> {
+    package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .enumerate()
+        .filter(|(_, node)| node["node_tag"] == "function")
+        .map(|(position, _)| position)
+        .collect()
+}
+
 #[trace("TC-048", "FR-038-AC-555")]
 #[test]
 fn check_mode_is_typed_identity_bearing_and_written() {
     let linked = v2_all_families();
-    let position = function_position(&linked);
-    assert_eq!(
-        linked["semantic_graph"]["nodes"][position]["check_mode"],
-        "linked"
+    let functions = function_positions(&linked);
+    assert!(
+        functions.len() >= 2,
+        "a declared function and a second function node"
     );
-    let mut kernel = linked.clone();
-    kernel["semantic_graph"]["nodes"][position]["check_mode"] = json!("kernel");
-
-    let (linked_read, kernel_read) = (admitted(&linked), admitted(&kernel));
-    assert_eq!(
-        linked_read.graph().nodes[position].check_mode,
-        Some(CheckMode::Linked)
-    );
-    assert_eq!(
-        kernel_read.graph().nodes[position].check_mode,
-        Some(CheckMode::Kernel)
-    );
-    assert_ne!(linked_read.graph(), kernel_read.graph());
-
-    let (linked_out, kernel_out) = (written(&linked_read), written(&kernel_read));
-    assert_ne!(linked_out, kernel_out);
-    for (out, mode) in [(&linked_out, "linked"), (&kernel_out, "kernel")] {
-        for node in out["semantic_graph"]["nodes"].as_array().expect("nodes") {
-            if node["node_tag"] == "function" {
-                assert!(node["check_mode"] == mode || node["check_mode"] == "linked");
+    for position in &functions {
+        assert_eq!(
+            linked["semantic_graph"]["nodes"][*position]["check_mode"],
+            "linked"
+        );
+    }
+    let linked_read = admitted(&linked);
+    let linked_out = written(&linked_read);
+    // One function node `kernel`, then every function node `kernel`.
+    for kernel_set in [&functions[..1], &functions[..]] {
+        let mut kernel = linked.clone();
+        for position in kernel_set {
+            kernel["semantic_graph"]["nodes"][*position]["check_mode"] = json!("kernel");
+        }
+        let kernel_read = admitted(&kernel);
+        assert_ne!(linked_read.graph(), kernel_read.graph());
+        let kernel_out = written(&kernel_read);
+        assert_ne!(linked_out, kernel_out);
+        for (position, node) in kernel_out["semantic_graph"]["nodes"]
+            .as_array()
+            .expect("nodes")
+            .iter()
+            .enumerate()
+        {
+            if functions.contains(&position) {
+                let expected = if kernel_set.contains(&position) {
+                    ("kernel", CheckMode::Kernel)
+                } else {
+                    ("linked", CheckMode::Linked)
+                };
+                assert_eq!(node["check_mode"], expected.0);
+                assert_eq!(
+                    kernel_read.graph().nodes[position].check_mode,
+                    Some(expected.1)
+                );
             } else {
                 assert!(node.get("check_mode").is_none());
+                assert_eq!(kernel_read.graph().nodes[position].check_mode, None);
             }
         }
     }
-    assert_eq!(
-        kernel_out["semantic_graph"]["nodes"][position]["check_mode"],
-        "kernel"
-    );
+}
+
+fn projected(projection: &CheckedNodeProjectionV2) -> Value {
+    let mut bytes = Vec::new();
+    quire_canonical::encode(
+        &mut bytes,
+        projection,
+        quire_canonical::Limits::new(1 << 24),
+    )
+    .expect("projection encodes");
+    serde_json::from_slice(&bytes).expect("projection JSON")
+}
+
+#[trace("TC-048", "FR-038-AC-555")]
+#[test]
+fn the_node_projection_copies_and_writes_check_mode() {
+    let linked = v2_all_families();
+    let position = function_position(&linked);
+    let mut kernel = linked.clone();
+    kernel["semantic_graph"]["nodes"][position]["check_mode"] = json!("kernel");
+    for (package, mode, name) in [
+        (&linked, CheckMode::Linked, "linked"),
+        (&kernel, CheckMode::Kernel, "kernel"),
+    ] {
+        let read = admitted(package);
+        let nodes = &read.graph().nodes;
+        let projection = CheckedNodeProjectionV2::from(&nodes[position]);
+        assert_eq!(projection.check_mode, Some(mode));
+        let emitted = projected(&projection);
+        assert_eq!(emitted["check_mode"], name);
+        let other = nodes
+            .iter()
+            .find(|node| node.node_tag.as_ref() != "function")
+            .expect("a non-function node");
+        let other = CheckedNodeProjectionV2::from(other);
+        assert_eq!(other.check_mode, None);
+        assert!(projected(&other).get("check_mode").is_none());
+    }
 }
 
 #[trace("TC-048", "FR-038-AC-556")]

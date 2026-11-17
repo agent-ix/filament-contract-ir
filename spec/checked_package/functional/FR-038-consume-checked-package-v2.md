@@ -3148,6 +3148,14 @@ body names the kind) as `invalid_package`/`invalid-value` at that pointer.
 `body` clause functions, declared helpers and declaration-less functions may
 carry either mode.
 
+**Open question (unspecified, not a requirement).** See also FR-035. FR-330 reuses FR-322 node
+forms for `filament.contract-package/v1`; whether FR-770 `check_mode` (required
+on function nodes, forbidden elsewhere, `kernel` refused on `invariant` and
+`precondition` clause functions) applies to V1 is unspecified. This repo
+currently admits `check_mode` optionally on V1 nodes, validates its value when
+present, and lowering copies it from the admitted V2 node. It is tracked as a
+question to the planner; no acceptance criterion states this behaviour.
+
 ### Wire owner on checked nodes
 
 FR-038-AC-153 through FR-038-AC-155 own the owner-wire boundary.
@@ -6680,7 +6688,7 @@ the minimum the read uses.
 | FR-038-AC-555 | A package whose every `function` node carries `"check_mode": "linked"` is admitted, the same package with a declared function's and a declared helper's `check_mode` `"kernel"` is admitted, the two admitted packages encode to unequal bytes, and an admitted package's writer output carries `check_mode` on each `function` node and on no other node. | Test (TC-048; FSpec FR-770-AC-1) |
 | FR-038-AC-556 | A `function` node with `check_mode` removed, set to `"strict"`, `""`, `true` or `null`, refuses `malformed_wire` at `/semantic_graph/nodes/{i}/check_mode`, `i` the node's graph index. | Test (TC-048; FSpec FR-770-AC-2) |
 | FR-038-AC-557 | `check_mode` on a node whose `node_tag` is not `function` (an `expression` node, including with the value `null`) refuses `malformed_wire` at `/semantic_graph/nodes/{i}/check_mode`. | Test (TC-048; FSpec FR-770-AC-2) |
-| FR-038-AC-558 | A dependency diamond reaching one `{package, path}` leaf with `linked` on one function node on one side and `kernel` on the other refuses `invalid_package`/`conflicting-definition`; the same diamond over equal leaves admits. | Test (TC-048; FSpec FR-770-AC-1) |
+| FR-038-AC-558 | A dependency diamond reaching one `{package, path}` leaf with `linked` on one function node on one side and `kernel` on the other refuses `invalid_package`/`conflicting-definition`; the same diamond over equal leaves admits. A declaration-less function node imported from a selected package refuses `invalid_semantic_graph` at `/semantic_graph/nodes/{i}/node_id/package` when its copy differs from the selected node only in `check_mode`, and an equal copy admits. | Test (TC-048; FSpec FR-770-AC-1) |
 | FR-038-AC-559 | `"kernel"` on an `invariant` clause function owned by `Order` and on a `precondition` clause function refuses `invalid_package`/`invalid-value` at `/semantic_graph/nodes/{i}/check_mode`; `"kernel"` on a `body` clause function admits. | Test (TC-048; FSpec FR-770-AC-2) |
 | FR-038-AC-560 | FSpec's `check-mode-vectors.json` (CM-01 to CM-04) and the `check-mode-*` entries of `adverse.json` read as published, each vector's schema verdict agrees with the published schema, and a vector file or entry the reader does not refuse as recorded fails the run. | Test (TC-048; FSpec FR-770) |
 | FR-038-AC-540 | A dependency position naming an unsupplied package or a `node` past the dependency's last node refuses `malformed_wire` at the row entry; a `{package, node}` object written as an id path segment refuses `malformed_wire` at the segment; a local index segment in a foreign id refuses `missing_declaration`/`missing-name` at the member holding it. | Test (TC-474) |

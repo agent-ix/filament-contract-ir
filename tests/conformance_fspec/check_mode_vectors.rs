@@ -45,7 +45,7 @@ fn schema() -> jsonschema::JSONSchema {
         .expect("published schema compiles")
 }
 
-#[trace("TC-1860", "FR-770-AC-1", "FR-770-AC-2")]
+#[trace("TC-048", "FR-038-AC-560", "FR-770-AC-1", "FR-770-AC-2")]
 #[test]
 fn check_mode_vectors_read_as_published() {
     let published = vectors();

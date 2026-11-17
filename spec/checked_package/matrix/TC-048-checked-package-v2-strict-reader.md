@@ -2937,7 +2937,9 @@ and a `precondition` clause function and require `invalid-value` at it, and on
 a `body` clause function and require admission. Build a dependency diamond
 whose two leaves differ only in one function node's `check_mode` and require
 `conflicting-definition`, and the same diamond over equal leaves and require
-admission.
+admission. Import a declaration-less function node into a package that selects
+its dependency, once equal and once with only `check_mode` changed, and require
+admission and the `node_id/package` refusal.
 
 ## Carried-quantity sum admission (FR-038-AC-524 through FR-038-AC-529)
 

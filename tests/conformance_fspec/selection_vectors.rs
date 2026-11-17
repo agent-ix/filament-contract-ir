@@ -911,6 +911,98 @@ fn a_diamond_whose_leaves_differ_only_in_function_check_mode_conflicts() {
     }
 }
 
+#[trace("TC-048", "FR-038-AC-558")]
+#[test]
+fn an_imported_function_copy_must_carry_the_selected_check_mode() {
+    use super::monitor_plan_fixtures::{aggregate, append, binding, literal, reference};
+    let base = super::read_json(&super::fixtures_dir().join("positive-all-families.json"))
+        .expect("current published base package");
+    let mut leaf = scalar_dependency(&base, "test/function-leaf");
+    // An imported node is anonymous: it has no declaration and no owner.
+    let anonymous = leaf["semantic_graph"]["nodes"][0]
+        .as_object_mut()
+        .expect("node");
+    anonymous.remove("declaration");
+    anonymous.remove("owner");
+    anonymous.insert(
+        "occurrences".to_owned(),
+        json!([{"role": "generated", "ordinal": 0}]),
+    );
+    leaf["source_map"] = json!([]);
+    let boolean = leaf["semantic_graph"]["nodes"][0]["node_id"].clone();
+    let value = append(
+        &mut leaf,
+        "value",
+        "literal",
+        Some(&boolean),
+        literal(&boolean, "boolean", json!(true)),
+        "c",
+    );
+    let expression = append(
+        &mut leaf,
+        "expression",
+        "conditional",
+        Some(&boolean),
+        json!({"term":"application", "operator":"conditional", "operation":{
+            "identity":"filament.op.control.if", "laws":[], "leaves":[], "member":null,
+            "mode":null}, "result_type":boolean, "arguments":[
+                literal(&boolean, "boolean", json!(true)), reference(&value), reference(&value)]}),
+        "e",
+    );
+    let function = append(
+        &mut leaf,
+        "function",
+        "pure_function",
+        Some(&boolean),
+        aggregate(vec![
+            binding("parameters", aggregate(vec![])),
+            binding("body", reference(&expression)),
+        ]),
+        "f",
+    );
+    checked_package::settle(&mut leaf);
+    checked_package::refresh_identity(&mut leaf);
+    let leaf_package = admitted_dependency(&leaf);
+    let function_position = leaf["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .position(|node| node["node_id"] == function)
+        .expect("declaration-less function");
+    assert!(leaf["semantic_graph"]["nodes"][function_position]
+        .get("declaration")
+        .is_none());
+
+    let mut importer = leaf.clone();
+    importer["name"] = json!("test/function-importer");
+    importer["lock"]["dependency_selections"] = json!([{"identity":leaf_package.name()}]);
+    let copy = |importer: &Value| {
+        dependency_read(importer, &[(leaf_package.name(), &leaf_package)]).expect("importer read")
+    };
+    let equal = copy(&importer);
+    assert!(
+        matches!(equal, CheckedPackageV2ReadResult::Admitted(_)),
+        "an equal imported copy admits: {equal:?}"
+    );
+    importer["semantic_graph"]["nodes"][function_position]["check_mode"] = json!("kernel");
+    let CheckedPackageV2ReadResult::Refused(refusal) = copy(&importer) else {
+        panic!("an imported copy with another check_mode must refuse");
+    };
+    assert_eq!(
+        refusal.code,
+        filament_contract_model::CheckedPackageRefusalCode::InvalidSemanticGraph
+    );
+    assert_eq!(
+        refusal.loci[0]
+            .path
+            .as_ref()
+            .map(|path| path.as_str().to_owned()),
+        Some(format!(
+            "/semantic_graph/nodes/{function_position}/node_id/package"
+        ))
+    );
+}
+
 #[trace("TC-226", "FR-038-AC-113")]
 #[test]
 fn published_dependency_selections_supply_and_diamonds_fail_closed() {
