@@ -2278,14 +2278,9 @@ pub(super) fn source_clock_unit_is_linear_time<B>(
             )
             && node.owner.as_ref() == Some(source_owner)
             && node.declaration.as_ref().is_some_and(|declaration| {
-                declaration
-                    .qualified_name
-                    .last()
-                    .is_some_and(|path| path.as_ref() == name)
+                matches!(declaration.qualified_name.as_slice(), [path] if path.as_ref() == name)
             })
-            && node.node_id.path.last().is_some_and(
-                |path| matches!(path, CheckedNodePathSegment::Name(path) if path.as_ref() == name),
-            )
+            && matches!(node.node_id.path.as_slice(), [CheckedNodePathSegment::Name(path)] if path.as_ref() == name)
     }) else {
         return Ok(false);
     };

@@ -1672,14 +1672,9 @@ fn is_clock_unit_path(
                 source_owner.is_some_and(|source_owner| {
                     node.owner.as_ref() == Some(source_owner)
                         && node.declaration.as_ref().is_some_and(|declaration| {
-                            declaration
-                                .qualified_name
-                                .last()
-                                .is_some_and(|name| name.as_ref() == unit)
+                            matches!(declaration.qualified_name.as_slice(), [name] if name.as_ref() == unit)
                         })
-                        && node.node_id.path.last().is_some_and(
-                            |segment| matches!(segment, Name(name) if name.as_ref() == unit),
-                        )
+                        && matches!(node.node_id.path.as_slice(), [Name(name)] if name.as_ref() == unit)
                 })
             } else {
                 matches!(node.node_id.path.as_slice(),
@@ -1749,15 +1744,12 @@ fn validate_source_clock_unit(
                     && node.semantic_form.as_ref() == "unit"
                     && node.owner.as_ref() == Some(source_owner)
                     && node.declaration.as_ref().is_some_and(|declaration| {
-                        declaration
-                            .qualified_name
-                            .last()
-                            .is_some_and(|name| name.as_ref() == timestamp_unit.as_ref())
+                        matches!(declaration.qualified_name.as_slice(), [name]
+                            if name.as_ref() == timestamp_unit.as_ref())
                     })
-                    && node.node_id.path.last().is_some_and(|segment| {
-                        matches!(segment, CheckedNodePathSegment::Name(name)
-                        if name.as_ref() == timestamp_unit.as_ref())
-                    })
+                    && matches!(node.node_id.path.as_slice(),
+                        [CheckedNodePathSegment::Name(name)]
+                            if name.as_ref() == timestamp_unit.as_ref())
             })
         });
         let model_unit = graph.nodes.iter().any(|node| {

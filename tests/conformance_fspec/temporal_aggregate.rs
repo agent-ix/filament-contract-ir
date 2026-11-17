@@ -21,6 +21,12 @@ fn id(path: &[&str]) -> Value {
     json!({"package": "example", "path": path, "ordinal": 0})
 }
 
+fn other_id(path: &[&str]) -> Value {
+    // Source declarations share the checked package identity; this fixture
+    // uses only one owner at a time so the one-segment name stays unambiguous.
+    json!({"package": "example", "path": path, "ordinal": 0})
+}
+
 fn source_row(node: &Value) -> Value {
     let occurrence = &node["occurrences"][0];
     json!({
@@ -121,11 +127,11 @@ fn source_unit(name: &str, dimension: &str) -> Value {
 }
 
 fn other_source_dimension() -> Value {
-    let key = id(&["other", "Time"]);
+    let key = other_id(&["Time"]);
     json!({
         "node_id": key, "schema_version":"filament.checked-semantic-graph/v2",
         "node_tag":"scalar_type", "semantic_form":"dimension", "semantic_type":key,
-        "declaration":{"qualified_name":["other","Time"]}, "dependencies":[],
+        "declaration":{"qualified_name":["Time"]}, "dependencies":[],
         "occurrences":[{"role":"declaration","ordinal":0}],
         "owner":{"kind":"source","authority":"agent-ix","identity":"other"},
         "body":{"term":"dimension","base":true,"terms":[]}
@@ -133,9 +139,9 @@ fn other_source_dimension() -> Value {
 }
 
 fn other_source_unit(name: &str) -> Value {
-    let key = id(&["other", name]);
-    let dimension = id(&["other", "Time"]);
-    let target = (name == "ms").then(|| id(&["other", "s"]));
+    let key = other_id(&[name]);
+    let dimension = other_id(&["Time"]);
+    let target = (name == "ms").then(|| other_id(&["s"]));
     let scale = if name == "ms" {
         json!({"numerator":"1","denominator":"1000"})
     } else {
@@ -147,7 +153,7 @@ fn other_source_unit(name: &str) -> Value {
     json!({
         "node_id":key, "schema_version":"filament.checked-semantic-graph/v2",
         "node_tag":"scalar_type", "semantic_form":"unit", "semantic_type":dimension,
-        "declaration":{"qualified_name":["other",name]}, "dependencies":dependencies,
+        "declaration":{"qualified_name":[name]}, "dependencies":dependencies,
         "occurrences":[{"role":"declaration","ordinal":0}],
         "owner":{"kind":"source","authority":"agent-ix","identity":"other"},
         "body":{"term":"unit","dimension_node_id":dimension,
@@ -179,6 +185,26 @@ fn add_other_source_units(package: &mut Value) {
             .as_array_mut()
             .expect("semantic nodes")
             .push(node);
+    }
+}
+
+fn replace_value(value: &mut Value, from: &Value, to: &Value) {
+    if value == from {
+        *value = to.clone();
+        return;
+    }
+    match value {
+        Value::Array(values) => {
+            for value in values {
+                replace_value(value, from, to);
+            }
+        }
+        Value::Object(values) => {
+            for value in values.values_mut() {
+                replace_value(value, from, to);
+            }
+        }
+        _ => {}
     }
 }
 
@@ -225,8 +251,9 @@ fn source_duration_package(
         add_node(&mut package, source_dimension("Time"));
         add_node(&mut package, source_unit("ms", "Time"));
         add_node(&mut package, source_unit("s", "Time"));
+    } else {
+        add_other_source_units(&mut package);
     }
-    add_other_source_units(&mut package);
     package
 }
 
@@ -587,11 +614,39 @@ fn timestamped_duration_bounds_admit_only_linear_source_time_units() {
         "a duration bound typed by the source-owned Time unit is admitted: {admitted:#?}"
     );
 
-    let only_other_owner = source_duration_package(case, published, id(&["other", "ms"]), false);
+    let only_other_owner =
+        source_duration_package(case.clone(), published.clone(), other_id(&["ms"]), false);
     let CheckedPackageV2ReadResult::Refused(refusal) =
         read_package(&only_other_owner).expect("cross-owner package read")
     else {
         panic!("a clause must not borrow another SourceOwner's same-name unit")
+    };
+    assert_eq!(
+        code_word(refusal.code),
+        "missing_declaration",
+        "{refusal:#?}"
+    );
+    assert_eq!(refusal.cause.map(cause_word), Some("missing-name"));
+    assert_eq!(
+        refusal.loci[0].path.as_ref().map(ToString::to_string),
+        Some("/temporal_bindings/0/clock/timestamp_unit".to_owned())
+    );
+
+    let mut nested_same_owner = source_duration_package(case, published, id(&["ms"]), true);
+    let original_id = id(&["ms"]);
+    let nested_id = id(&["other", "ms"]);
+    replace_value(&mut nested_same_owner, &original_id, &nested_id);
+    let nested_unit = nested_same_owner["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("semantic nodes")
+        .iter_mut()
+        .find(|node| node["node_id"] == nested_id)
+        .expect("nested source unit");
+    nested_unit["declaration"]["qualified_name"] = json!(["other", "ms"]);
+    let CheckedPackageV2ReadResult::Refused(refusal) =
+        read_package(&nested_same_owner).expect("nested source-unit package read")
+    else {
+        panic!("a nested same-owner source unit path must be refused")
     };
     assert_eq!(
         code_word(refusal.code),
