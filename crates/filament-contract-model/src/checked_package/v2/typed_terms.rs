@@ -2566,7 +2566,8 @@ fn map_operation_ids(
             | CheckedOperationMember::Position { declaration, .. }
             | CheckedOperationMember::Element { declaration }
             | CheckedOperationMember::Operation { declaration, .. }
-            | CheckedOperationMember::TypeArgument { declaration } => {
+            | CheckedOperationMember::TypeArgument { declaration }
+            | CheckedOperationMember::History { declaration, .. } => {
                 replace(declaration, &["declaration"])
             }
             CheckedOperationMember::Fairness { target, .. } => {
@@ -2804,7 +2805,8 @@ impl CheckedTerm {
                             | CheckedOperationMember::Position { declaration, .. }
                             | CheckedOperationMember::Element { declaration }
                             | CheckedOperationMember::Operation { declaration, .. }
-                            | CheckedOperationMember::TypeArgument { declaration } => {
+                            | CheckedOperationMember::TypeArgument { declaration }
+                            | CheckedOperationMember::History { declaration, .. } => {
                                 member_id(declaration)?;
                             }
                             CheckedOperationMember::RelationshipEnd {

@@ -284,7 +284,6 @@ closed_vocabulary! {
         TemporalClause => "temporal_clause",
         Formula => "formula",
         Fairness => "fairness",
-        History => "history",
         Clock => "clock",
         Window => "window",
         Activation => "activation",
@@ -477,6 +476,7 @@ closed_vocabulary! {
         StateClause => "state_clause",
         TemporalInterval => "temporal_interval",
         Fairness => "fairness",
+        History => "history",
     }
 }
 
