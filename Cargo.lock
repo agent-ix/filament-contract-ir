@@ -165,16 +165,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4e7648175b45a9a48536d676f68d918270699102aa8dab5496df06904c914600"
 
 [[package]]
-name = "chrono"
-version = "0.4.45"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1aa79e62e7697b8e29b513a68abacf485adcd1fe8284a4316c5ae868e6633327"
-dependencies = [
- "num-traits",
- "serde",
-]
-
-[[package]]
 name = "cpufeatures"
 version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -301,7 +291,7 @@ dependencies = [
 
 [[package]]
 name = "filament-contract-ir"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "allocation-counter",
  "filament-contract-model",
@@ -321,7 +311,7 @@ dependencies = [
 
 [[package]]
 name = "filament-contract-model"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "allocation-counter",
  "filament-exact",
@@ -374,10 +364,9 @@ dependencies = [
 
 [[package]]
 name = "filament-verification-contracts"
-version = "0.1.1"
-source = "git+https://github.com/agent-ix/filament-verification-contracts?tag=v0.1.1#72851452cd3de8464e35cf5efe1829b0b2c882b4"
+version = "0.2.0"
+source = "git+https://github.com/agent-ix/filament-verification-contracts?tag=v0.2.0#ded996da2c3591818f7658d0518f6637b79bf2f4"
 dependencies = [
- "chrono",
  "jsonschema 0.55.1",
  "quire-canonical",
  "regress",
@@ -386,13 +375,14 @@ dependencies = [
  "serde_json",
  "sha2",
  "thiserror",
+ "time",
  "typify",
 ]
 
 [[package]]
 name = "filament-walk"
-version = "0.1.0"
-source = "git+https://github.com/agent-ix/filament-walk?tag=v0.1.0#ab0c37a0a88cf5bf4b45a32fc12a01992abea00d"
+version = "0.1.1"
+source = "git+https://github.com/agent-ix/filament-walk?tag=v0.1.1#6b37f032708dd0a3be9fd82f595641f9574af4fe"
 
 [[package]]
 name = "find-msvc-tools"
