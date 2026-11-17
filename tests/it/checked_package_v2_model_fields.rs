@@ -4887,6 +4887,8 @@ fn selected_native_fields_keep_distinct_member_types() {
             field("string", "ix://filament/native/String"),
             field("uuid", "ix://filament/native/UUID"),
             field("timestamp", "ix://filament/native/Timestamp"),
+            field("bytes", "ix://filament/native/Bytes"),
+            field("json", "ix://filament/native/JsonObject"),
         ],
     )]);
     let reads = [
@@ -4905,6 +4907,16 @@ fn selected_native_fields_keep_distinct_member_types() {
             field: "timestamp",
             ty: Ty::Timestamp,
         },
+        Read {
+            owner: ORDER,
+            field: "bytes",
+            ty: Ty::Bytes,
+        },
+        Read {
+            owner: ORDER,
+            field: "json",
+            ty: Ty::JsonObject,
+        },
     ];
     let admitted = admit(&document, &[(ORDER, OBJECT)], &reads);
     let fields = fields_of(&admitted, ORDER);
@@ -4912,6 +4924,8 @@ fn selected_native_fields_keep_distinct_member_types() {
         ("string", CheckedMemberType::String, "string"),
         ("uuid", CheckedMemberType::Uuid, "uuid"),
         ("timestamp", CheckedMemberType::Timestamp, "timestamp"),
+        ("bytes", CheckedMemberType::Bytes, "bytes"),
+        ("json", CheckedMemberType::JsonObject, "json_object"),
     ] {
         assert_eq!(
             fields.field(name).and_then(|field| field.member_type()),
