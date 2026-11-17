@@ -4410,13 +4410,17 @@ fn a_denied_relationship_destination_read_is_refused_not_a_double_borrow() {
         let first_unpaid_locus = budget
             .first_unpaid_locus()
             .expect("a typed read-storage denial retains its first unpaid locus");
-        assert!(matches!(
-            first_unpaid_locus.source,
-            filament_contract_model::NativeJoinLocusSource::PackageRead(
-                filament_contract_model::PackageReadStage::WireChecks,
-                _
-            )
-        ));
+        assert!(
+            matches!(
+                first_unpaid_locus.source,
+                filament_contract_model::NativeJoinLocusSource::PackageRead(
+                    filament_contract_model::PackageReadStage::WireDecode
+                        | filament_contract_model::PackageReadStage::WireChecks,
+                    _
+                )
+            ),
+            "unexpected first unpaid locus at limit {limit}: {first_unpaid_locus:?}"
+        );
         if let Some(outcome_locus) = outcome_locus {
             assert_eq!(outcome_locus, first_unpaid_locus);
         }

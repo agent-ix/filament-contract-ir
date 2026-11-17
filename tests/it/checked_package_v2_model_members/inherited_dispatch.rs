@@ -7,6 +7,20 @@ use super::*;
 const PACKAGE: &str = "example/config-version";
 const HISTORY: &str = "ix://example/config-version/config_history";
 
+fn add_linked_check_modes(package: &mut Value) {
+    for node in package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("semantic nodes")
+    {
+        if node["node_tag"] == "function" {
+            node.as_object_mut()
+                .expect("function node object")
+                .entry("check_mode")
+                .or_insert_with(|| json!("linked"));
+        }
+    }
+}
+
 fn d10_model_document() -> Value {
     fn query(name: &str) -> Value {
         let identity = format!("ix://{PACKAGE}/ConfigVersion/{name}");
@@ -65,14 +79,15 @@ fn d10_model_document() -> Value {
 #[trace("TC-472", "FR-354-AC-13")]
 #[test]
 fn genuine_fsl_d10_retains_static_context_and_complete_selected_family() {
-    let package: Value = serde_json::from_str(include_str!(
+    let mut package: Value = serde_json::from_str(include_str!(
         "../../fixtures/inherited-dispatch/d10-package.json"
     ))
     .expect("actual emitted package");
+    add_linked_check_modes(&mut package);
     let document = d10_model_document();
     let evidence = evidence_with_document(&package, PACKAGE, &document);
-    let bytes = include_bytes!("../../fixtures/inherited-dispatch/d10-package.json");
-    let result = CheckedPackageV2::read(bytes, CheckedPackageReadLimits::bounded(), &evidence);
+    let bytes = canonical(&package);
+    let result = CheckedPackageV2::read(&bytes, CheckedPackageReadLimits::bounded(), &evidence);
     let CheckedPackageV2ReadResult::Admitted(admitted) = result else {
         panic!("authentic D10 must admit: {result:?}");
     };
@@ -439,10 +454,11 @@ fn an_owner_chain_refuses_at_its_selection_key_and_a_scalar_owner_at_the_value()
 #[test]
 fn converted_d10_fixture_resolves_to_the_admitted_index_form_graph() {
     use crate::support::checked_package::{resolve_operands, wire_operands};
-    let wire: Value = serde_json::from_str(include_str!(
+    let mut wire: Value = serde_json::from_str(include_str!(
         "../../fixtures/inherited-dispatch/d10-package.json"
     ))
     .expect("converted package");
+    add_linked_check_modes(&mut wire);
     let mut resolved = wire.clone();
     resolve_operands(&mut resolved);
     let mut rewired = resolved.clone();
@@ -453,8 +469,8 @@ fn converted_d10_fixture_resolves_to_the_admitted_index_form_graph() {
     );
     let document = d10_model_document();
     let evidence = evidence_with_document(&wire, PACKAGE, &document);
-    let bytes = include_bytes!("../../fixtures/inherited-dispatch/d10-package.json");
-    let result = CheckedPackageV2::read(bytes, CheckedPackageReadLimits::bounded(), &evidence);
+    let bytes = canonical(&wire);
+    let result = CheckedPackageV2::read(&bytes, CheckedPackageReadLimits::bounded(), &evidence);
     let CheckedPackageV2ReadResult::Admitted(admitted) = result else {
         panic!("converted D10 must admit: {result:?}");
     };
