@@ -183,6 +183,8 @@ pub(super) fn preflight_value_type(
             | ValueType::Integer
             | ValueType::Float(_)
             | ValueType::Text(_)
+            | ValueType::Bytes
+            | ValueType::JsonObject
             | ValueType::String
             | ValueType::Uuid
             | ValueType::Timestamp
@@ -296,6 +298,8 @@ pub(super) fn value_type(value: &ValueType) -> u128 {
             | ValueType::Timestamp
             | ValueType::Float(_)
             | ValueType::Text(_)
+            | ValueType::Bytes
+            | ValueType::JsonObject
             | ValueType::Composite(_)
             | ValueType::Population(_) => return units,
         }
