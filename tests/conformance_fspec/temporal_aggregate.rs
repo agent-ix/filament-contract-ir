@@ -21,6 +21,12 @@ fn id(path: &[&str]) -> Value {
     json!({"package": "example", "path": path, "ordinal": 0})
 }
 
+fn other_id(path: &[&str]) -> Value {
+    // Source declarations share the checked package identity; this fixture
+    // uses only one owner at a time so the one-segment name stays unambiguous.
+    json!({"package": "example", "path": path, "ordinal": 0})
+}
+
 fn source_row(node: &Value) -> Value {
     let occurrence = &node["occurrences"][0];
     json!({
@@ -78,6 +84,177 @@ fn unit(name: &str, dimension: &str) -> Value {
                  "scale": {"numerator": scale, "denominator": "1"},
                  "offset": {"numerator": "0", "denominator": "1"}},
     })
+}
+
+fn source_dimension(name: &str) -> Value {
+    let key = id(&[name]);
+    json!({
+        "node_id": key, "schema_version": "filament.checked-semantic-graph/v2",
+        "node_tag": "scalar_type", "semantic_form": "dimension", "semantic_type": key,
+        "declaration": {"qualified_name": [name]},
+        "dependencies": [], "occurrences": [{"role": "declaration", "ordinal": 0}],
+        "owner": {"kind": "source", "authority": "agent-ix", "identity": "example"},
+        "body": {"term": "dimension", "base": true, "terms": []},
+    })
+}
+
+fn source_unit(name: &str, dimension: &str) -> Value {
+    let key = id(&[name]);
+    let dimension = id(&[dimension]);
+    let target = (name == "ms").then(|| id(&["s"]));
+    let scale = if name == "ms" {
+        json!({"numerator": "1", "denominator": "1000"})
+    } else {
+        json!({"numerator": "1", "denominator": "1"})
+    };
+    let dependencies = if let Some(target) = &target {
+        json!([dimension, target])
+    } else {
+        json!([dimension])
+    };
+    json!({
+        "node_id": key, "schema_version": "filament.checked-semantic-graph/v2",
+        "node_tag": "scalar_type", "semantic_form": "unit", "semantic_type": dimension,
+        "declaration": {"qualified_name": [name]},
+        "dependencies": dependencies,
+        "occurrences": [{"role": "declaration", "ordinal": 0}],
+        "owner": {"kind": "source", "authority": "agent-ix", "identity": "example"},
+        "body": {"term": "unit", "dimension_node_id": dimension,
+                 "target_unit_node_id": target,
+                 "scale": scale,
+                 "offset": {"numerator": "0", "denominator": "1"}},
+    })
+}
+
+fn other_source_dimension() -> Value {
+    let key = other_id(&["Time"]);
+    json!({
+        "node_id": key, "schema_version":"filament.checked-semantic-graph/v2",
+        "node_tag":"scalar_type", "semantic_form":"dimension", "semantic_type":key,
+        "declaration":{"qualified_name":["Time"]}, "dependencies":[],
+        "occurrences":[{"role":"declaration","ordinal":0}],
+        "owner":{"kind":"source","authority":"agent-ix","identity":"other"},
+        "body":{"term":"dimension","base":true,"terms":[]}
+    })
+}
+
+fn other_source_unit(name: &str) -> Value {
+    let key = other_id(&[name]);
+    let dimension = other_id(&["Time"]);
+    let target = (name == "ms").then(|| other_id(&["s"]));
+    let scale = if name == "ms" {
+        json!({"numerator":"1","denominator":"1000"})
+    } else {
+        json!({"numerator":"1","denominator":"1"})
+    };
+    let dependencies = target
+        .as_ref()
+        .map_or_else(|| json!([dimension]), |target| json!([dimension, target]));
+    json!({
+        "node_id":key, "schema_version":"filament.checked-semantic-graph/v2",
+        "node_tag":"scalar_type", "semantic_form":"unit", "semantic_type":dimension,
+        "declaration":{"qualified_name":[name]}, "dependencies":dependencies,
+        "occurrences":[{"role":"declaration","ordinal":0}],
+        "owner":{"kind":"source","authority":"agent-ix","identity":"other"},
+        "body":{"term":"unit","dimension_node_id":dimension,
+            "target_unit_node_id":target,"scale":scale,
+            "offset":{"numerator":"0","denominator":"1"}}
+    })
+}
+
+fn add_other_source_units(package: &mut Value) {
+    package["lock"]["sources"]
+        .as_array_mut()
+        .expect("source lock")
+        .push(json!({"authority":"agent-ix","identity":"other"}));
+    for node in [
+        other_source_dimension(),
+        other_source_unit("ms"),
+        other_source_unit("s"),
+    ] {
+        let id = node["node_id"].clone();
+        package["source_map"]
+            .as_array_mut()
+            .expect("source map")
+            .push(json!({
+                "node_id":id,"role":"declaration","ordinal":0,
+                "regions":[{"source":{"authority":"agent-ix","identity":"other"},
+                    "start":0,"end":1}]
+            }));
+        package["semantic_graph"]["nodes"]
+            .as_array_mut()
+            .expect("semantic nodes")
+            .push(node);
+    }
+}
+
+fn replace_value(value: &mut Value, from: &Value, to: &Value) {
+    if value == from {
+        *value = to.clone();
+        return;
+    }
+    match value {
+        Value::Array(values) => {
+            for value in values {
+                replace_value(value, from, to);
+            }
+        }
+        Value::Object(values) => {
+            for value in values.values_mut() {
+                replace_value(value, from, to);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn source_duration_package(
+    mut case: Value,
+    mut published: Value,
+    bound_unit: Value,
+    include_clause_owner_units: bool,
+) -> Value {
+    published["clock_unit"] = bound_unit.clone();
+    for member in case["argument"]["members"]
+        .as_array_mut()
+        .expect("aggregate members")
+    {
+        if member["value"]["value_kind"] == "quantity" {
+            member["value"]["type"] = bound_unit.clone();
+        }
+    }
+    let (mut package, _) = package_for(&case, &published);
+    for node in package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+    {
+        crate::support::checked_package::carry_check_mode(node);
+    }
+    package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .retain(|node| {
+            !matches!(node["semantic_form"].as_str(), Some("dimension" | "unit"))
+                || node["node_id"]["path"][0] != "scalar_type"
+        });
+    package["source_map"]
+        .as_array_mut()
+        .expect("source map")
+        .retain(|row| {
+            !matches!(row["node_id"]["path"][0].as_str(), Some("scalar_type"))
+                || !matches!(
+                    row["node_id"]["path"][1].as_str(),
+                    Some("dimension" | "unit")
+                )
+        });
+    if include_clause_owner_units {
+        add_node(&mut package, source_dimension("Time"));
+        add_node(&mut package, source_unit("ms", "Time"));
+        add_node(&mut package, source_unit("s", "Time"));
+    } else {
+        add_other_source_units(&mut package);
+    }
+    package
 }
 
 fn expression(target: &Value, family: &str, value_type: &Value) -> (Value, Value) {
@@ -414,6 +591,92 @@ fn duration_bounds_match_every_occurrence_clock_unit() {
         serde_json::from_value(package["semantic_graph"]["nodes"][formula]["node_id"].clone())
             .expect("formula identity");
     assert_eq!(refusal.locus.as_ref(), Some(&expected_id));
+}
+
+/// Trace: FR-778-AC-1/3, TC-1890.
+/// Provenance: QSL-2338.
+#[trace("TC-1890", "QSL-2338")]
+#[test]
+fn timestamped_duration_bounds_admit_only_linear_source_time_units() {
+    let published = vectors();
+    let case = published["positive"]
+        .as_array()
+        .expect("positive cases")
+        .iter()
+        .find(|case| case["id"] == "AG-07-duration-quantile")
+        .expect("published duration case")
+        .clone();
+    let mut package = source_duration_package(case.clone(), published.clone(), id(&["ms"]), true);
+
+    let admitted = read_package(&package).expect("complete package read");
+    assert!(
+        matches!(&admitted, CheckedPackageV2ReadResult::Admitted(_)),
+        "a duration bound typed by the source-owned Time unit is admitted: {admitted:#?}"
+    );
+
+    let only_other_owner =
+        source_duration_package(case.clone(), published.clone(), other_id(&["ms"]), false);
+    let CheckedPackageV2ReadResult::Refused(refusal) =
+        read_package(&only_other_owner).expect("cross-owner package read")
+    else {
+        panic!("a clause must not borrow another SourceOwner's same-name unit")
+    };
+    assert_eq!(
+        code_word(refusal.code),
+        "missing_declaration",
+        "{refusal:#?}"
+    );
+    assert_eq!(refusal.cause.map(cause_word), Some("missing-name"));
+    assert_eq!(
+        refusal.loci[0].path.as_ref().map(ToString::to_string),
+        Some("/temporal_bindings/0/clock/timestamp_unit".to_owned())
+    );
+
+    let mut nested_same_owner = source_duration_package(case, published, id(&["ms"]), true);
+    let original_id = id(&["ms"]);
+    let nested_id = id(&["other", "ms"]);
+    replace_value(&mut nested_same_owner, &original_id, &nested_id);
+    let nested_unit = nested_same_owner["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("semantic nodes")
+        .iter_mut()
+        .find(|node| node["node_id"] == nested_id)
+        .expect("nested source unit");
+    nested_unit["declaration"]["qualified_name"] = json!(["other", "ms"]);
+    let CheckedPackageV2ReadResult::Refused(refusal) =
+        read_package(&nested_same_owner).expect("nested source-unit package read")
+    else {
+        panic!("a nested same-owner source unit path must be refused")
+    };
+    assert_eq!(
+        code_word(refusal.code),
+        "missing_declaration",
+        "{refusal:#?}"
+    );
+    assert_eq!(refusal.cause.map(cause_word), Some("missing-name"));
+    assert_eq!(
+        refusal.loci[0].path.as_ref().map(ToString::to_string),
+        Some("/temporal_bindings/0/clock/timestamp_unit".to_owned())
+    );
+
+    let unit = package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .iter_mut()
+        .find(|node| node["node_id"]["path"] == json!(["ms"]))
+        .expect("source unit");
+    unit["body"]["offset"]["numerator"] = json!("1");
+    let CheckedPackageV2ReadResult::Refused(refusal) =
+        read_package(&package).expect("complete package read")
+    else {
+        panic!("an affine source clock unit must refuse");
+    };
+    assert_eq!(code_word(refusal.code), "ill_typed", "{refusal:#?}");
+    assert_eq!(refusal.cause.map(cause_word), Some("unit-mismatch"));
+    assert_eq!(
+        refusal.loci[0].path.as_ref().map(ToString::to_string),
+        Some("/temporal_bindings/0/clock/timestamp_unit".to_owned())
+    );
 }
 
 /// Operand order does not choose the first aggregate refusal.

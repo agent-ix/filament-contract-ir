@@ -22,6 +22,12 @@ fn model_owned_time_dimension_reads_and_wrong_fcd_name_refuses_at_source_unit() 
     let fixtures = fixtures_dir();
     let mut wire = read_json(&fixtures.join("positive-timed-model-nodes.json"))
         .expect("published timed model");
+    for node in wire["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("semantic nodes")
+    {
+        fixture_support::carry_check_mode(node);
+    }
     let mut document = read_json(&proposal_dir_of(&fixtures).join(DOMAIN_DOCUMENT))
         .expect("published selected model");
     let origin = document["types"][0]["origin"].clone();
@@ -64,12 +70,10 @@ fn model_owned_time_dimension_reads_and_wrong_fcd_name_refuses_at_source_unit() 
         )
         .expect("checked package read")
     };
+    let result = read(&wire, &document_bytes);
     assert!(
-        matches!(
-            read(&wire, &document_bytes),
-            CheckedPackageV2ReadResult::Admitted(_)
-        ),
-        "selected model-owned Time and s must admit"
+        matches!(&result, CheckedPackageV2ReadResult::Admitted(_)),
+        "selected model-owned Time and s must admit: {result:#?}"
     );
     let mut derived_document = document.clone();
     derived_document["dimensions"][0]["base"] = json!(false);

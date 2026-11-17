@@ -1363,11 +1363,24 @@ fn check_clause(
             .cmp(&graph.nodes[right].node_id)
             .then(left.cmp(&right))
     });
-    // The clock unit is matched by `node_id.path` alone: the unit's own node
-    // lives in the package that owns it, whatever the clause's package
-    // (FSpec FR-370 "Window aggregate atom").
+    if profile == Some(TemporalProfile::TimestampedEventFiniteWindow)
+        && aggregates
+            .iter()
+            .any(|&formula| aggregate_declares_duration_window(formula, terms))
+    {
+        validate_source_clock_unit(context, position, &node.node_id, graph, terms, meter)?;
+    }
+    let source_owner = source_owner_for_clause(&node.node_id, graph);
     for formula in aggregates {
-        check_aggregate(formula, profile, clock_unit, graph, terms, meter)?;
+        check_aggregate(
+            formula,
+            profile,
+            clock_unit,
+            source_owner,
+            graph,
+            terms,
+            meter,
+        )?;
     }
     Ok(())
 }
@@ -1634,15 +1647,158 @@ fn aggregate_clock_units<'b>(
 /// Whether a bound's type path is the clock's timestamp unit
 /// (`scalar_type/unit/<name>`), or both are absent.
 #[ix_trace_rs::string_edge]
-fn is_clock_unit_path(path: Option<&[CheckedNodePathSegment]>, unit: Option<&str>) -> bool {
+fn is_clock_unit_path(
+    id: Option<&CheckedNodeId>,
+    unit: Option<&str>,
+    source_owner: Option<&super::CheckedNodeOwner>,
+    graph: &StepGraph<'_, '_>,
+) -> bool {
     use CheckedNodePathSegment::Name;
-    match (path, unit) {
+    match (id, unit) {
         (None, None) => true,
-        (Some([Name(kind), Name(form), Name(name)]), Some(unit)) => {
-            kind.as_ref() == "scalar_type" && form.as_ref() == "unit" && name.as_ref() == unit
+        (Some(id), Some(unit)) => {
+            let Some((node, kind)) = graph.node(id) else {
+                return false;
+            };
+            if kind != CheckedNodeKind::ScalarType(super::ScalarTypeForm::Unit)
+                || node.semantic_form.as_ref() != "unit"
+            {
+                return false;
+            }
+            if matches!(
+                node.owner.as_ref(),
+                Some(super::CheckedNodeOwner::Source { .. })
+            ) {
+                source_owner.is_some_and(|source_owner| {
+                    node.owner.as_ref() == Some(source_owner)
+                        && node.declaration.as_ref().is_some_and(|declaration| {
+                            matches!(declaration.qualified_name.as_slice(), [name] if name.as_ref() == unit)
+                        })
+                        && matches!(node.node_id.path.as_slice(), [Name(name)] if name.as_ref() == unit)
+                })
+            } else {
+                matches!(node.node_id.path.as_slice(),
+                    [Name(kind), Name(form), Name(name)]
+                        if kind.as_ref() == "scalar_type"
+                            && form.as_ref() == "unit"
+                            && name.as_ref() == unit
+                )
+            }
         }
         _ => false,
     }
+}
+
+fn source_owner_for_clause<'a>(
+    clause: &CheckedNodeId,
+    graph: &'a StepGraph<'_, '_>,
+) -> Option<&'a super::CheckedNodeOwner> {
+    let (clause_node, _) = graph.node(clause)?;
+    let (declaring_type, _) = graph.node(&clause_node.semantic_type)?;
+    declaring_type
+        .owner
+        .as_ref()
+        .filter(|owner| matches!(owner, super::CheckedNodeOwner::Source { .. }))
+}
+
+fn aggregate_declares_duration_window(formula: usize, terms: &[Option<CheckedTerm>]) -> bool {
+    let Some(CheckedTerm::Application { arguments, .. }) =
+        terms.get(formula).and_then(Option::as_ref)
+    else {
+        return false;
+    };
+    let Some(CheckedTerm::Aggregate { members }) = arguments.first() else {
+        return false;
+    };
+    members.iter().any(|member| match member {
+        CheckedTerm::Binding { name, value } if name.as_ref() == "window_kind" => {
+            aggregate_literal(value, LiteralKind::Text) == Some("duration")
+        }
+        _ => false,
+    })
+}
+
+fn validate_source_clock_unit(
+    context: &TemporalContext<'_>,
+    position: usize,
+    clause: &CheckedNodeId,
+    graph: &StepGraph<'_, '_>,
+    terms: &[Option<CheckedTerm>],
+    meter: &mut WorkMeter,
+) -> Result<(), ValidationFailure> {
+    let source_owner = source_owner_for_clause(clause, graph);
+    let Some(bindings) = context.bindings else {
+        return Ok(());
+    };
+    for (row_index, row) in bindings
+        .iter()
+        .enumerate()
+        .filter(|(_, row)| &row.declaration == clause)
+    {
+        let ClockConfiguration::TimestampedEvent { timestamp_unit } = &row.clock else {
+            continue;
+        };
+        let source_unit = source_owner.is_some_and(|source_owner| {
+            graph.nodes.iter().any(|node| {
+                node.node_tag.as_ref() == "scalar_type"
+                    && node.semantic_form.as_ref() == "unit"
+                    && node.owner.as_ref() == Some(source_owner)
+                    && node.declaration.as_ref().is_some_and(|declaration| {
+                        matches!(declaration.qualified_name.as_slice(), [name]
+                            if name.as_ref() == timestamp_unit.as_ref())
+                    })
+                    && matches!(node.node_id.path.as_slice(),
+                        [CheckedNodePathSegment::Name(name)]
+                            if name.as_ref() == timestamp_unit.as_ref())
+            })
+        });
+        let model_unit = graph.nodes.iter().any(|node| {
+            node.node_tag.as_ref() == "scalar_type"
+                && node.semantic_form.as_ref() == "unit"
+                && matches!(node.node_id.path.as_slice(),
+                    [CheckedNodePathSegment::Name(kind), CheckedNodePathSegment::Name(form), CheckedNodePathSegment::Name(name)]
+                        if kind.as_ref() == "scalar_type"
+                            && form.as_ref() == "unit"
+                            && name.as_ref() == timestamp_unit.as_ref()
+                )
+        });
+        let at = super::stage_storage::Path::root()
+            .key("temporal_bindings")
+            .index(row_index)
+            .key("clock")
+            .key("timestamp_unit");
+        if !source_unit && !model_unit {
+            return Err(temporal_fault(
+                meter,
+                position,
+                CheckedPackageRefusalCode::MissingDeclaration,
+                CheckedPackageRefusalCause::MissingName,
+                at,
+                clause,
+            ));
+        }
+        if source_unit {
+            if let Some(source_owner) = source_owner {
+                if !super::identity::source_clock_unit_is_linear_time(
+                    graph.nodes,
+                    terms,
+                    timestamp_unit,
+                    source_owner,
+                    meter,
+                )? {
+                    return Err(temporal_fault(
+                        meter,
+                        position,
+                        CheckedPackageRefusalCode::IllTyped,
+                        CheckedPackageRefusalCause::UnitMismatch,
+                        at,
+                        clause,
+                    ));
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 #[ix_trace_rs::string_edge]
@@ -1650,6 +1806,7 @@ fn check_aggregate(
     formula: usize,
     profile: Option<TemporalProfile>,
     clock_unit: Option<&str>,
+    source_owner: Option<&super::CheckedNodeOwner>,
     graph: &StepGraph<'_, '_>,
     terms: &[Option<CheckedTerm>],
     meter: &mut WorkMeter,
@@ -1901,7 +2058,7 @@ fn check_aggregate(
                     _ => None,
                 };
                 if window == AggregateWindow::Duration
-                    && !is_clock_unit_path(bound_type.map(|id| id.path.as_slice()), clock_unit)
+                    && !is_clock_unit_path(bound_type, clock_unit, source_owner, graph)
                 {
                     return Err(fail(meter, Code::IllTyped, Cause::UnitMismatch, pointer));
                 }

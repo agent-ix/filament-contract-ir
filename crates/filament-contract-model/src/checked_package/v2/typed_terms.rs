@@ -2071,6 +2071,8 @@ pub enum CheckedLiteralValue<'a> {
     Enum(&'a str),
     /// Absent option value.
     None,
+    /// Canonical target identity for a typed object reference literal.
+    Reference(&'a str),
 }
 
 /// A borrowed read of one literal's type, kind, and decoded value.
@@ -2136,6 +2138,7 @@ fn literal_value(kind: LiteralKind, value: &CheckedJson) -> Option<CheckedLitera
         LiteralKind::Enum => CheckedLiteralValue::Enum(value.as_str()?),
         LiteralKind::None if value.is_null() => CheckedLiteralValue::None,
         LiteralKind::None => return None,
+        LiteralKind::Reference => CheckedLiteralValue::Reference(value.as_str()?),
     })
 }
 

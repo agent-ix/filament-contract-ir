@@ -710,6 +710,7 @@ fn assert_fspec_literal_read(term: &CheckedTerm, wire: &Value) {
         | CheckedLiteralValue::String(actual)
         | CheckedLiteralValue::Uuid(actual)
         | CheckedLiteralValue::Enum(actual) => assert_eq!(actual, value.as_str().unwrap()),
+        CheckedLiteralValue::Reference(actual) => assert_eq!(actual, value.as_str().unwrap()),
         CheckedLiteralValue::Timestamp(actual) => {
             assert_eq!(actual.to_string(), value.as_str().unwrap())
         }
