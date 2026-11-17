@@ -21,10 +21,14 @@ use ix_trace_rs::trace;
 use serde_json::{json, Value};
 
 fn node(name: &str, tag: &str, form: &str, ty: &str, dependencies: &[&str], body: Value) -> Value {
-    json!({"node_id": node_id(name), "schema_version": "filament.checked-semantic-graph/v2",
+    {
+        let mut node = json!({"node_id": node_id(name), "schema_version": "filament.checked-semantic-graph/v2",
         "node_tag": tag, "semantic_form": form, "semantic_type": node_id(ty),
         "dependencies": dependencies.iter().map(|name| node_id(name)).collect::<Vec<_>>(),
-        "occurrences": [{"role": "type", "ordinal": 0}], "body": body})
+        "occurrences": [{"role": "type", "ordinal": 0}], "body": body});
+        crate::support::checked_package::carry_check_mode(&mut node);
+        node
+    }
 }
 
 fn package(nodes: Vec<Value>) -> Value {

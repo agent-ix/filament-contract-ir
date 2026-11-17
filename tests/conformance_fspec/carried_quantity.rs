@@ -288,16 +288,20 @@ impl Package {
         self.wire["semantic_graph"]["nodes"]
             .as_array_mut()
             .expect("nodes")
-            .push(json!({
-                "node_id": id,
-                "schema_version": "filament.checked-semantic-graph/v2",
-                "node_tag": tag,
-                "semantic_form": form,
-                "semantic_type": semantic_type,
-                "dependencies": dependencies,
-                "occurrences": [{"role":"expression","ordinal":0}],
-                "body": expand(&row["body"], &self.ids),
-            }));
+            .push({
+                let mut node = json!({
+                    "node_id": id,
+                    "schema_version": "filament.checked-semantic-graph/v2",
+                    "node_tag": tag,
+                    "semantic_form": form,
+                    "semantic_type": semantic_type,
+                    "dependencies": dependencies,
+                    "occurrences": [{"role":"expression","ordinal":0}],
+                    "body": expand(&row["body"], &self.ids),
+                });
+                crate::support::checked_package::carry_check_mode(&mut node);
+                node
+            });
         self.ids.insert(name.to_owned(), id);
     }
 

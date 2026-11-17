@@ -117,16 +117,20 @@ fn wire_node(
     dependencies: &[&str],
     body: Value,
 ) -> Value {
-    json!({
-        "node_id": node_id(key),
-        "schema_version": "filament.checked-semantic-graph/v2",
-        "node_tag": tag,
-        "semantic_form": form,
-        "semantic_type": node_id(semantic_type),
-        "dependencies": dependency_ids(dependencies),
-        "occurrences": [{"role": "type", "ordinal": 0}],
-        "body": body,
-    })
+    {
+        let mut node = json!({
+            "node_id": node_id(key),
+            "schema_version": "filament.checked-semantic-graph/v2",
+            "node_tag": tag,
+            "semantic_form": form,
+            "semantic_type": node_id(semantic_type),
+            "dependencies": dependency_ids(dependencies),
+            "occurrences": [{"role": "type", "ordinal": 0}],
+            "body": body,
+        });
+        crate::support::checked_package::carry_check_mode(&mut node);
+        node
+    }
 }
 
 fn empty() -> Value {
@@ -4368,7 +4372,7 @@ fn a_denied_relationship_destination_read_is_refused_not_a_double_borrow() {
         read(u64::MAX).0,
         filament_contract_model::CheckedPackageV2BudgetedReadResult::Admitted(_)
     ));
-    for limit in 732_400..733_100 {
+    for limit in 732_540..733_240 {
         let (result, budget) = read(limit);
         assert!(
             !matches!(

@@ -3128,6 +3128,34 @@ join remains an independent earlier graph-shape check; a compound unit with
 both defects refuses at `/dependencies` first. The reader does not re-derive
 either form's structural node id from its body.
 
+### Function check mode
+
+A `function` node carries the closed member `check_mode`, `linked` or
+`kernel` (FSpec FR-770). The reader decodes it as a typed `CheckMode` and the
+writer emits it; both treat it as node content, so two packages that differ
+only in one function node's `check_mode` are two packages and compare unequal
+wherever node content is compared, including the join of a node reached
+through two dependency paths.
+
+The member is required on a `function` node and forbidden on every other node
+tag. The owner-schema step refuses a `function` node without it, with a `null`
+or non-string value, or with a value other than `linked` and `kernel`, as
+`malformed_wire` at `/semantic_graph/nodes/{i}/check_mode`, and refuses it on
+a node of any other tag as `malformed_wire` at the same pointer. After the
+owner join of a model-owned clause function, the reader refuses `kernel` on an
+`invariant` or `precondition` clause function (the `clause` binding of its
+body names the kind) as `invalid_package`/`invalid-value` at that pointer.
+`body` clause functions, declared helpers and declaration-less functions may
+carry either mode.
+
+**Open question (unspecified, not a requirement).** See also FR-035. FR-330 reuses FR-322 node
+forms for `filament.contract-package/v1`; whether FR-770 `check_mode` (required
+on function nodes, forbidden elsewhere, `kernel` refused on `invariant` and
+`precondition` clause functions) applies to V1 is unspecified. This repo
+currently admits `check_mode` optionally on V1 nodes, validates its value when
+present, and lowering copies it from the admitted V2 node. It is tracked as a
+question to the planner; no acceptance criterion states this behaviour.
+
 ### Wire owner on checked nodes
 
 FR-038-AC-153 through FR-038-AC-155 own the owner-wire boundary.
@@ -6657,6 +6685,12 @@ the minimum the read uses.
 | FR-038-AC-552 | IMPLEMENTED (IR-1552). A field `Set<Slot>[0, 2]` admits the clock place `field(sls), slot(set, Integer, 0, 2), tuple(0)` with a row for each of its three steps; a slot step whose maximum differs from the field's refuses `invalid_package`/`malformed-clock-place` at the field's row. | Test (TC-048; FSpec FR-322-AC-399) |
 | FR-038-AC-553 | IMPLEMENTED (IR-1552). A map type keyed by `Slot` or by `Phase` refuses `ill_typed`/`operator-ineligible` at the selected document's `keys` pointer; the same map keyed by `Text` admits. | Test (TC-048; FSpec FR-322-AC-399) |
 | FR-038-AC-554 | IMPLEMENTED (IR-1552). `filament.op.structural.eq` and `filament.op.structural.ne` over two `Slot` values, over two `Phase` values, over two `Wrap` values (a tuple holding a `Slot`), over two `Held` values (a union holding a `Slot`), over two bare `Timer` records (a record with a clock field), over tuples holding an option of a `Slot`, a record with a clock field, an option of that record, and a union whose payload is that record, and over a clock-bearing operand paired with a non-clock one in either order refuse `invalid_timed_model`/`clock-read-outside-constraint` at `/semantic_graph/nodes/{i}`; the same operations over two `Pair` values (no clock), over a bare clock-free record, over a tuple holding an option of `Integer` or a clock-free record, and over a union whose payload is a clock-free record admit. | Test (TC-048; FSpec FR-322-AC-399, TC-1361 CP-07) |
+| FR-038-AC-555 | A package whose every `function` node carries `"check_mode": "linked"` is admitted, the same package with a declared function's and a declared helper's `check_mode` `"kernel"` is admitted, the two admitted packages encode to unequal bytes, and an admitted package's writer output carries `check_mode` on each `function` node and on no other node. | Test (TC-048; FSpec FR-770-AC-1) |
+| FR-038-AC-556 | A `function` node with `check_mode` removed, set to `"strict"`, `""`, `true` or `null`, refuses `malformed_wire` at `/semantic_graph/nodes/{i}/check_mode`, `i` the node's graph index. | Test (TC-048; FSpec FR-770-AC-2) |
+| FR-038-AC-557 | `check_mode` on a node whose `node_tag` is not `function` (an `expression` node, including with the value `null`) refuses `malformed_wire` at `/semantic_graph/nodes/{i}/check_mode`. | Test (TC-048; FSpec FR-770-AC-2) |
+| FR-038-AC-558 | A dependency diamond reaching one `{package, path}` leaf with `linked` on one function node on one side and `kernel` on the other refuses `invalid_package`/`conflicting-definition`; the same diamond over equal leaves admits. A declaration-less function node imported from a selected package refuses `invalid_semantic_graph` at `/semantic_graph/nodes/{i}/node_id/package` when its copy differs from the selected node only in `check_mode`, and an equal copy admits. | Test (TC-048; FSpec FR-770-AC-1) |
+| FR-038-AC-559 | `"kernel"` on an `invariant` clause function owned by `Order` and on a `precondition` clause function refuses `invalid_package`/`invalid-value` at `/semantic_graph/nodes/{i}/check_mode`; `"kernel"` on a `body` clause function admits. | Test (TC-048; FSpec FR-770-AC-2) |
+| FR-038-AC-560 | FSpec's `check-mode-vectors.json` (CM-01 to CM-04) and the `check-mode-*` entries of `adverse.json` read as published, each vector's schema verdict agrees with the published schema, and a vector file or entry the reader does not refuse as recorded fails the run. | Test (TC-048; FSpec FR-770) |
 | FR-038-AC-540 | A dependency position naming an unsupplied package or a `node` past the dependency's last node refuses `malformed_wire` at the row entry; a `{package, node}` object written as an id path segment refuses `malformed_wire` at the segment; a local index segment in a foreign id refuses `missing_declaration`/`missing-name` at the member holding it. | Test (TC-474) |
 | FR-038-AC-492 | An admitted `CheckedPackageV2` shall issue a cloneable, opaque `AdmissionBinding` capability and report whether it retains that capability. Clones from one read are members; an independent read of equal canonical bytes is not. | Test (TC-048) |
 | FR-038-AC-493 | The public capability shall use the reader's original admission binding and expose no construction path, buffer contents, copied carrier, or compatibility representation. | Review (IR-1370) |

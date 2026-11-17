@@ -173,6 +173,7 @@ type: TestMatrix
 | FR-038 | FR-038-AC-551 | TC-048 | Implemented (IR-1552). The projection of a clock tuple position refuses `clock-read-outside-constraint`. |
 | FR-038 | FR-038-AC-552 | TC-048 | Implemented (IR-1552). The `Set<Slot>[0, 2]` clock collection admits with a row per step and a differing slot maximum refuses at row 0. |
 | FR-038 | FR-038-AC-553 | TC-048 | Implemented (IR-1552). A map keyed by a clock-bearing tuple or union refuses at the key. |
+| FR-038 | FR-038-AC-555 through FR-038-AC-560 | TC-048 | Implemented (IR-1557). | The function node `check_mode` member (FSpec FR-770): typed read and write, required on `function` nodes and refused on others, identity-bearing, `kernel` refused on invariant and precondition clause functions, and FSpec's check-mode vectors and adverse entries. |
 | FR-038 | FR-038-AC-554 | TC-048 | Implemented (IR-1552). `=` and `!=` over a clock-bearing tuple or union, nested or in either operand order, refuse `clock-read-outside-constraint`; a clock-free tuple admits. |
 | FR-038 | FR-038-AC-545 through FR-038-AC-547 | TC-048 | Implemented. | The closed `timed` `ClockConfiguration` alternative (reader and writer round-trip, closed shape, unknown kind refused, intake locus of a non-text unit), the hybrid-model subject rule and the monitor clock read of a Timed trace clause and a hybrid-subject clause. |
 | FR-038 | FR-038-AC-524 through FR-038-AC-529 | TC-048 | Implemented. | The carried-quantity sum admission (FSpec TC-187 CS-01 through CS-06) with its operation-stage check order and located refusals. |

@@ -86,16 +86,20 @@ fn node(
         })
         .collect::<Vec<_>>();
     dependencies.sort_unstable();
-    let node = json!({
-        "node_id": node_id(&id),
-        "schema_version": "filament.checked-semantic-graph/v2",
-        "node_tag": tag,
-        "semantic_form": form,
-        "semantic_type": node_id(&key(semantic_type)),
-        "dependencies": dependencies,
-        "occurrences": [{"role": role, "ordinal": 0}],
-        "body": body,
-    });
+    let node = {
+        let mut node = json!({
+            "node_id": node_id(&id),
+            "schema_version": "filament.checked-semantic-graph/v2",
+            "node_tag": tag,
+            "semantic_form": form,
+            "semantic_type": node_id(&key(semantic_type)),
+            "dependencies": dependencies,
+            "occurrences": [{"role": role, "ordinal": 0}],
+            "body": body,
+        });
+        crate::support::checked_package::carry_check_mode(&mut node);
+        node
+    };
     (id, node)
 }
 

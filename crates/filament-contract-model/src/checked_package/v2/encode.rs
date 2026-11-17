@@ -18,7 +18,7 @@
 //! (FR-038 "Canonical encoding of the wire types").
 
 use super::{
-    CheckedDeclaration, CheckedDiagnosticV2, CheckedDiagnosticsV2, CheckedNodeOwner,
+    CheckMode, CheckedDeclaration, CheckedDiagnosticV2, CheckedDiagnosticsV2, CheckedNodeOwner,
     CheckedNodeProjectionV2, CheckedSemanticGraphV2, CheckedSemanticNodeV2,
 };
 use crate::checked_package::shared::{CheckedNodeId, CheckedOperandEntry};
@@ -32,6 +32,15 @@ where
 {
     writer.name(name)?;
     writer.serialize(value)
+}
+
+/// Writes the `check_mode` member of a function node.
+fn encode_check_mode<S: Sink + ?Sized>(
+    writer: &mut Writer<'_, S>,
+    mode: CheckMode,
+) -> Result<(), Error> {
+    writer.name("check_mode")?;
+    writer.string(mode.as_str())
 }
 
 /// Writes the member `name` when `value` is present and nothing when it is
@@ -107,6 +116,7 @@ struct ProjectionFields<'a, Body> {
     declaration: Option<&'a CheckedDeclaration>,
     owner: Option<&'a CheckedNodeOwner>,
     owner_model: Option<&'a CheckedNodeId>,
+    check_mode: Option<CheckMode>,
     body: &'a Body,
 }
 
@@ -123,6 +133,7 @@ impl<'a, Body> ProjectionFields<'a, Body> {
             declaration: node.declaration.as_ref(),
             owner: node.owner.as_ref(),
             owner_model: node.owner_model.as_ref(),
+            check_mode: node.check_mode,
             body: &node.body,
         }
     }
@@ -148,6 +159,9 @@ impl<Body: Encode> Encode for ProjectionFields<'_, Body> {
         }
         if let Some(owner_model) = self.owner_model {
             encoded(writer, "owner_model", owner_model)?;
+        }
+        if let Some(mode) = self.check_mode {
+            encode_check_mode(writer, mode)?;
         }
         encoded(writer, "body", self.body)?;
         writer.end_object()
@@ -203,6 +217,9 @@ impl<Body: Encode> Encode for CheckedSemanticNodeV2<Body> {
         present(writer, "declaration", &self.declaration)?;
         present(writer, "owner", &self.owner)?;
         present_encoded(writer, "owner_model", &self.owner_model)?;
+        if let Some(mode) = self.check_mode {
+            encode_check_mode(writer, mode)?;
+        }
         encoded(writer, "body", &self.body)?;
         writer.end_object()
     }

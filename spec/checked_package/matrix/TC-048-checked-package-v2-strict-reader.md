@@ -2923,6 +2923,24 @@ and admission for `Pair`. Forge the member type of the non-terminal row of
 `field(w).tuple(0).tuple(0)` and `field(h).union(Has).tuple(0)` and require
 `malformed-clock-place` at that row.
 
+## Function check mode (FR-038-AC-555 through FR-038-AC-560)
+
+Status: IMPLEMENTED (IR-1557). Read FSpec's `check-mode-vectors.json` CM-01 to
+CM-04 over `positive-all-families.json` and the `check-mode-*` entries of
+`adverse.json` by reference, with no identity refreshed, and compare each
+refusal code, cause and located pointer; compare each vector's schema verdict
+against the published `schema.json`. Encode the two admitted CM packages and
+require unequal bytes. In crate and integration tests, remove, forge (`strict`,
+empty, boolean, `null`) and misplace the member on a non-function node and
+require `malformed_wire` at the member pointer; set `kernel` on an `invariant`
+and a `precondition` clause function and require `invalid-value` at it, and on
+a `body` clause function and require admission. Build a dependency diamond
+whose two leaves differ only in one function node's `check_mode` and require
+`conflicting-definition`, and the same diamond over equal leaves and require
+admission. Import a declaration-less function node into a package that selects
+its dependency, once equal and once with only `check_mode` changed, and require
+admission and the `node_id/package` refusal.
+
 ## Carried-quantity sum admission (FR-038-AC-524 through FR-038-AC-529)
 
 Status: qualified on the unmerged IR-1396 owner stack (IR-1398); merged-main

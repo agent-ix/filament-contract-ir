@@ -171,6 +171,8 @@ struct BorrowedNode {
     owner: Option<CheckedNodeOwner>,
     #[serde(default)]
     owner_model: Option<WireNodeId>,
+    #[serde(default)]
+    check_mode: Option<super::CheckMode>,
     body: CheckedJson,
 }
 
@@ -284,6 +286,7 @@ pub(super) fn decode_borrowed_wire(
             declaration: node.declaration.flatten(),
             owner: node.owner,
             owner_model: node.owner_model.map(|id| id.0),
+            check_mode: node.check_mode,
             body,
         });
     }

@@ -63,15 +63,19 @@ fn derived_node(
         .collect::<Vec<_>>();
     deps.sort();
     deps.dedup();
-    json!({
-        "node_id": fixture_id(key),
-        "schema_version": "filament.checked-semantic-graph/v2",
-        "node_tag": tag, "semantic_form": form,
-        "semantic_type": fixture_id(semantic_type),
-        "dependencies": deps,
-        "occurrences": [{"role": "type", "ordinal": 0}],
-        "body": body,
-    })
+    {
+        let mut node = json!({
+            "node_id": fixture_id(key),
+            "schema_version": "filament.checked-semantic-graph/v2",
+            "node_tag": tag, "semantic_form": form,
+            "semantic_type": fixture_id(semantic_type),
+            "dependencies": deps,
+            "occurrences": [{"role": "type", "ordinal": 0}],
+            "body": body,
+        });
+        crate::support::checked_package::carry_check_mode(&mut node);
+        node
+    }
 }
 
 fn over_id(target: &str) -> Value {

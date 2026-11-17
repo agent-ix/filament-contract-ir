@@ -48,15 +48,19 @@ fn node(
     body: Value,
 ) -> Value {
     let dependencies: BTreeSet<String> = over.iter().map(|name| key(name)).collect();
-    json!({
-        "node_id": node_id(&key(name)),
-        "schema_version": "filament.checked-semantic-graph/v2",
-        "node_tag": tag, "semantic_form": form,
-        "semantic_type": node_id(&key(semantic_type)),
-        "dependencies": dependencies.iter().map(|label| node_id(label)).collect::<Vec<_>>(),
-        "occurrences": [{"role": role, "ordinal": 0}],
-        "body": body,
-    })
+    {
+        let mut node = json!({
+            "node_id": node_id(&key(name)),
+            "schema_version": "filament.checked-semantic-graph/v2",
+            "node_tag": tag, "semantic_form": form,
+            "semantic_type": node_id(&key(semantic_type)),
+            "dependencies": dependencies.iter().map(|label| node_id(label)).collect::<Vec<_>>(),
+            "occurrences": [{"role": role, "ordinal": 0}],
+            "body": body,
+        });
+        crate::support::checked_package::carry_check_mode(&mut node);
+        node
+    }
 }
 
 fn literal(ty: &str, value_kind: &str, value: &str) -> Value {

@@ -1300,6 +1300,7 @@ pub fn nominal_package(members: &[(Value, String)]) -> Value {
             "occurrences": [{"role":role,"ordinal":ordinal}],
             "body": body,
         });
+        carry_check_mode(&mut node);
         if let Some(owner) = preimage.get("owner") {
             node["owner"] = owner.clone();
         }
@@ -2082,7 +2083,7 @@ fn plain_node(
     dependencies: &[&str],
     body: Value,
 ) -> Value {
-    json!({
+    let mut node = json!({
         "node_id": node_id(digest),
         "schema_version": "filament.checked-semantic-graph/v2",
         "node_tag": node_tag,
@@ -2091,7 +2092,17 @@ fn plain_node(
         "dependencies": dependencies.iter().map(|d| node_id(d)).collect::<Vec<_>>(),
         "occurrences": [{"role": "generated", "ordinal": 0}],
         "body": body,
-    })
+    });
+    carry_check_mode(&mut node);
+    node
+}
+
+/// FSpec FR-770: every `function` node carries `check_mode`; the fixtures
+/// check their bodies as `linked`.
+pub fn carry_check_mode(node: &mut Value) {
+    if node["node_tag"] == "function" {
+        node["check_mode"] = json!("linked");
+    }
 }
 
 /// `node` as a source declaration named `qualified_name`: its one
@@ -2146,7 +2157,7 @@ fn application_node(
     } else {
         "generated"
     };
-    json!({
+    let mut node = json!({
         "node_id": node_id(&key),
         "schema_version": "filament.checked-semantic-graph/v2",
         "node_tag": node_tag,
@@ -2155,7 +2166,9 @@ fn application_node(
         "dependencies": dependencies.iter().map(|d| node_id(d)).collect::<Vec<_>>(),
         "occurrences": [{"role": occurrence_role, "ordinal": 0}],
         "body": body,
-    })
+    });
+    carry_check_mode(&mut node);
+    node
 }
 
 pub fn fixture_source() -> Value {

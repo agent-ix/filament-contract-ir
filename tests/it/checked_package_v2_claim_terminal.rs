@@ -67,12 +67,16 @@ fn node(tag: &str, form: &str, body: Value, dependencies: &[String]) -> Value {
         serde_json::from_value::<CheckedNodeId>(id.clone()).expect("dependency node ID")
     });
     dependencies.dedup();
-    json!({
-        "node_id": node_id(&id), "schema_version": "filament.checked-semantic-graph/v2",
-        "node_tag": tag, "semantic_form": form, "semantic_type": node_id(&ty),
-        "dependencies": dependencies,
-        "occurrences": [{"role": "claim", "ordinal": 0}], "body": body,
-    })
+    {
+        let mut node = json!({
+            "node_id": node_id(&id), "schema_version": "filament.checked-semantic-graph/v2",
+            "node_tag": tag, "semantic_form": form, "semantic_type": node_id(&ty),
+            "dependencies": dependencies,
+            "occurrences": [{"role": "claim", "ordinal": 0}], "body": body,
+        });
+        crate::support::checked_package::carry_check_mode(&mut node);
+        node
+    }
 }
 
 fn state_graph(kind: &str, over: Value, from: Value, target: Value, deps: &[String]) -> Value {

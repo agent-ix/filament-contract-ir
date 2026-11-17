@@ -1015,6 +1015,7 @@ mod document_storage_tests {
                     identity: "source".into(),
                 }),
                 owner_model: None,
+                check_mode: None,
                 body: serde_json::from_value(json!({})).unwrap(),
             })
             .collect();

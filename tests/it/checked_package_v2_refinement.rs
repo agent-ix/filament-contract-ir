@@ -8590,9 +8590,13 @@ fn process_and_machine_clause_signatures_use_declared_context() {
                     deps: Vec<Value>,
                     role: &str,
                     body: Value| {
-            json!({"node_id":id_for(key),"schema_version":"filament.checked-semantic-graph/v2",
+            {
+                let mut node = json!({"node_id":id_for(key),"schema_version":"filament.checked-semantic-graph/v2",
                 "node_tag":tag,"semantic_form":semantic_form,"semantic_type":id_for(ty),
-                "dependencies":deps,"occurrences":[{"role":role,"ordinal":0}],"body":body})
+                "dependencies":deps,"occurrences":[{"role":role,"ordinal":0}],"body":body});
+                crate::support::checked_package::carry_check_mode(&mut node);
+                node
+            }
         };
         let added = vec![
             node(

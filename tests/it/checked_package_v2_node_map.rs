@@ -103,6 +103,7 @@ fn public_node_and_term_mapping_visits_original_slots_once_in_order() {
         declaration: None,
         owner: None,
         owner_model: Some(a.clone()),
+        check_mode: None,
         body: CheckedTerm::aggregate(vec![
             CheckedTerm::reference(a.clone()),
             CheckedTerm::binding("member", CheckedTerm::reference(b.clone())),

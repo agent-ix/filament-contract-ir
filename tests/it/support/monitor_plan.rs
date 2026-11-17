@@ -154,10 +154,17 @@ pub(super) fn append(
         operands(&body, wire, &mut path, true);
     }
     let id = json!({"package":wire["name"],"path":path,"ordinal":0});
-    wire["semantic_graph"]["nodes"].as_array_mut().unwrap().push(json!({
+    let mut node = json!({
         "schema_version":"filament.checked-semantic-graph/v2","node_id":id,"node_tag":tag,"semantic_form":form,
         "semantic_type":ty.unwrap_or(&id),"body":body,"dependencies":[],"occurrences":[{"role":if form == "parameter" { "expression" } else { "generated" },"ordinal":0}]
-    }));
+    });
+    if tag == "function" {
+        node["check_mode"] = json!("linked");
+    }
+    wire["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .unwrap()
+        .push(node);
     id
 }
 pub(super) fn type_node(wire: &mut Value, form: &str, body: Value, name: &str) -> Value {

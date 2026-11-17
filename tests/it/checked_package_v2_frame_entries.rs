@@ -929,16 +929,20 @@ fn plain(
     role: &str,
     body: Value,
 ) -> Value {
-    json!({
-        "node_id": node_id(digest),
-        "schema_version": "filament.checked-semantic-graph/v2",
-        "node_tag": tag,
-        "semantic_form": form,
-        "semantic_type": node_id(ty),
-        "dependencies": deps.iter().map(|d| node_id(d)).collect::<Vec<_>>(),
-        "occurrences": [{"role": role, "ordinal": 0}],
-        "body": body,
-    })
+    {
+        let mut node = json!({
+            "node_id": node_id(digest),
+            "schema_version": "filament.checked-semantic-graph/v2",
+            "node_tag": tag,
+            "semantic_form": form,
+            "semantic_type": node_id(ty),
+            "dependencies": deps.iter().map(|d| node_id(d)).collect::<Vec<_>>(),
+            "occurrences": [{"role": role, "ordinal": 0}],
+            "body": body,
+        });
+        crate::support::checked_package::carry_check_mode(&mut node);
+        node
+    }
 }
 
 fn self_key() -> &'static str {
@@ -5449,6 +5453,7 @@ fn model_operation_callable_joins_selected_body_and_frame() {
         "node_id": function_id,
         "schema_version": "filament.checked-semantic-graph/v2",
         "node_tag": "function", "semantic_form": "pure_function",
+        "check_mode": "linked",
         "semantic_type": body_target,
         "dependencies": dependencies,
         "occurrences": [{"role": "expression", "ordinal": 0}],

@@ -432,6 +432,26 @@ pub enum CheckedNodeOwner {
     },
 }
 
+/// How a function body's definedness obligations were treated at check.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CheckMode {
+    /// Every definedness obligation was proved at check.
+    Linked,
+    /// The obligations were left to evaluation.
+    Kernel,
+}
+
+impl CheckMode {
+    /// The wire spelling.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Linked => "linked",
+            Self::Kernel => "kernel",
+        }
+    }
+}
+
 /// A checked V2 semantic graph node.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -464,6 +484,10 @@ pub struct CheckedSemanticNodeV2<Body = CheckedTerm> {
     /// Exact local model declaration owning a protocol clause.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub owner_model: Option<CheckedNodeId>,
+    /// How the producer's checker treated a function body's definedness
+    /// obligations; present exactly on `function` nodes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub check_mode: Option<CheckMode>,
     /// Typed public semantic term.
     pub body: Body,
 }
@@ -484,6 +508,7 @@ impl RawSemanticNodeV2 {
             declaration: self.declaration,
             owner: self.owner,
             owner_model: self.owner_model,
+            check_mode: self.check_mode,
             body,
         }
     }
@@ -553,6 +578,7 @@ impl<Body: Serialize> CheckedSemanticNodeV2<Body> {
             declaration: self.declaration.clone(),
             owner: self.owner.clone(),
             owner_model: self.owner_model.clone(),
+            check_mode: self.check_mode,
             body: CheckedJson::from_serializable(&self.body)
                 .map_err(|error| serde::ser::Error::custom(error.to_string()))?,
         })
@@ -588,6 +614,10 @@ pub struct CheckedNodeProjectionV2<Body = CheckedTerm> {
     /// Exact local model declaration owning a protocol clause.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub owner_model: Option<CheckedNodeId>,
+    /// How the producer's checker treated a function body's definedness
+    /// obligations; present exactly on `function` nodes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub check_mode: Option<CheckMode>,
     /// Typed semantic term.
     pub body: Body,
 }
@@ -605,6 +635,7 @@ impl<Body: Clone> From<&CheckedSemanticNodeV2<Body>> for CheckedNodeProjectionV2
             declaration: node.declaration.clone(),
             owner: node.owner.clone(),
             owner_model: node.owner_model.clone(),
+            check_mode: node.check_mode,
             body: node.body.clone(),
         }
     }
@@ -3398,6 +3429,9 @@ fn imported_node_matches<B>(
         (None, None) | (Some(_), Some(_)) => {}
         _ => return Ok(false),
     }
+    if importer.check_mode != selected.check_mode {
+        return Ok(false);
+    }
     node_index::equivalent_values(
         TermNode::of(&importer.body),
         selected_body,
@@ -6112,6 +6146,7 @@ mod admitted_document_bridge_tests {
             declaration: None,
             owner: None,
             owner_model: None,
+            check_mode: None,
             body: (),
         }];
         let bodies =
@@ -6129,6 +6164,54 @@ mod admitted_document_bridge_tests {
             matches!(decode_admitted_body(CheckedNodeKind::ScalarType(ScalarTypeForm::Unit),&handle,&[],0,&mut WorkMeter::new(u64::MAX)),
             Err(ValidationFailure::Refused(refusal)) if refusal.code==CheckedPackageRefusalCode::MalformedWire)
         );
+    }
+}
+
+#[cfg(test)]
+mod imported_check_mode_tests {
+    use super::*;
+    use ix_trace_rs::trace;
+    use std::sync::Arc;
+
+    #[trace("TC-048", "FR-038-AC-558")]
+    #[test]
+    fn an_imported_function_node_matches_only_at_the_selected_check_mode() {
+        let id = test_support::node_id('1');
+        let body = CheckedJson::from_value(&serde_json::json!({"term":"aggregate","members":[]}))
+            .expect("body document");
+        let node = |mode| RawSemanticNodeV2 {
+            node_id: id.clone(),
+            schema_version: GRAPH_V2.into(),
+            node_tag: "function".into(),
+            semantic_form: "pure_function".into(),
+            semantic_type: id.clone(),
+            dependencies: vec![],
+            occurrences: vec![],
+            recursion_group: None,
+            declaration: None,
+            owner: None,
+            owner_model: None,
+            check_mode: Some(mode),
+            body: body.clone(),
+        };
+        let keys = vec![Arc::new(id.clone())];
+        let matches = |imported: CheckMode, selected: CheckMode| {
+            imported_node_matches(
+                &node(imported),
+                &node(selected),
+                TermNode::of(&body),
+                &keys,
+                &keys,
+                &[],
+                &[],
+                &mut WorkMeter::new(u64::MAX),
+            )
+            .expect("comparison")
+        };
+        assert!(matches(CheckMode::Linked, CheckMode::Linked));
+        assert!(matches(CheckMode::Kernel, CheckMode::Kernel));
+        assert!(!matches(CheckMode::Linked, CheckMode::Kernel));
+        assert!(!matches(CheckMode::Kernel, CheckMode::Linked));
     }
 }
 

@@ -1275,6 +1275,7 @@ fn fspec_hybrid_call_refuses_ineligible_function_signature() {
             .expect("published call body")
             .clone();
         call.as_object_mut().expect("call").remove("declaration");
+        call.as_object_mut().expect("call").remove("check_mode");
         call["node_tag"] = json!("expression");
         call["semantic_form"] = json!("call");
         call["occurrences"][0]["role"] = json!("expression");

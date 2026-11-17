@@ -2447,8 +2447,11 @@ fn validate_shapes(value: &Value) -> Result<(), ValidationFailure> {
                 "occurrences",
                 "body",
             ],
-            &["recursion_group", "declaration", "owner"],
+            &["recursion_group", "declaration", "owner", "check_mode"],
         )?;
+        if let Some(mode) = node.get("check_mode") {
+            enum_string::<super::CheckMode>(mode, at.clone().key("check_mode"))?;
+        }
         id_shape(member(node, "node_id", &at)?, at.clone().key("node_id"))?;
         id_shape(
             member(node, "semantic_type", &at)?,
