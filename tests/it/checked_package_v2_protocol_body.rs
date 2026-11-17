@@ -6409,6 +6409,9 @@ pub(super) fn compensation_clock_case(
         "aw".to_owned(),
         nodes[protocol_position(&package, "control")]["node_id"].clone(),
     );
+    // The published CB-07 row names a non-timed control; the composed package's
+    // root control stands in for it, as it did for the earlier published key.
+    ids.insert("sd".to_owned(), ids["aw"].clone());
     if case["id"] == "CB-01" {
         let clause = nodes
             .iter()
@@ -6554,7 +6557,7 @@ fn compensation_clock_rows_follow_published_cases() {
                 let key = match id {
                     "CB-03" | "CB-05" => &ids["k2"],
                     "CB-04" | "CB-06" => &ids["k1"],
-                    "CB-07" => &ids["aw"],
+                    "CB-07" => &ids["sd"],
                     _ => panic!("unexpected refused case {id}"),
                 };
                 let pointer = if id == "CB-03" {

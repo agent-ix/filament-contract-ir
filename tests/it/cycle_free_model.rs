@@ -1124,7 +1124,7 @@ fn shared_cli_kit_is_confined_to_the_opt_in_conformance_binary() {
     let kit = package(&feature, "ix-cli-kit");
     let kit_id = kit["id"].as_str().unwrap();
     let source = kit["source"].as_str().unwrap();
-    assert!(source.starts_with("git+https://github.com/agent-ix/ix-cli-kit?branch=main#"));
+    assert!(source.starts_with("git+https://github.com/agent-ix/ix-cli-kit?tag=v0.1.0#"));
     assert!(root["targets"].as_array().unwrap().iter().any(|target| {
         target["name"] == "filament-contract-conformance"
             && target["required-features"] == json!(["conformance-cli"])
