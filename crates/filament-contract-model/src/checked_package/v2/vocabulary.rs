@@ -391,6 +391,7 @@ closed_vocabulary! {
         Timestamp => "timestamp",
         Enum => "enum",
         None => "none",
+        Reference => "reference",
     }
 }
 

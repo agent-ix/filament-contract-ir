@@ -36,13 +36,13 @@ use super::operations::resolve_family;
 // These validators consume the strict decoder's authenticated typed table.
 use super::structural::typed_admitted_reference as typed_reference;
 use super::{
-    member_pointer, ApplicationOperator, CheckedDiagnosticV2, CheckedNodeKind,
-    CheckedPackageLockV2, CheckedSelectionRole, CheckedTerm, ClockConfiguration,
-    FairnessGranularity, FairnessKind, HybridForm, IntervalEnd, IntervalFit, LawRole, LiteralKind,
-    ModelForm, OperationMemberKind, RawSemanticNodeV2 as CheckedSemanticNodeV2, TemporalBinding,
-    TemporalForm, TemporalProfile, TermNode, TermView, ValueForm, WorkMeter,
+    ApplicationOperator, CheckedDiagnosticV2, CheckedNodeKind, CheckedPackageLockV2,
+    CheckedSelectionRole, CheckedTerm, ClockConfiguration, FairnessGranularity, FairnessKind,
+    HybridForm, IntervalEnd, IntervalFit, LawRole, LiteralKind, ModelForm, OperationMemberKind,
+    RawSemanticNodeV2 as CheckedSemanticNodeV2, TemporalBinding, TemporalForm, TemporalProfile,
+    TermNode, TermView, ValueForm, WorkMeter, member_pointer,
 };
-use crate::checked_package::common::{node_pointer, ValidationFailure};
+use crate::checked_package::common::{ValidationFailure, node_pointer};
 use crate::checked_package::shared::{
     CheckedArtifactRef, CheckedNodeId, CheckedNodePathSegment, CheckedPackageRefusalCause,
     CheckedPackageRefusalCode, JsonPointer,
@@ -978,14 +978,18 @@ fn read_interval_member_node(
         } else {
             Some(need!(rational(upper, meter)?))
         },
-        lower_end: need!(interval
-            .get("lower_end")
-            .and_then(TermNode::as_str)
-            .and_then(IntervalEnd::from_wire)),
-        upper_end: need!(interval
-            .get("upper_end")
-            .and_then(TermNode::as_str)
-            .and_then(IntervalEnd::from_wire)),
+        lower_end: need!(
+            interval
+                .get("lower_end")
+                .and_then(TermNode::as_str)
+                .and_then(IntervalEnd::from_wire)
+        ),
+        upper_end: need!(
+            interval
+                .get("upper_end")
+                .and_then(TermNode::as_str)
+                .and_then(IntervalEnd::from_wire)
+        ),
     }))
 }
 
@@ -1363,9 +1367,13 @@ fn check_clause(
             .cmp(&graph.nodes[right].node_id)
             .then(left.cmp(&right))
     });
-    // The clock unit is matched by `node_id.path` alone: the unit's own node
-    // lives in the package that owns it, whatever the clause's package
-    // (FSpec FR-370 "Window aggregate atom").
+    if profile == Some(TemporalProfile::TimestampedEventFiniteWindow)
+        && aggregates
+            .iter()
+            .any(|&formula| aggregate_declares_duration_window(formula, terms))
+    {
+        validate_source_clock_unit(context, position, &node.node_id, graph, terms, meter)?;
+    }
     for formula in aggregates {
         check_aggregate(formula, profile, clock_unit, graph, terms, meter)?;
     }
@@ -1634,15 +1642,126 @@ fn aggregate_clock_units<'b>(
 /// Whether a bound's type path is the clock's timestamp unit
 /// (`scalar_type/unit/<name>`), or both are absent.
 #[ix_trace_rs::string_edge]
-fn is_clock_unit_path(path: Option<&[CheckedNodePathSegment]>, unit: Option<&str>) -> bool {
+fn is_clock_unit_path(
+    id: Option<&CheckedNodeId>,
+    unit: Option<&str>,
+    graph: &StepGraph<'_, '_>,
+) -> bool {
     use CheckedNodePathSegment::Name;
-    match (path, unit) {
+    match (id, unit) {
         (None, None) => true,
-        (Some([Name(kind), Name(form), Name(name)]), Some(unit)) => {
-            kind.as_ref() == "scalar_type" && form.as_ref() == "unit" && name.as_ref() == unit
+        (Some(id), Some(unit)) => {
+            let Some((node, kind)) = graph.node(id) else {
+                return false;
+            };
+            if kind != CheckedNodeKind::ScalarType(super::ScalarTypeForm::Unit)
+                || node.semantic_form.as_ref() != "unit"
+            {
+                return false;
+            }
+            matches!(node.node_id.path.as_slice(), [Name(name)] if name.as_ref() == unit)
+                || matches!(node.node_id.path.as_slice(),
+                    [Name(kind), Name(form), Name(name)]
+                        if kind.as_ref() == "scalar_type"
+                            && form.as_ref() == "unit"
+                            && name.as_ref() == unit
+                )
         }
         _ => false,
     }
+}
+
+fn aggregate_declares_duration_window(formula: usize, terms: &[Option<CheckedTerm>]) -> bool {
+    let Some(CheckedTerm::Application { arguments, .. }) =
+        terms.get(formula).and_then(Option::as_ref)
+    else {
+        return false;
+    };
+    let Some(CheckedTerm::Aggregate { members }) = arguments.first() else {
+        return false;
+    };
+    members.iter().any(|member| match member {
+        CheckedTerm::Binding { name, value } if name.as_ref() == "window_kind" => {
+            aggregate_literal(value, LiteralKind::Text) == Some("duration")
+        }
+        _ => false,
+    })
+}
+
+fn validate_source_clock_unit(
+    context: &TemporalContext<'_>,
+    position: usize,
+    clause: &CheckedNodeId,
+    graph: &StepGraph<'_, '_>,
+    terms: &[Option<CheckedTerm>],
+    meter: &mut WorkMeter,
+) -> Result<(), ValidationFailure> {
+    let Some(bindings) = context.bindings else {
+        return Ok(());
+    };
+    for (row_index, row) in bindings
+        .iter()
+        .enumerate()
+        .filter(|(_, row)| &row.declaration == clause)
+    {
+        let ClockConfiguration::TimestampedEvent { timestamp_unit } = &row.clock else {
+            continue;
+        };
+        let source_unit = graph.nodes.iter().any(|node| {
+            node.node_tag.as_ref() == "scalar_type"
+                && node.semantic_form.as_ref() == "unit"
+                && matches!(
+                    node.owner.as_ref(),
+                    Some(super::CheckedNodeOwner::Source { .. })
+                )
+                && matches!(node.node_id.path.as_slice(),
+                    [CheckedNodePathSegment::Name(name)] if name.as_ref() == timestamp_unit.as_ref()
+                )
+        });
+        let model_unit = graph.nodes.iter().any(|node| {
+            node.node_tag.as_ref() == "scalar_type"
+                && node.semantic_form.as_ref() == "unit"
+                && matches!(node.node_id.path.as_slice(),
+                    [CheckedNodePathSegment::Name(kind), CheckedNodePathSegment::Name(form), CheckedNodePathSegment::Name(name)]
+                        if kind.as_ref() == "scalar_type"
+                            && form.as_ref() == "unit"
+                            && name.as_ref() == timestamp_unit.as_ref()
+                )
+        });
+        let at = super::stage_storage::Path::root()
+            .key("temporal_bindings")
+            .index(row_index)
+            .key("clock")
+            .key("timestamp_unit");
+        if !source_unit && !model_unit {
+            return Err(temporal_fault(
+                meter,
+                position,
+                CheckedPackageRefusalCode::MissingDeclaration,
+                CheckedPackageRefusalCause::MissingName,
+                at,
+                clause,
+            ));
+        }
+        if source_unit
+            && !super::identity::source_clock_unit_is_linear_time(
+                graph.nodes,
+                terms,
+                timestamp_unit,
+                meter,
+            )?
+        {
+            return Err(temporal_fault(
+                meter,
+                position,
+                CheckedPackageRefusalCode::IllTyped,
+                CheckedPackageRefusalCause::UnitMismatch,
+                at,
+                clause,
+            ));
+        }
+    }
+    Ok(())
 }
 
 #[ix_trace_rs::string_edge]
@@ -1901,7 +2020,7 @@ fn check_aggregate(
                     _ => None,
                 };
                 if window == AggregateWindow::Duration
-                    && !is_clock_unit_path(bound_type.map(|id| id.path.as_slice()), clock_unit)
+                    && !is_clock_unit_path(bound_type, clock_unit, graph)
                 {
                     return Err(fail(meter, Code::IllTyped, Cause::UnitMismatch, pointer));
                 }
@@ -2653,7 +2772,7 @@ mod tests {
     #[trace("TC-472", "FR-038-AC-516", "FR-038-AC-5")]
     #[test]
     fn invalid_reference_id_refuses_in_the_graph_term_pass_before_temporal_views() {
-        use crate::checked_package::common::{validate_term, Step, TermGrammar, Trail};
+        use crate::checked_package::common::{Step, TermGrammar, Trail, validate_term};
         let body = CheckedJson::from_value(&json!({"term":"reference","target":{
             "package":"", "path":[], "ordinal":0
         }}))

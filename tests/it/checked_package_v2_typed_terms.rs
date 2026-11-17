@@ -4,11 +4,11 @@ use crate::support::checked_package::{
     canonical, evidence_for, positive_operation_identities, v2_all_families,
 };
 use filament_contract_model::{
-    encode_checked_package_v2, CheckedApplicationOperation, CheckedBindingName,
-    CheckedBindingNameKind, CheckedFairnessGranularity, CheckedFairnessKind, CheckedLiteralValue,
-    CheckedOperationMember, CheckedOperationViewError, CheckedPackageReadLimits,
-    CheckedPackageSourceCorrespondenceRef, CheckedPackageV2ReadResult, CheckedTerm, ExecutionPoint,
-    ExecutionPointName, OperationMemberKind, StateClauseKind,
+    CheckedApplicationOperation, CheckedBindingName, CheckedBindingNameKind,
+    CheckedFairnessGranularity, CheckedFairnessKind, CheckedLiteralValue, CheckedOperationMember,
+    CheckedOperationViewError, CheckedPackageReadLimits, CheckedPackageSourceCorrespondenceRef,
+    CheckedPackageV2ReadResult, CheckedTerm, ExecutionPoint, ExecutionPointName,
+    OperationMemberKind, StateClauseKind, encode_checked_package_v2,
 };
 use ix_trace_rs::trace;
 use serde_json::json;
@@ -294,6 +294,7 @@ fn public_literal_read_covers_the_closed_payload_vocabulary() {
         ),
         ("enum", json!("READY")),
         ("none", json!(null)),
+        ("reference", json!("7331")),
     ];
     assert_eq!(cases.len(), filament_contract_model::LiteralKind::ALL.len());
     for (kind, value) in cases {
@@ -350,9 +351,35 @@ fn public_literal_read_covers_the_closed_payload_vocabulary() {
             | ("timestamp", CheckedLiteralValue::Timestamp(i128::MAX))
             | ("enum", CheckedLiteralValue::Enum("READY"))
             | ("none", CheckedLiteralValue::None) => {}
+            ("reference", CheckedLiteralValue::Reference("7331")) => {}
             (_, other) => panic!("{kind} mapped to {other:?}"),
         }
     }
+}
+
+/// Trace: FR-480-AC-3, TC-965-RL-06.
+/// Provenance: IR-1559.
+#[trace("TC-965", "FR-480-AC-3")]
+#[test]
+fn reference_literal_read_preserves_the_canonical_target_identity() {
+    let type_id = filament_contract_model::CheckedNodeId {
+        package: "literal-test".into(),
+        path: vec![filament_contract_model::CheckedNodePathSegment::Name(
+            "reference-type".into(),
+        )],
+        ordinal: 0,
+    };
+    let term = CheckedTerm::Literal {
+        type_id: type_id.clone(),
+        value_kind: filament_contract_model::LiteralKind::Reference,
+        value: filament_contract_model::CheckedJson::from_serializable("7331")
+            .expect("reference identity"),
+    };
+
+    let read = term.literal_read().expect("reference literal read");
+    assert_eq!(read.type_id, &type_id);
+    assert_eq!(read.kind, filament_contract_model::LiteralKind::Reference);
+    assert_eq!(read.value, CheckedLiteralValue::Reference("7331"));
 }
 
 #[trace("FR-349-AC-8", "FR-349-AC-9")]

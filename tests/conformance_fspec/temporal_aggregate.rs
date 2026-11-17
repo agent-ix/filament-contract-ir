@@ -9,7 +9,7 @@ use super::{
 };
 use filament_contract_model::{CheckedNodeId, CheckedPackageV2ReadResult, CheckedTerm};
 use ix_trace_rs::trace;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::BTreeSet;
 
 fn vectors() -> Value {
@@ -72,6 +72,42 @@ fn unit(name: &str, dimension: &str) -> Value {
         "node_tag": "scalar_type", "semantic_form": "unit", "semantic_type": dimension,
         "declaration": {"qualified_name": ["scalar_type", "unit", name]},
         "dependencies": dependencies, "occurrences": [{"role": "declaration", "ordinal": 0}],
+        "owner": {"kind": "source", "authority": "agent-ix", "identity": "example"},
+        "body": {"term": "unit", "dimension_node_id": dimension,
+                 "target_unit_node_id": target,
+                 "scale": {"numerator": scale, "denominator": "1"},
+                 "offset": {"numerator": "0", "denominator": "1"}},
+    })
+}
+
+fn source_dimension(name: &str) -> Value {
+    let key = id(&[name]);
+    json!({
+        "node_id": key, "schema_version": "filament.checked-semantic-graph/v2",
+        "node_tag": "scalar_type", "semantic_form": "dimension", "semantic_type": key,
+        "declaration": {"qualified_name": [name]},
+        "dependencies": [], "occurrences": [{"role": "declaration", "ordinal": 0}],
+        "owner": {"kind": "source", "authority": "agent-ix", "identity": "example"},
+        "body": {"term": "dimension", "base": true, "terms": []},
+    })
+}
+
+fn source_unit(name: &str, dimension: &str) -> Value {
+    let key = id(&[name]);
+    let dimension = id(&[dimension]);
+    let target = (name == "s").then(|| id(&["ms"]));
+    let scale = if name == "s" { "1000" } else { "1" };
+    let dependencies = if let Some(target) = &target {
+        json!([dimension, target])
+    } else {
+        json!([dimension])
+    };
+    json!({
+        "node_id": key, "schema_version": "filament.checked-semantic-graph/v2",
+        "node_tag": "scalar_type", "semantic_form": "unit", "semantic_type": dimension,
+        "declaration": {"qualified_name": [name]},
+        "dependencies": dependencies,
+        "occurrences": [{"role": "declaration", "ordinal": 0}],
         "owner": {"kind": "source", "authority": "agent-ix", "identity": "example"},
         "body": {"term": "unit", "dimension_node_id": dimension,
                  "target_unit_node_id": target,
@@ -414,6 +450,69 @@ fn duration_bounds_match_every_occurrence_clock_unit() {
         serde_json::from_value(package["semantic_graph"]["nodes"][formula]["node_id"].clone())
             .expect("formula identity");
     assert_eq!(refusal.locus.as_ref(), Some(&expected_id));
+}
+
+/// Trace: FR-778-AC-1/3, TC-1890.
+/// Provenance: QSL-2338.
+#[trace("TC-1890", "QSL-2338")]
+#[test]
+fn timestamped_duration_bounds_admit_only_linear_source_time_units() {
+    let mut published = vectors();
+    published["clock_unit"] = id(&["ms"]);
+    let case = published["positive"]
+        .as_array()
+        .expect("positive cases")
+        .iter()
+        .find(|case| case["id"] == "AG-07-duration-quantile")
+        .expect("published duration case");
+    let (mut package, _) = package_for(case, &published);
+    package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .retain(|node| {
+            !matches!(node["semantic_form"].as_str(), Some("dimension" | "unit"))
+                || node["node_id"]["path"][0] != "scalar_type"
+        });
+    package["source_map"]
+        .as_array_mut()
+        .expect("source map")
+        .retain(|row| {
+            !matches!(row["node_id"]["path"][0].as_str(), Some("scalar_type"))
+                || !matches!(
+                    row["node_id"]["path"][1].as_str(),
+                    Some("dimension" | "unit")
+                )
+        });
+    add_node(&mut package, source_dimension("Time"));
+    add_node(&mut package, source_unit("ms", "Time"));
+    add_node(&mut package, source_unit("s", "Time"));
+
+    assert!(
+        matches!(
+            read_package(&package).expect("complete package read"),
+            CheckedPackageV2ReadResult::Admitted(_)
+        ),
+        "a duration bound typed by the source-owned Time unit is admitted"
+    );
+
+    let unit = package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .iter_mut()
+        .find(|node| node["node_id"]["path"] == json!(["ms"]))
+        .expect("source unit");
+    unit["body"]["offset"]["numerator"] = json!("1");
+    let CheckedPackageV2ReadResult::Refused(refusal) =
+        read_package(&package).expect("complete package read")
+    else {
+        panic!("an affine source clock unit must refuse");
+    };
+    assert_eq!(code_word(refusal.code), "ill_typed");
+    assert_eq!(refusal.cause.map(cause_word), Some("unit-mismatch"));
+    assert_eq!(
+        refusal.loci[0].path.as_ref().map(ToString::to_string),
+        Some("/temporal_bindings/0/clock/timestamp_unit".to_owned())
+    );
 }
 
 /// Operand order does not choose the first aggregate refusal.

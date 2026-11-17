@@ -16,7 +16,7 @@ use super::{
     ScalarTypeForm, StateForm, TemporalForm, ValueForm, WorkMeter,
 };
 use super::{CheckedPackageLockV2, RawCheckedPackageWireV2};
-use crate::checked_package::common::{node_pointer, ValidationFailure};
+use crate::checked_package::common::{ValidationFailure, node_pointer};
 use crate::checked_package::shared::CheckedOperandEntry;
 use crate::checked_package::shared::{
     CheckedNodeId, CheckedNodePathSegment, CheckedPackageRefusal, CheckedPackageRefusalCause,
@@ -2257,6 +2257,124 @@ fn nominal_term(terms: &[Option<super::CheckedTerm>], position: usize) -> Option
     }
 }
 
+/// Whether a source-declared unit is a linear unit of the base `Time` dimension.
+/// The conversion chain may change scale, but its composed offset must be zero.
+#[ix_trace_rs::string_edge]
+pub(super) fn source_clock_unit_is_linear_time<B>(
+    nodes: &[CheckedSemanticNodeV2<B>],
+    terms: &[Option<super::CheckedTerm>],
+    name: &str,
+    meter: &mut WorkMeter,
+) -> Result<bool, ValidationFailure> {
+    let at = || JsonPointer::root().key("semantic_graph").key("nodes");
+    meter.charge(u64::try_from(nodes.len()).unwrap_or(u64::MAX), at)?;
+    let Some((position, unit)) = nodes.iter().enumerate().find(|(_, node)| {
+        node.node_tag.as_ref() == "scalar_type"
+            && node.semantic_form.as_ref() == "unit"
+            && matches!(
+                node.owner.as_ref(),
+                Some(super::CheckedNodeOwner::Source { .. })
+            )
+            && node.declaration.as_ref().is_some_and(|declaration| {
+                declaration.qualified_name.len() == 1
+                    && declaration.qualified_name.first().is_some_and(|path| path.as_ref() == name)
+            })
+            && matches!(node.node_id.path.as_slice(), [CheckedNodePathSegment::Name(path)] if path.as_ref() == name)
+    }) else {
+        return Ok(false);
+    };
+    let Some(unit_body) = nominal_term(terms, position) else {
+        return Ok(false);
+    };
+    let NominalBodyKind::Unit {
+        dimension_node_id,
+        target_unit_node_id,
+        scale: unit_scale,
+        offset: unit_offset,
+    } = unit_body.kind()
+    else {
+        return Ok(false);
+    };
+    let Some((dimension_position, dimension)) = nodes
+        .iter()
+        .enumerate()
+        .find(|(_, candidate)| &candidate.node_id == dimension_node_id)
+    else {
+        return Ok(false);
+    };
+    let Some(dimension_body) = nominal_term(terms, dimension_position) else {
+        return Ok(false);
+    };
+    let NominalBodyKind::Dimension { base, .. } = dimension_body.kind() else {
+        return Ok(false);
+    };
+    if !base
+        || dimension.owner != unit.owner
+        || dimension.node_tag.as_ref() != "scalar_type"
+        || dimension.semantic_form.as_ref() != "dimension"
+        || dimension
+            .declaration
+            .as_ref()
+            .and_then(|declaration| declaration.qualified_name.last())
+            .is_none_or(|name| name.as_ref() != "Time")
+    {
+        return Ok(false);
+    }
+
+    let mut offset = ExactRatio::zero();
+    let mut current = (
+        dimension_node_id,
+        target_unit_node_id,
+        unit_scale,
+        unit_offset,
+    );
+    let mut seen = Vec::new();
+    meter.insert_sorted(&mut seen, position)?;
+    loop {
+        meter.at_node(position, "scalar_type");
+        let edge_scale = ExactRatio::parse(current.2, meter, &at)?;
+        let edge_offset = ExactRatio::parse(current.3, meter, &at)?;
+        offset = offset
+            .multiply(&edge_scale, meter, &at)?
+            .add(&edge_offset, meter, &at)?;
+        let Some(target) = current.1.as_ref() else {
+            break;
+        };
+        meter.charge(u64::try_from(nodes.len()).unwrap_or(u64::MAX), at)?;
+        let Some((target_position, target_unit)) = nodes
+            .iter()
+            .enumerate()
+            .find(|(_, candidate)| &candidate.node_id == target)
+        else {
+            return Ok(false);
+        };
+        if !meter.insert_sorted(&mut seen, target_position)?
+            || target_unit.owner != unit.owner
+            || target_unit.node_tag.as_ref() != "scalar_type"
+            || target_unit.semantic_form.as_ref() != "unit"
+        {
+            return Ok(false);
+        }
+        let Some(target_body) = nominal_term(terms, target_position) else {
+            return Ok(false);
+        };
+        let NominalBodyKind::Unit {
+            dimension_node_id: target_dimension,
+            target_unit_node_id: next_target,
+            scale: target_scale,
+            offset: target_offset,
+        } = target_body.kind()
+        else {
+            return Ok(false);
+        };
+        if target_dimension != current.0 {
+            return Ok(false);
+        }
+        current = (target_dimension, next_target, target_scale, target_offset);
+    }
+    Ok(offset == ExactRatio::zero())
+}
+
 #[ix_trace_rs::string_edge]
 pub(super) fn duration_unit_key<B>(
     nodes: &[CheckedSemanticNodeV2<B>],
@@ -3267,8 +3385,8 @@ fn validate_unit_path(
 
 #[cfg(test)]
 mod tests {
-    use super::super::checked_json::CheckedJson;
     use super::super::RawSemanticNodeV2 as CheckedSemanticNodeV2;
+    use super::super::checked_json::CheckedJson;
     use super::*;
     use crate::NativeJoinBudget;
     use ix_trace_rs::trace;
@@ -3648,9 +3766,11 @@ mod tests {
         let term = super::super::CheckedTerm::NominalBody(Box::new(parsed));
         let encoded = quire_canonical::to_vec(&term, quire_canonical::Limits::new(1 << 22))
             .expect("indexed encoding");
-        assert!(encoded
-            .windows(b"\"node\":0".len())
-            .any(|part| part == b"\"node\":0"));
+        assert!(
+            encoded
+                .windows(b"\"node\":0".len())
+                .any(|part| part == b"\"node\":0")
+        );
 
         // The old inline operand spelling is not a V2 node ID. The NI-13
         // conformance control covers 100,001 valid graph-local indexed keys
