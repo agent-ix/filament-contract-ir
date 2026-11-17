@@ -2,9 +2,9 @@
 //! Deterministic logical storage footprints for native identity joins.
 
 use super::exact_projection::{
-    ExactTypeProjectionError, SelectedExactDeclarationRow, SelectedExactFieldRow,
-    SelectedExactIdentity, SelectedSourceCollectionRow, SelectedSourceEnumRow,
-    SelectedSourceRecordRow, SelectedSourceTupleRow, SelectedSourceUnionRow, charge_native_work,
+    charge_native_work, ExactTypeProjectionError, SelectedExactDeclarationRow,
+    SelectedExactFieldRow, SelectedExactIdentity, SelectedSourceCollectionRow,
+    SelectedSourceEnumRow, SelectedSourceRecordRow, SelectedSourceTupleRow, SelectedSourceUnionRow,
 };
 use super::{CheckedNodeId, CheckedNodePathSegment, NativeJoinBudget};
 use filament_exact::{
