@@ -1711,11 +1711,21 @@ fn aggregate_declares_duration_window(formula: usize, terms: &[Option<CheckedTer
         return false;
     };
     members.iter().any(|member| match member {
-        CheckedTerm::Binding { name, value } if name.as_ref() == "window_kind" => {
+        CheckedTerm::Binding { name, value } if is_window_kind_binding(name) => {
             aggregate_literal(value, LiteralKind::Text) == Some("duration")
         }
         _ => false,
     })
+}
+
+#[ix_trace_rs::string_edge]
+fn is_window_kind_binding(name: &str) -> bool {
+    name == "window_kind"
+}
+
+#[ix_trace_rs::string_edge]
+fn is_scalar_type_unit(node_tag: &str, semantic_form: &str) -> bool {
+    node_tag == "scalar_type" && semantic_form == "unit"
 }
 
 fn validate_source_clock_unit(
@@ -1740,8 +1750,7 @@ fn validate_source_clock_unit(
         };
         let source_unit = source_owner.is_some_and(|source_owner| {
             graph.nodes.iter().any(|node| {
-                node.node_tag.as_ref() == "scalar_type"
-                    && node.semantic_form.as_ref() == "unit"
+                is_scalar_type_unit(&node.node_tag, &node.semantic_form)
                     && node.owner.as_ref() == Some(source_owner)
                     && node.declaration.as_ref().is_some_and(|declaration| {
                         matches!(declaration.qualified_name.as_slice(), [name]
@@ -1753,8 +1762,7 @@ fn validate_source_clock_unit(
             })
         });
         let model_unit = graph.nodes.iter().any(|node| {
-            node.node_tag.as_ref() == "scalar_type"
-                && node.semantic_form.as_ref() == "unit"
+            is_scalar_type_unit(&node.node_tag, &node.semantic_form)
                 && matches!(node.node_id.path.as_slice(),
                     [CheckedNodePathSegment::Name(kind), CheckedNodePathSegment::Name(form), CheckedNodePathSegment::Name(name)]
                         if kind.as_ref() == "scalar_type"
