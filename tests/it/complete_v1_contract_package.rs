@@ -120,6 +120,48 @@ fn operation(term: &CheckedTerm) -> &filament_contract_model::CheckedApplication
     operation
 }
 
+#[trace("TC-047", "FR-038-AC-555")]
+#[test]
+fn v1_package_carries_function_check_mode_and_refuses_an_invalid_value() {
+    let source = admit(&checked_package::positive_operation_identities());
+    let key = source
+        .graph()
+        .nodes
+        .iter()
+        .find(|node| matches!(&node.body, CheckedTerm::Application { .. }))
+        .expect("operation node")
+        .node_id
+        .clone();
+    let lowered = source.lower(std::slice::from_ref(&key), &profile());
+    let mut package: Value = serde_json::from_slice(bytes(&lowered)).expect("package JSON");
+    let function = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .position(|node| node["node_tag"] == "function")
+        .expect("the lowered closure holds a function node");
+    assert_eq!(
+        package["semantic_graph"]["nodes"][function]["check_mode"],
+        "linked"
+    );
+    assert!(matches!(
+        read(&canonical(&package)),
+        ContractPackageReadResult::Admitted(_)
+    ));
+    package["semantic_graph"]["nodes"][function]["check_mode"] = json!("strict");
+    let ContractPackageReadResult::Refused(refusal) = read(&canonical(&package)) else {
+        panic!("an invalid check_mode must refuse");
+    };
+    assert_eq!(refusal.cause, Some(Cause::InvalidValue));
+    assert_eq!(
+        refusal.loci[0]
+            .path
+            .as_ref()
+            .map(|path| path.as_str().to_owned()),
+        Some(format!("/semantic_graph/nodes/{function}/check_mode"))
+    );
+}
+
 #[trace("TC-047", "FR-038-AC-472")]
 #[test]
 fn mixed_source_literal_keeps_its_type_and_empty_dependencies_through_v1() {
@@ -169,8 +211,9 @@ fn v1_operation_views_require_authenticated_source() {
     assert_eq!(operation(producer_term).mode(), Ok(None));
     assert_eq!(operation(producer_term).law_definitions(), Ok(&[][..]));
 
-    let ContractPackageReadResult::Admitted(plain) = read(bytes(&lowered)) else {
-        panic!("plain canonical V1 read");
+    let plain = read(bytes(&lowered));
+    let ContractPackageReadResult::Admitted(plain) = plain else {
+        panic!("plain canonical V1 read: {plain:?}");
     };
     let plain_term = plain.term(&key).expect("plain term");
     assert_eq!(plain_term, producer_term);

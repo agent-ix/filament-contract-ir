@@ -855,6 +855,62 @@ fn run_dependency_vectors(base: &Value, vectors: &Value) -> Result<(), String> {
     Ok(())
 }
 
+#[trace("TC-226", "FR-038-AC-558")]
+#[test]
+fn a_diamond_whose_leaves_differ_only_in_function_check_mode_conflicts() {
+    let fixtures = super::fixtures_dir();
+    let base = super::read_json(&fixtures.join("positive-all-families.json"))
+        .expect("current published base package");
+    let linked_wire = super::read_json(&fixtures.join("positive-dependency-library.json"))
+        .expect("published library with function nodes");
+    let mut kernel_wire = linked_wire.clone();
+    let functions: Vec<usize> = kernel_wire["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .enumerate()
+        .filter(|(_, node)| node["node_tag"] == "function")
+        .map(|(position, _)| position)
+        .collect();
+    assert!(!functions.is_empty(), "the library holds function nodes");
+    kernel_wire["semantic_graph"]["nodes"][functions[0]]["check_mode"] = json!("kernel");
+    let linked = admitted_dependency(&linked_wire);
+    let kernel = admitted_dependency(&kernel_wire);
+    assert_eq!(linked.name(), kernel.name());
+    assert_ne!(linked.graph(), kernel.graph());
+    for (right_leaf, expected) in [
+        (&linked, "admitted"),
+        (&kernel, "refused:invalid_package/conflicting-definition"),
+    ] {
+        let mut left_wire = scalar_dependency(&base, "test/left");
+        left_wire["lock"]["dependency_selections"] = json!([{"identity":linked.name()}]);
+        let CheckedPackageV2ReadResult::Admitted(left) =
+            dependency_read(&left_wire, &[(linked.name(), &linked)]).expect("left read")
+        else {
+            panic!("left branch must admit");
+        };
+        let mut right_wire = scalar_dependency(&base, "test/right");
+        right_wire["lock"]["dependency_selections"] = json!([{"identity":right_leaf.name()}]);
+        let CheckedPackageV2ReadResult::Admitted(right) =
+            dependency_read(&right_wire, &[(right_leaf.name(), right_leaf)]).expect("right read")
+        else {
+            panic!("right branch must admit before closure composition");
+        };
+        let mut root = scalar_dependency(&base, "test/root");
+        root["lock"]["dependency_selections"] =
+            json!([{"identity":left.name()},{"identity":right.name()}]);
+        let mut row = json!({"id":"check-mode-diamond", "outcome":expected});
+        if expected != "admitted" {
+            row["loci"] = json!([
+                "/lock/dependency_selections/0/lock/dependency_selections/0",
+                "/lock/dependency_selections/1/lock/dependency_selections/0"
+            ]);
+        }
+        dependency_outcome(&root, &[(left.name(), &left), (right.name(), &right)], &row)
+            .unwrap_or_else(|why| panic!("{why}"));
+    }
+}
+
 #[trace("TC-226", "FR-038-AC-113")]
 #[test]
 fn published_dependency_selections_supply_and_diamonds_fail_closed() {

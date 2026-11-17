@@ -31,16 +31,20 @@ fn provisional(letter: char) -> String {
 }
 
 fn node(digest: &str, tag: &str, form: &str, ty: &str, body: Value) -> Value {
-    json!({
-        "node_id": node_id(digest),
-        "schema_version": "filament.checked-semantic-graph/v2",
-        "node_tag": tag,
-        "semantic_form": form,
-        "semantic_type": node_id(ty),
-        "dependencies": [],
-        "occurrences": [{"role": "expression", "ordinal": 0}],
-        "body": body,
-    })
+    {
+        let mut node = json!({
+            "node_id": node_id(digest),
+            "schema_version": "filament.checked-semantic-graph/v2",
+            "node_tag": tag,
+            "semantic_form": form,
+            "semantic_type": node_id(ty),
+            "dependencies": [],
+            "occurrences": [{"role": "expression", "ordinal": 0}],
+            "body": body,
+        });
+        crate::support::checked_package::carry_check_mode(&mut node);
+        node
+    }
 }
 
 fn operation(identity: &str, member: Value) -> Value {

@@ -2169,6 +2169,7 @@ mod budget_tests {
                 identity: "domain".into(),
             }),
             owner_model: None,
+            check_mode: None,
             body: CheckedJson::from_serializable(term).unwrap(),
         }
     }

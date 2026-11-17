@@ -20,11 +20,11 @@ fn node(package: &mut Value, key: &str, tag: &str, form: &str, ty: &str, body: V
     package["semantic_graph"]["nodes"]
         .as_array_mut()
         .expect("nodes")
-        .push(json!({
+        .push({ let mut node = json!({
             "node_id": node_id(key), "schema_version": "filament.checked-semantic-graph/v2",
             "node_tag": tag, "semantic_form": form, "semantic_type": node_id(ty),
             "dependencies": [], "occurrences": [{"role": "expression", "ordinal": 0}], "body": body
-        }));
+        }); crate::support::checked_package::carry_check_mode(&mut node); node });
 }
 
 struct Fixture {

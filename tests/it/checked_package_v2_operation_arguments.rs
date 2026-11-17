@@ -162,16 +162,20 @@ fn wire_node(
     role: &str,
     body: Value,
 ) -> Value {
-    json!({
-        "node_id": node_id(key),
-        "schema_version": "filament.checked-semantic-graph/v2",
-        "node_tag": tag,
-        "semantic_form": form,
-        "semantic_type": node_id(semantic_type),
-        "dependencies": dependencies.iter().map(|key| node_id(key)).collect::<Vec<_>>(),
-        "occurrences": [{"role": role, "ordinal": 0}],
-        "body": body,
-    })
+    {
+        let mut node = json!({
+            "node_id": node_id(key),
+            "schema_version": "filament.checked-semantic-graph/v2",
+            "node_tag": tag,
+            "semantic_form": form,
+            "semantic_type": node_id(semantic_type),
+            "dependencies": dependencies.iter().map(|key| node_id(key)).collect::<Vec<_>>(),
+            "occurrences": [{"role": role, "ordinal": 0}],
+            "body": body,
+        });
+        crate::support::checked_package::carry_check_mode(&mut node);
+        node
+    }
 }
 
 /// The targets FR-322's application-node dependency join names in `term`.

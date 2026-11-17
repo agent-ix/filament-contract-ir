@@ -35,6 +35,7 @@ fn graph_node(entry: &Value) -> Value {
     match entry["form"].as_str().expect("graph node form") {
         "function" => {
             node["node_tag"] = json!("function");
+            node["check_mode"] = json!("linked");
             node["semantic_form"] = key["path"][1].clone();
             node["owner"] = entry["owner"].clone();
             node["body"] = json!({"term": "aggregate", "members": [{
@@ -146,9 +147,13 @@ fn plain_node(
 ) -> Value {
     let mut deps = deps;
     deps.sort_by_key(fixture::structural_fixture_id);
-    json!({"node_id": key, "schema_version": "filament.checked-semantic-graph/v2",
+    {
+        let mut node = json!({"node_id": key, "schema_version": "filament.checked-semantic-graph/v2",
         "node_tag": tag, "semantic_form": form, "semantic_type": ty, "dependencies": deps,
-        "occurrences": [{"role": role, "ordinal": 0}], "body": body})
+        "occurrences": [{"role": role, "ordinal": 0}], "body": body});
+        crate::support::checked_package::carry_check_mode(&mut node);
+        node
+    }
 }
 
 /// One `dispatch_call` of the candidate's selected operation on a receiver of

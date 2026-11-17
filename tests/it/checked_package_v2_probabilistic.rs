@@ -287,12 +287,16 @@ fn delay(family: &str, parameters: Value) -> Value {
 /// A node of the family package with `body`, added by [`append`].
 fn plain_node(label: &[&str], tag: &str, form: &str, semantic_type: Value, body: Value) -> Value {
     let node_id = id(label);
-    json!({
-        "schema_version": "filament.checked-semantic-graph/v2",
-        "node_id": node_id, "semantic_type": semantic_type,
-        "node_tag": tag, "semantic_form": form, "dependencies": [],
-        "occurrences": [], "body": body,
-    })
+    {
+        let mut node = json!({
+            "schema_version": "filament.checked-semantic-graph/v2",
+            "node_id": node_id, "semantic_type": semantic_type,
+            "node_tag": tag, "semantic_form": form, "dependencies": [],
+            "occurrences": [], "body": body,
+        });
+        crate::support::checked_package::carry_check_mode(&mut node);
+        node
+    }
 }
 
 /// Adds `node` with one occurrence of `role` and its source-map row.

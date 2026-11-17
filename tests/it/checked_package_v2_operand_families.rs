@@ -19,15 +19,19 @@ fn add_node(package: &mut Value, key: &str, tag: &str, form: &str, ty: &str, bod
     package["semantic_graph"]["nodes"]
         .as_array_mut()
         .expect("nodes")
-        .push(json!({
-            "node_id": node_id(key),
-            "schema_version": "filament.checked-semantic-graph/v2",
-            "node_tag": tag, "semantic_form": form,
-            "semantic_type": node_id(ty),
-            "dependencies": [],
-            "occurrences": [{"role": "expression", "ordinal": 0}],
-            "body": body,
-        }));
+        .push({
+            let mut node = json!({
+                "node_id": node_id(key),
+                "schema_version": "filament.checked-semantic-graph/v2",
+                "node_tag": tag, "semantic_form": form,
+                "semantic_type": node_id(ty),
+                "dependencies": [],
+                "occurrences": [{"role": "expression", "ordinal": 0}],
+                "body": body,
+            });
+            crate::support::checked_package::carry_check_mode(&mut node);
+            node
+        });
 }
 
 fn fixture() -> (Value, String, String, String, String, String) {
@@ -1835,11 +1839,15 @@ pub(crate) fn carried_sum_control() -> (Value, usize) {
                 dependencies: Vec<Value>,
                 role: &str,
                 body: Value| {
-        json!({
-            "node_id": id, "schema_version": "filament.checked-semantic-graph/v2",
-            "node_tag": tag, "semantic_form": form, "semantic_type": ty,
-            "dependencies": dependencies, "occurrences": [{"role": role, "ordinal": 0}], "body": body,
-        })
+        {
+            let mut node = json!({
+                "node_id": id, "schema_version": "filament.checked-semantic-graph/v2",
+                "node_tag": tag, "semantic_form": form, "semantic_type": ty,
+                "dependencies": dependencies, "occurrences": [{"role": role, "ordinal": 0}], "body": body,
+            });
+            crate::support::checked_package::carry_check_mode(&mut node);
+            node
+        }
     };
     let item = node_id("operand/parameter/carried_item");
     let nodes = [

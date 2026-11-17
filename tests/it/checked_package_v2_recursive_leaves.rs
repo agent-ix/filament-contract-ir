@@ -47,16 +47,20 @@ fn node<S: AsRef<str>>(
 ) -> Typed {
     let id = key(name);
     let dependencies: BTreeSet<String> = over.into_iter().map(|name| key(name.as_ref())).collect();
-    let node = json!({
-        "node_id": node_id(&id),
-        "schema_version": "filament.checked-semantic-graph/v2",
-        "node_tag": tag,
-        "semantic_form": form,
-        "semantic_type": node_id(&key(semantic_type)),
-        "dependencies": dependencies.iter().map(|digest| node_id(digest)).collect::<Vec<_>>(),
-        "occurrences": [{"role": role, "ordinal": 0}],
-        "body": body,
-    });
+    let node = {
+        let mut node = json!({
+            "node_id": node_id(&id),
+            "schema_version": "filament.checked-semantic-graph/v2",
+            "node_tag": tag,
+            "semantic_form": form,
+            "semantic_type": node_id(&key(semantic_type)),
+            "dependencies": dependencies.iter().map(|digest| node_id(digest)).collect::<Vec<_>>(),
+            "occurrences": [{"role": role, "ordinal": 0}],
+            "body": body,
+        });
+        crate::support::checked_package::carry_check_mode(&mut node);
+        node
+    };
     (id, node)
 }
 

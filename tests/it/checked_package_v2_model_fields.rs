@@ -901,16 +901,20 @@ fn wire_node(
     dependencies: &[&str],
     body: Value,
 ) -> Value {
-    json!({
-        "node_id": node_id(key),
-        "schema_version": "filament.checked-semantic-graph/v2",
-        "node_tag": tag,
-        "semantic_form": form,
-        "semantic_type": node_id(semantic_type),
-        "dependencies": dependencies.iter().map(|key| node_id(key)).collect::<Vec<_>>(),
-        "occurrences": [{"role": "type", "ordinal": 0}],
-        "body": body,
-    })
+    {
+        let mut node = json!({
+            "node_id": node_id(key),
+            "schema_version": "filament.checked-semantic-graph/v2",
+            "node_tag": tag,
+            "semantic_form": form,
+            "semantic_type": node_id(semantic_type),
+            "dependencies": dependencies.iter().map(|key| node_id(key)).collect::<Vec<_>>(),
+            "occurrences": [{"role": "type", "ordinal": 0}],
+            "body": body,
+        });
+        crate::support::checked_package::carry_check_mode(&mut node);
+        node
+    }
 }
 
 /// The model declaration node key of `short`, a declaration of the selected

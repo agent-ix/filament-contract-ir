@@ -64,16 +64,20 @@ fn node(
     dependencies: &[&str],
     declared: Option<&[&str]>,
 ) -> Value {
-    let mut node = json!({
-        "node_id": node_id(key),
-        "schema_version": "filament.checked-semantic-graph/v2",
-        "node_tag": tag,
-        "semantic_form": form,
-        "semantic_type": node_id(semantic_type),
-        "dependencies": dependencies.iter().map(|key| node_id(key)).collect::<Vec<_>>(),
-        "occurrences": [{"role": "generated", "ordinal": 0}],
-        "body": {"term": "aggregate", "members": []},
-    });
+    let mut node = {
+        let mut node = json!({
+            "node_id": node_id(key),
+            "schema_version": "filament.checked-semantic-graph/v2",
+            "node_tag": tag,
+            "semantic_form": form,
+            "semantic_type": node_id(semantic_type),
+            "dependencies": dependencies.iter().map(|key| node_id(key)).collect::<Vec<_>>(),
+            "occurrences": [{"role": "generated", "ordinal": 0}],
+            "body": {"term": "aggregate", "members": []},
+        });
+        crate::support::checked_package::carry_check_mode(&mut node);
+        node
+    };
     if let Some(name) = declared {
         node["occurrences"] = json!([{"role": "declaration", "ordinal": 0}]);
         node["declaration"] = json!({"qualified_name": name});

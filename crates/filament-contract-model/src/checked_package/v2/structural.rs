@@ -2487,6 +2487,7 @@ mod tests {
                 declaration: None,
                 owner: None,
                 owner_model: None,
+                check_mode: None,
                 body: super::super::CheckedJson::from_serializable(body)
                     .expect("closed retained body"),
             }];

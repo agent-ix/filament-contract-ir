@@ -588,6 +588,10 @@ fn public_reader_keeps_the_one_operand_option_presence_form() {
         .clone();
     application["node_id"] = app_id.clone();
     application["node_tag"] = json!("expression");
+    application
+        .as_object_mut()
+        .expect("application node")
+        .remove("check_mode");
     application["semantic_form"] = json!("presence_read");
     application["semantic_type"] = boolean.clone();
     application["dependencies"] = json!([value_id]);

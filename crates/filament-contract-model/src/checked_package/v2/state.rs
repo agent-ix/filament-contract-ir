@@ -1123,6 +1123,7 @@ mod placement_budget_tests {
             declaration: None,
             owner: None,
             owner_model: None,
+            check_mode: None,
             body: body.clone(),
         };
         let run = |limit| {

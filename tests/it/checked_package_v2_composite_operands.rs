@@ -142,13 +142,13 @@ impl Fixture {
             serde_json::from_value::<CheckedNodeId>(id.clone()).expect("dependency node ID")
         });
         dependencies.dedup();
-        self.nodes.insert(id.clone(), json!({
+        self.nodes.insert(id.clone(), { let mut node = json!({
             "node_id":node_id(&id), "schema_version":"filament.checked-semantic-graph/v2",
             "node_tag":tag, "semantic_form":form, "semantic_type":node_id(ty),
             "dependencies":dependencies,
             "occurrences":[{"role":if matches!(tag,"value"|"expression") {"expression"} else {"type"},"ordinal":0}],
             "body":body,
-        }));
+        }); crate::support::checked_package::carry_check_mode(&mut node); node });
         id
     }
 

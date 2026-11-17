@@ -1301,7 +1301,7 @@ fn timed_slot_selected_package_admits_nested_and_optional_clock_places() {
     ));
 }
 
-fn encode_package(package: &CheckedPackageV2) -> Vec<u8> {
+pub(super) fn encode_package(package: &CheckedPackageV2) -> Vec<u8> {
     encode_checked_package_v2(
         package.name(),
         package.lock(),

@@ -32,16 +32,20 @@ fn source_package_form(tag: &str, form: &str, name: &str) -> Value {
     package["semantic_graph"]["nodes"]
         .as_array_mut()
         .expect("nodes")
-        .push(json!({
-            "node_id": id,
-            "schema_version": "filament.checked-semantic-graph/v2",
-            "node_tag": tag, "semantic_form": form,
-            "semantic_type": id, "dependencies": [],
-            "occurrences": [{"role": "declaration", "ordinal": 0}],
-            "declaration": {"qualified_name": ["Example", name]},
-            "owner": owner,
-            "body": {"term": "aggregate", "members": []},
-        }));
+        .push({
+            let mut node = json!({
+                "node_id": id,
+                "schema_version": "filament.checked-semantic-graph/v2",
+                "node_tag": tag, "semantic_form": form,
+                "semantic_type": id, "dependencies": [],
+                "occurrences": [{"role": "declaration", "ordinal": 0}],
+                "declaration": {"qualified_name": ["Example", name]},
+                "owner": owner,
+                "body": {"term": "aggregate", "members": []},
+            });
+            crate::support::checked_package::carry_check_mode(&mut node);
+            node
+        });
     package["source_map"]
         .as_array_mut()
         .expect("source map")
@@ -1843,6 +1847,7 @@ fn owned_clause(mut package: Value, _document: &Value, declared: &str, clause: &
     let node = &mut package["semantic_graph"]["nodes"][position];
     node["node_tag"] = json!("function");
     node["semantic_form"] = json!("pure_function");
+    node["check_mode"] = json!("linked");
     node["owner"]["node"] = json!(declared);
     let body = json!({"term": "aggregate", "members": [{
         "term": "binding", "name": "clause",
@@ -2332,6 +2337,45 @@ fn tc_228_operation_and_invariant_clause_owners_join_only_their_kind() {
                 );
             }
             other => panic!("{name}: unexpected {other:?}"),
+        }
+    }
+}
+
+#[trace("TC-048", "FR-038-AC-559")]
+#[test]
+fn kernel_is_refused_on_invariant_and_precondition_clause_functions_only() {
+    let (base, mut document) = model_package();
+    let object = "ix://acme/owners/Point";
+    let operation = format!("{object}/op");
+    document["types"][0]["operations"] = json!([{"identity": operation, "params": []}]);
+    for (declared, clause, admitted) in [
+        (object, "invariant", false),
+        (operation.as_str(), "precondition", false),
+        (operation.as_str(), "body", true),
+    ] {
+        let mut package = owned_clause(base.clone(), &document, declared, clause);
+        let linked = read_with_model(&package, &document);
+        assert!(
+            matches!(linked, CheckedPackageV2ReadResult::Admitted(_)),
+            "{clause} linked: {linked:?}"
+        );
+        let position = package["semantic_graph"]["nodes"].as_array().unwrap().len() - 1;
+        package["semantic_graph"]["nodes"][position]["check_mode"] = json!("kernel");
+        match read_with_model(&package, &document) {
+            CheckedPackageV2ReadResult::Admitted(_) if admitted => {}
+            CheckedPackageV2ReadResult::Refused(refusal) if !admitted => {
+                assert_eq!(refusal.code, CheckedPackageRefusalCode::InvalidPackage);
+                assert_eq!(
+                    refusal.cause,
+                    Some(CheckedPackageRefusalCause::InvalidValue)
+                );
+                assert_eq!(
+                    refusal.loci[0].path.clone().expect("path").as_str(),
+                    format!("/semantic_graph/nodes/{position}/check_mode"),
+                    "{clause}"
+                );
+            }
+            other => panic!("{clause}: unexpected {other:?}"),
         }
     }
 }

@@ -774,6 +774,7 @@ mod tests {
             declaration: None,
             owner: None,
             owner_model: None,
+            check_mode: None,
             body: (),
         }];
         let rows: Vec<_> = (0..2)

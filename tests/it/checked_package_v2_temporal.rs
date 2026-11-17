@@ -255,13 +255,17 @@ fn fresh() -> String {
 
 /// A node keyed `key` whose body is `body`.
 pub(super) fn node_with_key(key: &str, tag: &str, form: &str, body: Value) -> Value {
-    json!({
-        "node_id": node_id(key),
-        "schema_version": "filament.checked-semantic-graph/v2",
-        "node_tag": tag, "semantic_form": form, "semantic_type": node_id(&aaaa()),
-        "dependencies": [], "occurrences": [{"role": "generated", "ordinal": 0}],
-        "body": body,
-    })
+    {
+        let mut node = json!({
+            "node_id": node_id(key),
+            "schema_version": "filament.checked-semantic-graph/v2",
+            "node_tag": tag, "semantic_form": form, "semantic_type": node_id(&aaaa()),
+            "dependencies": [], "occurrences": [{"role": "generated", "ordinal": 0}],
+            "body": body,
+        });
+        crate::support::checked_package::carry_check_mode(&mut node);
+        node
+    }
 }
 
 fn application(operator: &str, identity: &str, member: Value, arguments: Vec<Value>) -> Value {

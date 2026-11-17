@@ -602,7 +602,7 @@ struct Forms {
 
 fn forms_package(scalar_form: &str, composite_form: &str) -> Forms {
     let node = |key: &str, tag: &str, form: &str, ty: &str, dependencies: &[&str], body: Value| {
-        json!({
+        let mut node = json!({
             "node_id": checked_package::node_id(key),
             "schema_version": "filament.checked-semantic-graph/v2",
             "node_tag": tag,
@@ -614,7 +614,9 @@ fn forms_package(scalar_form: &str, composite_form: &str) -> Forms {
                 .collect::<Vec<_>>(),
             "occurrences": [{"role": "generated", "ordinal": 0}],
             "body": body,
-        })
+        });
+        crate::support::checked_package::carry_check_mode(&mut node);
+        node
     };
     let empty = || json!({"term": "aggregate", "members": []});
     // Producer-assigned paths keep the scalar before the composite so the

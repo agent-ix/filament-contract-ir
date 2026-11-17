@@ -408,6 +408,12 @@ pub(super) fn validate_owner_schema(
                 site,
             )?;
         }
+        if matches!(kind, Some(CheckedNodeKind::Function(_))) != node.check_mode.is_some() {
+            return Err(ValidationFailure::refused(
+                CheckedPackageRefusalCode::MalformedWire,
+                node_pointer(position).key("check_mode"),
+            ));
+        }
         if kind == Some(CheckedNodeKind::Protocol(ProtocolForm::ProtocolReference)) {
             // A local reference carrier may participate in a protocol SCC;
             // its group label is authenticated by structural-key and SCC validation.
@@ -732,6 +738,28 @@ pub(super) fn validate_owner_joins(
                 }) {
                     return Err(missing_owner(node, position, at, meter));
                 }
+                // A declared clause is always checked as linked.
+                if node.check_mode == Some(super::CheckMode::Kernel)
+                    && matches!(kinds.get(position), Some(CheckedNodeKind::Function(_)))
+                    && terms
+                        .get(position)
+                        .and_then(Option::as_ref)
+                        .is_some_and(|term| {
+                            matches!(
+                                clause_kind(term),
+                                Some(OwnerClauseKind::Invariant | OwnerClauseKind::Precondition)
+                            )
+                        })
+                {
+                    return Err(owner_failure(
+                        meter,
+                        position,
+                        node_path(position).key("check_mode"),
+                        CheckedPackageRefusalCode::InvalidPackage,
+                        Some(CheckedPackageRefusalCause::InvalidValue),
+                        Some(&node.node_id),
+                    ));
+                }
                 // A selected model or relation declaration has a fixed,
                 // self-typed shape. Check it at the declaration before an
                 // application can report the same defect at its member.
@@ -859,11 +887,15 @@ mod anonymous_lookup_tests {
 
     fn node(index: usize, tag: &str, form: &str, body: Value) -> Value {
         let id = json!({"package":"test/owners", "path":[index.to_string()], "ordinal":0});
-        json!({
+        let mut node = json!({
             "schema_version":"filament.checked-semantic-graph/v2", "node_id":id,
             "node_tag":tag, "semantic_form":form, "semantic_type":id,
             "body":body, "dependencies":[], "occurrences":[]
-        })
+        });
+        if tag == "function" {
+            node["check_mode"] = json!("linked");
+        }
+        node
     }
 
     /// The owner-schema check over a test wire, its bodies read as handles.

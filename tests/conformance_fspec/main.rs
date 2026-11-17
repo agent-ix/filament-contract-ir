@@ -45,6 +45,7 @@ use fspec_inputs::{
 
 mod carried_quantity;
 mod certificate_member;
+mod check_mode_vectors;
 mod dependency_call;
 mod dimension_equivalence;
 mod entry_keys;

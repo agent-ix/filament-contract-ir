@@ -210,16 +210,20 @@ fn plain(
     role: &str,
     body: Value,
 ) -> Value {
-    json!({
-        "node_id": node_id(path),
-        "schema_version": "filament.checked-semantic-graph/v2",
-        "node_tag": tag,
-        "semantic_form": form,
-        "semantic_type": node_id(ty),
-        "dependencies": deps.iter().map(|d| node_id(d)).collect::<Vec<_>>(),
-        "occurrences": [{"role": role, "ordinal": 0}],
-        "body": body,
-    })
+    {
+        let mut node = json!({
+            "node_id": node_id(path),
+            "schema_version": "filament.checked-semantic-graph/v2",
+            "node_tag": tag,
+            "semantic_form": form,
+            "semantic_type": node_id(ty),
+            "dependencies": deps.iter().map(|d| node_id(d)).collect::<Vec<_>>(),
+            "occurrences": [{"role": role, "ordinal": 0}],
+            "body": body,
+        });
+        crate::support::checked_package::carry_check_mode(&mut node);
+        node
+    }
 }
 
 /// The authored path of a model declaration in this fixture.
