@@ -5,9 +5,9 @@
 //! has bounded term depth, so serde's recursion here is independent of input
 //! byte length.
 
+use super::checked_json::CheckedJson;
 #[cfg(test)]
 use super::BodyTerm;
-use super::checked_json::CheckedJson;
 use super::{
     ApplicationOperator, LawRole, LiteralKind, OperationConstraintKind, OperationMemberKind,
     OperationModeKind, StateClauseKind,
@@ -28,9 +28,9 @@ use quire_canonical::{Encode, Error, FixedShape, Sink, Writer};
 use serde::de::DeserializeOwned;
 use serde::ser::{SerializeMap, SerializeSeq};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde_json::error::Category;
 #[cfg(test)]
 use serde_json::Value;
-use serde_json::error::Category;
 
 /// An application operation whose state-clause point has a typed carrier.
 /// Equality compares the represented record and point; admission views are
@@ -1296,12 +1296,10 @@ impl CheckedOperationMember {
                 upper_end: need!(end(value.get("upper_end"))),
             }))
         }
-        let kind = need!(
-            value
-                .get("kind")
-                .and_then(TermNode::as_str)
-                .and_then(OperationMemberKind::from_wire)
-        );
+        let kind = need!(value
+            .get("kind")
+            .and_then(TermNode::as_str)
+            .and_then(OperationMemberKind::from_wire));
         let declaration = ids.declaration.as_ref();
         let name = value.get("name").and_then(TermNode::as_str);
         Ok(Some(match kind {
@@ -1309,9 +1307,9 @@ impl CheckedOperationMember {
                 declaration: meter.clone_id(need!(declaration))?,
                 name: meter.boxed_str(need!(name))?,
                 read_form: match value.get("read_form") {
-                    Some(value) => Some(need!(
-                        value.as_str().and_then(CheckedFieldReadForm::from_wire)
-                    )),
+                    Some(value) => Some(need!(value
+                        .as_str()
+                        .and_then(CheckedFieldReadForm::from_wire))),
                     None => None,
                 },
             },
@@ -1351,12 +1349,10 @@ impl CheckedOperationMember {
                     .transpose()?,
             },
             OperationMemberKind::StateClause => Self::StateClause {
-                clause: need!(
-                    value
-                        .get("clause")
-                        .and_then(TermNode::as_str)
-                        .and_then(StateClauseKind::from_wire)
-                ),
+                clause: need!(value
+                    .get("clause")
+                    .and_then(TermNode::as_str)
+                    .and_then(StateClauseKind::from_wire)),
             },
             OperationMemberKind::TemporalInterval => Self::TemporalInterval {
                 interval: {
@@ -2671,7 +2667,7 @@ impl CheckedTerm {
     pub(in crate::checked_package) fn view_from_wire(
         wire: crate::checked_package::common::WireTerm<'_>,
     ) -> Option<CheckedTermView<'_>> {
-        use crate::checked_package::common::{TermField, TermTag, exact_members};
+        use crate::checked_package::common::{exact_members, TermField, TermTag};
         let object = wire.object()?;
         match wire.tag() {
             TermTag::Known(BodyTerm::Application)
@@ -3933,7 +3929,7 @@ mod tests {
     };
     use crate::checked_package::shared::{CheckedNodeId, CheckedNodePathSegment};
     use ix_trace_rs::trace;
-    use quire_canonical::{Limits, to_vec};
+    use quire_canonical::{to_vec, Limits};
     use serde_json::{error::Category, json};
 
     /// The record and its member keys are decoded from retained views; every
@@ -4297,7 +4293,8 @@ mod tests {
             assert_eq!(visits, 1);
             assert_eq!(operation.member_declaration(), Ok(Some(&replacement)));
             assert_eq!(
-                serde_json::to_value(operation.record()).expect("operation record")["member"]["declaration"],
+                serde_json::to_value(operation.record()).expect("operation record")["member"]
+                    ["declaration"],
                 json!(replacement)
             );
             let Some(mapped) = operation.read().unwrap().member else {
@@ -4313,7 +4310,8 @@ mod tests {
             };
             assert_eq!(declaration, &replacement);
             assert_eq!(
-                serde_json::to_value(operation.record()).expect("operation record")["member"]["name"],
+                serde_json::to_value(operation.record()).expect("operation record")["member"]
+                    ["name"],
                 member_wire["name"]
             );
         }
@@ -4724,7 +4722,8 @@ mod tests {
             assert_eq!(mapped, &expected);
             assert_eq!(
                 serde_json::to_value(mapped).unwrap(),
-                serde_json::to_value(operation.record()).expect("operation record")["member"]["target"]
+                serde_json::to_value(operation.record()).expect("operation record")["member"]
+                    ["target"]
             );
         }
     }
@@ -4733,7 +4732,7 @@ mod tests {
 #[cfg(test)]
 mod selected_edge_budget_tests {
     use super::{CheckedTerm, SelectedTermTraversal, SelectedTermVisit};
-    use crate::checked_package::v2::native_join_budget::{NativeReadDenied, read_charge};
+    use crate::checked_package::v2::native_join_budget::{read_charge, NativeReadDenied};
     use crate::checked_package::v2::{
         CheckedNodeId, CheckedNodePathSegment, NativeJoinBudget, NativeJoinChargeKind,
     };
