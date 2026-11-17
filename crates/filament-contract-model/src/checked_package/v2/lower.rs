@@ -853,6 +853,8 @@ fn quantity_chain(kind: CheckedNodeKind) -> QuantityChain {
             | ScalarTypeForm::Decimal
             | ScalarTypeForm::Text
             | ScalarTypeForm::String
+            | ScalarTypeForm::Bytes
+            | ScalarTypeForm::JsonObject
             | ScalarTypeForm::Uuid
             | ScalarTypeForm::Timestamp
             | ScalarTypeForm::Boolean
@@ -941,6 +943,8 @@ fn requires_bound(kind: CheckedNodeKind) -> bool {
         K::ScalarType(
             ScalarTypeForm::Boolean
             | ScalarTypeForm::String
+            | ScalarTypeForm::Bytes
+            | ScalarTypeForm::JsonObject
             | ScalarTypeForm::Uuid
             | ScalarTypeForm::Timestamp
             | ScalarTypeForm::Dimension

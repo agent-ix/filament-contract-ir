@@ -260,6 +260,8 @@ impl StructuralForm {
                 | ScalarTypeForm::Float64
                 | ScalarTypeForm::Text
                 | ScalarTypeForm::String
+                | ScalarTypeForm::Bytes
+                | ScalarTypeForm::JsonObject
                 | ScalarTypeForm::Uuid
                 | ScalarTypeForm::Timestamp
                 | ScalarTypeForm::Dimension
@@ -973,6 +975,7 @@ pub(super) fn validate_derived_type_shapes(
                             | ScalarTypeForm::Rational | ScalarTypeForm::Decimal
                             | ScalarTypeForm::Float32 | ScalarTypeForm::Float64
                             | ScalarTypeForm::Text | ScalarTypeForm::String
+                            | ScalarTypeForm::Bytes | ScalarTypeForm::JsonObject
                             | ScalarTypeForm::Uuid | ScalarTypeForm::Timestamp
                             | ScalarTypeForm::Unit | ScalarTypeForm::Enum
                             | ScalarTypeForm::CompoundUnit | ScalarTypeForm::CarriedQuantity

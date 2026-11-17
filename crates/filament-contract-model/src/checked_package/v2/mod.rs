@@ -2566,6 +2566,8 @@ fn declaration_forbidden(kind: CheckedNodeKind) -> bool {
             | ScalarTypeForm::Float64
             | ScalarTypeForm::Text
             | ScalarTypeForm::String
+            | ScalarTypeForm::Bytes
+            | ScalarTypeForm::JsonObject
             | ScalarTypeForm::Uuid
             | ScalarTypeForm::Timestamp
             | ScalarTypeForm::Dimension
@@ -2998,6 +3000,8 @@ fn body_grammar(kind: CheckedNodeKind) -> BodyGrammar {
             | ScalarTypeForm::Float64
             | ScalarTypeForm::Text
             | ScalarTypeForm::String
+            | ScalarTypeForm::Bytes
+            | ScalarTypeForm::JsonObject
             | ScalarTypeForm::Uuid
             | ScalarTypeForm::Timestamp
             | ScalarTypeForm::Dimension

@@ -136,6 +136,8 @@ closed_vocabulary! {
         Float64 => "float64",
         Text => "text",
         String => "string",
+        Bytes => "bytes",
+        JsonObject => "json_object",
         Uuid => "uuid",
         Timestamp => "timestamp",
         Dimension => "dimension",

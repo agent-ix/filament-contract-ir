@@ -1988,6 +1988,8 @@ fn operand_family(kind: CheckedNodeKind) -> Option<&'static str> {
             | ScalarTypeForm::Float64
             | ScalarTypeForm::Text
             | ScalarTypeForm::String
+            | ScalarTypeForm::Bytes
+            | ScalarTypeForm::JsonObject
             | ScalarTypeForm::Uuid
             | ScalarTypeForm::Timestamp
             | ScalarTypeForm::Enum),
@@ -2156,6 +2158,8 @@ pub(super) fn is_type_shaped(kind: CheckedNodeKind) -> bool {
             | ScalarTypeForm::Float64
             | ScalarTypeForm::Text
             | ScalarTypeForm::String
+            | ScalarTypeForm::Bytes
+            | ScalarTypeForm::JsonObject
             | ScalarTypeForm::Uuid
             | ScalarTypeForm::Timestamp
             | ScalarTypeForm::Dimension
