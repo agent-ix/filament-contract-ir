@@ -16,7 +16,7 @@ use super::{
     ScalarTypeForm, StateForm, TemporalForm, ValueForm, WorkMeter,
 };
 use super::{CheckedPackageLockV2, RawCheckedPackageWireV2};
-use crate::checked_package::common::{ValidationFailure, node_pointer};
+use crate::checked_package::common::{node_pointer, ValidationFailure};
 use crate::checked_package::shared::CheckedOperandEntry;
 use crate::checked_package::shared::{
     CheckedNodeId, CheckedNodePathSegment, CheckedPackageRefusal, CheckedPackageRefusalCause,
@@ -2264,6 +2264,7 @@ pub(super) fn source_clock_unit_is_linear_time<B>(
     nodes: &[CheckedSemanticNodeV2<B>],
     terms: &[Option<super::CheckedTerm>],
     name: &str,
+    source_owner: &super::CheckedNodeOwner,
     meter: &mut WorkMeter,
 ) -> Result<bool, ValidationFailure> {
     let at = || JsonPointer::root().key("semantic_graph").key("nodes");
@@ -2275,11 +2276,16 @@ pub(super) fn source_clock_unit_is_linear_time<B>(
                 node.owner.as_ref(),
                 Some(super::CheckedNodeOwner::Source { .. })
             )
+            && node.owner.as_ref() == Some(source_owner)
             && node.declaration.as_ref().is_some_and(|declaration| {
-                declaration.qualified_name.len() == 1
-                    && declaration.qualified_name.first().is_some_and(|path| path.as_ref() == name)
+                declaration
+                    .qualified_name
+                    .last()
+                    .is_some_and(|path| path.as_ref() == name)
             })
-            && matches!(node.node_id.path.as_slice(), [CheckedNodePathSegment::Name(path)] if path.as_ref() == name)
+            && node.node_id.path.last().is_some_and(
+                |path| matches!(path, CheckedNodePathSegment::Name(path) if path.as_ref() == name),
+            )
     }) else {
         return Ok(false);
     };
@@ -3385,8 +3391,8 @@ fn validate_unit_path(
 
 #[cfg(test)]
 mod tests {
-    use super::super::RawSemanticNodeV2 as CheckedSemanticNodeV2;
     use super::super::checked_json::CheckedJson;
+    use super::super::RawSemanticNodeV2 as CheckedSemanticNodeV2;
     use super::*;
     use crate::NativeJoinBudget;
     use ix_trace_rs::trace;
@@ -3766,11 +3772,9 @@ mod tests {
         let term = super::super::CheckedTerm::NominalBody(Box::new(parsed));
         let encoded = quire_canonical::to_vec(&term, quire_canonical::Limits::new(1 << 22))
             .expect("indexed encoding");
-        assert!(
-            encoded
-                .windows(b"\"node\":0".len())
-                .any(|part| part == b"\"node\":0")
-        );
+        assert!(encoded
+            .windows(b"\"node\":0".len())
+            .any(|part| part == b"\"node\":0"));
 
         // The old inline operand spelling is not a V2 node ID. The NI-13
         // conformance control covers 100,001 valid graph-local indexed keys
