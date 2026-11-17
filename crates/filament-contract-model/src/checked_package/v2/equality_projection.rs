@@ -770,6 +770,7 @@ fn operand_type(
     work: &mut NativeJoinBudget,
 ) -> Result<ValueType, AdmittedEqualityReadError> {
     let witness = match decision.schedule {
+        super::CheckedEqualitySchedule::Float => EqualityWitnessKind::PlanType,
         super::CheckedEqualitySchedule::Text => EqualityWitnessKind::TextType,
         super::CheckedEqualitySchedule::Enum => EqualityWitnessKind::EnumDeclaration,
         super::CheckedEqualitySchedule::Quantity => EqualityWitnessKind::QuantityType,
@@ -2312,11 +2313,28 @@ impl CheckedPackageV2 {
             work,
         )?;
         let schedule = match decision.schedule {
+            super::CheckedEqualitySchedule::Float => EqualitySchedule::Float,
             super::CheckedEqualitySchedule::Text => EqualitySchedule::Text,
             super::CheckedEqualitySchedule::Enum => EqualitySchedule::Enum,
             super::CheckedEqualitySchedule::Quantity => EqualitySchedule::Quantity,
             super::CheckedEqualitySchedule::Plan => EqualitySchedule::Plan,
         };
+        if schedule == EqualitySchedule::Float {
+            let left_type = left.target().unwrap_or_else(|| left.source());
+            let right_type = right.target().unwrap_or_else(|| right.source());
+            if !matches!(left_type, ValueType::Float(_))
+                || !matches!(right_type, ValueType::Float(_))
+                || left_type != right_type
+            {
+                return Err(read_error(
+                    work,
+                    AdmittedEqualityReadErrorCode::MismatchedEqualityWitness,
+                    application,
+                    &decision.right.source_type,
+                    0,
+                ));
+            }
+        }
         let (enum_declarations, enum_members) = if schedule == EqualitySchedule::Enum {
             let compared = left.target().unwrap_or_else(|| left.source());
             if right.target().unwrap_or_else(|| right.source()) != compared {

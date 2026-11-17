@@ -200,6 +200,39 @@ fn typed_sidecar_preserves_all_arrays_candidate_order_and_byte_ceiling() {
     ));
 }
 
+/// FR-322: a producer-selected IEEE equality schedule survives typed sidecar
+/// decoding and canonical V2 emission without being rewritten as a plan.
+#[test]
+fn float_equality_schedule_roundtrips_in_checked_sidecar() {
+    let package = v2_all_families();
+    let node = package["semantic_graph"]["nodes"][0]["node_id"].clone();
+    let term_data: CheckedTermDataV2 = serde_json::from_value(json!({
+        "equality_decisions": [{
+            "application": node,
+            "occurrence": {"role": "expression", "ordinal": 0},
+            "term_path": [],
+            "operator": "equal",
+            "left": {"operand": 0, "source_type": node, "conversion_target": null},
+            "right": {"operand": 1, "source_type": node, "conversion_target": null},
+            "schedule": "float",
+            "units": [],
+            "enum_members": []
+        }],
+        "protocol_locations": [],
+        "dispatch_tables": [],
+        "probabilistic_claims": []
+    }))
+    .expect("float is a checked equality schedule");
+
+    let bytes = encode(&package, Some(&term_data), Limits::new(u64::MAX))
+        .expect("float equality sidecar encodes");
+    let written: Value = serde_json::from_slice(&bytes).expect("canonical package JSON");
+    assert_eq!(
+        written["checked_term_data"]["equality_decisions"][0]["schedule"],
+        "float"
+    );
+}
+
 /// Trace: FR-051-AC-4, FR-051-AC-5, TC-451.
 #[trace("FR-051-AC-4", "FR-051-AC-5", "TC-451")]
 #[test]
