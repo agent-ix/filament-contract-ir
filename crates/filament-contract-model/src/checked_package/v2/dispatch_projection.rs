@@ -374,10 +374,7 @@ pub(super) fn validate_checked_term_data<Body>(
                     None => source_types.insert(source_type_index(wire, kinds, meter)?),
                 };
                 let original = &candidate.selection_key.original;
-                let source_type = original
-                    .node
-                    .strip_prefix("ix://")
-                    .and_then(|node| node.rsplit_once('/'));
+                let source_type = source_type_identity(&original.node);
                 let named = identity.as_ref() == original.package.as_ref()
                     && source_type.is_some_and(|(source_identity, name)| {
                         source_identity == identity.as_ref()
@@ -444,6 +441,11 @@ pub(super) fn validate_checked_term_data<Body>(
     }
     validate_probabilistic_claims(data, wire, kinds, &index, &source_occurrences, meter)?;
     Ok(())
+}
+
+#[ix_trace_rs::string_edge]
+fn source_type_identity(node: &str) -> Option<(&str, &str)> {
+    node.strip_prefix("ix://")?.rsplit_once('/')
 }
 
 fn validate_probabilistic_claims<Body>(
