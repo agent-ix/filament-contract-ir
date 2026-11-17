@@ -4034,7 +4034,11 @@ fn builtin(name: &str) -> Value {
 }
 
 fn clock_unit(name: &str) -> Value {
-    json!({"package": "test/families", "path": ["scalar_type", "unit", name], "ordinal": 0})
+    json!({
+        "package": ORDERS,
+        "path": ["scalar_type", "unit", format!("ix://{ORDERS}/unit/{name}")],
+        "ordinal": 0
+    })
 }
 
 fn scalar(kind: &str, value: &str) -> Value {
@@ -4056,37 +4060,34 @@ fn aggregate_package(profile: &str, members: Vec<Value>) -> (Value, usize) {
     let mut package = v2_all_families();
     select_profile(&mut package, profile);
     if profile == DURATION {
-        let dimension = json!({"package": "test/families",
-                               "path": ["scalar_type", "dimension", "Time"], "ordinal": 0});
+        select_model(&mut package, ORDERS);
+        let dimension_identity = format!("ix://{ORDERS}/dimension/Time");
+        let dimension = json!({"package": ORDERS,
+                               "path": ["scalar_type", "dimension", dimension_identity], "ordinal": 0});
+        let source_region = package["source_map"][0]["regions"][0].clone();
         for node in [
             json!({
                 "node_id": dimension, "schema_version": "filament.checked-semantic-graph/v2",
                 "node_tag": "scalar_type", "semantic_form": "dimension",
                 "semantic_type": dimension,
-                "declaration": {"qualified_name": ["scalar_type", "dimension", "Time"]},
                 "dependencies": [],
-                "occurrences": [{"role": "declaration", "ordinal": 0}],
-                "owner": {"kind": "source", "authority": "agent-ix", "identity": "filament.fixture.source/v1"},
-                "body": {"term": "dimension", "base": true, "terms": []},
+                "occurrences": [{"role": "type", "ordinal": 0}],
+                "owner": {"kind": "model", "identity": ORDERS, "node": dimension_identity},
+                "body": {"term": "aggregate", "members": []},
             }),
             json!({
                 "node_id": clock_unit("tick"), "schema_version": "filament.checked-semantic-graph/v2",
                 "node_tag": "scalar_type", "semantic_form": "unit",
                 "semantic_type": dimension,
-                "declaration": {"qualified_name": ["scalar_type", "unit", "tick"]},
                 "dependencies": [dimension],
-                "occurrences": [{"role": "declaration", "ordinal": 0}],
-                "owner": {"kind": "source", "authority": "agent-ix", "identity": "filament.fixture.source/v1"},
-                "body": {"term": "unit", "dimension_node_id": dimension,
-                         "target_unit_node_id": null,
-                         "scale": {"numerator": "1", "denominator": "1"},
-                         "offset": {"numerator": "0", "denominator": "1"}},
+                "occurrences": [{"role": "type", "ordinal": 0}],
+                "owner": {"kind": "model", "identity": ORDERS, "node": format!("ix://{ORDERS}/unit/tick")},
+                "body": {"term": "aggregate", "members": []},
             }),
         ] {
             let row = json!({
-                "node_id": node["node_id"], "role": "declaration", "ordinal": 0,
-                "regions": [{"source": {"authority": "agent-ix", "identity": "filament.fixture.source/v1"},
-                             "start": 0, "end": 1}],
+                "node_id": node["node_id"], "role": "type", "ordinal": 0,
+                "regions": [source_region.clone()],
             });
             package["source_map"]
                 .as_array_mut()
@@ -4102,6 +4103,10 @@ fn aggregate_package(profile: &str, members: Vec<Value>) -> (Value, usize) {
     package["semantic_graph"]["nodes"][formula]["dependencies"] =
         json!([fixture_node_id(&family_key("eeee"))]);
     settle(&mut package);
+    if profile == DURATION {
+        package["temporal_bindings"][0]["clock"]["timestamp_unit"] =
+            json!(format!("ix://{ORDERS}/unit/tick"));
+    }
     (package, formula)
 }
 
@@ -4123,7 +4128,14 @@ fn count_members(window: &str, lower: Value, upper: Value, min_count: Value) -> 
 /// this base (IR-1404, the deferred AC-511 family), and these tests assert the
 /// reader's literal-kind behavior, not its storage accounting.
 fn read_aggregate(package: &Value) -> CheckedPackageV2ReadResult {
-    let document = orders_document();
+    let mut document = orders_document();
+    document["dimensions"] = json!([{
+        "identity": format!("ix://{ORDERS}/dimension/Time"), "name": "Time", "base": true, "terms": [],
+    }]);
+    document["units"] = json!([{
+        "identity": format!("ix://{ORDERS}/unit/tick"), "name": "tick",
+        "dimension": format!("ix://{ORDERS}/dimension/Time"), "scale": "1", "offset": "0",
+    }]);
     let evidence = evidence_with_document(package, ORDERS, &document);
     CheckedPackageV2::read(
         &canonical(package),
@@ -4136,7 +4148,7 @@ fn read_aggregate(package: &Value) -> CheckedPackageV2ReadResult {
 fn retained_argument(package: &Value, formula: usize) -> Value {
     let result = read_aggregate(package);
     let CheckedPackageV2ReadResult::Admitted(admitted) = result else {
-        panic!("the aggregate package admits");
+        panic!("the aggregate package admits: {result:?}");
     };
     let filament_contract_model::CheckedTerm::Application { arguments, .. } =
         &admitted.graph().nodes[formula].body

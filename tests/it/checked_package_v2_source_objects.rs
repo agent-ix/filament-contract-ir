@@ -1676,12 +1676,13 @@ fn the_source_object_read_refuses_a_candidate_outside_the_context_family() {
         source_type("Other", &["total"], &fixture_source()),
         clause_function(&source_owner(), &["Other", "deposit", "body"], &integer()),
     ]);
+    let other_key = format!("ix://{}/Other", source_identity());
     package["checked_term_data"]["dispatch_tables"][0]["candidates"]
         .as_array_mut()
         .expect("candidates")
         .push(candidate(
             &order_id(),
-            "Other",
+            &other_key,
             &node_id("qualified:Other/deposit/body"),
             Value::Null,
         ));

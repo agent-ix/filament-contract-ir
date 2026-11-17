@@ -228,8 +228,9 @@ impl<'a> SelectedSourceObjects<'a> {
 
 /// Whether every candidate of every source-context dispatch table names the
 /// context's type or a transitive subtype of it by its `selection_key`
-/// (`original.node` is the type's `source_identity`), and its clause functions
-/// are declared under the candidate's type or one of its supertypes (FR-366).
+/// (`original.node` is the owner-qualified source identity, whose final name
+/// selects the row), and its clause functions are declared under the
+/// candidate's type or one of its supertypes (FR-366).
 fn dispatch_families_hold(
     package: &super::CheckedPackageV2,
     joined: &std::collections::BTreeMap<usize, SelectedSourceObjectRow>,
@@ -265,7 +266,14 @@ fn dispatch_families_hold(
         };
         let authority = context_row.source_authority.as_ref();
         table.candidates.iter().all(|candidate| {
-            let Some(own) = named(authority, &candidate.selection_key.original.node) else {
+            let original = &candidate.selection_key.original;
+            let Some((owner, source_identity)) = source_type_identity(&original.node) else {
+                return false;
+            };
+            if owner != original.package.as_ref() {
+                return false;
+            }
+            let Some(own) = named(authority, source_identity) else {
                 return false;
             };
             reaches(package, joined, own, context)
@@ -278,6 +286,12 @@ fn dispatch_families_hold(
                     })
         })
     })
+}
+
+/// The checked-package source selection-key spelling: `ix://<owner>/<name>`.
+#[ix_trace_rs::string_edge]
+fn source_type_identity(node: &str) -> Option<(&str, &str)> {
+    node.strip_prefix("ix://")?.rsplit_once('/')
 }
 
 /// Whether `from` is `target` or reaches it through `supertypes`.
