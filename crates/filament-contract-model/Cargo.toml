@@ -1,6 +1,6 @@
 [package]
 name = "filament-contract-model"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 rust-version = "1.98.1"
 description = "Cycle-free semantic contract model for the Filament ecosystem."
@@ -41,7 +41,7 @@ test-support = []
 fspec-conformance = []
 
 [dependencies]
-ix-trace-rs = { version = "0.1", git = "https://github.com/agent-ix/ix-trace-rs", branch = "main" }
+ix-trace-rs = { version = "0.1", git = "https://github.com/agent-ix/ix-trace-rs", tag = "v0.1.2" }
 num-bigint = "0.4.8"
 num-integer = "0.1.47"
 num-traits = "0.2.19"
@@ -49,13 +49,13 @@ jsonschema = { version = "=0.17.1", default-features = false }
 # The home of `filament.checked-operation-catalog/v1`. This crate reads the catalog
 # from there rather than carrying its own copy of the bytes; see
 # `checked_package/v2/operation_catalog.rs`.
-# Moving first-party branches use compatible ranges; Cargo.lock records selected revisions.
-filament-verification-contracts = { version = "0.1", git = "https://github.com/agent-ix/filament-verification-contracts", branch = "main" }
+# First-party dependencies use release tags; Cargo.lock records the immutable commits.
+filament-verification-contracts = { version = "0.1", git = "https://github.com/agent-ix/filament-verification-contracts", tag = "v0.1.1" }
 # The one RFC 8785 encoder every identity digest and the V2 wire types encode
 # through, and the reader's canonical-bytes check; see
 # `checked_package/v2/encode.rs`. The `serde_json` feature is its `Encode` for
 # `serde_json::Value` and the non-recursive `drop_value`.
-quire-canonical = { version = "0.3", git = "https://github.com/agent-ix/quire-canonical", branch = "main", features = ["serde_json"] }
+quire-canonical = { version = "0.3", git = "https://github.com/agent-ix/quire-canonical", tag = "v0.3.1", features = ["serde_json"] }
 serde = { version = "1.0.228", features = ["derive"] }
 # `float_roundtrip` makes the package document's parse of a shortest round-trip
 # text exact, so the canonical-bytes comparison of the value read holds
@@ -72,9 +72,9 @@ sha2 = "=0.10.9"
 stacker = "=0.1.15"
 # The shared iterative walk (`Walk` and `walk`): every walk of the V2 reader
 # over a term runs on its explicit heap stack, never on the call stack.
-filament-walk = { git = "https://github.com/agent-ix/filament-walk", branch = "main" }
-filament-exact = { git = "https://github.com/agent-ix/filament-exact", branch = "main" }
-filament-semantic-value = { git = "https://github.com/agent-ix/filament-semantic-value", branch = "main" }
+filament-walk = { version = "0.1", git = "https://github.com/agent-ix/filament-walk", tag = "v0.1.0" }
+filament-exact = { version = "0.2", git = "https://github.com/agent-ix/filament-exact", tag = "v0.2.0" }
+filament-semantic-value = { version = "0.1", git = "https://github.com/agent-ix/filament-semantic-value", tag = "v0.1.2" }
 # The Rust identifier syntax of an abstraction relation body (FR-346): the
 # Unicode identifier tables and the NFC check FR-450's "Rust spellings" name.
 unicode-ident = "=1.0.24"

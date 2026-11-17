@@ -10,7 +10,7 @@ use filament_contract_model::{
     ClockConfiguration, TemporalBinding, TemporalClauseName,
 };
 use ix_trace_rs::trace;
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::{fs, path::PathBuf};
 
 fn borrowed_rows(package: &CheckedPackageV2) -> Option<&[TemporalBinding]> {
@@ -49,6 +49,17 @@ fn default_feature_consumer_borrows_admitted_clock_rows() {
         &fs::read(proposal.join(fixture_name)).expect("published checked package"),
     )
     .expect("checked package JSON");
+    // FR-770 requires a check mode on every function node. The published
+    // temporal fixture predates that field, so give its linked functions the
+    // normative mode before exercising the current package reader.
+    for node in fixture["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("semantic graph nodes")
+    {
+        if node["node_tag"] == "function" {
+            node["check_mode"] = json!("linked");
+        }
+    }
     let vectors: Value = serde_json::from_slice(
         &fs::read(proposal.join("temporal-clause-name-vectors.json"))
             .expect("published name vectors"),
