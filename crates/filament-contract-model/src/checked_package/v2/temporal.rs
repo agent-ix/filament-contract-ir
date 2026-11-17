@@ -36,13 +36,13 @@ use super::operations::resolve_family;
 // These validators consume the strict decoder's authenticated typed table.
 use super::structural::typed_admitted_reference as typed_reference;
 use super::{
-    member_pointer, ApplicationOperator, CheckedDiagnosticV2, CheckedNodeKind,
-    CheckedPackageLockV2, CheckedSelectionRole, CheckedTerm, ClockConfiguration,
-    FairnessGranularity, FairnessKind, HybridForm, IntervalEnd, IntervalFit, LawRole, LiteralKind,
-    ModelForm, OperationMemberKind, RawSemanticNodeV2 as CheckedSemanticNodeV2, TemporalBinding,
-    TemporalForm, TemporalProfile, TermNode, TermView, ValueForm, WorkMeter,
+    ApplicationOperator, CheckedDiagnosticV2, CheckedNodeKind, CheckedPackageLockV2,
+    CheckedSelectionRole, CheckedTerm, ClockConfiguration, FairnessGranularity, FairnessKind,
+    HybridForm, IntervalEnd, IntervalFit, LawRole, LiteralKind, ModelForm, OperationMemberKind,
+    RawSemanticNodeV2 as CheckedSemanticNodeV2, TemporalBinding, TemporalForm, TemporalProfile,
+    TermNode, TermView, ValueForm, WorkMeter, member_pointer,
 };
-use crate::checked_package::common::{node_pointer, ValidationFailure};
+use crate::checked_package::common::{ValidationFailure, node_pointer};
 use crate::checked_package::shared::{
     CheckedArtifactRef, CheckedNodeId, CheckedNodePathSegment, CheckedPackageRefusalCause,
     CheckedPackageRefusalCode, JsonPointer,
@@ -608,6 +608,14 @@ pub(super) fn member_is_well_formed_node(
         OperationMemberKind::Field => {
             member.get("name").and_then(TermNode::as_str).is_some() && ids.declaration.is_some()
         }
+        OperationMemberKind::History => {
+            member.exact_members(&["kind", "declaration", "name"])
+                && ids.declaration.is_some()
+                && member
+                    .get("name")
+                    .and_then(TermNode::as_str)
+                    .is_some_and(is_identifier)
+        }
         _ => true,
     }
 }
@@ -978,14 +986,18 @@ fn read_interval_member_node(
         } else {
             Some(need!(rational(upper, meter)?))
         },
-        lower_end: need!(interval
-            .get("lower_end")
-            .and_then(TermNode::as_str)
-            .and_then(IntervalEnd::from_wire)),
-        upper_end: need!(interval
-            .get("upper_end")
-            .and_then(TermNode::as_str)
-            .and_then(IntervalEnd::from_wire)),
+        lower_end: need!(
+            interval
+                .get("lower_end")
+                .and_then(TermNode::as_str)
+                .and_then(IntervalEnd::from_wire)
+        ),
+        upper_end: need!(
+            interval
+                .get("upper_end")
+                .and_then(TermNode::as_str)
+                .and_then(IntervalEnd::from_wire)
+        ),
     }))
 }
 
@@ -2815,10 +2827,50 @@ mod tests {
     use ix_trace_rs::trace;
     use serde_json::json;
 
+    /// FR-322-AC-17: the history member is a closed identity with a local
+    /// declaration node and an identifier field name.
+    #[trace("FR-322-AC-17")]
+    #[test]
+    fn history_member_requires_its_exact_identity_shape() {
+        let declaration = serde_json::from_value(json!({
+            "package": "fixture",
+            "path": ["model", "Counter"],
+            "ordinal": 0
+        }))
+        .expect("a checked declaration node");
+        let ids = super::super::typed_terms::CheckedOperationMemberIds {
+            declaration: Some(declaration),
+            ..Default::default()
+        };
+        let member = CheckedJson::from_value(&json!({
+            "kind": "history",
+            "declaration": {"package":"fixture","path":["model","Counter"],"ordinal":0},
+            "name": "last"
+        }))
+        .expect("history member");
+        assert!(member_is_well_formed_node(
+            OperationMemberKind::History,
+            TermNode::of(&member),
+            &ids
+        ));
+
+        for malformed in [
+            json!({"kind":"history","declaration":{"package":"fixture","path":["model","Counter"],"ordinal":0},"name":"last","extra":true}),
+            json!({"kind":"history","declaration":{"package":"fixture","path":["model","Counter"],"ordinal":0},"name":"not an identifier"}),
+        ] {
+            let member = CheckedJson::from_value(&malformed).expect("a JSON member");
+            assert!(!member_is_well_formed_node(
+                OperationMemberKind::History,
+                TermNode::of(&member),
+                &ids
+            ));
+        }
+    }
+
     #[trace("TC-472", "FR-038-AC-516", "FR-038-AC-5")]
     #[test]
     fn invalid_reference_id_refuses_in_the_graph_term_pass_before_temporal_views() {
-        use crate::checked_package::common::{validate_term, Step, TermGrammar, Trail};
+        use crate::checked_package::common::{Step, TermGrammar, Trail, validate_term};
         let body = CheckedJson::from_value(&json!({"term":"reference","target":{
             "package":"", "path":[], "ordinal":0
         }}))

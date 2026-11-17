@@ -29,7 +29,7 @@ use std::sync::Arc;
 
 #[cfg(test)]
 use super::operation_catalog_index::OperationCatalogWire;
-pub(super) use super::operation_catalog_index::{read_catalog, OperationCatalog};
+pub(super) use super::operation_catalog_index::{OperationCatalog, read_catalog};
 
 /// The catalog, read from its home rather than copied here.
 ///
@@ -365,6 +365,7 @@ mod tests {
         for (wire, member) in [
             ("temporal_interval", OperationMemberKind::TemporalInterval),
             ("fairness", OperationMemberKind::Fairness),
+            ("history", OperationMemberKind::History),
         ] {
             assert_eq!(OperationMemberKind::from_wire(wire), Some(member));
             assert_eq!(member.as_wire(), wire);
@@ -578,8 +579,8 @@ mod tests {
     /// offending path before it judges any byte, never a refusal.
     #[trace("TC-048", "FR-035-AC-36")]
     #[test]
-    fn tc_048_unreadable_production_catalog_bytes_make_the_contract_package_read_catalog_unavailable(
-    ) {
+    fn tc_048_unreadable_production_catalog_bytes_make_the_contract_package_read_catalog_unavailable()
+     {
         use super::super::contract_package::{ContractPackageReadResult, ContractPackageWireV1};
         use super::super::{CheckedPackageReadLimits, ContractDependencies};
         let mut edited: serde_json::Value =
