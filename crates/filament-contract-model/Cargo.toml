@@ -50,7 +50,7 @@ jsonschema = { version = "=0.17.1", default-features = false }
 # from there rather than carrying its own copy of the bytes; see
 # `checked_package/v2/operation_catalog.rs`.
 # First-party dependencies use release tags; Cargo.lock records the immutable commits.
-filament-verification-contracts = { version = "0.1", git = "https://github.com/agent-ix/filament-verification-contracts", tag = "v0.1.0" }
+filament-verification-contracts = { version = "0.1", git = "https://github.com/agent-ix/filament-verification-contracts", tag = "v0.1.1" }
 # The one RFC 8785 encoder every identity digest and the V2 wire types encode
 # through, and the reader's canonical-bytes check; see
 # `checked_package/v2/encode.rs`. The `serde_json` feature is its `Encode` for
@@ -74,7 +74,7 @@ stacker = "=0.1.15"
 # over a term runs on its explicit heap stack, never on the call stack.
 filament-walk = { version = "0.1", git = "https://github.com/agent-ix/filament-walk", tag = "v0.1.0" }
 filament-exact = { version = "0.2", git = "https://github.com/agent-ix/filament-exact", tag = "v0.2.0" }
-filament-semantic-value = { version = "0.1", git = "https://github.com/agent-ix/filament-semantic-value", tag = "v0.1.1" }
+filament-semantic-value = { version = "0.1", git = "https://github.com/agent-ix/filament-semantic-value", tag = "v0.1.2" }
 # The Rust identifier syntax of an abstraction relation body (FR-346): the
 # Unicode identifier tables and the NFC check FR-450's "Rust spellings" name.
 unicode-ident = "=1.0.24"

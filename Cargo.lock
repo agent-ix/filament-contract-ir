@@ -310,7 +310,7 @@ dependencies = [
  "ix-cli-kit",
  "ix-trace-rs",
  "jsonschema 0.17.1",
- "quire-canonical 0.3.1",
+ "quire-canonical",
  "quire-rs",
  "serde",
  "serde_json",
@@ -333,7 +333,7 @@ dependencies = [
  "num-bigint",
  "num-integer",
  "num-traits",
- "quire-canonical 0.3.1",
+ "quire-canonical",
  "serde",
  "serde_json",
  "serde_path_to_error",
@@ -364,22 +364,22 @@ dependencies = [
 
 [[package]]
 name = "filament-semantic-value"
-version = "0.1.1"
-source = "git+https://github.com/agent-ix/filament-semantic-value?tag=v0.1.1#9901f238499998ab8cb0fdc9b6ed53d905960d80"
+version = "0.1.2"
+source = "git+https://github.com/agent-ix/filament-semantic-value?tag=v0.1.2#832bacad711b69ee519a8070e755f0d9102a6f19"
 dependencies = [
  "filament-exact",
- "quire-canonical 0.3.0",
+ "quire-canonical",
  "thiserror",
 ]
 
 [[package]]
 name = "filament-verification-contracts"
-version = "0.1.0"
-source = "git+https://github.com/agent-ix/filament-verification-contracts?tag=v0.1.0#b79af1b550c91288778ee5df1becc6e7388dd66f"
+version = "0.1.1"
+source = "git+https://github.com/agent-ix/filament-verification-contracts?tag=v0.1.1#72851452cd3de8464e35cf5efe1829b0b2c882b4"
 dependencies = [
  "chrono",
  "jsonschema 0.55.1",
- "quire-canonical 0.3.0",
+ "quire-canonical",
  "regress",
  "schemars",
  "serde",
@@ -1147,23 +1147,10 @@ dependencies = [
 
 [[package]]
 name = "quire-canonical"
-version = "0.3.0"
-source = "git+https://github.com/agent-ix/quire-canonical?branch=main#6ff8e0914f1ddc00c2969aa001592d4c3d9f631a"
-dependencies = [
- "quire-canonical-derive 0.3.0 (git+https://github.com/agent-ix/quire-canonical?branch=main)",
- "ryu-js",
- "serde",
- "serde_json",
- "sha2",
- "thiserror",
-]
-
-[[package]]
-name = "quire-canonical"
 version = "0.3.1"
 source = "git+https://github.com/agent-ix/quire-canonical?tag=v0.3.1#2204c5c3fc0ca13dd655400d94e923edd2e8416c"
 dependencies = [
- "quire-canonical-derive 0.3.0 (git+https://github.com/agent-ix/quire-canonical?tag=v0.3.1)",
+ "quire-canonical-derive",
  "ryu-js",
  "serde",
  "serde_json",
@@ -1175,16 +1162,6 @@ dependencies = [
 name = "quire-canonical-derive"
 version = "0.3.0"
 source = "git+https://github.com/agent-ix/quire-canonical?tag=v0.3.1#2204c5c3fc0ca13dd655400d94e923edd2e8416c"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 3.0.9",
-]
-
-[[package]]
-name = "quire-canonical-derive"
-version = "0.3.0"
-source = "git+https://github.com/agent-ix/quire-canonical?branch=main#6ff8e0914f1ddc00c2969aa001592d4c3d9f631a"
 dependencies = [
  "proc-macro2",
  "quote",
