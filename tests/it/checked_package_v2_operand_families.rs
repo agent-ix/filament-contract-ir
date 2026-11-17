@@ -34,6 +34,20 @@ fn add_node(package: &mut Value, key: &str, tag: &str, form: &str, ty: &str, bod
         });
 }
 
+fn add_linked_check_modes(package: &mut Value) {
+    for node in package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("semantic nodes")
+    {
+        if node["node_tag"] == "function" {
+            node.as_object_mut()
+                .expect("function node object")
+                .entry("check_mode")
+                .or_insert_with(|| json!("linked"));
+        }
+    }
+}
+
 fn fixture() -> (Value, String, String, String, String, String) {
     let members = nominal_fixture_members();
     let unit = members
@@ -1570,11 +1584,15 @@ fn nested_fold_and_reduce_binders_resolve_only_the_single_final_step() {
 #[trace("TC-048", "FR-038-AC-247", "FR-038-AC-251")]
 #[test]
 fn genuine_integer_fold_with_both_authored_binders_is_admitted() {
-    let bytes = include_bytes!("../fixtures/fold-binders/integer-fold.json");
+    let mut fixture: Value =
+        serde_json::from_slice(include_bytes!("../fixtures/fold-binders/integer-fold.json"))
+            .expect("Integer fold fixture");
+    add_linked_check_modes(&mut fixture);
+    let bytes = canonical(&fixture);
     let mut evidence = filament_contract_model::CheckedPackageEvidence::new();
     evidence.support_feature("filament.value.complete/v1");
     let CheckedPackageV2ReadResult::Admitted(package) =
-        crate::read_and_account(bytes, CheckedPackageReadLimits::bounded(), &evidence)
+        crate::read_and_account(&bytes, CheckedPackageReadLimits::bounded(), &evidence)
     else {
         panic!("genuine Integer fold with accumulator and element binders must admit");
     };
@@ -1618,7 +1636,11 @@ fn genuine_integer_fold_with_both_authored_binders_is_admitted() {
 #[trace("TC-048", "FR-038-AC-247", "FR-038-AC-251")]
 #[test]
 fn genuine_monitor_base_fold_is_admitted_without_removing_semantics() {
-    let bytes = include_bytes!("../fixtures/fold-binders/monitor-base.json");
+    let mut fixture: Value =
+        serde_json::from_slice(include_bytes!("../fixtures/fold-binders/monitor-base.json"))
+            .expect("monitor-base fixture");
+    add_linked_check_modes(&mut fixture);
+    let bytes = canonical(&fixture);
     let mut evidence = filament_contract_model::CheckedPackageEvidence::new();
     evidence.support_feature("filament.value.complete/v1");
     evidence
@@ -1636,7 +1658,7 @@ fn genuine_monitor_base_fold_is_admitted_without_removing_semantics() {
         diagnostics: 10_000,
         work: 1_000_000_000,
     };
-    let package = match crate::read_and_account(bytes, limits, &evidence) {
+    let package = match crate::read_and_account(&bytes, limits, &evidence) {
         CheckedPackageV2ReadResult::Admitted(package) => package,
         other => panic!("complete genuine monitor-base fold must admit: {other:?}"),
     };

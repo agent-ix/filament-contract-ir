@@ -2449,8 +2449,24 @@ fn validate_shapes(value: &Value) -> Result<(), ValidationFailure> {
             ],
             &["recursion_group", "declaration", "owner", "check_mode"],
         )?;
-        if let Some(mode) = node.get("check_mode") {
-            enum_string::<super::CheckMode>(mode, at.clone().key("check_mode"))?;
+        let is_function = node.get("node_tag").and_then(Value::as_str) == Some("function");
+        match (is_function, node.get("check_mode")) {
+            (true, None) => {
+                return Err(malformed(
+                    at.clone().key("check_mode"),
+                    CheckedPackageRefusalCause::MissingMember,
+                ));
+            }
+            (true, Some(mode)) => {
+                enum_string::<super::CheckMode>(mode, at.clone().key("check_mode"))?;
+            }
+            (false, Some(_)) => {
+                return Err(malformed(
+                    at.clone().key("check_mode"),
+                    CheckedPackageRefusalCause::UnknownMember,
+                ));
+            }
+            (false, None) => {}
         }
         id_shape(member(node, "node_id", &at)?, at.clone().key("node_id"))?;
         id_shape(
