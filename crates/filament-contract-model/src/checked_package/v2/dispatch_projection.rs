@@ -374,10 +374,15 @@ pub(super) fn validate_checked_term_data<Body>(
                     None => source_types.insert(source_type_index(wire, kinds, meter)?),
                 };
                 let original = &candidate.selection_key.original;
+                let source_type = original
+                    .node
+                    .strip_prefix("ix://")
+                    .and_then(|node| node.rsplit_once('/'));
                 let named = identity.as_ref() == original.package.as_ref()
-                    && types
-                        .binary_search(&(identity.as_ref(), original.node.as_ref()))
-                        .is_ok();
+                    && source_type.is_some_and(|(source_identity, name)| {
+                        source_identity == identity.as_ref()
+                            && types.binary_search(&(identity.as_ref(), name)).is_ok()
+                    });
                 if !named {
                     return Err(invalid(meter, row_index, at.key("selection_key")));
                 }

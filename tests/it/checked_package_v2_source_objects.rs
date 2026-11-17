@@ -1439,13 +1439,15 @@ fn source_table(context: &Value, declaring: &Value) -> Value {
     let order_body = node_id("qualified:Order/deposit/body");
     let order_pre = node_id("qualified:Order/deposit/effective_precondition");
     let sub_body = node_id("qualified:Sub/deposit/body");
+    let order_key = format!("ix://{}/Order", source_identity());
+    let sub_key = format!("ix://{}/Sub", source_identity());
     table(
         DISPATCH_CALL,
         context,
         declaring,
         vec![
-            candidate(&order_id(), "Order", &order_body, order_pre),
-            candidate(&order_id(), "Sub", &sub_body, Value::Null),
+            candidate(&order_id(), &order_key, &order_body, order_pre),
+            candidate(&order_id(), &sub_key, &sub_body, Value::Null),
         ],
     )
 }
@@ -1482,7 +1484,13 @@ fn source_dispatch_table_reads_context_candidate_order_and_clause_identities() {
         .iter()
         .map(|candidate| candidate.selection_key.original.node.to_string())
         .collect();
-    assert_eq!(keys, ["Order", "Sub"]);
+    assert_eq!(
+        keys,
+        [
+            format!("ix://{}/Order", source_identity()),
+            format!("ix://{}/Sub", source_identity()),
+        ]
+    );
     assert_eq!(
         view.candidates()[0].operation_body,
         id("qualified:Order/deposit/body")
@@ -1617,11 +1625,19 @@ fn source_candidate_selection_keys_refuse_unless_they_name_a_source_type_of_the_
         ),
         (
             "node naming no source type",
-            Box::new(|key| key["original"]["node"] = json!("Missing")),
+            Box::new(|key| {
+                key["original"]["node"] = json!(format!("ix://{}/Missing", source_identity()))
+            }),
         ),
         (
             "node naming a source node that is no type",
-            Box::new(|key| key["original"]["node"] = json!("Line")),
+            Box::new(|key| {
+                key["original"]["node"] = json!(format!("ix://{}/Line", source_identity()))
+            }),
+        ),
+        (
+            "bare type name instead of effective URI",
+            Box::new(|key| key["original"]["node"] = json!("Order")),
         ),
         (
             "node naming a model type",

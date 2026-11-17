@@ -4,11 +4,11 @@ use crate::support::checked_package::{
     canonical, evidence_for, positive_operation_identities, v2_all_families,
 };
 use filament_contract_model::{
-    CheckedApplicationOperation, CheckedBindingName, CheckedBindingNameKind,
-    CheckedFairnessGranularity, CheckedFairnessKind, CheckedLiteralValue, CheckedOperationMember,
-    CheckedOperationViewError, CheckedPackageReadLimits, CheckedPackageSourceCorrespondenceRef,
-    CheckedPackageV2ReadResult, CheckedTerm, ExecutionPoint, ExecutionPointName,
-    OperationMemberKind, StateClauseKind, encode_checked_package_v2,
+    encode_checked_package_v2, CheckedApplicationOperation, CheckedBindingName,
+    CheckedBindingNameKind, CheckedFairnessGranularity, CheckedFairnessKind, CheckedLiteralValue,
+    CheckedOperationMember, CheckedOperationViewError, CheckedPackageReadLimits,
+    CheckedPackageSourceCorrespondenceRef, CheckedPackageV2ReadResult, CheckedTerm, ExecutionPoint,
+    ExecutionPointName, OperationMemberKind, StateClauseKind,
 };
 use ix_trace_rs::trace;
 use serde_json::json;
@@ -372,7 +372,7 @@ fn reference_literal_read_preserves_the_canonical_target_identity() {
     let term = CheckedTerm::Literal {
         type_id: type_id.clone(),
         value_kind: filament_contract_model::LiteralKind::Reference,
-        value: filament_contract_model::CheckedJson::from_serializable("7331")
+        value: filament_contract_model::CheckedJson::from_serializable(&"7331")
             .expect("reference identity"),
     };
 

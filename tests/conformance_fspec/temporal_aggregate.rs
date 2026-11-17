@@ -9,7 +9,7 @@ use super::{
 };
 use filament_contract_model::{CheckedNodeId, CheckedPackageV2ReadResult, CheckedTerm};
 use ix_trace_rs::trace;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::collections::BTreeSet;
 
 fn vectors() -> Value {
@@ -95,8 +95,12 @@ fn source_dimension(name: &str) -> Value {
 fn source_unit(name: &str, dimension: &str) -> Value {
     let key = id(&[name]);
     let dimension = id(&[dimension]);
-    let target = (name == "s").then(|| id(&["ms"]));
-    let scale = if name == "s" { "1000" } else { "1" };
+    let target = (name == "ms").then(|| id(&["s"]));
+    let scale = if name == "ms" {
+        json!({"numerator": "1", "denominator": "1000"})
+    } else {
+        json!({"numerator": "1", "denominator": "1"})
+    };
     let dependencies = if let Some(target) = &target {
         json!([dimension, target])
     } else {
@@ -111,7 +115,7 @@ fn source_unit(name: &str, dimension: &str) -> Value {
         "owner": {"kind": "source", "authority": "agent-ix", "identity": "example"},
         "body": {"term": "unit", "dimension_node_id": dimension,
                  "target_unit_node_id": target,
-                 "scale": {"numerator": scale, "denominator": "1"},
+                 "scale": scale,
                  "offset": {"numerator": "0", "denominator": "1"}},
     })
 }
@@ -459,13 +463,28 @@ fn duration_bounds_match_every_occurrence_clock_unit() {
 fn timestamped_duration_bounds_admit_only_linear_source_time_units() {
     let mut published = vectors();
     published["clock_unit"] = id(&["ms"]);
-    let case = published["positive"]
+    let mut case = published["positive"]
         .as_array()
         .expect("positive cases")
         .iter()
         .find(|case| case["id"] == "AG-07-duration-quantile")
-        .expect("published duration case");
-    let (mut package, _) = package_for(case, &published);
+        .expect("published duration case")
+        .clone();
+    for member in case["argument"]["members"]
+        .as_array_mut()
+        .expect("aggregate members")
+    {
+        if member["value"]["value_kind"] == "quantity" {
+            member["value"]["type"] = id(&["ms"]);
+        }
+    }
+    let (mut package, _) = package_for(&case, &published);
+    for node in package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+    {
+        crate::support::checked_package::carry_check_mode(node);
+    }
     package["semantic_graph"]["nodes"]
         .as_array_mut()
         .expect("nodes")
@@ -487,12 +506,10 @@ fn timestamped_duration_bounds_admit_only_linear_source_time_units() {
     add_node(&mut package, source_unit("ms", "Time"));
     add_node(&mut package, source_unit("s", "Time"));
 
+    let admitted = read_package(&package).expect("complete package read");
     assert!(
-        matches!(
-            read_package(&package).expect("complete package read"),
-            CheckedPackageV2ReadResult::Admitted(_)
-        ),
-        "a duration bound typed by the source-owned Time unit is admitted"
+        matches!(&admitted, CheckedPackageV2ReadResult::Admitted(_)),
+        "a duration bound typed by the source-owned Time unit is admitted: {admitted:#?}"
     );
 
     let unit = package["semantic_graph"]["nodes"]
@@ -507,7 +524,7 @@ fn timestamped_duration_bounds_admit_only_linear_source_time_units() {
     else {
         panic!("an affine source clock unit must refuse");
     };
-    assert_eq!(code_word(refusal.code), "ill_typed");
+    assert_eq!(code_word(refusal.code), "ill_typed", "{refusal:#?}");
     assert_eq!(refusal.cause.map(cause_word), Some("unit-mismatch"));
     assert_eq!(
         refusal.loci[0].path.as_ref().map(ToString::to_string),

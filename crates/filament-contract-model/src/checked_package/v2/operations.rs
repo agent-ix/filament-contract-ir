@@ -881,7 +881,7 @@ fn canonical_uuid(value: &str) -> bool {
 
 fn canonical_reference_identity(value: &str) -> bool {
     !value.is_empty()
-        && value.len() % 2 == 0
+        && value.len().is_multiple_of(2)
         && value
             .bytes()
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
