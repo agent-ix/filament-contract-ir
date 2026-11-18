@@ -1366,7 +1366,7 @@ fn collection_seq_requires_bounded_inputs_matching_binder_and_sequence() {
         json!({
             "node_id":id, "schema_version":"filament.checked-semantic-graph/v2",
             "node_tag":"value", "semantic_form":"parameter", "semantic_type":ty,
-            "dependencies":[], "occurrences":[{"role":"generated", "ordinal":0}],
+            "dependencies":[], "occurrences":[{"role":"expression", "ordinal":0}],
             "body":{"term":"aggregate", "members":[
                 {"term":"binding", "name":"name", "value":{
                     "term":"literal", "type":text_type, "value_kind":"text", "value":name}},
@@ -1383,12 +1383,13 @@ fn collection_seq_requires_bounded_inputs_matching_binder_and_sequence() {
             node_id("value/parameter/sequence-index-shadow"),
             "sequence_index",
             "2",
-            node_id("scalar_type/integer"),
+            integer_type.clone(),
         ));
     settle(&mut shadowed);
+    let shadowed_result = read(&shadowed);
     assert!(
-        matches!(read(&shadowed), CheckedPackageV2ReadResult::Admitted(_)),
-        "an unrelated same-name parameter at another level does not shadow the binder"
+        matches!(shadowed_result, CheckedPackageV2ReadResult::Admitted(_)),
+        "an unrelated same-name parameter at another level does not shadow the binder: {shadowed_result:?}"
     );
 
     let mut unused_index = base.clone();
@@ -1418,7 +1419,7 @@ fn collection_seq_requires_bounded_inputs_matching_binder_and_sequence() {
                 node_id("value/parameter/sequence-index-shadow-level-two"),
                 "sequence_index",
                 "2",
-                node_id("scalar_type/integer"),
+                integer_type.clone(),
             ),
         ]);
     unused_index["semantic_graph"]["nodes"][function]["body"]["members"][0]["value"] =
