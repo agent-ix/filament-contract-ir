@@ -2387,7 +2387,7 @@ fn selected_facts_join_only_explicit_model_field_and_charge_full_emission_rows()
 
 /// FR-322: the strict reader admits Float schedules only for direct operands;
 /// even an explicit conversion to the same float type invalidates the witness.
-#[trace("FR-322")]
+#[trace("FSpec-FR-322-AC-288")]
 #[test]
 fn strict_reader_rejects_float_equality_conversion_targets() {
     let selected = document(vec![]);
