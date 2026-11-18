@@ -3117,7 +3117,11 @@ fn history_read_requires_a_joined_refinement_row_and_reachable_application() {
     let CheckedPackageV2ReadResult::Refused(refusal) = read(&orphan, &evidence) else {
         panic!("a history application unreachable from its row must refuse");
     };
-    assert_eq!(refusal.code, CheckedPackageRefusalCode::IllTyped);
+    assert_eq!(
+        refusal.code,
+        CheckedPackageRefusalCode::IllTyped,
+        "orphan history refusal: {refusal:?}"
+    );
     assert_eq!(
         refusal.cause,
         Some(CheckedPackageRefusalCause::OperatorIneligible)
@@ -3269,6 +3273,7 @@ pub(super) fn orphan_history_control() -> (Value, CheckedPackageEvidence) {
     }
     let old_type =
         orphan["semantic_graph"]["nodes"][position]["body"]["histories"][0]["type"].clone();
+    let application_id = node_id("history-read/application");
     orphan["semantic_graph"]["nodes"][position]["body"]["histories"][0]["type"] =
         boolean_type.clone();
     orphan["semantic_graph"]["nodes"][position]["body"]["histories"][0]["initial"] =
@@ -3281,7 +3286,7 @@ pub(super) fn orphan_history_control() -> (Value, CheckedPackageEvidence) {
     let dependencies = orphan["semantic_graph"]["nodes"][position]["dependencies"]
         .as_array_mut()
         .expect("refinement dependencies");
-    dependencies.retain(|dependency| dependency != &old_type);
+    dependencies.retain(|dependency| dependency != &old_type && dependency != &application_id);
     dependencies.push(new_type);
     dependencies.sort_by(node_id_order);
     dependencies.dedup();
