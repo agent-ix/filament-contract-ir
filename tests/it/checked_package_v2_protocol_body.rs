@@ -9781,6 +9781,79 @@ fn protocol_channel_admits_a_bounded_integer_fifo_key() {
     ));
 }
 
+/// Trace: FR-372-AC-2
+#[trace("FR-372-AC-2")]
+#[test]
+fn protocol_channel_admits_fifo_keys_with_stable_structural_leaves() {
+    for (ordinal, form) in ["option", "sequence", "record"].into_iter().enumerate() {
+        let (mut package, _) = package_with_member_queue();
+        let leaf = if form == "record" {
+            protocol_bounded_domain(&mut package, "decimal_range")
+        } else {
+            package["semantic_graph"]["nodes"]
+                .as_array()
+                .expect("nodes")
+                .iter()
+                .find(|node| {
+                    node["node_tag"] == "bounded_domain" && node["semantic_form"] == "integer_range"
+                })
+                .expect("bounded integer type")["node_id"]
+                .clone()
+        };
+        let body = match form {
+            "option" | "sequence" => json!({"term": "aggregate", "members": [
+                {"term": "reference", "target": leaf.clone()}
+            ]}),
+            "record" => json!({"term": "aggregate", "members": [
+                {"term": "binding", "name": "amount", "value": {
+                    "term": "reference", "target": leaf.clone()
+                }}
+            ]}),
+            _ => unreachable!("listed stable key type"),
+        };
+        let dependencies = vec![leaf];
+        let type_key = structural_key("composite_type", form, None, &body);
+        let type_id = node_id(&type_key);
+        package["semantic_graph"]["nodes"]
+            .as_array_mut()
+            .expect("nodes")
+            .push(json!({
+                "node_id": type_id,
+                "schema_version": "filament.checked-semantic-graph/v2",
+                "node_tag": "composite_type", "semantic_form": form,
+                "semantic_type": type_id, "dependencies": dependencies,
+                "occurrences": [{"role": "type", "ordinal": 0}],
+                "body": body
+            }));
+        let binder = clause_parameter(&mut package, &format!("stable_key_{ordinal}"), "1");
+        let binder_position = node_position_for_key(&package, &binder);
+        package["semantic_graph"]["nodes"][binder_position]["semantic_type"] = type_id.clone();
+        let channel = protocol_position(&package, "channel");
+        package["semantic_graph"]["nodes"][channel]["body"]["arguments"][2]["value"]["target"] =
+            type_id.clone();
+        package["semantic_graph"]["nodes"][channel]["body"]["arguments"][3]["value"] = json!({
+            "term": "aggregate", "members": [
+                {"term": "binding", "name": "kind", "value": {
+                    "term": "literal", "type": node_id(&family_key("a1a1")),
+                    "value_kind": "text", "value": "fifo"
+                }},
+                {"term": "binding", "name": "binder", "value": {
+                    "term": "reference", "target": binder
+                }},
+                {"term": "binding", "name": "key", "value": {
+                    "term": "reference", "target": binder
+                }}
+            ]
+        });
+        settle(&mut package);
+        let result = read(&package);
+        assert!(
+            matches!(result, CheckedPackageV2ReadResult::Admitted(_)),
+            "FIFO key with stable {form} leaves should admit: {result:?}"
+        );
+    }
+}
+
 /// Trace: FR-372-AC-3
 #[trace("FR-372-AC-3")]
 #[test]
