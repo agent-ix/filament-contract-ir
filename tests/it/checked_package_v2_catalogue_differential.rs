@@ -5,7 +5,8 @@
 
 use crate::support::checked_package::{
     add_family_reference_target, canonical, evidence_for, family_key, index_fixture_node_ids,
-    node_id, nominal_fixture_members, nominal_package, refresh_identity, settle, v2_all_families,
+    node_id, nominal_fixture_members, nominal_package, refresh_identity, settle,
+    structural_fixture_id, v2_all_families,
 };
 use filament_contract_model::{
     CheckedPackageEvidence, CheckedPackageReadLimits, CheckedPackageRefusalCause,
@@ -1424,7 +1425,7 @@ fn collection_seq_requires_bounded_inputs_matching_binder_and_sequence() {
         .as_array_mut()
         .expect("function dependencies");
     dependencies.push(outer_x.clone());
-    dependencies.sort();
+    dependencies.sort_by_key(structural_fixture_id);
     unused_index["semantic_graph"]["nodes"][application]["body"]["arguments"][2]["value"]
         ["target"] = outer_x;
     settle(&mut unused_index);
