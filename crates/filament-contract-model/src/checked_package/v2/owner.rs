@@ -390,7 +390,7 @@ pub(super) fn validate_owner_schema(
         let kind = CheckedNodeTag::from_wire(&node.node_tag)
             .and_then(|tag| CheckedNodeKind::decode(tag, &node.semantic_form));
         let clause = kind == Some(CheckedNodeKind::Protocol(ProtocolForm::ProtocolClause));
-        if clause != node.owner_model.is_some() {
+        if node.owner_model.is_some() && !clause {
             return Err(ValidationFailure::refused(
                 CheckedPackageRefusalCode::MalformedWire,
                 if node.owner_model.is_some() {
