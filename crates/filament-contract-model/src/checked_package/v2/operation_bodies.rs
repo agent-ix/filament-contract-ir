@@ -319,17 +319,6 @@ pub(super) fn validate(
     let mut source_candidates: Vec<SourceCandidate<'_>> =
         stage_storage::vec(meter, &site(0, rows_at()), count)?;
     for table in tables {
-        let declaring = by_id
-            .binary_search_by(|&position| nodes[position].node_id.cmp(&table.operation.declaring))
-            .ok()
-            .map(|found| by_id[found]);
-        if !declaring.is_some_and(|position| {
-            source_types
-                .iter()
-                .any(|held| held.2 == &nodes[position].node_id)
-        }) {
-            continue;
-        }
         let operation = table.operation.operation.as_ref();
         for candidate in &table.candidates {
             stage_storage::work(meter, &site(0, rows_at()), 1)?;
@@ -427,7 +416,6 @@ pub(super) fn validate(
                     nodes,
                     kinds,
                     by_id: &by_id,
-                    candidates: &source_candidates,
                     bodies: &source_bodies,
                 },
             )?;
@@ -537,7 +525,6 @@ struct SourceJoin<'a> {
     nodes: &'a [CheckedSemanticNodeV2<CheckedJson>],
     kinds: &'a [CheckedNodeKind],
     by_id: &'a [usize],
-    candidates: &'a [SourceCandidate<'a>],
     bodies: &'a [SourceBody<'a>],
 }
 
@@ -620,21 +607,6 @@ fn check_source_row(
         }
         (OperationBody::NoBody, None) => {}
         _ => return Err(invalid(meter, index, body_at)),
-    }
-    let node = match &row.body {
-        OperationBody::Function { node } => Some(node),
-        OperationBody::NoBody => None,
-    };
-    let key = (identity, &row.declaring, row.operation.as_ref());
-    let start = join
-        .candidates
-        .partition_point(|held| (held.0, held.1, held.2) < key);
-    let agrees = join.candidates[start..]
-        .iter()
-        .take_while(|held| (held.0, held.1, held.2) == key)
-        .all(|held| node == Some(held.3));
-    if !agrees {
-        return Err(invalid(meter, index, body_at));
     }
     Ok(())
 }
