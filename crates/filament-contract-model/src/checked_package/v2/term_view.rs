@@ -991,6 +991,8 @@ impl<'d> RefinementDocument<'_, 'd> {
             .get("class_catalog")
             .map(|n| self.catalog(n))
             .transpose()?;
+        // The header `ident`; the fault walk has already refused a name that
+        // is empty, qualified or no identifier.
         Ok(CheckedTerm::Refinement {
             name: self.atom(self.member(node, "name")?)?,
             abstract_key: self.boxed(|| self.key(self.member(node, "abstract")?))?,
@@ -1375,7 +1377,15 @@ mod refinement_fault {
                 member(body, "profile", at)?,
                 &at.key("profile"),
             )?;
-            text(member(body, "name", at)?, &at.key("name"))?;
+            let name_at = at.key("name");
+            let name = member(body, "name", at)?;
+            text(name, &name_at)?;
+            if !name
+                .as_str()
+                .is_some_and(super::super::identity::is_identifier)
+            {
+                return Err(invalid(&name_at));
+            }
             if let Some(protocol) = body.get("protocol") {
                 key(protocol, &at.key("protocol"))?;
             }
@@ -2070,6 +2080,28 @@ mod flat_document_allocation_tests {
             limit = next;
         }
         assert!(!run(total - 1).0);
+    }
+
+    #[trace("TC-477", "FR-371-AC-8")]
+    #[test]
+    fn a_refinement_body_name_that_is_no_identifier_is_refused_by_the_existing_decoder() {
+        let id = json!({"package":"p","path":["C"],"ordinal":0});
+        let external = json!({"package":"dependency","node":id});
+        let body = |name: serde_json::Value| {
+            let mut wire = json!({"term":"refinement","name":"Named","abstract":external,
+                "profile":{"authority":"a","identity":"trace"},"populations":[],"objects":[],
+                "steps":[],"histories":[],"assume":[],"ensure":[]});
+            wire["name"] = name;
+            wire
+        };
+        let at = crate::checked_package::common::Trail::Base(&[]);
+        assert!(super::super::refinement::decode_body(&body(json!("Named")), &at).is_ok());
+        for bad in [json!(""), json!("Impl::Named"), json!("7up"), json!(7)] {
+            assert!(
+                super::super::refinement::decode_body(&body(bad.clone()), &at).is_err(),
+                "{bad}"
+            );
+        }
     }
 
     #[trace("TC-472", "FR-038-AC-504")]

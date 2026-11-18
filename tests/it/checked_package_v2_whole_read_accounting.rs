@@ -738,7 +738,6 @@ fn fspec_cases() -> (Vec<Case>, BTreeSet<String>) {
         if wire.get("claim_names").is_none() {
             crate::support::checked_package::refresh_claim_names(&mut wire);
         }
-        crate::support::checked_package::fill_declaration_regions(&mut wire);
         let expected = match row["outcome"].as_str().expect("model-root outcome") {
             "admitted" => Expected::Admitted,
             outcome => Expected::Refused(

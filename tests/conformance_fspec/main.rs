@@ -81,6 +81,7 @@ mod checked_package_v2_graph_read_storage;
 mod checked_package_v2_map_type;
 mod clock_payload_tuple;
 use checked_package_v2_map_type as map_type;
+mod claim_names;
 mod model_root;
 mod model_tuple_union;
 mod monitor_plan;
@@ -261,28 +262,19 @@ fn read_package_with_document_override(
         &fixtures_dir(),
     )?;
     let outcome = crate::read_and_account(&bytes, limits, &evidence);
-    // FSpec's published packages predate the `claim_names` member and the
-    // `declaration_region` of a name row. A package refused only for what it
-    // lacks is read again with the rows and regions its nodes call for, until
-    // the published fixtures carry them.
+    // FSpec's published packages still predate the `claim_names` member (its
+    // vectors add the rows by `base_patch`). A package refused only for the
+    // missing member is read again with the rows its nodes call for.
     let lacking = matches!(
         &outcome,
         CheckedPackageV2ReadResult::Refused(refusal)
-            if refusal.loci.first().and_then(|locus| locus.path.as_ref())
-                .is_some_and(|path| {
-                    let path = path.to_string();
-                    path == "/claim_names"
-                        || ((path.starts_with("/claim_names/")
-                            || path.starts_with("/temporal_clause_names/"))
-                            && path.ends_with("/declaration_region"))
-                })
+            if package.get("claim_names").is_none()
+                && refusal.loci.first().and_then(|locus| locus.path.as_ref())
+                    .is_some_and(|path| path.to_string() == "/claim_names")
     );
     if lacking {
         let mut named = package.clone();
-        if named.get("claim_names").is_none() {
-            fixture_support::refresh_claim_names(&mut named);
-        }
-        fixture_support::fill_declaration_regions(&mut named);
+        fixture_support::refresh_claim_names(&mut named);
         let bytes = fixture_support::canonical(&named);
         return Ok(crate::read_and_account(&bytes, limits, &evidence));
     }

@@ -127,8 +127,10 @@ one for each source-map region the declaration-region check compares, and one
 for each row in the one-namespace check.
 
 The refinement body `name` is a required text identifier (FR-322-AC-200). The
-reader SHALL refuse a refinement body without a `name`, or with a `name` that
-is not text, as a body-schema error at the node body, and SHALL re-encode the
+reader SHALL refuse a refinement body without a `name` as a body-schema error
+at the node body, and a `name` that is not text, is empty, or is not an
+identifier (a qualified name such as `Impl::CasRefinesCounter` is none) as a
+body-schema error at `/semantic_graph/nodes/{n}/body/name`, and SHALL re-encode the
 `name` it admits. The reader SHALL admit a refinement row only when its `name`
 equals the body `name`. The reader SHALL refuse the later of two refinement
 nodes of one package that share a `name` as
@@ -152,7 +154,7 @@ optional borrowed rows, emit them in the supplied order and omit the member for
 | FR-371-AC-5 | A claim-bearing node occurrence with no row, and a package holding such a node with no member, each refuse `invalid-value` at `/claim_names`; a row defect wins over missing coverage. | Test (TC-477; FSpec FR-322-AC-458) |
 | FR-371-AC-6 | The closed-schema check charges one validation visit per row, the row join one per occurrence compared, the coverage walk one per occurrence inspected, and the one-namespace check one per row: the declaration-region check one per source-map region compared: the smallest work limit that decides a package differs by exactly these counts between packages refused at different rows. | Test (TC-477; FSpec FR-322-AC-458, FR-322-AC-459, FR-322-AC-460) |
 | FR-371-AC-7 | A `claim_names` row renamed to the `name` of a `temporal_clause_names` row, with `qualified_name` `[name]` or `["Scope", name]`, refuses `ambiguous_declaration`/`ambiguous-name` at `/claim_names/{i}/name` and names `/temporal_clause_names/{j}/name`; with distinct names the package admits, the claim name resolves by `claim_name_for_path` and the clause name resolves to its `temporal_clause_names` row. | Test (TC-477; FSpec FR-322-AC-459) |
-| FR-371-AC-8 | A refinement body without `name` refuses as a body-schema error; the body `name` survives write and re-read; two refinement nodes of one package with an equal `name` refuse `ambiguous_declaration`/`ambiguous-name` at the later node's `/semantic_graph/nodes/{n}/body/name` and name the earlier node's `body/name`. | Test (TC-477; FSpec FR-322-AC-200) |
+| FR-371-AC-8 | A refinement body without `name` refuses as a body-schema error at the body, and a `name` that is not text, is empty, or is not an identifier refuses as a body-schema error at `body/name`; the body `name` survives write and re-read; two refinement nodes of one package with an equal `name` refuse `ambiguous_declaration`/`ambiguous-name` at the later node's `/semantic_graph/nodes/{n}/body/name` and name the earlier node's `body/name`. | Test (TC-477; FSpec FR-322-AC-200) |
 | FR-371-AC-9 | A name row of either table carries `declaration_region`: a region wider than the name token admits, is exposed beside the name, survives write and re-read and moves no node; a row without it, or with a region that is not a source region, refuses `malformed_wire` at `/{table}/{i}/declaration_region`; a region under another source, or not containing the occurrence's `source_map` region, refuses `invalid-value` at that member after the occurrence join and before the repeated-key check; an occurrence with no `source_map` entry is left to the source-map check. | Test (TC-477; FSpec FR-322-AC-460, FR-322-AC-461) |
 
 ## Compatibility
@@ -181,11 +183,18 @@ their next bump, as listed by the review of this change at their origin/main:
 
 filament-driver builds no sidecar literal. A consumer that builds a
 `TemporalClauseName` literal also fails to compile for the new field. FSpec
-publishes no `claim_names` rows, no `declaration_region` on its
-`temporal_clause_names` rows, and no TC-2011, TC-2012 or TC-2015 vectors in its
-checked-package fixtures; the conformance harnesses of this repository derive
-the rows and regions for a published package refused only for what it lacks,
-and that derivation is removed when FSpec publishes them.
+(filament-specification #702) publishes `declaration_region` on the
+`temporal_clause_names` rows of its fixtures and in `schema.json`, the vectors
+`claim-name-vectors.json` (TC-2011, TC-2012, TC-2015 step 4, replayed by
+`tests/conformance_fspec/claim_names.rs`) and `refinement-body-name-vectors.json`
+(replayed by `published_refinement_body_name_vectors_replay`). Its fixtures
+still carry no `claim_names` rows (its vectors add them by `base_patch`), so the
+conformance harness derives the rows for a published package refused only for
+the missing member; that derivation is removed when FSpec's fixtures carry them.
+FSpec publishes two loci for a removed `declaration_region` of a
+`temporal_clause_names` row: `CN-S9` the row, `CL-S4` (the same edit), `CL-S5`
+and FR-322-AC-461 the member. The reader refuses at the member, and the replay
+of `CN-S9` holds it to that locus until FSpec reconciles the vector.
 
 ## Dependencies
 

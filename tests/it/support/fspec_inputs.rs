@@ -16,19 +16,24 @@ use serde_json::{json, Value};
 use std::collections::BTreeMap;
 use std::path::Path;
 
-pub(crate) fn read_json(path: &Path) -> Result<Value, String> {
+/// A published package in resolved index form, exactly as FSpec ships it.
+pub(crate) fn read_json_published(path: &Path) -> Result<Value, String> {
     let mut value = read_json_wire(path)?;
     // Tests author and mutate packages in resolved index form; `read_package`
     // writes the wire form back.
     fixture_support::resolve_operands(&mut value);
     fixture_support::resolve_vector_rows(&mut value);
+    Ok(value)
+}
+
+pub(crate) fn read_json(path: &Path) -> Result<Value, String> {
+    let mut value = read_json_published(path)?;
     // Published packages that predate the `claim_names` member carry no rows.
     // They are derived here, outside every node identity, until FSpec's
     // fixtures carry them.
     if value.get("semantic_graph").is_some() && value.get("claim_names").is_none() {
         fixture_support::refresh_claim_names(&mut value);
     }
-    fixture_support::fill_declaration_regions(&mut value);
     Ok(value)
 }
 

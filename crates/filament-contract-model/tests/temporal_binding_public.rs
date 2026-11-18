@@ -165,19 +165,6 @@ fn default_feature_consumer_borrows_admitted_clock_rows() {
         "qualified_name": ["Example", "Safety"],
         "declaration_region": region_of(&fixture, &claim_id, "declaration", 0),
     }]);
-    // Likewise the temporal clause rows predate their `declaration_region`.
-    let clause_rows = fixture["temporal_clause_names"]
-        .as_array()
-        .expect("clause rows")
-        .len();
-    for row in 0..clause_rows {
-        let declaration = fixture["temporal_clause_names"][row]["declaration"].clone();
-        let ordinal = fixture["temporal_clause_names"][row]["occurrence"]
-            .as_u64()
-            .expect("clause ordinal");
-        let region = region_of(&fixture, &declaration, "claim", ordinal);
-        fixture["temporal_clause_names"][row]["declaration_region"] = region;
-    }
     fixture["claim_names"] = named;
     let bytes = serde_json::to_vec(&fixture).expect("canonical test package");
     let package =

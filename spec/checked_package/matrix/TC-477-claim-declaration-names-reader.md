@@ -45,6 +45,11 @@ from the shared V2 fixture. No FSpec vector is copied into this repository.
 10. Widen, remove, damage, shrink, shift and re-source the `declaration_region`
     of a claim row and of a temporal clause row, and remove the occurrence's
     `source_map` entry (FR-371-AC-9).
+11. Replay FSpec's `claim-name-vectors.json` over its patched base: `CL-P1` to
+    `CL-P4`, `CL-S1` to `CL-S3` and `CL-R1` to `CL-R9` (TC-2011), `CL-P5`,
+    `CL-R14` and `CL-R15` (TC-2012), `CL-P1`, `CL-P6`, `CL-S4` to `CL-S6` and
+    `CL-R10` to `CL-R13` (TC-2015), and `refinement-body-name-vectors.json`
+    (FR-371-AC-1 to FR-371-AC-5, FR-371-AC-7 to FR-371-AC-9).
 
 ## Expected Results
 

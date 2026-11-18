@@ -1309,3 +1309,135 @@ fn the_closed_schema_check_costs_one_work_visit_per_row() {
     fewer["claim_names"].as_array_mut().expect("rows").pop();
     assert_eq!(dangling(package) - dangling(fewer), 1);
 }
+
+fn refinement_body_name_vectors() -> Value {
+    let root = std::env::var_os("FILAMENT_SPECIFICATION_DIR")
+        .expect("FILAMENT_SPECIFICATION_DIR is required: it names the selected FSpec checkout");
+    let path = std::path::Path::new(&root)
+        .join("proposals/checked-package-v2/refinement-body-name-vectors.json");
+    serde_json::from_slice(&std::fs::read(&path).expect("published refinement body-name vectors"))
+        .expect("refinement body-name vectors are JSON")
+}
+
+/// Gives the refinement at `position` the body `name` and renames its
+/// `claim_names` rows' last segment to it.
+fn name_refinement(package: &mut Value, position: usize, name: Value) {
+    let declaration = nodes(package)[position]["node_id"].clone();
+    package["semantic_graph"]["nodes"][position]["body"]["name"] = name.clone();
+    let count = rows(package).len();
+    for index in 0..count {
+        if package["claim_names"][index]["declaration"] == declaration {
+            package["claim_names"][index]["name"] = name.clone();
+            let path = package["claim_names"][index]["qualified_name"]
+                .as_array_mut()
+                .expect("qualified name");
+            *path.last_mut().expect("last segment") = name.clone();
+        }
+    }
+}
+
+/// Replays FSpec's `refinement-body-name-vectors.json` (FR-322-AC-200, TC-310)
+/// over the refinement package: the authored `body.name` is read, written and
+/// named by its claim row, a body of another name is another node, and a
+/// missing, empty, qualified or non-text name is a body-schema error.
+#[trace("TC-477", "FR-371-AC-8")]
+#[test]
+fn published_refinement_body_name_vectors_replay() {
+    let published = refinement_body_name_vectors();
+    let (package, evidence) = refinement_package();
+    let position = nodes(&package)
+        .iter()
+        .position(|node| node["semantic_form"] == "refinement")
+        .expect("refinement");
+    let mut admitted_names = Vec::new();
+    for case in published["positive"].as_array().expect("positive cases") {
+        let id = case["id"].as_str().expect("case id");
+        let name = case["body"]["name"].clone();
+        // The vectors give the node id `["relation", "refinement", name]`: the
+        // name is the last identity segment, so one more name is one more node.
+        assert_eq!(
+            case["expected_node_id"]["path"],
+            json!(["relation", "refinement", name]),
+            "{id}"
+        );
+        assert_eq!(case["claim_name"], name, "{id}");
+        let mut named = package.clone();
+        name_refinement(&mut named, position, name.clone());
+        let read = admitted(read_with(
+            &named,
+            &evidence,
+            CheckedPackageReadLimits::bounded(),
+        ));
+        let CheckedTerm::Refinement {
+            name: read_name, ..
+        } = &read.graph().nodes[position].body
+        else {
+            panic!("{id}: a refinement body");
+        };
+        assert_eq!(&json!(read_name.as_ref()), &name, "{id}");
+        assert!(
+            read.claim_names()
+                .expect("rows")
+                .iter()
+                .any(|row| json!(row.name.as_ref()) == case["claim_name"]),
+            "{id}: the claim row repeats the body name"
+        );
+        let reread = admitted_from(&write_again(&read), &evidence);
+        assert_eq!(reread.graph(), read.graph(), "{id}");
+        admitted_names.push(name);
+    }
+    assert_eq!(admitted_names.len(), 2);
+    assert_ne!(
+        admitted_names[0], admitted_names[1],
+        "two names are two nodes"
+    );
+    for case in published["schema_refusals"].as_array().expect("refusals") {
+        let id = case["id"].as_str().expect("case id");
+        assert_eq!(case["schema"], "invalid", "{id}");
+        let from = published["positive"]
+            .as_array()
+            .expect("positive")
+            .iter()
+            .find(|row| row["id"] == case["from"])
+            .unwrap_or_else(|| panic!("{id}: its published base case"));
+        let mut damaged = package.clone();
+        name_refinement(&mut damaged, position, from["body"]["name"].clone());
+        for patch in case["patch"].as_array().expect("patches") {
+            let body = damaged["semantic_graph"]["nodes"][position]["body"]
+                .as_object_mut()
+                .expect("body");
+            match patch["op"].as_str().expect("operation") {
+                "remove" => {
+                    body.remove("name").expect("name member");
+                }
+                "replace" => {
+                    body.insert("name".to_owned(), patch["value"].clone());
+                }
+                other => panic!("{id}: unsupported patch {other}"),
+            }
+        }
+        // The claim row keeps its published name, so the body is judged alone.
+        let refusal = refusal_of(read_with(
+            &damaged,
+            &evidence,
+            CheckedPackageReadLimits::bounded(),
+        ));
+        assert_eq!(
+            refusal.code,
+            Code::InvalidSemanticGraph,
+            "{id}: {refusal:?}"
+        );
+        // A missing name is refused at the body, a name that is no identifier
+        // at the `name` member.
+        let at = if id == "RB-S1-missing-name" {
+            format!("/semantic_graph/nodes/{position}/body")
+        } else {
+            format!("/semantic_graph/nodes/{position}/body/name")
+        };
+        assert_eq!(
+            refusal.loci[0].path.as_ref().map(|path| path.as_str()),
+            Some(at.as_str()),
+            "{id}: {refusal:?}"
+        );
+    }
+}

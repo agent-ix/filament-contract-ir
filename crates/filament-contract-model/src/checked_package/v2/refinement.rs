@@ -1052,8 +1052,12 @@ pub(super) fn decode_body(body: &Value, at: &Trail<'_>) -> Result<CheckedTerm, V
             })
         })
         .transpose()?;
+    let name = text(member(body, "name", at)?, &at.key("name"))?;
+    if !super::identity::is_identifier(&name) {
+        return Err(invalid(&at.key("name")));
+    }
     Ok(CheckedTerm::Refinement {
-        name: text(member(body, "name", at)?, &at.key("name"))?,
+        name,
         abstract_key: Box::new(key(member(body, "abstract", at)?, &at.key("abstract"))?),
         profile: typed(member(body, "profile", at)?, &at.key("profile"))?,
         populations,

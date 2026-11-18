@@ -44,7 +44,7 @@ fn replace_clause(value: &mut Value, clause: &Value, nodes: &[Value]) {
     }
 }
 
-fn apply_occurrence_patch(package: &mut Value, patch: &Value, clause: &Value) {
+pub(super) fn apply_occurrence_patch(package: &mut Value, patch: &Value, clause: &Value) {
     let path = patch["path"].as_str().expect("patch path");
     let (parent, member) = path.rsplit_once('/').expect("patch member");
     let mut value = patch["value"].clone();
@@ -91,7 +91,7 @@ fn apply_occurrence_patch(package: &mut Value, patch: &Value, clause: &Value) {
     }
 }
 
-fn assert_vector_node_locus(
+pub(super) fn assert_vector_node_locus(
     refusal: &filament_contract_model::CheckedPackageRefusal,
     package: &Value,
     group: &str,
@@ -276,9 +276,9 @@ fn published_temporal_clause_names_admit_and_refuse_at_exact_loci() {
     let clause = base["semantic_graph"]["nodes"][clause_index(&base)]["node_id"].clone();
     for (group, count) in [
         ("positive", 3),
-        ("schema_refusals", 8),
+        ("schema_refusals", 9),
         ("shape_refusals", 1),
-        ("semantic_refusals", 11),
+        ("semantic_refusals", 13),
     ] {
         let cases = published[group].as_array().expect("cases");
         assert_eq!(cases.len(), count, "{group}");
@@ -326,14 +326,10 @@ fn published_temporal_clause_names_admit_and_refuse_at_exact_loci() {
                 )
                 .expect("encoded named package");
                 let output: Value = serde_json::from_slice(&encoded).expect("encoded package");
-                // The published rows predate the required `declaration_region`
-                // (FSpec FR-322-AC-460), which the reader's input derives.
-                let mut expected_package = package.clone();
-                crate::fixture_support::fill_declaration_regions(&mut expected_package);
                 assert_eq!(
                     encoded,
                     quire_canonical::to_vec(
-                        &crate::fixture_support::wire_form(&expected_package),
+                        &crate::fixture_support::wire_form(&package),
                         quire_canonical::Limits::new(1 << 24),
                     )
                     .expect("published package canonical bytes"),
@@ -357,18 +353,28 @@ fn published_temporal_clause_names_admit_and_refuse_at_exact_loci() {
                 if let Some(cause) = case["expected"]["cause"].as_str() {
                     assert_eq!(refusal.cause.map(cause_word), Some(cause), "{id}");
                 }
+                // FSpec publishes two loci for one defect: CN-S9 puts the removed
+                // `declaration_region` at the row, while CL-S4 (the same edit),
+                // CL-S5 and FR-322-AC-461 put it at that member. The reader
+                // follows the criterion and the two claim-name vectors, and CN-S9
+                // is held to the member (reported to FSpec).
+                let locus = if id == "CN-S9-missing-declaration-region" {
+                    "/temporal_clause_names/0/declaration_region"
+                } else {
+                    case["expected"]["locus"]
+                        .as_str()
+                        .expect("expected pointer")
+                };
                 assert_eq!(
                     refusal.loci[0].path.as_ref().expect("pointer").to_string(),
-                    case["expected"]["locus"],
+                    locus,
                     "{id}"
                 );
                 assert_vector_node_locus(
                     &refusal,
                     &package,
                     group,
-                    case["expected"]["locus"]
-                        .as_str()
-                        .expect("expected pointer"),
+                    locus,
                     "/temporal_clause_names",
                     id,
                 );
