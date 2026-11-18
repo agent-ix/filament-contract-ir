@@ -3199,6 +3199,12 @@ fn joined_history_package() -> (Value, CheckedPackageEvidence, usize) {
         ]);
     package["semantic_graph"]["nodes"][position]["body"]["histories"][0]["updates"][0]
         ["expression"] = json!({"term":"reference", "target":application});
+    let dependencies = package["semantic_graph"]["nodes"][position]["dependencies"]
+        .as_array_mut()
+        .expect("refinement dependencies");
+    dependencies.push(application.clone());
+    dependencies.sort_by(node_id_order);
+    dependencies.dedup();
     settle_refinement(&mut package, position);
     let history_map = package["source_map"].clone();
     settle(&mut package);
