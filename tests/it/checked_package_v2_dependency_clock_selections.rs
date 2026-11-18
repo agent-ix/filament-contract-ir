@@ -3,7 +3,6 @@
 
 //! FR-322 caller-selected dependency clock lock rows.
 
-use crate::support::checked_package;
 use crate::support::checked_package::{canonical, evidence_for, pointer};
 use filament_contract_model::{
     CheckedPackageReadLimits, CheckedPackageRefusal, CheckedPackageRefusalCause as Cause,
@@ -12,8 +11,7 @@ use filament_contract_model::{
 use ix_trace_rs::trace;
 use serde_json::{json, Value};
 
-#[path = "support/dependency_selection_inputs.rs"]
-mod dependency_selection_inputs;
+use crate::checked_package_v2_dependency_selections::dependency_selection_inputs;
 
 fn base() -> Value {
     dependency_selection_inputs::dependency_selection_package("test/clock-importer")
