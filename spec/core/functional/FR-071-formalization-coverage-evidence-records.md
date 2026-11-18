@@ -51,44 +51,62 @@ The coverage-state record has exactly these members:
 
 | Field | Type | Meaning |
 | --- | --- | --- |
-| `criterion_id` | `SourceAuthoredCriterionId` | Quire-authored criterion identity: `obligation_declaration: String`, `scoped_document: String`, and `criterion_id: String`. |
+| `criterion_id` | `SourceAuthoredCriterionId` | The Quire-authored criterion identity defined by FR-052. |
 | `state` | `FormalizationState` | Exactly one value from the closed state vocabulary below. |
-| `clause_address` | `Option<ClauseAddress>` | Absent until a formal clause exists; otherwise the exact address of that clause. |
-| `evidence` | `Option<EvidenceEnvelope>` | The shared Engineering Assurance record for producer availability, observation, ownership, and Quoin handoff; absent only when no producer evidence exists. |
+| `clause_address` | `Option<ClauseAddress>` | The exact address of the associated formal clause when one exists. |
+| `reason` | `Option<String>` | A formalization-specific explanation for a non-success or unknown state, when required by the state rules below. |
+| `evidence` | `Option<EvidenceEnvelope>` | Shared Engineering Assurance producer evidence; absent only when no producer evidence exists. |
 
 `FormalizationState` is the closed set `eligible`, `authored`, `parsed`,
 `typechecked`, `lowered`, `backend_supported`, `proved`, `inconclusive`,
-`rejected`, `unknown`, `unavailable`, and `not_applicable`. These values describe
-the criterion's formalization coverage; they do not replace the shared evidence
-availability state. The `EvidenceEnvelope` uses the Engineering Assurance
-contract fields `producer_id: String`, `availability: Option<AvailabilityState>`,
-`observation: OperatorObservation`, `governing: Option<GoverningVersions>`,
-`next_action: Option<String>`, `owner: Option<String>`,
-`boundary_rationale: Option<String>`, `quoin_reference: Option<String>`, and
-`validation_errors: Vec<String>`. `AvailabilityState` is `observed`,
-`unavailable`, `not_computed`, or `not_applicable`; the record's `state` supplies
-the additional formalization-specific `unknown` and terminal classifications.
+`rejected`, `unknown`, `unavailable`, and `not-applicable`. These exact wire
+tokens describe the criterion's formalization coverage and do not replace the
+shared evidence-availability state. When present, `evidence` SHALL conform to
+Engineering Assurance FR-004 and FR-009. Its producer observation, availability,
+provenance, validation errors, and Quoin reference retain their shared meanings;
+the formalization-specific `reason` does not replace or overload any of them.
+
+The address-presence invariant is state-aware. When a coverage-state record has
+state `eligible` or `not-applicable`, the record SHALL omit `clause_address`.
+When a coverage-state record has state `authored`, `parsed`, `typechecked`,
+`lowered`, `backend_supported`, `proved`, `rejected`, or `inconclusive`, the
+record SHALL include `clause_address`. When a coverage-state record has state
+`unknown` or `unavailable` and a formal clause exists in the selected package,
+the record SHALL include `clause_address`; when no such clause is present, the
+record SHALL omit it. Every present formal clause SHALL therefore have its
+deterministic address even when its coverage state is `unknown` or
+`unavailable`.
+
+When a coverage-state record has state `rejected`, `inconclusive`, `unknown`,
+`unavailable`, or `not-applicable`, the record SHALL include a non-empty
+`reason`. When its state is `eligible`, `authored`, `parsed`, `typechecked`,
+`lowered`, `backend_supported`, or `proved`, the record SHALL omit `reason`.
+`reason` explains the formalization-state disposition. Engineering Assurance `validation_errors`
+remain limited to invalid evidence-envelope input, `diagnostic_category` to the
+operator-observed producer outcome, and `boundary_rationale` to the evidence
+producer's applicability boundary. None substitutes for `reason`.
 
 `ClauseAddress` has exactly these members:
 
 | Field | Type | Meaning |
 | --- | --- | --- |
-| `package_identity` | `PackageId` (`String`) | Identity of the package containing the clause. |
-| `criterion_id` | `SourceAuthoredCriterionId` | The same complete Quire criterion identity as the coverage-state record. |
-| `clause_id` | `ClauseId` (`String`) | Identity of the clause within its requirement. |
-| `source_span` | `SourceSpan` | The admitted clause source range, with `start` and `end` `SourceLocation` values. Each location carries a `SourceIdentity`, one-based `line: u32` and `column: u32`, and `byte_offset: u64`. |
+| `package_identity` | `PackageId` | Identity of the package containing the clause, as defined by FR-011. |
+| `criterion_id` | `SourceAuthoredCriterionId` | The Quire-authored criterion identity defined by FR-052. |
+| `clause_id` | `ClauseId` | Identity of the clause as defined by FR-012. |
+| `source_span` | `SourceSpan` | The admitted clause source range defined by FR-012. |
 
 The clause address SHALL NOT contain a requirement revision, statement hash,
 digest, or file hash. The source span retains the source identity required by
 FR-012; it does not add the requirement revision to the address.
 
 The accounting boundary SHALL report each criterion exactly once, including
-criteria whose state is `unknown`, `unavailable`, or `not_applicable`. It SHALL
+criteria whose state is `unknown`, `unavailable`, or `not-applicable`. It SHALL
 preserve `rejected` and `inconclusive` as distinct first-class outcomes and
 the accounting boundary SHALL NOT fold either into `proved`. A missing producer observation SHALL remain
 `unavailable` or `unknown`, as appropriate, rather than being inferred as a
-successful result. A state of `not_applicable` SHALL carry the shared
-`boundary_rationale` when the non-applicability comes from a producer boundary.
+successful result. A state of `not-applicable` SHALL carry its required
+formalization `reason`; a producer boundary rationale, when present, remains in
+the shared evidence metadata.
 
 The accounting boundary SHALL retain explicit gaps beside claims and evidence
 and SHALL NOT replace them with an aggregate score. When the accounting boundary
@@ -110,12 +128,13 @@ record and address defined here.
 
 | ID | Criteria | Verification |
 | --- | --- | --- |
-| FR-071-AC-1 | Given a selected fixture with criteria at every formalization state, the output contains exactly one record for every criterion, no criterion is omitted or duplicated, and `unknown`, `unavailable`, and `not_applicable` remain explicit states. | Test |
+| FR-071-AC-1 | Given a selected fixture with criteria at every formalization state, the output contains exactly one record for every criterion, no criterion is omitted or duplicated, and `unknown`, `unavailable`, and `not-applicable` remain explicit states. | Test |
 | FR-071-AC-2 | Each `ClauseAddress` has exactly `package_identity`, `criterion_id`, `clause_id`, and `source_span`; two clauses with different package, criterion, clause, or source-span identity have different addresses, and no requirement revision, statement hash, digest, or file hash is an address member. | Test |
 | FR-071-AC-3 | A clause address round-trips using the FR-011 package identity, FR-052 Quire criterion identity, FR-012 clause identity and source span; the address contains no requirement revision, while the source span retains its FR-012 source identity. | Test |
 | FR-071-AC-4 | Evidence metadata validates against the shared Engineering Assurance `EvidenceEnvelope` and `AvailabilityState` contract; missing or invalid producer evidence is retained as a gap and cannot become `proved`. | Test |
-| FR-071-AC-5 | A fixture with `rejected`, `inconclusive`, `unavailable`, `unknown`, and `not_applicable` records preserves each distinct state and its applicable reason or boundary rationale; none is counted as proved. | Test |
+| FR-071-AC-5 | A fixture with `rejected`, `inconclusive`, `unknown`, `unavailable`, and `not-applicable` records requires a non-empty formalization `reason`; each reason remains distinct from evidence `validation_errors`, `diagnostic_category`, and `boundary_rationale`, and none of these states is counted as proved. | Test |
 | FR-071-AC-6 | Reports group coverage independently by language, profile, module, repository, and criterion class, preserve claims, evidence, and gaps without an aggregate score, and render a 40-percent finding as `40%` rather than an unlabelled `0.4`. | Test |
+| FR-071-AC-7 | A fixture omits `clause_address` for `eligible` and `not-applicable`, requires it for `authored`, `parsed`, `typechecked`, `lowered`, `backend_supported`, `proved`, `rejected`, and `inconclusive`, and includes it for `unknown` or `unavailable` exactly when the selected package contains a formal clause; every existing clause therefore has one deterministic address. | Test |
 
 ## Dependencies
 
@@ -126,6 +145,9 @@ record and address defined here.
   accounting and its claims/evidence/gaps boundary.
 - [FR-052](../../model/functional/FR-052-source-obligation-correspondence.md)
   defines the Quire-authored criterion identity.
+- Engineering Assurance [FR-004](ix://agent-ix/engineering-assurance/FR-004)
+  and [FR-009](ix://agent-ix/engineering-assurance/FR-009) define the shared
+  evidence availability, observation, provenance, and non-success contracts.
 - Quoin [FR-204](ix://agent-ix/quoin/FR-204) defines corpus formalization
   states, and [FR-205](ix://agent-ix/quoin/FR-205) consumes this record.
 
