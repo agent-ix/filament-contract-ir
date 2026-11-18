@@ -2167,6 +2167,7 @@ fn row(
         operations: vec![SelectedSourceObjectOperation {
             identity: format!("{name}::deposit").into(),
             query: false,
+            clock_parameters: vec!["t".into()],
         }],
     }
 }
@@ -2204,7 +2205,8 @@ fn a_complete_row_set_exposes_every_source_type_through_a_typed_read() {
         order.operations,
         [SelectedSourceObjectOperation {
             identity: "Order::deposit".into(),
-            query: false
+            query: false,
+            clock_parameters: vec!["t".into()]
         }]
     );
     let sub = rows.read(&package, &id("qualified:Sub")).expect("Sub row");

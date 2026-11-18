@@ -81,6 +81,9 @@ pub struct SelectedSourceObjectOperation {
     /// Whether the operation is a query: it has a result and an empty effect
     /// frame.
     pub query: bool,
+    /// The names of the operation's parameters whose declared type is `Clock`
+    /// or an alias of it, in declaration order; empty when it has none.
+    pub clock_parameters: Vec<Box<str>>,
 }
 
 /// One FSL-stage source-object identity row for an admitted source-declared

@@ -64,10 +64,12 @@ For a source row the reader SHALL:
    `invalid_package`/`invalid-value` at `body` when the bodies differ);
 4. keep the carrier order and the repeated-key refusal of the model rows.
 
-The package carries no list of a source type's operations, so the reader
-SHALL NOT require a row for an operation that no dispatch candidate joins
-and SHALL NOT refuse a row naming an operation the package holds no evidence
-of; that coverage is a producer fact, as for FR-365. A candidate whose clause
+The package carries no list of a source type's operations, so
+`CheckedPackageV2::read` SHALL NOT require a row for an operation that no
+dispatch candidate joins and SHALL NOT refuse a row naming an operation the
+package holds no evidence of. Coverage is checked at the identity-row join
+(FR-375),
+which has the `operations` of each source-object row. A candidate whose clause
 function is not a source body clause function of its operation is left to the
 dispatch validation of FR-366.
 
