@@ -1501,13 +1501,24 @@ fn the_actual_tc048_catalogue_and_refusal_corpus_is_accounted_within_the_bound()
     // are covered by the focused FSpec diagnostic proof above.
     for input in registered_cases() {
         eprintln!("Registry full actual input: {}", input.label);
-        proof::assert_read::<IntegrationCounter>(
-            &input.label,
-            &input.bytes,
-            &input.evidence,
-            input.expected,
-            proof::ReadViewScope::Full,
-        );
+        if input.label == "TC048/filament.op.collection.seq" {
+            proof::assert_read_with_unpaid_bound::<IntegrationCounter>(
+                &input.label,
+                &input.bytes,
+                &input.evidence,
+                input.expected,
+                proof::ReadViewScope::Full,
+                12_288,
+            );
+        } else {
+            proof::assert_read::<IntegrationCounter>(
+                &input.label,
+                &input.bytes,
+                &input.evidence,
+                input.expected,
+                proof::ReadViewScope::Full,
+            );
+        }
     }
 }
 

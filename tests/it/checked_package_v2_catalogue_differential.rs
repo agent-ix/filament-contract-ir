@@ -254,6 +254,40 @@ fn text_or_string_conversion(identity: &str) -> Option<Value> {
     }
     Some(f.package)
 }
+
+fn add_sequence_owner(package: &mut Value) {
+    let function_id = node_id("function/sequence-owner");
+    let application_id = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|node| node["body"]["operation"]["identity"] == "filament.op.collection.seq")
+        .expect("sequence application")["node_id"]
+        .clone();
+    let sequence_result = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|node| node["node_id"] == application_id)
+        .expect("sequence application")["body"]["result_type"]
+        .clone();
+    package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .push(json!({
+            "node_id":function_id, "schema_version":"filament.checked-semantic-graph/v2",
+            "node_tag":"function", "semantic_form":"pure_function",
+            "check_mode":"linked", "semantic_type":sequence_result,
+            "dependencies":[application_id.clone()],
+            "occurrences":[{"role":"expression", "ordinal":0}],
+            "body":{"term":"aggregate", "members":[
+                {"term":"binding", "name":"parameters", "value":{"term":"aggregate", "members":[]}},
+                {"term":"binding", "name":"body", "value":{
+                    "term":"reference", "target":application_id}}
+            ]}
+        }));
+    settle(package);
+}
 fn numeric_literal(ty: &str, form: &str) -> Value {
     match form {
         "float32" => json!({"term":"literal", "type":node_id(ty),
@@ -845,6 +879,9 @@ pub(super) fn admitted_fixture(identity: &str) -> Option<Value> {
         }
         _ => return None,
     }
+    if identity == "filament.op.collection.seq" {
+        add_sequence_owner(&mut f.package);
+    }
     Some(f.package)
 }
 
@@ -1310,38 +1347,7 @@ fn tc_048_every_catalogue_entry_retains_its_constructible_admission() {
 #[test]
 fn collection_seq_requires_bounded_inputs_matching_binder_and_sequence() {
     let base = admitted_fixture("filament.op.collection.seq").expect("sequence control");
-    let mut base = base;
     let function_id = node_id("function/sequence-owner");
-    let application_id = base["semantic_graph"]["nodes"]
-        .as_array()
-        .expect("nodes")
-        .iter()
-        .find(|node| node["body"]["operation"]["identity"] == "filament.op.collection.seq")
-        .expect("sequence application")["node_id"]
-        .clone();
-    let sequence_result = base["semantic_graph"]["nodes"]
-        .as_array()
-        .expect("nodes")
-        .iter()
-        .find(|node| node["node_id"] == application_id)
-        .expect("sequence application")["body"]["result_type"]
-        .clone();
-    base["semantic_graph"]["nodes"]
-        .as_array_mut()
-        .expect("nodes")
-        .push(json!({
-            "node_id":function_id, "schema_version":"filament.checked-semantic-graph/v2",
-            "node_tag":"function", "semantic_form":"pure_function",
-            "check_mode":"linked",
-            "semantic_type":sequence_result, "dependencies":[application_id.clone()],
-            "occurrences":[{"role":"expression", "ordinal":0}],
-            "body":{"term":"aggregate", "members":[
-                {"term":"binding", "name":"parameters", "value":{"term":"aggregate", "members":[]}},
-                {"term":"binding", "name":"body", "value":{
-                    "term":"reference", "target":application_id}}
-            ]}
-        }));
-    settle(&mut base);
     let base_result = read(&base);
     assert!(
         matches!(base_result, CheckedPackageV2ReadResult::Admitted(_)),
