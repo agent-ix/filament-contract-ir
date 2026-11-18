@@ -991,10 +991,13 @@ impl<'d> RefinementDocument<'_, 'd> {
             .get("class_catalog")
             .map(|n| self.catalog(n))
             .transpose()?;
-        // The header `ident`; the fault walk has already refused a name that
-        // is empty, qualified or no identifier.
+        // The header `ident` as written: never empty, qualified or aliased.
+        let name: Box<str> = self.atom(self.member(node, "name")?)?;
+        if !super::identity::is_identifier(&name) {
+            return Err(Self::malformed());
+        }
         Ok(CheckedTerm::Refinement {
-            name: self.atom(self.member(node, "name")?)?,
+            name,
             abstract_key: self.boxed(|| self.key(self.member(node, "abstract")?))?,
             profile: self.field(node, "profile")?,
             populations,
