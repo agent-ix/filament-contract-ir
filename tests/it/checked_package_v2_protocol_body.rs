@@ -2160,6 +2160,29 @@ fn protocol_reference_capture_stops_binder_closure_at_the_carrier() {
         matches!(result, CheckedPackageV2ReadResult::Admitted(_)),
         "the carrier must stop closure before the referenced protocol's binders: {result:?}"
     );
+
+    let mut direct_finish_binder = package.clone();
+    let referenced = protocol_position(&direct_finish_binder, "obligation");
+    let finish_binder = direct_finish_binder["semantic_graph"]["nodes"][referenced]["body"]
+        ["arguments"][0]["value"]["target"]
+        .clone();
+    let clause = clause_position(&direct_finish_binder);
+    direct_finish_binder["semantic_graph"]["nodes"][clause]["body"]["arguments"][2]["value"]
+        ["members"][0]["members"][1]["value"] = json!({
+        "term": "reference", "target": finish_binder
+    });
+    settle(&mut direct_finish_binder);
+    assert!(
+        matches!(
+            read(&direct_finish_binder),
+            CheckedPackageV2ReadResult::Refused(CheckedPackageRefusal {
+                code: CheckedPackageRefusalCode::MissingDeclaration,
+                cause: Some(CheckedPackageRefusalCause::MissingName),
+                ..
+            })
+        ),
+        "the carrier does not expose the referenced clause's finish binder directly"
+    );
 }
 
 fn terminal_condition_package() -> (Value, usize, usize) {
