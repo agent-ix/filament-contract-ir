@@ -42,6 +42,25 @@ the FR-367 source-object rows together with the source record, tuple and
 union rows of the same identity file, each member, position and payload
 position in the member-entry form of FR-367 "Member entries".
 
+`SelectedSourceObjects::from_stage_rows` SHALL receive them as
+
+```rust
+pub fn from_stage_rows(
+    package: &'a CheckedPackageV2,
+    rows: impl IntoIterator<Item = SelectedSourceObjectRow>,
+    clock_rows: SelectedSourceClockRows<'_>,
+) -> Result<Self, SelectedSourceObjectError>
+```
+
+with `SelectedSourceClockRows { records: &[SelectedSourceRecordRow],
+tuples: &[SelectedSourceTupleRow], unions: &[SelectedSourceUnionRow] }` the
+rows of the same identity file that the FR-352 Exact join already receives,
+borrowed and not copied, and `SelectedSourceClockRows::EMPTY` for a package
+whose identity file holds none. The clock join reads a record, tuple or union
+row by its `structural_node`, the node the place row's `declaring_type`
+names; a declaration the rows do not hold has no member entries, so a row
+naming its clock member refuses `MalformedClockPlace`.
+
 ## Outputs
 
 From the read, the admitted package or one located refusal. From the
@@ -100,6 +119,9 @@ It SHALL then check each `parameter` constraint and reset against the
 
 A failure SHALL be `SelectedSourceObjectErrorCode::MalformedClockPlace` for
 a row or `SelectedSourceObjectErrorCode::TimedNodeReference` for a clause,
+which map to the refusal code `invalid_package` with the FSpec FR-789 cause
+`malformed-clock-place` or `timed-node-reference` (`CheckedPackageRefusalCode::InvalidPackage`
+and the matching `CheckedPackageRefusalCause`),
 reported last in the reason order, after `MismatchedIdentityWitness`, with
 the `CheckedPackageRefusalLocation` the strict read would give the same
 failure (the row, the constraint's `/body/members/2`, the reset's
