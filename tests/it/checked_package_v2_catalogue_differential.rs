@@ -154,12 +154,21 @@ fn scalar(f: &mut Fixture, form: &str) -> String {
     key
 }
 fn parameter(f: &mut Fixture, ty: &str, name: &str) -> String {
+    parameter_at_level(f, ty, name, 0)
+}
+fn parameter_at_level(f: &mut Fixture, ty: &str, name: &str, level: u64) -> String {
     let body = json!({"term":"aggregate", "members":[
         {"term":"binding", "name":"name", "value":
             {"term":"literal", "type":node_id(&f.text), "value_kind":"text", "value":name}},
         {"term":"binding", "name":"level", "value":integer_literal(&f.integer)}
     ]});
-    let key = format!("value/parameter/{name}");
+    let mut body = body;
+    body["members"][1]["value"]["value"] = json!(level.to_string());
+    let key = if level == 0 {
+        format!("value/parameter/{name}")
+    } else {
+        format!("value/parameter/{name}/{level}/{ty}")
+    };
     node(&mut f.package, &key, "value", "parameter", ty, body);
     key
 }
@@ -1156,27 +1165,31 @@ fn tc_048_every_catalogue_entry_retains_its_constructible_admission() {
             );
             admitted.insert(identity.to_owned());
         } else if identity == "filament.op.refinement.history" {
-            let package = admitted_fixture(identity).expect("orphan history fixture");
+            let (package, evidence) =
+                crate::checked_package_v2_refinement::orphan_history_control();
             let position = package["semantic_graph"]["nodes"]
                 .as_array()
                 .expect("nodes")
                 .iter()
                 .position(|node| node["body"]["operation"]["identity"] == identity)
                 .expect("history application");
-            let CheckedPackageV2ReadResult::Refused(refusal) = read(&package) else {
-                panic!("a history read without a row must refuse");
+            let CheckedPackageV2ReadResult::Refused(refusal) =
+                read_with_evidence(&package, &evidence)
+            else {
+                panic!("an unreachable history row must refuse");
             };
-            assert_eq!(refusal.code, CheckedPackageRefusalCode::MissingDeclaration);
-            assert_eq!(refusal.cause, Some(CheckedPackageRefusalCause::MissingName));
+            assert_eq!(refusal.code, CheckedPackageRefusalCode::IllTyped);
+            assert_eq!(
+                refusal.cause,
+                Some(CheckedPackageRefusalCause::OperatorIneligible)
+            );
             assert_eq!(
                 refusal.loci[0].path.as_ref().map(ToString::to_string),
-                Some(format!(
-                    "/semantic_graph/nodes/{position}/body/operation/member/name"
-                ))
+                Some(format!("/semantic_graph/nodes/{position}"))
             );
             unavailable.insert(
                 identity.to_owned(),
-                "a history application without a matching refinement history row must refuse"
+                "a history application without a reachable, joined refinement history row must refuse"
                     .to_owned(),
             );
         } else if let Some(package) = admitted_fixture(identity).or_else(|| simple_fixture(entry)) {
@@ -1306,6 +1319,75 @@ fn collection_seq_requires_bounded_inputs_matching_binder_and_sequence() {
         .iter()
         .position(|node| node["body"]["operation"]["identity"] == "filament.op.collection.seq")
         .expect("sequence application");
+
+    let text_type = node_id("scalar_type/text");
+    let integer_type = node_id("scalar_type/integer");
+    let parameter_node = |id: Value, name: &str, level: &str, ty: Value| {
+        json!({
+            "node_id":id, "schema_version":"filament.checked-semantic-graph/v2",
+            "node_tag":"value", "semantic_form":"parameter", "semantic_type":ty,
+            "dependencies":[], "occurrences":[{"role":"generated", "ordinal":0}],
+            "body":{"term":"aggregate", "members":[
+                {"term":"binding", "name":"name", "value":{
+                    "term":"literal", "type":text_type, "value_kind":"text", "value":name}},
+                {"term":"binding", "name":"level", "value":{
+                    "term":"literal", "type":integer_type, "value_kind":"integer", "value":level}}
+            ]}
+        })
+    };
+    let mut shadowed = base.clone();
+    shadowed["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .push(parameter_node(
+            node_id("value/parameter/sequence-index-shadow"),
+            "sequence_index",
+            "2",
+            node_id("scalar_type/integer"),
+        ));
+    settle(&mut shadowed);
+    assert!(
+        matches!(read(&shadowed), CheckedPackageV2ReadResult::Admitted(_)),
+        "an unrelated same-name parameter at another level does not shadow the binder"
+    );
+
+    let mut unused_index = base.clone();
+    let original_index = base["semantic_graph"]["nodes"][application]["body"]["arguments"][2]
+        ["value"]["target"]
+        .clone();
+    let range_type = base["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|node| node["node_id"] == original_index)
+        .expect("index parameter")["semantic_type"]
+        .clone();
+    let outer_x = node_id("value/parameter/outer-x");
+    unused_index["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .extend([
+            parameter_node(outer_x.clone(), "x", "0", range_type.clone()),
+            parameter_node(
+                node_id("value/parameter/sequence-index-level-one"),
+                "sequence_index",
+                "1",
+                range_type,
+            ),
+            parameter_node(
+                node_id("value/parameter/sequence-index-shadow-level-two"),
+                "sequence_index",
+                "2",
+                node_id("scalar_type/integer"),
+            ),
+        ]);
+    unused_index["semantic_graph"]["nodes"][application]["body"]["arguments"][2]["value"]
+        ["target"] = outer_x;
+    settle(&mut unused_index);
+    assert!(
+        matches!(read(&unused_index), CheckedPackageV2ReadResult::Admitted(_)),
+        "an unused i binder is resolved at level one from the outer x scope"
+    );
 
     let mut unbounded_input = base.clone();
     let lower_literal = unbounded_input["semantic_graph"]["nodes"][application]["body"]

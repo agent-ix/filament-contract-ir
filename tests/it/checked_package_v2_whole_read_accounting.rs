@@ -345,6 +345,14 @@ fn positive_cases() -> Vec<Case> {
                 evidence,
                 Expected::Admitted,
             ));
+        } else if identity == "filament.op.refinement.history" {
+            let (wire, evidence) = crate::checked_package_v2_refinement::orphan_history_control();
+            cases.push(case(
+                format!("TC048/{identity}/unreachable-history-row"),
+                wire,
+                evidence,
+                Expected::Refused(Code::IllTyped),
+            ));
         } else if let Some(wire) =
             crate::checked_package_v2_catalogue_differential::admitted_fixture(identity)
                 .or_else(|| crate::checked_package_v2_catalogue_differential::simple_fixture(entry))

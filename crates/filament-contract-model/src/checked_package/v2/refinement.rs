@@ -2873,6 +2873,9 @@ fn validate_history_reads(
                     continue;
                 }
                 declared = true;
+                if !refinement_reaches(graph, refinement_position, &application.node_id, meter)? {
+                    continue;
+                }
                 if *result_type != history.type_id {
                     return Err(refuse_at(
                         meter,
@@ -2881,9 +2884,6 @@ fn validate_history_reads(
                         at.key("body").key("result_type"),
                         &application.node_id,
                     ));
-                }
-                if !refinement_reaches(graph, refinement_position, &application.node_id, meter)? {
-                    continue;
                 }
                 joined = true;
                 let receiver_target =
@@ -2931,10 +2931,6 @@ fn validate_history_reads(
                         &application.node_id,
                     ));
                 }
-                break;
-            }
-            if joined {
-                break;
             }
         }
         if !declared {

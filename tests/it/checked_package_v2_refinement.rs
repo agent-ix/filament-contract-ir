@@ -3106,6 +3106,29 @@ fn ac5_history_package() -> (Value, CheckedPackageEvidence, usize, Value, Value,
 #[trace("TC-062", "FR-061-AC-5")]
 #[test]
 fn history_read_requires_a_joined_refinement_row_and_reachable_application() {
+    let (package, evidence, position) = joined_history_package();
+    let result = read(&package, &evidence);
+    assert!(
+        matches!(result, CheckedPackageV2ReadResult::Admitted(_)),
+        "a joined, reachable history read admits: {result:?}"
+    );
+
+    let (orphan, evidence) = orphan_history_control();
+    let CheckedPackageV2ReadResult::Refused(refusal) = read(&orphan, &evidence) else {
+        panic!("a history application unreachable from its row must refuse");
+    };
+    assert_eq!(refusal.code, CheckedPackageRefusalCode::IllTyped);
+    assert_eq!(
+        refusal.cause,
+        Some(CheckedPackageRefusalCause::OperatorIneligible)
+    );
+    assert_eq!(
+        refusal.loci[0].path.as_ref().map(ToString::to_string),
+        Some(format!("/semantic_graph/nodes/{position}"))
+    );
+}
+
+fn joined_history_package() -> (Value, CheckedPackageEvidence, usize) {
     let (mut package, evidence, position, declaration, type_id, _) = ac5_history_package();
     let nodes = package["semantic_graph"]["nodes"]
         .as_array()
@@ -3184,25 +3207,27 @@ fn history_read_requires_a_joined_refinement_row_and_reachable_application() {
                 .then_with(|| left["ordinal"].as_u64().cmp(&right["ordinal"].as_u64()))
         });
     refresh_identity(&mut package);
-    let result = read(&package, &evidence);
-    assert!(
-        matches!(result, CheckedPackageV2ReadResult::Admitted(_)),
-        "a joined, reachable history read admits: {result:?}"
-    );
+    (package, evidence, position)
+}
 
-    let mut orphan = package;
+pub(super) fn orphan_history_control() -> (Value, CheckedPackageEvidence) {
+    let (mut orphan, evidence, position) = joined_history_package();
+    let boolean_type = orphan["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|node| node["node_tag"] == "scalar_type" && node["semantic_form"] == "boolean")
+        .expect("boolean type")["node_id"]
+        .clone();
+    orphan["semantic_graph"]["nodes"][position]["body"]["histories"][0]["type"] =
+        boolean_type.clone();
+    orphan["semantic_graph"]["nodes"][position]["body"]["histories"][0]["initial"] =
+        json!({"term":"literal", "type":boolean_type, "value_kind":"boolean", "value":true});
     orphan["semantic_graph"]["nodes"][position]["body"]["histories"][0]["updates"][0]
         ["expression"] =
-        json!({"term":"literal", "type":type_id, "value_kind":"text", "value":"new"});
+        json!({"term":"literal", "type":boolean_type, "value_kind":"boolean", "value":true});
     settle_refinement(&mut orphan, position);
-    let CheckedPackageV2ReadResult::Refused(refusal) = read(&orphan, &evidence) else {
-        panic!("a history application unreachable from its row must refuse");
-    };
-    assert_eq!(refusal.code, CheckedPackageRefusalCode::IllTyped);
-    assert_eq!(
-        refusal.cause,
-        Some(CheckedPackageRefusalCause::OperatorIneligible)
-    );
+    (orphan, evidence)
 }
 
 fn ac5_refusal(

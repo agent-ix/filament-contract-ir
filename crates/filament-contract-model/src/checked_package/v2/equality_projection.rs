@@ -63,7 +63,7 @@ fn float_operand_type<Body>(
 ) -> Result<bool, ValidationFailure> {
     let mut current = type_id;
     loop {
-        stage_storage::work(meter, &data_site(row, at.clone()), 1)?;
+        stage_storage::work(meter, &data_site(row, at), 1)?;
         let Some(position) = dispatch_projection::position_of(index, current) else {
             return Ok(false);
         };
@@ -310,10 +310,10 @@ pub(super) fn validate<Body>(
             if *source_type != operand.source_type {
                 return Err(invalid(meter, at.key("source_type")));
             }
-            if decision.schedule == super::CheckedEqualitySchedule::Float {
-                if !float_operand_type(source_type, nodes, kinds, &index, meter, row_index, at)? {
-                    return Err(invalid(meter, at.key("source_type")));
-                }
+            if decision.schedule == super::CheckedEqualitySchedule::Float
+                && !float_operand_type(source_type, nodes, kinds, &index, meter, row_index, at)?
+            {
+                return Err(invalid(meter, at.key("source_type")));
             }
             if conversion_target != operand.conversion_target.as_ref() {
                 return Err(invalid(meter, at.key("conversion_target")));

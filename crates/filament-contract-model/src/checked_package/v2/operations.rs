@@ -1367,6 +1367,124 @@ fn check_type_argument_member_result(
     None
 }
 
+fn expression_scope_depth(
+    root: &CheckedTerm,
+    target: &CheckedNodeId,
+    graph: &Graph<'_>,
+    application: Application<'_>,
+    meter: &mut WorkMeter,
+) -> Result<Option<usize>, ValidationFailure> {
+    let mut pending = meter.vec(graph.nodes.len())?;
+    let mut visited = meter.vec(graph.nodes.len())?;
+    meter.push(&mut pending, (root, 0_usize))?;
+    while let Some((term, depth)) = pending.pop() {
+        work_at_path(meter, &application.node_id(), 1)?;
+        match term {
+            CheckedTerm::Reference { target: reference } => {
+                if reference == target {
+                    return Ok(Some(depth));
+                }
+                let Some(position) = graph.index.get(reference).copied() else {
+                    continue;
+                };
+                if !matches!(
+                    graph.kinds.get(position),
+                    Some(CheckedNodeKind::Expression(_))
+                ) {
+                    continue;
+                }
+                let mut already_visited = false;
+                for &(seen, seen_depth) in &visited {
+                    work_at_path(meter, &application.node_id(), 1)?;
+                    if (seen, seen_depth) == (position, depth) {
+                        already_visited = true;
+                        break;
+                    }
+                }
+                if already_visited {
+                    continue;
+                }
+                meter.push(&mut visited, (position, depth))?;
+                if let Some(node_term) = graph.terms.get(position).and_then(Option::as_ref) {
+                    meter.push(&mut pending, (node_term, depth))?;
+                }
+            }
+            CheckedTerm::Application { arguments, .. } => {
+                for argument in arguments {
+                    if let CheckedTerm::Binding { value, .. } = argument {
+                        let Some(next_depth) = depth.checked_add(1) else {
+                            return Ok(None);
+                        };
+                        meter.push(&mut pending, (value, next_depth))?;
+                    } else {
+                        meter.push(&mut pending, (argument, depth))?;
+                    }
+                }
+            }
+            CheckedTerm::Aggregate { members } => {
+                for member in members {
+                    meter.push(&mut pending, (member, depth))?;
+                }
+            }
+            CheckedTerm::Binding { value, .. } => {
+                meter.push(&mut pending, (value, depth))?;
+            }
+            _ => {}
+        }
+    }
+    Ok(None)
+}
+
+fn sequence_function_level(
+    target: &CheckedNodeId,
+    graph: &Graph<'_>,
+    application: Application<'_>,
+    meter: &mut WorkMeter,
+) -> Result<Option<usize>, ValidationFailure> {
+    let mut found = None;
+    for (position, kind) in graph.kinds.iter().enumerate() {
+        work_at_path(meter, &application.node_id(), 1)?;
+        if !matches!(kind, CheckedNodeKind::Function(_)) {
+            continue;
+        }
+        let Some(CheckedTerm::Aggregate { members }) =
+            graph.terms.get(position).and_then(Option::as_ref)
+        else {
+            continue;
+        };
+        let mut parameter_count = None;
+        let mut body = None;
+        for member in members {
+            work_at_path(meter, &application.node_id(), 1)?;
+            let CheckedTerm::Binding { name, value } = member else {
+                continue;
+            };
+            match name.internal_kind() {
+                super::TermBindingName::Parameters => {
+                    if let CheckedTerm::Aggregate { members } = value.as_ref() {
+                        parameter_count = Some(members.len());
+                    }
+                }
+                super::TermBindingName::Body => body = Some(value.as_ref()),
+                _ => {}
+            }
+        }
+        let (Some(parameter_count), Some(body)) = (parameter_count, body) else {
+            continue;
+        };
+        if let Some(depth) = expression_scope_depth(body, target, graph, application, meter)? {
+            let Some(level) = parameter_count.checked_add(depth) else {
+                return Ok(None);
+            };
+            if found.is_some_and(|previous| previous != level) {
+                return Ok(None);
+            }
+            found = Some(level);
+        }
+    }
+    Ok(found)
+}
+
 #[ix_trace_rs::string_edge]
 fn check_sequence_bounds(
     application: Application<'_>,
@@ -1433,19 +1551,20 @@ fn check_sequence_bounds(
     if element_type != member {
         return Ok(Some(refuse()));
     }
-    let preferred_parameter = if let CheckedTerm::Reference { target } = value.as_ref() {
-        graph.index.get(target).copied().filter(|position| {
-            graph.kinds.get(*position) == Some(&CheckedNodeKind::Value(ValueForm::Parameter))
-        })
-    } else {
-        None
+    let CheckedTerm::Reference { target: body_root } = value.as_ref() else {
+        return Ok(Some(refuse()));
+    };
+    if graph.index.get(body_root).is_none() {
+        return Ok(Some(refuse()));
+    }
+    let Some(binder_level) =
+        sequence_function_level(&application.node.node_id, graph, application, meter)?
+    else {
+        return Ok(Some(refuse()));
     };
     let mut index_type = None;
     for (position, kind) in graph.kinds.iter().enumerate() {
         work_at_path(meter, &application.node_id(), 1)?;
-        if preferred_parameter.is_some_and(|preferred| preferred != position) {
-            continue;
-        }
         if *kind != CheckedNodeKind::Value(ValueForm::Parameter) {
             continue;
         }
@@ -1455,18 +1574,28 @@ fn check_sequence_bounds(
             continue;
         };
         let mut parameter_name = None;
+        let mut parameter_level = None;
         for member in members {
             work_at_path(meter, &application.node_id(), 1)?;
             if let CheckedTerm::Binding { name: field, value } = member {
-                if field.as_ref() == "name" {
-                    if let CheckedTerm::Literal { value, .. } = value.as_ref() {
-                        parameter_name = value.as_str();
-                        break;
+                if let CheckedTerm::Literal { value, .. } = value.as_ref() {
+                    match field.as_ref() {
+                        "name" => parameter_name = value.as_str(),
+                        "level" => {
+                            parameter_level = value.as_str().and_then(|text| text.parse().ok())
+                        }
+                        _ => {}
                     }
                 }
             }
         }
-        if parameter_name == Some(name.as_ref()) {
+        if parameter_name == Some(name.as_ref())
+            && parameter_level == Some(binder_level)
+            && graph
+                .nodes
+                .get(position)
+                .is_some_and(|node| node.semantic_type == *member)
+        {
             if index_type.is_some() {
                 return Ok(Some(refuse()));
             }
