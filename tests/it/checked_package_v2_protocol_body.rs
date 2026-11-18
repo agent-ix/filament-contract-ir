@@ -5582,6 +5582,20 @@ fn repeat_admits_post_test_and_refuses_an_unknown_test_mode() {
                 .as_array_mut()
                 .expect("nodes")
                 .remove(children[1]);
+            let role = bounded_post["semantic_graph"]["nodes"][holder]["body"]["arguments"][0]
+                ["value"]["target"]
+                .clone();
+            let binder = clause_parameter(&mut bounded_post, "post_message", "1");
+            let binder = retarget_parameter_to_object_reference(&mut bounded_post, &binder);
+            bounded_post["semantic_graph"]["nodes"][children[0]]["body"]["operation"]["member"]
+                ["operator"] = json!("event");
+            bounded_post["semantic_graph"]["nodes"][children[0]]["body"]["arguments"] = json!([
+                {"term": "binding", "name": "role", "value": {"term": "reference", "target": role}},
+                {"term": "binding", "name": "compensation", "value": {"term": "aggregate", "members": []}},
+                {"term": "binding", "name": "binder", "value": {"term": "reference", "target": binder}},
+                {"term": "binding", "name": "related", "value": {"term": "aggregate", "members": []}},
+                {"term": "binding", "name": "constraint", "value": {"term": "literal", "type": node_id(&family_key("aaaa")), "value_kind": "boolean", "value": true}}
+            ]);
         }
         let holder = holder_position(&bounded_post);
         bounded_post["semantic_graph"]["nodes"][holder]["body"]["arguments"]
@@ -5592,9 +5606,10 @@ fn repeat_admits_post_test_and_refuses_an_unknown_test_mode() {
                 "value_kind": "text", "value": "post"
             }}));
         settle(&mut bounded_post);
+        let result = read(&bounded_post);
         assert!(
-            matches!(read(&bounded_post), CheckedPackageV2ReadResult::Admitted(_)),
-            "post-test maximum {maximum:?} should admit"
+            matches!(result, CheckedPackageV2ReadResult::Admitted(_)),
+            "post-test maximum {maximum:?} should admit: {result:?}"
         );
     }
 
