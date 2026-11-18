@@ -6291,8 +6291,8 @@ pub(crate) fn package_with_admitted_compensation() -> (Value, usize, usize) {
 
 fn package_with_admitted_compensation_for(operator: &str) -> (Value, usize, usize) {
     let (mut package, root) = if operator == "send" {
-        let (mut package, _) = crate::checked_package_v2_frame_entries::state_operand_fixture();
-        let root = protocol_position(&package, "control");
+        let (state, _) = crate::checked_package_v2_frame_entries::state_operand_fixture();
+        let (mut package, root) = package_with_step_control_on(state, "event");
         let mut event_control = package["semantic_graph"]["nodes"][root].clone();
         let (send_package, send_root, send_channel) = package_with_send();
         let send_nodes = send_package["semantic_graph"]["nodes"]
@@ -6613,7 +6613,7 @@ fn compensation_clock_rows_follow_published_cases() {
                 let key = match id {
                     "CB-03" | "CB-05" => &ids["k2"],
                     "CB-04" | "CB-06" => &ids["k1"],
-                    "CB-07" => &ids["aw"],
+                    "CB-07" => &ids["sd"],
                     _ => panic!("unexpected refused case {id}"),
                 };
                 let pointer = if id == "CB-03" {
