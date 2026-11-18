@@ -7996,8 +7996,8 @@ pub(crate) fn package_with_admitted_compensation() -> (Value, usize, usize) {
 
 fn package_with_admitted_compensation_for(operator: &str) -> (Value, usize, usize) {
     let (mut package, root) = if operator == "send" {
-        let (mut package, _) = crate::checked_package_v2_frame_entries::state_operand_fixture();
-        let root = protocol_position(&package, "control");
+        let (state, _) = crate::checked_package_v2_frame_entries::state_operand_fixture();
+        let (mut package, root) = package_with_step_control_on(state, "event");
         let mut event_control = package["semantic_graph"]["nodes"][root].clone();
         let (send_package, send_root, send_channel) = package_with_send();
         let send_nodes = send_package["semantic_graph"]["nodes"]
