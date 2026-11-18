@@ -3208,18 +3208,22 @@ fn joined_history_package() -> (Value, CheckedPackageEvidence, usize) {
     settle_refinement(&mut package, position);
     let history_map = package["source_map"].clone();
     settle(&mut package);
-    let application_map = package["source_map"]
+    let settled_map = package["source_map"]
         .as_array()
         .expect("source map")
-        .iter()
-        .find(|entry| entry["node_id"] == application)
-        .expect("history application source map")
         .clone();
     package["source_map"] = history_map;
-    package["source_map"]
-        .as_array_mut()
-        .expect("source map")
-        .push(application_map);
+    let source_map = package["source_map"].as_array_mut().expect("source map");
+    for entry in settled_map {
+        let already_present = source_map.iter().any(|existing| {
+            existing["node_id"] == entry["node_id"]
+                && existing["role"] == entry["role"]
+                && existing["ordinal"] == entry["ordinal"]
+        });
+        if !already_present {
+            source_map.push(entry);
+        }
+    }
     package["source_map"]
         .as_array_mut()
         .expect("source map")
