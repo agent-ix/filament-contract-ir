@@ -9,8 +9,8 @@ use crate::support::checked_package::{
     evidence_with_document, family_key, family_model_document, fixture_source, node_id,
     owned_structural_node, protocol_named_node, protocol_role_node, reassign_node_id,
     rebuild_source_map, refresh_identity, refresh_identity_projection, refusal, refusal_at_id,
-    rename_node, select_model, selected_interface_model_node, settle, source_owner, structural_key,
-    v2_all_families,
+    rename_node, select_model, selected_interface_model_node, settle, source_owner, structural_id,
+    structural_key, v2_all_families,
 };
 use filament_contract_model::{
     CheckedNodeId, CheckedPackageEvidence, CheckedPackageLimit, CheckedPackageReadLimits,
@@ -2722,7 +2722,10 @@ fn ownerless_protocol_clause_over_a_bounded_integer_is_admitted() {
     };
     assert_eq!(refusal.code, CheckedPackageRefusalCode::MalformedWire);
 
-    for (ordinal, form) in ["option", "sequence"].into_iter().enumerate() {
+    for (ordinal, form) in ["option", "sequence", "tuple", "record"]
+        .into_iter()
+        .enumerate()
+    {
         let mut package = admitted_protocol_families();
         let clause = clause_position(&package);
         let over = package["semantic_graph"]["nodes"][clause]["body"]["arguments"][0]["value"]
@@ -2735,6 +2738,31 @@ fn ownerless_protocol_clause_over_a_bounded_integer_is_admitted() {
             .position(|node| node["node_id"] == over)
             .expect("over parameter");
         let integer = node_id(&family_key("a3a3"));
+        let boolean = node_id(&family_key("aaaa"));
+        let (body, dependencies) = match form {
+            "option" | "sequence" => (
+                json!({"term": "aggregate", "members": [
+                    {"term": "reference", "target": integer}
+                ]}),
+                vec![integer],
+            ),
+            "tuple" => (
+                json!({"term": "aggregate", "members": [
+                    {"term": "reference", "target": boolean},
+                    {"term": "reference", "target": integer}
+                ]}),
+                vec![boolean, integer],
+            ),
+            "record" => (
+                json!({"term": "aggregate", "members": [
+                    {"term": "binding", "name": "count", "value": {
+                        "term": "reference", "target": integer
+                    }}
+                ]}),
+                vec![integer],
+            ),
+            _ => unreachable!("listed non-object type form"),
+        };
         let type_key = node_id(&format!(
             "fixture/protocol-body/structural_key/non-object-{ordinal}"
         ));
@@ -2745,11 +2773,9 @@ fn ownerless_protocol_clause_over_a_bounded_integer_is_admitted() {
                 "node_id": type_key,
                 "schema_version": "filament.checked-semantic-graph/v2",
                 "node_tag": "composite_type", "semantic_form": form,
-                "semantic_type": type_key, "dependencies": [integer],
+                "semantic_type": type_key, "dependencies": dependencies,
                 "occurrences": [{"role": "type", "ordinal": 0}],
-                "body": {"term": "aggregate", "members": [
-                    {"term": "reference", "target": integer}
-                ]}
+                "body": body
             }));
         package["semantic_graph"]["nodes"][over_position]["semantic_type"] = type_key.clone();
         let typed_over = node_id(&format!(
@@ -2770,6 +2796,34 @@ fn ownerless_protocol_clause_over_a_bounded_integer_is_admitted() {
         assert!(
             matches!(result, CheckedPackageV2ReadResult::Admitted(_)),
             "ownerless non-object over type {form} should admit: {result:?}"
+        );
+
+        let selected_object = package["semantic_graph"]["nodes"]
+            .as_array()
+            .expect("nodes")
+            .iter()
+            .find(|node| node["node_tag"] == "model" && node["semantic_form"] == "object_type")
+            .expect("selected object type")["node_id"]
+            .clone();
+        package["semantic_graph"]["nodes"][clause]["owner_model"] = selected_object.clone();
+        package["semantic_graph"]["nodes"][clause]["dependencies"]
+            .as_array_mut()
+            .expect("dependencies")
+            .push(selected_object);
+        package["semantic_graph"]["nodes"][clause]["dependencies"]
+            .as_array_mut()
+            .expect("dependencies")
+            .sort_by_key(checked_node_id);
+        settle(&mut package);
+        assert!(
+            matches!(
+                read(&package),
+                CheckedPackageV2ReadResult::Refused(CheckedPackageRefusal {
+                    code: CheckedPackageRefusalCode::MalformedWire,
+                    ..
+                })
+            ),
+            "owner edge on non-object over type {form} must refuse"
         );
     }
 
@@ -2805,6 +2859,28 @@ fn ownerless_protocol_clause_over_a_bounded_integer_is_admitted() {
         assert!(
             matches!(read(&package), CheckedPackageV2ReadResult::Admitted(_)),
             "ownerless non-object over bounded_domain/{form} should admit"
+        );
+
+        let selected_object = package["semantic_graph"]["nodes"]
+            .as_array()
+            .expect("nodes")
+            .iter()
+            .find(|node| node["node_tag"] == "model" && node["semantic_form"] == "object_type")
+            .expect("selected object type")["node_id"]
+            .clone();
+        package["semantic_graph"]["nodes"][clause]["owner_model"] = selected_object.clone();
+        package["semantic_graph"]["nodes"][clause]["dependencies"]
+            .as_array_mut()
+            .expect("dependencies")
+            .push(selected_object);
+        package["semantic_graph"]["nodes"][clause]["dependencies"]
+            .as_array_mut()
+            .expect("dependencies")
+            .sort_by_key(checked_node_id);
+        settle(&mut package);
+        assert!(
+            matches!(read(&package), CheckedPackageV2ReadResult::Refused(_)),
+            "an owner edge on non-object over bounded_domain/{form} must refuse"
         );
     }
 }
@@ -2865,13 +2941,67 @@ fn protocol_owner_requirement_follows_indirect_object_over_types() {
             "owner edge should admit indirect object over type {form}: {result:?}"
         );
 
+        let other_identity = "ix://test/families/Other";
+        let other_id = structural_id(
+            "test/families",
+            vec![json!("model"), json!("object_type"), json!(other_identity)],
+            0,
+        );
+        package["semantic_graph"]["nodes"]
+            .as_array_mut()
+            .expect("nodes")
+            .push(json!({
+                "node_id": other_id, "schema_version": "filament.checked-semantic-graph/v2",
+                "node_tag": "model", "semantic_form": "object_type",
+                "semantic_type": other_id, "dependencies": [],
+                "occurrences": [{"role": "type", "ordinal": 0}],
+                "owner": {"kind": "model", "identity": "test/families", "node": other_identity},
+                "body": {"term": "aggregate", "members": []}
+            }));
+        package["semantic_graph"]["nodes"][clause]["owner_model"] = other_id.clone();
+        package["semantic_graph"]["nodes"][clause]["dependencies"]
+            .as_array_mut()
+            .expect("dependencies")
+            .push(other_id);
+        package["semantic_graph"]["nodes"][clause]["dependencies"]
+            .as_array_mut()
+            .expect("dependencies")
+            .sort_by_key(checked_node_id);
+        settle(&mut package);
+        let mut document = family_model_document();
+        document["types"]
+            .as_array_mut()
+            .expect("types")
+            .push(json!({
+                "identity": other_identity, "displayName": "Other",
+                "kind": {"module": "test/families", "name": "entity"},
+                "roles": [], "constraints": [], "extensions": [], "unknownPolicy": "reject",
+                "supertypes": [], "fields": [], "operations": []
+            }));
+        let evidence = evidence_with_document(&package, "test/families", &document);
+        let other_owner_result = crate::read_and_account(
+            &canonical(&package),
+            CheckedPackageReadLimits::bounded(),
+            &evidence,
+        );
+        assert!(
+            matches!(other_owner_result, CheckedPackageV2ReadResult::Admitted(_)),
+            "owner edge to another selected object type must remain authoritative: {other_owner_result:?}"
+        );
+
         let mut ownerless = package.clone();
         ownerless["semantic_graph"]["nodes"][clause]
             .as_object_mut()
             .expect("protocol clause")
             .remove("owner_model");
         settle(&mut ownerless);
-        let CheckedPackageV2ReadResult::Refused(refusal) = read(&ownerless) else {
+        let ownerless_evidence = evidence_with_document(&ownerless, "test/families", &document);
+        let ownerless_result = crate::read_and_account(
+            &canonical(&ownerless),
+            CheckedPackageReadLimits::bounded(),
+            &ownerless_evidence,
+        );
+        let CheckedPackageV2ReadResult::Refused(refusal) = ownerless_result else {
             panic!("ownerless indirect object over type {form} must refuse");
         };
         assert_eq!(refusal.code, CheckedPackageRefusalCode::MalformedWire);
@@ -5181,7 +5311,7 @@ fn repeat_checks_owner_body_exhausted_and_optional_pair() {
 /// Trace: FR-038-AC-288, FR-038-AC-290
 #[trace("TC-048")]
 #[test]
-fn repeat_admits_proof_and_zero_maximum_and_refuses_both_unpaired_directions() {
+fn repeat_admits_proof_and_refuses_zero_maximum_and_both_unpaired_directions() {
     let (package, children) = protocol_holder_case("repeat");
     let holder = holder_position(&package);
     let mut with_proof = package.clone();
@@ -5199,10 +5329,18 @@ fn repeat_admits_proof_and_zero_maximum_and_refuses_both_unpaired_directions() {
     zero["semantic_graph"]["nodes"][holder]["body"]["arguments"][2]["value"]["members"][0]
         ["value"] = json!("0");
     settle(&mut zero);
-    assert!(matches!(
-        read(&zero),
-        CheckedPackageV2ReadResult::Admitted(_)
-    ));
+    let zero_result = read(&zero);
+    assert!(
+        matches!(
+            &zero_result,
+            CheckedPackageV2ReadResult::Refused(CheckedPackageRefusal {
+                code: CheckedPackageRefusalCode::InvalidPackage,
+                cause: Some(CheckedPackageRefusalCause::InvalidValue),
+                ..
+            })
+        ),
+        "zero maximum result: {zero_result:?}"
+    );
 
     let mut unbounded_proof = with_proof.clone();
     unbounded_proof["semantic_graph"]["nodes"][holder]["body"]["arguments"][2]["value"]
@@ -5265,10 +5403,78 @@ fn repeat_admits_post_test_and_refuses_an_unknown_test_mode() {
             "value_kind": "text", "value": "post"
         }}));
     settle(&mut post_test);
+    let post_test_holder = holder_position(&post_test);
+    assert_eq!(
+        canonical(&package["semantic_graph"]["nodes"][holder]),
+        canonical(&post_test["semantic_graph"]["nodes"][holder]),
+        "pre-test repeat node bytes remain unchanged when the optional test member is absent"
+    );
+    assert_eq!(
+        package["semantic_graph"]["nodes"][holder]["node_id"],
+        post_test["semantic_graph"]["nodes"][holder]["node_id"],
+        "pre-test repeat identity remains stable"
+    );
+    assert_ne!(
+        package["semantic_graph"]["nodes"][holder]["node_id"],
+        post_test["semantic_graph"]["nodes"][post_test_holder]["node_id"],
+        "adding the post-test member changes repeat identity"
+    );
     assert!(matches!(
         read(&post_test),
         CheckedPackageV2ReadResult::Admitted(_)
     ));
+
+    let mut zero_maximum = post_test.clone();
+    let post_holder = holder_position(&zero_maximum);
+    zero_maximum["semantic_graph"]["nodes"][post_holder]["body"]["arguments"][2]["value"]
+        ["members"][0]["value"] = json!("0");
+    settle(&mut zero_maximum);
+    assert!(
+        matches!(
+            read(&zero_maximum),
+            CheckedPackageV2ReadResult::Refused(CheckedPackageRefusal {
+                code: CheckedPackageRefusalCode::InvalidPackage,
+                cause: Some(CheckedPackageRefusalCause::InvalidValue),
+                ..
+            })
+        ),
+        "post-test repeat with maximum zero refuses at the repeat node"
+    );
+
+    for maximum in [None, Some("1"), Some("3")] {
+        let (mut bounded_post, children) = protocol_holder_case("repeat");
+        let holder = holder_position(&bounded_post);
+        if let Some(maximum) = maximum {
+            bounded_post["semantic_graph"]["nodes"][holder]["body"]["arguments"][2]["value"]
+                ["members"][0]["value"] = json!(maximum);
+        } else {
+            bounded_post["semantic_graph"]["nodes"][holder]["body"]["arguments"]
+                .as_array_mut()
+                .expect("repeat arguments")
+                .remove(6);
+            bounded_post["semantic_graph"]["nodes"][holder]["body"]["arguments"]
+                .as_array_mut()
+                .expect("repeat arguments")
+                .remove(2);
+            bounded_post["semantic_graph"]["nodes"]
+                .as_array_mut()
+                .expect("nodes")
+                .remove(children[1]);
+        }
+        let holder = holder_position(&bounded_post);
+        bounded_post["semantic_graph"]["nodes"][holder]["body"]["arguments"]
+            .as_array_mut()
+            .expect("repeat arguments")
+            .push(json!({"term": "binding", "name": "test", "value": {
+                "term": "literal", "type": node_id(&family_key("a1a1")),
+                "value_kind": "text", "value": "post"
+            }}));
+        settle(&mut bounded_post);
+        assert!(
+            matches!(read(&bounded_post), CheckedPackageV2ReadResult::Admitted(_)),
+            "post-test maximum {maximum:?} should admit"
+        );
+    }
 
     let mut pre_test = package.clone();
     pre_test["semantic_graph"]["nodes"][holder]["body"]["arguments"]
@@ -5286,6 +5492,26 @@ fn repeat_admits_post_test_and_refuses_an_unknown_test_mode() {
             ..
         })
     ));
+
+    let (mut missing_test_binder, _) = protocol_holder_case("repeat");
+    let holder = holder_position(&missing_test_binder);
+    let finish = protocol_position(&missing_test_binder, "obligation");
+    let finish_binder = missing_test_binder["semantic_graph"]["nodes"][finish]["body"]["arguments"]
+        [0]["value"]["target"]
+        .clone();
+    missing_test_binder["semantic_graph"]["nodes"][holder]["body"]["arguments"][4]["value"] =
+        json!({"term": "reference", "target": finish_binder});
+    settle(&mut missing_test_binder);
+    assert!(
+        matches!(
+            read(&missing_test_binder),
+            CheckedPackageV2ReadResult::Refused(CheckedPackageRefusal {
+                code: CheckedPackageRefusalCode::MissingDeclaration,
+                ..
+            })
+        ),
+        "a repeat guard without test must refuse a binder outside the repeat body"
+    );
 
     post_test["semantic_graph"]["nodes"][holder]["body"]["arguments"][7]["value"]["value"] =
         json!("middle");
@@ -9205,6 +9431,30 @@ fn protocol_channel_admits_bounded_domain_carries() {
             "channel retains bounded_domain/{form}"
         );
     }
+
+    let (mut package, _) = package_with_member_queue();
+    let channel = protocol_position(&package, "channel");
+    let expression = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|node| node["node_tag"] == "expression")
+        .expect("expression target")["node_id"]
+        .clone();
+    package["semantic_graph"]["nodes"][channel]["body"]["arguments"][2]["value"]["target"] =
+        expression;
+    settle(&mut package);
+    let key = package["semantic_graph"]["nodes"][channel]["node_id"].clone();
+    assert_eq!(
+        read(&package),
+        refusal_at_id(
+            CheckedPackageRefusalCode::InvalidModelBinding,
+            &format!("/semantic_graph/nodes/{channel}/body/arguments/2/value/target"),
+            Some(CheckedPackageRefusalCause::MalformedDeclaration),
+            &key,
+        ),
+        "an expression node is not an admissible carries type"
+    );
 }
 
 fn protocol_bounded_domain(package: &mut Value, form: &str) -> Value {
