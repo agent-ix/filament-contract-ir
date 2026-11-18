@@ -326,10 +326,14 @@ fn published_temporal_clause_names_admit_and_refuse_at_exact_loci() {
                 )
                 .expect("encoded named package");
                 let output: Value = serde_json::from_slice(&encoded).expect("encoded package");
+                // The published rows predate the required `declaration_region`
+                // (FSpec FR-322-AC-460), which the reader's input derives.
+                let mut expected_package = package.clone();
+                crate::fixture_support::fill_declaration_regions(&mut expected_package);
                 assert_eq!(
                     encoded,
                     quire_canonical::to_vec(
-                        &crate::fixture_support::wire_form(&package),
+                        &crate::fixture_support::wire_form(&expected_package),
                         quire_canonical::Limits::new(1 << 24),
                     )
                     .expect("published package canonical bytes"),
