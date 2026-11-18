@@ -6291,7 +6291,34 @@ pub(crate) fn package_with_admitted_compensation() -> (Value, usize, usize) {
 
 fn package_with_admitted_compensation_for(operator: &str) -> (Value, usize, usize) {
     let (mut package, root) = if operator == "send" {
-        let (package, root, _) = package_with_send();
+        let (mut package, _) = crate::checked_package_v2_frame_entries::state_operand_fixture();
+        let root = protocol_position(&package, "control");
+        let mut event_control = package["semantic_graph"]["nodes"][root].clone();
+        let (send_package, send_root, send_channel) = package_with_send();
+        let send_nodes = send_package["semantic_graph"]["nodes"]
+            .as_array()
+            .expect("send fixture nodes");
+        let channel = send_nodes[send_channel].clone();
+        let channel_id = channel["node_id"].clone();
+        let send_control = &send_nodes[send_root];
+        package["semantic_graph"]["nodes"]
+            .as_array_mut()
+            .expect("state fixture nodes")
+            .push(channel);
+        package["semantic_graph"]["nodes"][root]["body"] = send_control["body"].clone();
+        package["semantic_graph"]["nodes"][root]["dependencies"] =
+            send_control["dependencies"].clone();
+        let clause = clause_position(&package);
+        package["semantic_graph"]["nodes"][clause]["body"]["arguments"][5]["value"]["members"] =
+            json!([{"term": "reference", "target": channel_id}]);
+        let event_name = ["Example", "OrderFlow", "run", "Main", "ClockFixtureEvent"];
+        event_control["node_id"] =
+            node_id("qualified:Example/OrderFlow/run/Main/ClockFixtureEvent");
+        event_control["declaration"]["qualified_name"] = json!(event_name);
+        package["semantic_graph"]["nodes"]
+            .as_array_mut()
+            .expect("nodes")
+            .push(event_control);
         (package, root)
     } else {
         let (state, _) = crate::checked_package_v2_frame_entries::state_operand_fixture();
@@ -6419,13 +6446,27 @@ pub(super) fn compensation_clock_case(
         nodes[protocol_position(&package, "compensation")]["node_id"].clone(),
     );
     ids.insert("k2".to_owned(), second_id);
-    let control_id = nodes[protocol_position(&package, "control")]["node_id"].clone();
+    let mut rows = case["rows"].as_array().expect("rows").clone();
     for declaration in declarations {
-        if declaration["form"] == "control" {
+        if declaration["form"] == "control"
+            && rows
+                .iter()
+                .any(|row| row["declaration"] == declaration["key"])
+        {
             let key = declaration["key"]
                 .as_str()
                 .expect("control declaration key");
-            ids.insert(key.to_owned(), control_id.clone());
+            let operator = declaration["operator"]
+                .as_str()
+                .expect("control declaration operator");
+            let control = nodes
+                .iter()
+                .find(|node| {
+                    node["semantic_form"] == "control"
+                        && node["body"]["operation"]["member"]["operator"] == operator
+                })
+                .expect("published control operator");
+            ids.insert(key.to_owned(), control["node_id"].clone());
         }
     }
     if case["id"] == "CB-01" {
@@ -6437,7 +6478,6 @@ pub(super) fn compensation_clock_case(
             .expect("temporal clause");
         ids.insert("c".to_owned(), clause["node_id"].clone());
     }
-    let mut rows = case["rows"].as_array().expect("rows").clone();
     for row in &mut rows {
         let key = row["declaration"].as_str().expect("declaration key");
         row["declaration"] = ids[key].clone();
