@@ -2514,7 +2514,23 @@ pub fn refresh_temporal_bindings(package: &mut Value) {
                     node["body"]["arguments"][1]["value"].as_str()?,
                 )
             } else if is_hyper(node) {
-                (selected_profile?, "fixture-clock")
+                // A behaviours node reads its wrapper's profile law and clock
+                // text; a finite-domain node the lock's selection and the
+                // domain binder `t`.
+                if node["body"]["members"][0]["value"]["term"] == "reference" {
+                    (selected_profile?, "t")
+                } else {
+                    let wrapper = nodes.iter().find(|wrapper| {
+                        wrapper["node_id"] == node["body"]["members"][6]["value"]["target"]
+                    })?;
+                    let [law] = wrapper["body"]["operation"]["laws"].as_array()?.as_slice() else {
+                        return None;
+                    };
+                    (
+                        law["definition"]["identity"].as_str()?,
+                        wrapper["body"]["arguments"][1]["value"].as_str()?,
+                    )
+                }
             } else if node["node_tag"] == "protocol" && node["semantic_form"] == "compensation" {
                 (
                     selected_profile?,

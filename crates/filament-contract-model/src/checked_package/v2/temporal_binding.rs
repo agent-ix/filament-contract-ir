@@ -479,25 +479,33 @@ fn clock_matches(profile: Option<TemporalProfile>, clock: &ClockConfiguration) -
     )
 }
 
-/// The `claim`/`hyperproperty` nodes of the graph with their quantified trace
-/// variables in `quantifiers` order, and the body wrappers they reference (each
-/// a `temporal_clause` node, which takes no row of its own). A node whose body
-/// is not readable as that shape lists no variables; the hyperproperty step owns
-/// its refusal.
+/// One `claim`/`hyperproperty` node: its quantified trace variables in
+/// `quantifiers` order, whether its domain is finite, and, under a behaviours
+/// domain, the body wrapper it references. A node whose body is not readable as
+/// that shape lists no variables; the hyperproperty step owns its refusal.
+struct HyperNode<'t> {
+    position: usize,
+    variables: Vec<&'t str>,
+    finite: bool,
+    wrapper: Option<usize>,
+}
+
+#[ix_trace_rs::string_edge]
 fn hyper_nodes<'t>(
     kinds: &[CheckedNodeKind],
     terms: &'t [Option<super::CheckedTerm>],
     index: &GraphIndex<'_>,
     meter: &mut WorkMeter,
-) -> Result<(Vec<(usize, Vec<&'t str>)>, Vec<usize>), ValidationFailure> {
+) -> Result<Vec<HyperNode<'t>>, ValidationFailure> {
     use super::{CheckedTerm, LiteralKind};
-    let mut hypers: Vec<(usize, Vec<&'t str>)> = meter.vec(0)?;
-    let mut wrappers: Vec<usize> = meter.vec(0)?;
+    let mut hypers: Vec<HyperNode<'t>> = meter.vec(0)?;
     for (position, kind) in kinds.iter().enumerate() {
         if *kind != CheckedNodeKind::Claim(super::ClaimForm::Hyperproperty) {
             continue;
         }
         let mut variables = meter.vec(0)?;
+        let mut finite = false;
+        let mut wrapper = None;
         if let Some(Some(CheckedTerm::Aggregate { members })) = terms.get(position) {
             let bound = |name: &str| {
                 members.iter().find_map(|member| match member {
@@ -509,14 +517,16 @@ fn hyper_nodes<'t>(
                     _ => None,
                 })
             };
-            if let Some(target) = bound("body")
+            finite = bound("domain")
                 .and_then(super::structural::typed_reference)
-                .and_then(|target| index.get(target).copied())
-                .filter(|target| {
-                    kinds[*target] == CheckedNodeKind::Temporal(TemporalForm::TemporalClause)
-                })
-            {
-                meter.push(&mut wrappers, target)?;
+                .is_some();
+            if !finite {
+                wrapper = bound("body")
+                    .and_then(super::structural::typed_reference)
+                    .and_then(|target| index.get(target).copied())
+                    .filter(|target| {
+                        kinds[*target] == CheckedNodeKind::Temporal(TemporalForm::TemporalClause)
+                    });
             }
             if let Some(CheckedTerm::Aggregate { members: groups }) = bound("quantifiers") {
                 for group in groups {
@@ -538,15 +548,23 @@ fn hyper_nodes<'t>(
                         }
                         _ => None,
                     });
-                    if let Some(variable) = variable.filter(|name| !variables.contains(name)) {
+                    if let Some(variable) = variable {
                         meter.push(&mut variables, variable)?;
                     }
                 }
             }
         }
-        meter.push(&mut hypers, (position, variables))?;
+        meter.push(
+            &mut hypers,
+            HyperNode {
+                position,
+                variables,
+                finite,
+                wrapper,
+            },
+        )?;
     }
-    Ok((hypers, wrappers))
+    Ok(hypers)
 }
 
 /// Validate row coverage before per-node joins and compare names before kinds.
@@ -563,13 +581,24 @@ pub(super) fn validate<B>(
     let rows = rows.unwrap_or_default();
     validate_shape(rows, meter)?;
     let compensation_profile = selected_profile(lock);
-    let (hypers, wrappers) = hyper_nodes(kinds, terms, index, meter)?;
-    let traces_of = |position: usize| {
+    let hypers = hyper_nodes(kinds, terms, index, meter)?;
+    // `hypers` ascends by graph position, so a node is found by bisection; the
+    // wrappers are listed once and sorted.
+    let hyper_of = |position: usize| {
         hypers
-            .iter()
-            .find(|(hyper, _)| *hyper == position)
-            .map(|(_, variables)| variables.as_slice())
+            .binary_search_by_key(&position, |hyper| hyper.position)
+            .ok()
+            .map(|at| &hypers[at])
     };
+    let mut wrappers: Vec<usize> = meter.vec(hypers.len())?;
+    for hyper in &hypers {
+        if let Some(wrapper) = hyper.wrapper {
+            meter.push(&mut wrappers, wrapper)?;
+        }
+    }
+    wrappers.sort_unstable();
+    let is_wrapper = |position: usize| wrappers.binary_search(&position).is_ok();
+    let traces_of = |position: usize| hyper_of(position).map(|hyper| hyper.variables.as_slice());
     let mut seen: Vec<(usize, u64, usize)> = meter.vec(rows.len())?;
     let mut previous: Option<(super::graph_storage::ResolvedKey<'_>, u64, usize)> = None;
     let mut resolved = meter.vec(rows.len())?;
@@ -583,7 +612,7 @@ pub(super) fn validate<B>(
             CheckedNodeKind::Temporal(TemporalForm::TemporalClause)
                 | CheckedNodeKind::Protocol(ProtocolForm::Compensation)
                 | CheckedNodeKind::Claim(super::ClaimForm::Hyperproperty)
-        ) || wrappers.contains(&position)
+        ) || is_wrapper(position)
         {
             return Err(invalid(meter, at().key("declaration"), &row.declaration));
         }
@@ -661,11 +690,20 @@ pub(super) fn validate<B>(
     }
     let mut missing = None;
     for (position, node) in nodes.iter().enumerate() {
-        let role = if wrappers.contains(&position) {
+        let role = if is_wrapper(position) {
             continue;
-        } else if kinds[position] == CheckedNodeKind::Claim(super::ClaimForm::Hyperproperty)
-            && compensation_profile.is_some()
-        {
+        } else if let Some(hyper) = hyper_of(position) {
+            let configured = if hyper.finite {
+                compensation_profile.is_some()
+            } else {
+                match hyper.wrapper {
+                    Some(wrapper) => configured_profile(wrapper, true, meter)?.is_some(),
+                    None => false,
+                }
+            };
+            if !configured {
+                continue;
+            }
             CheckedOccurrenceRole::Claim
         } else if kinds[position] == CheckedNodeKind::Temporal(TemporalForm::TemporalClause)
             && configured_profile(
@@ -695,8 +733,13 @@ pub(super) fn validate<B>(
             let rows_needed = traces_of(position).map_or(1, <[&str]>::len);
             if occurrence.role == role
                 && (0..rows_needed).any(|trace| {
-                    seen.binary_search(&(position, occurrence.ordinal, trace))
-                        .is_err()
+                    // A variable a later Group repeats is the key of its first.
+                    let repeated = traces_of(position)
+                        .is_some_and(|variables| variables[..trace].contains(&variables[trace]));
+                    !repeated
+                        && seen
+                            .binary_search(&(position, occurrence.ordinal, trace))
+                            .is_err()
                 })
             {
                 missing = Some(position);
@@ -720,7 +763,8 @@ pub(super) fn validate<B>(
     }
     for (row_index, (row, &position)) in rows.iter().zip(&resolved).enumerate() {
         let at = || row_path(row_index);
-        if kinds[position] == CheckedNodeKind::Claim(super::ClaimForm::Hyperproperty) {
+        let hyper = hyper_of(position);
+        if hyper.is_some_and(|hyper| hyper.finite) {
             // The rows of one occurrence share one clock role.
             if row_index > 0
                 && rows[row_index - 1].declaration == row.declaration
@@ -738,6 +782,8 @@ pub(super) fn validate<B>(
             }
             continue;
         }
+        // A behaviours node reads its profile and clock name from its wrapper.
+        let position = hyper.and_then(|hyper| hyper.wrapper).unwrap_or(position);
         if kinds[position] == CheckedNodeKind::Protocol(ProtocolForm::Compensation) {
             if clock_name(meter, position, 4) != Some(row.clock_name.as_ref()) {
                 return Err(invalid(meter, at().key("clock_name"), &row.declaration));

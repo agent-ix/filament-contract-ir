@@ -3455,11 +3455,25 @@ fn hyper_clock_fixture(variables: &[&str]) -> (Value, usize, usize) {
 
 const TIMED_NODE_REFERENCE: Cause = Cause::TimedNodeReference;
 
+/// Asserts the refusal's code, cause and pointer, and that its locus is the node
+/// the pointer is on: the row's declaration for a `/temporal_bindings/{i}`
+/// pointer, the graph node for a `/semantic_graph/nodes/{N}` one.
 fn refusal_at(package: &Value, code: Code, cause: Cause, path: &str) {
-    let ((found_code, found_cause, found), _) = refusal_of("trace refusal", package);
+    let locus = if let Some(rest) = path.strip_prefix("/temporal_bindings/") {
+        let row: usize = rest.split('/').next().unwrap().parse().expect("row");
+        package["temporal_bindings"][row]["declaration"].clone()
+    } else {
+        let node: usize = path
+            .strip_prefix("/semantic_graph/nodes/")
+            .and_then(|rest| rest.split('/').next())
+            .and_then(|node| node.parse().ok())
+            .unwrap_or_else(|| panic!("{path} is on no row or node"));
+        nodes(package)[node]["node_id"].clone()
+    };
+    let locus: CheckedNodeId = serde_json::from_value(locus).expect("node ID");
     assert_eq!(
-        (found_code, found_cause, found.as_deref()),
-        (code, Some(cause), Some(path))
+        refusal_of("trace refusal", package),
+        ((code, Some(cause), Some(path.to_owned())), Some(locus))
     );
 }
 
@@ -3500,34 +3514,82 @@ fn tc_483_each_trace_row_holds_its_own_configuration() {
     assert_ne!(rows[0].clock, rows[1].clock);
 }
 
-#[trace("TC-483", "FR-038-AC-561")]
-#[test]
-fn tc_483_a_finite_domain_hyperproperty_keeps_its_per_trace_rows() {
+/// A finite-domain hyperproperty over traces `a` and `b` under the event-position
+/// profile, with its graph position.
+fn finite_clock_fixture() -> (Value, usize) {
+    finite_clock_fixture_with(&["a", "b"])
+}
+
+fn finite_clock_fixture_with(variables: &[&str]) -> (Value, usize) {
     let (mut package, at) = finite_hyper(|body| {
-        body["members"][3]["value"]["members"]
-            .as_array_mut()
-            .expect("groups")
-            .push(json!({"term": "aggregate", "members": [
-                named("variable", text("b")), named("quantifier", text("forall"))]}));
+        body["members"][3]["value"]["members"] = json!(variables
+            .iter()
+            .map(|variable| json!({"term": "aggregate", "members": [
+                named("variable", text(variable)), named("quantifier", text("forall"))]}))
+            .collect::<Vec<_>>());
     });
     select_profile(&mut package, BOUNDED);
     claim_occurrence(&mut package, at);
     settle(&mut package);
+    (package, at)
+}
+
+fn hyper_rows(package: &Value) -> Vec<usize> {
+    package["temporal_bindings"]
+        .as_array()
+        .expect("rows")
+        .iter()
+        .enumerate()
+        .filter(|(_, row)| row.get("trace").is_some())
+        .map(|(at, _)| at)
+        .collect()
+}
+
+#[trace("TC-483", "FR-038-AC-561")]
+#[test]
+fn tc_483_a_finite_domain_hyperproperty_keeps_its_per_trace_rows() {
+    let (package, _) = finite_clock_fixture();
     let admitted = admitted("a finite domain", &package);
     let rows = admitted.temporal_bindings().expect("rows");
-    let traces: Vec<_> = rows.iter().filter_map(|row| row.trace.as_deref()).collect();
+    let hyper: Vec<_> = rows.iter().filter(|row| row.trace.is_some()).collect();
+    let traces: Vec<_> = hyper
+        .iter()
+        .filter_map(|row| row.trace.as_deref())
+        .collect();
     assert_eq!(traces, ["a", "b"]);
+    assert!(hyper.iter().all(|row| &*row.clock_name == "t"));
+}
+
+#[trace("TC-483", "FR-038-AC-561")]
+#[test]
+fn tc_483_a_finite_domain_row_is_refused_at_its_own_defect() {
+    let (package, at) = finite_clock_fixture();
+    let rows = hyper_rows(&package);
     let mut missing = package.clone();
     missing["temporal_bindings"]
         .as_array_mut()
         .expect("rows")
-        .pop();
+        .remove(rows[1]);
     refusal_at(
         &missing,
         Code::InvalidPackage,
         TIMED_NODE_REFERENCE,
         &at_node(at, "/body"),
     );
+    let mut unknown = package.clone();
+    unknown["temporal_bindings"][rows[0]]["trace"] = json!("c");
+    refusal_at_trace(&unknown, &format!("/temporal_bindings/{}/trace", rows[0]));
+    let mut role = package.clone();
+    role["temporal_bindings"][rows[1]]["clock_name"] = json!("u");
+    refusal_at_trace(&role, &format!("/temporal_bindings/{}/clock_name", rows[1]));
+    let mut kind = package.clone();
+    kind["temporal_bindings"][rows[0]]["clock"] = json!({
+        "kind": "fixed_sample",
+        "epoch": {"kind": "integer", "decimal": "0"},
+        "period": {"kind": "integer", "decimal": "1"},
+        "unit": "tick",
+    });
+    refusal_at_trace(&kind, &format!("/temporal_bindings/{}/clock/kind", rows[0]));
 }
 
 #[trace("TC-483", "FR-038-AC-561")]
@@ -3568,6 +3630,105 @@ fn tc_483_hyperproperties_sharing_a_wrapper_each_own_their_rows() {
     assert_eq!(by_node.len(), 2);
     assert!(by_node.iter().any(|(_, traces)| traces == &["s", "n"]));
     assert!(by_node.iter().any(|(_, traces)| traces == &["x", "y", "z"]));
+}
+
+#[trace("TC-483", "FR-038-AC-561")]
+#[test]
+fn tc_483_reversed_quantifiers_over_one_wrapper_keep_their_own_row_order() {
+    let (mut package, wrapper, fwd) = hyper_clock_fixture(&["s", "n"]);
+    let clause_key = node_label(&package, wrapper);
+    let rev = push(
+        &mut package,
+        hyperproperty(
+            "hyperproperty",
+            vec![trace_group("n"), trace_group("s"), trace_group("m")],
+            vec![],
+            vec![],
+            refer(&clause_key),
+        ),
+    );
+    claim_occurrence(&mut package, rev);
+    settle(&mut package);
+    let admitted = admitted("Fwd and Rev", &package);
+    let rows = admitted.temporal_bindings().expect("rows");
+    let rev_id = typed_node_id_of(&package, rev);
+    let fwd_id = typed_node_id_of(&package, fwd);
+    let of = |id: &CheckedNodeId| -> Vec<&str> {
+        rows.iter()
+            .filter(|row| row.declaration == *id)
+            .filter_map(|row| row.trace.as_deref())
+            .collect()
+    };
+    assert_eq!(of(&fwd_id), ["s", "n"]);
+    assert_eq!(of(&rev_id), ["n", "s", "m"]);
+    // Rev's rows written in Fwd's order refuse at the later row's trace.
+    let at: Vec<usize> = package["temporal_bindings"]
+        .as_array()
+        .expect("rows")
+        .iter()
+        .enumerate()
+        .filter(|(_, row)| row["declaration"] == nodes(&package)[rev]["node_id"])
+        .map(|(at, _)| at)
+        .collect();
+    let mut swapped = package.clone();
+    swapped["temporal_bindings"]
+        .as_array_mut()
+        .expect("rows")
+        .swap(at[0], at[1]);
+    refusal_at_trace(&swapped, &format!("/temporal_bindings/{}/trace", at[1]));
+    // The third quantifier's row is required.
+    let mut missing = package.clone();
+    missing["temporal_bindings"]
+        .as_array_mut()
+        .expect("rows")
+        .remove(at[2]);
+    refusal_at(
+        &missing,
+        Code::InvalidPackage,
+        TIMED_NODE_REFERENCE,
+        &at_node(rev, "/body"),
+    );
+}
+
+/// FR-402-AC-10 refuses a repeated quantifier variable at the hyperproperty
+/// step, so no checked package carries one. A reader that sees one anyway
+/// matches coverage by key: the second row of two Groups' shared variable is a
+/// repeated key, and one row for them is not a missing row.
+#[trace("TC-483", "FR-038-AC-561")]
+#[test]
+fn tc_483_a_repeated_quantifier_variable_is_a_repeated_key_not_a_missing_row() {
+    let (package, _, _) = hyper_clock_fixture(&["s", "s"]);
+    assert_eq!(hyper_rows(&package).len(), 2, "one row per Group");
+    refusal_at(
+        &package,
+        Code::InvalidPackage,
+        Cause::ConflictingDefinition,
+        "/temporal_bindings/1",
+    );
+    let (mut finite, _) = finite_clock_fixture_with(&["a", "a"]);
+    refusal_at(
+        &finite,
+        Code::InvalidPackage,
+        Cause::ConflictingDefinition,
+        &format!("/temporal_bindings/{}", hyper_rows(&finite)[1]),
+    );
+    let at = hyper_rows(&finite)[1];
+    finite["temporal_bindings"]
+        .as_array_mut()
+        .expect("rows")
+        .remove(at);
+    if let CheckedPackageV2ReadResult::Refused(refusal) = read(&finite) {
+        let path = refusal.loci[0]
+            .path
+            .as_ref()
+            .map(|path| path.as_str().to_owned());
+        assert!(
+            !path.as_deref().is_some_and(
+                |path| path.ends_with("/body") && refusal.cause == Some(TIMED_NODE_REFERENCE)
+            ),
+            "one row for a repeated variable is not a missing row: {path:?}"
+        );
+    }
 }
 
 #[trace("TC-483", "FR-038-AC-561")]
@@ -3632,7 +3793,7 @@ fn tc_483_rows_out_of_quantifier_order_refuse_at_the_later_trace() {
 
 #[trace("TC-483", "FR-038-AC-561")]
 #[test]
-fn tc_483_the_rows_of_one_occurrence_share_one_clock_role() {
+fn tc_483_a_behaviours_row_carries_its_wrappers_clock_text() {
     let (mut package, _, _) = hyper_clock_fixture(&["s", "n"]);
     package["temporal_bindings"][1]["clock_name"] = json!("another-role");
     refusal_at_trace(&package, "/temporal_bindings/1/clock_name");
@@ -3674,11 +3835,7 @@ fn tc_483_an_empty_or_null_trace_is_malformed_wire() {
                     .path
                     .as_ref()
                     .map(|path| path.as_str().to_owned());
-                assert!(
-                    path.as_deref()
-                        .is_some_and(|path| path.starts_with("/temporal_bindings/0")),
-                    "{bad}: {path:?}"
-                );
+                assert_eq!(path.as_deref(), Some("/temporal_bindings/0/trace"), "{bad}");
             }
             other => panic!("{bad}: expected a refusal, read {other:?}"),
         }

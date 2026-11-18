@@ -20,12 +20,17 @@ finite domain.
    on the hyperproperty node, `trace` `s` then `n`, and no row for its body
    wrapper. Read a one-trace node; expect admission.
 2. Give the two rows different `sequence_authority` values; expect admission.
-3. Read a finite-domain hyperproperty with two traces; expect two rows; drop
-   one; expect `timed-node-reference` at the node's body.
+3. Read a finite-domain hyperproperty with traces `a` and `b`; expect two rows
+   with the role `t`; drop one, set a trace to `c`, set the second row's
+   `clock_name` to `u`, give a row a `fixed_sample` configuration; expect
+   `timed-node-reference` at the node's body, the row's `trace`,
+   `/temporal_bindings/1/clock_name` and the row's `clock/kind`.
 4. Key a row on the body wrapper; expect `timed-node-reference` at its
    `declaration`.
 5. Read two hyperproperty nodes sharing one wrapper with different
-   quantifiers; expect each node's own rows.
+   quantifiers, one the other's reverse with a third trace; expect each node's
+   own rows in its own order; write the reverse's rows in the other's order,
+   and omit the third trace's row; expect the stated refusals.
 6. Remove the `n` row, and the `s` row; expect
    `invalid_package`/`timed-node-reference` at the node body.
 7. Set the second row's `trace` to `x`; remove the first row's `trace`; expect
@@ -36,8 +41,10 @@ finite domain.
     its `clock_name`.
 11. Add `trace` to a single-trace clause's row; expect
     `timed-node-reference` at its `trace`.
-12. Set `trace` to the empty string, `null` and a number; expect `malformed_wire`.
-13. Round-trip a row with and without `trace` through the row type.
+12. Give two Groups one variable; expect `conflicting-definition` at the
+    second row, and no missing-row refusal when only one row is present.
+13. Set `trace` to the empty string, `null` and a number; expect `malformed_wire`.
+14. Round-trip a row with and without `trace` through the row type.
 
 ## Expected Results
 
