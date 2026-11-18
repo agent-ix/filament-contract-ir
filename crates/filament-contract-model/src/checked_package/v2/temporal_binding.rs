@@ -518,9 +518,7 @@ fn hyper_wrappers<'t>(
         else {
             continue;
         };
-        if kinds[target] != CheckedNodeKind::Temporal(TemporalForm::TemporalClause)
-            || wrappers.iter().any(|(known, _)| *known == target)
-        {
+        if kinds[target] != CheckedNodeKind::Temporal(TemporalForm::TemporalClause) {
             continue;
         }
         let mut variables = meter.vec(groups.len())?;

@@ -3553,6 +3553,18 @@ fn tc_480_a_trace_on_a_single_trace_row_refuses_at_its_trace() {
     select_profile(&mut package, BOUNDED);
     settle(&mut package);
     admitted("single-trace clause", &package);
+    let mut missing = package.clone();
+    missing
+        .as_object_mut()
+        .expect("package")
+        .remove("temporal_bindings");
+    expect(
+        "a single-trace clause without its row",
+        &missing,
+        Code::InvalidPackage,
+        TIMED_NODE_REFERENCE,
+        &at_node(clause(&package), "/body"),
+    );
     package["temporal_bindings"][0]["trace"] = json!("s");
     refusal_at_declaration_trace(&package, "/temporal_bindings/0/trace");
 }
