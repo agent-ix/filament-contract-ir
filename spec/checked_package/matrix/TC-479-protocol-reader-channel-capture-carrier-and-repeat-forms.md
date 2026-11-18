@@ -38,7 +38,8 @@ packages built in the test.
 6. Add `test` `post` to a `repeat` whose guard reads its body's binder with
    no, 3 and 1 `maximum`; expect admission. Set `maximum` 0, `test` `pre` and
    `middle`, and drop `test`; expect the stated refusals. Compare node bytes
-. Read a post-test `repeat` whose `invariant` and `variant` read the body's
+   and ids of the pre-test and post-test forms (FR-372-AC-6).
+7. Read a post-test `repeat` whose `invariant` and `variant` read the body's
    every-path binder; expect admission. Make its `visible` entry read a binder
    one `choice` branch binds; expect `missing_declaration`/`missing-name`.
    Admit pre-test `repeat`s whose `visible` entry, and whose `invariant` and
