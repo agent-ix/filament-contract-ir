@@ -1593,7 +1593,7 @@ fn commit_record_is_ineligible_at_a_decision() {
         json!("commit");
     package["semantic_graph"]["nodes"][commit]["body"]["arguments"] = json!([
         {"term": "binding", "name": "role", "value": role},
-        {"term": "binding", "name": "binder", "value": {"term": "reference", "target": binder_key}},
+        {"term": "binding", "name": "binder", "value": {"term": "reference", "target": binder.clone()}},
         {"term": "binding", "name": "constraint", "value": constraint}
     ]);
     package["semantic_graph"]["nodes"][field]["body"]["arguments"][0]["target"] = binder;
@@ -2577,6 +2577,14 @@ fn ownerless_protocol_clause_over_a_bounded_integer_is_admitted() {
         matches!(result, CheckedPackageV2ReadResult::Admitted(_)),
         "ownerless non-object clause should admit: {result:?}"
     );
+
+    let mut malformed = package;
+    malformed["semantic_graph"]["nodes"][clause]["body"]["arguments"] = json!([]);
+    settle(&mut malformed);
+    let CheckedPackageV2ReadResult::Refused(refusal) = read(&malformed) else {
+        panic!("ownerless non-object clause with malformed layout must refuse");
+    };
+    assert_eq!(refusal.code, CheckedPackageRefusalCode::MalformedWire);
 }
 
 /// Trace: FR-064-AC-3, FR-064-AC-4

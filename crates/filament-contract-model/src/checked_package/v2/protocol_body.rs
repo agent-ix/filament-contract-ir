@@ -6613,7 +6613,51 @@ pub(super) fn validate_protocol_nodes(
             continue;
         }
         let node = &nodes[position];
-        let Some(owner_model) = node.owner_model.as_ref() else {
+        if let Some(owner_model) = node.owner_model.as_ref() {
+            let owner_at = || node_path(position).key("owner_model");
+            let owner_position = index.get(owner_model).copied().ok_or_else(|| {
+                refuse_at(
+                    meter,
+                    Code::MissingDeclaration,
+                    Some(Cause::MissingName),
+                    owner_at(),
+                    &node.node_id,
+                )
+            })?;
+            let target = &nodes[owner_position];
+            if kinds[owner_position] != CheckedNodeKind::Model(ModelForm::ObjectType) {
+                return Err(refuse_at(
+                    meter,
+                    Code::InvalidModelBinding,
+                    Some(Cause::MalformedDeclaration),
+                    owner_at(),
+                    &node.node_id,
+                ));
+            }
+            // A source-declared object type joins its lock entry in the owner
+            // step, so the clause edge needs no selected model row.
+            if !super::source_object::is_source_declared_object_type(target, kinds[owner_position])
+            {
+                let owner = owners.recover(target).map_err(|failure| {
+                    refuse_at(
+                        meter,
+                        failure.code,
+                        Some(failure.cause),
+                        owner_at(),
+                        &node.node_id,
+                    )
+                })?;
+                if owner.form != super::model_members::DeclarationForm::ObjectType {
+                    return Err(refuse_at(
+                        meter,
+                        Code::InvalidModelBinding,
+                        Some(Cause::MalformedDeclaration),
+                        owner_at(),
+                        &node.node_id,
+                    ));
+                }
+            }
+        } else {
             let over = validated[position]
                 .and_then(|(_, arguments)| argument(arguments, 0))
                 .and_then(reference_target)
@@ -6627,49 +6671,6 @@ pub(super) fn validate_protocol_nodes(
                     meter,
                     Code::MalformedWire,
                     node_path(position),
-                ));
-            }
-            continue;
-        };
-        let owner_at = || node_path(position).key("owner_model");
-        let owner_position = index.get(owner_model).copied().ok_or_else(|| {
-            refuse_at(
-                meter,
-                Code::MissingDeclaration,
-                Some(Cause::MissingName),
-                owner_at(),
-                &node.node_id,
-            )
-        })?;
-        let target = &nodes[owner_position];
-        if kinds[owner_position] != CheckedNodeKind::Model(ModelForm::ObjectType) {
-            return Err(refuse_at(
-                meter,
-                Code::InvalidModelBinding,
-                Some(Cause::MalformedDeclaration),
-                owner_at(),
-                &node.node_id,
-            ));
-        }
-        // A source-declared object type joins its lock entry in the owner
-        // step, so the clause edge needs no selected model row.
-        if !super::source_object::is_source_declared_object_type(target, kinds[owner_position]) {
-            let owner = owners.recover(target).map_err(|failure| {
-                refuse_at(
-                    meter,
-                    failure.code,
-                    Some(failure.cause),
-                    owner_at(),
-                    &node.node_id,
-                )
-            })?;
-            if owner.form != super::model_members::DeclarationForm::ObjectType {
-                return Err(refuse_at(
-                    meter,
-                    Code::InvalidModelBinding,
-                    Some(Cause::MalformedDeclaration),
-                    owner_at(),
-                    &node.node_id,
                 ));
             }
         }
