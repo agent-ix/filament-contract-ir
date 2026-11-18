@@ -24,12 +24,12 @@ use filament_contract_model::{
     SelectedTupleDeclarationRow,
 };
 use filament_exact::{
-    record, CardinalityBound, CollectionKind, CollectionType, ConstructionCause, EffectiveId,
-    FieldValue, Integer, MemberId, MemberOwner, NodeKey, OriginalDeclarationKey, PathSegment,
-    Presence, UnitId, Value as ExactValue, ValueType,
+    CardinalityBound, CollectionKind, CollectionType, ConstructionCause, EffectiveId, FieldValue,
+    Integer, MemberId, MemberOwner, NodeKey, OriginalDeclarationKey, PathSegment, Presence, UnitId,
+    Value as ExactValue, ValueType, record,
 };
 use ix_trace_rs::trace;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::BTreeMap;
 
 const IDENTITY: &str = "acme/orders";
@@ -873,12 +873,17 @@ fn node_id(key: &str) -> Value {
 fn path_label(id: &CheckedNodeId) -> String {
     match id.path.as_slice() {
         [CheckedNodePathSegment::Name(name)] => name.to_string(),
-        [CheckedNodePathSegment::Name(tag), CheckedNodePathSegment::Name(form), CheckedNodePathSegment::Name(declaration)]
-            if id.package.as_ref() == IDENTITY =>
-        {
+        [
+            CheckedNodePathSegment::Name(tag),
+            CheckedNodePathSegment::Name(form),
+            CheckedNodePathSegment::Name(declaration),
+        ] if id.package.as_ref() == IDENTITY => {
             format!("model:{tag}:{form}:{declaration}")
         }
-        [CheckedNodePathSegment::Name(first), CheckedNodePathSegment::Name(second)] => {
+        [
+            CheckedNodePathSegment::Name(first),
+            CheckedNodePathSegment::Name(second),
+        ] => {
             format!("qualified:{first}/{second}")
         }
         other => panic!("unexpected fixture identity path {other:?}"),
@@ -2385,6 +2390,71 @@ fn selected_facts_join_only_explicit_model_field_and_charge_full_emission_rows()
     );
 }
 
+/// FR-322: the strict reader admits Float schedules only for direct operands;
+/// even an explicit conversion to the same float type invalidates the witness.
+#[trace("FR-322")]
+#[test]
+fn strict_reader_rejects_float_equality_conversion_targets() {
+    let selected = document(vec![]);
+    let (mut wire, evidence, _) = self::package(&selected, &[], &[]);
+    let float = "native/float32";
+    let boolean = "native/boolean";
+    let equality = "selected/float-equality";
+    let ieee_profile = json!({
+        "authority":"agent-ix",
+        "identity":"filament.value.ieee754-2019-default/v1"
+    });
+    wire["lock"]["definition_selections"] = json!([ieee_profile.clone()]);
+    wire["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .extend([
+            wire_node(float, "scalar_type", "float32", float, &[], empty()),
+            wire_node(boolean, "scalar_type", "boolean", boolean, &[], empty()),
+        ]);
+    let mut equality_node = wire_node(
+        equality,
+        "expression",
+        "call",
+        boolean,
+        &[float],
+        json!({"term":"application", "operator":"call",
+            "operation":{"identity":"filament.op.ieee.numeric_equal",
+                "laws":[{"role":"ieee_profile", "definition":ieee_profile}], "mode":null,
+                "member":null, "leaves":[]},
+            "result_type":node_id(boolean),
+            "arguments":[reference(float), reference(float)]}),
+    );
+    equality_node["occurrences"] = json!([{"role":"expression", "ordinal":0}]);
+    wire["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .push(equality_node);
+    wire["checked_term_data"] = json!({
+        "equality_decisions":[{
+            "application":node_id(equality),
+            "occurrence":{"role":"expression", "ordinal":0},
+            "term_path":[], "operator":"equal", "schedule":"float",
+            "left":{"operand":0, "source_type":node_id(float), "conversion_target":null},
+            "right":{"operand":1, "source_type":node_id(float), "conversion_target":null},
+            "units":[], "enum_members":[]
+        }],
+        "protocol_locations":[], "dispatch_tables":[], "probabilistic_claims":[]
+    });
+    settle(&mut wire);
+    assert!(matches!(
+        read_with(&wire, &evidence, CheckedPackageReadLimits::bounded()),
+        CheckedPackageV2ReadResult::Admitted(_)
+    ));
+    wire["checked_term_data"]["equality_decisions"][0]["left"]["conversion_target"] =
+        node_id(float);
+    settle(&mut wire);
+    assert!(matches!(
+        read_with(&wire, &evidence, CheckedPackageReadLimits::bounded()),
+        CheckedPackageV2ReadResult::Refused(_)
+    ));
+}
+
 /// A flattened field set cannot stand in for an authored redefinition link.
 #[test]
 fn selected_runtime_types_refuse_unprojected_object_redefinition() {
@@ -2845,14 +2915,16 @@ fn selected_tuple_positions_require_matching_unique_stage_rows() {
         )
         .unwrap();
     assert!(long_view.work() > view.work() + 4000);
-    assert!(admitted
-        .project_selected_type_declarations(
-            &identities,
-            std::slice::from_ref(&long_row),
-            &[],
-            &mut filament_contract_model::NativeJoinBudget::new(long_view.work(), u64::MAX)
-        )
-        .is_ok());
+    assert!(
+        admitted
+            .project_selected_type_declarations(
+                &identities,
+                std::slice::from_ref(&long_row),
+                &[],
+                &mut filament_contract_model::NativeJoinBudget::new(long_view.work(), u64::MAX)
+            )
+            .is_ok()
+    );
     let one_less = admitted
         .project_selected_type_declarations(
             &identities,
@@ -3116,14 +3188,16 @@ fn selected_record_many_fields_respects_exact_work_boundary() {
     assert_eq!(view.records()[0].view().fields()[0].name(), names[0]);
     assert_eq!(view.records()[0].view().fields()[127].name(), names[127]);
     assert!(view.work() < 30_000);
-    assert!(admitted
-        .project_selected_type_declarations(
-            &identities,
-            &[],
-            &[],
-            &mut filament_contract_model::NativeJoinBudget::new(view.work(), u64::MAX)
-        )
-        .is_ok());
+    assert!(
+        admitted
+            .project_selected_type_declarations(
+                &identities,
+                &[],
+                &[],
+                &mut filament_contract_model::NativeJoinBudget::new(view.work(), u64::MAX)
+            )
+            .is_ok()
+    );
     let one_less = admitted
         .project_selected_type_declarations(
             &identities,

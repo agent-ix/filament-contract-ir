@@ -76,7 +76,7 @@ use super::{
     RawSemanticNodeV2 as CheckedSemanticNodeV2, RelationForm, ScalarTypeForm, StateForm,
     TemporalForm, ValueForm,
 };
-use crate::checked_package::common::{node_pointer, ValidationFailure};
+use crate::checked_package::common::{ValidationFailure, node_pointer};
 use crate::checked_package::shared::CheckedOperandEntry;
 use crate::checked_package::shared::{
     CheckedNodeId, CheckedNodePathSegment, CheckedOccurrenceRole, CheckedPackageRefusalCode,
@@ -289,7 +289,8 @@ impl StructuralForm {
                 | BoundedDomainForm::FloatRounding
                 | BoundedDomainForm::TextBounds
                 | BoundedDomainForm::CollectionBounds
-                | BoundedDomainForm::ModelPopulation,
+                | BoundedDomainForm::ModelPopulation
+                | BoundedDomainForm::FiniteTracePopulation,
             ) => None,
             K::Value(ValueForm::UnionValue) => Some(Self::UnionValue),
             K::Value(
@@ -1084,6 +1085,17 @@ pub(super) fn validate_derived_type_shapes(
                         _ => false,
                     }
                 })
+            }
+            CheckedNodeKind::BoundedDomain(BoundedDomainForm::FiniteTracePopulation) => {
+                graph.kind(&node.semantic_type)
+                    == Some(CheckedNodeKind::CompositeType(CompositeTypeForm::Record))
+                    && term.and_then(typed_aggregate).is_some_and(|members| {
+                        let [member] = members else { return false; };
+                        let Some(CheckedTerm::Literal { type_id, value_kind: LiteralKind::Integer, value }) =
+                            typed_binding(member, "bound") else { return false; };
+                        value.as_str().is_some_and(is_positive_integer)
+                            && graph.type_matches(type_id, ScalarTypeForm::Integer)
+                    })
             }
             CheckedNodeKind::Relation(RelationForm::Population) => {
                 node.semantic_type == node.node_id
@@ -2317,7 +2329,7 @@ mod tests {
     use super::*;
     use crate::checked_package::shared::checked_node_comparisons;
     use ix_trace_rs::trace;
-    use serde_json::{json, Value};
+    use serde_json::{Value, json};
     use std::collections::BTreeSet;
 
     #[trace("TC-472", "FR-038-AC-511", "FR-038-AC-512")]

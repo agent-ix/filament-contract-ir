@@ -26,8 +26,8 @@ use filament_semantic_value::declaration::{
     EqualityUnitDescriptor, EqualityUnitEdgeDescriptor, EqualityUnitForm,
 };
 use filament_semantic_value::reader_admission::{
-    mint_admitted_equality_decision, EqualityMaterializationCode, EqualityMaterializationError,
-    EqualityMaterializationLocus, ReaderSeal,
+    EqualityMaterializationCode, EqualityMaterializationError, EqualityMaterializationLocus,
+    ReaderSeal, mint_admitted_equality_decision,
 };
 use std::collections::BTreeSet;
 
@@ -2320,6 +2320,17 @@ impl CheckedPackageV2 {
             super::CheckedEqualitySchedule::Plan => EqualitySchedule::Plan,
         };
         if schedule == EqualitySchedule::Float {
+            if decision.left.conversion_target.is_some()
+                || decision.right.conversion_target.is_some()
+            {
+                return Err(read_error(
+                    work,
+                    AdmittedEqualityReadErrorCode::MismatchedEqualityWitness,
+                    application,
+                    &decision.right.source_type,
+                    0,
+                ));
+            }
             let left_type = left.target().unwrap_or_else(|| left.source());
             let right_type = right.target().unwrap_or_else(|| right.source());
             if !matches!(left_type, ValueType::Float(_))

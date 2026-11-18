@@ -16,7 +16,7 @@ use super::{
     ScalarTypeForm, StateForm, TemporalForm, ValueForm, WorkMeter,
 };
 use super::{CheckedPackageLockV2, RawCheckedPackageWireV2};
-use crate::checked_package::common::{node_pointer, ValidationFailure};
+use crate::checked_package::common::{ValidationFailure, node_pointer};
 use crate::checked_package::shared::CheckedOperandEntry;
 use crate::checked_package::shared::{
     CheckedNodeId, CheckedNodePathSegment, CheckedPackageRefusal, CheckedPackageRefusalCause,
@@ -1177,7 +1177,8 @@ impl NominalKind {
                 | BoundedDomainForm::FloatRounding
                 | BoundedDomainForm::TextBounds
                 | BoundedDomainForm::CollectionBounds
-                | BoundedDomainForm::ModelPopulation,
+                | BoundedDomainForm::ModelPopulation
+                | BoundedDomainForm::FiniteTracePopulation,
             ) => None,
             K::Value(
                 ValueForm::Literal
@@ -3388,8 +3389,8 @@ fn validate_unit_path(
 
 #[cfg(test)]
 mod tests {
-    use super::super::checked_json::CheckedJson;
     use super::super::RawSemanticNodeV2 as CheckedSemanticNodeV2;
+    use super::super::checked_json::CheckedJson;
     use super::*;
     use crate::NativeJoinBudget;
     use ix_trace_rs::trace;
@@ -3769,9 +3770,11 @@ mod tests {
         let term = super::super::CheckedTerm::NominalBody(Box::new(parsed));
         let encoded = quire_canonical::to_vec(&term, quire_canonical::Limits::new(1 << 22))
             .expect("indexed encoding");
-        assert!(encoded
-            .windows(b"\"node\":0".len())
-            .any(|part| part == b"\"node\":0"));
+        assert!(
+            encoded
+                .windows(b"\"node\":0".len())
+                .any(|part| part == b"\"node\":0")
+        );
 
         // The old inline operand spelling is not a V2 node ID. The NI-13
         // conformance control covers 100,001 valid graph-local indexed keys

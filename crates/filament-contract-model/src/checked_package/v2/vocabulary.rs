@@ -177,6 +177,7 @@ closed_vocabulary! {
         TextBounds => "text_bounds",
         CollectionBounds => "collection_bounds",
         ModelPopulation => "model_population",
+        FiniteTracePopulation => "finite_trace_population",
     }
 }
 

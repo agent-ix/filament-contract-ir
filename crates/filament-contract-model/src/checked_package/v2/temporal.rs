@@ -36,13 +36,13 @@ use super::operations::resolve_family;
 // These validators consume the strict decoder's authenticated typed table.
 use super::structural::typed_admitted_reference as typed_reference;
 use super::{
-    member_pointer, ApplicationOperator, CheckedDiagnosticV2, CheckedNodeKind,
-    CheckedPackageLockV2, CheckedSelectionRole, CheckedTerm, ClockConfiguration,
-    FairnessGranularity, FairnessKind, HybridForm, IntervalEnd, IntervalFit, LawRole, LiteralKind,
-    ModelForm, OperationMemberKind, RawSemanticNodeV2 as CheckedSemanticNodeV2, TemporalBinding,
-    TemporalForm, TemporalProfile, TermNode, TermView, ValueForm, WorkMeter,
+    ApplicationOperator, CheckedDiagnosticV2, CheckedNodeKind, CheckedPackageLockV2,
+    CheckedSelectionRole, CheckedTerm, ClockConfiguration, FairnessGranularity, FairnessKind,
+    HybridForm, IntervalEnd, IntervalFit, LawRole, LiteralKind, ModelForm, OperationMemberKind,
+    RawSemanticNodeV2 as CheckedSemanticNodeV2, TemporalBinding, TemporalForm, TemporalProfile,
+    TermNode, TermView, ValueForm, WorkMeter, member_pointer,
 };
-use crate::checked_package::common::{node_pointer, ValidationFailure};
+use crate::checked_package::common::{ValidationFailure, node_pointer};
 use crate::checked_package::shared::{
     CheckedArtifactRef, CheckedNodeId, CheckedNodePathSegment, CheckedPackageRefusalCause,
     CheckedPackageRefusalCode, JsonPointer,
@@ -986,14 +986,18 @@ fn read_interval_member_node(
         } else {
             Some(need!(rational(upper, meter)?))
         },
-        lower_end: need!(interval
-            .get("lower_end")
-            .and_then(TermNode::as_str)
-            .and_then(IntervalEnd::from_wire)),
-        upper_end: need!(interval
-            .get("upper_end")
-            .and_then(TermNode::as_str)
-            .and_then(IntervalEnd::from_wire)),
+        lower_end: need!(
+            interval
+                .get("lower_end")
+                .and_then(TermNode::as_str)
+                .and_then(IntervalEnd::from_wire)
+        ),
+        upper_end: need!(
+            interval
+                .get("upper_end")
+                .and_then(TermNode::as_str)
+                .and_then(IntervalEnd::from_wire)
+        ),
     }))
 }
 
@@ -2402,7 +2406,11 @@ fn check_hyper_shape(
     let value_of = |at: usize| binding(&members[at]).map(|(_, value)| value);
     let at_value = |at: usize| at_body().key("members").index(at).key("value");
     let domain = value_of(0).ok_or_else(|| graph_defect(at_value(0)))?;
-    let finite = typed_reference(domain).is_some();
+    let finite = typed_reference(domain)
+        .and_then(|target| graph.node(target))
+        .is_some_and(|(_, kind)| {
+            kind == CheckedNodeKind::BoundedDomain(BoundedDomainForm::FiniteTracePopulation)
+        });
     let domain_text = match domain {
         CheckedTerm::Literal {
             value_kind: LiteralKind::Text,
@@ -2414,6 +2422,12 @@ fn check_hyper_shape(
     if !finite && domain_text != Some("behaviours") {
         return Err(graph_defect(at_value(0)));
     }
+    let Some(CheckedTerm::Aggregate {
+        members: parameters,
+    }) = value_of(2)
+    else {
+        return Err(graph_defect(at_value(2)));
+    };
     let Some(CheckedTerm::Aggregate { members: subjects }) = value_of(1) else {
         return Err(graph_defect(at_value(1)));
     };
@@ -2423,9 +2437,25 @@ fn check_hyper_shape(
     else {
         return Err(graph_defect(at_value(3)));
     };
+    let Some(CheckedTerm::Aggregate { members: matched }) = value_of(4) else {
+        return Err(graph_defect(at_value(4)));
+    };
+    let Some(CheckedTerm::Aggregate {
+        members: align_skip,
+    }) = value_of(5)
+    else {
+        return Err(graph_defect(at_value(5)));
+    };
     // Step 1: a finite domain has no subjects; each quantifier Group.
     if finite && !subjects.is_empty() {
         return Err(graph_defect(at_value(1).key("members").index(0)));
+    }
+    if finite {
+        for (at, terms) in [(2, parameters), (4, matched), (5, align_skip)] {
+            if !terms.is_empty() {
+                return Err(graph_defect(at_value(at).key("members").index(0)));
+            }
+        }
     }
     let bindings_in_group: usize = if finite { 2 } else { 3 };
     let mut aliases = meter.vec(quantifiers.len())?;
@@ -2866,7 +2896,7 @@ mod tests {
     #[trace("TC-472", "FR-038-AC-516", "FR-038-AC-5")]
     #[test]
     fn invalid_reference_id_refuses_in_the_graph_term_pass_before_temporal_views() {
-        use crate::checked_package::common::{validate_term, Step, TermGrammar, Trail};
+        use crate::checked_package::common::{Step, TermGrammar, Trail, validate_term};
         let body = CheckedJson::from_value(&json!({"term":"reference","target":{
             "package":"", "path":[], "ordinal":0
         }}))

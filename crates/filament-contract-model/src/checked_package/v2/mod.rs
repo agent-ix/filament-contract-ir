@@ -2601,7 +2601,8 @@ fn declaration_forbidden(kind: CheckedNodeKind) -> bool {
             | BoundedDomainForm::FloatRounding
             | BoundedDomainForm::TextBounds
             | BoundedDomainForm::CollectionBounds
-            | BoundedDomainForm::ModelPopulation,
+            | BoundedDomainForm::ModelPopulation
+            | BoundedDomainForm::FiniteTracePopulation,
         ) => false,
         // FSL FR-092: a parameter names its binder's value; it declares no
         // name of its own. FSpec FR-440: a union value carries no
@@ -3032,7 +3033,8 @@ fn body_grammar(kind: CheckedNodeKind) -> BodyGrammar {
             | BoundedDomainForm::FloatRounding
             | BoundedDomainForm::TextBounds
             | BoundedDomainForm::CollectionBounds
-            | BoundedDomainForm::ModelPopulation,
+            | BoundedDomainForm::ModelPopulation
+            | BoundedDomainForm::FiniteTracePopulation,
         ) => BodyGrammar::Term,
         K::Value(ValueForm::Literal) => BodyGrammar::Literal,
         K::Value(

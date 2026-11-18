@@ -22,7 +22,7 @@ use filament_contract_model::{
     CheckedPackageV2ReadResult, CompleteLoweringProfileV2, CompleteLoweringRecordV2,
 };
 use ix_trace_rs::trace;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 // ---------------------------------------------------------------------------
@@ -638,8 +638,8 @@ fn tc_048_temporal_members_keep_their_closed_shape_for_population() {
     ] {
         admitted(label, &package);
         let mut with_population = package.clone();
-        with_population["semantic_graph"]["nodes"][position]["body"]["operation"]["member"]
-            ["population"] = node_id(&"a".repeat(64));
+        with_population["semantic_graph"]["nodes"][position]["body"]["operation"]["member"]["population"] =
+            node_id(&"a".repeat(64));
         settle(&mut with_population);
         let mut with_stray = package;
         with_stray["semantic_graph"]["nodes"][position]["body"]["operation"]["member"]["stray"] =
@@ -2058,8 +2058,8 @@ fn tc_048_wrong_declaring_nodes_cannot_name_a_fairness_operation() {
         CheckedPackageV2ReadResult::Admitted(_)
     ));
 
-    package["semantic_graph"]["nodes"][fair]["body"]["operation"]["member"]["target"]
-        ["declaration"] = node_id(&interface_key);
+    package["semantic_graph"]["nodes"][fair]["body"]["operation"]["member"]["target"]["declaration"] =
+        node_id(&interface_key);
     settle(&mut package);
     let CheckedPackageV2ReadResult::Refused(refusal) =
         read_with_model(&package, &document, CheckedPackageReadLimits::bounded())
@@ -2373,8 +2373,8 @@ fn tc_048_each_of_the_five_fr_250_profiles_admits_as_the_clause_profile() {
 pub(super) fn clause_law(identity: &str, lock_row: Option<(&str, &str)>) -> (Value, usize) {
     let mut package = v2_all_families();
     let clause_at = clause(&package);
-    package["semantic_graph"]["nodes"][clause_at]["body"]["operation"]["laws"][0]["definition"]
-        ["identity"] = json!(identity);
+    package["semantic_graph"]["nodes"][clause_at]["body"]["operation"]["laws"][0]["definition"]["identity"] =
+        json!(identity);
     if let Some((role, definition)) = lock_row {
         package["lock"]["profile_selections"]
             .as_array_mut()
@@ -2505,8 +2505,8 @@ fn tc_048_an_unknown_profile_is_checked_first_and_is_not_read_as_bounded() {
     let root = find_identity(&package, &temporal_identity("eventually"));
     package["semantic_graph"]["nodes"][root]["body"]["operation"]["member"] = unbounded();
     let clause_at = clause(&package);
-    package["semantic_graph"]["nodes"][clause_at]["body"]["operation"]["laws"][0]["definition"]
-        ["identity"] = json!("filament.fixture.temporal-profile/v1");
+    package["semantic_graph"]["nodes"][clause_at]["body"]["operation"]["laws"][0]["definition"]["identity"] =
+        json!("filament.fixture.temporal-profile/v1");
     package["semantic_graph"]["nodes"][clause_at]["body"]["arguments"][0] = refer(&aaaa());
     settle(&mut package);
     expect(
@@ -2527,8 +2527,8 @@ fn tc_048_unknown_profile_precedes_temporal_binding_profile_join() {
     let mut package = v2_all_families();
     let mut binding = package["temporal_bindings"][0].clone();
     let clause_at = clause(&package);
-    package["semantic_graph"]["nodes"][clause_at]["body"]["operation"]["laws"][0]["definition"]
-        ["identity"] = json!("filament.fixture.temporal-profile/v1");
+    package["semantic_graph"]["nodes"][clause_at]["body"]["operation"]["laws"][0]["definition"]["identity"] =
+        json!("filament.fixture.temporal-profile/v1");
     settle(&mut package);
 
     let current_clause = clause(&package);
@@ -2617,11 +2617,11 @@ fn tc_048_the_lower_key_clause_is_read_first_whatever_its_defect() {
             let added = second_clause(&mut package, "other", closed("0", "3"), own_is_unknown);
             let own = clause(&package);
             if own_is_unknown {
-                package["semantic_graph"]["nodes"][own]["body"]["operation"]["laws"][0]
-                    ["definition"]["identity"] = json!("filament.fixture.temporal-profile/v1");
+                package["semantic_graph"]["nodes"][own]["body"]["operation"]["laws"][0]["definition"]
+                    ["identity"] = json!("filament.fixture.temporal-profile/v1");
             } else {
-                package["semantic_graph"]["nodes"][added]["body"]["operation"]["laws"][0]
-                    ["definition"]["identity"] = json!("filament.fixture.temporal-profile/v1");
+                package["semantic_graph"]["nodes"][added]["body"]["operation"]["laws"][0]["definition"]
+                    ["identity"] = json!("filament.fixture.temporal-profile/v1");
                 package["semantic_graph"]["nodes"][own]["body"]["arguments"][0] = refer(&aaaa());
             }
             if lower_is_own {
@@ -3908,6 +3908,19 @@ fn tc_346_the_hyperproperty_body_is_checked_after_its_subjects_and_before_its_fa
 /// its domain is a reference and its Groups bind no alias.
 fn finite_hyper(edit: impl FnOnce(&mut Value)) -> (Value, usize) {
     let mut package = v2_all_families();
+    let record = node_label(&package, find_form(&package, "composite_type", "record"));
+    let integer = node_label(&package, find_form(&package, "scalar_type", "integer"));
+    let finite_domain = fresh();
+    let mut domain_node = node_with_key(
+        &finite_domain,
+        "bounded_domain",
+        "finite_trace_population",
+        json!({"term":"aggregate", "members":[named("bound", json!({
+            "term":"literal", "type":node_id(&integer), "value_kind":"integer", "value":"3"
+        }))]}),
+    );
+    domain_node["semantic_type"] = node_id(&record);
+    push(&mut package, domain_node);
     let boolean_expression = find_form(&package, "expression", "reference");
     let body = refer(&node_label(&package, boolean_expression));
     let mut node = hyperproperty(
@@ -3918,7 +3931,7 @@ fn finite_hyper(edit: impl FnOnce(&mut Value)) -> (Value, usize) {
         vec![],
         body,
     );
-    node["body"]["members"][0]["value"] = refer(&aaaa());
+    node["body"]["members"][0]["value"] = refer(&finite_domain);
     node["body"]["members"][1]["value"]["members"] = json!([]);
     edit(&mut node["body"]);
     let at = push(&mut package, node);
@@ -3930,7 +3943,32 @@ fn finite_hyper(edit: impl FnOnce(&mut Value)) -> (Value, usize) {
 #[test]
 fn tc_346_a_finite_domain_hyperproperty_has_no_subjects_alias_or_fairness_and_a_boolean_body() {
     let (package, _) = finite_hyper(|_| {});
-    admitted("a finite-domain hyperproperty", &package);
+    let admitted_package = admitted("a finite-domain hyperproperty", &package);
+    let domain = nodes(&package)
+        .iter()
+        .find(|node| node["semantic_form"] == "finite_trace_population")
+        .expect("finite trace domain node");
+    let claim = nodes(&package)
+        .iter()
+        .find(|node| node["semantic_form"] == "hyperproperty")
+        .expect("hyperproperty node");
+    assert!(
+        claim["dependencies"]
+            .as_array()
+            .expect("dependency list")
+            .contains(&domain["node_id"])
+    );
+    assert!(
+        admitted_package
+            .graph()
+            .nodes
+            .iter()
+            .any(|node| {
+                node.node_id
+                    == serde_json::from_value(domain["node_id"].clone())
+                        .expect("finite trace node ID")
+            })
+    );
     // A body that is a `value` node, not an `expression` node.
     let (package, at) = finite_hyper(|body| {
         body["members"][6]["value"] = refer(&aaaa());
@@ -3982,6 +4020,47 @@ fn tc_346_a_finite_domain_hyperproperty_has_no_subjects_alias_or_fairness_and_a_
             at_body(at, "/members/3/value/members/0/members/2")
         )
     );
+    let (package, at) = finite_hyper(|body| body["members"][0]["value"] = refer(&aaaa()));
+    assert_eq!(
+        first_refusal("a reference to a non-finite domain", &package),
+        outcome(
+            Code::InvalidSemanticGraph,
+            None,
+            at_body(at, "/members/0/value")
+        )
+    );
+
+    for member_at in [2, 4, 5] {
+        let (package, at) = finite_hyper(|body| {
+            body["members"][member_at]["value"]["members"] = json!([text("unexpected")]);
+        });
+        assert_eq!(
+            first_refusal("a nonempty finite-domain binding", &package),
+            outcome(
+                Code::InvalidSemanticGraph,
+                None,
+                at_body(at, &format!("/members/{member_at}/value/members/0"))
+            )
+        );
+    }
+
+    let (mut package, _) = finite_hyper(|_| {});
+    let domain_at = find_form(&package, "bounded_domain", "finite_trace_population");
+    package["semantic_graph"]["nodes"][domain_at]["body"]["members"][0]["value"]["value"] =
+        json!("0");
+    settle(&mut package);
+    let refusal = refusal_of("a zero finite-trace bound", &package).0;
+    assert_eq!(refusal.0, Code::InvalidPackage);
+    assert_eq!(refusal.1, Some(Cause::InvalidDerivedShape));
+
+    let (mut package, _) = finite_hyper(|_| {});
+    let domain_at = find_form(&package, "bounded_domain", "finite_trace_population");
+    let integer = node_label(&package, find_form(&package, "scalar_type", "integer"));
+    package["semantic_graph"]["nodes"][domain_at]["semantic_type"] = node_id(&integer);
+    settle(&mut package);
+    let refusal = refusal_of("a non-record finite-trace base", &package).0;
+    assert_eq!(refusal.0, Code::InvalidPackage);
+    assert_eq!(refusal.1, Some(Cause::InvalidDerivedShape));
 }
 
 #[trace("TC-346", "FR-038-AC-530")]
