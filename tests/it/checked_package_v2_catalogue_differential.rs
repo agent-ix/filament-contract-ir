@@ -1332,6 +1332,7 @@ fn collection_seq_requires_bounded_inputs_matching_binder_and_sequence() {
         .push(json!({
             "node_id":function_id, "schema_version":"filament.checked-semantic-graph/v2",
             "node_tag":"function", "semantic_form":"pure_function",
+            "check_mode":"linked",
             "semantic_type":sequence_result, "dependencies":[application_id.clone()],
             "occurrences":[{"role":"expression", "ordinal":0}],
             "body":{"term":"aggregate", "members":[
@@ -1341,10 +1342,11 @@ fn collection_seq_requires_bounded_inputs_matching_binder_and_sequence() {
             ]}
         }));
     settle(&mut base);
-    assert!(matches!(
-        read(&base),
-        CheckedPackageV2ReadResult::Admitted(_)
-    ));
+    let base_result = read(&base);
+    assert!(
+        matches!(base_result, CheckedPackageV2ReadResult::Admitted(_)),
+        "function-scoped sequence fixture: {base_result:?}"
+    );
     let application = base["semantic_graph"]["nodes"]
         .as_array()
         .expect("nodes")
