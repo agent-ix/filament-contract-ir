@@ -1,13 +1,13 @@
 //! Closed FR-375 refinement body vocabulary and reader checks.
 
-use super::CheckedTerm;
 use super::graph_storage::{GraphIndex, ResolvedKey, SortedTable};
 use super::protocol_body::ChannelDelivery;
 use super::stage_storage::{
-    Path, charge_amount_at, charge_at, node_path, refuse_at, refuse_unlocated,
+    charge_amount_at, charge_at, node_path, refuse_at, refuse_unlocated, Path,
 };
+use super::CheckedTerm;
 use crate::checked_package::common::{
-    Ids, ReferenceVisitor, TermGrammar, Trail, ValidationFailure, validate_term,
+    validate_term, Ids, ReferenceVisitor, TermGrammar, Trail, ValidationFailure,
 };
 use crate::checked_package::shared::{
     CheckedNodeId, CheckedOccurrenceRole, CheckedSourceMapEntry, CheckedSourceRef,

@@ -26,8 +26,8 @@ use filament_semantic_value::declaration::{
     EqualityUnitDescriptor, EqualityUnitEdgeDescriptor, EqualityUnitForm,
 };
 use filament_semantic_value::reader_admission::{
-    EqualityMaterializationCode, EqualityMaterializationError, EqualityMaterializationLocus,
-    ReaderSeal, mint_admitted_equality_decision,
+    mint_admitted_equality_decision, EqualityMaterializationCode, EqualityMaterializationError,
+    EqualityMaterializationLocus, ReaderSeal,
 };
 use std::collections::BTreeSet;
 
