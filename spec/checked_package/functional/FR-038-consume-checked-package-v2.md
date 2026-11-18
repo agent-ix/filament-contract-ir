@@ -2159,8 +2159,14 @@ step-relation, hybrid and timed-model steps and before the operation step,
 the reader SHALL run the protocol step
 in FSpec FR-464 order: placement;
 operator and law; declarations; member nodes; membership; then clauses.
-Each `protocol`/`protocol_clause` node SHALL carry the exact local
-`owner_model` edge of [FR-064](./FR-064-bind-protocol-clause-to-owner-model.md).
+Each `protocol`/`protocol_clause` node whose `over` type reaches an object
+type SHALL carry the exact local `owner_model` edge of
+[FR-064](./FR-064-bind-protocol-clause-to-owner-model.md); a clause whose
+`over` type reaches none is ownerless and carries no edge.
+The channel `carries` and FIFO key types, model population reads in the
+slots that read model state, the `protocol_reference` carrier in binder scope
+and the post-test `repeat` follow
+[FR-372](./FR-372-admit-bounded-channels-population-captures-reference-carriers-and-post-test-repeats.md).
 The reader SHALL use that identity-bound edge, rather than the `over`
 parameter's type or a step row, to decide which selected model owns the
 clause and which clauses contribute refinement classes.
