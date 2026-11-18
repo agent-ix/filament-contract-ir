@@ -1641,8 +1641,8 @@ pub(in crate::checked_package::v2) mod tests {
     }
 
     fn bounded_text_equality_wire() -> Value {
-        use super::super::LawRole;
         use super::super::operation_catalog::operation_catalog;
+        use super::super::LawRole;
 
         let mut wire = boolean_equality_wire();
         let ids = &fixture().1;
