@@ -3423,14 +3423,21 @@ fn trace_group(variable: &str) -> Value {
     ]})
 }
 
-/// An event-position package whose one clause is the body wrapper of a
-/// hyperproperty quantifying the traces `variables`, with the wrapper's graph
-/// position. `settle` writes one row per trace.
-fn hyper_clock_fixture(variables: &[&str]) -> (Value, usize) {
+/// Gives the hyperproperty node at `at` its one `claim` occurrence.
+fn claim_occurrence(package: &mut Value, at: usize) {
+    package["semantic_graph"]["nodes"][at]["occurrences"] =
+        json!([{"role": "claim", "ordinal": 0}]);
+}
+
+/// An event-position package with a hyperproperty quantifying the traces
+/// `variables` over the clause as its body wrapper: the clause's and the
+/// hyperproperty's graph positions. `settle` writes one row per trace, keyed on
+/// the hyperproperty node.
+fn hyper_clock_fixture(variables: &[&str]) -> (Value, usize, usize) {
     let (mut package, _, keys) =
         hyper_fixture_with(BOUNDED, fairness_member(&model_key(ORDER_NODE), "scaled"));
     let clause_key = keys.split('\n').nth(1).expect("clause").to_owned();
-    push(
+    let hyper = push(
         &mut package,
         hyperproperty(
             "hyperproperty",
@@ -3440,115 +3447,200 @@ fn hyper_clock_fixture(variables: &[&str]) -> (Value, usize) {
             refer(&clause_key),
         ),
     );
+    claim_occurrence(&mut package, hyper);
     settle(&mut package);
     let wrapper = clause(&package);
-    (package, wrapper)
+    (package, wrapper, hyper)
 }
 
 const TIMED_NODE_REFERENCE: Cause = Cause::TimedNodeReference;
 
-#[trace("TC-480", "FR-038-AC-561")]
+fn refusal_at(package: &Value, code: Code, cause: Cause, path: &str) {
+    let ((found_code, found_cause, found), _) = refusal_of("trace refusal", package);
+    assert_eq!(
+        (found_code, found_cause, found.as_deref()),
+        (code, Some(cause), Some(path))
+    );
+}
+
+fn refusal_at_trace(package: &Value, path: &str) {
+    refusal_at(package, Code::InvalidPackage, TIMED_NODE_REFERENCE, path);
+}
+
+#[trace("TC-483", "FR-038-AC-561")]
 #[test]
-fn tc_480_a_hyper_wrapper_carries_one_row_per_quantified_trace() {
+fn tc_483_a_hyperproperty_carries_one_row_per_quantified_trace_and_its_wrapper_none() {
     for variables in [["s", "n"], ["a", "b"]] {
-        let (package, _) = hyper_clock_fixture(&variables);
+        let (package, _, hyper) = hyper_clock_fixture(&variables);
         let admitted = admitted("one row per trace", &package);
         let rows = admitted.temporal_bindings().expect("rows");
         let traces: Vec<_> = rows.iter().map(|row| row.trace.as_deref()).collect();
         assert_eq!(traces, variables.map(Some), "rows ascend by trace position");
-        assert_eq!(rows[0].declaration, rows[1].declaration);
+        let hyper_id = typed_node_id_of(&package, hyper);
+        assert!(rows.iter().all(|row| row.declaration == hyper_id));
         assert_eq!(rows[0].occurrence, rows[1].occurrence);
         assert_eq!(rows[0].clock, rows[1].clock, "two traces of one model");
         assert_eq!(rows[0].clock_name, rows[1].clock_name);
     }
-    let (single, _) = hyper_clock_fixture(&["s"]);
+    let (single, _, _) = hyper_clock_fixture(&["s"]);
     admitted("a single trace", &single);
 }
 
-#[trace("TC-480", "FR-038-AC-561")]
+fn typed_node_id_of(package: &Value, position: usize) -> CheckedNodeId {
+    serde_json::from_value(nodes(package)[position]["node_id"].clone()).expect("node ID")
+}
+
+#[trace("TC-483", "FR-038-AC-561")]
 #[test]
-fn tc_480_a_missing_trace_row_refuses_at_the_wrapper_body() {
-    let (mut package, wrapper) = hyper_clock_fixture(&["s", "n"]);
-    package["temporal_bindings"]
+fn tc_483_each_trace_row_holds_its_own_configuration() {
+    let (mut package, _, _) = hyper_clock_fixture(&["s", "n"]);
+    package["temporal_bindings"][1]["clock"]["sequence_authority"] = json!("another-model");
+    let admitted = admitted("two sequence authorities", &package);
+    let rows = admitted.temporal_bindings().expect("rows");
+    assert_ne!(rows[0].clock, rows[1].clock);
+}
+
+#[trace("TC-483", "FR-038-AC-561")]
+#[test]
+fn tc_483_a_finite_domain_hyperproperty_keeps_its_per_trace_rows() {
+    let (mut package, at) = finite_hyper(|body| {
+        body["members"][3]["value"]["members"]
+            .as_array_mut()
+            .expect("groups")
+            .push(json!({"term": "aggregate", "members": [
+                named("variable", text("b")), named("quantifier", text("forall"))]}));
+    });
+    select_profile(&mut package, BOUNDED);
+    claim_occurrence(&mut package, at);
+    settle(&mut package);
+    let admitted = admitted("a finite domain", &package);
+    let rows = admitted.temporal_bindings().expect("rows");
+    let traces: Vec<_> = rows.iter().filter_map(|row| row.trace.as_deref()).collect();
+    assert_eq!(traces, ["a", "b"]);
+    let mut missing = package.clone();
+    missing["temporal_bindings"]
         .as_array_mut()
         .expect("rows")
         .pop();
-    expect(
-        "missing n row",
-        &package,
+    refusal_at(
+        &missing,
         Code::InvalidPackage,
         TIMED_NODE_REFERENCE,
-        &at_node(wrapper, "/body"),
-    );
-    let (mut package, wrapper) = hyper_clock_fixture(&["s", "n"]);
-    package["temporal_bindings"]
-        .as_array_mut()
-        .expect("rows")
-        .remove(0);
-    expect(
-        "missing s row",
-        &package,
-        Code::InvalidPackage,
-        TIMED_NODE_REFERENCE,
-        &at_node(wrapper, "/body"),
+        &at_node(at, "/body"),
     );
 }
 
-#[trace("TC-480", "FR-038-AC-561")]
+#[trace("TC-483", "FR-038-AC-561")]
 #[test]
-fn tc_480_an_unknown_or_absent_trace_refuses_at_the_row_trace() {
-    let (base, _) = hyper_clock_fixture(&["s", "n"]);
+fn tc_483_a_row_keyed_on_the_body_wrapper_refuses_at_its_declaration() {
+    let (mut package, wrapper, _) = hyper_clock_fixture(&["s", "n"]);
+    package["temporal_bindings"][0]["declaration"] = nodes(&package)[wrapper]["node_id"].clone();
+    refusal_at_trace(&package, "/temporal_bindings/0/declaration");
+}
+
+#[trace("TC-483", "FR-038-AC-561")]
+#[test]
+fn tc_483_hyperproperties_sharing_a_wrapper_each_own_their_rows() {
+    let (mut package, wrapper, _) = hyper_clock_fixture(&["s", "n"]);
+    let clause_key = node_label(&package, wrapper);
+    let second = push(
+        &mut package,
+        hyperproperty(
+            "hyperproperty",
+            vec![trace_group("x"), trace_group("y"), trace_group("z")],
+            vec![],
+            vec![],
+            refer(&clause_key),
+        ),
+    );
+    claim_occurrence(&mut package, second);
+    settle(&mut package);
+    let admitted = admitted("two hyperproperties over one wrapper", &package);
+    let rows = admitted.temporal_bindings().expect("rows");
+    let mut by_node: Vec<(CheckedNodeId, Vec<&str>)> = Vec::new();
+    for row in rows {
+        let trace = row.trace.as_deref().expect("trace");
+        match by_node.iter_mut().find(|(id, _)| *id == row.declaration) {
+            Some((_, traces)) => traces.push(trace),
+            None => by_node.push((row.declaration.clone(), vec![trace])),
+        }
+    }
+    assert_eq!(by_node.len(), 2);
+    assert!(by_node.iter().any(|(_, traces)| traces == &["s", "n"]));
+    assert!(by_node.iter().any(|(_, traces)| traces == &["x", "y", "z"]));
+}
+
+#[trace("TC-483", "FR-038-AC-561")]
+#[test]
+fn tc_483_a_missing_trace_row_refuses_at_the_hyperproperty_body() {
+    for dropped in [0, 1] {
+        let (mut package, _, hyper) = hyper_clock_fixture(&["s", "n"]);
+        package["temporal_bindings"]
+            .as_array_mut()
+            .expect("rows")
+            .remove(dropped);
+        expect(
+            "a missing trace row",
+            &package,
+            Code::InvalidPackage,
+            TIMED_NODE_REFERENCE,
+            &at_node(hyper, "/body"),
+        );
+    }
+}
+
+#[trace("TC-483", "FR-038-AC-561")]
+#[test]
+fn tc_483_an_unknown_or_absent_trace_refuses_at_the_row_trace() {
+    let (base, _, _) = hyper_clock_fixture(&["s", "n"]);
     let mut unknown = base.clone();
     unknown["temporal_bindings"][1]["trace"] = json!("x");
-    refusal_at_declaration_trace(&unknown, "/temporal_bindings/1/trace");
+    refusal_at_trace(&unknown, "/temporal_bindings/1/trace");
     let mut absent = base;
     absent["temporal_bindings"][0]
         .as_object_mut()
         .expect("row")
         .remove("trace");
-    refusal_at_declaration_trace(&absent, "/temporal_bindings/0/trace");
+    refusal_at_trace(&absent, "/temporal_bindings/0/trace");
 }
 
-fn refusal_at_declaration_trace(package: &Value, path: &str) {
-    let ((code, cause, found), _) = refusal_of("trace refusal", package);
-    assert_eq!(
-        (code, cause, found.as_deref()),
-        (Code::InvalidPackage, Some(TIMED_NODE_REFERENCE), Some(path))
-    );
-}
-
-#[trace("TC-480", "FR-038-AC-561")]
+#[trace("TC-483", "FR-038-AC-561")]
 #[test]
-fn tc_480_a_repeated_trace_key_is_a_conflicting_definition_at_the_later_row() {
-    let (mut package, _) = hyper_clock_fixture(&["s", "n"]);
+fn tc_483_a_repeated_trace_key_is_a_conflicting_definition_at_the_later_row() {
+    let (mut package, _, _) = hyper_clock_fixture(&["s", "n"]);
     let rows = package["temporal_bindings"].as_array_mut().expect("rows");
     let again = rows[0].clone();
     rows.push(again);
-    let ((code, cause, path), _) = refusal_of("repeated key", &package);
-    assert_eq!(
-        (code, cause, path.as_deref()),
-        (
-            Code::InvalidPackage,
-            Some(Cause::ConflictingDefinition),
-            Some("/temporal_bindings/2")
-        )
+    refusal_at(
+        &package,
+        Code::InvalidPackage,
+        Cause::ConflictingDefinition,
+        "/temporal_bindings/2",
     );
 }
 
-#[trace("TC-480", "FR-038-AC-561")]
+#[trace("TC-483", "FR-038-AC-561")]
 #[test]
-fn tc_480_rows_out_of_quantifier_order_refuse_at_the_later_trace() {
-    let (mut package, _) = hyper_clock_fixture(&["s", "n"]);
+fn tc_483_rows_out_of_quantifier_order_refuse_at_the_later_trace() {
+    let (mut package, _, _) = hyper_clock_fixture(&["s", "n"]);
     package["temporal_bindings"]
         .as_array_mut()
         .expect("rows")
         .swap(0, 1);
-    refusal_at_declaration_trace(&package, "/temporal_bindings/1/trace");
+    refusal_at_trace(&package, "/temporal_bindings/1/trace");
 }
 
-#[trace("TC-480", "FR-038-AC-561")]
+#[trace("TC-483", "FR-038-AC-561")]
 #[test]
-fn tc_480_a_trace_on_a_single_trace_row_refuses_at_its_trace() {
+fn tc_483_the_rows_of_one_occurrence_share_one_clock_role() {
+    let (mut package, _, _) = hyper_clock_fixture(&["s", "n"]);
+    package["temporal_bindings"][1]["clock_name"] = json!("another-role");
+    refusal_at_trace(&package, "/temporal_bindings/1/clock_name");
+}
+
+#[trace("TC-483", "FR-038-AC-561")]
+#[test]
+fn tc_483_a_trace_on_a_single_trace_row_refuses_at_its_trace() {
     let mut package = v2_all_families();
     select_profile(&mut package, BOUNDED);
     settle(&mut package);
@@ -3566,14 +3658,14 @@ fn tc_480_a_trace_on_a_single_trace_row_refuses_at_its_trace() {
         &at_node(clause(&package), "/body"),
     );
     package["temporal_bindings"][0]["trace"] = json!("s");
-    refusal_at_declaration_trace(&package, "/temporal_bindings/0/trace");
+    refusal_at_trace(&package, "/temporal_bindings/0/trace");
 }
 
-#[trace("TC-480", "FR-038-AC-561")]
+#[trace("TC-483", "FR-038-AC-561")]
 #[test]
-fn tc_480_an_empty_or_null_trace_is_malformed_wire() {
+fn tc_483_an_empty_or_null_trace_is_malformed_wire() {
     for bad in [json!(""), Value::Null, json!(3)] {
-        let (mut package, _) = hyper_clock_fixture(&["s", "n"]);
+        let (mut package, _, _) = hyper_clock_fixture(&["s", "n"]);
         package["temporal_bindings"][0]["trace"] = bad.clone();
         match read(&package) {
             CheckedPackageV2ReadResult::Refused(refusal) => {

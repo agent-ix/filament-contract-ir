@@ -479,75 +479,74 @@ fn clock_matches(profile: Option<TemporalProfile>, clock: &ClockConfiguration) -
     )
 }
 
-/// The hyper clause body wrappers of the graph: each `temporal_clause` node a
-/// `claim`/`hyperproperty` node's `body` references, with that node's quantified
-/// trace variables in `quantifiers` order. A node whose body is not readable as
-/// that shape has no wrapper here; the hyperproperty step owns its refusal.
-fn hyper_wrappers<'t>(
+/// The `claim`/`hyperproperty` nodes of the graph with their quantified trace
+/// variables in `quantifiers` order, and the body wrappers they reference (each
+/// a `temporal_clause` node, which takes no row of its own). A node whose body
+/// is not readable as that shape lists no variables; the hyperproperty step owns
+/// its refusal.
+fn hyper_nodes<'t>(
     kinds: &[CheckedNodeKind],
     terms: &'t [Option<super::CheckedTerm>],
     index: &GraphIndex<'_>,
     meter: &mut WorkMeter,
-) -> Result<Vec<(usize, Vec<&'t str>)>, ValidationFailure> {
+) -> Result<(Vec<(usize, Vec<&'t str>)>, Vec<usize>), ValidationFailure> {
     use super::{CheckedTerm, LiteralKind};
-    let mut wrappers: Vec<(usize, Vec<&'t str>)> = meter.vec(0)?;
+    let mut hypers: Vec<(usize, Vec<&'t str>)> = meter.vec(0)?;
+    let mut wrappers: Vec<usize> = meter.vec(0)?;
     for (position, kind) in kinds.iter().enumerate() {
         if *kind != CheckedNodeKind::Claim(super::ClaimForm::Hyperproperty) {
             continue;
         }
-        let Some(Some(CheckedTerm::Aggregate { members })) = terms.get(position) else {
-            continue;
-        };
-        let bound = |name: &str| {
-            members.iter().find_map(|member| match member {
-                CheckedTerm::Binding { name: found, value }
-                    if AsRef::<str>::as_ref(found) == name =>
-                {
-                    Some(value.as_ref())
-                }
-                _ => None,
-            })
-        };
-        let (Some(CheckedTerm::Aggregate { members: groups }), Some(body)) =
-            (bound("quantifiers"), bound("body"))
-        else {
-            continue;
-        };
-        let Some(target) =
-            super::structural::typed_reference(body).and_then(|target| index.get(target).copied())
-        else {
-            continue;
-        };
-        if kinds[target] != CheckedNodeKind::Temporal(TemporalForm::TemporalClause) {
-            continue;
-        }
-        let mut variables = meter.vec(groups.len())?;
-        for group in groups {
-            let CheckedTerm::Aggregate { members } = group else {
-                continue;
+        let mut variables = meter.vec(0)?;
+        if let Some(Some(CheckedTerm::Aggregate { members })) = terms.get(position) {
+            let bound = |name: &str| {
+                members.iter().find_map(|member| match member {
+                    CheckedTerm::Binding { name: found, value }
+                        if AsRef::<str>::as_ref(found) == name =>
+                    {
+                        Some(value.as_ref())
+                    }
+                    _ => None,
+                })
             };
-            let variable = members.iter().find_map(|member| match member {
-                CheckedTerm::Binding { name, value }
-                    if AsRef::<str>::as_ref(name) == "variable" =>
-                {
-                    match value.as_ref() {
-                        CheckedTerm::Literal {
-                            value_kind: LiteralKind::Text,
-                            value,
-                            ..
-                        } => value.as_str(),
+            if let Some(target) = bound("body")
+                .and_then(super::structural::typed_reference)
+                .and_then(|target| index.get(target).copied())
+                .filter(|target| {
+                    kinds[*target] == CheckedNodeKind::Temporal(TemporalForm::TemporalClause)
+                })
+            {
+                meter.push(&mut wrappers, target)?;
+            }
+            if let Some(CheckedTerm::Aggregate { members: groups }) = bound("quantifiers") {
+                for group in groups {
+                    let CheckedTerm::Aggregate { members } = group else {
+                        continue;
+                    };
+                    let variable = members.iter().find_map(|member| match member {
+                        CheckedTerm::Binding { name, value }
+                            if AsRef::<str>::as_ref(name) == "variable" =>
+                        {
+                            match value.as_ref() {
+                                CheckedTerm::Literal {
+                                    value_kind: LiteralKind::Text,
+                                    value,
+                                    ..
+                                } => value.as_str(),
+                                _ => None,
+                            }
+                        }
                         _ => None,
+                    });
+                    if let Some(variable) = variable.filter(|name| !variables.contains(name)) {
+                        meter.push(&mut variables, variable)?;
                     }
                 }
-                _ => None,
-            });
-            if let Some(variable) = variable.filter(|name| !variables.contains(name)) {
-                meter.push(&mut variables, variable)?;
             }
         }
-        meter.push(&mut wrappers, (target, variables))?;
+        meter.push(&mut hypers, (position, variables))?;
     }
-    Ok(wrappers)
+    Ok((hypers, wrappers))
 }
 
 /// Validate row coverage before per-node joins and compare names before kinds.
@@ -564,11 +563,11 @@ pub(super) fn validate<B>(
     let rows = rows.unwrap_or_default();
     validate_shape(rows, meter)?;
     let compensation_profile = selected_profile(lock);
-    let wrappers = hyper_wrappers(kinds, terms, index, meter)?;
+    let (hypers, wrappers) = hyper_nodes(kinds, terms, index, meter)?;
     let traces_of = |position: usize| {
-        wrappers
+        hypers
             .iter()
-            .find(|(wrapper, _)| *wrapper == position)
+            .find(|(hyper, _)| *hyper == position)
             .map(|(_, variables)| variables.as_slice())
     };
     let mut seen: Vec<(usize, u64, usize)> = meter.vec(rows.len())?;
@@ -583,7 +582,9 @@ pub(super) fn validate<B>(
             kinds[position],
             CheckedNodeKind::Temporal(TemporalForm::TemporalClause)
                 | CheckedNodeKind::Protocol(ProtocolForm::Compensation)
-        ) {
+                | CheckedNodeKind::Claim(super::ClaimForm::Hyperproperty)
+        ) || wrappers.contains(&position)
+        {
             return Err(invalid(meter, at().key("declaration"), &row.declaration));
         }
         if kinds[position] == CheckedNodeKind::Temporal(TemporalForm::TemporalClause)
@@ -617,8 +618,8 @@ pub(super) fn validate<B>(
         if !owned {
             return Err(invalid(meter, at().key("occurrence"), &row.declaration));
         }
-        // A wrapper row names one of its body's quantified traces, and no
-        // other row names a trace.
+        // A hyperproperty row names one of the node's quantified traces, and
+        // no other row names a trace.
         let trace_at = match (traces_of(position), row.trace.as_deref()) {
             (None, None) => 0,
             (Some(variables), Some(trace)) => {
@@ -660,7 +661,13 @@ pub(super) fn validate<B>(
     }
     let mut missing = None;
     for (position, node) in nodes.iter().enumerate() {
-        let role = if kinds[position] == CheckedNodeKind::Temporal(TemporalForm::TemporalClause)
+        let role = if wrappers.contains(&position) {
+            continue;
+        } else if kinds[position] == CheckedNodeKind::Claim(super::ClaimForm::Hyperproperty)
+            && compensation_profile.is_some()
+        {
+            CheckedOccurrenceRole::Claim
+        } else if kinds[position] == CheckedNodeKind::Temporal(TemporalForm::TemporalClause)
             && configured_profile(
                 position,
                 super::timed_model::is_model_subject_clause(nodes, kinds, terms, index, position),
@@ -713,6 +720,24 @@ pub(super) fn validate<B>(
     }
     for (row_index, (row, &position)) in rows.iter().zip(&resolved).enumerate() {
         let at = || row_path(row_index);
+        if kinds[position] == CheckedNodeKind::Claim(super::ClaimForm::Hyperproperty) {
+            // The rows of one occurrence share one clock role.
+            if row_index > 0
+                && rows[row_index - 1].declaration == row.declaration
+                && rows[row_index - 1].occurrence == row.occurrence
+                && rows[row_index - 1].clock_name != row.clock_name
+            {
+                return Err(invalid(meter, at().key("clock_name"), &row.declaration));
+            }
+            if !clock_matches(compensation_profile, &row.clock) {
+                return Err(invalid(
+                    meter,
+                    at().key("clock").key("kind"),
+                    &row.declaration,
+                ));
+            }
+            continue;
+        }
         if kinds[position] == CheckedNodeKind::Protocol(ProtocolForm::Compensation) {
             if clock_name(meter, position, 4) != Some(row.clock_name.as_ref()) {
                 return Err(invalid(meter, at().key("clock_name"), &row.declaration));
@@ -1334,7 +1359,7 @@ mod timed_clock_tests {
 
     /// The `trace` member is a present non-null string or absent, is written
     /// only when present, and a null, numeric or repeated member is refused.
-    #[trace("TC-480", "FR-038-AC-561")]
+    #[trace("TC-483", "FR-038-AC-561")]
     #[test]
     fn trace_member_round_trips_and_refuses_violating_documents() {
         let row = |extra: &str| {

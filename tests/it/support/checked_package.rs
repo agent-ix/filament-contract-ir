@@ -2467,36 +2467,32 @@ pub fn refresh_temporal_bindings(package: &mut Value) {
     let nodes = package["semantic_graph"]["nodes"]
         .as_array()
         .expect("nodes");
-    // A hyper clause body wrapper takes one row per quantified trace, keyed by
-    // the quantifier Group's variable, in `quantifiers` order.
-    let wrapper_traces = |wrapper: &Value| -> Vec<Option<String>> {
-        let variables: Vec<Option<String>> = nodes
-            .iter()
-            .filter(|node| node["node_tag"] == "claim" && node["semantic_form"] == "hyperproperty")
-            .find(|node| node["body"]["members"][6]["value"]["target"] == wrapper["node_id"])
-            .map(|node| {
-                node["body"]["members"][3]["value"]["members"]
-                    .as_array()
-                    .map(|groups| {
-                        groups
-                            .iter()
-                            .filter_map(|group| {
-                                group["members"].as_array()?.iter().find_map(|member| {
-                                    (member["name"] == "variable").then(|| {
-                                        member["value"]["value"].as_str().map(str::to_owned)
-                                    })
-                                })
-                            })
-                            .collect()
+    let is_hyper =
+        |node: &Value| node["node_tag"] == "claim" && node["semantic_form"] == "hyperproperty";
+    // A hyperproperty node takes one row per quantified trace, keyed by the
+    // quantifier Group's variable, in `quantifiers` order; the body wrapper it
+    // references takes none.
+    let traces_of = |hyper: &Value| -> Vec<Option<String>> {
+        hyper["body"]["members"][3]["value"]["members"]
+            .as_array()
+            .map(|groups| {
+                groups
+                    .iter()
+                    .filter_map(|group| {
+                        group["members"].as_array()?.iter().find_map(|member| {
+                            (member["name"] == "variable")
+                                .then(|| member["value"]["value"].as_str().map(str::to_owned))
+                        })
                     })
-                    .unwrap_or_default()
+                    .collect()
             })
-            .unwrap_or_default();
-        if variables.is_empty() {
-            vec![None]
-        } else {
-            variables
-        }
+            .unwrap_or_default()
+    };
+    let is_wrapper = |node: &Value| {
+        nodes
+            .iter()
+            .filter(|hyper| is_hyper(hyper))
+            .any(|hyper| hyper["body"]["members"][6]["value"]["target"] == node["node_id"])
     };
     let mut rows = nodes
         .iter()
@@ -2504,6 +2500,9 @@ pub fn refresh_temporal_bindings(package: &mut Value) {
             let (profile, name) = if node["node_tag"] == "temporal"
                 && node["semantic_form"] == "temporal_clause"
             {
+                if is_wrapper(node) {
+                    return None;
+                }
                 let [law] = node["body"]["operation"]["laws"].as_array()?.as_slice() else {
                     return None;
                 };
@@ -2514,6 +2513,8 @@ pub fn refresh_temporal_bindings(package: &mut Value) {
                     law["definition"]["identity"].as_str()?,
                     node["body"]["arguments"][1]["value"].as_str()?,
                 )
+            } else if is_hyper(node) {
+                (selected_profile?, "fixture-clock")
             } else if node["node_tag"] == "protocol" && node["semantic_form"] == "compensation" {
                 (
                     selected_profile?,
@@ -2546,8 +2547,8 @@ pub fn refresh_temporal_bindings(package: &mut Value) {
                 }
                 _ => return None,
             };
-            let traces = if node["semantic_form"] == "temporal_clause" {
-                wrapper_traces(node)
+            let traces = if is_hyper(node) {
+                traces_of(node)
             } else {
                 vec![None]
             };

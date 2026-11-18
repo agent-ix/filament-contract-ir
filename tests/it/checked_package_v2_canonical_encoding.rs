@@ -1404,9 +1404,9 @@ fn tc_048_no_copy_of_quire_canonical_is_in_the_repository() {
 // FR-038-AC-561: the optional `trace` member is written only when present.
 // ---------------------------------------------------------------------------
 
-#[trace("TC-480", "FR-038-AC-561")]
+#[trace("TC-483", "FR-038-AC-561")]
 #[test]
-fn tc_480_binding_trace_member_is_written_only_when_present() {
+fn tc_483_binding_trace_member_is_written_only_when_present() {
     let row = |trace: Option<&str>| {
         let mut row = json!({
             "declaration": node_id(&family_key("a1a1")),
