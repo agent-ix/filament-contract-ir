@@ -895,6 +895,11 @@ fn assert_fspec_operation_record(
             node(declaration, "declaration");
             assert_eq!(member["name"], name.as_ref());
         }
+        Some(CheckedOperationMember::History { declaration, name }) => {
+            assert_eq!(member["kind"], "history");
+            node(declaration, "declaration");
+            assert_eq!(member["name"], name.as_ref());
+        }
         Some(CheckedOperationMember::TypeArgument { declaration }) => {
             assert_eq!(member["kind"], "type_argument");
             node(declaration, "declaration");

@@ -3200,6 +3200,8 @@ fn history_read_requires_each_reaching_refinement_to_declare_it() {
     let mut second = original.clone();
     second["node_id"] = second_id.clone();
     second["body"]["histories"][0]["name"] = json!("other");
+    // Two refinement nodes of one package cannot share a body `name`.
+    second["body"]["name"] = json!("SecondRefinement");
     package["semantic_graph"]["nodes"]
         .as_array_mut()
         .expect("nodes")
@@ -3244,6 +3246,7 @@ fn history_read_requires_each_reaching_refinement_to_declare_it() {
                 .then_with(|| left["ordinal"].as_u64().cmp(&right["ordinal"].as_u64()))
         });
     refresh_identity(&mut package);
+    crate::support::checked_package::refresh_claim_names(&mut package);
 
     let application_id = node_id("history-read/application");
     let application_position = package["semantic_graph"]["nodes"]
