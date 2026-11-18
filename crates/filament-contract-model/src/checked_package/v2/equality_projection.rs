@@ -26,8 +26,8 @@ use filament_semantic_value::declaration::{
     EqualityUnitDescriptor, EqualityUnitEdgeDescriptor, EqualityUnitForm,
 };
 use filament_semantic_value::reader_admission::{
-    EqualityMaterializationCode, EqualityMaterializationError, EqualityMaterializationLocus,
-    ReaderSeal, mint_admitted_equality_decision,
+    mint_admitted_equality_decision, EqualityMaterializationCode, EqualityMaterializationError,
+    EqualityMaterializationLocus, ReaderSeal,
 };
 use std::collections::BTreeSet;
 
@@ -117,6 +117,9 @@ pub(super) fn text_bounds(term: &CheckedTerm) -> Option<(&str, &str, &str)> {
 pub(super) fn equality_operator(identity: &str) -> Option<CheckedEqualityOperator> {
     // The operation record has already been checked against the closed catalog.
     // All catalogued equality identities end in one of these two segments.
+    if identity == "filament.op.ieee.numeric_equal" {
+        return Some(CheckedEqualityOperator::Equal);
+    }
     match identity.rsplit_once('.') {
         Some((_, "eq")) => Some(CheckedEqualityOperator::Equal),
         Some((_, "ne")) => Some(CheckedEqualityOperator::NotEqual),
@@ -178,8 +181,19 @@ pub(super) fn validate<Body>(
         let Some(position) = dispatch_projection::position_of(&index, &decision.application) else {
             return Err(invalid(meter, row.key("application")));
         };
+        let (expected_form, expected_operator) = match decision.schedule {
+            super::CheckedEqualitySchedule::Float => {
+                (ExpressionForm::Call, ApplicationOperator::Call)
+            }
+            super::CheckedEqualitySchedule::Text
+            | super::CheckedEqualitySchedule::Enum
+            | super::CheckedEqualitySchedule::Quantity
+            | super::CheckedEqualitySchedule::Plan => {
+                (ExpressionForm::Binary, ApplicationOperator::Binary)
+            }
+        };
         if decision.application.package != wire.name
-            || kinds.get(position) != Some(&CheckedNodeKind::Expression(ExpressionForm::Binary))
+            || kinds.get(position) != Some(&CheckedNodeKind::Expression(expected_form))
         {
             return Err(invalid(meter, row.key("application")));
         }
@@ -201,7 +215,7 @@ pub(super) fn validate<Body>(
             return Err(invalid(meter, row.key("term_path").index(0)));
         }
         let Some(CheckedTerm::Application {
-            operator: ApplicationOperator::Binary,
+            operator,
             operation,
             arguments,
             ..
@@ -209,6 +223,9 @@ pub(super) fn validate<Body>(
         else {
             return Err(invalid(meter, row.key("application")));
         };
+        if *operator != expected_operator {
+            return Err(invalid(meter, row.key("application")));
+        }
         let Some(actual_operator) = operation.identity().and_then(equality_operator) else {
             return Err(invalid(meter, row.key("application")));
         };
@@ -223,6 +240,11 @@ pub(super) fn validate<Body>(
             stage_storage::work(meter, &data_site(row_index, at), 1)?;
             if usize::from(operand.operand) != ordinal {
                 return Err(invalid(meter, at.key("operand")));
+            }
+            if decision.schedule == super::CheckedEqualitySchedule::Float
+                && operand.conversion_target.is_some()
+            {
+                return Err(invalid(meter, at.key("conversion_target")));
             }
             let Some((source_type, conversion_target)) = arguments
                 .get(ordinal)

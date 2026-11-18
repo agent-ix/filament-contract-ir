@@ -24,12 +24,12 @@ use filament_contract_model::{
     SelectedTupleDeclarationRow,
 };
 use filament_exact::{
-    CardinalityBound, CollectionKind, CollectionType, ConstructionCause, EffectiveId, FieldValue,
-    Integer, MemberId, MemberOwner, NodeKey, OriginalDeclarationKey, PathSegment, Presence, UnitId,
-    Value as ExactValue, ValueType, record,
+    record, CardinalityBound, CollectionKind, CollectionType, ConstructionCause, EffectiveId,
+    FieldValue, Integer, MemberId, MemberOwner, NodeKey, OriginalDeclarationKey, PathSegment,
+    Presence, UnitId, Value as ExactValue, ValueType,
 };
 use ix_trace_rs::trace;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::collections::BTreeMap;
 
 const IDENTITY: &str = "acme/orders";
@@ -873,17 +873,12 @@ fn node_id(key: &str) -> Value {
 fn path_label(id: &CheckedNodeId) -> String {
     match id.path.as_slice() {
         [CheckedNodePathSegment::Name(name)] => name.to_string(),
-        [
-            CheckedNodePathSegment::Name(tag),
-            CheckedNodePathSegment::Name(form),
-            CheckedNodePathSegment::Name(declaration),
-        ] if id.package.as_ref() == IDENTITY => {
+        [CheckedNodePathSegment::Name(tag), CheckedNodePathSegment::Name(form), CheckedNodePathSegment::Name(declaration)]
+            if id.package.as_ref() == IDENTITY =>
+        {
             format!("model:{tag}:{form}:{declaration}")
         }
-        [
-            CheckedNodePathSegment::Name(first),
-            CheckedNodePathSegment::Name(second),
-        ] => {
+        [CheckedNodePathSegment::Name(first), CheckedNodePathSegment::Name(second)] => {
             format!("qualified:{first}/{second}")
         }
         other => panic!("unexpected fixture identity path {other:?}"),
@@ -2419,11 +2414,16 @@ fn strict_reader_rejects_float_equality_conversion_targets() {
         boolean,
         &[float],
         json!({"term":"application", "operator":"call",
-            "operation":{"identity":"filament.op.ieee.numeric_equal",
-                "laws":[{"role":"ieee_profile", "definition":ieee_profile}], "mode":null,
-                "member":null, "leaves":[]},
-            "result_type":node_id(boolean),
-            "arguments":[reference(float), reference(float)]}),
+        "operation":{"identity":"filament.op.ieee.numeric_equal",
+            "laws":[{"role":"ieee_profile", "definition":ieee_profile}], "mode":null,
+            "member":null, "leaves":[]},
+        "result_type":node_id(boolean),
+        "arguments":[
+            {"term":"literal", "type":node_id(float),
+                "value_kind":"float32_bits", "value":"3f800000"},
+            {"term":"literal", "type":node_id(float),
+                "value_kind":"float32_bits", "value":"40000000"}
+        ]}),
     );
     equality_node["occurrences"] = json!([{"role":"expression", "ordinal":0}]);
     wire["semantic_graph"]["nodes"]
@@ -2442,17 +2442,30 @@ fn strict_reader_rejects_float_equality_conversion_targets() {
         "protocol_locations":[], "dispatch_tables":[], "probabilistic_claims":[]
     });
     settle(&mut wire);
-    assert!(matches!(
-        read_with(&wire, &evidence, CheckedPackageReadLimits::bounded()),
-        CheckedPackageV2ReadResult::Admitted(_)
-    ));
+    let direct = read_with(&wire, &evidence, CheckedPackageReadLimits::bounded());
+    assert!(
+        matches!(direct, CheckedPackageV2ReadResult::Admitted(_)),
+        "direct Float operands should admit before adding a conversion target: {direct:?}"
+    );
     wire["checked_term_data"]["equality_decisions"][0]["left"]["conversion_target"] =
         node_id(float);
     settle(&mut wire);
-    assert!(matches!(
-        read_with(&wire, &evidence, CheckedPackageReadLimits::bounded()),
-        CheckedPackageV2ReadResult::Refused(_)
-    ));
+    let CheckedPackageV2ReadResult::Refused(refusal) =
+        read_with(&wire, &evidence, CheckedPackageReadLimits::bounded())
+    else {
+        panic!("Float equality must refuse a conversion target");
+    };
+    assert_eq!(refusal.code, CheckedPackageRefusalCode::InvalidPackage);
+    assert_eq!(
+        refusal.cause,
+        Some(CheckedPackageRefusalCause::InvalidValue)
+    );
+    assert_eq!(
+        refusal.loci[0].path.clone(),
+        Some(crate::support::checked_package::pointer(
+            "/checked_term_data/equality_decisions/0/left/conversion_target"
+        ))
+    );
 }
 
 /// A flattened field set cannot stand in for an authored redefinition link.
@@ -2915,16 +2928,14 @@ fn selected_tuple_positions_require_matching_unique_stage_rows() {
         )
         .unwrap();
     assert!(long_view.work() > view.work() + 4000);
-    assert!(
-        admitted
-            .project_selected_type_declarations(
-                &identities,
-                std::slice::from_ref(&long_row),
-                &[],
-                &mut filament_contract_model::NativeJoinBudget::new(long_view.work(), u64::MAX)
-            )
-            .is_ok()
-    );
+    assert!(admitted
+        .project_selected_type_declarations(
+            &identities,
+            std::slice::from_ref(&long_row),
+            &[],
+            &mut filament_contract_model::NativeJoinBudget::new(long_view.work(), u64::MAX)
+        )
+        .is_ok());
     let one_less = admitted
         .project_selected_type_declarations(
             &identities,
@@ -3188,16 +3199,14 @@ fn selected_record_many_fields_respects_exact_work_boundary() {
     assert_eq!(view.records()[0].view().fields()[0].name(), names[0]);
     assert_eq!(view.records()[0].view().fields()[127].name(), names[127]);
     assert!(view.work() < 30_000);
-    assert!(
-        admitted
-            .project_selected_type_declarations(
-                &identities,
-                &[],
-                &[],
-                &mut filament_contract_model::NativeJoinBudget::new(view.work(), u64::MAX)
-            )
-            .is_ok()
-    );
+    assert!(admitted
+        .project_selected_type_declarations(
+            &identities,
+            &[],
+            &[],
+            &mut filament_contract_model::NativeJoinBudget::new(view.work(), u64::MAX)
+        )
+        .is_ok());
     let one_less = admitted
         .project_selected_type_declarations(
             &identities,

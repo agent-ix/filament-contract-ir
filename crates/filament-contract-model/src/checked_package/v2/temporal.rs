@@ -36,13 +36,13 @@ use super::operations::resolve_family;
 // These validators consume the strict decoder's authenticated typed table.
 use super::structural::typed_admitted_reference as typed_reference;
 use super::{
-    ApplicationOperator, CheckedDiagnosticV2, CheckedNodeKind, CheckedPackageLockV2,
-    CheckedSelectionRole, CheckedTerm, ClockConfiguration, FairnessGranularity, FairnessKind,
-    HybridForm, IntervalEnd, IntervalFit, LawRole, LiteralKind, ModelForm, OperationMemberKind,
-    RawSemanticNodeV2 as CheckedSemanticNodeV2, TemporalBinding, TemporalForm, TemporalProfile,
-    TermNode, TermView, ValueForm, WorkMeter, member_pointer,
+    member_pointer, ApplicationOperator, BoundedDomainForm, CheckedDiagnosticV2, CheckedNodeKind,
+    CheckedPackageLockV2, CheckedSelectionRole, CheckedTerm, ClockConfiguration,
+    FairnessGranularity, FairnessKind, HybridForm, IntervalEnd, IntervalFit, LawRole, LiteralKind,
+    ModelForm, OperationMemberKind, RawSemanticNodeV2 as CheckedSemanticNodeV2, TemporalBinding,
+    TemporalForm, TemporalProfile, TermNode, TermView, ValueForm, WorkMeter,
 };
-use crate::checked_package::common::{ValidationFailure, node_pointer};
+use crate::checked_package::common::{node_pointer, ValidationFailure};
 use crate::checked_package::shared::{
     CheckedArtifactRef, CheckedNodeId, CheckedNodePathSegment, CheckedPackageRefusalCause,
     CheckedPackageRefusalCode, JsonPointer,
@@ -986,18 +986,14 @@ fn read_interval_member_node(
         } else {
             Some(need!(rational(upper, meter)?))
         },
-        lower_end: need!(
-            interval
-                .get("lower_end")
-                .and_then(TermNode::as_str)
-                .and_then(IntervalEnd::from_wire)
-        ),
-        upper_end: need!(
-            interval
-                .get("upper_end")
-                .and_then(TermNode::as_str)
-                .and_then(IntervalEnd::from_wire)
-        ),
+        lower_end: need!(interval
+            .get("lower_end")
+            .and_then(TermNode::as_str)
+            .and_then(IntervalEnd::from_wire)),
+        upper_end: need!(interval
+            .get("upper_end")
+            .and_then(TermNode::as_str)
+            .and_then(IntervalEnd::from_wire)),
     }))
 }
 
@@ -2411,6 +2407,7 @@ fn check_hyper_shape(
         .is_some_and(|(_, kind)| {
             kind == CheckedNodeKind::BoundedDomain(BoundedDomainForm::FiniteTracePopulation)
         });
+    let finite_domain = finite.then(|| typed_reference(domain).cloned()).flatten();
     let domain_text = match domain {
         CheckedTerm::Literal {
             value_kind: LiteralKind::Text,
@@ -2577,6 +2574,24 @@ fn check_hyper_shape(
                 Some(CheckedPackageRefusalCause::NonBooleanRoot),
                 body_target.clone().unwrap_or_else(|| node.node_id.clone()),
             ));
+        }
+        let mut expected_dependencies = meter.vec(2)?;
+        meter.push(
+            &mut expected_dependencies,
+            finite_domain
+                .clone()
+                .ok_or_else(|| graph_defect(at_value(0)))?,
+        )?;
+        meter.push(
+            &mut expected_dependencies,
+            body_target
+                .clone()
+                .ok_or_else(|| graph_defect(at_value(6)))?,
+        )?;
+        expected_dependencies.sort_unstable();
+        expected_dependencies.dedup();
+        if node.dependencies != expected_dependencies {
+            return Err(graph_defect(node_pointer(position).key("dependencies")));
         }
     } else {
         let Some((wrapper, CheckedNodeKind::Temporal(TemporalForm::TemporalClause))) = body_node
@@ -2896,7 +2911,7 @@ mod tests {
     #[trace("TC-472", "FR-038-AC-516", "FR-038-AC-5")]
     #[test]
     fn invalid_reference_id_refuses_in_the_graph_term_pass_before_temporal_views() {
-        use crate::checked_package::common::{Step, TermGrammar, Trail, validate_term};
+        use crate::checked_package::common::{validate_term, Step, TermGrammar, Trail};
         let body = CheckedJson::from_value(&json!({"term":"reference","target":{
             "package":"", "path":[], "ordinal":0
         }}))
