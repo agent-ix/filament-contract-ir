@@ -62,7 +62,7 @@ reader SHALL:
 The reader SHALL NOT require a row for each own operation of a source type,
 distinguish an own from an inherited operation, or check `effect` of an
 operation that no anchor names: the package and the source-object row carry no
-operation list, so coverage is a producer fact. Every row-level refusal SHALL
+operation list, so coverage is a producer fact. The source-object row's `operations` member (FR-367) lists the operations a type declares itself, and the reader does not join it to this carrier. Every row-level refusal SHALL
 use the code, cause and locus of the matching model-row check of FR-038. The
 model-owned row rules, and the model-row coverage rule, are unchanged.
 

@@ -13,8 +13,9 @@ use filament_contract_model::{
     CheckedPackageReadLimits, CheckedPackageRefusal, CheckedPackageRefusalCause as Cause,
     CheckedPackageRefusalCode as Code, CheckedPackageSidecarsRef,
     CheckedPackageSourceCorrespondenceRef, CheckedPackageV2, CheckedPackageV2ReadResult,
-    SelectedSourceObjectErrorCode as RowError, SelectedSourceObjectMember, SelectedSourceObjectRow,
-    SelectedSourceObjects, SelectedSourcePopulation,
+    SelectedSourceObjectErrorCode as RowError, SelectedSourceObjectMember,
+    SelectedSourceObjectOperation, SelectedSourceObjectRow, SelectedSourceObjects,
+    SelectedSourcePopulation,
 };
 use filament_contract_model::{
     CheckedCallableIdentity, CheckedCallableReadErrorCode, ModelForm, SelectedOperationIdentity,
@@ -1640,6 +1641,14 @@ fn source_candidate_selection_keys_refuse_unless_they_name_a_source_type_of_the_
             Box::new(|key| key["original"]["node"] = json!("Order")),
         ),
         (
+            "non-null owner_effective_type",
+            Box::new(|key| {
+                key["owner_effective_type"] = json!({"owner_effective_type": null,
+                    "original": {"package": source_identity(),
+                        "node": format!("ix://{}/Order", source_identity())}})
+            }),
+        ),
+        (
             "node naming a model type",
             Box::new(|key| key["original"]["node"] = json!("ix://test/families/Account")),
         ),
@@ -2149,6 +2158,10 @@ fn row(
                 symmetric: false,
             })
             .collect(),
+        operations: vec![SelectedSourceObjectOperation {
+            identity: format!("{name}::deposit").into(),
+            query: false,
+        }],
     }
 }
 
@@ -2181,6 +2194,13 @@ fn a_complete_row_set_exposes_every_source_type_through_a_typed_read() {
     assert_eq!(order.identity_fields, ["total".into()] as [Box<str>; 1]);
     assert_eq!(order.members.len(), 1);
     assert_eq!(order.populations[0].name.as_ref(), "Orders");
+    assert_eq!(
+        order.operations,
+        [SelectedSourceObjectOperation {
+            identity: "Order::deposit".into(),
+            query: false
+        }]
+    );
     let sub = rows.read(&package, &id("qualified:Sub")).expect("Sub row");
     assert_eq!(sub.supertypes, [id("qualified:Order")]);
     assert!(rows.read(&package, &id(&family_key("a3a3"))).is_none());
@@ -2613,4 +2633,203 @@ fn a_row_needs_an_effects_row_only_when_the_carrier_is_present() {
         64,
     )
     .expect("no carrier, no comparison");
+}
+
+/// The `operation_bodies` row of `declaring`'s `operation`: a `function` row
+/// when `body` names the clause function, else `no_body`.
+fn body_row(declaring: &Value, document: &str, operation: &str, body: Option<&Value>) -> Value {
+    json!({
+        "document": document,
+        "declaring": declaring,
+        "operation": operation,
+        "body": body.map_or_else(
+            || json!({"kind": "no_body"}),
+            |node| json!({"kind": "function", "node": node}),
+        ),
+    })
+}
+
+/// `rows` in the carrier's `(document, declaring, operation)` order.
+fn sorted_body_rows(mut rows: Vec<Value>) -> Value {
+    rows.sort_by_key(|row| {
+        let declaring: CheckedNodeId =
+            serde_json::from_value(row["declaring"].clone()).expect("id");
+        (
+            row["document"].as_str().expect("document").to_owned(),
+            declaring,
+            row["operation"].as_str().expect("operation").to_owned(),
+        )
+    });
+    json!(rows)
+}
+
+/// The dispatch package of `Order` and `Sub` with an `operation_bodies`
+/// carrier: `Order.deposit` and `Sub.deposit` name their own body clause
+/// functions and `Order.quote` has no body (FSpec FR-790-AC-1).
+fn bodies_package() -> Value {
+    let mut package = dispatch_package();
+    let document = source_identity();
+    package["operation_bodies"] = sorted_body_rows(vec![
+        body_row(
+            &order_id(),
+            &document,
+            "deposit",
+            Some(&node_id("qualified:Order/deposit/body")),
+        ),
+        body_row(&order_id(), &document, "quote", None),
+        body_row(
+            &node_id("qualified:Sub"),
+            &document,
+            "deposit",
+            Some(&node_id("qualified:Sub/deposit/body")),
+        ),
+    ]);
+    settle(&mut package);
+    package
+}
+
+fn body_rows_mut(package: &mut Value) -> &mut Vec<Value> {
+    package["operation_bodies"].as_array_mut().expect("rows")
+}
+
+fn row_of<'a>(package: &'a mut Value, declaring: &str, operation: &str) -> &'a mut Value {
+    let declaring = node_id(declaring);
+    body_rows_mut(package)
+        .iter_mut()
+        .find(|row| row["declaring"] == declaring && row["operation"] == operation)
+        .expect("row")
+}
+
+/// FR-374-AC-1.
+#[trace("TC-480", "FR-374-AC-1")]
+#[test]
+fn source_operation_bodies_admit_and_join_each_candidate_to_its_own_row() {
+    let package = admitted(&bodies_package());
+    let rows = package.operation_body_rows().expect("carrier");
+    assert_eq!(rows.len(), 3);
+    assert!(rows
+        .iter()
+        .all(|row| row.document.as_ref() == source_identity()));
+    let own = |declaring: &str, operation: &str| {
+        package
+            .operation_body(&source_identity(), &id(declaring), operation)
+            .cloned()
+    };
+    assert_eq!(
+        own("qualified:Order", "deposit"),
+        Some(filament_contract_model::OperationBody::Function {
+            node: id("qualified:Order/deposit/body")
+        })
+    );
+    assert_eq!(
+        own("qualified:Sub", "deposit"),
+        Some(filament_contract_model::OperationBody::Function {
+            node: id("qualified:Sub/deposit/body")
+        })
+    );
+    assert_eq!(
+        own("qualified:Order", "quote"),
+        Some(filament_contract_model::OperationBody::NoBody)
+    );
+    // The typed rows serialize as the carrier was written.
+    let written = indexed(&bodies_package())["operation_bodies"].clone();
+    assert_eq!(serde_json::to_value(rows).expect("rows"), written);
+}
+
+/// FR-374-AC-2, FR-374-AC-3 and FR-374-AC-4.
+#[trace("TC-480", "FR-374-AC-2", "FR-374-AC-3", "FR-374-AC-4")]
+#[test]
+fn malformed_source_operation_body_rows_refuse() {
+    type Edit = Box<dyn Fn(&mut Value)>;
+    let invalid = (Code::InvalidPackage, Some(Cause::InvalidValue));
+    let cases: Vec<(&str, Edit, (Code, Option<Cause>), &str)> = vec![
+        (
+            "no_body for an operation with a body",
+            Box::new(|package| {
+                row_of(package, "qualified:Order", "deposit")["body"] = json!({"kind": "no_body"});
+            }),
+            invalid,
+            "/operation_bodies/0/body",
+        ),
+        (
+            "a function for an operation without a body",
+            Box::new(|package| {
+                row_of(package, "qualified:Order", "quote")["body"] = json!({
+                    "kind": "function",
+                    "node": node_id("qualified:Order/deposit/body")});
+            }),
+            invalid,
+            "/operation_bodies/1/body",
+        ),
+        (
+            "a precondition clause function as the body",
+            Box::new(|package| {
+                row_of(package, "qualified:Order", "deposit")["body"]["node"] =
+                    node_id("qualified:Order/deposit/effective_precondition");
+            }),
+            invalid,
+            "/operation_bodies/0/body/node",
+        ),
+        (
+            "another operation's body",
+            Box::new(|package| {
+                row_of(package, "qualified:Order", "deposit")["body"]["node"] =
+                    node_id("qualified:Sub/deposit/body");
+            }),
+            invalid,
+            "/operation_bodies/0/body/node",
+        ),
+        (
+            "a candidate row removed",
+            Box::new(|package| {
+                body_rows_mut(package).retain(|row| row["declaring"] != node_id("qualified:Sub"));
+            }),
+            invalid,
+            "/operation_bodies",
+        ),
+        (
+            "a document of no source owner",
+            Box::new(|package| {
+                row_of(package, "qualified:Order", "deposit")["document"] = json!("src/other-unit");
+            }),
+            (Code::MissingDeclaration, Some(Cause::MissingSelection)),
+            "/operation_bodies/0/document",
+        ),
+        (
+            "a model document for a source declaring node",
+            Box::new(|package| {
+                row_of(package, "qualified:Order", "deposit")["document"] = json!("test/families");
+            }),
+            (Code::MissingDeclaration, Some(Cause::MissingSelection)),
+            "/operation_bodies/0/document",
+        ),
+        (
+            "a repeated row",
+            Box::new(|package| {
+                let repeated = row_of(package, "qualified:Order", "quote").clone();
+                body_rows_mut(package).insert(1, repeated);
+            }),
+            (Code::InvalidPackage, Some(Cause::ConflictingDefinition)),
+            "/operation_bodies/2",
+        ),
+    ];
+    for (case, edit, (code, cause), path) in cases {
+        let mut package = bodies_package();
+        edit(&mut package);
+        settle(&mut package);
+        expect(case, &package, code, cause, path);
+    }
+}
+
+/// FR-374-AC-5: a candidate that inherits its body joins the row of the type
+/// that declares the body, and a model-owned carrier reads unchanged.
+#[trace("TC-480", "FR-374-AC-5")]
+#[test]
+fn an_inheriting_candidate_joins_the_row_of_the_declaring_type() {
+    let mut package = bodies_package();
+    package["checked_term_data"]["dispatch_tables"][0]["candidates"][1]["operation_body"] =
+        node_id("qualified:Order/deposit/body");
+    body_rows_mut(&mut package).retain(|row| row["declaring"] != node_id("qualified:Sub"));
+    settle(&mut package);
+    admitted(&package);
 }

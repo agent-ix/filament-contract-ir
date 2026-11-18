@@ -37,7 +37,7 @@ FR-569's "Source-object identity rows").
 A `field` member whose declaring node is a source-declared type; and a
 producer input row `SelectedSourceObjectRow` with `structural_node`,
 `source_authority`, `source_identity`, `abstract`, `supertypes`,
-`identity_fields`, `members` and `populations`, supplied beside the package as
+`identity_fields`, `members`, `populations` and `operations`, supplied beside the package as
 FR-352 does for its stage rows. The IR public inventory (FR-019) gains the row
 type and its typed read.
 
@@ -94,7 +94,7 @@ information against which to check them.
 | FR-367-AC-2 | A field name with no binding, and any field read on an `aggregate{[]}` source type, refuse `ill_typed`/`operator-ineligible` at the member. | Test |
 | FR-367-AC-3 | A supply holding a foreign row and an unknown row reports foreign whatever their order; one holding an unknown row and a duplicate-key pair reports unknown; one holding a duplicate-key pair and an omitted type reports conflicting; one omitting a type reports missing; one whose dispatch candidate lies outside its context's family reports mismatched only when no type is missing. A second type of the same name under another `SourceOwner` of the same authority refuses at admission. | Test |
 | FR-367-AC-4 | A row whose `members` differ from the body bindings in name, type node, optional presence or order refuses unknown. A row whose `supertypes` name a non-source node, the row's own node, or form a cycle refuses unknown. | Test |
-| FR-367-AC-5 | A complete row set exposes abstractness, supertypes, identity fields, members and populations for each source type through a typed read. | Test |
+| FR-367-AC-5 | A complete row set exposes abstractness, supertypes, identity fields, members, populations and operations for each source type through a typed read; `operations` holds one `{identity, query}` entry per operation the type declares itself, in source order, `identity` the string `<type>::<operation>` and `query` a boolean. The reader does not join an entry to the package's `operation_effects` or source-operation rows: that correspondence is the producer's obligation (FSL FR-569 "Source-object identity rows"). | Test |
 | FR-367-AC-6 | A field read on a model-owned node reads unchanged in a package that also holds a source type. | Test |
 
 ## Dependencies
