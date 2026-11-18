@@ -2745,6 +2745,24 @@ fn ownerless_protocol_clause_over_a_bounded_integer_is_admitted() {
     };
     assert_eq!(refusal.code, CheckedPackageRefusalCode::MalformedWire);
 
+    let mut ownerless_bad_scope = package.clone();
+    let outside = clause_parameter(&mut ownerless_bad_scope, "outside-ownerless", "1");
+    let finish = protocol_position(&ownerless_bad_scope, "obligation");
+    ownerless_bad_scope["semantic_graph"]["nodes"][finish]["body"]["arguments"][1]["value"] =
+        json!({"term": "reference", "target": outside});
+    settle(&mut ownerless_bad_scope);
+    assert!(
+        matches!(
+            read(&ownerless_bad_scope),
+            CheckedPackageV2ReadResult::Refused(CheckedPackageRefusal {
+                code: CheckedPackageRefusalCode::MissingDeclaration,
+                cause: Some(CheckedPackageRefusalCause::MissingName),
+                ..
+            })
+        ),
+        "ownerless admission still runs protocol binder-scope validation"
+    );
+
     for (ordinal, form) in ["option", "sequence", "tuple", "record"]
         .into_iter()
         .enumerate()
