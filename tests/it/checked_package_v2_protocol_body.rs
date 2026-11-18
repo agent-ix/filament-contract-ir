@@ -10,7 +10,7 @@ use crate::support::checked_package::{
     owned_structural_node, protocol_named_node, protocol_role_node, reassign_node_id,
     rebuild_source_map, refresh_identity, refresh_identity_projection, refusal, refusal_at_id,
     rename_node, select_model, selected_interface_model_node, settle, source_owner, structural_id,
-    structural_key, v2_all_families,
+    structural_key, v2_all_families, COMPLETE_VALUE_FEATURE,
 };
 use filament_contract_model::{
     CheckedNodeId, CheckedPackageEvidence, CheckedPackageLimit, CheckedPackageReadLimits,
@@ -2206,6 +2206,157 @@ fn protocol_capture_admits_population_query_in_the_protocol_state() {
             })
         ),
         "a direct out-of-scope read remains refused: {refusal:?}"
+    );
+}
+
+/// Trace: FR-372-AC-4
+#[trace("FR-372-AC-4")]
+#[test]
+fn protocol_capture_reads_population_when_owned_by_another_selected_model() {
+    let mut package = v2_all_families();
+    let other_model = "test/other";
+    let other_object_identity = "ix://test/other/Customer";
+    select_model(&mut package, other_model);
+    let other_object = structural_id(
+        other_model,
+        vec![
+            json!("model"),
+            json!("object_type"),
+            json!(other_object_identity),
+        ],
+        0,
+    );
+    package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .push(json!({
+            "node_id": other_object,
+            "schema_version": "filament.checked-semantic-graph/v2",
+            "node_tag": "model", "semantic_form": "object_type",
+            "semantic_type": other_object, "dependencies": [],
+            "occurrences": [{"role": "type", "ordinal": 0}],
+            "owner": {"kind": "model", "identity": other_model,
+                "node": other_object_identity},
+            "body": {"term": "aggregate", "members": []}
+        }));
+
+    let (size, population_document) = protocol_population_query(&mut package);
+    let clause = clause_position(&package);
+    let over = package["semantic_graph"]["nodes"][clause]["body"]["arguments"][0]["value"]
+        ["target"]
+        .clone();
+    let reference_body = json!({"term": "aggregate", "members": [
+        {"term": "reference", "target": other_object}
+    ]});
+    let reference = node_id(&structural_key(
+        "composite_type",
+        "reference",
+        None,
+        &reference_body,
+    ));
+    package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .push(json!({
+            "node_id": reference,
+            "schema_version": "filament.checked-semantic-graph/v2",
+            "node_tag": "composite_type", "semantic_form": "reference",
+            "semantic_type": reference, "dependencies": [other_object],
+            "occurrences": [{"role": "type", "ordinal": 0}],
+            "body": reference_body
+        }));
+    let over_position = node_position_for_key(&package, &over);
+    package["semantic_graph"]["nodes"][over_position]["semantic_type"] = reference;
+    package["semantic_graph"]["nodes"][clause]["owner_model"] = other_object.clone();
+    package["semantic_graph"]["nodes"][clause]["dependencies"]
+        .as_array_mut()
+        .expect("clause dependencies")
+        .push(other_object.clone());
+    package["semantic_graph"]["nodes"][clause]["dependencies"]
+        .as_array_mut()
+        .expect("clause dependencies")
+        .sort_by_key(checked_node_id);
+    reassign_node_id(
+        &mut package,
+        &over,
+        &node_id("fixture/protocol-body/other-selected-model-over"),
+    );
+
+    let binder = clause_parameter(&mut package, "n", "1");
+    let binder_position = node_position_for_key(&package, &binder);
+    package["semantic_graph"]["nodes"][binder_position]["semantic_type"] =
+        node_id(&family_key("a3a3"));
+    let binder_key = node_id("fixture/protocol-body/other-owner-capture-n");
+    reassign_node_id(&mut package, &binder, &binder_key);
+    let clause = clause_position(&package);
+    package["semantic_graph"]["nodes"][clause]["body"]["arguments"][2]["value"]["members"] = json!([{"term": "aggregate", "members": [
+        {"term": "binding", "name": "binder", "value": {
+            "term": "reference", "target": binder_key
+        }},
+        {"term": "binding", "name": "initializer", "value": {
+            "term": "reference", "target": size
+        }}
+    ]}]);
+    let finish = protocol_position(&package, "obligation");
+    package["semantic_graph"]["nodes"][finish]["body"]["arguments"][1]["value"] = json!({
+        "term": "literal", "type": node_id(&family_key("aaaa")),
+        "value_kind": "boolean", "value": true
+    });
+    relevel_finish_binder(&mut package, 2);
+    settle_after_structural_rekey(&mut package);
+
+    let mut family_document = family_model_document();
+    family_document["constructs"]
+        .as_array_mut()
+        .expect("constructs")
+        .push(json!({
+            "kind": {"module": "test/families", "name": "population"},
+            "construct": {"meaning": "filament.meaning.model.population/v1"}
+        }));
+    family_document["populations"] = population_document["populations"].clone();
+    let other_document = json!({
+        "contractVersion": "2.0.0",
+        "package": {"identity": other_model, "version": "1"},
+        "constructs": [{
+            "kind": {"module": other_model, "name": "entity"},
+            "construct": {"meaning": "filament.meaning.model.object-type/v1"}
+        }],
+        "types": [{
+            "identity": other_object_identity, "displayName": "Customer",
+            "kind": {"module": other_model, "name": "entity"},
+            "roles": [], "constraints": [], "extensions": [], "unknownPolicy": "reject",
+            "supertypes": [], "fields": [], "operations": []
+        }]
+    });
+    let mut evidence = CheckedPackageEvidence::new();
+    evidence
+        .insert_domain_package_document("test/families", canonical(&family_document))
+        .expect("population model evidence");
+    evidence
+        .insert_domain_package_document(other_model, canonical(&other_document))
+        .expect("owner model evidence");
+    evidence.support_feature(COMPLETE_VALUE_FEATURE);
+
+    let clause = clause_position(&package);
+    assert_eq!(
+        package["semantic_graph"]["nodes"][clause]["owner_model"],
+        other_object
+    );
+    let population = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|node| node["semantic_form"] == "population")
+        .expect("population");
+    assert_eq!(population["owner"]["identity"], "test/families");
+    let result = crate::read_and_account(
+        &canonical(&package),
+        CheckedPackageReadLimits::bounded(),
+        &evidence,
+    );
+    assert!(
+        matches!(result, CheckedPackageV2ReadResult::Admitted(_)),
+        "a protocol capture may read the population when its clause is owned by another selected model: {result:?}"
     );
 }
 
@@ -5841,7 +5992,7 @@ fn repeat_checks_owner_body_exhausted_and_optional_pair() {
 /// Trace: FR-038-AC-288, FR-038-AC-290
 #[trace("TC-048")]
 #[test]
-fn repeat_admits_proof_and_refuses_zero_maximum_and_both_unpaired_directions() {
+fn repeat_admits_proof_and_zero_maximum_and_refuses_both_unpaired_directions() {
     let (package, children) = protocol_holder_case("repeat");
     let holder = holder_position(&package);
     let mut with_proof = package.clone();
@@ -5861,15 +6012,8 @@ fn repeat_admits_proof_and_refuses_zero_maximum_and_both_unpaired_directions() {
     settle(&mut zero);
     let zero_result = read(&zero);
     assert!(
-        matches!(
-            &zero_result,
-            CheckedPackageV2ReadResult::Refused(CheckedPackageRefusal {
-                code: CheckedPackageRefusalCode::InvalidPackage,
-                cause: Some(CheckedPackageRefusalCause::InvalidValue),
-                ..
-            })
-        ),
-        "zero maximum result: {zero_result:?}"
+        matches!(zero_result, CheckedPackageV2ReadResult::Admitted(_)),
+        "pre-test repeat with zero maximum admits: {zero_result:?}"
     );
 
     let mut unbounded_proof = with_proof.clone();
