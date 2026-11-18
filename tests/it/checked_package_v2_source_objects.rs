@@ -33,6 +33,12 @@ type EffectCase = (
     String,
 );
 type DispatchCase = (&'static str, Box<dyn Fn(&mut Value)>, String);
+type BodyCase = (
+    &'static str,
+    Box<dyn Fn(&mut Value)>,
+    (Code, Option<Cause>),
+    &'static str,
+);
 type KeyEdit = (&'static str, Box<dyn Fn(&mut Value)>);
 type RowEdit = (&'static str, Box<dyn Fn(&mut SelectedSourceObjectRow)>);
 type OperationEdit = (
@@ -2700,8 +2706,8 @@ fn row_of<'a>(package: &'a mut Value, declaring: &str, operation: &str) -> &'a m
         .expect("row")
 }
 
-/// FR-374-AC-1.
-#[trace("TC-480", "FR-374-AC-1")]
+/// FR-373-AC-1.
+#[trace("TC-480", "FR-373-AC-1")]
 #[test]
 fn source_operation_bodies_admit_and_join_each_candidate_to_its_own_row() {
     let package = admitted(&bodies_package());
@@ -2736,13 +2742,12 @@ fn source_operation_bodies_admit_and_join_each_candidate_to_its_own_row() {
     assert_eq!(serde_json::to_value(rows).expect("rows"), written);
 }
 
-/// FR-374-AC-2, FR-374-AC-3 and FR-374-AC-4.
-#[trace("TC-480", "FR-374-AC-2", "FR-374-AC-3", "FR-374-AC-4")]
+/// FR-373-AC-2, FR-373-AC-3 and FR-373-AC-4.
+#[trace("TC-480", "FR-373-AC-2", "FR-373-AC-3", "FR-373-AC-4")]
 #[test]
 fn malformed_source_operation_body_rows_refuse() {
-    type Edit = Box<dyn Fn(&mut Value)>;
     let invalid = (Code::InvalidPackage, Some(Cause::InvalidValue));
-    let cases: Vec<(&str, Edit, (Code, Option<Cause>), &str)> = vec![
+    let cases: Vec<BodyCase> = vec![
         (
             "no_body for an operation with a body",
             Box::new(|package| {
@@ -2821,9 +2826,9 @@ fn malformed_source_operation_body_rows_refuse() {
     }
 }
 
-/// FR-374-AC-5: a candidate that inherits its body joins the row of the type
+/// FR-373-AC-5: a candidate that inherits its body joins the row of the type
 /// that declares the body, and a model-owned carrier reads unchanged.
-#[trace("TC-480", "FR-374-AC-5")]
+#[trace("TC-480", "FR-373-AC-5")]
 #[test]
 fn an_inheriting_candidate_joins_the_row_of_the_declaring_type() {
     let mut package = bodies_package();
