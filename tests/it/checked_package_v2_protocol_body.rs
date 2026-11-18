@@ -5570,14 +5570,10 @@ fn repeat_admits_post_test_and_refuses_an_unknown_test_mode() {
             bounded_post["semantic_graph"]["nodes"][holder]["body"]["arguments"][2]["value"]
                 ["members"][0]["value"] = json!(maximum);
         } else {
-            bounded_post["semantic_graph"]["nodes"][holder]["body"]["arguments"]
-                .as_array_mut()
-                .expect("repeat arguments")
-                .remove(6);
-            bounded_post["semantic_graph"]["nodes"][holder]["body"]["arguments"]
-                .as_array_mut()
-                .expect("repeat arguments")
-                .remove(2);
+            bounded_post["semantic_graph"]["nodes"][holder]["body"]["arguments"][6]["value"]
+                ["members"] = json!([]);
+            bounded_post["semantic_graph"]["nodes"][holder]["body"]["arguments"][2]["value"]
+                ["members"] = json!([]);
             bounded_post["semantic_graph"]["nodes"]
                 .as_array_mut()
                 .expect("nodes")
