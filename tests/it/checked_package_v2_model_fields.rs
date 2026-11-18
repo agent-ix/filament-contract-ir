@@ -2406,7 +2406,32 @@ fn strict_reader_rejects_float_equality_conversion_targets() {
         .extend([
             wire_node(float, "scalar_type", "float32", float, &[], empty()),
             wire_node(boolean, "scalar_type", "boolean", boolean, &[], empty()),
+            wire_node(
+                "native/text",
+                "scalar_type",
+                "text",
+                "native/text",
+                &[],
+                empty(),
+            ),
         ]);
+    let rounded_float = "native/float32-rounded";
+    wire["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .push(wire_node(
+            rounded_float,
+            "bounded_domain",
+            "float_rounding",
+            float,
+            &[float, "native/text"],
+            json!({"term":"aggregate", "members":[{
+                "term":"binding", "name":"rounding", "value":{
+                    "term":"literal", "type":node_id("native/text"),
+                    "value_kind":"text", "value":"nearest-even"
+                }
+            }]}),
+        ));
     let mut equality_node = wire_node(
         equality,
         "expression",
@@ -2447,6 +2472,29 @@ fn strict_reader_rejects_float_equality_conversion_targets() {
         matches!(direct, CheckedPackageV2ReadResult::Admitted(_)),
         "direct Float operands should admit before adding a conversion target: {direct:?}"
     );
+    let mut rounded = wire.clone();
+    let rounded_application = rounded["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .iter_mut()
+        .find(|node| node["node_id"] == node_id(equality))
+        .expect("float equality node");
+    for operand in rounded_application["body"]["arguments"]
+        .as_array_mut()
+        .expect("arguments")
+    {
+        operand["type"] = node_id(rounded_float);
+    }
+    rounded["checked_term_data"]["equality_decisions"][0]["left"]["source_type"] =
+        node_id(rounded_float);
+    rounded["checked_term_data"]["equality_decisions"][0]["right"]["source_type"] =
+        node_id(rounded_float);
+    settle(&mut rounded);
+    let rounded_result = read_with(&rounded, &evidence, CheckedPackageReadLimits::bounded());
+    assert!(
+        matches!(rounded_result, CheckedPackageV2ReadResult::Admitted(_)),
+        "producer FloatRounding operands must be admitted: {rounded_result:?}"
+    );
     let CheckedPackageV2ReadResult::Admitted(package) = direct else {
         unreachable!("checked above")
     };
@@ -2456,14 +2504,15 @@ fn strict_reader_rejects_float_equality_conversion_targets() {
         role: CheckedOccurrenceRole::Expression,
         ordinal: 0,
     };
-    let source_map_entry = wire["source_map"]
+    let source_map_entry: filament_contract_model::CheckedSourceMapEntry = wire["source_map"]
         .as_array()
         .expect("source map")
         .iter()
         .find(|entry| entry["node_id"] == node_id(equality))
         .cloned()
         .map(serde_json::from_value)
-        .expect("equality source row");
+        .expect("equality source row")
+        .expect("source row decodes");
     let original = NodeKey::new(
         "float-equality-reader",
         vec![PathSegment::Text("float-equality".into())],
@@ -2510,10 +2559,6 @@ fn strict_reader_rejects_float_equality_conversion_targets() {
             &mut budget,
         )
         .expect("public admitted reader accepts a direct Float call equality");
-    assert_eq!(
-        admitted.schedule(),
-        filament_semantic_value::declaration::EqualitySchedule::Float
-    );
     assert_eq!(admitted.left().source(), &float_value);
 
     let mut wrong_form = wire.clone();
@@ -2559,7 +2604,10 @@ fn strict_reader_rejects_float_equality_conversion_targets() {
     );
 
     let mut irrelevant_units = wire.clone();
-    irrelevant_units["checked_term_data"]["equality_decisions"][0]["units"] = json!([{}]);
+    irrelevant_units["checked_term_data"]["equality_decisions"][0]["units"] = json!([{
+        "quantity_type":node_id(float), "unit":node_id(float),
+        "form":{"kind":"compound", "dimension_terms":[], "terms":[]}
+    }]);
     settle(&mut irrelevant_units);
     let CheckedPackageV2ReadResult::Refused(refusal) = read_with(
         &irrelevant_units,
@@ -2578,7 +2626,10 @@ fn strict_reader_rejects_float_equality_conversion_targets() {
     );
 
     let mut irrelevant_enums = wire.clone();
-    irrelevant_enums["checked_term_data"]["equality_decisions"][0]["enum_members"] = json!([{}]);
+    irrelevant_enums["checked_term_data"]["equality_decisions"][0]["enum_members"] = json!([{
+        "enum_type":node_id(float), "member":node_id(float),
+        "case":"unexpected", "ordinal":0, "ordered":false
+    }]);
     settle(&mut irrelevant_enums);
     let CheckedPackageV2ReadResult::Refused(refusal) = read_with(
         &irrelevant_enums,

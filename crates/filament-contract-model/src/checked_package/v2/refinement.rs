@@ -2814,16 +2814,17 @@ pub(super) fn validate_refinements(
         )?;
         validate_rows(node, body, position, &graph, owners, meter)?;
     }
-    validate_history_reads(&graph, meter)?;
+    validate_history_reads(&graph, owners, meter)?;
     Ok(())
 }
 
 fn validate_history_reads(
     graph: &RefinementGraph<'_, '_>,
+    owners: &super::model_members::ModelOwners<'_>,
     meter: &mut super::WorkMeter,
 ) -> Result<(), ValidationFailure> {
-    use super::{CheckedNodeKind, CompositeTypeForm};
     for (application_position, term) in graph.terms.iter().enumerate() {
+        charge_at(meter, node_at(application_position))?;
         let Some(CheckedTerm::Application {
             operation,
             arguments,
@@ -2859,11 +2860,15 @@ fn validate_history_reads(
         let mut joined = false;
         let mut declared = false;
         for (refinement_position, refinement_term) in graph.terms.iter().enumerate() {
+            charge_at(meter, node_at(refinement_position))?;
             let Some(CheckedTerm::Refinement { histories, .. }) = refinement_term.as_ref() else {
                 continue;
             };
-            let refinement = &graph.nodes[refinement_position];
             for history in histories {
+                charge_at(
+                    meter,
+                    node_at(refinement_position).key("body").key("histories"),
+                )?;
                 if &history.concrete_type != declaration || history.name.as_ref() != name {
                     continue;
                 }
@@ -2877,27 +2882,46 @@ fn validate_history_reads(
                         &application.node_id,
                     ));
                 }
-                if !refinement.dependencies.contains(&application.node_id) {
+                if !refinement_reaches(graph, refinement_position, &application.node_id, meter)? {
                     continue;
                 }
                 joined = true;
-                let receiver_conforms = arguments.first().is_some_and(|argument| {
-                    let CheckedTerm::Reference { target } = argument else {
-                        return false;
+                let receiver_target =
+                    if let Some(CheckedTerm::Reference { target }) = arguments.first() {
+                        graph
+                            .index
+                            .get(target)
+                            .and_then(|position| graph.nodes.get(*position))
+                            .map(|node| &node.semantic_type)
+                            .map(|reference_type| {
+                                resolve_reference_declaration(graph, reference_type, meter)
+                            })
+                            .transpose()?
+                            .flatten()
+                    } else {
+                        None
                     };
-                    let Some(receiver_position) = graph.index.get(target).copied() else {
-                        return false;
-                    };
-                    let reference_type = &graph.nodes[receiver_position].semantic_type;
-                    let Some(reference_position) = graph.index.get(reference_type).copied() else {
-                        return false;
-                    };
-                    graph.kinds.get(reference_position)
-                        == Some(&CheckedNodeKind::CompositeType(
-                            CompositeTypeForm::Reference,
-                        ))
-                        && graph.nodes[reference_position].semantic_type == *declaration
-                });
+                let receiver_conforms = if receiver_target == Some(declaration) {
+                    true
+                } else if let (Some(actual), Some(expected)) = (
+                    receiver_target.and_then(|key| owners.owner_by_key(key)),
+                    owners.owner_by_key(declaration),
+                ) {
+                    if !std::ptr::eq(actual.package, expected.package) {
+                        false
+                    } else {
+                        let mut budget = super::model_members::Budget::new(
+                            meter,
+                            actual.package.root,
+                            actual.package.bytes,
+                        );
+                        actual
+                            .package
+                            .conforms_to(actual.node, expected.node, &mut budget)?
+                    }
+                } else {
+                    false
+                };
                 if !receiver_conforms {
                     return Err(refuse_at(
                         meter,
@@ -2933,6 +2957,91 @@ fn validate_history_reads(
         }
     }
     Ok(())
+}
+
+fn refinement_reaches(
+    graph: &RefinementGraph<'_, '_>,
+    root: usize,
+    target: &CheckedNodeId,
+    meter: &mut super::WorkMeter,
+) -> Result<bool, ValidationFailure> {
+    let mut pending = meter.vec(graph.nodes.len())?;
+    let mut visited = meter.vec(graph.nodes.len())?;
+    visited.resize(graph.nodes.len(), false);
+    let Some(root_visited) = visited.get_mut(root) else {
+        return Ok(false);
+    };
+    *root_visited = true;
+    pending.push(root);
+    while let Some(position) = pending.pop() {
+        charge_at(meter, node_at(position))?;
+        let Some(node) = graph.nodes.get(position) else {
+            continue;
+        };
+        for dependency in &node.dependencies {
+            charge_at(meter, node_at(position).key("dependencies"))?;
+            if dependency == target {
+                return Ok(true);
+            }
+            if let Some(&dependency_position) = graph.index.get(dependency) {
+                if !visited.get(dependency_position).copied().unwrap_or(true) {
+                    visited[dependency_position] = true;
+                    pending.push(dependency_position);
+                }
+            }
+        }
+    }
+    Ok(false)
+}
+
+fn resolve_reference_declaration<'a>(
+    graph: &'a RefinementGraph<'_, '_>,
+    type_id: &'a CheckedNodeId,
+    meter: &mut super::WorkMeter,
+) -> Result<Option<&'a CheckedNodeId>, ValidationFailure> {
+    use super::{BoundedDomainForm, CheckedNodeKind, CompositeTypeForm};
+    let mut current = type_id;
+    let mut steps = 0;
+    loop {
+        let Some(position) = graph.index.get(current).copied() else {
+            return Ok(None);
+        };
+        charge_at(meter, node_at(position))?;
+        steps += 1;
+        if steps > graph.nodes.len() {
+            return Ok(None);
+        }
+        let Some(kind) = graph.kinds.get(position) else {
+            return Ok(None);
+        };
+        match kind {
+            CheckedNodeKind::CompositeType(CompositeTypeForm::Reference) => {
+                let Some(CheckedTerm::Aggregate { members }) =
+                    graph.terms.get(position).and_then(Option::as_ref)
+                else {
+                    return Ok(None);
+                };
+                let [CheckedTerm::Reference { target }] = members.as_slice() else {
+                    return Ok(None);
+                };
+                return Ok(Some(target));
+            }
+            CheckedNodeKind::BoundedDomain(
+                BoundedDomainForm::FloatRounding
+                | BoundedDomainForm::IntegerRange
+                | BoundedDomainForm::RationalRange
+                | BoundedDomainForm::DecimalRange
+                | BoundedDomainForm::TextBounds
+                | BoundedDomainForm::CollectionBounds,
+            ) => {
+                let Some(node) = graph.nodes.get(position) else {
+                    return Ok(None);
+                };
+                current = &node.semantic_type;
+            }
+            _ => return Ok(None),
+        }
+    }
 }
 
 /// Join declaration-backed catalog entries to the admitted protocol graph.

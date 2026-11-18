@@ -752,11 +752,17 @@ impl<'a> CheckedMonitorPlanRef<'a> {
                 budget.set_locus_form("reached_equality_node");
                 read_charge(budget, NativeJoinChargeKind::Work, 1)
                     .map_err(|_| native_error(budget))?;
-                let decision = self.package.checked_term_data().and_then(|data| {
-                    data.equality_decisions
-                        .iter()
-                        .find(|decision| &decision.application == id)
-                });
+                let mut decision = None;
+                if let Some(data) = self.package.checked_term_data() {
+                    for possible_decision in &data.equality_decisions {
+                        read_charge(budget, NativeJoinChargeKind::Work, 1)
+                            .map_err(|_| native_error(budget))?;
+                        if &possible_decision.application == id {
+                            decision = Some(possible_decision);
+                            break;
+                        }
+                    }
+                }
                 let expected = match decision.map(|decision| decision.schedule) {
                     Some(crate::CheckedEqualitySchedule::Float) => {
                         (crate::ExpressionForm::Call, ApplicationOperator::Call)

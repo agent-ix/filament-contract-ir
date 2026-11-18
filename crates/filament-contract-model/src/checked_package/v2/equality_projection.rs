@@ -52,6 +52,36 @@ fn argument_type<'a, Body>(
     }
 }
 
+fn float_operand_type<Body>(
+    type_id: &CheckedNodeId,
+    nodes: &[super::CheckedSemanticNodeV2<Body>],
+    kinds: &[CheckedNodeKind],
+    index: &[(&CheckedNodeId, usize)],
+    meter: &mut WorkMeter,
+    row: usize,
+    at: Path<'static>,
+) -> Result<bool, ValidationFailure> {
+    let mut current = type_id;
+    loop {
+        stage_storage::work(meter, &data_site(row, at.clone()), 1)?;
+        let Some(position) = dispatch_projection::position_of(index, current) else {
+            return Ok(false);
+        };
+        match kinds.get(position) {
+            Some(CheckedNodeKind::ScalarType(
+                ScalarTypeForm::Float32 | ScalarTypeForm::Float64,
+            )) => return Ok(true),
+            Some(CheckedNodeKind::BoundedDomain(BoundedDomainForm::FloatRounding)) => {
+                let Some(node) = nodes.get(position) else {
+                    return Ok(false);
+                };
+                current = &node.semantic_type;
+            }
+            _ => return Ok(false),
+        }
+    }
+}
+
 /// The compared type of an operand, and the type a conversion operand is
 /// converted from, borrowed from the term and the graph.
 type ArgumentTypes<'a> = (&'a CheckedNodeId, Option<&'a CheckedNodeId>);
@@ -252,6 +282,11 @@ pub(super) fn validate<Body>(
         if actual_operator != decision.operator {
             return Err(invalid(meter, row.key("operator")));
         }
+        if decision.schedule == super::CheckedEqualitySchedule::Float
+            && decision.left.source_type != decision.right.source_type
+        {
+            return Err(invalid(meter, row.key("right").key("source_type")));
+        }
         if arguments.len() != 2 {
             return Err(invalid(meter, row.key("application")));
         }
@@ -276,17 +311,7 @@ pub(super) fn validate<Body>(
                 return Err(invalid(meter, at.key("source_type")));
             }
             if decision.schedule == super::CheckedEqualitySchedule::Float {
-                let float_type = dispatch_projection::position_of(&index, source_type)
-                    .and_then(|source_position| kinds.get(source_position))
-                    .is_some_and(|kind| {
-                        matches!(
-                            kind,
-                            CheckedNodeKind::ScalarType(
-                                ScalarTypeForm::Float32 | ScalarTypeForm::Float64
-                            )
-                        )
-                    });
-                if !float_type {
+                if !float_operand_type(source_type, nodes, kinds, &index, meter, row_index, at)? {
                     return Err(invalid(meter, at.key("source_type")));
                 }
             }
@@ -2177,6 +2202,24 @@ impl CheckedPackageV2 {
                 0,
             ));
         };
+        let Some(CheckedTerm::Application { operation, .. }) = self.term_at(position) else {
+            return Err(read_error(
+                work,
+                AdmittedEqualityReadErrorCode::WrongApplicationForm,
+                application,
+                application,
+                0,
+            ));
+        };
+        if operation.identity().and_then(equality_operator).is_none() {
+            return Err(read_error(
+                work,
+                AdmittedEqualityReadErrorCode::NonEqualityApplication,
+                application,
+                application,
+                0,
+            ));
+        }
         charge_storage(
             work,
             application,
@@ -2315,10 +2358,16 @@ impl CheckedPackageV2 {
             for _ in &candidate.source_map_entry.regions {
                 charge_work(work, application, &candidate.application)?;
             }
-            let candidate_decision = data.equality_decisions.iter().find(|candidate_decision| {
-                &candidate_decision.application == &candidate.application
-                    && &candidate_decision.occurrence == &candidate.occurrence
-            });
+            let mut candidate_decision = None;
+            for possible_decision in &data.equality_decisions {
+                charge_work(work, application, &possible_decision.application)?;
+                if possible_decision.application == candidate.application
+                    && possible_decision.occurrence == candidate.occurrence
+                {
+                    candidate_decision = Some(possible_decision);
+                    break;
+                }
+            }
             let candidate_expected =
                 candidate_decision.map(|candidate_decision| match candidate_decision.schedule {
                     super::CheckedEqualitySchedule::Float => {

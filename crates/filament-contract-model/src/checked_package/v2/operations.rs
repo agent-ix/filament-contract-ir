@@ -1372,9 +1372,10 @@ fn check_sequence_bounds(
     application: Application<'_>,
     operation: &OperationWire,
     graph: &Graph<'_>,
-) -> Option<ValidationFailure> {
+    meter: &mut WorkMeter,
+) -> Result<Option<ValidationFailure>, ValidationFailure> {
     if operation.identity.as_ref() != "filament.op.collection.seq" {
-        return None;
+        return Ok(None);
     }
     let refuse = || {
         application.refuse(
@@ -1387,9 +1388,12 @@ fn check_sequence_bounds(
         arguments,
         result_type,
         ..
-    }) = graph.terms.get(application.position)?.as_ref()
+    }) = graph
+        .terms
+        .get(application.position)
+        .and_then(Option::as_ref)
     else {
-        return Some(refuse());
+        return Ok(Some(refuse()));
     };
     let bounds = |argument: &CheckedTerm| {
         let type_id = operand_type_node_typed(argument, graph.nodes, graph.kinds, graph.index)?;
@@ -1408,29 +1412,128 @@ fn check_sequence_bounds(
             upper.parse::<Integer>().ok()?,
         ))
     };
-    let [lower, upper, _element] = arguments.as_slice() else {
-        return Some(refuse());
+    let [lower @ CheckedTerm::Reference { .. }, upper @ CheckedTerm::Reference { .. }, CheckedTerm::Binding { name, value }] =
+        arguments.as_slice()
+    else {
+        return Ok(Some(refuse()));
     };
     let Some((lo_min, _)) = bounds(lower) else {
-        return Some(refuse());
+        return Ok(Some(refuse()));
     };
     let Some((_, hi_max)) = bounds(upper) else {
-        return Some(refuse());
+        return Ok(Some(refuse()));
     };
+    let Some(member) = member_declaration(operation) else {
+        return Ok(Some(refuse()));
+    };
+    let Some(element_type) = operand_type_node_typed(value, graph.nodes, graph.kinds, graph.index)
+    else {
+        return Ok(Some(refuse()));
+    };
+    if element_type != member {
+        return Ok(Some(refuse()));
+    }
+    let preferred_parameter = if let CheckedTerm::Reference { target } = value.as_ref() {
+        graph.index.get(target).copied().filter(|position| {
+            graph.kinds.get(*position) == Some(&CheckedNodeKind::Value(ValueForm::Parameter))
+        })
+    } else {
+        None
+    };
+    let mut index_type = None;
+    for (position, kind) in graph.kinds.iter().enumerate() {
+        work_at_path(meter, &application.node_id(), 1)?;
+        if preferred_parameter.is_some_and(|preferred| preferred != position) {
+            continue;
+        }
+        if *kind != CheckedNodeKind::Value(ValueForm::Parameter) {
+            continue;
+        }
+        let Some(CheckedTerm::Aggregate { members }) =
+            graph.terms.get(position).and_then(Option::as_ref)
+        else {
+            continue;
+        };
+        let mut parameter_name = None;
+        for member in members {
+            work_at_path(meter, &application.node_id(), 1)?;
+            if let CheckedTerm::Binding { name: field, value } = member {
+                if field.as_ref() == "name" {
+                    if let CheckedTerm::Literal { value, .. } = value.as_ref() {
+                        parameter_name = value.as_str();
+                        break;
+                    }
+                }
+            }
+        }
+        if parameter_name == Some(name.as_ref()) {
+            if index_type.is_some() {
+                return Ok(Some(refuse()));
+            }
+            index_type = graph.nodes.get(position).map(|node| &node.semantic_type);
+        }
+    }
+    let Some(index_type) = index_type else {
+        return Ok(Some(refuse()));
+    };
+    let Some(index_type_position) = graph.index.get(index_type).copied() else {
+        return Ok(Some(refuse()));
+    };
+    if graph.kinds.get(index_type_position)
+        != Some(&CheckedNodeKind::BoundedDomain(
+            BoundedDomainForm::IntegerRange,
+        ))
+    {
+        return Ok(Some(refuse()));
+    }
+    let Some((index_lower, index_upper)) = graph
+        .terms
+        .get(index_type_position)
+        .and_then(Option::as_ref)
+        .and_then(super::extension::integer_range_bounds)
+    else {
+        return Ok(Some(refuse()));
+    };
+    let Ok(index_lower) = index_lower.parse::<Integer>() else {
+        return Ok(Some(refuse()));
+    };
+    let Ok(index_upper) = index_upper.parse::<Integer>() else {
+        return Ok(Some(refuse()));
+    };
+    if index_lower != lo_min || index_upper != hi_max {
+        return Ok(Some(refuse()));
+    }
     let expected_max = if hi_max < lo_min {
         Integer::from(0_i64)
     } else {
         hi_max.sub(&lo_min).add(&Integer::from(1_i64))
     };
     let Some(result_position) = graph.index.get(result_type).copied() else {
-        return Some(refuse());
+        return Ok(Some(refuse()));
     };
     if graph.kinds.get(result_position)
         != Some(&CheckedNodeKind::BoundedDomain(
             BoundedDomainForm::CollectionBounds,
         ))
     {
-        return Some(refuse());
+        return Ok(Some(refuse()));
+    }
+    let sequence_type = &graph.nodes[result_position].semantic_type;
+    let Some(sequence_position) = graph.index.get(sequence_type).copied() else {
+        return Ok(Some(refuse()));
+    };
+    if graph.kinds.get(sequence_position)
+        != Some(&CheckedNodeKind::CompositeType(CompositeTypeForm::Sequence))
+    {
+        return Ok(Some(refuse()));
+    }
+    let Some(CheckedTerm::Aggregate { members }) =
+        graph.terms.get(sequence_position).and_then(Option::as_ref)
+    else {
+        return Ok(Some(refuse()));
+    };
+    if !matches!(members.as_slice(), [CheckedTerm::Reference { target }] if target == member) {
+        return Ok(Some(refuse()));
     }
     let Some((minimum, maximum)) = graph
         .terms
@@ -1438,12 +1541,12 @@ fn check_sequence_bounds(
         .and_then(Option::as_ref)
         .and_then(super::extension::integer_range_bounds)
     else {
-        return Some(refuse());
+        return Ok(Some(refuse()));
     };
     if minimum != "0" || maximum.parse::<Integer>().ok().as_ref() != Some(&expected_max) {
-        return Some(refuse());
+        return Ok(Some(refuse()));
     }
-    None
+    Ok(None)
 }
 
 #[derive(Clone, Copy)]
@@ -1839,7 +1942,7 @@ fn operation_defect(
     {
         return Ok(Some(failure));
     }
-    if let Some(failure) = check_sequence_bounds(application, &operation, graph) {
+    if let Some(failure) = check_sequence_bounds(application, &operation, graph, meter)? {
         return Ok(Some(failure));
     }
     if let Some(failure) = check_inner_result(application, entry, graph, owners) {

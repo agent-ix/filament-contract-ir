@@ -593,9 +593,27 @@ pub(super) fn admitted_fixture(identity: &str) -> Option<Value> {
                 json!({"term":"aggregate", "members":[bound("min", "0"), bound("max", "1")]}),
             );
             let index = parameter(&mut f, &range, "sequence_index");
+            let lower = "value/literal/sequence-lower".to_owned();
+            let upper = "value/literal/sequence-upper".to_owned();
+            node(
+                &mut f.package,
+                &lower,
+                "value",
+                "literal",
+                &range,
+                json!({"term":"literal", "type":node_id(&range),
+                    "value_kind":"integer", "value":"0"}),
+            );
+            node(
+                &mut f.package,
+                &upper,
+                "value",
+                "literal",
+                &range,
+                json!({"term":"literal", "type":node_id(&range),
+                    "value_kind":"integer", "value":"0"}),
+            );
             let member = json!({"kind":"type_argument", "declaration":node_id(&range)});
-            let literal = json!({"term":"literal", "type":node_id(&range),
-                "value_kind":"integer", "value":"0"});
             application_with_member(
                 &mut f,
                 "collection",
@@ -604,7 +622,12 @@ pub(super) fn admitted_fixture(identity: &str) -> Option<Value> {
                 Value::Null,
                 member,
                 result,
-                vec![literal.clone(), literal, binder(reference(&index))],
+                vec![
+                    reference(&lower),
+                    reference(&upper),
+                    json!({"term":"binding", "name":"sequence_index",
+                        "value":reference(&index)}),
+                ],
             );
         }
         "filament.op.refinement.history" => {
@@ -1132,6 +1155,30 @@ fn tc_048_every_catalogue_entry_retains_its_constructible_admission() {
                 "{identity}: {result:?}"
             );
             admitted.insert(identity.to_owned());
+        } else if identity == "filament.op.refinement.history" {
+            let package = admitted_fixture(identity).expect("orphan history fixture");
+            let position = package["semantic_graph"]["nodes"]
+                .as_array()
+                .expect("nodes")
+                .iter()
+                .position(|node| node["body"]["operation"]["identity"] == identity)
+                .expect("history application");
+            let CheckedPackageV2ReadResult::Refused(refusal) = read(&package) else {
+                panic!("a history read without a row must refuse");
+            };
+            assert_eq!(refusal.code, CheckedPackageRefusalCode::MissingDeclaration);
+            assert_eq!(refusal.cause, Some(CheckedPackageRefusalCause::MissingName));
+            assert_eq!(
+                refusal.loci[0].path.as_ref().map(ToString::to_string),
+                Some(format!(
+                    "/semantic_graph/nodes/{position}/body/operation/member/name"
+                ))
+            );
+            unavailable.insert(
+                identity.to_owned(),
+                "a history application without a matching refinement history row must refuse"
+                    .to_owned(),
+            );
         } else if let Some(package) = admitted_fixture(identity).or_else(|| simple_fixture(entry)) {
             let result = read(&package);
             let CheckedPackageV2ReadResult::Admitted(admitted_package) = result else {
@@ -1171,7 +1218,7 @@ fn tc_048_every_catalogue_entry_retains_its_constructible_admission() {
             let reason = unavailable_reason(entry)
                 .unwrap_or_else(|| panic!("{identity} needs an admitted control or a catalog-derived fixture gap: {entry}"));
             assert!(!reason.is_empty(), "{identity}: empty fixture-gap reason");
-            unavailable.insert(identity.to_owned(), reason);
+            unavailable.insert(identity.to_owned(), reason.to_owned());
         }
     }
     assert_eq!(
@@ -1245,6 +1292,89 @@ fn tc_048_every_catalogue_entry_retains_its_constructible_admission() {
     }
 }
 
+#[trace("TC-048", "FR-038-AC-251")]
+#[test]
+fn collection_seq_requires_bounded_inputs_matching_binder_and_sequence() {
+    let base = admitted_fixture("filament.op.collection.seq").expect("sequence control");
+    assert!(matches!(
+        read(&base),
+        CheckedPackageV2ReadResult::Admitted(_)
+    ));
+    let application = base["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .position(|node| node["body"]["operation"]["identity"] == "filament.op.collection.seq")
+        .expect("sequence application");
+
+    let mut unbounded_input = base.clone();
+    let lower_literal = unbounded_input["semantic_graph"]["nodes"][application]["body"]
+        ["arguments"][0]["target"]
+        .clone();
+    let lower_position = unbounded_input["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .position(|node| node["node_id"] == lower_literal)
+        .expect("lower literal");
+    unbounded_input["semantic_graph"]["nodes"][lower_position]["semantic_type"] =
+        node_id("scalar_type/integer");
+    unbounded_input["semantic_graph"]["nodes"][lower_position]["body"]["type"] =
+        node_id("scalar_type/integer");
+    settle(&mut unbounded_input);
+    assert_result_refusal(&unbounded_input, application, "filament.op.collection.seq");
+
+    let mut wrong_index_range = base.clone();
+    let parameter = wrong_index_range["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .position(|node| {
+            node["semantic_form"] == "parameter"
+                && node["body"]["members"][0]["value"]["value"] == "sequence_index"
+        })
+        .expect("index parameter");
+    wrong_index_range["semantic_graph"]["nodes"][parameter]["semantic_type"] =
+        node_id("scalar_type/integer");
+    settle(&mut wrong_index_range);
+    assert_result_refusal(
+        &wrong_index_range,
+        application,
+        "filament.op.collection.seq",
+    );
+
+    let mut wrong_element = base.clone();
+    let sequence_type =
+        wrong_element["semantic_graph"]["nodes"][application]["body"]["result_type"].clone();
+    let bounds = wrong_element["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .position(|node| node["node_id"] == sequence_type)
+        .expect("collection bounds");
+    let sequence_id = wrong_element["semantic_graph"]["nodes"][bounds]["semantic_type"].clone();
+    let sequence = wrong_element["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .position(|node| node["node_id"] == sequence_id)
+        .expect("sequence type");
+    wrong_element["semantic_graph"]["nodes"][sequence]["body"]["members"][0]["target"] =
+        node_id("scalar_type/rational");
+    settle(&mut wrong_element);
+    assert_result_refusal(&wrong_element, application, "filament.op.collection.seq");
+
+    let mut wrong_cardinality = base;
+    wrong_cardinality["semantic_graph"]["nodes"][bounds]["body"]["members"][1]["value"]["value"] =
+        json!("2");
+    settle(&mut wrong_cardinality);
+    assert_result_refusal(
+        &wrong_cardinality,
+        application,
+        "filament.op.collection.seq",
+    );
+}
+
 fn assert_result_refusal(package: &Value, position: usize, identity: &str) {
     let CheckedPackageV2ReadResult::Refused(refusal) = read(package) else {
         panic!(
@@ -1265,7 +1395,12 @@ fn assert_result_refusal(package: &Value, position: usize, identity: &str) {
             // FSpec FR-322 locates a carried-sum result mismatch at the
             // application node itself, not at its `result_type`.
             Some(
-                if identity == "filament.op.collection.sum.carried_quantity" {
+                if matches!(
+                    identity,
+                    "filament.op.collection.sum.carried_quantity"
+                        | "filament.op.collection.only"
+                        | "filament.op.collection.seq"
+                ) {
                     format!("/semantic_graph/nodes/{position}")
                 } else {
                     format!("/semantic_graph/nodes/{position}/body/result_type")
