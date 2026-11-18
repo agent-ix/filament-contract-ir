@@ -2528,9 +2528,7 @@ fn tc_048_relationship_navigation_total_work_limit_reports_its_first_unpayable_e
             assert_eq!(incomplete.limit, admitted - 1);
             assert_eq!(
                 incomplete.path.map(|path| path.to_string()).as_deref(),
-                // Operation validation charges its first argument target
-                // before the later graph-body reference edges.
-                Some("/semantic_graph/nodes/6/body/arguments/0/target")
+                Some("/semantic_graph/nodes/7/owner")
             );
         }
         other => panic!("expected total-work exhaustion, got {other:?}"),

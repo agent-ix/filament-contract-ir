@@ -4087,8 +4087,30 @@ fn tc_346_the_hyperproperty_body_is_checked_after_its_subjects_and_before_its_fa
 /// its domain is a reference and its Groups bind no alias.
 fn finite_hyper(edit: impl FnOnce(&mut Value)) -> (Value, usize) {
     let mut package = v2_all_families();
+    let record = fresh();
+    let mut record_node = node_with_key(
+        &record,
+        "composite_type",
+        "record",
+        json!({"term":"aggregate", "members":[]}),
+    );
+    record_node["semantic_type"] = node_id(&record);
+    push(&mut package, record_node);
+    let integer = node_label(&package, find_form(&package, "scalar_type", "integer"));
+    let finite_domain = fresh();
+    let mut domain_node = node_with_key(
+        &finite_domain,
+        "bounded_domain",
+        "finite_trace_population",
+        json!({"term":"aggregate", "members":[named("bound", json!({
+            "term":"literal", "type":node_id(&integer), "value_kind":"integer", "value":"3"
+        }))]}),
+    );
+    domain_node["semantic_type"] = node_id(&record);
+    push(&mut package, domain_node);
     let boolean_expression = find_form(&package, "expression", "reference");
-    let body = refer(&node_label(&package, boolean_expression));
+    let body_target = node_label(&package, boolean_expression);
+    let body = refer(&body_target);
     let mut node = hyperproperty(
         "hyperproperty",
         vec![json!({"term": "aggregate", "members": [
@@ -4097,8 +4119,13 @@ fn finite_hyper(edit: impl FnOnce(&mut Value)) -> (Value, usize) {
         vec![],
         body,
     );
-    node["body"]["members"][0]["value"] = refer(&aaaa());
+    node["body"]["members"][0]["value"] = refer(&finite_domain);
     node["body"]["members"][1]["value"]["members"] = json!([]);
+    let mut dependencies = [node_id(&finite_domain), node_id(&body_target)];
+    dependencies.sort_by_key(|dependency| {
+        serde_json::from_value::<CheckedNodeId>(dependency.clone()).expect("dependency ID")
+    });
+    node["dependencies"] = json!(dependencies);
     edit(&mut node["body"]);
     let at = push(&mut package, node);
     settle(&mut package);
@@ -4109,7 +4136,23 @@ fn finite_hyper(edit: impl FnOnce(&mut Value)) -> (Value, usize) {
 #[test]
 fn tc_346_a_finite_domain_hyperproperty_has_no_subjects_alias_or_fairness_and_a_boolean_body() {
     let (package, _) = finite_hyper(|_| {});
-    admitted("a finite-domain hyperproperty", &package);
+    let admitted_package = admitted("a finite-domain hyperproperty", &package);
+    let domain = nodes(&package)
+        .iter()
+        .find(|node| node["semantic_form"] == "finite_trace_population")
+        .expect("finite trace domain node");
+    let claim = nodes(&package)
+        .iter()
+        .find(|node| node["semantic_form"] == "hyperproperty")
+        .expect("hyperproperty node");
+    assert!(claim["dependencies"]
+        .as_array()
+        .expect("dependency list")
+        .contains(&domain["node_id"]));
+    assert!(admitted_package.graph().nodes.iter().any(|node| {
+        node.node_id
+            == serde_json::from_value(domain["node_id"].clone()).expect("finite trace node ID")
+    }));
     // A body that is a `value` node, not an `expression` node.
     let (package, at) = finite_hyper(|body| {
         body["members"][6]["value"] = refer(&aaaa());
@@ -4161,6 +4204,47 @@ fn tc_346_a_finite_domain_hyperproperty_has_no_subjects_alias_or_fairness_and_a_
             at_body(at, "/members/3/value/members/0/members/2")
         )
     );
+    let (package, at) = finite_hyper(|body| body["members"][0]["value"] = refer(&aaaa()));
+    assert_eq!(
+        first_refusal("a reference to a non-finite domain", &package),
+        outcome(
+            Code::InvalidSemanticGraph,
+            None,
+            at_body(at, "/members/0/value")
+        )
+    );
+
+    for member_at in [2, 4, 5] {
+        let (package, at) = finite_hyper(|body| {
+            body["members"][member_at]["value"]["members"] = json!([text("unexpected")]);
+        });
+        assert_eq!(
+            first_refusal("a nonempty finite-domain binding", &package),
+            outcome(
+                Code::InvalidSemanticGraph,
+                None,
+                at_body(at, &format!("/members/{member_at}/value/members/0"))
+            )
+        );
+    }
+
+    let (mut package, _) = finite_hyper(|_| {});
+    let domain_at = find_form(&package, "bounded_domain", "finite_trace_population");
+    package["semantic_graph"]["nodes"][domain_at]["body"]["members"][0]["value"]["value"] =
+        json!("0");
+    settle(&mut package);
+    let refusal = refusal_of("a zero finite-trace bound", &package).0;
+    assert_eq!(refusal.0, Code::InvalidPackage);
+    assert_eq!(refusal.1, Some(Cause::InvalidDerivedShape));
+
+    let (mut package, _) = finite_hyper(|_| {});
+    let domain_at = find_form(&package, "bounded_domain", "finite_trace_population");
+    let integer = node_label(&package, find_form(&package, "scalar_type", "integer"));
+    package["semantic_graph"]["nodes"][domain_at]["semantic_type"] = node_id(&integer);
+    settle(&mut package);
+    let refusal = refusal_of("a non-record finite-trace base", &package).0;
+    assert_eq!(refusal.0, Code::InvalidPackage);
+    assert_eq!(refusal.1, Some(Cause::InvalidDerivedShape));
 }
 
 #[trace("TC-346", "FR-038-AC-530")]

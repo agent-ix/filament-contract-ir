@@ -2385,6 +2385,289 @@ fn selected_facts_join_only_explicit_model_field_and_charge_full_emission_rows()
     );
 }
 
+/// FR-322: the strict reader admits Float schedules only for direct operands;
+/// even an explicit conversion to the same float type invalidates the witness.
+#[trace("FSpec-FR-322-AC-288")]
+#[test]
+fn strict_reader_rejects_float_equality_conversion_targets() {
+    let selected = document(vec![]);
+    let (mut wire, evidence, _) = self::package(&selected, &[], &[]);
+    let float = "native/float32";
+    let boolean = "native/boolean";
+    let equality = "selected/float-equality";
+    let ieee_profile = json!({
+        "authority":"agent-ix",
+        "identity":"filament.value.ieee754-2019-default/v1"
+    });
+    wire["lock"]["definition_selections"] = json!([ieee_profile.clone()]);
+    wire["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .extend([
+            wire_node(float, "scalar_type", "float32", float, &[], empty()),
+            wire_node(boolean, "scalar_type", "boolean", boolean, &[], empty()),
+            wire_node(
+                "native/text",
+                "scalar_type",
+                "text",
+                "native/text",
+                &[],
+                empty(),
+            ),
+        ]);
+    let rounded_float = "native/float32-rounded";
+    wire["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .push(wire_node(
+            rounded_float,
+            "bounded_domain",
+            "float_rounding",
+            float,
+            &[float, "native/text"],
+            json!({"term":"aggregate", "members":[{
+                "term":"binding", "name":"rounding", "value":{
+                    "term":"literal", "type":node_id("native/text"),
+                    "value_kind":"text", "value":"nearest-even"
+                }
+            }]}),
+        ));
+    let mut equality_node = wire_node(
+        equality,
+        "expression",
+        "call",
+        boolean,
+        &[float],
+        json!({"term":"application", "operator":"call",
+        "operation":{"identity":"filament.op.ieee.numeric_equal",
+            "laws":[{"role":"ieee_profile", "definition":ieee_profile}], "mode":null,
+            "member":null, "leaves":[]},
+        "result_type":node_id(boolean),
+        "arguments":[
+            {"term":"literal", "type":node_id(float),
+                "value_kind":"float32_bits", "value":"3f800000"},
+            {"term":"literal", "type":node_id(float),
+                "value_kind":"float32_bits", "value":"40000000"}
+        ]}),
+    );
+    equality_node["occurrences"] = json!([{"role":"expression", "ordinal":0}]);
+    wire["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .push(equality_node);
+    wire["checked_term_data"] = json!({
+        "equality_decisions":[{
+            "application":node_id(equality),
+            "occurrence":{"role":"expression", "ordinal":0},
+            "term_path":[], "operator":"equal", "schedule":"float",
+            "left":{"operand":0, "source_type":node_id(float), "conversion_target":null},
+            "right":{"operand":1, "source_type":node_id(float), "conversion_target":null},
+            "units":[], "enum_members":[]
+        }],
+        "protocol_locations":[], "dispatch_tables":[], "probabilistic_claims":[]
+    });
+    settle(&mut wire);
+    let direct = read_with(&wire, &evidence, CheckedPackageReadLimits::bounded());
+    assert!(
+        matches!(direct, CheckedPackageV2ReadResult::Admitted(_)),
+        "direct Float operands should admit before adding a conversion target: {direct:?}"
+    );
+    let mut rounded = wire.clone();
+    let rounded_application = rounded["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .iter_mut()
+        .find(|node| node["node_id"] == node_id(equality))
+        .expect("float equality node");
+    for operand in rounded_application["body"]["arguments"]
+        .as_array_mut()
+        .expect("arguments")
+    {
+        operand["type"] = node_id(rounded_float);
+    }
+    rounded["checked_term_data"]["equality_decisions"][0]["left"]["source_type"] =
+        node_id(rounded_float);
+    rounded["checked_term_data"]["equality_decisions"][0]["right"]["source_type"] =
+        node_id(rounded_float);
+    settle(&mut rounded);
+    let rounded_result = read_with(&rounded, &evidence, CheckedPackageReadLimits::bounded());
+    assert!(
+        matches!(rounded_result, CheckedPackageV2ReadResult::Admitted(_)),
+        "producer FloatRounding operands must be admitted: {rounded_result:?}"
+    );
+    let CheckedPackageV2ReadResult::Admitted(package) = direct else {
+        unreachable!("checked above")
+    };
+    let application_id: CheckedNodeId =
+        serde_json::from_value(node_id(equality)).expect("application id");
+    let occurrence = CheckedOccurrence {
+        role: CheckedOccurrenceRole::Expression,
+        ordinal: 0,
+    };
+    let source_map_entry: filament_contract_model::CheckedSourceMapEntry = wire["source_map"]
+        .as_array()
+        .expect("source map")
+        .iter()
+        .find(|entry| entry["node_id"] == node_id(equality))
+        .cloned()
+        .map(serde_json::from_value)
+        .expect("equality source row")
+        .expect("source row decodes");
+    let original = NodeKey::new(
+        "float-equality-reader",
+        vec![PathSegment::Text("float-equality".into())],
+        0,
+    )
+    .expect("original key");
+    let application_row = SelectedEqualityApplicationRow::new(
+        application_id.clone(),
+        occurrence.clone(),
+        source_map_entry,
+        original.clone(),
+        filament_exact::Location::new(
+            original.clone(),
+            filament_exact::Origin::new(filament_exact::Role::from("expression"), 0),
+        ),
+    );
+    let float_node: CheckedNodeId = serde_json::from_value(node_id(float)).expect("float id");
+    let float_value = ValueType::Float(filament_exact::FloatType::exact(
+        filament_exact::IeeeWidth::Binary32,
+    ));
+    let source_fact = |position| filament_contract_model::SelectedEqualityFactRow {
+        application: original.clone(),
+        checked_application: application_id.clone(),
+        occurrence: occurrence.clone(),
+        source_map_entry: application_row.source_map_entry.clone(),
+        structural_key: original.clone(),
+        structural_node: float_node.clone(),
+        owner: None,
+        value_type: Some(float_value.clone()),
+        fact: filament_contract_model::EqualityFactWitness::OperandType {
+            position,
+            role: filament_contract_model::EqualityOperandTypeRole::Source,
+        },
+    };
+    let facts = [source_fact(0), source_fact(1)];
+    let mut budget = filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX);
+    let admitted = package
+        .admitted_equality(
+            &application_id,
+            &occurrence,
+            std::slice::from_ref(&application_row),
+            &facts,
+            &[],
+            &mut budget,
+        )
+        .expect("public admitted reader accepts a direct Float call equality");
+    assert_eq!(admitted.left().source(), &float_value);
+
+    let mut wrong_form = wire.clone();
+    let wrong_node = wrong_form["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .iter_mut()
+        .find(|node| node["node_id"] == node_id(equality))
+        .expect("float equality node");
+    wrong_node["semantic_form"] = json!("binary");
+    wrong_node["body"]["operator"] = json!("binary");
+    settle(&mut wrong_form);
+    assert!(
+        matches!(
+            read_with(&wrong_form, &evidence, CheckedPackageReadLimits::bounded()),
+            CheckedPackageV2ReadResult::Refused(_)
+        ),
+        "Float equality encoded as a binary form must refuse"
+    );
+
+    let mut wrong_schedule = wire.clone();
+    wrong_schedule["checked_term_data"]["equality_decisions"][0]["schedule"] = json!("plan");
+    settle(&mut wrong_schedule);
+    let CheckedPackageV2ReadResult::Refused(refusal) = read_with(
+        &wrong_schedule,
+        &evidence,
+        CheckedPackageReadLimits::bounded(),
+    ) else {
+        panic!("a Float pair cannot be admitted under the Plan schedule");
+    };
+    assert_eq!(refusal.code, CheckedPackageRefusalCode::InvalidPackage);
+    assert_eq!(
+        refusal.cause,
+        Some(CheckedPackageRefusalCause::InvalidValue)
+    );
+    assert_eq!(
+        refusal.loci[0]
+            .path
+            .as_ref()
+            .map(ToString::to_string)
+            .as_deref(),
+        Some("/checked_term_data/equality_decisions/0/schedule")
+    );
+
+    let mut irrelevant_units = wire.clone();
+    irrelevant_units["checked_term_data"]["equality_decisions"][0]["units"] = json!([{
+        "quantity_type":node_id(float), "unit":node_id(float),
+        "form":{"kind":"compound", "dimension_terms":[], "terms":[]}
+    }]);
+    settle(&mut irrelevant_units);
+    let CheckedPackageV2ReadResult::Refused(refusal) = read_with(
+        &irrelevant_units,
+        &evidence,
+        CheckedPackageReadLimits::bounded(),
+    ) else {
+        panic!("Float equality must not carry unit rows");
+    };
+    assert_eq!(
+        refusal.loci[0]
+            .path
+            .as_ref()
+            .map(ToString::to_string)
+            .as_deref(),
+        Some("/checked_term_data/equality_decisions/0/units/0")
+    );
+
+    let mut irrelevant_enums = wire.clone();
+    irrelevant_enums["checked_term_data"]["equality_decisions"][0]["enum_members"] = json!([{
+        "enum_type":node_id(float), "member":node_id(float),
+        "case":"unexpected", "ordinal":0, "ordered":false
+    }]);
+    settle(&mut irrelevant_enums);
+    let CheckedPackageV2ReadResult::Refused(refusal) = read_with(
+        &irrelevant_enums,
+        &evidence,
+        CheckedPackageReadLimits::bounded(),
+    ) else {
+        panic!("Float equality must not carry enum rows");
+    };
+    assert_eq!(
+        refusal.loci[0]
+            .path
+            .as_ref()
+            .map(ToString::to_string)
+            .as_deref(),
+        Some("/checked_term_data/equality_decisions/0/enum_members/0")
+    );
+
+    wire["checked_term_data"]["equality_decisions"][0]["left"]["conversion_target"] =
+        node_id(float);
+    settle(&mut wire);
+    let CheckedPackageV2ReadResult::Refused(refusal) =
+        read_with(&wire, &evidence, CheckedPackageReadLimits::bounded())
+    else {
+        panic!("Float equality must refuse a conversion target");
+    };
+    assert_eq!(refusal.code, CheckedPackageRefusalCode::InvalidPackage);
+    assert_eq!(
+        refusal.cause,
+        Some(CheckedPackageRefusalCause::InvalidValue)
+    );
+    assert_eq!(
+        refusal.loci[0].path.clone(),
+        Some(crate::support::checked_package::pointer(
+            "/checked_term_data/equality_decisions/0/left/conversion_target"
+        ))
+    );
+}
+
 /// A flattened field set cannot stand in for an authored redefinition link.
 #[test]
 fn selected_runtime_types_refuse_unprojected_object_redefinition() {
@@ -4887,6 +5170,8 @@ fn selected_native_fields_keep_distinct_member_types() {
             field("string", "ix://filament/native/String"),
             field("uuid", "ix://filament/native/UUID"),
             field("timestamp", "ix://filament/native/Timestamp"),
+            field("bytes", "ix://filament/native/Bytes"),
+            field("json", "ix://filament/native/JsonObject"),
         ],
     )]);
     let reads = [
@@ -4905,6 +5190,16 @@ fn selected_native_fields_keep_distinct_member_types() {
             field: "timestamp",
             ty: Ty::Timestamp,
         },
+        Read {
+            owner: ORDER,
+            field: "bytes",
+            ty: Ty::Bytes,
+        },
+        Read {
+            owner: ORDER,
+            field: "json",
+            ty: Ty::JsonObject,
+        },
     ];
     let admitted = admit(&document, &[(ORDER, OBJECT)], &reads);
     let fields = fields_of(&admitted, ORDER);
@@ -4912,6 +5207,8 @@ fn selected_native_fields_keep_distinct_member_types() {
         ("string", CheckedMemberType::String, "string"),
         ("uuid", CheckedMemberType::Uuid, "uuid"),
         ("timestamp", CheckedMemberType::Timestamp, "timestamp"),
+        ("bytes", CheckedMemberType::Bytes, "bytes"),
+        ("json", CheckedMemberType::JsonObject, "json_object"),
     ] {
         assert_eq!(
             fields.field(name).and_then(|field| field.member_type()),
@@ -6097,7 +6394,8 @@ fn tc_227_a_chain_admits_at_its_smallest_limit_and_is_incomplete_one_below() {
                 assert_eq!(incomplete.limit_kind, CheckedPackageLimit::Work);
                 assert_eq!(
                     incomplete.path.as_ref().map(ToString::to_string).as_deref(),
-                    Some(root_owner(&package, IDENTITY).as_str())
+                    Some(root_owner(&package, IDENTITY).as_str()),
+                    "count={count}, smallest={smallest}, refusal={incomplete:?}"
                 );
             }
             other => panic!("expected one-below incomplete, got {other:?}"),

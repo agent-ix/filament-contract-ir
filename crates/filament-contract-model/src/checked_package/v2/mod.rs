@@ -2133,6 +2133,7 @@ fn validate(
     } else {
         require_probabilistic_sidecar(&kinds, &mut meter)?;
     }
+    models.charge_selected_owner_visits(&mut meter)?;
     Ok(ValidatedPackage {
         kinds,
         schedulability_claim_index,
@@ -2566,6 +2567,8 @@ fn declaration_forbidden(kind: CheckedNodeKind) -> bool {
             | ScalarTypeForm::Float64
             | ScalarTypeForm::Text
             | ScalarTypeForm::String
+            | ScalarTypeForm::Bytes
+            | ScalarTypeForm::JsonObject
             | ScalarTypeForm::Uuid
             | ScalarTypeForm::Timestamp
             | ScalarTypeForm::Dimension
@@ -2599,7 +2602,8 @@ fn declaration_forbidden(kind: CheckedNodeKind) -> bool {
             | BoundedDomainForm::FloatRounding
             | BoundedDomainForm::TextBounds
             | BoundedDomainForm::CollectionBounds
-            | BoundedDomainForm::ModelPopulation,
+            | BoundedDomainForm::ModelPopulation
+            | BoundedDomainForm::FiniteTracePopulation,
         ) => false,
         // FSL FR-092: a parameter names its binder's value; it declares no
         // name of its own. FSpec FR-440: a union value carries no
@@ -2998,6 +3002,8 @@ fn body_grammar(kind: CheckedNodeKind) -> BodyGrammar {
             | ScalarTypeForm::Float64
             | ScalarTypeForm::Text
             | ScalarTypeForm::String
+            | ScalarTypeForm::Bytes
+            | ScalarTypeForm::JsonObject
             | ScalarTypeForm::Uuid
             | ScalarTypeForm::Timestamp
             | ScalarTypeForm::Dimension
@@ -3028,7 +3034,8 @@ fn body_grammar(kind: CheckedNodeKind) -> BodyGrammar {
             | BoundedDomainForm::FloatRounding
             | BoundedDomainForm::TextBounds
             | BoundedDomainForm::CollectionBounds
-            | BoundedDomainForm::ModelPopulation,
+            | BoundedDomainForm::ModelPopulation
+            | BoundedDomainForm::FiniteTracePopulation,
         ) => BodyGrammar::Term,
         K::Value(ValueForm::Literal) => BodyGrammar::Literal,
         K::Value(
@@ -4010,24 +4017,10 @@ fn validate_graph(
     // nodes before the frame step.
     validate_timed_bounds_reduced(&graph.nodes, &index, meter)?;
     validate_protocol_references(&graph.nodes, &kinds, &index, &graph.operand_rows, meter)?;
-    // FR-322 step 2: each selected declaration's model declaration node key,
-    // one validation visit apiece, charged at the selection it belongs to.
-    let owners = ModelOwners::build(
-        models,
-        &graph.nodes,
-        &mut Budget::node(meter, 0),
-        |budget, root| {
-            budget.charge_at_position(
-                1,
-                "model",
-                stage_storage::Path::root()
-                    .key("semantic_graph")
-                    .key("nodes")
-                    .index(root)
-                    .key("owner"),
-            )
-        },
-    )?;
+    // FR-322 step 2: retain each selected declaration's model declaration node key.
+    let owners = ModelOwners::build(models, &graph.nodes, &mut Budget::node(meter, 0), |_, _| {
+        Ok(())
+    })?;
     extension::validate(wire, &kinds, &terms, &index, evidence, &owners, meter)?;
     let declarations = owners.index_charged(&mut Budget::node(meter, 0))?;
     frame::validate_frame_semantics(frames, &graph.nodes, &kinds, &index, &owners, meter)?;

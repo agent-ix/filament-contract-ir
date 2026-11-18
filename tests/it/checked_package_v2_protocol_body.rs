@@ -6286,12 +6286,69 @@ fn event_compensation_requires_a_template_target() {
 }
 
 pub(crate) fn package_with_admitted_compensation() -> (Value, usize, usize) {
-    let (state, _) = crate::checked_package_v2_frame_entries::state_operand_fixture();
-    let (mut package, root) = package_with_step_control_on(state, "event");
+    package_with_admitted_compensation_for("event")
+}
+
+fn package_with_admitted_compensation_for(operator: &str) -> (Value, usize, usize) {
+    let (mut package, root) = if operator == "send" {
+        let (state, _) = crate::checked_package_v2_frame_entries::state_operand_fixture();
+        let (mut package, root) = package_with_step_control_on(state, "event");
+        let (send_package, send_root, send_channel) = package_with_send();
+        let send_nodes = send_package["semantic_graph"]["nodes"]
+            .as_array()
+            .expect("send fixture nodes");
+        let channel = send_nodes[send_channel].clone();
+        let channel_id = channel["node_id"].clone();
+        let mut send_control = send_nodes[send_root].clone();
+        let send_name = ["Example", "OrderFlow", "run", "Main", "ClockFixtureSend"];
+        send_control["node_id"] = node_id("qualified:Example/OrderFlow/run/Main/ClockFixtureSend");
+        send_control["declaration"]["qualified_name"] = json!(send_name);
+        package["semantic_graph"]["nodes"]
+            .as_array_mut()
+            .expect("state fixture nodes")
+            .push(channel);
+        package["semantic_graph"]["nodes"]
+            .as_array_mut()
+            .expect("state fixture nodes")
+            .push(send_control);
+        let clause = clause_position(&package);
+        package["semantic_graph"]["nodes"][clause]["body"]["arguments"][5]["value"]["members"] =
+            json!([{"term": "reference", "target": channel_id}]);
+        (package, root)
+    } else {
+        let (state, _) = crate::checked_package_v2_frame_entries::state_operand_fixture();
+        package_with_step_control_on(state, operator)
+    };
     let local = compensation_template(
         &mut package,
         &["Example", "OrderFlow", "compensate", "Undo"],
     );
+    if operator == "send" {
+        let nodes = package["semantic_graph"]["nodes"]
+            .as_array_mut()
+            .expect("nodes");
+        let event_binder = nodes[root]["body"]["arguments"]
+            .as_array()
+            .expect("event bindings")
+            .iter()
+            .find(|binding| binding["name"] == "binder")
+            .expect("event binder")["value"]
+            .clone();
+        let send = nodes
+            .iter_mut()
+            .find(|node| {
+                node["semantic_form"] == "control"
+                    && node["body"]["operation"]["member"]["operator"] == "send"
+            })
+            .expect("send control");
+        let send_binder = send["body"]["arguments"]
+            .as_array_mut()
+            .expect("send bindings")
+            .iter_mut()
+            .find(|binding| binding["name"] == "binder")
+            .expect("send binder");
+        send_binder["value"] = event_binder;
+    }
     let local_key = local["node_id"].clone();
     package["semantic_graph"]["nodes"]
         .as_array_mut()
@@ -6326,7 +6383,12 @@ pub(super) fn compensation_clock_case(
             .expect("published declaration")["clock"]
             .clone()
     };
-    let (mut package, _, first) = package_with_admitted_compensation();
+    let control_operator = if case["id"] == "CB-07" {
+        "send"
+    } else {
+        "event"
+    };
+    let (mut package, _, first) = package_with_admitted_compensation_for(control_operator);
     let mut second = package["semantic_graph"]["nodes"][first].clone();
     second["node_id"] = node_id("qualified:Example/OrderFlow/compensate/UndoSecond");
     second["declaration"]["qualified_name"] =
@@ -6405,10 +6467,29 @@ pub(super) fn compensation_clock_case(
         nodes[protocol_position(&package, "compensation")]["node_id"].clone(),
     );
     ids.insert("k2".to_owned(), second_id);
-    ids.insert(
-        "aw".to_owned(),
-        nodes[protocol_position(&package, "control")]["node_id"].clone(),
-    );
+    let mut rows = case["rows"].as_array().expect("rows").clone();
+    for declaration in declarations {
+        if declaration["form"] == "control"
+            && rows
+                .iter()
+                .any(|row| row["declaration"] == declaration["key"])
+        {
+            let key = declaration["key"]
+                .as_str()
+                .expect("control declaration key");
+            let operator = declaration["operator"]
+                .as_str()
+                .expect("control declaration operator");
+            let control = nodes
+                .iter()
+                .find(|node| {
+                    node["semantic_form"] == "control"
+                        && node["body"]["operation"]["member"]["operator"] == operator
+                })
+                .expect("published control operator");
+            ids.insert(key.to_owned(), control["node_id"].clone());
+        }
+    }
     if case["id"] == "CB-01" {
         let clause = nodes
             .iter()
@@ -6418,7 +6499,6 @@ pub(super) fn compensation_clock_case(
             .expect("temporal clause");
         ids.insert("c".to_owned(), clause["node_id"].clone());
     }
-    let mut rows = case["rows"].as_array().expect("rows").clone();
     for row in &mut rows {
         let key = row["declaration"].as_str().expect("declaration key");
         row["declaration"] = ids[key].clone();
@@ -6554,7 +6634,7 @@ fn compensation_clock_rows_follow_published_cases() {
                 let key = match id {
                     "CB-03" | "CB-05" => &ids["k2"],
                     "CB-04" | "CB-06" => &ids["k1"],
-                    "CB-07" => &ids["aw"],
+                    "CB-07" => &ids["sd"],
                     _ => panic!("unexpected refused case {id}"),
                 };
                 let pointer = if id == "CB-03" {

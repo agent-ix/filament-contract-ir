@@ -365,6 +365,7 @@ mod tests {
         for (wire, member) in [
             ("temporal_interval", OperationMemberKind::TemporalInterval),
             ("fairness", OperationMemberKind::Fairness),
+            ("history", OperationMemberKind::History),
         ] {
             assert_eq!(OperationMemberKind::from_wire(wire), Some(member));
             assert_eq!(member.as_wire(), wire);

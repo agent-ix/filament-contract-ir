@@ -956,7 +956,7 @@ fn tc_048_v2_reader_reports_exact_and_one_over_limits() {
             CheckedPackageLimit::Work,
             all_families_read_work - 1,
             all_families_read_work,
-            Some("/semantic_graph/nodes/16/dependencies/2")
+            Some("/semantic_graph/nodes/25/owner")
         ))
     );
 }

@@ -853,6 +853,8 @@ fn quantity_chain(kind: CheckedNodeKind) -> QuantityChain {
             | ScalarTypeForm::Decimal
             | ScalarTypeForm::Text
             | ScalarTypeForm::String
+            | ScalarTypeForm::Bytes
+            | ScalarTypeForm::JsonObject
             | ScalarTypeForm::Uuid
             | ScalarTypeForm::Timestamp
             | ScalarTypeForm::Boolean
@@ -864,7 +866,9 @@ fn quantity_chain(kind: CheckedNodeKind) -> QuantityChain {
             | ScalarTypeForm::BoundedQuantity
             | ScalarTypeForm::Enum,
         ) => QuantityChain::Other,
-        K::BoundedDomain(BoundedDomainForm::ModelPopulation) => QuantityChain::Other,
+        K::BoundedDomain(
+            BoundedDomainForm::ModelPopulation | BoundedDomainForm::FiniteTracePopulation,
+        ) => QuantityChain::Other,
         K::BoundedDomain(
             BoundedDomainForm::IntegerRange
             | BoundedDomainForm::RationalRange
@@ -941,6 +945,8 @@ fn requires_bound(kind: CheckedNodeKind) -> bool {
         K::ScalarType(
             ScalarTypeForm::Boolean
             | ScalarTypeForm::String
+            | ScalarTypeForm::Bytes
+            | ScalarTypeForm::JsonObject
             | ScalarTypeForm::Uuid
             | ScalarTypeForm::Timestamp
             | ScalarTypeForm::Dimension
@@ -973,7 +979,8 @@ fn requires_bound(kind: CheckedNodeKind) -> bool {
             | BoundedDomainForm::FloatRounding
             | BoundedDomainForm::TextBounds
             | BoundedDomainForm::CollectionBounds
-            | BoundedDomainForm::ModelPopulation,
+            | BoundedDomainForm::ModelPopulation
+            | BoundedDomainForm::FiniteTracePopulation,
         ) => false,
         K::Value(
             ValueForm::Literal

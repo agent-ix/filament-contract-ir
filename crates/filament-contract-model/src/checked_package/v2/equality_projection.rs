@@ -52,6 +52,36 @@ fn argument_type<'a, Body>(
     }
 }
 
+fn float_operand_type<Body>(
+    type_id: &CheckedNodeId,
+    nodes: &[super::CheckedSemanticNodeV2<Body>],
+    kinds: &[CheckedNodeKind],
+    index: &[(&CheckedNodeId, usize)],
+    meter: &mut WorkMeter,
+    row: usize,
+    at: Path<'static>,
+) -> Result<bool, ValidationFailure> {
+    let mut current = type_id;
+    loop {
+        stage_storage::work(meter, &data_site(row, at), 1)?;
+        let Some(position) = dispatch_projection::position_of(index, current) else {
+            return Ok(false);
+        };
+        match kinds.get(position) {
+            Some(CheckedNodeKind::ScalarType(
+                ScalarTypeForm::Float32 | ScalarTypeForm::Float64,
+            )) => return Ok(true),
+            Some(CheckedNodeKind::BoundedDomain(BoundedDomainForm::FloatRounding)) => {
+                let Some(node) = nodes.get(position) else {
+                    return Ok(false);
+                };
+                current = &node.semantic_type;
+            }
+            _ => return Ok(false),
+        }
+    }
+}
+
 /// The compared type of an operand, and the type a conversion operand is
 /// converted from, borrowed from the term and the graph.
 type ArgumentTypes<'a> = (&'a CheckedNodeId, Option<&'a CheckedNodeId>);
@@ -114,9 +144,13 @@ pub(super) fn text_bounds(term: &CheckedTerm) -> Option<(&str, &str, &str)> {
     ))
 }
 
+#[ix_trace_rs::string_edge]
 pub(super) fn equality_operator(identity: &str) -> Option<CheckedEqualityOperator> {
     // The operation record has already been checked against the closed catalog.
     // All catalogued equality identities end in one of these two segments.
+    if identity == "filament.op.ieee.numeric_equal" {
+        return Some(CheckedEqualityOperator::Equal);
+    }
     match identity.rsplit_once('.') {
         Some((_, "eq")) => Some(CheckedEqualityOperator::Equal),
         Some((_, "ne")) => Some(CheckedEqualityOperator::NotEqual),
@@ -178,8 +212,42 @@ pub(super) fn validate<Body>(
         let Some(position) = dispatch_projection::position_of(&index, &decision.application) else {
             return Err(invalid(meter, row.key("application")));
         };
+        let (expected_form, expected_operator) = match decision.schedule {
+            super::CheckedEqualitySchedule::Float => {
+                (ExpressionForm::Call, ApplicationOperator::Call)
+            }
+            super::CheckedEqualitySchedule::Text
+            | super::CheckedEqualitySchedule::Enum
+            | super::CheckedEqualitySchedule::Quantity
+            | super::CheckedEqualitySchedule::Plan => {
+                (ExpressionForm::Binary, ApplicationOperator::Binary)
+            }
+        };
+        let Some(CheckedTerm::Application {
+            operator,
+            operation,
+            arguments,
+            ..
+        }) = terms.get(position)
+        else {
+            return Err(invalid(meter, row.key("application")));
+        };
+        let operation_identity = operation.identity();
+        if operation_identity == Some("filament.op.ieee.numeric_equal")
+            && decision.schedule != super::CheckedEqualitySchedule::Float
+        {
+            return Err(invalid(meter, row.key("schedule")));
+        }
+        if decision.schedule == super::CheckedEqualitySchedule::Float {
+            if !decision.units.is_empty() {
+                return Err(invalid(meter, row.key("units").index(0)));
+            }
+            if !decision.enum_members.is_empty() {
+                return Err(invalid(meter, row.key("enum_members").index(0)));
+            }
+        }
         if decision.application.package != wire.name
-            || kinds.get(position) != Some(&CheckedNodeKind::Expression(ExpressionForm::Binary))
+            || kinds.get(position) != Some(&CheckedNodeKind::Expression(expected_form))
         {
             return Err(invalid(meter, row.key("application")));
         }
@@ -200,20 +268,24 @@ pub(super) fn validate<Body>(
         if !decision.term_path.is_empty() {
             return Err(invalid(meter, row.key("term_path").index(0)));
         }
-        let Some(CheckedTerm::Application {
-            operator: ApplicationOperator::Binary,
-            operation,
-            arguments,
-            ..
-        }) = terms.get(position)
-        else {
+        if *operator != expected_operator {
+            return Err(invalid(meter, row.key("application")));
+        }
+        let Some(actual_operator) = operation_identity.and_then(equality_operator) else {
             return Err(invalid(meter, row.key("application")));
         };
-        let Some(actual_operator) = operation.identity().and_then(equality_operator) else {
-            return Err(invalid(meter, row.key("application")));
-        };
+        if decision.schedule == super::CheckedEqualitySchedule::Float
+            && operation_identity != Some("filament.op.ieee.numeric_equal")
+        {
+            return Err(invalid(meter, row.key("schedule")));
+        }
         if actual_operator != decision.operator {
             return Err(invalid(meter, row.key("operator")));
+        }
+        if decision.schedule == super::CheckedEqualitySchedule::Float
+            && decision.left.source_type != decision.right.source_type
+        {
+            return Err(invalid(meter, row.key("right").key("source_type")));
         }
         if arguments.len() != 2 {
             return Err(invalid(meter, row.key("application")));
@@ -224,6 +296,11 @@ pub(super) fn validate<Body>(
             if usize::from(operand.operand) != ordinal {
                 return Err(invalid(meter, at.key("operand")));
             }
+            if decision.schedule == super::CheckedEqualitySchedule::Float
+                && operand.conversion_target.is_some()
+            {
+                return Err(invalid(meter, at.key("conversion_target")));
+            }
             let Some((source_type, conversion_target)) = arguments
                 .get(ordinal)
                 .and_then(|argument| argument_types(argument, wire, kinds, terms, &index))
@@ -231,6 +308,11 @@ pub(super) fn validate<Body>(
                 return Err(invalid(meter, at.key("source_type")));
             };
             if *source_type != operand.source_type {
+                return Err(invalid(meter, at.key("source_type")));
+            }
+            if decision.schedule == super::CheckedEqualitySchedule::Float
+                && !float_operand_type(source_type, nodes, kinds, &index, meter, row_index, at)?
+            {
                 return Err(invalid(meter, at.key("source_type")));
             }
             if conversion_target != operand.conversion_target.as_ref() {
@@ -770,6 +852,7 @@ fn operand_type(
     work: &mut NativeJoinBudget,
 ) -> Result<ValueType, AdmittedEqualityReadError> {
     let witness = match decision.schedule {
+        super::CheckedEqualitySchedule::Float => EqualityWitnessKind::PlanType,
         super::CheckedEqualitySchedule::Text => EqualityWitnessKind::TextType,
         super::CheckedEqualitySchedule::Enum => EqualityWitnessKind::EnumDeclaration,
         super::CheckedEqualitySchedule::Quantity => EqualityWitnessKind::QuantityType,
@@ -2119,21 +2202,7 @@ impl CheckedPackageV2 {
                 0,
             ));
         };
-        if self.kinds.get(position) != Some(&CheckedNodeKind::Expression(ExpressionForm::Binary)) {
-            return Err(read_error(
-                work,
-                AdmittedEqualityReadErrorCode::WrongApplicationForm,
-                application,
-                application,
-                0,
-            ));
-        }
-        let Some(CheckedTerm::Application {
-            operator: ApplicationOperator::Binary,
-            operation,
-            ..
-        }) = self.term_at(position)
-        else {
+        let Some(CheckedTerm::Application { operation, .. }) = self.term_at(position) else {
             return Err(read_error(
                 work,
                 AdmittedEqualityReadErrorCode::WrongApplicationForm,
@@ -2198,6 +2267,58 @@ impl CheckedPackageV2 {
                 0,
             ));
         };
+        let (expected_form, expected_operator) = match decision.schedule {
+            super::CheckedEqualitySchedule::Float => {
+                (ExpressionForm::Call, ApplicationOperator::Call)
+            }
+            super::CheckedEqualitySchedule::Text
+            | super::CheckedEqualitySchedule::Enum
+            | super::CheckedEqualitySchedule::Quantity
+            | super::CheckedEqualitySchedule::Plan => {
+                (ExpressionForm::Binary, ApplicationOperator::Binary)
+            }
+        };
+        if self.kinds.get(position) != Some(&CheckedNodeKind::Expression(expected_form)) {
+            return Err(read_error(
+                work,
+                AdmittedEqualityReadErrorCode::WrongApplicationForm,
+                application,
+                application,
+                0,
+            ));
+        }
+        let Some(CheckedTerm::Application {
+            operator,
+            operation,
+            ..
+        }) = self.term_at(position)
+        else {
+            return Err(read_error(
+                work,
+                AdmittedEqualityReadErrorCode::WrongApplicationForm,
+                application,
+                application,
+                0,
+            ));
+        };
+        if *operator != expected_operator {
+            return Err(read_error(
+                work,
+                AdmittedEqualityReadErrorCode::WrongApplicationForm,
+                application,
+                application,
+                0,
+            ));
+        }
+        if operation.identity().and_then(equality_operator).is_none() {
+            return Err(read_error(
+                work,
+                AdmittedEqualityReadErrorCode::NonEqualityApplication,
+                application,
+                application,
+                0,
+            ));
+        }
         charge_storage(work, application, application, 1)?;
         let mut row = None;
         let mut seen_rows = BTreeSet::new();
@@ -2237,21 +2358,44 @@ impl CheckedPackageV2 {
             for _ in &candidate.source_map_entry.regions {
                 charge_work(work, application, &candidate.application)?;
             }
-            let candidate_valid =
-                self.node_position(&candidate.application)
-                    .is_some_and(|position| {
-                        self.kinds.get(position)
-                            == Some(&CheckedNodeKind::Expression(ExpressionForm::Binary))
-                            && matches!(self.term_at(position), Some(CheckedTerm::Application {
-                        operator: ApplicationOperator::Binary, operation, ..
-                    }) if operation.identity().and_then(equality_operator).is_some())
-                    })
-                    && candidate_source.and_then(|position| self.wire.source_map.get(position))
-                        == Some(&candidate.source_map_entry)
-                    && *candidate.location.node() == candidate.node_key
-                    && candidate.location.occurrence().ordinal() == candidate.occurrence.ordinal
-                    && candidate.location.occurrence().role().as_str()
-                        == occurrence_role(&candidate.occurrence.role);
+            let mut candidate_decision = None;
+            for possible_decision in &data.equality_decisions {
+                charge_work(work, application, &possible_decision.application)?;
+                if possible_decision.application == candidate.application
+                    && possible_decision.occurrence == candidate.occurrence
+                {
+                    candidate_decision = Some(possible_decision);
+                    break;
+                }
+            }
+            let candidate_expected =
+                candidate_decision.map(|candidate_decision| match candidate_decision.schedule {
+                    super::CheckedEqualitySchedule::Float => {
+                        (ExpressionForm::Call, ApplicationOperator::Call)
+                    }
+                    super::CheckedEqualitySchedule::Text
+                    | super::CheckedEqualitySchedule::Enum
+                    | super::CheckedEqualitySchedule::Quantity
+                    | super::CheckedEqualitySchedule::Plan => {
+                        (ExpressionForm::Binary, ApplicationOperator::Binary)
+                    }
+                });
+            let candidate_valid = self
+                .node_position(&candidate.application)
+                .zip(candidate_expected)
+                .is_some_and(|(position, (form, expected_operator))| {
+                    self.kinds.get(position) == Some(&CheckedNodeKind::Expression(form))
+                        && matches!(self.term_at(position), Some(CheckedTerm::Application {
+                        operator, operation, ..
+                    }) if *operator == expected_operator
+                        && operation.identity().and_then(equality_operator).is_some())
+                })
+                && candidate_source.and_then(|position| self.wire.source_map.get(position))
+                    == Some(&candidate.source_map_entry)
+                && *candidate.location.node() == candidate.node_key
+                && candidate.location.occurrence().ordinal() == candidate.occurrence.ordinal
+                && candidate.location.occurrence().role().as_str()
+                    == occurrence_role(&candidate.occurrence.role);
             if !candidate_valid {
                 return Err(read_error(
                     work,
@@ -2312,11 +2456,39 @@ impl CheckedPackageV2 {
             work,
         )?;
         let schedule = match decision.schedule {
+            super::CheckedEqualitySchedule::Float => EqualitySchedule::Float,
             super::CheckedEqualitySchedule::Text => EqualitySchedule::Text,
             super::CheckedEqualitySchedule::Enum => EqualitySchedule::Enum,
             super::CheckedEqualitySchedule::Quantity => EqualitySchedule::Quantity,
             super::CheckedEqualitySchedule::Plan => EqualitySchedule::Plan,
         };
+        if schedule == EqualitySchedule::Float {
+            if decision.left.conversion_target.is_some()
+                || decision.right.conversion_target.is_some()
+            {
+                return Err(read_error(
+                    work,
+                    AdmittedEqualityReadErrorCode::MismatchedEqualityWitness,
+                    application,
+                    &decision.right.source_type,
+                    0,
+                ));
+            }
+            let left_type = left.target().unwrap_or_else(|| left.source());
+            let right_type = right.target().unwrap_or_else(|| right.source());
+            if !matches!(left_type, ValueType::Float(_))
+                || !matches!(right_type, ValueType::Float(_))
+                || left_type != right_type
+            {
+                return Err(read_error(
+                    work,
+                    AdmittedEqualityReadErrorCode::MismatchedEqualityWitness,
+                    application,
+                    &decision.right.source_type,
+                    0,
+                ));
+            }
+        }
         let (enum_declarations, enum_members) = if schedule == EqualitySchedule::Enum {
             let compared = left.target().unwrap_or_else(|| left.source());
             if right.target().unwrap_or_else(|| right.source()) != compared {
