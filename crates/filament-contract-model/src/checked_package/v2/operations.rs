@@ -7514,6 +7514,8 @@ mod tests {
                 ("scalar_type", "float64", "float64"),
                 ("scalar_type", "text", "text"),
                 ("scalar_type", "string", "string"),
+                ("scalar_type", "bytes", "bytes"),
+                ("scalar_type", "json_object", "json_object"),
                 ("scalar_type", "uuid", "uuid"),
                 ("scalar_type", "timestamp", "timestamp"),
                 ("scalar_type", "unit", "quantity"),
