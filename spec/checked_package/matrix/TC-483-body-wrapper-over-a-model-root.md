@@ -21,5 +21,5 @@ Verify that the strict V2 reader admits a hyper body wrapper whose `over` is the
 ## Expected Results
 
 - Step 1: admitted; the hyper rows read back keyed by the `hyperproperty` node.
-- Step 2: each `invalid_model_binding`/`malformed-declaration` at `/semantic_graph/nodes/{w}/body/arguments/0`.
+- Step 2: each `invalid_model_binding`/`malformed-declaration` at `/semantic_graph/nodes/{w}/body/arguments/0`: the first and third edits at the temporal step, the second at the hyperproperty step (FSpec FR-402 "Reader order" step 3).
 - Step 3: `missing_declaration`/`missing-name` at the same pointer.
