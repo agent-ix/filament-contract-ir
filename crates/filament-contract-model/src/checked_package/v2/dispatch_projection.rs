@@ -337,7 +337,7 @@ pub(super) fn validate_checked_term_data<Body>(
                 return Err(conflicting(meter, row_index, at.key("selection_key")));
             }
             if candidate.selection_key.owner_effective_type.is_some() {
-                // FR-788: a source declaration key has no owner effective type.
+                // A source declaration key carries no owner effective type.
                 if matches!(route, Route::Source { .. }) {
                     return Err(invalid(meter, row_index, at.key("selection_key")));
                 }

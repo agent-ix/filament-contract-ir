@@ -1647,6 +1647,13 @@ fn source_candidate_selection_keys_refuse_unless_they_name_a_source_type_of_the_
             Box::new(|key| key["original"]["node"] = json!("Order")),
         ),
         (
+            "the checked package's name as package and node prefix",
+            Box::new(|key| {
+                key["original"]["package"] = json!(FIXTURE_PACKAGE_NAME);
+                key["original"]["node"] = json!(format!("ix://{FIXTURE_PACKAGE_NAME}/Order"));
+            }),
+        ),
+        (
             "non-null owner_effective_type",
             Box::new(|key| {
                 key["owner_effective_type"] = json!({"owner_effective_type": null,
@@ -2839,4 +2846,122 @@ fn an_inheriting_candidate_joins_the_row_of_the_declaring_type() {
     body_rows_mut(&mut package).retain(|row| row["declaring"] != node_id("qualified:Sub"));
     settle(&mut package);
     admitted(&package);
+}
+
+const OTHER_UNIT: &str = "src/other-unit";
+
+/// The bodies package with a second `SourceOwner` (`src/other-unit`) that
+/// owns a type `Ledger` and a body clause function `["Other", "deposit",
+/// "body"]`, and with a clause function `["Order", "other", "body"]` of
+/// another operation of the first owner.
+fn two_owner_bodies_package() -> Value {
+    let mut package = bodies_package();
+    let other = json!({"authority": fixture_source()["authority"], "identity": OTHER_UNIT});
+    package["lock"]["sources"]
+        .as_array_mut()
+        .expect("sources")
+        .push(other.clone());
+    let owner = json!({"kind": "source", "authority": other["authority"], "identity": OTHER_UNIT});
+    nodes_mut(&mut package).extend([
+        source_type("Ledger", &["total"], &other),
+        clause_function(&owner, &["Other", "deposit", "body"], &integer()),
+        clause_function(&source_owner(), &["Order", "other", "body"], &integer()),
+    ]);
+    settle_two_owners(&mut package);
+    package
+}
+
+/// `settle`, then the source-map regions of the second owner's nodes name it.
+fn settle_two_owners(package: &mut Value) {
+    settle(package);
+    let other = json!({"authority": fixture_source()["authority"], "identity": OTHER_UNIT});
+    for name in ["qualified:Ledger", "qualified:Other/deposit/body"] {
+        let node = node_id(name);
+        for entry in package["source_map"].as_array_mut().expect("source map") {
+            if entry["node_id"] == node {
+                entry["regions"][0]["source"] = other.clone();
+            }
+        }
+    }
+}
+
+/// FR-373-AC-6: the carrier's `document` and `body.node` join through the
+/// `SourceOwner`.
+#[trace("TC-480", "FR-373-AC-6")]
+#[test]
+fn a_source_row_names_its_own_owner_and_its_own_operations_body() {
+    type Case = (
+        &'static str,
+        Box<dyn Fn(&mut Value)>,
+        (Code, Option<Cause>),
+        &'static str,
+    );
+    let invalid = (Code::InvalidPackage, Some(Cause::InvalidValue));
+    let cases: Vec<Case> = vec![
+        (
+            "another owner's identity as the document",
+            Box::new(|package| {
+                row_of(package, "qualified:Order", "deposit")["document"] = json!(OTHER_UNIT);
+            }),
+            invalid,
+            "/operation_bodies/0/document",
+        ),
+        (
+            "another operation's body function",
+            Box::new(|package| {
+                row_of(package, "qualified:Order", "deposit")["body"]["node"] =
+                    node_id("qualified:Order/other/body");
+            }),
+            invalid,
+            "/operation_bodies/0/body/node",
+        ),
+        (
+            "another owner's function",
+            Box::new(|package| {
+                row_of(package, "qualified:Order", "deposit")["body"]["node"] =
+                    node_id("qualified:Other/deposit/body");
+            }),
+            invalid,
+            "/operation_bodies/0/body/node",
+        ),
+        (
+            "a node that is no function",
+            Box::new(|package| {
+                row_of(package, "qualified:Order", "deposit")["body"]["node"] = order_id();
+            }),
+            (Code::IllTyped, Some(Cause::OperatorIneligible)),
+            "/operation_bodies/0/body/node",
+        ),
+        (
+            "rows out of key order",
+            Box::new(|package| body_rows_mut(package).swap(0, 1)),
+            invalid,
+            "/operation_bodies/1",
+        ),
+    ];
+    admitted(&two_owner_bodies_package());
+    for (case, edit, (code, cause), path) in cases {
+        let mut package = two_owner_bodies_package();
+        edit(&mut package);
+        settle_two_owners(&mut package);
+        expect(case, &package, code, cause, path);
+    }
+}
+
+/// A candidate whose body is another operation's clause function is left to
+/// the dispatch validation, which refuses it at `operation_body`.
+#[trace("TC-480", "FR-373-AC-6")]
+#[test]
+fn a_candidate_body_of_another_operation_is_refused_by_dispatch_validation() {
+    let mut package = two_owner_bodies_package();
+    package["checked_term_data"]["dispatch_tables"][0]["candidates"][0]["operation_body"] =
+        node_id("qualified:Order/other/body");
+    settle_two_owners(&mut package);
+    expect(
+        "candidate body of another operation",
+        &package,
+        Code::InvalidPackage,
+        Some(Cause::InvalidValue),
+        "/checked_term_data/dispatch_tables/0/candidates/0/operation_body",
+    );
 }

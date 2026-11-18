@@ -82,9 +82,10 @@ node and optional presence with the node body's bindings: the binding name,
 the bound type node reference and its `optional` group. The `supertypes`
 check requires each entry to name an admitted source-declared type node of the
 package that is not the row's own node, and the supertype relation of all rows
-to be acyclic. `identity_fields` and `populations` are producer facts read only
-from a joined row; the package has no `extends`, identity or population
-information against which to check them.
+to be acyclic. `identity_fields`, `populations` and `operations` (each entry `{identity,
+query, clock_parameters}`) are producer facts read only from a joined row; the
+package has no `extends`, identity, population or operation information
+against which to check them.
 
 ## Acceptance Criteria
 

@@ -55,23 +55,26 @@ For a source row the reader SHALL:
    `declaration` (`invalid_package`/`invalid-value` at `body` otherwise), and
    `body.node` to be that node (`invalid_package`/`invalid-value` at
    `body/node` for a precondition clause function, another operation's body or
-   another owner's function);
+   another owner's function; `ill_typed`/`operator-ineligible` at `body/node`
+   for a node that is no `function`);
 3. join each source dispatch candidate to the row of the type that its
    `operation_body` is declared under (the first segment of that clause
-   function's `declaration`) and the table's operation: the candidate's
-   `operation_body` SHALL equal that row's `body.node` and the row SHALL exist
-   (`invalid_package`/`invalid-value` at `/operation_bodies` when it does not,
-   `invalid_package`/`invalid-value` at `body` when the bodies differ);
+   function's `declaration`) and the table's operation, and require that row
+   to exist (`invalid_package`/`invalid-value` at `/operation_bodies`
+   otherwise); the row's `body.node` is then the candidate's `operation_body`,
+   since declarations are unique per package and item 2 holds;
 4. keep the carrier order and the repeated-key refusal of the model rows.
 
-The package carries no list of a source type's operations, so
-`CheckedPackageV2::read` SHALL NOT require a row for an operation that no
-dispatch candidate joins and SHALL NOT refuse a row naming an operation the
-package holds no evidence of. Coverage is checked at the identity-row join
-(FR-375),
-which has the `operations` of each source-object row. A candidate whose clause
-function is not a source body clause function of its operation is left to the
-dispatch validation of FR-366.
+`CheckedPackageV2::read` does not receive a source type's operation list,
+because the package carries none, so for a source row it requires no row for
+an operation that no dispatch candidate joins and refuses no row naming an
+operation the package holds no evidence of. This is the arch ruling for
+QSL-2347 (option c): coverage of FSpec FR-790 and FR-322-AC-397 for source
+types moves to the identity-row join, which has the `operations` of each
+source-object row ([FR-367](./FR-367-join-source-object-rows-and-field-reads.md)),
+and FSpec W51 and FR-375 specify it. A candidate whose clause function is not a
+source body clause function of its operation is left to the dispatch
+validation of FR-366.
 
 ## Acceptance Criteria
 
@@ -82,6 +85,7 @@ dispatch validation of FR-366.
 | FR-373-AC-3 | Over the AC-1 package, `Order.deposit`'s `body.node` naming its effective precondition clause function, and naming `Sub.deposit`'s body, each refuse `invalid_package`/`invalid-value` at `body/node`. | Test (TC-480) |
 | FR-373-AC-4 | Over the AC-1 package, the `Sub.deposit` row removed refuses `invalid_package`/`invalid-value` at `/operation_bodies`; `Order.deposit`'s `document` of an identity of no `SourceOwner` refuses `missing_declaration`/`missing-selection` at `document`; a repeated row refuses `invalid_package`/`conflicting-definition` at the row. | Test (TC-480) |
 | FR-373-AC-5 | Over the AC-1 package with `Sub`'s candidate naming `Order.deposit`'s body clause function and the `Sub.deposit` row removed, the package admits: the candidate joins the row of the type its body is declared under. | Test (TC-480) |
+| FR-373-AC-6 | Over the AC-1 package with a second `SourceOwner` `src/other-unit` that owns a type and the body clause function `["Other", "deposit", "body"]`, and a clause function `["Order", "other", "body"]` of another operation: `Order.deposit`'s `document` `src/other-unit`, and its `body.node` naming `["Order", "other", "body"]` or `["Other", "deposit", "body"]`, each refuse `invalid_package`/`invalid-value` (at `document` and `body/node`); its `body.node` naming the `Order` type node refuses `ill_typed`/`operator-ineligible` at `body/node`; the first two rows swapped refuse `invalid_package`/`invalid-value` at the second row; and a candidate whose `operation_body` is `["Order", "other", "body"]` is refused by dispatch validation at `operation_body`, not by this carrier. | Test (TC-480) |
 
 ## Dependencies
 
