@@ -1309,6 +1309,37 @@ fn tc_048_every_catalogue_entry_retains_its_constructible_admission() {
 #[test]
 fn collection_seq_requires_bounded_inputs_matching_binder_and_sequence() {
     let base = admitted_fixture("filament.op.collection.seq").expect("sequence control");
+    let mut base = base;
+    let function_id = node_id("function/sequence-owner");
+    let application_id = base["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|node| node["body"]["operation"]["identity"] == "filament.op.collection.seq")
+        .expect("sequence application")["node_id"]
+        .clone();
+    let sequence_result = base["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|node| node["node_id"] == application_id)
+        .expect("sequence application")["body"]["result_type"]
+        .clone();
+    base["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .push(json!({
+            "node_id":function_id, "schema_version":"filament.checked-semantic-graph/v2",
+            "node_tag":"function", "semantic_form":"pure_function",
+            "semantic_type":sequence_result, "dependencies":[application_id.clone()],
+            "occurrences":[{"role":"expression", "ordinal":0}],
+            "body":{"term":"aggregate", "members":[
+                {"term":"binding", "name":"parameters", "value":{"term":"aggregate", "members":[]}},
+                {"term":"binding", "name":"body", "value":{
+                    "term":"reference", "target":application_id}}
+            ]}
+        }));
+    settle(&mut base);
     assert!(matches!(
         read(&base),
         CheckedPackageV2ReadResult::Admitted(_)
@@ -1319,6 +1350,12 @@ fn collection_seq_requires_bounded_inputs_matching_binder_and_sequence() {
         .iter()
         .position(|node| node["body"]["operation"]["identity"] == "filament.op.collection.seq")
         .expect("sequence application");
+    let function = base["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .position(|node| node["node_id"] == function_id)
+        .expect("sequence owner function");
 
     let text_type = node_id("scalar_type/text");
     let integer_type = node_id("scalar_type/integer");
@@ -1381,6 +1418,13 @@ fn collection_seq_requires_bounded_inputs_matching_binder_and_sequence() {
                 node_id("scalar_type/integer"),
             ),
         ]);
+    unused_index["semantic_graph"]["nodes"][function]["body"]["members"][0]["value"] =
+        json!({"term":"aggregate", "members":[{"term":"reference", "target":outer_x}]});
+    let dependencies = unused_index["semantic_graph"]["nodes"][function]["dependencies"]
+        .as_array_mut()
+        .expect("function dependencies");
+    dependencies.push(outer_x.clone());
+    dependencies.sort();
     unused_index["semantic_graph"]["nodes"][application]["body"]["arguments"][2]["value"]
         ["target"] = outer_x;
     settle(&mut unused_index);
