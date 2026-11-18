@@ -2824,7 +2824,6 @@ fn validate_history_reads(
     meter: &mut super::WorkMeter,
 ) -> Result<(), ValidationFailure> {
     for (application_position, term) in graph.terms.iter().enumerate() {
-        charge_at(meter, node_at(application_position))?;
         let Some(CheckedTerm::Application {
             operation,
             arguments,
@@ -2837,6 +2836,7 @@ fn validate_history_reads(
         if operation.identity() != Some("filament.op.refinement.history") {
             continue;
         }
+        charge_at(meter, node_at(application_position))?;
         let application = &graph.nodes[application_position];
         let at = node_at(application_position);
         let Some(declaration) = operation.member_key("declaration") else {

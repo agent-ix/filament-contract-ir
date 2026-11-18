@@ -1070,29 +1070,6 @@ fn original_rows(
 }
 
 impl RetainedModels {
-    /// Charges each selected model declaration's final owner visit after the
-    /// package graph has passed validation.
-    pub(super) fn charge_selected_owner_visits(
-        &self,
-        meter: &mut WorkMeter,
-    ) -> Result<(), ValidationFailure> {
-        for model in &self.models {
-            let visits = model.object_types.len()
-                + model.relationships.len()
-                + model.relation_nodes.len()
-                + model.record_types.len()
-                + model.tuple_types.len()
-                + model.variant_types.len()
-                + model.populations.len()
-                + model.persistence_interfaces.len();
-            let mut budget = Budget::new(meter, model.root, model.bytes);
-            for _ in 0..visits {
-                budget.charge(1)?;
-            }
-        }
-        Ok(())
-    }
-
     /// Admission-retained owner of a selected model declaration key.
     pub(super) fn owner_by_key(&self, key: &CheckedNodeId) -> Option<Owner<'_>> {
         let declared = self.index.0.get(key)?;
