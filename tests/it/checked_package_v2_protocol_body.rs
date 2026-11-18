@@ -9894,6 +9894,21 @@ fn protocol_channel_fifo_refuses_float_key() {
             &key,
         )
     );
+
+    let float_domain = protocol_bounded_domain(&mut package, "float_rounding");
+    package["semantic_graph"]["nodes"][channel]["body"]["arguments"][2]["value"]["target"] =
+        float_domain.clone();
+    package["semantic_graph"]["nodes"][channel]["body"]["arguments"][3]["value"]["members"] = json!([{"term": "binding", "name": "kind", "value": {
+        "term": "literal", "type": node_id(&family_key("a1a1")),
+        "value_kind": "text", "value": "unordered"
+    }}]);
+    package["semantic_graph"]["nodes"][channel]["dependencies"] = json!([float_domain]);
+    settle(&mut package);
+    let unordered_result = read(&package);
+    assert!(
+        matches!(unordered_result, CheckedPackageV2ReadResult::Admitted(_)),
+        "an unordered channel admits the float carries type: {unordered_result:?}"
+    );
 }
 
 /// Trace: FR-038-AC-281, FR-038-AC-284
