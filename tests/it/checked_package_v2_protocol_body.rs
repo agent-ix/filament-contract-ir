@@ -3031,6 +3031,75 @@ fn protocol_owner_requirement_follows_indirect_object_over_types() {
     }
 }
 
+/// Trace: FR-064-AC-7
+#[trace("FR-064-AC-7")]
+#[test]
+fn ownerless_protocol_clause_over_a_model_record_is_admitted() {
+    let identity = "ix://test/families/Parts";
+    let record_id = structural_id(
+        "test/families",
+        vec![json!("model"), json!("record_value_type"), json!(identity)],
+        0,
+    );
+    let mut package = admitted_protocol_families();
+    let clause = clause_position(&package);
+    let over = package["semantic_graph"]["nodes"][clause]["body"]["arguments"][0]["value"]
+        ["target"]
+        .clone();
+    let over_position = node_position_for_key(&package, &over);
+    let mut record = selected_interface_model_node();
+    record["semantic_form"] = json!("record_value_type");
+    record["node_id"] = serde_json::to_value(&record_id).expect("record id");
+    record["semantic_type"] = record["node_id"].clone();
+    record["owner"]["node"] = json!(identity);
+    package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .push(record);
+    package["semantic_graph"]["nodes"][over_position]["semantic_type"] =
+        serde_json::to_value(&record_id).expect("record id");
+    let typed_over = node_id("fixture/protocol-body/model-record-over");
+    reassign_node_id(&mut package, &over, &typed_over);
+    package["semantic_graph"]["nodes"][clause]
+        .as_object_mut()
+        .expect("protocol clause")
+        .remove("owner_model");
+    let finish = protocol_position(&package, "obligation");
+    package["semantic_graph"]["nodes"][finish]["body"]["arguments"][1]["value"] = json!({
+        "term": "literal", "type": node_id(&family_key("aaaa")),
+        "value_kind": "boolean", "value": true
+    });
+    settle(&mut package);
+
+    let mut document = family_model_document();
+    document["constructs"]
+        .as_array_mut()
+        .expect("constructs")
+        .push(json!({
+            "kind": {"module": "test/families", "name": "record"},
+            "construct": {"meaning": "filament.meaning.model.record-value-type/v1"}
+        }));
+    document["types"]
+        .as_array_mut()
+        .expect("types")
+        .push(json!({
+            "identity": identity, "displayName": "Parts",
+            "kind": {"module": "test/families", "name": "record"},
+            "roles": [], "constraints": [], "extensions": [], "unknownPolicy": "reject",
+            "supertypes": [], "fields": [], "operations": []
+        }));
+    let evidence = evidence_with_document(&package, "test/families", &document);
+    let result = crate::read_and_account(
+        &canonical(&package),
+        CheckedPackageReadLimits::bounded(),
+        &evidence,
+    );
+    assert!(
+        matches!(result, CheckedPackageV2ReadResult::Admitted(_)),
+        "ownerless clause over a selected model record should admit: {result:?}"
+    );
+}
+
 /// Trace: FR-064-AC-3, FR-064-AC-4
 #[trace("FR-064-AC-3")]
 #[test]
