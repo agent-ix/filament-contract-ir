@@ -3169,7 +3169,7 @@ fn joined_history_package() -> (Value, CheckedPackageEvidence, usize) {
                 "node_id":receiver, "schema_version":"filament.checked-semantic-graph/v2",
                 "node_tag":"value", "semantic_form":"parameter",
                 "semantic_type":reference_type,
-                "dependencies":[reference_type.clone(), integer_type.clone()],
+                "dependencies":[],
                 "occurrences":[{"role":"expression", "ordinal":0}],
                 "body":{"term":"aggregate", "members":[
                     {"term":"binding", "name":"name", "value":{
