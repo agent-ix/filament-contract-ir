@@ -3414,6 +3414,172 @@ fn hyper_fixture_with(profile: &str, member: Value) -> (Value, String, String) {
     (package, fair_key, format!("{formula_key}\n{clause_key}"))
 }
 
+/// A quantifier Group binding trace variable `variable` over the alias `m`.
+fn trace_group(variable: &str) -> Value {
+    json!({"term": "aggregate", "members": [
+        named("variable", text(variable)),
+        named("quantifier", text("forall")),
+        named("alias", text("m")),
+    ]})
+}
+
+/// An event-position package whose one clause is the body wrapper of a
+/// hyperproperty quantifying the traces `variables`, with the wrapper's graph
+/// position. `settle` writes one row per trace.
+fn hyper_clock_fixture(variables: &[&str]) -> (Value, usize) {
+    let (mut package, _, keys) = hyper_fixture_with(
+        BOUNDED,
+        fairness_member(&model_key(ORDER_NODE), "scaled"),
+    );
+    let clause_key = keys.split('\n').nth(1).expect("clause").to_owned();
+    push(
+        &mut package,
+        hyperproperty(
+            "hyperproperty",
+            variables.iter().map(|name| trace_group(name)).collect(),
+            vec![],
+            vec![],
+            refer(&clause_key),
+        ),
+    );
+    settle(&mut package);
+    let wrapper = clause(&package);
+    (package, wrapper)
+}
+
+const TIMED_NODE_REFERENCE: Cause = Cause::TimedNodeReference;
+
+#[trace("TC-480", "FR-038-AC-561")]
+#[test]
+fn tc_480_a_hyper_wrapper_carries_one_row_per_quantified_trace() {
+    for variables in [["s", "n"], ["a", "b"]] {
+        let (package, _) = hyper_clock_fixture(&variables);
+        let admitted = admitted("one row per trace", &package);
+        let rows = admitted.temporal_bindings().expect("rows");
+        let traces: Vec<_> = rows.iter().map(|row| row.trace.as_deref()).collect();
+        assert_eq!(traces, variables.map(Some), "rows ascend by trace position");
+        assert_eq!(rows[0].declaration, rows[1].declaration);
+        assert_eq!(rows[0].occurrence, rows[1].occurrence);
+        assert_eq!(rows[0].clock, rows[1].clock, "two traces of one model");
+        assert_eq!(rows[0].clock_name, rows[1].clock_name);
+    }
+    let (single, _) = hyper_clock_fixture(&["s"]);
+    admitted("a single trace", &single);
+}
+
+#[trace("TC-480", "FR-038-AC-561")]
+#[test]
+fn tc_480_a_missing_trace_row_refuses_at_the_wrapper_body() {
+    let (mut package, wrapper) = hyper_clock_fixture(&["s", "n"]);
+    package["temporal_bindings"].as_array_mut().expect("rows").pop();
+    expect(
+        "missing n row",
+        &package,
+        Code::InvalidPackage,
+        TIMED_NODE_REFERENCE,
+        &at_node(wrapper, "/body"),
+    );
+    let (mut package, wrapper) = hyper_clock_fixture(&["s", "n"]);
+    package["temporal_bindings"].as_array_mut().expect("rows").remove(0);
+    expect(
+        "missing s row",
+        &package,
+        Code::InvalidPackage,
+        TIMED_NODE_REFERENCE,
+        &at_node(wrapper, "/body"),
+    );
+}
+
+#[trace("TC-480", "FR-038-AC-561")]
+#[test]
+fn tc_480_an_unknown_or_absent_trace_refuses_at_the_row_trace() {
+    let (base, _) = hyper_clock_fixture(&["s", "n"]);
+    let mut unknown = base.clone();
+    unknown["temporal_bindings"][1]["trace"] = json!("x");
+    expect(
+        "unknown trace",
+        &unknown,
+        Code::InvalidPackage,
+        TIMED_NODE_REFERENCE,
+        "/temporal_bindings/1/trace",
+    );
+    let mut absent = base;
+    absent["temporal_bindings"][0]
+        .as_object_mut()
+        .expect("row")
+        .remove("trace");
+    refusal_at_declaration_trace(&absent, "/temporal_bindings/0/trace");
+}
+
+fn refusal_at_declaration_trace(package: &Value, path: &str) {
+    let ((code, cause, found), _) = refusal_of("trace refusal", package);
+    assert_eq!(
+        (code, cause, found.as_deref()),
+        (Code::InvalidPackage, Some(TIMED_NODE_REFERENCE), Some(path))
+    );
+}
+
+#[trace("TC-480", "FR-038-AC-561")]
+#[test]
+fn tc_480_a_repeated_trace_key_is_a_conflicting_definition_at_the_later_row() {
+    let (mut package, _) = hyper_clock_fixture(&["s", "n"]);
+    let rows = package["temporal_bindings"].as_array_mut().expect("rows");
+    let again = rows[0].clone();
+    rows.push(again);
+    let ((code, cause, path), _) = refusal_of("repeated key", &package);
+    assert_eq!(
+        (code, cause, path.as_deref()),
+        (
+            Code::InvalidPackage,
+            Some(Cause::ConflictingDefinition),
+            Some("/temporal_bindings/2")
+        )
+    );
+}
+
+#[trace("TC-480", "FR-038-AC-561")]
+#[test]
+fn tc_480_rows_out_of_quantifier_order_refuse_at_the_later_trace() {
+    let (mut package, _) = hyper_clock_fixture(&["s", "n"]);
+    package["temporal_bindings"]
+        .as_array_mut()
+        .expect("rows")
+        .swap(0, 1);
+    refusal_at_declaration_trace(&package, "/temporal_bindings/1/trace");
+}
+
+#[trace("TC-480", "FR-038-AC-561")]
+#[test]
+fn tc_480_a_trace_on_a_single_trace_row_refuses_at_its_trace() {
+    let mut package = v2_all_families();
+    select_profile(&mut package, BOUNDED);
+    settle(&mut package);
+    admitted("single-trace clause", &package);
+    package["temporal_bindings"][0]["trace"] = json!("s");
+    refusal_at_declaration_trace(&package, "/temporal_bindings/0/trace");
+}
+
+#[trace("TC-480", "FR-038-AC-561")]
+#[test]
+fn tc_480_an_empty_or_null_trace_is_malformed_wire() {
+    for bad in [json!(""), Value::Null, json!(3)] {
+        let (mut package, _) = hyper_clock_fixture(&["s", "n"]);
+        package["temporal_bindings"][0]["trace"] = bad.clone();
+        match read(&package) {
+            CheckedPackageV2ReadResult::Refused(refusal) => {
+                assert_eq!(refusal.code, Code::MalformedWire, "{bad}");
+                let path = refusal.loci[0].path.as_ref().map(|path| path.as_str().to_owned());
+                assert!(
+                    path.as_deref()
+                        .is_some_and(|path| path.starts_with("/temporal_bindings/0")),
+                    "{bad}: {path:?}"
+                );
+            }
+            other => panic!("{bad}: expected a refusal, read {other:?}"),
+        }
+    }
+}
+
 /// The shape check keys on the raw binding names: `parameters` (member 2) and
 /// `body` (member 6) are contextual name kinds, not `Other`, and must still
 /// match. Read without the allocation oracle, which is a separate gate.

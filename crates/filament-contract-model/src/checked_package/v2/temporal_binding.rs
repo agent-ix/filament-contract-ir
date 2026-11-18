@@ -75,6 +75,21 @@ pub struct TemporalBinding {
     pub clock_name: Box<str>,
     /// Closed clock configuration.
     pub clock: ClockConfiguration,
+    /// For a hyper clause body wrapper's row, the exact name of the quantified
+    /// trace variable the row's clock serves; absent on every other row.
+    #[serde(
+        default,
+        deserialize_with = "present_trace",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub trace: Option<Box<str>>,
+}
+
+/// A `trace` member that is present is a string; `null` is not an absent one.
+fn present_trace<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<Box<str>>, D::Error> {
+    Box::<str>::deserialize(deserializer).map(Some)
 }
 
 impl Encode for TemporalBinding {
@@ -84,6 +99,9 @@ impl Encode for TemporalBinding {
         super::encode::member(writer, "occurrence", &self.occurrence)?;
         super::encode::member(writer, "clock_name", self.clock_name.as_ref())?;
         super::encode::member(writer, "clock", &self.clock)?;
+        if let Some(trace) = &self.trace {
+            super::encode::member(writer, "trace", trace.as_ref())?;
+        }
         writer.end_object()
     }
 }
@@ -216,6 +234,9 @@ fn validate_shape(
         )?;
         if row.clock_name.is_empty() {
             return Err(malformed(meter, at().key("clock_name")));
+        }
+        if row.trace.as_deref().is_some_and(str::is_empty) {
+            return Err(malformed(meter, at().key("trace")));
         }
         let clock_at = || at().key("clock");
         match &row.clock {
@@ -458,6 +479,77 @@ fn clock_matches(profile: Option<TemporalProfile>, clock: &ClockConfiguration) -
     )
 }
 
+/// The hyper clause body wrappers of the graph: each `temporal_clause` node a
+/// `claim`/`hyperproperty` node's `body` references, with that node's quantified
+/// trace variables in `quantifiers` order. A node whose body is not readable as
+/// that shape has no wrapper here; the hyperproperty step owns its refusal.
+fn hyper_wrappers<'t>(
+    kinds: &[CheckedNodeKind],
+    terms: &'t [Option<super::CheckedTerm>],
+    index: &GraphIndex<'_>,
+    meter: &mut WorkMeter,
+) -> Result<Vec<(usize, Vec<&'t str>)>, ValidationFailure> {
+    use super::{CheckedTerm, LiteralKind};
+    let mut wrappers: Vec<(usize, Vec<&'t str>)> = meter.vec(0)?;
+    for (position, kind) in kinds.iter().enumerate() {
+        if *kind != CheckedNodeKind::Claim(super::ClaimForm::Hyperproperty) {
+            continue;
+        }
+        let Some(Some(CheckedTerm::Aggregate { members })) = terms.get(position) else {
+            continue;
+        };
+        let bound = |name: &str| {
+            members.iter().find_map(|member| match member {
+                CheckedTerm::Binding { name: found, value } if AsRef::<str>::as_ref(found) == name => {
+                    Some(value.as_ref())
+                }
+                _ => None,
+            })
+        };
+        let (Some(CheckedTerm::Aggregate { members: groups }), Some(body)) =
+            (bound("quantifiers"), bound("body"))
+        else {
+            continue;
+        };
+        let Some(target) = super::structural::typed_reference(body)
+            .and_then(|target| index.get(target).copied())
+        else {
+            continue;
+        };
+        if kinds[target] != CheckedNodeKind::Temporal(TemporalForm::TemporalClause)
+            || wrappers.iter().any(|(known, _)| *known == target)
+        {
+            continue;
+        }
+        let mut variables = meter.vec(groups.len())?;
+        for group in groups {
+            let CheckedTerm::Aggregate { members } = group else {
+                continue;
+            };
+            let variable = members.iter().find_map(|member| match member {
+                CheckedTerm::Binding { name, value }
+                    if AsRef::<str>::as_ref(name) == "variable" =>
+                {
+                    match value.as_ref() {
+                        CheckedTerm::Literal {
+                            value_kind: LiteralKind::Text,
+                            value,
+                            ..
+                        } => value.as_str(),
+                        _ => None,
+                    }
+                }
+                _ => None,
+            });
+            if let Some(variable) = variable.filter(|name| !variables.contains(name)) {
+                meter.push(&mut variables, variable)?;
+            }
+        }
+        meter.push(&mut wrappers, (target, variables))?;
+    }
+    Ok(wrappers)
+}
+
 /// Validate row coverage before per-node joins and compare names before kinds.
 pub(super) fn validate<B>(
     rows: Option<&[TemporalBinding]>,
@@ -472,8 +564,15 @@ pub(super) fn validate<B>(
     let rows = rows.unwrap_or_default();
     validate_shape(rows, meter)?;
     let compensation_profile = selected_profile(lock);
-    let mut seen: Vec<(usize, u64)> = meter.vec(rows.len())?;
-    let mut previous: Option<(super::graph_storage::ResolvedKey<'_>, u64)> = None;
+    let wrappers = hyper_wrappers(kinds, terms, index, meter)?;
+    let traces_of = |position: usize| {
+        wrappers
+            .iter()
+            .find(|(wrapper, _)| *wrapper == position)
+            .map(|(_, variables)| variables.as_slice())
+    };
+    let mut seen: Vec<(usize, u64, usize)> = meter.vec(rows.len())?;
+    let mut previous: Option<(super::graph_storage::ResolvedKey<'_>, u64, usize)> = None;
     let mut resolved = meter.vec(rows.len())?;
     for (row_index, row) in rows.iter().enumerate() {
         let at = || row_path(row_index);
@@ -518,7 +617,19 @@ pub(super) fn validate<B>(
         if !owned {
             return Err(invalid(meter, at().key("occurrence"), &row.declaration));
         }
-        let key = (position, row.occurrence);
+        // A wrapper row names one of its body's quantified traces, and no
+        // other row names a trace.
+        let trace_at = match (traces_of(position), row.trace.as_deref()) {
+            (None, None) => 0,
+            (Some(variables), Some(trace)) => {
+                let Some(trace_at) = variables.iter().position(|name| *name == trace) else {
+                    return Err(invalid(meter, at().key("trace"), &row.declaration));
+                };
+                trace_at
+            }
+            _ => return Err(invalid(meter, at().key("trace"), &row.declaration)),
+        };
+        let key = (position, row.occurrence, trace_at);
         let insertion = seen.binary_search(&key);
         if insertion.is_ok() {
             return Err(binding_refusal(
@@ -530,15 +641,21 @@ pub(super) fn validate<B>(
         }
         seen.insert(insertion.expect_err("duplicate refused above"), key);
         let structural = index.resolved_at(position, structural_keys);
-        if let Some((previous_id, previous_occurrence)) = previous {
+        if let Some((previous_id, previous_occurrence, previous_trace)) = previous {
             if previous_id > structural {
                 return Err(invalid(meter, at().key("declaration"), &row.declaration));
             }
             if previous_id == structural && previous_occurrence > row.occurrence {
                 return Err(invalid(meter, at().key("occurrence"), &row.declaration));
             }
+            if previous_id == structural
+                && previous_occurrence == row.occurrence
+                && previous_trace > trace_at
+            {
+                return Err(invalid(meter, at().key("trace"), &row.declaration));
+            }
         }
-        previous = Some((structural, row.occurrence));
+        previous = Some((structural, row.occurrence, trace_at));
         resolved.push(position);
     }
     let mut missing = None;
@@ -568,8 +685,10 @@ pub(super) fn validate<B>(
                     .index(position)
                     .key("body"),
             )?;
+            let rows_needed = traces_of(position).map_or(1, <[&str]>::len);
             if occurrence.role == role
-                && seen.binary_search(&(position, occurrence.ordinal)).is_err()
+                && (0..rows_needed)
+                    .any(|trace| seen.binary_search(&(position, occurrence.ordinal, trace)).is_err())
             {
                 missing = Some(position);
                 break;
@@ -785,6 +904,7 @@ mod tests {
                 clock: ClockConfiguration::EventPosition {
                     sequence_authority: "source".into(),
                 },
+                trace: None,
             })
             .collect();
         let lock: CheckedPackageLockV2 = serde_json::from_value(json!({
@@ -1205,6 +1325,32 @@ mod timed_clock_tests {
         ] {
             assert!(
                 serde_json::from_str::<ClockConfiguration>(violating).is_err(),
+                "{violating}"
+            );
+        }
+    }
+
+    /// The `trace` member is a present non-null string or absent, is written
+    /// only when present, and a null, numeric or repeated member is refused.
+    #[trace("TC-480", "FR-038-AC-561")]
+    #[test]
+    fn trace_member_round_trips_and_refuses_violating_documents() {
+        let row = |extra: &str| {
+            format!(
+                r#"{{"declaration":{{"package":"p","path":["a"],"ordinal":0}},"occurrence":0,"clock_name":"c","clock":{{"kind":"event_position","sequence_authority":"s"}}{extra}}}"#
+            )
+        };
+        let with: TemporalBinding = serde_json::from_str(&row(r#","trace":"s""#)).unwrap();
+        assert_eq!(with.trace.as_deref(), Some("s"));
+        assert!(serde_json::to_string(&with)
+            .unwrap()
+            .ends_with(r#","trace":"s"}"#));
+        let without: TemporalBinding = serde_json::from_str(&row("")).unwrap();
+        assert_eq!(without.trace, None);
+        assert!(!serde_json::to_string(&without).unwrap().contains("trace"));
+        for violating in [r#","trace":null"#, r#","trace":3"#, r#","trace":"s","trace":"n""#] {
+            assert!(
+                serde_json::from_str::<TemporalBinding>(&row(violating)).is_err(),
                 "{violating}"
             );
         }

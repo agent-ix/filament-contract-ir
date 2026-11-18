@@ -212,6 +212,7 @@ fn timed_clock_no_row_vectors_join_model_and_refuse_extra_row() {
                 declaration: trace_clause.clone(),
                 occurrence: 0,
                 clock_name: "plant".into(),
+                trace: None,
                 clock: filament_contract_model::ClockConfiguration::Timed { unit: "ms".into() },
             }]
         );

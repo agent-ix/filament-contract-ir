@@ -2467,6 +2467,36 @@ pub fn refresh_temporal_bindings(package: &mut Value) {
     let nodes = package["semantic_graph"]["nodes"]
         .as_array()
         .expect("nodes");
+    // A hyper clause body wrapper takes one row per quantified trace, keyed by
+    // the quantifier Group's variable, in `quantifiers` order.
+    let wrapper_traces = |wrapper: &Value| -> Vec<Option<String>> {
+        let variables: Vec<Option<String>> = nodes
+            .iter()
+            .filter(|node| node["node_tag"] == "claim" && node["semantic_form"] == "hyperproperty")
+            .find(|node| node["body"]["members"][6]["value"]["target"] == wrapper["node_id"])
+            .map(|node| {
+                node["body"]["members"][3]["value"]["members"]
+                    .as_array()
+                    .map(|groups| {
+                        groups
+                            .iter()
+                            .filter_map(|group| {
+                                group["members"].as_array()?.iter().find_map(|member| {
+                                    (member["name"] == "variable")
+                                        .then(|| member["value"]["value"].as_str().map(str::to_owned))
+                                })
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default()
+            })
+            .unwrap_or_default();
+        if variables.is_empty() {
+            vec![None]
+        } else {
+            variables
+        }
+    };
     let mut rows = nodes
         .iter()
         .filter_map(|node| {
@@ -2515,26 +2545,36 @@ pub fn refresh_temporal_bindings(package: &mut Value) {
                 }
                 _ => return None,
             };
+            let traces = if node["semantic_form"] == "temporal_clause" {
+                wrapper_traces(node)
+            } else {
+                vec![None]
+            };
             Some(
                 node["occurrences"]
                     .as_array()?
                     .iter()
-                    .filter_map(|occurrence| {
+                    .flat_map(|occurrence| traces.iter().map(move |trace| (occurrence, trace)))
+                    .filter_map(|(occurrence, trace)| {
                         let expected_role = if node["semantic_form"] == "compensation" {
                             "declaration"
                         } else {
                             "claim"
                         };
                         (occurrence["role"] == expected_role).then(|| {
+                            let mut row = json!({
+                                "declaration": node["node_id"],
+                                "occurrence": occurrence["ordinal"],
+                                "clock_name": name,
+                                "clock": clock,
+                            });
+                            if let Some(trace) = trace {
+                                row["trace"] = json!(trace);
+                            }
                             (
                                 node["node_id"].clone(),
                                 occurrence["ordinal"].as_u64().expect("occurrence ordinal"),
-                                json!({
-                                    "declaration": node["node_id"],
-                                    "occurrence": occurrence["ordinal"],
-                                    "clock_name": name,
-                                    "clock": clock,
-                                }),
+                                row,
                             )
                         })
                     })
