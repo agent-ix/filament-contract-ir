@@ -2737,7 +2737,7 @@ fn ownerless_protocol_clause_over_a_bounded_integer_is_admitted() {
         "ownerless non-object clause should admit: {result:?}"
     );
 
-    let mut malformed = package;
+    let mut malformed = package.clone();
     malformed["semantic_graph"]["nodes"][clause]["body"]["arguments"] = json!([]);
     settle(&mut malformed);
     let CheckedPackageV2ReadResult::Refused(refusal) = read(&malformed) else {
