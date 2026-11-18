@@ -3130,19 +3130,20 @@ fn history_read_requires_a_joined_refinement_row_and_reachable_application() {
 
 fn joined_history_package() -> (Value, CheckedPackageEvidence, usize) {
     let (mut package, evidence, position, declaration, type_id, _) = ac5_history_package();
-    let nodes = package["semantic_graph"]["nodes"]
+    let text_type = package["semantic_graph"]["nodes"]
         .as_array()
-        .expect("nodes");
-    let text_type = nodes
+        .expect("nodes")
         .iter()
         .find(|node| node["semantic_form"] == "text" && node["node_tag"] == "scalar_type")
         .expect("text type")["node_id"]
         .clone();
-    let integer_type = nodes
+    let integer_type = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
         .iter()
         .find(|node| node["semantic_form"] == "integer" && node["node_tag"] == "scalar_type")
-        .expect("integer type")["node_id"]
-        .clone();
+        .map(|node| node["node_id"].clone())
+        .unwrap_or_else(|| node_id("scalar_type/integer"));
     let reference_type = node_id("history-read/reference-type");
     let receiver = node_id("history-read/receiver");
     let application = node_id("history-read/application");
@@ -3150,6 +3151,13 @@ fn joined_history_package() -> (Value, CheckedPackageEvidence, usize) {
         .as_array_mut()
         .expect("nodes")
         .extend([
+            json!({
+                "node_id":integer_type, "schema_version":"filament.checked-semantic-graph/v2",
+                "node_tag":"scalar_type", "semantic_form":"integer",
+                "semantic_type":integer_type, "dependencies":[],
+                "occurrences":[{"role":"type", "ordinal":0}],
+                "body":{"term":"aggregate", "members":[]}
+            }),
             json!({
                 "node_id":reference_type, "schema_version":"filament.checked-semantic-graph/v2",
                 "node_tag":"composite_type", "semantic_form":"reference",
