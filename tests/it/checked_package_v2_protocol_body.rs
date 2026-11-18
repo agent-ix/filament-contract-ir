@@ -2746,7 +2746,7 @@ fn ownerless_protocol_clause_over_a_bounded_integer_is_admitted() {
     assert_eq!(refusal.code, CheckedPackageRefusalCode::MalformedWire);
 
     let mut ownerless_bad_scope = v2_all_families();
-    let capture = clause_parameter(&mut ownerless_bad_scope, "ownerless-capture", "1");
+    let capture = clause_parameter(&mut ownerless_bad_scope, "ownerless_capture", "1");
     let clause = clause_position(&ownerless_bad_scope);
     ownerless_bad_scope["semantic_graph"]["nodes"][clause]["body"]["arguments"][2]["value"] = json!({"term": "aggregate", "members": [{
         "term": "aggregate", "members": [
