@@ -6293,32 +6293,27 @@ fn package_with_admitted_compensation_for(operator: &str) -> (Value, usize, usiz
     let (mut package, root) = if operator == "send" {
         let (state, _) = crate::checked_package_v2_frame_entries::state_operand_fixture();
         let (mut package, root) = package_with_step_control_on(state, "event");
-        let mut event_control = package["semantic_graph"]["nodes"][root].clone();
         let (send_package, send_root, send_channel) = package_with_send();
         let send_nodes = send_package["semantic_graph"]["nodes"]
             .as_array()
             .expect("send fixture nodes");
         let channel = send_nodes[send_channel].clone();
         let channel_id = channel["node_id"].clone();
-        let send_control = &send_nodes[send_root];
+        let mut send_control = send_nodes[send_root].clone();
+        let send_name = ["Example", "OrderFlow", "run", "Main", "ClockFixtureSend"];
+        send_control["node_id"] = node_id("qualified:Example/OrderFlow/run/Main/ClockFixtureSend");
+        send_control["declaration"]["qualified_name"] = json!(send_name);
         package["semantic_graph"]["nodes"]
             .as_array_mut()
             .expect("state fixture nodes")
             .push(channel);
-        package["semantic_graph"]["nodes"][root]["body"] = send_control["body"].clone();
-        package["semantic_graph"]["nodes"][root]["dependencies"] =
-            send_control["dependencies"].clone();
+        package["semantic_graph"]["nodes"]
+            .as_array_mut()
+            .expect("state fixture nodes")
+            .push(send_control);
         let clause = clause_position(&package);
         package["semantic_graph"]["nodes"][clause]["body"]["arguments"][5]["value"]["members"] =
             json!([{"term": "reference", "target": channel_id}]);
-        let event_name = ["Example", "OrderFlow", "run", "Main", "ClockFixtureEvent"];
-        event_control["node_id"] =
-            node_id("qualified:Example/OrderFlow/run/Main/ClockFixtureEvent");
-        event_control["declaration"]["qualified_name"] = json!(event_name);
-        package["semantic_graph"]["nodes"]
-            .as_array_mut()
-            .expect("nodes")
-            .push(event_control);
         (package, root)
     } else {
         let (state, _) = crate::checked_package_v2_frame_entries::state_operand_fixture();
@@ -6328,6 +6323,32 @@ fn package_with_admitted_compensation_for(operator: &str) -> (Value, usize, usiz
         &mut package,
         &["Example", "OrderFlow", "compensate", "Undo"],
     );
+    if operator == "send" {
+        let nodes = package["semantic_graph"]["nodes"]
+            .as_array_mut()
+            .expect("nodes");
+        let event_binder = nodes[root]["body"]["arguments"]
+            .as_array()
+            .expect("event bindings")
+            .iter()
+            .find(|binding| binding["name"] == "binder")
+            .expect("event binder")["value"]
+            .clone();
+        let send = nodes
+            .iter_mut()
+            .find(|node| {
+                node["semantic_form"] == "control"
+                    && node["body"]["operation"]["member"]["operator"] == "send"
+            })
+            .expect("send control");
+        let send_binder = send["body"]["arguments"]
+            .as_array_mut()
+            .expect("send bindings")
+            .iter_mut()
+            .find(|binding| binding["name"] == "binder")
+            .expect("send binder");
+        send_binder["value"] = event_binder;
+    }
     let local_key = local["node_id"].clone();
     package["semantic_graph"]["nodes"]
         .as_array_mut()
