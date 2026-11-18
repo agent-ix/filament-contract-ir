@@ -150,9 +150,9 @@ fn duplicate_misordered_and_reserved_clock_names_refuse() {
         package["lock"]["dependency_clock_selections"] = json!([clock(reserved, "s")]);
         expect_refusal(
             &package,
-            Code::MalformedWire,
+            Code::InvalidPackage,
             "/lock/dependency_clock_selections/0/clock_name",
-            None,
+            Some(Cause::InvalidValue),
         );
     }
 

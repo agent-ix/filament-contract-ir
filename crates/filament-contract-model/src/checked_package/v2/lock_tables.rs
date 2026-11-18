@@ -48,13 +48,23 @@ pub(super) fn validate_dependency_clock_selections(
         ));
     }
     let mut table = Budget::lock(meter, FORM).vec(selections.len(), FORM)?;
-    if let Some(index) = selections.iter().position(|entry| {
-        !is_nonempty(&entry.clock_name)
-            || matches!(entry.clock_name.as_ref(), "model-steps" | "model-time")
-    }) {
+    if let Some(index) = selections
+        .iter()
+        .position(|entry| !is_nonempty(&entry.clock_name))
+    {
         return Err(refuse(
             CheckedPackageRefusalCode::MalformedWire,
             at(index).key("clock_name"),
+        ));
+    }
+    if let Some(index) = selections
+        .iter()
+        .position(|entry| matches!(entry.clock_name.as_ref(), "model-steps" | "model-time"))
+    {
+        return Err(ValidationFailure::refused_because(
+            CheckedPackageRefusalCode::InvalidPackage,
+            at(index).key("clock_name"),
+            CheckedPackageRefusalCause::InvalidValue,
         ));
     }
     if let Some((first, index)) = first_repeat(
