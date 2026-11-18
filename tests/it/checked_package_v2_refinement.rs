@@ -3206,13 +3206,18 @@ fn joined_history_package() -> (Value, CheckedPackageEvidence, usize) {
     dependencies.sort_by(node_id_order);
     dependencies.dedup();
     settle_refinement(&mut package, position);
-    let history_map = package["source_map"].clone();
-    settle(&mut package);
+    let preserved_map = package["source_map"].clone();
+    merge_history_source_map(&mut package, preserved_map);
+    (package, evidence, position)
+}
+
+fn merge_history_source_map(package: &mut Value, preserved_map: Value) {
+    settle(package);
     let settled_map = package["source_map"]
         .as_array()
         .expect("source map")
         .clone();
-    package["source_map"] = history_map;
+    package["source_map"] = preserved_map;
     let source_map = package["source_map"].as_array_mut().expect("source map");
     for entry in settled_map {
         let already_present = source_map.iter().any(|existing| {
@@ -3233,8 +3238,7 @@ fn joined_history_package() -> (Value, CheckedPackageEvidence, usize) {
                 .then_with(|| left["role"].as_str().cmp(&right["role"].as_str()))
                 .then_with(|| left["ordinal"].as_u64().cmp(&right["ordinal"].as_u64()))
         });
-    refresh_identity(&mut package);
-    (package, evidence, position)
+    refresh_identity(package);
 }
 
 pub(super) fn orphan_history_control() -> (Value, CheckedPackageEvidence) {
@@ -3244,8 +3248,27 @@ pub(super) fn orphan_history_control() -> (Value, CheckedPackageEvidence) {
         .expect("nodes")
         .iter()
         .find(|node| node["node_tag"] == "scalar_type" && node["semantic_form"] == "boolean")
-        .expect("boolean type")["node_id"]
-        .clone();
+        .map(|node| node["node_id"].clone())
+        .unwrap_or_else(|| node_id("scalar_type/boolean"));
+    if !orphan["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .any(|node| node["node_id"] == boolean_type)
+    {
+        orphan["semantic_graph"]["nodes"]
+            .as_array_mut()
+            .expect("nodes")
+            .push(json!({
+                "node_id":boolean_type, "schema_version":"filament.checked-semantic-graph/v2",
+                "node_tag":"scalar_type", "semantic_form":"boolean",
+                "semantic_type":boolean_type, "dependencies":[],
+                "occurrences":[{"role":"type", "ordinal":0}],
+                "body":{"term":"aggregate", "members":[]}
+            }));
+    }
+    let old_type =
+        orphan["semantic_graph"]["nodes"][position]["body"]["histories"][0]["type"].clone();
     orphan["semantic_graph"]["nodes"][position]["body"]["histories"][0]["type"] =
         boolean_type.clone();
     orphan["semantic_graph"]["nodes"][position]["body"]["histories"][0]["initial"] =
@@ -3253,7 +3276,18 @@ pub(super) fn orphan_history_control() -> (Value, CheckedPackageEvidence) {
     orphan["semantic_graph"]["nodes"][position]["body"]["histories"][0]["updates"][0]
         ["expression"] =
         json!({"term":"literal", "type":boolean_type, "value_kind":"boolean", "value":true});
+    let new_type =
+        orphan["semantic_graph"]["nodes"][position]["body"]["histories"][0]["type"].clone();
+    let dependencies = orphan["semantic_graph"]["nodes"][position]["dependencies"]
+        .as_array_mut()
+        .expect("refinement dependencies");
+    dependencies.retain(|dependency| dependency != &old_type);
+    dependencies.push(new_type);
+    dependencies.sort_by(node_id_order);
+    dependencies.dedup();
     settle_refinement(&mut orphan, position);
+    let preserved_map = orphan["source_map"].clone();
+    merge_history_source_map(&mut orphan, preserved_map);
     (orphan, evidence)
 }
 
