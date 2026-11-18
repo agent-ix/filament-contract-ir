@@ -1,12 +1,12 @@
 ---
 id: TC-479
-title: "Strict V2 reader admits bounded channels, stable FIFO keys, population captures, reference carriers and post-test repeats"
+title: "Strict V2 reader admits bounded channels, stable FIFO keys, population captures, reference carriers, post-test repeats and back-edge reads"
 type: TC
 relationships:
   - target: ix://agent-ix/filament-contract-ir/FR-372
     type: verifies
 ---
-# TC-479: Strict V2 reader admits bounded channels, stable FIFO keys, population captures, reference carriers and post-test repeats
+# TC-479: Strict V2 reader admits bounded channels, stable FIFO keys, population captures, reference carriers, post-test repeats and back-edge reads
 
 ## Description
 
@@ -38,7 +38,11 @@ packages built in the test.
 6. Add `test` `post` to a `repeat` whose guard reads its body's binder with
    no, 3 and 1 `maximum`; expect admission. Set `maximum` 0, `test` `pre` and
    `middle`, and drop `test`; expect the stated refusals. Compare node bytes
-   and ids of the pre-test and post-test forms (FR-372-AC-6).
+. Read a post-test `repeat` whose `invariant` and `variant` read the body's
+   every-path binder; expect admission. Make its `visible` entry read a binder
+   one `choice` branch binds; expect `missing_declaration`/`missing-name`.
+   Admit pre-test `repeat`s whose `visible` entry, and whose `invariant` and
+   `variant`, read the body binder without `test` (FR-372-AC-7).
 
 ## Expected Results
 

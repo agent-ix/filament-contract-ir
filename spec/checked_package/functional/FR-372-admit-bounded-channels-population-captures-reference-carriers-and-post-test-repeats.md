@@ -21,6 +21,8 @@ relationships:
     type: references
   - target: ix://agent-ix/filament-spec-language/FR-880-AC-8
     type: references
+  - target: ix://agent-ix/filament-spec-language/FR-880-AC-9
+    type: references
   - target: ix://agent-ix/filament-spec-language/FR-880-AC-10
     type: references
   - target: ix://agent-ix/filament-spec-language/FR-881-AC-2
@@ -96,9 +98,12 @@ The protocol slots that read model state are the protocol, registration and
 activation captures, the `send` and `event` constraints with their related
 relationship ends, the `finish` constraint and the `terminal when` condition
 (FSpec FR-464 stage table). In those slots, the binder-scope check SHALL
-treat a `relation`/`population` node, and a `value`/`parameter` node, that is
-owned by the model of the clause's `owner_model` edge as a model-state read in
-scope, not as an out-of-scope binder. A capture such as
+treat a `relation`/`population` node, and a model-owned `value`/`parameter`
+node, of any selected model as a model-state read in scope, not as an
+out-of-scope binder. The read is not restricted to the model of the clause's
+`owner_model` edge, so an ownerless clause reads populations the same way
+and a capture may read the domain package's population (FSpec FR-464
+"Binders"). A capture such as
 `n: Integer = size(allInstances<M::Order>(M::orders))` therefore admits; it
 reads the population that the evaluated protocol state holds, by the same
 rule a state clause body uses (FSL FR-883). A read of a binder that is
@@ -134,7 +139,13 @@ the same body and guard have different node ids. A post-test body runs once
 before its guard is first read, so its guard MAY read the binders its body
 binds on every path to the body's exit. A retry loop whose guard reads the
 body's result is post-test, and without this form a source language could
-check such a loop but never write it. A `test` value other than `post`
+check such a loop but never write it. In both forms, the `repeat`'s `visible`
+entries and its `proof` `invariant` and `variant` MAY read the binders its
+body binds on every path to the body's exit. These back-edge reads read the
+value from the most recently completed iteration; in a pre-test `repeat` they
+have no value at entry, so at entry such a `visible` entry is not a decision
+fact and such an `invariant` or `variant` is not evaluated. Only a post-test
+guard reads body binders. A `test` value other than `post`
 refuses `malformed_wire` at the member. A post-test `repeat` with `maximum`
 0 refuses `invalid_package`/`invalid-value` at the node. A pre-test guard
 that reads a body binder, and any slot that reads a binder bound on only some
@@ -148,9 +159,10 @@ out-of-scope read.
 | FR-372-AC-1 | A channel whose `carries` names a `bounded_domain` node of each form `integer_range` (`Int[0, 5]`), `text_bounds` (`Text[0, 8; nfc]`), `decimal_range`, `rational_range`, `float_rounding` (`Float64[nearest-even]`) and `collection_bounds` (`Sequence<Boolean>[0, 3]`) is admitted, and the admitted channel names that node as `carries`. A `carries` that names an `expression` node refuses `invalid_model_binding`/`malformed-declaration` at the target. Implements FSpec FR-726-AC-1 and FSL FR-880-AC-10. | Test |
 | FR-372-AC-2 | A FIFO channel whose `key` has type `Int[0, 99]`, a model value type that is a bounded integer, `Quantity<m>`, `Option<Int[0, 5]>`, `Sequence<Quantity<m>>`, a record with a bounded `Decimal` field, a model `variant_type`, or a model `record_value_type` whose leaves are FIFO-key-stable is admitted with its key. Implements FSpec FR-726-AC-2, FSL FR-880-AC-10 and FSL FR-881-AC-2. | Test |
 | FR-372-AC-3 | A FIFO channel whose `key` has type `float64`, `Float64[nearest-even]`, `Option<float32>`, a record with a `float64` field, or a type holding an `event_type` leaf refuses `ill_typed`/`operator-ineligible` at the key, retaining `=` and the type; the same channel declared `unordered` is admitted. Implements FSpec FR-726-AC-3 and FSL FR-881-AC-2. | Test |
-| FR-372-AC-4 | In a clause owned by model `M`, a protocol capture `n: Integer = size(allInstances<M::Order>(M::orders))` is admitted, and the same population read is admitted in a registration capture, an activation capture, a `send` and an `event` constraint and a `finish` constraint. Replacing the initializer with a read of a parameter that no binder of the slot introduces refuses `missing_declaration`/`missing-name` at the read. The same `allInstances` read in an activation guard, a `choice` guard or a `check` condition refuses `ill_typed`/`operator-ineligible` at the read. Implements FSL FR-883-AC-1, FR-883-AC-2 and FR-883-AC-4 under the FSpec FR-464 stage table. | Test |
+| FR-372-AC-4 | A protocol capture `n: Integer = size(allInstances<M::Order>(M::orders))` is admitted in a clause owned by model `M`, in an ownerless clause and in a clause owned by another selected model, and the same population read is admitted in a registration capture, an activation capture, a `send` and an `event` constraint and a `finish` constraint. Replacing the initializer with a read of a parameter that no binder of the slot introduces refuses `missing_declaration`/`missing-name` at the read. The same `allInstances` read in an activation guard, a `choice` guard or a `check` condition refuses `ill_typed`/`operator-ineligible` at the read. Implements FSL FR-883-AC-1, FR-883-AC-2 and FR-883-AC-4 under the FSpec FR-464 stage table. | Test |
 | FR-372-AC-5 | A protocol whose `check` constraint, `each` guard, `repeat` guard, `terminal when` condition, capture initializer and `finish` constraint each hold a `protocol_reference` carrier to another protocol's clause, whose clause has a finish binder and reads `over`, is admitted with no `BinderScope` or `ModelStateRead` refusal for those slots. In the same slots, a read of the referenced clause's finish binder without the carrier refuses `missing_declaration`/`missing-name` at the read, and a read of `over` beside the carrier in a slot that bars model state refuses `ill_typed`/`operator-ineligible`. Implements FSpec FR-728-AC-1, FR-728-AC-2 and FSL FR-880-AC-3. | Test |
 | FR-372-AC-6 | A `repeat` whose body binds `got` on every path, with `test` `post`, `visible (got.ok)` and guard `not got.ok`, is admitted with no `maximum`, with `maximum` 3 and with `maximum` 1. With `maximum` 0 it refuses `invalid_package`/`invalid-value` at the node; with `test` `pre` or `middle` it refuses `malformed_wire`; without `test`, the same guard refuses `missing_declaration`/`missing-name` as an out-of-scope read. A pre-test `repeat` without `test` has the same node bytes and node id as before the member existed, and differs in node id from the post-test `repeat` of the same body and guard. Implements FSpec FR-729-AC-1, FR-729-AC-3 and FSL FR-880-AC-8. | Test |
+| FR-372-AC-7 | A post-test `repeat` whose `invariant` and `variant` read the body's every-path binder `got` is admitted, and the same `repeat` whose `visible` entry reads a binder that only one branch of a body `choice` binds refuses `missing_declaration`/`missing-name` as an out-of-scope read. A pre-test `repeat` with guard `true` and `visible (got)`, and one whose `invariant` and `variant` read `got`, are each admitted without `test`, the `visible` entry being an `expression` node over `got`. Implements FSpec FR-729-AC-4, FR-729-AC-5 and FSL FR-880-AC-9. | Test |
 
 ## Dependencies
 
@@ -167,6 +179,8 @@ out-of-scope read.
 Partially implemented. Bounded `carries`, the FIFO-key-stable walk, the
 population reads in the model-state slots, the carrier stop and the `test`
 `post` member are implemented for their admitted cases. The reader still
-admits `test` `pre`, which this requirement refuses. The post-test
+admits `test` `pre`, which this requirement refuses, and admits population
+reads only of the clause's owner model. The post-test
 `maximum` 0 refusal, the post-test guard's scope over the body's binders, and
-the negative cases of AC-3 to AC-5 have no tests yet.
+the negative cases of AC-3 to AC-5 and the back-edge reads of AC-7 have no
+tests yet.
