@@ -18,13 +18,6 @@ use std::path::Path;
 
 pub(crate) fn read_json(path: &Path) -> Result<Value, String> {
     let mut value = read_json_wire(path)?;
-    if path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .is_some_and(|name| name.starts_with("positive-") || POSITIVE_ALL.contains(&name))
-    {
-        supply_positive_function_check_mode(&mut value);
-    }
     // Tests author and mutate packages in resolved index form; `read_package`
     // writes the wire form back.
     fixture_support::resolve_operands(&mut value);
@@ -171,7 +164,8 @@ pub(crate) fn evidence_for_published(
         .as_array()
         .is_some_and(|rows| rows.iter().any(|row| row["identity"] == "test/predicates"))
     {
-        let dependency = read_json(&fixtures_dir.join("positive-dependency-library.json"))?;
+        let mut dependency = read_json(&fixtures_dir.join("positive-dependency-library.json"))?;
+        supply_positive_function_check_mode(&mut dependency);
         let dependency_evidence = evidence_for_published(
             &dependency,
             "published dependency",

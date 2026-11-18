@@ -6457,47 +6457,6 @@ pub(super) fn compensation_clock_case(
             }
         }
     }
-    if case["id"] == "CB-07" {
-        let event = package["semantic_graph"]["nodes"]
-            .as_array()
-            .expect("nodes")
-            .iter()
-            .find(|node| {
-                node["semantic_form"] == "control"
-                    && node["body"]["operation"]["member"]["operator"] == "event"
-            })
-            .expect("event control")
-            .get("node_id")
-            .expect("event node id")
-            .clone();
-        let (await_fixture, _) = protocol_holder_case("await");
-        let await_position = await_fixture["semantic_graph"]["nodes"]
-            .as_array()
-            .expect("await fixture nodes")
-            .iter()
-            .position(|node| {
-                node["semantic_form"] == "control"
-                    && node["body"]["operation"]["member"]["operator"] == "await"
-            })
-            .expect("await control");
-        let mut await_body =
-            await_fixture["semantic_graph"]["nodes"][await_position]["body"].clone();
-        assert_eq!(
-            await_body["arguments"].as_array().map(Vec::len),
-            Some(6),
-            "await body: {await_body}"
-        );
-        await_body["arguments"][0]["value"]["members"][1]["value"]["target"] = event.clone();
-        await_body["arguments"][3]["value"]["target"] = event.clone();
-        await_body["arguments"][4]["value"]["target"] = event.clone();
-        await_body["arguments"][5]["value"]["target"] = event;
-        let await_path = ["Example", "OrderFlow", "run", "Main", "ClockFixtureAwait"];
-        let await_node = protocol_named_node("control", &await_path, await_body, &[]);
-        package["semantic_graph"]["nodes"]
-            .as_array_mut()
-            .expect("nodes")
-            .push(await_node);
-    }
     settle(&mut package);
     let nodes = package["semantic_graph"]["nodes"]
         .as_array()
@@ -6520,7 +6479,6 @@ pub(super) fn compensation_clock_case(
                 .expect("control declaration key");
             let operator = declaration["operator"]
                 .as_str()
-                .or_else(|| (key == "aw").then_some("await"))
                 .expect("control declaration operator");
             let control = nodes
                 .iter()
@@ -6676,7 +6634,7 @@ fn compensation_clock_rows_follow_published_cases() {
                 let key = match id {
                     "CB-03" | "CB-05" => &ids["k2"],
                     "CB-04" | "CB-06" => &ids["k1"],
-                    "CB-07" => &ids["aw"],
+                    "CB-07" => &ids["sd"],
                     _ => panic!("unexpected refused case {id}"),
                 };
                 let pointer = if id == "CB-03" {
