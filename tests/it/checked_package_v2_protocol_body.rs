@@ -5586,7 +5586,6 @@ fn repeat_admits_post_test_and_refuses_an_unknown_test_mode() {
                 ["value"]["target"]
                 .clone();
             let binder = clause_parameter(&mut bounded_post, "post_message", "1");
-            let binder = retarget_parameter_to_object_reference(&mut bounded_post, &binder);
             bounded_post["semantic_graph"]["nodes"][children[0]]["body"]["operation"]["member"]
                 ["operator"] = json!("event");
             bounded_post["semantic_graph"]["nodes"][children[0]]["body"]["arguments"] = json!([
