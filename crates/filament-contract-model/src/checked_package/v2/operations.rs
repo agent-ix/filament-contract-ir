@@ -11,13 +11,13 @@
 use super::dependency_references::{DependencyReferences, Referrer, SuppliedDependencies};
 use super::graph_storage::{GraphIndex, SortedTable};
 use super::model_members::{
-    Budget, CollectionKind, DeclarationForm, EndSelectionError, MemberKind, MemberType,
-    ModelFailure, ModelOwners, ModelRefusal, Resolved, SelectedEnds, units,
+    units, Budget, CollectionKind, DeclarationForm, EndSelectionError, MemberKind, MemberType,
+    ModelFailure, ModelOwners, ModelRefusal, Resolved, SelectedEnds,
 };
 use super::operation_catalog::{
     CatalogLeafSource, CatalogResult, FamilyClass, OperationCatalog, OperationCatalogEntry,
 };
-use super::structural::{UnionMember, typed_union_type_body, typed_union_value_body};
+use super::structural::{typed_union_type_body, typed_union_value_body, UnionMember};
 use super::temporal::member_is_well_formed_node;
 use super::typed_terms::{
     CheckedApplicationOperationRecord, CheckedFieldReadForm, CheckedOperationConstraint,
@@ -34,8 +34,8 @@ use super::{
     RawSemanticNodeV2 as CheckedSemanticNodeV2, RelationForm, ScalarTypeForm, StateForm,
     TemporalForm, ValueForm, WorkMeter,
 };
-use crate::checked_package::common::ValidationFailure;
 use crate::checked_package::common::node_pointer;
+use crate::checked_package::common::ValidationFailure;
 use crate::checked_package::selected_population::{
     is_model_population, least_type_occurrence, population_maximum, population_object_type_typed,
 };
@@ -6058,20 +6058,20 @@ fn check_leaf_count(
 
 #[cfg(test)]
 mod tests {
-    use super::super::CheckedSelectionRole;
     use super::super::operation_catalog::operation_catalog;
+    use super::super::CheckedSelectionRole;
     use super::{
-        Application, ApplicationOperator, CheckedNodeId, CheckedNodeKind, CheckedNodeTag,
-        CheckedPackageLockV2, CheckedPackageRefusalCause, CheckedPackageRefusalCode,
-        CheckedSemanticNodeV2, DependencyReferences, ExpressionForm, Graph, LawRole, ModelOwners,
-        StructuralTypes, SuppliedDependencies, TemporalForm, ValidationFailure, WorkMeter,
-        is_type_shaped, operand_family, operation_defect,
+        is_type_shaped, operand_family, operation_defect, Application, ApplicationOperator,
+        CheckedNodeId, CheckedNodeKind, CheckedNodeTag, CheckedPackageLockV2,
+        CheckedPackageRefusalCause, CheckedPackageRefusalCode, CheckedSemanticNodeV2,
+        DependencyReferences, ExpressionForm, Graph, LawRole, ModelOwners, StructuralTypes,
+        SuppliedDependencies, TemporalForm, ValidationFailure, WorkMeter,
     };
     use crate::checked_package::shared::{
         CheckedArtifactRef, CheckedPackageLimit, CheckedSelection, JsonPointer,
     };
     use ix_trace_rs::trace;
-    use serde_json::{Value, json};
+    use serde_json::{json, Value};
 
     #[trace("TC-472", "FR-038-AC-511")]
     #[test]
@@ -6343,7 +6343,7 @@ mod tests {
         u64,
     ) {
         use crate::checked_package::v2::model_members::{
-            DeclarationForm, MemberType, declaration_id, tests as model_tests,
+            declaration_id, tests as model_tests, DeclarationForm, MemberType,
         };
         let destination_name = if relation["targetEnd"]["role"].as_str() == Some(role) {
             relation["sourceEnd"]["type"].as_str()
@@ -6610,7 +6610,7 @@ mod tests {
     #[test]
     fn tc_048_relationship_population_caller_uses_retained_kind() {
         use crate::checked_package::v2::model_members::{
-            DeclarationForm, MemberType, declaration_id, tests as model_tests,
+            declaration_id, tests as model_tests, DeclarationForm, MemberType,
         };
         use crate::checked_package::v2::{BoundedDomainForm, CompositeTypeForm};
         let mut relation = model_tests::relationship();
@@ -6751,7 +6751,7 @@ mod tests {
     #[test]
     fn tc_048_relationship_end_binding_resolves_roles_before_navigation_and_reachability() {
         use crate::checked_package::v2::model_members::{
-            DeclarationForm, MemberType, declaration_id, tests::relationship,
+            declaration_id, tests::relationship, DeclarationForm, MemberType,
         };
         let widget = declaration_id(
             "acme/orders",
@@ -7568,7 +7568,7 @@ mod tests {
     #[test]
     fn selected_model_union_float_payloads_have_scalar_node_keys() {
         use crate::checked_package::v2::model_members::{
-            DeclarationForm, MemberType, declaration_id, tests as model_tests,
+            declaration_id, tests as model_tests, DeclarationForm, MemberType,
         };
         const VARIANT: &str = "ix://acme/orders/Measurements";
         const UNIT: &str = "ix://filament/unit/acme/orders/ms";

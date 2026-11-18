@@ -76,7 +76,7 @@ use super::{
     RawSemanticNodeV2 as CheckedSemanticNodeV2, RelationForm, ScalarTypeForm, StateForm,
     TemporalForm, ValueForm,
 };
-use crate::checked_package::common::{ValidationFailure, node_pointer};
+use crate::checked_package::common::{node_pointer, ValidationFailure};
 use crate::checked_package::shared::CheckedOperandEntry;
 use crate::checked_package::shared::{
     CheckedNodeId, CheckedNodePathSegment, CheckedOccurrenceRole, CheckedPackageRefusalCode,
@@ -2329,7 +2329,7 @@ mod tests {
     use super::*;
     use crate::checked_package::shared::checked_node_comparisons;
     use ix_trace_rs::trace;
-    use serde_json::{Value, json};
+    use serde_json::{json, Value};
     use std::collections::BTreeSet;
 
     #[trace("TC-472", "FR-038-AC-511", "FR-038-AC-512")]
