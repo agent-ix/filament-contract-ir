@@ -5,7 +5,8 @@
 
 use crate::support::checked_package::{
     add_family_reference_target, canonical, evidence_for, family_key, index_fixture_node_ids,
-    node_id, nominal_fixture_members, nominal_package, refresh_identity, settle, v2_all_families,
+    node_id, nominal_fixture_members, nominal_package, refresh_identity, settle,
+    structural_fixture_id, v2_all_families,
 };
 use filament_contract_model::{
     CheckedPackageEvidence, CheckedPackageReadLimits, CheckedPackageRefusalCause,
@@ -154,12 +155,21 @@ fn scalar(f: &mut Fixture, form: &str) -> String {
     key
 }
 fn parameter(f: &mut Fixture, ty: &str, name: &str) -> String {
+    parameter_at_level(f, ty, name, 0)
+}
+fn parameter_at_level(f: &mut Fixture, ty: &str, name: &str, level: u64) -> String {
     let body = json!({"term":"aggregate", "members":[
         {"term":"binding", "name":"name", "value":
             {"term":"literal", "type":node_id(&f.text), "value_kind":"text", "value":name}},
         {"term":"binding", "name":"level", "value":integer_literal(&f.integer)}
     ]});
-    let key = format!("value/parameter/{name}");
+    let mut body = body;
+    body["members"][1]["value"]["value"] = json!(level.to_string());
+    let key = if level == 0 {
+        format!("value/parameter/{name}")
+    } else {
+        format!("value/parameter/{name}/{level}/{ty}")
+    };
     node(&mut f.package, &key, "value", "parameter", ty, body);
     key
 }
@@ -243,6 +253,40 @@ fn text_or_string_conversion(identity: &str) -> Option<Value> {
         selected_catalog_law(&mut f, at, "ieee_profile");
     }
     Some(f.package)
+}
+
+fn add_sequence_owner(package: &mut Value) {
+    let function_id = node_id("function/sequence-owner");
+    let application_id = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|node| node["body"]["operation"]["identity"] == "filament.op.collection.seq")
+        .expect("sequence application")["node_id"]
+        .clone();
+    let sequence_result = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|node| node["node_id"] == application_id)
+        .expect("sequence application")["body"]["result_type"]
+        .clone();
+    package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .push(json!({
+            "node_id":function_id, "schema_version":"filament.checked-semantic-graph/v2",
+            "node_tag":"function", "semantic_form":"pure_function",
+            "check_mode":"linked", "semantic_type":sequence_result,
+            "dependencies":[application_id.clone()],
+            "occurrences":[{"role":"expression", "ordinal":0}],
+            "body":{"term":"aggregate", "members":[
+                {"term":"binding", "name":"parameters", "value":{"term":"aggregate", "members":[]}},
+                {"term":"binding", "name":"body", "value":{
+                    "term":"reference", "target":application_id}}
+            ]}
+        }));
+    settle(package);
 }
 fn numeric_literal(ty: &str, form: &str) -> Value {
     match form {
@@ -433,7 +477,7 @@ fn unavailable_reason(entry: &Value) -> Option<&'static str> {
 
 // A fresh package is built for each identity. These are the entries for which
 // the existing nominal/structural fixture helpers produce a valid source.
-pub(super) fn admitted_fixture(identity: &str) -> Option<Value> {
+pub(crate) fn admitted_fixture(identity: &str) -> Option<Value> {
     if let Some(package) = text_or_string_conversion(identity) {
         return Some(package);
     }
@@ -551,6 +595,99 @@ pub(super) fn admitted_fixture(identity: &str) -> Option<Value> {
                     binder(integer_literal(&i)),
                     integer_literal(&i),
                 ],
+            );
+        }
+        "filament.op.collection.only" => {
+            let set = set_i();
+            application(
+                &mut f,
+                "collection",
+                "collection",
+                identity,
+                Value::Null,
+                &i,
+                &i,
+                vec![reference(&set), binder(integer_literal(&i))],
+            );
+        }
+        "filament.op.collection.seq" => {
+            let range = "bounded/integer_range/sequence-control".to_owned();
+            let bound = |name: &str, value: &str| {
+                json!({"term":"binding", "name":name, "value": {
+                    "term":"literal", "type":node_id(&i),
+                    "value_kind":"integer", "value":value
+                }})
+            };
+            node(
+                &mut f.package,
+                &range,
+                "bounded_domain",
+                "integer_range",
+                &i,
+                json!({"term":"aggregate", "members":[bound("min", "0"), bound("max", "0")]}),
+            );
+            let sequence = composite(&mut f.package, "sequence", &range);
+            let result = "bounded/collection_bounds/sequence-control";
+            node(
+                &mut f.package,
+                result,
+                "bounded_domain",
+                "collection_bounds",
+                &sequence,
+                json!({"term":"aggregate", "members":[bound("min", "0"), bound("max", "1")]}),
+            );
+            let index = parameter(&mut f, &range, "sequence_index");
+            let lower = "value/literal/sequence-lower".to_owned();
+            let upper = "value/literal/sequence-upper".to_owned();
+            node(
+                &mut f.package,
+                &lower,
+                "value",
+                "literal",
+                &range,
+                json!({"term":"literal", "type":node_id(&range),
+                    "value_kind":"integer", "value":"0"}),
+            );
+            node(
+                &mut f.package,
+                &upper,
+                "value",
+                "literal",
+                &range,
+                json!({"term":"literal", "type":node_id(&range),
+                    "value_kind":"integer", "value":"0"}),
+            );
+            let member = json!({"kind":"type_argument", "declaration":node_id(&range)});
+            application_with_member(
+                &mut f,
+                "collection",
+                "collection",
+                identity,
+                Value::Null,
+                member,
+                result,
+                vec![
+                    reference(&lower),
+                    reference(&upper),
+                    json!({"term":"binding", "name":"sequence_index",
+                        "value":reference(&index)}),
+                ],
+            );
+        }
+        "filament.op.refinement.history" => {
+            let declaration = add_family_reference_target(&mut f.package);
+            let reference_type = composite(&mut f.package, "reference", &declaration);
+            let receiver = parameter(&mut f, &reference_type, "history_receiver");
+            let result = f.text.clone();
+            application_with_member(
+                &mut f,
+                "query",
+                "query",
+                identity,
+                Value::Null,
+                json!({"kind":"history", "declaration":node_id(&declaration), "name":"past"}),
+                &result,
+                vec![reference(&receiver)],
             );
         }
         "filament.op.collection.reduce" | "filament.op.collection.sum.integer" => {
@@ -741,6 +878,9 @@ pub(super) fn admitted_fixture(identity: &str) -> Option<Value> {
             );
         }
         _ => return None,
+    }
+    if identity == "filament.op.collection.seq" {
+        add_sequence_owner(&mut f.package);
     }
     Some(f.package)
 }
@@ -1062,6 +1202,34 @@ fn tc_048_every_catalogue_entry_retains_its_constructible_admission() {
                 "{identity}: {result:?}"
             );
             admitted.insert(identity.to_owned());
+        } else if identity == "filament.op.refinement.history" {
+            let (package, evidence) =
+                crate::checked_package_v2_refinement::orphan_history_control();
+            let position = package["semantic_graph"]["nodes"]
+                .as_array()
+                .expect("nodes")
+                .iter()
+                .position(|node| node["body"]["operation"]["identity"] == identity)
+                .expect("history application");
+            let CheckedPackageV2ReadResult::Refused(refusal) =
+                read_with_evidence(&package, &evidence)
+            else {
+                panic!("an unreachable history row must refuse");
+            };
+            assert_eq!(refusal.code, CheckedPackageRefusalCode::IllTyped);
+            assert_eq!(
+                refusal.cause,
+                Some(CheckedPackageRefusalCause::OperatorIneligible)
+            );
+            assert_eq!(
+                refusal.loci[0].path.as_ref().map(ToString::to_string),
+                Some(format!("/semantic_graph/nodes/{position}"))
+            );
+            unavailable.insert(
+                identity.to_owned(),
+                "a history application without a reachable, joined refinement history row must refuse"
+                    .to_owned(),
+            );
         } else if let Some(package) = admitted_fixture(identity).or_else(|| simple_fixture(entry)) {
             let result = read(&package);
             let CheckedPackageV2ReadResult::Admitted(admitted_package) = result else {
@@ -1098,10 +1266,13 @@ fn tc_048_every_catalogue_entry_retains_its_constructible_admission() {
                 entry["result"] != "member" && entry["member"] != "type_argument",
                 "member-result or type-argument lookalike {identity} needs an admitted control"
             );
-            let reason = unavailable_reason(entry)
-                .unwrap_or_else(|| panic!("{identity} needs an admitted control or a catalog-derived fixture gap: {entry}"));
+            let reason = unavailable_reason(entry).unwrap_or_else(|| {
+                panic!(
+                    "{identity} needs an admitted control or a catalog-derived fixture gap: {entry}"
+                )
+            });
             assert!(!reason.is_empty(), "{identity}: empty fixture-gap reason");
-            unavailable.insert(identity.to_owned(), reason);
+            unavailable.insert(identity.to_owned(), reason.to_owned());
         }
     }
     assert_eq!(
@@ -1132,6 +1303,7 @@ fn tc_048_every_catalogue_entry_retains_its_constructible_admission() {
             | "filament.op.collection.count"
             | "filament.op.collection.sum.integer"
             | "filament.op.collection.size" => "rational",
+            "filament.op.collection.only" => "rational",
             "filament.op.text.to_integer" | "filament.op.string.to_integer" => "rational",
             _ => "integer",
         };
@@ -1174,6 +1346,220 @@ fn tc_048_every_catalogue_entry_retains_its_constructible_admission() {
     }
 }
 
+#[trace("TC-048", "FR-038-AC-251")]
+#[test]
+fn collection_seq_requires_bounded_inputs_matching_binder_and_sequence() {
+    let base = admitted_fixture("filament.op.collection.seq").expect("sequence control");
+    let function_id = node_id("function/sequence-owner");
+    let base_result = read(&base);
+    assert!(
+        matches!(base_result, CheckedPackageV2ReadResult::Admitted(_)),
+        "function-scoped sequence fixture: {base_result:?}"
+    );
+    let application = base["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .position(|node| node["body"]["operation"]["identity"] == "filament.op.collection.seq")
+        .expect("sequence application");
+    let function = base["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .position(|node| node["node_id"] == function_id)
+        .expect("sequence owner function");
+
+    let text_type = node_id("scalar_type/text");
+    let integer_type = node_id("scalar_type/integer");
+    let parameter_node = |id: Value, name: &str, level: &str, ty: Value| {
+        json!({
+            "node_id":id, "schema_version":"filament.checked-semantic-graph/v2",
+            "node_tag":"value", "semantic_form":"parameter", "semantic_type":ty,
+            "dependencies":[], "occurrences":[{"role":"expression", "ordinal":0}],
+            "body":{"term":"aggregate", "members":[
+                {"term":"binding", "name":"name", "value":{
+                    "term":"literal", "type":text_type, "value_kind":"text", "value":name}},
+                {"term":"binding", "name":"level", "value":{
+                    "term":"literal", "type":integer_type, "value_kind":"integer", "value":level}}
+            ]}
+        })
+    };
+    let mut shadowed = base.clone();
+    shadowed["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .push(parameter_node(
+            node_id("value/parameter/sequence-index-shadow"),
+            "sequence_index",
+            "2",
+            integer_type.clone(),
+        ));
+    settle(&mut shadowed);
+    let shadowed_result = read(&shadowed);
+    assert!(
+        matches!(shadowed_result, CheckedPackageV2ReadResult::Admitted(_)),
+        "an unrelated same-name parameter at another level does not shadow the binder: {shadowed_result:?}"
+    );
+
+    let mut unused_index = base.clone();
+    let original_index = base["semantic_graph"]["nodes"][application]["body"]["arguments"][2]
+        ["value"]["target"]
+        .clone();
+    let range_type = base["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|node| node["node_id"] == original_index)
+        .expect("index parameter")["semantic_type"]
+        .clone();
+    let outer_x = node_id("value/parameter/outer-x");
+    unused_index["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .extend([
+            parameter_node(outer_x.clone(), "x", "0", range_type.clone()),
+            parameter_node(
+                node_id("value/parameter/sequence-index-level-one"),
+                "sequence_index",
+                "1",
+                range_type,
+            ),
+            parameter_node(
+                node_id("value/parameter/sequence-index-shadow-level-two"),
+                "sequence_index",
+                "2",
+                integer_type.clone(),
+            ),
+        ]);
+    unused_index["semantic_graph"]["nodes"][function]["body"]["members"][0]["value"] =
+        json!({"term":"aggregate", "members":[{"term":"reference", "target":outer_x}]});
+    let dependencies = unused_index["semantic_graph"]["nodes"][function]["dependencies"]
+        .as_array_mut()
+        .expect("function dependencies");
+    dependencies.push(outer_x.clone());
+    dependencies.sort_by_key(structural_fixture_id);
+    unused_index["semantic_graph"]["nodes"][application]["body"]["arguments"][2]["value"]
+        ["target"] = outer_x;
+    settle(&mut unused_index);
+    assert!(
+        matches!(read(&unused_index), CheckedPackageV2ReadResult::Admitted(_)),
+        "an unused i binder is resolved at level one from the outer x scope"
+    );
+
+    let mut boolean_element = base.clone();
+    let boolean_type = node_id("scalar_type/boolean");
+    let outer_boolean = node_id("value/parameter/outer-boolean");
+    boolean_element["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .push(parameter_node(
+            outer_boolean.clone(),
+            "x",
+            "0",
+            boolean_type.clone(),
+        ));
+    let sequence_type =
+        boolean_element["semantic_graph"]["nodes"][application]["body"]["result_type"].clone();
+    let bounds_position = boolean_element["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .position(|node| node["node_id"] == sequence_type)
+        .expect("collection bounds");
+    let sequence_id =
+        boolean_element["semantic_graph"]["nodes"][bounds_position]["semantic_type"].clone();
+    let sequence_position = boolean_element["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .position(|node| node["node_id"] == sequence_id)
+        .expect("sequence type");
+    boolean_element["semantic_graph"]["nodes"][sequence_position]["body"]["members"][0]["target"] =
+        boolean_type.clone();
+    boolean_element["semantic_graph"]["nodes"][application]["body"]["operation"]["member"]
+        ["declaration"] = boolean_type.clone();
+    boolean_element["semantic_graph"]["nodes"][application]["body"]["arguments"][2]["value"]
+        ["target"] = outer_boolean;
+    boolean_element["semantic_graph"]["nodes"][application]["body"]["result_type"] =
+        sequence_type.clone();
+    boolean_element["semantic_graph"]["nodes"][application]["semantic_type"] =
+        sequence_type.clone();
+    boolean_element["semantic_graph"]["nodes"][function]["semantic_type"] = sequence_type;
+    settle(&mut boolean_element);
+    let boolean_result = read(&boolean_element);
+    assert!(
+        matches!(boolean_result, CheckedPackageV2ReadResult::Admitted(_)),
+        "the seq index has integer_range type while its Boolean element is independent: {boolean_result:?}"
+    );
+
+    let mut unbounded_input = base.clone();
+    let lower_literal = unbounded_input["semantic_graph"]["nodes"][application]["body"]
+        ["arguments"][0]["target"]
+        .clone();
+    let lower_position = unbounded_input["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .position(|node| node["node_id"] == lower_literal)
+        .expect("lower literal");
+    unbounded_input["semantic_graph"]["nodes"][lower_position]["semantic_type"] =
+        node_id("scalar_type/integer");
+    unbounded_input["semantic_graph"]["nodes"][lower_position]["body"]["type"] =
+        node_id("scalar_type/integer");
+    settle(&mut unbounded_input);
+    assert_result_refusal(&unbounded_input, application, "filament.op.collection.seq");
+
+    let mut wrong_index_range = base.clone();
+    let parameter = wrong_index_range["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .position(|node| {
+            node["semantic_form"] == "parameter"
+                && node["body"]["members"][0]["value"]["value"] == "sequence_index"
+        })
+        .expect("index parameter");
+    wrong_index_range["semantic_graph"]["nodes"][parameter]["semantic_type"] =
+        node_id("scalar_type/integer");
+    settle(&mut wrong_index_range);
+    assert_result_refusal(
+        &wrong_index_range,
+        application,
+        "filament.op.collection.seq",
+    );
+
+    let mut wrong_element = base.clone();
+    let sequence_type =
+        wrong_element["semantic_graph"]["nodes"][application]["body"]["result_type"].clone();
+    let bounds = wrong_element["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .position(|node| node["node_id"] == sequence_type)
+        .expect("collection bounds");
+    let sequence_id = wrong_element["semantic_graph"]["nodes"][bounds]["semantic_type"].clone();
+    let sequence = wrong_element["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .position(|node| node["node_id"] == sequence_id)
+        .expect("sequence type");
+    wrong_element["semantic_graph"]["nodes"][sequence]["body"]["members"][0]["target"] =
+        node_id("scalar_type/rational");
+    settle(&mut wrong_element);
+    assert_result_refusal(&wrong_element, application, "filament.op.collection.seq");
+
+    let mut wrong_cardinality = base;
+    wrong_cardinality["semantic_graph"]["nodes"][bounds]["body"]["members"][1]["value"]["value"] =
+        json!("2");
+    settle(&mut wrong_cardinality);
+    assert_result_refusal(
+        &wrong_cardinality,
+        application,
+        "filament.op.collection.seq",
+    );
+}
+
 fn assert_result_refusal(package: &Value, position: usize, identity: &str) {
     let CheckedPackageV2ReadResult::Refused(refusal) = read(package) else {
         panic!(
@@ -1194,7 +1580,12 @@ fn assert_result_refusal(package: &Value, position: usize, identity: &str) {
             // FSpec FR-322 locates a carried-sum result mismatch at the
             // application node itself, not at its `result_type`.
             Some(
-                if identity == "filament.op.collection.sum.carried_quantity" {
+                if matches!(
+                    identity,
+                    "filament.op.collection.sum.carried_quantity"
+                        | "filament.op.collection.only"
+                        | "filament.op.collection.seq"
+                ) {
                     format!("/semantic_graph/nodes/{position}")
                 } else {
                     format!("/semantic_graph/nodes/{position}/body/result_type")

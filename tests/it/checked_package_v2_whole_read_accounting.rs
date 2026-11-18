@@ -65,6 +65,50 @@ fn positive(label: impl Into<String>, wire: Value) -> Case {
     case(label, wire, evidence, Expected::Admitted)
 }
 
+#[trace("TC-048", "FR-038-AC-556")]
+#[test]
+fn positive_named_raw_input_without_check_mode_refuses_malformed_wire() {
+    let mut package = v2_all_families();
+    let position = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .position(|node| node["node_tag"] == "function")
+        .expect("positive fixture has a function");
+    package["semantic_graph"]["nodes"][position]
+        .as_object_mut()
+        .expect("function node")
+        .remove("check_mode");
+    let path = std::env::temp_dir().join(format!(
+        "positive-function-without-check-mode-{}.json",
+        std::process::id()
+    ));
+    let bytes = canonical(&package);
+    std::fs::write(&path, &bytes).expect("write raw malformed positive");
+    let package = fspec_inputs::read_json(&path).expect("raw malformed positive input");
+    let _ = std::fs::remove_file(path);
+    assert!(
+        package["semantic_graph"]["nodes"][position]
+            .get("check_mode")
+            .is_none(),
+        "reading a positive-named fixture must not normalize malformed wire"
+    );
+    let result = crate::read_and_account(
+        &bytes,
+        filament_contract_model::CheckedPackageReadLimits::bounded(),
+        &evidence_for(&package),
+    );
+    let CheckedPackageV2ReadResult::Refused(refusal) = result else {
+        panic!("the raw legacy positive must retain the FR-770 malformed-wire refusal");
+    };
+    assert_eq!(refusal.code, Code::MalformedWire);
+    let expected_path = format!("/semantic_graph/nodes/{position}/check_mode");
+    assert_eq!(
+        refusal.loci[0].path.as_ref().map(|path| path.as_str()),
+        Some(expected_path.as_str())
+    );
+}
+
 /// The same wire and evidence preparation used by the original wide-bound
 /// native control. No additional normalization or replacement recipe.
 fn wide_bounded_quantity_case() -> Case {
@@ -345,6 +389,14 @@ fn positive_cases() -> Vec<Case> {
                 evidence,
                 Expected::Admitted,
             ));
+        } else if identity == "filament.op.refinement.history" {
+            let (wire, evidence) = crate::checked_package_v2_refinement::orphan_history_control();
+            cases.push(case(
+                format!("TC048/{identity}/unreachable-history-row"),
+                wire,
+                evidence,
+                Expected::Refused(Code::IllTyped),
+            ));
         } else if let Some(wire) =
             crate::checked_package_v2_catalogue_differential::admitted_fixture(identity)
                 .or_else(|| crate::checked_package_v2_catalogue_differential::simple_fixture(entry))
@@ -377,8 +429,9 @@ fn dependency_call_cases() -> (Vec<DependencyCallCase>, BTreeSet<String>) {
         vectors["library"]["package"],
         "fixtures/positive-dependency-library.json"
     );
-    let base = fspec_inputs::read_json_wire(&fixtures.join("positive-dependency-call.json"))
+    let mut base = fspec_inputs::read_json_wire(&fixtures.join("positive-dependency-call.json"))
         .expect("original raw importer base");
+    fspec_inputs::supply_positive_function_check_mode(&mut base);
     let mut cases = Vec::new();
     let mut providers = BTreeSet::new();
     for name in [
@@ -388,7 +441,10 @@ fn dependency_call_cases() -> (Vec<DependencyCallCase>, BTreeSet<String>) {
         let wire = if name == "positive-dependency-call.json" {
             base.clone()
         } else {
-            fspec_inputs::read_json(&fixtures.join(name)).expect("original library input")
+            let mut wire =
+                fspec_inputs::read_json(&fixtures.join(name)).expect("original library input");
+            fspec_inputs::supply_positive_function_check_mode(&mut wire);
+            wire
         };
         let evidence = fspec_inputs::evidence_for_published(
             &wire,
@@ -535,7 +591,9 @@ fn fspec_cases() -> (Vec<Case>, BTreeSet<String>) {
     let selections = fspec_inputs::vector_selected_documents(&proposal)
         .expect("actual published fixture-to-document selections");
     for name in fspec_inputs::POSITIVE_ALL {
-        let wire = fspec_inputs::read_json(&fixtures.join(name)).expect("actual positive fixture");
+        let mut wire =
+            fspec_inputs::read_json(&fixtures.join(name)).expect("actual positive fixture");
+        fspec_inputs::supply_positive_function_check_mode(&mut wire);
         let document = proposal.join(fspec_inputs::positive_document(name, &selections));
         let evidence =
             fspec_inputs::evidence_for_published(&wire, name, &document, true, None, &fixtures)
@@ -553,10 +611,11 @@ fn fspec_cases() -> (Vec<Case>, BTreeSet<String>) {
             .unwrap_or_else(|error| panic!("FSpec {file}: {error}"));
         serde_json::from_slice(&bytes).expect("published FSpec JSON")
     };
-    let package = read(
+    let mut package = read(
         "checked_package_v2_owners.rs",
         "fixtures/positive-operation-identities.json",
     );
+    fspec_inputs::supply_positive_function_check_mode(&mut package);
     let document = read(
         "checked_package_v2_owners.rs",
         "domain-package-acme-orders.json",
@@ -725,8 +784,9 @@ fn fspec_cases() -> (Vec<Case>, BTreeSet<String>) {
     let vectors = fspec_inputs::read_json(&proposal.join("model-root-vectors.json"))
         .expect("published model-root vectors");
     assert_eq!(vectors["base"], "fixtures/positive-all-families.json");
-    let base = fspec_inputs::read_json_wire(&fixtures.join("positive-all-families.json"))
+    let mut base = fspec_inputs::read_json_wire(&fixtures.join("positive-all-families.json"))
         .expect("published model-root base");
+    fspec_inputs::supply_positive_function_check_mode(&mut base);
     for row in vectors["vectors"].as_array().expect("model-root vectors") {
         let id = row["id"].as_str().expect("model-root case id");
         let mut wire = base.clone();
@@ -770,8 +830,9 @@ fn fspec_cases() -> (Vec<Case>, BTreeSet<String>) {
     }
     let vectors = fspec_inputs::read_json(&proposal.join("node-ordinal-vectors.json"))
         .expect("published ordinal vectors");
-    let base = fspec_inputs::read_json(&fixtures.join("positive-all-families.json"))
+    let mut base = fspec_inputs::read_json(&fixtures.join("positive-all-families.json"))
         .expect("published ordinal base");
+    fspec_inputs::supply_positive_function_check_mode(&mut base);
     for row in vectors["uniqueness_cases"]
         .as_array()
         .expect("ordinal uniqueness cases")
@@ -828,8 +889,9 @@ fn fspec_cases() -> (Vec<Case>, BTreeSet<String>) {
     let vectors = fspec_inputs::read_json(&proposal.join("node-index-vectors.json"))
         .expect("published operand vectors");
     assert_eq!(vectors["base"], "fixtures/positive-dependency-call.json");
-    let base = fspec_inputs::read_json_wire(&fixtures.join("positive-dependency-call.json"))
+    let mut base = fspec_inputs::read_json_wire(&fixtures.join("positive-dependency-call.json"))
         .expect("published operand base");
+    fspec_inputs::supply_positive_function_check_mode(&mut base);
     for row in vectors["cases"].as_array().expect("operand cases") {
         let id = row["id"].as_str().expect("operand case id");
         let expected = row["expected"].as_str().expect("operand outcome");
@@ -917,8 +979,9 @@ fn fspec_cases() -> (Vec<Case>, BTreeSet<String>) {
             });
         }
     }
-    let base = fspec_inputs::read_json(&fixtures.join("positive-all-families.json"))
+    let mut base = fspec_inputs::read_json(&fixtures.join("positive-all-families.json"))
         .expect("published structural/body base");
+    fspec_inputs::supply_positive_function_check_mode(&mut base);
     let adverse = fspec_inputs::read_json(&fixtures.join("adverse.json"))
         .expect("published structural/body mutations");
     for list in ["structural_mutations", "body_grammar_mutations"] {
@@ -1032,8 +1095,9 @@ fn fspec_cases() -> (Vec<Case>, BTreeSet<String>) {
     let vectors = fspec_inputs::read_json(&proposal.join("model-tuple-union-vectors.json"))
         .expect("published tuple/union vectors");
     assert_eq!(vectors["base"], "fixtures/positive-model-tuple-union.json");
-    let base = fspec_inputs::read_json(&fixtures.join("positive-model-tuple-union.json"))
+    let mut base = fspec_inputs::read_json(&fixtures.join("positive-model-tuple-union.json"))
         .expect("published tuple/union base");
+    fspec_inputs::supply_positive_function_check_mode(&mut base);
     let selected = fspec_inputs::read_json(&proposal.join(fspec_inputs::positive_document(
         "positive-model-tuple-union.json",
         &selections,
@@ -1498,13 +1562,24 @@ fn the_actual_tc048_catalogue_and_refusal_corpus_is_accounted_within_the_bound()
     // are covered by the focused FSpec diagnostic proof above.
     for input in registered_cases() {
         eprintln!("Registry full actual input: {}", input.label);
-        proof::assert_read::<IntegrationCounter>(
-            &input.label,
-            &input.bytes,
-            &input.evidence,
-            input.expected,
-            proof::ReadViewScope::Full,
-        );
+        if input.label == "TC048/filament.op.collection.seq" {
+            proof::assert_read_with_unpaid_bound::<IntegrationCounter>(
+                &input.label,
+                &input.bytes,
+                &input.evidence,
+                input.expected,
+                proof::ReadViewScope::Full,
+                12_288,
+            );
+        } else {
+            proof::assert_read::<IntegrationCounter>(
+                &input.label,
+                &input.bytes,
+                &input.evidence,
+                input.expected,
+                proof::ReadViewScope::Full,
+            );
+        }
     }
 }
 

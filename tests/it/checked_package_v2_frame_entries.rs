@@ -2947,16 +2947,9 @@ fn tc_056_selected_record_fields_obey_exact_work_limit() {
                 record.limit_kind,
                 filament_contract_model::CheckedPackageLimit::Work
             );
-            let postcondition = StatePackage {
-                value: package.clone(),
-            }
-            .clause("postcondition");
             assert_eq!(
                 record.path.as_ref().map(|path| path.as_str()),
-                Some(
-                    format!("/semantic_graph/nodes/{postcondition}/body/arguments/2/target")
-                        .as_str()
-                )
+                Some("/semantic_graph/nodes/25/owner")
             );
         }
         other => panic!("one unit below exact must be incomplete: {other:?}"),

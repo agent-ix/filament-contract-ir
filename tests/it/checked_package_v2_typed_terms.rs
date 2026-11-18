@@ -644,6 +644,7 @@ fn admitted_controls_expose_element_and_fairness_members() {
         "type_argument",
         "element",
         "fairness",
+        "history",
     ]
     .into_iter()
     .collect();

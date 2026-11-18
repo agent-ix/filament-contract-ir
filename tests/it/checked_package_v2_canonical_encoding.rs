@@ -1248,7 +1248,7 @@ macro_rules! is_fixed_shape {
 /// ACs: FR-038-AC-80
 #[trace("TC-048", "FR-038-AC-80")]
 #[test]
-fn tc_048_quire_canonical_is_a_branch_main_git_dependency_with_its_source_allowed() {
+fn tc_048_quire_canonical_is_a_tagged_git_dependency_with_its_source_allowed() {
     for manifest in ["Cargo.toml", "crates/filament-contract-model/Cargo.toml"] {
         let text = repository_file(manifest);
         let line = text
@@ -1259,8 +1259,8 @@ fn tc_048_quire_canonical_is_a_branch_main_git_dependency_with_its_source_allowe
             line.contains("git = \"https://github.com/agent-ix/quire-canonical\""),
             "{manifest}: {line}"
         );
-        assert!(line.contains("branch = \"main\""), "{manifest}: {line}");
-        for other in ["rev =", "tag =", "path ="] {
+        assert!(line.contains("tag = \"v0.3.1\""), "{manifest}: {line}");
+        for other in ["branch =", "rev =", "path ="] {
             assert!(!line.contains(other), "{manifest}: {line}");
         }
     }
@@ -1279,6 +1279,7 @@ fn tc_048_quire_canonical_is_a_branch_main_git_dependency_with_its_source_allowe
         1,
         "one lock entry"
     );
+    assert!(lock.contains("git+https://github.com/agent-ix/quire-canonical?tag=v0.3.1#"));
 }
 
 /// ACs: FR-038-AC-80

@@ -108,6 +108,8 @@ pub struct CheckedEqualityOperandDecision {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize, FixedShape)]
 #[serde(rename_all = "snake_case")]
 pub enum CheckedEqualitySchedule {
+    /// IEEE floating-point comparison selected by the producer.
+    Float,
     /// Text comparison.
     Text,
     /// Enum comparison.

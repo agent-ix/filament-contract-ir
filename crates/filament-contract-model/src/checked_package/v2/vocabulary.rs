@@ -136,6 +136,8 @@ closed_vocabulary! {
         Float64 => "float64",
         Text => "text",
         String => "string",
+        Bytes => "bytes",
+        JsonObject => "json_object",
         Uuid => "uuid",
         Timestamp => "timestamp",
         Dimension => "dimension",
@@ -175,6 +177,7 @@ closed_vocabulary! {
         TextBounds => "text_bounds",
         CollectionBounds => "collection_bounds",
         ModelPopulation => "model_population",
+        FiniteTracePopulation => "finite_trace_population",
     }
 }
 
@@ -476,6 +479,7 @@ closed_vocabulary! {
         StateClause => "state_clause",
         TemporalInterval => "temporal_interval",
         Fairness => "fairness",
+        History => "history",
     }
 }
 

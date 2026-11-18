@@ -36,7 +36,7 @@ use super::operations::resolve_family;
 // These validators consume the strict decoder's authenticated typed table.
 use super::structural::typed_admitted_reference as typed_reference;
 use super::{
-    member_pointer, ApplicationOperator, CheckedDiagnosticV2, CheckedNodeKind,
+    member_pointer, ApplicationOperator, BoundedDomainForm, CheckedDiagnosticV2, CheckedNodeKind,
     CheckedPackageLockV2, CheckedSelectionRole, CheckedTerm, ClockConfiguration,
     FairnessGranularity, FairnessKind, HybridForm, IntervalEnd, IntervalFit, LawRole, LiteralKind,
     ModelForm, OperationMemberKind, RawSemanticNodeV2 as CheckedSemanticNodeV2, TemporalBinding,
@@ -607,6 +607,14 @@ pub(super) fn member_is_well_formed_node(
         }
         OperationMemberKind::Field => {
             member.get("name").and_then(TermNode::as_str).is_some() && ids.declaration.is_some()
+        }
+        OperationMemberKind::History => {
+            member.exact_members(&["kind", "declaration", "name"])
+                && ids.declaration.is_some()
+                && member
+                    .get("name")
+                    .and_then(TermNode::as_str)
+                    .is_some_and(is_identifier)
         }
         _ => true,
     }
@@ -2394,7 +2402,12 @@ fn check_hyper_shape(
     let value_of = |at: usize| binding(&members[at]).map(|(_, value)| value);
     let at_value = |at: usize| at_body().key("members").index(at).key("value");
     let domain = value_of(0).ok_or_else(|| graph_defect(at_value(0)))?;
-    let finite = typed_reference(domain).is_some();
+    let finite = typed_reference(domain)
+        .and_then(|target| graph.node(target))
+        .is_some_and(|(_, kind)| {
+            kind == CheckedNodeKind::BoundedDomain(BoundedDomainForm::FiniteTracePopulation)
+        });
+    let finite_domain = finite.then(|| typed_reference(domain).cloned()).flatten();
     let domain_text = match domain {
         CheckedTerm::Literal {
             value_kind: LiteralKind::Text,
@@ -2406,6 +2419,12 @@ fn check_hyper_shape(
     if !finite && domain_text != Some("behaviours") {
         return Err(graph_defect(at_value(0)));
     }
+    let Some(CheckedTerm::Aggregate {
+        members: parameters,
+    }) = value_of(2)
+    else {
+        return Err(graph_defect(at_value(2)));
+    };
     let Some(CheckedTerm::Aggregate { members: subjects }) = value_of(1) else {
         return Err(graph_defect(at_value(1)));
     };
@@ -2415,9 +2434,25 @@ fn check_hyper_shape(
     else {
         return Err(graph_defect(at_value(3)));
     };
+    let Some(CheckedTerm::Aggregate { members: matched }) = value_of(4) else {
+        return Err(graph_defect(at_value(4)));
+    };
+    let Some(CheckedTerm::Aggregate {
+        members: align_skip,
+    }) = value_of(5)
+    else {
+        return Err(graph_defect(at_value(5)));
+    };
     // Step 1: a finite domain has no subjects; each quantifier Group.
     if finite && !subjects.is_empty() {
         return Err(graph_defect(at_value(1).key("members").index(0)));
+    }
+    if finite {
+        for (at, terms) in [(2, parameters), (4, matched), (5, align_skip)] {
+            if !terms.is_empty() {
+                return Err(graph_defect(at_value(at).key("members").index(0)));
+            }
+        }
     }
     let bindings_in_group: usize = if finite { 2 } else { 3 };
     let mut aliases = meter.vec(quantifiers.len())?;
@@ -2539,6 +2574,24 @@ fn check_hyper_shape(
                 Some(CheckedPackageRefusalCause::NonBooleanRoot),
                 body_target.clone().unwrap_or_else(|| node.node_id.clone()),
             ));
+        }
+        let mut expected_dependencies = meter.vec(2)?;
+        meter.push(
+            &mut expected_dependencies,
+            finite_domain
+                .clone()
+                .ok_or_else(|| graph_defect(at_value(0)))?,
+        )?;
+        meter.push(
+            &mut expected_dependencies,
+            body_target
+                .clone()
+                .ok_or_else(|| graph_defect(at_value(6)))?,
+        )?;
+        expected_dependencies.sort_unstable();
+        expected_dependencies.dedup();
+        if node.dependencies != expected_dependencies {
+            return Err(graph_defect(node_pointer(position).key("dependencies")));
         }
     } else {
         let Some((wrapper, CheckedNodeKind::Temporal(TemporalForm::TemporalClause))) = body_node
@@ -2814,6 +2867,46 @@ mod tests {
     use crate::checked_package::v2::CheckedNodeTag;
     use ix_trace_rs::trace;
     use serde_json::json;
+
+    /// FR-322-AC-17: the history member is a closed identity with a local
+    /// declaration node and an identifier field name.
+    #[trace("FR-322-AC-17")]
+    #[test]
+    fn history_member_requires_its_exact_identity_shape() {
+        let declaration = serde_json::from_value(json!({
+            "package": "fixture",
+            "path": ["model", "Counter"],
+            "ordinal": 0
+        }))
+        .expect("a checked declaration node");
+        let ids = super::super::typed_terms::CheckedOperationMemberIds {
+            declaration: Some(declaration),
+            ..Default::default()
+        };
+        let member = CheckedJson::from_value(&json!({
+            "kind": "history",
+            "declaration": {"package":"fixture","path":["model","Counter"],"ordinal":0},
+            "name": "last"
+        }))
+        .expect("history member");
+        assert!(member_is_well_formed_node(
+            OperationMemberKind::History,
+            TermNode::of(&member),
+            &ids
+        ));
+
+        for malformed in [
+            json!({"kind":"history","declaration":{"package":"fixture","path":["model","Counter"],"ordinal":0},"name":"last","extra":true}),
+            json!({"kind":"history","declaration":{"package":"fixture","path":["model","Counter"],"ordinal":0},"name":"not an identifier"}),
+        ] {
+            let member = CheckedJson::from_value(&malformed).expect("a JSON member");
+            assert!(!member_is_well_formed_node(
+                OperationMemberKind::History,
+                TermNode::of(&member),
+                &ids
+            ));
+        }
+    }
 
     #[trace("TC-472", "FR-038-AC-516", "FR-038-AC-5")]
     #[test]

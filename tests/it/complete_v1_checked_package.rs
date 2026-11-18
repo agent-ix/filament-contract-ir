@@ -394,7 +394,7 @@ fn tc_044_reader_reports_exact_and_one_over_resource_accounting() {
         &evidence,
         CheckedPackageLimit::Work,
         exact.work,
-        Some("/semantic_graph/nodes/16/dependencies/2"),
+        Some("/semantic_graph/nodes/25/owner"),
     );
 
     // edges: node 1 (composite_type) carries no dependency edges in the base

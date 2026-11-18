@@ -547,7 +547,12 @@ fn forwarding_target(
             };
             typed_reference(inner).cloned()
         }
-        CheckedNodeKind::BoundedDomain(form) if form != BoundedDomainForm::ModelPopulation => {
+        CheckedNodeKind::BoundedDomain(form)
+            if !matches!(
+                form,
+                BoundedDomainForm::ModelPopulation | BoundedDomainForm::FiniteTracePopulation
+            ) =>
+        {
             Some(node.semantic_type.clone())
         }
         _ => None,
@@ -855,6 +860,10 @@ fn descriptor(
             (!suppress(Suppression::Whole)?).then_some(D::Whole { kind: frame.kind }),
             inherited,
         ),
+        K::BoundedDomain(BoundedDomainForm::FiniteTracePopulation) => (
+            (!suppress(Suppression::Whole)?).then_some(D::Whole { kind: frame.kind }),
+            inherited,
+        ),
         K::CompositeType(
             CompositeTypeForm::Sequence
             | CompositeTypeForm::Set
@@ -918,7 +927,8 @@ fn next_edge(
             | BoundedDomainForm::RationalRange
             | BoundedDomainForm::DecimalRange
             | BoundedDomainForm::FloatRounding
-            | BoundedDomainForm::TextBounds,
+            | BoundedDomainForm::TextBounds
+            | BoundedDomainForm::FiniteTracePopulation,
         ) => false,
         _ => return Ok(None),
     };

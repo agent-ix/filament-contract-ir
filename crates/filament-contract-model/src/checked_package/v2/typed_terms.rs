@@ -773,6 +773,13 @@ pub enum CheckedOperationMember {
         /// Admitted operation name.
         name: Box<str>,
     },
+    /// A refinement-local history field.
+    History {
+        /// Declaring concrete model type node.
+        declaration: CheckedNodeId,
+        /// History field name.
+        name: Box<str>,
+    },
     /// An explicit type argument.
     TypeArgument {
         /// Type argument declaration node.
@@ -1195,6 +1202,7 @@ impl CheckedOperationMember {
             | Self::Position { declaration, .. }
             | Self::Element { declaration }
             | Self::Operation { declaration, .. }
+            | Self::History { declaration, .. }
             | Self::TypeArgument { declaration } => replace(declaration)?,
             Self::Fairness { target, .. } => replace(target.node_mut())?,
             Self::RelationshipEnd {
@@ -1326,6 +1334,10 @@ impl CheckedOperationMember {
                 declaration: meter.clone_id(need!(declaration))?,
                 name: meter.boxed_str(need!(name))?,
             },
+            OperationMemberKind::History => Self::History {
+                declaration: meter.clone_id(need!(declaration))?,
+                name: meter.boxed_str(need!(name))?,
+            },
             OperationMemberKind::TypeArgument => Self::TypeArgument {
                 declaration: meter.clone_id(need!(declaration))?,
             },
@@ -1416,6 +1428,10 @@ impl CheckedOperationMember {
                 declaration: declaration()?,
                 name: name()?,
             },
+            OperationMemberKind::History => Self::History {
+                declaration: declaration()?,
+                name: name()?,
+            },
             OperationMemberKind::TypeArgument => Self::TypeArgument {
                 declaration: declaration()?,
             },
@@ -1453,6 +1469,7 @@ impl CheckedOperationMember {
             | Self::Position { declaration, .. }
             | Self::Element { declaration }
             | Self::Operation { declaration, .. }
+            | Self::History { declaration, .. }
             | Self::TypeArgument { declaration } => replace(declaration),
             Self::Fairness { target, .. } => replace(target.node_mut()),
             Self::RelationshipEnd {
@@ -2547,7 +2564,8 @@ fn map_operation_ids(
             | CheckedOperationMember::Position { declaration, .. }
             | CheckedOperationMember::Element { declaration }
             | CheckedOperationMember::Operation { declaration, .. }
-            | CheckedOperationMember::TypeArgument { declaration } => {
+            | CheckedOperationMember::TypeArgument { declaration }
+            | CheckedOperationMember::History { declaration, .. } => {
                 replace(declaration, &["declaration"])
             }
             CheckedOperationMember::Fairness { target, .. } => {
@@ -2785,7 +2803,8 @@ impl CheckedTerm {
                             | CheckedOperationMember::Position { declaration, .. }
                             | CheckedOperationMember::Element { declaration }
                             | CheckedOperationMember::Operation { declaration, .. }
-                            | CheckedOperationMember::TypeArgument { declaration } => {
+                            | CheckedOperationMember::TypeArgument { declaration }
+                            | CheckedOperationMember::History { declaration, .. } => {
                                 member_id(declaration)?;
                             }
                             CheckedOperationMember::RelationshipEnd {

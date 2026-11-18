@@ -260,6 +260,8 @@ impl StructuralForm {
                 | ScalarTypeForm::Float64
                 | ScalarTypeForm::Text
                 | ScalarTypeForm::String
+                | ScalarTypeForm::Bytes
+                | ScalarTypeForm::JsonObject
                 | ScalarTypeForm::Uuid
                 | ScalarTypeForm::Timestamp
                 | ScalarTypeForm::Dimension
@@ -287,7 +289,8 @@ impl StructuralForm {
                 | BoundedDomainForm::FloatRounding
                 | BoundedDomainForm::TextBounds
                 | BoundedDomainForm::CollectionBounds
-                | BoundedDomainForm::ModelPopulation,
+                | BoundedDomainForm::ModelPopulation
+                | BoundedDomainForm::FiniteTracePopulation,
             ) => None,
             K::Value(ValueForm::UnionValue) => Some(Self::UnionValue),
             K::Value(
@@ -973,6 +976,7 @@ pub(super) fn validate_derived_type_shapes(
                             | ScalarTypeForm::Rational | ScalarTypeForm::Decimal
                             | ScalarTypeForm::Float32 | ScalarTypeForm::Float64
                             | ScalarTypeForm::Text | ScalarTypeForm::String
+                            | ScalarTypeForm::Bytes | ScalarTypeForm::JsonObject
                             | ScalarTypeForm::Uuid | ScalarTypeForm::Timestamp
                             | ScalarTypeForm::Unit | ScalarTypeForm::Enum
                             | ScalarTypeForm::CompoundUnit | ScalarTypeForm::CarriedQuantity
@@ -1081,6 +1085,17 @@ pub(super) fn validate_derived_type_shapes(
                         _ => false,
                     }
                 })
+            }
+            CheckedNodeKind::BoundedDomain(BoundedDomainForm::FiniteTracePopulation) => {
+                graph.kind(&node.semantic_type)
+                    == Some(CheckedNodeKind::CompositeType(CompositeTypeForm::Record))
+                    && term.and_then(typed_aggregate).is_some_and(|members| {
+                        let [member] = members else { return false; };
+                        let Some(CheckedTerm::Literal { type_id, value_kind: LiteralKind::Integer, value }) =
+                            typed_binding(member, "bound") else { return false; };
+                        value.as_str().is_some_and(is_positive_integer)
+                            && graph.type_matches(type_id, ScalarTypeForm::Integer)
+                    })
             }
             CheckedNodeKind::Relation(RelationForm::Population) => {
                 node.semantic_type == node.node_id
