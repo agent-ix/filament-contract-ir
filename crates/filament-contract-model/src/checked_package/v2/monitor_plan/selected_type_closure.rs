@@ -752,19 +752,43 @@ impl<'a> CheckedMonitorPlanRef<'a> {
                 budget.set_locus_form("reached_equality_node");
                 read_charge(budget, NativeJoinChargeKind::Work, 1)
                     .map_err(|_| native_error(budget))?;
-                if self.package.node_kind(id)
-                    != Some(CheckedNodeKind::Expression(crate::ExpressionForm::Binary))
-                {
+                let mut decision = None;
+                if let Some(data) = self.package.checked_term_data() {
+                    for possible_decision in &data.equality_decisions {
+                        read_charge(budget, NativeJoinChargeKind::Work, 1)
+                            .map_err(|_| native_error(budget))?;
+                        if &possible_decision.application == id {
+                            decision = Some(possible_decision);
+                            break;
+                        }
+                    }
+                }
+                let expected = match decision.map(|decision| decision.schedule) {
+                    Some(crate::CheckedEqualitySchedule::Float) => {
+                        (crate::ExpressionForm::Call, ApplicationOperator::Call)
+                    }
+                    Some(
+                        crate::CheckedEqualitySchedule::Text
+                        | crate::CheckedEqualitySchedule::Enum
+                        | crate::CheckedEqualitySchedule::Quantity
+                        | crate::CheckedEqualitySchedule::Plan,
+                    )
+                    | None => (crate::ExpressionForm::Binary, ApplicationOperator::Binary),
+                };
+                if self.package.node_kind(id) != Some(CheckedNodeKind::Expression(expected.0)) {
                     continue;
                 }
                 let Some(CheckedTerm::Application {
-                    operator: ApplicationOperator::Binary,
+                    operator,
                     operation,
                     ..
                 }) = self.package.term(id)
                 else {
                     continue;
                 };
+                if *operator != expected.1 {
+                    continue;
+                }
                 if !operation
                     .identity()
                     .is_some_and(|name| equality_operator(name).is_some())

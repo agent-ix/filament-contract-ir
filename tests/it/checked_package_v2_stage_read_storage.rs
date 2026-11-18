@@ -765,6 +765,14 @@ fn work_denial_pointer_is_charged_before_it_is_built() {
     assert_eq!(incomplete.denied.resource, PackageReadResource::Work);
     let path = incomplete.path.expect("the value whose charge failed");
     let full = denied.read_storage_consumed();
+    let owner_root = wire["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .position(|node| node["semantic_form"] == "model_root")
+        .expect("selected model root");
+    let expected_owner_path = format!("/semantic_graph/nodes/{owner_root}/owner");
+    assert_eq!(path.as_str(), expected_owner_path);
 
     // The pointer was paid for within the read's read storage: with exactly
     // that much the outcome is affordable, with one byte less it is
@@ -780,12 +788,12 @@ fn work_denial_pointer_is_charged_before_it_is_built() {
         panic!("a pointer one byte short is exhausted");
     };
     assert_eq!(exhausted.denied.resource, PackageReadResource::Work);
-    assert_eq!(exhausted.locus.form, "operation_effects");
-    let NativeJoinLocusSource::PackageRead(stage, _) = exhausted.locus.source else {
+    assert_eq!(exhausted.locus.form, "declarations");
+    let NativeJoinLocusSource::PackageRead(stage, index) = exhausted.locus.source else {
         panic!("a package read locus");
     };
     assert!(
-        stage == PackageReadStage::OperationEffects,
+        stage == PackageReadStage::Graph && index == owner_root,
         "{stage:?} for {path}"
     );
 }

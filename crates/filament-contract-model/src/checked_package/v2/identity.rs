@@ -1149,6 +1149,8 @@ impl NominalKind {
                 | ScalarTypeForm::Float64
                 | ScalarTypeForm::Text
                 | ScalarTypeForm::String
+                | ScalarTypeForm::Bytes
+                | ScalarTypeForm::JsonObject
                 | ScalarTypeForm::Uuid
                 | ScalarTypeForm::Timestamp
                 | ScalarTypeForm::CompoundUnit
@@ -1175,7 +1177,8 @@ impl NominalKind {
                 | BoundedDomainForm::FloatRounding
                 | BoundedDomainForm::TextBounds
                 | BoundedDomainForm::CollectionBounds
-                | BoundedDomainForm::ModelPopulation,
+                | BoundedDomainForm::ModelPopulation
+                | BoundedDomainForm::FiniteTracePopulation,
             ) => None,
             K::Value(
                 ValueForm::Literal

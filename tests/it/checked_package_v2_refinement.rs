@@ -955,7 +955,24 @@ fn catalog_free_operation_package_config(
     inherited_field: bool,
     drop_supertype: bool,
 ) -> (Value, CheckedPackageEvidence, usize) {
+    catalog_free_operation_package_config_with_document(
+        form,
+        inherited,
+        inherited_field,
+        drop_supertype,
+        |_| {},
+    )
+}
+
+fn catalog_free_operation_package_config_with_document(
+    form: &str,
+    inherited: bool,
+    inherited_field: bool,
+    drop_supertype: bool,
+    edit_document: impl FnOnce(&mut Value),
+) -> (Value, CheckedPackageEvidence, usize) {
     let mut document = selected_form_document();
+    edit_document(&mut document);
     document["types"][0]["fields"] = json!([{
         "identity":format!("{MODEL_NODE}/openFlag"), "name":"openFlag",
         "typeRef":"ix://filament/native/Integer", "presence":"required",
@@ -3101,6 +3118,437 @@ fn ac5_history_package() -> (Value, CheckedPackageEvidence, usize, Value, Value,
         type_id,
         operation,
     )
+}
+
+#[trace("TC-062", "FR-061-AC-5")]
+#[test]
+fn history_read_requires_a_joined_refinement_row_and_reachable_application() {
+    let (package, evidence, _) = joined_history_package();
+    let result = read(&package, &evidence);
+    assert!(
+        matches!(result, CheckedPackageV2ReadResult::Admitted(_)),
+        "a joined, reachable history read admits: {result:?}"
+    );
+
+    let (orphan, evidence) = orphan_history_control();
+    let CheckedPackageV2ReadResult::Refused(refusal) = read(&orphan, &evidence) else {
+        panic!("a history application unreachable from its row must refuse");
+    };
+    assert_eq!(
+        refusal.code,
+        CheckedPackageRefusalCode::IllTyped,
+        "orphan history refusal: {refusal:?}"
+    );
+    assert_eq!(
+        refusal.cause,
+        Some(CheckedPackageRefusalCause::OperatorIneligible)
+    );
+    let application_position = orphan["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .position(|node| node["node_id"] == node_id("history-read/application"))
+        .expect("history application");
+    assert_eq!(
+        refusal.loci[0].path.as_ref().map(ToString::to_string),
+        Some(format!("/semantic_graph/nodes/{application_position}"))
+    );
+}
+
+#[trace("TC-062", "FR-061-AC-5", "FR-322")]
+#[test]
+fn history_read_without_a_reaching_declaration_refuses_at_the_member_name() {
+    let (mut package, evidence, position) = joined_history_package();
+    let application_id = node_id("history-read/application");
+    package["semantic_graph"]["nodes"][position]["body"]["histories"][0]["name"] = json!("other");
+    settle_refinement(&mut package, position);
+    let preserved_map = package["source_map"].clone();
+    merge_history_source_map(&mut package, preserved_map);
+
+    let application_position = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .position(|node| node["node_id"] == application_id)
+        .expect("history application");
+    let CheckedPackageV2ReadResult::Refused(refusal) = read(&package, &evidence) else {
+        panic!("a history read with no reaching refinement declaration must refuse");
+    };
+    assert_eq!(refusal.code, CheckedPackageRefusalCode::MissingDeclaration);
+    assert_eq!(refusal.cause, Some(CheckedPackageRefusalCause::MissingName));
+    assert_eq!(
+        refusal.loci[0].path.as_ref().map(ToString::to_string),
+        Some(format!(
+            "/semantic_graph/nodes/{application_position}/body/operation/member/name"
+        ))
+    );
+}
+
+#[trace("TC-062", "FR-061-AC-5")]
+#[test]
+fn history_read_requires_each_reaching_refinement_to_declare_it() {
+    let (mut package, evidence, position) = joined_history_package();
+    let original = package["semantic_graph"]["nodes"][position].clone();
+    let original_id = original["node_id"].clone();
+    let mut second_id = original_id.clone();
+    second_id["ordinal"] = json!(1);
+    let mut second = original.clone();
+    second["node_id"] = second_id.clone();
+    second["body"]["histories"][0]["name"] = json!("other");
+    package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .push(second);
+    let source_map = package["source_map"].as_array_mut().expect("source map");
+    let second_rows = source_map
+        .iter()
+        .filter(|entry| entry["node_id"] == original_id)
+        .cloned()
+        .map(|mut entry| {
+            entry["node_id"] = second_id.clone();
+            entry
+        })
+        .collect::<Vec<_>>();
+    source_map.extend(second_rows);
+    source_map.sort_by(|left, right| {
+        structural_fixture_id(&left["node_id"])
+            .cmp(&structural_fixture_id(&right["node_id"]))
+            .then_with(|| left["role"].as_str().cmp(&right["role"].as_str()))
+            .then_with(|| left["ordinal"].as_u64().cmp(&right["ordinal"].as_u64()))
+    });
+    let step_rows = package["refinement_step_rows"]
+        .as_array()
+        .expect("step rows");
+    let second_step_row = step_rows
+        .iter()
+        .find(|row| row["node_id"] == original_id)
+        .cloned()
+        .expect("original refinement step row");
+    let mut second_step_row = second_step_row;
+    second_step_row["node_id"] = second_id.clone();
+    package["refinement_step_rows"]
+        .as_array_mut()
+        .expect("step rows")
+        .push(second_step_row);
+    package["refinement_step_rows"]
+        .as_array_mut()
+        .expect("step rows")
+        .sort_by(|left, right| {
+            structural_fixture_id(&left["node_id"])
+                .cmp(&structural_fixture_id(&right["node_id"]))
+                .then_with(|| left["ordinal"].as_u64().cmp(&right["ordinal"].as_u64()))
+        });
+    refresh_identity(&mut package);
+
+    let application_id = node_id("history-read/application");
+    let application_position = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .position(|node| node["node_id"] == application_id)
+        .expect("history application");
+    let CheckedPackageV2ReadResult::Refused(refusal) = read(&package, &evidence) else {
+        panic!("a read shared by declaring and non-declaring refinements must refuse");
+    };
+    assert_eq!(
+        refusal.code,
+        CheckedPackageRefusalCode::MissingDeclaration,
+        "non-declaring reaching refinement refusal: {refusal:?}"
+    );
+    assert_eq!(refusal.cause, Some(CheckedPackageRefusalCause::MissingName));
+    assert_eq!(
+        refusal.loci[0].path.as_ref().map(ToString::to_string),
+        Some(format!(
+            "/semantic_graph/nodes/{application_position}/body/operation/member/name"
+        ))
+    );
+}
+
+#[trace("TC-062", "FR-061-AC-5", "FR-375-AC-32")]
+#[test]
+fn seq_used_only_by_a_refinement_field_row_resolves_its_binder_scope() {
+    let (mut package, evidence, position) = catalog_free_operation_package_config_with_document(
+        "object_type",
+        false,
+        false,
+        false,
+        |document| {
+            document["types"][4]["fields"] = json!([{
+                "identity":format!("ix://{MODEL_IDENTITY}/Account/versionNumber"),
+                "name":"versionNumber", "typeRef":"ix://filament/native/Integer",
+                "presence":"required", "nullable":false, "defaultKind":"none",
+                "multiplicity":{"lower":1,"upper":1,"ordered":false,"unique":true}
+            }]);
+        },
+    );
+    let integer_type = node_id("scalar_type/integer/sequence-row");
+    let text_type = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|node| node["semantic_form"] == "text" && node["node_tag"] == "scalar_type")
+        .expect("text type")["node_id"]
+        .clone();
+    let range_type = node_id("bounded/integer_range/sequence-row");
+    let sequence_type = node_id("composite_type/sequence/sequence-row");
+    let bounds_type = node_id("bounded/collection_bounds/sequence-row");
+    let lower = node_id("value/literal/sequence-row-lower");
+    let upper = node_id("value/literal/sequence-row-upper");
+    let index = node_id("value/parameter/sequence-row-index");
+    let sequence_application = node_id("expression/application/filament.op.collection.seq");
+    let size_application = node_id("expression/application/filament.op.collection.size");
+    package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .extend([
+            json!({"node_id":integer_type, "schema_version":"filament.checked-semantic-graph/v2",
+                "node_tag":"scalar_type", "semantic_form":"integer", "semantic_type":integer_type,
+                "dependencies":[], "occurrences":[{"role":"type", "ordinal":0}],
+                "body":{"term":"aggregate", "members":[]}}),
+            json!({"node_id":range_type, "schema_version":"filament.checked-semantic-graph/v2",
+                "node_tag":"bounded_domain", "semantic_form":"integer_range", "semantic_type":integer_type,
+                "dependencies":[integer_type], "occurrences":[{"role":"type", "ordinal":0}],
+                "body":{"term":"aggregate", "members":[
+                    {"term":"binding", "name":"min", "value":{"term":"literal", "type":integer_type,
+                        "value_kind":"integer", "value":"0"}},
+                    {"term":"binding", "name":"max", "value":{"term":"literal", "type":integer_type,
+                        "value_kind":"integer", "value":"1"}}]}}),
+            json!({"node_id":sequence_type, "schema_version":"filament.checked-semantic-graph/v2",
+                "node_tag":"composite_type", "semantic_form":"sequence", "semantic_type":sequence_type,
+                "dependencies":[range_type], "occurrences":[{"role":"type", "ordinal":0}],
+                "body":{"term":"aggregate", "members":[{"term":"reference", "target":range_type}]}}),
+            json!({"node_id":bounds_type, "schema_version":"filament.checked-semantic-graph/v2",
+                "node_tag":"bounded_domain", "semantic_form":"collection_bounds", "semantic_type":sequence_type,
+                "dependencies":[sequence_type, integer_type], "occurrences":[{"role":"type", "ordinal":0}],
+                "body":{"term":"aggregate", "members":[
+                    {"term":"binding", "name":"min", "value":{"term":"literal", "type":integer_type,
+                        "value_kind":"integer", "value":"0"}},
+                    {"term":"binding", "name":"max", "value":{"term":"literal", "type":integer_type,
+                        "value_kind":"integer", "value":"2"}}]}}),
+            json!({"node_id":lower, "schema_version":"filament.checked-semantic-graph/v2",
+                "node_tag":"value", "semantic_form":"literal", "semantic_type":range_type,
+                "dependencies":[], "occurrences":[{"role":"expression", "ordinal":0}],
+                "body":{"term":"literal", "type":range_type, "value_kind":"integer", "value":"0"}}),
+            json!({"node_id":upper, "schema_version":"filament.checked-semantic-graph/v2",
+                "node_tag":"value", "semantic_form":"literal", "semantic_type":range_type,
+                "dependencies":[], "occurrences":[{"role":"expression", "ordinal":0}],
+                "body":{"term":"literal", "type":range_type, "value_kind":"integer", "value":"1"}}),
+            json!({"node_id":index, "schema_version":"filament.checked-semantic-graph/v2",
+                "node_tag":"value", "semantic_form":"parameter", "semantic_type":range_type,
+                "dependencies":[], "occurrences":[{"role":"expression", "ordinal":0}],
+                "body":{"term":"aggregate", "members":[
+                    {"term":"binding", "name":"name", "value":{"term":"literal", "type":text_type,
+                        "value_kind":"text", "value":"sequence_index"}},
+                    {"term":"binding", "name":"level", "value":{"term":"literal", "type":integer_type,
+                        "value_kind":"integer", "value":"1"}}]}}),
+            json!({"node_id":sequence_application, "schema_version":"filament.checked-semantic-graph/v2",
+                "node_tag":"expression", "semantic_form":"collection", "semantic_type":bounds_type,
+                "dependencies":[bounds_type, range_type, lower, upper, index],
+                "occurrences":[{"role":"expression", "ordinal":0}],
+                "body":{"term":"application", "operator":"collection", "operation":{
+                    "identity":"filament.op.collection.seq", "laws":[], "mode":null,
+                    "member":{"kind":"type_argument", "declaration":range_type}, "leaves":[]},
+                    "result_type":bounds_type, "arguments":[{"term":"reference", "target":lower},
+                        {"term":"reference", "target":upper}, {"term":"binding", "name":"sequence_index",
+                            "value":{"term":"reference", "target":index}}]}}),
+            json!({"node_id":size_application, "schema_version":"filament.checked-semantic-graph/v2",
+                "node_tag":"expression", "semantic_form":"collection", "semantic_type":integer_type,
+                "dependencies":[sequence_application, integer_type],
+                "occurrences":[{"role":"expression", "ordinal":0}],
+                "body":{"term":"application", "operator":"collection", "operation":{
+                    "identity":"filament.op.collection.size", "laws":[], "mode":null,
+                    "member":{"kind":"type_argument", "declaration":integer_type}, "leaves":[]},
+                    "result_type":integer_type, "arguments":[{"term":"reference", "target":sequence_application}]}})
+        ]);
+    let object = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|node| node["semantic_form"] == "object_type")
+        .expect("Account object")["node_id"]
+        .clone();
+    package["semantic_graph"]["nodes"][position]["body"]["objects"] = json!([{
+        "abstract_type":object, "concrete_type":object,
+        "fields":[{"name":"versionNumber", "expression":{"term":"reference", "target":size_application}}]
+    }]);
+    let dependencies = package["semantic_graph"]["nodes"][position]["dependencies"]
+        .as_array_mut()
+        .expect("refinement dependencies");
+    dependencies.extend([size_application, object]);
+    dependencies.sort_by(node_id_order);
+    dependencies.dedup();
+    let preserved_map = package["source_map"].clone();
+    merge_history_source_map(&mut package, preserved_map);
+
+    let result = read(&package, &evidence);
+    assert!(
+        matches!(result, CheckedPackageV2ReadResult::Admitted(_)),
+        "a seq reachable only through the refinement field expression admits: {result:?}"
+    );
+}
+
+fn joined_history_package() -> (Value, CheckedPackageEvidence, usize) {
+    let (mut package, evidence, position, declaration, type_id, _) = ac5_history_package();
+    let text_type = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|node| node["semantic_form"] == "text" && node["node_tag"] == "scalar_type")
+        .expect("text type")["node_id"]
+        .clone();
+    let integer_type = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|node| node["semantic_form"] == "integer" && node["node_tag"] == "scalar_type")
+        .map(|node| node["node_id"].clone())
+        .unwrap_or_else(|| node_id("scalar_type/integer"));
+    let reference_type = crate::support::checked_package::structural_id(
+        FAMILY_MODEL_IDENTITY,
+        vec![
+            json!("composite_type"),
+            json!("reference"),
+            declaration.clone(),
+        ],
+        0,
+    );
+    let receiver = node_id("history-read/receiver");
+    let application = node_id("history-read/application");
+    package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .extend([
+            json!({
+                "node_id":integer_type, "schema_version":"filament.checked-semantic-graph/v2",
+                "node_tag":"scalar_type", "semantic_form":"integer",
+                "semantic_type":integer_type, "dependencies":[],
+                "occurrences":[{"role":"type", "ordinal":0}],
+                "body":{"term":"aggregate", "members":[]}
+            }),
+            json!({
+                "node_id":reference_type, "schema_version":"filament.checked-semantic-graph/v2",
+                "node_tag":"composite_type", "semantic_form":"reference",
+                "semantic_type":reference_type, "dependencies":[declaration.clone()],
+                "occurrences":[{"role":"type", "ordinal":0}],
+                "body":{"term":"aggregate", "members":[{"term":"reference", "target":declaration}]}
+            }),
+            json!({
+                "node_id":receiver, "schema_version":"filament.checked-semantic-graph/v2",
+                "node_tag":"value", "semantic_form":"parameter",
+                "semantic_type":reference_type,
+                "dependencies":[],
+                "occurrences":[{"role":"expression", "ordinal":0}],
+                "body":{"term":"aggregate", "members":[
+                    {"term":"binding", "name":"name", "value":{
+                        "term":"literal", "type":text_type, "value_kind":"text", "value":"history_receiver"}},
+                    {"term":"binding", "name":"level", "value":{
+                        "term":"literal", "type":integer_type, "value_kind":"integer", "value":"0"}}
+                ]}
+            }),
+            json!({
+                "node_id":application, "schema_version":"filament.checked-semantic-graph/v2",
+                "node_tag":"expression", "semantic_form":"query",
+                "semantic_type":type_id, "dependencies":[receiver.clone(), type_id.clone(), declaration.clone()],
+                "occurrences":[{"role":"expression", "ordinal":0}],
+                "body":{"term":"application", "operator":"query", "operation":{
+                    "identity":"filament.op.refinement.history", "laws":[], "mode":null,
+                    "member":{"kind":"history", "declaration":declaration, "name":"past"}, "leaves":[]},
+                    "result_type":type_id, "arguments":[{"term":"reference", "target":receiver}]}
+            })
+        ]);
+    package["semantic_graph"]["nodes"][position]["body"]["histories"][0]["updates"][0]
+        ["expression"] = json!({"term":"reference", "target":application});
+    let dependencies = package["semantic_graph"]["nodes"][position]["dependencies"]
+        .as_array_mut()
+        .expect("refinement dependencies");
+    dependencies.push(application.clone());
+    dependencies.sort_by(node_id_order);
+    dependencies.dedup();
+    settle_refinement(&mut package, position);
+    let preserved_map = package["source_map"].clone();
+    merge_history_source_map(&mut package, preserved_map);
+    (package, evidence, position)
+}
+
+fn merge_history_source_map(package: &mut Value, preserved_map: Value) {
+    settle(package);
+    let settled_map = package["source_map"]
+        .as_array()
+        .expect("source map")
+        .clone();
+    package["source_map"] = preserved_map;
+    let source_map = package["source_map"].as_array_mut().expect("source map");
+    for entry in settled_map {
+        let already_present = source_map.iter().any(|existing| {
+            existing["node_id"] == entry["node_id"]
+                && existing["role"] == entry["role"]
+                && existing["ordinal"] == entry["ordinal"]
+        });
+        if !already_present {
+            source_map.push(entry);
+        }
+    }
+    package["source_map"]
+        .as_array_mut()
+        .expect("source map")
+        .sort_by(|left, right| {
+            structural_fixture_id(&left["node_id"])
+                .cmp(&structural_fixture_id(&right["node_id"]))
+                .then_with(|| left["role"].as_str().cmp(&right["role"].as_str()))
+                .then_with(|| left["ordinal"].as_u64().cmp(&right["ordinal"].as_u64()))
+        });
+    refresh_identity(package);
+}
+
+pub(super) fn orphan_history_control() -> (Value, CheckedPackageEvidence) {
+    let (mut orphan, evidence, position) = joined_history_package();
+    let boolean_type = orphan["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|node| node["node_tag"] == "scalar_type" && node["semantic_form"] == "boolean")
+        .map(|node| node["node_id"].clone())
+        .unwrap_or_else(|| node_id("scalar_type/boolean"));
+    if !orphan["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .any(|node| node["node_id"] == boolean_type)
+    {
+        orphan["semantic_graph"]["nodes"]
+            .as_array_mut()
+            .expect("nodes")
+            .push(json!({
+                "node_id":boolean_type, "schema_version":"filament.checked-semantic-graph/v2",
+                "node_tag":"scalar_type", "semantic_form":"boolean",
+                "semantic_type":boolean_type, "dependencies":[],
+                "occurrences":[{"role":"type", "ordinal":0}],
+                "body":{"term":"aggregate", "members":[]}
+            }));
+    }
+    let old_type =
+        orphan["semantic_graph"]["nodes"][position]["body"]["histories"][0]["type"].clone();
+    let application_id = node_id("history-read/application");
+    orphan["semantic_graph"]["nodes"][position]["body"]["histories"][0]["type"] =
+        boolean_type.clone();
+    orphan["semantic_graph"]["nodes"][position]["body"]["histories"][0]["initial"] =
+        json!({"term":"literal", "type":boolean_type, "value_kind":"boolean", "value":true});
+    orphan["semantic_graph"]["nodes"][position]["body"]["histories"][0]["updates"][0]
+        ["expression"] =
+        json!({"term":"literal", "type":boolean_type, "value_kind":"boolean", "value":true});
+    let new_type =
+        orphan["semantic_graph"]["nodes"][position]["body"]["histories"][0]["type"].clone();
+    let dependencies = orphan["semantic_graph"]["nodes"][position]["dependencies"]
+        .as_array_mut()
+        .expect("refinement dependencies");
+    dependencies.retain(|dependency| dependency != &old_type && dependency != &application_id);
+    dependencies.push(new_type);
+    dependencies.sort_by(node_id_order);
+    dependencies.dedup();
+    settle_refinement(&mut orphan, position);
+    let preserved_map = orphan["source_map"].clone();
+    merge_history_source_map(&mut orphan, preserved_map);
+    (orphan, evidence)
 }
 
 fn ac5_refusal(

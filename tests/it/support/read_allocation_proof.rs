@@ -57,13 +57,31 @@ pub(crate) fn assert_read<C: Counter>(
     expected: Expected,
     views: ReadViewScope,
 ) {
+    assert_read_inner::<C>(label, bytes, evidence, expected, views, None);
+}
+
+#[allow(dead_code)] // The integration harness scopes the seq fixture; the allocation binary uses the shared bound.
+pub(crate) fn assert_read_with_unpaid_bound<C: Counter>(
+    label: &str,
+    bytes: &[u8],
+    evidence: &CheckedPackageEvidence,
+    expected: Expected,
+    views: ReadViewScope,
+    unpaid_bound: u64,
+) {
+    assert_read_inner::<C>(label, bytes, evidence, expected, views, Some(unpaid_bound));
+}
+
+fn assert_read_inner<C: Counter>(
+    label: &str,
+    bytes: &[u8],
+    evidence: &CheckedPackageEvidence,
+    expected: Expected,
+    views: ReadViewScope,
+    unpaid_bound: Option<u64>,
+) {
     initialize_operation_catalog().expect("the specified catalogue gate succeeds");
     let limits = generous_limits();
-    let account = if matches!(expected, Expected::Refused(_)) {
-        accounted_refusal_diagnostic
-    } else {
-        accounted
-    };
     // Initialize only the specified catalog gate; do not use an unmeasured
     // public package read to warm per-read owned storage.
     let reference = measure_read::<C>(bytes, evidence, limits, u64::MAX);
@@ -86,7 +104,10 @@ pub(crate) fn assert_read<C: Counter>(
             assert_eq!(left, right, "{label}: complete refusal/first fault");
         }
         (plain, measured, Expected::OriginalOracle(predicate)) => {
-            assert!(predicate(plain), "{label}: original driver predicate");
+            assert!(
+                predicate(plain),
+                "{label}: original driver predicate: {plain:?}"
+            );
             match (plain, measured) {
                 (
                     CheckedPackageV2ReadResult::Admitted(a),
@@ -109,7 +130,7 @@ pub(crate) fn assert_read<C: Counter>(
             "{label}: fixture outcome differs from its required class: {plain:?}/{measured:?}"
         ),
     }
-    account(label, &reference);
+    account_read(label, &reference, expected, unpaid_bound);
     let total = reference.budget.read_storage_consumed();
     assert!(total > 0);
     let work = reference.budget.consumed().work;
@@ -131,7 +152,7 @@ pub(crate) fn assert_read<C: Counter>(
             total,
             "{label}: catalogue and every owned table are charged again"
         );
-        account(label, &exact);
+        account_read(label, &exact, expected, unpaid_bound);
         drop_without_request::<C>(exact);
     }
     let short = measure_read::<C>(bytes, evidence, limits, total - 1);
@@ -143,9 +164,33 @@ pub(crate) fn assert_read<C: Counter>(
         "one short refuses"
     );
     assert!(short.budget.first_unpaid_read_storage().is_some());
-    account(label, &short);
+    account_read(label, &short, expected, unpaid_bound);
     drop_without_request::<C>(short);
     drop_without_request::<C>(reference);
+}
+
+fn account_read(
+    label: &str,
+    observation: &Observation,
+    expected: Expected,
+    unpaid_bound: Option<u64>,
+) {
+    if matches!(expected, Expected::Refused(_)) {
+        accounted_refusal_diagnostic(label, observation);
+    } else if let Some(bound) = unpaid_bound {
+        assert_eq!(
+            observation.budget.consumed().storage,
+            0,
+            "{label}: a fresh measured read consumes no native logical storage"
+        );
+        assert!(
+            unpaid(observation) <= bound,
+            "{label}: unpaid read memory {} exceeds its per-input bound {bound}",
+            unpaid(observation)
+        );
+    } else {
+        accounted(label, observation);
+    }
 }
 
 /// Observe every actual storage request once, then verify the final exact and
