@@ -2746,10 +2746,19 @@ fn ownerless_protocol_clause_over_a_bounded_integer_is_admitted() {
     assert_eq!(refusal.code, CheckedPackageRefusalCode::MalformedWire);
 
     let mut ownerless_bad_scope = package.clone();
-    let outside = clause_parameter(&mut ownerless_bad_scope, "outside-ownerless", "1");
-    let finish = protocol_position(&ownerless_bad_scope, "obligation");
-    ownerless_bad_scope["semantic_graph"]["nodes"][finish]["body"]["arguments"][1]["value"] =
-        json!({"term": "reference", "target": outside});
+    let capture = clause_parameter(&mut ownerless_bad_scope, "ownerless-capture", "1");
+    let clause = clause_position(&ownerless_bad_scope);
+    ownerless_bad_scope["semantic_graph"]["nodes"][clause]["body"]["arguments"][2]["value"] = json!({"term": "aggregate", "members": [{
+        "term": "aggregate", "members": [
+            {"term": "binding", "name": "binder", "value": {
+                "term": "reference", "target": capture
+            }},
+            {"term": "binding", "name": "initializer", "value": {
+                "term": "reference", "target": capture
+            }}
+        ]
+    }]});
+    relevel_finish_binder(&mut ownerless_bad_scope, 2);
     settle(&mut ownerless_bad_scope);
     assert!(
         matches!(
@@ -2760,7 +2769,7 @@ fn ownerless_protocol_clause_over_a_bounded_integer_is_admitted() {
                 ..
             })
         ),
-        "ownerless admission still runs protocol binder-scope validation"
+        "ownerless admission still checks capture initializer scope"
     );
 
     for (ordinal, form) in ["option", "sequence", "tuple", "record"]
