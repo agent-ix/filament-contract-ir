@@ -2760,16 +2760,17 @@ fn ownerless_protocol_clause_over_a_bounded_integer_is_admitted() {
     }]});
     relevel_finish_binder(&mut ownerless_bad_scope, 2);
     settle(&mut ownerless_bad_scope);
+    let ownerless_bad_scope_result = read(&ownerless_bad_scope);
     assert!(
         matches!(
-            read(&ownerless_bad_scope),
+            ownerless_bad_scope_result,
             CheckedPackageV2ReadResult::Refused(CheckedPackageRefusal {
                 code: CheckedPackageRefusalCode::MissingDeclaration,
                 cause: Some(CheckedPackageRefusalCause::MissingName),
                 ..
             })
         ),
-        "ownerless admission still checks capture initializer scope"
+        "ownerless admission still checks capture initializer scope: {ownerless_bad_scope_result:?}"
     );
 
     for (ordinal, form) in ["option", "sequence", "tuple", "record"]
