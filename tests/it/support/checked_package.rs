@@ -1937,14 +1937,10 @@ pub fn protocol_named_node(
     dependencies: &[String],
 ) -> Value {
     let key = protocol_named_key(form, declaration, &body);
-    let mut ordered = dependencies
+    let ordered = dependencies
         .iter()
         .map(String::as_str)
         .collect::<std::collections::BTreeSet<_>>();
-    let owner_model = (form == "protocol_clause").then(|| family_key("1515"));
-    if let Some(owner_model) = &owner_model {
-        ordered.insert(owner_model);
-    }
     let mut node = plain_node(
         &key,
         "protocol",
@@ -1955,9 +1951,6 @@ pub fn protocol_named_node(
     );
     node["occurrences"] = json!([{"role": "declaration", "ordinal": 0}]);
     node["declaration"] = json!({"qualified_name": declaration});
-    if let Some(owner_model) = owner_model {
-        node["owner_model"] = node_id(&owner_model);
-    }
     node
 }
 
@@ -2985,7 +2978,7 @@ fn build_v2_all_families() -> Value {
             empty_aggregate(),
         ),
         // The clause's `over` parameter: FSL FR-092's `{name, level}` body,
-        // typed at the Boolean node, carrying the `expression` role.
+        // typed at Boolean, carrying the `expression` role.
         {
             let mut parameter = plain_node(
                 &family_key("a4a4"),

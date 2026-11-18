@@ -6001,6 +6001,56 @@ fn concrete_protocol_refinement_with_model(
         .expect("nodes")
         .extend(extra_model_nodes);
     if matches!(clause_owner, ProtocolClauseOwner::SelectedModel) {
+        let over = package["semantic_graph"]["nodes"]
+            .as_array()
+            .expect("nodes")
+            .iter()
+            .find(|node| node["semantic_form"] == "protocol_clause")
+            .expect("protocol clause")["body"]["arguments"][0]["value"]["target"]
+            .clone();
+        let reference_body = json!({"term": "aggregate", "members": [
+            {"term": "reference", "target": model["node_id"]}
+        ]});
+        let reference = node_id(&crate::support::checked_package::structural_key(
+            "composite_type",
+            "reference",
+            None,
+            &reference_body,
+        ));
+        package["semantic_graph"]["nodes"]
+            .as_array_mut()
+            .expect("nodes")
+            .push(json!({
+                "node_id": reference, "schema_version": "filament.checked-semantic-graph/v2",
+                "node_tag": "composite_type", "semantic_form": "reference",
+                "semantic_type": reference, "dependencies": [model["node_id"]],
+                "occurrences": [{"role": "type", "ordinal": 0}],
+                "body": reference_body,
+            }));
+        let over_position = package["semantic_graph"]["nodes"]
+            .as_array()
+            .expect("nodes")
+            .iter()
+            .position(|node| node["node_id"] == over)
+            .expect("over parameter");
+        package["semantic_graph"]["nodes"][over_position]["semantic_type"] = reference.clone();
+        crate::support::checked_package::reassign_node_id(
+            &mut package,
+            &over,
+            &node_id("fixture/refinement/object-over-parameter"),
+        );
+        let finish = package["semantic_graph"]["nodes"]
+            .as_array()
+            .expect("nodes")
+            .iter()
+            .position(|node| {
+                node["node_tag"] == "protocol" && node["semantic_form"] == "obligation"
+            })
+            .expect("finish");
+        package["semantic_graph"]["nodes"][finish]["body"]["arguments"][1]["value"] = json!({
+            "term": "literal", "type": node_id(&crate::support::checked_package::family_key("aaaa")),
+            "value_kind": "boolean", "value": true
+        });
         for clause in package["semantic_graph"]["nodes"]
             .as_array_mut()
             .expect("nodes")
@@ -6008,6 +6058,14 @@ fn concrete_protocol_refinement_with_model(
             .filter(|node| node["semantic_form"] == "protocol_clause")
         {
             clause["owner_model"] = model["node_id"].clone();
+            clause["dependencies"]
+                .as_array_mut()
+                .expect("dependencies")
+                .push(model["node_id"].clone());
+            clause["dependencies"]
+                .as_array_mut()
+                .expect("dependencies")
+                .sort_by_key(structural_fixture_id);
         }
     }
     settle(&mut package);
@@ -7411,6 +7469,7 @@ fn refinement_catalog_joins_owned_finish_without_a_step_row() {
 }
 
 /// Provenance: IR-874 selected model operation class join.
+#[trace("FR-064-AC-5")]
 #[test]
 fn refinement_catalog_joins_concrete_operation_and_abstract_protocol_without_step_rows() {
     let (document, worker, reference, receiver_type) = operation_model_nodes();
