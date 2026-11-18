@@ -3155,9 +3155,9 @@ fn history_read_requires_a_joined_refinement_row_and_reachable_application() {
     );
 }
 
-#[trace("TC-062", "FR-061-AC-5")]
+#[trace("TC-062", "FR-061-AC-5", "FR-322")]
 #[test]
-fn history_read_without_a_reaching_declaration_refuses_at_the_application() {
+fn history_read_without_a_reaching_declaration_refuses_at_the_member_name() {
     let (mut package, evidence, position) = joined_history_package();
     let application_id = node_id("history-read/application");
     package["semantic_graph"]["nodes"][position]["body"]["histories"][0]["name"] = json!("other");
@@ -3174,20 +3174,19 @@ fn history_read_without_a_reaching_declaration_refuses_at_the_application() {
     let CheckedPackageV2ReadResult::Refused(refusal) = read(&package, &evidence) else {
         panic!("a history read with no reaching refinement declaration must refuse");
     };
-    assert_eq!(refusal.code, CheckedPackageRefusalCode::IllTyped);
-    assert_eq!(
-        refusal.cause,
-        Some(CheckedPackageRefusalCause::OperatorIneligible)
-    );
+    assert_eq!(refusal.code, CheckedPackageRefusalCode::MissingDeclaration);
+    assert_eq!(refusal.cause, Some(CheckedPackageRefusalCause::MissingName));
     assert_eq!(
         refusal.loci[0].path.as_ref().map(ToString::to_string),
-        Some(format!("/semantic_graph/nodes/{application_position}"))
+        Some(format!(
+            "/semantic_graph/nodes/{application_position}/body/operation/member/name"
+        ))
     );
 }
 
 #[trace("TC-062", "FR-061-AC-5")]
 #[test]
-fn history_read_rejects_multiple_reaching_refinements_when_only_one_declares_it() {
+fn history_read_requires_each_reaching_refinement_to_declare_it() {
     let (mut package, evidence, position) = joined_history_package();
     let original = package["semantic_graph"]["nodes"][position].clone();
     let original_id = original["node_id"].clone();
@@ -3253,20 +3252,19 @@ fn history_read_rejects_multiple_reaching_refinements_when_only_one_declares_it(
     };
     assert_eq!(
         refusal.code,
-        CheckedPackageRefusalCode::IllTyped,
+        CheckedPackageRefusalCode::MissingDeclaration,
         "non-declaring reaching refinement refusal: {refusal:?}"
     );
-    assert_eq!(
-        refusal.cause,
-        Some(CheckedPackageRefusalCause::OperatorIneligible)
-    );
+    assert_eq!(refusal.cause, Some(CheckedPackageRefusalCause::MissingName));
     assert_eq!(
         refusal.loci[0].path.as_ref().map(ToString::to_string),
-        Some(format!("/semantic_graph/nodes/{application_position}"))
+        Some(format!(
+            "/semantic_graph/nodes/{application_position}/body/operation/member/name"
+        ))
     );
 }
 
-#[trace("TC-062", "FR-061-AC-5")]
+#[trace("TC-062", "FR-061-AC-5", "FR-375-AC-32")]
 #[test]
 fn seq_used_only_by_a_refinement_field_row_resolves_its_binder_scope() {
     let (mut package, evidence, position) = catalog_free_operation_package_config_with_document(
@@ -3342,7 +3340,7 @@ fn seq_used_only_by_a_refinement_field_row_resolves_its_binder_scope() {
                     {"term":"binding", "name":"name", "value":{"term":"literal", "type":text_type,
                         "value_kind":"text", "value":"sequence_index"}},
                     {"term":"binding", "name":"level", "value":{"term":"literal", "type":integer_type,
-                        "value_kind":"integer", "value":"0"}}]}}),
+                        "value_kind":"integer", "value":"1"}}]}}),
             json!({"node_id":sequence_application, "schema_version":"filament.checked-semantic-graph/v2",
                 "node_tag":"expression", "semantic_form":"collection", "semantic_type":bounds_type,
                 "dependencies":[bounds_type, range_type, lower, upper, index],

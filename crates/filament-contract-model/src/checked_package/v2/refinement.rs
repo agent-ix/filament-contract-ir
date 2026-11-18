@@ -2936,9 +2936,9 @@ fn validate_history_reads(
             if !row_joined {
                 return Err(refuse_at(
                     meter,
-                    CheckedPackageRefusalCode::IllTyped,
-                    Some(CheckedPackageRefusalCause::OperatorIneligible),
-                    at,
+                    CheckedPackageRefusalCode::MissingDeclaration,
+                    Some(CheckedPackageRefusalCause::MissingName),
+                    at.key("body").key("operation").key("member").key("name"),
                     &application.node_id,
                 ));
             }

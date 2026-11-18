@@ -1494,10 +1494,13 @@ fn sequence_function_level(
                 if let Some(depth) =
                     expression_scope_depth(&field.expression, target, graph, application, meter)?
                 {
-                    if found.is_some_and(|previous| previous != depth) {
+                    let Some(level) = depth.checked_add(1) else {
+                        return Ok(None);
+                    };
+                    if found.is_some_and(|previous| previous != level) {
                         return Ok(None);
                     }
-                    found = Some(depth);
+                    found = Some(level);
                 }
             }
         }
