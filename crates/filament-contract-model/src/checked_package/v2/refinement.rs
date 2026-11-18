@@ -1,13 +1,13 @@
 //! Closed FR-375 refinement body vocabulary and reader checks.
 
+use super::CheckedTerm;
 use super::graph_storage::{GraphIndex, ResolvedKey, SortedTable};
 use super::protocol_body::ChannelDelivery;
 use super::stage_storage::{
-    charge_amount_at, charge_at, node_path, refuse_at, refuse_unlocated, Path,
+    Path, charge_amount_at, charge_at, node_path, refuse_at, refuse_unlocated,
 };
-use super::CheckedTerm;
 use crate::checked_package::common::{
-    validate_term, Ids, ReferenceVisitor, TermGrammar, Trail, ValidationFailure,
+    Ids, ReferenceVisitor, TermGrammar, Trail, ValidationFailure, validate_term,
 };
 use crate::checked_package::shared::{
     CheckedNodeId, CheckedOccurrenceRole, CheckedSourceMapEntry, CheckedSourceRef,
@@ -2813,6 +2813,124 @@ pub(super) fn validate_refinements(
             meter,
         )?;
         validate_rows(node, body, position, &graph, owners, meter)?;
+    }
+    validate_history_reads(&graph, meter)?;
+    Ok(())
+}
+
+fn validate_history_reads(
+    graph: &RefinementGraph<'_, '_>,
+    meter: &mut super::WorkMeter,
+) -> Result<(), ValidationFailure> {
+    use super::{CheckedNodeKind, CompositeTypeForm};
+    for (application_position, term) in graph.terms.iter().enumerate() {
+        let Some(CheckedTerm::Application {
+            operation,
+            arguments,
+            result_type,
+            ..
+        }) = term.as_ref()
+        else {
+            continue;
+        };
+        if operation.identity() != Some("filament.op.refinement.history") {
+            continue;
+        }
+        let application = &graph.nodes[application_position];
+        let at = node_at(application_position);
+        let Some(declaration) = operation.member_key("declaration") else {
+            return Err(refuse_at(
+                meter,
+                CheckedPackageRefusalCode::IllTyped,
+                Some(CheckedPackageRefusalCause::OperatorIneligible),
+                at,
+                &application.node_id,
+            ));
+        };
+        let Some(name) = operation.member_name() else {
+            return Err(refuse_at(
+                meter,
+                CheckedPackageRefusalCode::MissingDeclaration,
+                Some(CheckedPackageRefusalCause::MissingName),
+                at.key("body").key("operation").key("member").key("name"),
+                &application.node_id,
+            ));
+        };
+        let mut joined = false;
+        let mut declared = false;
+        for (refinement_position, refinement_term) in graph.terms.iter().enumerate() {
+            let Some(CheckedTerm::Refinement { histories, .. }) = refinement_term.as_ref() else {
+                continue;
+            };
+            let refinement = &graph.nodes[refinement_position];
+            for history in histories {
+                if &history.concrete_type != declaration || history.name.as_ref() != name {
+                    continue;
+                }
+                declared = true;
+                if *result_type != history.type_id {
+                    return Err(refuse_at(
+                        meter,
+                        CheckedPackageRefusalCode::IllTyped,
+                        Some(CheckedPackageRefusalCause::TypeMismatch),
+                        at.key("body").key("result_type"),
+                        &application.node_id,
+                    ));
+                }
+                if !refinement.dependencies.contains(&application.node_id) {
+                    continue;
+                }
+                joined = true;
+                let receiver_conforms = arguments.first().is_some_and(|argument| {
+                    let CheckedTerm::Reference { target } = argument else {
+                        return false;
+                    };
+                    let Some(receiver_position) = graph.index.get(target).copied() else {
+                        return false;
+                    };
+                    let reference_type = &graph.nodes[receiver_position].semantic_type;
+                    let Some(reference_position) = graph.index.get(reference_type).copied() else {
+                        return false;
+                    };
+                    graph.kinds.get(reference_position)
+                        == Some(&CheckedNodeKind::CompositeType(
+                            CompositeTypeForm::Reference,
+                        ))
+                        && graph.nodes[reference_position].semantic_type == *declaration
+                });
+                if !receiver_conforms {
+                    return Err(refuse_at(
+                        meter,
+                        CheckedPackageRefusalCode::IllTyped,
+                        Some(CheckedPackageRefusalCause::OperatorIneligible),
+                        at,
+                        &application.node_id,
+                    ));
+                }
+                break;
+            }
+            if joined {
+                break;
+            }
+        }
+        if !declared {
+            return Err(refuse_at(
+                meter,
+                CheckedPackageRefusalCode::MissingDeclaration,
+                Some(CheckedPackageRefusalCause::MissingName),
+                at.key("body").key("operation").key("member").key("name"),
+                &application.node_id,
+            ));
+        }
+        if !joined {
+            return Err(refuse_at(
+                meter,
+                CheckedPackageRefusalCode::IllTyped,
+                Some(CheckedPackageRefusalCause::OperatorIneligible),
+                at,
+                &application.node_id,
+            ));
+        }
     }
     Ok(())
 }

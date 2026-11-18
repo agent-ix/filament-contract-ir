@@ -24,12 +24,12 @@ use filament_contract_model::{
     SelectedTupleDeclarationRow,
 };
 use filament_exact::{
-    record, CardinalityBound, CollectionKind, CollectionType, ConstructionCause, EffectiveId,
-    FieldValue, Integer, MemberId, MemberOwner, NodeKey, OriginalDeclarationKey, PathSegment,
-    Presence, UnitId, Value as ExactValue, ValueType,
+    CardinalityBound, CollectionKind, CollectionType, ConstructionCause, EffectiveId, FieldValue,
+    Integer, MemberId, MemberOwner, NodeKey, OriginalDeclarationKey, PathSegment, Presence, UnitId,
+    Value as ExactValue, ValueType, record,
 };
 use ix_trace_rs::trace;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::BTreeMap;
 
 const IDENTITY: &str = "acme/orders";
@@ -873,12 +873,17 @@ fn node_id(key: &str) -> Value {
 fn path_label(id: &CheckedNodeId) -> String {
     match id.path.as_slice() {
         [CheckedNodePathSegment::Name(name)] => name.to_string(),
-        [CheckedNodePathSegment::Name(tag), CheckedNodePathSegment::Name(form), CheckedNodePathSegment::Name(declaration)]
-            if id.package.as_ref() == IDENTITY =>
-        {
+        [
+            CheckedNodePathSegment::Name(tag),
+            CheckedNodePathSegment::Name(form),
+            CheckedNodePathSegment::Name(declaration),
+        ] if id.package.as_ref() == IDENTITY => {
             format!("model:{tag}:{form}:{declaration}")
         }
-        [CheckedNodePathSegment::Name(first), CheckedNodePathSegment::Name(second)] => {
+        [
+            CheckedNodePathSegment::Name(first),
+            CheckedNodePathSegment::Name(second),
+        ] => {
             format!("qualified:{first}/{second}")
         }
         other => panic!("unexpected fixture identity path {other:?}"),
@@ -2447,6 +2452,155 @@ fn strict_reader_rejects_float_equality_conversion_targets() {
         matches!(direct, CheckedPackageV2ReadResult::Admitted(_)),
         "direct Float operands should admit before adding a conversion target: {direct:?}"
     );
+    let CheckedPackageV2ReadResult::Admitted(package) = direct else {
+        unreachable!("checked above")
+    };
+    let application_id: CheckedNodeId =
+        serde_json::from_value(node_id(equality)).expect("application id");
+    let occurrence = CheckedOccurrence {
+        role: CheckedOccurrenceRole::Expression,
+        ordinal: 0,
+    };
+    let source_map_entry = wire["source_map"]
+        .as_array()
+        .expect("source map")
+        .iter()
+        .find(|entry| entry["node_id"] == node_id(equality))
+        .cloned()
+        .map(serde_json::from_value)
+        .expect("equality source row");
+    let original = NodeKey::new(
+        "float-equality-reader",
+        vec![PathSegment::Text("float-equality".into())],
+        0,
+    )
+    .expect("original key");
+    let application_row = SelectedEqualityApplicationRow::new(
+        application_id.clone(),
+        occurrence.clone(),
+        source_map_entry,
+        original.clone(),
+        filament_exact::Location::new(
+            original.clone(),
+            filament_exact::Origin::new(filament_exact::Role::from("expression"), 0),
+        ),
+    );
+    let float_node: CheckedNodeId = serde_json::from_value(node_id(float)).expect("float id");
+    let float_value = ValueType::Float(filament_exact::FloatType::exact(
+        filament_exact::IeeeWidth::Binary32,
+    ));
+    let source_fact = |position| filament_contract_model::SelectedEqualityFactRow {
+        application: original.clone(),
+        checked_application: application_id.clone(),
+        occurrence: occurrence.clone(),
+        source_map_entry: application_row.source_map_entry.clone(),
+        structural_key: original.clone(),
+        structural_node: float_node.clone(),
+        owner: None,
+        value_type: Some(float_value.clone()),
+        fact: filament_contract_model::EqualityFactWitness::OperandType {
+            position,
+            role: filament_contract_model::EqualityOperandTypeRole::Source,
+        },
+    };
+    let facts = [source_fact(0), source_fact(1)];
+    let mut budget = filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX);
+    let admitted = package
+        .admitted_equality(
+            &application_id,
+            &occurrence,
+            std::slice::from_ref(&application_row),
+            &facts,
+            &[],
+            &mut budget,
+        )
+        .expect("public admitted reader accepts a direct Float call equality");
+    assert_eq!(
+        admitted.schedule(),
+        filament_semantic_value::declaration::EqualitySchedule::Float
+    );
+    assert_eq!(admitted.left().source(), &float_value);
+
+    let mut wrong_form = wire.clone();
+    let wrong_node = wrong_form["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .iter_mut()
+        .find(|node| node["node_id"] == node_id(equality))
+        .expect("float equality node");
+    wrong_node["semantic_form"] = json!("binary");
+    wrong_node["body"]["operator"] = json!("binary");
+    settle(&mut wrong_form);
+    assert!(
+        matches!(
+            read_with(&wrong_form, &evidence, CheckedPackageReadLimits::bounded()),
+            CheckedPackageV2ReadResult::Refused(_)
+        ),
+        "Float equality encoded as a binary form must refuse"
+    );
+
+    let mut wrong_schedule = wire.clone();
+    wrong_schedule["checked_term_data"]["equality_decisions"][0]["schedule"] = json!("plan");
+    settle(&mut wrong_schedule);
+    let CheckedPackageV2ReadResult::Refused(refusal) = read_with(
+        &wrong_schedule,
+        &evidence,
+        CheckedPackageReadLimits::bounded(),
+    ) else {
+        panic!("a Float pair cannot be admitted under the Plan schedule");
+    };
+    assert_eq!(refusal.code, CheckedPackageRefusalCode::InvalidPackage);
+    assert_eq!(
+        refusal.cause,
+        Some(CheckedPackageRefusalCause::InvalidValue)
+    );
+    assert_eq!(
+        refusal.loci[0]
+            .path
+            .as_ref()
+            .map(ToString::to_string)
+            .as_deref(),
+        Some("/checked_term_data/equality_decisions/0/schedule")
+    );
+
+    let mut irrelevant_units = wire.clone();
+    irrelevant_units["checked_term_data"]["equality_decisions"][0]["units"] = json!([{}]);
+    settle(&mut irrelevant_units);
+    let CheckedPackageV2ReadResult::Refused(refusal) = read_with(
+        &irrelevant_units,
+        &evidence,
+        CheckedPackageReadLimits::bounded(),
+    ) else {
+        panic!("Float equality must not carry unit rows");
+    };
+    assert_eq!(
+        refusal.loci[0]
+            .path
+            .as_ref()
+            .map(ToString::to_string)
+            .as_deref(),
+        Some("/checked_term_data/equality_decisions/0/units/0")
+    );
+
+    let mut irrelevant_enums = wire.clone();
+    irrelevant_enums["checked_term_data"]["equality_decisions"][0]["enum_members"] = json!([{}]);
+    settle(&mut irrelevant_enums);
+    let CheckedPackageV2ReadResult::Refused(refusal) = read_with(
+        &irrelevant_enums,
+        &evidence,
+        CheckedPackageReadLimits::bounded(),
+    ) else {
+        panic!("Float equality must not carry enum rows");
+    };
+    assert_eq!(
+        refusal.loci[0]
+            .path
+            .as_ref()
+            .map(ToString::to_string)
+            .as_deref(),
+        Some("/checked_term_data/equality_decisions/0/enum_members/0")
+    );
+
     wire["checked_term_data"]["equality_decisions"][0]["left"]["conversion_target"] =
         node_id(float);
     settle(&mut wire);
@@ -2928,14 +3082,16 @@ fn selected_tuple_positions_require_matching_unique_stage_rows() {
         )
         .unwrap();
     assert!(long_view.work() > view.work() + 4000);
-    assert!(admitted
-        .project_selected_type_declarations(
-            &identities,
-            std::slice::from_ref(&long_row),
-            &[],
-            &mut filament_contract_model::NativeJoinBudget::new(long_view.work(), u64::MAX)
-        )
-        .is_ok());
+    assert!(
+        admitted
+            .project_selected_type_declarations(
+                &identities,
+                std::slice::from_ref(&long_row),
+                &[],
+                &mut filament_contract_model::NativeJoinBudget::new(long_view.work(), u64::MAX)
+            )
+            .is_ok()
+    );
     let one_less = admitted
         .project_selected_type_declarations(
             &identities,
@@ -3199,14 +3355,16 @@ fn selected_record_many_fields_respects_exact_work_boundary() {
     assert_eq!(view.records()[0].view().fields()[0].name(), names[0]);
     assert_eq!(view.records()[0].view().fields()[127].name(), names[127]);
     assert!(view.work() < 30_000);
-    assert!(admitted
-        .project_selected_type_declarations(
-            &identities,
-            &[],
-            &[],
-            &mut filament_contract_model::NativeJoinBudget::new(view.work(), u64::MAX)
-        )
-        .is_ok());
+    assert!(
+        admitted
+            .project_selected_type_declarations(
+                &identities,
+                &[],
+                &[],
+                &mut filament_contract_model::NativeJoinBudget::new(view.work(), u64::MAX)
+            )
+            .is_ok()
+    );
     let one_less = admitted
         .project_selected_type_declarations(
             &identities,

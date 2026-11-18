@@ -26,8 +26,8 @@ use filament_semantic_value::declaration::{
     EqualityUnitDescriptor, EqualityUnitEdgeDescriptor, EqualityUnitForm,
 };
 use filament_semantic_value::reader_admission::{
-    mint_admitted_equality_decision, EqualityMaterializationCode, EqualityMaterializationError,
-    EqualityMaterializationLocus, ReaderSeal,
+    EqualityMaterializationCode, EqualityMaterializationError, EqualityMaterializationLocus,
+    ReaderSeal, mint_admitted_equality_decision,
 };
 use std::collections::BTreeSet;
 
@@ -193,6 +193,29 @@ pub(super) fn validate<Body>(
                 (ExpressionForm::Binary, ApplicationOperator::Binary)
             }
         };
+        let Some(CheckedTerm::Application {
+            operator,
+            operation,
+            arguments,
+            ..
+        }) = terms.get(position)
+        else {
+            return Err(invalid(meter, row.key("application")));
+        };
+        let operation_identity = operation.identity();
+        if operation_identity == Some("filament.op.ieee.numeric_equal")
+            && decision.schedule != super::CheckedEqualitySchedule::Float
+        {
+            return Err(invalid(meter, row.key("schedule")));
+        }
+        if decision.schedule == super::CheckedEqualitySchedule::Float {
+            if !decision.units.is_empty() {
+                return Err(invalid(meter, row.key("units").index(0)));
+            }
+            if !decision.enum_members.is_empty() {
+                return Err(invalid(meter, row.key("enum_members").index(0)));
+            }
+        }
         if decision.application.package != wire.name
             || kinds.get(position) != Some(&CheckedNodeKind::Expression(expected_form))
         {
@@ -215,21 +238,17 @@ pub(super) fn validate<Body>(
         if !decision.term_path.is_empty() {
             return Err(invalid(meter, row.key("term_path").index(0)));
         }
-        let Some(CheckedTerm::Application {
-            operator,
-            operation,
-            arguments,
-            ..
-        }) = terms.get(position)
-        else {
-            return Err(invalid(meter, row.key("application")));
-        };
         if *operator != expected_operator {
             return Err(invalid(meter, row.key("application")));
         }
-        let Some(actual_operator) = operation.identity().and_then(equality_operator) else {
+        let Some(actual_operator) = operation_identity.and_then(equality_operator) else {
             return Err(invalid(meter, row.key("application")));
         };
+        if decision.schedule == super::CheckedEqualitySchedule::Float
+            && operation_identity != Some("filament.op.ieee.numeric_equal")
+        {
+            return Err(invalid(meter, row.key("schedule")));
+        }
         if actual_operator != decision.operator {
             return Err(invalid(meter, row.key("operator")));
         }
@@ -255,6 +274,21 @@ pub(super) fn validate<Body>(
             };
             if *source_type != operand.source_type {
                 return Err(invalid(meter, at.key("source_type")));
+            }
+            if decision.schedule == super::CheckedEqualitySchedule::Float {
+                let float_type = dispatch_projection::position_of(&index, source_type)
+                    .and_then(|source_position| kinds.get(source_position))
+                    .is_some_and(|kind| {
+                        matches!(
+                            kind,
+                            CheckedNodeKind::ScalarType(
+                                ScalarTypeForm::Float32 | ScalarTypeForm::Float64
+                            )
+                        )
+                    });
+                if !float_type {
+                    return Err(invalid(meter, at.key("source_type")));
+                }
             }
             if conversion_target != operand.conversion_target.as_ref() {
                 return Err(invalid(meter, at.key("conversion_target")));
@@ -2143,38 +2177,6 @@ impl CheckedPackageV2 {
                 0,
             ));
         };
-        if self.kinds.get(position) != Some(&CheckedNodeKind::Expression(ExpressionForm::Binary)) {
-            return Err(read_error(
-                work,
-                AdmittedEqualityReadErrorCode::WrongApplicationForm,
-                application,
-                application,
-                0,
-            ));
-        }
-        let Some(CheckedTerm::Application {
-            operator: ApplicationOperator::Binary,
-            operation,
-            ..
-        }) = self.term_at(position)
-        else {
-            return Err(read_error(
-                work,
-                AdmittedEqualityReadErrorCode::WrongApplicationForm,
-                application,
-                application,
-                0,
-            ));
-        };
-        if operation.identity().and_then(equality_operator).is_none() {
-            return Err(read_error(
-                work,
-                AdmittedEqualityReadErrorCode::NonEqualityApplication,
-                application,
-                application,
-                0,
-            ));
-        }
         charge_storage(
             work,
             application,
@@ -2222,6 +2224,58 @@ impl CheckedPackageV2 {
                 0,
             ));
         };
+        let (expected_form, expected_operator) = match decision.schedule {
+            super::CheckedEqualitySchedule::Float => {
+                (ExpressionForm::Call, ApplicationOperator::Call)
+            }
+            super::CheckedEqualitySchedule::Text
+            | super::CheckedEqualitySchedule::Enum
+            | super::CheckedEqualitySchedule::Quantity
+            | super::CheckedEqualitySchedule::Plan => {
+                (ExpressionForm::Binary, ApplicationOperator::Binary)
+            }
+        };
+        if self.kinds.get(position) != Some(&CheckedNodeKind::Expression(expected_form)) {
+            return Err(read_error(
+                work,
+                AdmittedEqualityReadErrorCode::WrongApplicationForm,
+                application,
+                application,
+                0,
+            ));
+        }
+        let Some(CheckedTerm::Application {
+            operator,
+            operation,
+            ..
+        }) = self.term_at(position)
+        else {
+            return Err(read_error(
+                work,
+                AdmittedEqualityReadErrorCode::WrongApplicationForm,
+                application,
+                application,
+                0,
+            ));
+        };
+        if *operator != expected_operator {
+            return Err(read_error(
+                work,
+                AdmittedEqualityReadErrorCode::WrongApplicationForm,
+                application,
+                application,
+                0,
+            ));
+        }
+        if operation.identity().and_then(equality_operator).is_none() {
+            return Err(read_error(
+                work,
+                AdmittedEqualityReadErrorCode::NonEqualityApplication,
+                application,
+                application,
+                0,
+            ));
+        }
         charge_storage(work, application, application, 1)?;
         let mut row = None;
         let mut seen_rows = BTreeSet::new();
@@ -2261,21 +2315,38 @@ impl CheckedPackageV2 {
             for _ in &candidate.source_map_entry.regions {
                 charge_work(work, application, &candidate.application)?;
             }
-            let candidate_valid =
-                self.node_position(&candidate.application)
-                    .is_some_and(|position| {
-                        self.kinds.get(position)
-                            == Some(&CheckedNodeKind::Expression(ExpressionForm::Binary))
-                            && matches!(self.term_at(position), Some(CheckedTerm::Application {
-                        operator: ApplicationOperator::Binary, operation, ..
-                    }) if operation.identity().and_then(equality_operator).is_some())
-                    })
-                    && candidate_source.and_then(|position| self.wire.source_map.get(position))
-                        == Some(&candidate.source_map_entry)
-                    && *candidate.location.node() == candidate.node_key
-                    && candidate.location.occurrence().ordinal() == candidate.occurrence.ordinal
-                    && candidate.location.occurrence().role().as_str()
-                        == occurrence_role(&candidate.occurrence.role);
+            let candidate_decision = data.equality_decisions.iter().find(|candidate_decision| {
+                &candidate_decision.application == &candidate.application
+                    && &candidate_decision.occurrence == &candidate.occurrence
+            });
+            let candidate_expected =
+                candidate_decision.map(|candidate_decision| match candidate_decision.schedule {
+                    super::CheckedEqualitySchedule::Float => {
+                        (ExpressionForm::Call, ApplicationOperator::Call)
+                    }
+                    super::CheckedEqualitySchedule::Text
+                    | super::CheckedEqualitySchedule::Enum
+                    | super::CheckedEqualitySchedule::Quantity
+                    | super::CheckedEqualitySchedule::Plan => {
+                        (ExpressionForm::Binary, ApplicationOperator::Binary)
+                    }
+                });
+            let candidate_valid = self
+                .node_position(&candidate.application)
+                .zip(candidate_expected)
+                .is_some_and(|(position, (form, expected_operator))| {
+                    self.kinds.get(position) == Some(&CheckedNodeKind::Expression(form))
+                        && matches!(self.term_at(position), Some(CheckedTerm::Application {
+                        operator, operation, ..
+                    }) if *operator == expected_operator
+                        && operation.identity().and_then(equality_operator).is_some())
+                })
+                && candidate_source.and_then(|position| self.wire.source_map.get(position))
+                    == Some(&candidate.source_map_entry)
+                && *candidate.location.node() == candidate.node_key
+                && candidate.location.occurrence().ordinal() == candidate.occurrence.ordinal
+                && candidate.location.occurrence().role().as_str()
+                    == occurrence_role(&candidate.occurrence.role);
             if !candidate_valid {
                 return Err(read_error(
                     work,

@@ -752,19 +752,37 @@ impl<'a> CheckedMonitorPlanRef<'a> {
                 budget.set_locus_form("reached_equality_node");
                 read_charge(budget, NativeJoinChargeKind::Work, 1)
                     .map_err(|_| native_error(budget))?;
-                if self.package.node_kind(id)
-                    != Some(CheckedNodeKind::Expression(crate::ExpressionForm::Binary))
-                {
+                let decision = self.package.checked_term_data().and_then(|data| {
+                    data.equality_decisions
+                        .iter()
+                        .find(|decision| &decision.application == id)
+                });
+                let expected = match decision.map(|decision| decision.schedule) {
+                    Some(crate::CheckedEqualitySchedule::Float) => {
+                        (crate::ExpressionForm::Call, ApplicationOperator::Call)
+                    }
+                    Some(
+                        crate::CheckedEqualitySchedule::Text
+                        | crate::CheckedEqualitySchedule::Enum
+                        | crate::CheckedEqualitySchedule::Quantity
+                        | crate::CheckedEqualitySchedule::Plan,
+                    )
+                    | None => (crate::ExpressionForm::Binary, ApplicationOperator::Binary),
+                };
+                if self.package.node_kind(id) != Some(CheckedNodeKind::Expression(expected.0)) {
                     continue;
                 }
                 let Some(CheckedTerm::Application {
-                    operator: ApplicationOperator::Binary,
+                    operator,
                     operation,
                     ..
                 }) = self.package.term(id)
                 else {
                     continue;
                 };
+                if *operator != expected.1 {
+                    continue;
+                }
                 if !operation
                     .identity()
                     .is_some_and(|name| equality_operator(name).is_some())
