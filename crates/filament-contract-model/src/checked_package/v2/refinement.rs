@@ -2857,13 +2857,18 @@ fn validate_history_reads(
                 &application.node_id,
             ));
         };
+        let mut reached = false;
         let mut joined = false;
-        let mut declared = false;
         for (refinement_position, refinement_term) in graph.terms.iter().enumerate() {
             charge_at(meter, node_at(refinement_position))?;
             let Some(CheckedTerm::Refinement { histories, .. }) = refinement_term.as_ref() else {
                 continue;
             };
+            if !refinement_reaches(graph, refinement_position, &application.node_id, meter)? {
+                continue;
+            }
+            reached = true;
+            let mut row_joined = false;
             for history in histories {
                 charge_at(
                     meter,
@@ -2872,10 +2877,7 @@ fn validate_history_reads(
                 if &history.concrete_type != declaration || history.name.as_ref() != name {
                     continue;
                 }
-                declared = true;
-                if !refinement_reaches(graph, refinement_position, &application.node_id, meter)? {
-                    continue;
-                }
+                row_joined = true;
                 if *result_type != history.type_id {
                     return Err(refuse_at(
                         meter,
@@ -2885,7 +2887,6 @@ fn validate_history_reads(
                         &application.node_id,
                     ));
                 }
-                joined = true;
                 let receiver_target =
                     if let Some(CheckedTerm::Reference { target }) = arguments.first() {
                         graph
@@ -2932,17 +2933,18 @@ fn validate_history_reads(
                     ));
                 }
             }
+            if !row_joined {
+                return Err(refuse_at(
+                    meter,
+                    CheckedPackageRefusalCode::IllTyped,
+                    Some(CheckedPackageRefusalCause::OperatorIneligible),
+                    at,
+                    &application.node_id,
+                ));
+            }
+            joined = true;
         }
-        if !declared {
-            return Err(refuse_at(
-                meter,
-                CheckedPackageRefusalCode::MissingDeclaration,
-                Some(CheckedPackageRefusalCause::MissingName),
-                at.key("body").key("operation").key("member").key("name"),
-                &application.node_id,
-            ));
-        }
-        if !joined {
+        if !reached || !joined {
             return Err(refuse_at(
                 meter,
                 CheckedPackageRefusalCode::IllTyped,

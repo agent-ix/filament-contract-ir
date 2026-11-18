@@ -1482,6 +1482,26 @@ fn sequence_function_level(
             found = Some(level);
         }
     }
+    for term in graph.terms {
+        work_at_path(meter, &application.node_id(), 1)?;
+        let Some(CheckedTerm::Refinement { objects, .. }) = term.as_ref() else {
+            continue;
+        };
+        for object in objects {
+            work_at_path(meter, &application.node_id(), 1)?;
+            for field in &object.fields {
+                work_at_path(meter, &application.node_id(), 1)?;
+                if let Some(depth) =
+                    expression_scope_depth(&field.expression, target, graph, application, meter)?
+                {
+                    if found.is_some_and(|previous| previous != depth) {
+                        return Ok(None);
+                    }
+                    found = Some(depth);
+                }
+            }
+        }
+    }
     Ok(found)
 }
 
@@ -1589,13 +1609,7 @@ fn check_sequence_bounds(
                 }
             }
         }
-        if parameter_name == Some(name.as_ref())
-            && parameter_level == Some(binder_level)
-            && graph
-                .nodes
-                .get(position)
-                .is_some_and(|node| node.semantic_type == *member)
-        {
+        if parameter_name == Some(name.as_ref()) && parameter_level == Some(binder_level) {
             if index_type.is_some() {
                 return Ok(Some(refuse()));
             }

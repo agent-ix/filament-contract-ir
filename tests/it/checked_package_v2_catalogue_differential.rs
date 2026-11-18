@@ -477,7 +477,7 @@ fn unavailable_reason(entry: &Value) -> Option<&'static str> {
 
 // A fresh package is built for each identity. These are the entries for which
 // the existing nominal/structural fixture helpers produce a valid source.
-pub(super) fn admitted_fixture(identity: &str) -> Option<Value> {
+pub(crate) fn admitted_fixture(identity: &str) -> Option<Value> {
     if let Some(package) = text_or_string_conversion(identity) {
         return Some(package);
     }
@@ -1266,8 +1266,11 @@ fn tc_048_every_catalogue_entry_retains_its_constructible_admission() {
                 entry["result"] != "member" && entry["member"] != "type_argument",
                 "member-result or type-argument lookalike {identity} needs an admitted control"
             );
-            let reason = unavailable_reason(entry)
-                .unwrap_or_else(|| panic!("{identity} needs an admitted control or a catalog-derived fixture gap: {entry}"));
+            let reason = unavailable_reason(entry).unwrap_or_else(|| {
+                panic!(
+                    "{identity} needs an admitted control or a catalog-derived fixture gap: {entry}"
+                )
+            });
             assert!(!reason.is_empty(), "{identity}: empty fixture-gap reason");
             unavailable.insert(identity.to_owned(), reason.to_owned());
         }
@@ -1441,6 +1444,52 @@ fn collection_seq_requires_bounded_inputs_matching_binder_and_sequence() {
     assert!(
         matches!(read(&unused_index), CheckedPackageV2ReadResult::Admitted(_)),
         "an unused i binder is resolved at level one from the outer x scope"
+    );
+
+    let mut boolean_element = base.clone();
+    let boolean_type = node_id("scalar_type/boolean");
+    let outer_boolean = node_id("value/parameter/outer-boolean");
+    boolean_element["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .push(parameter_node(
+            outer_boolean.clone(),
+            "x",
+            "0",
+            boolean_type.clone(),
+        ));
+    let sequence_type =
+        boolean_element["semantic_graph"]["nodes"][application]["body"]["result_type"].clone();
+    let bounds_position = boolean_element["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .position(|node| node["node_id"] == sequence_type)
+        .expect("collection bounds");
+    let sequence_id =
+        boolean_element["semantic_graph"]["nodes"][bounds_position]["semantic_type"].clone();
+    let sequence_position = boolean_element["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .position(|node| node["node_id"] == sequence_id)
+        .expect("sequence type");
+    boolean_element["semantic_graph"]["nodes"][sequence_position]["body"]["members"][0]["target"] =
+        boolean_type.clone();
+    boolean_element["semantic_graph"]["nodes"][application]["body"]["operation"]["member"]
+        ["declaration"] = boolean_type.clone();
+    boolean_element["semantic_graph"]["nodes"][application]["body"]["arguments"][2]["value"]
+        ["target"] = outer_boolean;
+    boolean_element["semantic_graph"]["nodes"][application]["body"]["result_type"] =
+        sequence_type.clone();
+    boolean_element["semantic_graph"]["nodes"][application]["semantic_type"] =
+        sequence_type.clone();
+    boolean_element["semantic_graph"]["nodes"][function]["semantic_type"] = sequence_type;
+    settle(&mut boolean_element);
+    let boolean_result = read(&boolean_element);
+    assert!(
+        matches!(boolean_result, CheckedPackageV2ReadResult::Admitted(_)),
+        "the seq index has integer_range type while its Boolean element is independent: {boolean_result:?}"
     );
 
     let mut unbounded_input = base.clone();
