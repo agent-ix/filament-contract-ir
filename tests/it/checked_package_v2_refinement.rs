@@ -3144,7 +3144,15 @@ fn joined_history_package() -> (Value, CheckedPackageEvidence, usize) {
         .find(|node| node["semantic_form"] == "integer" && node["node_tag"] == "scalar_type")
         .map(|node| node["node_id"].clone())
         .unwrap_or_else(|| node_id("scalar_type/integer"));
-    let reference_type = node_id("history-read/reference-type");
+    let reference_type = crate::support::checked_package::structural_id(
+        FAMILY_MODEL_IDENTITY,
+        vec![
+            json!("composite_type"),
+            json!("reference"),
+            declaration.clone(),
+        ],
+        0,
+    );
     let receiver = node_id("history-read/receiver");
     let application = node_id("history-read/application");
     package["semantic_graph"]["nodes"]
