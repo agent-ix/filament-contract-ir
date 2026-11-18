@@ -54,10 +54,6 @@ struct Application<'a> {
 }
 
 impl Application<'_> {
-    fn node_id(self) -> JsonPointer {
-        node_pointer(self.position).key("node_id")
-    }
-
     /// `/semantic_graph/nodes/{n}/body` extended by `members`.
     fn body(self, members: &[&str]) -> JsonPointer {
         members.iter().fold(
@@ -1194,6 +1190,11 @@ impl DiagnosticPath for JsonPointer {
         super::stage_storage::Position::Recorded(self)
     }
 }
+impl DiagnosticPath for super::stage_storage::Path<'_> {
+    fn position(&self) -> super::stage_storage::Position<'_> {
+        (*self).into()
+    }
+}
 impl DiagnosticPath for OperationPath {
     fn position(&self) -> super::stage_storage::Position<'_> {
         match self {
@@ -1378,7 +1379,7 @@ fn expression_scope_depth(
     let mut visited = meter.vec(graph.nodes.len())?;
     meter.push(&mut pending, (root, 0_usize))?;
     while let Some((term, depth)) = pending.pop() {
-        work_at_path(meter, &application.node_id(), 1)?;
+        work_at_path(meter, &application.read_node().key("node_id"), 1)?;
         match term {
             CheckedTerm::Reference { target: reference } => {
                 if reference == target {
@@ -1395,7 +1396,7 @@ fn expression_scope_depth(
                 }
                 let mut already_visited = false;
                 for &(seen, seen_depth) in &visited {
-                    work_at_path(meter, &application.node_id(), 1)?;
+                    work_at_path(meter, &application.read_node().key("node_id"), 1)?;
                     if (seen, seen_depth) == (position, depth) {
                         already_visited = true;
                         break;
@@ -1443,7 +1444,7 @@ fn sequence_function_level(
 ) -> Result<Option<usize>, ValidationFailure> {
     let mut found = None;
     for (position, kind) in graph.kinds.iter().enumerate() {
-        work_at_path(meter, &application.node_id(), 1)?;
+        work_at_path(meter, &application.read_node().key("node_id"), 1)?;
         if !matches!(kind, CheckedNodeKind::Function(_)) {
             continue;
         }
@@ -1455,7 +1456,7 @@ fn sequence_function_level(
         let mut parameter_count = None;
         let mut body = None;
         for member in members {
-            work_at_path(meter, &application.node_id(), 1)?;
+            work_at_path(meter, &application.read_node().key("node_id"), 1)?;
             let CheckedTerm::Binding { name, value } = member else {
                 continue;
             };
@@ -1483,14 +1484,14 @@ fn sequence_function_level(
         }
     }
     for term in graph.terms {
-        work_at_path(meter, &application.node_id(), 1)?;
+        work_at_path(meter, &application.read_node().key("node_id"), 1)?;
         let Some(CheckedTerm::Refinement { objects, .. }) = term.as_ref() else {
             continue;
         };
         for object in objects {
-            work_at_path(meter, &application.node_id(), 1)?;
+            work_at_path(meter, &application.read_node().key("node_id"), 1)?;
             for field in &object.fields {
-                work_at_path(meter, &application.node_id(), 1)?;
+                work_at_path(meter, &application.read_node().key("node_id"), 1)?;
                 if let Some(depth) =
                     expression_scope_depth(&field.expression, target, graph, application, meter)?
                 {
@@ -1587,7 +1588,7 @@ fn check_sequence_bounds(
     };
     let mut index_type = None;
     for (position, kind) in graph.kinds.iter().enumerate() {
-        work_at_path(meter, &application.node_id(), 1)?;
+        work_at_path(meter, &application.read_node().key("node_id"), 1)?;
         if *kind != CheckedNodeKind::Value(ValueForm::Parameter) {
             continue;
         }
@@ -1599,7 +1600,7 @@ fn check_sequence_bounds(
         let mut parameter_name = None;
         let mut parameter_level = None;
         for member in members {
-            work_at_path(meter, &application.node_id(), 1)?;
+            work_at_path(meter, &application.read_node().key("node_id"), 1)?;
             if let CheckedTerm::Binding { name: field, value } = member {
                 if let CheckedTerm::Literal { value, .. } = value.as_ref() {
                     match field.as_ref() {
@@ -4169,7 +4170,7 @@ fn check_tuple_position(
     else {
         return Ok(Some(ValidationFailure::refused(
             CheckedPackageRefusalCode::InvalidSemanticGraph,
-            application.node_id(),
+            node_pointer(application.position),
         )));
     };
     let result_type = graph

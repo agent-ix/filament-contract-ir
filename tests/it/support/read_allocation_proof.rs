@@ -104,7 +104,10 @@ fn assert_read_inner<C: Counter>(
             assert_eq!(left, right, "{label}: complete refusal/first fault");
         }
         (plain, measured, Expected::OriginalOracle(predicate)) => {
-            assert!(predicate(plain), "{label}: original driver predicate");
+            assert!(
+                predicate(plain),
+                "{label}: original driver predicate: {plain:?}"
+            );
             match (plain, measured) {
                 (
                     CheckedPackageV2ReadResult::Admitted(a),

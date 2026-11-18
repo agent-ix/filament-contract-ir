@@ -6394,7 +6394,8 @@ fn tc_227_a_chain_admits_at_its_smallest_limit_and_is_incomplete_one_below() {
                 assert_eq!(incomplete.limit_kind, CheckedPackageLimit::Work);
                 assert_eq!(
                     incomplete.path.as_ref().map(ToString::to_string).as_deref(),
-                    Some(root_owner(&package, IDENTITY).as_str())
+                    Some(root_owner(&package, IDENTITY).as_str()),
+                    "count={count}, smallest={smallest}, refusal={incomplete:?}"
                 );
             }
             other => panic!("expected one-below incomplete, got {other:?}"),

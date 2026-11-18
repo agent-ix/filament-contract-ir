@@ -385,8 +385,9 @@ fn dependency_call_cases() -> (Vec<DependencyCallCase>, BTreeSet<String>) {
         vectors["library"]["package"],
         "fixtures/positive-dependency-library.json"
     );
-    let base = fspec_inputs::read_json_wire(&fixtures.join("positive-dependency-call.json"))
+    let mut base = fspec_inputs::read_json_wire(&fixtures.join("positive-dependency-call.json"))
         .expect("original raw importer base");
+    fspec_inputs::supply_positive_function_check_mode(&mut base);
     let mut cases = Vec::new();
     let mut providers = BTreeSet::new();
     for name in [
@@ -561,10 +562,11 @@ fn fspec_cases() -> (Vec<Case>, BTreeSet<String>) {
             .unwrap_or_else(|error| panic!("FSpec {file}: {error}"));
         serde_json::from_slice(&bytes).expect("published FSpec JSON")
     };
-    let package = read(
+    let mut package = read(
         "checked_package_v2_owners.rs",
         "fixtures/positive-operation-identities.json",
     );
+    fspec_inputs::supply_positive_function_check_mode(&mut package);
     let document = read(
         "checked_package_v2_owners.rs",
         "domain-package-acme-orders.json",
@@ -733,8 +735,9 @@ fn fspec_cases() -> (Vec<Case>, BTreeSet<String>) {
     let vectors = fspec_inputs::read_json(&proposal.join("model-root-vectors.json"))
         .expect("published model-root vectors");
     assert_eq!(vectors["base"], "fixtures/positive-all-families.json");
-    let base = fspec_inputs::read_json_wire(&fixtures.join("positive-all-families.json"))
+    let mut base = fspec_inputs::read_json_wire(&fixtures.join("positive-all-families.json"))
         .expect("published model-root base");
+    fspec_inputs::supply_positive_function_check_mode(&mut base);
     for row in vectors["vectors"].as_array().expect("model-root vectors") {
         let id = row["id"].as_str().expect("model-root case id");
         let mut wire = base.clone();
@@ -831,8 +834,9 @@ fn fspec_cases() -> (Vec<Case>, BTreeSet<String>) {
     let vectors = fspec_inputs::read_json(&proposal.join("node-index-vectors.json"))
         .expect("published operand vectors");
     assert_eq!(vectors["base"], "fixtures/positive-dependency-call.json");
-    let base = fspec_inputs::read_json_wire(&fixtures.join("positive-dependency-call.json"))
+    let mut base = fspec_inputs::read_json_wire(&fixtures.join("positive-dependency-call.json"))
         .expect("published operand base");
+    fspec_inputs::supply_positive_function_check_mode(&mut base);
     for row in vectors["cases"].as_array().expect("operand cases") {
         let id = row["id"].as_str().expect("operand case id");
         let expected = row["expected"].as_str().expect("operand outcome");

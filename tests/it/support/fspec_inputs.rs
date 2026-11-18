@@ -18,11 +18,33 @@ use std::path::Path;
 
 pub(crate) fn read_json(path: &Path) -> Result<Value, String> {
     let mut value = read_json_wire(path)?;
+    if path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.starts_with("positive-") || POSITIVE_ALL.contains(&name))
+    {
+        supply_positive_function_check_mode(&mut value);
+    }
     // Tests author and mutate packages in resolved index form; `read_package`
     // writes the wire form back.
     fixture_support::resolve_operands(&mut value);
     fixture_support::resolve_vector_rows(&mut value);
     Ok(value)
+}
+
+/// Fills the FR-770 default for selected published positives predating the
+/// required function `check_mode` member.
+pub(crate) fn supply_positive_function_check_mode(value: &mut Value) {
+    // The currently selected FSpec positive fixtures predate the required
+    // FR-770 function `check_mode` member. Preserve their declared positive
+    // intent while supplying the valid positive mode `linked`.
+    if let Some(nodes) = value["semantic_graph"]["nodes"].as_array_mut() {
+        for node in nodes {
+            if node["node_tag"] == "function" && node.get("check_mode").is_none() {
+                node["check_mode"] = json!("linked");
+            }
+        }
+    }
 }
 
 pub(crate) fn read_json_wire(path: &Path) -> Result<Value, String> {
@@ -158,12 +180,15 @@ pub(crate) fn evidence_for_published(
             None,
             fixtures_dir,
         )?;
-        let CheckedPackageV2ReadResult::Admitted(dependency) = crate::read_and_account(
+        let dependency_result = crate::read_and_account(
             &fixture_support::canonical(&dependency),
             CheckedPackageReadLimits::bounded(),
             &dependency_evidence,
-        ) else {
-            return Err("published dependency library did not admit".into());
+        );
+        let CheckedPackageV2ReadResult::Admitted(dependency) = dependency_result else {
+            return Err(format!(
+                "published dependency library did not admit: {dependency_result:?}"
+            ));
         };
         evidence
             .insert_dependency_package("test/predicates", dependency)
