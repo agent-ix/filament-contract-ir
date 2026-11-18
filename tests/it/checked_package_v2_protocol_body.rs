@@ -5523,14 +5523,17 @@ fn repeat_admits_post_test_and_refuses_an_unknown_test_mode() {
         }}));
     settle(&mut post_test);
     let post_test_holder = holder_position(&post_test);
+    let mut pre_test_after = package.clone();
+    settle(&mut pre_test_after);
+    let pre_test_after_holder = holder_position(&pre_test_after);
     assert_eq!(
         canonical(&package["semantic_graph"]["nodes"][holder]),
-        canonical(&post_test["semantic_graph"]["nodes"][holder]),
+        canonical(&pre_test_after["semantic_graph"]["nodes"][pre_test_after_holder]),
         "pre-test repeat node bytes remain unchanged when the optional test member is absent"
     );
     assert_eq!(
         package["semantic_graph"]["nodes"][holder]["node_id"],
-        post_test["semantic_graph"]["nodes"][holder]["node_id"],
+        pre_test_after["semantic_graph"]["nodes"][pre_test_after_holder]["node_id"],
         "pre-test repeat identity remains stable"
     );
     assert_ne!(
