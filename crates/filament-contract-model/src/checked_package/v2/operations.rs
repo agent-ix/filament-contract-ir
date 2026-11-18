@@ -1420,7 +1420,7 @@ fn check_sequence_bounds(
     let expected_max = if hi_max < lo_min {
         Integer::from(0_i64)
     } else {
-        hi_max - lo_min + Integer::from(1_i64)
+        hi_max.sub(&lo_min).add(&Integer::from(1_i64))
     };
     let Some(result_position) = graph.index.get(result_type).copied() else {
         return Some(refuse());
