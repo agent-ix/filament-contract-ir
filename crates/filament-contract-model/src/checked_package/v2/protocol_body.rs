@@ -2681,6 +2681,18 @@ fn check_control_prefix(
             }
         }
         "repeat" => {
+            if members(check.at(arguments, 2))
+                .and_then(|maximum| maximum.first())
+                .and_then(integer_value)
+                .is_some_and(|maximum| maximum == Numeral::exact(0))
+            {
+                return Err(check.refuse(
+                    meter,
+                    Code::InvalidPackage,
+                    Some(Cause::InvalidValue),
+                    node_path(check.position),
+                ));
+            }
             check.target_at(meter, arguments, 0, |position| {
                 check.is(position, CheckedNodeKind::Protocol(ProtocolForm::Role))
             })?;
