@@ -1272,9 +1272,7 @@ fn tc_048_quire_canonical_is_a_tagged_git_dependency_with_its_source_allowed() {
         1,
         "one lock entry"
     );
-    assert!(lock.contains(
-        "git+https://github.com/agent-ix/quire-canonical?tag=v0.3.1#"
-    ));
+    assert!(lock.contains("git+https://github.com/agent-ix/quire-canonical?tag=v0.3.1#"));
 }
 
 /// ACs: FR-038-AC-80

@@ -5956,6 +5956,17 @@ fn package_with_step_control_on(mut package: Value, operator: &str) -> (Value, u
             {"term": "binding", "name": "related", "value": {"term": "aggregate", "members": []}},
             {"term": "binding", "name": "constraint", "value": boolean}
         ]),
+        "send" => {
+            let channel = package["semantic_graph"]["nodes"]
+                [protocol_position(&package, "channel")]["node_id"]
+                .clone();
+            json!([
+                {"term": "binding", "name": "channel", "value": {"term": "reference", "target": channel}},
+                {"term": "binding", "name": "binder", "value": {"term": "reference", "target": binder}},
+                {"term": "binding", "name": "related", "value": {"term": "aggregate", "members": []}},
+                {"term": "binding", "name": "constraint", "value": boolean}
+            ])
+        }
         "commit" => json!([
             {"term": "binding", "name": "role", "value": {"term": "reference", "target": role}},
             {"term": "binding", "name": "binder", "value": {"term": "reference", "target": binder}},
@@ -6286,8 +6297,12 @@ fn event_compensation_requires_a_template_target() {
 }
 
 pub(crate) fn package_with_admitted_compensation() -> (Value, usize, usize) {
+    package_with_admitted_compensation_for("event")
+}
+
+fn package_with_admitted_compensation_for(operator: &str) -> (Value, usize, usize) {
     let (state, _) = crate::checked_package_v2_frame_entries::state_operand_fixture();
-    let (mut package, root) = package_with_step_control_on(state, "event");
+    let (mut package, root) = package_with_step_control_on(state, operator);
     let local = compensation_template(
         &mut package,
         &["Example", "OrderFlow", "compensate", "Undo"],
@@ -6326,7 +6341,12 @@ pub(super) fn compensation_clock_case(
             .expect("published declaration")["clock"]
             .clone()
     };
-    let (mut package, _, first) = package_with_admitted_compensation();
+    let control_operator = if case["id"] == "CB-07" {
+        "send"
+    } else {
+        "event"
+    };
+    let (mut package, _, first) = package_with_admitted_compensation_for(control_operator);
     let mut second = package["semantic_graph"]["nodes"][first].clone();
     second["node_id"] = node_id("qualified:Example/OrderFlow/compensate/UndoSecond");
     second["declaration"]["qualified_name"] =
@@ -6405,10 +6425,15 @@ pub(super) fn compensation_clock_case(
         nodes[protocol_position(&package, "compensation")]["node_id"].clone(),
     );
     ids.insert("k2".to_owned(), second_id);
-    ids.insert(
-        "aw".to_owned(),
-        nodes[protocol_position(&package, "control")]["node_id"].clone(),
-    );
+    let control_id = nodes[protocol_position(&package, "control")]["node_id"].clone();
+    for declaration in declarations {
+        if declaration["form"] == "control" {
+            let key = declaration["key"]
+                .as_str()
+                .expect("control declaration key");
+            ids.insert(key.to_owned(), control_id.clone());
+        }
+    }
     if case["id"] == "CB-01" {
         let clause = nodes
             .iter()
