@@ -2482,8 +2482,9 @@ pub fn refresh_temporal_bindings(package: &mut Value) {
                             .iter()
                             .filter_map(|group| {
                                 group["members"].as_array()?.iter().find_map(|member| {
-                                    (member["name"] == "variable")
-                                        .then(|| member["value"]["value"].as_str().map(str::to_owned))
+                                    (member["name"] == "variable").then(|| {
+                                        member["value"]["value"].as_str().map(str::to_owned)
+                                    })
                                 })
                             })
                             .collect()

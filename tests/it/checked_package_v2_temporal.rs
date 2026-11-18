@@ -3427,10 +3427,8 @@ fn trace_group(variable: &str) -> Value {
 /// hyperproperty quantifying the traces `variables`, with the wrapper's graph
 /// position. `settle` writes one row per trace.
 fn hyper_clock_fixture(variables: &[&str]) -> (Value, usize) {
-    let (mut package, _, keys) = hyper_fixture_with(
-        BOUNDED,
-        fairness_member(&model_key(ORDER_NODE), "scaled"),
-    );
+    let (mut package, _, keys) =
+        hyper_fixture_with(BOUNDED, fairness_member(&model_key(ORDER_NODE), "scaled"));
     let clause_key = keys.split('\n').nth(1).expect("clause").to_owned();
     push(
         &mut package,
@@ -3471,7 +3469,10 @@ fn tc_480_a_hyper_wrapper_carries_one_row_per_quantified_trace() {
 #[test]
 fn tc_480_a_missing_trace_row_refuses_at_the_wrapper_body() {
     let (mut package, wrapper) = hyper_clock_fixture(&["s", "n"]);
-    package["temporal_bindings"].as_array_mut().expect("rows").pop();
+    package["temporal_bindings"]
+        .as_array_mut()
+        .expect("rows")
+        .pop();
     expect(
         "missing n row",
         &package,
@@ -3480,7 +3481,10 @@ fn tc_480_a_missing_trace_row_refuses_at_the_wrapper_body() {
         &at_node(wrapper, "/body"),
     );
     let (mut package, wrapper) = hyper_clock_fixture(&["s", "n"]);
-    package["temporal_bindings"].as_array_mut().expect("rows").remove(0);
+    package["temporal_bindings"]
+        .as_array_mut()
+        .expect("rows")
+        .remove(0);
     expect(
         "missing s row",
         &package,
@@ -3562,7 +3566,10 @@ fn tc_480_an_empty_or_null_trace_is_malformed_wire() {
         match read(&package) {
             CheckedPackageV2ReadResult::Refused(refusal) => {
                 assert_eq!(refusal.code, Code::MalformedWire, "{bad}");
-                let path = refusal.loci[0].path.as_ref().map(|path| path.as_str().to_owned());
+                let path = refusal.loci[0]
+                    .path
+                    .as_ref()
+                    .map(|path| path.as_str().to_owned());
                 assert!(
                     path.as_deref()
                         .is_some_and(|path| path.starts_with("/temporal_bindings/0")),

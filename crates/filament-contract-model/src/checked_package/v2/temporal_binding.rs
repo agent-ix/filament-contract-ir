@@ -500,7 +500,9 @@ fn hyper_wrappers<'t>(
         };
         let bound = |name: &str| {
             members.iter().find_map(|member| match member {
-                CheckedTerm::Binding { name: found, value } if AsRef::<str>::as_ref(found) == name => {
+                CheckedTerm::Binding { name: found, value }
+                    if AsRef::<str>::as_ref(found) == name =>
+                {
                     Some(value.as_ref())
                 }
                 _ => None,
@@ -511,8 +513,8 @@ fn hyper_wrappers<'t>(
         else {
             continue;
         };
-        let Some(target) = super::structural::typed_reference(body)
-            .and_then(|target| index.get(target).copied())
+        let Some(target) =
+            super::structural::typed_reference(body).and_then(|target| index.get(target).copied())
         else {
             continue;
         };
@@ -687,8 +689,10 @@ pub(super) fn validate<B>(
             )?;
             let rows_needed = traces_of(position).map_or(1, <[&str]>::len);
             if occurrence.role == role
-                && (0..rows_needed)
-                    .any(|trace| seen.binary_search(&(position, occurrence.ordinal, trace)).is_err())
+                && (0..rows_needed).any(|trace| {
+                    seen.binary_search(&(position, occurrence.ordinal, trace))
+                        .is_err()
+                })
             {
                 missing = Some(position);
                 break;
@@ -1348,7 +1352,11 @@ mod timed_clock_tests {
         let without: TemporalBinding = serde_json::from_str(&row("")).unwrap();
         assert_eq!(without.trace, None);
         assert!(!serde_json::to_string(&without).unwrap().contains("trace"));
-        for violating in [r#","trace":null"#, r#","trace":3"#, r#","trace":"s","trace":"n""#] {
+        for violating in [
+            r#","trace":null"#,
+            r#","trace":3"#,
+            r#","trace":"s","trace":"n""#,
+        ] {
             assert!(
                 serde_json::from_str::<TemporalBinding>(&row(violating)).is_err(),
                 "{violating}"
