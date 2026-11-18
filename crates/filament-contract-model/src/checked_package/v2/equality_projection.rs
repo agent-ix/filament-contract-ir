@@ -114,6 +114,7 @@ pub(super) fn text_bounds(term: &CheckedTerm) -> Option<(&str, &str, &str)> {
     ))
 }
 
+#[ix_trace_rs::string_edge]
 pub(super) fn equality_operator(identity: &str) -> Option<CheckedEqualityOperator> {
     // The operation record has already been checked against the closed catalog.
     // All catalogued equality identities end in one of these two segments.
