@@ -1053,10 +1053,7 @@ pub(super) fn decode_body(body: &Value, at: &Trail<'_>) -> Result<CheckedTerm, V
         })
         .transpose()?;
     Ok(CheckedTerm::Refinement {
-        name: body
-            .get("name")
-            .map(|v| text(v, &at.key("name")))
-            .transpose()?,
+        name: text(member(body, "name", at)?, &at.key("name"))?,
         abstract_key: Box::new(key(member(body, "abstract", at)?, &at.key("abstract"))?),
         profile: typed(member(body, "profile", at)?, &at.key("profile"))?,
         populations,
@@ -1235,6 +1232,7 @@ fn check_body_header(body: &Value, at: &Trail<'_>) -> Result<(), ValidationFailu
     };
     let required = [
         "term",
+        "name",
         "abstract",
         "profile",
         "populations",
@@ -1248,7 +1246,6 @@ fn check_body_header(body: &Value, at: &Trail<'_>) -> Result<(), ValidationFailu
         || required.iter().any(|name| !object.contains_key(*name))
         || object.keys().any(|name| {
             !required.contains(&name.as_str())
-                && name != "name"
                 && name != "protocol"
                 && name != "abstract_internal"
                 && name != "class_catalog"
@@ -4283,7 +4280,7 @@ mod tests {
     fn refinement_row_walks_charge_the_callers_budget() {
         let id = |name| json!({"package":"refinement-test","path":[name],"ordinal":0});
         let wire = json!({
-            "term":"refinement", "abstract":id("a"),
+            "term":"refinement", "name":"Refine", "abstract":id("a"),
             "profile":{"authority":"test","identity":"filament.temporal.infinite-trace/v1"},
             "populations":[], "objects":[], "steps":[],
             "histories":[{"concrete_type":id("b"),"name":"past","type":id("c"),
@@ -4402,7 +4399,7 @@ mod tests {
         let profile =
             json!({"authority": "test", "identity": "filament.temporal.infinite-trace/v1"});
         let body = CheckedTerm::decode_admitted(&json!({
-            "term": "refinement", "abstract": id('a'), "profile": profile,
+            "term": "refinement", "name": "Refine", "abstract": id('a'), "profile": profile,
             "populations": [{"abstract": id('b'), "concrete": id('c')}],
             "objects": [{"abstract_type": id('d'), "concrete_type": id('e'), "fields": []}],
             "steps": [],

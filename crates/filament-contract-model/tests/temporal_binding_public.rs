@@ -145,12 +145,39 @@ fn default_feature_consumer_borrows_admitted_clock_rows() {
         .collect::<Vec<_>>();
     assert_eq!(claims.len(), 1, "one published claim node");
     assert_eq!(claims[0]["occurrences"].as_array().map(Vec::len), Some(1));
+    let claim_id = claims[0]["node_id"].clone();
+    let claim_occurrence = claims[0]["occurrences"][0].clone();
+    let region_of = |fixture: &Value, node: &Value, role: &str, ordinal: u64| {
+        let entry = fixture["source_map"]
+            .as_array()
+            .expect("source map")
+            .iter()
+            .find(|entry| {
+                &entry["node_id"] == node && entry["role"] == role && entry["ordinal"] == ordinal
+            })
+            .expect("source map entry");
+        entry["regions"][0].clone()
+    };
     let named = json!([{
-        "declaration": claims[0]["node_id"],
-        "occurrence": claims[0]["occurrences"][0],
+        "declaration": claim_id,
+        "occurrence": claim_occurrence,
         "name": "Safety",
         "qualified_name": ["Example", "Safety"],
+        "declaration_region": region_of(&fixture, &claim_id, "declaration", 0),
     }]);
+    // Likewise the temporal clause rows predate their `declaration_region`.
+    let clause_rows = fixture["temporal_clause_names"]
+        .as_array()
+        .expect("clause rows")
+        .len();
+    for row in 0..clause_rows {
+        let declaration = fixture["temporal_clause_names"][row]["declaration"].clone();
+        let ordinal = fixture["temporal_clause_names"][row]["occurrence"]
+            .as_u64()
+            .expect("clause ordinal");
+        let region = region_of(&fixture, &declaration, "claim", ordinal);
+        fixture["temporal_clause_names"][row]["declaration_region"] = region;
+    }
     fixture["claim_names"] = named;
     let bytes = serde_json::to_vec(&fixture).expect("canonical test package");
     let package =
@@ -191,6 +218,7 @@ fn default_feature_consumer_borrows_admitted_clock_rows() {
             declaration: row.declaration.clone(),
             occurrence: row.occurrence,
             name: row.name.clone(),
+            declaration_region: row.declaration_region.clone(),
         })
         .collect::<Vec<_>>();
     let encoded = encode_checked_package_v2(

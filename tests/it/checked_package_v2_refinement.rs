@@ -6086,12 +6086,14 @@ fn refinement_occurrence_defects_choose_lower_structural_id_over_graph_order() {
     crate::support::checked_package::reassign_node_id(&mut package, &empty_id, &higher_id);
     let (mut stepped, _) = machine_package();
     one_step_refinement(&mut stepped);
-    let stepped_node = stepped["semantic_graph"]["nodes"]
+    let mut stepped_node = stepped["semantic_graph"]["nodes"]
         .as_array()
         .expect("nodes")
         .last()
         .expect("step owner")
         .clone();
+    // Two refinement nodes of one package may not share a name.
+    stepped_node["body"]["name"] = json!("SteppedRefinement");
     let stepped_id = stepped_node["node_id"].clone();
     package["semantic_graph"]["nodes"]
         .as_array_mut()

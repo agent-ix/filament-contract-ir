@@ -75,6 +75,7 @@ mod operation_catalog_index;
 pub(in crate::checked_package) mod read_charge;
 pub use operation_catalog::{initialize_operation_catalog, CatalogReadError};
 mod claim_names;
+mod declaration_region;
 mod operation_bodies;
 mod operation_effects;
 mod operation_witness;
@@ -3942,19 +3943,34 @@ fn validate_graph(
             return Err(failure);
         }
     }
+    let name_sources = declaration_region::SourceEntries::build(
+        &wire.source_map,
+        wire.temporal_clause_names.is_some() || wire.claim_names.is_some(),
+        &stage_storage::Site::new(
+            PackageReadStage::Graph,
+            0,
+            "name_sources",
+            stage_storage::Path::root(),
+        ),
+        meter,
+    )?;
     temporal_clause_names::validate(
         wire.temporal_clause_names.as_deref(),
         &graph.nodes,
         &kinds,
+        &name_sources,
         &index,
         structural_keys,
         meter,
     )?;
+    claim_names::validate_refinement_names(&kinds, &terms, &graph.nodes, meter)?;
     claim_names::validate(
         wire.claim_names.as_deref(),
+        wire.temporal_clause_names.as_deref(),
         &graph.nodes,
         &kinds,
         &terms,
+        &name_sources,
         &index,
         structural_keys,
         meter,

@@ -803,6 +803,22 @@ pub fn refresh_identity(package: &mut Value) {
     name_refinement_bodies(package);
     refresh_identity_projection(package);
     refresh_temporal_bindings(package);
+    recompute_declaration_regions(package);
+}
+
+/// Re-derives the `declaration_region` of every name row from the current
+/// `source_map`, so a fixture that moves an occurrence's regions keeps its
+/// rows' declarations containing them.
+pub fn recompute_declaration_regions(package: &mut Value) {
+    for table in ["temporal_clause_names", "claim_names"] {
+        if let Some(rows) = package.get_mut(table).and_then(Value::as_array_mut) {
+            for row in rows {
+                row.as_object_mut()
+                    .map(|row| row.remove("declaration_region"));
+            }
+        }
+    }
+    fill_declaration_regions(package);
 }
 
 /// The identity of every domain package a synthetic package selects: one per
@@ -2590,6 +2606,8 @@ pub fn refresh_temporal_bindings(package: &mut Value) {
                             "declaration": node["node_id"],
                             "occurrence": ordinal,
                             "name": format!("Clause{ordinal}"),
+                            "declaration_region":
+                                occurrence_region(package, &node["node_id"], "claim", ordinal),
                         }),
                     )
                 })
@@ -2611,6 +2629,58 @@ pub fn refresh_temporal_bindings(package: &mut Value) {
             Value::Array(names.into_iter().map(|(_, _, row)| row).collect());
     }
     refresh_claim_names(package);
+}
+
+/// The source interval a name row declares for one occurrence: the hull of
+/// the occurrence's own `source_map` regions, which a declaration contains.
+pub fn occurrence_region(package: &Value, node_id: &Value, role: &str, ordinal: u64) -> Value {
+    let entry = package["source_map"].as_array().and_then(|entries| {
+        entries.iter().find(|entry| {
+            &entry["node_id"] == node_id && entry["role"] == role && entry["ordinal"] == ordinal
+        })
+    });
+    let Some(regions) = entry.and_then(|entry| entry["regions"].as_array()) else {
+        return json!({"source": package["lock"]["sources"][0], "start": 0, "end": 0});
+    };
+    json!({
+        "source": regions[0]["source"],
+        "start": regions.iter().filter_map(|region| region["start"].as_u64()).min(),
+        "end": regions.iter().filter_map(|region| region["end"].as_u64()).max(),
+    })
+}
+
+/// Gives every name row that lacks one the `declaration_region` of its
+/// occurrence, for published packages that predate the member.
+pub fn fill_declaration_regions(package: &mut Value) {
+    // The source map is keyed by resolved ids and a slot-form package spells
+    // its ids otherwise.
+    let mut resolved = package.clone();
+    resolve_operands(&mut resolved);
+    for table in ["temporal_clause_names", "claim_names"] {
+        let Some(count) = package[table].as_array().map(Vec::len) else {
+            continue;
+        };
+        for index in 0..count {
+            let row = &package[table][index];
+            if row.get("declaration_region").is_some() {
+                continue;
+            }
+            let (role, ordinal) = if table == "claim_names" {
+                (
+                    row["occurrence"]["role"]
+                        .as_str()
+                        .unwrap_or("claim")
+                        .to_owned(),
+                    row["occurrence"]["ordinal"].as_u64().unwrap_or(0),
+                )
+            } else {
+                ("claim".to_owned(), row["occurrence"].as_u64().unwrap_or(0))
+            };
+            let declaration = row["declaration"].clone();
+            let region = occurrence_region(&resolved, &declaration, &role, ordinal);
+            package[table][index]["declaration_region"] = region;
+        }
+    }
 }
 
 /// Gives every refinement body the identifier its claim name row repeats.
@@ -2675,6 +2745,8 @@ pub fn refresh_claim_names(package: &mut Value) {
                     "occurrence": {"role": role, "ordinal": ordinal},
                     "name": name,
                     "qualified_name": [format!("Scope{index}{role}{ordinal}"), name],
+                    "declaration_region":
+                        occurrence_region(&resolved, &ids[index], role, ordinal),
                 }),
             ));
         }

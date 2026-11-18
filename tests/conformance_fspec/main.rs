@@ -261,18 +261,28 @@ fn read_package_with_document_override(
         &fixtures_dir(),
     )?;
     let outcome = crate::read_and_account(&bytes, limits, &evidence);
-    // FSpec's published packages predate the `claim_names` member. A package
-    // refused only for the member it lacks is read again with the rows its
-    // nodes call for, until the published fixtures carry them.
-    let uncovered = matches!(
+    // FSpec's published packages predate the `claim_names` member and the
+    // `declaration_region` of a name row. A package refused only for what it
+    // lacks is read again with the rows and regions its nodes call for, until
+    // the published fixtures carry them.
+    let lacking = matches!(
         &outcome,
         CheckedPackageV2ReadResult::Refused(refusal)
             if refusal.loci.first().and_then(|locus| locus.path.as_ref())
-                .is_some_and(|path| path.to_string() == "/claim_names")
+                .is_some_and(|path| {
+                    let path = path.to_string();
+                    path == "/claim_names"
+                        || ((path.starts_with("/claim_names/")
+                            || path.starts_with("/temporal_clause_names/"))
+                            && path.ends_with("/declaration_region"))
+                })
     );
-    if uncovered && package.get("claim_names").is_none() {
+    if lacking {
         let mut named = package.clone();
-        fixture_support::refresh_claim_names(&mut named);
+        if named.get("claim_names").is_none() {
+            fixture_support::refresh_claim_names(&mut named);
+        }
+        fixture_support::fill_declaration_regions(&mut named);
         let bytes = fixture_support::canonical(&named);
         return Ok(crate::read_and_account(&bytes, limits, &evidence));
     }

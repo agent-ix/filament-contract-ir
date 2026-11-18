@@ -641,7 +641,7 @@ fn nominal_and_refinement_keys_map_without_touching_source_labels() {
     assert_eq!(encoded["terms"][0]["exponent"], "1");
 
     let mut term = CheckedTerm::Refinement {
-        name: None,
+        name: "Refinement".into(),
         abstract_key: Box::new(RefinementKey::Local(original.clone())),
         profile: CheckedArtifactRef {
             authority: "source".into(),
@@ -735,7 +735,7 @@ fn remaining_closed_forms_map_every_typed_identity_slot() {
         ),
         (
             CheckedTerm::Refinement {
-                name: None,
+                name: "Refinement".into(),
                 abstract_key: Box::new(RefinementKey::Local(original.clone())),
                 profile: CheckedArtifactRef {
                     authority: "source".into(),

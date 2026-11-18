@@ -967,6 +967,7 @@ impl<'d> RefinementDocument<'_, 'd> {
             node,
             &[
                 "term",
+                "name",
                 "abstract",
                 "profile",
                 "populations",
@@ -976,7 +977,7 @@ impl<'d> RefinementDocument<'_, 'd> {
                 "assume",
                 "ensure",
             ],
-            &["name", "protocol", "abstract_internal", "class_catalog"],
+            &["protocol", "abstract_internal", "class_catalog"],
         )?;
         // Match the existing row decoder's construction order, including the
         // late abstract/profile decode after the ordered mapping tables.
@@ -991,7 +992,7 @@ impl<'d> RefinementDocument<'_, 'd> {
             .map(|n| self.catalog(n))
             .transpose()?;
         Ok(CheckedTerm::Refinement {
-            name: node.get("name").map(|n| self.atom(n)).transpose()?,
+            name: self.atom(self.member(node, "name")?)?,
             abstract_key: self.boxed(|| self.key(self.member(node, "abstract")?))?,
             profile: self.field(node, "profile")?,
             populations,
@@ -1178,8 +1179,9 @@ mod refinement_fault {
     /// The outer object of a refinement body.
     #[ix_trace_rs::string_edge]
     pub(in super::super) fn header(body: TermNode<'_>, at: &Trail<'_>) -> Found {
-        const REQUIRED: [&str; 9] = [
+        const REQUIRED: [&str; 10] = [
             "term",
+            "name",
             "abstract",
             "profile",
             "populations",
@@ -1196,7 +1198,6 @@ mod refinement_fault {
             || REQUIRED.iter().any(|name| body.get(name).is_none())
             || members.any(|(name, _)| {
                 !REQUIRED.contains(&name)
-                    && name != "name"
                     && name != "protocol"
                     && name != "abstract_internal"
                     && name != "class_catalog"
@@ -1374,9 +1375,7 @@ mod refinement_fault {
                 member(body, "profile", at)?,
                 &at.key("profile"),
             )?;
-            if let Some(name) = body.get("name") {
-                text(name, &at.key("name"))?;
-            }
+            text(member(body, "name", at)?, &at.key("name"))?;
             if let Some(protocol) = body.get("protocol") {
                 key(protocol, &at.key("protocol"))?;
             }
@@ -2079,7 +2078,7 @@ mod flat_document_allocation_tests {
         let id = json!({"package":"p","path":["C"],"ordinal":0});
         let external = json!({"package":"dependency","node":id});
         let term = json!({"term":"reference","target":id});
-        let wire = json!({"term":"refinement","abstract":external,"profile":{"authority":"a","identity":"trace"},
+        let wire = json!({"term":"refinement","name":"Differential","abstract":external,"profile":{"authority":"a","identity":"trace"},
             "populations":[{"abstract":external,"concrete":id}],
             "objects":[{"abstract_type":external,"concrete_type":id,"fields":[{"name":"value","expression":term}]}],
             "steps":[{"source_class":"act","source_node":id,"target":{"kind":"operation","operation":external,"receiver":term,"arguments":[{"term":"open"},term]}},
@@ -2145,7 +2144,7 @@ mod flat_document_allocation_tests {
     #[test]
     fn refinement_optional_and_discriminator_shapes_do_not_fallback_or_allocate_errors() {
         let id = json!({"package":"p","path":["C"],"ordinal":0});
-        let base = json!({"term":"refinement","abstract":id,"profile":{"authority":"a","identity":"trace"},"populations":[],"objects":[],"steps":[],"histories":[],"assume":[],"ensure":[]});
+        let base = json!({"term":"refinement","name":"Refine","abstract":id,"profile":{"authority":"a","identity":"trace"},"populations":[],"objects":[],"steps":[],"histories":[],"assume":[],"ensure":[]});
         let mut cases = Vec::new();
         for field in ["protocol", "abstract_internal", "class_catalog"] {
             let mut wire = base.clone();

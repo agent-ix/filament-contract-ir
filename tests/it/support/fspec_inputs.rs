@@ -28,6 +28,7 @@ pub(crate) fn read_json(path: &Path) -> Result<Value, String> {
     if value.get("semantic_graph").is_some() && value.get("claim_names").is_none() {
         fixture_support::refresh_claim_names(&mut value);
     }
+    fixture_support::fill_declaration_regions(&mut value);
     Ok(value)
 }
 

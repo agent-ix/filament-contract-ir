@@ -4,6 +4,7 @@
 //! TC-477: the strict reader admits `claim_names` and refuses every dangling,
 //! duplicate and uncovered row (FSpec FR-322-AC-457 and FR-322-AC-458).
 
+use crate::checked_package_v2_claim_terminal::claim_node;
 use crate::checked_package_v2_frame_entries::{
     read as read_state, step_relation_evidence, step_relation_package, StatePackage,
 };
@@ -14,7 +15,7 @@ use crate::support::checked_package::{
     canonical, evidence_for, refresh_identity, settle, v2_nominal,
 };
 use filament_contract_model::{
-    encode_checked_package_v2, CheckedPackageEvidence, CheckedPackageLimit,
+    encode_checked_package_v2, CheckedNodeId, CheckedPackageEvidence, CheckedPackageLimit,
     CheckedPackageReadLimits, CheckedPackageRefusalCause as Cause,
     CheckedPackageRefusalCode as Code, CheckedPackageSourceCorrespondenceRef, CheckedPackageV2,
     CheckedPackageV2ReadResult, CheckedTerm, ClaimNameRow,
@@ -118,6 +119,28 @@ fn assert_refusal(
         "{refusal:?}"
     );
     refusal
+}
+
+/// The refusal is located at the node the row `index` of `package` declares.
+#[track_caller]
+fn assert_row_locus(
+    refusal: &filament_contract_model::CheckedPackageRefusal,
+    package: &Value,
+    index: usize,
+) {
+    let declared: CheckedNodeId =
+        serde_json::from_value(package["claim_names"][index]["declaration"].clone())
+            .expect("row declaration");
+    assert_eq!(refusal.locus.as_ref(), Some(&declared), "{refusal:?}");
+}
+
+#[track_caller]
+fn assert_document_pointer(refusal: &filament_contract_model::CheckedPackageRefusal, want: &str) {
+    assert_eq!(
+        refusal.document_pointer.as_ref().map(|p| p.as_str()),
+        Some(want),
+        "{refusal:?}"
+    );
 }
 
 fn write_again(package: &CheckedPackageV2) -> Vec<u8> {
@@ -284,6 +307,7 @@ fn a_member_in_a_package_without_a_claim_bearing_node_is_dangling() {
     package["claim_names"] = json!([{
         "declaration": node, "occurrence": {"role": "claim", "ordinal": 0},
         "name": "A", "qualified_name": ["A"],
+        "declaration_region": {"source": package["lock"]["sources"][0], "start": 0, "end": 1},
     }]);
     assert_refusal(
         crate::read_and_account(
@@ -423,12 +447,13 @@ fn a_row_must_name_a_claim_bearing_node_and_one_of_its_occurrences() {
 fn the_last_path_segment_must_be_the_name() {
     let mut package = state_package();
     package["claim_names"][0]["qualified_name"] = json!(["Scope", "Other"]);
-    assert_refusal(
+    let refusal = assert_refusal(
         read_state(&package),
         Code::InvalidPackage,
         Some(Cause::InvalidValue),
         "/claim_names/0/qualified_name",
     );
+    assert_row_locus(&refusal, &package, 0);
 }
 
 #[trace("TC-477", "FR-371-AC-3", "FR-371-AC-1")]
@@ -451,7 +476,7 @@ fn a_refinement_row_name_equals_the_body_name() {
     let CheckedTerm::Refinement { name, .. } = &admitted.graph().nodes[position].body else {
         panic!("a refinement body");
     };
-    assert_eq!(name.as_deref(), Some(body_name.as_str()));
+    assert_eq!(name.as_ref(), body_name.as_str());
     let row = admitted
         .claim_names()
         .expect("rows")
@@ -482,18 +507,27 @@ fn a_refinement_row_name_equals_the_body_name() {
         &format!("/claim_names/{index}/name"),
     );
 
-    // A body without a name has none for the row to equal.
-    let mut unnamed = package;
+    // A refinement body without a name is a body-schema error (FR-322-AC-200).
+    let mut unnamed = package.clone();
     unnamed["semantic_graph"]["nodes"][position]["body"]
         .as_object_mut()
         .expect("body")
         .remove("name");
     assert_refusal(
         read_with(&unnamed, &evidence, CheckedPackageReadLimits::bounded()),
-        Code::InvalidPackage,
-        Some(Cause::InvalidValue),
-        &format!("/claim_names/{index}/name"),
+        Code::InvalidSemanticGraph,
+        None,
+        &format!("/semantic_graph/nodes/{position}/body"),
     );
+    // A name that is not text is refused as well.
+    let mut numbered = package;
+    numbered["semantic_graph"]["nodes"][position]["body"]["name"] = json!(7);
+    let refusal = refusal_of(read_with(
+        &numbered,
+        &evidence,
+        CheckedPackageReadLimits::bounded(),
+    ));
+    assert_eq!(refusal.code, Code::InvalidSemanticGraph, "{refusal:?}");
 }
 
 fn admitted_from(bytes: &[u8], evidence: &CheckedPackageEvidence) -> CheckedPackageV2 {
@@ -512,12 +546,16 @@ fn a_repeated_qualified_name_is_ambiguous_at_the_later_row() {
     let name = package["claim_names"][0]["name"].clone();
     package["claim_names"][1]["qualified_name"] = first;
     package["claim_names"][1]["name"] = name;
-    assert_refusal(
+    let refusal = assert_refusal(
         read_state(&package),
         Code::AmbiguousDeclaration,
         Some(Cause::AmbiguousName),
         "/claim_names/1/qualified_name",
     );
+    // Both rows are named: the later is the locus, the earlier the document
+    // position.
+    assert_document_pointer(&refusal, "/claim_names/0/qualified_name");
+    assert_row_locus(&refusal, &package, 1);
 }
 
 #[trace("TC-477", "FR-371-AC-4")]
@@ -529,12 +567,13 @@ fn a_repeated_key_conflicts_and_wins_over_the_repeated_name() {
         .as_array_mut()
         .expect("rows")
         .insert(1, row);
-    assert_refusal(
+    let refusal = assert_refusal(
         read_state(&package),
         Code::InvalidPackage,
         Some(Cause::ConflictingDefinition),
         "/claim_names/1",
     );
+    assert_row_locus(&refusal, &package, 1);
 }
 
 #[trace("TC-477", "FR-371-AC-4")]
@@ -599,11 +638,14 @@ fn an_uncovered_occurrence_or_a_missing_member_refuses_at_claim_names() {
 
 /// The smallest work limit at which `package` is decided, not incomplete.
 fn smallest_deciding_work(package: &Value) -> u64 {
-    let evidence = step_relation_evidence(package);
+    smallest_deciding_work_with(package, &step_relation_evidence(package))
+}
+
+fn smallest_deciding_work_with(package: &Value, evidence: &CheckedPackageEvidence) -> u64 {
     let incomplete = |work: u64| {
         let mut limits = CheckedPackageReadLimits::bounded();
         limits.work = work;
-        match crate::read_and_account(&canonical(package), limits, &evidence) {
+        match crate::read_and_account(&canonical(package), limits, evidence) {
             CheckedPackageV2ReadResult::Incomplete(incomplete) => {
                 assert_eq!(incomplete.limit_kind, CheckedPackageLimit::Work);
                 true
@@ -631,7 +673,8 @@ fn each_visited_row_and_each_occurrence_inspected_costs_one_work_visit() {
     let package = state_package();
     assert!(rows(&package).len() > 1);
     // Two packages refused at the declaration join of row 0 and of row 1: the
-    // second pays for row 0's visit, its occurrence scan and its own visit.
+    // closed-schema check pays one visit per row for both, so the second pays
+    // only for row 0's occurrence scan and region comparisons.
     let dangling = |index: usize| {
         let mut damaged = package.clone();
         damaged["claim_names"][index]["declaration"] =
@@ -653,7 +696,22 @@ fn each_visited_row_and_each_occurrence_inspected_costs_one_work_visit() {
         .position(|occurrence| occurrence == wanted)
         .expect("row 0 occurrence")
         + 1;
-    assert_eq!(second - first, 1 + scanned as u64);
+    // Row 0 is joined (the scan) and then has its region compared, once for
+    // each region of its occurrence's source-map entry.
+    let regions = package["source_map"]
+        .as_array()
+        .expect("source map")
+        .iter()
+        .find(|entry| {
+            entry["node_id"] == rows(&package)[0]["declaration"]
+                && entry["role"] == wanted["role"]
+                && entry["ordinal"] == wanted["ordinal"]
+        })
+        .expect("entry")["regions"]
+        .as_array()
+        .expect("regions")
+        .len();
+    assert_eq!(second - first, (scanned + regions) as u64);
 }
 
 #[trace("TC-477", "FR-371-AC-6")]
@@ -682,7 +740,7 @@ fn the_coverage_walk_costs_one_work_visit_per_occurrence_it_inspects() {
             .filter(|node| claim_bearing(node))
             .map(|node| node["occurrences"].as_array().expect("occurrences").len())
             .sum();
-        (1 + own + 1, before + own + 1)
+        (own + 1, before + own + 1)
     };
     let without = |index: usize| {
         let mut damaged = package.clone();
@@ -747,4 +805,507 @@ fn a_claim_node_with_declaration_and_claim_occurrences_has_a_row_for_each() {
         Some(Cause::InvalidValue),
         "/claim_names",
     );
+}
+
+fn read_all(package: &Value) -> CheckedPackageV2ReadResult {
+    read_with(
+        package,
+        &evidence_for(package),
+        CheckedPackageReadLimits::bounded(),
+    )
+}
+
+/// The state-clause fixture with a state-graph claim beside its temporal
+/// clauses: the index of the claim's row and the name of the first temporal
+/// clause.
+fn namespace_package() -> (Value, usize, String) {
+    let mut package = StatePackage::new().value;
+    package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .push(claim_node());
+    settle(&mut package);
+    assert!(package.get("temporal_clause_names").is_some());
+    let claim = nodes(&package)
+        .iter()
+        .position(|node| node["semantic_form"] == "state_graph")
+        .expect("state-graph claim");
+    let index = rows(&package)
+        .iter()
+        .position(|row| row["declaration"] == nodes(&package)[claim]["node_id"])
+        .expect("claim row");
+    let temporal = package["temporal_clause_names"][0]["name"]
+        .as_str()
+        .expect("clause name")
+        .to_owned();
+    (package, index, temporal)
+}
+
+fn rename_row(package: &mut Value, index: usize, name: &str, path: Value) {
+    package["claim_names"][index]["name"] = json!(name);
+    package["claim_names"][index]["qualified_name"] = path;
+}
+
+#[trace("TC-477", "FR-371-AC-7")]
+#[test]
+fn a_claim_name_equal_to_a_temporal_clause_name_is_ambiguous() {
+    let (package, index, temporal) = namespace_package();
+    for path in [json!([temporal]), json!(["Scope", temporal])] {
+        let mut damaged = package.clone();
+        rename_row(&mut damaged, index, &temporal, path);
+        let refusal = assert_refusal(
+            read_all(&damaged),
+            Code::AmbiguousDeclaration,
+            Some(Cause::AmbiguousName),
+            &format!("/claim_names/{index}/name"),
+        );
+        // Both rows are named: the claim row is the locus and the temporal
+        // clause row the document position.
+        assert_document_pointer(&refusal, "/temporal_clause_names/0/name");
+        assert_row_locus(&refusal, &damaged, index);
+    }
+}
+
+#[trace("TC-477", "FR-371-AC-7")]
+#[test]
+fn distinct_claim_and_temporal_clause_names_resolve_to_one_row_each() {
+    let (mut package, index, temporal) = namespace_package();
+    rename_row(&mut package, index, "ReachThree", json!(["ReachThree"]));
+    let admitted = admitted(read_all(&package));
+    let claim = admitted
+        .claim_name_for_path(&["ReachThree"])
+        .expect("the claim row");
+    assert_eq!(claim.name.as_ref(), "ReachThree");
+    let clause: Vec<_> = admitted
+        .temporal_clause_names()
+        .expect("clause rows")
+        .iter()
+        .filter(|row| row.name.as_ref() == temporal)
+        .collect();
+    assert_eq!(clause.len(), 1);
+    assert_eq!(admitted.claim_name_for_path(&[temporal.as_str()]), None);
+}
+
+#[trace("TC-477", "FR-371-AC-7", "FR-371-AC-6")]
+#[test]
+fn the_one_namespace_check_costs_one_work_visit_per_row() {
+    let (package, _, temporal) = namespace_package();
+    let (first, last) = (0, rows(&package).len() - 1);
+    assert!(last > first);
+    let evidence = evidence_for(&package);
+    let cost = |index: usize| {
+        let mut damaged = package.clone();
+        rename_row(&mut damaged, index, &temporal, json!([temporal]));
+        smallest_deciding_work_with(&damaged, &evidence)
+    };
+    // Each row visited before the refusing one costs one validation visit.
+    assert_eq!(cost(last) - cost(first), (last - first) as u64);
+}
+
+#[trace("TC-477", "FR-371-AC-3")]
+#[test]
+fn a_row_naming_a_temporal_clause_node_is_dangling() {
+    let (mut package, index, _) = namespace_package();
+    let clause = nodes(&package)
+        .iter()
+        .find(|node| node["node_tag"] == "temporal" && node["semantic_form"] == "temporal_clause")
+        .expect("temporal clause")["node_id"]
+        .clone();
+    package["claim_names"][index]["declaration"] = clause;
+    package["claim_names"][index]["occurrence"] = json!({"role": "claim", "ordinal": 0});
+    let refusal = assert_refusal(
+        read_all(&package),
+        Code::InvalidPackage,
+        Some(Cause::InvalidValue),
+        &format!("/claim_names/{index}/declaration"),
+    );
+    assert_row_locus(&refusal, &package, index);
+}
+
+#[trace("TC-477", "FR-371-AC-2")]
+#[test]
+fn an_empty_or_null_member_refuses_as_malformed_wire() {
+    let package = v2_nominal();
+    for member in [json!([]), json!(null)] {
+        let mut damaged = package.clone();
+        damaged["claim_names"] = member;
+        assert_refusal(
+            crate::read_and_account(
+                &canonical(&damaged),
+                CheckedPackageReadLimits::bounded(),
+                &evidence_for(&damaged),
+            ),
+            Code::MalformedWire,
+            None,
+            "/claim_names",
+        );
+    }
+}
+
+#[trace("TC-477", "FR-371-AC-2")]
+#[test]
+fn a_malformed_later_row_wins_over_a_dangling_earlier_row() {
+    let mut package = state_package();
+    package["claim_names"][0]["declaration"] =
+        json!({"package": "absent", "path": ["nothing"], "ordinal": 0});
+    package["claim_names"][1]["name"] = json!("not an identifier");
+    assert_refusal(
+        read_state(&package),
+        Code::MalformedWire,
+        None,
+        "/claim_names/1/name",
+    );
+}
+
+#[trace("TC-477", "FR-371-AC-1")]
+#[test]
+fn the_fspec_example_names_a_state_clause_and_a_state_graph_claim() {
+    let (mut package, claim_row, _) = namespace_package();
+    rename_row(&mut package, claim_row, "ReachThree", json!(["ReachThree"]));
+    let clause_row = rows(&package)
+        .iter()
+        .position(|row| {
+            let node = nodes(&package)
+                .iter()
+                .find(|node| node["node_id"] == row["declaration"])
+                .expect("row node");
+            node["semantic_form"] == "state_clause"
+                && node["body"]["operation"]["member"]["clause"] == "invariant"
+        })
+        .expect("the invariant clause row");
+    rename_row(
+        &mut package,
+        clause_row,
+        "NotAboveThree",
+        json!(["NotAboveThree"]),
+    );
+    let admitted = admitted(read_all(&package));
+    let names: Vec<_> = admitted
+        .claim_names()
+        .expect("rows")
+        .iter()
+        .map(|row| {
+            row.qualified_name
+                .iter()
+                .map(AsRef::as_ref)
+                .collect::<Vec<&str>>()
+        })
+        .collect();
+    assert!(names.contains(&vec!["NotAboveThree"]));
+    assert!(names.contains(&vec!["ReachThree"]));
+    let invariant = admitted
+        .claim_name_for_path(&["NotAboveThree"])
+        .expect("clause");
+    let reach = admitted
+        .claim_name_for_path(&["ReachThree"])
+        .expect("claim");
+    assert_ne!(invariant.declaration, reach.declaration);
+    // Renaming the clause changes no node identity.
+    let before = nodes(&package).clone();
+    let mut again = package.clone();
+    rename_row(&mut again, clause_row, "Renamed", json!(["Renamed"]));
+    assert_eq!(&before, nodes(&again));
+    admitted_from(&canonical(&again), &evidence_for(&again));
+}
+
+#[trace("TC-477", "FR-371-AC-8")]
+#[test]
+fn two_refinements_with_one_name_are_ambiguous_at_the_later_body_name() {
+    let (package, evidence) = refinement_package();
+    let position = nodes(&package)
+        .iter()
+        .position(|node| node["semantic_form"] == "refinement")
+        .expect("refinement");
+    // A second refinement node, equal in every member but its `name`, then
+    // renamed to the first one's name without re-deriving identity.
+    let mut twin = package.clone();
+    let mut node = nodes(&twin)[position].clone();
+    let name = node["body"]["name"].as_str().expect("name").to_owned();
+    node["body"]["name"] = json!("Twin");
+    node["node_id"]["path"] = json!(["fixture", "twin"]);
+    twin["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .push(node);
+    let later = nodes(&twin).len() - 1;
+    twin["semantic_graph"]["nodes"][later]["body"]["name"] = json!(name);
+    let refusal = refusal_of(read_with(
+        &twin,
+        &evidence,
+        CheckedPackageReadLimits::bounded(),
+    ));
+    assert_eq!(refusal.code, Code::AmbiguousDeclaration, "{refusal:?}");
+    assert_eq!(refusal.cause, Some(Cause::AmbiguousName), "{refusal:?}");
+    assert_eq!(
+        refusal.loci[0].path.as_ref().map(|path| path.as_str()),
+        Some(format!("/semantic_graph/nodes/{later}/body/name").as_str()),
+        "{refusal:?}"
+    );
+    assert_document_pointer(
+        &refusal,
+        &format!("/semantic_graph/nodes/{position}/body/name"),
+    );
+    let later_id: CheckedNodeId =
+        serde_json::from_value(nodes(&twin)[later]["node_id"].clone()).expect("node id");
+    assert_eq!(refusal.locus.as_ref(), Some(&later_id), "{refusal:?}");
+}
+
+/// The first `source_map` region of the occurrence the row `index` of `table`
+/// names.
+fn occurrence_region_of(package: &Value, table: &str, index: usize) -> Value {
+    let row = &package[table][index];
+    let (role, ordinal) = if table == "claim_names" {
+        (
+            row["occurrence"]["role"].clone(),
+            row["occurrence"]["ordinal"].clone(),
+        )
+    } else {
+        (json!("claim"), row["occurrence"].clone())
+    };
+    package["source_map"]
+        .as_array()
+        .expect("source map")
+        .iter()
+        .find(|entry| {
+            entry["node_id"] == row["declaration"]
+                && entry["role"] == role
+                && entry["ordinal"] == ordinal
+        })
+        .expect("the occurrence's source_map entry")["regions"][0]
+        .clone()
+}
+
+const TABLES: [&str; 2] = ["claim_names", "temporal_clause_names"];
+
+#[trace("TC-477", "FR-371-AC-9")]
+#[test]
+fn a_row_carries_the_declaration_region_and_the_reader_exposes_it() {
+    let (package, _, _) = namespace_package();
+    for table in TABLES {
+        let region = package[table][0]["declaration_region"].clone();
+        assert_eq!(region, occurrence_region_of(&package, table, 0));
+    }
+    // A declaration wider than the name token admits and moves no node.
+    let narrow = admitted(read_all(&package));
+    let mut wide = package.clone();
+    for table in TABLES {
+        let end = wide[table][0]["declaration_region"]["end"]
+            .as_u64()
+            .expect("end");
+        wide[table][0]["declaration_region"]["end"] = json!(end + 40);
+    }
+    let widened = admitted(read_all(&wide));
+    assert_eq!(widened.graph(), narrow.graph());
+    let claim = &widened.claim_names().expect("rows")[0];
+    assert_eq!(
+        serde_json::to_value(&claim.declaration_region).expect("region"),
+        wide["claim_names"][0]["declaration_region"]
+    );
+    let clause = &widened.temporal_clause_names().expect("rows")[0];
+    assert_eq!(
+        serde_json::to_value(&clause.declaration_region).expect("region"),
+        wide["temporal_clause_names"][0]["declaration_region"]
+    );
+    // The regions survive write and read.
+    let reread = admitted_from(&write_again(&widened), &evidence_for(&wide));
+    assert_eq!(reread.claim_names(), widened.claim_names());
+    assert_eq!(
+        reread.temporal_clause_names(),
+        widened.temporal_clause_names()
+    );
+}
+
+#[trace("TC-477", "FR-371-AC-9")]
+#[test]
+fn a_missing_or_malformed_declaration_region_is_refused_at_the_member() {
+    let (package, _, _) = namespace_package();
+    for table in TABLES {
+        let at = format!("/{table}/0/declaration_region");
+        let mut missing = package.clone();
+        missing[table][0]
+            .as_object_mut()
+            .expect("row")
+            .remove("declaration_region");
+        assert_refusal(read_all(&missing), Code::MalformedWire, None, &at);
+        for damaged in [
+            json!(7),
+            json!(null),
+            json!({}),
+            json!({"start": 0, "end": 1}),
+        ] {
+            let mut bad = package.clone();
+            bad[table][0]["declaration_region"] = damaged;
+            assert_refusal(read_all(&bad), Code::MalformedWire, None, &at);
+        }
+        let mut extra = package.clone();
+        extra[table][0]["declaration_region"]["extra"] = json!(1);
+        assert_refusal(read_all(&extra), Code::MalformedWire, None, &at);
+        let mut part = package.clone();
+        part[table][0]["declaration_region"]["start"] = json!("zero");
+        assert_refusal(read_all(&part), Code::MalformedWire, None, &at);
+    }
+}
+
+#[trace("TC-477", "FR-371-AC-9")]
+#[test]
+fn a_region_that_is_not_the_occurrences_declaration_is_invalid() {
+    let (package, _, _) = namespace_package();
+    for table in TABLES {
+        let at = format!("/{table}/0/declaration_region");
+        let held = occurrence_region_of(&package, table, 0);
+        let end = held["end"].as_u64().expect("end");
+        let start = held["start"].as_u64().expect("start");
+        // Shrunk to one byte that does not contain the name token.
+        let mut shrunk = package.clone();
+        shrunk[table][0]["declaration_region"]["start"] = json!(end);
+        shrunk[table][0]["declaration_region"]["end"] = json!(end + 1);
+        // Cut short at either side of the token.
+        let mut early = package.clone();
+        early[table][0]["declaration_region"]["end"] = json!(end - 1);
+        // Another source.
+        let mut foreign = package.clone();
+        foreign[table][0]["declaration_region"]["source"] =
+            json!({"authority": "other", "identity": "elsewhere"});
+        let mut cases = vec![shrunk, early, foreign];
+        if start > 0 {
+            let mut late = package.clone();
+            late[table][0]["declaration_region"]["start"] = json!(start + 1);
+            cases.push(late);
+        }
+        for damaged in cases {
+            let refusal = assert_refusal(
+                read_all(&damaged),
+                Code::InvalidPackage,
+                Some(Cause::InvalidValue),
+                &at,
+            );
+            let declared: CheckedNodeId =
+                serde_json::from_value(damaged[table][0]["declaration"].clone()).expect("id");
+            assert_eq!(refusal.locus.as_ref(), Some(&declared), "{refusal:?}");
+        }
+    }
+}
+
+#[trace("TC-477", "FR-371-AC-9")]
+#[test]
+fn the_region_check_follows_the_join_and_precedes_the_repeated_key() {
+    let (package, _, _) = namespace_package();
+    // After the occurrence join: a row with a missing occurrence and a bad
+    // region refuses at the occurrence.
+    let mut joined = package.clone();
+    joined["claim_names"][0]["occurrence"]["ordinal"] = json!(99);
+    joined["claim_names"][0]["declaration_region"]["end"] = json!(0);
+    joined["claim_names"][0]["declaration_region"]["start"] = json!(0);
+    assert_refusal(
+        read_all(&joined),
+        Code::InvalidPackage,
+        Some(Cause::InvalidValue),
+        "/claim_names/0/occurrence",
+    );
+    // Before the repeated-key check: the repeated row's bad region wins.
+    let mut repeated = package.clone();
+    let mut row = repeated["claim_names"][0].clone();
+    row["declaration_region"]["end"] = json!(0);
+    row["declaration_region"]["start"] = json!(0);
+    repeated["claim_names"]
+        .as_array_mut()
+        .expect("rows")
+        .insert(1, row);
+    assert_refusal(
+        read_all(&repeated),
+        Code::InvalidPackage,
+        Some(Cause::InvalidValue),
+        "/claim_names/1/declaration_region",
+    );
+    let mut repeated_clause = package;
+    let mut row = repeated_clause["temporal_clause_names"][0].clone();
+    row["declaration_region"]["end"] = json!(0);
+    row["declaration_region"]["start"] = json!(0);
+    repeated_clause["temporal_clause_names"]
+        .as_array_mut()
+        .expect("rows")
+        .insert(1, row);
+    assert_refusal(
+        read_all(&repeated_clause),
+        Code::InvalidPackage,
+        Some(Cause::InvalidValue),
+        "/temporal_clause_names/1/declaration_region",
+    );
+}
+
+#[trace("TC-477", "FR-371-AC-6", "FR-371-AC-9")]
+#[test]
+fn each_source_region_the_declaration_check_compares_costs_one_work_visit() {
+    let (package, _, _) = namespace_package();
+    assert!(rows(&package).len() > 1);
+    let evidence = evidence_for(&package);
+    let refused_at = |index: usize| {
+        let mut damaged = package.clone();
+        damaged["claim_names"][index]["declaration_region"]["source"] =
+            json!({"authority": "other", "identity": "elsewhere"});
+        smallest_deciding_work_with(&damaged, &evidence)
+    };
+    let (first, second) = (refused_at(0), refused_at(1));
+    let row = &rows(&package)[0];
+    let node = nodes(&package)
+        .iter()
+        .find(|node| node["node_id"] == row["declaration"])
+        .expect("row node");
+    let scanned = node["occurrences"]
+        .as_array()
+        .expect("occurrences")
+        .iter()
+        .position(|occurrence| occurrence == &row["occurrence"])
+        .expect("occurrence")
+        + 1;
+    let regions = package["source_map"]
+        .as_array()
+        .expect("source map")
+        .iter()
+        .find(|entry| {
+            entry["node_id"] == row["declaration"]
+                && entry["role"] == row["occurrence"]["role"]
+                && entry["ordinal"] == row["occurrence"]["ordinal"]
+        })
+        .expect("entry")["regions"]
+        .as_array()
+        .expect("regions")
+        .len();
+    // The second pays for row 0's join scan and its region comparisons.
+    assert_eq!(second - first, (scanned + regions) as u64);
+}
+
+#[trace("TC-477", "FR-371-AC-9")]
+#[test]
+fn an_occurrence_without_a_source_map_entry_is_left_to_the_source_map_check() {
+    let (mut package, _, _) = namespace_package();
+    let row = package["claim_names"][0].clone();
+    let entries = package["source_map"].as_array_mut().expect("source map");
+    let before = entries.len();
+    entries.retain(|entry| {
+        !(entry["node_id"] == row["declaration"]
+            && entry["role"] == row["occurrence"]["role"]
+            && entry["ordinal"] == row["occurrence"]["ordinal"])
+    });
+    assert!(entries.len() < before);
+    let refusal = refusal_of(read_all(&package));
+    assert_eq!(refusal.code, Code::InvalidSourceMap, "{refusal:?}");
+}
+
+#[trace("TC-477", "FR-371-AC-6")]
+#[test]
+fn the_closed_schema_check_costs_one_work_visit_per_row() {
+    let package = state_package();
+    let all = rows(&package).len();
+    assert!(all > 1);
+    // Row 0 dangles in both packages, so the second only holds one more row
+    // for the closed-schema check to visit.
+    let dangling = |mut damaged: Value| {
+        damaged["claim_names"][0]["declaration"] =
+            json!({"package": "absent", "path": ["nothing"], "ordinal": 0});
+        smallest_deciding_work(&damaged)
+    };
+    let mut fewer = package.clone();
+    fewer["claim_names"].as_array_mut().expect("rows").pop();
+    assert_eq!(dangling(package) - dangling(fewer), 1);
 }

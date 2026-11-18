@@ -4935,6 +4935,7 @@ fn step_relation_source_correspondence_does_not_change_semantic_identity() {
         .expect("relation source correspondence");
     entry["regions"][0]["start"] = json!(100);
     entry["regions"][0]["end"] = json!(101);
+    crate::support::checked_package::recompute_declaration_regions(&mut moved);
     assert_ne!(base["source_map"], moved["source_map"]);
     let admitted = |package: &Value| match read(package) {
         CheckedPackageV2ReadResult::Admitted(package) => package,

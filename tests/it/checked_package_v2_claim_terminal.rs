@@ -149,6 +149,19 @@ fn malformed_hybrid_model() -> Value {
     })
 }
 
+/// A `possible` state-graph claim node (FR-059).
+pub(super) fn claim_node() -> Value {
+    let over = family_key("a4a4");
+    let predicate = family_key("eeee");
+    state_graph(
+        "possible",
+        reference(&over),
+        empty(),
+        reference(&predicate),
+        &[over, predicate],
+    )
+}
+
 fn package_with(node: Value) -> Value {
     package_with_nodes(vec![node])
 }
@@ -461,6 +474,7 @@ fn source_correspondence(package: &Value, node_position: usize, start: u64) -> V
     entry["regions"][0]["start"] = json!(start);
     entry["regions"][0]["end"] = json!(start + 1);
     assert_ne!(changed["source_map"], package["source_map"]);
+    crate::support::checked_package::recompute_declaration_regions(&mut changed);
     changed
 }
 
@@ -858,9 +872,11 @@ fn state_graph_identity_and_shared_occurrences() {
     let mut instance_a = possible.clone();
     instance_a["source_map"][base_node_index()]["regions"][0]["start"] = json!(100);
     instance_a["source_map"][base_node_index()]["regions"][0]["end"] = json!(101);
+    crate::support::checked_package::recompute_declaration_regions(&mut instance_a);
     let mut instance_b = possible.clone();
     instance_b["source_map"][base_node_index()]["regions"][0]["start"] = json!(200);
     instance_b["source_map"][base_node_index()]["regions"][0]["end"] = json!(201);
+    crate::support::checked_package::recompute_declaration_regions(&mut instance_b);
     for instance in [&instance_a, &instance_b] {
         let read = admitted(instance);
         let written = reread_written(instance);

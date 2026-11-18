@@ -3869,6 +3869,52 @@ mod tests {
     use std::collections::BTreeSet;
     use std::path::Path as FilePath;
 
+    /// The published fixtures predate the required `declaration_region` of a
+    /// name row (FSpec FR-322-AC-460); this gives each such row the hull of
+    /// its occurrence's own source regions, as the writer would.
+    fn with_declaration_regions(bytes: &[u8]) -> Value {
+        let mut wire: Value = serde_json::from_slice(bytes).expect("published wire");
+        let entries = wire["source_map"].as_array().cloned().unwrap_or_default();
+        for table in ["temporal_clause_names", "claim_names"] {
+            let Some(rows) = wire.get_mut(table).and_then(Value::as_array_mut) else {
+                continue;
+            };
+            for row in rows
+                .iter_mut()
+                .filter(|row| row.get("declaration_region").is_none())
+            {
+                let (role, ordinal) = match table {
+                    "claim_names" => (
+                        row["occurrence"]["role"]
+                            .as_str()
+                            .unwrap_or("claim")
+                            .to_owned(),
+                        row["occurrence"]["ordinal"].as_u64(),
+                    ),
+                    _ => ("claim".to_owned(), row["occurrence"].as_u64()),
+                };
+                let regions: Vec<&Value> = entries
+                    .iter()
+                    .filter(|entry| {
+                        entry["node_id"] == row["declaration"]
+                            && entry["role"] == role
+                            && entry["ordinal"].as_u64() == ordinal
+                    })
+                    .flat_map(|entry| entry["regions"].as_array().into_iter().flatten())
+                    .collect();
+                let bound = |key: &str, pick: fn(u64, u64) -> u64| {
+                    regions.iter().filter_map(|r| r[key].as_u64()).reduce(pick)
+                };
+                row["declaration_region"] = json!({
+                    "source": regions.first().map_or(Value::Null, |r| r["source"].clone()),
+                    "start": bound("start", u64::min),
+                    "end": bound("end", u64::max),
+                });
+            }
+        }
+        wire
+    }
+
     fn published_timed_nodes() -> Vec<(usize, CheckedSemanticNodeV2, TimedModelForm)> {
         published_timed_nodes_from("fixtures/positive-tick-timed-model-nodes.json")
     }
@@ -3883,7 +3929,7 @@ mod tests {
         )
         .expect("published tick timed model");
         let wire: super::super::RawCheckedPackageWireV2 =
-            serde_json::from_slice(&bytes).expect("published wire");
+            serde_json::from_value(with_declaration_regions(&bytes)).expect("published wire");
         wire.semantic_graph
             .nodes
             .into_iter()
@@ -4001,17 +4047,18 @@ mod tests {
                 .expect("published slot vectors"),
         )
         .expect("vector JSON");
-        let mut wire: super::super::RawCheckedPackageWireV2 = serde_json::from_slice(
-            &std::fs::read(
-                proposal.join(
-                    vectors["selected_package"]
-                        .as_str()
-                        .expect("published package reference"),
-                ),
-            )
-            .expect("published slot package"),
-        )
-        .expect("wire JSON");
+        let mut wire: super::super::RawCheckedPackageWireV2 =
+            serde_json::from_value(with_declaration_regions(
+                &std::fs::read(
+                    proposal.join(
+                        vectors["selected_package"]
+                            .as_str()
+                            .expect("published package reference"),
+                    ),
+                )
+                .expect("published slot package"),
+            ))
+            .expect("wire JSON");
         let selected: Value = serde_json::from_slice(
             &std::fs::read(proposal.join("domain-package-acme-timed-slots.json"))
                 .expect("original selected model"),
@@ -4146,7 +4193,7 @@ mod tests {
                 .expect("published slot vectors"),
         )
         .expect("vector JSON");
-        let mut wire: Value = serde_json::from_slice(
+        let mut wire: Value = with_declaration_regions(
             &std::fs::read(
                 proposal.join(
                     vectors["selected_package"]
@@ -4155,8 +4202,7 @@ mod tests {
                 ),
             )
             .expect("published slot package"),
-        )
-        .expect("wire JSON");
+        );
         let mut selected: Value = serde_json::from_slice(
             &std::fs::read(proposal.join("domain-package-acme-timed-slots.json"))
                 .expect("original selected model"),
