@@ -3106,7 +3106,7 @@ fn ac5_history_package() -> (Value, CheckedPackageEvidence, usize, Value, Value,
 #[trace("TC-062", "FR-061-AC-5")]
 #[test]
 fn history_read_requires_a_joined_refinement_row_and_reachable_application() {
-    let (package, evidence, position) = joined_history_package();
+    let (package, evidence, _) = joined_history_package();
     let result = read(&package, &evidence);
     assert!(
         matches!(result, CheckedPackageV2ReadResult::Admitted(_)),
@@ -3126,9 +3126,15 @@ fn history_read_requires_a_joined_refinement_row_and_reachable_application() {
         refusal.cause,
         Some(CheckedPackageRefusalCause::OperatorIneligible)
     );
+    let application_position = orphan["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .position(|node| node["node_id"] == node_id("history-read/application"))
+        .expect("history application");
     assert_eq!(
         refusal.loci[0].path.as_ref().map(ToString::to_string),
-        Some(format!("/semantic_graph/nodes/{position}"))
+        Some(format!("/semantic_graph/nodes/{application_position}"))
     );
 }
 
