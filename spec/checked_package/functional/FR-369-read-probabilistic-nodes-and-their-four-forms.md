@@ -174,8 +174,15 @@ A `reward` whose function has a `body` binding is refused `ill_typed` and cause
 than the function, by the reader's general result comparison of FSpec FR-322
 "Results"; the join adds no second check of the body.
 
-A support value of a declared record, tuple, variant, option or collection type
-has no literal kind and is refused.
+A support value of a Boolean parameter is a `boolean` literal whose `value` is a
+JSON boolean, and one of a parameter of a declared enumeration (a variant type
+none of whose cases carries a payload) is an `enum` literal typed at that
+declaration whose `value` names one of its cases (FSpec FR-640 admits a random
+parameter of any parameter type); a literal of another kind, a non-boolean
+value, a literal typed at another declaration and an unknown or differently
+cased case name refuse at the value. A support value of a declared record,
+tuple, option or collection type, or of a variant type with a payload case, has
+no literal kind and is refused.
 
 ### Planned
 
@@ -216,6 +223,8 @@ QSL-2310.
 | FR-369-AC-20 | The join charges one validation visit for each support value at the value's pointer: a budget exists that stops the read as incomplete at exactly the value of each row. | Test |
 | FR-369-AC-21 | A delay quantity, of `uniform_interval` or `discrete`, typed at another unit than the `dense` source's refuses `invalid_package`/`invalid-value` at the quantity; quantities in the source's unit are admitted. | Test |
 | FR-369-AC-22 | The join charges one validation visit for each delay quantity of a `discrete` list at the quantity's pointer: a budget exists that stops the read as incomplete at exactly the delay of each row. | Test |
+| FR-369-AC-23 | A `random_parameter` of a Boolean parameter with `boolean` support literals `true` and `false`, and one of a declared enumeration parameter with `enum` support literals typed at that declaration and naming its cases, are admitted and read back with their supports. | Test |
+| FR-369-AC-24 | A Boolean parameter's support value given as the text `"true"`, as the number `1`, as an integer literal or as an `enum` literal, and an enumeration parameter's support value that names an unknown case, differs from a case in letter case, is typed at another enumeration, is a Boolean literal or is a text literal refuse `invalid_package`/`invalid-value` at the value. | Test |
 
 ## Dependencies
 

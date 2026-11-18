@@ -144,6 +144,7 @@ fn member_literal_kind(kind: &MemberType) -> Option<LiteralKind> {
         MemberType::RationalRange(_) => LiteralKind::Rational,
         MemberType::CarriedRational(..) | MemberType::Quantity(_) => LiteralKind::Quantity,
         MemberType::TextBounds(_) => LiteralKind::Text,
+        MemberType::Variant(_) => LiteralKind::Enum,
         _ => return None,
     })
 }
@@ -189,19 +190,34 @@ enum NotMember {
 /// Why the support value `term` is no member of the bounded type `slot` has,
 /// or `None` when it is one: a spelling that is not the one canonical spelling
 /// of an integer or rational (FSpec FR-322), a number outside `Int[lo, hi]` or
-/// the bounds of `Rational[n1, n2; d1, d2]` (also for a quantity over one), or
-/// a text that is not in its profile's normal form or whose length is outside
-/// `Text[min, max; profile]`.
+/// the bounds of `Rational[n1, n2; d1, d2]` (also for a quantity over one), a
+/// text that is not in its profile's normal form or whose length is outside
+/// `Text[min, max; profile]`, a Boolean whose value is no JSON boolean, or an
+/// enumeration literal typed at another declaration or naming a case the
+/// declaration lacks.
 fn not_member(
     meter: &mut WorkMeter,
+    models: &RetainedModels,
     package: &DomainModel,
     slot: &TypedSlot,
     term: &CheckedTerm,
 ) -> Result<Option<NotMember>, ValidationFailure> {
     use filament_exact::Integer as Exact;
-    let CheckedTerm::Literal { value, .. } = term else {
+    let CheckedTerm::Literal { value, type_id, .. } = term else {
         return Ok(None);
     };
+    match package.slot_type(slot) {
+        Some(MemberType::Boolean) => {
+            return Ok(value.as_bool().is_none().then_some(NotMember::Literal));
+        }
+        Some(MemberType::Variant(declaration)) => {
+            let declared = value
+                .as_str()
+                .is_some_and(|case| models.selected_variant_case(&declaration, case).is_some());
+            return Ok((!declared || type_id != &declaration).then_some(NotMember::Literal));
+        }
+        _ => {}
+    }
     let Some(spelled) = value.as_str() else {
         return Ok(Some(NotMember::Literal));
     };
@@ -706,7 +722,7 @@ pub(super) fn validate(
                         return Err(invalid(meter, position, value_at));
                     }
                     let verdict = match bound(entry, 0) {
-                        Some(value) => not_member(meter, package, declared, value)?,
+                        Some(value) => not_member(meter, join.models, package, declared, value)?,
                         None => None,
                     };
                     match verdict {

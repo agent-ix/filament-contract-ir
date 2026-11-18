@@ -20,6 +20,8 @@ use serde_json::{json, Value};
 
 const PACKAGE: &str = "test/families";
 const DEPOSIT: &str = "ix://test/families/Account/deposit";
+const TIER: &str = "ix://test/families/Tier";
+const OTHER: &str = "ix://test/families/Other";
 const WITHDRAW: &str = "ix://test/families/Account/withdraw";
 /// The parameters of `withdraw`, in declared order.
 const PARAMETERS: [&str; 11] = ["d", "t", "r", "r2", "l", "lb", "ls", "ld", "lk", "lq", "c"];
@@ -82,7 +84,16 @@ fn document_with(chain: usize) -> Value {
         let operations: Vec<Value> = operations
             .into_iter()
             .map(|operation| {
-                json!({"identity": format!("ix://{PACKAGE}/{name}/{operation}"), "params": []})
+                let params = if (name.as_str(), operation) == ("Leaf", "run") {
+                    json!([
+                        {"name": "flag", "typeRef": "ix://filament/native/Boolean",
+                         "multiplicity": one},
+                        {"name": "tier", "typeRef": TIER, "multiplicity": one},
+                    ])
+                } else {
+                    json!([])
+                };
+                json!({"identity": format!("ix://{PACKAGE}/{name}/{operation}"), "params": params})
             })
             .collect();
         document["types"]
@@ -94,6 +105,27 @@ fn document_with(chain: usize) -> Value {
                 "roles": [], "constraints": [], "extensions": [], "unknownPolicy": "reject",
                 "supertypes": supertypes, "fields": [], "relationships": [],
                 "operations": operations,
+            }));
+    }
+    document["constructs"]
+        .as_array_mut()
+        .expect("constructs")
+        .push(json!({
+            "kind": {"module": PACKAGE, "name": "variant"},
+            "construct": {"meaning": "filament.meaning.model.variant-type/v1"},
+        }));
+    // `Tier` and `Other`: enumerations of the cases `Gold` and `Silver`.
+    for identity in [TIER, OTHER] {
+        document["types"]
+            .as_array_mut()
+            .expect("types")
+            .push(json!({
+                "identity": identity, "displayName": identity,
+                "kind": {"module": PACKAGE, "name": "variant"},
+                "variants": [
+                    {"identity": format!("{identity}/Gold"), "name": "Gold"},
+                    {"identity": format!("{identity}/Silver"), "name": "Silver"},
+                ],
             }));
     }
     document["constructs"]
@@ -177,6 +209,10 @@ fn document_with(chain: usize) -> Value {
             ],
         }));
     document
+}
+
+fn tier_id() -> Value {
+    id(&["model", "variant_type", TIER])
 }
 
 fn id(path: &[&str]) -> Value {
@@ -394,6 +430,17 @@ fn assemble_with(chain: usize, nodes: Vec<(Value, &str)>) -> Value {
         model["dependencies"] = json!([id(&[&family_key("aaaa")])]);
         model["owner"] = model_owner(PACKAGE, &identity);
         append(&mut value, model, "generated");
+    }
+    for identity in [TIER, OTHER] {
+        let mut declaration = plain_node(
+            &["model", "variant_type", identity],
+            "model",
+            "variant_type",
+            id(&["model", "variant_type", identity]),
+            aggregate(vec![]),
+        );
+        declaration["owner"] = model_owner(PACKAGE, identity);
+        append(&mut value, declaration, "generated");
     }
     append(
         &mut value,
@@ -1595,5 +1642,69 @@ fn the_join_charges_each_support_value() {
             stopped.contains(&pointer),
             "no budget stops at {pointer}: {stopped:?}"
         );
+    }
+}
+
+/// A `random_parameter` of `parameter` on `Leaf::run`, one support value each
+/// at weight 1.
+fn on_run(parameter: &str, values: Vec<Value>) -> Value {
+    let mut body = parameter_on("run", parameter, values);
+    body["members"][0] = binding(
+        "declaring",
+        reference(id(&["model", "object_type", "ix://test/families/Leaf"])),
+    );
+    package("random_parameter", body, |_| {})
+}
+
+fn case(name: &str) -> Value {
+    typed_literal(tier_id(), "enum", name)
+}
+
+fn flag(value: Value) -> Value {
+    json!({"term": "literal", "type": id(&["builtin/boolean"]),
+        "value_kind": "boolean", "value": value})
+}
+
+/// FR-369-AC-23: a Boolean and an enumeration parameter admit their support
+/// values, the read exposes them, and a mistyped or malformed one refuses.
+#[trace("TC-476", "FR-369-AC-23")]
+#[test]
+fn the_public_reader_admits_boolean_and_enum_support_values() {
+    let model: filament_contract_model::CheckedNodeId =
+        serde_json::from_value(id(&["model", "object_type", "ix://test/families/Leaf"]))
+            .expect("model id");
+    let flags = vec![flag(json!(true)), flag(json!(false))];
+    let value = on_run("flag", flags);
+    let package = admitted(&value);
+    assert_eq!(package.random_parameters(&model, "run")[0].support.len(), 2);
+    let value = on_run("tier", vec![case("Gold"), case("Silver")]);
+    let package = admitted(&value);
+    assert_eq!(package.random_parameters(&model, "run")[0].support.len(), 2);
+}
+
+/// FR-369-AC-24: a Boolean or enumeration support value of another kind, an
+/// unknown case, and an enumeration literal typed at
+/// another declaration refuse `invalid-value` at the value.
+#[trace("TC-476", "FR-369-AC-24")]
+#[test]
+fn the_public_reader_refuses_malformed_boolean_and_enum_support_values() {
+    let at = "body/members/3/value/members/0/members/0/value";
+    for value in [
+        flag(json!("true")),
+        flag(json!(1)),
+        literal("integer", json!("1")),
+        case("Gold"),
+    ] {
+        refuse_invalid(&on_run("flag", vec![value]), at);
+    }
+    let other = typed_literal(id(&["model", "variant_type", OTHER]), "enum", "Gold");
+    for value in [
+        case("Bronze"),
+        case("gold"),
+        other,
+        flag(json!(true)),
+        literal("text", json!("Gold")),
+    ] {
+        refuse_invalid(&on_run("tier", vec![value]), at);
     }
 }
