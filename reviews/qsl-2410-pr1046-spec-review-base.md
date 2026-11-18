@@ -40,3 +40,18 @@ FR-371 is a faithful consumer of FR-322-AC-457/458, except for three things:
 | FND-002 | medium | FR-371 rule 5 drops FR-322's "naming both rows" from the duplicate-name refusal, so the spec now matches code that names only the later row. It narrows the upstream requirement without saying so | spec/checked_package/functional/FR-371-read-claim-declaration-names.md:75-77 |
 | FND-003 | low | FR-371 says only "Each visited row consumes one validation visit". The code also charges one visit per occurrence scanned in the row join and per occurrence inspected by the coverage walk, and FR-371-AC-6's tests assert those exact deltas. The spec understates the metering its tests pin | spec/checked_package/functional/FR-371-read-claim-declaration-names.md:79-83,98 |
 | FND-004 | medium | FR-371 says "The reader SHALL admit the member `name` of a refinement body", which makes `name` optional. FSpec `RefinementBody` requires `name`, and FR-322-AC-200 refuses a body without it at the schema and refuses equal refinement names `ambiguous-name` at `body/name`. FR-371 neither requires the member nor records this repository's departure from AC-200 with an owner and follow-up | spec/checked_package/functional/FR-371-read-claim-declaration-names.md:85-86 |
+
+## New findings (disposition pass 1)
+
+| ID | Severity | Summary | Refs |
+| --- | --- | --- | --- |
+| FND-005 | low | FR-371-AC-6 is garbled. It reads "...and the one-namespace check one per row: the declaration-region check one per source-map region compared: the smallest work limit...", so the region charge reads as an explanation of the namespace charge. It should be one list of five charges, followed by the measured consequence | spec/checked_package/functional/FR-371-read-claim-declaration-names.md:153 |
+
+## Dispositions
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-001 | fixed | FR-371 now states the one-namespace rule with its pointer, the document position naming the first temporal row, and the per-row charge. FR-371-AC-7 and an `ix://` reference to FSpec FR-322-AC-459 were added. |
+| FND-002 | fixed | Rule 5 now says the refusal names the earlier row's `/claim_names/{j}/qualified_name` as its package-document position, "so both rows are named". |
+| FND-003 | fixed | The metering paragraph now lists every charge: per row in the schema check, per occurrence in the join, per occurrence in the coverage walk, per source-map region in the region check, and per row in the namespace check. |
+| FND-004 | fixed | FR-371 now says the refinement body `name` is a required text identifier (FR-322-AC-200). A missing or non-text name refuses at the node body, and equal names refuse `ambiguous-name` at the later node's `body/name` naming the earlier one. FR-371-AC-8 was added. |

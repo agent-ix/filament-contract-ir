@@ -353,18 +353,9 @@ fn published_temporal_clause_names_admit_and_refuse_at_exact_loci() {
                 if let Some(cause) = case["expected"]["cause"].as_str() {
                     assert_eq!(refusal.cause.map(cause_word), Some(cause), "{id}");
                 }
-                // FSpec publishes two loci for one defect: CN-S9 puts the removed
-                // `declaration_region` at the row, while CL-S4 (the same edit),
-                // CL-S5 and FR-322-AC-461 put it at that member. The reader
-                // follows the criterion and the two claim-name vectors, and CN-S9
-                // is held to the member (reported to FSpec).
-                let locus = if id == "CN-S9-missing-declaration-region" {
-                    "/temporal_clause_names/0/declaration_region"
-                } else {
-                    case["expected"]["locus"]
-                        .as_str()
-                        .expect("expected pointer")
-                };
+                let locus = case["expected"]["locus"]
+                    .as_str()
+                    .expect("expected pointer");
                 assert_eq!(
                     refusal.loci[0].path.as_ref().expect("pointer").to_string(),
                     locus,

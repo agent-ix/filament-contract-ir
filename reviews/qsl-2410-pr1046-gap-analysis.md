@@ -77,3 +77,22 @@ Coverage of FR-322-AC-457/458 is strong: every reader rule has a killing test an
 | FND-003 | low | TC-477 Expected Results claims each refusal carries "the structural node locus of the row's declaration". No test asserts `refusal.locus`; `assert_refusal` checks only code, cause and `loci[0].path`. M24 (drop `.at_node(declaration)`) survives. Separately, the oracle decoder refinement.rs `decode_body` reads `name` but the lib differential fixture (term_view.rs:2085) carries none, so M28 survives the it suite | tests/it/checked_package_v2_claim_names.rs:105-121; spec/checked_package/matrix/TC-477-claim-declaration-names-reader.md:36-38 |
 | FND-004 | low | FR-371-AC-1 and FR-322-AC-457 name a state-graph claim `ReachThree` (`possible`). The test renames a precondition state clause to `ReachThree`; the package has no state-graph claim node, so the AC example is not reproduced. Claim-node rows are covered only through the step-relation claim test | tests/it/checked_package_v2_claim_names.rs:41-72 |
 | FND-005 | medium | FSpec publishes no `claim_names` vectors (TC-2011) and no fixture rows. 8 of the 20 published fixture packages at f16e1701 hold claim-bearing nodes and no member, so the strict reader refuses them, and three test harnesses derive synthetic rows instead. The derivation is honest (FR-322 makes the member mandatory), but nothing records an FSpec ticket to publish the rows and vectors, or a removal ticket for the shims. The ticket's "plus vectors" deliverable is therefore not met upstream | tests/conformance_fspec/main.rs:263-279; tests/it/support/fspec_inputs.rs:25-30; crates/filament-contract-model/tests/temporal_binding_public.rs:138-154 |
+
+## New findings (disposition pass 1)
+
+| ID | Severity | Summary | Refs |
+| --- | --- | --- | --- |
+| FND-006 | low | The one-namespace refusal must name the *first* `temporal_clause_names` row with the colliding name (FR-322 "One claim namespace"). Mutant N04, which names the last such row instead, survives the claim_names tests: no test has two temporal rows sharing a name | crates/filament-contract-model/src/checked_package/v2/claim_names.rs:374-380 |
+| FND-007 | low | FSpec's published fixtures still carry no `claim_names`: 8 of 20 fixture packages at 06d4f215 hold claim-bearing nodes and no member, although FR-322 makes the member mandatory. The FSpec vectors add rows only through `base_patch`, so the conformance harness and `fspec_inputs::read_json` still derive rows for fixture packages. The ask for the FSpec owner is to regenerate those 8 fixtures with their `claim_names` rows, so the last harness derivation can go | tests/conformance_fspec/main.rs:263-279; tests/it/support/fspec_inputs.rs:22-40 |
+
+## Dispositions
+
+Round 1. 23 round-2 mutants were run at 60c1db52 against `--test it claim_names`; 21 were killed.
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-001 | fixed | `a_row_naming_a_temporal_clause_node_is_dangling` points a row at the temporal clause node and asserts `/claim_names/{i}/declaration` with the row locus. Mutant R33 (row join admits `temporal` nodes) is now killed by it. |
+| FND-002 | fixed | Mutant R27 (lossless compare of `claim_names` removed) is now killed by `an_empty_or_null_member_refuses_as_malformed_wire`. |
+| FND-003 | fixed | `assert_row_locus` now asserts `refusal.locus` on the join, region and duplicate refusals, and mutant R24 (`.at_node` dropped) is killed by 4+ tests. The oracle decoder's name read is covered at 23b41755 by the lib test `a_refinement_body_name_that_is_no_identifier_is_refused_by_the_existing_decoder`, which asserts that `decode_body` refuses `""`, `"Impl::Named"`, `"7up"` and `7`; R28's constant name would admit them. That last point is established by reading, not by running R28 at 23b41755. |
+| FND-004 | fixed | `the_fspec_example_names_a_state_clause_and_a_state_graph_claim` builds the AC-457 example with a state-graph claim node. |
+| FND-005 | fixed | FSpec #702 (QSL-2448) published `claim-name-vectors.json` and `refinement-body-name-vectors.json` (TC-2011, TC-2012, TC-2015). tests/conformance_fspec/claim_names.rs replays them, and the declaration-region derivation shims are gone. The remaining fixture-row derivation is FND-007, an upstream gap. |

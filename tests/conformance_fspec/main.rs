@@ -261,24 +261,7 @@ fn read_package_with_document_override(
         document_override,
         &fixtures_dir(),
     )?;
-    let outcome = crate::read_and_account(&bytes, limits, &evidence);
-    // FSpec's published packages still predate the `claim_names` member (its
-    // vectors add the rows by `base_patch`). A package refused only for the
-    // missing member is read again with the rows its nodes call for.
-    let lacking = matches!(
-        &outcome,
-        CheckedPackageV2ReadResult::Refused(refusal)
-            if package.get("claim_names").is_none()
-                && refusal.loci.first().and_then(|locus| locus.path.as_ref())
-                    .is_some_and(|path| path.to_string() == "/claim_names")
-    );
-    if lacking {
-        let mut named = package.clone();
-        fixture_support::refresh_claim_names(&mut named);
-        let bytes = fixture_support::canonical(&named);
-        return Ok(crate::read_and_account(&bytes, limits, &evidence));
-    }
-    Ok(outcome)
+    Ok(crate::read_and_account(&bytes, limits, &evidence))
 }
 
 /// What the production reader makes of `package`: `admitted`, `incomplete`, or

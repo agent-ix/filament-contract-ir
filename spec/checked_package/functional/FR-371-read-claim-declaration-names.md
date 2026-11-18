@@ -67,11 +67,12 @@ a dangling earlier one.
 Every `claim_names` row and every `temporal_clause_names` row carries
 `declaration_region`, exactly one source region (`source`, `start`, `end`): the
 half-open byte interval of the whole source declaration that introduced the
-occurrence. The reader SHALL refuse a row without `declaration_region`, or with
-one that is not a source region, as `malformed_wire` at
-`/claim_names/{i}/declaration_region` or
-`/temporal_clause_names/{i}/declaration_region`, and SHALL refuse it at the
-member itself, not at a part of it.
+occurrence. The reader SHALL refuse a row without `declaration_region` as
+`malformed_wire` at the row, `/claim_names/{i}` or
+`/temporal_clause_names/{i}`, as the closed schema refuses any missing member,
+and SHALL refuse a `declaration_region` that is not a source region as
+`malformed_wire` at the member, `/claim_names/{i}/declaration_region` or
+`/temporal_clause_names/{i}/declaration_region`, not at a part of it.
 
 The reader SHALL then visit rows in array order and finish every check of a row
 before the next:
@@ -152,10 +153,10 @@ optional borrowed rows, emit them in the supplied order and omit the member for
 | FR-371-AC-3 | A row whose `declaration` names no node or a `temporal_clause` node refuses `invalid-value` at `/claim_names/{i}/declaration`; an `occurrence` the node lacks refuses at `/claim_names/{i}/occurrence`; a `qualified_name` whose last segment is not `name` refuses at `/claim_names/{i}/qualified_name`; a refinement row whose `name` differs from the body `name` refuses at `/claim_names/{i}/name`. | Test (TC-477; FSpec FR-322-AC-458) |
 | FR-371-AC-4 | Two rows with one `qualified_name` refuse `ambiguous_declaration`/`ambiguous-name` at the later row's `qualified_name` and name the earlier row's `qualified_name` as the document position; a repeated key refuses `conflicting-definition` at the later row; a row out of order refuses `invalid-value` at the later row; the repeated key wins over the equal name within one row pair. | Test (TC-477; FSpec FR-322-AC-458) |
 | FR-371-AC-5 | A claim-bearing node occurrence with no row, and a package holding such a node with no member, each refuse `invalid-value` at `/claim_names`; a row defect wins over missing coverage. | Test (TC-477; FSpec FR-322-AC-458) |
-| FR-371-AC-6 | The closed-schema check charges one validation visit per row, the row join one per occurrence compared, the coverage walk one per occurrence inspected, and the one-namespace check one per row: the declaration-region check one per source-map region compared: the smallest work limit that decides a package differs by exactly these counts between packages refused at different rows. | Test (TC-477; FSpec FR-322-AC-458, FR-322-AC-459, FR-322-AC-460) |
+| FR-371-AC-6 | The reader charges five kinds of work: one validation visit per row for the closed-schema check, one visit per occurrence compared for the row join, one per occurrence inspected for the coverage walk, one per row for the one-namespace check, and one per source-map region compared for the declaration-region check; the smallest work limit that decides a package differs by exactly these counts between packages refused at different rows. | Test (TC-477; FSpec FR-322-AC-458, FR-322-AC-459, FR-322-AC-460) |
 | FR-371-AC-7 | A `claim_names` row renamed to the `name` of a `temporal_clause_names` row, with `qualified_name` `[name]` or `["Scope", name]`, refuses `ambiguous_declaration`/`ambiguous-name` at `/claim_names/{i}/name` and names `/temporal_clause_names/{j}/name`; with distinct names the package admits, the claim name resolves by `claim_name_for_path` and the clause name resolves to its `temporal_clause_names` row. | Test (TC-477; FSpec FR-322-AC-459) |
 | FR-371-AC-8 | A refinement body without `name` refuses as a body-schema error at the body, and a `name` that is not text, is empty, or is not an identifier refuses as a body-schema error at `body/name`; the body `name` survives write and re-read; two refinement nodes of one package with an equal `name` refuse `ambiguous_declaration`/`ambiguous-name` at the later node's `/semantic_graph/nodes/{n}/body/name` and name the earlier node's `body/name`. | Test (TC-477; FSpec FR-322-AC-200) |
-| FR-371-AC-9 | A name row of either table carries `declaration_region`: a region wider than the name token admits, is exposed beside the name, survives write and re-read and moves no node; a row without it, or with a region that is not a source region, refuses `malformed_wire` at `/{table}/{i}/declaration_region`; a region under another source, or not containing the occurrence's `source_map` region, refuses `invalid-value` at that member after the occurrence join and before the repeated-key check; an occurrence with no `source_map` entry is left to the source-map check. | Test (TC-477; FSpec FR-322-AC-460, FR-322-AC-461) |
+| FR-371-AC-9 | A name row of either table carries `declaration_region`: a region wider than the name token admits, is exposed beside the name, survives write and re-read and moves no node; a row without it refuses `malformed_wire` at the row `/{table}/{i}`, and a row with a region that is not a source region refuses `malformed_wire` at `/{table}/{i}/declaration_region`; a region under another source, or not containing the occurrence's `source_map` region, refuses `invalid-value` at that member after the occurrence join and before the repeated-key check; an occurrence with no `source_map` entry is left to the source-map check. | Test (TC-477; FSpec FR-322-AC-460, FR-322-AC-461) |
 
 ## Compatibility
 
@@ -188,13 +189,13 @@ filament-driver builds no sidecar literal. A consumer that builds a
 `claim-name-vectors.json` (TC-2011, TC-2012, TC-2015 step 4, replayed by
 `tests/conformance_fspec/claim_names.rs`) and `refinement-body-name-vectors.json`
 (replayed by `published_refinement_body_name_vectors_replay`). Its fixtures
-still carry no `claim_names` rows (its vectors add them by `base_patch`), so the
-conformance harness derives the rows for a published package refused only for
-the missing member; that derivation is removed when FSpec's fixtures carry them.
-FSpec publishes two loci for a removed `declaration_region` of a
-`temporal_clause_names` row: `CN-S9` the row, `CL-S4` (the same edit), `CL-S5`
-and FR-322-AC-461 the member. The reader refuses at the member, and the replay
-of `CN-S9` holds it to that locus until FSpec reconciles the vector.
+carry their `claim_names` rows (filament-specification #709) and the vectors'
+`base_patch` only renames the temporal clause row, so the conformance harness
+derives nothing: each vector is read as published, with its published
+expectation.
+A removed `declaration_region` refuses at the row in every published vector
+(`CN-S9`, `CL-S4`, `CL-S5`, FR-322-AC-461, as of filament-specification #708),
+the same locus as `CN-S1` to `CN-S3`.
 
 ## Dependencies
 

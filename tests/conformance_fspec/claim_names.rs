@@ -6,7 +6,7 @@
 //! vectors (FR-322-AC-200, TC-310), replayed against the production reader.
 
 use super::*;
-use fspec_inputs::read_json_published;
+use fspec_inputs::read_json;
 use temporal_clock_bindings::{apply_occurrence_patch, assert_vector_node_locus};
 
 fn claim_vectors() -> Value {
@@ -14,19 +14,12 @@ fn claim_vectors() -> Value {
         .expect("published claim-name vectors")
 }
 
-fn name_vectors() -> Value {
-    fspec_inputs::read_json_wire(
-        &proposal_dir_of(&fixtures_dir()).join("refinement-body-name-vectors.json"),
-    )
-    .expect("published refinement body-name vectors")
-}
-
 /// The case `id`, the group it sits in, and the package it patches: the
 /// published base with the vectors' own `base_patch` applied first.
 fn patched(published: &Value, case: &Value) -> Value {
     let base = published["base"].as_str().expect("published base");
-    let mut package = read_json_published(&proposal_dir_of(&fixtures_dir()).join(base))
-        .expect("published claim-name base");
+    let mut package =
+        read_json(&proposal_dir_of(&fixtures_dir()).join(base)).expect("published claim-name base");
     let clause = package["semantic_graph"]["nodes"][3]["node_id"].clone();
     assert_eq!(
         package["semantic_graph"]["nodes"][3]["semantic_form"], "temporal_clause",
@@ -43,9 +36,8 @@ fn patched(published: &Value, case: &Value) -> Value {
     package
 }
 
-/// The production read of `package` exactly as written. The shared read helper
-/// derives a missing `claim_names` member for FSpec's older fixtures, which
-/// would hide the vectors that remove the member.
+/// The production read of `package` exactly as written, over the claim-name
+/// vectors' own domain document.
 fn read_as_published(package: &Value) -> CheckedPackageV2ReadResult {
     let document = proposal_dir_of(&fixtures_dir()).join(DOMAIN_DOCUMENT);
     let evidence = fspec_inputs::evidence_for_published(

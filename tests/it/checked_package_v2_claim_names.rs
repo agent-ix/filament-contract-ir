@@ -866,6 +866,48 @@ fn a_claim_name_equal_to_a_temporal_clause_name_is_ambiguous() {
     }
 }
 
+/// Two clauses may bear one name (the temporal table does not forbid it), and
+/// the collision names the first of them: the earliest row of the table, not
+/// the last one scanned.
+#[trace("TC-477", "FR-371-AC-7")]
+#[test]
+fn a_collision_with_a_name_shared_by_temporal_rows_names_the_first_row() {
+    let (mut package, index, temporal) = namespace_package();
+    // A second clause node of the same body, keyed after the first, so that
+    // its row follows the first row and bears the same name.
+    let mut twin = nodes(&package)
+        .iter()
+        .find(|node| node["node_tag"] == "temporal" && node["semantic_form"] == "temporal_clause")
+        .expect("temporal clause")
+        .clone();
+    let key = twin["node_id"]["path"][0].as_str().expect("key").to_owned();
+    twin["node_id"]["path"][0] = json!(format!("{key}-twin"));
+    package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .push(twin);
+    settle(&mut package);
+    let names: Vec<_> = package["temporal_clause_names"]
+        .as_array()
+        .expect("clause rows")
+        .iter()
+        .map(|row| row["name"].as_str().expect("name").to_owned())
+        .collect();
+    assert_eq!(names.len(), 2, "two clause rows");
+    assert_eq!(names[0], names[1], "one name on both");
+    assert_eq!(names[0], temporal);
+    // The shared name alone admits.
+    admitted(read_all(&package));
+    rename_row(&mut package, index, &temporal, json!([temporal]));
+    let refusal = assert_refusal(
+        read_all(&package),
+        Code::AmbiguousDeclaration,
+        Some(Cause::AmbiguousName),
+        &format!("/claim_names/{index}/name"),
+    );
+    assert_document_pointer(&refusal, "/temporal_clause_names/0/name");
+}
+
 #[trace("TC-477", "FR-371-AC-7")]
 #[test]
 fn distinct_claim_and_temporal_clause_names_resolve_to_one_row_each() {
@@ -1117,7 +1159,7 @@ fn a_row_carries_the_declaration_region_and_the_reader_exposes_it() {
 
 #[trace("TC-477", "FR-371-AC-9")]
 #[test]
-fn a_missing_or_malformed_declaration_region_is_refused_at_the_member() {
+fn a_missing_declaration_region_is_refused_at_the_row_and_a_malformed_one_at_the_member() {
     let (package, _, _) = namespace_package();
     for table in TABLES {
         let at = format!("/{table}/0/declaration_region");
@@ -1126,7 +1168,12 @@ fn a_missing_or_malformed_declaration_region_is_refused_at_the_member() {
             .as_object_mut()
             .expect("row")
             .remove("declaration_region");
-        assert_refusal(read_all(&missing), Code::MalformedWire, None, &at);
+        assert_refusal(
+            read_all(&missing),
+            Code::MalformedWire,
+            None,
+            &format!("/{table}/0"),
+        );
         for damaged in [
             json!(7),
             json!(null),

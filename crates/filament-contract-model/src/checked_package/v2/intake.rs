@@ -444,9 +444,6 @@ fn classify_wire_fault(
         } else if missing_probabilistic_occurrence(document, at) {
             steps[length] = Step::Key("occurrence");
             length += 1;
-        } else if missing_declaration_region(document, at) {
-            steps[length] = Step::Key("declaration_region");
-            length += 1;
         } else if let Some(parent) = operation_effect_schema_parent_length(at) {
             length = parent;
         }
@@ -492,21 +489,6 @@ fn operation_effect_schema_parent_length(at: &[Step<'_>]) -> Option<usize> {
         }
         _ => None,
     }
-}
-
-/// A name row that holds every member but its `declaration_region`.
-fn missing_declaration_region(document: &Document, at: &[Step<'_>]) -> bool {
-    matches!(
-        at,
-        [
-            Step::Key("temporal_clause_names" | "claim_names"),
-            Step::Index(_)
-        ]
-    ) && term_at_steps(document, at).is_some_and(|row| {
-        row.get("declaration").is_some()
-            && row.get("name").is_some()
-            && row.get("declaration_region").is_none()
-    })
 }
 
 fn missing_probabilistic_occurrence(document: &Document, at: &[Step<'_>]) -> bool {
