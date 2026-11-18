@@ -76,6 +76,12 @@ proposes the IR contribution to the existing Engineering Assurance/Quoin
 cross-repository conformance mechanism. Shared-owner concurrence and the
 campaign decision remain pending; this is planned, not a campaign pass.
 
+[FR-071](core/functional/FR-071-formalization-coverage-evidence-records.md)
+defines the Contract IR formalization coverage-state record and revision-free
+clause address consumed by Quoin FR-205. It reuses the Engineering Assurance
+evidence metadata contract and preserves per-criterion claims, evidence, and
+gaps without an aggregate score.
+
 StR-001 through StR-003, FR-011 through FR-020, FR-023 and FR-028, alongside
 NFR-001 through NFR-003, define the semantic substrate.
 [TC-456](core/matrix/TC-456-public-name-portability.md) guards the public-name
