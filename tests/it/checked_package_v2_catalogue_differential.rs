@@ -553,6 +553,76 @@ pub(super) fn admitted_fixture(identity: &str) -> Option<Value> {
                 ],
             );
         }
+        "filament.op.collection.only" => {
+            let set = set_i();
+            application(
+                &mut f,
+                "collection",
+                "collection",
+                identity,
+                Value::Null,
+                &i,
+                &i,
+                vec![reference(&set), binder(integer_literal(&i))],
+            );
+        }
+        "filament.op.collection.seq" => {
+            let range = "bounded/integer_range/sequence-control".to_owned();
+            let bound = |name: &str, value: &str| {
+                json!({"term":"binding", "name":name, "value": {
+                    "term":"literal", "type":node_id(&i),
+                    "value_kind":"integer", "value":value
+                }})
+            };
+            node(
+                &mut f.package,
+                &range,
+                "bounded_domain",
+                "integer_range",
+                &i,
+                json!({"term":"aggregate", "members":[bound("min", "0"), bound("max", "0")]}),
+            );
+            let sequence = composite(&mut f.package, "sequence", &range);
+            let result = "bounded/collection_bounds/sequence-control";
+            node(
+                &mut f.package,
+                result,
+                "bounded_domain",
+                "collection_bounds",
+                &sequence,
+                json!({"term":"aggregate", "members":[bound("min", "0"), bound("max", "1")]}),
+            );
+            let index = parameter(&mut f, &range, "sequence_index");
+            let member = json!({"kind":"type_argument", "declaration":node_id(&range)});
+            let literal = json!({"term":"literal", "type":node_id(&range),
+                "value_kind":"integer", "value":"0"});
+            application_with_member(
+                &mut f,
+                "collection",
+                "collection",
+                identity,
+                Value::Null,
+                member,
+                result,
+                vec![literal.clone(), literal, binder(reference(&index))],
+            );
+        }
+        "filament.op.refinement.history" => {
+            let declaration = add_family_reference_target(&mut f.package);
+            let reference_type = composite(&mut f.package, "reference", &declaration);
+            let receiver = parameter(&mut f, &reference_type, "history_receiver");
+            let result = f.text.clone();
+            application_with_member(
+                &mut f,
+                "query",
+                "query",
+                identity,
+                Value::Null,
+                json!({"kind":"history", "declaration":node_id(&declaration), "name":"past"}),
+                &result,
+                vec![reference(&receiver)],
+            );
+        }
         "filament.op.collection.reduce" | "filament.op.collection.sum.integer" => {
             let set = set_i();
             application(
@@ -1132,6 +1202,7 @@ fn tc_048_every_catalogue_entry_retains_its_constructible_admission() {
             | "filament.op.collection.count"
             | "filament.op.collection.sum.integer"
             | "filament.op.collection.size" => "rational",
+            "filament.op.collection.only" => "rational",
             "filament.op.text.to_integer" | "filament.op.string.to_integer" => "rational",
             _ => "integer",
         };
