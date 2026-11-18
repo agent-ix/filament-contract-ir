@@ -17,15 +17,97 @@ use super::model_members::{
     arc_bytes, node_id_bytes, Budget, DomainModel, SortedMap, UnitRefs, DURATION_RESOLVED_PREFIX,
 };
 use super::{
-    identity, member_pointer, refuse, CheckedDependencySelection, CheckedNodeId, CheckedNodeKind,
-    CheckedNodeOwner, CheckedNodeTag, CheckedPackageRefusalCause, CheckedPackageRefusalCode,
-    CheckedRefinementInternal, RawSemanticNodeV2, ScalarTypeForm, ValidationFailure, WorkMeter,
+    identity, member_pointer, refuse, CheckedDependencyClockSelection, CheckedDependencySelection,
+    CheckedNodeId, CheckedNodeKind, CheckedNodeOwner, CheckedNodeTag, CheckedPackageRefusalCause,
+    CheckedPackageRefusalCode, CheckedRefinementInternal, RawSemanticNodeV2, ScalarTypeForm,
+    TemporalBinding, ValidationFailure, WorkMeter,
 };
 use crate::checked_package::common::{is_nonempty, node_pointer};
 use ix_trace_rs::string_edge;
 use std::sync::Arc;
 
 const UNIT_PREFIX: &str = "ix://filament/unit/";
+
+/// Checks the optional caller clock selections and their consistency with
+/// package temporal bindings (FR-322). The list is nonempty, names are
+/// nonempty, not reserved, unique, and strictly byte-sorted.
+pub(super) fn validate_dependency_clock_selections(
+    selections: Option<&[CheckedDependencyClockSelection]>,
+    temporal_bindings: Option<&[TemporalBinding]>,
+    meter: &mut WorkMeter,
+) -> Result<(), ValidationFailure> {
+    const FORM: &str = "dependency_clock_selections";
+    let Some(selections) = selections else {
+        return Ok(());
+    };
+    let at = |index: usize| member_pointer(&["lock", FORM]).index(index);
+    if selections.is_empty() {
+        return Err(refuse(
+            CheckedPackageRefusalCode::MalformedWire,
+            member_pointer(&["lock", FORM]),
+        ));
+    }
+    let mut table = Budget::lock(meter, FORM).vec(selections.len(), FORM)?;
+    if let Some(index) = selections.iter().position(|entry| {
+        !is_nonempty(&entry.clock_name)
+            || matches!(entry.clock_name.as_ref(), "model-steps" | "model-time")
+    }) {
+        return Err(refuse(
+            CheckedPackageRefusalCode::MalformedWire,
+            at(index).key("clock_name"),
+        ));
+    }
+    if let Some((first, index)) = first_repeat(
+        selections.iter().map(|entry| entry.clock_name.as_ref()),
+        &mut table,
+    ) {
+        return Err(ValidationFailure::refused_because_at_two_paths(
+            CheckedPackageRefusalCode::InvalidPackage,
+            at(first).key("clock_name"),
+            at(index).key("clock_name"),
+            CheckedPackageRefusalCause::ConflictingDefinition,
+        ));
+    }
+    if let Some(index) = selections
+        .windows(2)
+        .position(|pair| pair[0].clock_name >= pair[1].clock_name)
+    {
+        return Err(ValidationFailure::refused_because(
+            CheckedPackageRefusalCode::InvalidPackage,
+            at(index + 1).key("clock_name"),
+            CheckedPackageRefusalCause::InvalidValue,
+        ));
+    }
+    for (selection_index, selection) in selections.iter().enumerate() {
+        super::temporal_binding::validate_clock_configuration(
+            &selection.clock,
+            super::stage_storage::Path::root()
+                .key("lock")
+                .key(FORM)
+                .index(selection_index)
+                .key("clock"),
+            meter,
+        )?;
+        if let Some((binding_index, _)) = temporal_bindings
+            .unwrap_or_default()
+            .iter()
+            .enumerate()
+            .find(|(_, binding)| {
+                binding.clock_name == selection.clock_name && binding.clock != selection.clock
+            })
+        {
+            return Err(ValidationFailure::refused_because_at_two_paths(
+                CheckedPackageRefusalCode::InvalidPackage,
+                at(selection_index).key("clock"),
+                member_pointer(&["temporal_bindings"])
+                    .index(binding_index)
+                    .key("clock"),
+                CheckedPackageRefusalCause::ConflictingDefinition,
+            ));
+        }
+    }
+    Ok(())
+}
 
 /// The earliest repeat among `items`: the position of the first occurrence
 /// and of the earliest later position whose text equals an earlier one.
@@ -508,6 +590,61 @@ mod tests {
             allocated: measured.bytes_total,
             locus: budget.first_unpaid_locus(),
         }
+    }
+
+    #[ix_trace_rs::trace("TC-048", "FR-322-AC-452")]
+    #[test]
+    fn dependency_clock_configuration_conflict_names_both_loci() {
+        let selections = [CheckedDependencyClockSelection {
+            clock_name: "caller".into(),
+            clock: super::super::ClockConfiguration::Timed { unit: "ms".into() },
+        }];
+        let bindings = [TemporalBinding {
+            declaration: CheckedNodeId {
+                package: "test/package".into(),
+                path: vec![super::super::CheckedNodePathSegment::Name("Clause".into())],
+                ordinal: 0,
+            },
+            occurrence: 0,
+            clock_name: "caller".into(),
+            clock: super::super::ClockConfiguration::Timed { unit: "s".into() },
+        }];
+        let error = validate_dependency_clock_selections(
+            Some(&selections),
+            Some(&bindings),
+            &mut WorkMeter::new(u64::MAX),
+        )
+        .expect_err("different configurations for a shared name conflict");
+        let ValidationFailure::Refused(refusal) = error else {
+            panic!("expected a typed conflicting-definition refusal");
+        };
+        assert_eq!(refusal.code, CheckedPackageRefusalCode::InvalidPackage);
+        assert_eq!(
+            refusal.cause,
+            Some(CheckedPackageRefusalCause::ConflictingDefinition)
+        );
+        assert_eq!(
+            refusal
+                .loci
+                .iter()
+                .filter_map(|locus| locus.path.as_ref())
+                .map(ToString::to_string)
+                .collect::<Vec<_>>(),
+            vec![
+                "/lock/dependency_clock_selections/0/clock",
+                "/temporal_bindings/0/clock"
+            ]
+        );
+        let matching = [TemporalBinding {
+            clock: selections[0].clock.clone(),
+            ..bindings[0].clone()
+        }];
+        validate_dependency_clock_selections(
+            Some(&selections),
+            Some(&matching),
+            &mut WorkMeter::new(u64::MAX),
+        )
+        .expect("equal named clock configurations agree");
     }
 
     /// Every byte `body` allocates is a byte it requested, the exact allowance

@@ -175,6 +175,19 @@ where
     Option::<Wrapped<T>>::deserialize(deserializer).map(|rows| rows.map(|rows| rows.0))
 }
 
+/// Decodes an optional-on-the-wire array whose member may be absent but may
+/// not be explicitly null. The containing field supplies `default` for the
+/// absent case; invoking this function means an array is required.
+pub(in crate::checked_package) fn exact_nonnull_optional_vec<'de, D, T>(
+    deserializer: D,
+) -> Result<Option<Vec<T>>, D::Error>
+where
+    D: de::Deserializer<'de>,
+    T: serde::Deserialize<'de>,
+{
+    exact_vec(deserializer).map(Some)
+}
+
 /// An explicit `null` is a value and an absent member stays a schema refusal;
 /// a present value is boxed after the box's allocation is charged.
 pub(in crate::checked_package) fn charged_nullable_box<'de, D, T>(
@@ -238,6 +251,10 @@ const FORMS: &[(&[&str], &str)] = &[
     (
         &["lock", "refinement_internals"],
         "lock.refinement_internals",
+    ),
+    (
+        &["lock", "dependency_clock_selections"],
+        "lock.dependency_clock_selections",
     ),
     (&["semantic_graph", "nodes"], "semantic_graph.nodes"),
     (
