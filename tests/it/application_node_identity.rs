@@ -90,6 +90,7 @@ fn encode(
         },
         filament_contract_model::CheckedPackageSidecarsRef {
             temporal_clause_names: None,
+            claim_names: None,
             operation_effects: None,
             operation_bodies: None,
             checked_term_data: None,

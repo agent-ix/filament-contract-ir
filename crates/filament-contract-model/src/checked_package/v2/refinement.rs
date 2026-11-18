@@ -1053,6 +1053,10 @@ pub(super) fn decode_body(body: &Value, at: &Trail<'_>) -> Result<CheckedTerm, V
         })
         .transpose()?;
     Ok(CheckedTerm::Refinement {
+        name: body
+            .get("name")
+            .map(|v| text(v, &at.key("name")))
+            .transpose()?,
         abstract_key: Box::new(key(member(body, "abstract", at)?, &at.key("abstract"))?),
         profile: typed(member(body, "profile", at)?, &at.key("profile"))?,
         populations,
@@ -1244,6 +1248,7 @@ fn check_body_header(body: &Value, at: &Trail<'_>) -> Result<(), ValidationFailu
         || required.iter().any(|name| !object.contains_key(*name))
         || object.keys().any(|name| {
             !required.contains(&name.as_str())
+                && name != "name"
                 && name != "protocol"
                 && name != "abstract_internal"
                 && name != "class_catalog"

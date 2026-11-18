@@ -976,7 +976,7 @@ impl<'d> RefinementDocument<'_, 'd> {
                 "assume",
                 "ensure",
             ],
-            &["protocol", "abstract_internal", "class_catalog"],
+            &["name", "protocol", "abstract_internal", "class_catalog"],
         )?;
         // Match the existing row decoder's construction order, including the
         // late abstract/profile decode after the ordered mapping tables.
@@ -991,6 +991,7 @@ impl<'d> RefinementDocument<'_, 'd> {
             .map(|n| self.catalog(n))
             .transpose()?;
         Ok(CheckedTerm::Refinement {
+            name: node.get("name").map(|n| self.atom(n)).transpose()?,
             abstract_key: self.boxed(|| self.key(self.member(node, "abstract")?))?,
             profile: self.field(node, "profile")?,
             populations,
@@ -1195,6 +1196,7 @@ mod refinement_fault {
             || REQUIRED.iter().any(|name| body.get(name).is_none())
             || members.any(|(name, _)| {
                 !REQUIRED.contains(&name)
+                    && name != "name"
                     && name != "protocol"
                     && name != "abstract_internal"
                     && name != "class_catalog"
@@ -1372,6 +1374,9 @@ mod refinement_fault {
                 member(body, "profile", at)?,
                 &at.key("profile"),
             )?;
+            if let Some(name) = body.get("name") {
+                text(name, &at.key("name"))?;
+            }
             if let Some(protocol) = body.get("protocol") {
                 key(protocol, &at.key("protocol"))?;
             }

@@ -2243,6 +2243,9 @@ pub enum CheckedTerm {
     },
     /// A closed model or protocol refinement declaration.
     Refinement {
+        /// The declared identifier the source writes, when supplied.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        name: Option<Box<str>>,
         /// Abstract model declaration.
         #[serde(rename = "abstract")]
         abstract_key: Box<RefinementKey>,
@@ -3554,6 +3557,7 @@ impl Encode for CheckedTerm {
                 super::guarantee_terms::encode_all(environment, writer)?;
             }
             Self::Refinement {
+                name,
                 abstract_key,
                 profile,
                 populations,
@@ -3568,6 +3572,10 @@ impl Encode for CheckedTerm {
             } => {
                 writer.name("term")?;
                 writer.string("refinement")?;
+                if let Some(name) = name {
+                    writer.name("name")?;
+                    writer.string(name)?;
+                }
                 writer.name("abstract")?;
                 abstract_key.encode_into(writer)?;
                 writer.name("profile")?;

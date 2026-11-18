@@ -63,7 +63,7 @@ fn rename_node(package: &mut Value, stale: &str, fresh: &str) {
     reassign_node_id(package, &node_id(stale), &node_id(fresh));
 }
 
-fn read(value: &Value) -> CheckedPackageV2ReadResult {
+pub(super) fn read(value: &Value) -> CheckedPackageV2ReadResult {
     crate::read_and_account(
         &canonical(value),
         CheckedPackageReadLimits::bounded(),
@@ -95,7 +95,7 @@ fn step_model_document() -> Value {
 /// The evidence for `package`: the step model document when the package holds
 /// the step execution binders `step_relation_package` adds, else the helper's
 /// default document for each selected model.
-fn step_relation_evidence(package: &Value) -> CheckedPackageEvidence {
+pub(super) fn step_relation_evidence(package: &Value) -> CheckedPackageEvidence {
     let has_step_binder = nodes(package).iter().any(|node| {
         node["node_tag"] == "value"
             && node["semantic_form"] == "parameter"
@@ -902,8 +902,8 @@ fn tc_056_exactly_fifteen_model_forms_admit() {
 /// over a source-declared object type, built in-repo on `v2_all_families()`:
 /// the frame binds the anchor, a `Reference<Account>` type and a `self`
 /// parameter bind both clauses, and each clause asserts the Boolean literal.
-struct StatePackage {
-    value: Value,
+pub(super) struct StatePackage {
+    pub(super) value: Value,
 }
 
 fn text_key() -> &'static str {
@@ -1031,7 +1031,7 @@ fn clause_node(clause: &str, parameters: &[&str], anchor: &str) -> Value {
 }
 
 impl StatePackage {
-    fn new() -> Self {
+    pub(super) fn new() -> Self {
         let mut value = v2_all_families();
         let frame = position(&value, "state", "frame");
         let frame_key = digest(&value, frame);
@@ -1084,7 +1084,7 @@ impl StatePackage {
     }
 
     /// The clause of kind `clause`.
-    fn clause(&self, clause: &str) -> usize {
+    pub(super) fn clause(&self, clause: &str) -> usize {
         nodes(&self.value)
             .iter()
             .position(|node| {
@@ -1173,6 +1173,7 @@ fn assert_pointed_writer_round_trip(package: &StatePackage, positions: &[usize])
         },
         filament_contract_model::CheckedPackageSidecarsRef {
             temporal_clause_names: admitted.temporal_clause_names(),
+            claim_names: admitted.claim_names(),
             operation_effects: None,
             operation_bodies: None,
             checked_term_data: admitted.checked_term_data(),
@@ -4388,7 +4389,7 @@ fn settle_step_relation(package: &mut Value) {
 }
 
 /// A source-declared relation over two executions of the selected Account operation.
-fn step_relation_package() -> Value {
+pub(super) fn step_relation_package() -> Value {
     let mut package = with_postcondition(StatePackage::new(), None).value;
     package["semantic_graph"]["nodes"]
         .as_array_mut()
@@ -4813,6 +4814,7 @@ fn step_relation_reader_retains_two_executions_and_roundtrips() {
         },
         filament_contract_model::CheckedPackageSidecarsRef {
             temporal_clause_names: admitted.temporal_clause_names(),
+            claim_names: admitted.claim_names(),
             operation_effects: None,
             operation_bodies: None,
             checked_term_data: admitted.checked_term_data(),

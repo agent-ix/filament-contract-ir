@@ -96,6 +96,8 @@ struct BorrowedWire {
     #[serde(default, deserialize_with = "super::document_de::exact_optional_vec")]
     temporal_clause_names: Option<Vec<super::TemporalClauseName>>,
     #[serde(default, deserialize_with = "super::document_de::exact_optional_vec")]
+    claim_names: Option<Vec<super::ClaimNameRow>>,
+    #[serde(default, deserialize_with = "super::document_de::exact_optional_vec")]
     schedulability_claims: Option<Vec<super::CheckedSchedulabilityClaimRow>>,
     #[serde(default, deserialize_with = "super::operation_effects::present_rows")]
     operation_effects: Option<Vec<super::CheckedOperationEffectRow>>,
@@ -322,6 +324,7 @@ pub(super) fn decode_borrowed_wire(
         checked_term_data: wire.checked_term_data,
         temporal_bindings: wire.temporal_bindings,
         temporal_clause_names: wire.temporal_clause_names,
+        claim_names: wire.claim_names,
         schedulability_claims: wire.schedulability_claims,
         operation_effects: wire.operation_effects,
         operation_bodies: wire.operation_bodies,
@@ -389,7 +392,8 @@ fn classify_wire_fault(
     }
     if code == UnknownMember {
         match original {
-            [Step::Key("temporal_clause_names" | "schedulability_claims"), Step::Index(_), ..] => {
+            [Step::Key("temporal_clause_names" | "claim_names" | "schedulability_claims"), Step::Index(_), ..] =>
+            {
                 code = MalformedWire;
                 length = 2;
             }
@@ -683,6 +687,7 @@ pub(super) fn check_lossless_source(
         wire.temporal_clause_names.as_deref(),
         meter,
     )?;
+    compare_optional_rows(root, "claim_names", wire.claim_names.as_deref(), meter)?;
     compare_optional_rows(
         root,
         "schedulability_claims",

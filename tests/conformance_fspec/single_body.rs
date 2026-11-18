@@ -68,6 +68,7 @@ fn published_single_body_packages_round_trip_through_the_writer() {
             },
             filament_contract_model::CheckedPackageSidecarsRef {
                 temporal_clause_names: read.temporal_clause_names(),
+                claim_names: read.claim_names(),
                 operation_effects: None,
                 operation_bodies: None,
                 checked_term_data: read.checked_term_data(),

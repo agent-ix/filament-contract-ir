@@ -84,6 +84,8 @@ fn genuine_fsl_d10_retains_static_context_and_complete_selected_family() {
     ))
     .expect("actual emitted package");
     add_linked_check_modes(&mut package);
+    // The emitted fixture predates the claim-name rows, which no node identity reads.
+    crate::support::checked_package::refresh_claim_names(&mut package);
     let document = d10_model_document();
     let evidence = evidence_with_document(&package, PACKAGE, &document);
     let bytes = canonical(&package);
@@ -459,6 +461,7 @@ fn converted_d10_fixture_resolves_to_the_admitted_index_form_graph() {
     ))
     .expect("converted package");
     add_linked_check_modes(&mut wire);
+    crate::support::checked_package::refresh_claim_names(&mut wire);
     let mut resolved = wire.clone();
     resolve_operands(&mut resolved);
     let mut rewired = resolved.clone();

@@ -253,6 +253,7 @@ fn public_literal_and_binding_reads_preserve_exact_values() {
         },
         filament_contract_model::CheckedPackageSidecarsRef {
             temporal_clause_names: admitted.temporal_clause_names(),
+            claim_names: admitted.claim_names(),
             operation_effects: None,
             operation_bodies: None,
             checked_term_data: admitted.checked_term_data(),

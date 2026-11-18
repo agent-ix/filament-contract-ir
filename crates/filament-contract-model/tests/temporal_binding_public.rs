@@ -135,6 +135,23 @@ fn default_feature_consumer_borrows_admitted_clock_rows() {
     {
         evidence.support_feature(feature.as_str().expect("feature"));
     }
+    // The published fixture predates the `claim_names` member. Its one
+    // claim-bearing node is named here until FSpec's fixture carries the row.
+    let claims = fixture["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("semantic graph nodes")
+        .iter()
+        .filter(|node| node["node_tag"] == "claim")
+        .collect::<Vec<_>>();
+    assert_eq!(claims.len(), 1, "one published claim node");
+    assert_eq!(claims[0]["occurrences"].as_array().map(Vec::len), Some(1));
+    let named = json!([{
+        "declaration": claims[0]["node_id"],
+        "occurrence": claims[0]["occurrences"][0],
+        "name": "Safety",
+        "qualified_name": ["Example", "Safety"],
+    }]);
+    fixture["claim_names"] = named;
     let bytes = serde_json::to_vec(&fixture).expect("canonical test package");
     let package =
         match CheckedPackageV2::read(&bytes, CheckedPackageReadLimits::bounded(), &evidence) {
@@ -188,6 +205,7 @@ fn default_feature_consumer_borrows_admitted_clock_rows() {
             checked_term_data: package.checked_term_data(),
             temporal_bindings: package.temporal_bindings(),
             temporal_clause_names: Some(&supplied),
+            claim_names: package.claim_names(),
             schedulability_claims: None,
             operation_effects: None,
             operation_bodies: None,

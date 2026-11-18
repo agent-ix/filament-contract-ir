@@ -423,6 +423,8 @@ fn encoded(package: &Value) -> Vec<u8> {
         package.get("temporal_bindings").map(typed);
     let temporal_clause_names: Option<Vec<filament_contract_model::TemporalClauseName>> =
         package.get("temporal_clause_names").map(typed);
+    let claim_names: Option<Vec<filament_contract_model::ClaimNameRow>> =
+        package.get("claim_names").map(typed);
     encode_checked_package_v2(
         package["name"].as_str().expect("package name"),
         &lock,
@@ -433,6 +435,7 @@ fn encoded(package: &Value) -> Vec<u8> {
         },
         filament_contract_model::CheckedPackageSidecarsRef {
             temporal_clause_names: temporal_clause_names.as_deref(),
+            claim_names: claim_names.as_deref(),
             operation_effects: None,
             operation_bodies: None,
             checked_term_data: None,

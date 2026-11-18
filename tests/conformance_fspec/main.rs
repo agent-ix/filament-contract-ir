@@ -260,7 +260,23 @@ fn read_package_with_document_override(
         document_override,
         &fixtures_dir(),
     )?;
-    Ok(crate::read_and_account(&bytes, limits, &evidence))
+    let outcome = crate::read_and_account(&bytes, limits, &evidence);
+    // FSpec's published packages predate the `claim_names` member. A package
+    // refused only for the member it lacks is read again with the rows its
+    // nodes call for, until the published fixtures carry them.
+    let uncovered = matches!(
+        &outcome,
+        CheckedPackageV2ReadResult::Refused(refusal)
+            if refusal.loci.first().and_then(|locus| locus.path.as_ref())
+                .is_some_and(|path| path.to_string() == "/claim_names")
+    );
+    if uncovered && package.get("claim_names").is_none() {
+        let mut named = package.clone();
+        fixture_support::refresh_claim_names(&mut named);
+        let bytes = fixture_support::canonical(&named);
+        return Ok(crate::read_and_account(&bytes, limits, &evidence));
+    }
+    Ok(outcome)
 }
 
 /// What the production reader makes of `package`: `admitted`, `incomplete`, or
@@ -580,6 +596,7 @@ fn fspec_positive_fixtures_expose_complete_public_typed_reads() {
             },
             filament_contract_model::CheckedPackageSidecarsRef {
                 temporal_clause_names: admitted.temporal_clause_names(),
+                claim_names: admitted.claim_names(),
                 operation_effects: None,
                 operation_bodies: None,
                 checked_term_data: admitted.checked_term_data(),
@@ -992,6 +1009,7 @@ fn fspec_admitted_values_members_and_catalog_constraints_are_exact() {
         },
         filament_contract_model::CheckedPackageSidecarsRef {
             temporal_clause_names: admitted.temporal_clause_names(),
+            claim_names: admitted.claim_names(),
             operation_effects: None,
             operation_bodies: None,
             checked_term_data: admitted.checked_term_data(),
@@ -1362,6 +1380,7 @@ fn tc_048_published_nominal_structural_ids_survive_reader_and_writer() {
         },
         filament_contract_model::CheckedPackageSidecarsRef {
             temporal_clause_names: admitted.temporal_clause_names(),
+            claim_names: admitted.claim_names(),
             operation_effects: None,
             operation_bodies: None,
             checked_term_data: admitted.checked_term_data(),

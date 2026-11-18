@@ -35,6 +35,9 @@ fn encode(
     let temporal_clause_names: Option<Vec<filament_contract_model::TemporalClauseName>> = package
         .get("temporal_clause_names")
         .map(|value| serde_json::from_value(value.clone()).expect("typed temporal names"));
+    let claim_names: Option<Vec<filament_contract_model::ClaimNameRow>> = package
+        .get("claim_names")
+        .map(|value| serde_json::from_value(value.clone()).expect("claim names"));
 
     encode_checked_package_v2(
         package["name"].as_str().expect("package name"),
@@ -46,6 +49,7 @@ fn encode(
         },
         filament_contract_model::CheckedPackageSidecarsRef {
             temporal_clause_names: temporal_clause_names.as_deref(),
+            claim_names: claim_names.as_deref(),
             operation_effects: None,
             operation_bodies: None,
             checked_term_data: term_data,

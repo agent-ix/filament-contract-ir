@@ -758,7 +758,7 @@ fn canonical_indexed(package: &Value) -> Vec<u8> {
     canonical(&indexed_package(package))
 }
 
-fn indexed_package(package: &Value) -> Value {
+pub(super) fn indexed_package(package: &Value) -> Value {
     let mut indexed = package.clone();
     index_fixture_node_ids(&mut indexed);
     indexed
@@ -801,6 +801,9 @@ fn writer_bytes(package: &Value) -> Vec<u8> {
     let temporal_clause_names: Option<Vec<filament_contract_model::TemporalClauseName>> = package
         .get("temporal_clause_names")
         .map(|value| serde_json::from_value(value.clone()).expect("temporal names"));
+    let claim_names: Option<Vec<filament_contract_model::ClaimNameRow>> = package
+        .get("claim_names")
+        .map(|value| serde_json::from_value(value.clone()).expect("claim names"));
     encode_checked_package_v2(
         name,
         &lock,
@@ -811,6 +814,7 @@ fn writer_bytes(package: &Value) -> Vec<u8> {
         },
         filament_contract_model::CheckedPackageSidecarsRef {
             temporal_clause_names: temporal_clause_names.as_deref(),
+            claim_names: claim_names.as_deref(),
             operation_effects: None,
             operation_bodies: None,
             checked_term_data: None,
@@ -824,7 +828,7 @@ fn writer_bytes(package: &Value) -> Vec<u8> {
     .expect("public writer")
 }
 
-fn row_empty_refinement(package: &mut Value) {
+pub(super) fn row_empty_refinement(package: &mut Value) {
     let model_root = package["semantic_graph"]["nodes"]
         .as_array()
         .expect("nodes")
@@ -2479,7 +2483,8 @@ fn complete_model_refinement_retains_all_rows_through_public_roundtrip() {
         "model root must differ from declaration"
     );
     let body = expected["body"].as_object().expect("body");
-    assert_eq!(body.len(), 9);
+    // The nine rows plus the `name` the fixture gives every refinement body.
+    assert_eq!(body.len(), 10);
     for member in ["populations", "objects", "steps", "histories", "assume"] {
         assert_eq!(
             body[member].as_array().expect("row array").len(),

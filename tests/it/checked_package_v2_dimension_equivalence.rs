@@ -161,6 +161,7 @@ fn selected_dimension_operand_admits_and_retains_package_form() {
         },
         filament_contract_model::CheckedPackageSidecarsRef {
             temporal_clause_names: admitted.temporal_clause_names(),
+            claim_names: admitted.claim_names(),
             operation_effects: None,
             operation_bodies: None,
             checked_term_data: admitted.checked_term_data(),

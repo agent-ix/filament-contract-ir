@@ -641,6 +641,7 @@ fn nominal_and_refinement_keys_map_without_touching_source_labels() {
     assert_eq!(encoded["terms"][0]["exponent"], "1");
 
     let mut term = CheckedTerm::Refinement {
+        name: None,
         abstract_key: Box::new(RefinementKey::Local(original.clone())),
         profile: CheckedArtifactRef {
             authority: "source".into(),
@@ -734,6 +735,7 @@ fn remaining_closed_forms_map_every_typed_identity_slot() {
         ),
         (
             CheckedTerm::Refinement {
+                name: None,
                 abstract_key: Box::new(RefinementKey::Local(original.clone())),
                 profile: CheckedArtifactRef {
                     authority: "source".into(),
@@ -903,6 +905,7 @@ fn hundred_thousand_node_position_remap_preserves_admitted_references() {
         },
         filament_contract_model::CheckedPackageSidecarsRef {
             temporal_clause_names: original.temporal_clause_names(),
+            claim_names: original.claim_names(),
             operation_effects: None,
             operation_bodies: None,
             checked_term_data: original.checked_term_data(),
@@ -976,6 +979,7 @@ fn mapped_duplicate_is_refused_by_the_package_reader() {
         },
         filament_contract_model::CheckedPackageSidecarsRef {
             temporal_clause_names: admitted.temporal_clause_names(),
+            claim_names: admitted.claim_names(),
             operation_effects: None,
             operation_bodies: None,
             checked_term_data: admitted.checked_term_data(),
