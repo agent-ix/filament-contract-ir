@@ -5512,9 +5512,7 @@ fn repeat_admits_proof_and_refuses_zero_maximum_and_both_unpaired_directions() {
 #[test]
 fn repeat_admits_post_test_and_refuses_an_unknown_test_mode() {
     let (package, _) = protocol_holder_case("repeat");
-    let mut package = package;
-    make_repeat_identity_body_derived(&mut package);
-    let holder = repeat_case_position(&package);
+    let holder = holder_position(&package);
     let mut post_test = package.clone();
     post_test["semantic_graph"]["nodes"][holder]["body"]["arguments"]
         .as_array_mut()
@@ -5523,11 +5521,11 @@ fn repeat_admits_post_test_and_refuses_an_unknown_test_mode() {
             "term": "literal", "type": node_id(&family_key("a1a1")),
             "value_kind": "text", "value": "post"
         }}));
-    make_repeat_identity_body_derived(&mut post_test);
-    let post_test_holder = repeat_case_position(&post_test);
+    settle(&mut post_test);
+    let post_test_holder = holder_position(&post_test);
     let mut pre_test_after = package.clone();
     settle(&mut pre_test_after);
-    let pre_test_after_holder = repeat_case_position(&pre_test_after);
+    let pre_test_after_holder = holder_position(&pre_test_after);
     assert_eq!(
         canonical(&package["semantic_graph"]["nodes"][holder]),
         canonical(&pre_test_after["semantic_graph"]["nodes"][pre_test_after_holder]),
@@ -5539,9 +5537,9 @@ fn repeat_admits_post_test_and_refuses_an_unknown_test_mode() {
         "pre-test repeat identity remains stable"
     );
     assert_ne!(
-        package["semantic_graph"]["nodes"][holder]["node_id"],
-        post_test["semantic_graph"]["nodes"][post_test_holder]["node_id"],
-        "adding the post-test member changes repeat identity"
+        repeat_body_derived_id(&package, holder),
+        repeat_body_derived_id(&post_test, post_test_holder),
+        "adding the post-test member changes the body-derived repeat identity"
     );
     assert!(matches!(
         read(&post_test),
@@ -5549,7 +5547,7 @@ fn repeat_admits_post_test_and_refuses_an_unknown_test_mode() {
     ));
 
     let mut zero_maximum = post_test.clone();
-    let post_holder = repeat_case_position(&zero_maximum);
+    let post_holder = holder_position(&zero_maximum);
     zero_maximum["semantic_graph"]["nodes"][post_holder]["body"]["arguments"][2]["value"]
         ["members"][0]["value"] = json!("0");
     settle(&mut zero_maximum);
@@ -5637,9 +5635,8 @@ fn repeat_admits_post_test_and_refuses_an_unknown_test_mode() {
         "a repeat guard without test must refuse a binder outside the repeat body"
     );
 
-    let post_test_holder = repeat_case_position(&post_test);
-    post_test["semantic_graph"]["nodes"][post_test_holder]["body"]["arguments"][7]["value"]
-        ["value"] = json!("middle");
+    post_test["semantic_graph"]["nodes"][holder]["body"]["arguments"][7]["value"]["value"] =
+        json!("middle");
     settle(&mut post_test);
     assert!(matches!(
         read(&post_test),
@@ -5650,40 +5647,18 @@ fn repeat_admits_post_test_and_refuses_an_unknown_test_mode() {
     ));
 }
 
-fn make_repeat_identity_body_derived(package: &mut Value) {
-    let holder = repeat_case_position(package);
-    let old = package["semantic_graph"]["nodes"][holder]["node_id"].clone();
+fn repeat_body_derived_id(package: &Value, holder: usize) -> Value {
     let body = package["semantic_graph"]["nodes"][holder]["body"].clone();
     let semantic_type = package["semantic_graph"]["nodes"][holder]["semantic_type"]["path"][0]
         .as_str()
         .expect("repeat semantic type path")
         .to_owned();
-    package["semantic_graph"]["nodes"][holder]
-        .as_object_mut()
-        .expect("repeat node")
-        .remove("declaration");
-    package["semantic_graph"]["nodes"][holder]["occurrences"][0]["role"] = json!("generated");
-    let key = node_id(&application_node_key(
+    node_id(&application_node_key(
         "protocol",
         "control",
         &semantic_type,
         &body,
-    ));
-    reassign_node_id(package, &old, &key);
-    settle(package);
-}
-
-fn repeat_case_position(package: &Value) -> usize {
-    package["semantic_graph"]["nodes"]
-        .as_array()
-        .expect("nodes")
-        .iter()
-        .position(|node| {
-            node["node_tag"] == "protocol"
-                && node["semantic_form"] == "control"
-                && node["body"]["operation"]["member"]["operator"] == "repeat"
-        })
-        .expect("repeat control")
+    ))
 }
 
 /// Trace: FR-372-AC-7
