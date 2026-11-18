@@ -5512,6 +5512,8 @@ fn repeat_admits_proof_and_refuses_zero_maximum_and_both_unpaired_directions() {
 #[test]
 fn repeat_admits_post_test_and_refuses_an_unknown_test_mode() {
     let (package, _) = protocol_holder_case("repeat");
+    let mut package = package;
+    make_repeat_identity_body_derived(&mut package);
     let holder = holder_position(&package);
     let mut post_test = package.clone();
     post_test["semantic_graph"]["nodes"][holder]["body"]["arguments"]
@@ -5521,7 +5523,7 @@ fn repeat_admits_post_test_and_refuses_an_unknown_test_mode() {
             "term": "literal", "type": node_id(&family_key("a1a1")),
             "value_kind": "text", "value": "post"
         }}));
-    settle(&mut post_test);
+    make_repeat_identity_body_derived(&mut post_test);
     let post_test_holder = holder_position(&post_test);
     let mut pre_test_after = package.clone();
     settle(&mut pre_test_after);
@@ -5645,6 +5647,29 @@ fn repeat_admits_post_test_and_refuses_an_unknown_test_mode() {
             ..
         })
     ));
+}
+
+fn make_repeat_identity_body_derived(package: &mut Value) {
+    let holder = holder_position(package);
+    let old = package["semantic_graph"]["nodes"][holder]["node_id"].clone();
+    let body = package["semantic_graph"]["nodes"][holder]["body"].clone();
+    let semantic_type = package["semantic_graph"]["nodes"][holder]["semantic_type"]["path"][0]
+        .as_str()
+        .expect("repeat semantic type path")
+        .to_owned();
+    package["semantic_graph"]["nodes"][holder]
+        .as_object_mut()
+        .expect("repeat node")
+        .remove("declaration");
+    package["semantic_graph"]["nodes"][holder]["occurrences"][0]["role"] = json!("generated");
+    let key = node_id(&application_node_key(
+        "protocol",
+        "control",
+        &semantic_type,
+        &body,
+    ));
+    reassign_node_id(package, &old, &key);
+    settle(package);
 }
 
 /// Trace: FR-372-AC-7
