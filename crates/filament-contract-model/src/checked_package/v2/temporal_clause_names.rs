@@ -3,6 +3,7 @@
 
 //! Declared names of temporal-clause source occurrences.
 
+use super::declaration_region::SourceEntries;
 use super::graph_storage::GraphIndex;
 use super::stage_storage::{self, Path, Refusal, Site};
 use super::{
@@ -26,6 +27,9 @@ pub struct TemporalClauseName {
     pub occurrence: u64,
     /// Exact source identifier, independent of the clause node identity.
     pub name: Box<str>,
+    /// The whole source declaration that introduced the occurrence, under the
+    /// source of the occurrence's `source_map` region and containing it.
+    pub declaration_region: crate::checked_package::shared::CheckedSourceRegion,
 }
 
 impl Encode for TemporalClauseName {
@@ -34,6 +38,7 @@ impl Encode for TemporalClauseName {
         super::encode::encoded(writer, "declaration", &self.declaration)?;
         super::encode::member(writer, "occurrence", &self.occurrence)?;
         super::encode::member(writer, "name", self.name.as_ref())?;
+        super::encode::member(writer, "declaration_region", &self.declaration_region)?;
         writer.end_object()
     }
 }
@@ -69,6 +74,7 @@ pub(super) fn validate(
     rows: Option<&[TemporalClauseName]>,
     nodes: &[RawSemanticNodeV2],
     kinds: &[CheckedNodeKind],
+    sources: &SourceEntries<'_>,
     index: &GraphIndex<'_>,
     structural_keys: &[std::sync::Arc<CheckedNodeId>],
     meter: &mut WorkMeter,
@@ -109,6 +115,22 @@ pub(super) fn validate(
         if !owned {
             return Err(invalid(
                 at.key("occurrence"),
+                Cause::InvalidValue,
+                &row.declaration,
+                row_index,
+                meter,
+            ));
+        }
+        if !sources.covers(
+            &row.declaration_region,
+            &row.declaration,
+            &CheckedOccurrenceRole::Claim,
+            row.occurrence,
+            &site(row_index, at.key("declaration_region")),
+            meter,
+        )? {
+            return Err(invalid(
+                at.key("declaration_region"),
                 Cause::InvalidValue,
                 &row.declaration,
                 row_index,

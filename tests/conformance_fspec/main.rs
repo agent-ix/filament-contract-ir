@@ -81,6 +81,7 @@ mod checked_package_v2_graph_read_storage;
 mod checked_package_v2_map_type;
 mod clock_payload_tuple;
 use checked_package_v2_map_type as map_type;
+mod claim_names;
 mod model_root;
 mod model_tuple_union;
 mod monitor_plan;
@@ -580,6 +581,7 @@ fn fspec_positive_fixtures_expose_complete_public_typed_reads() {
             },
             filament_contract_model::CheckedPackageSidecarsRef {
                 temporal_clause_names: admitted.temporal_clause_names(),
+                claim_names: admitted.claim_names(),
                 operation_effects: None,
                 operation_bodies: None,
                 checked_term_data: admitted.checked_term_data(),
@@ -876,6 +878,11 @@ fn assert_fspec_operation_record(
             node(declaration, "declaration");
             assert_eq!(member["name"], name.as_ref());
         }
+        Some(CheckedOperationMember::History { declaration, name }) => {
+            assert_eq!(member["kind"], "history");
+            node(declaration, "declaration");
+            assert_eq!(member["name"], name.as_ref());
+        }
         Some(CheckedOperationMember::TypeArgument { declaration }) => {
             assert_eq!(member["kind"], "type_argument");
             node(declaration, "declaration");
@@ -992,6 +999,7 @@ fn fspec_admitted_values_members_and_catalog_constraints_are_exact() {
         },
         filament_contract_model::CheckedPackageSidecarsRef {
             temporal_clause_names: admitted.temporal_clause_names(),
+            claim_names: admitted.claim_names(),
             operation_effects: None,
             operation_bodies: None,
             checked_term_data: admitted.checked_term_data(),
@@ -1362,6 +1370,7 @@ fn tc_048_published_nominal_structural_ids_survive_reader_and_writer() {
         },
         filament_contract_model::CheckedPackageSidecarsRef {
             temporal_clause_names: admitted.temporal_clause_names(),
+            claim_names: admitted.claim_names(),
             operation_effects: None,
             operation_bodies: None,
             checked_term_data: admitted.checked_term_data(),

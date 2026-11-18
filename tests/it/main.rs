@@ -32,6 +32,7 @@ mod checked_package_v2_canonical_encoding;
 mod checked_package_v2_catalog_words;
 mod checked_package_v2_catalogue_differential;
 mod checked_package_v2_check_mode;
+mod checked_package_v2_claim_names;
 mod checked_package_v2_claim_terminal;
 mod checked_package_v2_comparison_operands;
 mod checked_package_v2_composite_operands;

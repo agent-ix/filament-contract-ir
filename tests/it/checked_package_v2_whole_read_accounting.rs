@@ -793,6 +793,11 @@ fn fspec_cases() -> (Vec<Case>, BTreeSet<String>) {
         for patch in row["patch"].as_array().expect("model-root patches") {
             fspec_inputs::apply_vector_patch(&mut wire, patch);
         }
+        // FSpec's published base predates the `claim_names` member; the rows
+        // its nodes call for are derived after the patches, as `read_json` does.
+        if wire.get("claim_names").is_none() {
+            crate::support::checked_package::refresh_claim_names(&mut wire);
+        }
         let expected = match row["outcome"].as_str().expect("model-root outcome") {
             "admitted" => Expected::Admitted,
             outcome => Expected::Refused(

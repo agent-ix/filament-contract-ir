@@ -16,6 +16,7 @@ use serde_json::{json, Value};
 use std::collections::BTreeMap;
 use std::path::Path;
 
+/// A published package in resolved index form, exactly as FSpec ships it.
 pub(crate) fn read_json(path: &Path) -> Result<Value, String> {
     let mut value = read_json_wire(path)?;
     // Tests author and mutate packages in resolved index form; `read_package`

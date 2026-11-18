@@ -355,6 +355,7 @@ fn a_package_without_a_source_object_reads_and_re_encodes_stably() {
             },
             CheckedPackageSidecarsRef {
                 temporal_clause_names: package.temporal_clause_names(),
+                claim_names: package.claim_names(),
                 schedulability_claims: None,
                 operation_effects: package.operation_effect_rows(),
                 operation_bodies: None,
@@ -646,6 +647,7 @@ fn source_effect_rows_admit_read_in_order_and_re_encode_identically() {
         },
         CheckedPackageSidecarsRef {
             temporal_clause_names: admitted_package.temporal_clause_names(),
+            claim_names: admitted_package.claim_names(),
             schedulability_claims: None,
             operation_effects: admitted_package.operation_effect_rows(),
             operation_bodies: None,
