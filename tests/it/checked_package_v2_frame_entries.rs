@@ -13,7 +13,7 @@ use crate::support::checked_package::{
     canonical, evidence_for, evidence_with_document, family_key, family_model_document,
     fixture_source, index_fixture_node_ids, node_id as fixture_node_id, reassign_node_id,
     rebuild_source_map, refresh_identity, select_model, settle, sha256_hex, source_owner,
-    structural_id, typed_node_id, v2_all_families, BOOLEAN_KEY, INTEGER_KEY,
+    structural_id, structural_key, typed_node_id, v2_all_families, BOOLEAN_KEY, INTEGER_KEY,
 };
 use filament_contract_model::{
     encode_checked_package_v2, CheckedApplicationOperation, CheckedCallableIdentity,
@@ -203,6 +203,32 @@ fn select_other_protocol_owner(value: &mut Value) {
         .push(model);
     let clause = position(value, "protocol", "protocol_clause");
     value["semantic_graph"]["nodes"][clause]["owner_model"] = owner;
+    let over =
+        value["semantic_graph"]["nodes"][clause]["body"]["arguments"][0]["value"]["target"].clone();
+    let over_position = nodes(value)
+        .iter()
+        .position(|node| node["node_id"] == over)
+        .expect("over parameter");
+    let reference_body = json!({"term": "aggregate", "members": [
+        {"term": "reference", "target": source_account}
+    ]});
+    let reference_key = structural_key("composite_type", "reference", None, &reference_body);
+    let reference = fixture_node_id(&reference_key);
+    value["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .push(json!({
+            "node_id": reference, "schema_version": "filament.checked-semantic-graph/v2",
+            "node_tag": "composite_type", "semantic_form": "reference",
+            "semantic_type": reference, "dependencies": [source_account],
+            "occurrences": [{"role": "type", "ordinal": 0}], "body": reference_body
+        }));
+    value["semantic_graph"]["nodes"][over_position]["semantic_type"] = reference;
+    reassign_node_id(
+        value,
+        &over,
+        &fixture_node_id("fixture/frame/protocol-object-over-parameter"),
+    );
 }
 
 fn digest(value: &Value, position: usize) -> String {

@@ -7209,7 +7209,7 @@ fn refinement_step_defect_precedes_wrong_protocol_clause_owner() {
     );
 }
 
-#[trace("TC-048")]
+#[trace("TC-048", "FR-064-AC-5")]
 #[test]
 fn refinement_catalog_presence_uses_clause_owner_without_step_rows() {
     let (owned, evidence) =
@@ -7234,6 +7234,15 @@ fn refinement_catalog_presence_uses_clause_owner_without_step_rows() {
 
     let (mut foreign, evidence) =
         concrete_protocol_refinement(ProtocolStepRows::Empty, ProtocolClauseOwner::OtherModel);
+    assert!(
+        foreign["semantic_graph"]["nodes"]
+            .as_array()
+            .expect("nodes")
+            .iter()
+            .filter(|node| node["semantic_form"] == "protocol_clause")
+            .all(|node| node.get("owner_model").is_none()),
+        "ownerless clauses do not contribute to refinement catalogs"
+    );
     let result = read(&foreign, &evidence);
     assert!(
         matches!(result, CheckedPackageV2ReadResult::Admitted(_)),
@@ -7306,7 +7315,17 @@ fn refinement_catalog_joins_owned_finish_without_a_step_row() {
         .expect("retargeted clause");
     assert_eq!(clause["owner_model"], object_b);
     assert_ne!(clause["owner_model"], original_clause["owner_model"]);
-    assert_eq!(clause["body"], original_clause["body"]);
+    let over_parameter_id = &clause["body"]["arguments"][0]["value"]["target"];
+    let over_parameter = nodes
+        .iter()
+        .find(|node| node["node_id"] == *over_parameter_id)
+        .expect("object over parameter");
+    let over_type = nodes
+        .iter()
+        .find(|node| node["node_id"] == over_parameter["semantic_type"])
+        .expect("object reference type");
+    assert_eq!(over_type["semantic_form"], "reference");
+    assert_eq!(over_type["body"]["members"][0]["target"], object_b);
     let clause_key = clause["node_id"].clone();
     assert_eq!(clause["node_id"], original_clause_key);
     let concrete_root = nodes

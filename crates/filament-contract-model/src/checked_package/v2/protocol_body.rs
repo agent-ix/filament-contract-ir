@@ -2681,10 +2681,11 @@ fn check_control_prefix(
             }
         }
         "repeat" => {
-            if members(check.at(arguments, 2))
-                .and_then(|maximum| maximum.first())
-                .and_then(integer_value)
-                .is_some_and(|maximum| maximum == Numeral::exact(0))
+            if argument(arguments, 7).and_then(text_value) == Some("post")
+                && members(check.at(arguments, 2))
+                    .and_then(|maximum| maximum.first())
+                    .and_then(integer_value)
+                    .is_some_and(|maximum| maximum == Numeral::exact(0))
             {
                 return Err(check.refuse(
                     meter,
@@ -6486,11 +6487,17 @@ fn type_reaches_object_type(
     index: &GraphIndex<'_>,
     meter: &mut WorkMeter,
 ) -> Result<bool, ValidationFailure> {
-    let Some(&root) = index.get(root) else {
+    let Some(&root_position) = index.get(root) else {
         return Ok(false);
     };
+    if !matches!(
+        kinds.get(root_position),
+        Some(CheckedNodeKind::Model(ModelForm::ObjectType) | CheckedNodeKind::CompositeType(_))
+    ) {
+        return Ok(false);
+    }
     let mut pending = meter.vec(1)?;
-    pending.push(root);
+    pending.push(root_position);
     let mut visited = meter.vec(0)?;
     while let Some(position) = pending.pop() {
         node_work(meter, position)?;

@@ -2331,6 +2331,9 @@ fn join_targets(
     out: &mut std::collections::BTreeMap<CheckedNodeId, Value>,
 ) -> bool {
     fn add(out: &mut std::collections::BTreeMap<CheckedNodeId, Value>, id: &Value, ids: &[Value]) {
+        if id.is_null() {
+            return;
+        }
         let key = structural_fixture_id_in_graph(id, ids, &mut Default::default());
         out.insert(key, id.clone());
     }
@@ -2349,7 +2352,10 @@ fn join_targets(
             }
             if term["operation"]["member"]["kind"] == "fairness" {
                 for field in ["declaration", "node", "parallel"] {
-                    if let Some(id) = term["operation"]["member"]["target"].get(field) {
+                    if let Some(id) = term["operation"]["member"]["target"]
+                        .get(field)
+                        .filter(|id| !id.is_null())
+                    {
                         add(out, id, ids);
                     }
                 }
@@ -2395,7 +2401,7 @@ fn join_application_dependencies(package: &mut Value) {
     {
         let mut targets = std::collections::BTreeMap::new();
         if join_targets(&node["body"], &ids, &mut targets) {
-            if let Some(owner_model) = node.get("owner_model") {
+            if let Some(owner_model) = node.get("owner_model").filter(|id| !id.is_null()) {
                 let key =
                     structural_fixture_id_in_graph(owner_model, &ids, &mut Default::default());
                 targets.insert(key, owner_model.clone());
