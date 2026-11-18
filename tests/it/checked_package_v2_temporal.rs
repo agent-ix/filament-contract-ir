@@ -3496,13 +3496,7 @@ fn tc_480_an_unknown_or_absent_trace_refuses_at_the_row_trace() {
     let (base, _) = hyper_clock_fixture(&["s", "n"]);
     let mut unknown = base.clone();
     unknown["temporal_bindings"][1]["trace"] = json!("x");
-    expect(
-        "unknown trace",
-        &unknown,
-        Code::InvalidPackage,
-        TIMED_NODE_REFERENCE,
-        "/temporal_bindings/1/trace",
-    );
+    refusal_at_declaration_trace(&unknown, "/temporal_bindings/1/trace");
     let mut absent = base;
     absent["temporal_bindings"][0]
         .as_object_mut()
