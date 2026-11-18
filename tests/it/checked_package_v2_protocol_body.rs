@@ -5956,17 +5956,6 @@ fn package_with_step_control_on(mut package: Value, operator: &str) -> (Value, u
             {"term": "binding", "name": "related", "value": {"term": "aggregate", "members": []}},
             {"term": "binding", "name": "constraint", "value": boolean}
         ]),
-        "send" => {
-            let channel = package["semantic_graph"]["nodes"]
-                [protocol_position(&package, "channel")]["node_id"]
-                .clone();
-            json!([
-                {"term": "binding", "name": "channel", "value": {"term": "reference", "target": channel}},
-                {"term": "binding", "name": "binder", "value": {"term": "reference", "target": binder}},
-                {"term": "binding", "name": "related", "value": {"term": "aggregate", "members": []}},
-                {"term": "binding", "name": "constraint", "value": boolean}
-            ])
-        }
         "commit" => json!([
             {"term": "binding", "name": "role", "value": {"term": "reference", "target": role}},
             {"term": "binding", "name": "binder", "value": {"term": "reference", "target": binder}},
@@ -6301,8 +6290,13 @@ pub(crate) fn package_with_admitted_compensation() -> (Value, usize, usize) {
 }
 
 fn package_with_admitted_compensation_for(operator: &str) -> (Value, usize, usize) {
-    let (state, _) = crate::checked_package_v2_frame_entries::state_operand_fixture();
-    let (mut package, root) = package_with_step_control_on(state, operator);
+    let (mut package, root) = if operator == "send" {
+        let (package, root, _) = package_with_send();
+        (package, root)
+    } else {
+        let (state, _) = crate::checked_package_v2_frame_entries::state_operand_fixture();
+        package_with_step_control_on(state, operator)
+    };
     let local = compensation_template(
         &mut package,
         &["Example", "OrderFlow", "compensate", "Undo"],
