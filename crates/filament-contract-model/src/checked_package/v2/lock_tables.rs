@@ -130,15 +130,8 @@ fn first_repeat<'a>(
     table.extend(items.enumerate().map(|(position, text)| (text, position)));
     table.sort_unstable();
     let mut earliest: Option<(usize, usize)> = None;
-    for (at, pair) in table.windows(2).enumerate() {
-        let starts_run = at
-            .checked_sub(1)
-            .and_then(|before| table.get(before))
-            .is_none_or(|before| before.0 != pair[0].0);
-        if pair[0].0 == pair[1].0
-            && starts_run
-            && earliest.is_none_or(|(_, second)| pair[1].1 < second)
-        {
+    for pair in table.windows(2) {
+        if pair[0].0 == pair[1].0 && earliest.is_none_or(|(_, second)| pair[1].1 < second) {
             earliest = Some((pair[0].1, pair[1].1));
         }
     }
@@ -600,6 +593,25 @@ mod tests {
             allocated: measured.bytes_total,
             locus: budget.first_unpaid_locus(),
         }
+    }
+
+    #[ix_trace_rs::trace("TC-048", "FR-322-AC-452")]
+    #[test]
+    fn dependency_clock_first_repeat_is_the_pair_whose_second_entry_comes_earliest() {
+        let mut table = Vec::new();
+        assert_eq!(first_repeat(["a", "b", "c"].into_iter(), &mut table), None);
+        assert_eq!(
+            first_repeat(["a", "b", "b", "a"].into_iter(), &mut table),
+            Some((1, 2))
+        );
+        assert_eq!(
+            first_repeat(["a", "a", "a"].into_iter(), &mut table),
+            Some((0, 1))
+        );
+        assert_eq!(
+            first_repeat(["x", "a", "b", "a", "x"].into_iter(), &mut table),
+            Some((1, 3))
+        );
     }
 
     #[ix_trace_rs::trace("TC-048", "FR-322-AC-452")]
