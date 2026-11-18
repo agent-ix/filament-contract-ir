@@ -10,6 +10,8 @@ type: TestMatrix
 | Functional Req | Acceptance Criteria | Test Cases | Status |
 |---|---|---|---|
 | FR-371 | FR-371-AC-1 through FR-371-AC-9 | TC-477 | ✅ Implemented (QSL-2410): `claim_names` rows are admitted, joined, de-duplicated and covered by the strict reader; the refinement row name equals the body `name`. |
+| FR-372 | FR-372-AC-1 through FR-372-AC-7 | TC-479 | 🚧 Partial: bounded `carries`, FIFO-key-stable keys, population reads in model-state slots, the `protocol_reference` carrier stop and `test` `post` admit; `test` `pre` refusal, post-test `maximum` 0 and guard scope, the negative cases of AC-3 to AC-5, the non-owner population reads of AC-4 and the back-edge reads of AC-7 remain untested. |
+| FR-064 | FR-064-AC-7, FR-064-AC-8 | TC-478 | 🚧 Partial: an ownerless clause over a bounded integer admits and an object-type clause without its edge refuses; reachability through reference, `option` and collection elements, and the added-edge refusal, remain. |
 | FR-369 | FR-369-AC-1 through FR-369-AC-22 | TC-476 | 🚧 Partial (IR-1550): the node tag, four forms, wire shapes, local value rules, visit charges, the join rules 1-5 (declared, quantity and range types, a support value's membership, a delay quantity's time unit, transitive inherited operations, FR-405's positive read rule, the join's work charges), `conflicting-definition` and the typed read are implemented and tested; the computed type of a reward expression with no `body` binding is Planned, open on QSL-2310 (owner: titan:IR:code). |
 | FR-362 | FR-362-AC-1 through FR-362-AC-3 | TC-475 | 🚧 Planned (IR-1529): unchanged read of packages without source objects, and source type admission. |
 | FR-363 | FR-363-AC-1 through FR-363-AC-5 | TC-475 | 🚧 Planned (IR-1529). |
