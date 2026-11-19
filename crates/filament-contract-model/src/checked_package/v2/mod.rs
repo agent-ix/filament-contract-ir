@@ -388,17 +388,21 @@ pub(super) enum TermBindingName {
     Body,
     Optional,
     Clause,
+    Name,
+    PointAnchor,
     Other,
 }
 
 impl TermBindingName {
     #[ix_trace_rs::string_edge]
-    fn from_wire(text: &str) -> Self {
+    pub(super) fn from_wire(text: &str) -> Self {
         match text {
             "parameters" => Self::Parameters,
             "body" => Self::Body,
             "optional" => Self::Optional,
             "clause" => Self::Clause,
+            "name" => Self::Name,
+            "point_anchor" => Self::PointAnchor,
             _ => Self::Other,
         }
     }

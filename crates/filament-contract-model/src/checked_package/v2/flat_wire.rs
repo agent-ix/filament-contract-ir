@@ -1157,7 +1157,8 @@ pub(super) fn nested_application_refusal<'a>(
             | ApplicationOperator::ProtocolControl
             | ApplicationOperator::StateTransition
             | ApplicationOperator::Claim
-            | ApplicationOperator::StateClause,
+            | ApplicationOperator::StateClause
+            | ApplicationOperator::Slots,
         )
         | None => false,
     };
