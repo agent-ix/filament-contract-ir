@@ -1881,6 +1881,42 @@ impl RefinementGraph<'_, '_> {
         Ok(operation)
     }
 
+    /// FR-375 `T::op`: a qualified class names the anchor's declaring type
+    /// `T` and its operation `op`; a bare class names only the operation.
+    fn source_class_names_anchor(
+        &self,
+        class: &str,
+        source: &CheckedNodeId,
+        operation: &str,
+    ) -> bool {
+        let Some((type_name, class_operation)) = class.rsplit_once("::") else {
+            return class == operation;
+        };
+        class_operation == operation
+            && self
+                .local_anchor(source)
+                .and_then(|(context, _)| self.declared_type_name(context))
+                .is_some_and(|declared| declared == type_name)
+    }
+
+    /// The declaring type's source name: its declared qualified name, else the
+    /// model-owned node path below its package identity.
+    #[ix_trace_rs::string_edge]
+    fn declared_type_name(&self, id: &CheckedNodeId) -> Option<String> {
+        let node = self.local_node(id)?;
+        if let Some(declaration) = &node.declaration {
+            return Some(declaration.qualified_name.join("::"));
+        }
+        let Some(super::CheckedNodeOwner::Model { identity, node }) = &node.owner else {
+            return None;
+        };
+        let name = node
+            .strip_prefix("ix://")?
+            .strip_prefix(identity.as_ref())?
+            .strip_prefix('/')?;
+        Some(name.to_owned())
+    }
+
     fn require_concrete_owner(
         &self,
         meter: &mut super::WorkMeter,
@@ -2289,7 +2325,7 @@ fn validate_rows(
                 at.key("source_node"),
                 locus,
             )?;
-            if row.source_class.as_ref() != operation {
+            if !graph.source_class_names_anchor(&row.source_class, source, operation) {
                 return Err(wrong_binding(meter, at.key("source_class"), locus));
             }
         } else {

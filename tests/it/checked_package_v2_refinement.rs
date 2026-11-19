@@ -4250,6 +4250,48 @@ fn catalog_free_operation_step_refuses_missing_wrong_kind_and_wrong_name() {
     );
 }
 
+#[trace("TC-062", "FR-061-AC-14", "FR-061-AC-15", "FR-375-AC-31")]
+#[test]
+fn catalog_free_operation_step_qualified_source_class_joins_type_and_operation() {
+    let (baseline, evidence, position) = catalog_free_operation_package("object_type");
+    let nodes = &baseline["semantic_graph"]["nodes"];
+    let bare = nodes[position]["body"]["steps"][0]["source_class"]
+        .as_str()
+        .expect("bare class")
+        .to_owned();
+    let type_name = nodes
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|node| node["semantic_form"] == "object_type")
+        .expect("declaring type")["owner"]["node"]
+        .as_str()
+        .and_then(|node| node.strip_prefix("ix://test/refinement/"))
+        .expect("type name")
+        .to_owned();
+    let at = format!("/semantic_graph/nodes/{position}/body/steps/0/source_class");
+    let with_class = |class: String| {
+        let mut package = baseline.clone();
+        package["semantic_graph"]["nodes"][position]["body"]["steps"][0]["source_class"] =
+            json!(class);
+        settle_refinement(&mut package, position);
+        read(&package, &evidence)
+    };
+    let admitted = with_class(format!("{type_name}::{bare}"));
+    assert!(
+        matches!(admitted, CheckedPackageV2ReadResult::Admitted(_)),
+        "{admitted:?}"
+    );
+    for wrong in [format!("Other::{bare}"), format!("{type_name}::other")] {
+        assert_step_refusal(
+            with_class(wrong),
+            CheckedPackageRefusalCode::InvalidModelBinding,
+            Some(CheckedPackageRefusalCause::MalformedDeclaration),
+            &at,
+        );
+    }
+}
+
 #[trace("TC-062", "FR-061-AC-15")]
 #[test]
 fn catalog_free_operation_step_refuses_foreign_selected_model_anchor() {
