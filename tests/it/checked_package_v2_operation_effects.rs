@@ -231,6 +231,7 @@ fn admitted_effect_rows_round_trip_through_typed_writer() {
         },
         CheckedPackageSidecarsRef {
             temporal_clause_names: admitted.temporal_clause_names(),
+            claim_names: admitted.claim_names(),
             schedulability_claims: None,
             operation_effects: Some(rows),
             operation_bodies: None,

@@ -9,8 +9,8 @@ use crate::support::checked_package::{
     evidence_with_document, family_key, family_model_document, fixture_source, node_id,
     owned_structural_node, protocol_named_node, protocol_role_node, reassign_node_id,
     rebuild_source_map, refresh_identity, refresh_identity_projection, refusal, refusal_at_id,
-    rename_node, select_model, selected_interface_model_node, settle, source_owner,
-    v2_all_families,
+    rename_node, select_model, selected_interface_model_node, settle, source_owner, structural_id,
+    structural_key, v2_all_families, COMPLETE_VALUE_FEATURE,
 };
 use filament_contract_model::{
     CheckedNodeId, CheckedPackageEvidence, CheckedPackageLimit, CheckedPackageReadLimits,
@@ -92,6 +92,88 @@ fn read_with_model(
         CheckedPackageReadLimits::bounded(),
         evidence,
     )
+}
+
+fn protocol_population_query(package: &mut Value) -> (Value, Value) {
+    let object = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|node| node["node_tag"] == "model" && node["semantic_form"] == "object_type")
+        .expect("selected object type")["node_id"]
+        .clone();
+    let population = node_id("fixture/protocol-body/population/orders");
+    let reference = node_id("fixture/protocol-body/type/order-reference");
+    let set = node_id("fixture/protocol-body/type/orders-set");
+    let query = node_id("fixture/protocol-body/expression/all-orders");
+    let size = node_id("fixture/protocol-body/expression/orders-size");
+    package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .extend([
+            json!({
+                "node_id": population, "schema_version": "filament.checked-semantic-graph/v2",
+                "node_tag": "relation", "semantic_form": "population",
+                "semantic_type": population, "dependencies": [],
+                "occurrences": [{"role": "generated", "ordinal": 0}],
+                "owner": {"kind": "model", "identity": "test/families",
+                    "node": "ix://test/families/Orders"},
+                "body": {"term": "aggregate", "members": []}
+            }),
+            json!({
+                "node_id": reference, "schema_version": "filament.checked-semantic-graph/v2",
+                "node_tag": "composite_type", "semantic_form": "reference",
+                "semantic_type": reference, "dependencies": [object],
+                "occurrences": [{"role": "type", "ordinal": 0}],
+                "body": {"term": "aggregate", "members": [{"term": "reference", "target": object}]}
+            }),
+            json!({
+                "node_id": set, "schema_version": "filament.checked-semantic-graph/v2",
+                "node_tag": "composite_type", "semantic_form": "set",
+                "semantic_type": set, "dependencies": [reference],
+                "occurrences": [{"role": "type", "ordinal": 0}],
+                "body": {"term": "aggregate", "members": [{"term": "reference", "target": reference}]}
+            }),
+            json!({
+                "node_id": query, "schema_version": "filament.checked-semantic-graph/v2",
+                "node_tag": "expression", "semantic_form": "query",
+                "semantic_type": set, "dependencies": [],
+                "occurrences": [{"role": "expression", "ordinal": 0}],
+                "body": {"term": "application", "operator": "query",
+                    "operation": {"identity": "filament.op.model.all_instances", "laws": [],
+                        "mode": null, "member": {"kind": "type_argument", "declaration": object},
+                        "leaves": []}, "result_type": set,
+                    "arguments": [{"term": "reference", "target": population}]}
+            }),
+            json!({
+                "node_id": size, "schema_version": "filament.checked-semantic-graph/v2",
+                "node_tag": "expression", "semantic_form": "collection",
+                "semantic_type": node_id(&family_key("a3a3")), "dependencies": [],
+                "occurrences": [{"role": "expression", "ordinal": 0}],
+                "body": {"term": "application", "operator": "collection",
+                    "operation": {"identity": "filament.op.collection.size", "laws": [],
+                        "mode": null, "member": {"kind": "type_argument", "declaration": node_id(&family_key("a3a3"))},
+                        "leaves": []}, "result_type": node_id(&family_key("a3a3")),
+                    "arguments": [{"term": "reference", "target": query}]}
+            }),
+        ]);
+    settle(package);
+    let mut document = family_model_document();
+    document["constructs"]
+        .as_array_mut()
+        .expect("constructs")
+        .push(json!({
+            "kind": {"module": "test/families", "name": "population"},
+            "construct": {"meaning": "filament.meaning.model.population/v1"}
+        }));
+    document["populations"] = json!([{
+        "identity": "ix://test/families/Orders", "displayName": "Orders",
+        "kind": {"module": "test/families", "name": "population"},
+        "members": ["ix://test/families/Account"], "extent": "closed",
+        "origin": {"source": {"sourceIdentity": "ix://test/families/Account",
+            "path": "models/Account/populations.md", "startLine": 1, "startColumn": 1}}
+    }]);
+    (size, document)
 }
 
 /// Trace: FR-038-AC-291
@@ -1593,7 +1675,7 @@ fn commit_record_is_ineligible_at_a_decision() {
         json!("commit");
     package["semantic_graph"]["nodes"][commit]["body"]["arguments"] = json!([
         {"term": "binding", "name": "role", "value": role},
-        {"term": "binding", "name": "binder", "value": {"term": "reference", "target": binder}},
+        {"term": "binding", "name": "binder", "value": {"term": "reference", "target": binder.clone()}},
         {"term": "binding", "name": "constraint", "value": constraint}
     ]);
     package["semantic_graph"]["nodes"][field]["body"]["arguments"][0]["target"] = binder;
@@ -1917,6 +1999,732 @@ fn protocol_capture_initializer_refuses_its_own_forward_read() {
     assert!(matches!(refusal.protocol_detail.as_deref(),
         Some(CheckedProtocolRefusalDetail::BinderScope { stage, read, .. })
         if stage.as_ref() == "protocol-capture" && read.as_ref() == "forward"));
+}
+
+/// Trace: FR-372-AC-4
+#[trace("FR-372-AC-4")]
+#[test]
+fn protocol_capture_admits_population_query_in_the_protocol_state() {
+    let mut package = v2_all_families();
+    let clause = clause_position(&package);
+    let object = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|node| node["node_tag"] == "model" && node["semantic_form"] == "object_type")
+        .expect("selected object type")["node_id"]
+        .clone();
+    let population = json!({"package": "test/families",
+        "path": ["relation", "population", "ix://test/families/Orders"], "ordinal": 0});
+    let reference_key = "fixture/protocol-body/type/order-reference";
+    let reference = node_id(reference_key);
+    let set_key = "fixture/protocol-body/type/orders-set";
+    let set = node_id(set_key);
+    let query_key = "fixture/protocol-body/expression/all-orders";
+    let query = node_id(query_key);
+    let size_key = "fixture/protocol-body/expression/orders-size";
+    let size = node_id(size_key);
+    package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .extend([
+            json!({
+                "node_id": population, "schema_version": "filament.checked-semantic-graph/v2",
+                "node_tag": "relation", "semantic_form": "population",
+                "semantic_type": population, "dependencies": [],
+                "occurrences": [{"role": "generated", "ordinal": 0}],
+                "owner": {"kind": "model", "identity": "test/families",
+                    "node": "ix://test/families/Orders"},
+                "body": {"term": "aggregate", "members": []}
+            }),
+            json!({
+                "node_id": reference, "schema_version": "filament.checked-semantic-graph/v2",
+                "node_tag": "composite_type", "semantic_form": "reference",
+                "semantic_type": reference, "dependencies": [object],
+                "occurrences": [{"role": "type", "ordinal": 0}],
+                "body": {"term": "aggregate", "members": [{"term": "reference", "target": object}]}
+            }),
+            json!({
+                "node_id": set, "schema_version": "filament.checked-semantic-graph/v2",
+                "node_tag": "composite_type", "semantic_form": "set",
+                "semantic_type": set, "dependencies": [reference],
+                "occurrences": [{"role": "type", "ordinal": 0}],
+                "body": {"term": "aggregate", "members": [{"term": "reference", "target": reference}]}
+            }),
+            json!({
+                "node_id": query, "schema_version": "filament.checked-semantic-graph/v2",
+                "node_tag": "expression", "semantic_form": "query",
+                "semantic_type": set, "dependencies": [],
+                "occurrences": [{"role": "expression", "ordinal": 0}],
+                "body": {"term": "application", "operator": "query",
+                    "operation": {"identity": "filament.op.model.all_instances", "laws": [],
+                        "mode": null, "member": {"kind": "type_argument", "declaration": object},
+                        "leaves": []}, "result_type": set,
+                    "arguments": [{"term": "reference", "target": population}]}
+            }),
+            json!({
+                "node_id": size, "schema_version": "filament.checked-semantic-graph/v2",
+                "node_tag": "expression", "semantic_form": "collection",
+                "semantic_type": node_id(&family_key("a3a3")), "dependencies": [],
+                "occurrences": [{"role": "expression", "ordinal": 0}],
+                "body": {"term": "application", "operator": "collection",
+                    "operation": {"identity": "filament.op.collection.size", "laws": [],
+                        "mode": null, "member": {"kind": "type_argument", "declaration": node_id(&family_key("a3a3"))},
+                        "leaves": []}, "result_type": node_id(&family_key("a3a3")),
+                    "arguments": [{"term": "reference", "target": query}]}
+            }),
+        ]);
+    settle(&mut package);
+    let mut model_document = family_model_document();
+    model_document["constructs"]
+        .as_array_mut()
+        .expect("model constructs")
+        .push(json!({
+            "kind": {"module": "test/families", "name": "population"},
+            "construct": {"meaning": "filament.meaning.model.population/v1"}
+        }));
+    model_document["populations"] = json!([{
+        "identity": "ix://test/families/Orders", "displayName": "Orders",
+        "kind": {"module": "test/families", "name": "population"},
+        "members": ["ix://test/families/Account"], "extent": "closed",
+        "origin": {"source": {"sourceIdentity": "ix://test/families/Account",
+            "path": "models/Account/populations.md", "startLine": 1, "startColumn": 1}}
+    }]);
+    let read_with_population = |package: &Value| {
+        let evidence = evidence_with_document(package, "test/families", &model_document);
+        crate::read_and_account(
+            &canonical(package),
+            CheckedPackageReadLimits::bounded(),
+            &evidence,
+        )
+    };
+    let unbound = read_with_population(&package);
+    assert!(
+        matches!(unbound, CheckedPackageV2ReadResult::Admitted(_)),
+        "unbound population query fixture must admit before protocol capture: {unbound:?}"
+    );
+    let binder = clause_parameter(&mut package, "n", "1");
+    let binder_position = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .position(|node| node["node_id"] == binder)
+        .expect("capture binder");
+    package["semantic_graph"]["nodes"][binder_position]["semantic_type"] =
+        node_id(&family_key("a3a3"));
+    let binder_key = node_id("fixture/protocol-body/structural_key/2424");
+    reassign_node_id(&mut package, &binder, &binder_key);
+    package["semantic_graph"]["nodes"][clause]["body"]["arguments"][2]["value"]["members"] = json!([{"term": "aggregate", "members": [
+        {"term": "binding", "name": "binder", "value": {"term": "reference", "target": binder_key}},
+        {"term": "binding", "name": "initializer", "value": {"term": "reference", "target": size}}
+    ]}]);
+    relevel_finish_binder(&mut package, 2);
+    settle(&mut package);
+    let result = read_with_population(&package);
+    assert!(
+        matches!(result, CheckedPackageV2ReadResult::Admitted(_)),
+        "protocol-context population capture should admit: {result:?}"
+    );
+
+    let mut owned = package.clone();
+    let owned_clause = clause_position(&owned);
+    let over = owned["semantic_graph"]["nodes"][owned_clause]["body"]["arguments"][0]["value"]
+        ["target"]
+        .clone();
+    let object = owned["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|node| node["node_tag"] == "model" && node["semantic_form"] == "object_type")
+        .expect("object type")["node_id"]
+        .clone();
+    retarget_parameter_to_object_reference(&mut owned, &over);
+    let owned_clause = clause_position(&owned);
+    owned["semantic_graph"]["nodes"][owned_clause]["owner_model"] = object.clone();
+    owned["semantic_graph"]["nodes"][owned_clause]["dependencies"]
+        .as_array_mut()
+        .expect("dependencies")
+        .push(object);
+    owned["semantic_graph"]["nodes"][owned_clause]["dependencies"]
+        .as_array_mut()
+        .expect("dependencies")
+        .sort_by_key(checked_node_id);
+    let finish = protocol_position(&owned, "obligation");
+    owned["semantic_graph"]["nodes"][finish]["body"]["arguments"][1]["value"] = json!({
+        "term": "literal", "type": node_id(&family_key("aaaa")),
+        "value_kind": "boolean", "value": true
+    });
+    settle(&mut owned);
+    let owned_result = read_with_population(&owned);
+    assert!(
+        matches!(owned_result, CheckedPackageV2ReadResult::Admitted(_)),
+        "selected model population capture should admit when the clause is owned: {owned_result:?}"
+    );
+
+    let mut ownerless = package.clone();
+    let ownerless_clause = clause_position(&ownerless);
+    let over = ownerless["semantic_graph"]["nodes"][ownerless_clause]["body"]["arguments"][0]
+        ["value"]["target"]
+        .clone();
+    let over_position = node_position_for_key(&ownerless, &over);
+    ownerless["semantic_graph"]["nodes"][over_position]["semantic_type"] =
+        node_id(&family_key("aaaa"));
+    ownerless["semantic_graph"]["nodes"][over_position]["dependencies"] = json!([]);
+    let ownerless_over = node_id("fixture/protocol-body/structural_key/2429");
+    reassign_node_id(&mut ownerless, &over, &ownerless_over);
+    ownerless["semantic_graph"]["nodes"][ownerless_clause]
+        .as_object_mut()
+        .expect("protocol clause")
+        .remove("owner_model");
+    settle(&mut ownerless);
+    let ownerless_result = read_with_population(&ownerless);
+    assert!(
+        matches!(ownerless_result, CheckedPackageV2ReadResult::Admitted(_)),
+        "ownerless protocol state should read selected model population: {ownerless_result:?}"
+    );
+
+    let mut out_of_scope = package.clone();
+    let outside = clause_parameter(&mut out_of_scope, "outside", "1");
+    let outside_position = node_position_for_key(&out_of_scope, &outside);
+    out_of_scope["semantic_graph"]["nodes"][outside_position]["semantic_type"] =
+        node_id(&family_key("a3a3"));
+    let outside_key = node_id("fixture/protocol-body/structural_key/2428");
+    reassign_node_id(&mut out_of_scope, &outside, &outside_key);
+    let clause = clause_position(&out_of_scope);
+    out_of_scope["semantic_graph"]["nodes"][clause]["body"]["arguments"][2]["value"]["members"]
+        [0]["members"][1]["value"] = json!({
+        "term": "reference", "target": outside_key
+    });
+    settle(&mut out_of_scope);
+    let refusal = read_with_population(&out_of_scope);
+    assert!(
+        matches!(
+            refusal,
+            CheckedPackageV2ReadResult::Refused(CheckedPackageRefusal {
+                code: CheckedPackageRefusalCode::MissingDeclaration,
+                ..
+            })
+        ),
+        "a direct out-of-scope read remains refused: {refusal:?}"
+    );
+}
+
+/// Trace: FR-372-AC-4
+#[trace("FR-372-AC-4")]
+#[test]
+fn protocol_capture_reads_population_when_owned_by_another_selected_model() {
+    let mut package = v2_all_families();
+    let other_model = "test/other";
+    let other_object_identity = "ix://test/other/Customer";
+    select_model(&mut package, other_model);
+    let other_object = structural_id(
+        other_model,
+        vec![
+            json!("model"),
+            json!("object_type"),
+            json!(other_object_identity),
+        ],
+        0,
+    );
+    package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .push(json!({
+            "node_id": other_object,
+            "schema_version": "filament.checked-semantic-graph/v2",
+            "node_tag": "model", "semantic_form": "object_type",
+            "semantic_type": other_object, "dependencies": [],
+            "occurrences": [{"role": "type", "ordinal": 0}],
+            "owner": {"kind": "model", "identity": other_model,
+                "node": other_object_identity},
+            "body": {"term": "aggregate", "members": []}
+        }));
+
+    let (size, population_document) = protocol_population_query(&mut package);
+    let clause = clause_position(&package);
+    let over = package["semantic_graph"]["nodes"][clause]["body"]["arguments"][0]["value"]
+        ["target"]
+        .clone();
+    let reference_body = json!({"term": "aggregate", "members": [
+        {"term": "reference", "target": other_object}
+    ]});
+    let reference = node_id(&structural_key(
+        "composite_type",
+        "reference",
+        None,
+        &reference_body,
+    ));
+    package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .push(json!({
+            "node_id": reference,
+            "schema_version": "filament.checked-semantic-graph/v2",
+            "node_tag": "composite_type", "semantic_form": "reference",
+            "semantic_type": reference, "dependencies": [other_object],
+            "occurrences": [{"role": "type", "ordinal": 0}],
+            "body": reference_body
+        }));
+    let over_position = node_position_for_key(&package, &over);
+    package["semantic_graph"]["nodes"][over_position]["semantic_type"] = reference;
+    package["semantic_graph"]["nodes"][clause]["owner_model"] = other_object.clone();
+    package["semantic_graph"]["nodes"][clause]["dependencies"]
+        .as_array_mut()
+        .expect("clause dependencies")
+        .push(other_object.clone());
+    package["semantic_graph"]["nodes"][clause]["dependencies"]
+        .as_array_mut()
+        .expect("clause dependencies")
+        .sort_by_key(checked_node_id);
+    reassign_node_id(
+        &mut package,
+        &over,
+        &node_id("fixture/protocol-body/other-selected-model-over"),
+    );
+
+    let binder = clause_parameter(&mut package, "n", "1");
+    let binder_position = node_position_for_key(&package, &binder);
+    package["semantic_graph"]["nodes"][binder_position]["semantic_type"] =
+        node_id(&family_key("a3a3"));
+    let binder_key = node_id("fixture/protocol-body/other-owner-capture-n");
+    reassign_node_id(&mut package, &binder, &binder_key);
+    let clause = clause_position(&package);
+    package["semantic_graph"]["nodes"][clause]["body"]["arguments"][2]["value"]["members"] = json!([{"term": "aggregate", "members": [
+        {"term": "binding", "name": "binder", "value": {
+            "term": "reference", "target": binder_key
+        }},
+        {"term": "binding", "name": "initializer", "value": {
+            "term": "reference", "target": size
+        }}
+    ]}]);
+    let finish = protocol_position(&package, "obligation");
+    package["semantic_graph"]["nodes"][finish]["body"]["arguments"][1]["value"] = json!({
+        "term": "literal", "type": node_id(&family_key("aaaa")),
+        "value_kind": "boolean", "value": true
+    });
+    relevel_finish_binder(&mut package, 2);
+    settle_after_structural_rekey(&mut package);
+
+    let mut family_document = family_model_document();
+    family_document["constructs"]
+        .as_array_mut()
+        .expect("constructs")
+        .push(json!({
+            "kind": {"module": "test/families", "name": "population"},
+            "construct": {"meaning": "filament.meaning.model.population/v1"}
+        }));
+    family_document["populations"] = population_document["populations"].clone();
+    let other_document = json!({
+        "contractVersion": "2.0.0",
+        "package": {"identity": other_model, "version": "1"},
+        "constructs": [{
+            "kind": {"module": other_model, "name": "entity"},
+            "construct": {"meaning": "filament.meaning.model.object-type/v1"}
+        }],
+        "types": [{
+            "identity": other_object_identity, "displayName": "Customer",
+            "kind": {"module": other_model, "name": "entity"},
+            "roles": [], "constraints": [], "extensions": [], "unknownPolicy": "reject",
+            "supertypes": [], "fields": [], "operations": []
+        }]
+    });
+    let mut evidence = CheckedPackageEvidence::new();
+    evidence
+        .insert_domain_package_document("test/families", canonical(&family_document))
+        .expect("population model evidence");
+    evidence
+        .insert_domain_package_document(other_model, canonical(&other_document))
+        .expect("owner model evidence");
+    evidence.support_feature(COMPLETE_VALUE_FEATURE);
+
+    let clause = clause_position(&package);
+    assert_eq!(
+        package["semantic_graph"]["nodes"][clause]["owner_model"],
+        other_object
+    );
+    let population = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|node| node["semantic_form"] == "population")
+        .expect("population");
+    assert_eq!(population["owner"]["identity"], "test/families");
+    let result = crate::read_and_account(
+        &canonical(&package),
+        CheckedPackageReadLimits::bounded(),
+        &evidence,
+    );
+    assert!(
+        matches!(result, CheckedPackageV2ReadResult::Admitted(_)),
+        "a protocol capture may read the population when its clause is owned by another selected model: {result:?}"
+    );
+}
+
+/// Trace: FR-372-AC-4
+#[trace("FR-372-AC-4")]
+#[test]
+fn protocol_compensation_registration_and_activation_captures_admit_population_query() {
+    for capture_index in [5, 7] {
+        let (mut package, _, compensation) = package_with_admitted_compensation();
+        let (size, document) = protocol_population_query(&mut package);
+        let captures = &mut package["semantic_graph"]["nodes"][compensation]["body"]["arguments"]
+            [capture_index]["value"]["members"];
+        captures[0]["members"][1]["value"] = json!({"term": "reference", "target": size});
+        settle(&mut package);
+        let evidence = evidence_with_document(&package, "test/families", &document);
+        let result = crate::read_and_account(
+            &canonical(&package),
+            CheckedPackageReadLimits::bounded(),
+            &evidence,
+        );
+        assert!(
+            matches!(result, CheckedPackageV2ReadResult::Admitted(_)),
+            "population query should admit in compensation capture {capture_index}: {result:?}"
+        );
+    }
+}
+
+/// Trace: FR-372-AC-4
+#[trace("FR-372-AC-4")]
+#[test]
+fn protocol_send_event_and_finish_constraints_admit_population_query() {
+    for context in ["send", "event", "finish"] {
+        let mut package = match context {
+            "send" => package_with_send().0,
+            "event" => package_with_step_control("event").0,
+            "finish" => v2_all_families(),
+            _ => unreachable!("listed population context"),
+        };
+        let (size, document) = protocol_population_query(&mut package);
+        let integer = node_id(&family_key("a3a3"));
+        let zero = node_id("fixture/protocol-body/population/zero");
+        package["semantic_graph"]["nodes"]
+            .as_array_mut()
+            .expect("nodes")
+            .push(json!({
+                "node_id": zero, "schema_version": "filament.checked-semantic-graph/v2",
+                "node_tag": "value", "semantic_form": "literal", "semantic_type": integer,
+                "dependencies": [], "occurrences": [{"role": "expression", "ordinal": 0}],
+                "body": {"term": "literal", "type": integer,
+                    "value_kind": "integer", "value": "0"}
+            }));
+        let predicate = boolean_expression(&mut package, "filament.op.integer.ge", &[size, zero]);
+        if context == "finish" {
+            let finish = protocol_position(&package, "obligation");
+            package["semantic_graph"]["nodes"][finish]["body"]["arguments"][1]["value"] =
+                json!({"term": "reference", "target": predicate});
+        } else {
+            let argument = if context == "send" { 3 } else { 4 };
+            let control = package["semantic_graph"]["nodes"]
+                .as_array()
+                .expect("nodes")
+                .iter()
+                .position(|node| {
+                    node["node_tag"] == "protocol"
+                        && node["semantic_form"] == "control"
+                        && node["body"]["operation"]["member"]["operator"] == context
+                })
+                .expect("target control");
+            package["semantic_graph"]["nodes"][control]["body"]["arguments"][argument]["value"] =
+                json!({"term": "reference", "target": predicate});
+        }
+        settle(&mut package);
+        let evidence = evidence_with_document(&package, "test/families", &document);
+        let result = crate::read_and_account(
+            &canonical(&package),
+            CheckedPackageReadLimits::bounded(),
+            &evidence,
+        );
+        assert!(
+            matches!(result, CheckedPackageV2ReadResult::Admitted(_)),
+            "population query should admit in {context} constraint: {result:?}"
+        );
+    }
+}
+
+/// Trace: FR-372-AC-4
+#[trace("FR-372-AC-4")]
+#[test]
+fn protocol_population_query_is_barred_from_activation_choice_and_check_guards() {
+    for (context, slot) in [
+        ("activation", "activation.guard"),
+        ("choice", "choice.guard"),
+        ("check", "check.condition"),
+    ] {
+        let (mut package, check_children) = match context {
+            "activation" => (terminal_condition_package().0, None),
+            "choice" => (protocol_holder_case("choice").0, None),
+            "check" => {
+                let (package, children) = protocol_holder_case("await");
+                (package, Some(children))
+            }
+            _ => unreachable!("listed barred protocol context"),
+        };
+        let (size, document) = protocol_population_query(&mut package);
+        let integer = node_id(&family_key("a3a3"));
+        let zero = node_id(&format!("fixture/protocol-body/population/zero/{context}"));
+        package["semantic_graph"]["nodes"]
+            .as_array_mut()
+            .expect("nodes")
+            .push(json!({
+                "node_id": zero, "schema_version": "filament.checked-semantic-graph/v2",
+                "node_tag": "value", "semantic_form": "literal", "semantic_type": integer,
+                "dependencies": [], "occurrences": [{"role": "expression", "ordinal": 0}],
+                "body": {"term": "literal", "type": integer,
+                    "value_kind": "integer", "value": "0"}
+            }));
+        let predicate = boolean_expression(&mut package, "filament.op.integer.ge", &[size, zero]);
+        match context {
+            "activation" => {
+                let clause = clause_position(&package);
+                activate_each(&mut package, clause, 2);
+                package["semantic_graph"]["nodes"][clause]["body"]["arguments"][1]["value"]["members"]
+                    .as_array_mut()
+                    .expect("activation bindings")
+                    .push(json!({
+                        "term": "binding", "name": "guard", "value": {"term": "reference", "target": predicate}
+                    }));
+            }
+            "choice" => {
+                let choice = holder_position(&package);
+                package["semantic_graph"]["nodes"][choice]["body"]["arguments"][2]["value"]
+                    ["members"][0]["members"]
+                    .as_array_mut()
+                    .expect("choice case bindings")
+                    .iter_mut()
+                    .find(|member| member["name"] == "guard")
+                    .expect("choice guard")["value"] =
+                    json!({"term": "reference", "target": predicate});
+            }
+            "check" => {
+                let check = check_children.as_ref().expect("await children")[1];
+                package["semantic_graph"]["nodes"][check]["body"]["operation"]["member"]
+                    ["operator"] = json!("check");
+                package["semantic_graph"]["nodes"][check]["body"]["arguments"] = json!([{
+                    "term": "binding", "name": "condition", "value": {"term": "reference", "target": predicate}
+                }]);
+            }
+            _ => unreachable!("listed barred protocol context"),
+        }
+        settle(&mut package);
+        let evidence = evidence_with_document(&package, "test/families", &document);
+        let result = crate::read_and_account(
+            &canonical(&package),
+            CheckedPackageReadLimits::bounded(),
+            &evidence,
+        );
+        let CheckedPackageV2ReadResult::Refused(refusal) = result else {
+            panic!("population query must be barred in {context}: {result:?}");
+        };
+        assert_eq!(
+            refusal.code,
+            CheckedPackageRefusalCode::IllTyped,
+            "{context}"
+        );
+        assert_eq!(
+            refusal.cause,
+            Some(CheckedPackageRefusalCause::OperatorIneligible),
+            "{context}"
+        );
+        assert_eq!(
+            refusal.protocol_detail.as_deref(),
+            Some(&CheckedProtocolRefusalDetail::ModelStateRead { slot: slot.into() }),
+            "{context}"
+        );
+    }
+}
+
+/// Trace: FR-372-AC-5
+#[trace("FR-372-AC-5")]
+#[test]
+fn protocol_reference_capture_stops_binder_closure_at_the_carrier() {
+    let (mut package, _) = protocol_holder_case("choice");
+    let clause = clause_position(&package);
+    let boolean = node_id(&family_key("aaaa"));
+    let referenced = protocol_position(&package, "obligation");
+    let referenced_id = package["semantic_graph"]["nodes"][referenced]["node_id"].clone();
+    let carrier_id = node_id("fixture/protocol-body/protocol-reference-carrier");
+    package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .push(json!({
+            "node_id": carrier_id, "schema_version": "filament.checked-semantic-graph/v2",
+            "node_tag": "protocol", "semantic_form": "protocol_reference",
+            "semantic_type": boolean, "dependencies": [referenced_id],
+            "occurrences": [{"role": "expression", "ordinal": 0}],
+            "body": {"term": "reference", "target": referenced_id},
+        }));
+    settle(&mut package);
+    let binder = clause_parameter(&mut package, "captured_flag", "1");
+    package["semantic_graph"]["nodes"][clause]["body"]["arguments"][2]["value"]["members"] = json!([{"term": "aggregate", "members": [
+        {"term": "binding", "name": "binder", "value": {"term": "reference", "target": binder}},
+        {"term": "binding", "name": "initializer", "value": {"term": "reference", "target": carrier_id}}
+    ]}]);
+    relevel_finish_binder(&mut package, 2);
+    settle(&mut package);
+    let result = read(&package);
+    assert!(
+        matches!(result, CheckedPackageV2ReadResult::Admitted(_)),
+        "the carrier must stop closure before the referenced protocol's binders: {result:?}"
+    );
+
+    let mut direct_finish_binder = package.clone();
+    let referenced = protocol_position(&direct_finish_binder, "obligation");
+    let finish_binder = direct_finish_binder["semantic_graph"]["nodes"][referenced]["body"]
+        ["arguments"][0]["value"]["target"]
+        .clone();
+    let clause = clause_position(&direct_finish_binder);
+    direct_finish_binder["semantic_graph"]["nodes"][clause]["body"]["arguments"][2]["value"]
+        ["members"][0]["members"][1]["value"] = json!({
+        "term": "reference", "target": finish_binder
+    });
+    settle(&mut direct_finish_binder);
+    assert!(
+        matches!(
+            read(&direct_finish_binder),
+            CheckedPackageV2ReadResult::Refused(CheckedPackageRefusal {
+                code: CheckedPackageRefusalCode::MissingDeclaration,
+                cause: Some(CheckedPackageRefusalCause::MissingName),
+                ..
+            })
+        ),
+        "the carrier does not expose the referenced clause's finish binder directly"
+    );
+
+    let mut finish_carrier = package.clone();
+    let finish = protocol_position(&finish_carrier, "obligation");
+    let finish_target = package["semantic_graph"]["nodes"][protocol_position(&package, "control")]
+        ["node_id"]
+        .clone();
+    let finish_carrier_id = append_protocol_reference_carrier(&mut finish_carrier, &finish_target);
+    finish_carrier["semantic_graph"]["nodes"][finish]["body"]["arguments"][1]["value"] =
+        json!({"term": "reference", "target": finish_carrier_id});
+    settle(&mut finish_carrier);
+    assert!(
+        matches!(
+            read(&finish_carrier),
+            CheckedPackageV2ReadResult::Admitted(_)
+        ),
+        "the finish constraint may hold the protocol-reference carrier: {:?}",
+        read(&finish_carrier)
+    );
+
+    let (mut each_guard, clause, _) = terminal_condition_package();
+    let _trigger = activate_each(&mut each_guard, clause, 2);
+    let each_target = each_guard["semantic_graph"]["nodes"]
+        [protocol_position(&each_guard, "obligation")]["node_id"]
+        .clone();
+    let carrier = append_protocol_reference_carrier(&mut each_guard, &each_target);
+    each_guard["semantic_graph"]["nodes"][clause]["body"]["arguments"][1]["value"]["members"]
+        .as_array_mut()
+        .expect("activation")
+        .push(json!({
+            "term": "binding", "name": "guard", "value": {"term": "reference", "target": carrier}
+        }));
+    settle(&mut each_guard);
+    assert!(
+        matches!(read(&each_guard), CheckedPackageV2ReadResult::Admitted(_)),
+        "each activation guard may hold the carrier: {:?}",
+        read(&each_guard)
+    );
+
+    let (mut terminal, _clause, terminal_node) = terminal_condition_package();
+    let referenced = protocol_position(&terminal, "obligation");
+    let target = terminal["semantic_graph"]["nodes"][referenced]["node_id"].clone();
+    let carrier = append_protocol_reference_carrier(&mut terminal, &target);
+    terminal["semantic_graph"]["nodes"][terminal_node]["body"]["arguments"][1]["value"]
+        ["members"] = json!([{"term": "reference", "target": carrier}]);
+    settle(&mut terminal);
+    assert!(
+        matches!(read(&terminal), CheckedPackageV2ReadResult::Admitted(_)),
+        "terminal condition may hold the carrier: {:?}",
+        read(&terminal)
+    );
+
+    let (mut repeat_guard, _) = protocol_holder_case("repeat");
+    let target = repeat_guard["semantic_graph"]["nodes"]
+        [protocol_position(&repeat_guard, "obligation")]["node_id"]
+        .clone();
+    let carrier = append_protocol_reference_carrier(&mut repeat_guard, &target);
+    let holder = holder_position(&repeat_guard);
+    repeat_guard["semantic_graph"]["nodes"][holder]["body"]["arguments"][4]["value"] =
+        json!({"term": "reference", "target": carrier});
+    settle(&mut repeat_guard);
+    assert!(
+        matches!(read(&repeat_guard), CheckedPackageV2ReadResult::Admitted(_)),
+        "repeat guard may hold the carrier: {:?}",
+        read(&repeat_guard)
+    );
+
+    let (mut check_condition, children) = protocol_holder_case("await");
+    let target = check_condition["semantic_graph"]["nodes"]
+        [protocol_position(&check_condition, "obligation")]["node_id"]
+        .clone();
+    let carrier = append_protocol_reference_carrier(&mut check_condition, &target);
+    let then = children[1];
+    check_condition["semantic_graph"]["nodes"][then]["body"]["operation"]["member"]["operator"] =
+        json!("check");
+    check_condition["semantic_graph"]["nodes"][then]["body"]["arguments"] = json!([{
+        "term": "binding", "name": "condition", "value": {"term": "reference", "target": carrier}
+    }]);
+    settle(&mut check_condition);
+    assert!(
+        matches!(
+            read(&check_condition),
+            CheckedPackageV2ReadResult::Admitted(_)
+        ),
+        "check condition may hold the carrier: {:?}",
+        read(&check_condition)
+    );
+
+    let mut barred_state = each_guard;
+    let over = barred_state["semantic_graph"]["nodes"][clause_position(&barred_state)]["body"]
+        ["arguments"][0]["value"]["target"]
+        .clone();
+    let clause = clause_position(&barred_state);
+    let carrier = barred_state["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|node| node["semantic_form"] == "protocol_reference")
+        .expect("carrier")["node_id"]
+        .clone();
+    let conjunction = decision_conjunction(&mut barred_state, &carrier, &over);
+    barred_state["semantic_graph"]["nodes"][clause]["body"]["arguments"][1]["value"]["members"]
+        .as_array_mut()
+        .expect("activation")
+        .iter_mut()
+        .find(|member| member["name"] == "guard")
+        .expect("activation guard")["value"] = json!({"term": "reference", "target": conjunction});
+    settle(&mut barred_state);
+    let CheckedPackageV2ReadResult::Refused(barred_refusal) = read(&barred_state) else {
+        panic!("model state remains barred beside the carrier");
+    };
+    assert_eq!(barred_refusal.code, CheckedPackageRefusalCode::IllTyped);
+    assert_eq!(
+        barred_refusal.cause,
+        Some(CheckedPackageRefusalCause::OperatorIneligible)
+    );
+    assert!(matches!(
+        barred_refusal.protocol_detail.as_deref(),
+        Some(CheckedProtocolRefusalDetail::ModelStateRead { slot }) if slot.as_ref() == "activation.guard"
+    ));
+}
+
+fn append_protocol_reference_carrier(package: &mut Value, target: &Value) -> Value {
+    let carrier = node_id("fixture/protocol-body/extra-protocol-reference-carrier");
+    let boolean = node_id(&family_key("aaaa"));
+    package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .push(json!({
+            "node_id": carrier, "schema_version": "filament.checked-semantic-graph/v2",
+            "node_tag": "protocol", "semantic_form": "protocol_reference",
+            "semantic_type": boolean, "dependencies": [target],
+            "occurrences": [{"role": "expression", "ordinal": 0}],
+            "body": {"term": "reference", "target": target},
+        }));
+    carrier
 }
 
 fn terminal_condition_package() -> (Value, usize, usize) {
@@ -2279,11 +3087,63 @@ fn clause_position(package: &Value) -> usize {
         .expect("protocol clause")
 }
 
+pub(super) fn admitted_object_owned_protocol_families() -> Value {
+    let mut package = v2_all_families();
+    let clause = clause_position(&package);
+    let over = package["semantic_graph"]["nodes"][clause]["body"]["arguments"][0]["value"]
+        ["target"]
+        .clone();
+    let over_position = node_position_for_key(&package, &over);
+    let object = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|node| node["node_tag"] == "model" && node["semantic_form"] == "object_type")
+        .expect("object type")["node_id"]
+        .clone();
+    let reference_body = json!({"term": "aggregate", "members": [
+        {"term": "reference", "target": object}
+    ]});
+    let reference = node_id(&structural_key(
+        "composite_type",
+        "reference",
+        None,
+        &reference_body,
+    ));
+    package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .push(json!({
+            "node_id": reference, "schema_version": "filament.checked-semantic-graph/v2",
+            "node_tag": "composite_type", "semantic_form": "reference",
+            "semantic_type": reference, "dependencies": [object],
+            "occurrences": [{"role": "type", "ordinal": 0}],
+            "body": reference_body
+        }));
+    package["semantic_graph"]["nodes"][over_position]["semantic_type"] = reference.clone();
+    package["semantic_graph"]["nodes"][over_position]["dependencies"] = json!([]);
+    let over_key = node_id("fixture/protocol-body/object-over-parameter");
+    reassign_node_id(&mut package, &over, &over_key);
+    package["semantic_graph"]["nodes"][clause]["owner_model"] = object.clone();
+    let dependencies = package["semantic_graph"]["nodes"][clause]["dependencies"]
+        .as_array_mut()
+        .expect("dependencies");
+    dependencies.push(object);
+    dependencies.sort_by_key(checked_node_id);
+    let finish = protocol_position(&package, "obligation");
+    package["semantic_graph"]["nodes"][finish]["body"]["arguments"][1]["value"] = json!({
+        "term": "literal", "type": node_id(&family_key("aaaa")),
+        "value_kind": "boolean", "value": true
+    });
+    settle_after_structural_rekey(&mut package);
+    package
+}
+
 /// Trace: FR-064-AC-3, FR-064-AC-4, FR-064-AC-6
-#[trace("TC-946")]
+#[trace("FR-064-AC-3", "FR-064-AC-6")]
 #[test]
 fn protocol_owner_edge_has_closed_wire_presence_and_local_shape() {
-    let package = admitted_protocol_families();
+    let package = admitted_object_owned_protocol_families();
     let position = clause_position(&package);
     let baseline = read(&package);
     assert!(
@@ -2331,7 +3191,7 @@ fn protocol_owner_edge_has_closed_wire_presence_and_local_shape() {
         Some(format!("/semantic_graph/nodes/{position}/owner_model").as_str())
     );
 
-    let mut package = admitted_protocol_families();
+    let mut package = admitted_object_owned_protocol_families();
     let position = clause_position(&package);
     package["semantic_graph"]["nodes"][position]["owner_model"] = node_id(&family_key("1010"));
     settle(&mut package);
@@ -2349,11 +3209,471 @@ fn protocol_owner_edge_has_closed_wire_presence_and_local_shape() {
     );
 }
 
+/// Trace: FR-064-AC-7
+#[trace("FR-064-AC-7")]
+#[test]
+fn ownerless_protocol_clause_over_a_bounded_integer_is_admitted() {
+    let boolean = admitted_protocol_families();
+    assert!(
+        matches!(read(&boolean), CheckedPackageV2ReadResult::Admitted(_)),
+        "ownerless Boolean over should admit"
+    );
+
+    let mut package = admitted_protocol_families();
+    let clause = clause_position(&package);
+    let over = package["semantic_graph"]["nodes"][clause]["body"]["arguments"][0]["value"]
+        ["target"]
+        .clone();
+    let bounded = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|node| {
+            node["node_tag"] == "bounded_domain" && node["semantic_form"] == "integer_range"
+        })
+        .expect("bounded integer type")["node_id"]
+        .clone();
+    let over_position = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .position(|node| node["node_id"] == over)
+        .expect("over parameter");
+    package["semantic_graph"]["nodes"][over_position]["semantic_type"] = bounded.clone();
+    let over_key = node_id("fixture/protocol-body/structural_key/2426");
+    reassign_node_id(&mut package, &over, &over_key);
+    let object_owner = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|node| node["node_tag"] == "model" && node["semantic_form"] == "object_type")
+        .expect("object type")["node_id"]
+        .clone();
+    let mut owner_on_non_object = package.clone();
+    owner_on_non_object["semantic_graph"]["nodes"][clause]["owner_model"] = object_owner;
+    settle(&mut owner_on_non_object);
+    let owner_on_non_object_result = read(&owner_on_non_object);
+    assert!(
+        matches!(
+            &owner_on_non_object_result,
+            CheckedPackageV2ReadResult::Refused(CheckedPackageRefusal {
+                code: CheckedPackageRefusalCode::MalformedWire,
+                ..
+            })
+        ),
+        "owner_model on non-object over must refuse: {owner_on_non_object_result:?}"
+    );
+    let finish = protocol_position(&package, "obligation");
+    package["semantic_graph"]["nodes"][finish]["body"]["arguments"][1]["value"] = json!({
+        "term": "literal", "type": node_id(&family_key("aaaa")),
+        "value_kind": "boolean", "value": true
+    });
+    package["semantic_graph"]["nodes"][clause]
+        .as_object_mut()
+        .expect("protocol clause")
+        .remove("owner_model");
+    settle(&mut package);
+    let result = read(&package);
+    assert!(
+        matches!(result, CheckedPackageV2ReadResult::Admitted(_)),
+        "ownerless non-object clause should admit: {result:?}"
+    );
+
+    let mut malformed = package.clone();
+    malformed["semantic_graph"]["nodes"][clause]["body"]["arguments"] = json!([]);
+    settle(&mut malformed);
+    let CheckedPackageV2ReadResult::Refused(refusal) = read(&malformed) else {
+        panic!("ownerless non-object clause with malformed layout must refuse");
+    };
+    assert_eq!(refusal.code, CheckedPackageRefusalCode::MalformedWire);
+
+    let mut ownerless_bad_scope = v2_all_families();
+    let capture = clause_parameter(&mut ownerless_bad_scope, "ownerless_capture", "1");
+    let clause = clause_position(&ownerless_bad_scope);
+    ownerless_bad_scope["semantic_graph"]["nodes"][clause]["body"]["arguments"][2]["value"] = json!({"term": "aggregate", "members": [{
+        "term": "aggregate", "members": [
+            {"term": "binding", "name": "binder", "value": {
+                "term": "reference", "target": capture
+            }},
+            {"term": "binding", "name": "initializer", "value": {
+                "term": "reference", "target": capture
+            }}
+        ]
+    }]});
+    settle(&mut ownerless_bad_scope);
+    let ownerless_bad_scope_result = read(&ownerless_bad_scope);
+    assert!(
+        matches!(
+            ownerless_bad_scope_result,
+            CheckedPackageV2ReadResult::Refused(CheckedPackageRefusal {
+                code: CheckedPackageRefusalCode::MissingDeclaration,
+                cause: Some(CheckedPackageRefusalCause::MissingName),
+                ..
+            })
+        ),
+        "ownerless admission still checks capture initializer scope: {ownerless_bad_scope_result:?}"
+    );
+
+    for (ordinal, form) in ["option", "sequence", "tuple", "record"]
+        .into_iter()
+        .enumerate()
+    {
+        let mut package = admitted_protocol_families();
+        let clause = clause_position(&package);
+        let over = package["semantic_graph"]["nodes"][clause]["body"]["arguments"][0]["value"]
+            ["target"]
+            .clone();
+        let over_position = package["semantic_graph"]["nodes"]
+            .as_array()
+            .expect("nodes")
+            .iter()
+            .position(|node| node["node_id"] == over)
+            .expect("over parameter");
+        let integer = node_id(&family_key("a3a3"));
+        let boolean = node_id(&family_key("aaaa"));
+        let (body, dependencies) = match form {
+            "option" | "sequence" => (
+                json!({"term": "aggregate", "members": [
+                    {"term": "reference", "target": integer}
+                ]}),
+                vec![integer],
+            ),
+            "tuple" => (
+                json!({"term": "aggregate", "members": [
+                    {"term": "reference", "target": boolean},
+                    {"term": "reference", "target": integer}
+                ]}),
+                vec![boolean, integer],
+            ),
+            "record" => (
+                json!({"term": "aggregate", "members": [
+                    {"term": "binding", "name": "count", "value": {
+                        "term": "reference", "target": integer
+                    }}
+                ]}),
+                vec![integer],
+            ),
+            _ => unreachable!("listed non-object type form"),
+        };
+        let type_key = node_id(&format!(
+            "fixture/protocol-body/structural_key/non-object-{ordinal}"
+        ));
+        package["semantic_graph"]["nodes"]
+            .as_array_mut()
+            .expect("nodes")
+            .push(json!({
+                "node_id": type_key,
+                "schema_version": "filament.checked-semantic-graph/v2",
+                "node_tag": "composite_type", "semantic_form": form,
+                "semantic_type": type_key, "dependencies": dependencies,
+                "occurrences": [{"role": "type", "ordinal": 0}],
+                "body": body
+            }));
+        package["semantic_graph"]["nodes"][over_position]["semantic_type"] = type_key.clone();
+        let typed_over = node_id(&format!(
+            "fixture/protocol-body/structural_key/non-object-over-{ordinal}"
+        ));
+        reassign_node_id(&mut package, &over, &typed_over);
+        let finish = protocol_position(&package, "obligation");
+        package["semantic_graph"]["nodes"][finish]["body"]["arguments"][1]["value"] = json!({
+            "term": "literal", "type": node_id(&family_key("aaaa")),
+            "value_kind": "boolean", "value": true
+        });
+        package["semantic_graph"]["nodes"][clause]
+            .as_object_mut()
+            .expect("protocol clause")
+            .remove("owner_model");
+        settle(&mut package);
+        let result = read(&package);
+        assert!(
+            matches!(result, CheckedPackageV2ReadResult::Admitted(_)),
+            "ownerless non-object over type {form} should admit: {result:?}"
+        );
+
+        let selected_object = package["semantic_graph"]["nodes"]
+            .as_array()
+            .expect("nodes")
+            .iter()
+            .find(|node| node["node_tag"] == "model" && node["semantic_form"] == "object_type")
+            .expect("selected object type")["node_id"]
+            .clone();
+        package["semantic_graph"]["nodes"][clause]["owner_model"] = selected_object.clone();
+        package["semantic_graph"]["nodes"][clause]["dependencies"]
+            .as_array_mut()
+            .expect("dependencies")
+            .push(selected_object);
+        package["semantic_graph"]["nodes"][clause]["dependencies"]
+            .as_array_mut()
+            .expect("dependencies")
+            .sort_by_key(checked_node_id);
+        settle(&mut package);
+        assert!(
+            matches!(
+                read(&package),
+                CheckedPackageV2ReadResult::Refused(CheckedPackageRefusal {
+                    code: CheckedPackageRefusalCode::MalformedWire,
+                    ..
+                })
+            ),
+            "owner edge on non-object over type {form} must refuse"
+        );
+    }
+
+    for (ordinal, form) in [
+        "text_bounds",
+        "decimal_range",
+        "rational_range",
+        "float_rounding",
+        "collection_bounds",
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let mut package = admitted_protocol_families();
+        let clause = clause_position(&package);
+        let over = package["semantic_graph"]["nodes"][clause]["body"]["arguments"][0]["value"]
+            ["target"]
+            .clone();
+        let over_position = node_position_for_key(&package, &over);
+        let bounded = protocol_bounded_domain(&mut package, form);
+        package["semantic_graph"]["nodes"][over_position]["semantic_type"] = bounded;
+        reassign_node_id(
+            &mut package,
+            &over,
+            &node_id(&format!("fixture/protocol-body/ownerless-over-{ordinal}")),
+        );
+        let finish = protocol_position(&package, "obligation");
+        package["semantic_graph"]["nodes"][finish]["body"]["arguments"][1]["value"] = json!({
+            "term": "literal", "type": node_id(&family_key("aaaa")),
+            "value_kind": "boolean", "value": true
+        });
+        settle(&mut package);
+        assert!(
+            matches!(read(&package), CheckedPackageV2ReadResult::Admitted(_)),
+            "ownerless non-object over bounded_domain/{form} should admit"
+        );
+
+        let selected_object = package["semantic_graph"]["nodes"]
+            .as_array()
+            .expect("nodes")
+            .iter()
+            .find(|node| node["node_tag"] == "model" && node["semantic_form"] == "object_type")
+            .expect("selected object type")["node_id"]
+            .clone();
+        package["semantic_graph"]["nodes"][clause]["owner_model"] = selected_object.clone();
+        package["semantic_graph"]["nodes"][clause]["dependencies"]
+            .as_array_mut()
+            .expect("dependencies")
+            .push(selected_object);
+        package["semantic_graph"]["nodes"][clause]["dependencies"]
+            .as_array_mut()
+            .expect("dependencies")
+            .sort_by_key(checked_node_id);
+        settle(&mut package);
+        assert!(
+            matches!(read(&package), CheckedPackageV2ReadResult::Refused(_)),
+            "an owner edge on non-object over bounded_domain/{form} must refuse"
+        );
+    }
+}
+
+/// Trace: FR-064-AC-8
+#[trace("FR-064-AC-8")]
+#[test]
+fn protocol_owner_requirement_follows_indirect_object_over_types() {
+    for (ordinal, form) in ["reference", "option", "sequence"].into_iter().enumerate() {
+        let mut package = admitted_protocol_families();
+        let clause = clause_position(&package);
+        let over = package["semantic_graph"]["nodes"][clause]["body"]["arguments"][0]["value"]
+            ["target"]
+            .clone();
+        let over_position = package["semantic_graph"]["nodes"]
+            .as_array()
+            .expect("nodes")
+            .iter()
+            .position(|node| node["node_id"] == over)
+            .expect("over parameter");
+        let object_type = package["semantic_graph"]["nodes"]
+            .as_array()
+            .expect("nodes")
+            .iter()
+            .find(|node| node["node_tag"] == "model" && node["semantic_form"] == "object_type")
+            .expect("object type")["node_id"]
+            .clone();
+        let body = json!({"term": "aggregate", "members": [
+            {"term": "reference", "target": object_type}
+        ]});
+        let type_key = node_id(&structural_key("composite_type", form, None, &body));
+        package["semantic_graph"]["nodes"]
+            .as_array_mut()
+            .expect("nodes")
+            .push(json!({
+                "node_id": type_key,
+                "schema_version": "filament.checked-semantic-graph/v2",
+                "node_tag": "composite_type", "semantic_form": form,
+                "semantic_type": type_key, "dependencies": [object_type],
+                "occurrences": [{"role": "type", "ordinal": 0}],
+                "body": body
+            }));
+        package["semantic_graph"]["nodes"][over_position]["semantic_type"] = type_key.clone();
+        let typed_over = node_id(&format!(
+            "fixture/protocol-body/structural_key/indirect-over-{ordinal}"
+        ));
+        reassign_node_id(&mut package, &over, &typed_over);
+        package["semantic_graph"]["nodes"][clause]["owner_model"] = object_type.clone();
+        let finish = protocol_position(&package, "obligation");
+        package["semantic_graph"]["nodes"][finish]["body"]["arguments"][1]["value"] = json!({
+            "term": "literal", "type": node_id(&family_key("aaaa")),
+            "value_kind": "boolean", "value": true
+        });
+        settle(&mut package);
+        let result = read(&package);
+        assert!(
+            matches!(result, CheckedPackageV2ReadResult::Admitted(_)),
+            "owner edge should admit indirect object over type {form}: {result:?}"
+        );
+
+        let other_identity = "ix://test/families/Other";
+        let other_id = structural_id(
+            "test/families",
+            vec![json!("model"), json!("object_type"), json!(other_identity)],
+            0,
+        );
+        package["semantic_graph"]["nodes"]
+            .as_array_mut()
+            .expect("nodes")
+            .push(json!({
+                "node_id": other_id, "schema_version": "filament.checked-semantic-graph/v2",
+                "node_tag": "model", "semantic_form": "object_type",
+                "semantic_type": other_id, "dependencies": [],
+                "occurrences": [{"role": "type", "ordinal": 0}],
+                "owner": {"kind": "model", "identity": "test/families", "node": other_identity},
+                "body": {"term": "aggregate", "members": []}
+            }));
+        package["semantic_graph"]["nodes"][clause]["owner_model"] = other_id.clone();
+        package["semantic_graph"]["nodes"][clause]["dependencies"]
+            .as_array_mut()
+            .expect("dependencies")
+            .push(other_id);
+        package["semantic_graph"]["nodes"][clause]["dependencies"]
+            .as_array_mut()
+            .expect("dependencies")
+            .sort_by_key(checked_node_id);
+        settle(&mut package);
+        let mut document = family_model_document();
+        document["types"]
+            .as_array_mut()
+            .expect("types")
+            .push(json!({
+                "identity": other_identity, "displayName": "Other",
+                "kind": {"module": "test/families", "name": "entity"},
+                "roles": [], "constraints": [], "extensions": [], "unknownPolicy": "reject",
+                "supertypes": [], "fields": [], "operations": []
+            }));
+        let evidence = evidence_with_document(&package, "test/families", &document);
+        let other_owner_result = crate::read_and_account(
+            &canonical(&package),
+            CheckedPackageReadLimits::bounded(),
+            &evidence,
+        );
+        assert!(
+            matches!(other_owner_result, CheckedPackageV2ReadResult::Admitted(_)),
+            "owner edge to another selected object type must remain authoritative: {other_owner_result:?}"
+        );
+
+        let mut ownerless = package.clone();
+        ownerless["semantic_graph"]["nodes"][clause]
+            .as_object_mut()
+            .expect("protocol clause")
+            .remove("owner_model");
+        settle(&mut ownerless);
+        let ownerless_evidence = evidence_with_document(&ownerless, "test/families", &document);
+        let ownerless_result = crate::read_and_account(
+            &canonical(&ownerless),
+            CheckedPackageReadLimits::bounded(),
+            &ownerless_evidence,
+        );
+        let CheckedPackageV2ReadResult::Refused(refusal) = ownerless_result else {
+            panic!("ownerless indirect object over type {form} must refuse");
+        };
+        assert_eq!(refusal.code, CheckedPackageRefusalCode::MalformedWire);
+    }
+}
+
+/// Trace: FR-064-AC-7
+#[trace("FR-064-AC-7")]
+#[test]
+fn ownerless_protocol_clause_over_a_model_record_is_admitted() {
+    let identity = "ix://test/families/Parts";
+    let record_id = structural_id(
+        "test/families",
+        vec![json!("model"), json!("record_value_type"), json!(identity)],
+        0,
+    );
+    let mut package = admitted_protocol_families();
+    let clause = clause_position(&package);
+    let over = package["semantic_graph"]["nodes"][clause]["body"]["arguments"][0]["value"]
+        ["target"]
+        .clone();
+    let over_position = node_position_for_key(&package, &over);
+    let mut record = selected_interface_model_node();
+    record["semantic_form"] = json!("record_value_type");
+    record["node_id"] = serde_json::to_value(&record_id).expect("record id");
+    record["semantic_type"] = record["node_id"].clone();
+    record["owner"]["node"] = json!(identity);
+    package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .push(record);
+    package["semantic_graph"]["nodes"][over_position]["semantic_type"] =
+        serde_json::to_value(&record_id).expect("record id");
+    let typed_over = node_id("fixture/protocol-body/model-record-over");
+    reassign_node_id(&mut package, &over, &typed_over);
+    package["semantic_graph"]["nodes"][clause]
+        .as_object_mut()
+        .expect("protocol clause")
+        .remove("owner_model");
+    let finish = protocol_position(&package, "obligation");
+    package["semantic_graph"]["nodes"][finish]["body"]["arguments"][1]["value"] = json!({
+        "term": "literal", "type": node_id(&family_key("aaaa")),
+        "value_kind": "boolean", "value": true
+    });
+    settle(&mut package);
+
+    let mut document = family_model_document();
+    document["constructs"]
+        .as_array_mut()
+        .expect("constructs")
+        .push(json!({
+            "kind": {"module": "test/families", "name": "record"},
+            "construct": {"meaning": "filament.meaning.model.record-value-type/v1"}
+        }));
+    document["types"]
+        .as_array_mut()
+        .expect("types")
+        .push(json!({
+            "identity": identity, "displayName": "Parts",
+            "kind": {"module": "test/families", "name": "record"},
+            "roles": [], "constraints": [], "extensions": [], "unknownPolicy": "reject",
+            "supertypes": [], "fields": [], "operations": []
+        }));
+    let evidence = evidence_with_document(&package, "test/families", &document);
+    let result = crate::read_and_account(
+        &canonical(&package),
+        CheckedPackageReadLimits::bounded(),
+        &evidence,
+    );
+    assert!(
+        matches!(result, CheckedPackageV2ReadResult::Admitted(_)),
+        "ownerless clause over a selected model record should admit: {result:?}"
+    );
+}
+
 /// Trace: FR-064-AC-3, FR-064-AC-4
-#[trace("TC-946")]
+#[trace("FR-064-AC-3")]
 #[test]
 fn protocol_owner_dependency_precedes_key_and_target_meaning() {
-    let mut package = admitted_protocol_families();
+    let mut package = admitted_object_owned_protocol_families();
     let position = clause_position(&package);
     let owner = package["semantic_graph"]["nodes"][position]["owner_model"].clone();
     package["semantic_graph"]["nodes"][position]["dependencies"]
@@ -2374,7 +3694,7 @@ fn protocol_owner_dependency_precedes_key_and_target_meaning() {
     );
 
     for duplicate in [true, false] {
-        let mut package = admitted_protocol_families();
+        let mut package = admitted_object_owned_protocol_families();
         let position = clause_position(&package);
         let entries = package["semantic_graph"]["nodes"][position]["dependencies"]
             .as_array_mut()
@@ -2398,7 +3718,7 @@ fn protocol_owner_dependency_precedes_key_and_target_meaning() {
         );
     }
 
-    let mut package = admitted_protocol_families();
+    let mut package = admitted_object_owned_protocol_families();
     let position = clause_position(&package);
     package["semantic_graph"]["nodes"][position]["owner_model"] = node_id(&family_key("aaaa"));
     settle(&mut package);
@@ -2417,11 +3737,11 @@ fn protocol_owner_dependency_precedes_key_and_target_meaning() {
 }
 
 /// Trace: FR-064-AC-3, FR-064-AC-4
-#[trace("TC-946")]
+#[trace("FR-064-AC-3")]
 #[test]
 fn protocol_owner_or_extra_dependency_refuses_at_graph_join() {
     for omit_owner in [true, false] {
-        let mut package = admitted_protocol_families();
+        let mut package = admitted_object_owned_protocol_families();
         let position = clause_position(&package);
         let owner = package["semantic_graph"]["nodes"][position]["owner_model"].clone();
         let extra = package["semantic_graph"]["nodes"]
@@ -2460,7 +3780,7 @@ fn protocol_owner_or_extra_dependency_refuses_at_graph_join() {
         );
     }
 
-    let mut package = admitted_protocol_families();
+    let mut package = admitted_object_owned_protocol_families();
     let position = clause_position(&package);
     let body_target = package["semantic_graph"]["nodes"][position]["body"]["arguments"][0]["value"]
         ["target"]
@@ -2485,10 +3805,10 @@ fn protocol_owner_or_extra_dependency_refuses_at_graph_join() {
 }
 
 /// Trace: FR-064-AC-2, FR-064-AC-4
-#[trace("TC-946")]
+#[trace("FR-064-AC-4")]
 #[test]
 fn protocol_owner_retarget_to_selected_non_object_model_refuses() {
-    let mut package = admitted_protocol_families();
+    let mut package = admitted_object_owned_protocol_families();
     let position = clause_position(&package);
     let old_key = package["semantic_graph"]["nodes"][position]["node_id"].clone();
     let old_owner = package["semantic_graph"]["nodes"][position]["owner_model"].clone();
@@ -2524,7 +3844,7 @@ fn protocol_owner_retarget_to_selected_non_object_model_refuses() {
 }
 
 /// Trace: FR-064-AC-4
-#[trace("TC-048", "TC-946")]
+#[trace("FR-064-AC-4")]
 #[test]
 fn protocol_owner_selected_state_machine_and_record_value_type_refuse_at_edge() {
     for (label, form, meaning) in [
@@ -2539,7 +3859,7 @@ fn protocol_owner_selected_state_machine_and_record_value_type_refuse_at_edge() 
             "filament.meaning.model.record-value-type/v1",
         ),
     ] {
-        let mut package = admitted_protocol_families();
+        let mut package = admitted_object_owned_protocol_families();
         let mut document = family_model_document();
         document["constructs"][1]["construct"]["meaning"] = json!(meaning);
         if form == "state_machine" {
@@ -2604,10 +3924,10 @@ fn protocol_owner_selected_state_machine_and_record_value_type_refuse_at_edge() 
 }
 
 /// Trace: FR-064-AC-4
-#[trace("TC-048", "TC-946")]
+#[trace("FR-064-AC-4")]
 #[test]
 fn protocol_owner_unselected_object_refuses_at_target_before_clause() {
-    let mut package = admitted_protocol_families();
+    let mut package = admitted_object_owned_protocol_families();
     let capture = clause_parameter(&mut package, "captured", "1");
     let clause = clause_position(&package);
     package["semantic_graph"]["nodes"][clause]["body"]["arguments"][2]["value"]["members"] = json!([{"term": "aggregate", "members": [
@@ -2663,10 +3983,10 @@ fn protocol_owner_unselected_object_refuses_at_target_before_clause() {
 }
 
 /// Trace: FR-064-AC-4
-#[trace("TC-048", "TC-946")]
+#[trace("FR-064-AC-4")]
 #[test]
 fn protocol_owner_selected_wrong_kinds_and_missing_target_refuse_at_edge() {
-    let package = admitted_protocol_families();
+    let package = admitted_object_owned_protocol_families();
     for (label, target) in [
         ("source declaration", node_id(&family_key("8080"))),
         ("selected relation", node_id(&family_key("2020"))),
@@ -2711,17 +4031,17 @@ fn protocol_owner_selected_wrong_kinds_and_missing_target_refuse_at_edge() {
 }
 
 /// Trace: FR-064-AC-4
-#[trace("TC-048", "TC-946")]
+#[trace("FR-064-AC-4")]
 #[test]
 fn protocol_owner_wrong_kind_precedes_same_clause_capture_scope() {
-    let mut package = admitted_protocol_families();
+    let mut package = admitted_object_owned_protocol_families();
     let capture = clause_parameter(&mut package, "captured", "1");
     let clause = clause_position(&package);
     package["semantic_graph"]["nodes"][clause]["body"]["arguments"][2]["value"]["members"] = json!([{"term": "aggregate", "members": [
         {"term": "binding", "name": "binder", "value": {"term": "reference", "target": capture}},
         {"term": "binding", "name": "initializer", "value": {"term": "reference", "target": capture}}
     ]}]);
-    package["semantic_graph"]["nodes"][clause]["owner_model"] = node_id(&family_key("2020"));
+    package["semantic_graph"]["nodes"][clause]["owner_model"] = node_id(&family_key("1616"));
     settle(&mut package);
 
     let CheckedPackageV2ReadResult::Refused(refusal) = read(&package) else {
@@ -2738,27 +4058,47 @@ fn protocol_owner_wrong_kind_precedes_same_clause_capture_scope() {
     );
 }
 
-/// Trace: FR-064-AC-4
-#[trace("TC-048", "TC-946")]
+/// Trace: FR-064-AC-3
+#[trace("FR-064-AC-3")]
 #[test]
-fn protocol_role_member_defect_precedes_wrong_clause_owner() {
+fn owner_edge_on_ownerless_clause_precedes_protocol_role_validation() {
     let (mut package, role) = package_with_member_role_on(admitted_protocol_families());
     let clause = clause_position(&package);
     package["semantic_graph"]["nodes"][role]["body"]["arguments"][0]["value"]["target"] =
         node_id(&family_key("a4a4"));
-    package["semantic_graph"]["nodes"][clause]["owner_model"] = node_id(&family_key("2020"));
+    package["semantic_graph"]["nodes"][clause]["owner_model"] = node_id(&family_key("1515"));
     settle(&mut package);
 
     let CheckedPackageV2ReadResult::Refused(refusal) = read(&package) else {
-        panic!("role member defect must precede clause owner edge");
+        panic!("owner edge on a non-object over clause must refuse");
     };
-    assert_eq!(refusal.code, CheckedPackageRefusalCode::InvalidModelBinding);
+    assert_eq!(refusal.code, CheckedPackageRefusalCode::MalformedWire);
     assert_eq!(
-        refusal.cause,
+        refusal.loci[0].path.as_ref().map(|path| path.as_str()),
+        Some(format!("/semantic_graph/nodes/{clause}").as_str())
+    );
+    let role_target =
+        package["semantic_graph"]["nodes"][role]["body"]["arguments"][0]["value"]["target"].clone();
+    package["semantic_graph"]["nodes"][clause]
+        .as_object_mut()
+        .expect("clause")
+        .remove("owner_model");
+    settle(&mut package);
+    let role_refusal = read(&package);
+    let CheckedPackageV2ReadResult::Refused(role_refusal) = role_refusal else {
+        panic!("the role target still has an independent refusal");
+    };
+    assert_eq!(
+        role_refusal.code,
+        CheckedPackageRefusalCode::InvalidModelBinding,
+        "target={role_target}"
+    );
+    assert_eq!(
+        role_refusal.cause,
         Some(CheckedPackageRefusalCause::MalformedDeclaration)
     );
     assert_eq!(
-        refusal.loci[0].path.as_ref().map(|path| path.as_str()),
+        role_refusal.loci[0].path.as_ref().map(|path| path.as_str()),
         Some(format!("/semantic_graph/nodes/{role}/body/arguments/0/value/target").as_str())
     );
 }
@@ -2814,6 +4154,34 @@ fn clause_parameter(package: &mut Value, name: &str, level: &str) -> Value {
         .expect("nodes")
         .push(parameter);
     target
+}
+
+fn retarget_parameter_to_object_reference(package: &mut Value, target: &Value) -> Value {
+    let object = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|node| node["node_tag"] == "model" && node["semantic_form"] == "object_type")
+        .expect("object type")["node_id"]
+        .clone();
+    let body = json!({"term": "aggregate", "members": [
+        {"term": "reference", "target": object}
+    ]});
+    let reference = node_id(&structural_key("composite_type", "reference", None, &body));
+    package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .push(json!({
+            "node_id": reference, "schema_version": "filament.checked-semantic-graph/v2",
+            "node_tag": "composite_type", "semantic_form": "reference",
+            "semantic_type": reference, "dependencies": [object],
+            "occurrences": [{"role": "type", "ordinal": 0}], "body": body,
+        }));
+    let position = node_position_for_key(package, target);
+    package["semantic_graph"]["nodes"][position]["semantic_type"] = reference;
+    let updated = node_id("fixture/protocol-body/object-reference-binder");
+    reassign_node_id(package, target, &updated);
+    updated
 }
 
 fn relevel_parameter(package: &mut Value, target: &Value, level: usize) -> Value {
@@ -3172,7 +4540,7 @@ fn clause_each_trigger_admits_and_checks_parameter_level() {
 #[trace("TC-048")]
 #[test]
 fn clause_each_trigger_requires_declared_dependency() {
-    let mut package = v2_all_families();
+    let mut package = admitted_object_owned_protocol_families();
     let trigger = clause_parameter(&mut package, "opened", "1");
     let clause = clause_position(&package);
     package["semantic_graph"]["nodes"][clause]["body"]["arguments"][1]["value"]["members"] = json!([
@@ -3351,7 +4719,7 @@ fn clause_rejects_second_capture_with_readable_name() {
 #[trace("TC-048")]
 #[test]
 fn clause_required_temporal_target_checks_membership_then_dependencies() {
-    let mut package = v2_all_families();
+    let mut package = admitted_object_owned_protocol_families();
     let temporal = package["semantic_graph"]["nodes"]
         .as_array()
         .expect("nodes")
@@ -4642,10 +6010,11 @@ fn repeat_admits_proof_and_zero_maximum_and_refuses_both_unpaired_directions() {
     zero["semantic_graph"]["nodes"][holder]["body"]["arguments"][2]["value"]["members"][0]
         ["value"] = json!("0");
     settle(&mut zero);
-    assert!(matches!(
-        read(&zero),
-        CheckedPackageV2ReadResult::Admitted(_)
-    ));
+    let zero_result = read(&zero);
+    assert!(
+        matches!(zero_result, CheckedPackageV2ReadResult::Admitted(_)),
+        "pre-test repeat with zero maximum admits: {zero_result:?}"
+    );
 
     let mut unbounded_proof = with_proof.clone();
     unbounded_proof["semantic_graph"]["nodes"][holder]["body"]["arguments"][2]["value"]
@@ -4691,6 +6060,342 @@ fn repeat_admits_proof_and_zero_maximum_and_refuses_both_unpaired_directions() {
         read(&proof_only),
         CheckedPackageV2ReadResult::Admitted(_)
     ));
+}
+
+/// Trace: FR-372-AC-6
+#[trace("FR-372-AC-6")]
+#[test]
+fn repeat_admits_post_test_and_refuses_an_unknown_test_mode() {
+    let (package, _) = protocol_holder_case("repeat");
+    let holder = holder_position(&package);
+    let mut post_test = package.clone();
+    post_test["semantic_graph"]["nodes"][holder]["body"]["arguments"]
+        .as_array_mut()
+        .expect("repeat arguments")
+        .push(json!({"term": "binding", "name": "test", "value": {
+            "term": "literal", "type": node_id(&family_key("a1a1")),
+            "value_kind": "text", "value": "post"
+        }}));
+    settle(&mut post_test);
+    let post_test_holder = holder_position(&post_test);
+    let mut pre_test_after = package.clone();
+    settle(&mut pre_test_after);
+    let pre_test_after_holder = holder_position(&pre_test_after);
+    assert_eq!(
+        canonical(&package["semantic_graph"]["nodes"][holder]),
+        canonical(&pre_test_after["semantic_graph"]["nodes"][pre_test_after_holder]),
+        "pre-test repeat node bytes remain unchanged when the optional test member is absent"
+    );
+    assert_eq!(
+        package["semantic_graph"]["nodes"][holder]["node_id"],
+        pre_test_after["semantic_graph"]["nodes"][pre_test_after_holder]["node_id"],
+        "pre-test repeat identity remains stable"
+    );
+    assert_ne!(
+        repeat_body_derived_id(&package, holder),
+        repeat_body_derived_id(&post_test, post_test_holder),
+        "adding the post-test member changes the body-derived repeat identity"
+    );
+    assert!(matches!(
+        read(&post_test),
+        CheckedPackageV2ReadResult::Admitted(_)
+    ));
+
+    let mut pre_test_zero = package.clone();
+    pre_test_zero["semantic_graph"]["nodes"][holder]["body"]["arguments"][2]["value"]["members"]
+        [0]["value"] = json!("0");
+    settle(&mut pre_test_zero);
+    assert!(
+        matches!(
+            read(&pre_test_zero),
+            CheckedPackageV2ReadResult::Admitted(_)
+        ),
+        "pre-test repeat with maximum zero is admitted at its node"
+    );
+
+    let mut zero_maximum = post_test.clone();
+    let post_holder = holder_position(&zero_maximum);
+    zero_maximum["semantic_graph"]["nodes"][post_holder]["body"]["arguments"][2]["value"]
+        ["members"][0]["value"] = json!("0");
+    settle(&mut zero_maximum);
+    assert!(
+        matches!(
+            read(&zero_maximum),
+            CheckedPackageV2ReadResult::Refused(CheckedPackageRefusal {
+                code: CheckedPackageRefusalCode::InvalidPackage,
+                cause: Some(CheckedPackageRefusalCause::InvalidValue),
+                ..
+            })
+        ),
+        "post-test repeat with maximum zero refuses at the repeat node"
+    );
+
+    for maximum in [None, Some("1"), Some("3")] {
+        let (mut bounded_post, children) = protocol_holder_case("repeat");
+        let holder = holder_position(&bounded_post);
+        if let Some(maximum) = maximum {
+            bounded_post["semantic_graph"]["nodes"][holder]["body"]["arguments"][2]["value"]
+                ["members"][0]["value"] = json!(maximum);
+        } else {
+            bounded_post["semantic_graph"]["nodes"][holder]["body"]["arguments"][6]["value"]
+                ["members"] = json!([]);
+            bounded_post["semantic_graph"]["nodes"][holder]["body"]["arguments"][2]["value"]
+                ["members"] = json!([]);
+            bounded_post["semantic_graph"]["nodes"]
+                .as_array_mut()
+                .expect("nodes")
+                .remove(children[1]);
+        }
+        let holder = holder_position(&bounded_post);
+        bounded_post["semantic_graph"]["nodes"][holder]["body"]["arguments"]
+            .as_array_mut()
+            .expect("repeat arguments")
+            .push(json!({"term": "binding", "name": "test", "value": {
+                "term": "literal", "type": node_id(&family_key("a1a1")),
+                "value_kind": "text", "value": "post"
+            }}));
+        settle(&mut bounded_post);
+        let result = read(&bounded_post);
+        assert!(
+            matches!(result, CheckedPackageV2ReadResult::Admitted(_)),
+            "post-test maximum {maximum:?} should admit: {result:?}"
+        );
+    }
+
+    let mut pre_test = package.clone();
+    pre_test["semantic_graph"]["nodes"][holder]["body"]["arguments"]
+        .as_array_mut()
+        .expect("repeat arguments")
+        .push(json!({"term": "binding", "name": "test", "value": {
+            "term": "literal", "type": node_id(&family_key("a1a1")),
+            "value_kind": "text", "value": "pre"
+        }}));
+    settle(&mut pre_test);
+    assert!(matches!(
+        read(&pre_test),
+        CheckedPackageV2ReadResult::Refused(CheckedPackageRefusal {
+            code: CheckedPackageRefusalCode::MalformedWire,
+            ..
+        })
+    ));
+
+    let (mut missing_test_binder, _) = protocol_holder_case("repeat");
+    let holder = holder_position(&missing_test_binder);
+    let finish = protocol_position(&missing_test_binder, "obligation");
+    let finish_binder = missing_test_binder["semantic_graph"]["nodes"][finish]["body"]["arguments"]
+        [0]["value"]["target"]
+        .clone();
+    missing_test_binder["semantic_graph"]["nodes"][holder]["body"]["arguments"][4]["value"] =
+        json!({"term": "reference", "target": finish_binder});
+    settle(&mut missing_test_binder);
+    assert!(
+        matches!(
+            read(&missing_test_binder),
+            CheckedPackageV2ReadResult::Refused(CheckedPackageRefusal {
+                code: CheckedPackageRefusalCode::MissingDeclaration,
+                ..
+            })
+        ),
+        "a repeat guard without test must refuse a binder outside the repeat body"
+    );
+
+    post_test["semantic_graph"]["nodes"][holder]["body"]["arguments"][7]["value"]["value"] =
+        json!("middle");
+    settle(&mut post_test);
+    assert!(matches!(
+        read(&post_test),
+        CheckedPackageV2ReadResult::Refused(CheckedPackageRefusal {
+            code: CheckedPackageRefusalCode::MalformedWire,
+            ..
+        })
+    ));
+}
+
+fn repeat_body_derived_id(package: &Value, holder: usize) -> Value {
+    let body = package["semantic_graph"]["nodes"][holder]["body"].clone();
+    let semantic_type = package["semantic_graph"]["nodes"][holder]["semantic_type"]["path"][0]
+        .as_str()
+        .expect("repeat semantic type path")
+        .to_owned();
+    node_id(&application_node_key(
+        "protocol",
+        "control",
+        &semantic_type,
+        &body,
+    ))
+}
+
+/// Trace: FR-372-AC-7
+#[trace("FR-372-AC-7")]
+#[test]
+fn repeat_back_edge_slots_admit_only_every_path_binders() {
+    for test in [None, Some("post")] {
+        let (mut package, children) = protocol_holder_case("repeat");
+        let holder = holder_position(&package);
+        let got = clause_parameter(&mut package, "got", "1");
+        let got = retarget_parameter_to_object_reference(&mut package, &got);
+
+        let role = package["semantic_graph"]["nodes"][holder]["body"]["arguments"][0]["value"]
+            ["target"]
+            .clone();
+        package["semantic_graph"]["nodes"][children[0]]["body"]["operation"]["member"]
+            ["operator"] = json!("event");
+        package["semantic_graph"]["nodes"][children[0]]["body"]["arguments"] = json!([
+            {"term": "binding", "name": "role", "value": {"term": "reference", "target": role}},
+            {"term": "binding", "name": "compensation", "value": {"term": "aggregate", "members": []}},
+            {"term": "binding", "name": "binder", "value": {"term": "reference", "target": got.clone()}},
+            {"term": "binding", "name": "related", "value": {"term": "aggregate", "members": []}},
+            {"term": "binding", "name": "constraint", "value": {"term": "literal", "type": node_id(&family_key("aaaa")), "value_kind": "boolean", "value": true}}
+        ]);
+        let observed = boolean_expression(
+            &mut package,
+            "filament.op.reference.eq",
+            &[got.clone(), got.clone()],
+        );
+        package["semantic_graph"]["nodes"][holder]["body"]["arguments"][1]["value"] =
+            json!({"term": "aggregate", "members": [{"term": "reference", "target": observed}]});
+        package["semantic_graph"]["nodes"][holder]["body"]["arguments"][3]["value"] = json!({"term": "aggregate", "members": [
+            {"term": "binding", "name": "invariant", "value": {"term": "reference", "target": observed}},
+            {"term": "binding", "name": "variant", "value": {"term": "reference", "target": observed}}
+        ]});
+        if let Some(test) = test {
+            package["semantic_graph"]["nodes"][holder]["body"]["arguments"][4]["value"] =
+                json!({"term": "reference", "target": observed});
+            package["semantic_graph"]["nodes"][holder]["body"]["arguments"]
+                .as_array_mut()
+                .expect("repeat arguments")
+                .push(json!({"term": "binding", "name": "test", "value": {
+                    "term": "literal", "type": node_id(&family_key("a1a1")),
+                    "value_kind": "text", "value": test
+                }}));
+        }
+        settle(&mut package);
+        let result = read(&package);
+        assert!(
+            matches!(&result, CheckedPackageV2ReadResult::Admitted(_)),
+            "repeat back-edge slots should admit for test={test:?}: {result:?}"
+        );
+    }
+
+    let (mut package, children) = protocol_holder_case("repeat");
+    let holder = holder_position(&package);
+    let got = clause_parameter(&mut package, "got", "1");
+    let got = retarget_parameter_to_object_reference(&mut package, &got);
+    let role = package["semantic_graph"]["nodes"][holder]["body"]["arguments"][0]["value"]
+        ["target"]
+        .clone();
+    let event_id = package["semantic_graph"]["nodes"][children[0]]["node_id"].clone();
+    package["semantic_graph"]["nodes"][children[0]]["body"]["operation"]["member"]["operator"] =
+        json!("event");
+    package["semantic_graph"]["nodes"][children[0]]["body"]["arguments"] = json!([
+        {"term": "binding", "name": "role", "value": {"term": "reference", "target": role}},
+        {"term": "binding", "name": "compensation", "value": {"term": "aggregate", "members": []}},
+        {"term": "binding", "name": "binder", "value": {"term": "reference", "target": got.clone()}},
+        {"term": "binding", "name": "related", "value": {"term": "aggregate", "members": []}},
+        {"term": "binding", "name": "constraint", "value": {"term": "literal", "type": node_id(&family_key("aaaa")), "value_kind": "boolean", "value": true}}
+    ]);
+    package["semantic_graph"]["nodes"][children[0]]["declaration"]["qualified_name"] = json!([
+        "Example",
+        "OrderFlow",
+        "run",
+        "Main",
+        "Holder",
+        "BranchChoice",
+        "Left"
+    ]);
+    let nested_event_id = json!({
+        "package": "test/families",
+        "path": ["Example", "OrderFlow", "run", "Main", "Holder", "BranchChoice", "Left"],
+        "ordinal": 0
+    });
+    reassign_node_id(&mut package, &event_id, &nested_event_id);
+    let event_id = nested_event_id;
+    let right_path = [
+        "Example",
+        "OrderFlow",
+        "run",
+        "Main",
+        "Holder",
+        "BranchChoice",
+        "RightBranch",
+    ];
+    let other = clause_parameter(&mut package, "other", "1");
+    let mut right_body = package["semantic_graph"]["nodes"][children[1]]["body"].clone();
+    right_body["operation"]["member"]["operator"] = json!("event");
+    right_body["arguments"] = json!([
+        {"term": "binding", "name": "role", "value": {"term": "reference", "target": role}},
+        {"term": "binding", "name": "compensation", "value": {"term": "aggregate", "members": []}},
+        {"term": "binding", "name": "binder", "value": {"term": "reference", "target": other}},
+        {"term": "binding", "name": "related", "value": {"term": "aggregate", "members": []}},
+        {"term": "binding", "name": "constraint", "value": {"term": "literal", "type": node_id(&family_key("aaaa")), "value_kind": "boolean", "value": true}}
+    ]);
+    let right = protocol_named_node("control", &right_path, right_body, &[]);
+    let right_id = right["node_id"].clone();
+    package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .push(right);
+    let label = |value: &str| json!({"term": "literal", "type": node_id(&family_key("a1a1")), "value_kind": "text", "value": value});
+    let truth = || json!({"term": "literal", "type": node_id(&family_key("aaaa")), "value_kind": "boolean", "value": true});
+    let choice_body = {
+        let mut body = package["semantic_graph"]["nodes"][children[1]]["body"].clone();
+        body["operation"]["member"]["operator"] = json!("choice");
+        body["arguments"] = json!([
+            {"term": "binding", "name": "owner", "value": {"term": "reference", "target": role}},
+            {"term": "binding", "name": "visible", "value": {"term": "aggregate", "members": []}},
+            {"term": "binding", "name": "cases", "value": {"term": "aggregate", "members": [
+                {"term": "aggregate", "members": [
+                    {"term": "binding", "name": "label", "value": label("Left")},
+                    {"term": "binding", "name": "guard", "value": truth()},
+                    {"term": "binding", "name": "body", "value": {"term": "reference", "target": event_id}}
+                ]},
+                {"term": "aggregate", "members": [
+                    {"term": "binding", "name": "label", "value": label("Right")},
+                    {"term": "binding", "name": "guard", "value": truth()},
+                    {"term": "binding", "name": "body", "value": {"term": "reference", "target": right_id}}
+                ]}
+            ]}}
+        ]);
+        body
+    };
+    let choice_deps = [
+        event_id["path"][0].as_str().expect("event key").to_owned(),
+        right_id["path"][0].as_str().expect("right key").to_owned(),
+        role["path"][0].as_str().expect("role key").to_owned(),
+    ];
+    let choice_path = [
+        "Example",
+        "OrderFlow",
+        "run",
+        "Main",
+        "Holder",
+        "BranchChoice",
+    ];
+    let choice = protocol_named_node("control", &choice_path, choice_body, &choice_deps);
+    let choice_id = choice["node_id"].clone();
+    package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .push(choice);
+    package["semantic_graph"]["nodes"][holder]["body"]["arguments"][5]["value"]["target"] =
+        choice_id;
+    let observed = boolean_expression(
+        &mut package,
+        "filament.op.reference.eq",
+        &[got.clone(), got],
+    );
+    package["semantic_graph"]["nodes"][holder]["body"]["arguments"][1]["value"] =
+        json!({"term": "aggregate", "members": [{"term": "reference", "target": observed}]});
+    settle(&mut package);
+    let CheckedPackageV2ReadResult::Refused(refusal) = read(&package) else {
+        panic!("repeat back-edge read from one choice branch must refuse");
+    };
+    assert_eq!(
+        refusal.code,
+        CheckedPackageRefusalCode::MissingDeclaration,
+        "unexpected one-branch refusal: {refusal:?}"
+    );
+    assert_eq!(refusal.cause, Some(CheckedPackageRefusalCause::MissingName));
 }
 
 /// Trace: FR-038-AC-288, FR-038-AC-456
@@ -8386,6 +10091,220 @@ fn protocol_channel_checks_endpoint_and_message_type() {
     );
 }
 
+/// Trace: FR-372-AC-1
+#[trace("FR-372-AC-1")]
+#[test]
+fn protocol_channel_admits_bounded_domain_carries() {
+    for form in [
+        "integer_range",
+        "text_bounds",
+        "decimal_range",
+        "rational_range",
+        "float_rounding",
+        "collection_bounds",
+    ] {
+        let (mut package, _) = package_with_member_queue();
+        let bounded = if form == "integer_range" {
+            package["semantic_graph"]["nodes"]
+                .as_array()
+                .expect("nodes")
+                .iter()
+                .find(|node| {
+                    node["node_tag"] == "bounded_domain" && node["semantic_form"] == "integer_range"
+                })
+                .expect("bounded integer type")["node_id"]
+                .clone()
+        } else {
+            protocol_bounded_domain(&mut package, form)
+        };
+        let channel = protocol_position(&package, "channel");
+        package["semantic_graph"]["nodes"][channel]["body"]["arguments"][2]["value"]["target"] =
+            bounded.clone();
+        settle(&mut package);
+        assert!(
+            matches!(read(&package), CheckedPackageV2ReadResult::Admitted(_)),
+            "bounded_domain/{form} carries should admit"
+        );
+        assert_eq!(
+            package["semantic_graph"]["nodes"][channel]["body"]["arguments"][2]["value"]["target"],
+            bounded,
+            "channel retains bounded_domain/{form}"
+        );
+    }
+
+    let (mut package, _) = package_with_member_queue();
+    let channel = protocol_position(&package, "channel");
+    let expression = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|node| node["node_tag"] == "expression")
+        .expect("expression target")["node_id"]
+        .clone();
+    package["semantic_graph"]["nodes"][channel]["body"]["arguments"][2]["value"]["target"] =
+        expression;
+    settle(&mut package);
+    let key = package["semantic_graph"]["nodes"][channel]["node_id"].clone();
+    assert_eq!(
+        read(&package),
+        refusal_at_id(
+            CheckedPackageRefusalCode::InvalidModelBinding,
+            &format!("/semantic_graph/nodes/{channel}/body/arguments/2/value/target"),
+            Some(CheckedPackageRefusalCause::MalformedDeclaration),
+            &key,
+        ),
+        "an expression node is not an admissible carries type"
+    );
+}
+
+fn protocol_bounded_domain(package: &mut Value, form: &str) -> Value {
+    let integer = node_id(&family_key("a3a3"));
+    let text = node_id(&family_key("a1a1"));
+    let mut extra_nodes = Vec::new();
+    let (base, base_key, dependencies, body) = match form {
+        "integer_range" => {
+            let body = json!({"term": "aggregate", "members": [
+                {"term": "binding", "name": "min", "value": {"term": "literal", "type": integer, "value_kind": "integer", "value": "0"}},
+                {"term": "binding", "name": "max", "value": {"term": "literal", "type": integer, "value_kind": "integer", "value": "99"}}
+            ]});
+            (
+                integer.clone(),
+                family_key("a3a3"),
+                vec![integer.clone()],
+                body,
+            )
+        }
+        "text_bounds" => {
+            let body = json!({"term": "aggregate", "members": [
+                {"term": "binding", "name": "min", "value": {"term": "literal", "type": integer, "value_kind": "integer", "value": "0"}},
+                {"term": "binding", "name": "max", "value": {"term": "literal", "type": integer, "value_kind": "integer", "value": "8"}},
+                {"term": "binding", "name": "text_profile", "value": {"term": "literal", "type": text, "value_kind": "text", "value": "nfc"}}
+            ]});
+            (text.clone(), family_key("a1a1"), vec![text.clone()], body)
+        }
+        "decimal_range" | "rational_range" => {
+            let scalar = if form == "decimal_range" {
+                "decimal"
+            } else {
+                "rational"
+            };
+            let scalar_id = node_id(&format!("fixture/protocol-body/scalar/{scalar}"));
+            extra_nodes.push(json!({
+                "node_id": scalar_id, "schema_version": "filament.checked-semantic-graph/v2",
+                "node_tag": "scalar_type", "semantic_form": scalar,
+                "semantic_type": scalar_id, "dependencies": [],
+                "occurrences": [{"role": "type", "ordinal": 0}],
+                "body": {"term": "aggregate", "members": []}
+            }));
+            let bounds = if form == "decimal_range" {
+                vec![
+                    ("coefficient_min", "-100"),
+                    ("coefficient_max", "100"),
+                    ("scale_min", "0"),
+                    ("scale_max", "0"),
+                ]
+            } else {
+                vec![
+                    ("numerator_min", "-10"),
+                    ("numerator_max", "10"),
+                    ("denominator_min", "1"),
+                    ("denominator_max", "10"),
+                ]
+            };
+            let mut members = bounds
+                .into_iter()
+                .map(|(name, value)| {
+                    json!({"term": "binding", "name": name, "value": {
+                        "term": "literal", "type": integer, "value_kind": "integer", "value": value
+                    }})
+                })
+                .collect::<Vec<_>>();
+            if form == "decimal_range" {
+                members.push(json!({"term": "binding", "name": "rounding", "value": {
+                    "term": "literal", "type": text, "value_kind": "text", "value": "nearest-even"
+                }}));
+            }
+            (
+                scalar_id.clone(),
+                format!("fixture/protocol-body/scalar/{scalar}"),
+                Vec::new(),
+                json!({"term": "aggregate", "members": members}),
+            )
+        }
+        "float_rounding" => {
+            let float_key = "fixture/protocol-body/scalar/float64";
+            let float = node_id(float_key);
+            extra_nodes.push(json!({
+                "node_id": float, "schema_version": "filament.checked-semantic-graph/v2",
+                "node_tag": "scalar_type", "semantic_form": "float64",
+                "semantic_type": float, "dependencies": [],
+                "occurrences": [{"role": "type", "ordinal": 0}],
+                "body": {"term": "aggregate", "members": []}
+            }));
+            (
+                float.clone(),
+                float_key.to_owned(),
+                vec![float],
+                json!({"term": "aggregate", "members": [{
+                    "term": "binding", "name": "rounding", "value": {
+                        "term": "literal", "type": text, "value_kind": "text", "value": "nearest-even"
+                    }
+                }]}),
+            )
+        }
+        "collection_bounds" => {
+            let bool_type = node_id(&family_key("aaaa"));
+            let collection_body = json!({"term": "aggregate", "members": [
+                {"term": "reference", "target": bool_type}
+            ]});
+            let collection_key =
+                structural_key("composite_type", "sequence", None, &collection_body);
+            let collection = node_id(&collection_key);
+            extra_nodes.push(json!({
+                "node_id": collection, "schema_version": "filament.checked-semantic-graph/v2",
+                "node_tag": "composite_type", "semantic_form": "sequence",
+                "semantic_type": collection, "dependencies": [bool_type],
+                "occurrences": [{"role": "type", "ordinal": 0}], "body": collection_body
+            }));
+            (
+                collection.clone(),
+                collection_key,
+                vec![collection],
+                json!({"term": "aggregate", "members": [
+                    {"term": "binding", "name": "min", "value": {"term": "literal", "type": integer, "value_kind": "integer", "value": "0"}},
+                    {"term": "binding", "name": "max", "value": {"term": "literal", "type": integer, "value_kind": "integer", "value": "3"}}
+                ]}),
+            )
+        }
+        _ => unreachable!("tested bounded domain form"),
+    };
+    package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .extend(extra_nodes);
+    let bounded = node_id(&structural_key(
+        "bounded_domain",
+        form,
+        Some(&base_key),
+        &body,
+    ));
+    package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .push(json!({
+            "node_id": bounded, "schema_version": "filament.checked-semantic-graph/v2",
+            "node_tag": "bounded_domain", "semantic_form": form,
+            "semantic_type": base, "dependencies": dependencies,
+            "occurrences": [{"role": "type", "ordinal": 0}], "body": body
+        }));
+    if form == "float_rounding" {
+        package["lock"]["definition_selections"] = json!([{
+            "authority": "agent-ix", "identity": "filament.value.ieee754-2019-default/v1"
+        }]);
+    }
+    bounded
+}
+
 /// Trace: FR-038-AC-286
 #[trace("TC-947")]
 #[test]
@@ -8409,8 +10328,448 @@ fn protocol_channel_admits_fifo_with_message_binder_and_stable_key() {
     ));
 }
 
-/// Trace: FR-038-AC-286
-#[trace("TC-947")]
+/// Trace: FR-372-AC-2
+#[trace("FR-372-AC-2")]
+#[test]
+fn protocol_channel_admits_a_bounded_integer_fifo_key() {
+    let (mut package, _) = package_with_member_queue();
+    let channel = protocol_position(&package, "channel");
+    let bounded = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|node| {
+            node["node_tag"] == "bounded_domain" && node["semantic_form"] == "integer_range"
+        })
+        .expect("bounded integer type")["node_id"]
+        .clone();
+    package["semantic_graph"]["nodes"][channel]["body"]["arguments"][3]["value"]["members"] = json!([
+        {"term": "binding", "name": "kind", "value": {
+            "term": "literal", "type": node_id(&family_key("a1a1")),
+            "value_kind": "text", "value": "fifo"}},
+        {"term": "binding", "name": "binder", "value": {
+            "term": "reference", "target": node_id(&family_key("p-close"))}},
+        {"term": "binding", "name": "key", "value": {
+            "term": "literal", "type": bounded,
+            "value_kind": "integer", "value": "1"}},
+    ]);
+    settle(&mut package);
+    assert!(matches!(
+        read(&package),
+        CheckedPackageV2ReadResult::Admitted(_)
+    ));
+}
+
+/// Trace: FR-372-AC-2
+#[trace("FR-372-AC-2")]
+#[test]
+fn protocol_channel_admits_fifo_keys_with_stable_structural_leaves() {
+    for (ordinal, form) in ["option", "sequence", "record"].into_iter().enumerate() {
+        let (mut package, _) = package_with_member_queue();
+        let leaf = if form == "record" {
+            protocol_bounded_domain(&mut package, "decimal_range")
+        } else {
+            package["semantic_graph"]["nodes"]
+                .as_array()
+                .expect("nodes")
+                .iter()
+                .find(|node| {
+                    node["node_tag"] == "bounded_domain" && node["semantic_form"] == "integer_range"
+                })
+                .expect("bounded integer type")["node_id"]
+                .clone()
+        };
+        let body = match form {
+            "option" | "sequence" => json!({"term": "aggregate", "members": [
+                {"term": "reference", "target": leaf.clone()}
+            ]}),
+            "record" => json!({"term": "aggregate", "members": [
+                {"term": "binding", "name": "amount", "value": {
+                    "term": "reference", "target": leaf.clone()
+                }}
+            ]}),
+            _ => unreachable!("listed stable key type"),
+        };
+        let dependencies = vec![leaf];
+        let type_key = structural_key("composite_type", form, None, &body);
+        let type_id = node_id(&type_key);
+        package["semantic_graph"]["nodes"]
+            .as_array_mut()
+            .expect("nodes")
+            .push(json!({
+                "node_id": type_id,
+                "schema_version": "filament.checked-semantic-graph/v2",
+                "node_tag": "composite_type", "semantic_form": form,
+                "semantic_type": type_id, "dependencies": dependencies,
+                "occurrences": [{"role": "type", "ordinal": 0}],
+                "body": body
+            }));
+        let binder = clause_parameter(&mut package, &format!("stable_key_{ordinal}"), "1");
+        let binder_position = node_position_for_key(&package, &binder);
+        package["semantic_graph"]["nodes"][binder_position]["semantic_type"] = type_id.clone();
+        let channel = protocol_position(&package, "channel");
+        package["semantic_graph"]["nodes"][channel]["body"]["arguments"][2]["value"]["target"] =
+            type_id.clone();
+        package["semantic_graph"]["nodes"][channel]["body"]["arguments"][3]["value"] = json!({
+            "term": "aggregate", "members": [
+                {"term": "binding", "name": "kind", "value": {
+                    "term": "literal", "type": node_id(&family_key("a1a1")),
+                    "value_kind": "text", "value": "fifo"
+                }},
+                {"term": "binding", "name": "binder", "value": {
+                    "term": "reference", "target": binder
+                }},
+                {"term": "binding", "name": "key", "value": {
+                    "term": "reference", "target": binder
+                }}
+            ]
+        });
+        settle(&mut package);
+        let result = read(&package);
+        assert!(
+            matches!(result, CheckedPackageV2ReadResult::Admitted(_)),
+            "FIFO key with stable {form} leaves should admit: {result:?}"
+        );
+    }
+}
+
+/// Trace: FR-372-AC-2
+#[trace("FR-372-AC-2")]
+#[test]
+fn protocol_channel_admits_fifo_carried_quantity_key() {
+    let (mut package, _) = package_with_member_queue();
+    let dimension_identity = "ix://test/families/dimension/Length";
+    let unit_identity = "ix://test/families/unit/metre";
+    let dimension = structural_id(
+        "test/families",
+        vec![
+            json!("scalar_type"),
+            json!("dimension"),
+            json!(dimension_identity),
+        ],
+        0,
+    );
+    let unit = structural_id(
+        "test/families",
+        vec![json!("scalar_type"), json!("unit"), json!(unit_identity)],
+        0,
+    );
+    package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .extend([
+            json!({
+                "node_id": dimension,
+                "schema_version": "filament.checked-semantic-graph/v2",
+                "node_tag": "scalar_type", "semantic_form": "dimension",
+                "semantic_type": dimension, "dependencies": [],
+                "occurrences": [{"role": "generated", "ordinal": 0}],
+                "owner": {"kind": "model", "identity": "test/families", "node": dimension_identity},
+                "body": {"term": "aggregate", "members": []}
+            }),
+            json!({
+                "node_id": unit,
+                "schema_version": "filament.checked-semantic-graph/v2",
+                "node_tag": "scalar_type", "semantic_form": "unit",
+                "semantic_type": dimension, "dependencies": [dimension],
+                "occurrences": [{"role": "generated", "ordinal": 0}],
+                "owner": {"kind": "model", "identity": "test/families", "node": unit_identity},
+                "body": {"term": "aggregate", "members": []}
+            }),
+        ]);
+    let carrier = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|node| {
+            node["node_tag"] == "bounded_domain" && node["semantic_form"] == "integer_range"
+        })
+        .expect("integer carrier")["node_id"]
+        .clone();
+    let text = node_id(&family_key("a1a1"));
+    let quantity = structural_id(
+        "test/families",
+        vec![
+            json!("scalar_type"),
+            json!("carried_quantity"),
+            json!(unit),
+            json!(carrier),
+            json!("rounding"),
+            json!(text),
+            json!("exact"),
+        ],
+        0,
+    );
+    let mut quantity_dependencies = vec![unit.clone(), carrier.clone()];
+    quantity_dependencies.sort_by_key(checked_node_id);
+    package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .push(json!({
+            "node_id": quantity,
+            "schema_version": "filament.checked-semantic-graph/v2",
+            "node_tag": "scalar_type", "semantic_form": "carried_quantity",
+            "semantic_type": quantity,
+            "dependencies": quantity_dependencies,
+            "occurrences": [{"role": "type", "ordinal": 0}],
+            "body": {"term": "aggregate", "members": [
+                {"term": "binding", "name": "unit", "value": {"term": "reference", "target": unit}},
+                {"term": "binding", "name": "carrier", "value": {"term": "reference", "target": carrier}},
+                {"term": "binding", "name": "rounding", "value": {
+                    "term": "literal", "type": text, "value_kind": "text", "value": "exact"
+                }}
+            ]}
+        }));
+    let binder = clause_parameter(&mut package, "quantity_key", "1");
+    let binder_position = node_position_for_key(&package, &binder);
+    package["semantic_graph"]["nodes"][binder_position]["semantic_type"] = quantity.clone();
+    let channel = protocol_position(&package, "channel");
+    package["semantic_graph"]["nodes"][channel]["body"]["arguments"][2]["value"]["target"] =
+        quantity;
+    package["semantic_graph"]["nodes"][channel]["body"]["arguments"][3]["value"] = json!({
+        "term": "aggregate", "members": [
+            {"term": "binding", "name": "kind", "value": {
+                "term": "literal", "type": text, "value_kind": "text", "value": "fifo"
+            }},
+            {"term": "binding", "name": "binder", "value": {"term": "reference", "target": binder}},
+            {"term": "binding", "name": "key", "value": {"term": "reference", "target": binder}}
+        ]
+    });
+    settle_after_structural_rekey(&mut package);
+    let mut document = family_model_document();
+    document["dimensions"] = json!([{
+        "identity": dimension_identity, "name": "Length", "base": true, "terms": []
+    }]);
+    document["units"] = json!([{
+        "identity": unit_identity, "name": "metre", "dimension": dimension_identity,
+        "scale": "1", "offset": "0"
+    }]);
+    let evidence = evidence_with_document(&package, "test/families", &document);
+    crate::support::checked_package::index_fixture_node_ids(&mut package);
+    let result = crate::read_and_account(
+        &canonical(&package),
+        CheckedPackageReadLimits::bounded(),
+        &evidence,
+    );
+    assert!(
+        matches!(result, CheckedPackageV2ReadResult::Admitted(_)),
+        "carried Quantity FIFO key should admit: {result:?}"
+    );
+
+    let mut sequence_package = package.clone();
+    let quantity_type = sequence_package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|node| {
+            node["node_tag"] == "scalar_type" && node["semantic_form"] == "carried_quantity"
+        })
+        .expect("quantity type")["node_id"]
+        .clone();
+    let sequence_body = json!({"term": "aggregate", "members": [
+        {"term": "reference", "target": quantity_type}
+    ]});
+    let sequence_key = structural_key("composite_type", "sequence", None, &sequence_body);
+    let sequence_type = node_id(&sequence_key);
+    sequence_package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .push(json!({
+            "node_id": sequence_type, "schema_version": "filament.checked-semantic-graph/v2",
+            "node_tag": "composite_type", "semantic_form": "sequence",
+            "semantic_type": sequence_type, "dependencies": [quantity_type],
+            "occurrences": [{"role": "type", "ordinal": 0}], "body": sequence_body
+        }));
+    let sequence_binder = clause_parameter(&mut sequence_package, "sequence_quantity_key", "1");
+    let sequence_binder_position = node_position_for_key(&sequence_package, &sequence_binder);
+    sequence_package["semantic_graph"]["nodes"][sequence_binder_position]["semantic_type"] =
+        sequence_type.clone();
+    let channel = protocol_position(&sequence_package, "channel");
+    sequence_package["semantic_graph"]["nodes"][channel]["body"]["arguments"][2]["value"]
+        ["target"] = sequence_type;
+    sequence_package["semantic_graph"]["nodes"][channel]["body"]["arguments"][3]["value"] = json!({
+        "term": "aggregate", "members": [
+            {"term": "binding", "name": "kind", "value": {
+                "term": "literal", "type": text, "value_kind": "text", "value": "fifo"
+            }},
+            {"term": "binding", "name": "binder", "value": {"term": "reference", "target": sequence_binder}},
+            {"term": "binding", "name": "key", "value": {"term": "reference", "target": sequence_binder}}
+        ]
+    });
+    settle_after_structural_rekey(&mut sequence_package);
+    let sequence_evidence = evidence_with_document(&sequence_package, "test/families", &document);
+    crate::support::checked_package::index_fixture_node_ids(&mut sequence_package);
+    let sequence_result = crate::read_and_account(
+        &canonical(&sequence_package),
+        CheckedPackageReadLimits::bounded(),
+        &sequence_evidence,
+    );
+    assert!(
+        matches!(sequence_result, CheckedPackageV2ReadResult::Admitted(_)),
+        "Sequence<Quantity> FIFO key should admit: {sequence_result:?}"
+    );
+}
+
+/// Trace: FR-372-AC-2
+#[trace("FR-372-AC-2")]
+#[test]
+fn protocol_channel_admits_fifo_model_owned_stable_value_forms() {
+    for (ordinal, form, kind, meaning) in [
+        (
+            0,
+            "record_value_type",
+            "record",
+            "filament.meaning.model.record-value-type/v1",
+        ),
+        (
+            1,
+            "variant_type",
+            "variant",
+            "filament.meaning.model.variant-type/v1",
+        ),
+    ] {
+        let identity = format!("ix://test/families/FifoType{ordinal}");
+        let id = structural_id(
+            "test/families",
+            vec![json!("model"), json!(form), json!(identity)],
+            0,
+        );
+        let (mut package, _) = package_with_member_queue();
+        let mut model_type = selected_interface_model_node();
+        model_type["semantic_form"] = json!(form);
+        model_type["node_id"] = id.clone();
+        model_type["semantic_type"] = id.clone();
+        model_type["owner"]["node"] = json!(identity);
+        package["semantic_graph"]["nodes"]
+            .as_array_mut()
+            .expect("nodes")
+            .push(model_type);
+        let binder = clause_parameter(&mut package, &format!("model_key_{ordinal}"), "1");
+        let binder_position = node_position_for_key(&package, &binder);
+        package["semantic_graph"]["nodes"][binder_position]["semantic_type"] = id.clone();
+        let channel = protocol_position(&package, "channel");
+        package["semantic_graph"]["nodes"][channel]["body"]["arguments"][2]["value"]["target"] = id;
+        package["semantic_graph"]["nodes"][channel]["body"]["arguments"][3]["value"] = json!({
+            "term": "aggregate", "members": [
+                {"term": "binding", "name": "kind", "value": {
+                    "term": "literal", "type": node_id(&family_key("a1a1")),
+                    "value_kind": "text", "value": "fifo"
+                }},
+                {"term": "binding", "name": "binder", "value": {"term": "reference", "target": binder}},
+                {"term": "binding", "name": "key", "value": {"term": "reference", "target": binder}}
+            ]
+        });
+        settle(&mut package);
+
+        let mut document = family_model_document();
+        document["constructs"]
+            .as_array_mut()
+            .expect("constructs")
+            .push(json!({
+                "kind": {"module": "test/families", "name": kind},
+                "construct": {"meaning": meaning}
+            }));
+        let mut declaration = json!({
+            "identity": identity, "displayName": format!("FifoType{ordinal}"),
+            "kind": {"module": "test/families", "name": kind},
+            "roles": [], "extensions": [], "unknownPolicy": "reject"
+        });
+        match form {
+            "value_type" => {
+                declaration["scalar"] = json!("integer");
+                declaration["constraints"] = json!([
+                    {"keyword": "min", "operands": {"value": 0}},
+                    {"keyword": "max", "operands": {"value": 99}}
+                ]);
+            }
+            "record_value_type" => {
+                declaration["supertypes"] = json!([]);
+                declaration["fields"] = json!([]);
+                declaration["operations"] = json!([]);
+                declaration["constraints"] = json!([]);
+            }
+            "variant_type" => {
+                declaration["variants"] = json!([
+                    {"identity": format!("{identity}/First"), "name": "First"},
+                    {"identity": format!("{identity}/Second"), "name": "Second"}
+                ]);
+            }
+            _ => unreachable!("covered model value form"),
+        }
+        document["types"]
+            .as_array_mut()
+            .expect("types")
+            .push(declaration);
+        let evidence = evidence_with_document(&package, "test/families", &document);
+        let result = crate::read_and_account(
+            &canonical(&package),
+            CheckedPackageReadLimits::bounded(),
+            &evidence,
+        );
+        assert!(
+            matches!(result, CheckedPackageV2ReadResult::Admitted(_)),
+            "FIFO key with model-owned {form} should admit: {result:?}"
+        );
+    }
+}
+
+/// Trace: FR-372-AC-2
+#[trace("FR-372-AC-2")]
+#[test]
+fn protocol_channel_admits_fifo_model_value_type_with_bounded_integer() {
+    let (mut package, _) = package_with_member_queue();
+    let bounded = protocol_bounded_domain(&mut package, "integer_range");
+    let binder = clause_parameter(&mut package, "model_integer_key", "1");
+    let binder_position = node_position_for_key(&package, &binder);
+    package["semantic_graph"]["nodes"][binder_position]["semantic_type"] = bounded.clone();
+    let channel = protocol_position(&package, "channel");
+    package["semantic_graph"]["nodes"][channel]["body"]["arguments"][2]["value"]["target"] =
+        bounded;
+    package["semantic_graph"]["nodes"][channel]["body"]["arguments"][3]["value"] = json!({
+        "term": "aggregate", "members": [
+            {"term": "binding", "name": "kind", "value": {
+                "term": "literal", "type": node_id(&family_key("a1a1")),
+                "value_kind": "text", "value": "fifo"
+            }},
+            {"term": "binding", "name": "binder", "value": {"term": "reference", "target": binder}},
+            {"term": "binding", "name": "key", "value": {"term": "reference", "target": binder}}
+        ]
+    });
+    settle(&mut package);
+    let mut document = family_model_document();
+    document["constructs"]
+        .as_array_mut()
+        .expect("constructs")
+        .push(json!({
+            "kind": {"module": "test/families", "name": "value_type"},
+            "construct": {"meaning": "filament.meaning.model.value-type/v1"}
+        }));
+    document["types"]
+        .as_array_mut()
+        .expect("types")
+        .push(json!({
+            "identity": "ix://test/families/Count", "displayName": "Count",
+            "kind": {"module": "test/families", "name": "value_type"},
+            "roles": [], "extensions": [], "unknownPolicy": "reject",
+            "scalar": "integer", "constraints": [
+                {"keyword": "min", "operands": {"value": "0"}},
+                {"keyword": "max", "operands": {"value": "99"}}
+            ]
+        }));
+    let evidence = evidence_with_document(&package, "test/families", &document);
+    let result = crate::read_and_account(
+        &canonical(&package),
+        CheckedPackageReadLimits::bounded(),
+        &evidence,
+    );
+    assert!(
+        matches!(result, CheckedPackageV2ReadResult::Admitted(_)),
+        "FIFO model value type with bounded integer leaves should admit: {result:?}"
+    );
+}
+
+/// Trace: FR-372-AC-3
+#[trace("FR-372-AC-3")]
 #[test]
 fn protocol_channel_fifo_refuses_float_key() {
     let (mut package, _) = package_with_member_queue();
@@ -8447,6 +10806,193 @@ fn protocol_channel_fifo_refuses_float_key() {
             &format!("/semantic_graph/nodes/{channel}/body/arguments/3/value/members/2/value"),
             Some(CheckedPackageRefusalCause::OperatorIneligible),
             &key,
+        )
+    );
+
+    let float_domain = protocol_bounded_domain(&mut package, "float_rounding");
+    package["semantic_graph"]["nodes"][channel]["body"]["arguments"][2]["value"]["target"] =
+        float_domain.clone();
+    package["semantic_graph"]["nodes"][channel]["body"]["arguments"][3]["value"]["members"] = json!([{"term": "binding", "name": "kind", "value": {
+        "term": "literal", "type": node_id(&family_key("a1a1")),
+        "value_kind": "text", "value": "unordered"
+    }}]);
+    package["semantic_graph"]["nodes"][channel]["dependencies"] = json!([float_domain]);
+    settle(&mut package);
+    let unordered_result = read(&package);
+    assert!(
+        matches!(unordered_result, CheckedPackageV2ReadResult::Admitted(_)),
+        "an unordered channel admits the float carries type: {unordered_result:?}"
+    );
+}
+
+/// Trace: FR-372-AC-3
+#[trace("FR-372-AC-3")]
+#[test]
+fn protocol_channel_fifo_refuses_float_keys_in_nested_types() {
+    for (ordinal, form) in [
+        "float64",
+        "float_rounding",
+        "option_float32",
+        "record_float64",
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let (mut package, _) = package_with_member_queue();
+        let key_type = if form == "float_rounding" {
+            protocol_bounded_domain(&mut package, "float_rounding")
+        } else {
+            let float_form = if form == "option_float32" {
+                "float32"
+            } else if form == "record_float64" {
+                "float64"
+            } else {
+                form
+            };
+            let float_key = format!("fixture/protocol-body/fifo/{form}/scalar");
+            let float_id = node_id(&float_key);
+            package["semantic_graph"]["nodes"]
+                .as_array_mut()
+                .expect("nodes")
+                .push(json!({
+                    "node_id": float_id,
+                    "schema_version": "filament.checked-semantic-graph/v2",
+                    "node_tag": "scalar_type", "semantic_form": float_form,
+                    "semantic_type": float_id, "dependencies": [],
+                    "occurrences": [{"role": "type", "ordinal": 0}],
+                    "body": {"term": "aggregate", "members": []}
+                }));
+            if form == "option_float32" || form == "record_float64" {
+                let composite = if form == "option_float32" {
+                    "option"
+                } else {
+                    "record"
+                };
+                let body = if composite == "option" {
+                    json!({"term": "aggregate", "members": [
+                        {"term": "reference", "target": float_id}
+                    ]})
+                } else {
+                    json!({"term": "aggregate", "members": [
+                        {"term": "binding", "name": "value", "value": {
+                            "term": "reference", "target": float_id
+                        }}
+                    ]})
+                };
+                let composite_key = structural_key("composite_type", composite, None, &body);
+                let composite_id = node_id(&composite_key);
+                package["semantic_graph"]["nodes"]
+                    .as_array_mut()
+                    .expect("nodes")
+                    .push(json!({
+                        "node_id": composite_id,
+                        "schema_version": "filament.checked-semantic-graph/v2",
+                        "node_tag": "composite_type", "semantic_form": composite,
+                        "semantic_type": composite_id, "dependencies": [float_id],
+                        "occurrences": [{"role": "type", "ordinal": 0}],
+                        "body": body
+                    }));
+                composite_id
+            } else {
+                float_id
+            }
+        };
+        let binder = clause_parameter(&mut package, &format!("float_key_{ordinal}"), "1");
+        let binder_position = node_position_for_key(&package, &binder);
+        package["semantic_graph"]["nodes"][binder_position]["semantic_type"] = key_type.clone();
+        let channel = protocol_position(&package, "channel");
+        package["semantic_graph"]["nodes"][channel]["body"]["arguments"][2]["value"]["target"] =
+            key_type;
+        package["semantic_graph"]["nodes"][channel]["body"]["arguments"][3]["value"] = json!({"term": "aggregate", "members": [
+            {"term": "binding", "name": "kind", "value": {
+                "term": "literal", "type": node_id(&family_key("a1a1")),
+                "value_kind": "text", "value": "fifo"
+            }},
+            {"term": "binding", "name": "binder", "value": {
+                "term": "reference", "target": binder
+            }},
+            {"term": "binding", "name": "key", "value": {
+                "term": "reference", "target": binder
+            }}
+        ]});
+        settle(&mut package);
+        let key = package["semantic_graph"]["nodes"][channel]["node_id"].clone();
+        assert_eq!(
+            read(&package),
+            refusal_at_id(
+                CheckedPackageRefusalCode::IllTyped,
+                &format!("/semantic_graph/nodes/{channel}/body/arguments/3/value/members/2/value"),
+                Some(CheckedPackageRefusalCause::OperatorIneligible),
+                &key,
+            ),
+            "FIFO key with {form} must be excluded"
+        );
+    }
+}
+
+/// Trace: FR-372-AC-3
+#[trace("FR-372-AC-3")]
+#[test]
+fn protocol_channel_fifo_refuses_an_event_type_leaf() {
+    let (mut package, _) = package_with_member_queue();
+    let event_position = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .position(|node| node["node_tag"] == "model" && node["semantic_form"] == "namespace")
+        .expect("anonymous model node to turn into the event declaration");
+    let event_key = "qualified:Example/Deposited";
+    let event_id = node_id(event_key);
+    rename_node(&mut package, &family_key("1010"), event_key);
+    let source = package["lock"]["sources"][0].clone();
+    package["semantic_graph"]["nodes"][event_position]["semantic_form"] = json!("event_type");
+    package["semantic_graph"]["nodes"][event_position]["semantic_type"] = event_id.clone();
+    package["semantic_graph"]["nodes"][event_position]["dependencies"] = json!([]);
+    package["semantic_graph"]["nodes"][event_position]["occurrences"] =
+        json!([{"role": "declaration", "ordinal": 0}]);
+    package["semantic_graph"]["nodes"][event_position]["declaration"] =
+        json!({"qualified_name": ["Example", "Deposited"]});
+    package["semantic_graph"]["nodes"][event_position]["owner"] = source_owner(&source);
+    let body = json!({"term": "aggregate", "members": [
+        {"term": "binding", "name": "event", "value": {"term": "reference", "target": event_id}}
+    ]});
+    let record_key = structural_key("composite_type", "record", None, &body);
+    let record_id = node_id(&record_key);
+    package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .push(json!({
+            "node_id": record_id,
+            "schema_version": "filament.checked-semantic-graph/v2",
+            "node_tag": "composite_type", "semantic_form": "record",
+            "semantic_type": record_id, "dependencies": [event_id],
+            "occurrences": [{"role": "type", "ordinal": 0}], "body": body
+        }));
+    let binder = clause_parameter(&mut package, "event_key", "1");
+    let binder_position = node_position_for_key(&package, &binder);
+    package["semantic_graph"]["nodes"][binder_position]["semantic_type"] = record_id.clone();
+    let channel = protocol_position(&package, "channel");
+    package["semantic_graph"]["nodes"][channel]["body"]["arguments"][2]["value"]["target"] =
+        record_id;
+    package["semantic_graph"]["nodes"][channel]["body"]["arguments"][3]["value"] = json!({
+        "term": "aggregate", "members": [
+            {"term": "binding", "name": "kind", "value": {
+                "term": "literal", "type": node_id(&family_key("a1a1")),
+                "value_kind": "text", "value": "fifo"
+            }},
+            {"term": "binding", "name": "binder", "value": {"term": "reference", "target": binder}},
+            {"term": "binding", "name": "key", "value": {"term": "reference", "target": binder}}
+        ]
+    });
+    settle(&mut package);
+    let channel_key = package["semantic_graph"]["nodes"][channel]["node_id"].clone();
+    assert_eq!(
+        read(&package),
+        refusal_at_id(
+            CheckedPackageRefusalCode::IllTyped,
+            &format!("/semantic_graph/nodes/{channel}/body/arguments/3/value/members/2/value"),
+            Some(CheckedPackageRefusalCause::OperatorIneligible),
+            &channel_key,
         )
     );
 }
@@ -10649,7 +13195,10 @@ fn add_minimal_protocol_named(package: &mut Value, name: &str) -> usize {
     body["arguments"][11]["value"]["target"] = run["node_id"].clone();
     body["arguments"][12]["value"]["target"] = finish["node_id"].clone();
     let mut clause = protocol_named_node("protocol_clause", &["Example", name], body, &[]);
-    clause["owner_model"] = package["semantic_graph"]["nodes"][original]["owner_model"].clone();
+    let owner = package["semantic_graph"]["nodes"][original]["owner_model"].clone();
+    if !owner.is_null() {
+        clause["owner_model"] = owner;
+    }
     let position = package["semantic_graph"]["nodes"].as_array().unwrap().len() + 3;
     package["semantic_graph"]["nodes"]
         .as_array_mut()
@@ -11570,6 +14119,7 @@ fn port_member_borrowed_read_and_typed_writer_preserve_the_exact_pair() {
             checked_term_data: admitted.checked_term_data(),
             temporal_bindings: admitted.temporal_bindings(),
             temporal_clause_names: admitted.temporal_clause_names(),
+            claim_names: admitted.claim_names(),
             schedulability_claims: admitted.schedulability_claim_rows(),
             operation_effects: admitted.operation_effect_rows(),
             operation_bodies: admitted.operation_body_rows(),

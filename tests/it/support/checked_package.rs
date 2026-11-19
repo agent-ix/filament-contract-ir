@@ -800,8 +800,25 @@ pub fn identity_input(package: &Value) -> Value {
 /// Rebuilds the identity projection, clock rows, and clause names after graph edits.
 pub fn refresh_identity(package: &mut Value) {
     resolve_operands(package);
+    name_refinement_bodies(package);
     refresh_identity_projection(package);
     refresh_temporal_bindings(package);
+    recompute_declaration_regions(package);
+}
+
+/// Re-derives the `declaration_region` of every name row from the current
+/// `source_map`, so a fixture that moves an occurrence's regions keeps its
+/// rows' declarations containing them.
+pub fn recompute_declaration_regions(package: &mut Value) {
+    for table in ["temporal_clause_names", "claim_names"] {
+        if let Some(rows) = package.get_mut(table).and_then(Value::as_array_mut) {
+            for row in rows {
+                row.as_object_mut()
+                    .map(|row| row.remove("declaration_region"));
+            }
+        }
+    }
+    fill_declaration_regions(package);
 }
 
 /// The identity of every domain package a synthetic package selects: one per
@@ -1937,14 +1954,10 @@ pub fn protocol_named_node(
     dependencies: &[String],
 ) -> Value {
     let key = protocol_named_key(form, declaration, &body);
-    let mut ordered = dependencies
+    let ordered = dependencies
         .iter()
         .map(String::as_str)
         .collect::<std::collections::BTreeSet<_>>();
-    let owner_model = (form == "protocol_clause").then(|| family_key("1515"));
-    if let Some(owner_model) = &owner_model {
-        ordered.insert(owner_model);
-    }
     let mut node = plain_node(
         &key,
         "protocol",
@@ -1955,9 +1968,6 @@ pub fn protocol_named_node(
     );
     node["occurrences"] = json!([{"role": "declaration", "ordinal": 0}]);
     node["declaration"] = json!({"qualified_name": declaration});
-    if let Some(owner_model) = owner_model {
-        node["owner_model"] = node_id(&owner_model);
-    }
     node
 }
 
@@ -2338,6 +2348,9 @@ fn join_targets(
     out: &mut std::collections::BTreeMap<CheckedNodeId, Value>,
 ) -> bool {
     fn add(out: &mut std::collections::BTreeMap<CheckedNodeId, Value>, id: &Value, ids: &[Value]) {
+        if id.is_null() {
+            return;
+        }
         let key = structural_fixture_id_in_graph(id, ids, &mut Default::default());
         out.insert(key, id.clone());
     }
@@ -2356,7 +2369,10 @@ fn join_targets(
             }
             if term["operation"]["member"]["kind"] == "fairness" {
                 for field in ["declaration", "node", "parallel"] {
-                    if let Some(id) = term["operation"]["member"]["target"].get(field) {
+                    if let Some(id) = term["operation"]["member"]["target"]
+                        .get(field)
+                        .filter(|id| !id.is_null())
+                    {
                         add(out, id, ids);
                     }
                 }
@@ -2402,7 +2418,7 @@ fn join_application_dependencies(package: &mut Value) {
     {
         let mut targets = std::collections::BTreeMap::new();
         if join_targets(&node["body"], &ids, &mut targets) {
-            if let Some(owner_model) = node.get("owner_model") {
+            if let Some(owner_model) = node.get("owner_model").filter(|id| !id.is_null()) {
                 let key =
                     structural_fixture_id_in_graph(owner_model, &ids, &mut Default::default());
                 targets.insert(key, owner_model.clone());
@@ -2589,6 +2605,8 @@ pub fn refresh_temporal_bindings(package: &mut Value) {
                             "declaration": node["node_id"],
                             "occurrence": ordinal,
                             "name": format!("Clause{ordinal}"),
+                            "declaration_region":
+                                occurrence_region(package, &node["node_id"], "claim", ordinal),
                         }),
                     )
                 })
@@ -2609,6 +2627,145 @@ pub fn refresh_temporal_bindings(package: &mut Value) {
         package["temporal_clause_names"] =
             Value::Array(names.into_iter().map(|(_, _, row)| row).collect());
     }
+    refresh_claim_names(package);
+}
+
+/// The source interval a name row declares for one occurrence: the hull of
+/// the occurrence's own `source_map` regions, which a declaration contains.
+pub fn occurrence_region(package: &Value, node_id: &Value, role: &str, ordinal: u64) -> Value {
+    let entry = package["source_map"].as_array().and_then(|entries| {
+        entries.iter().find(|entry| {
+            &entry["node_id"] == node_id && entry["role"] == role && entry["ordinal"] == ordinal
+        })
+    });
+    let Some(regions) = entry.and_then(|entry| entry["regions"].as_array()) else {
+        return json!({"source": package["lock"]["sources"][0], "start": 0, "end": 0});
+    };
+    json!({
+        "source": regions[0]["source"],
+        "start": regions.iter().filter_map(|region| region["start"].as_u64()).min(),
+        "end": regions.iter().filter_map(|region| region["end"].as_u64()).max(),
+    })
+}
+
+/// Gives every name row that lacks one the `declaration_region` of its
+/// occurrence, for published packages that predate the member.
+pub fn fill_declaration_regions(package: &mut Value) {
+    // The source map is keyed by resolved ids and a slot-form package spells
+    // its ids otherwise.
+    let mut resolved = package.clone();
+    resolve_operands(&mut resolved);
+    for table in ["temporal_clause_names", "claim_names"] {
+        let Some(count) = package[table].as_array().map(Vec::len) else {
+            continue;
+        };
+        for index in 0..count {
+            let row = &package[table][index];
+            if row.get("declaration_region").is_some() {
+                continue;
+            }
+            let (role, ordinal) = if table == "claim_names" {
+                (
+                    row["occurrence"]["role"]
+                        .as_str()
+                        .unwrap_or("claim")
+                        .to_owned(),
+                    row["occurrence"]["ordinal"].as_u64().unwrap_or(0),
+                )
+            } else {
+                ("claim".to_owned(), row["occurrence"].as_u64().unwrap_or(0))
+            };
+            let declaration = row["declaration"].clone();
+            let region = occurrence_region(&resolved, &declaration, &role, ordinal);
+            package[table][index]["declaration_region"] = region;
+        }
+    }
+}
+
+/// Gives every refinement body the identifier its claim name row repeats.
+pub fn name_refinement_bodies(package: &mut Value) {
+    let Some(nodes) = package["semantic_graph"]["nodes"].as_array_mut() else {
+        return;
+    };
+    for (index, node) in nodes.iter_mut().enumerate() {
+        if node["node_tag"] == "relation"
+            && node["semantic_form"] == "refinement"
+            && node["body"].is_object()
+            && node["body"].get("name").is_none()
+        {
+            node["body"]["name"] = json!(format!("Refinement{index}"));
+        }
+    }
+}
+
+/// Keep one `claim_names` row per `declaration` or `claim` occurrence of every
+/// state clause, refinement and non-temporal claim node.
+#[ix_trace_rs::string_edge]
+pub fn refresh_claim_names(package: &mut Value) {
+    name_refinement_bodies(package);
+    let nodes = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes");
+    // Rows sort by the resolved structural identity, whatever form the
+    // package spells its operand slots in.
+    let mut resolved = package.clone();
+    resolve_operands(&mut resolved);
+    let ids = resolved["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .map(|node| node["node_id"].clone())
+        .collect::<Vec<_>>();
+    let mut rows = Vec::new();
+    for (index, node) in nodes.iter().enumerate() {
+        let tag = node["node_tag"].as_str().unwrap_or_default();
+        let form = node["semantic_form"].as_str().unwrap_or_default();
+        if !(tag == "claim"
+            || (tag == "state" && form == "state_clause")
+            || (tag == "relation" && form == "refinement"))
+        {
+            continue;
+        }
+        for occurrence in node["occurrences"].as_array().expect("occurrences") {
+            let role = occurrence["role"].as_str().unwrap_or_default();
+            if role != "declaration" && role != "claim" {
+                continue;
+            }
+            let ordinal = occurrence["ordinal"].as_u64().expect("ordinal");
+            let name = node["body"]["name"]
+                .as_str()
+                .map_or_else(|| format!("Claim{index}"), str::to_owned);
+            rows.push((
+                ids[index].clone(),
+                role.to_owned(),
+                ordinal,
+                json!({
+                    "declaration": ids[index],
+                    "occurrence": {"role": role, "ordinal": ordinal},
+                    "name": name,
+                    "qualified_name": [format!("Scope{index}{role}{ordinal}"), name],
+                    "declaration_region":
+                        occurrence_region(&resolved, &ids[index], role, ordinal),
+                }),
+            ));
+        }
+    }
+    if rows.is_empty() {
+        package
+            .as_object_mut()
+            .expect("package")
+            .remove("claim_names");
+        return;
+    }
+    // Declaration sorts before claim, the occurrence role order.
+    rows.sort_by_cached_key(|(declaration, role, ordinal, _)| {
+        (
+            structural_fixture_id_in_graph(declaration, &ids, &mut Default::default()),
+            role.as_str() != "declaration",
+            *ordinal,
+        )
+    });
+    package["claim_names"] = Value::Array(rows.into_iter().map(|row| row.3).collect());
 }
 
 /// One entry per node, sourced from the node's own single occurrence rather
@@ -2985,7 +3142,7 @@ fn build_v2_all_families() -> Value {
             empty_aggregate(),
         ),
         // The clause's `over` parameter: FSL FR-092's `{name, level}` body,
-        // typed at the Boolean node, carrying the `expression` role.
+        // typed at Boolean, carrying the `expression` role.
         {
             let mut parameter = plain_node(
                 &family_key("a4a4"),

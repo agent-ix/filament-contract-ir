@@ -6,7 +6,7 @@
 
 use crate::support::checked_package::{
     canonical, evidence_for, family_key, fixture_source, index_fixture_node_ids, node_id, settle,
-    v2_all_families,
+    structural_key, v2_all_families,
 };
 use filament_contract_model::{
     encode_checked_package_v2, CheckedNodeId, CheckedNodeOwner, CheckedOperationEffectOrigin,
@@ -254,7 +254,37 @@ fn source_package() -> Value {
     let _ = frame;
     add_source_order(&mut package);
     let clause = position(&package, "protocol", "protocol_clause");
+    let reference_body = json!({"term": "aggregate", "members": [
+        {"term": "reference", "target": order_id()}
+    ]});
+    let reference_type = node_id(&structural_key(
+        "composite_type",
+        "reference",
+        None,
+        &reference_body,
+    ));
+    nodes_mut(&mut package).push(json!({
+        "node_id": reference_type, "schema_version": "filament.checked-semantic-graph/v2",
+        "node_tag": "composite_type", "semantic_form": "reference",
+        "semantic_type": reference_type, "dependencies": [order_id()],
+        "occurrences": [{"role": "type", "ordinal": 0}], "body": reference_body,
+    }));
+    let over = nodes(&package)[clause]["body"]["arguments"][0]["value"]["target"].clone();
+    let over_position = nodes(&package)
+        .iter()
+        .position(|node| node["node_id"] == over)
+        .expect("over parameter");
+    nodes_mut(&mut package)[over_position]["semantic_type"] = reference_type;
     nodes_mut(&mut package)[clause]["owner_model"] = order_id();
+    nodes_mut(&mut package)[clause]["dependencies"]
+        .as_array_mut()
+        .expect("dependencies")
+        .push(order_id());
+    let finish = position(&package, "protocol", "obligation");
+    nodes_mut(&mut package)[finish]["body"]["arguments"][1]["value"] = json!({
+        "term": "literal", "type": node_id(&family_key("aaaa")),
+        "value_kind": "boolean", "value": true
+    });
     settle(&mut package);
     package
 }
@@ -325,6 +355,7 @@ fn a_package_without_a_source_object_reads_and_re_encodes_stably() {
             },
             CheckedPackageSidecarsRef {
                 temporal_clause_names: package.temporal_clause_names(),
+                claim_names: package.claim_names(),
                 schedulability_claims: None,
                 operation_effects: package.operation_effect_rows(),
                 operation_bodies: None,
@@ -409,7 +440,7 @@ fn source_type_is_never_joined_to_a_selected_model() {
 }
 
 /// Trace: FR-363-AC-1, FR-363-AC-2.
-#[trace("TC-475", "FR-363-AC-1", "FR-363-AC-2")]
+#[trace("TC-475", "FR-363-AC-1", "FR-363-AC-2", "FR-064-AC-4")]
 #[test]
 fn protocol_clause_and_role_over_a_source_type_admit() {
     let package = source_package();
@@ -616,6 +647,7 @@ fn source_effect_rows_admit_read_in_order_and_re_encode_identically() {
         },
         CheckedPackageSidecarsRef {
             temporal_clause_names: admitted_package.temporal_clause_names(),
+            claim_names: admitted_package.claim_names(),
             schedulability_claims: None,
             operation_effects: admitted_package.operation_effect_rows(),
             operation_bodies: None,

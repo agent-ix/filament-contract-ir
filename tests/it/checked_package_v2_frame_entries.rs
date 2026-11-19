@@ -13,7 +13,7 @@ use crate::support::checked_package::{
     canonical, evidence_for, evidence_with_document, family_key, family_model_document,
     fixture_source, index_fixture_node_ids, node_id as fixture_node_id, reassign_node_id,
     rebuild_source_map, refresh_identity, select_model, settle, sha256_hex, source_owner,
-    structural_id, typed_node_id, v2_all_families, BOOLEAN_KEY, INTEGER_KEY,
+    structural_id, structural_key, typed_node_id, v2_all_families, BOOLEAN_KEY, INTEGER_KEY,
 };
 use filament_contract_model::{
     encode_checked_package_v2, CheckedApplicationOperation, CheckedCallableIdentity,
@@ -63,7 +63,7 @@ fn rename_node(package: &mut Value, stale: &str, fresh: &str) {
     reassign_node_id(package, &node_id(stale), &node_id(fresh));
 }
 
-fn read(value: &Value) -> CheckedPackageV2ReadResult {
+pub(super) fn read(value: &Value) -> CheckedPackageV2ReadResult {
     crate::read_and_account(
         &canonical(value),
         CheckedPackageReadLimits::bounded(),
@@ -95,7 +95,7 @@ fn step_model_document() -> Value {
 /// The evidence for `package`: the step model document when the package holds
 /// the step execution binders `step_relation_package` adds, else the helper's
 /// default document for each selected model.
-fn step_relation_evidence(package: &Value) -> CheckedPackageEvidence {
+pub(super) fn step_relation_evidence(package: &Value) -> CheckedPackageEvidence {
     let has_step_binder = nodes(package).iter().any(|node| {
         node["node_tag"] == "value"
             && node["semantic_form"] == "parameter"
@@ -203,6 +203,32 @@ fn select_other_protocol_owner(value: &mut Value) {
         .push(model);
     let clause = position(value, "protocol", "protocol_clause");
     value["semantic_graph"]["nodes"][clause]["owner_model"] = owner;
+    let over =
+        value["semantic_graph"]["nodes"][clause]["body"]["arguments"][0]["value"]["target"].clone();
+    let over_position = nodes(value)
+        .iter()
+        .position(|node| node["node_id"] == over)
+        .expect("over parameter");
+    let reference_body = json!({"term": "aggregate", "members": [
+        {"term": "reference", "target": source_account}
+    ]});
+    let reference_key = structural_key("composite_type", "reference", None, &reference_body);
+    let reference = fixture_node_id(&reference_key);
+    value["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .push(json!({
+            "node_id": reference, "schema_version": "filament.checked-semantic-graph/v2",
+            "node_tag": "composite_type", "semantic_form": "reference",
+            "semantic_type": reference, "dependencies": [source_account],
+            "occurrences": [{"role": "type", "ordinal": 0}], "body": reference_body
+        }));
+    value["semantic_graph"]["nodes"][over_position]["semantic_type"] = reference;
+    reassign_node_id(
+        value,
+        &over,
+        &fixture_node_id("fixture/frame/protocol-object-over-parameter"),
+    );
 }
 
 fn digest(value: &Value, position: usize) -> String {
@@ -902,8 +928,8 @@ fn tc_056_exactly_fifteen_model_forms_admit() {
 /// over a source-declared object type, built in-repo on `v2_all_families()`:
 /// the frame binds the anchor, a `Reference<Account>` type and a `self`
 /// parameter bind both clauses, and each clause asserts the Boolean literal.
-struct StatePackage {
-    value: Value,
+pub(super) struct StatePackage {
+    pub(super) value: Value,
 }
 
 fn text_key() -> &'static str {
@@ -1031,7 +1057,7 @@ fn clause_node(clause: &str, parameters: &[&str], anchor: &str) -> Value {
 }
 
 impl StatePackage {
-    fn new() -> Self {
+    pub(super) fn new() -> Self {
         let mut value = v2_all_families();
         let frame = position(&value, "state", "frame");
         let frame_key = digest(&value, frame);
@@ -1084,7 +1110,7 @@ impl StatePackage {
     }
 
     /// The clause of kind `clause`.
-    fn clause(&self, clause: &str) -> usize {
+    pub(super) fn clause(&self, clause: &str) -> usize {
         nodes(&self.value)
             .iter()
             .position(|node| {
@@ -1173,6 +1199,7 @@ fn assert_pointed_writer_round_trip(package: &StatePackage, positions: &[usize])
         },
         filament_contract_model::CheckedPackageSidecarsRef {
             temporal_clause_names: admitted.temporal_clause_names(),
+            claim_names: admitted.claim_names(),
             operation_effects: None,
             operation_bodies: None,
             checked_term_data: admitted.checked_term_data(),
@@ -4381,7 +4408,7 @@ fn settle_step_relation(package: &mut Value) {
 }
 
 /// A source-declared relation over two executions of the selected Account operation.
-fn step_relation_package() -> Value {
+pub(super) fn step_relation_package() -> Value {
     let mut package = with_postcondition(StatePackage::new(), None).value;
     package["semantic_graph"]["nodes"]
         .as_array_mut()
@@ -4806,6 +4833,7 @@ fn step_relation_reader_retains_two_executions_and_roundtrips() {
         },
         filament_contract_model::CheckedPackageSidecarsRef {
             temporal_clause_names: admitted.temporal_clause_names(),
+            claim_names: admitted.claim_names(),
             operation_effects: None,
             operation_bodies: None,
             checked_term_data: admitted.checked_term_data(),
@@ -4926,6 +4954,7 @@ fn step_relation_source_correspondence_does_not_change_semantic_identity() {
         .expect("relation source correspondence");
     entry["regions"][0]["start"] = json!(100);
     entry["regions"][0]["end"] = json!(101);
+    crate::support::checked_package::recompute_declaration_regions(&mut moved);
     assert_ne!(base["source_map"], moved["source_map"]);
     let admitted = |package: &Value| match read(package) {
         CheckedPackageV2ReadResult::Admitted(package) => package,

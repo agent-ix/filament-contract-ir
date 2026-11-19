@@ -3,9 +3,9 @@
 
 //! Default-feature external consumer of the structural V2 envelope writer.
 
+use crate::checked_package_v2_protocol_body::admitted_object_owned_protocol_families;
 use crate::support::checked_package::{
-    admitted_protocol_families, canonical, evidence_for, selected_interface_model_node, settle,
-    v2_all_families, v2_nominal,
+    canonical, evidence_for, settle, v2_all_families, v2_nominal,
 };
 use filament_contract_model::{
     encode_checked_package_v2, AdmissionBinding, CheckedCapability, CheckedDiagnosticsV2,
@@ -37,6 +37,8 @@ fn encode(value: &Value, limits: Limits) -> Result<Vec<u8>, Error> {
         value.get("temporal_bindings").map(typed);
     let temporal_clause_names: Option<Vec<filament_contract_model::TemporalClauseName>> =
         value.get("temporal_clause_names").map(typed);
+    let claim_names: Option<Vec<filament_contract_model::ClaimNameRow>> =
+        value.get("claim_names").map(typed);
     encode_checked_package_v2(
         name,
         &lock,
@@ -47,6 +49,7 @@ fn encode(value: &Value, limits: Limits) -> Result<Vec<u8>, Error> {
         },
         filament_contract_model::CheckedPackageSidecarsRef {
             temporal_clause_names: temporal_clause_names.as_deref(),
+            claim_names: claim_names.as_deref(),
             operation_effects: None,
             operation_bodies: None,
             checked_term_data: None,
@@ -102,14 +105,10 @@ fn admission_binding_identifies_clones_but_not_equal_independent_reads() {
 }
 
 /// Trace: FR-064-AC-1, FR-064-AC-6, TC-946.
-#[trace("TC-946")]
+#[trace("FR-064-AC-1", "FR-064-AC-6")]
 #[test]
 fn typed_writer_round_trips_protocol_clause_owner_model() {
-    let mut value = admitted_protocol_families();
-    value["semantic_graph"]["nodes"]
-        .as_array_mut()
-        .expect("nodes")
-        .push(selected_interface_model_node());
+    let mut value = admitted_object_owned_protocol_families();
     settle(&mut value);
     let evidence = evidence_for(&value);
     let first = match crate::read_and_account(

@@ -180,6 +180,9 @@ fn encode_producer(wire: &Value, sidecar: Option<&CheckedTermDataV2>) -> Vec<u8>
     let temporal_clause_names: Option<Vec<filament_contract_model::TemporalClauseName>> = wire
         .get("temporal_clause_names")
         .map(|value| serde_json::from_value(value.clone()).expect("temporal names"));
+    let claim_names: Option<Vec<filament_contract_model::ClaimNameRow>> = wire
+        .get("claim_names")
+        .map(|value| serde_json::from_value(value.clone()).expect("claim names"));
     let capabilities: Vec<CheckedCapability> =
         serde_json::from_value(wire["capability_report"].clone()).expect("capabilities");
     let diagnostics: CheckedDiagnosticsV2 =
@@ -194,6 +197,7 @@ fn encode_producer(wire: &Value, sidecar: Option<&CheckedTermDataV2>) -> Vec<u8>
         },
         CheckedPackageSidecarsRef {
             temporal_clause_names: temporal_clause_names.as_deref(),
+            claim_names: claim_names.as_deref(),
             operation_effects: None,
             operation_bodies: None,
             checked_term_data: sidecar,
@@ -334,6 +338,7 @@ fn published_probabilistic_claim_vectors_join_and_refuse() {
         },
         CheckedPackageSidecarsRef {
             temporal_clause_names: admitted.temporal_clause_names(),
+            claim_names: admitted.claim_names(),
             operation_effects: None,
             operation_bodies: None,
             checked_term_data: admitted.checked_term_data(),

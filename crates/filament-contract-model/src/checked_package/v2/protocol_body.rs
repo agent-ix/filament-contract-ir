@@ -8,10 +8,10 @@ use super::stage_storage::{
     node_id_clone_bytes, node_path, refuse_at, refuse_unlocated, Path, Position, Refusal,
 };
 use super::{
-    ApplicationOperator, CheckedFairnessTarget, CheckedNodeKind, CheckedPackageLockV2,
-    CheckedPackageV2, CheckedSelectionRole, CheckedTerm, CompositeTypeForm, ExpressionForm,
-    LiteralKind, ModelForm, ProtocolForm, RawSemanticNodeV2, RelationForm, ScalarTypeForm,
-    StateClauseKind, StateForm, TemporalForm, ValueForm, WorkMeter,
+    ApplicationOperator, BoundedDomainForm, CheckedFairnessTarget, CheckedNodeKind,
+    CheckedPackageLockV2, CheckedPackageV2, CheckedSelectionRole, CheckedTerm, CompositeTypeForm,
+    ExpressionForm, LiteralKind, ModelForm, ProtocolForm, RawSemanticNodeV2, RelationForm,
+    ScalarTypeForm, StateClauseKind, StateForm, TemporalForm, ValueForm, WorkMeter,
 };
 use crate::checked_package::common::{Trail, ValidationFailure};
 use crate::checked_package::shared::{
@@ -268,6 +268,7 @@ const REPEAT: &[Binding] = &[
     field("guard", Shape::BooleanCandidate),
     field("body", Shape::Reference),
     field("exhausted", Shape::OptionalReference),
+    field("test", Shape::Text),
 ];
 const AWAIT: &[Binding] = &[
     field("after", Shape::Group),
@@ -1011,7 +1012,17 @@ fn validate_layout(
         && arguments.len() == expected.len() + 1
         && matches!(arguments.last(), Some(CheckedTerm::Binding { name, value })
             if name.as_ref() == "model_member" && shape_fits(value, Shape::Group));
-    if (arguments.len() != expected.len() && !optional_role_member)
+    let optional_repeat_test = form == ProtocolForm::Control
+        && operator == "repeat"
+        && arguments.len() + 1 == expected.len()
+        && arguments
+            .iter()
+            .zip(&expected[..arguments.len()])
+            .all(|(argument, binding)| {
+                matches!(argument, CheckedTerm::Binding { name, value }
+                    if name.as_ref() == binding.name && shape_fits(value, binding.shape))
+            });
+    if (arguments.len() != expected.len() && !optional_role_member) && !optional_repeat_test
         || !arguments
             .iter()
             .take(expected.len())
@@ -1103,7 +1114,7 @@ pub(super) fn wire_layout_defect(
         if capacity
             .and_then(|capacity| group_value(capacity, "value"))
             .and_then(integer_value)
-            .is_some_and(|value| value < Numeral::exact(0))
+            .is_some_and(|value| value <= Numeral::exact(0))
         {
             return Some(ProtocolLayoutWireDefect::NegativeQueueCapacity);
         }
@@ -1228,6 +1239,10 @@ fn enum_value_defect(
             };
             optional(0, &["sc", "tso", "ra"]).or_else(|| optional(4, &["continue", "cancel"]))
         }
+        (ProtocolForm::Control, "repeat") => argument(arguments, 7)
+            .and_then(text_value)
+            .filter(|test| *test != "post")
+            .map(|_| ProtocolLayoutWireDefect::EnumValue),
         (ProtocolForm::Control, "await") => {
             invalid_enum_at(arguments, 0, Some((0, true)), &["event", "compensation"])
         }
@@ -1775,6 +1790,38 @@ impl MemberCheck<'_> {
                 ) => {}
                 CheckedNodeKind::CompositeType(CompositeTypeForm::Reference) => {}
                 CheckedNodeKind::CompositeType(_) => {
+                    let Some(term) = self.terms[position].as_ref() else {
+                        return Ok(false);
+                    };
+                    if !collect_type_children(term, &mut pending, meter)? {
+                        return Ok(false);
+                    }
+                }
+                CheckedNodeKind::BoundedDomain(form) => {
+                    if form == BoundedDomainForm::FloatRounding
+                        || form == BoundedDomainForm::ModelPopulation
+                    {
+                        return Ok(false);
+                    }
+                    pending.push(&self.nodes[position].semantic_type);
+                }
+                CheckedNodeKind::ScalarType(ScalarTypeForm::CarriedQuantity) => {
+                    let Some(term) = self.terms[position].as_ref() else {
+                        return Ok(false);
+                    };
+                    let Some(carrier) = group_value(term, "carrier").and_then(reference_target)
+                    else {
+                        return Ok(false);
+                    };
+                    meter.push(&mut pending, carrier)?;
+                }
+                CheckedNodeKind::ScalarType(ScalarTypeForm::BoundedQuantity) => {}
+                CheckedNodeKind::Model(
+                    ModelForm::ValueType
+                    | ModelForm::TupleValueType
+                    | ModelForm::RecordValueType
+                    | ModelForm::VariantType,
+                ) => {
                     let Some(term) = self.terms[position].as_ref() else {
                         return Ok(false);
                     };
@@ -2634,6 +2681,19 @@ fn check_control_prefix(
             }
         }
         "repeat" => {
+            if argument(arguments, 7).and_then(text_value) == Some("post")
+                && members(check.at(arguments, 2))
+                    .and_then(|maximum| maximum.first())
+                    .and_then(integer_value)
+                    .is_some_and(|maximum| maximum == Numeral::exact(0))
+            {
+                return Err(check.refuse(
+                    meter,
+                    Code::InvalidPackage,
+                    Some(Cause::InvalidValue),
+                    node_path(check.position),
+                ));
+            }
             check.target_at(meter, arguments, 0, |position| {
                 check.is(position, CheckedNodeKind::Protocol(ProtocolForm::Role))
             })?;
@@ -2650,12 +2710,10 @@ fn check_control_prefix(
                     control,
                 )?;
             }
-            if members(check.at(arguments, 3)).is_some_and(|items| !items.is_empty()) {
-                check.boolean(
-                    meter,
-                    group_value(check.at(arguments, 3), "invariant").expect("validated invariant"),
-                    || check.argument_path(3).key("members").index(0).key("value"),
-                )?;
+            if let Some(invariant) = group_value(check.at(arguments, 3), "invariant") {
+                check.boolean(meter, invariant, || {
+                    check.argument_path(3).key("members").index(0).key("value")
+                })?;
             }
             check.boolean_at_node(meter, check.at(arguments, 4), check.argument_path(4))?;
         }
@@ -3130,6 +3188,14 @@ fn check_member(
                     check.kinds[position],
                     CheckedNodeKind::ScalarType(_)
                         | CheckedNodeKind::CompositeType(_)
+                        | CheckedNodeKind::BoundedDomain(
+                            BoundedDomainForm::IntegerRange
+                                | BoundedDomainForm::RationalRange
+                                | BoundedDomainForm::DecimalRange
+                                | BoundedDomainForm::FloatRounding
+                                | BoundedDomainForm::TextBounds
+                                | BoundedDomainForm::CollectionBounds
+                        )
                         | CheckedNodeKind::Model(
                             ModelForm::RecordValueType
                                 | ModelForm::EventType
@@ -4231,7 +4297,7 @@ fn check_clause_slots(
             Some(trigger) => std::slice::from_ref(trigger),
             None => &[],
         };
-        let allowed = PositionSet::of(&[triggers], meter)?;
+        let allowed = PositionSet::of(&[triggers, &scope.model_population_positions], meter)?;
         scope.slot(
             check.position,
             guard,
@@ -4259,6 +4325,7 @@ fn check_clause_slots(
             &[
                 &scope.c0[..1 + usize::from(scope.activation.is_some())],
                 &scope.captures[..entry],
+                &scope.model_population_positions,
             ],
             meter,
         )?;
@@ -4295,6 +4362,7 @@ struct ProtocolScope<'a, 'b> {
     check: &'a MemberCheck<'b>,
     arguments: &'a [CheckedTerm],
     validated: &'a [Option<(&'a str, &'a [CheckedTerm])>],
+    model_population_positions: Vec<usize>,
     c0: Vec<usize>,
     activation: Option<usize>,
     captures: Vec<usize>,
@@ -4341,6 +4409,22 @@ impl<'a, 'b> ProtocolScope<'a, 'b> {
         c0.extend(captures.iter().copied());
         let mut known: Vec<Vec<ProtocolBinderOrigin>> =
             meter.filled(check.nodes.len(), Vec::new())?;
+        let mut model_population_positions = meter.vec(0)?;
+        for (position, node) in check.nodes.iter().enumerate() {
+            node_work(meter, check.position)?;
+            if (check.is(position, CheckedNodeKind::Value(ValueForm::Parameter))
+                || check.is(
+                    position,
+                    CheckedNodeKind::Relation(RelationForm::Population),
+                ))
+                && node
+                    .owner
+                    .as_ref()
+                    .is_some_and(|owner| matches!(owner, super::CheckedNodeOwner::Model { .. }))
+            {
+                meter.push(&mut model_population_positions, position)?;
+            }
+        }
         for (index, &position) in c0.iter().enumerate() {
             node_work(meter, check.position)?;
             let capture = if index > usize::from(activation.is_some()) {
@@ -4363,6 +4447,7 @@ impl<'a, 'b> ProtocolScope<'a, 'b> {
             check,
             arguments,
             validated,
+            model_population_positions,
             c0,
             activation,
             captures,
@@ -4568,7 +4653,12 @@ impl<'a, 'b> ProtocolScope<'a, 'b> {
                         }
                         continue;
                     }
-                    if matches!(self.check.kinds[position], CheckedNodeKind::Function(_)) {
+                    if matches!(self.check.kinds[position], CheckedNodeKind::Function(_))
+                        || self.check.is(
+                            position,
+                            CheckedNodeKind::Protocol(ProtocolForm::ProtocolReference),
+                        )
+                    {
                         continue;
                     }
                     if let Some(CheckedTerm::Application { operation, .. }) =
@@ -5101,31 +5191,31 @@ impl<'a, 'b> ProtocolScope<'a, 'b> {
         };
         match operator {
             "choice" | "repeat" => {
-                let visible = argument(args, 1).expect("visible");
-                let entries = members(visible).expect("visible entries");
-                let mut targets = meter.vec(entries.len())?;
-                targets.extend(entries.iter().map(|entry| self.target(entry)));
-                let listed = PositionSet::of(&[&targets], meter)?;
-                let owner = self.target(argument(args, 0).expect("decision owner"));
-                for entry in members(visible).expect("visible entries") {
-                    self.slot(position, entry, &input, "run", Some("visible"), None, meter)?;
-                    self.bare_decision_record_read(
-                        entry,
-                        owner,
-                        &listed,
-                        DecisionFactUse::VisibleEntry,
-                        "visible",
-                        meter,
-                    )?;
-                    self.decision_facts(
-                        entry,
-                        owner,
-                        &listed,
-                        DecisionFactUse::VisibleEntry,
-                        meter,
-                    )?;
-                }
                 if operator == "choice" {
+                    let visible = argument(args, 1).expect("visible");
+                    let entries = members(visible).expect("visible entries");
+                    let mut targets = meter.vec(entries.len())?;
+                    targets.extend(entries.iter().map(|entry| self.target(entry)));
+                    let listed = PositionSet::of(&[&targets], meter)?;
+                    let owner = self.target(argument(args, 0).expect("decision owner"));
+                    for entry in members(visible).expect("visible entries") {
+                        self.slot(position, entry, &input, "run", Some("visible"), None, meter)?;
+                        self.bare_decision_record_read(
+                            entry,
+                            owner,
+                            &listed,
+                            DecisionFactUse::VisibleEntry,
+                            "visible",
+                            meter,
+                        )?;
+                        self.decision_facts(
+                            entry,
+                            owner,
+                            &listed,
+                            DecisionFactUse::VisibleEntry,
+                            meter,
+                        )?;
+                    }
                     for case in members(argument(args, 2).expect("cases")).expect("cases") {
                         let guard = group_value(case, "guard").expect("guard");
                         self.slot(
@@ -5146,32 +5236,6 @@ impl<'a, 'b> ProtocolScope<'a, 'b> {
                             meter,
                         )?;
                         self.decision_facts(guard, owner, &listed, DecisionFactUse::Guard, meter)?;
-                    }
-                } else {
-                    let guard = argument(args, 4).expect("repeat guard");
-                    self.slot(
-                        position,
-                        guard,
-                        &input,
-                        "run",
-                        Some("repeat.guard"),
-                        None,
-                        meter,
-                    )?;
-                    self.bare_decision_record_read(
-                        guard,
-                        owner,
-                        &listed,
-                        DecisionFactUse::Guard,
-                        "repeat.guard",
-                        meter,
-                    )?;
-                    self.decision_facts(guard, owner, &listed, DecisionFactUse::Guard, meter)?;
-                    let proof = argument(args, 3).expect("repeat proof");
-                    for item in members(proof).expect("proof") {
-                        if let CheckedTerm::Binding { value, .. } = item {
-                            self.slot(position, value, &input, "run", None, None, meter)?;
-                        }
                     }
                 }
             }
@@ -5196,10 +5260,15 @@ impl<'a, 'b> ProtocolScope<'a, 'b> {
                     "commit" => 2,
                     _ => unreachable!("step control"),
                 };
+                let constraint_scope = if matches!(operator, "send" | "event") {
+                    output.with(&self.model_population_positions, meter)?
+                } else {
+                    output.duplicate(meter)?
+                };
                 self.slot(
                     position,
                     argument(args, constraint).expect("constraint"),
-                    &output,
+                    &constraint_scope,
                     "run",
                     None,
                     None,
@@ -5217,7 +5286,7 @@ impl<'a, 'b> ProtocolScope<'a, 'b> {
                             self.slot(
                                 position,
                                 group_value(record, end).expect("related end"),
-                                &output,
+                                &constraint_scope,
                                 "run",
                                 None,
                                 None,
@@ -5237,6 +5306,74 @@ impl<'a, 'b> ProtocolScope<'a, 'b> {
             children,
             next: 0,
         })
+    }
+
+    #[string_edge]
+    fn repeat_back_edge_slots(
+        &self,
+        position: usize,
+        arguments: &[CheckedTerm],
+        pre_test_scope: &PositionSet,
+        body_scope: &PositionSet,
+        meter: &mut WorkMeter,
+    ) -> Result<(), ValidationFailure> {
+        let visible = argument(arguments, 1).expect("visible");
+        let entries = members(visible).expect("visible entries");
+        let mut targets = meter.vec(entries.len())?;
+        targets.extend(entries.iter().map(|entry| self.target(entry)));
+        let listed = PositionSet::of(&[&targets], meter)?;
+        let owner = self.target(argument(arguments, 0).expect("decision owner"));
+        for entry in entries {
+            self.slot(
+                position,
+                entry,
+                body_scope,
+                "run",
+                Some("visible"),
+                None,
+                meter,
+            )?;
+            self.bare_decision_record_read(
+                entry,
+                owner,
+                &listed,
+                DecisionFactUse::VisibleEntry,
+                "visible",
+                meter,
+            )?;
+            self.decision_facts(entry, owner, &listed, DecisionFactUse::VisibleEntry, meter)?;
+        }
+        let guard = argument(arguments, 4).expect("repeat guard");
+        let guard_scope = if binding_value(arguments, "test").and_then(text_value) == Some("post") {
+            body_scope
+        } else {
+            pre_test_scope
+        };
+        self.slot(
+            position,
+            guard,
+            guard_scope,
+            "run",
+            Some("repeat.guard"),
+            None,
+            meter,
+        )?;
+        self.bare_decision_record_read(
+            guard,
+            owner,
+            &listed,
+            DecisionFactUse::Guard,
+            "repeat.guard",
+            meter,
+        )?;
+        self.decision_facts(guard, owner, &listed, DecisionFactUse::Guard, meter)?;
+        let proof = argument(arguments, 3).expect("repeat proof");
+        for item in members(proof).expect("proof") {
+            if let CheckedTerm::Binding { value, .. } = item {
+                self.slot(position, value, body_scope, "run", None, None, meter)?;
+            }
+        }
+        Ok(())
     }
 
     #[string_edge]
@@ -5273,6 +5410,18 @@ impl<'a, 'b> ProtocolScope<'a, 'b> {
             frames.pop();
             if let Some(parent) = frames.last_mut() {
                 let (parent_operator, _) = self.node_arguments(parent.position);
+                if parent_operator == "repeat" && parent.next == 1 {
+                    // Repeat body slots read the binders available at the
+                    // body's every-path exit, after that child scope is known.
+                    let (_, repeat_args) = self.node_arguments(parent.position);
+                    self.repeat_back_edge_slots(
+                        parent.position,
+                        repeat_args,
+                        &parent.input,
+                        &out,
+                        meter,
+                    )?;
+                }
                 if parent_operator == "sequence" || parent_operator == "await" {
                     parent.output = out;
                 } else if parent_operator == "parallel" {
@@ -5327,7 +5476,9 @@ impl<'a, 'b> ProtocolScope<'a, 'b> {
         let finish = self.target(binding_value(self.arguments, "finish").expect("finish"));
         let (_, args) = self.node_arguments(finish);
         let binder = self.target(argument(args, 0).expect("finish binder"));
-        let allowed = self.introduce(binder, input, meter)?;
+        let allowed = self
+            .introduce(binder, input, meter)?
+            .with(&self.model_population_positions, meter)?;
         self.slot(
             finish,
             argument(args, 1).expect("finish constraint"),
@@ -5382,10 +5533,11 @@ impl<'a, 'b> ProtocolScope<'a, 'b> {
             let mut registration = meter.vec(registration_captures.len())?;
             for (ordinal, capture) in registration_captures.iter().enumerate() {
                 let initializer = group_value(capture, "initializer").expect("initializer");
+                let allowed = level_set.with(&self.model_population_positions, meter)?;
                 self.slot(
                     template,
                     initializer,
-                    &level_set,
+                    &allowed,
                     "registration-capture",
                     None,
                     Some(ordinal),
@@ -5415,8 +5567,15 @@ impl<'a, 'b> ProtocolScope<'a, 'b> {
             let mut activation = meter.vec(activation_captures.len())?;
             for (ordinal, capture) in activation_captures.iter().enumerate() {
                 let initializer = group_value(capture, "initializer").expect("initializer");
-                let allowed =
-                    PositionSet::of(&[&guard_allowed.0, &self.c0[..1], &activation], meter)?;
+                let allowed = PositionSet::of(
+                    &[
+                        &guard_allowed.0,
+                        &self.c0[..1],
+                        &activation,
+                        &self.model_population_positions,
+                    ],
+                    meter,
+                )?;
                 self.slot(
                     template,
                     initializer,
@@ -6320,6 +6479,74 @@ pub(super) fn has_missing_temporal_selection(
     false
 }
 
+#[string_edge]
+fn type_reaches_object_type(
+    root: &CheckedNodeId,
+    kinds: &[CheckedNodeKind],
+    terms: &[Option<CheckedTerm>],
+    index: &GraphIndex<'_>,
+    meter: &mut WorkMeter,
+) -> Result<bool, ValidationFailure> {
+    let Some(&root_position) = index.get(root) else {
+        return Ok(false);
+    };
+    if !matches!(
+        kinds.get(root_position),
+        Some(CheckedNodeKind::Model(ModelForm::ObjectType) | CheckedNodeKind::CompositeType(_))
+    ) {
+        return Ok(false);
+    }
+    let mut pending = meter.vec(1)?;
+    pending.push(root_position);
+    let mut visited = meter.vec(0)?;
+    while let Some(position) = pending.pop() {
+        node_work(meter, position)?;
+        if !meter.insert_sorted(&mut visited, position)? {
+            continue;
+        }
+        if kinds.get(position) == Some(&CheckedNodeKind::Model(ModelForm::ObjectType)) {
+            return Ok(true);
+        }
+        if matches!(kinds.get(position), Some(CheckedNodeKind::CompositeType(_))) {
+            if let Some(body) = terms.get(position).and_then(Option::as_ref) {
+                let mut failure = None;
+                body.visit_reference_targets(&mut |target| {
+                    if let Some(&target) = index.get(target) {
+                        if let Err(error) = meter.push(&mut pending, target) {
+                            failure = Some(error);
+                        }
+                    }
+                });
+                if let Some(error) = failure {
+                    return Err(error);
+                }
+            }
+        }
+    }
+    Ok(false)
+}
+
+#[string_edge]
+fn protocol_over_reaches_object_type(
+    position: usize,
+    nodes: &[RawSemanticNodeV2],
+    kinds: &[CheckedNodeKind],
+    terms: &[Option<CheckedTerm>],
+    validated: &[Option<(&str, &[CheckedTerm])>],
+    index: &GraphIndex<'_>,
+    meter: &mut WorkMeter,
+) -> Result<bool, ValidationFailure> {
+    let type_id = validated[position]
+        .and_then(|(_, arguments)| argument(arguments, 0))
+        .and_then(reference_target)
+        .and_then(|binder| index.get(binder))
+        .map(|&binder| &nodes[binder].semantic_type);
+    match type_id {
+        Some(type_id) => type_reaches_object_type(type_id, kinds, terms, index, meter),
+        None => Ok(false),
+    }
+}
+
 /// Validate protocol placement, local members, membership and clause layout.
 /// What the protocol step reads beside the graph: the operation catalog, the
 /// package lock and the byte ceiling.
@@ -6460,6 +6687,24 @@ pub(super) fn validate_protocol_nodes(
         }
         validated[position] = Some((operator, arguments));
     }
+    // The owner edge is a closed-wire premise derived from the `over` type.
+    // Decide its presence/type mismatch before protocol member, scope or
+    // causality checks so unrelated body errors cannot mask it.
+    for &position in index.values() {
+        if kinds.get(position) != Some(&CheckedNodeKind::Protocol(ProtocolForm::ProtocolClause)) {
+            continue;
+        }
+        let over_reaches_object = protocol_over_reaches_object_type(
+            position, nodes, kinds, terms, &validated, index, meter,
+        )?;
+        if nodes[position].owner_model.is_some() != over_reaches_object {
+            return Err(refuse_unlocated(
+                meter,
+                Code::MalformedWire,
+                node_path(position),
+            ));
+        }
+    }
     validate_protocol_declaration_names(nodes, kinds, index, meter)?;
     validate_protocol_declaration_paths(nodes, kinds, &validated, index, meter)?;
     // Local member shapes precede membership, which precedes clause checks.
@@ -6510,46 +6755,19 @@ pub(super) fn validate_protocol_nodes(
             continue;
         }
         let node = &nodes[position];
-        let Some(owner_model) = node.owner_model.as_ref() else {
-            return Err(refuse_unlocated(
-                meter,
-                Code::MalformedWire,
-                node_path(position),
-            ));
-        };
-        let owner_at = || node_path(position).key("owner_model");
-        let owner_position = index.get(owner_model).copied().ok_or_else(|| {
-            refuse_at(
-                meter,
-                Code::MissingDeclaration,
-                Some(Cause::MissingName),
-                owner_at(),
-                &node.node_id,
-            )
-        })?;
-        let target = &nodes[owner_position];
-        if kinds[owner_position] != CheckedNodeKind::Model(ModelForm::ObjectType) {
-            return Err(refuse_at(
-                meter,
-                Code::InvalidModelBinding,
-                Some(Cause::MalformedDeclaration),
-                owner_at(),
-                &node.node_id,
-            ));
-        }
-        // A source-declared object type joins its lock entry in the owner
-        // step, so the clause edge needs no selected model row.
-        if !super::source_object::is_source_declared_object_type(target, kinds[owner_position]) {
-            let owner = owners.recover(target).map_err(|failure| {
+        if let Some(owner_model) = node.owner_model.as_ref() {
+            let owner_at = || node_path(position).key("owner_model");
+            let owner_position = index.get(owner_model).copied().ok_or_else(|| {
                 refuse_at(
                     meter,
-                    failure.code,
-                    Some(failure.cause),
+                    Code::MissingDeclaration,
+                    Some(Cause::MissingName),
                     owner_at(),
                     &node.node_id,
                 )
             })?;
-            if owner.form != super::model_members::DeclarationForm::ObjectType {
+            let target = &nodes[owner_position];
+            if kinds[owner_position] != CheckedNodeKind::Model(ModelForm::ObjectType) {
                 return Err(refuse_at(
                     meter,
                     Code::InvalidModelBinding,
@@ -6557,6 +6775,29 @@ pub(super) fn validate_protocol_nodes(
                     owner_at(),
                     &node.node_id,
                 ));
+            }
+            // A source-declared object type joins its lock entry in the owner
+            // step, so the clause edge needs no selected model row.
+            if !super::source_object::is_source_declared_object_type(target, kinds[owner_position])
+            {
+                let owner = owners.recover(target).map_err(|failure| {
+                    refuse_at(
+                        meter,
+                        failure.code,
+                        Some(failure.cause),
+                        owner_at(),
+                        &node.node_id,
+                    )
+                })?;
+                if owner.form != super::model_members::DeclarationForm::ObjectType {
+                    return Err(refuse_at(
+                        meter,
+                        Code::InvalidModelBinding,
+                        Some(Cause::MalformedDeclaration),
+                        owner_at(),
+                        &node.node_id,
+                    ));
+                }
             }
         }
         let Some((operator, arguments)) = validated[position] else {

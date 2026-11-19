@@ -374,6 +374,7 @@ fn tc_987_positive_operation_body_vectors_read_and_round_trip() {
                 checked_term_data: admitted.checked_term_data(),
                 temporal_bindings: admitted.temporal_bindings(),
                 temporal_clause_names: admitted.temporal_clause_names(),
+                claim_names: admitted.claim_names(),
                 schedulability_claims: None,
                 operation_effects: None,
                 operation_bodies: Some(&expected),
