@@ -65,7 +65,11 @@ outside the rules of FSpec FR-640 that need no other node:
   rational in lowest terms;
 - a `family` outside `uniform`, `uniform_interval`, `exponential` and
   `discrete`, and `parameters` that do not hold exactly the members the family
-  states, including a member row of `discrete` that does.
+  states, including a member row of `discrete` that does;
+- a time quantity of a `uniform_interval` or `discrete` delay that is negative
+  (FSpec FR-640 rule 5 with FR-420's non-negative delays), at the quantity's
+  `value` member; a quantity whose spelling is no exact rational stays
+  `malformed_wire`.
 
 A workload weight of 0 is admitted. The strict V2 reader SHALL charge one
 validation visit of the caller's budget for each node and for each support,
@@ -210,8 +214,17 @@ A `reward` whose function has a `body` binding is refused `ill_typed` and cause
 than the function, by the reader's general result comparison of FSpec FR-322
 "Results"; the join adds no second check of the body.
 
-A support value of a declared record, tuple, variant, option or collection type
-has no literal kind and is refused.
+A support value of a Boolean parameter is a `boolean` literal whose `value` is a
+JSON boolean, and one of a parameter of a declared enumeration (a variant type
+none of whose cases carries a payload) is an `enum` literal typed at that
+declaration whose `value` names one of its cases (FSpec FR-640 admits a random
+parameter of any parameter type); a literal of another kind, a non-boolean
+value, a literal typed at another declaration and an unknown or differently
+cased case name refuse at the value. A support value of a declared record,
+tuple, option or collection type, or of a variant type with a payload case (a
+union, for its nullary cases too), has no literal kind: FSpec has no literal
+form for these, and the reader's general literal check refuses it as
+`ill_typed`/`operator-ineligible` at the literal's `type`, before this join.
 
 ### Planned
 
@@ -232,7 +245,7 @@ QSL-2310.
 | --- | --- | --- |
 | FR-369-AC-1 | `probabilistic` and each of its four forms decode, `CheckedNodeKind::all` lists them, a node of each form (each delay family included) reads and re-encodes to the document it was read from, and the public reader admits a package holding a node of each form. | Test |
 | FR-369-AC-2 | A probabilistic node with a missing member, an extra member, members out of order, a `declaration`, an `owner`, a `recursion_group`, no or two occurrences, an occurrence of another role, a binding of another term kind, or a short or extended support row or workload weights row refuses `malformed_wire` at the failing member. | Test |
-| FR-369-AC-3 | An empty support, a repeated support value, a zero support or discrete weight, a zero or negative rate, a negative workload weight, a weight not in lowest terms, an unknown delay family and delay parameters that do not match the family refuse `invalid_package`/`invalid-value`; a zero workload weight is admitted. | Test |
+| FR-369-AC-3 | An empty support, a repeated support value (a Boolean one included), a zero support or discrete weight, a zero or negative rate, a negative workload weight, a negative delay time quantity, a weight not in lowest terms, an unknown delay family and delay parameters that do not match the family refuse `invalid_package`/`invalid-value`; a zero workload weight is admitted. | Test |
 | FR-369-AC-4 | An unknown `node_tag`, and a form outside the probabilistic family, still fail decode with the existing error. | Test |
 | FR-369-AC-5 | The reader charges one work unit for each node and for each row of a support, a workload weights list or a discrete delay list, and a budget one unit short of the total is denied at the first uncharged row. | Test |
 | FR-369-AC-6 | An operation reference of each form whose `declaring` node is no `model` node, or which names an operation that node does not declare, refuses `invalid_package`/`invalid-value` at the member; a package whose references all name declared operations is admitted. | Test |
@@ -252,6 +265,8 @@ QSL-2310.
 | FR-369-AC-20 | The join charges one validation visit for each support value at the value's pointer: a budget exists that stops the read as incomplete at exactly the value of each row. | Test |
 | FR-369-AC-21 | A delay quantity, of `uniform_interval` or `discrete`, typed at another unit than the `dense` source's refuses `invalid_package`/`invalid-value` at the quantity; quantities in the source's unit are admitted. | Test |
 | FR-369-AC-22 | The join charges one validation visit for each delay quantity of a `discrete` list at the quantity's pointer: a budget exists that stops the read as incomplete at exactly the delay of each row. | Test |
+| FR-369-AC-23 | A `random_parameter` of a Boolean parameter with `boolean` support literals `true` and `false`, and one of a declared enumeration parameter with `enum` support literals typed at that declaration and naming its cases, are admitted and read back with their supports. | Test |
+| FR-369-AC-24 | A Boolean parameter's support value given as the text `"true"`, as the number `1`, as an integer literal or as an `enum` literal, and an enumeration parameter's support value that names an unknown case, differs from a case in letter case, is typed at another enumeration, is a Boolean literal or is a text literal refuse `invalid_package`/`invalid-value` at the value. A support value of a variant type with a payload case (a union), for its payload case and its nullary case alike, refuses `ill_typed`/`operator-ineligible` at the literal's `type`, by the reader's general literal check before the join. | Test |
 | FR-369-AC-25 | A package of a unit with no selected model that declares `object O { d: Clock; operation step() modifies self.d; }`, `object Other { n: Integer; operation poke(k: Int[1, 3]) modifies self.n; }` and `time O dense unit ms;`, holding a `delay_distribution` on `O::step`, a `discrete` one on `Other::poke` with times typed at `ms`, a `random_parameter` of `Other::poke`'s `k` with support `1`, `3`, and a `workload` on `O`, each operation reference's `declaring` (the workload's `model`) a source `model`/`object_type` node, is admitted by the strict read and by the identity-row join, and the typed read gives each declaration keyed by its node. | Test (TC-484) |
 | FR-369-AC-26 | Over the AC-25 package each refuses `invalid_package`/`invalid-value` at the member: at the strict read, a `declaring` that is a source `relation`/`population` node, and a delay whose source model has no `dense` time member; at the identity-row join, an `operation` `nudge` that `Other`'s row lists no entry for, a `parameter` `j` that `Other::poke`'s `parameters` lack, a support value `4` outside `Int[1, 3]`, and a workload that omits `O::step`. A budget one visit short of the join's charges stops the read as incomplete. | Test (TC-484) |
 
