@@ -74,6 +74,55 @@ terminal node refuse the same at that node, naming the first two
 occurrences. A dependency mismatch refuses at `/dependencies` in the
 earlier graph-shape step.
 
+### Public terminal rows
+
+An admitted package SHALL expose its model terminal declarations as typed
+rows through one public read, `CheckedPackageV2::terminal_rows(&self) ->
+&[TerminalRow]`, so a consumer reads the deadlock-freedom subject's terminal
+declaration from the admitted package and never re-walks the graph or
+re-parses a body:
+
+```rust
+pub struct TerminalRow {
+    pub node: CheckedNodeId,        // the temporal/terminal node
+    pub model: CheckedNodeId,       // the model node the declaration is on
+    pub declaration: TerminalDeclaration,
+}
+pub enum TerminalDeclaration {
+    Any,
+    When {
+        parameter: Option<CheckedNodeId>, // the level-0 `self` parameter node
+        condition: CheckedNodeId,         // the Boolean `expression` node
+    },
+}
+```
+
+- Each row SHALL be built from the admitted node's body, in FSpec FR-476's
+  body order: `model` from binding 1, the model reference's target;
+  `declaration` from binding 2, the mode text, `any` giving `Any` and `when`
+  giving `When` (any other mode is refused at admission, above);
+  `parameter` from binding 3, `None` when the `parameters` aggregate is
+  empty and `Some` of its one `self` parameter reference's target otherwise,
+  so it is present exactly when the condition reads `self`; and `condition`
+  from binding 4, the reference's target. An `any` node's `parameters` and
+  `condition` bindings are the empty aggregate (FSpec FR-476), so `Any`
+  carries neither.
+- The rows SHALL be in the admitted graph's node order (ascending
+  structural node id, the order the terminal step visits), so two reads of
+  one package, and a read of the writer's output, return equal rows in equal
+  order.
+- A model with no terminal node SHALL have no row: it declares no terminal
+  state, and the read never returns an empty or placeholder row for it. A
+  model has at most one row, because a second terminal node for one model is
+  refused at admission (`ambiguous_declaration`/`ambiguous-name`, above),
+  not reported by this read.
+- The read SHALL allocate nothing per call and return the rows retained at
+  admission; a package with no terminal node returns the empty slice.
+
+Note: FSL's `fsl-package` reads the same rows today in
+`checked_v2/terminal.rs` (`ReadTerminal`); it is the consumer this read
+serves.
+
 ## Acceptance Criteria
 
 | ID | Criteria | Verification |
@@ -83,6 +132,7 @@ earlier graph-shape step.
 | FR-060-AC-3 | The reader observes FR-322 and FR-476 precedence: graph-shape defects precede the terminal step; state-graph, temporal and abstraction body defects precede it; each terminal node's own checks precede one-per-model checks; nodes visit in structural node-id order; and a terminal defect precedes step-relation and later body defects. | Test |
 | FR-060-AC-4 | Withdrawn by the IR-1141 structural-identity decision under FSpec #517: the reader does not recompute identity from body content or refuse a retained structural id solely because a valid body changed. This id is retained and never reused. | Withdrawn |
 | FR-060-AC-5 | IR-owned positive and negative read/write vectors for FSpec TC-961 MT-01 through MT-16 assert the published wire shapes and refusals through the public V2 reader and writer, without copying FSpec fixture or schema files into IR. | Test |
+| FR-060-AC-6 | Over one admitted package selecting models `M` and `N` with FSpec TC-961 MT-01 (`when` reading `self`) on `M` and MT-02 (`any`) on `N`, and a third selected model `K` with no terminal node, `terminal_rows()` returns exactly two rows in ascending structural node id: `{node: MT-01's node, model: M, declaration: When { parameter: Some(the level-0 self parameter node), condition: the Boolean expression node }}` and `{node: MT-02's node, model: N, declaration: Any}`, and no row for `K`; MT-03 (`when` not reading `self`) on `M` in place of MT-01 gives `When { parameter: None, condition: the forall expression node }`; the rows of the writer's output read back are equal and in equal order; a package with no terminal node returns an empty slice; and a second terminal node on `M` is refused at admission, so no read returns two rows for one model. | Test (TC-487) |
 
 ## Dependencies
 
