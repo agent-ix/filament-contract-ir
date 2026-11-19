@@ -247,11 +247,11 @@ fn value_validity_package(reverse_graph: bool) -> Value {
                 binding("path_condition", if occurrence == 0 {
                     json!({"term":"aggregate","members":[]})
                 } else {
-                    json!({"term":"aggregate","members":[binding("guard",json!({"term":"aggregate","members":[
+                    json!({"term":"aggregate","members":[json!({"term":"aggregate","members":[
                         binding("guard",json!({"term":"reference","target":guard})),
                         binding("occurrence",json!({"term":"literal","type":node_id("scalar_type/integer"),"value_kind":"integer","value":0})),
                         binding("holds",json!({"term":"literal","type":node_id("scalar_type/boolean"),"value_kind":"boolean","value":true}))
-                    ]}))]})
+                    ]})]})
                 }),
                 binding("extent_roots",json!({"term":"aggregate","members":[{"term":"reference","target":parameter}]})),
                 binding("objects",json!({"term":"aggregate","members":[]})),
@@ -355,6 +355,21 @@ fn public_reader_returns_empty_requirement_reads_when_the_member_is_absent() {
 #[test]
 fn public_reader_retains_value_validity_record_facts_and_owner_index() {
     let package = value_validity_package(false);
+    let nodes = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("graph nodes");
+    let record = nodes
+        .iter()
+        .find(|node| node["semantic_form"] == "value_validity")
+        .expect("value-validity record");
+    let owner = &record["body"]["members"][0]["value"]["target"];
+    assert_eq!(
+        nodes
+            .iter()
+            .find(|node| node["node_id"] == *owner)
+            .expect("record owner target")["node_tag"],
+        "function"
+    );
     let owner: filament_contract_model::CheckedNodeId = serde_json::from_value(
         package["semantic_graph"]["nodes"]
             .as_array()
@@ -440,45 +455,51 @@ fn canonical_writer_readback_preserves_typed_requirement_rows() {
 #[test]
 fn public_reader_admits_at_the_exact_work_budget_and_reports_the_last_row_one_short() {
     let package = value_validity_package(false);
-    let mut wire = package.clone();
-    index_fixture_node_ids(&mut wire);
-    let bytes = canonical(&wire);
-    let evidence = evidence_for(&wire);
-    let mut ample = NativeJoinBudget::new(u64::MAX, u64::MAX);
-    let result = CheckedPackageV2::read_with_budget(
-        &bytes,
-        CheckedPackageReadLimits::bounded(),
-        &evidence,
-        &mut ample,
-    );
-    assert!(matches!(
-        result,
-        CheckedPackageV2BudgetedReadResult::Admitted(_)
-    ));
-    let required = ample.consumed().work;
-
-    let mut exact = NativeJoinBudget::new(required, u64::MAX);
-    assert!(matches!(
-        CheckedPackageV2::read_with_budget(
+    let run = |package: &Value, limit: u64| {
+        let mut wire = package.clone();
+        index_fixture_node_ids(&mut wire);
+        let bytes = canonical(&wire);
+        let evidence = evidence_for(&wire);
+        let mut budget = NativeJoinBudget::new(u64::MAX, u64::MAX).with_read_storage_limit(limit);
+        let result = CheckedPackageV2::read_with_budget(
             &bytes,
             CheckedPackageReadLimits::bounded(),
             &evidence,
-            &mut exact,
-        ),
-        CheckedPackageV2BudgetedReadResult::Admitted(_)
-    ));
-
-    let mut short = NativeJoinBudget::new(required - 1, u64::MAX);
-    let CheckedPackageV2BudgetedReadResult::BudgetIncomplete(incomplete) =
-        CheckedPackageV2::read_with_budget(
-            &bytes,
-            CheckedPackageReadLimits::bounded(),
-            &evidence,
-            &mut short,
-        )
-    else {
-        panic!("one work visit short returns a budget incomplete result")
+            &mut budget,
+        );
+        (result, budget.read_storage_consumed())
     };
+
+    // FR-825 charges record nodes, their nested members, and the owner's body
+    // reach before it visits rows. Omitting the rows reaches that exact
+    // boundary; AC-1 specifies two row visits after it.
+    let mut no_rows = package.clone();
+    no_rows
+        .as_object_mut()
+        .expect("package")
+        .remove("requirement_items");
+    let (missing_rows, before_rows) = run(&no_rows, u64::MAX);
+    let CheckedPackageV2BudgetedReadResult::Refused(refusal) = missing_rows else {
+        panic!("missing rows are refused after the record-node and owner walk")
+    };
+    assert_eq!(
+        refusal.loci[0].path,
+        JsonPointer::parse("/requirement_items")
+    );
+    let required = before_rows + 2;
+
+    let (exact, exact_consumed) = run(&package, required);
+    assert!(matches!(
+        exact,
+        CheckedPackageV2BudgetedReadResult::Admitted(_)
+    ));
+    assert_eq!(exact_consumed, required);
+
+    let (short, short_consumed) = run(&package, required - 1);
+    let CheckedPackageV2BudgetedReadResult::BudgetIncomplete(incomplete) = short else {
+        panic!("one storage visit short returns a budget incomplete result")
+    };
+    assert_eq!(short_consumed, required - 1);
     assert_eq!(incomplete.path, JsonPointer::parse("/requirement_items/1"));
 }
 
@@ -522,13 +543,10 @@ fn public_reader_refuses_a_malformed_requirement_row_at_its_wire_pointer() {
         panic!("public V2 reader refuses an open requirement-row schema")
     };
     assert_eq!(refusal.code, CheckedPackageRefusalCode::UnknownMember);
-    assert_eq!(
-        refusal.cause,
-        Some(CheckedPackageRefusalCause::UnknownMember)
-    );
+    assert_eq!(refusal.cause, None);
     assert_eq!(
         refusal.loci[0].path,
-        JsonPointer::parse("/requirement_items/0")
+        JsonPointer::parse("/requirement_items/0/unexpected")
     );
 }
 
@@ -691,6 +709,54 @@ fn public_reader_refuses_record_node_mutations_at_their_rule_pointers() {
 
 #[trace("TC-488", "FR-376-AC-2")]
 #[test]
+fn public_reader_refuses_a_second_generated_occurrence_at_occurrences() {
+    let mut package = value_validity_package(false);
+    let record_position = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .position(|node| {
+            node["semantic_form"] == "value_validity" && node["occurrences"][0]["ordinal"] == 0
+        })
+        .expect("first record");
+    let record_id = package["semantic_graph"]["nodes"][record_position]["node_id"].clone();
+    package["semantic_graph"]["nodes"][record_position]["occurrences"] = json!([
+        {"role":"generated","ordinal":0},
+        {"role":"generated","ordinal":1}
+    ]);
+    let mut source_row = package["source_map"]
+        .as_array()
+        .expect("source map")
+        .iter()
+        .find(|row| row["node_id"] == record_id)
+        .expect("record source row")
+        .clone();
+    source_row["ordinal"] = json!(1);
+    package["source_map"]
+        .as_array_mut()
+        .expect("source map")
+        .push(source_row);
+    package["source_map"]
+        .as_array_mut()
+        .expect("source map")
+        .sort_by_key(|row| {
+            (
+                row["node_id"].to_string(),
+                row["role"].as_str().expect("role").to_owned(),
+                row["ordinal"].as_u64().expect("ordinal"),
+            )
+        });
+
+    assert_refusal(
+        &package,
+        CheckedPackageRefusalCode::InvalidPackage,
+        Some(CheckedPackageRefusalCause::InvalidValue),
+        &format!("/semantic_graph/nodes/{record_position}/occurrences"),
+    );
+}
+
+#[trace("TC-488", "FR-376-AC-2")]
+#[test]
 fn public_reader_refuses_requirement_row_mutations_at_their_rule_pointers() {
     let mut absent = value_validity_package(false);
     absent
@@ -713,6 +779,27 @@ fn public_reader_refuses_requirement_row_mutations_at_their_rule_pointers() {
         "/requirement_items",
     );
 
+    let mut missing_extent = value_validity_package(false);
+    missing_extent["requirement_items"][0]
+        .as_object_mut()
+        .expect("row")
+        .remove("extent");
+    assert_refusal(
+        &missing_extent,
+        CheckedPackageRefusalCode::MalformedWire,
+        None,
+        "/requirement_items/0",
+    );
+
+    let mut unknown_kind = value_validity_package(false);
+    unknown_kind["requirement_items"][0]["kind"] = json!("value-validty");
+    assert_refusal(
+        &unknown_kind,
+        CheckedPackageRefusalCode::MalformedWire,
+        None,
+        "/requirement_items/0/kind",
+    );
+
     let mut wrong_occurrence = value_validity_package(false);
     wrong_occurrence["requirement_items"][0]["claim"]["occurrence"]["ordinal"] = json!(7);
     assert_refusal(
@@ -720,6 +807,22 @@ fn public_reader_refuses_requirement_row_mutations_at_their_rule_pointers() {
         CheckedPackageRefusalCode::InvalidPackage,
         Some(CheckedPackageRefusalCause::InvalidValue),
         "/requirement_items/0/claim",
+    );
+
+    let mut duplicate_domain = value_validity_package(false);
+    let parameter = node_id("value/parameter/n/0");
+    duplicate_domain["requirement_items"][0]["extent"] = json!({
+        "classification":"unbounded",
+        "domains":[
+            {"domain":{"type":"node","node":parameter,"path":[]},"kind":"integer"},
+            {"domain":{"type":"node","node":parameter,"path":[]},"kind":"integer"}
+        ]
+    });
+    assert_refusal(
+        &duplicate_domain,
+        CheckedPackageRefusalCode::InvalidPackage,
+        Some(CheckedPackageRefusalCause::InvalidValue),
+        "/requirement_items/0/extent/domains/1",
     );
 
     let mut repeated = value_validity_package(false);
@@ -751,6 +854,28 @@ fn public_reader_refuses_requirement_row_mutations_at_their_rule_pointers() {
         Some(CheckedPackageRefusalCause::InvalidValue),
         &format!("/semantic_graph/nodes/{record_position}/body"),
     );
+
+    let mut wrong_owner_ordinals = value_validity_package(false);
+    let record_positions = wrong_owner_ordinals["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .enumerate()
+        .filter_map(|(position, node)| {
+            (node["semantic_form"] == "value_validity").then_some(position)
+        })
+        .collect::<Vec<_>>();
+    wrong_owner_ordinals["semantic_graph"]["nodes"][record_positions[0]]["occurrences"][0]
+        ["ordinal"] = json!(1);
+    wrong_owner_ordinals["semantic_graph"]["nodes"][record_positions[1]]["occurrences"][0]
+        ["ordinal"] = json!(0);
+    let first = record_positions[0];
+    assert_refusal(
+        &wrong_owner_ordinals,
+        CheckedPackageRefusalCode::InvalidPackage,
+        Some(CheckedPackageRefusalCause::InvalidValue),
+        &format!("/semantic_graph/nodes/{first}/occurrences"),
+    );
 }
 
 #[trace("TC-488", "FR-376-AC-2")]
@@ -778,6 +903,80 @@ fn public_reader_refuses_claim_names_that_name_a_valid_value_validity_node() {
         CheckedPackageRefusalCode::InvalidPackage,
         Some(CheckedPackageRefusalCause::InvalidValue),
         "/claim_names/0/declaration",
+    );
+}
+
+fn add_out_of_order_requirement_rows(package: &mut Value) {
+    let claim = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find_map(|node| {
+            node["occurrences"]
+                .as_array()?
+                .first()
+                .map(|occurrence| json!({"node":node["node_id"],"occurrence":occurrence}))
+        })
+        .expect("an occurrence key");
+    package["requirement_items"] = json!([
+        row(&claim, "operation-contract"),
+        row(&claim, "finite-replay"),
+    ]);
+}
+
+#[trace("TC-488", "FR-376-AC-3")]
+#[test]
+fn probabilistic_rule_six_refusal_precedes_requirement_record_refusal() {
+    let mut package = crate::probabilistic_delay::with_delays(
+        &[(
+            "precedence",
+            "uniform",
+            json!({"term":"aggregate","members":[]}),
+        )],
+        None,
+    );
+    let delay_position = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .position(|node| node["node_tag"] == "probabilistic")
+        .expect("delay node");
+    package["semantic_graph"]["nodes"][delay_position]["body"]["members"][2]["value"]["value"] =
+        json!("unknown-family");
+    crate::fixture_support::refresh_identity(&mut package);
+    add_out_of_order_requirement_rows(&mut package);
+
+    assert_refusal(
+        &package,
+        CheckedPackageRefusalCode::InvalidPackage,
+        Some(CheckedPackageRefusalCause::InvalidValue),
+        &format!("/semantic_graph/nodes/{delay_position}/body/members/2/value/value"),
+    );
+}
+
+#[trace("TC-488", "FR-376-AC-3")]
+#[test]
+fn requirement_record_refusal_precedes_reversed_probabilistic_claim_rows() {
+    let vectors = crate::probabilistic_claims::vectors();
+    let package_name = "test/families";
+    let rows = vectors["positive"]["probabilistic_claims"]
+        .as_array()
+        .expect("positive rows")
+        .iter()
+        .map(|value| crate::probabilistic_claims::row(value, package_name))
+        .collect();
+    let mut package = crate::probabilistic_claims::fixture(rows, &vectors);
+    package["checked_term_data"]["probabilistic_claims"]
+        .as_array_mut()
+        .expect("probabilistic rows")
+        .reverse();
+    add_out_of_order_requirement_rows(&mut package);
+
+    assert_refusal(
+        &package,
+        CheckedPackageRefusalCode::InvalidPackage,
+        Some(CheckedPackageRefusalCause::InvalidSemanticGraph),
+        "/requirement_items/1",
     );
 }
 

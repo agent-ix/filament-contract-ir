@@ -32,3 +32,20 @@ Examined units:
 - FR-376-AC-3: "The requirement-record step runs after probabilistic_join::validate and before checked_term_data validation" and checks precedence, exact budget, one-short budget and single owner reach walk.
 - FSpec FR-825-AC-1 through AC-5: examined as the record shape, reader rule, malformed-input and budget details behind the three FR-376 acceptance criteria.
 - Changed Rust paths listed in `scope`; `mod.rs` admission order and public reads, plus the new module validation, retained rows and tests.
+
+Reviewed fix head `fd9a48164b203bff94e5010546cb6f02c01f0a6f`. The new `tests/conformance_fspec/requirement_records.rs` exercises the public reader, and the computed matrix binds FR-376-AC-1 through AC-3. The focused suite is still pending, so execution is not verified green.
+
+## New findings (disposition pass 1)
+
+| ID | Severity | Summary | Refs |
+| --- | --- | --- | --- |
+| FND-002 | medium | TC-488 coverage remains partial: it does not exercise the specified probabilistic/requirement-record stage-precedence cases or all FR-825 refusal mutations. Its budget test derives the expected work from the same implementation's ample-budget run, so it does not independently assert the specified charge count or that the owner's body reach is charged once. | tests/conformance_fspec/requirement_records.rs:439-477, 587-754 |
+
+## Dispositions
+
+Round 1 outcomes:
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-001 | fixed | Public-reader/admission regression tests were added and are trace-bound to FR-376. Their focused run remains pending. |
+| FND-002 | still-open: required acceptance cases remain untested | The suite omits the specified precedence cases and several refusal mutations. Its budget test derives the expected work from the same implementation's ample-budget run, so it does not independently assert the required count or one body walk per owner. The focused test run is also still pending. |

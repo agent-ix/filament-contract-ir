@@ -1017,17 +1017,22 @@ pub struct ValueValidityRecord {
 
 pub(super) fn retain_rows(
     rows: Option<&[RequirementItemWireRow]>,
+    wire_nodes: &[RawSemanticNodeV2],
     nodes: &[CheckedSemanticNodeV2],
 ) -> Vec<RequirementItemRow> {
     rows.map_or_else(Vec::new, |rows| {
         rows.iter()
             .map(|row| {
                 let record = row.record.as_ref().and_then(|id| {
-                    let position = nodes.iter().position(|node| &node.node_id == id)?;
-                    read_record(id.clone(), &nodes.get(position)?.body)
+                    let position = wire_nodes.iter().position(|node| &node.node_id == id)?;
+                    read_record(
+                        nodes.get(position)?.node_id.clone(),
+                        &nodes.get(position)?.body,
+                    )
                 });
                 RequirementItemRow {
-                    claim: row.claim.node.clone(),
+                    claim: resolved_graph_id(&row.claim.node, wire_nodes, nodes)
+                        .unwrap_or_else(|| row.claim.node.clone()),
                     occurrence: row.claim.occurrence.clone(),
                     kind: row.kind,
                     extent: match &row.extent {
@@ -1036,7 +1041,12 @@ pub(super) fn retain_rows(
                             RequirementExtent::Unbounded(
                                 domains
                                     .iter()
-                                    .map(|domain| (domain.domain.clone(), domain.kind))
+                                    .map(|domain| {
+                                        (
+                                            remap_domain_key(&domain.domain, wire_nodes, nodes),
+                                            domain.kind,
+                                        )
+                                    })
                                     .collect(),
                             )
                         }
@@ -1046,6 +1056,36 @@ pub(super) fn retain_rows(
             })
             .collect()
     })
+}
+
+fn resolved_graph_id(
+    id: &CheckedNodeId,
+    wire_nodes: &[RawSemanticNodeV2],
+    nodes: &[CheckedSemanticNodeV2],
+) -> Option<CheckedNodeId> {
+    let position = wire_nodes.iter().position(|node| &node.node_id == id)?;
+    Some(nodes.get(position)?.node_id.clone())
+}
+
+fn remap_domain_key(
+    key: &DomainKey,
+    wire_nodes: &[RawSemanticNodeV2],
+    nodes: &[CheckedSemanticNodeV2],
+) -> DomainKey {
+    match key {
+        DomainKey::Node { node, path } => DomainKey::Node {
+            node: resolved_graph_id(node, wire_nodes, nodes).unwrap_or_else(|| node.clone()),
+            path: path.clone(),
+        },
+        DomainKey::Population {
+            member_type,
+            ordinal,
+        } => DomainKey::Population {
+            member_type: resolved_graph_id(member_type, wire_nodes, nodes)
+                .unwrap_or_else(|| member_type.clone()),
+            ordinal: *ordinal,
+        },
+    }
 }
 
 pub(super) fn owner_index(rows: &[RequirementItemRow]) -> Vec<(CheckedNodeId, Vec<usize>)> {
@@ -1081,7 +1121,6 @@ fn read_record(node: CheckedNodeId, term: &CheckedTerm) -> Option<ValueValidityR
     };
     let mut path_condition = Vec::with_capacity(guards.len());
     for guard in guards {
-        let guard = member_value(guard)?;
         let CheckedTerm::Aggregate { members } = guard else {
             return None;
         };
@@ -1160,10 +1199,7 @@ fn references(term: &CheckedTerm) -> Option<Vec<CheckedNodeId>> {
     let CheckedTerm::Aggregate { members } = term else {
         return None;
     };
-    members
-        .iter()
-        .map(|member| reference(member_value(member)?))
-        .collect()
+    members.iter().map(reference).collect()
 }
 
 #[cfg(test)]
