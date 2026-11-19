@@ -355,6 +355,23 @@ fn read_with_evidence(
     )
 }
 
+fn assert_catalogue_application_round_trip(package: &Value) {
+    let CheckedPackageV2ReadResult::Admitted(admitted) = read(package) else {
+        panic!("catalogue application fixture refused: {:?}", read(package));
+    };
+    let bytes = crate::checked_package_v2_refinement::writer_bytes(package);
+    let mut wire = package.clone();
+    index_fixture_node_ids(&mut wire);
+    let CheckedPackageV2ReadResult::Admitted(reread) = crate::read_and_account(
+        &bytes,
+        CheckedPackageReadLimits::bounded(),
+        &evidence_for(&wire),
+    ) else {
+        panic!("catalogue application writer output refused");
+    };
+    assert_eq!(admitted.graph(), reread.graph());
+}
+
 pub(super) fn simple_fixture(entry: &Value) -> Option<Value> {
     let identity = entry["identity"].as_str()?;
     let family = if identity.starts_with("filament.op.boolean.") {
@@ -1355,6 +1372,7 @@ fn tc_048_every_catalogue_entry_retains_its_constructible_admission() {
 #[test]
 fn collection_seq_requires_bounded_inputs_matching_binder_and_sequence() {
     let base = admitted_fixture("filament.op.collection.seq").expect("sequence control");
+    assert_catalogue_application_round_trip(&base);
     let function_id = node_id("function/sequence-owner");
     let base_result = read(&base);
     assert!(
@@ -1554,7 +1572,7 @@ fn collection_seq_requires_bounded_inputs_matching_binder_and_sequence() {
     settle(&mut wrong_element);
     assert_result_refusal(&wrong_element, application, "filament.op.collection.seq");
 
-    let mut wrong_cardinality = base;
+    let mut wrong_cardinality = base.clone();
     wrong_cardinality["semantic_graph"]["nodes"][bounds]["body"]["members"][1]["value"]["value"] =
         json!("2");
     settle(&mut wrong_cardinality);
@@ -1563,6 +1581,35 @@ fn collection_seq_requires_bounded_inputs_matching_binder_and_sequence() {
         application,
         "filament.op.collection.seq",
     );
+
+    let mut wrong_binder_shape = base.clone();
+    wrong_binder_shape["semantic_graph"]["nodes"][application]["body"]["arguments"][2] =
+        integer_literal("scalar_type/integer");
+    settle(&mut wrong_binder_shape);
+    assert_operand_refusal(
+        &wrong_binder_shape,
+        application,
+        2,
+        "filament.op.collection.seq",
+    );
+}
+
+#[trace("TC-048", "FR-038-AC-251")]
+#[test]
+fn collection_only_round_trips_and_refuses_a_non_binder_operand() {
+    let mut package = admitted_fixture("filament.op.collection.only").expect("only control");
+    assert_catalogue_application_round_trip(&package);
+    let application = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .position(|node| node["body"]["operation"]["identity"] == "filament.op.collection.only")
+        .expect("collection.only application");
+
+    package["semantic_graph"]["nodes"][application]["body"]["arguments"][1] =
+        integer_literal("scalar_type/integer");
+    settle(&mut package);
+    assert_operand_refusal(&package, application, 1, "filament.op.collection.only");
 }
 
 fn assert_result_refusal(package: &Value, position: usize, identity: &str) {
@@ -1598,6 +1645,37 @@ fn assert_result_refusal(package: &Value, position: usize, identity: &str) {
             ),
             package["semantic_graph"]["nodes"][position]["node_id"].clone()
         ),
+        "{identity}"
+    );
+}
+
+fn assert_operand_refusal(package: &Value, position: usize, operand: usize, identity: &str) {
+    let CheckedPackageV2ReadResult::Refused(refusal) = read(package) else {
+        panic!(
+            "{identity}: expected operand refusal, got {:?}",
+            read(package)
+        );
+    };
+    assert_eq!(
+        refusal.code,
+        CheckedPackageRefusalCode::IllTyped,
+        "{identity}"
+    );
+    assert_eq!(
+        refusal.cause,
+        Some(CheckedPackageRefusalCause::OperatorIneligible),
+        "{identity}"
+    );
+    assert_eq!(
+        refusal.loci[0].path.as_ref().map(ToString::to_string),
+        Some(format!(
+            "/semantic_graph/nodes/{position}/body/arguments/{operand}"
+        )),
+        "{identity}"
+    );
+    assert_eq!(
+        serde_json::to_value(refusal.locus).expect("locus"),
+        package["semantic_graph"]["nodes"][position]["node_id"],
         "{identity}"
     );
 }

@@ -779,7 +779,7 @@ fn invalid_value_at(result: CheckedPackageV2ReadResult, pointer: &str) {
     );
 }
 
-fn writer_bytes(package: &Value) -> Vec<u8> {
+pub(super) fn writer_bytes(package: &Value) -> Vec<u8> {
     let indexed = crate::support::checked_package::wire_form(&indexed_package(package));
     let package = &indexed;
     let name = package["name"].as_str().expect("package name");
@@ -3123,6 +3123,60 @@ fn ac5_history_package() -> (Value, CheckedPackageEvidence, usize, Value, Value,
         type_id,
         operation,
     )
+}
+
+#[trace("TC-048", "FR-038-AC-251", "FR-061-AC-5")]
+#[test]
+fn refinement_history_round_trips_and_refuses_a_non_reference_operand() {
+    let (mut package, evidence, refinement_position) = joined_history_package();
+    let CheckedPackageV2ReadResult::Admitted(admitted) = read(&package, &evidence) else {
+        panic!(
+            "joined history fixture refused: {:?}",
+            read(&package, &evidence)
+        );
+    };
+    let bytes = writer_bytes(&package);
+    let CheckedPackageV2ReadResult::Admitted(reread) =
+        crate::read_and_account(&bytes, CheckedPackageReadLimits::bounded(), &evidence)
+    else {
+        panic!("refinement.history writer output refused");
+    };
+    assert_eq!(admitted.graph(), reread.graph());
+
+    let application = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .position(|node| node["body"]["operation"]["identity"] == "filament.op.refinement.history")
+        .expect("refinement.history application");
+    let integer_type = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|node| node["node_tag"] == "scalar_type" && node["semantic_form"] == "integer")
+        .expect("integer type")["node_id"]
+        .clone();
+    package["semantic_graph"]["nodes"][application]["body"]["arguments"][0] = json!({
+        "term":"literal", "type":integer_type, "value_kind":"integer", "value":"1"
+    });
+    settle_refinement(&mut package, refinement_position);
+
+    let CheckedPackageV2ReadResult::Refused(refusal) = read(&package, &evidence) else {
+        panic!("refinement.history accepted a non-reference operand");
+    };
+    assert_eq!(refusal.code, CheckedPackageRefusalCode::IllTyped);
+    assert_eq!(
+        refusal.cause,
+        Some(CheckedPackageRefusalCause::OperatorIneligible)
+    );
+    assert_eq!(
+        refusal.loci[0].path.as_ref().map(ToString::to_string),
+        Some(format!("/semantic_graph/nodes/{application}"))
+    );
+    assert_eq!(
+        serde_json::to_value(refusal.locus).expect("locus"),
+        package["semantic_graph"]["nodes"][application]["node_id"]
+    );
 }
 
 #[trace("TC-062", "FR-061-AC-5")]
