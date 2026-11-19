@@ -26,10 +26,10 @@ Scope: FR-376-AC-1 to FR-376-AC-3.
    call the reads again. Reorder the graph nodes, rebuild operand rows and
    identities, and read again.
 2. Apply each mutation of FSpec FR-825-AC-4 and FR-825-AC-5 and build
-   FR-322-AC-473's packages; read each.
+   FR-322-AC-473's refusing packages; read each. Read FSpec FR-825-AC-5's package with no `claim_names` and FR-322-AC-473's package emitted with records, and compare the latter with its golden written without records.
 3. Build the package with a probabilistic rule-6 defect and a record defect,
    and the package with a record defect and a reversed `probabilistic_claims`
-   row; read FR-825-AC-1's package with a budget one visit short of its
+   row; read FR-825-AC-1's package with exactly its charged count and with a budget one visit short of its
    charged count, and record the reach visits charged for `f`.
 
 ## Expected Results
@@ -38,7 +38,10 @@ Scope: FR-376-AC-1 to FR-376-AC-3.
   re-read and after graph reordering; `value_validity_records_of(f)` is
   `[0, 1]` and `g` gives the empty slice.
 - Step 2: each refusal has the exact code, cause and pointer FR-825 or
-  FR-322 gives, and no package is admitted.
+  FR-322 gives, and no refusing package is admitted; the no-`claim_names` package
+  and the package with records are admitted, every node of the golden
+  present byte-identical.
 - Step 3: the refusal at the probabilistic defect, then at the record
-  defect; `incomplete` at the first uncharged member; `f`'s body reach
+  defect; admission at exactly the charged count and `incomplete` at
+  `/requirement_items/1` one visit short; `f`'s body reach
   visits charged once for its two records.
