@@ -82,6 +82,19 @@ pub struct CheckedProtocolActivationRow {
     pub required_temporal: CheckedNodeId,
 }
 
+/// The boundary a protocol role is declared with (FR-465 "Role", `boundary`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum CheckedProtocolBoundary {
+    /// The role is written `observe`: its `boundary` member is the text `observe-only`.
+    ObserveOnly,
+}
+
+#[string_edge]
+fn role_boundary(term: &CheckedTerm) -> Option<CheckedProtocolBoundary> {
+    (text_value(term)? == OBSERVE_ONLY).then_some(CheckedProtocolBoundary::ObserveOnly)
+}
+
 impl CheckedPackageV2 {
     /// The borrowed selected package and original Port declaration of an admitted role.
     ///
@@ -97,6 +110,22 @@ impl CheckedPackageV2 {
             return None;
         };
         role_member_texts(binding_value(arguments, "model_member")?)
+    }
+
+    /// The boundary an admitted role is declared with.
+    ///
+    /// A role not written `observe`, an unknown node, or a non-role returns `None`.
+    pub fn protocol_role_boundary(&self, role: &CheckedNodeId) -> Option<CheckedProtocolBoundary> {
+        let position = self.position_of(role)?;
+        if self.kinds[position] != CheckedNodeKind::Protocol(ProtocolForm::Role) {
+            return None;
+        }
+        let CheckedTerm::Application { arguments, .. } =
+            &self.wire.semantic_graph.nodes[position].body
+        else {
+            return None;
+        };
+        role_boundary(binding_value(arguments, "boundary")?)
     }
 
     /// Derives every local clause's activation requirements from the admitted graph.
@@ -301,6 +330,14 @@ const ATTEMPT: &[Binding] = &[
     field("related", Shape::Records),
     field("constraint", Shape::BooleanCandidate),
 ];
+const RECOMMEND: &[Binding] = &[
+    field("role", Shape::Reference),
+    field("operation", Shape::Reference),
+    field("contracts", Shape::References),
+    field("binder", Shape::Reference),
+    field("related", Shape::Records),
+    field("constraint", Shape::BooleanCandidate),
+];
 const EFFECT: &[Binding] = &[
     field("of", Shape::Reference),
     field("binder", Shape::Reference),
@@ -353,6 +390,7 @@ fn layout(form: ProtocolForm, operator: &str) -> Option<&'static [Binding]> {
         (ProtocolForm::Control, "send") => SEND,
         (ProtocolForm::Control, "receive") => RECEIVE,
         (ProtocolForm::Control, "attempt") => ATTEMPT,
+        (ProtocolForm::Control, "recommend") => RECOMMEND,
         (ProtocolForm::Control, "effect") => EFFECT,
         (ProtocolForm::Control, "event") => EVENT,
         (ProtocolForm::Control, "commit") => COMMIT,
@@ -776,9 +814,10 @@ fn local_details_fit(form: ProtocolForm, operator: &str, arguments: &[CheckedTer
                     })
                 })
         }
-        (ProtocolForm::Control, "attempt" | "effect" | "event") => {
+        (ProtocolForm::Control, "attempt" | "recommend" | "effect" | "event") => {
             let related = match operator {
                 "attempt" => 5,
+                "recommend" => 4,
                 "effect" => 2,
                 "event" => 3,
                 _ => unreachable!("validated protocol operator"),
@@ -998,6 +1037,52 @@ fn validate_envelope<'a>(
     Ok((operator, arguments))
 }
 
+/// The optional tail of a role beyond its two fixed arguments: `model_member`.
+#[string_edge]
+fn role_tail_fits(tail: &[CheckedTerm]) -> bool {
+    match tail {
+        [] => true,
+        [member] => matches!(member, CheckedTerm::Binding { name, value }
+            if name.as_ref() == "model_member" && shape_fits(value, Shape::Group)),
+        _ => false,
+    }
+}
+
+/// The text of the `boundary` member FSpec FR-465 and FR-466 admit.
+const OBSERVE_ONLY: &str = "observe-only";
+
+/// Splits the trailing `boundary` binding off a role or control argument list
+/// (FSpec FR-465 "Role", FR-466): the arguments the operator's own layout
+/// governs, and the binding when it is last.
+#[string_edge]
+fn split_boundary(
+    form: ProtocolForm,
+    arguments: &[CheckedTerm],
+) -> (&[CheckedTerm], Option<&CheckedTerm>) {
+    if matches!(form, ProtocolForm::Role | ProtocolForm::Control) {
+        if let Some((last @ CheckedTerm::Binding { name, .. }, rest)) = arguments.split_last() {
+            if name.as_ref() == "boundary" {
+                return (rest, Some(last));
+            }
+        }
+    }
+    (arguments, None)
+}
+
+/// The `boundary` text of a role or control whose last argument carries it,
+/// when it is not `observe-only`.
+#[string_edge]
+fn boundary_text_defect(
+    form: ProtocolForm,
+    arguments: &[CheckedTerm],
+) -> Option<ProtocolLayoutWireDefect> {
+    let (_, boundary) = split_boundary(form, arguments);
+    let CheckedTerm::Binding { value, .. } = boundary? else {
+        return None;
+    };
+    (text_value(value)? != OBSERVE_ONLY).then_some(ProtocolLayoutWireDefect::EnumValue)
+}
+
 #[string_edge]
 fn validate_layout(
     form: ProtocolForm,
@@ -1008,10 +1093,15 @@ fn validate_layout(
     let Some(expected) = layout(form, operator) else {
         return Err(D::OperatorIneligible);
     };
+    let (arguments, boundary) = split_boundary(form, arguments);
+    if let Some(CheckedTerm::Binding { value, .. }) = boundary {
+        if !shape_fits(value, Shape::Text) {
+            return Err(D::MalformedLayout);
+        }
+    }
     let optional_role_member = form == ProtocolForm::Role
-        && arguments.len() == expected.len() + 1
-        && matches!(arguments.last(), Some(CheckedTerm::Binding { name, value })
-            if name.as_ref() == "model_member" && shape_fits(value, Shape::Group));
+        && arguments.len() >= expected.len()
+        && role_tail_fits(&arguments[expected.len()..]);
     let optional_repeat_test = form == ProtocolForm::Control
         && operator == "repeat"
         && arguments.len() + 1 == expected.len()
@@ -1047,6 +1137,9 @@ fn validate_layout(
         || form == ProtocolForm::Control
             && operator == "attempt"
             && argument(arguments, 3).is_none_or(|set| !reference_set_is_ordered(set))
+        || form == ProtocolForm::Control
+            && operator == "recommend"
+            && argument(arguments, 2).is_none_or(|set| !reference_set_is_ordered(set))
     {
         return Err(D::NoncanonicalSet);
     }
@@ -1065,6 +1158,7 @@ fn validate_related_order(
         (ProtocolForm::Control, "send" | "effect") => Some(2),
         (ProtocolForm::Control, "receive" | "event") => Some(3),
         (ProtocolForm::Control, "attempt") => Some(5),
+        (ProtocolForm::Control, "recommend") => Some(4),
         _ => None,
     };
     let Some(ordinal) = related else {
@@ -1100,7 +1194,9 @@ pub(super) fn wire_layout_defect(
     }
     let operator = operation.member_operator()?;
     layout(form, operator)?;
-    if let Some(defect) = enum_value_defect(form, operator, arguments) {
+    if let Some(defect) = enum_value_defect(form, operator, arguments)
+        .or_else(|| boundary_text_defect(form, arguments))
+    {
         return Some(defect);
     }
     if matches!(
@@ -1239,7 +1335,7 @@ fn enum_value_defect(
             };
             optional(0, &["sc", "tso", "ra"]).or_else(|| optional(4, &["continue", "cancel"]))
         }
-        (ProtocolForm::Control, "repeat") => argument(arguments, 7)
+        (ProtocolForm::Control, "repeat") => binding_value(arguments, "test")
             .and_then(text_value)
             .filter(|test| *test != "post")
             .map(|_| ProtocolLayoutWireDefect::EnumValue),
@@ -2429,7 +2525,16 @@ fn check_control_prefix(
             })?;
             check_related_types(check, arguments, related_ordinal, owners, meter)?;
         }
-        "attempt" => {
+        "attempt" | "recommend" => {
+            // A `recommend` is an `attempt` without the `ordering` member
+            // (FSpec FR-466): every later argument sits one place earlier.
+            let after_ordering = usize::from(operator == "attempt");
+            let (contracts_at, binder_at, related_at, constraint_at) = (
+                2 + after_ordering,
+                3 + after_ordering,
+                4 + after_ordering,
+                5 + after_ordering,
+            );
             let role = check.target_at(meter, arguments, 0, |position| {
                 check.is(position, CheckedNodeKind::Protocol(ProtocolForm::Role))
             })?;
@@ -2444,10 +2549,14 @@ fn check_control_prefix(
             let operation = check.target_at(meter, arguments, 1, |position| {
                 check.is(position, CheckedNodeKind::State(StateForm::OperationAnchor))
             })?;
-            let listed_contracts = members(check.at(arguments, 3)).expect("validated contracts");
+            let listed_contracts =
+                members(check.at(arguments, contracts_at)).expect("validated contracts");
             let mut contracts = meter.vec(listed_contracts.len())?;
             for (ordinal, contract) in listed_contracts.iter().enumerate() {
-                let path = check.argument_path(3).key("members").index(ordinal);
+                let path = check
+                    .argument_path(contracts_at)
+                    .key("members")
+                    .index(ordinal);
                 let clause = check.check_target(
                     meter,
                     contract,
@@ -2456,10 +2565,10 @@ fn check_control_prefix(
                 )?;
                 contracts.push((clause, path));
             }
-            check.target_at(meter, arguments, 4, |position| {
+            check.target_at(meter, arguments, binder_at, |position| {
                 check.is(position, CheckedNodeKind::Value(ValueForm::Parameter))
             })?;
-            check_related_references(check, arguments, 5, owners, meter)?;
+            check_related_references(check, arguments, related_at, owners, meter)?;
             for (clause, path) in contracts {
                 let valid = check.terms[clause]
                     .as_ref()
@@ -2479,8 +2588,10 @@ fn check_control_prefix(
                     ));
                 }
             }
-            check.boolean(meter, check.at(arguments, 6), || check.argument_path(6))?;
-            check_related_types(check, arguments, 5, owners, meter)?;
+            check.boolean(meter, check.at(arguments, constraint_at), || {
+                check.argument_path(constraint_at)
+            })?;
+            check_related_types(check, arguments, related_at, owners, meter)?;
         }
         "effect" => {
             check.target_at(meter, arguments, 0, |position| {
@@ -2681,7 +2792,7 @@ fn check_control_prefix(
             }
         }
         "repeat" => {
-            if argument(arguments, 7).and_then(text_value) == Some("post")
+            if binding_value(arguments, "test").and_then(text_value) == Some("post")
                 && members(check.at(arguments, 2))
                     .and_then(|maximum| maximum.first())
                     .and_then(integer_value)
@@ -3037,7 +3148,7 @@ fn check_role_member(
     owners: &ModelOwners<'_>,
     meter: &mut WorkMeter,
 ) -> Result<(), ValidationFailure> {
-    let Some(member) = argument(arguments, 2) else {
+    let Some(member) = binding_value(arguments, "model_member") else {
         return Ok(());
     };
     node_work(meter, check.position)?;
@@ -5250,11 +5361,12 @@ impl<'a, 'b> ProtocolScope<'a, 'b> {
                     meter,
                 )?;
             }
-            "send" | "receive" | "attempt" | "effect" | "event" | "commit" => {
+            "send" | "receive" | "attempt" | "recommend" | "effect" | "event" | "commit" => {
                 let constraint = match operator {
                     "send" => 3,
                     "receive" => 4,
                     "attempt" => 6,
+                    "recommend" => 5,
                     "effect" => 3,
                     "event" => 4,
                     "commit" => 2,
@@ -5276,7 +5388,7 @@ impl<'a, 'b> ProtocolScope<'a, 'b> {
                 )?;
                 if matches!(
                     operator,
-                    "send" | "receive" | "attempt" | "effect" | "event"
+                    "send" | "receive" | "attempt" | "recommend" | "effect" | "event"
                 ) {
                     let related = constraint - 1;
                     for record in
@@ -5825,6 +5937,7 @@ fn control_binder<'a>(operator: &str, args: &'a [CheckedTerm]) -> Option<&'a Che
         "send" | "commit" => 1,
         "receive" => 2,
         "attempt" => 4,
+        "recommend" => 3,
         "effect" => 1,
         "event" => 2,
         _ => return None,
@@ -6387,8 +6500,8 @@ fn check_clause_causality(
         let (operator, args) = validated[position].expect("validated control");
         let children = control_positions(operator, args, check.index, meter)?;
         steps[position] = match operator {
-            "send" | "receive" | "attempt" | "effect" | "event" | "commit" | "fence" | "await"
-            | "parallel" => true,
+            "send" | "receive" | "attempt" | "recommend" | "effect" | "event" | "commit"
+            | "fence" | "await" | "parallel" => true,
             "sequence" => children.iter().any(|&child| steps[child]),
             "choice" => children.iter().all(|&child| steps[child]),
             "repeat" => {
@@ -6545,6 +6658,143 @@ fn protocol_over_reaches_object_type(
         Some(type_id) => type_reaches_object_type(type_id, kinds, terms, index, meter),
         None => Ok(false),
     }
+}
+
+/// Whether the last argument of a role or control is its `boundary` binding.
+#[string_edge]
+fn carries_boundary(arguments: &[CheckedTerm]) -> bool {
+    matches!(arguments.last(), Some(CheckedTerm::Binding { name, .. }) if name.as_ref() == "boundary")
+}
+
+/// The innermost observe-only control at or above each control position
+/// (FSpec FR-466 check 7), `None` when no control carries a `boundary`.
+///
+/// The region of a control is itself and every control below it through
+/// `children`, `cases`, `branches`, `body`, `exhausted`, `event`, `then` and
+/// `timeout`; the walk starts at the controls no other control holds.
+fn observe_regions(
+    kinds: &[CheckedNodeKind],
+    validated: &[Option<(&str, &[CheckedTerm])>],
+    index: &GraphIndex<'_>,
+    meter: &mut WorkMeter,
+) -> Result<Option<Vec<Option<usize>>>, ValidationFailure> {
+    let control = |position: usize| {
+        kinds.get(position) == Some(&CheckedNodeKind::Protocol(ProtocolForm::Control))
+    };
+    let marked = |position: usize| {
+        validated[position].is_some_and(|(_, arguments)| carries_boundary(arguments))
+    };
+    if !index
+        .values()
+        .any(|&position| control(position) && marked(position))
+    {
+        return Ok(None);
+    }
+    let mut held = meter.filled(kinds.len(), false)?;
+    for &position in index.values() {
+        let Some((operator, arguments)) = validated[position].filter(|_| control(position)) else {
+            continue;
+        };
+        visit_control_children(operator, arguments, &mut |child| {
+            if let Some(&child) = index.get(child) {
+                held[child] = true;
+            }
+        });
+    }
+    let mut region = meter.filled(kinds.len(), None)?;
+    let mut seen = meter.filled(kinds.len(), false)?;
+    let mut pending: Vec<(usize, Option<usize>)> = meter.vec(0)?;
+    for &position in index.values() {
+        if control(position) && !held[position] {
+            meter.push(&mut pending, (position, None))?;
+        }
+    }
+    while let Some((position, above)) = pending.pop() {
+        node_work(meter, position)?;
+        if seen[position] {
+            continue;
+        }
+        seen[position] = true;
+        let innermost = if marked(position) {
+            Some(position)
+        } else {
+            above
+        };
+        region[position] = innermost;
+        let Some((operator, arguments)) = validated[position] else {
+            continue;
+        };
+        for child in control_positions(operator, arguments, index, meter)? {
+            if control(child) {
+                meter.push(&mut pending, (child, innermost))?;
+            }
+        }
+    }
+    Ok(Some(region))
+}
+
+/// FSpec FR-466 check 7 and FR-465 check 6: an `attempt`, `effect`, `send`,
+/// `commit`, an `event` with a `compensation` or a `compensate` template
+/// behind an observe-only boundary refuses `ill_typed`/`operator-ineligible`
+/// at its node, retaining the action and the node that places it behind the
+/// boundary (the innermost observe-only control, else the observe-only role).
+#[string_edge]
+fn check_observe_only(
+    check: &MemberCheck<'_>,
+    form: ProtocolForm,
+    operator: &str,
+    arguments: &[CheckedTerm],
+    regions: Option<&[Option<usize>]>,
+    validated: &[Option<(&str, &[CheckedTerm])>],
+    meter: &mut WorkMeter,
+) -> Result<(), ValidationFailure> {
+    let action = match (form, operator) {
+        (ProtocolForm::Control, "attempt") => "attempt",
+        (ProtocolForm::Control, "effect") => "effect",
+        (ProtocolForm::Control, "send") => "send",
+        (ProtocolForm::Control, "commit") => "commit",
+        (ProtocolForm::Control, "event")
+            if binding_value(arguments, "compensation")
+                .is_some_and(|listed| listed_targets(listed).next().is_some()) =>
+        {
+            "event-for"
+        }
+        (ProtocolForm::Compensation, "compensate") => "compensate",
+        _ => return Ok(()),
+    };
+    let role_position = |role: Option<&CheckedNodeId>| role.and_then(|role| check.index.get(role));
+    let performer = match operator {
+        "send" => binding_value(arguments, "channel")
+            .and_then(reference_target)
+            .and_then(|channel| check.index.get(channel))
+            .and_then(|&channel| validated[channel])
+            .and_then(|(_, channel)| binding_value(channel, "from"))
+            .and_then(|from| role_position(reference_target(from))),
+        "effect" => None,
+        _ => {
+            binding_value(arguments, "role").and_then(|role| role_position(reference_target(role)))
+        }
+    };
+    let role_marked = performer.copied().filter(|&role| {
+        check.kinds.get(role) == Some(&CheckedNodeKind::Protocol(ProtocolForm::Role))
+            && validated[role].is_some_and(|(_, role)| carries_boundary(role))
+    });
+    let control_marked = regions.and_then(|regions| regions[check.position]);
+    let Some(boundary) = control_marked.or(role_marked) else {
+        return Ok(());
+    };
+    let boundary = &check.nodes[boundary].node_id;
+    Err(check.refuse_with_detail(
+        meter,
+        Code::IllTyped,
+        Cause::OperatorIneligible,
+        node_path(check.position),
+        node_id_clone_bytes(boundary).saturating_add(action.len()),
+        || CheckedProtocolRefusalDetail::ObserveOnlyBoundary {
+            action: action.into(),
+            boundary: boundary.clone(),
+        },
+    ))
 }
 
 /// Validate protocol placement, local members, membership and clause layout.
@@ -6707,6 +6957,7 @@ pub(super) fn validate_protocol_nodes(
     }
     validate_protocol_declaration_names(nodes, kinds, index, meter)?;
     validate_protocol_declaration_paths(nodes, kinds, &validated, index, meter)?;
+    let regions = observe_regions(kinds, &validated, index, meter)?;
     // Local member shapes precede membership, which precedes clause checks.
     for form in [
         ProtocolForm::Role,
@@ -6747,6 +6998,15 @@ pub(super) fn validate_protocol_nodes(
                 profile: selected_profile.expect("validated protocol profile law"),
             };
             check_member(&check, form, operator, arguments, &validated, owners, meter)?;
+            check_observe_only(
+                &check,
+                form,
+                operator,
+                arguments,
+                regions.as_deref(),
+                &validated,
+                meter,
+            )?;
         }
     }
     validate_protocol_membership(terms, nodes, kinds, &validated, index, meter)?;

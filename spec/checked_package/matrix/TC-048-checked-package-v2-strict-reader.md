@@ -87,6 +87,20 @@ relationships:
     type: verifies
   - target: ix://agent-ix/filament-contract-ir/FR-038-AC-541
     type: verifies
+  - target: ix://agent-ix/filament-contract-ir/FR-038-AC-564
+    type: verifies
+  - target: ix://agent-ix/filament-contract-ir/FR-038-AC-565
+    type: verifies
+  - target: ix://agent-ix/filament-contract-ir/FR-038-AC-566
+    type: verifies
+  - target: ix://agent-ix/filament-contract-ir/FR-038-AC-567
+    type: verifies
+  - target: ix://agent-ix/filament-contract-ir/FR-038-AC-568
+    type: verifies
+  - target: ix://agent-ix/filament-contract-ir/FR-038-AC-569
+    type: verifies
+  - target: ix://agent-ix/filament-contract-ir/FR-038-AC-570
+    type: verifies
   - target: ix://agent-ix/filament-specification/TC-187
     type: references
 ---
@@ -3010,3 +3024,46 @@ with equal bytes and different rows and assert unequal keys.
 Assert the segment serde shapes, replace a node id through `replace_node_id`
 and assert the written slots, and that a graph read back from `graph()` and
 written again is admitted.
+
+## Observe-only boundary (FR-038-AC-564 through FR-038-AC-570)
+
+Implemented (QSL-2449). Read FSpec FR-465 "Role" (the `boundary` argument and
+check 6), FR-466 (the `recommend` row, the `boundary` paragraph and check 7),
+FR-822 "Check", FR-322-AC-462 and TC-2018 from the selected checkout. FSpec
+published no vector file for them.
+
+- Role (AC-564): take a complete package with a role on a Port and add the last
+  argument `boundary`, the text `observe-only`: the package admits,
+  `protocol_role_boundary` reads `ObserveOnly`, and the typed writer's output
+  reads back equal. Drop `model_member` and require the same with `boundary`
+  directly after `replication`; the unmarked role reads `None`.
+- Wrong marks (AC-565, AC-567): require `malformed_wire`, no cause, at the role
+  or control node for a `boundary` text other than `observe-only`, the empty
+  text, a non-text value (with and without `model_member`), a `boundary` that
+  is not last, and a repeated `boundary`.
+- Recommend (AC-566): the admitted `attempt` with operator `recommend` and no
+  `ordering` admits; an `ordering` member and a contract that is not a state
+  clause of the anchor refuse.
+- Control mark (AC-567): a `recommend` and a `repeat` without `test` admit with
+  the mark, and the mark leaves the node id unchanged.
+- Refusals (AC-568): an `attempt` performed by an observe-only role, an `attempt`
+  carrying its own mark, the first of an `attempt` and an `effect` under a marked
+  `sequence` (the innermost mark is the attempt itself when both carry one), a
+  `commit`, a `send` on a channel from the role, an `event` with a
+  `compensation` and a `compensate` template of the role each refuse
+  `ill_typed`/`operator-ineligible` at that node retaining `action` and
+  `boundary`; a `recommend` behind both boundaries admits.
+- Other nodes (AC-569): every non-role, non-control node of the all-families
+  package refuses `malformed_wire` at its node pointer when a `boundary` binding
+  is appended to its arguments.
+- Refinement class (AC-570): convert the admitted `attempt` of the refinement
+  fixture to a `recommend` and require the catalog entry
+  `<A>::<protocol>::<node>` for it to admit; the same node under a different
+  spelling, including the step-row spelling, refuses `invalid_semantic_graph`
+  at `class_catalog/concrete`.
+- Recommend sets and facts (AC-566): a repeated `contracts` entry refuses
+  `malformed_wire` and a repeated `related` record refuses
+  `invalid_semantic_graph` at the node; a decision that reads a `recommend`
+  binder refuses `wrong_snapshot` with reason `ineligible-kind`.
+- Send performer (AC-568): with a channel from one role to another, observe-only
+  on the `to` role admits the `send` and on the `from` role refuses it.

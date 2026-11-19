@@ -3881,7 +3881,9 @@ fn catalog_operator(kind: super::CheckedNodeKind, operator: &str) -> Option<Cata
         (Protocol(ProtocolForm::Control), "parallel") => CatalogOperator::Parallel,
         (Protocol(ProtocolForm::Control), "attempt") => CatalogOperator::Attempt,
         (Protocol(ProtocolForm::Compensation), "compensate") => CatalogOperator::Compensation,
-        (Protocol(ProtocolForm::Control), "event" | "effect" | "commit") => CatalogOperator::Event,
+        (Protocol(ProtocolForm::Control), "event" | "effect" | "commit" | "recommend") => {
+            CatalogOperator::Event
+        }
         (Protocol(ProtocolForm::Control), "send") => CatalogOperator::Send,
         (Protocol(ProtocolForm::Control), "receive") => CatalogOperator::Receive,
         (Protocol(ProtocolForm::Control), "fence") => CatalogOperator::Fence,
