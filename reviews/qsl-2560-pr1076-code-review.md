@@ -50,3 +50,16 @@ The change is correct and strongly tested. Every mutant was killed, the gates ar
 | --- | --- | --- | --- |
 | FND-001 | low | `tc_048_a_selected_fcd_relationship_navigates_through_its_named_end` still carries `#[trace(..., "FR-062-AC-3")]`. FR-062-AC-3 is now Withdrawn, and this PR removed the `terminal_duplicate == None` assertion that backed the tag, so `quire matrix` reports a withdrawn AC as `tagged`. Drop the tag | tests/it/checked_package_v2_model_members.rs:1963 |
 | FND-002 | low | `retain_rows` sorts with the plain `CheckedNodeId::cmp`, which is uncharged and spills frames on two distinct nested operand chains. It now also compares model keys and tests `==` per row. The terminal-key comparison predates this PR, and model_root keys are flat, so the added exposure is nil in practice. But the read path's own contract (shared.rs `Ord` doc) says read-path comparisons are charged or rank-based. Consider sorting by graph rank or a prepaid `CheckedNodeIdOrder` | crates/filament-contract-model/src/checked_package/v2/claim_terminal.rs:629-643 |
+
+## Dispositions
+
+Round 1, at head 33d9ccab. That head is the fix commit plus a clean merge of origin/main 358e9e2d, and the merge-vs-main diff equals the original PR delta. Gates at the head:
+
+- fmt, string-edge and clippy `-D warnings` are clean.
+- `--test it` filtered to claim_terminal, public_interface, whole_read_accounting and budgeted_read: 65 passed, 0 failed.
+- The `filament-contract-model` lib tests: 649 passed, 18 failed. The 18 are the known `reached_model_read` reds.
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-001 | fixed | The `FR-062-AC-3` tag is removed from `tc_048_a_selected_fcd_relationship_navigates_through_its_named_end`, and `quire matrix` now shows FR-062-AC-3 as untagged |
+| FND-002 | accepted-no-change | The plain uncharged comparison predates this PR. Model_root keys are flat, the sort is in place and allocates nothing, and the row capacity is already charged. The coder recorded the reason in the PR body. No added read-path exposure |

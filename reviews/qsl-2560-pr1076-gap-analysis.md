@@ -36,3 +36,12 @@ AC-6 and AC-7 are fully covered and AC-8 nearly so. One AC-8 clause, the MT-19 p
 | --- | --- | --- | --- |
 | FND-001 | medium | FR-060-AC-8's "Over MT-19, rows on the `test/vault` model come before rows on the `test/vault-other` model" and TC-487 step 7 have no test. The only model-ordering test uses `aa/before-selected-model` against the family key, which differ in their first byte. The proper-prefix case that MT-19 exists to pin is never exercised. Add MT-19 (terminal on `N` selecting `test/vault-other` listed before one on `V` selecting `test/vault`, expected rows `test/vault` then `test/vault-other`, each ordinal 0) | tests/it/checked_package_v2_claim_terminal.rs:776-799; spec/checked_package/matrix/TC-487-terminal-rows-read-from-an-admitted-package.md:45 |
 | FND-002 | low | FR-060-AC-7 says the literal terminal is "written and read back unchanged", but the test compares only `terminal_rows()` of the re-read. It does not compare the re-read graph or node (body, dependencies, occurrences) with the admitted one. Add `assert_eq!(reread.graph(), read.graph())` or an equivalent | tests/it/checked_package_v2_claim_terminal.rs:1756 |
+
+## Dispositions
+
+Round 1, at head 33d9ccab.
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-001 | fixed | `terminal_rows_order_a_prefix_model_before_its_extension` (trace TC-487, FR-060-AC-8) builds MT-19 with terminals on `test/vault-other` and `test/vault`, whose terminal-key order is opposite to their model order, and checks it under both graph orders. It expects `test/vault` first, each row with ordinal 0. The reviewer's longer-package-first mutant and the drop-model-key mutant both kill it |
+| FND-002 | fixed | The AC-7 re-read now asserts `reread.graph() == read.graph()` and `reread.source_map() == read.source_map()`, as well as the rows |
