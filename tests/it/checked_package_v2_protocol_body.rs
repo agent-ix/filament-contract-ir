@@ -10603,6 +10603,75 @@ fn protocol_channel_admits_fifo_carried_quantity_key() {
         "carried Quantity FIFO key should admit: {result:?}"
     );
 
+    // FSL represents `Quantity<m>` as a one-term compound unit; exponent 2
+    // exercises a compound-unit quantity as a separate FIFO key.
+    for (binder_name, exponent) in [("quantity_m_key", "1"), ("compound_quantity_key", "2")] {
+        let mut compound_package = package.clone();
+        let integer = compound_package["semantic_graph"]["nodes"]
+            .as_array()
+            .expect("nodes")
+            .iter()
+            .find(|node| node["node_tag"] == "scalar_type" && node["semantic_form"] == "integer")
+            .expect("integer type")["node_id"]
+            .clone();
+        let compound_unit = structural_id(
+            "test/families",
+            vec![
+                json!("scalar_type"),
+                json!("compound_unit"),
+                unit.clone(),
+                json!(exponent),
+            ],
+            0,
+        );
+        let compound_body = json!({"term": "aggregate", "members": [
+            {"term": "aggregate", "members": [
+                {"term": "binding", "name": "unit", "value": {"term": "reference", "target": unit}},
+                {"term": "binding", "name": "exponent", "value": {
+                    "term": "literal", "type": integer, "value_kind": "integer", "value": exponent
+                }}
+            ]}
+        ]});
+        compound_package["semantic_graph"]["nodes"]
+            .as_array_mut()
+            .expect("nodes")
+            .push(json!({
+                "node_id": compound_unit,
+                "schema_version": "filament.checked-semantic-graph/v2",
+                "node_tag": "scalar_type", "semantic_form": "compound_unit",
+                "semantic_type": compound_unit, "dependencies": [unit],
+                "occurrences": [{"role": "type", "ordinal": 0}],
+                "body": compound_body
+            }));
+        let compound_binder = clause_parameter(&mut compound_package, binder_name, "1");
+        let compound_binder_position = node_position_for_key(&compound_package, &compound_binder);
+        compound_package["semantic_graph"]["nodes"][compound_binder_position]["semantic_type"] =
+            compound_unit.clone();
+        let channel = protocol_position(&compound_package, "channel");
+        compound_package["semantic_graph"]["nodes"][channel]["body"]["arguments"][2]["value"]
+            ["target"] = compound_unit;
+        compound_package["semantic_graph"]["nodes"][channel]["body"]["arguments"][3]["value"] = json!({"term": "aggregate", "members": [
+            {"term": "binding", "name": "kind", "value": {
+                "term": "literal", "type": text, "value_kind": "text", "value": "fifo"
+            }},
+            {"term": "binding", "name": "binder", "value": {"term": "reference", "target": compound_binder}},
+            {"term": "binding", "name": "key", "value": {"term": "reference", "target": compound_binder}}
+        ]});
+        settle_after_structural_rekey(&mut compound_package);
+        let compound_evidence =
+            evidence_with_document(&compound_package, "test/families", &document);
+        crate::support::checked_package::index_fixture_node_ids(&mut compound_package);
+        let compound_result = crate::read_and_account(
+            &canonical(&compound_package),
+            CheckedPackageReadLimits::bounded(),
+            &compound_evidence,
+        );
+        assert!(
+            matches!(compound_result, CheckedPackageV2ReadResult::Admitted(_)),
+            "compound-unit Quantity FIFO key (exponent {exponent}) should admit: {compound_result:?}"
+        );
+    }
+
     let mut sequence_package = package.clone();
     let quantity_type = sequence_package["semantic_graph"]["nodes"]
         .as_array()
