@@ -1052,7 +1052,12 @@ pub(super) fn decode_body(body: &Value, at: &Trail<'_>) -> Result<CheckedTerm, V
             })
         })
         .transpose()?;
+    let name = text(member(body, "name", at)?, &at.key("name"))?;
+    if !super::identity::is_identifier(&name) {
+        return Err(invalid(&at.key("name")));
+    }
     Ok(CheckedTerm::Refinement {
+        name,
         abstract_key: Box::new(key(member(body, "abstract", at)?, &at.key("abstract"))?),
         profile: typed(member(body, "profile", at)?, &at.key("profile"))?,
         populations,
@@ -1231,6 +1236,7 @@ fn check_body_header(body: &Value, at: &Trail<'_>) -> Result<(), ValidationFailu
     };
     let required = [
         "term",
+        "name",
         "abstract",
         "profile",
         "populations",
@@ -4503,7 +4509,7 @@ mod tests {
     fn refinement_row_walks_charge_the_callers_budget() {
         let id = |name| json!({"package":"refinement-test","path":[name],"ordinal":0});
         let wire = json!({
-            "term":"refinement", "abstract":id("a"),
+            "term":"refinement", "name":"Refine", "abstract":id("a"),
             "profile":{"authority":"test","identity":"filament.temporal.infinite-trace/v1"},
             "populations":[], "objects":[], "steps":[],
             "histories":[{"concrete_type":id("b"),"name":"past","type":id("c"),
@@ -4622,7 +4628,7 @@ mod tests {
         let profile =
             json!({"authority": "test", "identity": "filament.temporal.infinite-trace/v1"});
         let body = CheckedTerm::decode_admitted(&json!({
-            "term": "refinement", "abstract": id('a'), "profile": profile,
+            "term": "refinement", "name": "Refine", "abstract": id('a'), "profile": profile,
             "populations": [{"abstract": id('b'), "concrete": id('c')}],
             "objects": [{"abstract_type": id('d'), "concrete_type": id('e'), "fields": []}],
             "steps": [],

@@ -74,6 +74,8 @@ mod operation_catalog;
 mod operation_catalog_index;
 pub(in crate::checked_package) mod read_charge;
 pub use operation_catalog::{initialize_operation_catalog, CatalogReadError};
+mod claim_names;
+mod declaration_region;
 mod operation_bodies;
 mod operation_effects;
 mod operation_witness;
@@ -222,6 +224,7 @@ pub use timed_model::{
     CheckedModelTimeRead, CheckedModelTimeReadError, CheckedModelTimeReadErrorCode,
 };
 mod exact_projection;
+pub use claim_names::ClaimNameRow;
 pub use exact_projection::{
     ExactTypeProjection, ExactTypeProjectionError, ExactTypeProjectionErrorCode,
     SelectedEnumDeclarationRow, SelectedEnumMemberRow, SelectedExactDeclarationForm,
@@ -851,7 +854,7 @@ macro_rules! checked_package_envelope {
     ($($name:ident: $parameter:ident => $encoding:ident),+ $(,)?) => {
         #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
         #[serde(deny_unknown_fields)]
-        struct CheckedPackageEnvelope<C, N, L, G, S, R, T, B, M, H, E, O, A, D> {
+        struct CheckedPackageEnvelope<C, N, L, G, S, R, T, B, M, K, H, E, O, A, D> {
             $($name: $parameter,)+
             #[serde(default, skip_serializing_if = "Option::is_none")]
             refinement_step_rows: Option<R>,
@@ -861,6 +864,8 @@ macro_rules! checked_package_envelope {
             temporal_bindings: Option<B>,
             #[serde(default, skip_serializing_if = "Option::is_none")]
             temporal_clause_names: Option<M>,
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            claim_names: Option<K>,
             #[serde(default, skip_serializing_if = "Option::is_none")]
             schedulability_claims: Option<H>,
             #[serde(default, deserialize_with = "operation_effects::present_rows", bound(deserialize = "E: Deserialize<'de>"), skip_serializing_if = "Option::is_none")]
@@ -879,6 +884,7 @@ macro_rules! checked_package_envelope {
             &checked_term_data::CheckedTermDataV2,
             &[temporal_binding::TemporalBinding],
             &[TemporalClauseName],
+            &[ClaimNameRow],
             &[CheckedSchedulabilityClaimRow],
             &[CheckedOperationEffectRow],
             &[OperationBodyRow],
@@ -900,6 +906,9 @@ macro_rules! checked_package_envelope {
                 }
                 if let Some(rows) = &self.temporal_clause_names {
                     encode::elements(writer, "temporal_clause_names", rows)?;
+                }
+                if let Some(rows) = self.claim_names {
+                    encode::elements(writer, "claim_names", rows)?;
                 }
                 if let Some(rows) = self.schedulability_claims {
                     encode::elements(writer, "schedulability_claims", rows)?;
@@ -936,6 +945,7 @@ type CheckedPackageWireV2<Body = CheckedTerm> = CheckedPackageEnvelope<
     checked_term_data::CheckedTermDataV2,
     Vec<temporal_binding::TemporalBinding>,
     Vec<TemporalClauseName>,
+    Vec<ClaimNameRow>,
     Vec<CheckedSchedulabilityClaimRow>,
     Vec<CheckedOperationEffectRow>,
     Vec<OperationBodyRow>,
@@ -970,6 +980,8 @@ pub struct CheckedPackageSidecarsRef<'a> {
     pub temporal_bindings: Option<&'a [TemporalBinding]>,
     /// Exact temporal-clause occurrence names, when present.
     pub temporal_clause_names: Option<&'a [TemporalClauseName]>,
+    /// Exact claim-bearing declaration names, when present.
+    pub claim_names: Option<&'a [ClaimNameRow]>,
     /// Untrusted identity rows, preserved exactly as supplied.
     pub schedulability_claims: Option<&'a [CheckedSchedulabilityClaimRow]>,
     /// Selected model operation effect rows, absent when unavailable.
@@ -1016,6 +1028,7 @@ pub fn encode_checked_package_v2<Body: quire_canonical::Encode>(
         checked_term_data: sidecars.checked_term_data,
         temporal_bindings: sidecars.temporal_bindings,
         temporal_clause_names: sidecars.temporal_clause_names,
+        claim_names: sidecars.claim_names,
         schedulability_claims: sidecars.schedulability_claims,
         operation_effects: sidecars.operation_effects,
         operation_bodies: sidecars.operation_bodies,
@@ -1653,6 +1666,7 @@ impl CheckedPackageV2 {
             checked_term_data,
             temporal_bindings,
             temporal_clause_names,
+            claim_names,
             schedulability_claims,
             operation_effects,
             operation_bodies,
@@ -1689,6 +1703,7 @@ impl CheckedPackageV2 {
             checked_term_data,
             temporal_bindings,
             temporal_clause_names,
+            claim_names,
             schedulability_claims,
             operation_effects,
             operation_bodies,
@@ -1978,6 +1993,24 @@ impl CheckedPackageV2 {
     /// Borrow exact admitted temporal-clause occurrence names.
     pub fn temporal_clause_names(&self) -> Option<&[TemporalClauseName]> {
         self.wire.temporal_clause_names.as_deref()
+    }
+
+    /// Borrow the exact admitted names of claim-bearing declarations.
+    pub fn claim_names(&self) -> Option<&[ClaimNameRow]> {
+        self.wire.claim_names.as_deref()
+    }
+
+    /// The admitted row naming the declaration whose qualified path is
+    /// `path`, matched segment by segment and byte for byte.
+    pub fn claim_name_for_path<S: AsRef<str>>(&self, path: &[S]) -> Option<&ClaimNameRow> {
+        self.claim_names()?.iter().find(|row| {
+            row.qualified_name.len() == path.len()
+                && row
+                    .qualified_name
+                    .iter()
+                    .zip(path)
+                    .all(|(segment, wanted)| segment.as_ref() == wanted.as_ref())
+        })
     }
 
     /// Admitted selected operation effects, absent when the producer supplied no carrier.
@@ -3917,10 +3950,34 @@ fn validate_graph(
             return Err(failure);
         }
     }
+    let name_sources = declaration_region::SourceEntries::build(
+        &wire.source_map,
+        wire.temporal_clause_names.is_some() || wire.claim_names.is_some(),
+        &stage_storage::Site::new(
+            PackageReadStage::Graph,
+            0,
+            "name_sources",
+            stage_storage::Path::root(),
+        ),
+        meter,
+    )?;
     temporal_clause_names::validate(
         wire.temporal_clause_names.as_deref(),
         &graph.nodes,
         &kinds,
+        &name_sources,
+        &index,
+        structural_keys,
+        meter,
+    )?;
+    claim_names::validate_refinement_names(&kinds, &terms, &graph.nodes, meter)?;
+    claim_names::validate(
+        wire.claim_names.as_deref(),
+        wire.temporal_clause_names.as_deref(),
+        &graph.nodes,
+        &kinds,
+        &terms,
+        &name_sources,
         &index,
         structural_keys,
         meter,
@@ -5618,6 +5675,7 @@ mod tests {
                 },
                 super::CheckedPackageSidecarsRef {
                     temporal_clause_names: wire.temporal_clause_names.as_deref(),
+                    claim_names: wire.claim_names.as_deref(),
                     operation_effects: wire.operation_effects.as_deref(),
                     operation_bodies: wire.operation_bodies.as_deref(),
                     checked_term_data: wire.checked_term_data.as_ref(),
@@ -5678,6 +5736,7 @@ mod tests {
                 },
                 super::CheckedPackageSidecarsRef {
                     temporal_clause_names: wire.temporal_clause_names.as_deref(),
+                    claim_names: wire.claim_names.as_deref(),
                     operation_effects: wire.operation_effects.as_deref(),
                     operation_bodies: wire.operation_bodies.as_deref(),
                     checked_term_data: wire.checked_term_data.as_ref(),
@@ -5779,6 +5838,7 @@ mod tests {
                         },
                         super::CheckedPackageSidecarsRef {
                             temporal_clause_names: wire.temporal_clause_names.as_deref(),
+                            claim_names: wire.claim_names.as_deref(),
                             operation_effects: wire.operation_effects.as_deref(),
                             operation_bodies: wire.operation_bodies.as_deref(),
                             checked_term_data: wire.checked_term_data.as_ref(),

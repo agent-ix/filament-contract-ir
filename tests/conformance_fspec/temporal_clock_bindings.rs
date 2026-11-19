@@ -44,7 +44,7 @@ fn replace_clause(value: &mut Value, clause: &Value, nodes: &[Value]) {
     }
 }
 
-fn apply_occurrence_patch(package: &mut Value, patch: &Value, clause: &Value) {
+pub(super) fn apply_occurrence_patch(package: &mut Value, patch: &Value, clause: &Value) {
     let path = patch["path"].as_str().expect("patch path");
     let (parent, member) = path.rsplit_once('/').expect("patch member");
     let mut value = patch["value"].clone();
@@ -91,7 +91,7 @@ fn apply_occurrence_patch(package: &mut Value, patch: &Value, clause: &Value) {
     }
 }
 
-fn assert_vector_node_locus(
+pub(super) fn assert_vector_node_locus(
     refusal: &filament_contract_model::CheckedPackageRefusal,
     package: &Value,
     group: &str,
@@ -196,6 +196,7 @@ fn published_temporal_occurrence_vectors_bind_exact_read_and_write() {
                     },
                     filament_contract_model::CheckedPackageSidecarsRef {
                         temporal_clause_names: admitted.temporal_clause_names(),
+                        claim_names: admitted.claim_names(),
                         operation_effects: None,
                         operation_bodies: None,
                         checked_term_data: admitted.checked_term_data(),
@@ -275,9 +276,9 @@ fn published_temporal_clause_names_admit_and_refuse_at_exact_loci() {
     let clause = base["semantic_graph"]["nodes"][clause_index(&base)]["node_id"].clone();
     for (group, count) in [
         ("positive", 3),
-        ("schema_refusals", 8),
+        ("schema_refusals", 9),
         ("shape_refusals", 1),
-        ("semantic_refusals", 11),
+        ("semantic_refusals", 13),
     ] {
         let cases = published[group].as_array().expect("cases");
         assert_eq!(cases.len(), count, "{group}");
@@ -316,6 +317,7 @@ fn published_temporal_clause_names_admit_and_refuse_at_exact_loci() {
                         checked_term_data: admitted.checked_term_data(),
                         temporal_bindings: admitted.temporal_bindings(),
                         temporal_clause_names: admitted.temporal_clause_names(),
+                        claim_names: admitted.claim_names(),
                         schedulability_claims: None,
                     },
                     admitted.capability_report(),
@@ -351,18 +353,19 @@ fn published_temporal_clause_names_admit_and_refuse_at_exact_loci() {
                 if let Some(cause) = case["expected"]["cause"].as_str() {
                     assert_eq!(refusal.cause.map(cause_word), Some(cause), "{id}");
                 }
+                let locus = case["expected"]["locus"]
+                    .as_str()
+                    .expect("expected pointer");
                 assert_eq!(
                     refusal.loci[0].path.as_ref().expect("pointer").to_string(),
-                    case["expected"]["locus"],
+                    locus,
                     "{id}"
                 );
                 assert_vector_node_locus(
                     &refusal,
                     &package,
                     group,
-                    case["expected"]["locus"]
-                        .as_str()
-                        .expect("expected pointer"),
+                    locus,
                     "/temporal_clause_names",
                     id,
                 );
@@ -835,6 +838,7 @@ fn temporal_clock_writer_retains_a_configured_clause_row() {
         },
         filament_contract_model::CheckedPackageSidecarsRef {
             temporal_clause_names: read.temporal_clause_names(),
+            claim_names: read.claim_names(),
             operation_effects: None,
             operation_bodies: None,
             checked_term_data: read.checked_term_data(),

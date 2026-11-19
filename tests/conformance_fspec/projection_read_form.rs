@@ -151,6 +151,7 @@ fn published_model_field_read_forms_survive_admission_and_round_trip() {
                     },
                     filament_contract_model::CheckedPackageSidecarsRef {
                         temporal_clause_names: package.temporal_clause_names(),
+                        claim_names: package.claim_names(),
                         operation_effects: None,
                         operation_bodies: None,
                         checked_term_data: package.checked_term_data(),

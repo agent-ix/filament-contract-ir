@@ -171,6 +171,7 @@ fn tc_048_envelope_writes_index_and_refuses_inline_node_path() {
             },
             filament_contract_model::CheckedPackageSidecarsRef {
                 temporal_clause_names: None,
+                claim_names: None,
                 operation_effects: None,
                 operation_bodies: None,
                 checked_term_data: None,
@@ -227,6 +228,7 @@ fn tc_048_envelope_refuses_indexed_dependency_reference_node() {
         },
         filament_contract_model::CheckedPackageSidecarsRef {
             temporal_clause_names: None,
+            claim_names: None,
             operation_effects: None,
             operation_bodies: None,
             checked_term_data: None,
@@ -257,6 +259,8 @@ fn tc_048_closed_envelope_bytes_equal_independent_canonical_json() {
             package.get("temporal_bindings").map(typed_each);
         let temporal_clause_names: Option<Vec<filament_contract_model::TemporalClauseName>> =
             package.get("temporal_clause_names").map(typed_each);
+        let claim_names: Option<Vec<filament_contract_model::ClaimNameRow>> =
+            package.get("claim_names").map(typed_each);
         let encoded = encode_checked_package_v2(
             package["name"].as_str().expect("structural name"),
             &lock,
@@ -267,6 +271,7 @@ fn tc_048_closed_envelope_bytes_equal_independent_canonical_json() {
             },
             filament_contract_model::CheckedPackageSidecarsRef {
                 temporal_clause_names: temporal_clause_names.as_deref(),
+                claim_names: claim_names.as_deref(),
                 operation_effects: None,
                 operation_bodies: None,
                 checked_term_data: None,
@@ -675,6 +680,7 @@ fn tc_451_typed_envelope_encodes_deep_details_on_a_small_stack() {
             },
             filament_contract_model::CheckedPackageSidecarsRef {
                 temporal_clause_names: None,
+                claim_names: None,
                 operation_effects: None,
                 operation_bodies: None,
                 checked_term_data: None,
@@ -717,6 +723,7 @@ fn tc_451_deep_closed_graph_encodes_once_with_exact_byte_limits() {
                 },
                 filament_contract_model::CheckedPackageSidecarsRef {
                     temporal_clause_names: None,
+                    claim_names: None,
                     operation_effects: None,
                     operation_bodies: None,
                     checked_term_data: None,

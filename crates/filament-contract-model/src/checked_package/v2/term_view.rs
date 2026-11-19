@@ -967,6 +967,7 @@ impl<'d> RefinementDocument<'_, 'd> {
             node,
             &[
                 "term",
+                "name",
                 "abstract",
                 "profile",
                 "populations",
@@ -990,7 +991,13 @@ impl<'d> RefinementDocument<'_, 'd> {
             .get("class_catalog")
             .map(|n| self.catalog(n))
             .transpose()?;
+        // The header `ident` as written: never empty, qualified or aliased.
+        let name: Box<str> = self.atom(self.member(node, "name")?)?;
+        if !super::identity::is_identifier(&name) {
+            return Err(Self::malformed());
+        }
         Ok(CheckedTerm::Refinement {
+            name,
             abstract_key: self.boxed(|| self.key(self.member(node, "abstract")?))?,
             profile: self.field(node, "profile")?,
             populations,
@@ -1177,8 +1184,9 @@ mod refinement_fault {
     /// The outer object of a refinement body.
     #[ix_trace_rs::string_edge]
     pub(in super::super) fn header(body: TermNode<'_>, at: &Trail<'_>) -> Found {
-        const REQUIRED: [&str; 9] = [
+        const REQUIRED: [&str; 10] = [
             "term",
+            "name",
             "abstract",
             "profile",
             "populations",
@@ -1372,6 +1380,15 @@ mod refinement_fault {
                 member(body, "profile", at)?,
                 &at.key("profile"),
             )?;
+            let name_at = at.key("name");
+            let name = member(body, "name", at)?;
+            text(name, &name_at)?;
+            if !name
+                .as_str()
+                .is_some_and(super::super::identity::is_identifier)
+            {
+                return Err(invalid(&name_at));
+            }
             if let Some(protocol) = body.get("protocol") {
                 key(protocol, &at.key("protocol"))?;
             }
@@ -2068,13 +2085,35 @@ mod flat_document_allocation_tests {
         assert!(!run(total - 1).0);
     }
 
+    #[trace("TC-477", "FR-371-AC-8")]
+    #[test]
+    fn a_refinement_body_name_that_is_no_identifier_is_refused_by_the_existing_decoder() {
+        let id = json!({"package":"p","path":["C"],"ordinal":0});
+        let external = json!({"package":"dependency","node":id});
+        let body = |name: serde_json::Value| {
+            let mut wire = json!({"term":"refinement","name":"Named","abstract":external,
+                "profile":{"authority":"a","identity":"trace"},"populations":[],"objects":[],
+                "steps":[],"histories":[],"assume":[],"ensure":[]});
+            wire["name"] = name;
+            wire
+        };
+        let at = crate::checked_package::common::Trail::Base(&[]);
+        assert!(super::super::refinement::decode_body(&body(json!("Named")), &at).is_ok());
+        for bad in [json!(""), json!("Impl::Named"), json!("7up"), json!(7)] {
+            assert!(
+                super::super::refinement::decode_body(&body(bad.clone()), &at).is_err(),
+                "{bad}"
+            );
+        }
+    }
+
     #[trace("TC-472", "FR-038-AC-504")]
     #[test]
     fn refinement_document_projection_preserves_rows_and_prepays_owned_values() {
         let id = json!({"package":"p","path":["C"],"ordinal":0});
         let external = json!({"package":"dependency","node":id});
         let term = json!({"term":"reference","target":id});
-        let wire = json!({"term":"refinement","abstract":external,"profile":{"authority":"a","identity":"trace"},
+        let wire = json!({"term":"refinement","name":"Differential","abstract":external,"profile":{"authority":"a","identity":"trace"},
             "populations":[{"abstract":external,"concrete":id}],
             "objects":[{"abstract_type":external,"concrete_type":id,"fields":[{"name":"value","expression":term}]}],
             "steps":[{"source_class":"act","source_node":id,"target":{"kind":"operation","operation":external,"receiver":term,"arguments":[{"term":"open"},term]}},
@@ -2140,7 +2179,7 @@ mod flat_document_allocation_tests {
     #[test]
     fn refinement_optional_and_discriminator_shapes_do_not_fallback_or_allocate_errors() {
         let id = json!({"package":"p","path":["C"],"ordinal":0});
-        let base = json!({"term":"refinement","abstract":id,"profile":{"authority":"a","identity":"trace"},"populations":[],"objects":[],"steps":[],"histories":[],"assume":[],"ensure":[]});
+        let base = json!({"term":"refinement","name":"Refine","abstract":id,"profile":{"authority":"a","identity":"trace"},"populations":[],"objects":[],"steps":[],"histories":[],"assume":[],"ensure":[]});
         let mut cases = Vec::new();
         for field in ["protocol", "abstract_internal", "class_catalog"] {
             let mut wire = base.clone();
