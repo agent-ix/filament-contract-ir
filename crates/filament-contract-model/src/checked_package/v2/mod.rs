@@ -265,7 +265,8 @@ pub use schedulability::{
 };
 pub use source_object::{
     SelectedSourceObjectError, SelectedSourceObjectErrorCode, SelectedSourceObjectMember,
-    SelectedSourceObjectRow, SelectedSourceObjects, SelectedSourcePopulation,
+    SelectedSourceObjectOperation, SelectedSourceObjectRow, SelectedSourceObjects,
+    SelectedSourcePopulation,
 };
 pub use source_operation::{SelectedSourceOperationRow, SelectedSourceOperations};
 pub use step_relation::{

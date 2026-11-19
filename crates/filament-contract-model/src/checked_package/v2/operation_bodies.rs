@@ -193,6 +193,37 @@ fn owned_by(node: &CheckedSemanticNodeV2<CheckedJson>, member: &str) -> bool {
     )
 }
 
+/// The source-declared object types as (owner identity, type name, node).
+type SourceTypes<'a> = Vec<(&'a str, &'a str, &'a CheckedNodeId)>;
+
+/// A source body clause function: its (owner identity, type, operation) and node.
+type SourceBody<'a> = ((&'a str, &'a str, &'a str), &'a CheckedNodeId);
+
+/// A source dispatch candidate's joined row key and its body node.
+type SourceCandidate<'a> = (&'a str, &'a CheckedNodeId, &'a str, &'a CheckedNodeId);
+
+/// The `SourceOwner` identity of `node`, when it has one.
+fn source_identity(node: &CheckedSemanticNodeV2<CheckedJson>) -> Option<&str> {
+    match node.owner.as_ref() {
+        Some(CheckedNodeOwner::Source { identity, .. }) => Some(identity.as_ref()),
+        _ => None,
+    }
+}
+
+/// `[<type>, <operation>, "body"]` of a source clause function, when `node`
+/// is one: its `declaration` has exactly those three segments. The last
+/// segment is the clause label of the declaration key (FSpec FR-610), a
+/// classified wire string boundary.
+#[ix_trace_rs::string_edge]
+fn source_body_declaration(node: &CheckedSemanticNodeV2<CheckedJson>) -> Option<(&str, &str)> {
+    match node.declaration.as_ref()?.qualified_name.as_slice() {
+        [type_name, operation, clause] if clause.as_ref() == "body" => {
+            Some((type_name.as_ref(), operation.as_ref()))
+        }
+        _ => None,
+    }
+}
+
 /// A dispatch candidate's effective declaration (package and node), its
 /// selected operation name, and its operation body.
 ///
@@ -261,6 +292,66 @@ pub(super) fn validate(
         }
     }
     candidates.sort_unstable();
+    let mut source_types: SourceTypes<'_> =
+        stage_storage::vec(meter, &site(0, rows_at()), nodes.len())?;
+    source_types.extend(nodes.iter().enumerate().filter_map(|(position, node)| {
+        let identity = source_identity(node)?;
+        let name = node.declaration.as_ref()?.qualified_name.last()?;
+        super::source_object::is_source_declared_object_type(node, kinds[position]).then_some((
+            identity,
+            name.as_ref(),
+            &node.node_id,
+        ))
+    }));
+    source_types.sort_unstable();
+    let mut source_bodies: Vec<SourceBody<'_>> =
+        stage_storage::vec(meter, &site(0, rows_at()), nodes.len())?;
+    source_bodies.extend(nodes.iter().enumerate().filter_map(|(position, node)| {
+        if !matches!(kinds[position], CheckedNodeKind::Function(_)) {
+            return None;
+        }
+        let (type_name, operation) = source_body_declaration(node)?;
+        Some((
+            (source_identity(node)?, type_name, operation),
+            &node.node_id,
+        ))
+    }));
+    source_bodies.sort_unstable();
+    // FR-322 item 9: a source candidate joins the row of the type its body
+    // clause function is declared under, whose `declaration` names it.
+    let mut source_candidates: Vec<SourceCandidate<'_>> =
+        stage_storage::vec(meter, &site(0, rows_at()), count)?;
+    for table in tables {
+        let operation = table.operation.operation.as_ref();
+        for candidate in &table.candidates {
+            stage_storage::work(meter, &site(0, rows_at()), 1)?;
+            let Ok(found) = by_id.binary_search_by(|&position| {
+                nodes[position].node_id.cmp(&candidate.operation_body)
+            }) else {
+                continue;
+            };
+            let body = &nodes[by_id[found]];
+            let (Some(identity), Some((type_name, name))) =
+                (source_identity(body), source_body_declaration(body))
+            else {
+                continue;
+            };
+            if name != operation {
+                continue;
+            }
+            if let Ok(at) =
+                source_types.binary_search_by(|held| (held.0, held.1).cmp(&(identity, type_name)))
+            {
+                source_candidates.push((
+                    identity,
+                    source_types[at].2,
+                    name,
+                    &candidate.operation_body,
+                ));
+            }
+        }
+    }
+    source_candidates.sort_unstable();
     let covered = sorted_keys(
         meter,
         &site(0, rows_at()),
@@ -307,6 +398,45 @@ pub(super) fn validate(
                 None,
                 at.key("operation"),
             ));
+        }
+        let source_declaring = by_id
+            .binary_search_by(|&position| nodes[position].node_id.cmp(&row.declaring))
+            .ok()
+            .map(|found| by_id[found])
+            .filter(|&position| {
+                super::source_object::is_source_declared_object_type(
+                    &nodes[position],
+                    kinds[position],
+                )
+            });
+        if let Some(declaring) = source_declaring {
+            check_source_row(
+                meter,
+                index,
+                row,
+                &nodes[declaring],
+                SourceJoin {
+                    nodes,
+                    kinds,
+                    by_id: &by_id,
+                    bodies: &source_bodies,
+                },
+            )?;
+            let key = key_of(&row.document, &row.declaring, &row.operation);
+            if repeated == Some(index) {
+                return Err(refused(
+                    meter,
+                    index,
+                    Code::InvalidPackage,
+                    Some(Cause::ConflictingDefinition),
+                    at,
+                ));
+            }
+            if previous.is_some_and(|earlier| earlier >= key) {
+                return Err(invalid(meter, index, at));
+            }
+            previous = Some(key);
+            continue;
         }
         let (owner, operation) = join_member(
             models,
@@ -378,8 +508,108 @@ pub(super) fn validate(
         }
         previous = Some(key);
     }
-    if has_uncovered_operation(models, &covered) {
+    let uncovered_source = source_candidates
+        .iter()
+        .any(|(identity, node, operation, _)| {
+            covered
+                .binary_search_by(|(key, _)| {
+                    (key.0, key.1, key.2).cmp(&(*identity, *node, *operation))
+                })
+                .is_err()
+        });
+    if uncovered_source || has_uncovered_operation(models, &covered) {
         return Err(invalid(meter, 0, rows_at()));
+    }
+    Ok(())
+}
+
+/// The package facts a source row joins.
+struct SourceJoin<'a> {
+    nodes: &'a [CheckedSemanticNodeV2<CheckedJson>],
+    kinds: &'a [CheckedNodeKind],
+    by_id: &'a [usize],
+    bodies: &'a [SourceBody<'a>],
+}
+
+/// FR-322 item 9 over one row whose `declaring` is a source-declared object
+/// type: `document` is the node's `SourceOwner` identity, and `body` is a
+/// `function` exactly when the package holds the clause function declared
+/// `[<type>, <operation>, "body"]` under that owner, naming it.
+fn check_source_row(
+    meter: &mut WorkMeter,
+    index: usize,
+    row: &OperationBodyRow,
+    declaring: &CheckedSemanticNodeV2<CheckedJson>,
+    join: SourceJoin<'_>,
+) -> Result<(), ValidationFailure> {
+    let at = rows_at().index(index);
+    let Some(identity) = source_identity(declaring) else {
+        return Err(invalid(meter, index, at.key("declaring")));
+    };
+    let document_at = at.key("document");
+    if row.document.as_ref() != identity {
+        let owned = join
+            .nodes
+            .iter()
+            .any(|node| source_identity(node) == Some(row.document.as_ref()));
+        return Err(if owned {
+            invalid(meter, index, document_at)
+        } else {
+            refused(
+                meter,
+                index,
+                Code::MissingDeclaration,
+                Some(Cause::MissingSelection),
+                document_at,
+            )
+        });
+    }
+    let type_name = declaring
+        .declaration
+        .as_ref()
+        .and_then(|declaration| declaration.qualified_name.last())
+        .map(AsRef::as_ref);
+    let held = type_name.and_then(|type_name| {
+        let key = (identity, type_name, row.operation.as_ref());
+        join.bodies
+            .binary_search_by(|(held, _)| (held.0, held.1, held.2).cmp(&key))
+            .ok()
+            .map(|found| join.bodies[found].1)
+    });
+    let body_at = at.key("body");
+    match (&row.body, held) {
+        (OperationBody::Function { node }, Some(expected)) => {
+            let node_at = body_at.key("node");
+            let Ok(found) = join
+                .by_id
+                .binary_search_by(|&position| join.nodes[position].node_id.cmp(node))
+            else {
+                return Err(refused(
+                    meter,
+                    index,
+                    Code::MissingDeclaration,
+                    Some(Cause::MissingName),
+                    node_at,
+                ));
+            };
+            if !matches!(
+                join.kinds.get(join.by_id[found]),
+                Some(CheckedNodeKind::Function(_))
+            ) {
+                return Err(refused(
+                    meter,
+                    index,
+                    Code::IllTyped,
+                    Some(Cause::OperatorIneligible),
+                    node_at,
+                ));
+            }
+            if node != expected {
+                return Err(invalid(meter, index, node_at));
+            }
+        }
+        (OperationBody::NoBody, None) => {}
+        _ => return Err(invalid(meter, index, body_at)),
     }
     Ok(())
 }
