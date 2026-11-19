@@ -107,10 +107,15 @@ pub enum TerminalDeclaration {
   from binding 4, the reference's target. An `any` node's `parameters` and
   `condition` bindings are the empty aggregate (FSpec FR-476), so `Any`
   carries neither.
-- The rows SHALL be in the admitted graph's node order (ascending
-  structural node id, the order the terminal step visits), so two reads of
-  one package, and a read of the writer's output, return equal rows in equal
-  order.
+- The rows SHALL be in ascending structural node-id order: the order FSpec
+  FR-322 defines on structural keys (`package`, then `path`, then
+  `ordinal`), which is also the order the terminal step visits. Graph order
+  is the producer's choice and orders no row: two packages that hold the same
+  terminal nodes in different graph orders return equal rows in equal order,
+  as do two reads of one package and a read of the writer's output.
+- Every id in a row SHALL be in the resolved-graph form the admitted package
+  exposes, and rows and their ids SHALL be compared by structural key (FSpec
+  FR-322 "Rebuilding the key"), never by wire bytes or graph index.
 - A model with no terminal node SHALL have no row: it declares no terminal
   state, and the read never returns an empty or placeholder row for it. A
   model has at most one row, because a second terminal node for one model is
@@ -121,7 +126,9 @@ pub enum TerminalDeclaration {
 
 Note: FSL's `fsl-package` reads the same rows today in
 `checked_v2/terminal.rs` (`ReadTerminal`); it is the consumer this read
-serves.
+serves. Its `read_terminals` walk visits nodes in graph order, which differs
+from this read's structural-key order; its per-model lookup is unaffected,
+because a model has at most one row.
 
 ## Acceptance Criteria
 
@@ -132,7 +139,7 @@ serves.
 | FR-060-AC-3 | The reader observes FR-322 and FR-476 precedence: graph-shape defects precede the terminal step; state-graph, temporal and abstraction body defects precede it; each terminal node's own checks precede one-per-model checks; nodes visit in structural node-id order; and a terminal defect precedes step-relation and later body defects. | Test |
 | FR-060-AC-4 | Withdrawn by the IR-1141 structural-identity decision under FSpec #517: the reader does not recompute identity from body content or refuse a retained structural id solely because a valid body changed. This id is retained and never reused. | Withdrawn |
 | FR-060-AC-5 | IR-owned positive and negative read/write vectors for FSpec TC-961 MT-01 through MT-16 assert the published wire shapes and refusals through the public V2 reader and writer, without copying FSpec fixture or schema files into IR. | Test |
-| FR-060-AC-6 | Over one admitted package selecting models `M` and `N` with FSpec TC-961 MT-01 (`when` reading `self`) on `M` and MT-02 (`any`) on `N`, and a third selected model `K` with no terminal node, `terminal_rows()` returns exactly two rows in ascending structural node id: `{node: MT-01's node, model: M, declaration: When { parameter: Some(the level-0 self parameter node), condition: the Boolean expression node }}` and `{node: MT-02's node, model: N, declaration: Any}`, and no row for `K`; MT-03 (`when` not reading `self`) on `M` in place of MT-01 gives `When { parameter: None, condition: the forall expression node }`; the rows of the writer's output read back are equal and in equal order; a package with no terminal node returns an empty slice; and a second terminal node on `M` is refused at admission, so no read returns two rows for one model. | Test (TC-487) |
+| FR-060-AC-6 | Over one admitted package selecting models `M` and `N` with FSpec TC-961 MT-01 (`when` reading `self`) on `M` and MT-02 (`any`) on `N`, and a third selected model `K` with no terminal node, whose `semantic_graph.nodes` array holds `N`'s terminal node before `M`'s while the test first establishes, by comparing the two rebuilt structural keys in FSpec FR-322's ascending node-id order, that `M`'s terminal key sorts before `N`'s, `terminal_rows()` returns exactly two rows in that key order, opposite to graph order: `{node: MT-01's node, model: M, declaration: When { parameter: Some(the level-0 self parameter node), condition: the Boolean expression node }}` and `{node: MT-02's node, model: N, declaration: Any}`, and no row for `K`; MT-03 (`when` not reading `self`) on `M` in place of MT-01 gives `When { parameter: None, condition: the forall expression node }`; the rows of the writer's output read back are equal and in equal order; the same package with the two terminal nodes in key-consistent graph order returns equal rows in equal order; a package with no terminal node returns an empty slice; and a second terminal node on `M` (FSpec TC-961 MT-12) is refused at admission, so no read returns two rows for one model. | Test (TC-487) |
 
 ## Dependencies
 
