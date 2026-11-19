@@ -4980,13 +4980,13 @@ fn check_quantifier_domain_only_use(
     catalog: &OperationCatalog,
     meter: &mut WorkMeter,
 ) -> Result<Option<ValidationFailure>, ValidationFailure> {
-    let arguments_at = application.body(&["arguments"]);
+    let arguments_at = application.read_node().key("body").key("arguments");
     let is_quantifier = matches!(
         operation.identity.as_ref(),
         "filament.op.collection.forall" | "filament.op.collection.exists"
     );
     for (index, argument) in arguments.iter().enumerate() {
-        work_at_path(meter, &OperationPath::Held(arguments_at.clone()), 1)?;
+        work_at_path(meter, &arguments_at, 1)?;
         let CheckedTerm::Reference { target } = argument else {
             continue;
         };
@@ -5008,10 +5008,11 @@ fn check_quantifier_domain_only_use(
                 .any(|constraint| constraint.kind == OperationConstraintKind::QuantifierDomainOnly)
         });
         if slot_domain_only && !(is_quantifier && index == 0) {
-            return Ok(Some(application.refuse(
+            return Ok(Some(application.refuse_read(
                 CheckedPackageRefusalCode::IllTyped,
                 arguments_at.index(index),
                 CheckedPackageRefusalCause::OperatorIneligible,
+                meter,
             )));
         }
     }
