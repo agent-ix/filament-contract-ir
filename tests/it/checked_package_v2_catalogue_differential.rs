@@ -414,6 +414,11 @@ pub(super) fn simple_fixture(entry: &Value) -> Option<Value> {
 }
 
 fn unavailable_reason(entry: &Value) -> Option<&'static str> {
+    if entry["identity"] == "filament.op.option.slots" {
+        return Some(
+            "requires a selected timed-model root and a resolved clock_place whose terminal slot bounds are joined to a model declaration",
+        );
+    }
     let operator = entry["operator"].as_str()?;
     let laws = entry["laws"].as_array()?;
     let operands = entry["operands"].as_array()?;
@@ -1167,7 +1172,7 @@ fn tc_048_malformed_operation_facts_have_no_admitted_view() {
     assert!(matches!(read(&law), CheckedPackageV2ReadResult::Refused(_)));
 }
 
-#[trace("TC-048", "FR-038-AC-251")]
+#[trace("TC-048", "FR-038-AC-251", "TC-1862", "FR-772-AC-1", "FR-772-AC-2")]
 #[test]
 fn tc_048_every_catalogue_entry_retains_its_constructible_admission() {
     let catalog: Value = serde_json::from_str(
