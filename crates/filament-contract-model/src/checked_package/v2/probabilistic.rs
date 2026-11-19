@@ -942,6 +942,43 @@ mod tests {
         );
     }
 
+    /// Support values that are neither text, natural numbers nor booleans are
+    /// never repeats of one another at the wire check, while two equal
+    /// booleans are.
+    #[trace("TC-476", "FR-369-AC-3")]
+    #[test]
+    fn only_equal_text_naturals_and_booleans_repeat() {
+        let row = |value: Value| {
+            aggregate(vec![
+                binding(
+                    "value",
+                    json!({"term": "literal", "type": id("type"),
+                        "value_kind": "integer", "value": value}),
+                ),
+                binding("weight", literal("rational", "1")),
+            ])
+        };
+        let admit = |values: Vec<Value>| {
+            read(&wire(vec![node(
+                "random_parameter",
+                random_parameter(values.into_iter().map(row).collect()),
+            )]))
+            .expect("distinct values admit");
+        };
+        admit(vec![json!(-1), json!(-2)]);
+        admit(vec![json!(true), json!(false)]);
+        admit(vec![json!(1), json!(2)]);
+        refusal(
+            &wire(vec![node(
+                "random_parameter",
+                random_parameter(vec![row(json!(true)), row(json!(true))]),
+            )]),
+            CheckedPackageRefusalCode::InvalidPackage,
+            Some(CheckedPackageRefusalCause::InvalidValue),
+            "/semantic_graph/nodes/0/body/members/3/value/members/1/members/0/value",
+        );
+    }
+
     /// A negative time quantity is `invalid-value` at the quantity's value; a
     /// zero one admits.
     #[trace("TC-476", "FR-369-AC-3")]
