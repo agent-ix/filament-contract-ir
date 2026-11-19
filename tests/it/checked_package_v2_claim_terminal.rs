@@ -1753,7 +1753,10 @@ fn terminal_admits_a_boolean_literal_condition() {
                 )),
             }
         );
-        assert_eq!(reread_written(&package).terminal_rows(), rows);
+        let reread = reread_written(&package);
+        assert_eq!(reread.terminal_rows(), rows);
+        assert_eq!(reread.graph(), read.graph());
+        assert_eq!(reread.source_map(), read.source_map());
         let any_node = &admitted(&package_with(terminal(
             "any",
             reference(&model),
@@ -1875,4 +1878,65 @@ fn three_terminal_nodes_on_one_model_get_ordinals_in_key_order() {
     }
     assert!(rows.windows(2).all(|pair| pair[0].node < pair[1].node));
     assert_eq!(reread_written(&package).terminal_rows(), rows);
+}
+
+/// FSpec TC-961 MT-19: `test/vault` is a prefix of `test/vault-other`, so its
+/// rows come first, under both graph orders and against the terminal keys.
+#[trace("TC-487", "FR-060-AC-8")]
+#[test]
+fn terminal_rows_order_a_prefix_model_before_its_extension() {
+    let vault = "test/vault";
+    let other = "test/vault-other";
+    let key = |identity: &str| {
+        crate::support::checked_package::structural_fixture_id(
+            &json!({"package": identity, "path": ["model", "model_root"], "ordinal": 0}),
+        )
+    };
+    assert!(key(vault) < key(other), "the prefix key sorts first");
+    let mut package = v2_all_families();
+    select_model(&mut package, vault);
+    select_model(&mut package, other);
+    let mut ids = Vec::new();
+    // The extension's terminal node id sorts before the prefix's terminal id.
+    for (model, name) in [
+        (other, "aaaa-terminal-other"),
+        (vault, "zzzz-terminal-vault"),
+    ] {
+        let model_id = json!({"package": model, "path": ["model", "model_root"], "ordinal": 0});
+        let mut terminal_node = terminal("any", empty(), empty(), empty(), &[]);
+        terminal_node["body"]["members"][0]["value"] =
+            json!({"term": "reference", "target": model_id});
+        terminal_node["dependencies"] = json!([model_id]);
+        terminal_node["node_id"] = node_id(name);
+        ids.push(crate::support::checked_package::structural_fixture_id(
+            &terminal_node["node_id"],
+        ));
+        package["semantic_graph"]["nodes"]
+            .as_array_mut()
+            .expect("nodes")
+            .push(terminal_node);
+    }
+    assert!(
+        ids[0] < ids[1],
+        "terminal key order opposes model key order"
+    );
+    settle(&mut package);
+    let expected = [(ids[1].clone(), key(vault)), (ids[0].clone(), key(other))];
+    let mut swapped = package.clone();
+    let nodes = swapped["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes");
+    let last = nodes.len() - 1;
+    nodes.swap(last, last - 1);
+    settle(&mut swapped);
+    for variant in [&package, &swapped] {
+        let read = admitted(variant);
+        let rows: Vec<_> = read
+            .terminal_rows()
+            .iter()
+            .map(|row| (row.node.clone(), row.model.clone()))
+            .collect();
+        assert_eq!(rows, expected);
+        assert!(read.terminal_rows().iter().all(|row| row.ordinal == 0));
+    }
 }

@@ -1959,8 +1959,7 @@ pub(super) fn reaches_over(
     "FR-038-AC-166",
     "FR-038-AC-169",
     "FR-038-AC-170",
-    "FR-038-AC-171",
-    "FR-062-AC-3"
+    "FR-038-AC-171"
 )]
 #[test]
 fn tc_048_a_selected_fcd_relationship_navigates_through_its_named_end() {
