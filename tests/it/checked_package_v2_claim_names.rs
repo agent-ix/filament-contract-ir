@@ -285,6 +285,18 @@ fn renaming_a_claim_changes_no_node_and_one_node_carries_two_occurrence_rows() {
     assert_eq!(twins.len(), 2);
     assert_ne!(twins[0].occurrence, twins[1].occurrence);
     assert_ne!(twins[0].qualified_name, twins[1].qualified_name);
+    // Structurally equal declarations share the node, and each name resolves
+    // to its own declaration's row, not to the first row of the node.
+    for twin in &twins {
+        let path: Vec<&str> = twin.qualified_name.iter().map(AsRef::as_ref).collect();
+        assert_eq!(admitted.claim_name_for_path(&path), Some(*twin), "{path:?}");
+    }
+    assert_eq!(
+        admitted
+            .claim_name_for_path(&["B"])
+            .map(|row| row.occurrence.ordinal),
+        Some(1)
+    );
 }
 
 #[trace("TC-477", "FR-371-AC-1")]
@@ -1028,9 +1040,10 @@ fn the_rows_of_one_declaration_share_its_name_and_are_no_duplicates() {
 
 /// A derived conjunction node, as FSpec's `CL-P7` and `CL-R17` shape it: a
 /// second node carries a row for the declaration of another.
-#[trace("TC-477", "FR-371-AC-10")]
-#[test]
-fn a_name_on_two_nodes_resolves_to_the_node_whose_declaration_set_nests() {
+/// Two nodes carry one name: `other` conjoins the declaration of `own`, so its
+/// second row repeats `own`'s name, path and region. Returns the package, the
+/// two node ids and the conjoined row.
+fn conjoined_package() -> (Value, Value, Value, usize) {
     let (mut package, index, _) = namespace_package();
     let own = rows(&package)[0]["declaration"].clone();
     let other = rows(&package)[index]["declaration"].clone();
@@ -1045,14 +1058,52 @@ fn a_name_on_two_nodes_resolves_to_the_node_whose_declaration_set_nests() {
             .as_u64()
             .expect("ordinal"),
     );
-    // `other` conjoins `own`'s declaration: a second row carrying its name,
-    // path and region.
     add_claim_occurrence(&mut package, &other, own_region);
     let conjoined = row_of(&package, &other, 1);
     for member in ["name", "qualified_name", "declaration_region"] {
         let held = rows(&package)[0][member].clone();
         package["claim_names"][conjoined][member] = held;
     }
+    (package, own, other, conjoined)
+}
+
+#[trace("TC-477", "FR-371-AC-6")]
+#[test]
+fn the_own_node_check_costs_the_declaration_set_elements_it_compares() {
+    let (package, own, other, conjoined) = conjoined_package();
+    // `own`'s set is its one declaration; `other`'s set holds its own
+    // declaration and `own`'s.
+    let set = |node: &Value| -> usize {
+        let mut keys: Vec<_> = rows(&package)
+            .iter()
+            .filter(|row| &row["declaration"] == node)
+            .map(|row| row["declaration_region"].to_string())
+            .collect();
+        keys.sort();
+        keys.dedup();
+        keys.len()
+    };
+    let (inner, outer) = (set(&own), set(&other));
+    assert!(inner < outer);
+    let evidence = evidence_for(&package);
+    let shared = smallest_deciding_work_with(&package, &evidence);
+    // The same package with the conjoined row a declaration and name of its
+    // own has no name on two nodes and compares no sets.
+    let mut apart = package.clone();
+    let region = &mut apart["claim_names"][conjoined]["declaration_region"];
+    region["end"] = json!(region["end"].as_u64().expect("end") + 1);
+    rename_row(&mut apart, conjoined, "Alone", json!(["Alone"]));
+    admitted(read_all(&apart));
+    assert_eq!(
+        shared - smallest_deciding_work_with(&apart, &evidence),
+        (inner + outer) as u64
+    );
+}
+
+#[trace("TC-477", "FR-371-AC-10")]
+#[test]
+fn a_name_on_two_nodes_resolves_to_the_node_whose_declaration_set_nests() {
+    let (package, own, other, _) = conjoined_package();
     let name = rows(&package)[0]["qualified_name"].clone();
     let path: Vec<String> = serde_json::from_value(name).expect("path");
     let admitted = admitted(read_all(&package));

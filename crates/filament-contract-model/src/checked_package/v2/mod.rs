@@ -2039,7 +2039,12 @@ impl CheckedPackageV2 {
             .filter(|row| carries(row))
             .map(|row| &row.declaration)
             .min_by_key(|node| declarations(node))?;
-        let on_own = || rows.iter().filter(|row| &row.declaration == own);
+        // The row is the declaration's own: structurally equal declarations
+        // share one node, so only a row that carries the path counts.
+        let on_own = || {
+            rows.iter()
+                .filter(|row| &row.declaration == own && carries(row))
+        };
         on_own()
             .find(|row| row.occurrence.role == CheckedOccurrenceRole::Claim)
             .or_else(|| on_own().next())

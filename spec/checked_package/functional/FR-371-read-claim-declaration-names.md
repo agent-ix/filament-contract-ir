@@ -169,10 +169,11 @@ node's `body/name` as its package-document position.
 
 The reader SHALL expose the admitted rows as `Option<&[ClaimNameRow]>` and a
 lookup from a qualified path to the claim row of the one declaration that
-carries it: the row on the declaration's own node of least occurrence key whose
-role is `claim`, or else its least row there, never a row on a conjunction node
-that also names the declaration. The canonical writer SHALL the canonical writer SHALL accept
-optional borrowed rows, emit them in the supplied order and omit the member for
+carries it: among the rows of the declaration's own node that carry the path
+(structurally equal declarations share one node, and each keeps its own rows),
+the row of least occurrence key whose role is `claim`, or else the least row,
+never a row on a conjunction node that also names the declaration. The
+canonical writer SHALL accept optional borrowed rows, emit them in the supplied order and omit the member for
 `None`. A package read, written and read again SHALL preserve every row.
 
 ## Acceptance Criteria
