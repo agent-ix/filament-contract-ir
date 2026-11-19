@@ -396,7 +396,7 @@ fn package(claims: Vec<(&str, Value)>) -> Value {
                 "parameters",
                 aggregate(vec![reference(id(&["reward", "parameter"]))]),
             ),
-            binding("clause", text("body")),
+            binding("clause", text("reward")),
         ]),
     );
     function["owner"] = json!({"kind": "model", "identity": PACKAGE, "node": DEPOSIT});
@@ -429,7 +429,7 @@ fn package(claims: Vec<(&str, Value)>) -> Value {
                     "parameters",
                     aggregate(vec![reference(id(&["reward", "parameter"]))]),
                 ),
-                binding("clause", text("body")),
+                binding("clause", text("reward")),
             ]),
         );
         node["owner"] = json!({"kind": "model", "identity": PACKAGE,
