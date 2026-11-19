@@ -2675,16 +2675,19 @@ impl DomainModel {
 
     /// Checked receiver, parameter and optional result binder types of the
     /// effective operation on the named object type, including inheritance.
-    pub(super) fn effective_operation_binder_types(
+    /// `with_result` false leaves out the trailing result type (FSpec FR-432
+    /// "The binder record of an abstract node": a `recommend` has no `result`).
+    pub(super) fn effective_operation_binder_types_with(
         &self,
         object: &str,
         name: &str,
+        with_result: bool,
         budget: &mut Budget<'_, '_>,
     ) -> Result<Option<Vec<CheckedNodeId>>, ValidationFailure> {
         if self.state_machines.contains(object) {
             return Ok(None);
         }
-        self.model_operation_binder_types(object, name, budget)
+        self.model_operation_binder_types_with(object, name, with_result, budget)
     }
 
     /// Checked receiver and member signature of an effective model operation.
@@ -2692,6 +2695,18 @@ impl DomainModel {
         &self,
         object: &str,
         name: &str,
+        budget: &mut Budget<'_, '_>,
+    ) -> Result<Option<Vec<CheckedNodeId>>, ValidationFailure> {
+        self.model_operation_binder_types_with(object, name, true, budget)
+    }
+
+    /// As [`Self::model_operation_binder_types`]; `with_result` false leaves
+    /// out the trailing result type.
+    pub(super) fn model_operation_binder_types_with(
+        &self,
+        object: &str,
+        name: &str,
+        with_result: bool,
         budget: &mut Budget<'_, '_>,
     ) -> Result<Option<Vec<CheckedNodeId>>, ValidationFailure> {
         let Some(declaration) = self.object_types.get(object) else {
@@ -2718,7 +2733,7 @@ impl DomainModel {
             return Ok(None);
         };
         let mut types = budget.vec(
-            1 + operation.parameters.len() + usize::from(operation.result.is_some()),
+            1 + operation.parameters.len() + usize::from(with_result && operation.result.is_some()),
             "operation_binders",
         )?;
         types.push(receiver);
@@ -2734,7 +2749,7 @@ impl DomainModel {
             };
             types.push(parameter_type);
         }
-        if let Some(result) = &operation.result {
+        if let Some(result) = operation.result.as_ref().filter(|_| with_result) {
             let Some(result_type) = self.slot_type_charged(result, false, budget, "member_type")?
             else {
                 return Ok(None);

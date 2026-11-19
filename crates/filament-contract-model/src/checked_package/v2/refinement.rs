@@ -3373,6 +3373,7 @@ impl CatalogSignatures<'_, '_> {
         &self,
         context: &CheckedNodeId,
         name: &str,
+        with_result: bool,
         meter: &mut super::WorkMeter,
     ) -> Result<Option<Vec<CheckedNodeId>>, ValidationFailure> {
         match self {
@@ -3385,11 +3386,16 @@ impl CatalogSignatures<'_, '_> {
                     owner.package.root,
                     owner.package.bytes,
                 );
-                owner
-                    .package
-                    .effective_operation_binder_types(owner.node, name, &mut budget)
+                owner.package.effective_operation_binder_types_with(
+                    owner.node,
+                    name,
+                    with_result,
+                    &mut budget,
+                )
             }
-            Self::External(models) => models.operation_binder_types(context, name, meter),
+            Self::External(models) => {
+                models.operation_binder_types(context, name, with_result, meter)
+            }
         }
     }
 }
@@ -3853,12 +3859,15 @@ fn compare_abstract_memory(
     )
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum CatalogOperator {
     Role,
     Channel,
     Parallel,
     Attempt,
+    /// A `recommend` node: spelled as an event's class, with an attempt's
+    /// binder record minus the `result` (FSpec FR-432).
+    Recommend,
     Compensation,
     Event,
     Send,
@@ -3881,9 +3890,8 @@ fn catalog_operator(kind: super::CheckedNodeKind, operator: &str) -> Option<Cata
         (Protocol(ProtocolForm::Control), "parallel") => CatalogOperator::Parallel,
         (Protocol(ProtocolForm::Control), "attempt") => CatalogOperator::Attempt,
         (Protocol(ProtocolForm::Compensation), "compensate") => CatalogOperator::Compensation,
-        (Protocol(ProtocolForm::Control), "event" | "effect" | "commit" | "recommend") => {
-            CatalogOperator::Event
-        }
+        (Protocol(ProtocolForm::Control), "recommend") => CatalogOperator::Recommend,
+        (Protocol(ProtocolForm::Control), "event" | "effect" | "commit") => CatalogOperator::Event,
         (Protocol(ProtocolForm::Control), "send") => CatalogOperator::Send,
         (Protocol(ProtocolForm::Control), "receive") => CatalogOperator::Receive,
         (Protocol(ProtocolForm::Control), "fence") => CatalogOperator::Fence,
@@ -3902,7 +3910,7 @@ fn protocol_binder_types(
 ) -> Result<BinderSignature<CheckedNodeId>, ValidationFailure> {
     if matches!(
         operator,
-        CatalogOperator::Attempt | CatalogOperator::Compensation
+        CatalogOperator::Attempt | CatalogOperator::Compensation | CatalogOperator::Recommend
     ) {
         let Some(anchor) = bound_reference(arguments, "operation")
             .and_then(|id| nodes.iter().find(|node| node.id == id))
@@ -3912,7 +3920,12 @@ fn protocol_binder_types(
             return Ok(BinderSignature::Unspecified);
         };
         return Ok(signatures
-            .operation_binder_types(anchor.context, anchor.operation, meter)?
+            .operation_binder_types(
+                anchor.context,
+                anchor.operation,
+                operator != CatalogOperator::Recommend,
+                meter,
+            )?
             .map_or(BinderSignature::Unspecified, BinderSignature::Known));
     }
     let binder_type = match operator {
@@ -3947,6 +3960,7 @@ fn protocol_binder_types(
         | CatalogOperator::Channel
         | CatalogOperator::Parallel
         | CatalogOperator::Attempt
+        | CatalogOperator::Recommend
         | CatalogOperator::Compensation
         | CatalogOperator::Fence
         | CatalogOperator::TimeoutFromAwait => return Ok(BinderSignature::Known(Vec::new())),
@@ -4009,6 +4023,7 @@ fn protocol_member_classes(
         CatalogOperator::Parallel => &[("fork ", false), ("join ", false)],
         CatalogOperator::Compensation => &[("", false), ("cend ", true)],
         CatalogOperator::Attempt
+        | CatalogOperator::Recommend
         | CatalogOperator::Event
         | CatalogOperator::Send
         | CatalogOperator::Receive
