@@ -23,6 +23,8 @@ relationships:
     type: references
   - target: ix://agent-ix/filament-specification/FR-322-AC-385
     type: references
+  - target: ix://agent-ix/filament-specification/FR-322-AC-479
+    type: references
   - target: ix://agent-ix/filament-specification/FR-322-AC-304
     type: references
   - target: ix://agent-ix/filament-specification/FR-322-AC-305
@@ -1836,7 +1838,9 @@ FR-322-AC-261: `clock_constraint` of kind `place` has `kind`, `place`,
 `condition`, `value`; kind `parameter` has `kind`, `operation`,
 `parameter`, `value`. `clock_guard` has `operation`, nonempty `parts`,
 each part a Boolean `predicate`, an optional `binders` aggregate immediately
-after it, then at least one constraint reference. `time_invariant` has a
+after it, on a family part a `quantifier` binding immediately after
+`binders` (see "Family guard parts" below), then at least one constraint
+reference. `time_invariant` has a
 Boolean `predicate`, an optional `binders` aggregate after it, and nonempty
 `bounds`. Each binder is a reference to a slot `parameter` node. The five
 comparison words include `eq`; invariant bounds admit
@@ -1871,6 +1875,91 @@ unquantified approximation. FSpec's
 FSpec rather than copied into this repository. `CL-55` and `CL-61` are
 schema-invalid reset and operation-anchor controls outside this binder join;
 the strict wire stage continues to refuse them before timed validation.
+
+#### Family guard parts
+
+A family part is a quantified `clock_guard` part over a collection with no
+declared maximum: FSpec FR-322 "Quantified guards and invariants" defines it
+on the wire as a part that has `binders` and at least one constraint whose
+`clock_place` has a `slot` path step with `maximum` `unbounded`. A `forall`
+and an `exists` over such a collection write the same binders and the same
+constraints, so the part carries one more binding, `quantifier`, that alone
+tells them apart. The reader admits it, keeps it, and refuses it where FSpec
+FR-322-AC-479 refuses it.
+
+The strict wire stage SHALL admit exactly three part layouts: `predicate`
+then constraint references; `predicate`, `binders`, then constraint
+references; and `predicate`, `binders`, `quantifier`, then constraint
+references. The `quantifier` value SHALL be a `literal` with `value_kind`
+`text` whose text is `each` or `some`. Any other
+text (`all`, the empty text, a different case), a non-literal or non-text
+value, a `quantifier` without `binders` before it, and a `quantifier` in any
+other position SHALL refuse `malformed_wire`, with no cause, at the part,
+`/semantic_graph/nodes/{i}/body/members/1/value/members/{j}`, before any
+timed join, as the published V2 schema's closed `TimedGuardPart` does (FSpec
+`CL-63`). The text check is a closed vocabulary decoded once with the other
+words of the timed forms; it is not a semantic rule.
+
+The family rule is the last check of a part in the per-node guard join. For
+each guard, in ascending structural node-id order, the reader visits its
+parts in `parts` order and, for each part, runs in this order: the predicate
+and constraint reference joins, the binder join above (first non-slot,
+duplicate or out-of-order binder), then the family rule. The first defect
+ends the read. The family rule has two refusals, both
+`invalid_package`/`timed-node-reference` with the guard node as locus:
+
+1. A part with `quantifier` none of whose constraint places has a slot step
+   with maximum `unbounded` (every collection it reaches has a declared
+   maximum) refuses at the binding's value,
+   `/semantic_graph/nodes/{i}/body/members/1/value/members/{j}/members/2/value`
+   (FSpec `CL-64`). Such a part enumerates its slots instead, one part per
+   live length or per selectable slot, and its layout and node id do not
+   change.
+2. A family part without `quantifier` refuses at the part,
+   `/semantic_graph/nodes/{i}/body/members/1/value/members/{j}`.
+
+A part without `binders` is never a family part, even when a constraint
+selects an element of an unbounded collection by a literal slot term (the
+`clock` map entry `audit` of FSpec's clause fixture); it carries no
+`quantifier` and reads as before. The unbounded test reads the slot step's
+`maximum` member of the joined `clock_place`, whose agreement with the
+selected declaration (a `Sequence`, `Set`, `Bag` or `OrderedSet` with no
+upper multiplicity, or a `Map` with no declared maximum) the place join has
+already checked; the reader does not re-derive it from the declaration.
+`time_invariant` has no `quantifier` layout: its bounds hold at every live
+place, and a `quantifier` binding on an invariant fails the closed invariant
+layout at strict wire validation.
+
+The admitted package keeps the binding. The part's third member in the
+admitted `CheckedTerm` body is `Binding { name: "quantifier", value }` with
+the `text` literal `each` or `some`, which is how a consumer reads which
+quantifier the part carries; the reader adds no second carrier, default or
+derived flag. The canonical writer emits the binding in place, so an admitted
+family part round-trips byte-identically. The quantifier is a structural term
+of the guard body and enters the guard's aggregate order key after the
+binders like any other text term; a model holds one guard per operation
+anchor, so the key is decided by the operation before any part is compared.
+A guard's node id is the producer's: as for every node, the reader neither
+derives it from the body nor checks it against the quantifier. FSpec FR-322
+requires a producer to give the `each` and the `some` guard different node
+ids; two such packages read back with whatever distinct ids they carry.
+
+Enabledness is not a reader obligation. FSpec FR-322 defines it (an `each`
+part is enabled when its predicate and constraints hold at every held slot or
+key, and so with an empty collection; a `some` part at some held slot or key,
+and so never with an empty collection). This repository evaluates no guard
+in any state, so it has no enabledness behavior to test; the checkers and
+monitors that evaluate guards own it and read the quantifier from the body
+as above.
+
+FSpec's clause fixture has no family part: its unbounded places (`clock`,
+`g`, `s`) carry no binder-indexed constraint. The repository's
+`tests/fixtures/family-guard-part/family-part-vectors.json` supplies the
+admitted family part as replayable edits over the FSpec fixture, read by
+reference: on top of FSpec case `CL-57` (or `CL-58`), it removes the declared
+maximum of `Order.ts` in the selected document and writes `unbounded` in the
+`ts.x` place's slot step, its `resolved_path` row and every inline copy of
+the place's structural key, then adds or changes the part's `quantifier`.
 
 The existing one-operand `filament.op.option.present` application over an
 Option-typed term SHALL retain its meaning and key. The reader SHALL also
@@ -6218,6 +6307,11 @@ the minimum the read uses.
 | FR-038-AC-384 | For the external temporal clause of AC-383, a compensation target not listed by any protocol clause, named in another package or naming a node of the wrong protocol form retains AC-103's missing-name or malformed-declaration refusal at the fairness target's `node` field, with the fairness node as locus. A fairness node omitted from every admitted temporal clause's fairness argument also refuses missing-name there even when its compensation target has a unique valid owner. A temporal clause listed in one protocol clause's `requirements` still refuses a compensation target owned only by another clause; the ownership join does not change the requirement association of protocol-root, attempt or parallel-branch fairness targets. | Test (TC-048) |
 | FR-038-AC-385 | The public V2 reader admits FSpec `timed-clause-node-vectors.json` cases `CL-57` and `CL-59`: a guard part and a time invariant each retain an ordered `binders` aggregate of typed slot-parameter references in the specified position. Existing unquantified `clock_guard` and `time_invariant` positive controls still admit with their original body and identity; no binder is dropped or interpreted as an unquantified approximation. | Test |
 | FR-038-AC-386 | The reader refuses FSpec cases `CL-58` (non-slot guard binder), `CL-60` (repeated invariant binder) and `CL-62` (reversed nested slot binders) with exactly `invalid_package`/`timed-node-reference` at each vector's first bad binder `target` RFC 6901 path and the containing timed node as locus. The test reads FSpec's proposal fixture and vectors by reference and compares the exact code, cause and path; no FSpec artifact is copied. | Test |
+| FR-038-AC-576 | The public V2 reader admits family-part vectors `FP-01` (`quantifier` `each`) and `FP-02` (`quantifier` `some`), each a `clock_guard` part `[predicate, binders [i], quantifier, ts[i].x >= 2 ms, …]` over `Order.ts` with no declared maximum. Each admitted package encodes to the candidate's exact canonical bytes; the part's third member is the `quantifier` binding with the written text; and the two packages differ only in that text, each guard keeping the node id its candidate wrote. The published clause fixture, FSpec `CL-57` and guard part 1 of node 47 (no binders, a literal `audit` key into the unbounded `clock` map, no `quantifier`) still admit with their original bodies and node ids. Against a reader without the third layout, `FP-01` and `FP-02` refuse `malformed_wire`, so the criterion can fail. | Test (TC-490) |
+| FR-038-AC-577 | FSpec `CL-64` (`quantifier` `each` on the bounded `ts` part) refuses `invalid_package`/`timed-node-reference` at `/semantic_graph/nodes/47/body/members/1/value/members/0/members/2/value`, and `FP-03` (the `FP-01` part without `quantifier`) refuses the same pair at the part, `/semantic_graph/nodes/47/body/members/1/value/members/0`, each with guard node 47 as locus. A reader that admits a family part without `quantifier`, or refuses `CL-64` as `malformed_wire`, fails. | Test (TC-490) |
+| FR-038-AC-578 | FSpec `CL-63` (`quantifier` `all` on the bounded part), `FP-04` (`quantifier` `all` on the family part) and `FP-05` (`quantifier` in place of `binders`) each refuse `malformed_wire`, with no cause, at the part `/semantic_graph/nodes/47/body/members/1/value/members/0`, before any timed join; the text is refused whether or not the part is a family part. | Test (TC-490) |
+| FR-038-AC-579 | The family rule runs after the part's binder join: `FP-06`, a family part with the non-slot binder `self` of FSpec `CL-58` and no `quantifier`, refuses `invalid_package`/`timed-node-reference` at that binder's `target`, `/semantic_graph/nodes/47/body/members/1/value/members/0/members/1/value/members/0/target`, not at the part. | Test (TC-490) |
+| FR-038-AC-580 | The family vectors are read by reference: TC-490 replays FSpec's clause fixture, selected document and `CL-57`/`CL-58` patches from the `FILAMENT_SPECIFICATION_DIR` checkout and applies only the edits of `tests/fixtures/family-guard-part/family-part-vectors.json`; no FSpec file is copied. Before applying its edits, the test checks that the selected document's field `/types/3/fields/2` is `ix://acme/orders/Order/ts` and that each member the edits replace holds `3` (or the integer 3) before the edit, so a changed FSpec fixture fails the test instead of silently retargeting it. | Test (TC-490) |
 | FR-038-AC-387 | The public reader admits FSpec `XP-01` and `XP-10`, with each local dimension operand as a local `NodeRef` and each foreign dimension operand as a closed `PackageNodeRef {package, node}` of a directly selected dependency. It resolves the foreign declared dimension in that dependency's admitted package, preserves the authored operand form in the typed nominal body and writer, compares the two resolved structural node ids for distinctness and ascending order, and retains only local operands in the equivalence node's `dependencies`. No foreign dimension node is minted into the importing graph. | Test (TC-280) |
 | FR-038-AC-388 | For FSpec `XP-11`, `XP-12` and `XP-15`, a package operand naming only a closure dependency, no selected dependency or the importing package refuses `missing_declaration`/`missing-selection` at `/semantic_graph/nodes/{i}/body/dimension_node_ids/{k}/package`. `XP-13` names no node in its directly selected dependency and refuses `missing_declaration`/`missing-name` at the corresponding `/node`. The reader checks these operands in listed order before pair rules; neither package display names nor an imported graph node substitute for the selected dependency lookup. | Test (TC-280) |
 | FR-038-AC-389 | FSpec `XP-14` supplies a self-minted foreign-package `NodeRef` and refuses `invalid_semantic_graph` at `/semantic_graph/nodes/{i}/body/dimension_node_ids/{k}`. A local operand naming no graph node, or a local or package operand resolving to a node other than `scalar_type`/`dimension`, refuses the same code at that operand before pair validation; `XP-05` names a unit node and refuses there at its wrong-kind operand. FSpec `XP-02` through `XP-04` and `XP-06` through `XP-09` keep their published `invalid_semantic_graph` pair outcomes after operand resolution; a valid mixed-package equivalence still admits. Reversed or duplicate resolved structural dimensions refuse `invalid_semantic_graph` at the later equivalence node in structural node-id order. | Test (TC-280) |

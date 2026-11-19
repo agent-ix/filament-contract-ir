@@ -19,6 +19,7 @@ type: TestMatrix
 | FR-369 | FR-369-AC-25, FR-369-AC-26 | TC-484 | 🚧 Planned (QSL-2465): the join of probabilistic operation references whose declaring node is source-declared, through the source-object identity rows, the source reward function (`SourceOwner`, `declaration` `[<type>, <operation>, "reward", <name>]`) and its golden fixture, is not implemented. |
 | FR-367 | FR-367-AC-8 | TC-485 | 🚧 Planned (QSL-2465): the `parameters` member of source operation entries and the `clock_parameters` agreement refusal are not implemented. |
 | FR-038 | FR-038-AC-562, FR-038-AC-563 | TC-486 | 🚧 Planned: a body wrapper whose formula reads no slot parameter ranging over its first subject's `model_root` is not admitted yet. |
+| FR-038 | FR-038-AC-576 through FR-038-AC-580 | TC-490 | 🚧 Planned (QSL-2570): the family guard part layout with its `quantifier` binding, the two family-rule refusals and the repository family-part vectors `FP-01`..`FP-06` are not implemented; FSpec `CL-63` and `CL-64` are refused at the wrong stage today. |
 | FR-060 | FR-060-AC-6, FR-060-AC-8 | TC-487 | 🚧 Planned (QSL-2521, QSL-2558): the public `terminal_rows()` read in terminal row order with its per-model `ordinal` is not implemented, and a second terminal node or `claim` occurrence on one model node is refused today. |
 | FR-060 | FR-060-AC-7 | TC-061 | 🚧 Planned (QSL-2553): a Boolean `value`/`literal` terminal condition is refused `operator-ineligible` today. |
 | FR-376 | FR-376-AC-1 through FR-376-AC-3 | TC-488 | 🚧 Planned (QSL-2543): `requirement_items` rows and `claim`/`value_validity` nodes are refused by the closed gates today. |
@@ -82,6 +83,7 @@ type: TestMatrix
 | TC-487 | Terminal rows read from an admitted package | Property | P0 | FR-060-AC-6, FR-060-AC-8 | 🚧 Planned |
 | TC-488 | Requirement records read from an admitted package | Property | P0 | FR-376-AC-1, FR-376-AC-2, FR-376-AC-3 | 🚧 Planned |
 | TC-489 | Probabilistic claim node read from an admitted package | Property | P0 | FR-377-AC-1, FR-377-AC-2, FR-377-AC-3, FR-377-AC-4 | 🚧 Planned |
+| TC-490 | Family guard part quantifier read and refused at the V2 reader | Property | P0 | FR-038-AC-576, FR-038-AC-577, FR-038-AC-578, FR-038-AC-579, FR-038-AC-580 | 🚧 Planned (QSL-2570) |
 | TC-484 | Probabilistic nodes on source-declared operations | Property | P0 | FR-369-AC-25, FR-369-AC-26 | 🚧 Planned (QSL-2465) |
 | TC-485 | Source operation parameters in the identity rows | Property | P0 | FR-367-AC-8 | 🚧 Planned (QSL-2465) |
 | TC-471 | Monitor authority receipt, layout context and map collection closure | Property | P0 | FR-357-AC-16, FR-357-AC-17, FR-357-AC-18, FR-358-AC-10, FR-361-AC-1, FR-361-AC-2, FR-361-AC-3, FR-361-AC-4, FR-361-AC-5 | 🚧 Authority row, receipt and refusals implemented (IR-1384); layout context implemented (IR-722); map collection and locus rows remain planned. |
