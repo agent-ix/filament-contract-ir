@@ -8366,6 +8366,143 @@ fn compensation_clock_rows_follow_published_cases() {
     }
 }
 
+#[trace("TC-048", "FR-038-AC-414", "FR-038-AC-415")]
+#[test]
+fn await_clock_row_is_admitted_and_round_trips() {
+    let (mut package, _) = protocol_holder_case("await");
+    let position = holder_position(&package);
+    let awaited = &package["semantic_graph"]["nodes"][position];
+    assert_eq!(awaited["body"]["operation"]["member"]["operator"], "await");
+    let declaration = awaited["node_id"].clone();
+    let occurrence = awaited["occurrences"]
+        .as_array()
+        .expect("await occurrences")
+        .iter()
+        .find(|occurrence| occurrence["role"] == "declaration")
+        .expect("await declaration occurrence")["ordinal"]
+        .clone();
+    let selected_clock = package["temporal_bindings"][0]["clock"].clone();
+    let await_clock_argument = &awaited["body"]["arguments"][1];
+    let selected_clock_name = if await_clock_argument["term"] == "binding" {
+        await_clock_argument["value"]["value"].clone()
+    } else {
+        await_clock_argument["value"].clone()
+    };
+    let expected_clock: filament_contract_model::ClockConfiguration =
+        serde_json::from_value(selected_clock.clone()).expect("selected clock");
+    let expected_clock_name: String =
+        serde_json::from_value(selected_clock_name.clone()).expect("selected clock name");
+    let row = json!({
+        "declaration": declaration,
+        "occurrence": occurrence,
+        "clock_name": selected_clock_name,
+        "clock": selected_clock,
+    });
+    let rows = package["temporal_bindings"]
+        .as_array_mut()
+        .expect("the temporal clause has its own row");
+    rows.push(row);
+    rows.sort_by(|left, right| {
+        let left_id: CheckedNodeId =
+            serde_json::from_value(left["declaration"].clone()).expect("left declaration");
+        let right_id: CheckedNodeId =
+            serde_json::from_value(right["declaration"].clone()).expect("right declaration");
+        left_id.cmp(&right_id).then_with(|| {
+            left["occurrence"]
+                .as_u64()
+                .cmp(&right["occurrence"].as_u64())
+        })
+    });
+    refresh_identity_projection(&mut package);
+
+    let CheckedPackageV2ReadResult::Admitted(admitted) = read(&package) else {
+        panic!(
+            "await-keyed clock row must be admitted: {:?}",
+            read(&package)
+        );
+    };
+    let rows = admitted.temporal_bindings().expect("admitted clock rows");
+    let expected_declaration: CheckedNodeId =
+        serde_json::from_value(declaration.clone()).expect("await key");
+    assert!(rows.iter().any(|row| {
+        row.declaration == expected_declaration
+            && row.occurrence == 0
+            && row.clock_name.as_ref() == expected_clock_name
+            && row.clock == expected_clock
+    }));
+
+    let mut missing = package.clone();
+    missing["temporal_bindings"]
+        .as_array_mut()
+        .expect("rows")
+        .retain(|row| row["declaration"] != declaration);
+    refresh_identity_projection(&mut missing);
+    assert_eq!(
+        read(&missing),
+        refusal_at_id(
+            CheckedPackageRefusalCode::InvalidPackage,
+            &format!("/semantic_graph/nodes/{position}/body"),
+            Some(CheckedPackageRefusalCause::TimedNodeReference),
+            &declaration,
+        )
+    );
+
+    let await_row_index = |package: &Value| {
+        package["temporal_bindings"]
+            .as_array()
+            .expect("rows")
+            .iter()
+            .position(|row| row["declaration"] == declaration)
+            .expect("await row")
+    };
+    let mut duplicate = package.clone();
+    let row_index = await_row_index(&duplicate);
+    let duplicate_row = duplicate["temporal_bindings"][row_index].clone();
+    duplicate["temporal_bindings"]
+        .as_array_mut()
+        .expect("rows")
+        .insert(row_index + 1, duplicate_row);
+    refresh_identity_projection(&mut duplicate);
+    assert_eq!(
+        read(&duplicate),
+        refusal_at_id(
+            CheckedPackageRefusalCode::InvalidPackage,
+            &format!("/temporal_bindings/{}", row_index + 1),
+            Some(CheckedPackageRefusalCause::ConflictingDefinition),
+            &declaration,
+        )
+    );
+
+    let mut wrong_name = package.clone();
+    let row_index = await_row_index(&wrong_name);
+    wrong_name["temporal_bindings"][row_index]["clock_name"] = json!("wrong-clock");
+    refresh_identity_projection(&mut wrong_name);
+    assert_eq!(
+        read(&wrong_name),
+        refusal_at_id(
+            CheckedPackageRefusalCode::InvalidPackage,
+            &format!("/temporal_bindings/{row_index}/clock_name"),
+            Some(CheckedPackageRefusalCause::TimedNodeReference),
+            &declaration,
+        )
+    );
+
+    let mut wrong_kind = package.clone();
+    let row_index = await_row_index(&wrong_kind);
+    wrong_kind["temporal_bindings"][row_index]["clock"] =
+        json!({"kind": "timestamped_event", "timestamp_unit": "tick"});
+    refresh_identity_projection(&mut wrong_kind);
+    assert_eq!(
+        read(&wrong_kind),
+        refusal_at_id(
+            CheckedPackageRefusalCode::InvalidPackage,
+            &format!("/temporal_bindings/{row_index}/clock/kind"),
+            Some(CheckedPackageRefusalCause::TimedNodeReference),
+            &declaration,
+        )
+    );
+}
+
 /// Trace: FR-038-AC-288
 #[trace("TC-048")]
 #[test]
