@@ -211,19 +211,18 @@ fn source_identity(node: &CheckedSemanticNodeV2<CheckedJson>) -> Option<&str> {
 }
 
 /// `[<type>, <operation>, "body"]` of a source clause function, when `node`
-/// is one: its `declaration` has exactly those three segments.
+/// is one: its `declaration` has exactly those three segments. The last
+/// segment is the clause label of the declaration key (FSpec FR-610), a
+/// classified wire string boundary.
+#[ix_trace_rs::string_edge]
 fn source_body_declaration(node: &CheckedSemanticNodeV2<CheckedJson>) -> Option<(&str, &str)> {
-    let name = node.declaration.as_ref()?.qualified_name.as_slice();
-    let [type_name, operation, clause] = name else {
-        return None;
-    };
-    BODY_CLAUSE
-        .eq(clause.as_ref())
-        .then_some((type_name.as_ref(), operation.as_ref()))
+    match node.declaration.as_ref()?.qualified_name.as_slice() {
+        [type_name, operation, clause] if clause.as_ref() == "body" => {
+            Some((type_name.as_ref(), operation.as_ref()))
+        }
+        _ => None,
+    }
 }
-
-/// The last segment of a source body clause function's declaration.
-const BODY_CLAUSE: &str = "body";
 
 /// A dispatch candidate's effective declaration (package and node), its
 /// selected operation name, and its operation body.
