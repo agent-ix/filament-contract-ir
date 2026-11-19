@@ -17,14 +17,18 @@ refuse malformed declarations in FSpec's order.
 
 ## Test Procedure
 
-Use FSpec TC-961 definitions MT-01 through MT-16 as the published oracle.
+Use FSpec TC-961 definitions MT-01 through MT-17 as the published oracle.
 Build IR-owned V2 wire vectors for `when` with
 and without `self`, and `any`, under one selected model. Read each through
 the public reader, write the admitted package, then read its output. For
 each adverse vector, edit a valid package, rebuild dependencies and
 identities except where the vector tests their mismatch, and read it again.
-Include a second node for one model and a second claim occurrence on one
-node. Add two-defect vectors at each reader-order boundary. Do not place any
+Include FSpec TC-961 MT-17: a `when` condition that is the Boolean
+`value`/`literal` node of `true`, then of `false`, and the same condition
+retargeted to the `self` parameter node and to an integer literal `3`
+(FR-060-AC-7). A second node for one model and a second claim occurrence
+on one node are admitted, not refused, and are TC-487's (FR-060-AC-8). Add
+two-defect vectors at each reader-order boundary. Do not place any
 FSpec file, schema or copied fixture in this repository.
 
 For the model identity control, select two distinct models `M` and `N` and
@@ -37,7 +41,9 @@ and write both complete packages independently.
 
 ## Expected Results
 
-The positive modes preserve the four-binding body, node identities,
+The constant `true` and `false` conditions are admitted and preserved, the
+`self`-parameter condition refuses `ill_typed`/`operator-ineligible` and the
+integer literal `ill_typed`/`non-boolean-root`, each at the target. The positive modes preserve the four-binding body, node identities,
 dependencies and claim occurrences through read/write/read. The adverse
 forms refuse with FR-476's exact code, cause and pointer, with earlier graph
 and body-step defects winning over terminal defects. The model identity

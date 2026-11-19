@@ -2721,8 +2721,9 @@ reported ahead of a later clause's `over` defect. All precede operation refusals
    defect: it is outside the body grammar and refuses `malformed_wire` at the
    nested application at strict wire validation, ahead of this step ("The flat
    wire"; FR-038-AC-114). A `temporal`/`formula` node is referenced only from
-   a clause's formula argument or as an operand of a `temporal_formula`
-   application, and a `temporal`/`fairness` node only from a clause's fairness
+   a clause's formula argument, as an operand of a `temporal_formula`
+   application, or as the `formula` binding of the `event` of the `form` of a
+   `claim`/`probabilistic_claim` body ([FR-377](./FR-377-admit-the-probabilistic-claim-node-and-what-it-states.md)), and a `temporal`/`fairness` node only from a clause's fairness
    argument (FSpec FR-370 "Placement and profile fit"); a `reference` to one from
    any other term refuses. Each refuses `ill_typed` with cause
    `operator-ineligible`, located at the node that holds the misplaced
