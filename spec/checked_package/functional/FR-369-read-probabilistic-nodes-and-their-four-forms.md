@@ -108,12 +108,23 @@ failure with `invalid_package` and cause `invalid-value`, at the failing member:
   a `bounded_quantity` or a unit (`Quantity<u>`, `Duration`) type node, a `compound_unit` node (a
   quantity over a compound unit), or an
   `integer_range` node (`Int[lo, hi]`), the type nodes FSpec FR-322 gives an
-  integer or quantity type, or whose `expression` is not a `function` node
-  owned by the model operation member, that is a clause function of clause
-  kind `reward` (its `clause` binding is the text `reward`; a `precondition`
-  or `body` one is refused, FR-038-AC-572), that lists exactly the operation's
+  integer or quantity type, or, on a selected model's declaring node, whose
+  `expression` is not a `function` node owned by the model operation member,
+  that is a clause function of clause kind `reward` (its `clause` binding is
+  the text `reward`; a `precondition` or `body` one is refused,
+  FR-038-AC-572), that lists exactly the operation's
   parameters in declared order in its `parameters` binding, and whose own type
   is the `value_type`;
+- a `reward` whose `declaring` node is source-declared and whose `expression`
+  is not a `function` node that carries the declaring node's `SourceOwner`
+  (the same `identity`), the `declaration` `[<type>, <operation>, "reward",
+  <name>]` of FSpec FR-322 "Source-declared object types" item 5, `<type>`
+  the declaring node's own `declaration` segment, `<operation>` the reward's
+  `operation` text and `<name>` its `name` text, the clause kind `reward` in
+  its one `clause` binding, and the `value_type` as its own type. A source
+  operation has no domain document, so its parameter list is checked at the
+  identity-row join below; the walk of the next item admits the parameters
+  the function lists;
 - a `reward` whose `expression` reads anything but the operation's parameters
   and constants, as FSpec FR-405 states it (a reward "reads only the
   operation's parameters, random parameters included ... reads no state");
@@ -141,11 +152,30 @@ member the strict read would name:
 - a `random_parameter` whose `parameter` names no entry of the operation
   entry's `parameters`, or a support value whose literal kind or membership is
   not that of the entry's type node by the rules the strict read applies to a
-  selected parameter; a clock entry has no literal kind and refuses.
+  selected parameter; a clock entry has no literal kind and refuses;
+- a `reward` whose `expression` function's `parameters` binding does not list
+  exactly the entries of the operation entry's `parameters`, by name, in
+  declared order and with none left out, the check the strict read applies
+  to a selected operation's parameters; the refusal is at the reward's
+  `expression`. A clock entry is a parameter like a data entry: the reward
+  function lists it in its place, because FSpec FR-640 and FR-322 give the
+  function the operation's parameters in declared order with no exception
+  for `Clock`, and the walk admits the listed clock parameter as it admits
+  any listed parameter.
+
+The source reward's function is a declared node keyed by its `declaration` at
+ordinal 0 (FSpec FR-640 "Reward identity"), so it is never matched by a
+lowering ordinal, and the owner join admits it beside the operation's other
+source clause functions under the one-holder-per-qualified-name rule
+([FR-366](./FR-366-admit-source-operation-dispatch-tables.md)); a function
+whose declaration names another type, operation or reward, or whose `clause`
+is another kind, belongs to no reward and is refused at the `expression`
+that names it, as a selected reward's function owned by another operation is.
 
 The join SHALL charge one validation visit per operation reference joined, per
-operation entry and supertype edge read, and per support value checked, ahead
-of the work, so a bound too small for the join stops the read as incomplete.
+operation entry and supertype edge read, per support value checked and per
+reward function parameter compared, ahead of the work, so a bound too small
+for the join stops the read as incomplete.
 
 The strict V2 reader SHALL decide the read of a reward by following the
 dependencies of its function through functions, values and the expressions
@@ -269,8 +299,8 @@ QSL-2310.
 | FR-369-AC-22 | The join charges one validation visit for each delay quantity of a `discrete` list at the quantity's pointer: a budget exists that stops the read as incomplete at exactly the delay of each row. | Test |
 | FR-369-AC-23 | A `random_parameter` of a Boolean parameter with `boolean` support literals `true` and `false`, and one of a declared enumeration parameter with `enum` support literals typed at that declaration and naming its cases, are admitted and read back with their supports. | Test |
 | FR-369-AC-24 | A Boolean parameter's support value given as the text `"true"`, as the number `1`, as an integer literal or as an `enum` literal, and an enumeration parameter's support value that names an unknown case, differs from a case in letter case, is typed at another enumeration, is a Boolean literal or is a text literal refuse `invalid_package`/`invalid-value` at the value. A support value of a variant type with a payload case (a union), for its payload case and its nullary case alike, refuses `ill_typed`/`operator-ineligible` at the literal's `type`, by the reader's general literal check before the join. | Test |
-| FR-369-AC-25 | A package of a unit with no selected model that declares `object O { d: Clock; operation step() modifies self.d; }`, `object Other { n: Integer; operation poke(k: Int[1, 3]) modifies self.n; }` and `time O dense unit ms;`, holding a `delay_distribution` on `O::step`, a `discrete` one on `Other::poke` with times typed at `ms`, a `random_parameter` of `Other::poke`'s `k` with support `1`, `3`, and a `workload` on `O`, each operation reference's `declaring` (the workload's `model`) a source `model`/`object_type` node, is admitted by the strict read and by the identity-row join, and the typed read gives each declaration keyed by its node. | Test (TC-484) |
-| FR-369-AC-26 | Over the AC-25 package each refuses `invalid_package`/`invalid-value` at the member: at the strict read, a `declaring` that is a source `relation`/`population` node, and a delay whose source model has no `dense` time member; at the identity-row join, an `operation` `nudge` that `Other`'s row lists no entry for, a `parameter` `j` that `Other::poke`'s `parameters` lack, a support value `4` outside `Int[1, 3]`, and a workload that omits `O::step`. A budget one visit short of the join's charges stops the read as incomplete. | Test (TC-484) |
+| FR-369-AC-25 | A package of a unit with no selected model that declares `object O { d: Clock; operation step() modifies self.d; }`, `object Other { n: Integer; operation poke(k: Int[1, 3]) modifies self.n; }` and `time O dense unit ms;`, holding a `delay_distribution` on `O::step`, a `discrete` one on `Other::poke` with times typed at `ms`, a `random_parameter` of `Other::poke`'s `k` with support `1`, `3`, a `workload` on `O`, and a `reward` `cost` on `Other::poke` returning `k` with `value_type` the `Int[1, 3]` node, its `expression` the function carrying the unit's `SourceOwner`, `declaration` `["Other", "poke", "reward", "cost"]` at ordinal 0, `clause` `"reward"` and `parameters` `[k]`, each operation reference's `declaring` (the workload's `model`) a source `model`/`object_type` node, is admitted by the strict read and by the identity-row join, and the typed read gives each declaration keyed by its node, the reward with its name `cost`, its value type and that function. The package and that typed read are the checked-in golden pair of TC-484: the reward's function id must equal the declared-node id `{package, ["Other", "poke", "reward", "cost"], 0}` built independently of the reader, and the typed read must equal the golden one. | Test (TC-484) |
+| FR-369-AC-26 | Over the AC-25 package each refuses `invalid_package`/`invalid-value` at the member: at the strict read, a `declaring` that is a source `relation`/`population` node, and a delay whose source model has no `dense` time member; at the identity-row join, an `operation` `nudge` that `Other`'s row lists no entry for, a `parameter` `j` that `Other::poke`'s `parameters` lack, a support value `4` outside `Int[1, 3]`, and a workload that omits `O::step`. For the reward `cost`, each refuses `invalid_package`/`invalid-value` at the reward's `expression` (`/semantic_graph/nodes/{i}/body/members/4/value/target`): at the strict read, its function's `declaration` rewritten to `["Other", "poke", "reward", "load"]`, to `["Other", "step", "reward", "cost"]` and to `["O", "poke", "reward", "cost"]`, each with the function's `node_id` path and the reward's `expression` target rewritten to match (so FR-038-AC-21's `declaration-nominal-mismatch` does not fire first), its `clause` rewritten to `"precondition"`, and its owner replaced by the `SourceOwner` of a second lock-selected source (a second `lock.sources` row, the function's `declaration` source-map region naming it), which the owner join admits (FR-038-AC-155) and the probabilistic read refuses because it is not the declaring node's `SourceOwner`; at the identity-row join, its function's `parameters` listing a parameter `j` (read by the body) in place of `k`, and listing none with a constant body `1`. Over the AC-25 package with `Other::poke` declared `poke(x: Clock, k: Int[1, 3])` (its entry's `parameters` the clock entry `x` then the data entry `k`, `clock_parameters` `["x"]`), the reward function listing `x` then `k` is admitted, and one listing `k` alone refuses at the reward's `expression` at the identity-row join. The reward's `operation` rewritten to `nudge` refuses at `operation` at the identity-row join, as for the other forms. A budget one visit short of the join's charges, the reward's parameter comparison included, stops the read as incomplete. | Test (TC-484) |
 
 ## Dependencies
 
