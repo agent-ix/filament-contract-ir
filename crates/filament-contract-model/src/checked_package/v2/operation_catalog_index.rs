@@ -9,8 +9,8 @@ use super::native_join_budget::NativeJoinBudget;
 use super::operation_catalog::{CatalogReadError, OperationCatalogEntry};
 use super::{CheckedArtifactRef, LawRole, OperationModeKind};
 use quire_canonical::Node;
-use serde::de::{Deserializer, MapAccess, Visitor};
 use serde::Deserialize;
+use serde::de::{Deserializer, MapAccess, Visitor};
 use std::borrow::Borrow;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -547,7 +547,11 @@ impl<'d> CatalogValue<'d> for super::operation_catalog::OperationConstraint {
         reader: &mut CatalogDecoder<'_, 'd>,
     ) -> CatalogResultOf<'d, Self> {
         let kind: super::OperationConstraintKind = reader.field(node, "kind")?;
-        let (operands, family) = if kind == super::OperationConstraintKind::QuantifierDomainOnly {
+        let (operands, family) = if matches!(
+            kind,
+            super::OperationConstraintKind::QuantifierDomainOnly
+                | super::OperationConstraintKind::PlaceHasId
+        ) {
             reader.closed(node, &["kind"], &[])?;
             (Vec::new(), None)
         } else {
@@ -738,13 +742,14 @@ mod tests {
         let constraint_kinds = catalog["constraint_kinds"]
             .as_array_mut()
             .expect("constraint vocabulary");
-        for new_word in ["place_slot_terms", "quantifier_domain_only"] {
+        for new_word in ["place_slot_terms", "place_has_id", "quantifier_domain_only"] {
             if !constraint_kinds.iter().any(|value| value == new_word) {
                 constraint_kinds.push(serde_json::json!(new_word));
             }
         }
         constraint_kinds.sort_by(|left, right| left.as_str().cmp(&right.as_str()));
         let operations = catalog["operations"].as_array_mut().expect("operations");
+        operations.retain(|operation| operation["identity"] != "filament.op.option.slots");
         operations.push(serde_json::json!({
             "identity": "filament.op.option.slots",
             "operator": "slots",
@@ -756,6 +761,7 @@ mod tests {
             "member": null,
             "constraints": [
                 {"kind": "place_slot_terms", "operands": [0]},
+                {"kind": "place_has_id"},
                 {"kind": "quantifier_domain_only"}
             ],
             "leaves": null
@@ -768,6 +774,7 @@ mod tests {
             .entry("filament.op.option.slots")
             .expect("slot-domain entry");
         assert!(entry.constraints[1].operands.is_empty());
+        assert!(entry.constraints[2].operands.is_empty());
 
         let mut with_operands = catalog.clone();
         let consumer_constraint = with_operands["operations"]
@@ -776,7 +783,7 @@ mod tests {
             .iter_mut()
             .find(|operation| operation["identity"] == "filament.op.option.slots")
             .and_then(|operation| operation["constraints"].as_array_mut())
-            .and_then(|constraints| constraints.get_mut(1))
+            .and_then(|constraints| constraints.get_mut(2))
             .expect("consumer constraint");
         consumer_constraint["operands"] = serde_json::json!([]);
         let malformed = serde_json::to_string(&with_operands).expect("catalog encodes");

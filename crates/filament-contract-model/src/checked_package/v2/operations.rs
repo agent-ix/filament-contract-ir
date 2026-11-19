@@ -11,13 +11,13 @@
 use super::dependency_references::{DependencyReferences, Referrer, SuppliedDependencies};
 use super::graph_storage::{GraphIndex, SortedTable};
 use super::model_members::{
-    units, Budget, CollectionKind, DeclarationForm, EndSelectionError, MemberKind, MemberType,
-    ModelFailure, ModelOwners, ModelRefusal, Resolved, SelectedEnds,
+    Budget, CollectionKind, DeclarationForm, EndSelectionError, MemberKind, MemberType,
+    ModelFailure, ModelOwners, ModelRefusal, Resolved, SelectedEnds, units,
 };
 use super::operation_catalog::{
     CatalogLeafSource, CatalogResult, FamilyClass, OperationCatalog, OperationCatalogEntry,
 };
-use super::structural::{typed_union_type_body, typed_union_value_body, UnionMember};
+use super::structural::{UnionMember, typed_union_type_body, typed_union_value_body};
 use super::temporal::member_is_well_formed_node;
 use super::typed_terms::{
     CheckedApplicationOperationRecord, CheckedFieldReadForm, CheckedOperationConstraint,
@@ -34,8 +34,8 @@ use super::{
     RawSemanticNodeV2 as CheckedSemanticNodeV2, RelationForm, ScalarTypeForm, StateForm,
     TemporalForm, ValueForm, WorkMeter,
 };
-use crate::checked_package::common::node_pointer;
 use crate::checked_package::common::ValidationFailure;
+use crate::checked_package::common::node_pointer;
 use crate::checked_package::selected_population::{
     is_model_population, least_type_occurrence, population_maximum, population_object_type_typed,
 };
@@ -1554,8 +1554,11 @@ fn check_sequence_bounds(
             upper.parse::<Integer>().ok()?,
         ))
     };
-    let [lower @ CheckedTerm::Reference { .. }, upper @ CheckedTerm::Reference { .. }, CheckedTerm::Binding { name, value }] =
-        arguments.as_slice()
+    let [
+        lower @ CheckedTerm::Reference { .. },
+        upper @ CheckedTerm::Reference { .. },
+        CheckedTerm::Binding { name, value },
+    ] = arguments.as_slice()
     else {
         return Ok(Some(refuse()));
     };
@@ -2062,8 +2065,10 @@ fn operation_defect(
         )));
     }
     let place_presence = check_place_presence(application, &operation, graph, owners, meter)?;
-    let place_slot_domain = check_place_slot_domain(application, &operation, graph, meter)?;
-    if !place_presence && !place_slot_domain {
+    let place_reference =
+        check_place_reference(application, &operation, graph, owners, catalog, meter)?;
+    let place_slot_domain = check_place_slot_domain(application, &operation, graph, owners, meter)?;
+    if !place_presence && !place_slot_domain && !place_reference {
         if let Some(failure) = check_operands(
             application,
             &operation,
@@ -2079,6 +2084,9 @@ fn operation_defect(
         )? {
             return Ok(Some(failure));
         }
+    }
+    if let Some(failure) = check_clock_reference_sum(application, &operation, graph) {
+        return Ok(Some(failure));
     }
     if let Some(failure) =
         check_ieee_fma_result(application, &operation, entry, graph, owners, catalog)
@@ -2238,6 +2246,31 @@ fn operation_defect(
     Ok(leaf_defect)
 }
 
+#[ix_trace_rs::string_edge]
+fn check_clock_reference_sum(
+    application: Application<'_>,
+    operation: &OperationWire,
+    graph: &Graph<'_>,
+) -> Option<ValidationFailure> {
+    if !operation
+        .identity
+        .starts_with("filament.op.collection.sum.")
+        || admitted_arguments(application, graph)
+            .and_then(|arguments| arguments.get(1))
+            .and_then(|binder| binder_bound(binder, operation, graph))
+            .and_then(|type_id| graph.index.get(type_id).copied())
+            .and_then(|position| graph.kinds.get(position))
+            != Some(&CheckedNodeKind::ScalarType(ScalarTypeForm::ClockReference))
+    {
+        return None;
+    }
+    Some(application.refuse(
+        CheckedPackageRefusalCode::IllTyped,
+        application.body(&["arguments"]).index(1),
+        CheckedPackageRefusalCause::OperatorIneligible,
+    ))
+}
+
 /// Resolves an argument term's family: `reference` resolves its target node
 /// directly (a `population` declaration, a `scalar_type`/`composite_type`
 /// node, or an `expression`/`reference` node — the catalog's own `reference`
@@ -2332,6 +2365,7 @@ fn operand_family(kind: CheckedNodeKind) -> Option<&'static str> {
             | ScalarTypeForm::JsonObject
             | ScalarTypeForm::Uuid
             | ScalarTypeForm::Timestamp
+            | ScalarTypeForm::ClockReference
             | ScalarTypeForm::Enum),
         ) => Some(form.as_wire()),
         K::ScalarType(
@@ -2386,7 +2420,8 @@ fn operand_family(kind: CheckedNodeKind) -> Option<&'static str> {
             | ExpressionForm::PresenceRead
             | ExpressionForm::ValueRead
             | ExpressionForm::Deref
-            | ExpressionForm::Reachability,
+            | ExpressionForm::Reachability
+            | ExpressionForm::PlaceReference,
         ) => None,
         K::BoundedDomain(
             BoundedDomainForm::IntegerRange
@@ -2509,7 +2544,8 @@ pub(super) fn is_type_shaped(kind: CheckedNodeKind) -> bool {
             | ScalarTypeForm::Enum
             | ScalarTypeForm::CompoundUnit
             | ScalarTypeForm::CarriedQuantity
-            | ScalarTypeForm::BoundedQuantity,
+            | ScalarTypeForm::BoundedQuantity
+            | ScalarTypeForm::ClockReference,
         ) => true,
         K::CompositeType(
             CompositeTypeForm::Option
@@ -2560,7 +2596,8 @@ pub(super) fn is_type_shaped(kind: CheckedNodeKind) -> bool {
             | ExpressionForm::PresenceRead
             | ExpressionForm::ValueRead
             | ExpressionForm::Deref
-            | ExpressionForm::Reachability,
+            | ExpressionForm::Reachability
+            | ExpressionForm::PlaceReference,
         ) => false,
         K::Function(
             FunctionForm::PureFunction | FunctionForm::Predicate | FunctionForm::RecursiveFunction,
@@ -3172,6 +3209,8 @@ fn check_operands(
             | OperationConstraintKind::PromotesExact
             | OperationConstraintKind::UniformRest
             | OperationConstraintKind::PlaceSlotTerms
+            | OperationConstraintKind::PlaceIdentityTerms
+            | OperationConstraintKind::PlaceHasId
             | OperationConstraintKind::QuantifierDomainOnly => {}
             // FSpec FR-440: only `filament.op.control.case` catalogues this. A
             // constraint that does not hold, or that names anything but one
@@ -4640,6 +4679,7 @@ fn check_place_presence(
     let Some(arguments) = admitted_arguments(application, graph) else {
         return Ok(false);
     };
+    let arguments_at = application.read_node().key("body").key("arguments");
     let first = arguments.first();
     let place = first
         .and_then(|argument| match argument {
@@ -4711,9 +4751,27 @@ fn check_place_presence(
             meter,
         ));
     }
-    let owner_type = presence_value_type(&arguments[1], graph)
-        .and_then(|type_id| reference_target(type_id, graph).or(Some(type_id)));
-    if !same_key(owner_type, model, meter)? {
+    let owner_type = presence_value_type(&arguments[1], graph);
+    let owner_family = owner_type
+        .and_then(|type_id| resolve_family(type_id, graph.nodes, graph.kinds, graph.index));
+    if owner_family == Some("object") {
+        return Err(application.refuse_read(
+            CheckedPackageRefusalCode::IllTyped,
+            arguments_at.index(1),
+            CheckedPackageRefusalCause::OperatorIneligible,
+            meter,
+        ));
+    }
+    if owner_family != Some("reference") {
+        return Err(application.refuse_read(
+            CheckedPackageRefusalCode::IllTyped,
+            arguments_at.index(1),
+            CheckedPackageRefusalCause::TypeMismatch,
+            meter,
+        ));
+    }
+    let owner_type = owner_type.and_then(|type_id| reference_target(type_id, graph));
+    if !reference_owner_conforms(owner_type, model, graph, owners, meter)? {
         return Err(application.refuse_read(
             CheckedPackageRefusalCode::IllTyped,
             application
@@ -4744,6 +4802,201 @@ fn check_place_presence(
     Ok(true)
 }
 
+/// FR-829: a clock-place reference carries its structural place operand, a
+/// directly typed reference owner, and one selector for each slot step.
+#[ix_trace_rs::string_edge]
+fn check_place_reference(
+    application: Application<'_>,
+    operation: &OperationWire,
+    graph: &Graph<'_>,
+    owners: &ModelOwners<'_>,
+    catalog: &OperationCatalog,
+    meter: &mut WorkMeter,
+) -> Result<bool, ValidationFailure> {
+    if operation.identity.as_ref() != "filament.op.clock_reference.ref" {
+        return Ok(false);
+    }
+    let arguments_at = application.read_node().key("body").key("arguments");
+    let refuse = |meter: &mut WorkMeter, path, cause| {
+        application.refuse_read(CheckedPackageRefusalCode::IllTyped, path, cause, meter)
+    };
+    if application.node.semantic_form.as_ref() != "place_reference" {
+        return Err(refuse(
+            meter,
+            application.read_node().key("semantic_form"),
+            CheckedPackageRefusalCause::OperatorIneligible,
+        ));
+    }
+    let Some(arguments) = admitted_arguments(application, graph) else {
+        return Ok(false);
+    };
+    let place = arguments
+        .first()
+        .and_then(|argument| match argument {
+            CheckedTerm::Reference { target } => graph.index.get(target).copied(),
+            _ => None,
+        })
+        .filter(|&position| {
+            graph.kinds.get(position)
+                == Some(&CheckedNodeKind::TimedModel(super::TimedModelForm::Place))
+        });
+    let Some(place) = place else {
+        return Err(refuse(
+            meter,
+            arguments_at.index(0),
+            CheckedPackageRefusalCause::OperatorIneligible,
+        ));
+    };
+    let Some(place_body) = graph.terms.get(place).and_then(Option::as_ref) else {
+        return Ok(false);
+    };
+    let Some((model, selectors)) = super::timed_model::place_template(place_body) else {
+        return Ok(false);
+    };
+    work_at_path(
+        meter,
+        &OperationPath::Read(arguments_at),
+        units(selectors.len()),
+    )?;
+    if arguments.len() != selectors.len() + 2 {
+        return Err(refuse(
+            meter,
+            arguments_at,
+            CheckedPackageRefusalCause::OperatorIneligible,
+        ));
+    }
+    if place_path_has_map_slot(place_body) {
+        return Err(refuse(
+            meter,
+            arguments_at.index(0),
+            CheckedPackageRefusalCause::TypeMismatch,
+        ));
+    }
+    let owner = &arguments[1];
+    let owner_family = argument_family(
+        owner,
+        graph.nodes,
+        graph.kinds,
+        graph.index,
+        None,
+        catalog,
+        Some(owners),
+    );
+    if owner_family == Some("object") {
+        return Err(refuse(
+            meter,
+            arguments_at.index(1),
+            CheckedPackageRefusalCause::OperatorIneligible,
+        ));
+    }
+    if owner_family != Some("reference") {
+        return Err(refuse(
+            meter,
+            arguments_at.index(1),
+            CheckedPackageRefusalCause::TypeMismatch,
+        ));
+    }
+    let owner_type =
+        presence_value_type(owner, graph).and_then(|type_id| reference_target(type_id, graph));
+    if !reference_owner_conforms(owner_type, model, graph, owners, meter)? {
+        return Err(refuse(
+            meter,
+            arguments_at.index(1),
+            CheckedPackageRefusalCause::TypeMismatch,
+        ));
+    }
+    for (offset, selector) in selectors.iter().enumerate() {
+        if !same_key(
+            presence_value_type(&arguments[offset + 2], graph),
+            selector,
+            meter,
+        )? {
+            return Err(refuse(
+                meter,
+                arguments_at.index(offset + 2),
+                CheckedPackageRefusalCause::TypeMismatch,
+            ));
+        }
+    }
+    let result_type = graph
+        .terms
+        .get(application.position)
+        .and_then(Option::as_ref)
+        .and_then(|term| match term {
+            CheckedTerm::Application { result_type, .. } => Some(result_type),
+            _ => None,
+        });
+    if result_type
+        .and_then(|id| graph.index.get(id).copied())
+        .and_then(|position| graph.kinds.get(position))
+        != Some(&CheckedNodeKind::ScalarType(ScalarTypeForm::ClockReference))
+        || !same_key(result_type, &application.node.semantic_type, meter)?
+    {
+        return Err(refuse(
+            meter,
+            application.read_node().key("body").key("result_type"),
+            CheckedPackageRefusalCause::TypeMismatch,
+        ));
+    }
+    Ok(true)
+}
+
+#[ix_trace_rs::string_edge]
+fn place_path_has_map_slot(place: &CheckedTerm) -> bool {
+    operation_bound(place, 1)
+        .map(operation_typed_members)
+        .is_some_and(|steps| {
+            steps.iter().any(|step| {
+                operation_spelling(operation_bound(step, 0)) == Some("slot")
+                    && operation_spelling(operation_bound(step, 1)) == Some("map")
+            })
+        })
+}
+
+/// Whether an owner's `Reference<T>` points to the place model or to a
+/// selected subtype of that model.
+fn reference_owner_conforms(
+    actual: Option<&CheckedNodeId>,
+    expected: &CheckedNodeId,
+    graph: &Graph<'_>,
+    owners: &ModelOwners<'_>,
+    meter: &mut WorkMeter,
+) -> Result<bool, ValidationFailure> {
+    let Some(actual) = actual else {
+        return Ok(false);
+    };
+    if same_key(Some(actual), expected, meter)? {
+        return Ok(true);
+    }
+    let (Some(&actual_position), Some(&expected_position)) =
+        (graph.index.get(actual), graph.index.get(expected))
+    else {
+        return Ok(false);
+    };
+    let actual_node = &graph.nodes[actual_position];
+    let expected_node = &graph.nodes[expected_position];
+    if !owners.is_model_declaration_node(actual_node, graph.kinds[actual_position].tag())
+        || !owners.is_model_declaration_node(expected_node, graph.kinds[expected_position].tag())
+    {
+        return Ok(false);
+    }
+    let (Ok(actual_owner), Ok(expected_owner)) =
+        (owners.recover(actual_node), owners.recover(expected_node))
+    else {
+        return Ok(false);
+    };
+    if !std::ptr::eq(actual_owner.package, expected_owner.package) {
+        return Ok(false);
+    }
+    if actual_owner.object_type().is_none() || expected_owner.object_type().is_none() {
+        return Ok(false);
+    }
+    let mut budget = Budget::new(meter, actual_owner.package.root, actual_owner.package.bytes);
+    actual_owner
+        .package
+        .conforms_to(actual_owner.node, expected_owner.node, &mut budget)
+}
+
 /// FR-772: admit the derived slot set only as a collection-quantifier domain.
 /// The clock place is a structural operand, followed by its owner and every
 /// selector except the final slot selector.
@@ -4752,6 +5005,7 @@ fn check_place_slot_domain(
     application: Application<'_>,
     operation: &OperationWire,
     graph: &Graph<'_>,
+    owners: &ModelOwners<'_>,
     meter: &mut WorkMeter,
 ) -> Result<bool, ValidationFailure> {
     if operation.identity.as_ref() != "filament.op.option.slots" {
@@ -4837,9 +5091,27 @@ fn check_place_slot_domain(
             application.read_node().key("body").key("result_type"),
         ));
     }
-    let owner_type = presence_value_type(&arguments[1], graph)
-        .and_then(|type_id| reference_target(type_id, graph).or(Some(type_id)));
-    if !same_key(owner_type, model, meter)? {
+    let raw_owner_type = presence_value_type(&arguments[1], graph);
+    let owner_family = raw_owner_type
+        .and_then(|type_id| resolve_family(type_id, graph.nodes, graph.kinds, graph.index));
+    if owner_family == Some("object") {
+        return Err(application.refuse_read(
+            CheckedPackageRefusalCode::IllTyped,
+            arguments_at.index(1),
+            CheckedPackageRefusalCause::OperatorIneligible,
+            meter,
+        ));
+    }
+    if owner_family != Some("reference") {
+        return Err(application.refuse_read(
+            CheckedPackageRefusalCode::IllTyped,
+            arguments_at.index(1),
+            CheckedPackageRefusalCause::TypeMismatch,
+            meter,
+        ));
+    }
+    let owner_type = raw_owner_type.and_then(|type_id| reference_target(type_id, graph));
+    if !reference_owner_conforms(owner_type, model, graph, owners, meter)? {
         return Err(application.refuse_read(
             CheckedPackageRefusalCode::IllTyped,
             arguments_at.index(1),
@@ -6795,20 +7067,20 @@ fn check_leaf_count(
 
 #[cfg(test)]
 mod tests {
-    use super::super::operation_catalog::operation_catalog;
     use super::super::CheckedSelectionRole;
+    use super::super::operation_catalog::operation_catalog;
     use super::{
-        is_type_shaped, operand_family, operation_defect, Application, ApplicationOperator,
-        CheckedNodeId, CheckedNodeKind, CheckedNodeTag, CheckedPackageLockV2,
-        CheckedPackageRefusalCause, CheckedPackageRefusalCode, CheckedSemanticNodeV2,
-        DependencyReferences, ExpressionForm, Graph, LawRole, ModelOwners, StructuralTypes,
-        SuppliedDependencies, TemporalForm, ValidationFailure, WorkMeter,
+        Application, ApplicationOperator, CheckedNodeId, CheckedNodeKind, CheckedNodeTag,
+        CheckedPackageLockV2, CheckedPackageRefusalCause, CheckedPackageRefusalCode,
+        CheckedSemanticNodeV2, DependencyReferences, ExpressionForm, Graph, LawRole, ModelOwners,
+        StructuralTypes, SuppliedDependencies, TemporalForm, ValidationFailure, WorkMeter,
+        is_type_shaped, operand_family, operation_defect,
     };
     use crate::checked_package::shared::{
         CheckedArtifactRef, CheckedPackageLimit, CheckedSelection, JsonPointer,
     };
     use ix_trace_rs::trace;
-    use serde_json::{json, Value};
+    use serde_json::{Value, json};
 
     #[trace("TC-472", "FR-038-AC-511")]
     #[test]
@@ -7080,7 +7352,7 @@ mod tests {
         u64,
     ) {
         use crate::checked_package::v2::model_members::{
-            declaration_id, tests as model_tests, DeclarationForm, MemberType,
+            DeclarationForm, MemberType, declaration_id, tests as model_tests,
         };
         let destination_name = if relation["targetEnd"]["role"].as_str() == Some(role) {
             relation["sourceEnd"]["type"].as_str()
@@ -7347,7 +7619,7 @@ mod tests {
     #[test]
     fn tc_048_relationship_population_caller_uses_retained_kind() {
         use crate::checked_package::v2::model_members::{
-            declaration_id, tests as model_tests, DeclarationForm, MemberType,
+            DeclarationForm, MemberType, declaration_id, tests as model_tests,
         };
         use crate::checked_package::v2::{BoundedDomainForm, CompositeTypeForm};
         let mut relation = model_tests::relationship();
@@ -7488,7 +7760,7 @@ mod tests {
     #[test]
     fn tc_048_relationship_end_binding_resolves_roles_before_navigation_and_reachability() {
         use crate::checked_package::v2::model_members::{
-            declaration_id, tests::relationship, DeclarationForm, MemberType,
+            DeclarationForm, MemberType, declaration_id, tests::relationship,
         };
         let widget = declaration_id(
             "acme/orders",
@@ -8308,7 +8580,7 @@ mod tests {
     #[test]
     fn selected_model_union_float_payloads_have_scalar_node_keys() {
         use crate::checked_package::v2::model_members::{
-            declaration_id, tests as model_tests, DeclarationForm, MemberType,
+            DeclarationForm, MemberType, declaration_id, tests as model_tests,
         };
         const VARIANT: &str = "ix://acme/orders/Measurements";
         const UNIT: &str = "ix://filament/unit/acme/orders/ms";
@@ -13182,9 +13454,9 @@ mod tests {
         let operation: super::OperationWire =
             serde_json::from_value(nodes[0].body.to_value()["operation"].clone())
                 .expect("quantifier operation");
-        let arguments =
-            vec![super::CheckedTerm::decode_admitted(&reference_to('2'))
-                .expect("slot-domain reference")];
+        let arguments = vec![
+            super::CheckedTerm::decode_admitted(&reference_to('2')).expect("slot-domain reference"),
+        ];
         let result = super::check_quantifier_domain_only_use(
             super::Application {
                 node: &nodes[0],
@@ -13295,6 +13567,7 @@ mod tests {
             },
             &operation,
             &graph,
+            &ModelOwners::default(),
             &mut WorkMeter::new(100),
         ) else {
             panic!("slot domains require the presence_read semantic form");
@@ -13304,10 +13577,12 @@ mod tests {
             refusal.cause,
             Some(CheckedPackageRefusalCause::OperatorIneligible)
         );
-        assert!(refusal.loci[0]
-            .path
-            .as_ref()
-            .is_some_and(|path| path.to_string().ends_with("/semantic_form")));
+        assert!(
+            refusal.loci[0]
+                .path
+                .as_ref()
+                .is_some_and(|path| path.to_string().ends_with("/semantic_form"))
+        );
     }
 
     #[trace("TC-1862", "FR-772-AC-1", "FR-772-AC-2")]
@@ -13444,6 +13719,7 @@ mod tests {
                 },
                 &operation,
                 &graph,
+                &ModelOwners::default(),
                 &mut WorkMeter::new(1_000),
             );
             nodes.clear();
@@ -13458,6 +13734,436 @@ mod tests {
         assert_eq!(
             refusal.cause,
             Some(CheckedPackageRefusalCause::OperatorIneligible)
+        );
+    }
+
+    fn clock_reference_graph(
+        place_map: bool,
+        owner_kind: &str,
+        wrong_result: bool,
+        argument_count: usize,
+    ) -> Result<bool, ValidationFailure> {
+        let model_id = node_id('c');
+        let other_model_id = node_id('i');
+        let reference_type_id = node_id('e');
+        let clock_reference_id = node_id('h');
+        let integer_id = node_id('g');
+        let place_path = if place_map {
+            json!([{
+                "term":"aggregate", "members":[
+                    {"term":"binding", "name":"kind", "value":{"term":"literal", "type":integer_id, "value_kind":"text", "value":"slot"}},
+                    {"term":"binding", "name":"collection", "value":{"term":"literal", "type":integer_id, "value_kind":"text", "value":"map"}},
+                    {"term":"binding", "name":"selector", "value":{"term":"reference", "target":integer_id}},
+                    {"term":"binding", "name":"minimum", "value":{"term":"literal", "type":integer_id, "value_kind":"integer", "value":0}},
+                    {"term":"binding", "name":"maximum", "value":{"term":"literal", "type":integer_id, "value_kind":"integer", "value":2}}
+                ]
+            }])
+        } else {
+            json!([])
+        };
+        let place_body = json!({"term":"aggregate", "members":[
+            {"term":"binding", "name":"model", "value":{"term":"reference", "target":model_id}},
+            {"term":"binding", "name":"path", "value":{"term":"aggregate", "members":place_path}},
+            {"term":"binding", "name":"resolved_path", "value":{"term":"aggregate", "members":[]}}
+        ]});
+        let mut args = vec![reference_to('b'), reference_to('f')];
+        if place_map {
+            args.push(
+                json!({"term":"literal", "type":integer_id, "value_kind":"integer", "value":1}),
+            );
+        }
+        args.truncate(argument_count);
+        if owner_kind == "not_place" {
+            args[0] = reference_to('g');
+        }
+        let owner = match owner_kind {
+            "object" => {
+                json!({
+                    "term":"application", "operator":"deref", "arguments":[reference_to('f')],
+                    "operation":plain_operation("filament.op.model.deref"),
+                    "result_type":model_id
+                })
+            }
+            "integer" => json!({"term":"reference", "target":integer_id}),
+            "wrong_reference" => reference_to('k'),
+            _ => reference_to('f'),
+        };
+        if args.len() > 1 {
+            args[1] = owner;
+        }
+        let mut application = custom_application_node(
+            "place_ref",
+            plain_operation("filament.op.clock_reference.ref"),
+            args,
+        );
+        application.semantic_form = "place_reference".into();
+        application.semantic_type = clock_reference_id.clone();
+        let mut body = application.body.to_value();
+        body["result_type"] = if wrong_result {
+            json!(reference_type_id)
+        } else {
+            json!(clock_reference_id)
+        };
+        application.body = super::super::CheckedJson::from_serializable(&body)
+            .expect("clock-reference application body");
+
+        let nodes = vec![
+            application,
+            graph_node('b', "timed_model", "place", &model_id, place_body),
+            graph_node(
+                'c',
+                "model",
+                "object_type",
+                &model_id,
+                json!({"term":"aggregate", "members":[]}),
+            ),
+            graph_node(
+                'i',
+                "model",
+                "object_type",
+                &other_model_id,
+                json!({"term":"aggregate", "members":[]}),
+            ),
+            graph_node(
+                'e',
+                "composite_type",
+                "reference",
+                &reference_type_id,
+                json!({"term":"aggregate", "members":[{"term":"reference", "target":model_id}]}),
+            ),
+            graph_node(
+                'f',
+                "value",
+                "parameter",
+                &reference_type_id,
+                json!({"term":"aggregate", "members":[]}),
+            ),
+            graph_node(
+                'g',
+                "scalar_type",
+                "integer",
+                &integer_id,
+                json!({"term":"aggregate", "members":[]}),
+            ),
+            graph_node(
+                'h',
+                "scalar_type",
+                "clock_reference",
+                &clock_reference_id,
+                json!({"term":"aggregate", "members":[]}),
+            ),
+            graph_node(
+                'j',
+                "composite_type",
+                "reference",
+                &node_id('j'),
+                json!({"term":"aggregate", "members":[{"term":"reference", "target":other_model_id}]}),
+            ),
+            graph_node(
+                'k',
+                "value",
+                "parameter",
+                &node_id('j'),
+                json!({"term":"aggregate", "members":[]}),
+            ),
+        ];
+        let kinds = vec![
+            CheckedNodeKind::Expression(ExpressionForm::PlaceReference),
+            CheckedNodeKind::TimedModel(super::super::TimedModelForm::Place),
+            CheckedNodeKind::Model(super::super::ModelForm::ObjectType),
+            CheckedNodeKind::Model(super::super::ModelForm::ObjectType),
+            CheckedNodeKind::CompositeType(super::super::CompositeTypeForm::Reference),
+            CheckedNodeKind::Value(super::super::ValueForm::Parameter),
+            CheckedNodeKind::ScalarType(super::super::ScalarTypeForm::Integer),
+            CheckedNodeKind::ScalarType(super::super::ScalarTypeForm::ClockReference),
+            CheckedNodeKind::CompositeType(super::super::CompositeTypeForm::Reference),
+            CheckedNodeKind::Value(super::super::ValueForm::Parameter),
+        ];
+        let terms = decoded_terms(&nodes);
+        let index: GraphIndex<'_> = nodes
+            .iter()
+            .enumerate()
+            .map(|(position, node)| (&node.node_id, position))
+            .collect();
+        let graph = Graph {
+            nodes: &nodes,
+            kinds: &kinds,
+            terms: &terms,
+            index: &index,
+            structural_keys: &[],
+        };
+        let operation: super::OperationWire =
+            serde_json::from_value(nodes[0].body.to_value()["operation"].clone())
+                .expect("clock-reference operation");
+        super::check_place_reference(
+            Application {
+                node: &nodes[0],
+                position: 0,
+            },
+            &operation,
+            &graph,
+            &ModelOwners::default(),
+            &operation_catalog(),
+            &mut WorkMeter::new(10_000),
+        )
+    }
+
+    #[trace("FR-829-AC-1", "FR-829-AC-5")]
+    #[test]
+    fn fr829_clock_reference_admits_a_typed_place_id() {
+        assert_eq!(
+            super::CheckedNodeKind::decode(
+                super::super::CheckedNodeTag::ScalarType,
+                "clock_reference",
+            ),
+            Some(CheckedNodeKind::ScalarType(
+                super::super::ScalarTypeForm::ClockReference
+            ))
+        );
+        let catalog = operation_catalog();
+        assert!(catalog.family_fits("clock_reference", "any_value"));
+        for identity in [
+            "filament.op.clock_reference.eq",
+            "filament.op.clock_reference.ne",
+        ] {
+            let entry = catalog
+                .entry(identity)
+                .expect("clock-reference equality entry");
+            assert_eq!(entry.operands.len(), 2);
+            assert!(
+                entry
+                    .operands
+                    .iter()
+                    .all(|family| &**family == "clock_reference")
+            );
+        }
+        assert_eq!(
+            clock_reference_graph(false, "reference", false, 2),
+            Ok(true)
+        );
+    }
+
+    #[trace("FR-829-AC-6")]
+    #[test]
+    fn fr829_clock_reference_refuses_malformed_places_and_owners_at_their_loci() {
+        let expected = [
+            (
+                clock_reference_graph(false, "reference", false, 1),
+                "/body/arguments",
+                CheckedPackageRefusalCause::OperatorIneligible,
+            ),
+            (
+                clock_reference_graph(false, "not_place", false, 2),
+                "/body/arguments/0",
+                CheckedPackageRefusalCause::OperatorIneligible,
+            ),
+            (
+                clock_reference_graph(false, "integer", false, 2),
+                "/body/arguments/1",
+                CheckedPackageRefusalCause::TypeMismatch,
+            ),
+            (
+                clock_reference_graph(false, "object", false, 2),
+                "/body/arguments/1",
+                CheckedPackageRefusalCause::OperatorIneligible,
+            ),
+            (
+                clock_reference_graph(false, "wrong_reference", false, 2),
+                "/body/arguments/1",
+                CheckedPackageRefusalCause::TypeMismatch,
+            ),
+            (
+                clock_reference_graph(true, "reference", false, 3),
+                "/body/arguments/0",
+                CheckedPackageRefusalCause::TypeMismatch,
+            ),
+            (
+                clock_reference_graph(false, "reference", true, 2),
+                "/body/result_type",
+                CheckedPackageRefusalCause::TypeMismatch,
+            ),
+        ];
+        for (result, path, cause) in expected {
+            let Err(ValidationFailure::Refused(refusal)) = result else {
+                panic!("expected refusal at {path}, got {result:?}");
+            };
+            assert_eq!(refusal.code, CheckedPackageRefusalCode::IllTyped);
+            assert_eq!(refusal.cause, Some(cause));
+            assert!(
+                refusal.loci[0]
+                    .path
+                    .as_ref()
+                    .is_some_and(|actual| actual.to_string().ends_with(path))
+            );
+        }
+    }
+
+    #[trace("FR-829-AC-6")]
+    #[test]
+    fn fr829_clock_reference_is_not_an_object_reference_or_ordered_summand() {
+        let clock_reference_id = node_id('h');
+        let boolean_id = node_id('j');
+        let child = json!({
+            "term":"application", "operator":"place_ref", "arguments":[],
+            "operation":plain_operation("filament.op.clock_reference.ref"),
+            "result_type":clock_reference_id
+        });
+        for (identity, expected_pointer) in [
+            ("filament.op.reference.eq", "/body/arguments/0"),
+            ("filament.op.integer.lt", "/body/arguments/0"),
+        ] {
+            let mut application = custom_application_node(
+                "binary",
+                plain_operation(identity),
+                vec![child.clone(), child.clone()],
+            );
+            let mut body = application.body.to_value();
+            body["result_type"] = json!(boolean_id);
+            application.body = super::super::CheckedJson::from_serializable(&body)
+                .expect("binary application body");
+            let nodes = vec![
+                application,
+                graph_node(
+                    'h',
+                    "scalar_type",
+                    "clock_reference",
+                    &clock_reference_id,
+                    json!({"term":"aggregate", "members":[]}),
+                ),
+                graph_node(
+                    'j',
+                    "scalar_type",
+                    "boolean",
+                    &boolean_id,
+                    json!({"term":"aggregate", "members":[]}),
+                ),
+            ];
+            let kinds = vec![
+                CheckedNodeKind::Expression(ExpressionForm::Binary),
+                CheckedNodeKind::ScalarType(super::super::ScalarTypeForm::ClockReference),
+                CheckedNodeKind::ScalarType(super::super::ScalarTypeForm::Boolean),
+            ];
+            let terms = decoded_terms(&nodes);
+            let index: GraphIndex<'_> = nodes
+                .iter()
+                .enumerate()
+                .map(|(position, node)| (&node.node_id, position))
+                .collect();
+            let graph = Graph {
+                nodes: &nodes,
+                kinds: &kinds,
+                terms: &terms,
+                index: &index,
+                structural_keys: &[],
+            };
+            let operation: super::OperationWire =
+                serde_json::from_value(nodes[0].body.to_value()["operation"].clone())
+                    .expect("binary operation");
+            let catalog = operation_catalog();
+            let entry = catalog.entry(identity).expect("catalogued operation");
+            let mut meter = WorkMeter::new(10_000);
+            let mut structural = StructuralTypes::default();
+            let ValidationFailure::Refused(refusal) = super::check_operands(
+                Application {
+                    node: &nodes[0],
+                    position: 0,
+                },
+                &operation,
+                entry,
+                &graph,
+                &ModelOwners::default(),
+                &catalog,
+                None,
+                &mut super::OperationWork {
+                    meter: &mut meter,
+                    structural: &mut structural,
+                },
+            )
+            .expect("checked operands")
+            .expect("ineligible operand") else {
+                panic!("expected {identity} refusal at {expected_pointer}");
+            };
+            assert_eq!(refusal.code, CheckedPackageRefusalCode::IllTyped);
+            assert_eq!(
+                refusal.cause,
+                Some(CheckedPackageRefusalCause::OperatorIneligible)
+            );
+            assert!(
+                refusal.loci[0]
+                    .path
+                    .as_ref()
+                    .is_some_and(|path| path.to_string().ends_with(expected_pointer))
+            );
+        }
+
+        let application = custom_application_node(
+            "collection",
+            plain_operation("filament.op.collection.sum.integer"),
+            vec![
+                json!({"term":"literal", "value":1}),
+                json!({"term":"binding", "name":"item", "value":reference_to('f')}),
+            ],
+        );
+        let nodes = vec![
+            application,
+            graph_node(
+                'f',
+                "value",
+                "parameter",
+                &clock_reference_id,
+                json!({"term":"aggregate", "members":[]}),
+            ),
+            graph_node(
+                'h',
+                "scalar_type",
+                "clock_reference",
+                &clock_reference_id,
+                json!({"term":"aggregate", "members":[]}),
+            ),
+        ];
+        let kinds = vec![
+            CheckedNodeKind::Expression(ExpressionForm::Collection),
+            CheckedNodeKind::Value(super::super::ValueForm::Parameter),
+            CheckedNodeKind::ScalarType(super::super::ScalarTypeForm::ClockReference),
+        ];
+        let terms = decoded_terms(&nodes);
+        let index: GraphIndex<'_> = nodes
+            .iter()
+            .enumerate()
+            .map(|(position, node)| (&node.node_id, position))
+            .collect();
+        let graph = Graph {
+            nodes: &nodes,
+            kinds: &kinds,
+            terms: &terms,
+            index: &index,
+            structural_keys: &[],
+        };
+        let operation: super::OperationWire =
+            serde_json::from_value(nodes[0].body.to_value()["operation"].clone())
+                .expect("sum operation");
+        let refusal = super::check_clock_reference_sum(
+            Application {
+                node: &nodes[0],
+                position: 0,
+            },
+            &operation,
+            &graph,
+        )
+        .expect("clock references are not summands");
+        let ValidationFailure::Refused(refusal) = refusal else {
+            panic!("expected clock-reference sum refusal");
+        };
+        assert_eq!(refusal.code, CheckedPackageRefusalCode::IllTyped);
+        assert_eq!(
+            refusal.cause,
+            Some(CheckedPackageRefusalCause::OperatorIneligible)
+        );
+        assert!(
+            refusal.loci[0]
+                .path
+                .as_ref()
+                .is_some_and(|path| path.to_string().ends_with("/body/arguments/1"))
         );
     }
 
