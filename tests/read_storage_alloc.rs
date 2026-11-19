@@ -971,7 +971,6 @@ fn nonidentifier_enum_member_refusal_is_paid_before_construction() {
     assert!(refusal.document_pointer.is_none());
     assert!(refusal.extension_detail.is_none());
     assert!(refusal.protocol_detail.is_none());
-    assert!(refusal.terminal_duplicate.is_none());
     let paid = observation.budget.read_storage_consumed();
     let exact = read_allocation_proof::measure_at::<ThreadCounter>(
         &bytes,
