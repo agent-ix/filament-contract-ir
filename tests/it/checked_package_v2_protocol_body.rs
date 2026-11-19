@@ -14195,3 +14195,138 @@ fn protocol_step_tables_and_walks_are_charged_to_the_read_budget() {
     );
     assert_exact_and_one_short(&reader, &requests);
 }
+
+fn boundary_binding(package: &Value, role: usize, text: Value) -> Value {
+    let mut literal = package["semantic_graph"]["nodes"][role]["body"]["arguments"][2]["value"]
+        ["members"][0]["value"]
+        .clone();
+    literal["value"] = text;
+    json!({"term":"binding","name":"boundary","value":literal})
+}
+
+fn role_arguments(package: &mut Value, role: usize) -> &mut Vec<Value> {
+    package["semantic_graph"]["nodes"][role]["body"]["arguments"]
+        .as_array_mut()
+        .unwrap()
+}
+
+#[trace("FR-038-AC-564")]
+#[test]
+fn observe_only_role_boundary_admits_and_round_trips_after_the_member() {
+    let (package, document, role) = role_port_fixture();
+    let id: CheckedNodeId =
+        serde_json::from_value(package["semantic_graph"]["nodes"][role]["node_id"].clone())
+            .unwrap();
+    // A role on a Port with `boundary` last (after `model_member`), then a role
+    // without a member that carries `boundary` directly after `replication`.
+    let mut with_member = package.clone();
+    let boundary = boundary_binding(&package, role, json!("observe-only"));
+    role_arguments(&mut with_member, role).push(boundary.clone());
+    let mut without_member = package.clone();
+    role_arguments(&mut without_member, role).pop();
+    role_arguments(&mut without_member, role).push(boundary);
+    settle(&mut with_member);
+    settle(&mut without_member);
+    for (variant, candidate) in [("member", &with_member), ("bare", &without_member)] {
+        let CheckedPackageV2ReadResult::Admitted(admitted) = read_port(candidate, &document) else {
+            panic!("{variant}: observe-only role admits")
+        };
+        assert_eq!(
+            admitted.protocol_role_boundary(&id),
+            Some(filament_contract_model::CheckedProtocolBoundary::ObserveOnly)
+        );
+        assert_eq!(
+            admitted.protocol_role_model_member(&id).is_some(),
+            variant == "member"
+        );
+        let encoded = filament_contract_model::encode_checked_package_v2(
+            admitted.name(),
+            admitted.lock(),
+            admitted.graph(),
+            filament_contract_model::CheckedPackageSourceCorrespondenceRef {
+                source_map: admitted.source_map(),
+                refinement_step_rows: admitted.refinement_step_rows(),
+            },
+            filament_contract_model::CheckedPackageSidecarsRef {
+                checked_term_data: admitted.checked_term_data(),
+                temporal_bindings: admitted.temporal_bindings(),
+                temporal_clause_names: admitted.temporal_clause_names(),
+                claim_names: admitted.claim_names(),
+                schedulability_claims: admitted.schedulability_claim_rows(),
+                operation_effects: admitted.operation_effect_rows(),
+                operation_bodies: admitted.operation_body_rows(),
+            },
+            admitted.capability_report(),
+            admitted.diagnostics(),
+            quire_canonical::Limits::new(1 << 24),
+        )
+        .unwrap();
+        let CheckedPackageV2ReadResult::Admitted(again) = crate::read_and_account(
+            &encoded,
+            CheckedPackageReadLimits::bounded(),
+            &evidence_with_document(candidate, "test/families", &document),
+        ) else {
+            panic!("{variant}: typed re-encoding admits")
+        };
+        assert_eq!(admitted, again);
+        assert_eq!(
+            again.protocol_role_boundary(&id),
+            Some(filament_contract_model::CheckedProtocolBoundary::ObserveOnly)
+        );
+    }
+    // A role written without `observe` carries no boundary.
+    let CheckedPackageV2ReadResult::Admitted(plain) = read_port(&package, &document) else {
+        panic!("unmarked role admits")
+    };
+    assert_eq!(plain.protocol_role_boundary(&id), None);
+}
+
+#[trace("FR-038-AC-565")]
+#[test]
+fn role_boundary_refuses_unknown_text_and_misplaced_member_malformed_wire() {
+    let (package, document, role) = role_port_fixture();
+    let valid = boundary_binding(&package, role, json!("observe-only"));
+    for (variant, mutate) in [
+        ("unknown text", 0),
+        ("empty text", 1),
+        ("non-text value", 2),
+        ("before replication", 3),
+        ("before model_member", 4),
+        ("repeated", 5),
+        ("unknown text without member", 6),
+    ] {
+        let mut wrong = package.clone();
+        let arguments = role_arguments(&mut wrong, role);
+        match mutate {
+            0 => arguments.push(boundary_binding(&package, role, json!("observe"))),
+            1 => arguments.push(boundary_binding(&package, role, json!(""))),
+            2 => arguments.push(boundary_binding(&package, role, json!(7))),
+            3 => arguments.insert(1, valid.clone()),
+            4 => arguments.insert(2, valid.clone()),
+            5 => {
+                arguments.push(valid.clone());
+                arguments.push(valid.clone());
+            }
+            6 => {
+                arguments.pop();
+                arguments.push(boundary_binding(&package, role, json!("observe")));
+            }
+            _ => unreachable!(),
+        }
+        settle(&mut wrong);
+        let CheckedPackageV2ReadResult::Refused(refusal) = read_port(&wrong, &document) else {
+            panic!("{variant}: must refuse")
+        };
+        assert_eq!(
+            refusal.code,
+            CheckedPackageRefusalCode::MalformedWire,
+            "{variant}: {refusal:?}"
+        );
+        assert_eq!(refusal.cause, None, "{variant}");
+        assert_eq!(
+            refusal.loci[0].path.as_ref().map(|path| path.as_str()),
+            Some(format!("/semantic_graph/nodes/{role}").as_str()),
+            "{variant}: {refusal:?}"
+        );
+    }
+}

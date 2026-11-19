@@ -87,6 +87,10 @@ relationships:
     type: verifies
   - target: ix://agent-ix/filament-contract-ir/FR-038-AC-541
     type: verifies
+  - target: ix://agent-ix/filament-contract-ir/FR-038-AC-564
+    type: verifies
+  - target: ix://agent-ix/filament-contract-ir/FR-038-AC-565
+    type: verifies
   - target: ix://agent-ix/filament-specification/TC-187
     type: references
 ---
@@ -3010,3 +3014,17 @@ with equal bytes and different rows and assert unequal keys.
 Assert the segment serde shapes, replace a node id through `replace_node_id`
 and assert the written slots, and that a graph read back from `graph()` and
 written again is admitted.
+
+## Role boundary (FR-038-AC-564 and FR-038-AC-565)
+
+Implemented (QSL-2449). Read FSpec FR-465 "Role" (the `boundary` argument and
+check 6) and TC-2018 from the selected checkout. Take a complete package with
+a role on a Port and add the last argument `boundary`, the text
+`observe-only`: the package admits, `protocol_role_boundary` reads
+`ObserveOnly`, and the typed writer's output reads back equal. Drop
+`model_member` and require the same for a role with `boundary` directly after
+`replication`; the unmarked role reads `None`. Require `malformed_wire`, no
+cause, at the role node for a `boundary` text other than `observe-only`, the
+empty text, a non-text value, a `boundary` before `replication` or before
+`model_member`, and a repeated `boundary`. The `attempt` refusals behind an
+observe-only role and the control-node `boundary` are not covered here.

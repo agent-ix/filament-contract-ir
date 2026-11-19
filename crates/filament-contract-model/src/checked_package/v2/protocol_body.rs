@@ -82,6 +82,19 @@ pub struct CheckedProtocolActivationRow {
     pub required_temporal: CheckedNodeId,
 }
 
+/// The boundary a protocol role is declared with (FR-465 "Role", `boundary`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum CheckedProtocolBoundary {
+    /// The role is written `observe`: its `boundary` member is the text `observe-only`.
+    ObserveOnly,
+}
+
+#[string_edge]
+fn role_boundary(term: &CheckedTerm) -> Option<CheckedProtocolBoundary> {
+    (text_value(term)? == OBSERVE_ONLY).then_some(CheckedProtocolBoundary::ObserveOnly)
+}
+
 impl CheckedPackageV2 {
     /// The borrowed selected package and original Port declaration of an admitted role.
     ///
@@ -97,6 +110,22 @@ impl CheckedPackageV2 {
             return None;
         };
         role_member_texts(binding_value(arguments, "model_member")?)
+    }
+
+    /// The boundary an admitted role is declared with.
+    ///
+    /// A role not written `observe`, an unknown node, or a non-role returns `None`.
+    pub fn protocol_role_boundary(&self, role: &CheckedNodeId) -> Option<CheckedProtocolBoundary> {
+        let position = self.position_of(role)?;
+        if self.kinds[position] != CheckedNodeKind::Protocol(ProtocolForm::Role) {
+            return None;
+        }
+        let CheckedTerm::Application { arguments, .. } =
+            &self.wire.semantic_graph.nodes[position].body
+        else {
+            return None;
+        };
+        role_boundary(binding_value(arguments, "boundary")?)
     }
 
     /// Derives every local clause's activation requirements from the admitted graph.
@@ -998,6 +1027,41 @@ fn validate_envelope<'a>(
     Ok((operator, arguments))
 }
 
+/// The optional tail of a role: `model_member`, then `boundary`, each at most once.
+#[string_edge]
+fn role_tail_fits(tail: &[CheckedTerm]) -> bool {
+    let named = |term: &CheckedTerm, wanted: &str, shape| {
+        matches!(term, CheckedTerm::Binding { name, value }
+            if name.as_ref() == wanted && shape_fits(value, shape))
+    };
+    match tail {
+        [] => true,
+        [only] => named(only, "model_member", Shape::Group) || named(only, "boundary", Shape::Text),
+        [member, boundary] => {
+            named(member, "model_member", Shape::Group) && named(boundary, "boundary", Shape::Text)
+        }
+        _ => false,
+    }
+}
+
+/// The `boundary` text of a role whose last argument carries it, when it is not `observe-only`.
+#[string_edge]
+fn role_boundary_defect(arguments: &[CheckedTerm]) -> Option<ProtocolLayoutWireDefect> {
+    let text = arguments
+        .iter()
+        .skip(2)
+        .find_map(|argument| match argument {
+            CheckedTerm::Binding { name, value } if name.as_ref() == "boundary" => {
+                text_value(value)
+            }
+            _ => None,
+        })?;
+    (text != OBSERVE_ONLY).then_some(ProtocolLayoutWireDefect::EnumValue)
+}
+
+/// The text of the role `boundary` member FR-465 admits.
+const OBSERVE_ONLY: &str = "observe-only";
+
 #[string_edge]
 fn validate_layout(
     form: ProtocolForm,
@@ -1009,9 +1073,8 @@ fn validate_layout(
         return Err(D::OperatorIneligible);
     };
     let optional_role_member = form == ProtocolForm::Role
-        && arguments.len() == expected.len() + 1
-        && matches!(arguments.last(), Some(CheckedTerm::Binding { name, value })
-            if name.as_ref() == "model_member" && shape_fits(value, Shape::Group));
+        && arguments.len() >= expected.len()
+        && role_tail_fits(&arguments[expected.len()..]);
     let optional_repeat_test = form == ProtocolForm::Control
         && operator == "repeat"
         && arguments.len() + 1 == expected.len()
@@ -1209,7 +1272,8 @@ fn enum_value_defect(
             1,
             Some((3, true)),
             &["workflow", "scope", "until"],
-        ),
+        )
+        .or_else(|| role_boundary_defect(arguments)),
         (ProtocolForm::Channel, "channel") => {
             invalid_enum_at(arguments, 3, Some((0, true)), &["unordered", "fifo"]).or_else(|| {
                 argument(arguments, 4)
@@ -3037,7 +3101,7 @@ fn check_role_member(
     owners: &ModelOwners<'_>,
     meter: &mut WorkMeter,
 ) -> Result<(), ValidationFailure> {
-    let Some(member) = argument(arguments, 2) else {
+    let Some(member) = binding_value(arguments, "model_member") else {
         return Ok(());
     };
     node_work(meter, check.position)?;
