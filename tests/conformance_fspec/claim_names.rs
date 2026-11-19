@@ -143,6 +143,31 @@ fn admits(id: &str, case: &Value, package: &Value, outcome: CheckedPackageV2Read
             "{id}: Bounded is the temporal row, not a claim row"
         );
     }
+    // A published lookup names the row a path resolves to. A path that names a
+    // temporal clause row is no claim name: the claim lookup finds nothing.
+    if let Some(lookups) = case["lookups"].as_object() {
+        for (name, pointer) in lookups {
+            let pointer = pointer.as_str().expect("lookup pointer");
+            let found = admitted.claim_name_for_path(&[name.as_str()]);
+            if let Some(at) = pointer.strip_prefix("/temporal_clause_names/") {
+                let at: usize = at.parse().expect("temporal row index");
+                assert_eq!(
+                    admitted.temporal_clause_names().expect("temporal rows")[at]
+                        .name
+                        .as_ref(),
+                    name,
+                    "{id}: {pointer} is the temporal row of {name}"
+                );
+                assert!(found.is_none(), "{id}: {name} is no claim name");
+                continue;
+            }
+            let at: usize = pointer
+                .strip_prefix("/claim_names/")
+                .and_then(|index| index.parse().ok())
+                .unwrap_or_else(|| panic!("{id}: lookup {name} names a row, got {pointer}"));
+            assert_eq!(found, Some(&rows[at]), "{id}: {name} resolves to {pointer}");
+        }
+    }
     let _ = package;
 }
 
@@ -225,14 +250,31 @@ fn published_claim_name_vectors_replay_rows_schema_and_join_refusals() {
     ]);
 }
 
-/// Trace: TC-2012 step 4 (FSpec), FR-322-AC-459.
-#[trace("TC-477", "FR-371-AC-7")]
+/// Trace: TC-2012 step 4 (FSpec), FR-322-AC-459, and TC-2036 step 3,
+/// FR-322-AC-466 (`CL-R18`: the namespace is refused over equal regions).
+#[trace("TC-477", "FR-371-AC-7", "FR-371-AC-11")]
 #[test]
 fn published_claim_name_vectors_replay_the_one_namespace() {
     replay(&[
         "CL-P5-one-namespace-lookup",
         "CL-R14-namespace-collision",
         "CL-R15-namespace-collision-scoped",
+        "CL-R18-namespace-collision-one-region",
+    ]);
+}
+
+/// Trace: TC-2035 step 5 (FSpec), FR-322-AC-465: the rows of one declaration
+/// share its name, its own node answers a lookup, and declaration sets that do
+/// not nest are ambiguous. `CL-R5` is the duplicate of two declarations.
+#[trace("TC-477", "FR-371-AC-10")]
+#[test]
+fn published_claim_name_vectors_replay_the_rows_of_one_declaration() {
+    replay(&[
+        "CL-P7-one-declaration-two-nodes",
+        "CL-P8-one-declaration-two-occurrences",
+        "CL-R5-duplicate-qualified-name",
+        "CL-R16-one-declaration-two-names",
+        "CL-R17-own-node-not-nested",
     ]);
 }
 

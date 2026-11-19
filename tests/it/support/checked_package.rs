@@ -2587,9 +2587,16 @@ pub fn refresh_temporal_bindings(package: &mut Value) {
         .iter()
         .map(|node| node["node_id"].clone())
         .collect::<Vec<_>>();
+    // A hyper clause's body wrapper has no name row: the clause is named by the
+    // `claim_names` rows of its `hyperproperty` node (FR-322, FR-402).
+    let wrappers = body_wrappers(nodes);
     let mut names = nodes
         .iter()
-        .filter(|node| node["node_tag"] == "temporal" && node["semantic_form"] == "temporal_clause")
+        .filter(|node| {
+            node["node_tag"] == "temporal"
+                && node["semantic_form"] == "temporal_clause"
+                && !wrappers.contains(&node["node_id"])
+        })
         .flat_map(|node| {
             node["occurrences"]
                 .as_array()
@@ -2628,6 +2635,22 @@ pub fn refresh_temporal_bindings(package: &mut Value) {
             Value::Array(names.into_iter().map(|(_, _, row)| row).collect());
     }
     refresh_claim_names(package);
+}
+
+/// The node ids a `claim`/`hyperproperty` node's `body` binding references:
+/// the body wrappers (FR-402).
+pub fn body_wrappers(nodes: &[Value]) -> Vec<Value> {
+    nodes
+        .iter()
+        .filter(|node| node["node_tag"] == "claim" && node["semantic_form"] == "hyperproperty")
+        .filter_map(|node| {
+            node["body"]["members"]
+                .as_array()?
+                .iter()
+                .find(|member| member["name"] == "body")
+                .map(|member| member["value"]["target"].clone())
+        })
+        .collect()
 }
 
 /// The source interval a name row declares for one occurrence: the hull of
@@ -2676,7 +2699,20 @@ pub fn fill_declaration_regions(package: &mut Value) {
                 ("claim".to_owned(), row["occurrence"].as_u64().unwrap_or(0))
             };
             let declaration = row["declaration"].clone();
-            let region = occurrence_region(&resolved, &declaration, &role, ordinal);
+            let mut region = occurrence_region(&resolved, &declaration, &role, ordinal);
+            if table == "claim_names" {
+                // Rows that share a region are one declaration and carry one name
+                // (FR-322 "Rows of one declaration"): a fixture that gives two
+                // differently named rows one name span widens the later
+                // declaration so the two stay two declarations.
+                let name = package[table][index]["qualified_name"].clone();
+                while (0..index).any(|earlier| {
+                    package[table][earlier]["declaration_region"] == region
+                        && package[table][earlier]["qualified_name"] != name
+                }) {
+                    region["end"] = json!(region["end"].as_u64().unwrap_or(0) + 1);
+                }
+            }
             package[table][index]["declaration_region"] = region;
         }
     }
@@ -2735,6 +2771,14 @@ pub fn refresh_claim_names(package: &mut Value) {
             let name = node["body"]["name"]
                 .as_str()
                 .map_or_else(|| format!("Claim{index}"), str::to_owned);
+            // One declaration is told by its region, and its rows share one
+            // path: the scope is a function of the region.
+            let region = occurrence_region(&resolved, &ids[index], role, ordinal);
+            let scope = format!(
+                "Scope{index}r{}_{}",
+                region["start"].as_u64().unwrap_or(0),
+                region["end"].as_u64().unwrap_or(0)
+            );
             rows.push((
                 ids[index].clone(),
                 role.to_owned(),
@@ -2743,9 +2787,8 @@ pub fn refresh_claim_names(package: &mut Value) {
                     "declaration": ids[index],
                     "occurrence": {"role": role, "ordinal": ordinal},
                     "name": name,
-                    "qualified_name": [format!("Scope{index}{role}{ordinal}"), name],
-                    "declaration_region":
-                        occurrence_region(&resolved, &ids[index], role, ordinal),
+                    "qualified_name": [scope, name],
+                    "declaration_region": region,
                 }),
             ));
         }

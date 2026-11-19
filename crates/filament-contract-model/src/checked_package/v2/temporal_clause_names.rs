@@ -74,6 +74,7 @@ pub(super) fn validate(
     rows: Option<&[TemporalClauseName]>,
     nodes: &[RawSemanticNodeV2],
     kinds: &[CheckedNodeKind],
+    wrappers: &[usize],
     sources: &SourceEntries<'_>,
     index: &GraphIndex<'_>,
     structural_keys: &[std::sync::Arc<CheckedNodeId>],
@@ -93,6 +94,7 @@ pub(super) fn validate(
         }
         let Some(&position) = index.get(&row.declaration).filter(|&&position| {
             kinds[position] == CheckedNodeKind::Temporal(TemporalForm::TemporalClause)
+                && wrappers.binary_search(&position).is_err()
         }) else {
             return Err(invalid(
                 at.key("declaration"),
@@ -172,7 +174,9 @@ pub(super) fn validate(
         previous = Some(key);
     }
     for (position, node) in nodes.iter().enumerate() {
-        if kinds[position] != CheckedNodeKind::Temporal(TemporalForm::TemporalClause) {
+        if kinds[position] != CheckedNodeKind::Temporal(TemporalForm::TemporalClause)
+            || wrappers.binary_search(&position).is_ok()
+        {
             continue;
         }
         for occurrence in &node.occurrences {

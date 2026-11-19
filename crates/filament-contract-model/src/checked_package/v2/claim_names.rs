@@ -9,12 +9,13 @@ use super::graph_storage::GraphIndex;
 use super::stage_storage::{self, Path, Refusal, Site};
 use super::temporal_clause_names::TemporalClauseName;
 use super::{
-    identity::is_identifier, CheckedNodeId, CheckedNodeKind, CheckedOccurrence,
-    CheckedOccurrenceRole, CheckedTerm, RawSemanticNodeV2, RelationForm, StateForm, WorkMeter,
+    identity::is_identifier, structural::typed_admitted_reference, CheckedNodeId, CheckedNodeKind,
+    CheckedOccurrence, CheckedOccurrenceRole, CheckedTerm, ClaimForm, RawSemanticNodeV2,
+    RelationForm, StateForm, TemporalForm, WorkMeter,
 };
 use crate::checked_package::common::ValidationFailure;
 use crate::checked_package::shared::{
-    CheckedPackageRefusalCause as Cause, CheckedPackageRefusalCode as Code,
+    CheckedPackageRefusalCause as Cause, CheckedPackageRefusalCode as Code, CheckedSourceRef,
 };
 use quire_canonical::{Encode, Error, Sink, Writer};
 use serde::{Deserialize, Serialize};
@@ -128,9 +129,17 @@ pub(super) fn validate(
     structural_keys: &[std::sync::Arc<CheckedNodeId>],
     meter: &mut WorkMeter,
 ) -> Result<(), ValidationFailure> {
-    let capacity = rows.map_or(0, <[ClaimNameRow]>::len);
+    let all = rows.unwrap_or_default();
+    let capacity = all.len();
     let mut seen: Vec<(&CheckedNodeId, &CheckedOccurrence)> = Vec::new();
     let mut names: Vec<(&[Box<str>], usize)> = Vec::new();
+    // A declaration is told by its `declaration_region`; `declarations` holds
+    // the first row of each one, and `row_declaration` and `row_name` the first
+    // row of the declaration and of the qualified name each visited row carries.
+    let mut declarations: Vec<(DeclarationKey<'_>, usize)> = Vec::new();
+    let mut row_declaration: Vec<usize> = Vec::new();
+    let mut row_name: Vec<usize> = Vec::new();
+    let mut row_node: Vec<usize> = Vec::new();
     let mut previous: Option<(super::graph_storage::ResolvedKey<'_>, &CheckedOccurrence)> = None;
     // The closed schema is checked across every row before the reader visits
     // any row, so a malformed later row wins over a dangling earlier one.
@@ -152,7 +161,7 @@ pub(super) fn validate(
             ));
         }
     }
-    for (row_index, row) in rows.unwrap_or_default().iter().enumerate() {
+    for (row_index, row) in all.iter().enumerate() {
         let at = root().index(row_index);
         let Some(&position) = index
             .get(&row.declaration)
@@ -243,28 +252,58 @@ pub(super) fn validate(
             return Err(invalid(at, &row.declaration, row_index, meter));
         }
         previous = Some(ordered);
-        let path: &[Box<str>] = &row.qualified_name;
-        match names.binary_search_by(|(earlier, _)| (*earlier).cmp(path)) {
+        // One declaration has one name: a row of a declaration already seen
+        // repeats its name and path.
+        let key = declaration_key(row);
+        let first_of_declaration = match declarations.binary_search_by(|(held, _)| held.cmp(&key)) {
             Ok(found) => {
-                // The refusal names both rows: the later one is its locus and
-                // the earlier one the package-document position.
-                let earlier = names[found].1;
-                return Err(stage_storage::refuse(
-                    meter,
-                    &site(row_index, at),
-                    Refusal::new(Code::AmbiguousDeclaration, at.key("qualified_name"))
-                        .because(Cause::AmbiguousName)
-                        .at_node(&row.declaration)
-                        .in_document(root().index(earlier).key("qualified_name")),
-                ));
+                let first = declarations[found].1;
+                if all[first].name != row.name || all[first].qualified_name != row.qualified_name {
+                    return Err(invalid(at.key("name"), &row.declaration, row_index, meter));
+                }
+                first
             }
-            Err(position) => {
+            Err(slot) => {
+                if declarations.is_empty() {
+                    declarations = stage_storage::vec(meter, &site(row_index, at), capacity)?;
+                    row_declaration = stage_storage::vec(meter, &site(row_index, at), capacity)?;
+                    row_name = stage_storage::vec(meter, &site(row_index, at), capacity)?;
+                    row_node = stage_storage::vec(meter, &site(row_index, at), capacity)?;
+                }
+                declarations.insert(slot, (key, row_index));
+                row_index
+            }
+        };
+        let path: &[Box<str>] = &row.qualified_name;
+        let first_of_name = match names.binary_search_by(|(earlier, _)| (*earlier).cmp(path)) {
+            Ok(found) => {
+                let earlier = names[found].1;
+                // Rows of one declaration are not duplicates of each other.
+                if row_declaration[earlier] != first_of_declaration {
+                    // The refusal names both rows: the later one is its locus
+                    // and the earlier one the package-document position.
+                    return Err(stage_storage::refuse(
+                        meter,
+                        &site(row_index, at),
+                        Refusal::new(Code::AmbiguousDeclaration, at.key("qualified_name"))
+                            .because(Cause::AmbiguousName)
+                            .at_node(&row.declaration)
+                            .in_document(root().index(earlier).key("qualified_name")),
+                    ));
+                }
+                earlier
+            }
+            Err(slot) => {
                 if names.is_empty() {
                     names = stage_storage::vec(meter, &site(row_index, at), capacity)?;
                 }
-                names.insert(position, (path, row_index));
+                names.insert(slot, (path, row_index));
+                row_index
             }
-        }
+        };
+        row_declaration.push(first_of_declaration);
+        row_name.push(first_of_name);
+        row_node.push(position);
     }
     for (position, node) in nodes.iter().enumerate() {
         if !is_claim_bearing(kinds[position]) {
@@ -283,11 +322,161 @@ pub(super) fn validate(
             }
         }
     }
-    one_namespace(
-        rows.unwrap_or_default(),
-        temporal.unwrap_or_default(),
-        meter,
+    own_nodes(all, &row_node, &row_declaration, &row_name, meter)?;
+    one_namespace(all, temporal.unwrap_or_default(), meter)
+}
+
+/// The graph positions of the body wrappers (FR-402): the `temporal_clause`
+/// nodes that a `claim`/`hyperproperty` node's `body` binding references. A
+/// wrapper has no `temporal_clause_names` row; the hyper clause's name rows are
+/// the `claim_names` rows of its `hyperproperty` node. A node whose body is not
+/// the hyperproperty aggregate is left to the hyperproperty step that owns it.
+/// The nodes were charged by the graph stage; the sorted table is charged.
+pub(super) fn body_wrappers(
+    kinds: &[CheckedNodeKind],
+    terms: &[Option<CheckedTerm>],
+    index: &GraphIndex<'_>,
+    meter: &mut WorkMeter,
+) -> Result<Vec<usize>, ValidationFailure> {
+    let hyper = CheckedNodeKind::Claim(ClaimForm::Hyperproperty);
+    let count = kinds.iter().filter(|kind| **kind == hyper).count();
+    if count == 0 {
+        return Ok(Vec::new());
+    }
+    let mut wrappers: Vec<usize> = stage_storage::vec(meter, &site(0, root()), count)?;
+    for (position, kind) in kinds.iter().enumerate() {
+        if *kind != hyper {
+            continue;
+        }
+        let Some(CheckedTerm::Aggregate { members }) = terms[position].as_ref() else {
+            continue;
+        };
+        let target = members
+            .iter()
+            .filter_map(|member| match member {
+                CheckedTerm::Binding { name, value } if name.as_ref() == "body" => {
+                    typed_admitted_reference(value)
+                }
+                _ => None,
+            })
+            .next();
+        if let Some(&wrapper) = target.and_then(|target| index.get(target)) {
+            if kinds[wrapper] == CheckedNodeKind::Temporal(TemporalForm::TemporalClause) {
+                wrappers.push(wrapper);
+            }
+        }
+    }
+    wrappers.sort_unstable();
+    wrappers.dedup();
+    Ok(wrappers)
+}
+
+/// The identity of a declaration: its `declaration_region`, compared as
+/// (`source`, `start`, `end`).
+type DeclarationKey<'a> = (&'a CheckedSourceRef, u64, u64);
+
+fn declaration_key(row: &ClaimNameRow) -> DeclarationKey<'_> {
+    (
+        &row.declaration_region.source,
+        row.declaration_region.start,
+        row.declaration_region.end,
     )
+}
+
+/// A name whose rows name two or more nodes needs an own node: the node whose
+/// declaration set (the declaration keys of its rows) is strictly contained in
+/// that of every other node the name's rows name (FR-322 "Rows of one
+/// declaration"). A name without one is ambiguous at its last row, naming its
+/// first and last rows. The rows are paid for once to build the node sets, once
+/// to group them by name, and each set element compared is one visit.
+fn own_nodes(
+    rows: &[ClaimNameRow],
+    row_node: &[usize],
+    row_declaration: &[usize],
+    row_name: &[usize],
+    meter: &mut WorkMeter,
+) -> Result<(), ValidationFailure> {
+    if rows.is_empty() {
+        return Ok(());
+    }
+    let count = rows.len();
+    // (node, declaration) pairs, sorted: each node's set is a contiguous run.
+    let mut sets: Vec<(usize, usize)> = stage_storage::vec(meter, &site(0, root()), count)?;
+    for row_index in 0..count {
+        stage_storage::work(meter, &site(row_index, root().index(row_index)), 1)?;
+        sets.push((row_node[row_index], row_declaration[row_index]));
+    }
+    sets.sort_unstable();
+    sets.dedup();
+    // Rows by the first row of their name, in row order within a name.
+    let mut grouped: Vec<(usize, usize)> = stage_storage::vec(meter, &site(0, root()), count)?;
+    for row_index in 0..count {
+        stage_storage::work(meter, &site(row_index, root().index(row_index)), 1)?;
+        grouped.push((row_name[row_index], row_index));
+    }
+    grouped.sort_unstable();
+    let set_of = |node: usize| -> &[(usize, usize)] {
+        let start = sets.partition_point(|(held, _)| *held < node);
+        let end = sets.partition_point(|(held, _)| *held <= node);
+        &sets[start..end]
+    };
+    let mut nodes: Vec<usize> = stage_storage::vec(meter, &site(0, root()), count)?;
+    let mut at = 0;
+    while at < grouped.len() {
+        let name = grouped[at].0;
+        let end = at + grouped[at..].partition_point(|(held, _)| *held == name);
+        nodes.clear();
+        nodes.extend(grouped[at..end].iter().map(|(_, row)| row_node[*row]));
+        nodes.sort_unstable();
+        nodes.dedup();
+        if nodes.len() > 1 {
+            // The own node, if any, has the strictly smallest set.
+            let smallest = nodes.iter().map(|node| set_of(*node).len()).min();
+            let mut candidates = nodes
+                .iter()
+                .filter(|node| Some(set_of(**node).len()) == smallest);
+            let own = match (candidates.next(), candidates.next()) {
+                (Some(own), None) => Some(*own),
+                _ => None,
+            };
+            let nested = match own {
+                Some(own) => {
+                    let inner = set_of(own);
+                    let mut nested = true;
+                    for node in nodes.iter().filter(|node| **node != own) {
+                        let outer = set_of(*node);
+                        stage_storage::work(
+                            meter,
+                            &site(name, root().index(name)),
+                            (inner.len() + outer.len()) as u64,
+                        )?;
+                        if !inner.iter().all(|(_, key)| {
+                            outer.binary_search_by(|(_, held)| held.cmp(key)).is_ok()
+                        }) {
+                            nested = false;
+                            break;
+                        }
+                    }
+                    nested
+                }
+                None => false,
+            };
+            if !nested {
+                let last = grouped[end - 1].1;
+                let at_last = root().index(last);
+                return Err(stage_storage::refuse(
+                    meter,
+                    &site(last, at_last.key("qualified_name")),
+                    Refusal::new(Code::AmbiguousDeclaration, at_last.key("qualified_name"))
+                        .because(Cause::AmbiguousName)
+                        .at_node(&rows[last].declaration)
+                        .in_document(root().index(name).key("qualified_name")),
+                ));
+            }
+        }
+        at = end;
+    }
+    Ok(())
 }
 
 /// Two refinement nodes of one package may not share a `name`
