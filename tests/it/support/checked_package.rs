@@ -2483,12 +2483,42 @@ pub fn refresh_temporal_bindings(package: &mut Value) {
     let nodes = package["semantic_graph"]["nodes"]
         .as_array()
         .expect("nodes");
+    let is_hyper =
+        |node: &Value| node["node_tag"] == "claim" && node["semantic_form"] == "hyperproperty";
+    // A hyperproperty node takes one row per quantified trace, keyed by the
+    // quantifier Group's variable, in `quantifiers` order; the body wrapper it
+    // references takes none.
+    let traces_of = |hyper: &Value| -> Vec<Option<String>> {
+        hyper["body"]["members"][3]["value"]["members"]
+            .as_array()
+            .map(|groups| {
+                groups
+                    .iter()
+                    .filter_map(|group| {
+                        group["members"].as_array()?.iter().find_map(|member| {
+                            (member["name"] == "variable")
+                                .then(|| member["value"]["value"].as_str().map(str::to_owned))
+                        })
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    let is_wrapper = |node: &Value| {
+        nodes
+            .iter()
+            .filter(|hyper| is_hyper(hyper))
+            .any(|hyper| hyper["body"]["members"][6]["value"]["target"] == node["node_id"])
+    };
     let mut rows = nodes
         .iter()
         .filter_map(|node| {
             let (profile, name) = if node["node_tag"] == "temporal"
                 && node["semantic_form"] == "temporal_clause"
             {
+                if is_wrapper(node) {
+                    return None;
+                }
                 let [law] = node["body"]["operation"]["laws"].as_array()?.as_slice() else {
                     return None;
                 };
@@ -2499,6 +2529,24 @@ pub fn refresh_temporal_bindings(package: &mut Value) {
                     law["definition"]["identity"].as_str()?,
                     node["body"]["arguments"][1]["value"].as_str()?,
                 )
+            } else if is_hyper(node) {
+                // A behaviours node reads its wrapper's profile law and clock
+                // text; a finite-domain node the lock's selection and the
+                // domain binder `t`.
+                if node["body"]["members"][0]["value"]["term"] == "reference" {
+                    (selected_profile?, "t")
+                } else {
+                    let wrapper = nodes.iter().find(|wrapper| {
+                        wrapper["node_id"] == node["body"]["members"][6]["value"]["target"]
+                    })?;
+                    let [law] = wrapper["body"]["operation"]["laws"].as_array()?.as_slice() else {
+                        return None;
+                    };
+                    (
+                        law["definition"]["identity"].as_str()?,
+                        wrapper["body"]["arguments"][1]["value"].as_str()?,
+                    )
+                }
             } else if node["node_tag"] == "protocol" && node["semantic_form"] == "compensation" {
                 (
                     selected_profile?,
@@ -2531,26 +2579,36 @@ pub fn refresh_temporal_bindings(package: &mut Value) {
                 }
                 _ => return None,
             };
+            let traces = if is_hyper(node) {
+                traces_of(node)
+            } else {
+                vec![None]
+            };
             Some(
                 node["occurrences"]
                     .as_array()?
                     .iter()
-                    .filter_map(|occurrence| {
+                    .flat_map(|occurrence| traces.iter().map(move |trace| (occurrence, trace)))
+                    .filter_map(|(occurrence, trace)| {
                         let expected_role = if node["semantic_form"] == "compensation" {
                             "declaration"
                         } else {
                             "claim"
                         };
                         (occurrence["role"] == expected_role).then(|| {
+                            let mut row = json!({
+                                "declaration": node["node_id"],
+                                "occurrence": occurrence["ordinal"],
+                                "clock_name": name,
+                                "clock": clock,
+                            });
+                            if let Some(trace) = trace {
+                                row["trace"] = json!(trace);
+                            }
                             (
                                 node["node_id"].clone(),
                                 occurrence["ordinal"].as_u64().expect("occurrence ordinal"),
-                                json!({
-                                    "declaration": node["node_id"],
-                                    "occurrence": occurrence["ordinal"],
-                                    "clock_name": name,
-                                    "clock": clock,
-                                }),
+                                row,
                             )
                         })
                     })

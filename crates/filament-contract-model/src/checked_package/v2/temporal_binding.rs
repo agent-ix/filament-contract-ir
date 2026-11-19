@@ -67,14 +67,35 @@ pub enum ClockConfiguration {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TemporalBinding {
-    /// Exact temporal clause or compensation declaration ID.
+    /// Exact ID of the temporal clause, compensation, await or
+    /// `claim`/`hyperproperty` node the row selects a clock for; never a
+    /// hyperproperty's body wrapper.
     pub declaration: CheckedNodeId,
-    /// Ordinal of the clause's claim or compensation's declaration occurrence.
+    /// Ordinal of the clause's or hyperproperty's claim occurrence, or of the
+    /// compensation's declaration occurrence.
     pub occurrence: u64,
-    /// Exact nonempty text of the declaration's clock argument.
+    /// Exact nonempty clock name: the declaration's clock argument (a
+    /// hyperproperty's wrapper's, under a behaviours domain) or, for a
+    /// finite-domain hyperproperty, the clock role its occurrence's rows share.
     pub clock_name: Box<str>,
     /// Closed clock configuration.
     pub clock: ClockConfiguration,
+    /// For a `claim`/`hyperproperty` node's row, the exact name of the quantifier
+    /// Group variable whose trace the row's clock serves; absent on every other
+    /// row.
+    #[serde(
+        default,
+        deserialize_with = "present_trace",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub trace: Option<Box<str>>,
+}
+
+/// A `trace` member that is present is a string; `null` is not an absent one.
+fn present_trace<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<Box<str>>, D::Error> {
+    Box::<str>::deserialize(deserializer).map(Some)
 }
 
 impl Encode for TemporalBinding {
@@ -84,6 +105,9 @@ impl Encode for TemporalBinding {
         super::encode::member(writer, "occurrence", &self.occurrence)?;
         super::encode::member(writer, "clock_name", self.clock_name.as_ref())?;
         super::encode::member(writer, "clock", &self.clock)?;
+        if let Some(trace) = &self.trace {
+            super::encode::member(writer, "trace", trace.as_ref())?;
+        }
         writer.end_object()
     }
 }
@@ -253,6 +277,9 @@ fn validate_shape(
         )?;
         if row.clock_name.is_empty() {
             return Err(malformed(meter, at().key("clock_name")));
+        }
+        if row.trace.as_deref().is_some_and(str::is_empty) {
+            return Err(malformed(meter, at().key("trace")));
         }
         validate_clock_configuration(&row.clock, at().key("clock"), meter)?;
     }
@@ -449,6 +476,94 @@ fn clock_matches(profile: Option<TemporalProfile>, clock: &ClockConfiguration) -
     )
 }
 
+/// One `claim`/`hyperproperty` node: its quantified trace variables in
+/// `quantifiers` order, whether its domain is finite, and, under a behaviours
+/// domain, the body wrapper it references. A node whose body is not readable as
+/// that shape lists no variables; the hyperproperty step owns its refusal.
+struct HyperNode<'t> {
+    position: usize,
+    variables: Vec<&'t str>,
+    finite: bool,
+    wrapper: Option<usize>,
+}
+
+#[ix_trace_rs::string_edge]
+fn hyper_nodes<'t>(
+    kinds: &[CheckedNodeKind],
+    terms: &'t [Option<super::CheckedTerm>],
+    index: &GraphIndex<'_>,
+    meter: &mut WorkMeter,
+) -> Result<Vec<HyperNode<'t>>, ValidationFailure> {
+    use super::{CheckedTerm, LiteralKind};
+    let mut hypers: Vec<HyperNode<'t>> = meter.vec(0)?;
+    for (position, kind) in kinds.iter().enumerate() {
+        if *kind != CheckedNodeKind::Claim(super::ClaimForm::Hyperproperty) {
+            continue;
+        }
+        let mut variables = meter.vec(0)?;
+        let mut finite = false;
+        let mut wrapper = None;
+        if let Some(Some(CheckedTerm::Aggregate { members })) = terms.get(position) {
+            let bound = |name: &str| {
+                members.iter().find_map(|member| match member {
+                    CheckedTerm::Binding { name: found, value }
+                        if AsRef::<str>::as_ref(found) == name =>
+                    {
+                        Some(value.as_ref())
+                    }
+                    _ => None,
+                })
+            };
+            finite = bound("domain")
+                .and_then(super::structural::typed_reference)
+                .is_some();
+            if !finite {
+                wrapper = bound("body")
+                    .and_then(super::structural::typed_reference)
+                    .and_then(|target| index.get(target).copied())
+                    .filter(|target| {
+                        kinds[*target] == CheckedNodeKind::Temporal(TemporalForm::TemporalClause)
+                    });
+            }
+            if let Some(CheckedTerm::Aggregate { members: groups }) = bound("quantifiers") {
+                for group in groups {
+                    let CheckedTerm::Aggregate { members } = group else {
+                        continue;
+                    };
+                    let variable = members.iter().find_map(|member| match member {
+                        CheckedTerm::Binding { name, value }
+                            if AsRef::<str>::as_ref(name) == "variable" =>
+                        {
+                            match value.as_ref() {
+                                CheckedTerm::Literal {
+                                    value_kind: LiteralKind::Text,
+                                    value,
+                                    ..
+                                } => value.as_str(),
+                                _ => None,
+                            }
+                        }
+                        _ => None,
+                    });
+                    if let Some(variable) = variable {
+                        meter.push(&mut variables, variable)?;
+                    }
+                }
+            }
+        }
+        meter.push(
+            &mut hypers,
+            HyperNode {
+                position,
+                variables,
+                finite,
+                wrapper,
+            },
+        )?;
+    }
+    Ok(hypers)
+}
+
 /// Validate row coverage before per-node joins and compare names before kinds.
 pub(super) fn validate<B>(
     rows: Option<&[TemporalBinding]>,
@@ -463,8 +578,26 @@ pub(super) fn validate<B>(
     let rows = rows.unwrap_or_default();
     validate_shape(rows, meter)?;
     let compensation_profile = selected_profile(lock);
-    let mut seen: Vec<(usize, u64)> = meter.vec(rows.len())?;
-    let mut previous: Option<(super::graph_storage::ResolvedKey<'_>, u64)> = None;
+    let hypers = hyper_nodes(kinds, terms, index, meter)?;
+    // `hypers` ascends by graph position, so a node is found by bisection; the
+    // wrappers are listed once and sorted.
+    let hyper_of = |position: usize| {
+        hypers
+            .binary_search_by_key(&position, |hyper| hyper.position)
+            .ok()
+            .map(|at| &hypers[at])
+    };
+    let mut wrappers: Vec<usize> = meter.vec(hypers.len())?;
+    for hyper in &hypers {
+        if let Some(wrapper) = hyper.wrapper {
+            meter.push(&mut wrappers, wrapper)?;
+        }
+    }
+    wrappers.sort_unstable();
+    let is_wrapper = |position: usize| wrappers.binary_search(&position).is_ok();
+    let traces_of = |position: usize| hyper_of(position).map(|hyper| hyper.variables.as_slice());
+    let mut seen: Vec<(usize, u64, usize)> = meter.vec(rows.len())?;
+    let mut previous: Option<(super::graph_storage::ResolvedKey<'_>, u64, usize)> = None;
     let mut resolved = meter.vec(rows.len())?;
     for (row_index, row) in rows.iter().enumerate() {
         let at = || row_path(row_index);
@@ -475,7 +608,9 @@ pub(super) fn validate<B>(
             kinds[position],
             CheckedNodeKind::Temporal(TemporalForm::TemporalClause)
                 | CheckedNodeKind::Protocol(ProtocolForm::Compensation)
-        ) {
+                | CheckedNodeKind::Claim(super::ClaimForm::Hyperproperty)
+        ) || is_wrapper(position)
+        {
             return Err(invalid(meter, at().key("declaration"), &row.declaration));
         }
         if kinds[position] == CheckedNodeKind::Temporal(TemporalForm::TemporalClause)
@@ -509,7 +644,19 @@ pub(super) fn validate<B>(
         if !owned {
             return Err(invalid(meter, at().key("occurrence"), &row.declaration));
         }
-        let key = (position, row.occurrence);
+        // A hyperproperty row names one of the node's quantified traces, and
+        // no other row names a trace.
+        let trace_at = match (traces_of(position), row.trace.as_deref()) {
+            (None, None) => 0,
+            (Some(variables), Some(trace)) => {
+                let Some(trace_at) = variables.iter().position(|name| *name == trace) else {
+                    return Err(invalid(meter, at().key("trace"), &row.declaration));
+                };
+                trace_at
+            }
+            _ => return Err(invalid(meter, at().key("trace"), &row.declaration)),
+        };
+        let key = (position, row.occurrence, trace_at);
         let insertion = seen.binary_search(&key);
         if insertion.is_ok() {
             return Err(binding_refusal(
@@ -521,20 +668,42 @@ pub(super) fn validate<B>(
         }
         seen.insert(insertion.expect_err("duplicate refused above"), key);
         let structural = index.resolved_at(position, structural_keys);
-        if let Some((previous_id, previous_occurrence)) = previous {
+        if let Some((previous_id, previous_occurrence, previous_trace)) = previous {
             if previous_id > structural {
                 return Err(invalid(meter, at().key("declaration"), &row.declaration));
             }
             if previous_id == structural && previous_occurrence > row.occurrence {
                 return Err(invalid(meter, at().key("occurrence"), &row.declaration));
             }
+            if previous_id == structural
+                && previous_occurrence == row.occurrence
+                && previous_trace > trace_at
+            {
+                return Err(invalid(meter, at().key("trace"), &row.declaration));
+            }
         }
-        previous = Some((structural, row.occurrence));
+        previous = Some((structural, row.occurrence, trace_at));
         resolved.push(position);
     }
     let mut missing = None;
     for (position, node) in nodes.iter().enumerate() {
-        let role = if kinds[position] == CheckedNodeKind::Temporal(TemporalForm::TemporalClause)
+        let role = if is_wrapper(position) {
+            continue;
+        } else if let Some(hyper) = hyper_of(position) {
+            // A finite-domain clause selects a finite-trace profile, each
+            // clock-configured: its rows are always required, so a lock whose
+            // profile is not clock-configured leaves the node without rows
+            // and refuses at its body.
+            let configured = hyper.finite
+                || match hyper.wrapper {
+                    Some(wrapper) => configured_profile(wrapper, true, meter)?.is_some(),
+                    None => false,
+                };
+            if !configured {
+                continue;
+            }
+            CheckedOccurrenceRole::Claim
+        } else if kinds[position] == CheckedNodeKind::Temporal(TemporalForm::TemporalClause)
             && configured_profile(
                 position,
                 super::timed_model::is_model_subject_clause(nodes, kinds, terms, index, position),
@@ -559,8 +728,17 @@ pub(super) fn validate<B>(
                     .index(position)
                     .key("body"),
             )?;
+            let rows_needed = traces_of(position).map_or(1, <[&str]>::len);
             if occurrence.role == role
-                && seen.binary_search(&(position, occurrence.ordinal)).is_err()
+                && (0..rows_needed).any(|trace| {
+                    // A variable a later Group repeats is the key of its first.
+                    let repeated = traces_of(position)
+                        .is_some_and(|variables| variables[..trace].contains(&variables[trace]));
+                    !repeated
+                        && seen
+                            .binary_search(&(position, occurrence.ordinal, trace))
+                            .is_err()
+                })
             {
                 missing = Some(position);
                 break;
@@ -583,6 +761,27 @@ pub(super) fn validate<B>(
     }
     for (row_index, (row, &position)) in rows.iter().zip(&resolved).enumerate() {
         let at = || row_path(row_index);
+        let hyper = hyper_of(position);
+        if hyper.is_some_and(|hyper| hyper.finite) {
+            // The rows of one occurrence share one clock role.
+            if row_index > 0
+                && rows[row_index - 1].declaration == row.declaration
+                && rows[row_index - 1].occurrence == row.occurrence
+                && rows[row_index - 1].clock_name != row.clock_name
+            {
+                return Err(invalid(meter, at().key("clock_name"), &row.declaration));
+            }
+            if !clock_matches(compensation_profile, &row.clock) {
+                return Err(invalid(
+                    meter,
+                    at().key("clock").key("kind"),
+                    &row.declaration,
+                ));
+            }
+            continue;
+        }
+        // A behaviours node reads its profile and clock name from its wrapper.
+        let position = hyper.and_then(|hyper| hyper.wrapper).unwrap_or(position);
         if kinds[position] == CheckedNodeKind::Protocol(ProtocolForm::Compensation) {
             if clock_name(meter, position, 4) != Some(row.clock_name.as_ref()) {
                 return Err(invalid(meter, at().key("clock_name"), &row.declaration));
@@ -776,6 +975,7 @@ mod tests {
                 clock: ClockConfiguration::EventPosition {
                     sequence_authority: "source".into(),
                 },
+                trace: None,
             })
             .collect();
         let lock: CheckedPackageLockV2 = serde_json::from_value(json!({
@@ -1196,6 +1396,36 @@ mod timed_clock_tests {
         ] {
             assert!(
                 serde_json::from_str::<ClockConfiguration>(violating).is_err(),
+                "{violating}"
+            );
+        }
+    }
+
+    /// The `trace` member is a present non-null string or absent, is written
+    /// only when present, and a null, numeric or repeated member is refused.
+    #[trace("TC-483", "FR-038-AC-561")]
+    #[test]
+    fn trace_member_round_trips_and_refuses_violating_documents() {
+        let row = |extra: &str| {
+            format!(
+                r#"{{"declaration":{{"package":"p","path":["a"],"ordinal":0}},"occurrence":0,"clock_name":"c","clock":{{"kind":"event_position","sequence_authority":"s"}}{extra}}}"#
+            )
+        };
+        let with: TemporalBinding = serde_json::from_str(&row(r#","trace":"s""#)).unwrap();
+        assert_eq!(with.trace.as_deref(), Some("s"));
+        assert!(serde_json::to_string(&with)
+            .unwrap()
+            .ends_with(r#","trace":"s"}"#));
+        let without: TemporalBinding = serde_json::from_str(&row("")).unwrap();
+        assert_eq!(without.trace, None);
+        assert!(!serde_json::to_string(&without).unwrap().contains("trace"));
+        for violating in [
+            r#","trace":null"#,
+            r#","trace":3"#,
+            r#","trace":"s","trace":"n""#,
+        ] {
+            assert!(
+                serde_json::from_str::<TemporalBinding>(&row(violating)).is_err(),
                 "{violating}"
             );
         }

@@ -1408,3 +1408,32 @@ fn tc_048_no_copy_of_quire_canonical_is_in_the_repository() {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// FR-038-AC-561: the optional `trace` member is written only when present.
+// ---------------------------------------------------------------------------
+
+#[trace("TC-483", "FR-038-AC-561")]
+#[test]
+fn tc_483_binding_trace_member_is_written_only_when_present() {
+    let row = |trace: Option<&str>| {
+        let mut row = json!({
+            "declaration": node_id(&family_key("a1a1")),
+            "occurrence": 0,
+            "clock_name": "steps",
+            "clock": {"kind": "event_position", "sequence_authority": "events"},
+        });
+        if let Some(trace) = trace {
+            row["trace"] = json!(trace);
+        }
+        typed::<filament_contract_model::TemporalBinding>(&row)
+    };
+    let (with, without) = (row(Some("s")), row(None));
+    assert_same_bytes("a row with a trace", &with);
+    assert_same_bytes("a row without a trace", &without);
+    let bytes = String::from_utf8(quire_bytes(&with)).expect("utf8");
+    assert!(bytes.ends_with(r#""trace":"s"}"#), "{bytes}");
+    assert!(!String::from_utf8(quire_bytes(&without))
+        .expect("utf8")
+        .contains("trace"));
+}

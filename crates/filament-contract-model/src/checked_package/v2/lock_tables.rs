@@ -629,6 +629,7 @@ mod tests {
             },
             occurrence: 0,
             clock_name: "caller".into(),
+            trace: None,
             clock: super::super::ClockConfiguration::Timed { unit: "s".into() },
         }];
         let error = validate_dependency_clock_selections(
