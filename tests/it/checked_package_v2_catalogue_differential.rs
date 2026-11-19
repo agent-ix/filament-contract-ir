@@ -1172,7 +1172,7 @@ fn tc_048_malformed_operation_facts_have_no_admitted_view() {
     assert!(matches!(read(&law), CheckedPackageV2ReadResult::Refused(_)));
 }
 
-#[trace("TC-048", "FR-038-AC-251", "TC-1862", "FR-772-AC-1", "FR-772-AC-2")]
+#[trace("TC-048", "FR-038-AC-251", "TC-1862")]
 #[test]
 fn tc_048_every_catalogue_entry_retains_its_constructible_admission() {
     let catalog: Value = serde_json::from_str(

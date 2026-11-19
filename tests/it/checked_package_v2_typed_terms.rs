@@ -460,7 +460,7 @@ fn public_operation_read_exposes_admitted_records_and_rejects_forgery() {
     }
 }
 
-#[trace("FR-349-AC-8", "FR-349-AC-9", "TC-1862", "FR-772-AC-1", "FR-772-AC-2")]
+#[trace("FR-349-AC-8", "FR-349-AC-9", "TC-1862")]
 #[test]
 fn admitted_controls_expose_missing_catalog_constraint_productions() {
     let catalog: serde_json::Value = serde_json::from_str(
@@ -521,18 +521,12 @@ fn admitted_controls_expose_missing_catalog_constraint_productions() {
         assert_eq!(read.constraints.len(), constraints.len(), "{identity}");
         for (actual, expected) in read.constraints.iter().zip(constraints) {
             assert_eq!(actual.kind.as_wire(), expected["kind"].as_str().unwrap());
-            let expected_operands = match expected["kind"].as_str().unwrap() {
-                "quantifier_domain_only" => {
-                    assert!(expected.get("operands").is_none());
-                    Vec::new()
-                }
-                _ => expected["operands"]
-                    .as_array()
-                    .unwrap()
-                    .iter()
-                    .map(|value| value.as_u64().unwrap())
-                    .collect::<Vec<_>>(),
-            };
+            let expected_operands = expected["operands"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|value| value.as_u64().unwrap())
+                .collect::<Vec<_>>();
             assert_eq!(actual.operands, expected_operands);
             assert_eq!(actual.family.as_deref(), expected["family"].as_str());
         }
@@ -560,10 +554,9 @@ fn admitted_controls_expose_missing_catalog_constraint_productions() {
         "same_type",
         "union_arms",
     ];
-    // The constraint decoder's FR-772 test checks these closed catalog words;
-    // the operation tests exercise their reader behavior. This differential
-    // suite records its complete-package fixture gap because that requires a
-    // selected timed-model root and a resolved clock place.
+    // The separate FR-772 decoder and operation tests own these productions;
+    // this census has no admitted full-package option.slots control because it
+    // requires a selected timed-model root and a resolved clock place.
     let reader_specific_kinds = ["place_slot_terms", "quantifier_domain_only"];
     let covered: BTreeSet<&str> = fspec_positive_kinds
         .into_iter()
