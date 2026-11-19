@@ -96,3 +96,11 @@ Round 1. 23 round-2 mutants were run at 60c1db52 against `--test it claim_names`
 | FND-003 | fixed | `assert_row_locus` now asserts `refusal.locus` on the join, region and duplicate refusals, and mutant R24 (`.at_node` dropped) is killed by 4+ tests. The oracle decoder's name read is covered at 23b41755 by the lib test `a_refinement_body_name_that_is_no_identifier_is_refused_by_the_existing_decoder`, which asserts that `decode_body` refuses `""`, `"Impl::Named"`, `"7up"` and `7`; R28's constant name would admit them. That last point is established by reading, not by running R28 at 23b41755. |
 | FND-004 | fixed | `the_fspec_example_names_a_state_clause_and_a_state_graph_claim` builds the AC-457 example with a state-graph claim node. |
 | FND-005 | fixed | FSpec #702 (QSL-2448) published `claim-name-vectors.json` and `refinement-body-name-vectors.json` (TC-2011, TC-2012, TC-2015). tests/conformance_fspec/claim_names.rs replays them, and the declaration-region derivation shims are gone. The remaining fixture-row derivation is FND-007, an upstream gap. |
+| FND-006 | fixed | `a_collision_with_a_name_shared_by_temporal_rows_names_the_first_row` gives two `temporal_clause_names` rows one name and asserts that the document position is the first row. At b4311609, mutant N04 (keep the last such row) is killed by it. |
+| FND-007 | fixed | FSpec #709 (1ae83460) makes the checked-package fixtures carry their `claim_names` rows, and the claim-name vectors' `base_patch` no longer adds them. `fspec_inputs::read_json` and the conformance retry shim no longer derive rows. One dead registry branch remains (code-review FND-008). |
+
+## New findings (disposition pass 2)
+
+| ID | Severity | Summary | Refs |
+| --- | --- | --- | --- |
+| FND-008 | low | `published_refinement_body_name_vectors_replay` compares each positive case's `expected_node_id.path` only with `["relation", "refinement", name]` built from the same vector, so the assertion is the vector checking itself. It never compares against the `node_id` the reader admits. The FR-322-AC-200 / TC-310 claim that the name is part of the node identity is therefore not replayed against the implementation (the local fixture keeps its own path) | tests/it/checked_package_v2_claim_names.rs:1400-1410 |

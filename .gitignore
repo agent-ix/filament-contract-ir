@@ -16,3 +16,4 @@ worktrees/
 
 # The explicit FR-361 lane is a standalone package; its lock is seeded from this one.
 tests/conformance_fsl_ir1384/Cargo.lock
+mutants.out/

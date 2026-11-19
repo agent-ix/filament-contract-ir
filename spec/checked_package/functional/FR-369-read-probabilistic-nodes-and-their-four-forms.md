@@ -11,6 +11,10 @@ relationships:
     type: references
   - target: ix://agent-ix/filament-specification/FR-322
     type: references
+  - target: ix://agent-ix/filament-contract-ir/FR-367
+    type: depends_on
+  - target: ix://agent-ix/filament-specification/FR-610
+    type: references
 ---
 
 # FR-369: Read the FR-640 probabilistic node tag and its four forms
@@ -79,10 +83,15 @@ When the owner join has admitted a package, the strict V2 reader SHALL check eac
 node in ascending node-id order against the nodes it joins and refuse the first
 failure with `invalid_package` and cause `invalid-value`, at the failing member:
 
-- an operation reference whose `declaring` node is not a `model` node of an
-  object type, process or state machine of a selected model, or which names no
-  operation that node declares (a node absent from the graph is already
-  refused by the graph's dependency check);
+- an operation reference whose `declaring` node is neither a `model` node of an
+  object type, process or state machine of a selected model nor a
+  source-declared `model`/`object_type` node of the package (FSpec FR-322
+  "Source-declared object types"), or which names no operation that node
+  declares (a node absent from the graph is already refused by the graph's
+  dependency check). A selected model's declaring node resolves through the
+  retained models, as before; a source-declared one has no domain document, so
+  the strict read checks only its kind and `SourceOwner`, and the operation is
+  resolved at the identity-row join below;
 - a `random_parameter` whose `parameter` names no parameter of the operation,
   or holds a support value whose literal kind is not that of the parameter's
   type, the type FSpec FR-322 gives the parameter (an integer or integer-range
@@ -107,7 +116,34 @@ failure with `invalid_package` and cause `invalid-value`, at the failing member:
   and constants, as FSpec FR-405 states it (a reward "reads only the
   operation's parameters, random parameters included ... reads no state");
 - a `delay_distribution` whose `declaring` model is not the model of a
-  `timed_model` root whose time source has kind `dense`.
+  `timed_model` root whose time source has kind `dense`, or, for a
+  source-declared `declaring` node, for which no `timed_model` root whose
+  `model` is a source-declared node of the same `SourceOwner` identity has a
+  `dense` source: one source time member times every source object type of
+  the unit (FSpec FR-640 Reader rule 5, FR-415), and the delay's time
+  quantities are then typed at that source's unit.
+
+After the strict read admits a package and the source-object identity rows are
+admitted ([FR-367](./FR-367-join-source-object-rows-and-field-reads.md),
+`SelectedSourceObjects`), the reader SHALL join every operation reference of a
+`probabilistic` node whose `declaring` node, or a workload's `model`, is
+source-declared, in ascending node-id order, through the identity row whose
+`structural_node` is that node (FSpec FR-610 "Identity rows"), and refuse the
+first failure with `invalid_package` and cause `invalid-value` at the same
+member the strict read would name:
+
+- an `operation` name that no `operations` entry of the row carries (the entry's
+  `identity` is `<type>::<operation>`); for a workload, the operations are the
+  entries of the row and of the rows of its `supertypes`, followed
+  transitively, and the workload rules of the strict read apply to them;
+- a `random_parameter` whose `parameter` names no entry of the operation
+  entry's `parameters`, or a support value whose literal kind or membership is
+  not that of the entry's type node by the rules the strict read applies to a
+  selected parameter; a clock entry has no literal kind and refuses.
+
+The join SHALL charge one validation visit per operation reference joined, per
+operation entry and supertype edge read, and per support value checked, ahead
+of the work, so a bound too small for the join stops the read as incomplete.
 
 The strict V2 reader SHALL decide the read of a reward by following the
 dependencies of its function through functions, values and the expressions
@@ -230,7 +266,9 @@ QSL-2310.
 | FR-369-AC-21 | A delay quantity, of `uniform_interval` or `discrete`, typed at another unit than the `dense` source's refuses `invalid_package`/`invalid-value` at the quantity; quantities in the source's unit are admitted. | Test |
 | FR-369-AC-22 | The join charges one validation visit for each delay quantity of a `discrete` list at the quantity's pointer: a budget exists that stops the read as incomplete at exactly the delay of each row. | Test |
 | FR-369-AC-23 | A `random_parameter` of a Boolean parameter with `boolean` support literals `true` and `false`, and one of a declared enumeration parameter with `enum` support literals typed at that declaration and naming its cases, are admitted and read back with their supports. | Test |
-| FR-369-AC-24 | A Boolean parameter's support value given as the text `"true"`, as the number `1`, as an integer literal or as an `enum` literal, and an enumeration parameter's support value that names an unknown case, differs from a case in letter case, is typed at another enumeration, is a Boolean literal or is a text literal refuse `invalid_package`/`invalid-value` at the value. | Test |
+| FR-369-AC-24 | A Boolean parameter's support value given as the text `"true"`, as the number `1`, as an integer literal or as an `enum` literal, and an enumeration parameter's support value that names an unknown case, differs from a case in letter case, is typed at another enumeration, is a Boolean literal or is a text literal refuse `invalid_package`/`invalid-value` at the value. A support value of a variant type with a payload case (a union), for its payload case and its nullary case alike, refuses `ill_typed`/`operator-ineligible` at the literal's `type`, by the reader's general literal check before the join. | Test |
+| FR-369-AC-25 | A package of a unit with no selected model that declares `object O { d: Clock; operation step() modifies self.d; }`, `object Other { n: Integer; operation poke(k: Int[1, 3]) modifies self.n; }` and `time O dense unit ms;`, holding a `delay_distribution` on `O::step`, a `discrete` one on `Other::poke` with times typed at `ms`, a `random_parameter` of `Other::poke`'s `k` with support `1`, `3`, and a `workload` on `O`, each operation reference's `declaring` (the workload's `model`) a source `model`/`object_type` node, is admitted by the strict read and by the identity-row join, and the typed read gives each declaration keyed by its node. | Test (TC-484) |
+| FR-369-AC-26 | Over the AC-25 package each refuses `invalid_package`/`invalid-value` at the member: at the strict read, a `declaring` that is a source `relation`/`population` node, and a delay whose source model has no `dense` time member; at the identity-row join, an `operation` `nudge` that `Other`'s row lists no entry for, a `parameter` `j` that `Other::poke`'s `parameters` lack, a support value `4` outside `Int[1, 3]`, and a workload that omits `O::step`. A budget one visit short of the join's charges stops the read as incomplete. | Test (TC-484) |
 
 ## Dependencies
 

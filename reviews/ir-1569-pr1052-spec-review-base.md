@@ -31,3 +31,11 @@ The spec change is sound, and its numbering does not collide with anything else.
 | ID | Severity | Summary | Refs |
 | --- | --- | --- | --- |
 | FND-001 | low | "A support value of a declared record, tuple, option or collection type, or of a variant type with a payload case, has no literal kind and is refused" names no code, cause or locus. Two readings are plausible: `invalid_package`/`invalid-value` per FR-640 Reader rule 2 "outside the parameter's type", or the generic literal check's `ill_typed`. The implementation gives `ill_typed`/`operator-ineligible` at the literal's `type` for a payload variant (probe). State the code and pointer the reader actually returns. | spec/checked_package/functional/FR-369-read-probabilistic-nodes-and-their-four-forms.md:183-185 |
+
+## Dispositions
+
+Round 1 was verified at head 9ba38668.
+
+| FND | Outcome | Reason |
+| --- | --- | --- |
+| FND-001 | fixed | The FR-369 sentence now reads: the value "has no literal kind: FSpec has no literal form for these, and the reader's general literal check refuses it as `ill_typed`/`operator-ineligible` at the literal's `type`, before this join". That states the code and the locus, and it matches the probe and the new public-reader test. |

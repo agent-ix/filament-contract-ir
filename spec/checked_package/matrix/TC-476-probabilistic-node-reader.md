@@ -86,7 +86,9 @@ repeats the delay cases).
 24. Give the Boolean parameter a text, a number, an integer literal and an
     enumeration case, and the enumeration parameter an unknown case, a
     differently cased case, a case of another enumeration, a Boolean and a
-    text; expect `invalid-value` at each value (FR-369-AC-24).
+    text; expect `invalid-value` at each value. Give a variant with a payload
+    case a support value (its payload case and its nullary case); expect
+    `ill_typed`/`operator-ineligible` at the literal's `type` (FR-369-AC-24).
 
 ## Expected Results
 

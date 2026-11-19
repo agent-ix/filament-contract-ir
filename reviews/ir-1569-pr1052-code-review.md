@@ -53,3 +53,16 @@ The Variant/Boolean admission and its refusals are correct, and the new tests ki
 | --- | --- | --- | --- |
 | FND-001 | high | A repeated Boolean support value is admitted. `SupportKey` keys a literal by its string or u64 value only. A JSON boolean falls to `Distinct(index)`, "never equal to another", so the probe admits `random_parameter` support `[true, true]` through the public reader. FR-640 Reader rule 2 and FR-369 ("a support value that repeats an earlier one", FR-369-AC-3) require `invalid_package`/`invalid-value` at the later value. Before this PR a Boolean support was unreachable, because it was refused as the wrong kind. Fix: add a Boolean key (for example `SupportKey::Boolean(kind, bool)` from `value.as_bool()`) and test `[true, true]` and `[false, true, false]` through the public reader. Repeated enum cases are already refused (probe). | crates/filament-contract-model/src/checked_package/v2/probabilistic.rs:351-372 |
 | FND-002 | low | `the_public_reader_admits_boolean_and_enum_support_values` asserts only `support.len() == 2`. FR-369-AC-23 says the values "are read back with their supports", but the test never checks the read-back values (`true`/`false`, `Gold`/`Silver`) or the probabilities (1/2). Its doc comment also says "a mistyped or malformed one refuses", though the test refuses nothing. | tests/it/checked_package_v2_probabilistic.rs:1667-1682 |
+
+## Dispositions
+
+Round 1 was verified at head 9ba38668. That head carries d1062183, 79bb1c51 and 9ba38668, and the merge of `origin/main` a15bf349. The reviewer merged it into `origin/main` 6e3c0360 in a scratch worktree.
+
+These gates passed: `fmt --check`, `make string-edge`, and both clippy lanes with `-D warnings`. The full suite was run twice, each with its own target dir: the PR+main merge gave 2235 passed and 21 failed, and clean 6e3c0360 gave 2229 passed and 21 failed. The two failing sets are identical. They are 18 `monitor_plan::reached_model_read` lib tests and 3 `public_interface` tests. The `public_interface` tests fail on main itself, because the inventory lists `CheckedDependencyClockSelection` and main does not export it. #1052 adds no public item.
+
+Thirteen mutations were applied and all 13 were killed. Eight are the round-0 set. Five are new: a Boolean key made `Distinct`, a Boolean key made constant, a negative quantity sent to `wire`, a negative quantity admitted, and an unparsable quantity sent to `invalid`.
+
+| FND | Outcome | Reason |
+| --- | --- | --- |
+| FND-001 | fixed | `SupportKey::Boolean(bool)` is now taken from `value.as_bool()`. The public reader refuses `[true, true]` at row 1 and `[false, true, false]` at row 2 with `invalid-value`, and it still admits `[true, false]`. The wire unit test `only_equal_text_naturals_and_booleans_repeat` covers the same rule. Mutations N1 and N2 are killed. |
+| FND-002 | fixed | The AC-23 test now compares each read-back value (`true`/`false`, `Gold`/`Silver`) and its probability 1/2 with the input. The doc comment no longer claims a refusal. Mutations M4, M5 and M7 are killed. |
