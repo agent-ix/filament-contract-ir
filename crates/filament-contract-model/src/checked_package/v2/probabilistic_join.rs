@@ -28,6 +28,8 @@ use crate::checked_package::shared::{
     CheckedPackageRefusalCause as Cause, CheckedPackageRefusalCode as Code,
 };
 
+mod claims;
+
 const FORM: &str = "probabilistic";
 
 /// The term bound to the `index`th member of an aggregate body.
@@ -662,7 +664,11 @@ pub(super) fn validate(
         .iter()
         .filter(|kind| matches!(kind, CheckedNodeKind::Probabilistic(_)))
         .count();
-    if count == 0 {
+    let claims = kinds
+        .iter()
+        .filter(|kind| **kind == CheckedNodeKind::Claim(super::ClaimForm::ProbabilisticClaim))
+        .count();
+    if count == 0 && claims == 0 {
         return Ok(());
     }
     let site = Site::new(PackageReadStage::Graph, 0, FORM, Path::root());
@@ -779,5 +785,5 @@ pub(super) fn validate(
             Err(at) => seen.insert(at, key),
         }
     }
-    Ok(())
+    claims::validate(&join, meter)
 }

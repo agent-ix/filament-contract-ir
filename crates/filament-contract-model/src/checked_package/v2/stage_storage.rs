@@ -43,8 +43,11 @@ impl<'a> Path<'a> {
     /// The deepest position a stage names.
     // A binder or control-reference target reaches thirteen closed-shape
     // steps, as `argument_path(2)/members/{entry}/members/0/value/target`
-    // does. Arbitrary-depth expressions use Position::Trail instead.
-    const CAPACITY: usize = 16;
+    // does. A probabilistic claim's deepest member, the `kind` of a weighting
+    // inside a fraction measure of a compare event inside its form, reaches
+    // nineteen (QSL-2554), leaving one step of margin. Arbitrary-depth
+    // expressions use Position::Trail instead.
+    const CAPACITY: usize = 20;
 
     /// The document root.
     pub(super) const fn root() -> Self {

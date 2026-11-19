@@ -97,6 +97,23 @@ per binding nested in them, each before inspecting it, a binding before the
 bindings nested in it, and on exhaustion return its `incomplete` result at the
 first uncharged member with no partial package.
 
+### Body grammar of the claim node
+
+The claim body is a closed grammar of its own, as the `probabilistic` bodies
+are: FSpec FR-322 "Body grammar" gives the five strata of every other body, and
+its Group, Tuple and Member productions stop one aggregate short of FR-640's
+`form`, `over`, `activation` and `confidence` bindings, whose values are
+aggregates of bindings that hold aggregates of bindings (`form`, then `event`
+or `measure`, then `bound`, then the exact value). The reader SHALL read the
+claim body as a Leaf, an `aggregate` whose members are each such a term, or a
+`binding` of one; no `application` stands in it, and a body outside
+FR-640's nine bindings is refused by rule 6 or 7, not by the grammar. The
+nesting is fixed by FR-640's forms, so the JSON depth of a claim node is fixed
+whatever the model's size: the deepest member the reader names, the `kind` of a
+`weighting` inside a `fraction` `measure` of a `compare` event inside the
+`form`, stands at nineteen JSON Pointer steps below the package root, and the reader's pointer
+builder holds twenty.
+
 ### Public claim read
 
 An admitted package SHALL expose `CheckedPackageV2::probabilistic_claims(&self)
@@ -111,12 +128,12 @@ pub struct CheckedProbabilisticClaimNode {
     pub rewards: Vec<CheckedNodeId>,
     pub distributions: Vec<CheckedNodeId>,
     pub delays: Vec<CheckedNodeId>,
-    pub form: ProbabilisticForm,                        // FR-640 binding 6
+    pub form: ProbabilisticClaimForm,                       // FR-640 binding 6
     pub over: Option<CheckedNodeId>,            // a value/parameter node
     pub activation: ProbabilisticActivation,            // Origin | Each { trigger, guard }
     pub confidence: Option<ProbabilisticConfidence>,    // alpha, beta, indifference
 }
-pub enum ProbabilisticForm {
+pub enum ProbabilisticClaimForm {
     Probability { event: ProbabilisticEvent, bound: ProbabilisticBound },
     Quantile { level: CheckedRational, measure: ProbabilisticMeasure, bound: ProbabilisticBound },
     MeanOfFraction { measure: ProbabilisticMeasure, bound: ProbabilisticBound },

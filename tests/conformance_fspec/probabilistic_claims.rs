@@ -2,7 +2,10 @@
 // Copyright (C) 2026 Agent-IX
 //! Read the owning FSpec probabilistic-claim vectors through the strict reader.
 
-use crate::fixture_support::{canonical, evidence_for, refresh_identity, settle, v2_all_families};
+use crate::fixture_support::{
+    canonical, evidence_for, minimal_probabilistic_claim_body, refresh_identity, settle,
+    v2_all_families,
+};
 use filament_contract_model::{
     encode_checked_package_v2, CheckedCapability, CheckedDiagnosticsV2, CheckedNodeId,
     CheckedOccurrenceRole, CheckedPackageLimit, CheckedPackageLockV2, CheckedPackageReadLimits,
@@ -47,6 +50,8 @@ fn fixture(rows: Vec<Value>, vectors: &Value) -> Value {
         .as_array()
         .expect("positive claim vectors");
     let mut nodes = Vec::new();
+    let (claim_body, mut claim_dependencies) = minimal_probabilistic_claim_body(&mut wire);
+    claim_dependencies.sort_by_key(Value::to_string);
     for positive in positives {
         let mut declaration = positive["declaration"].clone();
         declaration["package"] = json!(package);
@@ -73,9 +78,9 @@ fn fixture(rows: Vec<Value>, vectors: &Value) -> Value {
             "node_tag": positive["resolved_node"]["node_tag"],
             "semantic_form": positive["resolved_node"]["semantic_form"],
             "semantic_type": ty,
-            "dependencies": [],
+            "dependencies": claim_dependencies.clone(),
             "occurrences": occurrences,
-            "body": {"term":"aggregate", "members":[]}
+            "body": claim_body.clone()
         }));
     }
     let other_context = vectors["reader_refusals"]

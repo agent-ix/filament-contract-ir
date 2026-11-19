@@ -3413,3 +3413,81 @@ fn build_operation_identities() -> Value {
     refresh_identity(&mut package);
     package
 }
+
+/// The nine-binding body of a minimal admissible `claim`/`probabilistic_claim`
+/// node over the all-families package (FSpec FR-640 "Probabilistic claim
+/// node"): `probability >= 1/2 [formula]` under every scheduler with no
+/// fairness, reading no reward, distribution or delay. The builtin rational
+/// node is added when the package has none. Returns the body and the node ids
+/// it references, for the node's `dependencies`.
+pub fn minimal_probabilistic_claim_body(package: &mut Value) -> (Value, Vec<Value>) {
+    let find = |package: &Value, tag: &str, form: &str| {
+        package["semantic_graph"]["nodes"]
+            .as_array()
+            .expect("nodes")
+            .iter()
+            .find(|node| node["node_tag"] == tag && node["semantic_form"] == form)
+            .map(|node| node["node_id"].clone())
+    };
+    let root = find(package, "model", "model_root").expect("model root");
+    let formula = find(package, "temporal", "formula").expect("formula node");
+    let rational = find(package, "scalar_type", "rational").unwrap_or_else(|| {
+        let id = node_id("builtin/rational");
+        let mut node = json!({
+            "schema_version": "filament.checked-semantic-graph/v2",
+            "node_id": id, "semantic_type": id, "node_tag": "scalar_type",
+            "semantic_form": "rational", "dependencies": [],
+            "occurrences": [{"role": "generated", "ordinal": 0}],
+            "body": {"term": "aggregate", "members": []},
+        });
+        carry_check_mode(&mut node);
+        package["semantic_graph"]["nodes"]
+            .as_array_mut()
+            .expect("nodes")
+            .push(node);
+        id
+    });
+    let text = node_id("fixture/a1a1");
+    let binding =
+        |name: &str, value: Value| json!({"term": "binding", "name": name, "value": value});
+    let aggregate = |members: Vec<Value>| json!({"term": "aggregate", "members": members});
+    let reference = |target: &Value| json!({"term": "reference", "target": target});
+    let literal = |kind: &str, ty: &Value, value: &str| json!({"term": "literal", "type": ty, "value_kind": kind, "value": value});
+    let body = aggregate(vec![
+        binding("subject", reference(&root)),
+        binding(
+            "scheduler",
+            aggregate(vec![binding("fairness", aggregate(vec![]))]),
+        ),
+        binding("reward", aggregate(vec![])),
+        binding("distributions", aggregate(vec![])),
+        binding("delays", aggregate(vec![])),
+        binding(
+            "form",
+            aggregate(vec![
+                binding("kind", literal("text", &text, "probability")),
+                binding(
+                    "event",
+                    aggregate(vec![
+                        binding("kind", literal("text", &text, "formula")),
+                        binding("formula", reference(&formula)),
+                    ]),
+                ),
+                binding(
+                    "bound",
+                    aggregate(vec![
+                        binding("direction", literal("text", &text, "at_least")),
+                        binding("value", literal("rational", &rational, "1/2")),
+                    ]),
+                ),
+            ]),
+        ),
+        binding("over", aggregate(vec![])),
+        binding(
+            "activation",
+            aggregate(vec![binding("kind", literal("text", &text, "origin"))]),
+        ),
+        binding("confidence", aggregate(vec![])),
+    ]);
+    (body, vec![root, formula])
+}

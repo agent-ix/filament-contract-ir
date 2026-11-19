@@ -63,8 +63,15 @@ mod natural;
 mod node_index;
 mod node_lookup;
 mod probabilistic;
+mod probabilistic_claim_read;
 mod probabilistic_join;
 mod probabilistic_read;
+pub use probabilistic_claim_read::{
+    BoundDirection, CheckedProbabilisticClaimNode, FairnessMember, ProbabilisticActivation,
+    ProbabilisticBound, ProbabilisticClaimForm, ProbabilisticConfidence, ProbabilisticEvent,
+    ProbabilisticExact, ProbabilisticMeasure, ProbabilisticReachTarget, ProbabilisticScheduler,
+    ProbabilisticWeighting,
+};
 pub use probabilistic_read::{
     CheckedDelayDistribution, CheckedDelayFamily, CheckedDelayQuantity, CheckedRandomParameter,
     CheckedReward, CheckedSupportValue, CheckedWorkload, CheckedWorkloadWeight,
@@ -1116,6 +1123,8 @@ pub struct CheckedPackageV2 {
     structural_keys: Vec<std::sync::Arc<CheckedNodeId>>,
     /// Model terminal declarations retained in structural node-key order.
     terminal_rows: Arc<Vec<TerminalRow>>,
+    /// The admitted probabilistic claim nodes in structural node-key order.
+    probabilistic_claims: Arc<Vec<CheckedProbabilisticClaimNode>>,
     /// The graph in its wire form, node-held operands as operand slots,
     /// built on first use from the resolved graph in `wire`.
     slot_graph: Arc<std::sync::OnceLock<SlotView>>,
@@ -1743,6 +1752,12 @@ impl CheckedPackageV2 {
             &structural_keys,
             budget,
         )?;
+        let probabilistic_claims = probabilistic_claim_read::retain_claims(
+            &wire.semantic_graph.nodes,
+            &kinds,
+            &structural_keys,
+            budget,
+        )?;
         let is_timed_root =
             |kind: &CheckedNodeKind| *kind == CheckedNodeKind::TimedModel(TimedModelForm::Model);
         let mut timed_model_roots: Vec<usize> = read_charge::with_capacity(
@@ -1775,6 +1790,7 @@ impl CheckedPackageV2 {
             node_index,
             structural_keys,
             terminal_rows,
+            probabilistic_claims,
             slot_graph,
             source_index,
             lowering_facts,
@@ -5654,6 +5670,7 @@ mod tests {
                     schedulability_claim_index: Vec::new(),
                     monitor_plan_index: Vec::new(),
                     terminal_rows: std::sync::Arc::new(Vec::new()),
+                    probabilistic_claims: std::sync::Arc::new(Vec::new()),
                     timed_model_roots: Vec::new(),
                     node_index: std::sync::Arc::new(Default::default()),
                     structural_keys: keys,

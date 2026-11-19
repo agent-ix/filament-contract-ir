@@ -110,6 +110,11 @@ enum Place {
     LeafOnly,
     /// The value of a Member's `binding`: a Leaf, a Group or a Tuple.
     BindingValue,
+    /// A term of a `claim`/`probabilistic_claim` body, whose `form`, `activation`
+    /// and `confidence` bindings nest aggregates of bindings below the Tuple
+    /// stratum (FSpec FR-640 "Probabilistic claim node"): a Leaf, an `aggregate`
+    /// of such terms, or a `binding` of one.
+    Claim,
 }
 
 /// Whether an application body has a `boundary` binding among its arguments.
@@ -315,6 +320,15 @@ pub(super) fn check(
                         &mut meter.reservation(flat_site(position)),
                     )
                     .map(|_| ())
+                } else if kind == CheckedNodeKind::Claim(super::ClaimForm::ProbabilisticClaim) {
+                    check_term(
+                        body,
+                        &at,
+                        Place::Claim,
+                        false,
+                        Some(&node.node_id),
+                        &mut meter.reservation(flat_site(position)),
+                    )
                 } else if kind == CheckedNodeKind::Claim(super::ClaimForm::Schedulability) {
                     check_term_with_empty_leaf(
                         body,
@@ -1031,6 +1045,7 @@ impl<'a, V: TermSource<'a>> Walk for Flat<'a, '_, V> {
                 ));
             }
             Some(BodyTerm::Aggregate) => match place {
+                Place::Claim => Place::Claim,
                 Place::BodyRoot => Place::Member,
                 Place::Member | Place::TupleMember => Place::GroupMember,
                 Place::BindingValue => aggregate_stratum(value),
@@ -1042,6 +1057,7 @@ impl<'a, V: TermSource<'a>> Walk for Flat<'a, '_, V> {
                 }
             },
             Some(BodyTerm::Binding) => match place {
+                Place::Claim => Place::Claim,
                 Place::Member => Place::BindingValue,
                 Place::GroupMember => Place::LeafOnly,
                 Place::BodyRoot | Place::TupleMember | Place::LeafOnly | Place::BindingValue => {
