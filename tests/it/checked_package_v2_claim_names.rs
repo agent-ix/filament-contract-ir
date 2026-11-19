@@ -1100,6 +1100,81 @@ fn the_own_node_check_costs_the_declaration_set_elements_it_compares() {
     );
 }
 
+#[trace("TC-477", "FR-371-AC-6")]
+#[test]
+fn the_own_node_check_costs_two_work_visits_for_each_row() {
+    // One node with `extra` further claim occurrences of one declaration (0 or
+    // 1 here): the rows repeat one name. The marginal cost of one more row, beyond what a
+    // package refused at its first join pays, is the new row's join scan, its
+    // region compares, one coverage visit, one one-namespace visit and the
+    // own-node check's two.
+    let build = |extra: usize| {
+        let mut package = StatePackage::new().value;
+        let invariant = nodes(&package)
+            .iter()
+            .position(|node| {
+                node["semantic_form"] == "state_clause"
+                    && node["body"]["operation"]["member"]["clause"] == "invariant"
+            })
+            .expect("invariant clause");
+        for ordinal in 1..=extra as u64 {
+            package["semantic_graph"]["nodes"][invariant]["occurrences"]
+                .as_array_mut()
+                .expect("occurrences")
+                .push(json!({"role": "claim", "ordinal": ordinal}));
+            settle(&mut package);
+            let id = nodes(&package)[invariant]["node_id"].clone();
+            let mut entry = package["source_map"]
+                .as_array()
+                .expect("source map")
+                .iter()
+                .find(|entry| entry["node_id"] == id)
+                .expect("source entry")
+                .clone();
+            entry["role"] = json!("claim");
+            entry["ordinal"] = json!(ordinal);
+            let held = package["source_map"].as_array_mut().expect("source map");
+            held.retain(|candidate| {
+                !(candidate["node_id"] == id
+                    && candidate["role"] == "claim"
+                    && candidate["ordinal"] == ordinal)
+            });
+            held.push(entry);
+            refresh_identity(&mut package);
+        }
+        let node = nodes(&package)[invariant]["node_id"].clone();
+        let regions = regions_of(&package, &node, "claim", 0);
+        (package, node, regions)
+    };
+    let (two, node, regions) = build(1);
+    let (one, _, _) = build(0);
+    let first = |package: &Value| {
+        let mut damaged = package.clone();
+        damaged["claim_names"][0]["declaration"] =
+            json!({"package": "absent", "path": ["nothing"], "ordinal": 0});
+        damaged
+    };
+    for package in [&one, &two] {
+        admitted(read_all(package));
+        assert!(package["temporal_clause_names"].as_array().is_some());
+    }
+    let measure = |package: &Value| smallest_deciding_work_with(package, &evidence_for(package));
+    let decided = measure(&two) - measure(&one);
+    let refused_at_first_join = measure(&first(&two)) - measure(&first(&one));
+    let occurrences = nodes(&two)
+        .iter()
+        .find(|candidate| candidate["node_id"] == node)
+        .expect("node")["occurrences"]
+        .as_array()
+        .expect("occurrences")
+        .len();
+    let region_count = regions.as_array().expect("regions").len();
+    assert_eq!(
+        decided - refused_at_first_join,
+        (occurrences + region_count + 1 + 1 + 2) as u64
+    );
+}
+
 #[trace("TC-477", "FR-371-AC-10")]
 #[test]
 fn a_name_on_two_nodes_resolves_to_the_node_whose_declaration_set_nests() {
