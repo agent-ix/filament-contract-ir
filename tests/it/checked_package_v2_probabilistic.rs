@@ -1896,7 +1896,7 @@ fn node_by_label_ref<'a>(value: &'a Value, label: &[&str]) -> &'a Value {
 
 /// FSpec FR-322 "Owner joins" (W76), FR-322-AC-471, FR-770-AC-2: a reward
 /// clause function owned by an object type, by a field member or by an
-/// operation of another type is not owned by the operation member, and a
+/// undeclared member is not owned by a declared operation member, and a
 /// declared clause is always `linked`.
 #[trace("TC-048", "FR-038-AC-571")]
 #[test]

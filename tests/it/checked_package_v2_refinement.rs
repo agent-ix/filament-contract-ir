@@ -8092,13 +8092,10 @@ fn derive_compensation_receiver_id(package: &mut Value) {
     crate::support::checked_package::reassign_node_id(package, &old, &derived);
 }
 
-/// FR-426/FR-432 (W75 to add rows): a `recommend` is a node-row class like an
-/// `event`, spelled `<A>::<protocol>::<node>`. FR-432-AC-23/24 (W76): its
-/// binder types are the receiver and one type per operation parameter, with no
-/// `result`; the declared binder type `B` of `as (r: B)` constrains nothing.
-#[trace("TC-048", "FR-038-AC-570", "FR-038-AC-573")]
-#[test]
-fn refinement_catalog_maps_a_recommend_as_a_node_row_class() {
+/// A concrete protocol refinement whose `Event` step is a `recommend` of
+/// `withdraw` (parameter `k: Integer`, Integer result) beside an `attempt` of
+/// the parameterless `deposit`.
+fn recommend_fixture() -> (Value, CheckedPackageEvidence) {
     let (mut base, _, _) = crate::checked_package_v2_protocol_body::package_with_present_commit();
     derive_compensation_receiver_id(&mut base);
     // The reader derives the Integer type's identity structurally.
@@ -8167,85 +8164,141 @@ fn refinement_catalog_maps_a_recommend_as_a_node_row_class() {
     }]);
     family["types"][0]["operations"][1]["returns"] =
         json!({"typeRef": "ix://filament/native/Integer", "multiplicity": one});
-    let (mut package, evidence) = concrete_protocol_refinement_with_family(
+    concrete_protocol_refinement_with_family(
         base,
         ProtocolStepRows::Empty,
         ProtocolClauseOwner::SelectedModel,
         model_document(),
         Vec::new(),
         Some(family),
-    );
-    let nodes = package["semantic_graph"]["nodes"]
-        .as_array()
-        .expect("nodes");
-    let by_operator = |operator: &str| {
-        nodes
+    )
+}
+
+/// The identities of the nodes a [`recommend_fixture`] catalog names.
+struct RecommendIds {
+    template: Value,
+    finish: Value,
+    commit: Value,
+    attempt: Value,
+    recommend: Value,
+    effect: Value,
+    boolean: Value,
+    integer: Value,
+    receiver: Value,
+}
+
+impl RecommendIds {
+    fn of(package: &Value) -> Self {
+        let nodes = package["semantic_graph"]["nodes"]
+            .as_array()
+            .expect("nodes");
+        let by_operator = |operator: &str| {
+            nodes
+                .iter()
+                .find(|node| node["body"]["operation"]["member"]["operator"] == operator)
+                .expect("protocol operator")["node_id"]
+                .clone()
+        };
+        let by_name = |name: &str| {
+            nodes
+                .iter()
+                .find(|node| {
+                    node["declaration"]["qualified_name"]
+                        .as_array()
+                        .is_some_and(|path| path.last().is_some_and(|last| last == name))
+                })
+                .expect("named protocol node")["node_id"]
+                .clone()
+        };
+        let by_form = |form: &str| {
+            nodes
+                .iter()
+                .find(|node| node["semantic_form"] == form)
+                .expect("form")["node_id"]
+                .clone()
+        };
+        let anchor = nodes
             .iter()
-            .find(|node| node["body"]["operation"]["member"]["operator"] == operator)
-            .expect("protocol operator")["node_id"]
-            .clone()
-    };
-    let template = by_operator("compensate");
-    let finish = by_operator("finish");
-    let commit = by_operator("commit");
-    let by_name = |name: &str| {
-        nodes
+            .find(|node| node["semantic_form"] == "operation_anchor")
+            .expect("operation anchor");
+        let context = &anchor["body"]["members"][0]["value"]["target"];
+        let receiver = nodes
             .iter()
             .find(|node| {
-                node["declaration"]["qualified_name"]
-                    .as_array()
-                    .is_some_and(|path| path.last().is_some_and(|last| last == name))
+                node["semantic_form"] == "reference"
+                    && node["body"]["members"][0]["target"] == *context
             })
-            .expect("named protocol node")["node_id"]
-            .clone()
-    };
-    let attempt = by_name("ForwardAttempt");
-    let recommend = by_name("Event");
-    let effect = by_name("ForwardEffect");
-    let boolean = node_id(&crate::support::checked_package::family_key("aaaa"));
-    let integer = crate::support::checked_package::structural_id(
-        FAMILY_MODEL_IDENTITY,
-        vec![json!("scalar_type"), json!("integer")],
-        0,
-    );
-    let anchor = nodes
-        .iter()
-        .find(|node| node["semantic_form"] == "operation_anchor")
-        .expect("operation anchor");
-    let context = &anchor["body"]["members"][0]["value"]["target"];
-    let receiver = nodes
-        .iter()
-        .find(|node| {
-            node["semantic_form"] == "reference" && node["body"]["members"][0]["target"] == *context
-        })
-        .expect("receiver type")["node_id"]
-        .clone();
-    let entry = |class: &str, node: &Value, binders: Vec<Value>| json!({"class": class, "node": node, "binder_types": binders});
-    let build = |recommend_class: &str, recommend_binders: Vec<Value>| {
+            .expect("receiver type")["node_id"]
+            .clone();
+        let boolean_path =
+            node_id(&crate::support::checked_package::family_key("aaaa"))["path"].clone();
+        let boolean = nodes
+            .iter()
+            .find(|node| node["node_id"]["path"] == boolean_path)
+            .expect("boolean type")["node_id"]
+            .clone();
+        Self {
+            template: by_operator("compensate"),
+            finish: by_operator("finish"),
+            commit: by_operator("commit"),
+            attempt: by_name("ForwardAttempt"),
+            recommend: by_name("Event"),
+            effect: by_name("ForwardEffect"),
+            boolean,
+            integer: by_form("integer"),
+            receiver,
+        }
+    }
+
+    /// The catalog of the fixture's protocol with `recommend_class` carrying
+    /// `recommend_binders`.
+    fn entries(&self, recommend_class: &str, recommend_binders: Vec<Value>) -> Vec<Value> {
+        let entry = |class: &str, node: &Value, binders: Vec<Value>| json!({"class": class, "node": node, "binder_types": binders});
         let mut entries = vec![
             entry(
                 "Example::OrderFlow::Undo",
-                &template,
-                vec![receiver.clone()],
+                &self.template,
+                vec![self.receiver.clone()],
             ),
-            entry("Example::OrderFlow::Closed", &finish, vec![boolean.clone()]),
-            entry("Example::OrderFlow::Commit", &commit, vec![boolean.clone()]),
+            entry(
+                "Example::OrderFlow::Closed",
+                &self.finish,
+                vec![self.boolean.clone()],
+            ),
+            entry(
+                "Example::OrderFlow::Commit",
+                &self.commit,
+                vec![self.boolean.clone()],
+            ),
             entry(
                 "Example::OrderFlow::ForwardAttempt",
-                &attempt,
-                vec![receiver.clone()],
+                &self.attempt,
+                vec![self.receiver.clone()],
             ),
-            entry(recommend_class, &recommend, recommend_binders),
+            entry(recommend_class, &self.recommend, recommend_binders),
             entry(
                 "Example::OrderFlow::ForwardEffect",
-                &effect,
-                vec![boolean.clone()],
+                &self.effect,
+                vec![self.boolean.clone()],
             ),
-            entry("cend Example::OrderFlow::Undo", &template, vec![]),
+            entry("cend Example::OrderFlow::Undo", &self.template, vec![]),
         ];
         entries.sort_by(|left, right| left["class"].as_str().cmp(&right["class"].as_str()));
         entries
-    };
+    }
+}
+
+/// FR-426/FR-432 (W75 to add rows): a `recommend` is a node-row class like an
+/// `event`, spelled `<A>::<protocol>::<node>`. FR-432-AC-23/24 (W76): its
+/// binder types are the receiver and one type per operation parameter, with no
+/// `result`; the declared binder type `B` of `as (r: B)` constrains nothing.
+#[trace("TC-048", "FR-038-AC-570", "FR-038-AC-573")]
+#[test]
+fn refinement_catalog_maps_a_recommend_as_a_node_row_class() {
+    let (mut package, evidence) = recommend_fixture();
+    let ids = RecommendIds::of(&package);
+    let (boolean, integer, receiver) = (&ids.boolean, &ids.integer, &ids.receiver);
+    let build = |class: &str, binders: Vec<Value>| ids.entries(class, binders);
     let refinement = set_concrete_catalog(
         &mut package,
         build(
@@ -9179,6 +9232,132 @@ fn refinement_catalog_joins_abstract_class_from_direct_dependency() {
         refusal.loci[0].path.as_ref().map(|path| path.as_str()),
         Some(format!("/semantic_graph/nodes/{position}/body/class_catalog/abstract/0").as_str())
     );
+}
+
+/// FSpec FR-432-AC-24 (W76), abstract side: the `class_catalog` entry of a
+/// `recommend` of a selected dependency protocol lists the receiver and the
+/// parameters and no `result`, though the operation declares one.
+#[trace("TC-048", "FR-038-AC-573")]
+#[test]
+fn refinement_catalog_gives_an_external_abstract_recommend_no_result_binder() {
+    let (mut dependency_wire, dependency_evidence) = recommend_fixture();
+    name_dependency_fixture(&mut dependency_wire, "test/abstract-protocol");
+    let dep = RecommendIds::of(&dependency_wire);
+    let recommend_class = "Example::OrderFlow::Event";
+    let right = vec![dep.receiver.clone(), dep.integer.clone()];
+    set_concrete_catalog(
+        &mut dependency_wire,
+        dep.entries(recommend_class, right.clone()),
+    );
+    let CheckedPackageV2ReadResult::Admitted(dependency) =
+        read(&dependency_wire, &dependency_evidence)
+    else {
+        panic!(
+            "dependency fixture must admit: {:?}",
+            read(&dependency_wire, &dependency_evidence)
+        );
+    };
+    let nodes = dependency_wire["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes");
+    let abstract_model = nodes
+        .iter()
+        .find(|node| {
+            node["semantic_form"] == "model_root" && node["owner"]["identity"] == MODEL_IDENTITY
+        })
+        .expect("model")["node_id"]
+        .clone();
+    let abstract_clause = nodes
+        .iter()
+        .find(|node| node["semantic_form"] == "protocol_clause")
+        .expect("clause")["node_id"]
+        .clone();
+    let external = |node: &Value| json!({"package":"test/abstract-protocol", "node":node});
+    let abstract_entries = |binders: Vec<Value>| {
+        dep.entries(recommend_class, binders)
+            .into_iter()
+            .map(|entry| {
+                json!({
+                    "class": entry["class"],
+                    "node": external(&entry["node"]),
+                    "binder_types": entry["binder_types"]
+                        .as_array()
+                        .expect("binders")
+                        .iter()
+                        .map(external)
+                        .collect::<Vec<_>>(),
+                })
+            })
+            .collect::<Vec<_>>()
+    };
+
+    let (mut package, mut evidence) = recommend_fixture();
+    let own = RecommendIds::of(&package);
+    let concrete = own.entries(
+        recommend_class,
+        vec![own.receiver.clone(), own.integer.clone()],
+    );
+    let mut dependencies: Vec<Value> = concrete
+        .iter()
+        .flat_map(|entry| {
+            std::iter::once(entry["node"].clone())
+                .chain(entry["binder_types"].as_array().expect("binders").clone())
+        })
+        .collect();
+    dependencies.sort_by(node_id_order);
+    dependencies.dedup();
+    let position = set_concrete_catalog(&mut package, concrete);
+    let node = &mut package["semantic_graph"]["nodes"][position];
+    node["dependencies"] = json!(dependencies);
+    node["body"]["abstract"] = external(&abstract_model);
+    node["body"]["protocol"] = external(&abstract_clause);
+    node["body"]["class_catalog"]["abstract"] = json!(abstract_entries(right));
+    settle_refinement(&mut package, position);
+    package["lock"]["dependency_selections"] = json!([{
+        "identity":"test/abstract-protocol"
+    }]);
+    refresh_identity(&mut package);
+    evidence
+        .insert_dependency_package("test/abstract-protocol", *dependency)
+        .expect("selected dependency");
+    let admitted = read(&package, &evidence);
+    assert!(
+        matches!(admitted, CheckedPackageV2ReadResult::Admitted(_)),
+        "{admitted:?}"
+    );
+    // The result type, the declared binder type and the receiver alone are
+    // not the abstract binder record.
+    for wrong in [
+        vec![
+            dep.receiver.clone(),
+            dep.integer.clone(),
+            dep.integer.clone(),
+        ],
+        vec![dep.boolean.clone()],
+        vec![dep.receiver.clone()],
+    ] {
+        let mut wrong_package = package.clone();
+        wrong_package["semantic_graph"]["nodes"][position]["body"]["class_catalog"]["abstract"] =
+            json!(abstract_entries(wrong));
+        settle_refinement(&mut wrong_package, position);
+        let CheckedPackageV2ReadResult::Refused(refusal) = read(&wrong_package, &evidence) else {
+            panic!("an external abstract recommend binder with a result admitted");
+        };
+        assert_eq!(refusal.code, CheckedPackageRefusalCode::InvalidModelBinding);
+        assert_eq!(
+            refusal.cause,
+            Some(CheckedPackageRefusalCause::MalformedDeclaration)
+        );
+        assert!(
+            refusal.loci[0]
+                .path
+                .as_ref()
+                .is_some_and(|path| path.as_str().starts_with(&format!(
+                    "/semantic_graph/nodes/{position}/body/class_catalog/abstract/"
+                ))),
+            "{refusal:?}"
+        );
+    }
 }
 
 /// Trace: FR-038-AC-328
