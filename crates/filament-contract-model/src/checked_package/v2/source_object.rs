@@ -72,6 +72,20 @@ pub struct SelectedSourcePopulation {
     pub symmetric: bool,
 }
 
+/// One operation a source-declared object type declares itself, in the
+/// producer's identity row (`identities.json` `source_objects[].operations`).
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SelectedSourceObjectOperation {
+    /// The operation's source identity, `<type>::<operation>`.
+    pub identity: Box<str>,
+    /// Whether the operation is a query: it has a result and an empty effect
+    /// frame.
+    pub query: bool,
+    /// The names of the operation's parameters whose declared type is `Clock`
+    /// or an alias of it, in declaration order; empty when it has none.
+    pub clock_parameters: Vec<Box<str>>,
+}
+
 /// One FSL-stage source-object identity row for an admitted source-declared
 /// object type. The row is a producer fact; admission checks its join to the
 /// package, and `identity_fields` and `populations` are read only from a
@@ -94,6 +108,11 @@ pub struct SelectedSourceObjectRow {
     pub members: Vec<SelectedSourceObjectMember>,
     /// The populations the type itself declares, in source order.
     pub populations: Vec<SelectedSourcePopulation>,
+    /// The operations the type itself declares, in source order; an operation
+    /// the type only inherits has no entry. Carried as the producer states
+    /// it: the reader checks the entry set and types, not a join to the
+    /// package's `operation_effects` or source-operation rows.
+    pub operations: Vec<SelectedSourceObjectOperation>,
 }
 
 /// Why a supply of source-object identity rows was refused, in the order the

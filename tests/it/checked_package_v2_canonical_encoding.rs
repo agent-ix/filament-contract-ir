@@ -13,11 +13,11 @@ use crate::support::checked_package::{
 };
 use filament_contract_model::{
     encode_checked_package_v2, CheckedCapability, CheckedCapabilityDisposition,
-    CheckedDependencySelection, CheckedDiagnosticV2, CheckedDiagnosticsV2, CheckedJson,
-    CheckedJsonError, CheckedNodeId, CheckedNodePathSegment, CheckedPackageLockV2,
-    CheckedPackageReadLimits, CheckedPackageRefusal, CheckedPackageRefusalCode,
-    CheckedPackageV2ReadResult, CheckedSelectionRole, CheckedSemanticGraphV2,
-    CheckedSemanticNodeV2, CheckedSourceMapEntry, CheckedTerm,
+    CheckedDependencyClockSelection, CheckedDependencySelection, CheckedDiagnosticV2,
+    CheckedDiagnosticsV2, CheckedJson, CheckedJsonError, CheckedNodeId, CheckedNodePathSegment,
+    CheckedPackageLockV2, CheckedPackageReadLimits, CheckedPackageRefusal,
+    CheckedPackageRefusalCode, CheckedPackageV2ReadResult, CheckedSelectionRole,
+    CheckedSemanticGraphV2, CheckedSemanticNodeV2, CheckedSourceMapEntry, CheckedTerm,
 };
 use ix_trace_rs::trace;
 use quire_canonical::{Encode, Error, FixedShape, LimitKind, Limits};
@@ -1349,12 +1349,14 @@ fn tc_048_the_wire_types_are_on_the_path_the_compiler_sees() {
     assert_fixed_shape::<CheckedPackageLockV2>();
     assert_fixed_shape::<CheckedSelectionRole>();
     assert_fixed_shape::<CheckedDependencySelection>();
+    assert_fixed_shape::<CheckedDependencyClockSelection>();
     assert_encode::<CheckedNodeId>();
     assert_encode::<CheckedSemanticGraphV2>();
     assert_encode::<CheckedTerm>();
     assert_encode::<CheckedDiagnosticsV2>();
     const {
         assert!(is_fixed_shape!(CheckedPackageLockV2));
+        assert!(is_fixed_shape!(CheckedDependencyClockSelection));
         assert!(!is_fixed_shape!(CheckedSourceMapEntry));
         assert!(!is_fixed_shape!(CheckedNodeId));
         assert!(!is_fixed_shape!(CheckedSemanticGraphV2));

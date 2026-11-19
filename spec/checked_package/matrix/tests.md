@@ -9,6 +9,7 @@ type: TestMatrix
 
 | Functional Req | Acceptance Criteria | Test Cases | Status |
 |---|---|---|---|
+| FR-373 | FR-373-AC-1 through FR-373-AC-6 | TC-480 | ✅ Implemented (QSL-2347); coverage at the identity-row join is FR-375. |
 | FR-375 | FR-375-AC-1 | TC-482 | 🚧 Planned (QSL-2347). |
 | FR-374 | FR-374-AC-1 through FR-374-AC-4, FR-367-AC-7 | TC-481 | 🚧 Planned (QSL-2347). |
 | FR-371 | FR-371-AC-1 through FR-371-AC-9 | TC-477 | ✅ Implemented (QSL-2410): `claim_names` rows are admitted, joined, de-duplicated and covered by the strict reader; the refinement row name equals the body `name`. |
