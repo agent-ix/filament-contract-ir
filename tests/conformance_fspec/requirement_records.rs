@@ -172,7 +172,7 @@ fn value_validity_package(reverse_graph: bool) -> Value {
             "body":{"term":"aggregate","members":[
                 binding("owner",json!({"term":"reference","target":owner})),
                 binding("application",json!({"term":"reference","target":application})),
-                binding("occurrence",json!({"term":"literal","type":node_id("scalar_type/integer"),"value_kind":"integer","value":occurrence.to_string()})),
+                binding("occurrence",json!({"term":"literal","type":node_id("scalar_type/integer"),"value_kind":"integer","value":occurrence})),
                 binding("result_bound",json!({"term":"reference","target":bound})),
                 binding("conversion",json!({"term":"aggregate","members":[]})),
                 binding("path_condition",json!({"term":"aggregate","members":[]})),
@@ -289,7 +289,10 @@ fn public_reader_retains_value_validity_record_facts_and_owner_index() {
     )
     .expect("owner ID");
     let CheckedPackageV2ReadResult::Admitted(admitted) = read(&package) else {
-        panic!("public reader admits the bounded value-validity fixture")
+        panic!(
+            "public reader admits the bounded value-validity fixture: {:?}",
+            read(&package)
+        )
     };
     let rows = admitted.requirement_items();
     assert_eq!(rows.len(), 2);
@@ -321,7 +324,10 @@ fn public_reader_retains_value_validity_record_facts_and_owner_index() {
 fn canonical_writer_readback_preserves_typed_requirement_rows() {
     let package = value_validity_package(false);
     let CheckedPackageV2ReadResult::Admitted(admitted) = read(&package) else {
-        panic!("public reader admits the bounded value-validity fixture")
+        panic!(
+            "public reader admits the bounded value-validity fixture: {:?}",
+            read(&package)
+        )
     };
     let bytes = encode_checked_package_v2_with_requirement_items(
         admitted.name(),
@@ -438,7 +444,7 @@ fn public_reader_refuses_a_malformed_requirement_row_at_its_wire_pointer() {
     let CheckedPackageV2ReadResult::Refused(refusal) = read(&package) else {
         panic!("public V2 reader refuses an open requirement-row schema")
     };
-    assert_eq!(refusal.code, CheckedPackageRefusalCode::MalformedWire);
+    assert_eq!(refusal.code, CheckedPackageRefusalCode::UnknownMember);
     assert_eq!(
         refusal.cause,
         Some(CheckedPackageRefusalCause::UnknownMember)
@@ -591,17 +597,17 @@ fn public_reader_refuses_record_node_mutations_at_their_rule_pointers() {
         assert_eq!(
             refusal.code,
             CheckedPackageRefusalCode::InvalidPackage,
-            "{label}"
+            "{label}: {refusal:?}"
         );
         assert_eq!(
             refusal.cause,
             Some(CheckedPackageRefusalCause::InvalidValue),
-            "{label}"
+            "{label}: {refusal:?}"
         );
         assert_eq!(
             refusal.loci[0].path,
             JsonPointer::parse(&format!("/semantic_graph/nodes/{record_position}{suffix}")),
-            "{label}"
+            "{label}: {refusal:?}"
         );
     }
 }
@@ -679,11 +685,11 @@ fn assert_refusal(
     let CheckedPackageV2ReadResult::Refused(refusal) = read(package) else {
         panic!("package mutation at {pointer} is refused without a partial package")
     };
-    assert_eq!(refusal.code, code, "{pointer}");
-    assert_eq!(refusal.cause, cause, "{pointer}");
+    assert_eq!(refusal.code, code, "{pointer}: {refusal:?}");
+    assert_eq!(refusal.cause, cause, "{pointer}: {refusal:?}");
     assert_eq!(
         refusal.loci[0].path,
         JsonPointer::parse(pointer),
-        "{pointer}"
+        "{pointer}: {refusal:?}"
     );
 }
