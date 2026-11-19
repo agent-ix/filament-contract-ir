@@ -30,9 +30,10 @@ relationships:
 The closed V2 package schema SHALL admit FSpec FR-322's `claim_names` member,
 and the strict reader SHALL admit its `ClaimNameRow` rows only under the join,
 uniqueness, coverage, refinement-name, one-namespace and declaration-region
-rules of "Claim declaration names" and "Clause declaration regions" in FSpec
-FR-322, so that a consumer holding only package
-bytes resolves a claim a request names to one node and occurrence.
+rules of "Claim declaration names", "Rows of one declaration" and "Clause
+declaration regions" in FSpec FR-322, so that a consumer holding only package
+bytes resolves a claim a request names to one declaration, its own node and its
+claim row.
 
 ## Inputs
 
@@ -94,16 +95,31 @@ before the next:
    `invalid_package`/`conflicting-definition` at the later row, and a row out of
    order by structural `NodeRef` then occurrence key refuses
    `invalid_package`/`invalid-value` at the later row;
-5. a `qualified_name` equal to an earlier row's refuses
+5. rows are told apart by declaration, not by row: a row's declaration key is
+   its `declaration_region`, compared as (`source`, `start`, `end`). A row whose
+   declaration key equals an earlier row's and whose `name` or `qualified_name`
+   differs from it refuses `invalid_package`/`invalid-value` at
+   `/claim_names/{i}/name`: one declaration has one name;
+6. a `qualified_name` equal to the `qualified_name` of an earlier row of
+   another declaration (a different declaration key) refuses
    `ambiguous_declaration`/`ambiguous-name` at
    `/claim_names/{i}/qualified_name`, and the refusal names the earlier row's
    `/claim_names/{j}/qualified_name` as its package-document position, so both
-   rows are named.
+   rows are named. Rows of one declaration are never duplicates of each other.
 
 After every row has passed, a `declaration` or `claim` occurrence of a state
 clause, refinement or claim node with no row, or a missing member in a graph
 holding such a node, refuses `invalid_package`/`invalid-value` at
 `/claim_names`.
+
+Then, for each `qualified_name` in the order of its first row, a name whose rows
+name two or more nodes needs an own node: the node, among those its rows name,
+whose declaration set (the declaration keys of its rows) is strictly contained
+in the declaration set of every other of them. A name with none refuses
+`ambiguous_declaration`/`ambiguous-name` at the `qualified_name` of the name's
+last row, `/claim_names/{i}/qualified_name`, and names its first row's
+`/claim_names/{j}/qualified_name` as its package-document position. A name whose
+rows name one node has that node as its own node.
 
 The `temporal_clause_names` rows follow the same region rule: after a row's
 occurrence join and before its repeated-key check, a region that is under
@@ -121,11 +137,23 @@ first `claim_names` row whose `name` equals the `name` of a
 `temporal_clause_names` row with that `name`, `/temporal_clause_names/{j}/name`,
 as its package-document position.
 
+A hyper clause is named by its `hyperproperty` node: the `temporal_clause` node
+that a `claim`/`hyperproperty` node's `body` binding references is the clause's
+body wrapper (FSpec FR-402), and it has no `temporal_clause_names` row. The
+reader SHALL require no row for a body wrapper's `claim` occurrences, and SHALL
+refuse a `temporal_clause_names` row whose `declaration` is a body wrapper as
+`invalid_package`/`invalid-value` at `/temporal_clause_names/{i}/declaration`.
+The hyper clause's name rows are the `claim_names` rows of its `hyperproperty`
+node, one per `claim` occurrence, and the one-namespace rule below holds
+whatever the regions of two such rows.
+
 The reader SHALL charge the finite reader budget one validation visit for each
 row in the closed-schema check, one for each occurrence it compares while
 joining a row to its node, one for each occurrence the coverage walk inspects,
-one for each source-map region the declaration-region check compares, and one
-for each row in the one-namespace check.
+one for each source-map region the declaration-region check compares, two for
+each row in the own-node check (one to build the node sets and one to group the
+rows by name) and one for each element of the declaration sets it compares, and
+one for each row in the one-namespace check.
 
 The refinement body `name` is a required text identifier (FR-322-AC-200). The
 reader SHALL refuse a refinement body without a `name` as a body-schema error
@@ -140,8 +168,12 @@ nodes of one package that share a `name` as
 node's `body/name` as its package-document position.
 
 The reader SHALL expose the admitted rows as `Option<&[ClaimNameRow]>` and a
-lookup from a qualified path to its row, and the canonical writer SHALL accept
-optional borrowed rows, emit them in the supplied order and omit the member for
+lookup from a qualified path to the claim row of the one declaration that
+carries it: among the rows of the declaration's own node that carry the path
+(structurally equal declarations share one node, and each keeps its own rows),
+the row of least occurrence key whose role is `claim`, or else the least row,
+never a row on a conjunction node that also names the declaration. The
+canonical writer SHALL accept optional borrowed rows, emit them in the supplied order and omit the member for
 `None`. A package read, written and read again SHALL preserve every row.
 
 ## Acceptance Criteria
@@ -151,12 +183,14 @@ optional borrowed rows, emit them in the supplied order and omit the member for
 | FR-371-AC-1 | A package of a unit with the invariant state clause `NotAboveThree` and the state-graph claim `ReachThree` admits with one row each, `qualified_name` `["NotAboveThree"]` and `["ReachThree"]`, in `NodeRef` then occurrence order; two structurally equal state clauses share one node and carry two rows with distinct occurrences; a package with none of these nodes has no member and admits; the rows are exposed by reference, resolved by `claim_name_for_path`, and preserved by write and re-read. | Test (TC-477; FSpec FR-322-AC-457) |
 | FR-371-AC-2 | A row with an extra or missing member, a `name` or `qualified_name` segment that is no identifier, an empty `qualified_name`, an `occurrence.role` other than `declaration` or `claim`, or a negative `occurrence.ordinal` refuses `malformed_wire` at the member FR-371 names; the member `[]` or `null` refuses `malformed_wire` at `/claim_names`; a malformed later row wins over a dangling earlier row. | Test (TC-477; FSpec FR-322-AC-458) |
 | FR-371-AC-3 | A row whose `declaration` names no node or a `temporal_clause` node refuses `invalid-value` at `/claim_names/{i}/declaration`; an `occurrence` the node lacks refuses at `/claim_names/{i}/occurrence`; a `qualified_name` whose last segment is not `name` refuses at `/claim_names/{i}/qualified_name`; a refinement row whose `name` differs from the body `name` refuses at `/claim_names/{i}/name`. | Test (TC-477; FSpec FR-322-AC-458) |
-| FR-371-AC-4 | Two rows with one `qualified_name` refuse `ambiguous_declaration`/`ambiguous-name` at the later row's `qualified_name` and name the earlier row's `qualified_name` as the document position; a repeated key refuses `conflicting-definition` at the later row; a row out of order refuses `invalid-value` at the later row; the repeated key wins over the equal name within one row pair. | Test (TC-477; FSpec FR-322-AC-458) |
+| FR-371-AC-4 | Two rows of distinct declarations (different `declaration_region`) with one `qualified_name` refuse `ambiguous_declaration`/`ambiguous-name` at the later row's `qualified_name` and name the earlier row's `qualified_name` as the document position; a repeated key refuses `conflicting-definition` at the later row; a row out of order refuses `invalid-value` at the later row; the repeated key wins over the equal name within one row pair. | Test (TC-477; FSpec FR-322-AC-458) |
 | FR-371-AC-5 | A claim-bearing node occurrence with no row, and a package holding such a node with no member, each refuse `invalid-value` at `/claim_names`; a row defect wins over missing coverage. | Test (TC-477; FSpec FR-322-AC-458) |
-| FR-371-AC-6 | The reader charges five kinds of work: one validation visit per row for the closed-schema check, one visit per occurrence compared for the row join, one per occurrence inspected for the coverage walk, one per row for the one-namespace check, and one per source-map region compared for the declaration-region check; the smallest work limit that decides a package differs by exactly these counts between packages refused at different rows. | Test (TC-477; FSpec FR-322-AC-458, FR-322-AC-459, FR-322-AC-460) |
+| FR-371-AC-6 | The reader charges six kinds of work: one validation visit per row for the closed-schema check, one visit per occurrence compared for the row join, one per occurrence inspected for the coverage walk, one per row for the one-namespace check, one per source-map region compared for the declaration-region check, and two per row and one per declaration-set element compared for the own-node check; the smallest work limit that decides a package differs by exactly these counts between packages refused at different rows. | Test (TC-477; FSpec FR-322-AC-458, FR-322-AC-459, FR-322-AC-460) |
 | FR-371-AC-7 | A `claim_names` row renamed to the `name` of a `temporal_clause_names` row, with `qualified_name` `[name]` or `["Scope", name]`, refuses `ambiguous_declaration`/`ambiguous-name` at `/claim_names/{i}/name` and names `/temporal_clause_names/{j}/name`; with distinct names the package admits, the claim name resolves by `claim_name_for_path` and the clause name resolves to its `temporal_clause_names` row. | Test (TC-477; FSpec FR-322-AC-459) |
 | FR-371-AC-8 | A refinement body without `name` refuses as a body-schema error at the body, and a `name` that is not text, is empty, or is not an identifier refuses as a body-schema error at `body/name`; the body `name` survives write and re-read; two refinement nodes of one package with an equal `name` refuse `ambiguous_declaration`/`ambiguous-name` at the later node's `/semantic_graph/nodes/{n}/body/name` and name the earlier node's `body/name`. | Test (TC-477; FSpec FR-322-AC-200) |
 | FR-371-AC-9 | A name row of either table carries `declaration_region`: a region wider than the name token admits, is exposed beside the name, survives write and re-read and moves no node; a row without it refuses `malformed_wire` at the row `/{table}/{i}`, and a row with a region that is not a source region refuses `malformed_wire` at `/{table}/{i}/declaration_region`; a region under another source, or not containing the occurrence's `source_map` region, refuses `invalid-value` at that member after the occurrence join and before the repeated-key check; an occurrence with no `source_map` entry is left to the source-map check. | Test (TC-477; FSpec FR-322-AC-460, FR-322-AC-461) |
+| FR-371-AC-10 | Rows with one `declaration_region` are one declaration: a second row of one declaration on the same node, or on another (conjunction) node, repeating its `name` and `qualified_name`, admits and is no duplicate name; the lookup of its name returns the row on its own node, the node whose declaration set is strictly contained in that of the other, of least occurrence key whose role is `claim`, else its least row, never the row on the other node; the same row renamed refuses `invalid-value` at its `/claim_names/{i}/name`; a name whose two nodes have declaration sets that do not nest refuses `ambiguous_declaration`/`ambiguous-name` at its last row's `qualified_name` and names its first row's. | Test (TC-477; FSpec FR-322-AC-465) |
+| FR-371-AC-11 | A hyper clause's body wrapper has no `temporal_clause_names` row and the package admits without one; a `temporal_clause_names` row whose `declaration` is a body wrapper refuses `invalid-value` at `/temporal_clause_names/{i}/declaration`; a `claim_names` row and a `temporal_clause_names` row with one `name` refuse `ambiguous_declaration`/`ambiguous-name` at `/claim_names/{i}/name` even when their `declaration_region`s are equal. | Test (TC-477; FSpec FR-322-AC-466) |
 
 ## Compatibility
 

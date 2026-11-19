@@ -27,6 +27,7 @@ pub use model_operations::{
 };
 mod checked_term_data;
 mod claim_terminal;
+pub use claim_terminal::{TerminalDeclaration, TerminalRow};
 mod closure_index;
 mod comparison_operands;
 mod composite_operands;
@@ -1113,6 +1114,8 @@ pub struct CheckedPackageV2 {
     node_index: Arc<PositionIndex>,
     /// Graph-local wire IDs rebuilt as shared, document-independent keys.
     structural_keys: Vec<std::sync::Arc<CheckedNodeId>>,
+    /// Model terminal declarations retained in structural node-key order.
+    terminal_rows: Arc<Vec<TerminalRow>>,
     /// The graph in its wire form, node-held operands as operand slots,
     /// built on first use from the resolved graph in `wire`.
     slot_graph: Arc<std::sync::OnceLock<SlotView>>,
@@ -1734,6 +1737,12 @@ impl CheckedPackageV2 {
         };
         let node_index = retained_index::node_index(&wire, budget)?;
         let source_index = super::selected_population::source_index(&wire.source_map, budget)?;
+        let terminal_rows = claim_terminal::retain_rows(
+            &wire.semantic_graph.nodes,
+            &kinds,
+            &structural_keys,
+            budget,
+        )?;
         let is_timed_root =
             |kind: &CheckedNodeKind| *kind == CheckedNodeKind::TimedModel(TimedModelForm::Model);
         let mut timed_model_roots: Vec<usize> = read_charge::with_capacity(
@@ -1765,6 +1774,7 @@ impl CheckedPackageV2 {
             timed_model_roots,
             node_index,
             structural_keys,
+            terminal_rows,
             slot_graph,
             source_index,
             lowering_facts,
@@ -2024,15 +2034,52 @@ impl CheckedPackageV2 {
 
     /// The admitted row naming the declaration whose qualified path is
     /// `path`, matched segment by segment and byte for byte.
+    ///
+    /// The row is that of the one declaration carrying the path: its row on the
+    /// declaration's own node, the node whose declaration set (the
+    /// `declaration_region`s of its rows) is the smallest of those the path's
+    /// rows name, of least occurrence key whose role is `claim`, or else its
+    /// least row there.
     pub fn claim_name_for_path<S: AsRef<str>>(&self, path: &[S]) -> Option<&ClaimNameRow> {
-        self.claim_names()?.iter().find(|row| {
+        let rows = self.claim_names()?;
+        let carries = |row: &ClaimNameRow| {
             row.qualified_name.len() == path.len()
                 && row
                     .qualified_name
                     .iter()
                     .zip(path)
                     .all(|(segment, wanted)| segment.as_ref() == wanted.as_ref())
-        })
+        };
+        let declarations = |node: &CheckedNodeId| {
+            let mut regions: Vec<_> = rows
+                .iter()
+                .filter(|row| &row.declaration == node)
+                .map(|row| {
+                    (
+                        &row.declaration_region.source,
+                        row.declaration_region.start,
+                        row.declaration_region.end,
+                    )
+                })
+                .collect();
+            regions.sort_unstable();
+            regions.dedup();
+            regions.len()
+        };
+        let own = rows
+            .iter()
+            .filter(|row| carries(row))
+            .map(|row| &row.declaration)
+            .min_by_key(|node| declarations(node))?;
+        // The row is the declaration's own: structurally equal declarations
+        // share one node, so only a row that carries the path counts.
+        let on_own = || {
+            rows.iter()
+                .filter(|row| &row.declaration == own && carries(row))
+        };
+        on_own()
+            .find(|row| row.occurrence.role == CheckedOccurrenceRole::Claim)
+            .or_else(|| on_own().next())
     }
 
     /// Admitted selected operation effects, absent when the producer supplied no carrier.
@@ -3988,10 +4035,12 @@ fn validate_graph(
         ),
         meter,
     )?;
+    let wrappers = claim_names::body_wrappers(&kinds, &terms, &index, meter)?;
     temporal_clause_names::validate(
         wire.temporal_clause_names.as_deref(),
         &graph.nodes,
         &kinds,
+        &wrappers,
         &name_sources,
         &index,
         structural_keys,
@@ -5604,6 +5653,7 @@ mod tests {
                 let package = super::CheckedPackageV2 {
                     schedulability_claim_index: Vec::new(),
                     monitor_plan_index: Vec::new(),
+                    terminal_rows: std::sync::Arc::new(Vec::new()),
                     timed_model_roots: Vec::new(),
                     node_index: std::sync::Arc::new(Default::default()),
                     structural_keys: keys,

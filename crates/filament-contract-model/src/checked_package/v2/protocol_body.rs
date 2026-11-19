@@ -1210,7 +1210,7 @@ pub(super) fn wire_layout_defect(
         if capacity
             .and_then(|capacity| group_value(capacity, "value"))
             .and_then(integer_value)
-            .is_some_and(|value| value <= Numeral::exact(0))
+            .is_some_and(|value| value < Numeral::exact(0))
         {
             return Some(ProtocolLayoutWireDefect::NegativeQueueCapacity);
         }

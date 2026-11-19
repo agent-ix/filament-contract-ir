@@ -2483,12 +2483,42 @@ pub fn refresh_temporal_bindings(package: &mut Value) {
     let nodes = package["semantic_graph"]["nodes"]
         .as_array()
         .expect("nodes");
+    let is_hyper =
+        |node: &Value| node["node_tag"] == "claim" && node["semantic_form"] == "hyperproperty";
+    // A hyperproperty node takes one row per quantified trace, keyed by the
+    // quantifier Group's variable, in `quantifiers` order; the body wrapper it
+    // references takes none.
+    let traces_of = |hyper: &Value| -> Vec<Option<String>> {
+        hyper["body"]["members"][3]["value"]["members"]
+            .as_array()
+            .map(|groups| {
+                groups
+                    .iter()
+                    .filter_map(|group| {
+                        group["members"].as_array()?.iter().find_map(|member| {
+                            (member["name"] == "variable")
+                                .then(|| member["value"]["value"].as_str().map(str::to_owned))
+                        })
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    let is_wrapper = |node: &Value| {
+        nodes
+            .iter()
+            .filter(|hyper| is_hyper(hyper))
+            .any(|hyper| hyper["body"]["members"][6]["value"]["target"] == node["node_id"])
+    };
     let mut rows = nodes
         .iter()
         .filter_map(|node| {
             let (profile, name) = if node["node_tag"] == "temporal"
                 && node["semantic_form"] == "temporal_clause"
             {
+                if is_wrapper(node) {
+                    return None;
+                }
                 let [law] = node["body"]["operation"]["laws"].as_array()?.as_slice() else {
                     return None;
                 };
@@ -2499,6 +2529,24 @@ pub fn refresh_temporal_bindings(package: &mut Value) {
                     law["definition"]["identity"].as_str()?,
                     node["body"]["arguments"][1]["value"].as_str()?,
                 )
+            } else if is_hyper(node) {
+                // A behaviours node reads its wrapper's profile law and clock
+                // text; a finite-domain node the lock's selection and the
+                // domain binder `t`.
+                if node["body"]["members"][0]["value"]["term"] == "reference" {
+                    (selected_profile?, "t")
+                } else {
+                    let wrapper = nodes.iter().find(|wrapper| {
+                        wrapper["node_id"] == node["body"]["members"][6]["value"]["target"]
+                    })?;
+                    let [law] = wrapper["body"]["operation"]["laws"].as_array()?.as_slice() else {
+                        return None;
+                    };
+                    (
+                        law["definition"]["identity"].as_str()?,
+                        wrapper["body"]["arguments"][1]["value"].as_str()?,
+                    )
+                }
             } else if node["node_tag"] == "protocol" && node["semantic_form"] == "compensation" {
                 (
                     selected_profile?,
@@ -2531,26 +2579,36 @@ pub fn refresh_temporal_bindings(package: &mut Value) {
                 }
                 _ => return None,
             };
+            let traces = if is_hyper(node) {
+                traces_of(node)
+            } else {
+                vec![None]
+            };
             Some(
                 node["occurrences"]
                     .as_array()?
                     .iter()
-                    .filter_map(|occurrence| {
+                    .flat_map(|occurrence| traces.iter().map(move |trace| (occurrence, trace)))
+                    .filter_map(|(occurrence, trace)| {
                         let expected_role = if node["semantic_form"] == "compensation" {
                             "declaration"
                         } else {
                             "claim"
                         };
                         (occurrence["role"] == expected_role).then(|| {
+                            let mut row = json!({
+                                "declaration": node["node_id"],
+                                "occurrence": occurrence["ordinal"],
+                                "clock_name": name,
+                                "clock": clock,
+                            });
+                            if let Some(trace) = trace {
+                                row["trace"] = json!(trace);
+                            }
                             (
                                 node["node_id"].clone(),
                                 occurrence["ordinal"].as_u64().expect("occurrence ordinal"),
-                                json!({
-                                    "declaration": node["node_id"],
-                                    "occurrence": occurrence["ordinal"],
-                                    "clock_name": name,
-                                    "clock": clock,
-                                }),
+                                row,
                             )
                         })
                     })
@@ -2587,9 +2645,16 @@ pub fn refresh_temporal_bindings(package: &mut Value) {
         .iter()
         .map(|node| node["node_id"].clone())
         .collect::<Vec<_>>();
+    // A hyper clause's body wrapper has no name row: the clause is named by the
+    // `claim_names` rows of its `hyperproperty` node (FR-322, FR-402).
+    let wrappers = body_wrappers(nodes);
     let mut names = nodes
         .iter()
-        .filter(|node| node["node_tag"] == "temporal" && node["semantic_form"] == "temporal_clause")
+        .filter(|node| {
+            node["node_tag"] == "temporal"
+                && node["semantic_form"] == "temporal_clause"
+                && !wrappers.contains(&node["node_id"])
+        })
         .flat_map(|node| {
             node["occurrences"]
                 .as_array()
@@ -2628,6 +2693,22 @@ pub fn refresh_temporal_bindings(package: &mut Value) {
             Value::Array(names.into_iter().map(|(_, _, row)| row).collect());
     }
     refresh_claim_names(package);
+}
+
+/// The node ids a `claim`/`hyperproperty` node's `body` binding references:
+/// the body wrappers (FR-402).
+pub fn body_wrappers(nodes: &[Value]) -> Vec<Value> {
+    nodes
+        .iter()
+        .filter(|node| node["node_tag"] == "claim" && node["semantic_form"] == "hyperproperty")
+        .filter_map(|node| {
+            node["body"]["members"]
+                .as_array()?
+                .iter()
+                .find(|member| member["name"] == "body")
+                .map(|member| member["value"]["target"].clone())
+        })
+        .collect()
 }
 
 /// The source interval a name row declares for one occurrence: the hull of
@@ -2676,7 +2757,20 @@ pub fn fill_declaration_regions(package: &mut Value) {
                 ("claim".to_owned(), row["occurrence"].as_u64().unwrap_or(0))
             };
             let declaration = row["declaration"].clone();
-            let region = occurrence_region(&resolved, &declaration, &role, ordinal);
+            let mut region = occurrence_region(&resolved, &declaration, &role, ordinal);
+            if table == "claim_names" {
+                // Rows that share a region are one declaration and carry one name
+                // (FR-322 "Rows of one declaration"): a fixture that gives two
+                // differently named rows one name span widens the later
+                // declaration so the two stay two declarations.
+                let name = package[table][index]["qualified_name"].clone();
+                while (0..index).any(|earlier| {
+                    package[table][earlier]["declaration_region"] == region
+                        && package[table][earlier]["qualified_name"] != name
+                }) {
+                    region["end"] = json!(region["end"].as_u64().unwrap_or(0) + 1);
+                }
+            }
             package[table][index]["declaration_region"] = region;
         }
     }
@@ -2735,6 +2829,14 @@ pub fn refresh_claim_names(package: &mut Value) {
             let name = node["body"]["name"]
                 .as_str()
                 .map_or_else(|| format!("Claim{index}"), str::to_owned);
+            // One declaration is told by its region, and its rows share one
+            // path: the scope is a function of the region.
+            let region = occurrence_region(&resolved, &ids[index], role, ordinal);
+            let scope = format!(
+                "Scope{index}r{}_{}",
+                region["start"].as_u64().unwrap_or(0),
+                region["end"].as_u64().unwrap_or(0)
+            );
             rows.push((
                 ids[index].clone(),
                 role.to_owned(),
@@ -2743,9 +2845,8 @@ pub fn refresh_claim_names(package: &mut Value) {
                     "declaration": ids[index],
                     "occurrence": {"role": role, "ordinal": ordinal},
                     "name": name,
-                    "qualified_name": [format!("Scope{index}{role}{ordinal}"), name],
-                    "declaration_region":
-                        occurrence_region(&resolved, &ids[index], role, ordinal),
+                    "qualified_name": [scope, name],
+                    "declaration_region": region,
                 }),
             ));
         }

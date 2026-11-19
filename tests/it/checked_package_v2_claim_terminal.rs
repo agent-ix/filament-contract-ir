@@ -5,15 +5,15 @@
 
 use crate::support::checked_package::{
     canonical, evidence_for, evidence_with_document, family_key, family_model_document,
-    fixture_source, model_owner, node_id, refresh_identity, settle, sha256_hex, source_owner,
-    v2_all_families,
+    fixture_source, model_owner, node_id, refresh_identity, select_model, settle, sha256_hex,
+    source_owner, v2_all_families,
 };
 use filament_contract_model::{
     encode_checked_package_v2, CheckedCapability, CheckedDiagnosticsV2, CheckedNodeId,
     CheckedOccurrence, CheckedPackageLimit, CheckedPackageLockV2, CheckedPackageReadLimits,
     CheckedPackageRefusal, CheckedPackageRefusalCause as Cause, CheckedPackageRefusalCode as Code,
     CheckedPackageV2, CheckedPackageV2ReadResult, CheckedSemanticGraphV2, CheckedSourceMapEntry,
-    CheckedTerminalDuplicate,
+    CheckedTerminalDuplicate, TerminalDeclaration, TerminalRow,
 };
 use ix_trace_rs::trace;
 use serde::de::DeserializeOwned;
@@ -313,6 +313,23 @@ fn read_with_population(package: &Value) -> CheckedPackageV2ReadResult {
     read_with_population_limited(package, CheckedPackageReadLimits::bounded())
 }
 
+fn admitted_with_population(package: &Value) -> CheckedPackageV2 {
+    match read_with_population(package) {
+        CheckedPackageV2ReadResult::Admitted(value) => *value,
+        other => panic!("expected population-backed admission, got {other:?}"),
+    }
+}
+
+fn reread_written_with_population(package: &Value) -> CheckedPackageV2 {
+    let written = encoded(package);
+    assert_eq!(written, canonical(package));
+    let evidence = evidence_with_document(package, "test/families", &population_document());
+    match CheckedPackageV2::read(&written, CheckedPackageReadLimits::bounded(), &evidence) {
+        CheckedPackageV2ReadResult::Admitted(value) => *value,
+        other => panic!("expected population-backed written package to admit, got {other:?}"),
+    }
+}
+
 fn read_with_population_limited(
     package: &Value,
     limits: CheckedPackageReadLimits,
@@ -401,7 +418,7 @@ fn terminal_duplicate(package: &Value) -> CheckedPackageRefusal {
 }
 
 fn duplicate_parties(refusal: &CheckedPackageRefusal) -> (CheckedNodeId, CheckedNodeId) {
-    assert_eq!(refusal.code, Code::AmbiguousDeclaration);
+    assert_eq!(refusal.code, Code::AmbiguousDeclaration, "{refusal:?}");
     assert_eq!(refusal.cause, Some(Cause::AmbiguousName));
     assert_eq!(refusal.document_pointer, None);
     assert_eq!(refusal.loci.len(), 1);
@@ -553,6 +570,209 @@ fn terminal_any_reads_and_writes() {
     };
     assert_eq!(reread.graph(), admitted.graph());
     assert_eq!(reread.source_map(), admitted.source_map());
+}
+
+/// Trace: FR-060-AC-6
+#[trace("TC-487", "FR-060-AC-6")]
+#[test]
+fn terminal_rows_retain_structural_order_and_round_trip() {
+    let model_m = family_key("1515");
+    let model_n = "aa/second-selected-model";
+    let model_k = "zz/third-selected-model";
+    let model_n_id = json!({"package": model_n, "path": ["model", "model_root"], "ordinal": 0});
+    let mut no_terminals = v2_all_families();
+    select_model(&mut no_terminals, model_n);
+    select_model(&mut no_terminals, model_k);
+    refresh_identity(&mut no_terminals);
+    assert!(admitted(&no_terminals).terminal_rows().is_empty());
+    let mut package = terminal_with_self(&model_m, "self", "0");
+    select_model(&mut package, model_n);
+    select_model(&mut package, model_k);
+    refresh_identity(&mut package);
+    assert_eq!(admitted_with_population(&package).terminal_rows().len(), 1);
+    let terminal_m = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|node| {
+            node["node_tag"] == "temporal"
+                && node["semantic_form"] == "terminal"
+                && node["body"]["members"][1]["value"]["value"] == "when"
+        })
+        .expect("M terminal")
+        .clone();
+    let parameter_id = terminal_m["body"]["members"][2]["value"]["members"][0]["target"].clone();
+    let condition_id = terminal_m["body"]["members"][3]["value"]["target"].clone();
+    let mut terminal_n = terminal("any", empty(), empty(), empty(), &[]);
+    terminal_n["body"]["members"][0]["value"] = json!({"term": "reference", "target": model_n_id});
+    terminal_n["dependencies"] = json!([model_n_id]);
+    terminal_n["node_id"] = node_id("zzzz-terminal-N");
+    package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .push(terminal_n.clone());
+    settle(&mut package);
+    let graph = package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes");
+    let n_position = graph
+        .iter()
+        .position(|node| node["node_id"] == terminal_n["node_id"])
+        .expect("N terminal position");
+    let m_position = graph
+        .iter()
+        .position(|node| node["node_id"] == terminal_m["node_id"])
+        .expect("M terminal position");
+    graph.swap(n_position, m_position);
+
+    let m_node: CheckedNodeId =
+        crate::support::checked_package::structural_fixture_id(&terminal_m["node_id"]);
+    let n_node: CheckedNodeId =
+        crate::support::checked_package::structural_fixture_id(&terminal_n["node_id"]);
+    assert!(m_node < n_node, "the fixture keys put M before N");
+    let graph = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes");
+    let n_position = graph
+        .iter()
+        .position(|node| node["node_id"] == terminal_n["node_id"])
+        .expect("N terminal position");
+    let m_position = graph
+        .iter()
+        .position(|node| node["node_id"] == terminal_m["node_id"])
+        .expect("M terminal position");
+    assert!(
+        n_position < m_position,
+        "wire order is opposite to key order"
+    );
+
+    let admitted_package = admitted_with_population(&package);
+    let model_m_key = crate::support::checked_package::structural_fixture_id(&node_id(&model_m));
+    let model_n_key = crate::support::checked_package::structural_fixture_id(&model_n_id);
+    let model_k_key = crate::support::checked_package::structural_fixture_id(&json!({
+        "package": model_k,
+        "path": ["model", "model_root"],
+        "ordinal": 0
+    }));
+    let parameter_key = crate::support::checked_package::structural_fixture_id(&parameter_id);
+    let condition_key = crate::support::checked_package::structural_fixture_id(&condition_id);
+    let expected = [
+        TerminalRow {
+            node: m_node,
+            model: model_m_key,
+            declaration: TerminalDeclaration::When {
+                parameter: Some(parameter_key),
+                condition: condition_key,
+            },
+        },
+        TerminalRow {
+            node: n_node,
+            model: model_n_key,
+            declaration: TerminalDeclaration::Any,
+        },
+    ];
+    assert_eq!(admitted_package.terminal_rows(), expected);
+    assert!(admitted_package
+        .terminal_rows()
+        .iter()
+        .all(|row| row.model != model_k_key));
+
+    let reread = reread_written_with_population(&package);
+    assert_eq!(reread.terminal_rows(), expected);
+
+    let mut key_ordered = package.clone();
+    let last_terminal = key_ordered["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .position(|node| node["node_id"] == terminal_m["node_id"])
+        .expect("M terminal position");
+    let first_terminal = key_ordered["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .position(|node| node["node_id"] == terminal_n["node_id"])
+        .expect("N terminal position");
+    key_ordered["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .swap(first_terminal, last_terminal);
+    settle(&mut key_ordered);
+    assert_eq!(
+        admitted_with_population(&key_ordered).terminal_rows(),
+        expected
+    );
+
+    assert!(admitted(&v2_all_families()).terminal_rows().is_empty());
+
+    let condition = family_key("eeee");
+    let mut no_self = v2_all_families();
+    let mut terminal_no_self = terminal(
+        "when",
+        reference(&model_m),
+        empty(),
+        reference(&condition),
+        &[model_m, condition.clone()],
+    );
+    terminal_no_self["node_id"] = node_id("fixture/claim-terminal/rows/MT-03");
+    no_self["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .push(terminal_no_self);
+    settle(&mut no_self);
+    let no_self_package = admitted_with_population(&no_self);
+    let no_self_rows = no_self_package.terminal_rows();
+    assert_eq!(no_self_rows.len(), 1);
+    assert_eq!(
+        no_self_rows[0].declaration,
+        TerminalDeclaration::When {
+            parameter: None,
+            condition: crate::support::checked_package::structural_fixture_id(&node_id(&condition)),
+        }
+    );
+
+    let mut multiply_populated_document = population_document();
+    let mut second_population = multiply_populated_document["populations"][0].clone();
+    second_population["identity"] = json!("ix://test/families/AccountsAgain");
+    multiply_populated_document["populations"]
+        .as_array_mut()
+        .expect("populations")
+        .push(second_population);
+    let evidence = evidence_with_document(&package, "test/families", &multiply_populated_document);
+    let ambiguous_self = CheckedPackageV2::read(
+        &canonical(&package),
+        CheckedPackageReadLimits::bounded(),
+        &evidence,
+    );
+    match ambiguous_self {
+        CheckedPackageV2ReadResult::Refused(value) => {
+            assert_eq!(value.code, Code::IllTyped);
+            assert_eq!(value.cause, Some(Cause::OperatorIneligible));
+            assert!(value.loci[0].path.as_ref().is_some_and(|path| path
+                .as_str()
+                .ends_with("/body/members/2/value/members/0/target")));
+        }
+        other => panic!("expected M's multiply populated self to refuse, got {other:?}"),
+    }
+
+    let mut duplicate_terminal = terminal_m;
+    duplicate_terminal["node_id"] = node_id("fixture/claim-terminal/rows/M-duplicate");
+    let mut duplicate = package;
+    duplicate["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .push(duplicate_terminal);
+    settle(&mut duplicate);
+    let refusal = match read_with_population(&duplicate) {
+        CheckedPackageV2ReadResult::Refused(value) => value,
+        other => panic!("expected duplicate terminal refusal, got {other:?}"),
+    };
+    assert_eq!(refusal.code, Code::AmbiguousDeclaration, "{refusal:?}");
+    assert_eq!(refusal.cause, Some(Cause::AmbiguousName));
+    assert_eq!(
+        duplicate_kind(refusal.terminal_duplicate.as_ref().expect("duplicate")),
+        "nodes"
+    );
 }
 
 #[trace("FR-059-AC-2", "FR-059-AC-5")]

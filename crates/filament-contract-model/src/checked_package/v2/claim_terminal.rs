@@ -5,17 +5,46 @@
 
 use super::frame::StepGraph;
 use super::graph_storage::GraphIndex;
+use super::native_join_budget::{NativeJoinBudget, PackageReadStage};
 use super::structural::{reference_type_target_ref, typed_parameter_binding};
 use super::{
-    CheckedNodeKind, CheckedNodeOwner, CheckedTerm, ClaimForm, CompositeTypeForm, LiteralKind,
-    ModelForm, RawSemanticNodeV2 as CheckedSemanticNodeV2, ScalarTypeForm, TemporalForm, ValueForm,
-    WorkMeter,
+    CheckedNodeId, CheckedNodeKind, CheckedNodeOwner, CheckedPackageV2,
+    CheckedSemanticNodeV2 as AdmittedSemanticNodeV2, CheckedTerm, ClaimForm, CompositeTypeForm,
+    LiteralKind, ModelForm, RawSemanticNodeV2 as CheckedSemanticNodeV2, ScalarTypeForm,
+    TemporalForm, ValueForm, WorkMeter,
 };
 use crate::checked_package::common::{node_pointer, ValidationFailure};
 use crate::checked_package::shared::{
-    CheckedNodeId, CheckedOccurrenceRole, CheckedPackageRefusalCause as Cause,
-    CheckedPackageRefusalCode as Code, CheckedTerminalDuplicate, JsonPointer,
+    CheckedOccurrenceRole, CheckedPackageRefusalCause as Cause, CheckedPackageRefusalCode as Code,
+    CheckedTerminalDuplicate, JsonPointer,
 };
+use std::sync::Arc;
+
+/// The admitted terminal declaration on one model node.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum TerminalDeclaration {
+    /// Every terminal state is intended.
+    Any,
+    /// A terminal state is intended when `condition` holds.
+    When {
+        /// The level-0 `self` parameter node, present exactly when the
+        /// condition reads `self`.
+        parameter: Option<CheckedNodeId>,
+        /// The Boolean condition expression node.
+        condition: CheckedNodeId,
+    },
+}
+
+/// One admitted model terminal declaration from a checked package.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TerminalRow {
+    /// The `temporal`/`terminal` node carrying the declaration.
+    pub node: CheckedNodeId,
+    /// The model node the declaration belongs to.
+    pub model: CheckedNodeId,
+    /// The declaration's mode and optional condition.
+    pub declaration: TerminalDeclaration,
+}
 
 fn failure(
     code: Code,
@@ -102,52 +131,46 @@ fn self_object_key(
     meter: &mut WorkMeter,
     position: usize,
 ) -> Result<Option<CheckedNodeId>, ValidationFailure> {
-    let Some((model_node, _)) = graph.node(model) else {
+    let Some((model_node, kind)) = graph.node(model) else {
+        return Ok(None);
+    };
+    if kind != CheckedNodeKind::Model(ModelForm::ObjectType) {
+        return Ok(None);
+    }
+    let Some(CheckedNodeOwner::Model {
+        identity,
+        node: declaration,
+    }) = &model_node.owner
+    else {
         return Ok(None);
     };
     let Ok(owner) = graph.owners.recover(model_node) else {
         return Ok(None);
     };
-    // The one object type the population covers, and how often; a second
-    // distinct object ends the search.
-    let mut covered: Option<(&str, usize)> = None;
-    let mut distinct = false;
+    if owner.package.identity.as_ref() != identity.as_ref()
+        || !owner
+            .package
+            .object_types
+            .contains_key(declaration.as_ref())
+    {
+        return Ok(None);
+    }
+    // Count this model's declaration in every population. Other selected
+    // models in the same package do not make this model's `self` ambiguous.
+    let mut count = 0;
     for members in owner.package.population_members.values() {
         meter.charge(1, || binding_path(position, 2))?;
         for object in members {
             meter.charge(1, || binding_path(position, 2))?;
-            if owner.package.object_types.contains_key(object) {
-                match &mut covered {
-                    Some((held, count)) if *held == &**object => *count += 1,
-                    Some(_) => distinct = true,
-                    None => covered = Some((&**object, 1)),
-                }
+            if object.as_ref() == declaration.as_ref() {
+                count += 1;
             }
         }
     }
-    if distinct {
-        return Ok(None);
-    }
-    let Some((object, count)) = covered else {
-        return Ok(None);
-    };
     if count != 1 {
         return Ok(None);
     }
-    let mut candidates = graph.nodes.iter().zip(graph.kinds).filter(|(node, kind)| {
-        **kind == CheckedNodeKind::Model(ModelForm::ObjectType)
-            && matches!(&node.owner,
-                    Some(CheckedNodeOwner::Model { identity, node: declaration })
-                        if identity.as_ref() == owner.package.identity.as_ref()
-                            && declaration.as_ref() == object)
-    });
-    let Some((candidate, _)) = candidates.next() else {
-        return Ok(None);
-    };
-    if candidates.next().is_some() {
-        return Ok(None);
-    }
-    Ok(Some(candidate.node_id.clone()))
+    Ok(Some(model.clone()))
 }
 
 fn self_reads<'g>(
@@ -440,8 +463,12 @@ pub(super) fn validate_terminal(
                 })
                 .and_then(reference_type_target_ref)
                 .cloned();
+            let expected = if name_level == Some(("self", "0")) && reference_target.is_some() {
+                self_object_key(&graph, model, meter, position)?
+            } else {
+                None
+            };
             let valid = if name_level == Some(("self", "0")) && reference_target.is_some() {
-                let expected = self_object_key(&graph, model, meter, position)?;
                 reference_target
                     .as_ref()
                     .is_some_and(|target| expected.as_ref() == Some(target))
@@ -551,4 +578,102 @@ pub(super) fn validate_terminal(
         }
     }
     Ok(())
+}
+
+impl CheckedPackageV2 {
+    /// The admitted model terminal declarations in ascending structural
+    /// terminal-node key order. A model without a terminal node has no row.
+    pub fn terminal_rows(&self) -> &[TerminalRow] {
+        self.terminal_rows.as_slice()
+    }
+}
+
+/// Retain the public terminal rows once, after all terminal nodes have passed
+/// FR-060 admission. The body shape and references are therefore invariants
+/// here; every returned ID is rebuilt against the admitted graph's structural
+/// keys before the rows are sorted and stored.
+pub(super) fn retain_rows(
+    nodes: &[AdmittedSemanticNodeV2],
+    kinds: &[CheckedNodeKind],
+    structural_keys: &[Arc<CheckedNodeId>],
+    budget: &mut NativeJoinBudget,
+) -> Result<Arc<Vec<TerminalRow>>, ValidationFailure> {
+    let site = super::read_charge::Site::new(PackageReadStage::Retained, 0, "terminal_rows");
+    let terminal_kind = CheckedNodeKind::Temporal(TemporalForm::Terminal);
+    let count = kinds.iter().filter(|kind| **kind == terminal_kind).count();
+    let mut rows = super::read_charge::with_capacity(budget, site, count)?;
+    let mut meter = WorkMeter::over(budget);
+    for (position, (node, kind)) in nodes.iter().zip(kinds).enumerate() {
+        if *kind != terminal_kind {
+            continue;
+        }
+        let [model, mode, parameters, condition] =
+            bindings(&node.body, ["model", "mode", "parameters", "condition"])
+                .expect("admitted terminal body has four ordered bindings");
+        let CheckedTerm::Literal {
+            value_kind: LiteralKind::Text,
+            value: mode,
+            ..
+        } = mode
+        else {
+            unreachable!("admitted terminal mode is text")
+        };
+        let node_key = structural_keys
+            .get(position)
+            .expect("admitted terminal has a structural key");
+        super::read_charge::charge_node_id_clone(&mut meter, site, node_key)?;
+        let node_key = node_key.as_ref().clone();
+        let model = resolve_target(
+            reference(model).expect("admitted terminal model is a reference"),
+            structural_keys,
+            &mut meter,
+        )?;
+        let declaration = match mode.as_str() {
+            Some("any") => TerminalDeclaration::Any,
+            Some("when") => {
+                let parameters =
+                    aggregate(parameters).expect("admitted terminal parameters are an aggregate");
+                let parameter = parameters
+                    .first()
+                    .map(|parameter| {
+                        resolve_target(
+                            reference(parameter).expect("admitted self parameter is a reference"),
+                            structural_keys,
+                            &mut meter,
+                        )
+                    })
+                    .transpose()?;
+                let condition = resolve_target(
+                    reference(condition).expect("admitted terminal condition is a reference"),
+                    structural_keys,
+                    &mut meter,
+                )?;
+                TerminalDeclaration::When {
+                    parameter,
+                    condition,
+                }
+            }
+            _ => unreachable!("admitted terminal mode is when or any"),
+        };
+        rows.push(TerminalRow {
+            node: node_key,
+            model,
+            declaration,
+        });
+    }
+    rows.sort_unstable_by(|left, right| left.node.cmp(&right.node));
+    super::read_charge::new_arc(budget, site, rows)
+}
+
+fn resolve_target(
+    target: &CheckedNodeId,
+    structural_keys: &[Arc<CheckedNodeId>],
+    meter: &mut WorkMeter<'_>,
+) -> Result<CheckedNodeId, ValidationFailure> {
+    // The reader has already checked each target's presence and semantic
+    // family; resolution now replaces graph-local indices with shared keys.
+    Ok(
+        super::node_index::resolve_id_charged(target, structural_keys, meter)?
+            .expect("admitted terminal target resolves in the checked graph"),
+    )
 }
