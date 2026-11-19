@@ -201,6 +201,43 @@ fn validate_number(
     Ok(())
 }
 
+/// Validates the semantic members of an existing closed clock configuration.
+pub(super) fn validate_clock_configuration(
+    clock: &ClockConfiguration,
+    clock_at: super::stage_storage::Path<'_>,
+    meter: &mut WorkMeter,
+) -> Result<(), ValidationFailure> {
+    match clock {
+        ClockConfiguration::EventPosition { sequence_authority } => {
+            if sequence_authority.is_empty() {
+                return Err(malformed(meter, clock_at.key("sequence_authority")));
+            }
+        }
+        ClockConfiguration::FixedSample {
+            epoch,
+            period,
+            unit,
+        } => {
+            if unit.is_empty() {
+                return Err(malformed(meter, clock_at.key("unit")));
+            }
+            validate_number(epoch, false, clock_at.key("epoch"), meter)?;
+            validate_number(period, true, clock_at.key("period"), meter)?;
+        }
+        ClockConfiguration::TimestampedEvent { timestamp_unit } => {
+            if timestamp_unit.is_empty() {
+                return Err(malformed(meter, clock_at.key("timestamp_unit")));
+            }
+        }
+        ClockConfiguration::Timed { unit } => {
+            if unit.is_empty() {
+                return Err(malformed(meter, clock_at.key("unit")));
+            }
+        }
+    }
+    Ok(())
+}
+
 fn validate_shape(
     rows: &[TemporalBinding],
     meter: &mut WorkMeter,
@@ -217,53 +254,7 @@ fn validate_shape(
         if row.clock_name.is_empty() {
             return Err(malformed(meter, at().key("clock_name")));
         }
-        let clock_at = || at().key("clock");
-        match &row.clock {
-            ClockConfiguration::EventPosition { sequence_authority } => {
-                if sequence_authority.is_empty() {
-                    return Err(malformed(meter, clock_at().key("sequence_authority")));
-                }
-            }
-            ClockConfiguration::FixedSample {
-                epoch,
-                period,
-                unit,
-            } => {
-                if unit.is_empty() {
-                    return Err(malformed(meter, clock_at().key("unit")));
-                }
-                validate_number(
-                    epoch,
-                    false,
-                    super::stage_storage::Path::root()
-                        .key("temporal_bindings")
-                        .index(index)
-                        .key("clock")
-                        .key("epoch"),
-                    meter,
-                )?;
-                validate_number(
-                    period,
-                    true,
-                    super::stage_storage::Path::root()
-                        .key("temporal_bindings")
-                        .index(index)
-                        .key("clock")
-                        .key("period"),
-                    meter,
-                )?;
-            }
-            ClockConfiguration::TimestampedEvent { timestamp_unit } => {
-                if timestamp_unit.is_empty() {
-                    return Err(malformed(meter, clock_at().key("timestamp_unit")));
-                }
-            }
-            ClockConfiguration::Timed { unit } => {
-                if unit.is_empty() {
-                    return Err(malformed(meter, clock_at().key("unit")));
-                }
-            }
-        }
+        validate_clock_configuration(&row.clock, at().key("clock"), meter)?;
     }
     Ok(())
 }
