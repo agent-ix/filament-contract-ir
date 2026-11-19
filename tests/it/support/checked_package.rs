@@ -2552,6 +2552,17 @@ pub fn refresh_temporal_bindings(package: &mut Value) {
                     selected_profile?,
                     node["body"]["arguments"][4]["value"]["value"].as_str()?,
                 )
+            } else if node["node_tag"] == "protocol"
+                && node["semantic_form"] == "control"
+                && node["body"]["operation"]["member"]["operator"] == "await"
+            {
+                let argument = &node["body"]["arguments"][1];
+                let value = if argument["term"] == "binding" {
+                    &argument["value"]
+                } else {
+                    argument
+                };
+                (selected_profile?, value["value"].as_str()?)
             } else {
                 return None;
             };
@@ -2590,7 +2601,9 @@ pub fn refresh_temporal_bindings(package: &mut Value) {
                     .iter()
                     .flat_map(|occurrence| traces.iter().map(move |trace| (occurrence, trace)))
                     .filter_map(|(occurrence, trace)| {
-                        let expected_role = if node["semantic_form"] == "compensation" {
+                        let expected_role = if node["semantic_form"] == "compensation"
+                            || node["body"]["operation"]["member"]["operator"] == "await"
+                        {
                             "declaration"
                         } else {
                             "claim"
