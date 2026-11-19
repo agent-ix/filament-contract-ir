@@ -54,6 +54,7 @@ mod lower;
 mod model_enum_witness;
 mod model_fields;
 mod model_members;
+mod model_occurrence;
 mod model_population_catalog;
 mod model_root;
 mod monitor_plan;
@@ -4102,6 +4103,8 @@ fn validate_graph(
         meter,
     )?;
     validate_selected_type_bounds(models, &terms, structural_keys, meter)?;
+    // Join stage 5 (FR-322 "Model declaration occurrences").
+    model_occurrence::validate(&graph.nodes, &kinds, &wire.source_map, &index, meter)?;
     for &position in index.values() {
         if !matches!(
             kinds.get(position),

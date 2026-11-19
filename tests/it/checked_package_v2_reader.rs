@@ -656,7 +656,7 @@ fn tc_048_v2_reader_refuses_injected_wire_evidence_and_graph_faults() {
         (
             "incomplete source map",
             Box::new(|v| {
-                v["source_map"].as_array_mut().expect("source map").pop();
+                crate::support::checked_package::drop_a_non_model_source_entry(v);
             }),
             refusal(CheckedPackageRefusalCode::InvalidSourceMap, "/source_map"),
         ),

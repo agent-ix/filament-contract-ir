@@ -107,6 +107,8 @@ relationships:
     type: verifies
   - target: ix://agent-ix/filament-contract-ir/FR-038-AC-573
     type: verifies
+  - target: ix://agent-ix/filament-contract-ir/FR-038-AC-582
+    type: verifies
   - target: ix://agent-ix/filament-specification/TC-187
     type: references
 ---
@@ -3030,6 +3032,15 @@ with equal bytes and different rows and assert unequal keys.
 Assert the segment serde shapes, replace a node id through `replace_node_id`
 and assert the written slots, and that a graph read back from `graph()` and
 written again is admitted.
+
+## Model declaration occurrences (FR-038-AC-582)
+
+Implemented (QSL-2635, QSL-2619). Read FSpec FR-322 "Model declaration
+occurrences" and FR-322-AC-486 from the selected checkout. The published
+vectors `TW-29` to `TW-34` of `model-tuple-union-vectors.json` are replayed by
+`published_model_tuple_union_wire_cases_match_reader_refusals`; the repeated
+entry, missing root entry and precedence cases are in
+`model_declaration_occurrence_stage_five_orders_and_locates_each_defect`.
 
 ## Observe-only boundary (FR-038-AC-564 through FR-038-AC-570)
 

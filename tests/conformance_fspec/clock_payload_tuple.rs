@@ -397,8 +397,10 @@ fn add_place(wire: &mut Value, place: &Place, region: u64) -> Value {
 
 fn read(wire: &Value, document: &Value, proposal: &Path, name: &str) -> CheckedPackageV2ReadResult {
     let bytes = serde_json::to_vec(document).expect("selected document bytes");
+    let mut wire = wire.clone();
+    crate::support::checked_package::align_model_declarations(&mut wire);
     read_package_with_document_override(
-        wire,
+        &wire,
         name,
         &proposal.join("domain-package-acme-timed-slots.json"),
         true,

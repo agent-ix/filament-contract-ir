@@ -245,10 +245,7 @@ fn tc_044_reader_refuses_strict_wire_and_identity_mutations() {
     // source: an incomplete source map refuses instead of admitting a node
     // with no exact source correspondence.
     let mut missing_source = base.clone();
-    missing_source["source_map"]
-        .as_array_mut()
-        .expect("source map")
-        .pop();
+    crate::support::checked_package::drop_a_non_model_source_entry(&mut missing_source);
     assert_eq!(
         refused(&missing_source, &evidence),
         refusal(CheckedPackageRefusalCode::InvalidSourceMap, "/source_map")
