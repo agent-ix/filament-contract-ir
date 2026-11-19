@@ -9,7 +9,7 @@ use crate::support::checked_package::{
     admitted_dependency, canonical, evidence_for, pointer, read_with_dependencies,
 };
 #[path = "support/dependency_selection_inputs.rs"]
-mod dependency_selection_inputs;
+pub(crate) mod dependency_selection_inputs;
 use dependency_selection_inputs::dependency_selection_package as empty_package;
 use filament_contract_model::{
     CheckedPackageReadLimits, CheckedPackageRefusal, CheckedPackageRefusalCause as Cause,

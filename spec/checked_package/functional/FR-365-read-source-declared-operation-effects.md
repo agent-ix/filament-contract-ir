@@ -59,10 +59,12 @@ reader SHALL:
    its `context` and the row's `operation` as its `operation`, check `effect`
    against that anchor's frame with the matching model-row check.
 
-The reader SHALL NOT require a row for each own operation of a source type,
-distinguish an own from an inherited operation, or check `effect` of an
-operation that no anchor names: the package and the source-object row carry no
-operation list, so coverage is a producer fact. Every row-level refusal SHALL
+`CheckedPackageV2::read` SHALL NOT require a row for each own operation of a
+source type, distinguish an own from an inherited operation, or check `effect`
+of an operation that no anchor names: the package carries no operation list,
+so the strict read cannot check coverage. The source-object identity rows list
+the operations (FR-367), and coverage is checked at the identity-row join
+(FR-375 for `operation_bodies`). The `operations` member of the source-object row (FR-367) lists the operations a type declares itself, and the reader does not join it to this carrier. Every row-level refusal SHALL
 use the code, cause and locus of the matching model-row check of FR-038. The
 model-owned row rules, and the model-row coverage rule, are unchanged.
 

@@ -7562,6 +7562,7 @@ mod tests {
             required_features: Vec::new(),
             dependency_selections: Vec::new(),
             refinement_internals: None,
+            dependency_clock_selections: None,
         }
     }
 

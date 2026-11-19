@@ -267,7 +267,8 @@ pub use schedulability::{
 };
 pub use source_object::{
     SelectedSourceObjectError, SelectedSourceObjectErrorCode, SelectedSourceObjectMember,
-    SelectedSourceObjectRow, SelectedSourceObjects, SelectedSourcePopulation,
+    SelectedSourceObjectOperation, SelectedSourceObjectRow, SelectedSourceObjects,
+    SelectedSourcePopulation,
 };
 pub use source_operation::{SelectedSourceOperationRow, SelectedSourceOperations};
 pub use step_relation::{
@@ -311,7 +312,8 @@ use super::shared::{
 use super::terms::TermSource;
 use lock_tables::{
     checked_unit_refs, no_unit_refs, resolve_model_durations, selected_model_roots,
-    validate_dependency_selections, validate_refinement_internals, validate_required_features,
+    validate_dependency_clock_selections, validate_dependency_selections,
+    validate_refinement_internals, validate_required_features,
 };
 use model_fields::{build_field_tables, DeclarationIndex, RetainedModels};
 use model_members::{
@@ -654,6 +656,16 @@ pub struct CheckedDependencySelection {
     pub identity: Box<str>,
 }
 
+/// One caller-selected clock configuration used by a dependency closure.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, FixedShape)]
+#[serde(deny_unknown_fields)]
+pub struct CheckedDependencyClockSelection {
+    /// Clock name supplied by the caller.
+    pub clock_name: Box<str>,
+    /// Closed clock configuration selected for that name.
+    pub clock: ClockConfiguration,
+}
+
 /// One refinement and its nonempty canonical list of internal step classes.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, FixedShape)]
 #[serde(deny_unknown_fields)]
@@ -690,6 +702,10 @@ pub struct CheckedPackageLockV2 {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[serde(deserialize_with = "document_de::exact_optional_vec")]
     pub refinement_internals: Option<Vec<CheckedRefinementInternal>>,
+    /// Nonempty dependency clock selections, omitted when none are required.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(deserialize_with = "document_de::exact_nonnull_optional_vec")]
+    pub dependency_clock_selections: Option<Vec<CheckedDependencyClockSelection>>,
 }
 
 /// A checked V2 graph.
@@ -2242,6 +2258,11 @@ fn validate_lock<'a>(
     }
     validate_dependency_selections(&lock.dependency_selections, meter)?;
     validate_refinement_internals(lock.refinement_internals.as_deref(), meter)?;
+    validate_dependency_clock_selections(
+        lock.dependency_clock_selections.as_deref(),
+        wire.temporal_bindings.as_deref(),
+        meter,
+    )?;
     for (index, definition) in lock.definition_selections.iter().enumerate() {
         validate_definition_ref(definition, &|| {
             member_pointer(&["lock", "definition_selections"]).index(index)
