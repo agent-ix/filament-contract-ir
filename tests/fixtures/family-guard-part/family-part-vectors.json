@@ -1,0 +1,1046 @@
+{
+  "version": 1,
+  "note": "Family guard part vectors for the V2 reader (FR-038, TC-490). The admitted Sequence family parts are FSpec timed-clause-node-vectors.json CL-65 (each) and CL-66 (some), read there by reference; these cases add the refusals, the binder-join order and the Map family. Each case replays FSpec published clause fixture by reference: first the FSpec case named by base, then, when unbounded is true, the unbounded_ts document and package patches (the edits CL-65 publishes: Order.ts loses its declared maximum and place ts.x writes maximum unbounded), then the case own patch. Every test op checks a member before it is edited, so a changed FSpec fixture fails instead of silently retargeting. Node ids are the producer ids (FSpec FR-322-AC-480 appends quantifier, the part position and the text to a guard derived path); the reader derives and compares no id.",
+  "fixture": "fixtures/positive-timed-clause-nodes.json",
+  "document": "domain-package-acme-timed-clauses.json",
+  "vectors": "timed-clause-node-vectors.json",
+  "unbounded_ts": {
+    "document_patch": [
+      {
+        "op": "test",
+        "path": "/types/3/fields/2/identity",
+        "value": "ix://acme/orders/Order/ts"
+      },
+      {
+        "op": "test",
+        "path": "/types/3/fields/2/multiplicity/upper",
+        "value": 3
+      },
+      {
+        "op": "remove",
+        "path": "/types/3/fields/2/multiplicity/upper"
+      }
+    ],
+    "package_patch": [
+      {
+        "op": "test",
+        "path": "/semantic_graph/nodes/57/body/members/1/value/members/1/members/4/value",
+        "value": {
+          "term": "literal",
+          "type": {
+            "ordinal": 0,
+            "package": "example",
+            "path": [
+              "scalar_type",
+              "integer"
+            ]
+          },
+          "value": 3,
+          "value_kind": "integer"
+        }
+      },
+      {
+        "op": "replace",
+        "path": "/semantic_graph/nodes/57/body/members/1/value/members/1/members/4/value",
+        "value": {
+          "term": "literal",
+          "type": {
+            "ordinal": 0,
+            "package": "example",
+            "path": [
+              "scalar_type",
+              "text"
+            ]
+          },
+          "value": "unbounded",
+          "value_kind": "text"
+        }
+      },
+      {
+        "op": "test",
+        "path": "/semantic_graph/nodes/57/body/members/2/value/members/0/members/6/value/value",
+        "value": "3"
+      },
+      {
+        "op": "replace",
+        "path": "/semantic_graph/nodes/57/body/members/2/value/members/0/members/6/value/value",
+        "value": "unbounded"
+      },
+      {
+        "op": "test",
+        "path": "/semantic_graph/nodes/57/node_id/path/18",
+        "value": "3"
+      },
+      {
+        "op": "replace",
+        "path": "/semantic_graph/nodes/57/node_id/path/18",
+        "value": "unbounded"
+      },
+      {
+        "op": "test",
+        "path": "/semantic_graph/nodes/57/semantic_type/path/18",
+        "value": "3"
+      },
+      {
+        "op": "replace",
+        "path": "/semantic_graph/nodes/57/semantic_type/path/18",
+        "value": "unbounded"
+      },
+      {
+        "op": "test",
+        "path": "/semantic_graph/nodes/52/body/members/3/value/members/1/target/path/18",
+        "value": "3"
+      },
+      {
+        "op": "replace",
+        "path": "/semantic_graph/nodes/52/body/members/3/value/members/1/target/path/18",
+        "value": "unbounded"
+      },
+      {
+        "op": "test",
+        "path": "/semantic_graph/nodes/52/dependencies/18/path/18",
+        "value": "3"
+      },
+      {
+        "op": "replace",
+        "path": "/semantic_graph/nodes/52/dependencies/18/path/18",
+        "value": "unbounded"
+      },
+      {
+        "op": "test",
+        "path": "/semantic_graph/nodes/76/body/members/1/value/target/path/18",
+        "value": "3"
+      },
+      {
+        "op": "replace",
+        "path": "/semantic_graph/nodes/76/body/members/1/value/target/path/18",
+        "value": "unbounded"
+      },
+      {
+        "op": "test",
+        "path": "/semantic_graph/nodes/76/dependencies/0/path/18",
+        "value": "3"
+      },
+      {
+        "op": "replace",
+        "path": "/semantic_graph/nodes/76/dependencies/0/path/18",
+        "value": "unbounded"
+      },
+      {
+        "op": "test",
+        "path": "/semantic_graph/nodes/83/body/members/2/value/target/path/18",
+        "value": "3"
+      },
+      {
+        "op": "replace",
+        "path": "/semantic_graph/nodes/83/body/members/2/value/target/path/18",
+        "value": "unbounded"
+      },
+      {
+        "op": "test",
+        "path": "/semantic_graph/nodes/83/dependencies/2/path/18",
+        "value": "3"
+      },
+      {
+        "op": "replace",
+        "path": "/semantic_graph/nodes/83/dependencies/2/path/18",
+        "value": "unbounded"
+      },
+      {
+        "op": "test",
+        "path": "/source_map/57/node_id/path/18",
+        "value": "3"
+      },
+      {
+        "op": "replace",
+        "path": "/source_map/57/node_id/path/18",
+        "value": "unbounded"
+      }
+    ]
+  },
+  "cases": [
+    {
+      "id": "FP-01",
+      "subject": "a family part without quantifier is refused at the part",
+      "base": "CL-57",
+      "unbounded": true,
+      "patch": [],
+      "expected": "refused",
+      "expected_code": "invalid_package",
+      "expected_cause": "timed-node-reference",
+      "locus": "/semantic_graph/nodes/47/body/members/1/value/members/0"
+    },
+    {
+      "id": "FP-02",
+      "subject": "a family part whose quantifier text is all fails the closed layout at the part",
+      "base": "CL-57",
+      "unbounded": true,
+      "patch": [
+        {
+          "op": "add",
+          "path": "/semantic_graph/nodes/47/body/members/1/value/members/0/members/2",
+          "value": {
+            "term": "binding",
+            "name": "quantifier",
+            "value": {
+              "term": "literal",
+              "type": {
+                "ordinal": 0,
+                "package": "example",
+                "path": [
+                  "scalar_type",
+                  "text"
+                ]
+              },
+              "value_kind": "text",
+              "value": "all"
+            }
+          }
+        }
+      ],
+      "expected": "refused-by-schema",
+      "locus": "/semantic_graph/nodes/47/body/members/1/value/members/0"
+    },
+    {
+      "id": "FP-03",
+      "subject": "a quantifier written without binders fails the closed layout at the part",
+      "base": "CL-57",
+      "unbounded": true,
+      "patch": [
+        {
+          "op": "test",
+          "path": "/semantic_graph/nodes/47/body/members/1/value/members/0/members/1/name",
+          "value": "binders"
+        },
+        {
+          "op": "replace",
+          "path": "/semantic_graph/nodes/47/body/members/1/value/members/0/members/1",
+          "value": {
+            "term": "binding",
+            "name": "quantifier",
+            "value": {
+              "term": "literal",
+              "type": {
+                "ordinal": 0,
+                "package": "example",
+                "path": [
+                  "scalar_type",
+                  "text"
+                ]
+              },
+              "value_kind": "text",
+              "value": "each"
+            }
+          }
+        }
+      ],
+      "expected": "refused-by-schema",
+      "locus": "/semantic_graph/nodes/47/body/members/1/value/members/0"
+    },
+    {
+      "id": "FP-04",
+      "subject": "a family part whose binder is not a place slot and which has no quantifier is refused at the binder: the binder join precedes the family rule",
+      "base": "CL-58",
+      "unbounded": true,
+      "patch": [],
+      "expected": "refused",
+      "expected_code": "invalid_package",
+      "expected_cause": "timed-node-reference",
+      "locus": "/semantic_graph/nodes/47/body/members/1/value/members/0/members/1/value/members/0/target"
+    },
+    {
+      "id": "FP-05",
+      "subject": "a family part over the clock map Map<Text, Clock> with no declared maximum, binder k typed by the Text key domain and quantifier each, is admitted",
+      "base": "CL-57",
+      "unbounded": false,
+      "patch": [
+        {
+          "op": "add",
+          "path": "/semantic_graph/nodes/-",
+          "value": {
+            "body": {
+              "members": [
+                {
+                  "name": "name",
+                  "term": "binding",
+                  "value": {
+                    "term": "literal",
+                    "type": {
+                      "ordinal": 0,
+                      "package": "example",
+                      "path": [
+                        "scalar_type",
+                        "text"
+                      ]
+                    },
+                    "value": "k",
+                    "value_kind": "text"
+                  }
+                },
+                {
+                  "name": "level",
+                  "term": "binding",
+                  "value": {
+                    "term": "literal",
+                    "type": {
+                      "ordinal": 0,
+                      "package": "example",
+                      "path": [
+                        "scalar_type",
+                        "integer"
+                      ]
+                    },
+                    "value": "0",
+                    "value_kind": "integer"
+                  }
+                }
+              ],
+              "term": "aggregate"
+            },
+            "dependencies": [],
+            "node_id": {
+              "ordinal": 0,
+              "package": "example",
+              "path": [
+                "value",
+                "parameter",
+                "name",
+                {
+                  "operand": 0
+                },
+                "k",
+                "level",
+                {
+                  "operand": 1
+                },
+                "0"
+              ]
+            },
+            "node_tag": "value",
+            "occurrences": [
+              {
+                "ordinal": 0,
+                "role": "expression"
+              }
+            ],
+            "schema_version": "filament.checked-semantic-graph/v2",
+            "semantic_form": "parameter",
+            "semantic_type": {
+              "ordinal": 0,
+              "package": "example",
+              "path": [
+                "scalar_type",
+                "text"
+              ]
+            }
+          }
+        },
+        {
+          "op": "add",
+          "path": "/semantic_graph/operand_rows/-",
+          "value": [
+            23,
+            24
+          ]
+        },
+        {
+          "op": "add",
+          "path": "/source_map/-",
+          "value": {
+            "node_id": {
+              "ordinal": 0,
+              "package": "example",
+              "path": [
+                "value",
+                "parameter",
+                "name",
+                {
+                  "node": 23
+                },
+                "k",
+                "level",
+                {
+                  "node": 24
+                },
+                "0"
+              ]
+            },
+            "ordinal": 0,
+            "regions": [
+              {
+                "end": 3017,
+                "source": {
+                  "authority": "agent-ix",
+                  "identity": "example"
+                },
+                "start": 3016
+              }
+            ],
+            "role": "expression"
+          }
+        },
+        {
+          "op": "test",
+          "path": "/semantic_graph/nodes/78/body/members/3/value/members/0/target/path/3",
+          "value": "audit"
+        },
+        {
+          "op": "replace",
+          "path": "/semantic_graph/nodes/78/body/members/3/value/members/0",
+          "value": {
+            "target": {
+              "ordinal": 0,
+              "package": "example",
+              "path": [
+                "value",
+                "parameter",
+                "name",
+                {
+                  "operand": 1
+                },
+                "k",
+                "level",
+                {
+                  "operand": 2
+                },
+                "0"
+              ]
+            },
+            "term": "reference"
+          }
+        },
+        {
+          "op": "test",
+          "path": "/semantic_graph/nodes/78/dependencies/1/path/3",
+          "value": "audit"
+        },
+        {
+          "op": "replace",
+          "path": "/semantic_graph/nodes/78/dependencies/1",
+          "value": {
+            "ordinal": 0,
+            "package": "example",
+            "path": [
+              "value",
+              "parameter",
+              "name",
+              {
+                "operand": 1
+              },
+              "k",
+              "level",
+              {
+                "operand": 2
+              },
+              "0"
+            ]
+          }
+        },
+        {
+          "op": "test",
+          "path": "/semantic_graph/operand_rows/78/6",
+          "value": 32
+        },
+        {
+          "op": "replace",
+          "path": "/semantic_graph/operand_rows/78/6",
+          "value": 89
+        },
+        {
+          "op": "test",
+          "path": "/source_map/78/node_id/path/9",
+          "value": {
+            "node": 32
+          }
+        },
+        {
+          "op": "replace",
+          "path": "/source_map/78/node_id/path/9",
+          "value": {
+            "node": 89
+          }
+        },
+        {
+          "op": "add",
+          "path": "/semantic_graph/nodes/47/body/members/1/value/members/1/members/1",
+          "value": {
+            "term": "binding",
+            "name": "binders",
+            "value": {
+              "term": "aggregate",
+              "members": [
+                {
+                  "target": {
+                    "ordinal": 0,
+                    "package": "example",
+                    "path": [
+                      "value",
+                      "parameter",
+                      "name",
+                      {
+                        "operand": 1
+                      },
+                      "k",
+                      "level",
+                      {
+                        "operand": 6
+                      },
+                      "0"
+                    ]
+                  },
+                  "term": "reference"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "op": "add",
+          "path": "/semantic_graph/nodes/47/body/members/1/value/members/1/members/2",
+          "value": {
+            "term": "binding",
+            "name": "quantifier",
+            "value": {
+              "term": "literal",
+              "type": {
+                "ordinal": 0,
+                "package": "example",
+                "path": [
+                  "scalar_type",
+                  "text"
+                ]
+              },
+              "value_kind": "text",
+              "value": "each"
+            }
+          }
+        },
+        {
+          "op": "add",
+          "path": "/semantic_graph/nodes/47/dependencies/-",
+          "value": {
+            "ordinal": 0,
+            "package": "example",
+            "path": [
+              "value",
+              "parameter",
+              "name",
+              {
+                "operand": 1
+              },
+              "k",
+              "level",
+              {
+                "operand": 6
+              },
+              "0"
+            ]
+          }
+        },
+        {
+          "op": "test",
+          "path": "/semantic_graph/operand_rows/47/13",
+          "value": 32
+        },
+        {
+          "op": "replace",
+          "path": "/semantic_graph/operand_rows/47/13",
+          "value": 89
+        },
+        {
+          "op": "test",
+          "path": "/semantic_graph/nodes/52/body/members/8/value/members/3/target/path/9",
+          "value": {
+            "operand": 7
+          }
+        },
+        {
+          "op": "replace",
+          "path": "/semantic_graph/nodes/52/body/members/8/value/members/3/target/path/9",
+          "value": {
+            "operand": 26
+          }
+        },
+        {
+          "op": "test",
+          "path": "/semantic_graph/nodes/52/dependencies/4/path/9",
+          "value": {
+            "operand": 7
+          }
+        },
+        {
+          "op": "replace",
+          "path": "/semantic_graph/nodes/52/dependencies/4/path/9",
+          "value": {
+            "operand": 26
+          }
+        },
+        {
+          "op": "add",
+          "path": "/semantic_graph/nodes/47/node_id/path/-",
+          "value": "quantifier"
+        },
+        {
+          "op": "add",
+          "path": "/semantic_graph/nodes/47/node_id/path/-",
+          "value": "1"
+        },
+        {
+          "op": "add",
+          "path": "/semantic_graph/nodes/47/node_id/path/-",
+          "value": "each"
+        },
+        {
+          "op": "add",
+          "path": "/semantic_graph/nodes/47/semantic_type/path/-",
+          "value": "quantifier"
+        },
+        {
+          "op": "add",
+          "path": "/semantic_graph/nodes/47/semantic_type/path/-",
+          "value": "1"
+        },
+        {
+          "op": "add",
+          "path": "/semantic_graph/nodes/47/semantic_type/path/-",
+          "value": "each"
+        },
+        {
+          "op": "add",
+          "path": "/semantic_graph/nodes/52/body/members/5/value/members/0/target/path/-",
+          "value": "quantifier"
+        },
+        {
+          "op": "add",
+          "path": "/semantic_graph/nodes/52/body/members/5/value/members/0/target/path/-",
+          "value": "1"
+        },
+        {
+          "op": "add",
+          "path": "/semantic_graph/nodes/52/body/members/5/value/members/0/target/path/-",
+          "value": "each"
+        },
+        {
+          "op": "add",
+          "path": "/semantic_graph/nodes/52/dependencies/10/path/-",
+          "value": "quantifier"
+        },
+        {
+          "op": "add",
+          "path": "/semantic_graph/nodes/52/dependencies/10/path/-",
+          "value": "1"
+        },
+        {
+          "op": "add",
+          "path": "/semantic_graph/nodes/52/dependencies/10/path/-",
+          "value": "each"
+        },
+        {
+          "op": "add",
+          "path": "/source_map/49/node_id/path/-",
+          "value": "quantifier"
+        },
+        {
+          "op": "add",
+          "path": "/source_map/49/node_id/path/-",
+          "value": "1"
+        },
+        {
+          "op": "add",
+          "path": "/source_map/49/node_id/path/-",
+          "value": "each"
+        },
+        {
+          "op": "test",
+          "path": "/semantic_graph/nodes/52/body/members/8/value/members/6/target/path/5",
+          "value": {
+            "operand": 26
+          }
+        },
+        {
+          "op": "replace",
+          "path": "/semantic_graph/nodes/52/body/members/8/value/members/6/target/path/5",
+          "value": {
+            "operand": 27
+          }
+        },
+        {
+          "op": "test",
+          "path": "/semantic_graph/nodes/52/dependencies/3/path/5",
+          "value": {
+            "operand": 26
+          }
+        },
+        {
+          "op": "replace",
+          "path": "/semantic_graph/nodes/52/dependencies/3/path/5",
+          "value": {
+            "operand": 27
+          }
+        },
+        {
+          "op": "test",
+          "path": "/semantic_graph/operand_rows/52/26",
+          "value": 58
+        },
+        {
+          "op": "add",
+          "path": "/semantic_graph/operand_rows/52/26",
+          "value": 89
+        }
+      ],
+      "expected": "admitted",
+      "quantifier": "each"
+    },
+    {
+      "id": "FP-06",
+      "subject": "the FP-05 map family part without quantifier (and without the quantifier id suffix) is refused at the part",
+      "base": "CL-57",
+      "unbounded": false,
+      "patch": [
+        {
+          "op": "add",
+          "path": "/semantic_graph/nodes/-",
+          "value": {
+            "body": {
+              "members": [
+                {
+                  "name": "name",
+                  "term": "binding",
+                  "value": {
+                    "term": "literal",
+                    "type": {
+                      "ordinal": 0,
+                      "package": "example",
+                      "path": [
+                        "scalar_type",
+                        "text"
+                      ]
+                    },
+                    "value": "k",
+                    "value_kind": "text"
+                  }
+                },
+                {
+                  "name": "level",
+                  "term": "binding",
+                  "value": {
+                    "term": "literal",
+                    "type": {
+                      "ordinal": 0,
+                      "package": "example",
+                      "path": [
+                        "scalar_type",
+                        "integer"
+                      ]
+                    },
+                    "value": "0",
+                    "value_kind": "integer"
+                  }
+                }
+              ],
+              "term": "aggregate"
+            },
+            "dependencies": [],
+            "node_id": {
+              "ordinal": 0,
+              "package": "example",
+              "path": [
+                "value",
+                "parameter",
+                "name",
+                {
+                  "operand": 0
+                },
+                "k",
+                "level",
+                {
+                  "operand": 1
+                },
+                "0"
+              ]
+            },
+            "node_tag": "value",
+            "occurrences": [
+              {
+                "ordinal": 0,
+                "role": "expression"
+              }
+            ],
+            "schema_version": "filament.checked-semantic-graph/v2",
+            "semantic_form": "parameter",
+            "semantic_type": {
+              "ordinal": 0,
+              "package": "example",
+              "path": [
+                "scalar_type",
+                "text"
+              ]
+            }
+          }
+        },
+        {
+          "op": "add",
+          "path": "/semantic_graph/operand_rows/-",
+          "value": [
+            23,
+            24
+          ]
+        },
+        {
+          "op": "add",
+          "path": "/source_map/-",
+          "value": {
+            "node_id": {
+              "ordinal": 0,
+              "package": "example",
+              "path": [
+                "value",
+                "parameter",
+                "name",
+                {
+                  "node": 23
+                },
+                "k",
+                "level",
+                {
+                  "node": 24
+                },
+                "0"
+              ]
+            },
+            "ordinal": 0,
+            "regions": [
+              {
+                "end": 3017,
+                "source": {
+                  "authority": "agent-ix",
+                  "identity": "example"
+                },
+                "start": 3016
+              }
+            ],
+            "role": "expression"
+          }
+        },
+        {
+          "op": "test",
+          "path": "/semantic_graph/nodes/78/body/members/3/value/members/0/target/path/3",
+          "value": "audit"
+        },
+        {
+          "op": "replace",
+          "path": "/semantic_graph/nodes/78/body/members/3/value/members/0",
+          "value": {
+            "target": {
+              "ordinal": 0,
+              "package": "example",
+              "path": [
+                "value",
+                "parameter",
+                "name",
+                {
+                  "operand": 1
+                },
+                "k",
+                "level",
+                {
+                  "operand": 2
+                },
+                "0"
+              ]
+            },
+            "term": "reference"
+          }
+        },
+        {
+          "op": "test",
+          "path": "/semantic_graph/nodes/78/dependencies/1/path/3",
+          "value": "audit"
+        },
+        {
+          "op": "replace",
+          "path": "/semantic_graph/nodes/78/dependencies/1",
+          "value": {
+            "ordinal": 0,
+            "package": "example",
+            "path": [
+              "value",
+              "parameter",
+              "name",
+              {
+                "operand": 1
+              },
+              "k",
+              "level",
+              {
+                "operand": 2
+              },
+              "0"
+            ]
+          }
+        },
+        {
+          "op": "test",
+          "path": "/semantic_graph/operand_rows/78/6",
+          "value": 32
+        },
+        {
+          "op": "replace",
+          "path": "/semantic_graph/operand_rows/78/6",
+          "value": 89
+        },
+        {
+          "op": "test",
+          "path": "/source_map/78/node_id/path/9",
+          "value": {
+            "node": 32
+          }
+        },
+        {
+          "op": "replace",
+          "path": "/source_map/78/node_id/path/9",
+          "value": {
+            "node": 89
+          }
+        },
+        {
+          "op": "add",
+          "path": "/semantic_graph/nodes/47/body/members/1/value/members/1/members/1",
+          "value": {
+            "term": "binding",
+            "name": "binders",
+            "value": {
+              "term": "aggregate",
+              "members": [
+                {
+                  "target": {
+                    "ordinal": 0,
+                    "package": "example",
+                    "path": [
+                      "value",
+                      "parameter",
+                      "name",
+                      {
+                        "operand": 1
+                      },
+                      "k",
+                      "level",
+                      {
+                        "operand": 6
+                      },
+                      "0"
+                    ]
+                  },
+                  "term": "reference"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "op": "add",
+          "path": "/semantic_graph/nodes/47/dependencies/-",
+          "value": {
+            "ordinal": 0,
+            "package": "example",
+            "path": [
+              "value",
+              "parameter",
+              "name",
+              {
+                "operand": 1
+              },
+              "k",
+              "level",
+              {
+                "operand": 6
+              },
+              "0"
+            ]
+          }
+        },
+        {
+          "op": "test",
+          "path": "/semantic_graph/operand_rows/47/13",
+          "value": 32
+        },
+        {
+          "op": "replace",
+          "path": "/semantic_graph/operand_rows/47/13",
+          "value": 89
+        },
+        {
+          "op": "test",
+          "path": "/semantic_graph/nodes/52/body/members/8/value/members/3/target/path/9",
+          "value": {
+            "operand": 7
+          }
+        },
+        {
+          "op": "replace",
+          "path": "/semantic_graph/nodes/52/body/members/8/value/members/3/target/path/9",
+          "value": {
+            "operand": 26
+          }
+        },
+        {
+          "op": "test",
+          "path": "/semantic_graph/nodes/52/dependencies/4/path/9",
+          "value": {
+            "operand": 7
+          }
+        },
+        {
+          "op": "replace",
+          "path": "/semantic_graph/nodes/52/dependencies/4/path/9",
+          "value": {
+            "operand": 26
+          }
+        },
+        {
+          "op": "test",
+          "path": "/semantic_graph/nodes/52/body/members/8/value/members/6/target/path/5",
+          "value": {
+            "operand": 26
+          }
+        },
+        {
+          "op": "replace",
+          "path": "/semantic_graph/nodes/52/body/members/8/value/members/6/target/path/5",
+          "value": {
+            "operand": 27
+          }
+        },
+        {
+          "op": "test",
+          "path": "/semantic_graph/nodes/52/dependencies/3/path/5",
+          "value": {
+            "operand": 26
+          }
+        },
+        {
+          "op": "replace",
+          "path": "/semantic_graph/nodes/52/dependencies/3/path/5",
+          "value": {
+            "operand": 27
+          }
+        },
+        {
+          "op": "test",
+          "path": "/semantic_graph/operand_rows/52/26",
+          "value": 58
+        },
+        {
+          "op": "add",
+          "path": "/semantic_graph/operand_rows/52/26",
+          "value": 89
+        }
+      ],
+      "expected": "refused",
+      "expected_code": "invalid_package",
+      "expected_cause": "timed-node-reference",
+      "locus": "/semantic_graph/nodes/47/body/members/1/value/members/1"
+    }
+  ]
+}

@@ -101,6 +101,12 @@ relationships:
     type: verifies
   - target: ix://agent-ix/filament-contract-ir/FR-038-AC-570
     type: verifies
+  - target: ix://agent-ix/filament-contract-ir/FR-038-AC-571
+    type: verifies
+  - target: ix://agent-ix/filament-contract-ir/FR-038-AC-572
+    type: verifies
+  - target: ix://agent-ix/filament-contract-ir/FR-038-AC-573
+    type: verifies
   - target: ix://agent-ix/filament-specification/TC-187
     type: references
 ---
@@ -3061,6 +3067,25 @@ published no vector file for them.
   `<A>::<protocol>::<node>` for it to admit; the same node under a different
   spelling, including the step-row spelling, refuses `invalid_semantic_graph`
   at `class_catalog/concrete`.
+- Recommend binder (AC-573): over a `recommend` of an operation with the
+  parameter `k: Integer` and an Integer result (the `attempt` over a
+  parameterless operation beside it), the entry with the binder (receiver,
+  Integer) admits, and the entries with `[B]`, `[]`, the receiver alone and the
+  receiver, parameter and result each refuse `invalid_model_binding`/
+  `malformed-declaration` at `class_catalog/concrete/{i}`.
+- Reward clause kind (AC-571, AC-572; FSpec FR-322 "Owner joins", FR-640 rule
+  4, FR-322-AC-471; W76 published no vector file): a reward whose function
+  carries the `clause` text `reward` and the operation member as owner admits
+  with `no_body` rows for every operation, and the typed read gives the
+  function. The function owned by the object type, a field member or an
+  undeclared member refuses `missing_declaration`/`missing-selection` at its
+  `node_id`; with `check_mode` `kernel`, `invalid_package`/`invalid-value` at
+  `check_mode`. The `clause` rewritten to `precondition` refuses
+  `invalid-value` at the reward's `expression`; to `body`, at the `no_body`
+  row's `body` when rows are carried and at the `expression` when not; to
+  `invariant`, `postcondition`, `Reward` or the empty text,
+  `missing_declaration`/`missing-selection` at the function's `node_id`; the
+  function owned by another operation refuses `invalid-value` at `expression`.
 - Recommend sets and facts (AC-566): a repeated `contracts` entry refuses
   `malformed_wire` and a repeated `related` record refuses
   `invalid_semantic_graph` at the node; a decision that reads a `recommend`

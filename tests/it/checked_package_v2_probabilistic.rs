@@ -489,7 +489,7 @@ fn assemble_with(chain: usize, nodes: Vec<(Value, &str)>) -> Value {
                 "parameters",
                 aggregate(vec![reference(id(&["reward", "parameter"]))]),
             ),
-            binding("clause", text("body")),
+            binding("clause", text("reward")),
         ]),
     );
     function["dependencies"] = json!([id(&["reward", "parameter"])]);
@@ -1787,4 +1787,195 @@ fn the_public_reader_refuses_malformed_boolean_and_enum_support_values() {
     ] {
         refuse_invalid(&on_run("tier", vec![value]), at);
     }
+}
+
+/// The `operation_bodies` rows of the family model: every operation member
+/// of every object type, none with a body.
+fn no_body_rows() -> Vec<Value> {
+    let mut rows: Vec<(String, &str)> = [
+        ("Account", "deposit"),
+        ("Account", "withdraw"),
+        ("Base", "ping"),
+        ("Leaf", "run"),
+        ("Mid", "ping"),
+        ("Mid", "pong"),
+    ]
+    .into_iter()
+    .map(|(declaring, operation)| (format!("ix://{PACKAGE}/{declaring}"), operation))
+    .collect();
+    rows.sort();
+    rows.into_iter()
+        .map(|(declaring, operation)| {
+            json!({
+                "document": PACKAGE,
+                "declaring": id(&["model", "object_type", &declaring]),
+                "operation": operation,
+                "body": {"kind": "no_body"},
+            })
+        })
+        .collect()
+}
+
+/// [`reward_package`] with the `no_body` rows an operation without a body
+/// carries, `edit` applied after them.
+fn rewarded_with_rows(edit: impl FnOnce(&mut Value)) -> Value {
+    reward_package(|value| {
+        value["operation_bodies"] = Value::Array(no_body_rows());
+        edit(value);
+    })
+}
+
+fn function_position(value: &Value) -> usize {
+    let wanted = id(&["reward", "function"]);
+    value["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .position(|node| node["node_id"] == wanted)
+        .expect("reward function")
+}
+
+fn refuse_at(
+    value: &Value,
+    code: CheckedPackageRefusalCode,
+    cause: Option<CheckedPackageRefusalCause>,
+    path: &str,
+) {
+    let refusal = refused(value);
+    assert_eq!(refusal.code, code, "{refusal:?}");
+    assert_eq!(refusal.cause, cause, "{refusal:?}");
+    assert_eq!(
+        refusal.loci[0].path.as_ref().map(|path| path.as_str()),
+        Some(path),
+        "{refusal:?}"
+    );
+}
+
+/// FSpec FR-322 "Owner joins" (W76), FR-640 rule 4, FR-322-AC-471: the clause
+/// kind `reward` is owned by an operation member, the reader admits it, and
+/// the operation it rewards keeps its `no_body` row: only a `body` clause
+/// function gives an operation a body.
+#[trace("TC-048", "FR-038-AC-571")]
+#[test]
+fn the_reader_admits_the_reward_clause_kind_and_demands_no_operation_body() {
+    let value = rewarded_with_rows(|_| {});
+    assert_eq!(
+        node_by_label_ref(&value, &["reward", "function"])["body"]["members"][1]["value"]["value"],
+        "reward"
+    );
+    let package = admitted(&value);
+    let model: filament_contract_model::CheckedNodeId =
+        serde_json::from_value(account()).expect("model id");
+    let rewards = package.rewards(&model, "deposit");
+    assert_eq!(rewards.len(), 1);
+    assert_eq!(
+        serde_json::to_value(rewards[0].function).expect("expression id"),
+        id(&["reward", "function"])
+    );
+    let rows = package.operation_body_rows().expect("rows");
+    let deposit = rows
+        .iter()
+        .find(|row| row.operation.as_ref() == "deposit")
+        .expect("deposit row");
+    assert_eq!(
+        deposit.body,
+        filament_contract_model::OperationBody::NoBody,
+        "a reward clause function gives its operation no body"
+    );
+}
+
+fn node_by_label_ref<'a>(value: &'a Value, label: &[&str]) -> &'a Value {
+    let wanted = id(label);
+    value["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|node| node["node_id"] == wanted)
+        .expect("node")
+}
+
+/// FSpec FR-322 "Owner joins" (W76), FR-322-AC-471, FR-770-AC-2: a reward
+/// clause function owned by an object type, by a field member or by an
+/// undeclared member is not owned by a declared operation member, and a
+/// declared clause is always `linked`.
+#[trace("TC-048", "FR-038-AC-571")]
+#[test]
+fn a_reward_clause_function_joins_only_its_operation_member_and_is_linked() {
+    for owner in [
+        "ix://test/families/Account",
+        "ix://test/families/Account/balance",
+        "ix://test/families/Account/missing",
+    ] {
+        let value = rewarded_with_rows(|value| {
+            node_by_label(value, &["reward", "function"])["owner"]["node"] = json!(owner);
+        });
+        let position = function_position(&value);
+        refuse_at(
+            &value,
+            CheckedPackageRefusalCode::MissingDeclaration,
+            Some(CheckedPackageRefusalCause::MissingSelection),
+            &format!("/semantic_graph/nodes/{position}/node_id"),
+        );
+    }
+    let value = rewarded_with_rows(|value| {
+        node_by_label(value, &["reward", "function"])["check_mode"] = json!("kernel");
+    });
+    let position = function_position(&value);
+    refuse_at(
+        &value,
+        CheckedPackageRefusalCode::InvalidPackage,
+        Some(CheckedPackageRefusalCause::InvalidValue),
+        &format!("/semantic_graph/nodes/{position}/check_mode"),
+    );
+}
+
+/// FSpec FR-640 rule 4 and FR-322-AC-471: a reward's `expression` is a
+/// `reward` clause function. A `precondition` one is admitted by the owner
+/// join and refused at the reward node's `expression`; a `body` one gives the
+/// operation a body, so the `operation_bodies` row refuses first when it says
+/// `no_body`, and the reward's rule 4 refuses when the member is absent; an
+/// `invariant` or unknown clause kind joins no operation member owner.
+#[trace("TC-048", "FR-038-AC-572")]
+#[test]
+fn a_reward_expression_of_another_clause_kind_refuses() {
+    let clause = |value: &mut Value, kind: &str| {
+        node_by_label(value, &["reward", "function"])["body"]["members"][1]["value"]["value"] =
+            json!(kind);
+    };
+    let precondition = rewarded_with_rows(|value| clause(value, "precondition"));
+    refuse_invalid(&precondition, &bad_target(4));
+    // The same function is not refused by the owner join: only rule 4 reads
+    // the clause kind of an admitted precondition-owned function.
+    let absent = reward_package(|value| clause(value, "body"));
+    assert!(absent.get("operation_bodies").is_none());
+    refuse_invalid(&absent, &bad_target(4));
+    let body = rewarded_with_rows(|value| clause(value, "body"));
+    let rows = body["operation_bodies"].as_array().expect("rows");
+    let deposit = rows
+        .iter()
+        .position(|row| row["operation"] == "deposit")
+        .expect("deposit row");
+    refuse_at(
+        &body,
+        CheckedPackageRefusalCode::InvalidPackage,
+        Some(CheckedPackageRefusalCause::InvalidValue),
+        &format!("/operation_bodies/{deposit}/body"),
+    );
+    for kind in ["invariant", "postcondition", "Reward", ""] {
+        let value = rewarded_with_rows(|value| clause(value, kind));
+        let position = function_position(&value);
+        refuse_at(
+            &value,
+            CheckedPackageRefusalCode::MissingDeclaration,
+            Some(CheckedPackageRefusalCause::MissingSelection),
+            &format!("/semantic_graph/nodes/{position}/node_id"),
+        );
+    }
+    // A reward function owned by another operation member refuses rule 4.
+    refuse_invalid(
+        &rewarded_with_rows(|value| {
+            node_by_label(value, &["reward", "function"])["owner"]["node"] = json!(WITHDRAW);
+        }),
+        &bad_target(4),
+    );
 }

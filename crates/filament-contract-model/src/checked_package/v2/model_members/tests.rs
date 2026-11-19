@@ -483,6 +483,7 @@ fn operation_redefinitions_select_the_most_derived_member() {
 }
 
 /// Provenance: IR-874 inherited attempt operation binder join.
+#[trace("TC-048", "FR-038-AC-573")]
 #[test]
 fn inherited_operation_binders_use_named_receiver_and_retained_result() {
     let mut parent = object_type(WIDGET, &[], vec![]);
@@ -501,7 +502,12 @@ fn inherited_operation_binders_use_named_receiver_and_retained_result() {
     let model = read(&document(vec![parent, child])).expect("selected model");
     let mut meter = WorkMeter::new(u64::MAX);
     let signature = model
-        .effective_operation_binder_types(GADGET, "act", &mut Budget::new(&mut meter, 0, BYTES))
+        .effective_operation_binder_types_with(
+            GADGET,
+            "act",
+            true,
+            &mut Budget::new(&mut meter, 0, BYTES),
+        )
         .expect("bounded resolution")
         .expect("inherited operation");
     let receiver = MemberType::Reference(declaration_id(
@@ -521,14 +527,27 @@ fn inherited_operation_binders_use_named_receiver_and_retained_result() {
         .expect("integer ID");
     assert_eq!(signature[1], integer);
     assert_eq!(signature[2], integer);
+    // A `recommend` binder record has no `result` (FSpec FR-432-AC-24): the
+    // same operation without it is the receiver and the parameter.
+    let recommend = model
+        .effective_operation_binder_types_with(
+            GADGET,
+            "act",
+            false,
+            &mut Budget::new(&mut WorkMeter::new(u64::MAX), 0, BYTES),
+        )
+        .expect("bounded resolution")
+        .expect("inherited operation");
+    assert_eq!(recommend, signature[..2].to_vec());
     let run = |limit| {
         let mut native = NativeJoinBudget::new(u64::MAX, 0).with_read_storage_limit(limit);
         let mut result = None;
         let measured = allocation_counter::measure(|| {
             let mut meter = WorkMeter::over(&mut native);
-            result = Some(model.effective_operation_binder_types(
+            result = Some(model.effective_operation_binder_types_with(
                 GADGET,
                 "act",
+                true,
                 &mut Budget::new(&mut meter, 0, BYTES),
             ));
         });
