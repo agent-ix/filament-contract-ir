@@ -14452,6 +14452,54 @@ fn recommend_control_admits_with_the_attempt_checks_and_without_ordering() {
     assert_eq!(refusal.code, CheckedPackageRefusalCode::MalformedWire);
 }
 
+/// FR-038-AC-566: the `contracts` and `related` sets of a `recommend` are
+/// canonical, as an `attempt`'s are.
+#[trace("FR-038-AC-566")]
+#[test]
+fn recommend_contracts_and_related_refuse_a_noncanonical_set() {
+    let (package, root) = package_with_admitted_recommend();
+    let contract = package["semantic_graph"]["nodes"][root]["body"]["arguments"][2]["value"]
+        ["members"][0]
+        .clone();
+    let mut contracts = package.clone();
+    contracts["semantic_graph"]["nodes"][root]["body"]["arguments"][2]["value"]["members"] =
+        json!([contract.clone(), contract]);
+    settle(&mut contracts);
+    let CheckedPackageV2ReadResult::Refused(refusal) = read(&contracts) else {
+        panic!("a repeated contract is a noncanonical set")
+    };
+    assert_eq!(
+        refusal.code,
+        CheckedPackageRefusalCode::InvalidSemanticGraph
+    );
+    assert_eq!(
+        refusal.loci[0].path.as_ref().map(|path| path.as_str()),
+        Some(format!("/semantic_graph/nodes/{root}").as_str())
+    );
+
+    let role =
+        package["semantic_graph"]["nodes"][protocol_position(&package, "role")]["node_id"].clone();
+    let record = json!({"term": "aggregate", "members": [
+        {"term": "binding", "name": "relationship", "value": {"term": "reference", "target": role}},
+        {"term": "binding", "name": "from", "value": {"term": "reference", "target": role}},
+        {"term": "binding", "name": "to", "value": {"term": "reference", "target": role}}
+    ]});
+    let mut related = package;
+    related["semantic_graph"]["nodes"][root]["body"]["arguments"][4]["value"]["members"] =
+        json!([record.clone(), record]);
+    settle(&mut related);
+    let key = related["semantic_graph"]["nodes"][root]["node_id"].clone();
+    assert_eq!(
+        read(&related),
+        refusal_at_id(
+            CheckedPackageRefusalCode::InvalidSemanticGraph,
+            &format!("/semantic_graph/nodes/{root}"),
+            None,
+            &key,
+        )
+    );
+}
+
 #[trace("FR-038-AC-567")]
 #[test]
 fn control_boundary_admits_after_the_layout_and_refuses_unknown_text() {
@@ -14611,6 +14659,142 @@ fn control_observe_only_marks_itself_and_the_controls_below() {
     mark_boundary(&mut inner, attempt, json!("observe-only"));
     settle(&mut inner);
     assert_observe_only_refusal(&inner, attempt, "attempt", &id_at(&inner, attempt));
+}
+
+/// A `send` on a channel from the first role to a second role `Auditor`:
+/// returns the package, the send, the `from` role and the `to` role.
+fn package_with_two_role_send() -> (Value, usize, usize, usize) {
+    let (package, send, channel) = package_with_send();
+    let from_key = package["semantic_graph"]["nodes"][channel]["body"]["arguments"][0]["value"]
+        ["target"]
+        .clone();
+    let from = (0..package["semantic_graph"]["nodes"].as_array().unwrap().len())
+        .find(|&position| package["semantic_graph"]["nodes"][position]["node_id"] == from_key)
+        .expect("the from role");
+    let role_node = package["semantic_graph"]["nodes"][from].clone();
+    let model = role_node["body"]["arguments"][0]["value"]["target"].clone();
+    let second = protocol_named_node(
+        "role",
+        &["Example", "OrderFlow", "role", "Auditor"],
+        role_node["body"].clone(),
+        &[model["path"][0].as_str().expect("digest").to_owned()],
+    );
+    let second_key = second["node_id"].clone();
+    let clause = clause_position(&package);
+    for pair in [[&from_key, &second_key], [&second_key, &from_key]] {
+        let mut candidate = package.clone();
+        candidate["semantic_graph"]["nodes"]
+            .as_array_mut()
+            .expect("nodes")
+            .push(second.clone());
+        candidate["semantic_graph"]["nodes"][clause]["body"]["arguments"][3]["value"]["members"] =
+            json!(pair.map(|key| json!({"term": "reference", "target": key})));
+        candidate["semantic_graph"]["nodes"][channel]["body"]["arguments"][1]["value"]["target"] =
+            second_key.clone();
+        settle(&mut candidate);
+        if matches!(read(&candidate), CheckedPackageV2ReadResult::Admitted(_)) {
+            let to = (0..candidate["semantic_graph"]["nodes"]
+                .as_array()
+                .unwrap()
+                .len())
+                .find(|&position| {
+                    candidate["semantic_graph"]["nodes"][position]["node_id"] == second_key
+                })
+                .expect("the to role");
+            return (candidate, send, from, to);
+        }
+    }
+    panic!("the two-role send package admits in one role order")
+}
+
+/// FSpec FR-822-AC-2: a `send` is performed by its channel's `from` role, not
+/// its `to` role.
+#[trace("FR-038-AC-568")]
+#[test]
+fn observe_only_send_is_performed_by_the_channel_from_role() {
+    let (package, send, from, to) = package_with_two_role_send();
+    let mut receiver_only = package.clone();
+    mark_boundary(&mut receiver_only, to, json!("observe-only"));
+    settle(&mut receiver_only);
+    assert!(
+        matches!(
+            read(&receiver_only),
+            CheckedPackageV2ReadResult::Admitted(_)
+        ),
+        "a send on a channel to an observe-only role admits: {:?}",
+        read(&receiver_only)
+    );
+    let mut sender = package;
+    mark_boundary(&mut sender, from, json!("observe-only"));
+    settle(&mut sender);
+    assert_observe_only_refusal(&sender, send, "send", &id_at(&sender, from));
+}
+
+/// Turns every `attempt` of `package` into a `recommend` (it loses its
+/// `ordering`) and the `effect` that reported on it into an `event` of the
+/// same role, because an `effect` needs an `attempt`.
+fn attempts_to_recommends(package: &mut Value) {
+    let count = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .len();
+    for position in 0..count {
+        let operator = package["semantic_graph"]["nodes"][position]["body"]["operation"]["member"]
+            ["operator"]
+            .clone();
+        if operator == "attempt" {
+            let body = &mut package["semantic_graph"]["nodes"][position]["body"];
+            body["operation"]["member"]["operator"] = json!("recommend");
+            body["arguments"]
+                .as_array_mut()
+                .expect("arguments")
+                .remove(2);
+        }
+    }
+    for position in 0..count {
+        let node = &package["semantic_graph"]["nodes"][position];
+        if node["body"]["operation"]["member"]["operator"] != "effect" {
+            continue;
+        }
+        let attempt = node["body"]["arguments"][0]["value"]["target"].clone();
+        let role = package["semantic_graph"]["nodes"]
+            .as_array()
+            .expect("nodes")
+            .iter()
+            .find(|candidate| candidate["node_id"] == attempt)
+            .expect("the effect's attempt")["body"]["arguments"][0]
+            .clone();
+        let body = &mut package["semantic_graph"]["nodes"][position]["body"];
+        body["operation"]["member"]["operator"] = json!("event");
+        let arguments = body["arguments"].as_array_mut().expect("arguments");
+        arguments[0] = role;
+        arguments.insert(
+            1,
+            json!({"term": "binding", "name": "compensation", "value": {"term": "aggregate", "members": []}}),
+        );
+    }
+    settle(package);
+}
+
+/// FSpec FR-466 check 7, last sentence: a `recommend` binder is never a
+/// decision fact, so a decision reading it refuses as it does for a `send`.
+#[trace("FR-038-AC-566")]
+#[test]
+fn a_recommend_binder_is_never_a_decision_fact() {
+    let (mut package, decision, field, _) = decision_fact_fixture();
+    attempts_to_recommends(&mut package);
+    let _ = (decision, field);
+    let CheckedPackageV2ReadResult::Refused(refusal) = read(&package) else {
+        panic!("a decision cannot read a recommend binder")
+    };
+    assert_eq!(refusal.code, CheckedPackageRefusalCode::WrongSnapshot);
+    assert!(
+        matches!(refusal.protocol_detail.as_deref(),
+            Some(CheckedProtocolRefusalDetail::DecisionFact { reason, .. })
+                if reason.as_ref() == "ineligible-kind"),
+        "{:?}",
+        refusal.protocol_detail
+    );
 }
 
 #[trace("FR-038-AC-568")]

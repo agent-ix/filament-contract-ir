@@ -99,6 +99,8 @@ relationships:
     type: verifies
   - target: ix://agent-ix/filament-contract-ir/FR-038-AC-569
     type: verifies
+  - target: ix://agent-ix/filament-contract-ir/FR-038-AC-570
+    type: verifies
   - target: ix://agent-ix/filament-specification/TC-187
     type: references
 ---
@@ -3023,7 +3025,7 @@ Assert the segment serde shapes, replace a node id through `replace_node_id`
 and assert the written slots, and that a graph read back from `graph()` and
 written again is admitted.
 
-## Observe-only boundary (FR-038-AC-564 through FR-038-AC-569)
+## Observe-only boundary (FR-038-AC-564 through FR-038-AC-570)
 
 Implemented (QSL-2449). Read FSpec FR-465 "Role" (the `boundary` argument and
 check 6), FR-466 (the `recommend` row, the `boundary` paragraph and check 7),
@@ -3054,3 +3056,14 @@ published no vector file for them.
 - Other nodes (AC-569): every non-role, non-control node of the all-families
   package refuses `malformed_wire` at its node pointer when a `boundary` binding
   is appended to its arguments.
+- Refinement class (AC-570): convert the admitted `attempt` of the refinement
+  fixture to a `recommend` and require the catalog entry
+  `<A>::<protocol>::<node>` for it to admit; the same node under a different
+  spelling, including the step-row spelling, refuses `invalid_semantic_graph`
+  at `class_catalog/concrete`.
+- Recommend sets and facts (AC-566): a repeated `contracts` entry refuses
+  `malformed_wire` and a repeated `related` record refuses
+  `invalid_semantic_graph` at the node; a decision that reads a `recommend`
+  binder refuses `wrong_snapshot` with reason `ineligible-kind`.
+- Send performer (AC-568): with a channel from one role to another, observe-only
+  on the `to` role admits the `send` and on the `from` role refuses it.

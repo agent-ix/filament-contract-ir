@@ -7995,6 +7995,144 @@ fn derive_compensation_receiver_id(package: &mut Value) {
     crate::support::checked_package::reassign_node_id(package, &old, &derived);
 }
 
+/// FR-426/FR-432 (W75 to add rows): a `recommend` is a node-row class like an
+/// `event`, spelled `<A>::<protocol>::<node>`.
+#[trace("TC-048", "FR-038-AC-570")]
+#[test]
+fn refinement_catalog_maps_a_recommend_as_a_node_row_class() {
+    let (mut base, _, _) = crate::checked_package_v2_protocol_body::package_with_present_commit();
+    derive_compensation_receiver_id(&mut base);
+    // The `Event` step becomes a `recommend` of the attempt's operation: an
+    // attempt cannot change, the compensation template and the effect read it.
+    let (anchor, event) = {
+        let nodes = base["semantic_graph"]["nodes"].as_array().expect("nodes");
+        let attempt = nodes
+            .iter()
+            .find(|node| node["body"]["operation"]["member"]["operator"] == "attempt")
+            .expect("attempt");
+        let event = nodes
+            .iter()
+            .position(|node| node["body"]["operation"]["member"]["operator"] == "event")
+            .expect("event");
+        (attempt["body"]["arguments"][1].clone(), event)
+    };
+    let body = &mut base["semantic_graph"]["nodes"][event]["body"];
+    body["operation"]["member"]["operator"] = json!("recommend");
+    let arguments = body["arguments"].as_array_mut().expect("arguments");
+    arguments[1] = anchor;
+    arguments.insert(
+        2,
+        json!({"term": "binding", "name": "contracts", "value": {"term": "aggregate", "members": []}}),
+    );
+    settle(&mut base);
+    let (mut package, evidence) = concrete_protocol_refinement_on(
+        base,
+        ProtocolStepRows::Empty,
+        ProtocolClauseOwner::SelectedModel,
+    );
+    let nodes = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes");
+    let by_operator = |operator: &str| {
+        nodes
+            .iter()
+            .find(|node| node["body"]["operation"]["member"]["operator"] == operator)
+            .expect("protocol operator")["node_id"]
+            .clone()
+    };
+    let template = by_operator("compensate");
+    let finish = by_operator("finish");
+    let commit = by_operator("commit");
+    let by_name = |name: &str| {
+        nodes
+            .iter()
+            .find(|node| {
+                node["declaration"]["qualified_name"]
+                    .as_array()
+                    .is_some_and(|path| path.last().is_some_and(|last| last == name))
+            })
+            .expect("named protocol node")["node_id"]
+            .clone()
+    };
+    let attempt = by_name("ForwardAttempt");
+    let recommend = by_name("Event");
+    let effect = by_name("ForwardEffect");
+    let boolean = node_id(&crate::support::checked_package::family_key("aaaa"));
+    let anchor = nodes
+        .iter()
+        .find(|node| node["semantic_form"] == "operation_anchor")
+        .expect("operation anchor");
+    let context = &anchor["body"]["members"][0]["value"]["target"];
+    let receiver = nodes
+        .iter()
+        .find(|node| {
+            node["semantic_form"] == "reference" && node["body"]["members"][0]["target"] == *context
+        })
+        .expect("receiver type")["node_id"]
+        .clone();
+    let entry = |class: &str, node: &Value, binders: Vec<Value>| json!({"class": class, "node": node, "binder_types": binders});
+    let build = |recommend_class: &str, recommend_binders: Vec<Value>| {
+        let mut entries = vec![
+            entry(
+                "Example::OrderFlow::Undo",
+                &template,
+                vec![receiver.clone()],
+            ),
+            entry("Example::OrderFlow::Closed", &finish, vec![boolean.clone()]),
+            entry("Example::OrderFlow::Commit", &commit, vec![boolean.clone()]),
+            entry(
+                "Example::OrderFlow::ForwardAttempt",
+                &attempt,
+                vec![receiver.clone()],
+            ),
+            entry(recommend_class, &recommend, recommend_binders),
+            entry(
+                "Example::OrderFlow::ForwardEffect",
+                &effect,
+                vec![boolean.clone()],
+            ),
+            entry("cend Example::OrderFlow::Undo", &template, vec![]),
+        ];
+        entries.sort_by(|left, right| left["class"].as_str().cmp(&right["class"].as_str()));
+        entries
+    };
+    let refinement = set_concrete_catalog(
+        &mut package,
+        build("Example::OrderFlow::Event", vec![boolean.clone()]),
+    );
+    let admitted = read(&package, &evidence);
+    assert!(
+        matches!(admitted, CheckedPackageV2ReadResult::Admitted(_)),
+        "{admitted:?}"
+    );
+    // A wrong spelling, including the step-row spelling `recommend ...`, is a
+    // class the catalog does not contain.
+    for wrong in [
+        "Example::OrderFlow::EventRecommend",
+        "recommend Example::OrderFlow::Event",
+    ] {
+        let mut wrong_package = package.clone();
+        set_concrete_catalog(&mut wrong_package, build(wrong, vec![boolean.clone()]));
+        let CheckedPackageV2ReadResult::Refused(refusal) = read(&wrong_package, &evidence) else {
+            panic!("{wrong} admitted");
+        };
+        assert_eq!(
+            refusal.code,
+            CheckedPackageRefusalCode::InvalidSemanticGraph,
+            "{wrong}"
+        );
+        assert!(
+            refusal.loci[0]
+                .path
+                .as_ref()
+                .is_some_and(|path| path.as_str().starts_with(&format!(
+                    "/semantic_graph/nodes/{refinement}/body/class_catalog/concrete"
+                ))),
+            "{wrong}: {refusal:?}"
+        );
+    }
+}
+
 /// Trace: FR-038-AC-330
 #[trace("TC-048", "FR-038-AC-330")]
 #[test]
