@@ -84,3 +84,11 @@ No applicable AssuranceProfile was found for the changed behavior.
 - `quoin matrix` reports 1,257 criteria: 1,104 tagged, 122 untagged, one tagged only by an ignored test, 26 method-without-symbol, and four retired. This remains a repository-wide baseline outside the changed criteria.
 - `quire coverage --scope . --json` exited 0, reported 143 repository-wide unbacked rows and existing symbol-id-collision diagnostics in `common.rs`, `checked_term_data.rs`, `owner.rs`, `refinement.rs`, and `temporal_binding.rs`; no FR-772 AC or changed-test rows were unbacked.
 - No new findings. Full aggregate tests were not run.
+
+## Disposition pass 4 recheck
+
+- Reviewed current main base `a461f0a1b18542b0a47e1e1676ef9015af48e8f4` against head `01fffc2720fb80c111d7e87af828500f1edb2cbf`.
+- The rebase-only manifest changes align all filament-exact references to `b26a8e4c592503fccdc4a0e3d2cce23dd8487616`, semantic-value to `1df71c27e6db56c8118cf017689aa7fab6156cde`, and verification-contracts to `2714219621cfbfabdd8d411c39d9109d956b85dd`; Cargo.lock matches. No new code issue found.
+- FND-001–007 remain fixed, including the four removed FR-772 census bindings. Dedicated FR-772 tests remain tagged.
+- On this head, `cargo test --locked -p filament-contract-model fr772_ -- --nocapture` passed (4 tests); `cargo fmt --all -- --check` and `git diff --check` passed. The coder reports both focused integration filters and `make lint` pass on this head. The reviewer-run catalogue integration filter was stopped while recompiling after the pin update; it produced no failure output.
+- No new findings. Full aggregate tests were not run.

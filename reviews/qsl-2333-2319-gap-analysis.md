@@ -49,3 +49,10 @@ Ran the repository matrix for this planless, repository-driven audit and inspect
 - FND-001 remains deferred as the existing repository-wide baseline; the current matrix reports 122 of 1,257 criteria untagged. No spec changes are in the PR.
 - FND-002 remains fixed. The broad catalog and typed-terms census no longer claim FR-772 AC coverage; dedicated FR-772 tests remain tagged and pass.
 - `quire coverage --scope . --json` failed on pre-existing `symbol-id-collision` reports in files outside this PR. No new gap finding was identified in the changed diff.
+
+## Disposition pass 4 recheck and pass 3 coverage correction
+
+- Current base/head: `a461f0a1b18542b0a47e1e1676ef9015af48e8f4` / `01fffc2720fb80c111d7e87af828500f1edb2cbf`.
+- FND-001 remains deferred as a repo-wide matrix baseline; FND-002 remains fixed. No new gap finding was found.
+- Correction to the pass 3 note: `quire coverage --scope . --json` exited 0; it did not fail. It reported 143 repository-wide unbacked rows and symbol-id-collision diagnostics in unchanged files, but no unbacked FR-772 AC rows or rows for the two changed census tests.
+- `quoin matrix --repo . --json` remains at 1,257 criteria: 1,104 tagged, 122 untagged, one tagged by an ignored test, 26 method-without-symbol, four retired.
