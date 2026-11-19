@@ -332,6 +332,9 @@ pub(super) fn validate(
 /// the `claim_names` rows of its `hyperproperty` node. A node whose body is not
 /// the hyperproperty aggregate is left to the hyperproperty step that owns it.
 /// The nodes were charged by the graph stage; the sorted table is charged.
+// The one string comparison is the closed `body` binding name FSpec FR-402
+// fixes for the hyperproperty aggregate, not an open key.
+#[ix_trace_rs::string_edge]
 pub(super) fn body_wrappers(
     kinds: &[CheckedNodeKind],
     terms: &[Option<CheckedTerm>],
@@ -402,17 +405,17 @@ fn own_nodes(
     let count = rows.len();
     // (node, declaration) pairs, sorted: each node's set is a contiguous run.
     let mut sets: Vec<(usize, usize)> = stage_storage::vec(meter, &site(0, root()), count)?;
-    for row_index in 0..count {
+    for (row_index, (node, declaration)) in row_node.iter().zip(row_declaration).enumerate() {
         stage_storage::work(meter, &site(row_index, root().index(row_index)), 1)?;
-        sets.push((row_node[row_index], row_declaration[row_index]));
+        sets.push((*node, *declaration));
     }
     sets.sort_unstable();
     sets.dedup();
     // Rows by the first row of their name, in row order within a name.
     let mut grouped: Vec<(usize, usize)> = stage_storage::vec(meter, &site(0, root()), count)?;
-    for row_index in 0..count {
+    for (row_index, name) in row_name.iter().enumerate() {
         stage_storage::work(meter, &site(row_index, root().index(row_index)), 1)?;
-        grouped.push((row_name[row_index], row_index));
+        grouped.push((*name, row_index));
     }
     grouped.sort_unstable();
     let set_of = |node: usize| -> &[(usize, usize)] {

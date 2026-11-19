@@ -4946,14 +4946,19 @@ fn step_relation_source_correspondence_does_not_change_semantic_identity() {
     let relation = position(&base, "claim", "step_relation");
     let relation_id = &base["semantic_graph"]["nodes"][relation]["node_id"];
     let mut moved = base.clone();
-    let entry = moved["source_map"]
+    // The node's occurrences are one declaration (one region), so all of
+    // them move together.
+    let entries: Vec<_> = moved["source_map"]
         .as_array_mut()
         .expect("source map")
         .iter_mut()
-        .find(|entry| &entry["node_id"] == relation_id)
-        .expect("relation source correspondence");
-    entry["regions"][0]["start"] = json!(100);
-    entry["regions"][0]["end"] = json!(101);
+        .filter(|entry| &entry["node_id"] == relation_id)
+        .collect();
+    assert!(!entries.is_empty(), "relation source correspondence");
+    for entry in entries {
+        entry["regions"][0]["start"] = json!(100);
+        entry["regions"][0]["end"] = json!(101);
+    }
     crate::support::checked_package::recompute_declaration_regions(&mut moved);
     assert_ne!(base["source_map"], moved["source_map"]);
     let admitted = |package: &Value| match read(package) {
