@@ -37,7 +37,7 @@ FR-569's "Source-object identity rows").
 A `field` member whose declaring node is a source-declared type; and a
 producer input row `SelectedSourceObjectRow` with `structural_node`,
 `source_authority`, `source_identity`, `abstract`, `supertypes`,
-`identity_fields`, `members` and `populations`, supplied beside the package as
+`identity_fields`, `members`, `populations` and `operations`, supplied beside the package as
 FR-352 does for its stage rows. The IR public inventory (FR-019) gains the row
 type and its typed read.
 
@@ -129,9 +129,10 @@ and the coverage check of
 [FR-375](./FR-375-check-source-operation-body-coverage-at-the-identity-row-join.md). The `supertypes`
 check requires each entry to name an admitted source-declared type node of the
 package that is not the row's own node, and the supertype relation of all rows
-to be acyclic. `identity_fields` and `populations` are producer facts read only
-from a joined row; the package has no `extends`, identity or population
-information against which to check them.
+to be acyclic. `identity_fields`, `populations` and `operations` (each entry `{identity,
+query, clock_parameters}`) are producer facts read only from a joined row; the
+package has no `extends`, identity, population or operation information
+against which to check them.
 
 ## Acceptance Criteria
 
@@ -141,7 +142,8 @@ information against which to check them.
 | FR-367-AC-2 | A field name with no binding, and any field read on an `aggregate{[]}` source type, refuse `ill_typed`/`operator-ineligible` at the member. | Test |
 | FR-367-AC-3 | A supply holding a foreign row and an unknown row reports foreign whatever their order; one holding an unknown row and a duplicate-key pair reports unknown; one holding a duplicate-key pair and an omitted type reports conflicting; one omitting a type reports missing; one whose dispatch candidate lies outside its context's family reports mismatched only when no type is missing. A second type of the same name under another `SourceOwner` of the same authority refuses at admission. | Test |
 | FR-367-AC-4 | A row whose data entries differ from the body bindings in name, type node, optional presence or order refuses unknown; its clock entries are not compared with the bindings, and the FR-374 clock join checks them against the clock places. A row whose `supertypes` name a non-source node, the row's own node, or form a cycle refuses unknown. | Test |
-| FR-367-AC-5 | A complete row set exposes abstractness, supertypes, identity fields, members and populations for each source type through a typed read. | Test |
+| FR-367-AC-5 | A complete row set exposes abstractness, supertypes, identity fields, members, populations and operations for each source type through a typed read; `operations` holds one `{identity, query, clock_parameters}` entry per operation the type declares itself, in source order, `identity` the string `<type>::<operation>`, `query` a boolean and `clock_parameters` the list of the names of the operation's `Clock` parameters (a parameter typed `Clock` or an alias of it) in declaration order, `[]` when it has none. The reader does not join an entry to the package's `operation_effects` or source-operation rows: that correspondence is the producer's obligation (FSL FR-569 "Source-object identity rows"). | Test |
+| FR-367-AC-8 | The row of `O` for `object O { d: Clock; operation arm(x: Clock, k: Int[1, 3]) modifies self.d; }` whose `O::arm` entry has `parameters` the clock entry `x` then the data entry `k` (the `Int[1, 3]` type node) and `clock_parameters` `["x"]` joins and exposes both parameters through the typed read. Each refuses `UnknownIdentityWitness` at the `Package` locus: `clock_parameters` `[]` beside the clock entry `x`; `clock_parameters` `["k"]`; a parameter entry with both `type_node` and `member_type`; and two entries named `x`. | Test (TC-485) |
 | FR-367-AC-6 | A field read on a model-owned node reads unchanged in a package that also holds a source type. | Test |
 | FR-367-AC-7 | A row of `O` (`object O { w: W; d: Clock; }`) with the data entry `w` then the clock entry `d` (`member_type` `ix://filament/native/Clock`) joins; a clock entry `d` carrying a type node, an entry with neither `type_node` nor `member_type`, a clock entry named `w`, and a clock entry whose `member_type` is `Integer` each refuse unknown. | Test (TC-481) |
 | FR-367-AC-8 | The row of `O` for `object O { d: Clock; operation arm(x: Clock, k: Int[1, 3]) modifies self.d; }` whose `O::arm` entry has `parameters` the clock entry `x` then the data entry `k` (the `Int[1, 3]` type node) and `clock_parameters` `["x"]` joins and exposes both parameters through the typed read. Each refuses `UnknownIdentityWitness` at the `Package` locus: `clock_parameters` `[]` beside the clock entry `x`; `clock_parameters` `["k"]`; a parameter entry with both `type_node` and `member_type`; and two entries named `x`. | Test (TC-485) |
