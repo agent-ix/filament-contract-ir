@@ -1611,19 +1611,26 @@ fn published_refinement_body_name_vectors_replay() {
         .position(|node| node["semantic_form"] == "refinement")
         .expect("refinement");
     let mut admitted_names = Vec::new();
+    let mut admitted_ids = Vec::new();
     for case in published["positive"].as_array().expect("positive cases") {
         let id = case["id"].as_str().expect("case id");
         let name = case["body"]["name"].clone();
-        // The vectors give the node id `["relation", "refinement", name]`: the
-        // name is the last identity segment, so one more name is one more node.
-        assert_eq!(
-            case["expected_node_id"]["path"],
-            json!(["relation", "refinement", name]),
-            "{id}"
-        );
         assert_eq!(case["claim_name"], name, "{id}");
         let mut named = package.clone();
         name_refinement(&mut named, position, name.clone());
+        // The vector's node id is the producer-assigned id of FR-322-AC-200: the
+        // name is the last identity segment, so one more name is one more node.
+        // It is given to the refinement under the package's own name, then read.
+        let held = nodes(&named)[position]["node_id"].clone();
+        let mut expected = case["expected_node_id"].clone();
+        expected["package"] = held["package"].clone();
+        assert_eq!(
+            expected["path"],
+            json!(["relation", "refinement", name]),
+            "{id}"
+        );
+        crate::support::checked_package::reassign_node_id(&mut named, &held, &expected);
+        refresh_identity(&mut named);
         let read = admitted(read_with(
             &named,
             &evidence,
@@ -1636,6 +1643,12 @@ fn published_refinement_body_name_vectors_replay() {
             panic!("{id}: a refinement body");
         };
         assert_eq!(&json!(read_name.as_ref()), &name, "{id}");
+        assert_eq!(
+            serde_json::to_value(&read.graph().nodes[position].node_id).expect("node id"),
+            expected,
+            "{id}: the admitted node id is the vector's expected_node_id"
+        );
+        admitted_ids.push(expected);
         assert!(
             read.claim_names()
                 .expect("rows")
@@ -1651,6 +1664,10 @@ fn published_refinement_body_name_vectors_replay() {
     assert_ne!(
         admitted_names[0], admitted_names[1],
         "two names are two nodes"
+    );
+    assert_ne!(
+        admitted_ids[0], admitted_ids[1],
+        "two names are two node ids"
     );
     for case in published["schema_refusals"].as_array().expect("refusals") {
         let id = case["id"].as_str().expect("case id");
