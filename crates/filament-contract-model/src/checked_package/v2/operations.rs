@@ -2062,7 +2062,8 @@ fn operation_defect(
         )));
     }
     let place_presence = check_place_presence(application, &operation, graph, owners, meter)?;
-    if !place_presence {
+    let place_slot_domain = check_place_slot_domain(application, &operation, graph, meter)?;
+    if !place_presence && !place_slot_domain {
         if let Some(failure) = check_operands(
             application,
             &operation,
@@ -2919,6 +2920,21 @@ fn check_operands(
     } else if typed_arguments.len() < required {
         return ineligible(None);
     }
+    if let Some(failure) = check_quantifier_domain_only_use(
+        application,
+        operation,
+        typed_arguments,
+        graph,
+        catalog,
+        work.meter,
+    )? {
+        return Ok(Some(failure));
+    }
+    if let Some(failure) =
+        check_quantifier_slot_binder(application, operation, typed_arguments, graph, work.meter)?
+    {
+        return Ok(Some(failure));
+    }
     if operation.identity.as_ref() != "filament.op.quantity.convert"
         && (operation.identity.starts_with("filament.op.quantity.")
             || operation.identity.as_ref() == "filament.op.collection.sum.quantity")
@@ -3154,7 +3170,9 @@ fn check_operands(
             | OperationConstraintKind::RationalNarrowing
             | OperationConstraintKind::ScaleReduction
             | OperationConstraintKind::PromotesExact
-            | OperationConstraintKind::UniformRest => {}
+            | OperationConstraintKind::UniformRest
+            | OperationConstraintKind::PlaceSlotTerms
+            | OperationConstraintKind::QuantifierDomainOnly => {}
             // FSpec FR-440: only `filament.op.control.case` catalogues this. A
             // constraint that does not hold, or that names anything but one
             // scrutinee, refuses at the `case` node: it is never skipped.
@@ -4724,6 +4742,380 @@ fn check_place_presence(
         }
     }
     Ok(true)
+}
+
+/// FR-772: admit the derived slot set only as a collection-quantifier domain.
+/// The clock place is a structural operand, followed by its owner and every
+/// selector except the final slot selector.
+#[ix_trace_rs::string_edge]
+fn check_place_slot_domain(
+    application: Application<'_>,
+    operation: &OperationWire,
+    graph: &Graph<'_>,
+    meter: &mut WorkMeter,
+) -> Result<bool, ValidationFailure> {
+    if application.node.semantic_form.as_ref() != "presence_read"
+        || operation.identity.as_ref() != "filament.op.option.slots"
+    {
+        return Ok(false);
+    }
+    let Some(arguments) = admitted_arguments(application, graph) else {
+        return Ok(false);
+    };
+    let arguments_at = application.read_node().key("body").key("arguments");
+    let refuse = |meter: &mut WorkMeter, path| {
+        application.refuse_read(
+            CheckedPackageRefusalCode::IllTyped,
+            path,
+            CheckedPackageRefusalCause::OperatorIneligible,
+            meter,
+        )
+    };
+    let place = arguments
+        .first()
+        .and_then(|argument| match argument {
+            CheckedTerm::Reference { target } => graph.index.get(target).copied(),
+            _ => None,
+        })
+        .filter(|&position| {
+            graph.kinds.get(position)
+                == Some(&CheckedNodeKind::TimedModel(super::TimedModelForm::Place))
+        });
+    let Some(place) = place else {
+        return Err(refuse(meter, arguments_at.index(0)));
+    };
+    let Some(place_body) = graph.terms.get(place).and_then(Option::as_ref) else {
+        return Ok(false);
+    };
+    let Some(path_steps) = operation_bound(place_body, 1).map(operation_typed_members) else {
+        return Ok(false);
+    };
+    let Some((last_step_index, last_step)) = path_steps.iter().enumerate().last() else {
+        return Err(refuse(meter, arguments_at.index(0)));
+    };
+    if operation_spelling(operation_bound(last_step, 0)) != Some("slot") {
+        return Err(refuse(meter, arguments_at.index(0)));
+    }
+    let Some((model, selectors)) = super::timed_model::place_template(place_body) else {
+        return Err(refuse(meter, arguments_at.index(0)));
+    };
+    let selector_count = selectors.len();
+    if selector_count == 0 || arguments.len() != selector_count + 1 {
+        return Err(refuse(meter, arguments_at));
+    }
+    work_at_path(
+        meter,
+        &OperationPath::Read(arguments_at.clone()),
+        units(selector_count),
+    )?;
+    let Some(last_selector) = selectors.iter().last() else {
+        return Err(refuse(meter, arguments_at.index(0)));
+    };
+    let result_type = graph
+        .terms
+        .get(application.position)
+        .and_then(Option::as_ref)
+        .and_then(|term| match term {
+            CheckedTerm::Application { result_type, .. } => Some(result_type),
+            _ => None,
+        });
+    if !slot_domain_result_matches(
+        result_type,
+        last_selector,
+        place_body,
+        last_step_index,
+        graph,
+    ) {
+        return Err(refuse(
+            meter,
+            application.read_node().key("body").key("result_type"),
+        ));
+    }
+    let owner_type = presence_value_type(&arguments[1], graph)
+        .and_then(|type_id| reference_target(type_id, graph).or(Some(type_id)));
+    if !same_key(owner_type, model, meter)? {
+        return Err(application.refuse_read(
+            CheckedPackageRefusalCode::IllTyped,
+            arguments_at.index(1),
+            CheckedPackageRefusalCause::TypeMismatch,
+            meter,
+        ));
+    }
+    for (index, (argument, selector)) in arguments.iter().skip(2).zip(selectors.iter()).enumerate()
+    {
+        let actual = presence_value_type(argument, graph);
+        if !same_key(actual, selector, meter)? {
+            return Err(application.refuse_read(
+                CheckedPackageRefusalCode::IllTyped,
+                arguments_at.index(index + 2),
+                CheckedPackageRefusalCause::TypeMismatch,
+                meter,
+            ));
+        }
+    }
+    // A slot domain omits the last selector from its arguments; the loop above
+    // checks only the outer selectors that remain in the path.
+    Ok(true)
+}
+
+fn slot_domain_result_matches(
+    result_type: Option<&CheckedNodeId>,
+    selector: &CheckedNodeId,
+    place_body: &CheckedTerm,
+    last_step_index: usize,
+    graph: &Graph<'_>,
+) -> bool {
+    let Some(result_type) = result_type else {
+        return false;
+    };
+    let Some(result_position) = graph.index.get(result_type).copied() else {
+        return false;
+    };
+    let Some(result_kind) = graph.kinds.get(result_position) else {
+        return false;
+    };
+    let (set_type, bounded) = match result_kind {
+        CheckedNodeKind::CompositeType(CompositeTypeForm::Set) => (result_type, false),
+        CheckedNodeKind::BoundedDomain(BoundedDomainForm::CollectionBounds) => {
+            (&graph.nodes[result_position].semantic_type, true)
+        }
+        _ => return false,
+    };
+    let Some(set_position) = graph.index.get(set_type).copied() else {
+        return false;
+    };
+    if graph.kinds.get(set_position)
+        != Some(&CheckedNodeKind::CompositeType(CompositeTypeForm::Set))
+    {
+        return false;
+    }
+    let Some(CheckedTerm::Aggregate { members }) =
+        graph.terms.get(set_position).and_then(Option::as_ref)
+    else {
+        return false;
+    };
+    let [CheckedTerm::Reference { target }] = members.as_slice() else {
+        return false;
+    };
+    if target != selector {
+        return false;
+    }
+    if !bounded {
+        return true;
+    }
+    let Some(CheckedTerm::Aggregate { members }) =
+        graph.terms.get(result_position).and_then(Option::as_ref)
+    else {
+        return false;
+    };
+    let (Some(minimum), Some(maximum)) = (
+        members
+            .iter()
+            .find_map(|member| super::structural::typed_binding(member, "min"))
+            .and_then(|term| operation_spelling(Some(term))),
+        members
+            .iter()
+            .find_map(|member| super::structural::typed_binding(member, "max"))
+            .and_then(|term| operation_spelling(Some(term))),
+    ) else {
+        return false;
+    };
+    if minimum != "0" {
+        return false;
+    }
+    place_step_maximum(place_body, last_step_index)
+        .is_some_and(|expected| expected != "unbounded" && maximum == expected)
+}
+
+fn place_step_maximum(place_body: &CheckedTerm, step_index: usize) -> Option<&str> {
+    let row = operation_bound(place_body, 2).and_then(|rows| {
+        operation_typed_members(rows).iter().find(|row| {
+            operation_typed_members(row).iter().find_map(|member| {
+                super::structural::typed_binding(member, "path_step").and_then(|term| match term {
+                    CheckedTerm::Literal { value, .. } => value.as_u64(),
+                    _ => None,
+                })
+            }) == u64::try_from(step_index).ok()
+        })
+    })?;
+    operation_typed_members(row)
+        .iter()
+        .find_map(|member| super::structural::typed_binding(member, "maximum"))
+        .and_then(|term| operation_spelling(Some(term)))
+}
+
+fn operation_bound(term: &CheckedTerm, index: usize) -> Option<&CheckedTerm> {
+    match operation_typed_members(term).get(index)? {
+        CheckedTerm::Binding { value, .. } => Some(value),
+        _ => None,
+    }
+}
+
+fn operation_typed_members(term: &CheckedTerm) -> &[CheckedTerm] {
+    match term {
+        CheckedTerm::Aggregate { members } => members,
+        _ => &[],
+    }
+}
+
+fn operation_spelling(term: Option<&CheckedTerm>) -> Option<&str> {
+    match term? {
+        CheckedTerm::Literal { value, .. } => value.as_str(),
+        _ => None,
+    }
+}
+
+fn check_quantifier_domain_only_use(
+    application: Application<'_>,
+    operation: &OperationWire,
+    arguments: &[CheckedTerm],
+    graph: &Graph<'_>,
+    catalog: &OperationCatalog,
+    meter: &mut WorkMeter,
+) -> Result<Option<ValidationFailure>, ValidationFailure> {
+    let arguments_at = application.body(&["arguments"]);
+    let is_quantifier = matches!(
+        operation.identity.as_ref(),
+        "filament.op.collection.forall" | "filament.op.collection.exists"
+    );
+    for (index, argument) in arguments.iter().enumerate() {
+        work_at_path(meter, &OperationPath::Held(arguments_at.clone()), 1)?;
+        let CheckedTerm::Reference { target } = argument else {
+            continue;
+        };
+        let Some(position) = graph.index.get(target).copied() else {
+            continue;
+        };
+        let Some(CheckedTerm::Application { operation, .. }) =
+            graph.terms.get(position).and_then(Option::as_ref)
+        else {
+            continue;
+        };
+        let Some(identity) = operation.identity() else {
+            continue;
+        };
+        let slot_domain_only = catalog.entry(identity).is_some_and(|entry| {
+            entry
+                .constraints
+                .iter()
+                .any(|constraint| constraint.kind == OperationConstraintKind::QuantifierDomainOnly)
+        });
+        if slot_domain_only && !(is_quantifier && index == 0) {
+            return Ok(Some(application.refuse(
+                CheckedPackageRefusalCode::IllTyped,
+                arguments_at.index(index),
+                CheckedPackageRefusalCause::OperatorIneligible,
+            )));
+        }
+    }
+    Ok(None)
+}
+
+fn check_quantifier_slot_binder(
+    application: Application<'_>,
+    operation: &OperationWire,
+    arguments: &[CheckedTerm],
+    graph: &Graph<'_>,
+    meter: &mut WorkMeter,
+) -> Result<Option<ValidationFailure>, ValidationFailure> {
+    if !matches!(
+        operation.identity.as_ref(),
+        "filament.op.collection.forall" | "filament.op.collection.exists"
+    ) {
+        return Ok(None);
+    }
+    let Some(CheckedTerm::Reference { target: domain_id }) = arguments.first() else {
+        return Ok(None);
+    };
+    let Some(domain_position) = graph.index.get(domain_id).copied() else {
+        return Ok(None);
+    };
+    let Some(CheckedTerm::Application {
+        operation: domain_operation,
+        arguments: domain_arguments,
+        ..
+    }) = graph.terms.get(domain_position).and_then(Option::as_ref)
+    else {
+        return Ok(None);
+    };
+    if domain_operation.identity() != Some("filament.op.option.slots") {
+        return Ok(None);
+    }
+    let expected_type = domain_arguments
+        .first()
+        .and_then(|place| match place {
+            CheckedTerm::Reference { target } => graph.index.get(target).copied(),
+            _ => None,
+        })
+        .and_then(|position| graph.terms.get(position).and_then(Option::as_ref))
+        .and_then(super::timed_model::place_template)
+        .and_then(|(_, selectors)| selectors.iter().last().cloned());
+    let binder_at = application.body(&["arguments"]).index(1);
+    let Some(expected_type) = expected_type else {
+        // The slot-domain node reports a malformed place on its own; this
+        // check owns the binder join only when its selector type is recoverable.
+        return Ok(None);
+    };
+    let Some(CheckedTerm::Binding { name, value }) = arguments.get(1) else {
+        return Ok(Some(application.refuse(
+            CheckedPackageRefusalCode::IllTyped,
+            binder_at,
+            CheckedPackageRefusalCause::TypeMismatch,
+        )));
+    };
+    let mut binder_type = None;
+    for (position, kind) in graph.kinds.iter().enumerate() {
+        work_at_path(meter, &application.read_node().key("node_id"), 1)?;
+        if *kind != CheckedNodeKind::Value(ValueForm::Parameter) {
+            continue;
+        }
+        let Some(CheckedTerm::Aggregate { members }) =
+            graph.terms.get(position).and_then(Option::as_ref)
+        else {
+            continue;
+        };
+        let mut parameter_name = None;
+        for member in members {
+            work_at_path(meter, &application.read_node().key("node_id"), 1)?;
+            if let CheckedTerm::Binding { name: field, value } = member {
+                if field.as_ref() == "name" {
+                    if let CheckedTerm::Literal { value, .. } = value.as_ref() {
+                        parameter_name = value.as_str();
+                    }
+                }
+            }
+        }
+        if parameter_name != Some(name.as_ref())
+            || expression_scope_depth(
+                value,
+                &graph.nodes[position].node_id,
+                graph,
+                application,
+                meter,
+            )?
+            .is_none()
+        {
+            continue;
+        }
+        if binder_type
+            .replace(&graph.nodes[position].semantic_type)
+            .is_some()
+        {
+            return Ok(Some(application.refuse(
+                CheckedPackageRefusalCode::IllTyped,
+                binder_at,
+                CheckedPackageRefusalCause::TypeMismatch,
+            )));
+        }
+    }
+    if !same_key(binder_type, &expected_type, meter)? {
+        return Ok(Some(application.refuse(
+            CheckedPackageRefusalCode::IllTyped,
+            binder_at,
+            CheckedPackageRefusalCause::TypeMismatch,
+        )));
+    }
+    Ok(None)
 }
 
 fn presence_value_type<'a>(
@@ -12739,6 +13131,417 @@ mod tests {
             Ok(None),
             "one Option value still takes the catalogued presence path"
         );
+    }
+
+    #[test]
+    fn fr772_option_slots_is_only_a_quantifier_domain() {
+        let mut slots =
+            custom_application_node("slots", plain_operation("filament.op.option.slots"), vec![]);
+        slots.semantic_form = "presence_read".into();
+        slots.node_id = node_id('2');
+        let quantifier = custom_application_node(
+            "forall",
+            plain_operation("filament.op.collection.forall"),
+            vec![reference_to('2')],
+        );
+        let other_consumer = custom_application_node(
+            "not",
+            plain_operation("filament.op.boolean.not"),
+            vec![reference_to('2')],
+        );
+        let mut quantifier = quantifier;
+        quantifier.node_id = node_id('1');
+        let mut other_consumer = other_consumer;
+        other_consumer.node_id = node_id('3');
+        let mut nodes = vec![quantifier, slots, other_consumer];
+        // The direct reference at operand 0 is the only admitted use.
+        let kinds = kinds_of(&nodes);
+        let terms = decoded_terms(&nodes);
+        let index: GraphIndex<'_> = nodes
+            .iter()
+            .enumerate()
+            .map(|(position, node)| (&node.node_id, position))
+            .collect();
+        let graph = Graph {
+            nodes: &nodes,
+            kinds: &kinds,
+            terms: &terms,
+            index: &index,
+            structural_keys: &[],
+        };
+        let catalog = operation_catalog();
+        let operation: super::OperationWire =
+            serde_json::from_value(nodes[0].body.to_value()["operation"].clone())
+                .expect("quantifier operation");
+        let arguments =
+            vec![super::CheckedTerm::decode_admitted(&reference_to('2'))
+                .expect("slot-domain reference")];
+        let result = super::check_quantifier_domain_only_use(
+            super::Application {
+                node: &nodes[0],
+                position: 0,
+            },
+            &operation,
+            &arguments,
+            &graph,
+            catalog,
+            &mut WorkMeter::new(100),
+        );
+        assert_eq!(result, Ok(None));
+
+        let later_arguments = vec![
+            super::CheckedTerm::decode_admitted(&json!({
+                "term":"literal", "type":node_id('2'),
+                "value_kind":"boolean", "value":true
+            }))
+            .expect("preceding operand"),
+            super::CheckedTerm::decode_admitted(&reference_to('2'))
+                .expect("later slot-domain reference"),
+        ];
+        let later_result = super::check_quantifier_domain_only_use(
+            super::Application {
+                node: &nodes[0],
+                position: 0,
+            },
+            &operation,
+            &later_arguments,
+            &graph,
+            catalog,
+            &mut WorkMeter::new(100),
+        );
+        assert!(matches!(
+            later_result,
+            Ok(Some(ValidationFailure::Refused(ref refusal)))
+                if refusal.code == CheckedPackageRefusalCode::IllTyped
+                    && refusal.cause == Some(CheckedPackageRefusalCause::OperatorIneligible)
+                    && refusal.loci[0].path.as_ref().is_some_and(|path| path.to_string().ends_with("/body/arguments/1"))
+        ));
+
+        // A normal consumer is refused at the consuming argument.
+        nodes.swap(0, 2);
+        let kinds = kinds_of(&nodes);
+        let terms = decoded_terms(&nodes);
+        let index: GraphIndex<'_> = nodes
+            .iter()
+            .enumerate()
+            .map(|(position, node)| (&node.node_id, position))
+            .collect();
+        let graph = Graph {
+            nodes: &nodes,
+            kinds: &kinds,
+            terms: &terms,
+            index: &index,
+            structural_keys: &[],
+        };
+        let operation: super::OperationWire =
+            serde_json::from_value(nodes[0].body.to_value()["operation"].clone())
+                .expect("ordinary operation");
+        let result = super::check_quantifier_domain_only_use(
+            super::Application {
+                node: &nodes[0],
+                position: 0,
+            },
+            &operation,
+            &arguments,
+            &graph,
+            catalog,
+            &mut WorkMeter::new(100),
+        );
+        assert!(matches!(
+            result,
+            Ok(Some(ValidationFailure::Refused(ref refusal)))
+                if refusal.code == CheckedPackageRefusalCode::IllTyped
+                    && refusal.cause == Some(CheckedPackageRefusalCause::OperatorIneligible)
+        ));
+    }
+
+    #[trace("TC-1862", "FR-772-AC-1", "FR-772-AC-2")]
+    #[test]
+    fn fr772_option_slots_checks_place_owner_and_bounded_domain() {
+        fn read_slot_domain(maximum: &str) -> Result<bool, ValidationFailure> {
+            let model_id = node_id('3');
+            let integer_id = node_id('6');
+            let set_id = node_id('7');
+            let bounded_id = node_id('8');
+            let text_id = node_id('9');
+            let text_literal = |value: &str| json!({"term":"literal", "type":text_id, "value_kind":"text", "value":value});
+            let integer_literal = |value: u64| json!({"term":"literal", "type":integer_id, "value_kind":"integer", "value":value});
+            let place_body = json!({
+                "term":"aggregate",
+                "members":[
+                    {"term":"binding", "name":"model", "value":{"term":"reference", "target":model_id}},
+                    {"term":"binding", "name":"path", "value":{
+                        "term":"aggregate", "members":[{
+                            "term":"aggregate", "members":[
+                                {"term":"binding", "name":"kind", "value":text_literal("slot")},
+                                {"term":"binding", "name":"collection", "value":text_literal("sequence")},
+                                {"term":"binding", "name":"selector", "value":{"term":"reference", "target":integer_id}},
+                                {"term":"binding", "name":"minimum", "value":integer_literal(0)},
+                                {"term":"binding", "name":"maximum", "value":integer_literal(2)}
+                            ]
+                        }]
+                    }},
+                    {"term":"binding", "name":"resolved_path", "value":{
+                        "term":"aggregate", "members":[{
+                            "term":"aggregate", "members":[
+                                {"term":"binding", "name":"path_step", "value":integer_literal(0)},
+                                {"term":"binding", "name":"declaring_type", "value":text_literal("Order")},
+                                {"term":"binding", "name":"member_identity", "value":text_literal("Order[q]")},
+                                {"term":"binding", "name":"member_type", "value":text_literal("Sequence<Clock>")},
+                                {"term":"binding", "name":"collection_kind", "value":text_literal("sequence")},
+                                {"term":"binding", "name":"minimum", "value":text_literal("0")},
+                                {"term":"binding", "name":"maximum", "value":text_literal("2")}
+                            ]
+                        }]
+                    }}
+                ]
+            });
+            let mut application = custom_application_node(
+                "slots",
+                plain_operation("filament.op.option.slots"),
+                vec![reference_to('2'), reference_to('5')],
+            );
+            application.semantic_form = "presence_read".into();
+            application.node_id = node_id('1');
+            let mut application_body = application.body.to_value();
+            application_body["result_type"] = json!(bounded_id);
+            application.body = super::super::CheckedJson::from_serializable(&application_body)
+                .expect("canonical application body");
+            let mut nodes = vec![
+                application,
+                graph_node('2', "timed_model", "place", &model_id, place_body),
+                graph_node(
+                    '3',
+                    "model",
+                    "object_type",
+                    &model_id,
+                    json!({"term":"aggregate", "members":[]}),
+                ),
+                graph_node(
+                    '4',
+                    "composite_type",
+                    "reference",
+                    &node_id('4'),
+                    json!({"term":"aggregate", "members":[{"term":"reference", "target":model_id}]}),
+                ),
+                graph_node(
+                    '5',
+                    "value",
+                    "parameter",
+                    &node_id('4'),
+                    json!({"term":"aggregate", "members":[]}),
+                ),
+                graph_node(
+                    '6',
+                    "scalar_type",
+                    "integer",
+                    &integer_id,
+                    json!({"term":"aggregate", "members":[]}),
+                ),
+                graph_node(
+                    '7',
+                    "composite_type",
+                    "set",
+                    &set_id,
+                    json!({"term":"aggregate", "members":[{"term":"reference", "target":integer_id}]}),
+                ),
+                graph_node(
+                    '8',
+                    "bounded_domain",
+                    "collection_bounds",
+                    &set_id,
+                    json!({"term":"aggregate", "members":[
+                        {"term":"binding", "name":"min", "value":text_literal("0")},
+                        {"term":"binding", "name":"max", "value":text_literal(maximum)}
+                    ]}),
+                ),
+            ];
+            let kinds = vec![
+                CheckedNodeKind::Expression(ExpressionForm::Call),
+                CheckedNodeKind::TimedModel(super::super::TimedModelForm::Place),
+                CheckedNodeKind::Model(super::ModelForm::ObjectType),
+                CheckedNodeKind::CompositeType(super::CompositeTypeForm::Reference),
+                CheckedNodeKind::Value(super::ValueForm::Parameter),
+                CheckedNodeKind::ScalarType(super::ScalarTypeForm::Integer),
+                CheckedNodeKind::CompositeType(super::CompositeTypeForm::Set),
+                CheckedNodeKind::BoundedDomain(super::BoundedDomainForm::CollectionBounds),
+            ];
+            let terms = decoded_terms(&nodes);
+            let index: GraphIndex<'_> = nodes
+                .iter()
+                .enumerate()
+                .map(|(position, node)| (&node.node_id, position))
+                .collect();
+            let graph = Graph {
+                nodes: &nodes,
+                kinds: &kinds,
+                terms: &terms,
+                index: &index,
+                structural_keys: &[],
+            };
+            let operation: super::OperationWire =
+                serde_json::from_value(nodes[0].body.to_value()["operation"].clone())
+                    .expect("slot-domain operation");
+            let result = super::check_place_slot_domain(
+                super::Application {
+                    node: &nodes[0],
+                    position: 0,
+                },
+                &operation,
+                &graph,
+                &mut WorkMeter::new(1_000),
+            );
+            nodes.clear();
+            result
+        }
+
+        assert_eq!(read_slot_domain("2"), Ok(true));
+        let Err(ValidationFailure::Refused(refusal)) = read_slot_domain("3") else {
+            panic!("a mismatched collection bound must refuse");
+        };
+        assert_eq!(refusal.code, CheckedPackageRefusalCode::IllTyped);
+        assert_eq!(
+            refusal.cause,
+            Some(CheckedPackageRefusalCause::OperatorIneligible)
+        );
+    }
+
+    #[trace("TC-1862", "FR-772-AC-2")]
+    #[test]
+    fn fr772_quantifier_binder_matches_the_slot_selector_type() {
+        fn check_binder(wrong_type: bool) -> Result<Option<ValidationFailure>, ValidationFailure> {
+            let selector_type = node_id('4');
+            let binder_type = if wrong_type {
+                node_id('8')
+            } else {
+                selector_type.clone()
+            };
+            let place_body = json!({
+                "term":"aggregate", "members":[
+                    {"term":"binding", "name":"model", "value":{"term":"reference", "target":node_id('9')}},
+                    {"term":"binding", "name":"path", "value":{"term":"aggregate", "members":[{
+                        "term":"aggregate", "members":[
+                            {"term":"binding", "name":"kind", "value":{"term":"literal", "type":node_id('t'), "value_kind":"text", "value":"slot"}},
+                            {"term":"binding", "name":"collection", "value":{"term":"literal", "type":node_id('t'), "value_kind":"text", "value":"sequence"}},
+                            {"term":"binding", "name":"selector", "value":{"term":"reference", "target":selector_type}},
+                            {"term":"binding", "name":"minimum", "value":{"term":"literal", "type":selector_type, "value_kind":"integer", "value":0}},
+                            {"term":"binding", "name":"maximum", "value":{"term":"literal", "type":selector_type, "value_kind":"integer", "value":2}}
+                        ]
+                    }]}}
+                ]
+            });
+            let mut quantifier = custom_application_node(
+                "quantify",
+                plain_operation("filament.op.collection.forall"),
+                vec![
+                    reference_to('2'),
+                    json!({"term":"binding", "name":"e", "value":{"term":"reference", "target":node_id('6')}}),
+                ],
+            );
+            quantifier.node_id = node_id('1');
+            let mut slots = custom_application_node(
+                "slots",
+                plain_operation("filament.op.option.slots"),
+                vec![reference_to('3')],
+            );
+            slots.semantic_form = "presence_read".into();
+            slots.node_id = node_id('2');
+            let nodes = vec![
+                quantifier,
+                slots,
+                graph_node('3', "timed_model", "place", &node_id('9'), place_body),
+                graph_node(
+                    '4',
+                    "scalar_type",
+                    "integer",
+                    &selector_type,
+                    json!({"term":"aggregate", "members":[]}),
+                ),
+                graph_node(
+                    '5',
+                    "value",
+                    "parameter",
+                    &binder_type,
+                    json!({"term":"aggregate", "members":[
+                        {"term":"binding", "name":"name", "value":{"term":"literal", "type":node_id('t'), "value_kind":"text", "value":"e"}}
+                    ]}),
+                ),
+                graph_node(
+                    '6',
+                    "expression",
+                    "call",
+                    &node_id('7'),
+                    json!({"term":"reference", "target":node_id('5')}),
+                ),
+                graph_node(
+                    '7',
+                    "scalar_type",
+                    "boolean",
+                    &node_id('7'),
+                    json!({"term":"aggregate", "members":[]}),
+                ),
+                graph_node(
+                    '8',
+                    "scalar_type",
+                    "boolean",
+                    &node_id('8'),
+                    json!({"term":"aggregate", "members":[]}),
+                ),
+            ];
+            let kinds = vec![
+                CheckedNodeKind::Expression(super::ExpressionForm::Quantify),
+                CheckedNodeKind::Expression(super::ExpressionForm::PresenceRead),
+                CheckedNodeKind::TimedModel(super::super::TimedModelForm::Place),
+                CheckedNodeKind::ScalarType(super::ScalarTypeForm::Integer),
+                CheckedNodeKind::Value(super::ValueForm::Parameter),
+                CheckedNodeKind::Expression(super::ExpressionForm::Call),
+                CheckedNodeKind::ScalarType(super::ScalarTypeForm::Boolean),
+                CheckedNodeKind::ScalarType(super::ScalarTypeForm::Boolean),
+            ];
+            let terms = decoded_terms(&nodes);
+            let index: GraphIndex<'_> = nodes
+                .iter()
+                .enumerate()
+                .map(|(position, node)| (&node.node_id, position))
+                .collect();
+            let graph = Graph {
+                nodes: &nodes,
+                kinds: &kinds,
+                terms: &terms,
+                index: &index,
+                structural_keys: &[],
+            };
+            let operation: super::OperationWire =
+                serde_json::from_value(nodes[0].body.to_value()["operation"].clone())
+                    .expect("quantifier operation");
+            let arguments = super::admitted_arguments(
+                super::Application {
+                    node: &nodes[0],
+                    position: 0,
+                },
+                &graph,
+            )
+            .expect("typed quantifier arguments");
+            super::check_quantifier_slot_binder(
+                super::Application {
+                    node: &nodes[0],
+                    position: 0,
+                },
+                &operation,
+                &arguments,
+                &graph,
+                &mut WorkMeter::new(1_000),
+            )
+        }
+
+        assert_eq!(check_binder(false), Ok(None));
+        assert!(matches!(
+            check_binder(true),
+            Ok(Some(ValidationFailure::Refused(ref refusal)))
+                if refusal.code == CheckedPackageRefusalCode::IllTyped
+                    && refusal.cause == Some(CheckedPackageRefusalCause::TypeMismatch)
+                    && refusal.loci[0].path.as_ref().is_some_and(|path| path.to_string().ends_with("/body/arguments/1"))
+        ));
     }
 
     /// FR-038-AC-69: a `temporal_interval` or `fairness` member on an entry

@@ -50,7 +50,7 @@ jsonschema = { version = "=0.17.1", default-features = false }
 # from there rather than carrying its own copy of the bytes; see
 # `checked_package/v2/operation_catalog.rs`.
 # First-party dependencies use release tags; Cargo.lock records the immutable commits.
-filament-verification-contracts = { version = "0.2", git = "https://github.com/agent-ix/filament-verification-contracts", tag = "v0.2.1" }
+filament-verification-contracts = { version = "0.2", git = "https://github.com/agent-ix/filament-verification-contracts", rev = "2714219621cfbfabdd8d411c39d9109d956b85dd" }
 # The one RFC 8785 encoder every identity digest and the V2 wire types encode
 # through, and the reader's canonical-bytes check; see
 # `checked_package/v2/encode.rs`. The `serde_json` feature is its `Encode` for

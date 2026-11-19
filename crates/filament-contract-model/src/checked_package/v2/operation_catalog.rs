@@ -176,14 +176,71 @@ pub(super) struct OperationCatalogEntry {
 }
 
 /// One `operations[].constraints[]` entry.
-#[derive(Clone, Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Clone, Debug)]
 pub(super) struct OperationConstraint {
     pub(super) kind: OperationConstraintKind,
-    #[serde(deserialize_with = "super::document_de::exact_vec")]
     pub(super) operands: Vec<u64>,
-    #[allow(dead_code)]
     pub(super) family: Option<Box<str>>,
+}
+
+impl<'de> Deserialize<'de> for OperationConstraint {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        enum Field<T> {
+            Missing,
+            Present(T),
+        }
+        impl<T> Default for Field<T> {
+            fn default() -> Self {
+                Self::Missing
+            }
+        }
+        impl<'de, T: Deserialize<'de>> Deserialize<'de> for Field<T> {
+            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                T::deserialize(deserializer).map(Self::Present)
+            }
+        }
+
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Wire {
+            kind: OperationConstraintKind,
+            #[serde(default)]
+            operands: Field<Vec<u64>>,
+            #[serde(default)]
+            family: Field<Option<Box<str>>>,
+        }
+
+        let wire = Wire::deserialize(deserializer)?;
+        let operands = match (wire.kind, wire.operands, &wire.family) {
+            (OperationConstraintKind::QuantifierDomainOnly, Field::Missing, Field::Missing) => {
+                Vec::new()
+            }
+            (OperationConstraintKind::QuantifierDomainOnly, _, _) => {
+                return Err(serde::de::Error::custom(
+                    "quantifier_domain_only has no operands or family",
+                ));
+            }
+            (_, Field::Present(operands), _) => operands,
+            (_, Field::Missing, _) => {
+                return Err(serde::de::Error::missing_field("operands"));
+            }
+        };
+        let family = match wire.family {
+            Field::Missing => None,
+            Field::Present(family) => family,
+        };
+        Ok(Self {
+            kind: wire.kind,
+            operands,
+            family,
+        })
+    }
 }
 
 /// Reads a fresh production catalog, owned by the caller.
