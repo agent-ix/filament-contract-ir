@@ -90,3 +90,11 @@ The check is live, and it needs a killing test. A rational typed at the integer 
 | FND-002 | fixed | `the_confidence_bounds_hold_for_every_probability_form` kills `r33`: θ = ι and θ + ι = 1 refuse, and their neighbours are admitted, for `probability`, `mean_of_fraction`, `long_run_fraction` and `reach`. `the_claim_checks_charge_each_binding_in_body_order` now pins `form` before its nested bindings and kills `c12` |
 | FND-003 | fixed | The matrix row is rewritten with the honest remainder: FR-376's step, the foreign-model workload and FSL's producer spelling and ordinal vectors. `the_public_read_covers_every_form_event_measure_and_activation` covers `Reach` (each target), `Steps`, `MeanOfFraction`, the `Compare` event, the `Fraction` measure, the weightings, `Each` and `over: Some`. `the_remaining_identity_changes_give_that_claim_another_entry` covers the AC-10 changes. The claim package is registered in `whole_read_accounting` |
 | FND-004 | fixed | The deepest-locus test reaches the 19-step `fraction`-in-`compare` `delay` weighting and kills `r25` (`CAPACITY = 18`) |
+
+Round 2, at head 838dfcbe. The delta from 4c56c181 is one test, `a_literal_typed_at_a_familyless_node_refuses_at_the_literal`, plus the copied SR files. fmt, string-edge and clippy `-D warnings` are clean. `checked_package_v2_probabilistic_claim` and `public_interface` are green. Mutant `r38` (rational type node unchecked) is now killed by the new test.
+
+`whole_read_accounting` fails three registry tests against FSpec origin/main 04109664, on the `tuple-union/wire` vectors TW-29 to TW-33. Those vectors are unrelated to claims and come from FSpec #758 (QSL-2589), which landed after round 1. At the same head with FSpec 1d205b5b, `whole_read_accounting` is green (11 of 11), so the failure is FSpec drift that clean main inherits too, not a defect of this PR.
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-001 | fixed | `a_literal_typed_at_a_familyless_node_refuses_at_the_literal` types `P95`'s `level` `rational` `19/20`, and its `within` `integer` `10`, at the familyless `workload` node `Steady`. Each refuses `invalid_package`/`invalid-value` at the literal. The `r38` mutant now fails it. `r35` stays deferred in the matrix row |
