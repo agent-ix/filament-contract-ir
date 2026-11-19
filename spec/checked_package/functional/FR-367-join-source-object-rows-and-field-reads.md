@@ -71,6 +71,26 @@ over the package's dispatch tables, which refuses with
 name, `MismatchedIdentityWitness` being the FR-352 outcome for a stale or
 mismatched stage row.
 
+### Operation parameters
+
+Each `SelectedSourceObjectOperation` SHALL also carry `parameters:
+Vec<SelectedSourceObjectMember>`, one member entry per parameter of the
+operation in declaration order (FSpec FR-610 "Identity rows"), in the
+member-entry shape the row's `members` use: a **data entry** with the
+parameter's `type_node` and no `member_type`, for a parameter whose type has
+a node, and a **clock entry** with no `type_node` and its FSpec FR-789
+`member_type`, for a parameter whose type has none. The reader SHALL refuse
+`UnknownIdentityWitness`, at the `Package` locus with no partial view, a row
+one of whose operation entries holds a parameter entry with both or neither
+of `type_node` and `member_type`, a data entry whose `type_node` names no
+type node of the package, or two parameter entries of one name; and a row
+one of whose operation entries has `clock_parameters` that are not exactly
+the names, in declaration order, of its clock entries whose `member_type` is
+`ix://filament/native/Clock`, because FSpec FR-610 makes the two lists one
+fact and a consumer refuses a row whose entries disagree. The probabilistic
+join of [FR-369](./FR-369-read-probabilistic-nodes-and-their-four-forms.md)
+reads a source operation's parameter names and types from `parameters`.
+
 The key (`source_authority`, `source_identity`) identifies one type. The
 `declaration` of a source-declared type names it within the package whatever
 its `SourceOwner`, so two `SourceOwner`s of one authority cannot each declare a
@@ -124,6 +144,7 @@ information against which to check them.
 | FR-367-AC-5 | A complete row set exposes abstractness, supertypes, identity fields, members and populations for each source type through a typed read. | Test |
 | FR-367-AC-6 | A field read on a model-owned node reads unchanged in a package that also holds a source type. | Test |
 | FR-367-AC-7 | A row of `O` (`object O { w: W; d: Clock; }`) with the data entry `w` then the clock entry `d` (`member_type` `ix://filament/native/Clock`) joins; a clock entry `d` carrying a type node, an entry with neither `type_node` nor `member_type`, a clock entry named `w`, and a clock entry whose `member_type` is `Integer` each refuse unknown. | Test (TC-481) |
+| FR-367-AC-8 | The row of `O` for `object O { d: Clock; operation arm(x: Clock, k: Int[1, 3]) modifies self.d; }` whose `O::arm` entry has `parameters` the clock entry `x` then the data entry `k` (the `Int[1, 3]` type node) and `clock_parameters` `["x"]` joins and exposes both parameters through the typed read. Each refuses `UnknownIdentityWitness` at the `Package` locus: `clock_parameters` `[]` beside the clock entry `x`; `clock_parameters` `["k"]`; a parameter entry with both `type_node` and `member_type`; and two entries named `x`. | Test (TC-485) |
 
 ## Dependencies
 
