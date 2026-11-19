@@ -77,6 +77,11 @@ pub use probabilistic_read::{
     CheckedDelayDistribution, CheckedDelayFamily, CheckedDelayQuantity, CheckedRandomParameter,
     CheckedReward, CheckedSupportValue, CheckedWorkload, CheckedWorkloadWeight,
 };
+mod requirement_records;
+pub use requirement_records::{
+    CapabilityKind, DomainKey, DomainKind, RequirementExtent, RequirementGuard, RequirementItemRow,
+    ValueValidityRecord,
+};
 mod retained_index;
 pub(in crate::checked_package) use node_index::StructuralOrder;
 mod operation_catalog;
@@ -885,7 +890,7 @@ macro_rules! checked_package_envelope {
     ($($name:ident: $parameter:ident => $encoding:ident),+ $(,)?) => {
         #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
         #[serde(deny_unknown_fields)]
-        struct CheckedPackageEnvelope<C, N, L, G, S, R, T, B, M, K, H, E, O, A, D> {
+        struct CheckedPackageEnvelope<C, N, L, G, S, R, T, B, M, K, H, Q, E, O, A, D> {
             $($name: $parameter,)+
             #[serde(default, skip_serializing_if = "Option::is_none")]
             refinement_step_rows: Option<R>,
@@ -899,6 +904,8 @@ macro_rules! checked_package_envelope {
             claim_names: Option<K>,
             #[serde(default, skip_serializing_if = "Option::is_none")]
             schedulability_claims: Option<H>,
+            #[serde(default, deserialize_with = "operation_effects::present_rows", bound(deserialize = "Q: Deserialize<'de>"), skip_serializing_if = "Option::is_none")]
+            requirement_items: Option<Q>,
             #[serde(default, deserialize_with = "operation_effects::present_rows", bound(deserialize = "E: Deserialize<'de>"), skip_serializing_if = "Option::is_none")]
             operation_effects: Option<E>,
             #[serde(default, deserialize_with = "operation_effects::present_rows", bound(deserialize = "O: Deserialize<'de>"), skip_serializing_if = "Option::is_none")]
@@ -917,6 +924,7 @@ macro_rules! checked_package_envelope {
             &[TemporalClauseName],
             &[ClaimNameRow],
             &[CheckedSchedulabilityClaimRow],
+            &[RequirementItemRow],
             &[CheckedOperationEffectRow],
             &[OperationBodyRow],
             &[CheckedCapability],
@@ -943,6 +951,9 @@ macro_rules! checked_package_envelope {
                 }
                 if let Some(rows) = self.schedulability_claims {
                     encode::elements(writer, "schedulability_claims", rows)?;
+                }
+                if let Some(rows) = self.requirement_items {
+                    encode::elements(writer, "requirement_items", rows)?;
                 }
                 if let Some(rows) = &self.operation_effects {
                     encode::elements(writer, "operation_effects", rows)?;
@@ -978,6 +989,7 @@ type CheckedPackageWireV2<Body = CheckedTerm> = CheckedPackageEnvelope<
     Vec<TemporalClauseName>,
     Vec<ClaimNameRow>,
     Vec<CheckedSchedulabilityClaimRow>,
+    Vec<requirement_records::RequirementItemWireRow>,
     Vec<CheckedOperationEffectRow>,
     Vec<OperationBodyRow>,
     Vec<CheckedCapability>,
@@ -1035,6 +1047,31 @@ pub fn encode_checked_package_v2<Body: quire_canonical::Encode>(
     diagnostics: &CheckedDiagnosticsV2,
     limits: quire_canonical::Limits,
 ) -> Result<Vec<u8>, quire_canonical::Error> {
+    encode_checked_package_v2_with_requirement_items(
+        name,
+        lock,
+        semantic_graph,
+        sources,
+        sidecars,
+        None,
+        capability_report,
+        diagnostics,
+        limits,
+    )
+}
+
+/// Canonically encodes a complete checked-package V2 envelope with requirement rows.
+pub fn encode_checked_package_v2_with_requirement_items<Body: quire_canonical::Encode>(
+    name: &str,
+    lock: &CheckedPackageLockV2,
+    semantic_graph: &CheckedSemanticGraphV2<Body>,
+    sources: CheckedPackageSourceCorrespondenceRef<'_>,
+    sidecars: CheckedPackageSidecarsRef<'_>,
+    requirement_items: Option<&[RequirementItemRow]>,
+    capability_report: &[CheckedCapability],
+    diagnostics: &CheckedDiagnosticsV2,
+    limits: quire_canonical::Limits,
+) -> Result<Vec<u8>, quire_canonical::Error> {
     if semantic_graph.nodes.iter().any(|node| {
         [&node.node_id, &node.semantic_type]
             .into_iter()
@@ -1061,6 +1098,7 @@ pub fn encode_checked_package_v2<Body: quire_canonical::Encode>(
         temporal_clause_names: sidecars.temporal_clause_names,
         claim_names: sidecars.claim_names,
         schedulability_claims: sidecars.schedulability_claims,
+        requirement_items,
         operation_effects: sidecars.operation_effects,
         operation_bodies: sidecars.operation_bodies,
         capability_report,
@@ -1100,6 +1138,8 @@ struct SlotView {
     /// The positions of the slot-holding nodes, sorted by node ID bytes and
     /// then position.
     positions: Vec<usize>,
+    requirement_items: Vec<RequirementItemRow>,
+    value_validity_record_index: Vec<(CheckedNodeId, Vec<usize>)>,
 }
 
 /// Immutable, admitted `filament.checked-package/v2` data.
@@ -1703,6 +1743,7 @@ impl CheckedPackageV2 {
             temporal_clause_names,
             claim_names,
             schedulability_claims,
+            requirement_items,
             operation_effects,
             operation_bodies,
             capability_report,
@@ -1740,6 +1781,7 @@ impl CheckedPackageV2 {
             temporal_clause_names,
             claim_names,
             schedulability_claims,
+            requirement_items,
             operation_effects,
             operation_bodies,
             capability_report,
@@ -1854,7 +1896,17 @@ impl CheckedPackageV2 {
                     .cmp(&nodes[*right].node_id)
                     .then(left.cmp(right))
             });
-            SlotView { graph, positions }
+            let requirement_items = requirement_records::retain_rows(
+                self.wire.requirement_items.as_deref(),
+                &graph.nodes,
+            );
+            let value_validity_record_index = requirement_records::owner_index(&requirement_items);
+            SlotView {
+                graph,
+                positions,
+                requirement_items,
+                value_validity_record_index,
+            }
         })
     }
 
@@ -2032,6 +2084,23 @@ impl CheckedPackageV2 {
     /// Admitted checked-term sidecar, absent when the producer supplied none.
     pub fn checked_term_data(&self) -> Option<&CheckedTermDataV2> {
         self.wire.checked_term_data.as_ref()
+    }
+
+    /// Requirement records in the checked package's request order.
+    pub fn requirement_items(&self) -> &[RequirementItemRow] {
+        &self.slot_view().requirement_items
+    }
+
+    /// Indices of this function's value-validity records in package order.
+    pub fn value_validity_records_of(&self, owner: &CheckedNodeId) -> &[usize] {
+        let slot_view = self.slot_view();
+        slot_view
+            .value_validity_record_index
+            .binary_search_by(|(candidate, _)| candidate.cmp(owner))
+            .ok()
+            .map_or(&[], |position| {
+                slot_view.value_validity_record_index[position].1.as_slice()
+            })
     }
 
     /// Admitted temporal clock rows, keyed by exact clause or compensation ID.
@@ -2245,6 +2314,20 @@ fn validate(
         &mut meter,
     )?;
     probabilistic_join::validate(wire, &kinds, &terms, &models, &structural_keys, &mut meter)?;
+    let graph_index = GraphIndex::build(
+        wire.semantic_graph.nodes.iter().map(|node| &node.node_id),
+        &mut meter,
+    )?;
+    requirement_records::validate(
+        wire.requirement_items.as_deref(),
+        &wire.semantic_graph.nodes,
+        &kinds,
+        &terms,
+        &graph_index,
+        &structural_keys,
+        evidence,
+        &mut meter,
+    )?;
     if let Some(data) = wire.checked_term_data.as_ref() {
         dispatch_projection::validate_checked_term_data(
             data, wire, &kinds, &terms, &models, &mut meter,
@@ -2825,7 +2908,8 @@ fn declaration_forbidden(kind: CheckedNodeKind) -> bool {
             | ClaimForm::AnalysisClaim
             | ClaimForm::Hyperproperty
             | ClaimForm::SynthesisRequest
-            | ClaimForm::ProbabilisticClaim,
+            | ClaimForm::ProbabilisticClaim
+            | ClaimForm::ValueValidity,
         ) => false,
         K::Correspondence(
             CorrespondenceForm::SourceLocus
@@ -3258,7 +3342,8 @@ fn body_grammar(kind: CheckedNodeKind) -> BodyGrammar {
             | ClaimForm::StateGraph
             | ClaimForm::StepRelation
             | ClaimForm::Schedulability
-            | ClaimForm::ProbabilisticClaim,
+            | ClaimForm::ProbabilisticClaim
+            | ClaimForm::ValueValidity,
         ) => BodyGrammar::Term,
         K::Correspondence(CorrespondenceForm::AbstractionRelation) => {
             BodyGrammar::AbstractionRelation
