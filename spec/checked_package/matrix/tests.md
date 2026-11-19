@@ -10,6 +10,8 @@ type: TestMatrix
 | Functional Req | Acceptance Criteria | Test Cases | Status |
 |---|---|---|---|
 | FR-373 | FR-373-AC-1 through FR-373-AC-6 | TC-480 | ✅ Implemented (QSL-2347); coverage at the identity-row join is FR-375. |
+| FR-375 | FR-375-AC-1 | TC-482 | 🚧 Planned (QSL-2347). |
+| FR-374 | FR-374-AC-1 through FR-374-AC-4, FR-367-AC-7 | TC-481 | 🚧 Planned (QSL-2347). |
 | FR-371 | FR-371-AC-1 through FR-371-AC-9 | TC-477 | ✅ Implemented (QSL-2410): `claim_names` rows are admitted, joined, de-duplicated and covered by the strict reader; the refinement row name equals the body `name`. |
 | FR-372 | FR-372-AC-1 through FR-372-AC-7 | TC-479 | 🚧 Partial: bounded `carries`, FIFO-key-stable keys, population reads in model-state slots, the `protocol_reference` carrier stop and `test` `post` admit; `test` `pre` refusal, post-test `maximum` 0 and guard scope, the negative cases of AC-3 to AC-5, the non-owner population reads of AC-4 and the back-edge reads of AC-7 remain untested. |
 | FR-064 | FR-064-AC-7, FR-064-AC-8 | TC-478 | 🚧 Partial: an ownerless clause over a bounded integer admits and an object-type clause without its edge refuses; reachability through reference, `option` and collection elements, and the added-edge refusal, remain. |
