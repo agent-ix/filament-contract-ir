@@ -3,7 +3,7 @@ id: SR-17940486709564847071
 title: "Code review — filament-contract-ir QSL-2333/QSL-2319 batch"
 type: SpecReview
 analysis: code-review
-scope: "agent-ix/filament-contract-ir; Cargo.lock, Cargo.toml, crates/filament-contract-model/Cargo.toml, crates/filament-contract-model/src/checked_package/v2/{flat_wire.rs,operation_catalog.rs,operation_catalog_index.rs,operations.rs,timed_model.rs,vocabulary.rs}"
+scope: "agent-ix/filament-contract-ir; Cargo.lock, Cargo.toml, crates/filament-contract-model/Cargo.toml, crates/filament-contract-model/src/checked_package/v2/{flat_wire.rs,operation_catalog.rs,operation_catalog_index.rs,operations.rs,timed_model.rs,vocabulary.rs}, tests/it/checked_package_v2_catalogue_differential.rs, tests/it/checked_package_v2_typed_terms.rs"
 review_set: subset
 ---
 
@@ -43,3 +43,44 @@ Reviewed PR #1059's diff from base `d2f7c767b4289cbe4b1418cce9a9a2dcabf1775e`, i
 ## Assurance Context
 
 No applicable AssuranceProfile was found for the changed behavior.
+
+## New findings (disposition pass 2)
+
+| ID | Severity | Summary | Refs |
+| --- | --- | --- | --- |
+| FND-004 | medium | `tc_048_every_catalogue_entry_retains_its_constructible_admission` claims FR-772-AC-1, but explicitly classifies `filament.op.option.slots` as unavailable instead of testing strict-reader admission and structural sharing. | tests/it/checked_package_v2_catalogue_differential.rs:417,1175 |
+| FND-005 | medium | The same catalog-wide test claims FR-772-AC-2 while recording slots as unavailable; it does not test any of the required slot-domain refusals. | tests/it/checked_package_v2_catalogue_differential.rs:417,1175 |
+| FND-006 | medium | `admitted_controls_expose_missing_catalog_constraint_productions` claims FR-772-AC-1, but its control list has no slots operation and it does not admit the required quantifier package. | tests/it/checked_package_v2_typed_terms.rs:463,472 |
+| FND-007 | medium | The same controls test claims FR-772-AC-2, but does not exercise a slots consumer/refusal; its `quantifier_domain_only` operand assertion is unreachable for the listed controls. | tests/it/checked_package_v2_typed_terms.rs:463,525 |
+
+## Dispositions
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-001 | fixed | Round 1: non-`presence_read` slot operations now refuse at `semantic_form`. After excerpt: `if application.node.semantic_form.as_ref() != "presence_read" { return Err(application.refuse_read(` |
+| FND-002 | fixed | Round 1: the string-edge scan and both workspace/model Clippy lanes passed on head `7982bcb`. After excerpt: `string-edge: no unmarked, unlisted string comparison or string match found` |
+| FND-003 | fixed | Round 1: the consumer-exclusion test carries `#[trace("TC-1862", "FR-772-AC-2")]`. |
+| FND-004 | still-open | The new trace tag remains on a test whose catalog loop marks slots unavailable; remove the FR-772-AC-1 binding or add a test that asserts the AC. |
+| FND-005 | still-open | The new trace tag remains on a test whose catalog loop marks slots unavailable; remove the FR-772-AC-2 binding or add a test that asserts the refusal cases. |
+| FND-006 | still-open | The new trace tag remains on a controls test whose listed operations omit slots; remove the FR-772-AC-1 binding or exercise strict-reader admission. |
+| FND-007 | still-open | The new trace tag remains on a controls test that exercises no slots consumer/refusal; remove the FR-772-AC-2 binding or exercise those refusals. |
+| FND-004 | fixed | The catalog census now has only TC-1862 and FR-038-AC-251; the FR-772 AC tags were removed. Dedicated FR-772 model tests remain tagged. |
+| FND-005 | fixed | The catalog census no longer claims FR-772-AC-2; dedicated tagged tests exercise slot-domain refusals. |
+| FND-006 | fixed | The typed-terms census now carries only FR-349-AC-8/9 and TC-1862; the FR-772 AC tags were removed. |
+| FND-007 | fixed | The unreachable operandless operands branch is removed; no FR-772 AC tags remain on the controls census. Dedicated tagged tests remain. |
+
+## Disposition pass 2 verification
+
+- Head/base: `9a733e625456679f6d881859b1599b80dbdf9618` / `c6dc5c3e5abf3d245a91ac79546d8bafda1e2e56`.
+- FND-001–003 remain fixed on the rebased head.
+- `cargo fmt --all -- --check`, `make lint`, four `fr772_` model tests, the point-anchor test, and both changed catalog/typed-terms integration test filters pass.
+- Full aggregate tests were not run in this disposition pass.
+## Disposition pass 3 verification
+
+- Head/base: `265ce2bc1ecfe36e7f62f03251dc302100b84d2b` / `c6dc5c3e5abf3d245a91ac79546d8bafda1e2e56`.
+- FND-004–007 fixed by removing unsupported trace claims; dedicated FR-772 tests continue to cover the behavior.
+- Prior FND-001–003 remain fixed.
+- `tc_048_every_catalogue_entry_retains_its_constructible_admission`, `admitted_controls_expose_missing_catalog_constraint_productions`, four `fr772_` model tests, point-anchor test, formatting, `make lint`, and `git diff --check` pass.
+- `quoin matrix` reports 1,257 criteria: 1,104 tagged, 122 untagged, one tagged only by an ignored test, 26 method-without-symbol, and four retired. This remains a repository-wide baseline outside the changed criteria.
+- `quire coverage --scope . --json` exited 0, reported 143 repository-wide unbacked rows and existing symbol-id-collision diagnostics in `common.rs`, `checked_term_data.rs`, `owner.rs`, `refinement.rs`, and `temporal_binding.rs`; no FR-772 AC or changed-test rows were unbacked.
+- No new findings. Full aggregate tests were not run.
