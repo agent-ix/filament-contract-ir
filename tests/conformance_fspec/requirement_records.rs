@@ -117,18 +117,69 @@ fn value_validity_package(reverse_graph: bool) -> Value {
             "arguments":[{"term":"reference","target":node_id(parameter_key)},
                 {"term":"literal","type":integer,"value_kind":"integer","value":"1"}]}
     });
+    let boolean = node_id("scalar_type/boolean");
+    let mut guard_dependencies = vec![node_id(parameter_key), boolean.clone()];
+    guard_dependencies.sort_by_key(structural_fixture_id);
+    let guard = json!({
+        "node_id":node_id("expression/integer_ge"),
+        "schema_version":"filament.checked-semantic-graph/v2",
+        "node_tag":"expression", "semantic_form":"binary", "semantic_type":boolean,
+        "dependencies":guard_dependencies,
+        "occurrences":[{"role":"expression","ordinal":0}],
+        "body":{"term":"application","operator":"binary",
+            "operation":{"identity":"filament.op.integer.ge","laws":[],"mode":null,"member":null,"leaves":[]},
+            "result_type":boolean,
+            "arguments":[{"term":"reference","target":node_id(parameter_key)},
+                {"term":"literal","type":integer,"value_kind":"integer","value":"0"}]}
+    });
+    let mut equality_dependencies = vec![node_id(app_key), boolean.clone()];
+    equality_dependencies.sort_by_key(structural_fixture_id);
+    let equality = json!({
+        "node_id":node_id("expression/integer_eq"),
+        "schema_version":"filament.checked-semantic-graph/v2",
+        "node_tag":"expression", "semantic_form":"binary", "semantic_type":boolean,
+        "dependencies":equality_dependencies,
+        "occurrences":[{"role":"expression","ordinal":0}],
+        "body":{"term":"application","operator":"binary",
+            "operation":{"identity":"filament.op.integer.eq","laws":[],"mode":null,"member":null,"leaves":[]},
+            "result_type":boolean,
+            "arguments":[{"term":"reference","target":node_id(app_key)},
+                {"term":"literal","type":integer,"value_kind":"integer","value":"0"}]}
+    });
+    let mut root_dependencies = vec![
+        node_id("expression/integer_ge"),
+        node_id("expression/integer_eq"),
+        boolean.clone(),
+    ];
+    root_dependencies.sort_by_key(structural_fixture_id);
+    let root = json!({
+        "node_id":node_id("expression/boolean_and"),
+        "schema_version":"filament.checked-semantic-graph/v2",
+        "node_tag":"expression", "semantic_form":"binary", "semantic_type":boolean,
+        "dependencies":root_dependencies,
+        "occurrences":[{"role":"expression","ordinal":0}],
+        "body":{"term":"application","operator":"binary",
+            "operation":{"identity":"filament.op.boolean.and","laws":[],"mode":null,"member":null,"leaves":[]},
+            "result_type":boolean,
+            "arguments":[{"term":"reference","target":node_id("expression/integer_ge")},
+                {"term":"reference","target":node_id("expression/integer_eq")}]}
+    });
     nodes.push(parameter);
     nodes.push(application);
-    let parameter_position = nodes.len() - 2;
-    let application_position = nodes.len() - 1;
-    nodes[owner_position]["semantic_type"] = integer.clone();
-    let mut owner_dependencies = vec![node_id(parameter_key), node_id(app_key)];
+    nodes.push(guard);
+    nodes.push(equality);
+    nodes.push(root);
+    let parameter_position = nodes.len() - 5;
+    let application_position = nodes.len() - 4;
+    let guard_position = nodes.len() - 3;
+    nodes[owner_position]["semantic_type"] = boolean.clone();
+    let mut owner_dependencies = vec![node_id(parameter_key), node_id("expression/boolean_and")];
     owner_dependencies.sort_by_key(structural_fixture_id);
     nodes[owner_position]["dependencies"] = json!(owner_dependencies);
     nodes[owner_position]["body"] = json!({"term":"aggregate","members":[
         {"term":"binding","name":"parameters","value":{"term":"aggregate","members":[
             {"term":"reference","target":node_id(parameter_key)}]}},
-        {"term":"binding","name":"body","value":{"term":"reference","target":node_id(app_key)}}
+        {"term":"binding","name":"body","value":{"term":"reference","target":node_id("expression/boolean_and")}}
     ]});
     settle(&mut package);
 
@@ -138,6 +189,7 @@ fn value_validity_package(reverse_graph: bool) -> Value {
     let owner = nodes[owner_position]["node_id"].clone();
     let parameter = nodes[parameter_position]["node_id"].clone();
     let application = nodes[application_position]["node_id"].clone();
+    let guard = nodes[guard_position]["node_id"].clone();
     let bound = nodes
         .iter()
         .find(|node| node["semantic_form"] == "integer")
@@ -157,17 +209,34 @@ fn value_validity_package(reverse_graph: bool) -> Value {
         .expect("bound index");
     let mut record_positions = Vec::new();
     for occurrence in 0..2 {
-        let path = json!([
+        let guard_path = if occurrence == 0 {
+            Vec::new()
+        } else {
+            vec![json!({"node":guard_position}), json!("0"), json!("true")]
+        };
+        let mut path = json!([
             "claim", "value_validity", {"node":owner_position}, {"node":application_position},
             occurrence.to_string(), "bound", {"node":bound_position},
-            "conversion", "guards", "roots", {"node":parameter_position}, "objects"
+            "conversion", "guards"
+        ]);
+        path.as_array_mut().expect("record path").extend(guard_path);
+        path.as_array_mut().expect("record path").extend([
+            json!("roots"),
+            json!({"node":parameter_position}),
+            json!("objects"),
         ]);
         let record_id = json!({"package":package_name,"path":path,"ordinal":0});
+        let mut record_dependencies = dependencies.clone();
+        if occurrence == 1 {
+            record_dependencies.push(guard.clone());
+            record_dependencies.sort_by_key(structural_fixture_id);
+            record_dependencies.dedup();
+        }
         let record = json!({
             "node_id":record_id,
             "schema_version":"filament.checked-semantic-graph/v2",
             "node_tag":"claim", "semantic_form":"value_validity", "semantic_type":node_id("scalar_type/boolean"),
-            "dependencies":dependencies,
+            "dependencies":record_dependencies,
             "occurrences":[{"role":"generated","ordinal":occurrence}],
             "body":{"term":"aggregate","members":[
                 binding("owner",json!({"term":"reference","target":owner})),
@@ -175,7 +244,15 @@ fn value_validity_package(reverse_graph: bool) -> Value {
                 binding("occurrence",json!({"term":"literal","type":node_id("scalar_type/integer"),"value_kind":"integer","value":occurrence})),
                 binding("result_bound",json!({"term":"reference","target":bound})),
                 binding("conversion",json!({"term":"aggregate","members":[]})),
-                binding("path_condition",json!({"term":"aggregate","members":[]})),
+                binding("path_condition", if occurrence == 0 {
+                    json!({"term":"aggregate","members":[]})
+                } else {
+                    json!({"term":"aggregate","members":[binding("guard",json!({"term":"aggregate","members":[
+                        binding("guard",json!({"term":"reference","target":guard})),
+                        binding("occurrence",json!({"term":"literal","type":node_id("scalar_type/integer"),"value_kind":"integer","value":0})),
+                        binding("holds",json!({"term":"literal","type":node_id("scalar_type/boolean"),"value_kind":"boolean","value":true}))
+                    ]}))]})
+                }),
                 binding("extent_roots",json!({"term":"aggregate","members":[{"term":"reference","target":parameter}]})),
                 binding("objects",json!({"term":"aggregate","members":[]})),
             ]}
