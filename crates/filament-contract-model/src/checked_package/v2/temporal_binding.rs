@@ -476,6 +476,28 @@ fn clock_matches(profile: Option<TemporalProfile>, clock: &ClockConfiguration) -
     )
 }
 
+/// Whether a protocol control node is the `await` declaration admitted by
+/// FR-322 for a temporal clock binding.
+fn is_await_node(
+    position: usize,
+    kinds: &[CheckedNodeKind],
+    terms: &[Option<super::CheckedTerm>],
+) -> bool {
+    if kinds.get(position) != Some(&CheckedNodeKind::Protocol(ProtocolForm::Control)) {
+        return false;
+    }
+    let Some(Some(super::CheckedTerm::Application {
+        operator: super::ApplicationOperator::ProtocolControl,
+        operation,
+        ..
+    })) = terms.get(position)
+    else {
+        return false;
+    };
+    operation.identity() == Some("filament.op.protocol.control")
+        && operation.member_operator() == Some("await")
+}
+
 /// One `claim`/`hyperproperty` node: its quantified trace variables in
 /// `quantifiers` order, whether its domain is finite, and, under a behaviours
 /// domain, the body wrapper it references. A node whose body is not readable as
@@ -609,7 +631,8 @@ pub(super) fn validate<B>(
             CheckedNodeKind::Temporal(TemporalForm::TemporalClause)
                 | CheckedNodeKind::Protocol(ProtocolForm::Compensation)
                 | CheckedNodeKind::Claim(super::ClaimForm::Hyperproperty)
-        ) || is_wrapper(position)
+        ) && !is_await_node(position, kinds, terms)
+            || is_wrapper(position)
         {
             return Err(invalid(meter, at().key("declaration"), &row.declaration));
         }
@@ -622,7 +645,9 @@ pub(super) fn validate<B>(
         {
             return Err(invalid(meter, at(), &row.declaration));
         }
-        let role = if kinds[position] == CheckedNodeKind::Protocol(ProtocolForm::Compensation) {
+        let role = if kinds[position] == CheckedNodeKind::Protocol(ProtocolForm::Compensation)
+            || is_await_node(position, kinds, terms)
+        {
             CheckedOccurrenceRole::Declaration
         } else {
             CheckedOccurrenceRole::Claim
@@ -712,7 +737,8 @@ pub(super) fn validate<B>(
             .is_some()
         {
             CheckedOccurrenceRole::Claim
-        } else if kinds[position] == CheckedNodeKind::Protocol(ProtocolForm::Compensation)
+        } else if (kinds[position] == CheckedNodeKind::Protocol(ProtocolForm::Compensation)
+            || is_await_node(position, kinds, terms))
             && compensation_profile.is_some()
         {
             CheckedOccurrenceRole::Declaration
@@ -784,6 +810,19 @@ pub(super) fn validate<B>(
         let position = hyper.and_then(|hyper| hyper.wrapper).unwrap_or(position);
         if kinds[position] == CheckedNodeKind::Protocol(ProtocolForm::Compensation) {
             if clock_name(meter, position, 4) != Some(row.clock_name.as_ref()) {
+                return Err(invalid(meter, at().key("clock_name"), &row.declaration));
+            }
+            if !clock_matches(compensation_profile, &row.clock) {
+                return Err(invalid(
+                    meter,
+                    at().key("clock").key("kind"),
+                    &row.declaration,
+                ));
+            }
+            continue;
+        }
+        if is_await_node(position, kinds, terms) {
+            if clock_name(meter, position, 1) != Some(row.clock_name.as_ref()) {
                 return Err(invalid(meter, at().key("clock_name"), &row.declaration));
             }
             if !clock_matches(compensation_profile, &row.clock) {
