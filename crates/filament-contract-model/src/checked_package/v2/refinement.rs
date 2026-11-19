@@ -1881,8 +1881,36 @@ impl RefinementGraph<'_, '_> {
         Ok(operation)
     }
 
-    /// FR-375 `T::op`: a qualified class names the anchor's declaring type
-    /// `T` and its operation `op`; a bare class names only the operation.
+    /// Resolve a catalog-free class among the operations their declaring type
+    /// itself declares: a bare `op` is a wrong binding, and a `T::op` with no
+    /// no-point anchor at a type named `T` is a missing class.
+    fn require_declared_operation_class(
+        &self,
+        meter: &mut super::WorkMeter,
+        class: &str,
+        at: Path<'_>,
+        locus: &CheckedNodeId,
+    ) -> Result<(), ValidationFailure> {
+        let Some((type_name, operation)) = class.rsplit_once("::") else {
+            return Err(wrong_binding(meter, at, locus));
+        };
+        charge_amount_at(meter, at, self.terms.len() as u64)?;
+        let declared = self.terms.iter().flatten().any(|term| {
+            super::structural::typed_anchor_body(term).is_some_and(|anchor| {
+                anchor.execution_point.is_none()
+                    && anchor.operation == operation
+                    && self.declares_type_name(anchor.context, type_name)
+            })
+        });
+        if declared {
+            Ok(())
+        } else {
+            Err(missing_class(meter, at, locus))
+        }
+    }
+
+    /// FR-375 `T::op`: a catalog-free class is `T::op`, the anchor's declaring type
+    /// `T` and its operation `op`; a bare `op` never names an anchor.
     fn source_class_names_anchor(
         &self,
         class: &str,
@@ -1890,31 +1918,29 @@ impl RefinementGraph<'_, '_> {
         operation: &str,
     ) -> bool {
         let Some((type_name, class_operation)) = class.rsplit_once("::") else {
-            return class == operation;
+            return false;
         };
         class_operation == operation
             && self
+                .local_term(source)
+                .and_then(super::structural::typed_anchor_body)
+                .is_some_and(|anchor| anchor.execution_point.is_none())
+            && self
                 .local_anchor(source)
-                .and_then(|(context, _)| self.declared_type_name(context))
-                .is_some_and(|declared| declared == type_name)
+                .is_some_and(|(context, _)| self.declares_type_name(context, type_name))
     }
 
-    /// The declaring type's source name: its declared qualified name, else the
-    /// model-owned node path below its package identity.
-    #[ix_trace_rs::string_edge]
-    fn declared_type_name(&self, id: &CheckedNodeId) -> Option<String> {
-        let node = self.local_node(id)?;
-        if let Some(declaration) = &node.declaration {
-            return Some(declaration.qualified_name.join("::"));
-        }
-        let Some(super::CheckedNodeOwner::Model { identity, node }) = &node.owner else {
-            return None;
+    /// Whether `type_name` is the declaring type's source name `T`. A model
+    /// type's node is `ix://<package identity>/<name>` (one flat name, no
+    /// nested model-owned types), so `T` is that name. Allocation-free.
+    fn declares_type_name(&self, id: &CheckedNodeId, type_name: &str) -> bool {
+        let Some(super::CheckedNodeOwner::Model { identity, node }) =
+            self.local_node(id).and_then(|node| node.owner.as_ref())
+        else {
+            return false;
         };
-        let name = node
-            .strip_prefix("ix://")?
-            .strip_prefix(identity.as_ref())?
-            .strip_prefix('/')?;
-        Some(name.to_owned())
+        super::source_object::source_type_identity(node)
+            .is_some_and(|(owner, name)| owner == identity.as_ref() && name == type_name)
     }
 
     fn require_concrete_owner(
@@ -2318,6 +2344,13 @@ fn validate_rows(
                 )?;
             }
         } else if let Some(source) = &row.source_node {
+            // FR-375 order: the class resolves before any `source_node` check.
+            graph.require_declared_operation_class(
+                meter,
+                &row.source_class,
+                at.key("source_class"),
+                locus,
+            )?;
             let operation = graph.require_concrete_step_anchor(
                 meter,
                 source,
@@ -2326,7 +2359,7 @@ fn validate_rows(
                 locus,
             )?;
             if !graph.source_class_names_anchor(&row.source_class, source, operation) {
-                return Err(wrong_binding(meter, at.key("source_class"), locus));
+                return Err(wrong_binding(meter, at.key("source_node"), locus));
             }
         } else {
             return Err(missing_class(meter, at.key("source_class"), locus));
