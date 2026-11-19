@@ -79,7 +79,10 @@ repeats the delay cases).
     each discrete delay row (FR-369-AC-22).
 23. Give a Boolean parameter the support `true`, `false` and an enumeration
     parameter the supports `Gold`, `Silver`; expect admission and the typed
-    read of each support (FR-369-AC-23).
+    read of each value with probability 1/2 (FR-369-AC-23). Repeat a Boolean
+    support value (`true, true`; `false, true, false`) and give a delay a
+    negative time quantity; expect `invalid-value` at the later value and at
+    the quantity (FR-369-AC-3).
 24. Give the Boolean parameter a text, a number, an integer literal and an
     enumeration case, and the enumeration parameter an unknown case, a
     differently cased case, a case of another enumeration, a Boolean and a

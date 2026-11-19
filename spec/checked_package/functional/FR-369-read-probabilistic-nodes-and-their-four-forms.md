@@ -61,7 +61,11 @@ outside the rules of FSpec FR-640 that need no other node:
   rational in lowest terms;
 - a `family` outside `uniform`, `uniform_interval`, `exponential` and
   `discrete`, and `parameters` that do not hold exactly the members the family
-  states, including a member row of `discrete` that does.
+  states, including a member row of `discrete` that does;
+- a time quantity of a `uniform_interval` or `discrete` delay that is negative
+  (FSpec FR-640 rule 5 with FR-420's non-negative delays), at the quantity's
+  `value` member; a quantity whose spelling is no exact rational stays
+  `malformed_wire`.
 
 A workload weight of 0 is admitted. The strict V2 reader SHALL charge one
 validation visit of the caller's budget for each node and for each support,
@@ -181,8 +185,10 @@ declaration whose `value` names one of its cases (FSpec FR-640 admits a random
 parameter of any parameter type); a literal of another kind, a non-boolean
 value, a literal typed at another declaration and an unknown or differently
 cased case name refuse at the value. A support value of a declared record,
-tuple, option or collection type, or of a variant type with a payload case, has
-no literal kind and is refused.
+tuple, option or collection type, or of a variant type with a payload case (a
+union, for its nullary cases too), has no literal kind: FSpec has no literal
+form for these, and the reader's general literal check refuses it as
+`ill_typed`/`operator-ineligible` at the literal's `type`, before this join.
 
 ### Planned
 
@@ -203,7 +209,7 @@ QSL-2310.
 | --- | --- | --- |
 | FR-369-AC-1 | `probabilistic` and each of its four forms decode, `CheckedNodeKind::all` lists them, a node of each form (each delay family included) reads and re-encodes to the document it was read from, and the public reader admits a package holding a node of each form. | Test |
 | FR-369-AC-2 | A probabilistic node with a missing member, an extra member, members out of order, a `declaration`, an `owner`, a `recursion_group`, no or two occurrences, an occurrence of another role, a binding of another term kind, or a short or extended support row or workload weights row refuses `malformed_wire` at the failing member. | Test |
-| FR-369-AC-3 | An empty support, a repeated support value, a zero support or discrete weight, a zero or negative rate, a negative workload weight, a weight not in lowest terms, an unknown delay family and delay parameters that do not match the family refuse `invalid_package`/`invalid-value`; a zero workload weight is admitted. | Test |
+| FR-369-AC-3 | An empty support, a repeated support value (a Boolean one included), a zero support or discrete weight, a zero or negative rate, a negative workload weight, a negative delay time quantity, a weight not in lowest terms, an unknown delay family and delay parameters that do not match the family refuse `invalid_package`/`invalid-value`; a zero workload weight is admitted. | Test |
 | FR-369-AC-4 | An unknown `node_tag`, and a form outside the probabilistic family, still fail decode with the existing error. | Test |
 | FR-369-AC-5 | The reader charges one work unit for each node and for each row of a support, a workload weights list or a discrete delay list, and a budget one unit short of the total is denied at the first uncharged row. | Test |
 | FR-369-AC-6 | An operation reference of each form whose `declaring` node is no `model` node, or which names an operation that node does not declare, refuses `invalid_package`/`invalid-value` at the member; a package whose references all name declared operations is admitted. | Test |

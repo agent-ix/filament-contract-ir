@@ -345,12 +345,14 @@ fn text<'a>(bound: Bound<'a>) -> Result<&'a str, Fail> {
     spelling(bound, LiteralKind::Text)
 }
 
-/// What identifies a support value: its literal kind and spelling. A value
-/// that is neither text nor a natural number is never equal to another.
+/// What identifies a support value: its literal kind and spelling, or its
+/// boolean. A value that is none of text, a natural number and a boolean is
+/// never equal to another.
 #[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
 enum SupportKey<'a> {
     Text(&'a str, &'a str),
     Natural(&'a str, u64),
+    Boolean(bool),
     Distinct(usize),
 }
 
@@ -362,7 +364,9 @@ fn literal<'a>((value, at): Bound<'a>, index: usize) -> Result<SupportKey<'a>, F
         }) => Ok(match (value.as_str(), value.as_u64()) {
             (Some(text), _) => SupportKey::Text(value_kind.as_wire(), text),
             (None, Some(number)) => SupportKey::Natural(value_kind.as_wire(), number),
-            (None, None) => SupportKey::Distinct(index),
+            (None, None) => value
+                .as_bool()
+                .map_or(SupportKey::Distinct(index), SupportKey::Boolean),
         }),
         _ => Err(wire(at)),
     }
@@ -414,12 +418,15 @@ fn weight(budget: &mut NativeJoinBudget, bound: Bound<'_>, positive: bool) -> Re
     Ok(())
 }
 
-/// A time quantity: an exact non-negative rational spelling.
+/// A time quantity: an exact rational spelling. A negative one is
+/// `invalid-value` (FR-640 Reader rule 5 with FR-420's non-negative delays); a
+/// spelling that is no exact rational is malformed.
 fn quantity(bound: Bound<'_>) -> Result<(), Fail> {
     let at = bound.1;
     match exact_parts(spelling(bound, LiteralKind::Quantity)?) {
         Some((false, _, _)) => Ok(()),
-        _ => Err(wire(at.key("value"))),
+        Some((true, _, _)) => Err(invalid(at.key("value"))),
+        None => Err(wire(at.key("value"))),
     }
 }
 
@@ -935,21 +942,32 @@ mod tests {
         );
     }
 
-    /// A time quantity is not negative.
-    #[trace("TC-476", "FR-369-AC-2")]
+    /// A negative time quantity is `invalid-value` at the quantity's value; a
+    /// zero one admits.
+    #[trace("TC-476", "FR-369-AC-3")]
     #[test]
-    fn a_negative_time_quantity_is_refused() {
+    fn a_negative_time_quantity_is_refused_as_an_invalid_value() {
+        let invalid = |form, body, path: &str| {
+            refusal(
+                &wire(vec![node(form, body)]),
+                CheckedPackageRefusalCode::InvalidPackage,
+                Some(CheckedPackageRefusalCause::InvalidValue),
+                path,
+            );
+        };
         let interval = delay(
             "uniform_interval",
             aggregate(vec![quantity("lower", "-1"), quantity("upper", "4")]),
         );
-        wire_refusal(
-            &wire(vec![node("delay_distribution", interval)]),
+        invalid(
+            "delay_distribution",
+            interval,
             "/semantic_graph/nodes/0/body/members/3/value/members/0/value/value",
         );
         let discrete = delay("discrete", aggregate(vec![discrete_row("-3", "10")]));
-        wire_refusal(
-            &wire(vec![node("delay_distribution", discrete)]),
+        invalid(
+            "delay_distribution",
+            discrete,
             "/semantic_graph/nodes/0/body/members/3/value/members/0/members/0/value/value",
         );
         read(&wire(vec![node(
@@ -960,6 +978,32 @@ mod tests {
             ),
         )]))
         .expect("a zero lower bound admits");
+    }
+
+    /// A time quantity that is no exact rational spelling, and a bound that is
+    /// not a quantity literal, stay malformed.
+    #[trace("TC-476", "FR-369-AC-2")]
+    #[test]
+    fn a_time_quantity_that_is_no_exact_rational_is_malformed() {
+        let interval = delay(
+            "uniform_interval",
+            aggregate(vec![quantity("lower", "x"), quantity("upper", "4")]),
+        );
+        wire_refusal(
+            &wire(vec![node("delay_distribution", interval)]),
+            "/semantic_graph/nodes/0/body/members/3/value/members/0/value/value",
+        );
+        let other = delay(
+            "uniform_interval",
+            aggregate(vec![
+                binding("lower", literal("rational", "1")),
+                quantity("upper", "4"),
+            ]),
+        );
+        wire_refusal(
+            &wire(vec![node("delay_distribution", other)]),
+            "/semantic_graph/nodes/0/body/members/3/value/members/0/value",
+        );
     }
 
     /// The reader charges one visit per node and one per support, weight or

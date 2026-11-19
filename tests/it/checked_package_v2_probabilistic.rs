@@ -22,6 +22,7 @@ const PACKAGE: &str = "test/families";
 const DEPOSIT: &str = "ix://test/families/Account/deposit";
 const TIER: &str = "ix://test/families/Tier";
 const OTHER: &str = "ix://test/families/Other";
+const MIXED: &str = "ix://test/families/Mixed";
 const WITHDRAW: &str = "ix://test/families/Account/withdraw";
 /// The parameters of `withdraw`, in declared order.
 const PARAMETERS: [&str; 11] = ["d", "t", "r", "r2", "l", "lb", "ls", "ld", "lk", "lq", "c"];
@@ -89,6 +90,7 @@ fn document_with(chain: usize) -> Value {
                         {"name": "flag", "typeRef": "ix://filament/native/Boolean",
                          "multiplicity": one},
                         {"name": "tier", "typeRef": TIER, "multiplicity": one},
+                        {"name": "mixed", "typeRef": MIXED, "multiplicity": one},
                     ])
                 } else {
                     json!([])
@@ -128,6 +130,19 @@ fn document_with(chain: usize) -> Value {
                 ],
             }));
     }
+    // `Mixed`: a nullary case and a case with a payload, so a union.
+    document["types"]
+        .as_array_mut()
+        .expect("types")
+        .push(json!({
+            "identity": MIXED, "displayName": "Mixed",
+            "kind": {"module": PACKAGE, "name": "variant"},
+            "variants": [
+                {"identity": format!("{MIXED}/A"), "name": "A"},
+                {"identity": format!("{MIXED}/B"), "name": "B",
+                 "payloadType": "ix://filament/native/Integer"},
+            ],
+        }));
     document["constructs"]
         .as_array_mut()
         .expect("constructs")
@@ -431,7 +446,7 @@ fn assemble_with(chain: usize, nodes: Vec<(Value, &str)>) -> Value {
         model["owner"] = model_owner(PACKAGE, &identity);
         append(&mut value, model, "generated");
     }
-    for identity in [TIER, OTHER] {
+    for identity in [TIER, OTHER, MIXED] {
         let mut declaration = plain_node(
             &["model", "variant_type", identity],
             "model",
@@ -1666,20 +1681,85 @@ fn flag(value: Value) -> Value {
 }
 
 /// FR-369-AC-23: a Boolean and an enumeration parameter admit their support
-/// values, the read exposes them, and a mistyped or malformed one refuses.
+/// values, and the typed read gives back each value with its probability.
 #[trace("TC-476", "FR-369-AC-23")]
 #[test]
 fn the_public_reader_admits_boolean_and_enum_support_values() {
     let model: filament_contract_model::CheckedNodeId =
         serde_json::from_value(id(&["model", "object_type", "ix://test/families/Leaf"]))
             .expect("model id");
+    let read_back = |parameter: &str, values: Vec<Value>| {
+        let package = admitted(&on_run(parameter, values));
+        package.random_parameters(&model, "run")[0]
+            .support
+            .iter()
+            .map(|row| {
+                (
+                    serde_json::to_value(row.value).expect("value"),
+                    (
+                        row.probability.numerator.to_string(),
+                        row.probability.denominator.to_string(),
+                    ),
+                )
+            })
+            .collect::<Vec<_>>()
+    };
+    let half = ("1".to_owned(), "2".to_owned());
     let flags = vec![flag(json!(true)), flag(json!(false))];
-    let value = on_run("flag", flags);
-    let package = admitted(&value);
-    assert_eq!(package.random_parameters(&model, "run")[0].support.len(), 2);
-    let value = on_run("tier", vec![case("Gold"), case("Silver")]);
-    let package = admitted(&value);
-    assert_eq!(package.random_parameters(&model, "run")[0].support.len(), 2);
+    let read = read_back("flag", flags.clone());
+    assert_eq!(
+        read,
+        flags
+            .iter()
+            .map(|value| (value.clone(), half.clone()))
+            .collect::<Vec<_>>()
+    );
+    let tiers = vec![case("Gold"), case("Silver")];
+    let read = read_back("tier", tiers.clone());
+    assert_eq!(
+        read,
+        tiers
+            .iter()
+            .map(|value| (value.clone(), half.clone()))
+            .collect::<Vec<_>>()
+    );
+}
+
+/// FR-369-AC-3: a repeated Boolean support value refuses `invalid-value` at
+/// the later value.
+#[trace("TC-476", "FR-369-AC-3")]
+#[test]
+fn the_public_reader_refuses_a_repeated_boolean_support_value() {
+    let at = |row: usize| format!("body/members/3/value/members/{row}/members/0/value");
+    refuse_invalid(
+        &on_run("flag", vec![flag(json!(true)), flag(json!(true))]),
+        &at(1),
+    );
+    refuse_invalid(
+        &on_run(
+            "flag",
+            vec![flag(json!(false)), flag(json!(true)), flag(json!(false))],
+        ),
+        &at(2),
+    );
+    admitted(&on_run("flag", vec![flag(json!(true)), flag(json!(false))]));
+}
+
+/// FR-369-AC-24: a support value of a variant type with a payload case is
+/// refused by the generic literal check, `ill_typed`/`operator-ineligible` at
+/// the literal's `type`, for the payload case and the nullary case alike.
+#[trace("TC-476", "FR-369-AC-24")]
+#[test]
+fn the_public_reader_refuses_a_support_value_of_a_payload_variant() {
+    for name in ["A", "B"] {
+        let value = typed_literal(id(&["model", "variant_type", MIXED]), "enum", name);
+        assert_refusal(
+            &on_run("mixed", vec![value]),
+            CheckedPackageRefusalCode::IllTyped,
+            Some(CheckedPackageRefusalCause::OperatorIneligible),
+            "body/members/3/value/members/0/members/0/value/type",
+        );
+    }
 }
 
 /// FR-369-AC-24: a Boolean or enumeration support value of another kind, an
