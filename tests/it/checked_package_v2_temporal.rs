@@ -3733,6 +3733,27 @@ fn tc_483_a_repeated_quantifier_variable_is_a_repeated_key_not_a_missing_row() {
 
 #[trace("TC-483", "FR-038-AC-561")]
 #[test]
+fn tc_483_a_behaviours_node_under_an_unconfigured_wrapper_profile_has_no_rows() {
+    let (mut package, _, keys) = hyper_fixture();
+    let clause_key = keys.split('\n').nth(1).expect("clause").to_owned();
+    let hyper = push(
+        &mut package,
+        hyperproperty(
+            "hyperproperty",
+            vec![trace_group("s"), trace_group("n")],
+            vec![],
+            vec![],
+            refer(&clause_key),
+        ),
+    );
+    claim_occurrence(&mut package, hyper);
+    settle(&mut package);
+    assert!(package.get("temporal_bindings").is_none());
+    admitted("an infinite-trace wrapper", &package);
+}
+
+#[trace("TC-483", "FR-038-AC-561")]
+#[test]
 fn tc_483_a_missing_trace_row_refuses_at_the_hyperproperty_body() {
     for dropped in [0, 1] {
         let (mut package, _, hyper) = hyper_clock_fixture(&["s", "n"]);
