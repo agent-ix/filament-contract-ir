@@ -93,6 +93,7 @@ mod node_index;
 mod node_ordinal;
 mod operation_bodies;
 mod operation_effects;
+mod probabilistic_claim_timed;
 mod probabilistic_claims;
 mod probabilistic_delay;
 mod projection_read_form;

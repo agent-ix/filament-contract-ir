@@ -585,7 +585,7 @@ impl<'j, 'a> Check<'j, 'a> {
                 let right = meter.exact_mul(&c, &b)?;
                 let whole = meter.exact_mul(&b, &d)?;
                 let sum = meter.exact_add(&left, &right)?;
-                Ok(left < right || sum >= whole)
+                Ok(left <= right || sum >= whole)
             }
         }
     }
