@@ -1,0 +1,21 @@
+--- crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs
++++ replace >= with < in validate
+@@ -424,17 +424,17 @@
+                 return Err(refused(
+                     meter,
+                     index,
+                     Code::InvalidPackage,
+                     Some(Cause::ConflictingDefinition),
+                     at,
+                 ));
+             }
+-            if previous.is_some_and(|earlier| earlier >= key) {
++            if previous.is_some_and(|earlier| earlier < /* ~ changed by cargo-mutants ~ */ key) {
+                 return Err(invalid(meter, index, at));
+             }
+             previous = Some(key);
+             continue;
+         }
+         let (owner, operation) = join_member(
+             models,
+             &row.document,

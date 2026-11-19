@@ -1,0 +1,21 @@
+--- crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs
++++ replace != with == in validate
+@@ -328,17 +328,17 @@
+                 continue;
+             };
+             let body = &nodes[by_id[found]];
+             let (Some(identity), Some((type_name, name))) =
+                 (source_identity(body), source_body_declaration(body))
+             else {
+                 continue;
+             };
+-            if name != operation {
++            if name == /* ~ changed by cargo-mutants ~ */ operation {
+                 continue;
+             }
+             if let Ok(at) =
+                 source_types.binary_search_by(|held| (held.0, held.1).cmp(&(identity, type_name)))
+             {
+                 source_candidates.push((
+                     identity,
+                     source_types[at].2,

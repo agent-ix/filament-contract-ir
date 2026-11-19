@@ -1,0 +1,26 @@
+crates/filament-contract-model/src/checked_package/v2/dispatch_projection.rs:188:5: replace validate_checked_term_data -> Result<(), ValidationFailure> with Ok(())
+crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs:207:5: replace source_identity -> Option<&str> with None
+crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs:207:5: replace source_identity -> Option<&str> with Some("")
+crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs:207:5: replace source_identity -> Option<&str> with Some("xyzzy")
+crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs:208:9: delete match arm Some(CheckedNodeOwner::Source{identity, ..}) in source_identity
+crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs:216:5: replace source_body_declaration -> Option<(&str, &str)> with None
+crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs:216:5: replace source_body_declaration -> Option<(&str, &str)> with Some(("", ""))
+crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs:216:5: replace source_body_declaration -> Option<(&str, &str)> with Some(("", "xyzzy"))
+crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs:216:5: replace source_body_declaration -> Option<(&str, &str)> with Some(("xyzzy", ""))
+crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs:216:5: replace source_body_declaration -> Option<(&str, &str)> with Some(("xyzzy", "xyzzy"))
+crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs:217:43: replace match guard clause.as_ref() == "body" with true in source_body_declaration
+crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs:217:43: replace match guard clause.as_ref() == "body" with false in source_body_declaration
+crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs:217:59: replace == with != in source_body_declaration
+crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs:245:5: replace validate -> Result<(), ValidationFailure> with Ok(())
+crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs:307:12: delete ! in validate
+crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs:336:21: replace != with == in validate
+crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs:423:25: replace == with != in validate
+crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs:432:55: replace >= with < in validate
+crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs:517:25: replace || with && in validate
+crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs:542:5: replace check_source_row -> Result<(), ValidationFailure> with Ok(())
+crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs:547:30: replace != with == in check_source_row
+crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs:551:47: replace == with != in check_source_row
+crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs:578:9: delete match arm (OperationBody::Function{node}, Some(expected)) in check_source_row
+crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs:608:9: delete match arm (OperationBody::NoBody, None) in check_source_row
+crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs:592:16: delete ! in check_source_row
+crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs:604:21: replace != with == in check_source_row

@@ -1,0 +1,21 @@
+--- crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs
++++ replace == with != in validate
+@@ -415,17 +415,17 @@
+                 SourceJoin {
+                     nodes,
+                     kinds,
+                     by_id: &by_id,
+                     bodies: &source_bodies,
+                 },
+             )?;
+             let key = key_of(&row.document, &row.declaring, &row.operation);
+-            if repeated == Some(index) {
++            if repeated != /* ~ changed by cargo-mutants ~ */ Some(index) {
+                 return Err(refused(
+                     meter,
+                     index,
+                     Code::InvalidPackage,
+                     Some(Cause::ConflictingDefinition),
+                     at,
+                 ));
+             }

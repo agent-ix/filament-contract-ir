@@ -1,0 +1,508 @@
+
+*** crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs:217:43: replace match guard clause.as_ref() == "body" with true in source_body_declaration
+
+*** mutation diff:
+--- crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs
++++ replace match guard clause.as_ref() == "body" with true in source_body_declaration
+@@ -209,17 +209,17 @@
+         _ => None,
+     }
+ }
+ 
+ /// `[<type>, <operation>, "body"]` of a source clause function, when `node`
+ /// is one: its `declaration` has exactly those three segments.
+ fn source_body_declaration(node: &CheckedSemanticNodeV2<CheckedJson>) -> Option<(&str, &str)> {
+     match node.declaration.as_ref()?.qualified_name.as_slice() {
+-        [type_name, operation, clause] if clause.as_ref() == "body" => {
++        [type_name, operation, clause] if true /* ~ changed by cargo-mutants ~ */ => {
+             Some((type_name.as_ref(), operation.as_ref()))
+         }
+         _ => None,
+     }
+ }
+ 
+ /// A dispatch candidate's effective declaration (package and node), its
+ /// selected operation name, and its operation body.
+
+
+*** /home/peter/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --no-run --verbose --package=filament-contract-model@0.1.2 --workspace --features=conformance-cli
+       Fresh unicode-ident v1.0.24
+       Fresh itoa v1.0.18
+       Fresh version_check v0.9.5
+       Fresh autocfg v1.5.1
+       Fresh cfg-if v1.0.5
+       Fresh allocator-api2 v0.2.21
+       Fresh foldhash v0.2.0
+       Fresh equivalent v1.0.3
+       Fresh memchr v2.8.3
+       Fresh stable_deref_trait v1.2.1
+       Fresh regex-syntax v0.8.11
+       Fresh smallvec v1.16.5
+       Fresh once_cell v1.21.4
+       Fresh aho-corasick v1.1.5
+       Fresh heck v0.5.0
+       Fresh scopeguard v1.2.0
+       Fresh percent-encoding v2.3.2
+       Fresh log v0.4.35
+       Fresh utf_types v1.0.0
+       Fresh shlex v2.0.1
+       Fresh writeable v0.6.4
+       Fresh zmij v1.0.23
+       Fresh libc v0.2.191
+       Fresh regex-automata v0.4.18
+       Fresh hashbrown v0.16.1
+       Fresh lock_api v0.4.14
+       Fresh hashbrown v0.17.1
+       Fresh litemap v0.8.3
+       Fresh typenum v1.20.1
+       Fresh find-msvc-tools v0.1.15
+       Fresh utf8_iter v1.1.0
+       Fresh num-cmp v0.1.0
+       Fresh dyn-clone v1.0.20
+       Fresh bytecount v0.6.9
+       Fresh borrow-or-share v0.2.4
+       Fresh micromap v0.3.0
+       Fresh num-traits v0.2.19
+       Fresh serde_core v1.0.228
+       Fresh getrandom v0.3.4
+       Fresh zerocopy v0.8.63
+       Fresh parking_lot_core v0.9.12
+       Fresh cc v1.11.1
+       Fresh generic-array v0.14.7
+       Fresh regex v1.13.1
+       Fresh bit-vec v0.8.0
+       Fresh outref v0.5.2
+       Fresh vsimd v0.8.0
+       Fresh data-encoding v2.11.1
+       Fresh cpufeatures v0.2.17
+       Fresh time-core v0.1.9
+       Fresh num-conv v0.2.2
+       Fresh powerfmt v0.2.1
+       Fresh ryu-js v1.0.3
+       Fresh bit-vec v0.6.3
+       Fresh deranged v0.5.9
+       Fresh tinyvec v1.13.3
+       Fresh form_urlencoded v1.2.2
+       Fresh jsonschema-regex v0.55.1
+       Fresh nom v8.0.0
+       Fresh spin v0.9.9
+       Fresh syn v3.0.9
+       Fresh num-integer v0.1.47
+       Fresh num-complex v0.4.6
+       Fresh parking_lot v0.12.5
+       Fresh serde_json v1.0.151
+       Fresh semver v1.0.28
+       Fresh object v0.39.1
+       Fresh icu_normalizer_data v2.4.0
+       Fresh bit-set v0.8.0
+       Fresh block-buffer v0.10.4
+       Fresh crypto-common v0.1.7
+       Fresh icu_properties_data v2.4.0
+       Fresh uuid-simd v0.8.0
+       Fresh time-macros v0.2.32
+       Fresh bit-set v0.5.3
+       Fresh unicode-normalization v0.1.25
+       Fresh triomphe v0.1.17
+       Fresh lazy_static v1.5.1
+       Fresh arrayvec v0.7.8
+       Fresh iso8601 v0.6.6
+       Fresh regress v0.11.1
+       Fresh base64 v0.21.7
+       Fresh serde_path_to_error v0.1.20
+       Fresh ix-trace-rs v0.1.2 (https://github.com/agent-ix/ix-trace-rs?tag=v0.1.2#e29cc07f)
+       Fresh filament-walk v0.1.1 (https://github.com/agent-ix/filament-walk?tag=v0.1.1#6b37f032)
+       Fresh allocation-counter v0.8.1
+       Fresh serde_derive v1.0.228
+       Fresh synstructure v0.14.0
+       Fresh num-bigint v0.4.8
+       Fresh zerovec-derive v0.11.7
+       Fresh thiserror-impl v2.0.20
+       Fresh displaydoc v0.2.7
+       Fresh num-iter v0.1.46
+       Fresh ref-cast-impl v1.0.27
+       Fresh serde_derive_internals v0.29.1
+       Fresh strum_macros v0.28.0
+       Fresh ar_archive_writer v0.5.3
+       Fresh digest v0.10.7
+       Fresh fancy-regex v0.19.2
+       Fresh unicode-general-category v1.1.0
+       Fresh getrandom v0.4.3
+       Fresh quire-canonical-derive v0.3.0 (https://github.com/agent-ix/quire-canonical?tag=v0.3.1#2204c5c3)
+       Fresh time v0.3.55
+       Fresh fancy-regex v0.11.0
+       Fresh anyhow v1.0.104
+       Fresh bstr v1.13.1
+       Fresh same-file v1.0.6
+       Fresh indexmap v2.14.2
+       Fresh jsonschema-regex v0.56.0
+       Fresh ryu v1.0.23
+       Fresh either v1.19.0
+       Fresh libyaml-rs v0.3.0
+       Fresh zerofrom-derive v0.1.8
+       Fresh yoke-derive v0.8.4
+       Fresh thiserror v2.0.20
+       Fresh num-rational v0.4.2
+       Fresh serde v1.0.228
+       Fresh schemars_derive v0.8.22
+       Fresh ref-cast v1.0.27
+       Fresh strum v0.28.0
+       Fresh sha2 v0.10.9
+       Fresh uuid v1.29.1
+       Fresh crossbeam-utils v0.8.23
+       Fresh walkdir v2.5.0
+       Fresh globset v0.4.21
+       Fresh agent-ix-semantic-schema v0.3.0 (https://github.com/agent-ix/filament-core-data?branch=main#45a927b2)
+       Fresh zerofrom v0.1.8
+       Fresh num v0.4.3
+       Fresh ahash v0.8.12
+       Fresh fluent-uri v0.4.1
+       Fresh schemars v0.8.22
+       Fresh serde_tokenstream v0.2.3
+       Fresh email_address v0.2.9
+       Fresh quire-canonical v0.3.1 (https://github.com/agent-ix/quire-canonical?tag=v0.3.1#2204c5c3)
+       Fresh filament-exact v0.3.0 (https://github.com/agent-ix/filament-exact?tag=v0.3.0#086c11fc)
+       Fresh crossbeam-epoch v0.9.21
+       Fresh ix-cli-kit v0.1.0 (https://github.com/agent-ix/ix-cli-kit?tag=v0.1.0#7f3b58b6)
+       Fresh proc-macro2 v1.0.107
+       Fresh yaml_serde v0.10.7
+       Fresh yoke v0.8.4
+       Fresh fraction v0.17.0
+       Fresh typify-impl v0.7.0
+       Fresh psm v0.1.32
+       Fresh referencing v0.55.1
+       Fresh fraction v0.13.1
+       Fresh filament-semantic-value v0.1.5 (https://github.com/agent-ix/filament-semantic-value?tag=v0.1.5#f808f269)
+       Fresh crossbeam-deque v0.8.8
+       Fresh referencing v0.56.0
+       Fresh quote v1.0.47
+       Fresh zerovec v0.11.9
+       Fresh zerotrie v0.2.5
+       Fresh typify-macro v0.7.0
+       Fresh jsonschema-value v0.55.1
+       Fresh stacker v0.1.15
+       Fresh jsonschema-value v0.56.0
+       Fresh rayon-core v1.13.0
+       Fresh ignore v0.4.34
+       Fresh syn v2.0.119
+       Fresh tinystr v0.8.5
+       Fresh potential_utf v0.1.6
+       Fresh typify v0.7.0
+       Fresh jsonschema v0.55.1
+       Fresh serde_stacker v0.1.11
+       Fresh jsonschema v0.56.0
+       Fresh rayon v1.12.0
+       Fresh icu_locale_core v2.4.0
+       Fresh icu_collections v2.4.0
+       Fresh quire-rs v0.53.0 (https://github.com/agent-ix/quire-rs?tag=v0.53.0#ce172a7d)
+       Fresh icu_provider v2.4.0
+       Fresh icu_normalizer v2.4.0
+       Fresh icu_properties v2.4.0
+       Fresh filament-verification-contracts v0.2.1 (https://github.com/agent-ix/filament-verification-contracts?tag=v0.2.1#99942db3)
+       Fresh idna_adapter v1.2.2
+       Fresh idna v1.1.0
+       Fresh url v2.5.8
+       Fresh jsonschema v0.17.1
+       Dirty filament-contract-model v0.1.2 (/tmp/cargo-mutants-QSL-2347-source-shapes-TiZwRb.tmp/crates/filament-contract-model): the file `crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs` has changed (1795043140.124430797s, 11s after last build at 1795043129.111995114s)
+   Compiling filament-contract-model v0.1.2 (/tmp/cargo-mutants-QSL-2347-source-shapes-TiZwRb.tmp/crates/filament-contract-model)
+     Running `/home/peter/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/rustc --crate-name filament_contract_model --edition=2021 crates/filament-contract-model/src/lib.rs --error-format=json --json=diagnostic-rendered-ansi,artifacts,future-incompat --emit=dep-info,link -C embed-bitcode=no -C debuginfo=2 -C split-debuginfo=unpacked '--deny=clippy::undocumented_unsafe_blocks' --test --cfg 'feature="fault-injection"' --check-cfg 'cfg(docsrs,test)' --check-cfg 'cfg(feature, values("fault-injection", "fspec-conformance", "test-support"))' -C metadata=d0925518e27381fe -C extra-filename=-cc3a9ecbc8f0ef79 --out-dir /home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps -C incremental=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/incremental -L dependency=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps --extern allocation_counter=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/liballocation_counter-fe1bb7d9b19853c3.rlib --extern filament_exact=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libfilament_exact-4a0e15e429988686.rlib --extern filament_semantic_value=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libfilament_semantic_value-ce8d846832c53b7d.rlib --extern filament_verification_contracts=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libfilament_verification_contracts-ebc7d79d2007d2f0.rlib --extern filament_walk=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libfilament_walk-feab768ba2814f20.rlib --extern ix_trace_rs=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libix_trace_rs-2cbf00227d2159ef.so --extern jsonschema=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libjsonschema-e0fb827b85de5301.rlib --extern num_bigint=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libnum_bigint-c62b798037ceea66.rlib --extern num_integer=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libnum_integer-246a33865cd6b995.rlib --extern num_traits=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libnum_traits-36064a4faeb844e1.rlib --extern quire_canonical=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libquire_canonical-4c84e2fa4c5a7abe.rlib --extern serde=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libserde-756db8e834624e09.rlib --extern serde_json=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libserde_json-4d0781a1e340250b.rlib --extern serde_path_to_error=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libserde_path_to_error-7a21d8304ddcfbb4.rlib --extern serde_stacker=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libserde_stacker-4e01e97c30c7f84b.rlib --extern sha2=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libsha2-68689d707156b233.rlib --extern stacker=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libstacker-f94e924e4bded618.rlib --extern thiserror=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libthiserror-f2dac2a712ac0a25.rlib --extern unicode_ident=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libunicode_ident-262e14545144e7ad.rlib --extern unicode_normalization=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libunicode_normalization-a1af324940926a60.rlib -L native=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/build/psm-16198f9417ab108b/out`
+     Running `/home/peter/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/rustc --crate-name filament_contract_model --edition=2021 crates/filament-contract-model/src/lib.rs --error-format=json --json=diagnostic-rendered-ansi,artifacts,future-incompat --crate-type lib --emit=dep-info,metadata,link -C embed-bitcode=no -C debuginfo=2 -C split-debuginfo=unpacked '--deny=clippy::undocumented_unsafe_blocks' --cfg 'feature="fault-injection"' --check-cfg 'cfg(docsrs,test)' --check-cfg 'cfg(feature, values("fault-injection", "fspec-conformance", "test-support"))' -C metadata=e0cac3afa1077b80 -C extra-filename=-f9b93fa435ed148b --out-dir /home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps -C incremental=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/incremental -L dependency=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps --extern filament_exact=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libfilament_exact-4a0e15e429988686.rmeta --extern filament_semantic_value=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libfilament_semantic_value-ce8d846832c53b7d.rmeta --extern filament_verification_contracts=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libfilament_verification_contracts-ebc7d79d2007d2f0.rmeta --extern filament_walk=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libfilament_walk-feab768ba2814f20.rmeta --extern ix_trace_rs=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libix_trace_rs-2cbf00227d2159ef.so --extern jsonschema=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libjsonschema-e0fb827b85de5301.rmeta --extern num_bigint=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libnum_bigint-c62b798037ceea66.rmeta --extern num_integer=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libnum_integer-246a33865cd6b995.rmeta --extern num_traits=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libnum_traits-36064a4faeb844e1.rmeta --extern quire_canonical=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libquire_canonical-4c84e2fa4c5a7abe.rmeta --extern serde=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libserde-756db8e834624e09.rmeta --extern serde_json=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libserde_json-4d0781a1e340250b.rmeta --extern serde_path_to_error=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libserde_path_to_error-7a21d8304ddcfbb4.rmeta --extern serde_stacker=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libserde_stacker-4e01e97c30c7f84b.rmeta --extern sha2=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libsha2-68689d707156b233.rmeta --extern stacker=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libstacker-f94e924e4bded618.rmeta --extern thiserror=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libthiserror-f2dac2a712ac0a25.rmeta --extern unicode_ident=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libunicode_ident-262e14545144e7ad.rmeta --extern unicode_normalization=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libunicode_normalization-a1af324940926a60.rmeta -L native=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/build/psm-16198f9417ab108b/out`
+       Dirty filament-contract-ir v0.1.5 (/tmp/cargo-mutants-QSL-2347-source-shapes-TiZwRb.tmp): the dependency `filament-contract-model` was rebuilt
+   Compiling filament-contract-ir v0.1.5 (/tmp/cargo-mutants-QSL-2347-source-shapes-TiZwRb.tmp)
+     Running `/home/peter/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/rustc --crate-name filament_contract_ir --edition=2021 src/lib.rs --error-format=json --json=diagnostic-rendered-ansi,artifacts,future-incompat --crate-type lib --emit=dep-info,metadata,link -C embed-bitcode=no -C debuginfo=2 -C split-debuginfo=unpacked '--deny=clippy::undocumented_unsafe_blocks' --cfg 'feature="conformance-cli"' --cfg 'feature="default"' --check-cfg 'cfg(docsrs,test)' --check-cfg 'cfg(feature, values("conformance-cli", "default", "test-support"))' -C metadata=d0c6118f1e6b67d8 -C extra-filename=-605d83fceeaf9b4e --out-dir /home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps -C incremental=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/incremental -L dependency=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps --extern filament_contract_model=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libfilament_contract_model-f9b93fa435ed148b.rmeta --extern ix_cli_kit=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libix_cli_kit-d00a0ccae47cf921.rmeta --extern ix_trace_rs=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libix_trace_rs-2cbf00227d2159ef.so --extern serde=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libserde-756db8e834624e09.rmeta --extern serde_json=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libserde_json-4d0781a1e340250b.rmeta --extern thiserror=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libthiserror-f2dac2a712ac0a25.rmeta -L native=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/build/psm-16198f9417ab108b/out`
+     Running `/home/peter/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/rustc --crate-name typed_terms_deserialize --edition=2021 crates/filament-contract-model/tests/typed_terms_deserialize.rs --error-format=json --json=diagnostic-rendered-ansi,artifacts,future-incompat --emit=dep-info,link -C embed-bitcode=no -C debuginfo=2 -C split-debuginfo=unpacked '--deny=clippy::undocumented_unsafe_blocks' --test --cfg 'feature="fault-injection"' --check-cfg 'cfg(docsrs,test)' --check-cfg 'cfg(feature, values("fault-injection", "fspec-conformance", "test-support"))' -C metadata=9feef0983f75c328 -C extra-filename=-28bb20efec03de9a --out-dir /home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps -C incremental=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/incremental -L dependency=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps --extern allocation_counter=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/liballocation_counter-fe1bb7d9b19853c3.rlib --extern filament_contract_model=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libfilament_contract_model-f9b93fa435ed148b.rlib --extern filament_exact=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libfilament_exact-4a0e15e429988686.rlib --extern filament_semantic_value=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libfilament_semantic_value-ce8d846832c53b7d.rlib --extern filament_verification_contracts=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libfilament_verification_contracts-ebc7d79d2007d2f0.rlib --extern filament_walk=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libfilament_walk-feab768ba2814f20.rlib --extern ix_trace_rs=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libix_trace_rs-2cbf00227d2159ef.so --extern jsonschema=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libjsonschema-e0fb827b85de5301.rlib --extern num_bigint=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libnum_bigint-c62b798037ceea66.rlib --extern num_integer=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libnum_integer-246a33865cd6b995.rlib --extern num_traits=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libnum_traits-36064a4faeb844e1.rlib --extern quire_canonical=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libquire_canonical-4c84e2fa4c5a7abe.rlib --extern serde=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libserde-756db8e834624e09.rlib --extern serde_json=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libserde_json-4d0781a1e340250b.rlib --extern serde_path_to_error=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libserde_path_to_error-7a21d8304ddcfbb4.rlib --extern serde_stacker=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libserde_stacker-4e01e97c30c7f84b.rlib --extern sha2=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libsha2-68689d707156b233.rlib --extern stacker=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libstacker-f94e924e4bded618.rlib --extern thiserror=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libthiserror-f2dac2a712ac0a25.rlib --extern unicode_ident=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libunicode_ident-262e14545144e7ad.rlib --extern unicode_normalization=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libunicode_normalization-a1af324940926a60.rlib -L native=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/build/psm-16198f9417ab108b/out`
+     Running `/home/peter/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/rustc --crate-name typed_operation_fixture --edition=2021 crates/filament-contract-model/tests/typed_operation_fixture.rs --error-format=json --json=diagnostic-rendered-ansi,artifacts,future-incompat --emit=dep-info,link -C embed-bitcode=no -C debuginfo=2 -C split-debuginfo=unpacked '--deny=clippy::undocumented_unsafe_blocks' --test --cfg 'feature="fault-injection"' --check-cfg 'cfg(docsrs,test)' --check-cfg 'cfg(feature, values("fault-injection", "fspec-conformance", "test-support"))' -C metadata=d2f0bcbbb4841e2e -C extra-filename=-365a5f8380b80ecb --out-dir /home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps -C incremental=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/incremental -L dependency=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps --extern allocation_counter=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/liballocation_counter-fe1bb7d9b19853c3.rlib --extern filament_contract_model=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libfilament_contract_model-f9b93fa435ed148b.rlib --extern filament_exact=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libfilament_exact-4a0e15e429988686.rlib --extern filament_semantic_value=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libfilament_semantic_value-ce8d846832c53b7d.rlib --extern filament_verification_contracts=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libfilament_verification_contracts-ebc7d79d2007d2f0.rlib --extern filament_walk=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libfilament_walk-feab768ba2814f20.rlib --extern ix_trace_rs=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libix_trace_rs-2cbf00227d2159ef.so --extern jsonschema=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libjsonschema-e0fb827b85de5301.rlib --extern num_bigint=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libnum_bigint-c62b798037ceea66.rlib --extern num_integer=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libnum_integer-246a33865cd6b995.rlib --extern num_traits=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libnum_traits-36064a4faeb844e1.rlib --extern quire_canonical=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libquire_canonical-4c84e2fa4c5a7abe.rlib --extern serde=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libserde-756db8e834624e09.rlib --extern serde_json=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libserde_json-4d0781a1e340250b.rlib --extern serde_path_to_error=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libserde_path_to_error-7a21d8304ddcfbb4.rlib --extern serde_stacker=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libserde_stacker-4e01e97c30c7f84b.rlib --extern sha2=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libsha2-68689d707156b233.rlib --extern stacker=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libstacker-f94e924e4bded618.rlib --extern thiserror=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libthiserror-f2dac2a712ac0a25.rlib --extern unicode_ident=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libunicode_ident-262e14545144e7ad.rlib --extern unicode_normalization=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libunicode_normalization-a1af324940926a60.rlib -L native=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/build/psm-16198f9417ab108b/out`
+     Running `/home/peter/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/rustc --crate-name it --edition=2021 tests/it/main.rs --error-format=json --json=diagnostic-rendered-ansi,artifacts,future-incompat --emit=dep-info,link -C embed-bitcode=no -C debuginfo=2 -C split-debuginfo=unpacked '--deny=clippy::undocumented_unsafe_blocks' --test --cfg 'feature="conformance-cli"' --cfg 'feature="default"' --check-cfg 'cfg(docsrs,test)' --check-cfg 'cfg(feature, values("conformance-cli", "default", "test-support"))' -C metadata=b26b30ea24135133 -C extra-filename=-a9ddd37f707f7e6a --out-dir /home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps -C incremental=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/incremental -L dependency=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps --extern allocation_counter=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/liballocation_counter-fe1bb7d9b19853c3.rlib --extern filament_contract_ir=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libfilament_contract_ir-605d83fceeaf9b4e.rlib --extern filament_contract_model=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libfilament_contract_model-f9b93fa435ed148b.rlib --extern filament_exact=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libfilament_exact-4a0e15e429988686.rlib --extern filament_verification_contracts=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libfilament_verification_contracts-ebc7d79d2007d2f0.rlib --extern ix_cli_kit=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libix_cli_kit-d00a0ccae47cf921.rlib --extern ix_trace_rs=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libix_trace_rs-2cbf00227d2159ef.so --extern jsonschema=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libjsonschema-e0fb827b85de5301.rlib --extern quire_canonical=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libquire_canonical-4c84e2fa4c5a7abe.rlib --extern quire_rs=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libquire_rs-1d2cd534fe72e4cf.rlib --extern serde=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libserde-756db8e834624e09.rlib --extern serde_json=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libserde_json-4d0781a1e340250b.rlib --extern sha2=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libsha2-68689d707156b233.rlib --extern syn=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libsyn-512fe45db4699d45.rlib --extern thiserror=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libthiserror-f2dac2a712ac0a25.rlib -L native=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/build/psm-16198f9417ab108b/out`
+     Running `/home/peter/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/rustc --crate-name source_obligation_public --edition=2021 crates/filament-contract-model/tests/source_obligation_public.rs --error-format=json --json=diagnostic-rendered-ansi,artifacts,future-incompat --emit=dep-info,link -C embed-bitcode=no -C debuginfo=2 -C split-debuginfo=unpacked '--deny=clippy::undocumented_unsafe_blocks' --test --cfg 'feature="fault-injection"' --check-cfg 'cfg(docsrs,test)' --check-cfg 'cfg(feature, values("fault-injection", "fspec-conformance", "test-support"))' -C metadata=1b983cd68a76f7f9 -C extra-filename=-7cfa850f87fed123 --out-dir /home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps -C incremental=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/incremental -L dependency=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps --extern allocation_counter=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/liballocation_counter-fe1bb7d9b19853c3.rlib --extern filament_contract_model=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libfilament_contract_model-f9b93fa435ed148b.rlib --extern filament_exact=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libfilament_exact-4a0e15e429988686.rlib --extern filament_semantic_value=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libfilament_semantic_value-ce8d846832c53b7d.rlib --extern filament_verification_contracts=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libfilament_verification_contracts-ebc7d79d2007d2f0.rlib --extern filament_walk=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libfilament_walk-feab768ba2814f20.rlib --extern ix_trace_rs=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libix_trace_rs-2cbf00227d2159ef.so --extern jsonschema=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libjsonschema-e0fb827b85de5301.rlib --extern num_bigint=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libnum_bigint-c62b798037ceea66.rlib --extern num_integer=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libnum_integer-246a33865cd6b995.rlib --extern num_traits=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libnum_traits-36064a4faeb844e1.rlib --extern quire_canonical=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libquire_canonical-4c84e2fa4c5a7abe.rlib --extern serde=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libserde-756db8e834624e09.rlib --extern serde_json=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libserde_json-4d0781a1e340250b.rlib --extern serde_path_to_error=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libserde_path_to_error-7a21d8304ddcfbb4.rlib --extern serde_stacker=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libserde_stacker-4e01e97c30c7f84b.rlib --extern sha2=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libsha2-68689d707156b233.rlib --extern stacker=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libstacker-f94e924e4bded618.rlib --extern thiserror=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libthiserror-f2dac2a712ac0a25.rlib --extern unicode_ident=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libunicode_ident-262e14545144e7ad.rlib --extern unicode_normalization=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libunicode_normalization-a1af324940926a60.rlib -L native=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/build/psm-16198f9417ab108b/out`
+     Running `/home/peter/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/rustc --crate-name temporal_binding_public --edition=2021 crates/filament-contract-model/tests/temporal_binding_public.rs --error-format=json --json=diagnostic-rendered-ansi,artifacts,future-incompat --emit=dep-info,link -C embed-bitcode=no -C debuginfo=2 -C split-debuginfo=unpacked '--deny=clippy::undocumented_unsafe_blocks' --test --cfg 'feature="fault-injection"' --check-cfg 'cfg(docsrs,test)' --check-cfg 'cfg(feature, values("fault-injection", "fspec-conformance", "test-support"))' -C metadata=611f58560a80c320 -C extra-filename=-65aa6a4e1bc80396 --out-dir /home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps -C incremental=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/incremental -L dependency=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps --extern allocation_counter=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/liballocation_counter-fe1bb7d9b19853c3.rlib --extern filament_contract_model=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libfilament_contract_model-f9b93fa435ed148b.rlib --extern filament_exact=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libfilament_exact-4a0e15e429988686.rlib --extern filament_semantic_value=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libfilament_semantic_value-ce8d846832c53b7d.rlib --extern filament_verification_contracts=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libfilament_verification_contracts-ebc7d79d2007d2f0.rlib --extern filament_walk=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libfilament_walk-feab768ba2814f20.rlib --extern ix_trace_rs=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libix_trace_rs-2cbf00227d2159ef.so --extern jsonschema=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libjsonschema-e0fb827b85de5301.rlib --extern num_bigint=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libnum_bigint-c62b798037ceea66.rlib --extern num_integer=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libnum_integer-246a33865cd6b995.rlib --extern num_traits=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libnum_traits-36064a4faeb844e1.rlib --extern quire_canonical=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libquire_canonical-4c84e2fa4c5a7abe.rlib --extern serde=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libserde-756db8e834624e09.rlib --extern serde_json=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libserde_json-4d0781a1e340250b.rlib --extern serde_path_to_error=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libserde_path_to_error-7a21d8304ddcfbb4.rlib --extern serde_stacker=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libserde_stacker-4e01e97c30c7f84b.rlib --extern sha2=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libsha2-68689d707156b233.rlib --extern stacker=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libstacker-f94e924e4bded618.rlib --extern thiserror=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libthiserror-f2dac2a712ac0a25.rlib --extern unicode_ident=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libunicode_ident-262e14545144e7ad.rlib --extern unicode_normalization=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libunicode_normalization-a1af324940926a60.rlib -L native=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/build/psm-16198f9417ab108b/out`
+     Running `/home/peter/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/rustc --crate-name complete_witness_public --edition=2021 crates/filament-contract-model/tests/complete_witness_public.rs --error-format=json --json=diagnostic-rendered-ansi,artifacts,future-incompat --emit=dep-info,link -C embed-bitcode=no -C debuginfo=2 -C split-debuginfo=unpacked '--deny=clippy::undocumented_unsafe_blocks' --test --cfg 'feature="fault-injection"' --check-cfg 'cfg(docsrs,test)' --check-cfg 'cfg(feature, values("fault-injection", "fspec-conformance", "test-support"))' -C metadata=f4b794f5abfcbd3d -C extra-filename=-0baccf1b12271a14 --out-dir /home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps -C incremental=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/incremental -L dependency=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps --extern allocation_counter=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/liballocation_counter-fe1bb7d9b19853c3.rlib --extern filament_contract_model=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libfilament_contract_model-f9b93fa435ed148b.rlib --extern filament_exact=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libfilament_exact-4a0e15e429988686.rlib --extern filament_semantic_value=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libfilament_semantic_value-ce8d846832c53b7d.rlib --extern filament_verification_contracts=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libfilament_verification_contracts-ebc7d79d2007d2f0.rlib --extern filament_walk=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libfilament_walk-feab768ba2814f20.rlib --extern ix_trace_rs=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libix_trace_rs-2cbf00227d2159ef.so --extern jsonschema=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libjsonschema-e0fb827b85de5301.rlib --extern num_bigint=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libnum_bigint-c62b798037ceea66.rlib --extern num_integer=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libnum_integer-246a33865cd6b995.rlib --extern num_traits=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libnum_traits-36064a4faeb844e1.rlib --extern quire_canonical=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libquire_canonical-4c84e2fa4c5a7abe.rlib --extern serde=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libserde-756db8e834624e09.rlib --extern serde_json=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libserde_json-4d0781a1e340250b.rlib --extern serde_path_to_error=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libserde_path_to_error-7a21d8304ddcfbb4.rlib --extern serde_stacker=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libserde_stacker-4e01e97c30c7f84b.rlib --extern sha2=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libsha2-68689d707156b233.rlib --extern stacker=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libstacker-f94e924e4bded618.rlib --extern thiserror=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libthiserror-f2dac2a712ac0a25.rlib --extern unicode_ident=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libunicode_ident-262e14545144e7ad.rlib --extern unicode_normalization=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libunicode_normalization-a1af324940926a60.rlib -L native=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/build/psm-16198f9417ab108b/out`
+     Running `/home/peter/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/rustc --crate-name filament_contract_corpus_generator --edition=2021 src/bin/filament-contract-corpus-generator.rs --error-format=json --json=diagnostic-rendered-ansi,artifacts,future-incompat --emit=dep-info,link -C embed-bitcode=no -C debuginfo=2 -C split-debuginfo=unpacked '--deny=clippy::undocumented_unsafe_blocks' --test --cfg 'feature="conformance-cli"' --cfg 'feature="default"' --check-cfg 'cfg(docsrs,test)' --check-cfg 'cfg(feature, values("conformance-cli", "default", "test-support"))' -C metadata=83fab0301c25fd07 -C extra-filename=-acab65de085f17cd --out-dir /home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps -C incremental=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/incremental -L dependency=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps --extern allocation_counter=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/liballocation_counter-fe1bb7d9b19853c3.rlib --extern filament_contract_ir=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libfilament_contract_ir-605d83fceeaf9b4e.rlib --extern filament_contract_model=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libfilament_contract_model-f9b93fa435ed148b.rlib --extern filament_exact=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libfilament_exact-4a0e15e429988686.rlib --extern filament_verification_contracts=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libfilament_verification_contracts-ebc7d79d2007d2f0.rlib --extern ix_cli_kit=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libix_cli_kit-d00a0ccae47cf921.rlib --extern ix_trace_rs=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libix_trace_rs-2cbf00227d2159ef.so --extern jsonschema=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libjsonschema-e0fb827b85de5301.rlib --extern quire_canonical=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libquire_canonical-4c84e2fa4c5a7abe.rlib --extern quire_rs=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libquire_rs-1d2cd534fe72e4cf.rlib --extern serde=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libserde-756db8e834624e09.rlib --extern serde_json=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libserde_json-4d0781a1e340250b.rlib --extern sha2=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libsha2-68689d707156b233.rlib --extern syn=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libsyn-512fe45db4699d45.rlib --extern thiserror=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libthiserror-f2dac2a712ac0a25.rlib -L native=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/build/psm-16198f9417ab108b/out`
+     Running `/home/peter/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/rustc --crate-name filament_contract_corpus_generator --edition=2021 src/bin/filament-contract-corpus-generator.rs --error-format=json --json=diagnostic-rendered-ansi,artifacts,future-incompat --crate-type bin --emit=dep-info,link -C embed-bitcode=no -C debuginfo=2 -C split-debuginfo=unpacked '--deny=clippy::undocumented_unsafe_blocks' --cfg 'feature="conformance-cli"' --cfg 'feature="default"' --check-cfg 'cfg(docsrs,test)' --check-cfg 'cfg(feature, values("conformance-cli", "default", "test-support"))' -C metadata=663ef0c79c7995a1 -C extra-filename=-aa229cc6242f2f69 --out-dir /home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps -C incremental=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/incremental -L dependency=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps --extern filament_contract_ir=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libfilament_contract_ir-605d83fceeaf9b4e.rlib --extern filament_contract_model=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libfilament_contract_model-f9b93fa435ed148b.rlib --extern ix_cli_kit=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libix_cli_kit-d00a0ccae47cf921.rlib --extern ix_trace_rs=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libix_trace_rs-2cbf00227d2159ef.so --extern serde=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libserde-756db8e834624e09.rlib --extern serde_json=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libserde_json-4d0781a1e340250b.rlib --extern thiserror=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libthiserror-f2dac2a712ac0a25.rlib -L native=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/build/psm-16198f9417ab108b/out`
+     Running `/home/peter/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/rustc --crate-name filament_contract_conformance --edition=2021 src/bin/filament-contract-conformance.rs --error-format=json --json=diagnostic-rendered-ansi,artifacts,future-incompat --crate-type bin --emit=dep-info,link -C embed-bitcode=no -C debuginfo=2 -C split-debuginfo=unpacked '--deny=clippy::undocumented_unsafe_blocks' --cfg 'feature="conformance-cli"' --cfg 'feature="default"' --check-cfg 'cfg(docsrs,test)' --check-cfg 'cfg(feature, values("conformance-cli", "default", "test-support"))' -C metadata=934f8fd3d8618f35 -C extra-filename=-75fcff2907ef8d07 --out-dir /home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps -C incremental=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/incremental -L dependency=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps --extern filament_contract_ir=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libfilament_contract_ir-605d83fceeaf9b4e.rlib --extern filament_contract_model=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libfilament_contract_model-f9b93fa435ed148b.rlib --extern ix_cli_kit=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libix_cli_kit-d00a0ccae47cf921.rlib --extern ix_trace_rs=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libix_trace_rs-2cbf00227d2159ef.so --extern serde=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libserde-756db8e834624e09.rlib --extern serde_json=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libserde_json-4d0781a1e340250b.rlib --extern thiserror=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libthiserror-f2dac2a712ac0a25.rlib -L native=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/build/psm-16198f9417ab108b/out`
+     Running `/home/peter/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/rustc --crate-name filament_contract_ir --edition=2021 src/lib.rs --error-format=json --json=diagnostic-rendered-ansi,artifacts,future-incompat --emit=dep-info,link -C embed-bitcode=no -C debuginfo=2 -C split-debuginfo=unpacked '--deny=clippy::undocumented_unsafe_blocks' --test --cfg 'feature="conformance-cli"' --cfg 'feature="default"' --check-cfg 'cfg(docsrs,test)' --check-cfg 'cfg(feature, values("conformance-cli", "default", "test-support"))' -C metadata=2f8afd7d339107e4 -C extra-filename=-50ab2347102f8c0e --out-dir /home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps -C incremental=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/incremental -L dependency=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps --extern allocation_counter=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/liballocation_counter-fe1bb7d9b19853c3.rlib --extern filament_contract_model=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libfilament_contract_model-f9b93fa435ed148b.rlib --extern filament_exact=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libfilament_exact-4a0e15e429988686.rlib --extern filament_verification_contracts=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libfilament_verification_contracts-ebc7d79d2007d2f0.rlib --extern ix_cli_kit=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libix_cli_kit-d00a0ccae47cf921.rlib --extern ix_trace_rs=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libix_trace_rs-2cbf00227d2159ef.so --extern jsonschema=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libjsonschema-e0fb827b85de5301.rlib --extern quire_canonical=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libquire_canonical-4c84e2fa4c5a7abe.rlib --extern quire_rs=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libquire_rs-1d2cd534fe72e4cf.rlib --extern serde=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libserde-756db8e834624e09.rlib --extern serde_json=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libserde_json-4d0781a1e340250b.rlib --extern sha2=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libsha2-68689d707156b233.rlib --extern syn=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libsyn-512fe45db4699d45.rlib --extern thiserror=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libthiserror-f2dac2a712ac0a25.rlib -L native=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/build/psm-16198f9417ab108b/out`
+     Running `/home/peter/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/rustc --crate-name filament_contract_conformance --edition=2021 src/bin/filament-contract-conformance.rs --error-format=json --json=diagnostic-rendered-ansi,artifacts,future-incompat --emit=dep-info,link -C embed-bitcode=no -C debuginfo=2 -C split-debuginfo=unpacked '--deny=clippy::undocumented_unsafe_blocks' --test --cfg 'feature="conformance-cli"' --cfg 'feature="default"' --check-cfg 'cfg(docsrs,test)' --check-cfg 'cfg(feature, values("conformance-cli", "default", "test-support"))' -C metadata=3e7e9e83cef09f25 -C extra-filename=-9f5e8008aae78187 --out-dir /home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps -C incremental=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/incremental -L dependency=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps --extern allocation_counter=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/liballocation_counter-fe1bb7d9b19853c3.rlib --extern filament_contract_ir=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libfilament_contract_ir-605d83fceeaf9b4e.rlib --extern filament_contract_model=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libfilament_contract_model-f9b93fa435ed148b.rlib --extern filament_exact=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libfilament_exact-4a0e15e429988686.rlib --extern filament_verification_contracts=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libfilament_verification_contracts-ebc7d79d2007d2f0.rlib --extern ix_cli_kit=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libix_cli_kit-d00a0ccae47cf921.rlib --extern ix_trace_rs=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libix_trace_rs-2cbf00227d2159ef.so --extern jsonschema=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libjsonschema-e0fb827b85de5301.rlib --extern quire_canonical=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libquire_canonical-4c84e2fa4c5a7abe.rlib --extern quire_rs=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libquire_rs-1d2cd534fe72e4cf.rlib --extern serde=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libserde-756db8e834624e09.rlib --extern serde_json=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libserde_json-4d0781a1e340250b.rlib --extern sha2=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libsha2-68689d707156b233.rlib --extern syn=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libsyn-512fe45db4699d45.rlib --extern thiserror=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libthiserror-f2dac2a712ac0a25.rlib -L native=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/build/psm-16198f9417ab108b/out`
+     Running `/home/peter/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/rustc --crate-name read_storage_alloc --edition=2021 tests/read_storage_alloc.rs --error-format=json --json=diagnostic-rendered-ansi,artifacts,future-incompat --emit=dep-info,link -C embed-bitcode=no -C debuginfo=2 -C split-debuginfo=unpacked '--deny=clippy::undocumented_unsafe_blocks' --test --cfg 'feature="conformance-cli"' --cfg 'feature="default"' --check-cfg 'cfg(docsrs,test)' --check-cfg 'cfg(feature, values("conformance-cli", "default", "test-support"))' -C metadata=a446a5a2222eedfd -C extra-filename=-38183228607e3fa4 --out-dir /home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps -C incremental=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/incremental -L dependency=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps --extern allocation_counter=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/liballocation_counter-fe1bb7d9b19853c3.rlib --extern filament_contract_ir=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libfilament_contract_ir-605d83fceeaf9b4e.rlib --extern filament_contract_model=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libfilament_contract_model-f9b93fa435ed148b.rlib --extern filament_exact=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libfilament_exact-4a0e15e429988686.rlib --extern filament_verification_contracts=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libfilament_verification_contracts-ebc7d79d2007d2f0.rlib --extern ix_cli_kit=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libix_cli_kit-d00a0ccae47cf921.rlib --extern ix_trace_rs=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libix_trace_rs-2cbf00227d2159ef.so --extern jsonschema=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libjsonschema-e0fb827b85de5301.rlib --extern quire_canonical=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libquire_canonical-4c84e2fa4c5a7abe.rlib --extern quire_rs=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libquire_rs-1d2cd534fe72e4cf.rlib --extern serde=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libserde-756db8e834624e09.rlib --extern serde_json=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libserde_json-4d0781a1e340250b.rlib --extern sha2=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libsha2-68689d707156b233.rlib --extern syn=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libsyn-512fe45db4699d45.rlib --extern thiserror=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/libthiserror-f2dac2a712ac0a25.rlib -L native=/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/build/psm-16198f9417ab108b/out`
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 8.61s
+  Executable `/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/filament_contract_ir-50ab2347102f8c0e`
+  Executable `/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/filament_contract_conformance-9f5e8008aae78187`
+  Executable `/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/filament_contract_corpus_generator-acab65de085f17cd`
+  Executable `/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/it-a9ddd37f707f7e6a`
+  Executable `/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/read_storage_alloc-38183228607e3fa4`
+  Executable `/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/filament_contract_model-cc3a9ecbc8f0ef79`
+  Executable `/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/complete_witness_public-0baccf1b12271a14`
+  Executable `/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/source_obligation_public-7cfa850f87fed123`
+  Executable `/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/temporal_binding_public-65aa6a4e1bc80396`
+  Executable `/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/typed_operation_fixture-365a5f8380b80ecb`
+  Executable `/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/typed_terms_deserialize-28bb20efec03de9a`
+
+*** result: Success
+
+*** /home/peter/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo test --verbose --package=filament-contract-model@0.1.2 --workspace --features=conformance-cli --test it checked_package_v2_source_objects
+       Fresh unicode-ident v1.0.24
+       Fresh itoa v1.0.18
+       Fresh version_check v0.9.5
+       Fresh autocfg v1.5.1
+       Fresh cfg-if v1.0.5
+       Fresh allocator-api2 v0.2.21
+       Fresh equivalent v1.0.3
+       Fresh foldhash v0.2.0
+       Fresh memchr v2.8.3
+       Fresh stable_deref_trait v1.2.1
+       Fresh regex-syntax v0.8.11
+       Fresh smallvec v1.16.5
+       Fresh once_cell v1.21.4
+       Fresh aho-corasick v1.1.5
+       Fresh heck v0.5.0
+       Fresh percent-encoding v2.3.2
+       Fresh scopeguard v1.2.0
+       Fresh log v0.4.35
+       Fresh utf_types v1.0.0
+       Fresh shlex v2.0.1
+       Fresh writeable v0.6.4
+       Fresh zmij v1.0.23
+       Fresh libc v0.2.191
+       Fresh regex-automata v0.4.18
+       Fresh hashbrown v0.17.1
+       Fresh hashbrown v0.16.1
+       Fresh lock_api v0.4.14
+       Fresh litemap v0.8.3
+       Fresh typenum v1.20.1
+       Fresh find-msvc-tools v0.1.15
+       Fresh utf8_iter v1.1.0
+       Fresh bytecount v0.6.9
+       Fresh borrow-or-share v0.2.4
+       Fresh dyn-clone v1.0.20
+       Fresh num-cmp v0.1.0
+       Fresh bit-vec v0.8.0
+       Fresh syn v3.0.9
+       Fresh num-traits v0.2.19
+       Fresh serde_core v1.0.228
+       Fresh zerocopy v0.8.63
+       Fresh getrandom v0.3.4
+       Fresh parking_lot_core v0.9.12
+       Fresh cc v1.11.1
+       Fresh generic-array v0.14.7
+       Fresh regex v1.13.1
+       Fresh micromap v0.3.0
+       Fresh bit-set v0.8.0
+       Fresh outref v0.5.2
+       Fresh vsimd v0.8.0
+       Fresh time-core v0.1.9
+       Fresh cpufeatures v0.2.17
+       Fresh num-conv v0.2.2
+       Fresh data-encoding v2.11.1
+       Fresh ryu-js v1.0.3
+       Fresh tinyvec v1.13.3
+       Fresh bit-vec v0.6.3
+       Fresh deranged v0.5.9
+       Fresh powerfmt v0.2.1
+       Fresh serde_derive v1.0.228
+       Fresh synstructure v0.14.0
+       Fresh num-integer v0.1.47
+       Fresh zerovec-derive v0.11.7
+       Fresh thiserror-impl v2.0.20
+       Fresh displaydoc v0.2.7
+       Fresh num-complex v0.4.6
+       Fresh serde_derive_internals v0.29.1
+       Fresh ref-cast-impl v1.0.27
+       Fresh serde_json v1.0.151
+       Fresh parking_lot v0.12.5
+       Fresh object v0.39.1
+       Fresh semver v1.0.28
+       Fresh icu_normalizer_data v2.4.0
+       Fresh strum_macros v0.28.0
+       Fresh block-buffer v0.10.4
+       Fresh crypto-common v0.1.7
+       Fresh icu_properties_data v2.4.0
+       Fresh fancy-regex v0.19.2
+       Fresh uuid-simd v0.8.0
+       Fresh time-macros v0.2.32
+       Fresh quire-canonical-derive v0.3.0 (https://github.com/agent-ix/quire-canonical?tag=v0.3.1#2204c5c3)
+       Fresh unicode-normalization v0.1.25
+       Fresh bit-set v0.5.3
+       Fresh form_urlencoded v1.2.2
+       Fresh jsonschema-regex v0.55.1
+       Fresh nom v8.0.0
+       Fresh zerofrom-derive v0.1.8
+       Fresh yoke-derive v0.8.4
+       Fresh num-bigint v0.4.8
+       Fresh thiserror v2.0.20
+       Fresh num-iter v0.1.46
+       Fresh serde v1.0.228
+       Fresh ref-cast v1.0.27
+       Fresh schemars_derive v0.8.22
+       Fresh ar_archive_writer v0.5.3
+       Fresh unicode-general-category v1.1.0
+       Fresh strum v0.28.0
+       Fresh digest v0.10.7
+       Fresh getrandom v0.4.3
+       Fresh time v0.3.55
+       Fresh crossbeam-utils v0.8.23
+       Fresh arrayvec v0.7.8
+       Fresh lazy_static v1.5.1
+       Fresh spin v0.9.9
+       Fresh triomphe v0.1.17
+       Fresh fancy-regex v0.11.0
+       Fresh anyhow v1.0.104
+       Fresh iso8601 v0.6.6
+       Fresh regress v0.11.1
+       Fresh base64 v0.21.7
+       Fresh serde_path_to_error v0.1.20
+       Fresh filament-walk v0.1.1 (https://github.com/agent-ix/filament-walk?tag=v0.1.1#6b37f032)
+       Fresh ix-trace-rs v0.1.2 (https://github.com/agent-ix/ix-trace-rs?tag=v0.1.2#e29cc07f)
+       Fresh bstr v1.13.1
+       Fresh zerofrom v0.1.8
+       Fresh num-rational v0.4.2
+       Fresh ahash v0.8.12
+       Fresh schemars v0.8.22
+       Fresh fluent-uri v0.4.1
+       Fresh serde_tokenstream v0.2.3
+       Fresh email_address v0.2.9
+       Fresh sha2 v0.10.9
+       Fresh uuid v1.29.1
+       Fresh crossbeam-epoch v0.9.21
+       Fresh filament-exact v0.3.0 (https://github.com/agent-ix/filament-exact?tag=v0.3.0#086c11fc)
+       Fresh ix-cli-kit v0.1.0 (https://github.com/agent-ix/ix-cli-kit?tag=v0.1.0#7f3b58b6)
+       Fresh same-file v1.0.6
+       Fresh globset v0.4.21
+       Fresh indexmap v2.14.2
+       Fresh jsonschema-regex v0.56.0
+       Fresh ryu v1.0.23
+       Fresh either v1.19.0
+       Fresh libyaml-rs v0.3.0
+       Fresh agent-ix-semantic-schema v0.3.0 (https://github.com/agent-ix/filament-core-data?branch=main#45a927b2)
+       Fresh allocation-counter v0.8.1
+       Fresh yoke v0.8.4
+       Fresh num v0.4.3
+       Fresh typify-impl v0.7.0
+       Fresh quire-canonical v0.3.1 (https://github.com/agent-ix/quire-canonical?tag=v0.3.1#2204c5c3)
+       Fresh referencing v0.55.1
+       Fresh crossbeam-deque v0.8.8
+       Fresh walkdir v2.5.0
+       Fresh proc-macro2 v1.0.107
+       Fresh referencing v0.56.0
+       Fresh yaml_serde v0.10.7
+       Fresh zerovec v0.11.9
+       Fresh zerotrie v0.2.5
+       Fresh fraction v0.17.0
+       Fresh typify-macro v0.7.0
+       Fresh psm v0.1.32
+       Fresh fraction v0.13.1
+       Fresh filament-semantic-value v0.1.5 (https://github.com/agent-ix/filament-semantic-value?tag=v0.1.5#f808f269)
+       Fresh rayon-core v1.13.0
+       Fresh quote v1.0.47
+       Fresh ignore v0.4.34
+       Fresh tinystr v0.8.5
+       Fresh potential_utf v0.1.6
+       Fresh typify v0.7.0
+       Fresh jsonschema-value v0.55.1
+       Fresh stacker v0.1.15
+       Fresh jsonschema-value v0.56.0
+       Fresh rayon v1.12.0
+       Fresh syn v2.0.119
+       Fresh icu_locale_core v2.4.0
+       Fresh icu_collections v2.4.0
+       Fresh jsonschema v0.55.1
+       Fresh serde_stacker v0.1.11
+       Fresh jsonschema v0.56.0
+       Fresh icu_provider v2.4.0
+       Fresh quire-rs v0.53.0 (https://github.com/agent-ix/quire-rs?tag=v0.53.0#ce172a7d)
+       Fresh icu_normalizer v2.4.0
+       Fresh icu_properties v2.4.0
+       Fresh filament-verification-contracts v0.2.1 (https://github.com/agent-ix/filament-verification-contracts?tag=v0.2.1#99942db3)
+       Fresh idna_adapter v1.2.2
+       Fresh idna v1.1.0
+       Fresh url v2.5.8
+       Fresh jsonschema v0.17.1
+       Fresh filament-contract-model v0.1.2 (/tmp/cargo-mutants-QSL-2347-source-shapes-TiZwRb.tmp/crates/filament-contract-model)
+       Fresh filament-contract-ir v0.1.5 (/tmp/cargo-mutants-QSL-2347-source-shapes-TiZwRb.tmp)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.04s
+     Running `/home/peter/dev/worktrees/QSL-2347-source-shapes/target/debug/deps/it-a9ddd37f707f7e6a checked_package_v2_source_objects`
+
+running 41 tests
+test checked_package_v2_source_objects::missing_lock_entry_refuses_at_the_source_type_not_the_clause ... ok
+test checked_package_v2_source_objects::a_same_named_type_under_a_second_owner_of_one_authority_refuses ... ok
+test checked_package_v2_source_objects::a_supply_reports_the_first_reason_in_foreign_unknown_conflicting_missing_order ... ok
+test checked_package_v2_source_objects::a_complete_row_set_exposes_every_source_type_through_a_typed_read ... ok
+test checked_package_v2_source_objects::a_source_anchor_reads_its_joined_row_and_is_unavailable_without_one ... ok
+test checked_package_v2_source_objects::a_row_that_does_not_name_the_anchor_its_type_its_operation_or_authority_is_refused ... ok
+test checked_package_v2_source_objects::all_instances_and_lookup_over_a_source_population_admit ... ok
+test checked_package_v2_source_objects::a_package_without_a_source_object_reads_and_re_encodes_stably ... ok
+test checked_package_v2_source_objects::an_inheriting_candidate_joins_the_row_of_the_declaring_type ... FAILED
+test checked_package_v2_source_objects::a_source_row_names_its_own_owner_and_its_own_operations_body ... FAILED
+test checked_package_v2_source_objects::population_owner_and_declaration_defects_refuse_as_the_owner_join_does ... ok
+test checked_package_v2_source_objects::a_candidate_body_of_another_operation_is_refused_by_dispatch_validation ... FAILED
+test checked_package_v2_source_objects::source_population_reference_admits_self_typed_and_distinct_per_name ... ok
+test checked_package_v2_source_objects::source_effect_rows_admit_read_in_order_and_re_encode_identically ... ok
+test checked_package_v2_source_objects::rows_whose_members_or_supertypes_the_package_does_not_support_are_unknown ... ok
+test checked_package_v2_source_objects::source_object_with_one_field_and_one_operation_admits_as_a_source_node ... ok
+test checked_package_v2_source_objects::source_dispatch_table_reads_context_candidate_order_and_clause_identities ... ok
+test checked_package_v2_source_objects::source_and_model_rows_with_equal_documents_coexist_and_repeats_refuse ... ok
+test checked_package_v2_source_objects::protocol_clause_and_role_over_a_source_type_admit ... ok
+test checked_package_v2_source_objects::source_operation_bodies_admit_and_join_each_candidate_to_its_own_row ... FAILED
+test checked_package_v2_source_objects::source_and_model_rows_do_not_cross_and_model_rows_read_unchanged ... ok
+test checked_package_v2_source_objects::an_unbound_field_and_any_read_on_an_empty_source_type_refuse ... ok
+test checked_package_v2_source_objects::an_anchor_reads_only_the_body_function_of_its_own_type ... ok
+test checked_package_v2_source_objects::model_rows_read_unchanged_beside_a_source_row_and_a_source_type_needs_no_row ... ok
+test checked_package_v2_source_objects::malformed_source_operation_body_rows_refuse ... FAILED
+test checked_package_v2_source_objects::dispatch_rows_mixing_a_source_and_a_model_family_refuse ... ok
+test checked_package_v2_source_objects::source_type_is_never_joined_to_a_selected_model ... ok
+test checked_package_v2_source_objects::a_row_needs_an_effects_row_only_when_the_carrier_is_present ... ok
+test checked_package_v2_source_objects::the_three_clause_function_forms_admit_together_and_each_segment_is_an_identifier ... ok
+test checked_package_v2_source_objects::source_populations_key_by_name_and_a_repeated_name_refuses_as_a_repeated_declaration ... ok
+test checked_package_v2_source_objects::a_model_dispatch_table_reads_unchanged_beside_a_source_table ... ok
+test checked_package_v2_source_objects::a_clause_or_role_model_naming_a_source_node_that_is_no_object_type_refuses ... ok
+test checked_package_v2_source_objects::a_field_read_resolves_to_the_type_of_its_binding_inherited_fields_included ... ok
+test checked_package_v2_source_objects::the_source_object_read_refuses_a_candidate_outside_the_context_family ... ok
+test checked_package_v2_source_objects::source_clause_functions_of_another_form_operation_or_owner_refuse ... ok
+test checked_package_v2_source_objects::a_model_field_read_is_unchanged_beside_a_source_type ... ok
+test checked_package_v2_source_objects::source_candidate_selection_keys_refuse_unless_they_name_a_source_type_of_the_owner ... ok
+test checked_package_v2_source_objects::model_owned_clause_refusals_are_unchanged_beside_a_source_type ... ok
+test checked_package_v2_source_objects::edited_source_effect_rows_refuse_at_the_first_failing_check ... ok
+test checked_package_v2_source_objects::forbidden_population_positions_refuse_for_source_as_for_model_populations ... ok
+test checked_package_v2_source_objects::a_source_candidate_adds_work_independent_of_the_graph_size ... ok
+
+failures:
+
+---- checked_package_v2_source_objects::an_inheriting_candidate_joins_the_row_of_the_declaring_type stdout ----
+
+thread 'checked_package_v2_source_objects::an_inheriting_candidate_joins_the_row_of_the_declaring_type' (2511151) panicked at tests/it/checked_package_v2_source_objects.rs:99:18:
+expected admission, read Refused(CheckedPackageRefusal { code: InvalidPackage, loci: [CheckedPackageRefusalLocation { path: Some(JsonPointer("/operation_bodies/0/body/node")), source_region: None }], cause: Some(InvalidValue), locus: None, contract_version: None, document_pointer: None, extension_detail: None, protocol_detail: None, terminal_duplicate: None })
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- checked_package_v2_source_objects::a_source_row_names_its_own_owner_and_its_own_operations_body stdout ----
+
+thread 'checked_package_v2_source_objects::a_source_row_names_its_own_owner_and_its_own_operations_body' (2511147) panicked at tests/it/checked_package_v2_source_objects.rs:99:18:
+expected admission, read Refused(CheckedPackageRefusal { code: InvalidPackage, loci: [CheckedPackageRefusalLocation { path: Some(JsonPointer("/operation_bodies/0/body/node")), source_region: None }], cause: Some(InvalidValue), locus: None, contract_version: None, document_pointer: None, extension_detail: None, protocol_detail: None, terminal_duplicate: None })
+
+---- checked_package_v2_source_objects::a_candidate_body_of_another_operation_is_refused_by_dispatch_validation stdout ----
+
+thread 'checked_package_v2_source_objects::a_candidate_body_of_another_operation_is_refused_by_dispatch_validation' (2511135) panicked at tests/it/checked_package_v2_source_objects.rs:115:5:
+assertion `left == right` failed: candidate body of another operation: CheckedPackageRefusal { code: InvalidPackage, loci: [CheckedPackageRefusalLocation { path: Some(JsonPointer("/operation_bodies/0/body/node")), source_region: None }], cause: Some(InvalidValue), locus: None, contract_version: None, document_pointer: None, extension_detail: None, protocol_detail: None, terminal_duplicate: None }
+  left: Some("/operation_bodies/0/body/node")
+ right: Some("/checked_term_data/dispatch_tables/0/candidates/0/operation_body")
+
+---- checked_package_v2_source_objects::source_operation_bodies_admit_and_join_each_candidate_to_its_own_row stdout ----
+
+thread 'checked_package_v2_source_objects::source_operation_bodies_admit_and_join_each_candidate_to_its_own_row' (2511238) panicked at tests/it/checked_package_v2_source_objects.rs:99:18:
+expected admission, read Refused(CheckedPackageRefusal { code: InvalidPackage, loci: [CheckedPackageRefusalLocation { path: Some(JsonPointer("/operation_bodies/0/body/node")), source_region: None }], cause: Some(InvalidValue), locus: None, contract_version: None, document_pointer: None, extension_detail: None, protocol_detail: None, terminal_duplicate: None })
+
+---- checked_package_v2_source_objects::malformed_source_operation_body_rows_refuse stdout ----
+
+thread 'checked_package_v2_source_objects::malformed_source_operation_body_rows_refuse' (2511156) panicked at tests/it/checked_package_v2_source_objects.rs:115:5:
+assertion `left == right` failed: a function for an operation without a body: CheckedPackageRefusal { code: InvalidPackage, loci: [CheckedPackageRefusalLocation { path: Some(JsonPointer("/operation_bodies/0/body/node")), source_region: None }], cause: Some(InvalidValue), locus: None, contract_version: None, document_pointer: None, extension_detail: None, protocol_detail: None, terminal_duplicate: None }
+  left: Some("/operation_bodies/0/body/node")
+ right: Some("/operation_bodies/1/body")
+
+
+failures:
+    checked_package_v2_source_objects::a_candidate_body_of_another_operation_is_refused_by_dispatch_validation
+    checked_package_v2_source_objects::a_source_row_names_its_own_owner_and_its_own_operations_body
+    checked_package_v2_source_objects::an_inheriting_candidate_joins_the_row_of_the_declaring_type
+    checked_package_v2_source_objects::malformed_source_operation_body_rows_refuse
+    checked_package_v2_source_objects::source_operation_bodies_admit_and_join_each_candidate_to_its_own_row
+
+test result: FAILED. 36 passed; 5 failed; 0 ignored; 0 measured; 1487 filtered out; finished in 1.46s
+
+error: test failed, to rerun pass `-p filament-contract-ir --test it`
+
+*** result: Failure(101)

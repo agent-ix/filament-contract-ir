@@ -1,0 +1,834 @@
+[
+  {
+    "diff": "--- crates/filament-contract-model/src/checked_package/v2/dispatch_projection.rs\n+++ replace validate_checked_term_data -> Result<(), ValidationFailure> with Ok(())\n@@ -180,276 +180,17 @@\n pub(super) fn validate_checked_term_data<Body>(\n     data: &CheckedTermDataV2,\n     wire: &CheckedPackageWireV2<Body>,\n     kinds: &[CheckedNodeKind],\n     terms: &[CheckedTerm],\n     models: &RetainedModels,\n     meter: &mut WorkMeter,\n ) -> Result<(), ValidationFailure> {\n-    let root = Path::root().key(\"checked_term_data\");\n-    super::equality_projection::validate(data, wire, kinds, terms, meter)?;\n-    super::protocol_locations::validate(wire, kinds, terms, meter)?;\n-\n-    let nodes = &wire.semantic_graph.nodes;\n-    let index = node_positions(wire, meter)?;\n-    let source_occurrences = source_occurrences(wire, meter)?;\n-    let tables = root.key(\"dispatch_tables\");\n-    let mut source_types: Option<Vec<(&str, &str)>> = None;\n-    let repeated_table = stage_storage::first_repeat(\n-        meter,\n-        &data_site(0, tables),\n-        data.dispatch_tables\n-            .iter()\n-            .map(|table| (&table.application, &table.occurrence)),\n-    )?;\n-    for (row_index, table) in data.dispatch_tables.iter().enumerate() {\n-        let row = tables.index(row_index);\n-        stage_storage::work(meter, &data_site(row_index, row), 1)?;\n-        if repeated_table == Some(row_index) {\n-            return Err(conflicting(meter, row_index, row));\n-        }\n-        let Some(application_index) = position_of(&index, &table.application) else {\n-            return Err(invalid(meter, row_index, row.key(\"application\")));\n-        };\n-        let Some(application_node) = nodes.get(application_index) else {\n-            return Err(invalid(meter, row_index, row.key(\"application\")));\n-        };\n-        if table.application.package.as_ref() != wire.name.as_ref()\n-            || kinds.get(application_index)\n-                != Some(&CheckedNodeKind::Expression(ExpressionForm::Call))\n-        {\n-            return Err(invalid(meter, row_index, row.key(\"application\")));\n-        }\n-        if !application_node.occurrences.contains(&table.occurrence)\n-            || source_occurrences\n-                .binary_search(&(\n-                    &table.application,\n-                    &table.occurrence.role,\n-                    table.occurrence.ordinal,\n-                ))\n-                .is_err()\n-        {\n-            return Err(invalid(meter, row_index, row.key(\"occurrence\")));\n-        }\n-        let Some(CheckedTerm::Application {\n-            operator: ApplicationOperator::Call,\n-            operation,\n-            ..\n-        }) = terms.get(application_index)\n-        else {\n-            return Err(invalid(meter, row_index, row.key(\"application\")));\n-        };\n-        let member = operation.member_node();\n-        let member_name = member\n-            .and_then(|member| member.get(\"name\"))\n-            .and_then(|name| name.as_str());\n-        if member\n-            .and_then(|member| member.get(\"kind\"))\n-            .and_then(|kind| kind.as_str())\n-            != Some(\"operation\")\n-            || member_name != Some(table.operation.operation.as_ref())\n-        {\n-            return Err(invalid(meter, row_index, row.key(\"operation\")));\n-        }\n-        let context_position = position_of(&index, &table.context);\n-        let source_context = context_position.is_some_and(|position| {\n-            is_source_declared_object_type(&nodes[position], kinds[position])\n-        });\n-        let source_declaring =\n-            position_of(&index, &table.operation.declaring).is_some_and(|position| {\n-                is_source_declared_object_type(&nodes[position], kinds[position])\n-            });\n-        let context_is_model = context_position.is_some_and(|position| {\n-            matches!(\n-                kinds.get(position),\n-                Some(CheckedNodeKind::Model(\n-                    ModelForm::ObjectType\n-                        | ModelForm::Process\n-                        | ModelForm::StateMachine\n-                        | ModelForm::PersistenceInterface\n-                ))\n-            )\n-        });\n-        // The member and receiver context name the call's static type,\n-        // while the selected operation may belong to an ancestor's family.\n-        if operation.member_declaration().ok().flatten() != Some(&table.context)\n-            || !(context_is_model || source_context)\n-        {\n-            return Err(invalid(meter, row_index, row.key(\"context\")));\n-        }\n-        let route = if source_context || source_declaring {\n-            // FR-366: a source row joins context and declaring through their\n-            // `SourceOwner`; a row mixing a source and a model family refuses\n-            // as a model row whose families differ does.\n-            let owner = |id: &CheckedNodeId| {\n-                position_of(&index, id)\n-                    .filter(|&position| {\n-                        is_source_declared_object_type(&nodes[position], kinds[position])\n-                    })\n-                    .and_then(|position| nodes[position].owner.as_ref())\n-            };\n-            match (owner(&table.context), owner(&table.operation.declaring)) {\n-                (Some(context), Some(declaring)) if context == declaring => {\n-                    Route::Source { owner: context }\n-                }\n-                _ => return Err(invalid(meter, row_index, row.key(\"operation\"))),\n-            }\n-        } else {\n-            let Some(context_owner) = models.owner_by_key(&table.context) else {\n-                return Err(invalid(meter, row_index, row.key(\"context\")));\n-            };\n-            let Some(family_owner) = models.owner_by_key(&table.operation.declaring) else {\n-                return Err(invalid(meter, row_index, row.key(\"operation\")));\n-            };\n-            if context_owner.selection != family_owner.selection {\n-                return Err(invalid(meter, row_index, row.key(\"operation\")));\n-            }\n-            let model = context_owner.package;\n-            let mut budget = Budget::new(meter, model.root, model.bytes);\n-            if !model.operation_in_family(\n-                context_owner.node,\n-                family_owner.node,\n-                &table.operation.operation,\n-                &mut budget,\n-            )? {\n-                return Err(invalid(meter, row_index, row.key(\"operation\")));\n-            }\n-            Route::Model {\n-                model,\n-                family: family_owner.node,\n-            }\n-        };\n-        let candidates = row.key(\"candidates\");\n-        let repeated_key = stage_storage::first_repeat(\n-            meter,\n-            &data_site(row_index, candidates),\n-            table\n-                .candidates\n-                .iter()\n-                .map(|candidate| &candidate.selection_key),\n-        )?;\n-        for (candidate_index, candidate) in table.candidates.iter().enumerate() {\n-            let at = candidates.index(candidate_index);\n-            stage_storage::work(meter, &data_site(row_index, at), 1)?;\n-            if candidate.selected_operation != table.operation {\n-                return Err(invalid(meter, row_index, at.key(\"selected_operation\")));\n-            }\n-            if repeated_key == Some(candidate_index) {\n-                return Err(conflicting(meter, row_index, at.key(\"selection_key\")));\n-            }\n-            if candidate.selection_key.owner_effective_type.is_some() {\n-                // A source declaration key carries no owner effective type.\n-                if matches!(route, Route::Source { .. }) {\n-                    return Err(invalid(meter, row_index, at.key(\"selection_key\")));\n-                }\n-                return Err(fail(\n-                    meter,\n-                    row_index,\n-                    CheckedPackageRefusalCode::UnsupportedConstruct,\n-                    None,\n-                    at.key(\"selection_key\"),\n-                ));\n-            }\n-            if let Route::Model { model, family } = &route {\n-                let original = &candidate.selection_key.original;\n-                if model.identity.as_ref() != original.package.as_ref()\n-                    || !model.object_types.contains_key(original.node.as_ref())\n-                {\n-                    return Err(invalid(meter, row_index, at.key(\"selection_key\")));\n-                }\n-                let mut budget = Budget::new(meter, model.root, model.bytes);\n-                if !model.operation_in_family(\n-                    &original.node,\n-                    family,\n-                    &table.operation.operation,\n-                    &mut budget,\n-                )? {\n-                    return Err(invalid(meter, row_index, at.key(\"selection_key\")));\n-                }\n-            }\n-            if let Route::Source {\n-                owner: CheckedNodeOwner::Source { identity, .. },\n-            } = &route\n-            {\n-                // FR-366: the key is `{package: <owner identity>, node: <the\n-                // `source_identity` of a source type under that owner>}`; the\n-                // candidate's own charge covers one lookup.\n-                let types = match &source_types {\n-                    Some(types) => types,\n-                    None => source_types.insert(source_type_index(wire, kinds, meter)?),\n-                };\n-                let original = &candidate.selection_key.original;\n-                let source_type = source_type_identity(&original.node);\n-                let named = identity.as_ref() == original.package.as_ref()\n-                    && source_type.is_some_and(|(source_identity, name)| {\n-                        source_identity == identity.as_ref()\n-                            && types.binary_search(&(identity.as_ref(), name)).is_ok()\n-                    });\n-                if !named {\n-                    return Err(invalid(meter, row_index, at.key(\"selection_key\")));\n-                }\n-            }\n-            let body_position = position_of(&index, &candidate.operation_body);\n-            let body_kind = body_position.and_then(|position| kinds.get(position));\n-            // Model declarations can belong to a dependency package, so the\n-            // exact ID's package need not be the package being emitted. The\n-            // graph index and function kind prove that this handle is a\n-            // retained function node.\n-            if !matches!(body_kind, Some(CheckedNodeKind::Function(_))) {\n-                return Err(invalid(meter, row_index, at.key(\"operation_body\")));\n-            }\n-            if let Route::Source { owner } = &route {\n-                if !body_position.is_some_and(|position| {\n-                    is_source_clause_function(\n-                        &nodes[position],\n-                        owner,\n-                        &table.operation.operation,\n-                        \"body\",\n-                    )\n-                }) {\n-                    return Err(invalid(meter, row_index, at.key(\"operation_body\")));\n-                }\n-            }\n-            if let Some(precondition) = candidate.effective_precondition.as_ref() {\n-                let precondition_position = position_of(&index, precondition);\n-                let precondition_kind =\n-                    precondition_position.and_then(|position| kinds.get(position));\n-                let has_boolean_result = precondition_position\n-                    .and_then(|position| nodes.get(position))\n-                    .and_then(|node| position_of(&index, &node.semantic_type))\n-                    .and_then(|position| kinds.get(position))\n-                    == Some(&CheckedNodeKind::ScalarType(ScalarTypeForm::Boolean));\n-                let valid_precondition = match precondition_kind {\n-                    Some(CheckedNodeKind::Function(FunctionForm::Predicate)) => true,\n-                    Some(CheckedNodeKind::Function(FunctionForm::PureFunction)) => {\n-                        has_boolean_result\n-                    }\n-                    _ => false,\n-                };\n-                if !valid_precondition {\n-                    return Err(invalid(meter, row_index, at.key(\"effective_precondition\")));\n-                }\n-                if let Route::Source { owner } = &route {\n-                    if !precondition_position.is_some_and(|position| {\n-                        is_source_clause_function(\n-                            &nodes[position],\n-                            owner,\n-                            &table.operation.operation,\n-                            \"effective_precondition\",\n-                        )\n-                    }) {\n-                        return Err(invalid(meter, row_index, at.key(\"effective_precondition\")));\n-                    }\n-                }\n-            }\n-        }\n-    }\n-    validate_probabilistic_claims(data, wire, kinds, &index, &source_occurrences, meter)?;\n-    Ok(())\n+    Ok(()) /* ~ changed by cargo-mutants ~ */\n }\n \n #[ix_trace_rs::string_edge]\n fn source_type_identity(node: &str) -> Option<(&str, &str)> {\n     node.strip_prefix(\"ix://\")?.rsplit_once('/')\n }\n \n fn validate_probabilistic_claims<Body>(\n",
+    "file": "crates/filament-contract-model/src/checked_package/v2/dispatch_projection.rs",
+    "function": {
+      "function_name": "validate_checked_term_data",
+      "return_type": "-> Result<(), ValidationFailure>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 448
+        },
+        "start": {
+          "column": 1,
+          "line": 179
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/filament-contract-model/src/checked_package/v2/dispatch_projection.rs:188:5: replace validate_checked_term_data -> Result<(), ValidationFailure> with Ok(())",
+    "package": "filament-contract-model",
+    "replacement": "Ok(())",
+    "span": {
+      "end": {
+        "column": 11,
+        "line": 447
+      },
+      "start": {
+        "column": 5,
+        "line": 188
+      }
+    }
+  },
+  {
+    "diff": "--- crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs\n+++ replace source_identity -> Option<&str> with None\n@@ -199,20 +199,17 @@\n /// A source body clause function: its (owner identity, type, operation) and node.\n type SourceBody<'a> = ((&'a str, &'a str, &'a str), &'a CheckedNodeId);\n \n /// A source dispatch candidate's joined row key and its body node.\n type SourceCandidate<'a> = (&'a str, &'a CheckedNodeId, &'a str, &'a CheckedNodeId);\n \n /// The `SourceOwner` identity of `node`, when it has one.\n fn source_identity(node: &CheckedSemanticNodeV2<CheckedJson>) -> Option<&str> {\n-    match node.owner.as_ref() {\n-        Some(CheckedNodeOwner::Source { identity, .. }) => Some(identity.as_ref()),\n-        _ => None,\n-    }\n+    None /* ~ changed by cargo-mutants ~ */\n }\n \n /// `[<type>, <operation>, \"body\"]` of a source clause function, when `node`\n /// is one: its `declaration` has exactly those three segments.\n fn source_body_declaration(node: &CheckedSemanticNodeV2<CheckedJson>) -> Option<(&str, &str)> {\n     match node.declaration.as_ref()?.qualified_name.as_slice() {\n         [type_name, operation, clause] if clause.as_ref() == \"body\" => {\n             Some((type_name.as_ref(), operation.as_ref()))\n",
+    "file": "crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs",
+    "function": {
+      "function_name": "source_identity",
+      "return_type": "-> Option<&str>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 211
+        },
+        "start": {
+          "column": 1,
+          "line": 205
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs:207:5: replace source_identity -> Option<&str> with None",
+    "package": "filament-contract-model",
+    "replacement": "None",
+    "span": {
+      "end": {
+        "column": 6,
+        "line": 210
+      },
+      "start": {
+        "column": 5,
+        "line": 207
+      }
+    }
+  },
+  {
+    "diff": "--- crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs\n+++ replace source_identity -> Option<&str> with Some(\"\")\n@@ -199,20 +199,17 @@\n /// A source body clause function: its (owner identity, type, operation) and node.\n type SourceBody<'a> = ((&'a str, &'a str, &'a str), &'a CheckedNodeId);\n \n /// A source dispatch candidate's joined row key and its body node.\n type SourceCandidate<'a> = (&'a str, &'a CheckedNodeId, &'a str, &'a CheckedNodeId);\n \n /// The `SourceOwner` identity of `node`, when it has one.\n fn source_identity(node: &CheckedSemanticNodeV2<CheckedJson>) -> Option<&str> {\n-    match node.owner.as_ref() {\n-        Some(CheckedNodeOwner::Source { identity, .. }) => Some(identity.as_ref()),\n-        _ => None,\n-    }\n+    Some(\"\") /* ~ changed by cargo-mutants ~ */\n }\n \n /// `[<type>, <operation>, \"body\"]` of a source clause function, when `node`\n /// is one: its `declaration` has exactly those three segments.\n fn source_body_declaration(node: &CheckedSemanticNodeV2<CheckedJson>) -> Option<(&str, &str)> {\n     match node.declaration.as_ref()?.qualified_name.as_slice() {\n         [type_name, operation, clause] if clause.as_ref() == \"body\" => {\n             Some((type_name.as_ref(), operation.as_ref()))\n",
+    "file": "crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs",
+    "function": {
+      "function_name": "source_identity",
+      "return_type": "-> Option<&str>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 211
+        },
+        "start": {
+          "column": 1,
+          "line": 205
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs:207:5: replace source_identity -> Option<&str> with Some(\"\")",
+    "package": "filament-contract-model",
+    "replacement": "Some(\"\")",
+    "span": {
+      "end": {
+        "column": 6,
+        "line": 210
+      },
+      "start": {
+        "column": 5,
+        "line": 207
+      }
+    }
+  },
+  {
+    "diff": "--- crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs\n+++ replace source_identity -> Option<&str> with Some(\"xyzzy\")\n@@ -199,20 +199,17 @@\n /// A source body clause function: its (owner identity, type, operation) and node.\n type SourceBody<'a> = ((&'a str, &'a str, &'a str), &'a CheckedNodeId);\n \n /// A source dispatch candidate's joined row key and its body node.\n type SourceCandidate<'a> = (&'a str, &'a CheckedNodeId, &'a str, &'a CheckedNodeId);\n \n /// The `SourceOwner` identity of `node`, when it has one.\n fn source_identity(node: &CheckedSemanticNodeV2<CheckedJson>) -> Option<&str> {\n-    match node.owner.as_ref() {\n-        Some(CheckedNodeOwner::Source { identity, .. }) => Some(identity.as_ref()),\n-        _ => None,\n-    }\n+    Some(\"xyzzy\") /* ~ changed by cargo-mutants ~ */\n }\n \n /// `[<type>, <operation>, \"body\"]` of a source clause function, when `node`\n /// is one: its `declaration` has exactly those three segments.\n fn source_body_declaration(node: &CheckedSemanticNodeV2<CheckedJson>) -> Option<(&str, &str)> {\n     match node.declaration.as_ref()?.qualified_name.as_slice() {\n         [type_name, operation, clause] if clause.as_ref() == \"body\" => {\n             Some((type_name.as_ref(), operation.as_ref()))\n",
+    "file": "crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs",
+    "function": {
+      "function_name": "source_identity",
+      "return_type": "-> Option<&str>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 211
+        },
+        "start": {
+          "column": 1,
+          "line": 205
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs:207:5: replace source_identity -> Option<&str> with Some(\"xyzzy\")",
+    "package": "filament-contract-model",
+    "replacement": "Some(\"xyzzy\")",
+    "span": {
+      "end": {
+        "column": 6,
+        "line": 210
+      },
+      "start": {
+        "column": 5,
+        "line": 207
+      }
+    }
+  },
+  {
+    "diff": "--- crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs\n+++ delete match arm Some(CheckedNodeOwner::Source{identity, ..}) in source_identity\n@@ -200,17 +200,17 @@\n type SourceBody<'a> = ((&'a str, &'a str, &'a str), &'a CheckedNodeId);\n \n /// A source dispatch candidate's joined row key and its body node.\n type SourceCandidate<'a> = (&'a str, &'a CheckedNodeId, &'a str, &'a CheckedNodeId);\n \n /// The `SourceOwner` identity of `node`, when it has one.\n fn source_identity(node: &CheckedSemanticNodeV2<CheckedJson>) -> Option<&str> {\n     match node.owner.as_ref() {\n-        Some(CheckedNodeOwner::Source { identity, .. }) => Some(identity.as_ref()),\n+         /* ~ changed by cargo-mutants ~ */\n         _ => None,\n     }\n }\n \n /// `[<type>, <operation>, \"body\"]` of a source clause function, when `node`\n /// is one: its `declaration` has exactly those three segments.\n fn source_body_declaration(node: &CheckedSemanticNodeV2<CheckedJson>) -> Option<(&str, &str)> {\n     match node.declaration.as_ref()?.qualified_name.as_slice() {\n",
+    "file": "crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs",
+    "function": {
+      "function_name": "source_identity",
+      "return_type": "-> Option<&str>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 211
+        },
+        "start": {
+          "column": 1,
+          "line": 205
+        }
+      }
+    },
+    "genre": "MatchArm",
+    "name": "crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs:208:9: delete match arm Some(CheckedNodeOwner::Source{identity, ..}) in source_identity",
+    "package": "filament-contract-model",
+    "replacement": "",
+    "span": {
+      "end": {
+        "column": 84,
+        "line": 208
+      },
+      "start": {
+        "column": 9,
+        "line": 208
+      }
+    }
+  },
+  {
+    "diff": "--- crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs\n+++ replace source_body_declaration -> Option<(&str, &str)> with None\n@@ -208,22 +208,17 @@\n         Some(CheckedNodeOwner::Source { identity, .. }) => Some(identity.as_ref()),\n         _ => None,\n     }\n }\n \n /// `[<type>, <operation>, \"body\"]` of a source clause function, when `node`\n /// is one: its `declaration` has exactly those three segments.\n fn source_body_declaration(node: &CheckedSemanticNodeV2<CheckedJson>) -> Option<(&str, &str)> {\n-    match node.declaration.as_ref()?.qualified_name.as_slice() {\n-        [type_name, operation, clause] if clause.as_ref() == \"body\" => {\n-            Some((type_name.as_ref(), operation.as_ref()))\n-        }\n-        _ => None,\n-    }\n+    None /* ~ changed by cargo-mutants ~ */\n }\n \n /// A dispatch candidate's effective declaration (package and node), its\n /// selected operation name, and its operation body.\n ///\n /// A candidate joins the row of the declaration that declares the operation\n /// its receiver (`selection_key.original`) effectively exposes: the receiver\n /// itself when it redefines the operation, else the ancestor it inherits it\n",
+    "file": "crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs",
+    "function": {
+      "function_name": "source_body_declaration",
+      "return_type": "-> Option<(&str, &str)>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 222
+        },
+        "start": {
+          "column": 1,
+          "line": 213
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs:216:5: replace source_body_declaration -> Option<(&str, &str)> with None",
+    "package": "filament-contract-model",
+    "replacement": "None",
+    "span": {
+      "end": {
+        "column": 6,
+        "line": 221
+      },
+      "start": {
+        "column": 5,
+        "line": 216
+      }
+    }
+  },
+  {
+    "diff": "--- crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs\n+++ replace source_body_declaration -> Option<(&str, &str)> with Some((\"\", \"\"))\n@@ -208,22 +208,17 @@\n         Some(CheckedNodeOwner::Source { identity, .. }) => Some(identity.as_ref()),\n         _ => None,\n     }\n }\n \n /// `[<type>, <operation>, \"body\"]` of a source clause function, when `node`\n /// is one: its `declaration` has exactly those three segments.\n fn source_body_declaration(node: &CheckedSemanticNodeV2<CheckedJson>) -> Option<(&str, &str)> {\n-    match node.declaration.as_ref()?.qualified_name.as_slice() {\n-        [type_name, operation, clause] if clause.as_ref() == \"body\" => {\n-            Some((type_name.as_ref(), operation.as_ref()))\n-        }\n-        _ => None,\n-    }\n+    Some((\"\", \"\")) /* ~ changed by cargo-mutants ~ */\n }\n \n /// A dispatch candidate's effective declaration (package and node), its\n /// selected operation name, and its operation body.\n ///\n /// A candidate joins the row of the declaration that declares the operation\n /// its receiver (`selection_key.original`) effectively exposes: the receiver\n /// itself when it redefines the operation, else the ancestor it inherits it\n",
+    "file": "crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs",
+    "function": {
+      "function_name": "source_body_declaration",
+      "return_type": "-> Option<(&str, &str)>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 222
+        },
+        "start": {
+          "column": 1,
+          "line": 213
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs:216:5: replace source_body_declaration -> Option<(&str, &str)> with Some((\"\", \"\"))",
+    "package": "filament-contract-model",
+    "replacement": "Some((\"\", \"\"))",
+    "span": {
+      "end": {
+        "column": 6,
+        "line": 221
+      },
+      "start": {
+        "column": 5,
+        "line": 216
+      }
+    }
+  },
+  {
+    "diff": "--- crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs\n+++ replace source_body_declaration -> Option<(&str, &str)> with Some((\"\", \"xyzzy\"))\n@@ -208,22 +208,17 @@\n         Some(CheckedNodeOwner::Source { identity, .. }) => Some(identity.as_ref()),\n         _ => None,\n     }\n }\n \n /// `[<type>, <operation>, \"body\"]` of a source clause function, when `node`\n /// is one: its `declaration` has exactly those three segments.\n fn source_body_declaration(node: &CheckedSemanticNodeV2<CheckedJson>) -> Option<(&str, &str)> {\n-    match node.declaration.as_ref()?.qualified_name.as_slice() {\n-        [type_name, operation, clause] if clause.as_ref() == \"body\" => {\n-            Some((type_name.as_ref(), operation.as_ref()))\n-        }\n-        _ => None,\n-    }\n+    Some((\"\", \"xyzzy\")) /* ~ changed by cargo-mutants ~ */\n }\n \n /// A dispatch candidate's effective declaration (package and node), its\n /// selected operation name, and its operation body.\n ///\n /// A candidate joins the row of the declaration that declares the operation\n /// its receiver (`selection_key.original`) effectively exposes: the receiver\n /// itself when it redefines the operation, else the ancestor it inherits it\n",
+    "file": "crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs",
+    "function": {
+      "function_name": "source_body_declaration",
+      "return_type": "-> Option<(&str, &str)>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 222
+        },
+        "start": {
+          "column": 1,
+          "line": 213
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs:216:5: replace source_body_declaration -> Option<(&str, &str)> with Some((\"\", \"xyzzy\"))",
+    "package": "filament-contract-model",
+    "replacement": "Some((\"\", \"xyzzy\"))",
+    "span": {
+      "end": {
+        "column": 6,
+        "line": 221
+      },
+      "start": {
+        "column": 5,
+        "line": 216
+      }
+    }
+  },
+  {
+    "diff": "--- crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs\n+++ replace source_body_declaration -> Option<(&str, &str)> with Some((\"xyzzy\", \"\"))\n@@ -208,22 +208,17 @@\n         Some(CheckedNodeOwner::Source { identity, .. }) => Some(identity.as_ref()),\n         _ => None,\n     }\n }\n \n /// `[<type>, <operation>, \"body\"]` of a source clause function, when `node`\n /// is one: its `declaration` has exactly those three segments.\n fn source_body_declaration(node: &CheckedSemanticNodeV2<CheckedJson>) -> Option<(&str, &str)> {\n-    match node.declaration.as_ref()?.qualified_name.as_slice() {\n-        [type_name, operation, clause] if clause.as_ref() == \"body\" => {\n-            Some((type_name.as_ref(), operation.as_ref()))\n-        }\n-        _ => None,\n-    }\n+    Some((\"xyzzy\", \"\")) /* ~ changed by cargo-mutants ~ */\n }\n \n /// A dispatch candidate's effective declaration (package and node), its\n /// selected operation name, and its operation body.\n ///\n /// A candidate joins the row of the declaration that declares the operation\n /// its receiver (`selection_key.original`) effectively exposes: the receiver\n /// itself when it redefines the operation, else the ancestor it inherits it\n",
+    "file": "crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs",
+    "function": {
+      "function_name": "source_body_declaration",
+      "return_type": "-> Option<(&str, &str)>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 222
+        },
+        "start": {
+          "column": 1,
+          "line": 213
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs:216:5: replace source_body_declaration -> Option<(&str, &str)> with Some((\"xyzzy\", \"\"))",
+    "package": "filament-contract-model",
+    "replacement": "Some((\"xyzzy\", \"\"))",
+    "span": {
+      "end": {
+        "column": 6,
+        "line": 221
+      },
+      "start": {
+        "column": 5,
+        "line": 216
+      }
+    }
+  },
+  {
+    "diff": "--- crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs\n+++ replace source_body_declaration -> Option<(&str, &str)> with Some((\"xyzzy\", \"xyzzy\"))\n@@ -208,22 +208,17 @@\n         Some(CheckedNodeOwner::Source { identity, .. }) => Some(identity.as_ref()),\n         _ => None,\n     }\n }\n \n /// `[<type>, <operation>, \"body\"]` of a source clause function, when `node`\n /// is one: its `declaration` has exactly those three segments.\n fn source_body_declaration(node: &CheckedSemanticNodeV2<CheckedJson>) -> Option<(&str, &str)> {\n-    match node.declaration.as_ref()?.qualified_name.as_slice() {\n-        [type_name, operation, clause] if clause.as_ref() == \"body\" => {\n-            Some((type_name.as_ref(), operation.as_ref()))\n-        }\n-        _ => None,\n-    }\n+    Some((\"xyzzy\", \"xyzzy\")) /* ~ changed by cargo-mutants ~ */\n }\n \n /// A dispatch candidate's effective declaration (package and node), its\n /// selected operation name, and its operation body.\n ///\n /// A candidate joins the row of the declaration that declares the operation\n /// its receiver (`selection_key.original`) effectively exposes: the receiver\n /// itself when it redefines the operation, else the ancestor it inherits it\n",
+    "file": "crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs",
+    "function": {
+      "function_name": "source_body_declaration",
+      "return_type": "-> Option<(&str, &str)>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 222
+        },
+        "start": {
+          "column": 1,
+          "line": 213
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs:216:5: replace source_body_declaration -> Option<(&str, &str)> with Some((\"xyzzy\", \"xyzzy\"))",
+    "package": "filament-contract-model",
+    "replacement": "Some((\"xyzzy\", \"xyzzy\"))",
+    "span": {
+      "end": {
+        "column": 6,
+        "line": 221
+      },
+      "start": {
+        "column": 5,
+        "line": 216
+      }
+    }
+  },
+  {
+    "diff": "--- crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs\n+++ replace match guard clause.as_ref() == \"body\" with true in source_body_declaration\n@@ -209,17 +209,17 @@\n         _ => None,\n     }\n }\n \n /// `[<type>, <operation>, \"body\"]` of a source clause function, when `node`\n /// is one: its `declaration` has exactly those three segments.\n fn source_body_declaration(node: &CheckedSemanticNodeV2<CheckedJson>) -> Option<(&str, &str)> {\n     match node.declaration.as_ref()?.qualified_name.as_slice() {\n-        [type_name, operation, clause] if clause.as_ref() == \"body\" => {\n+        [type_name, operation, clause] if true /* ~ changed by cargo-mutants ~ */ => {\n             Some((type_name.as_ref(), operation.as_ref()))\n         }\n         _ => None,\n     }\n }\n \n /// A dispatch candidate's effective declaration (package and node), its\n /// selected operation name, and its operation body.\n",
+    "file": "crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs",
+    "function": {
+      "function_name": "source_body_declaration",
+      "return_type": "-> Option<(&str, &str)>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 222
+        },
+        "start": {
+          "column": 1,
+          "line": 213
+        }
+      }
+    },
+    "genre": "MatchArmGuard",
+    "name": "crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs:217:43: replace match guard clause.as_ref() == \"body\" with true in source_body_declaration",
+    "package": "filament-contract-model",
+    "replacement": "true",
+    "span": {
+      "end": {
+        "column": 68,
+        "line": 217
+      },
+      "start": {
+        "column": 43,
+        "line": 217
+      }
+    }
+  },
+  {
+    "diff": "--- crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs\n+++ replace match guard clause.as_ref() == \"body\" with false in source_body_declaration\n@@ -209,17 +209,17 @@\n         _ => None,\n     }\n }\n \n /// `[<type>, <operation>, \"body\"]` of a source clause function, when `node`\n /// is one: its `declaration` has exactly those three segments.\n fn source_body_declaration(node: &CheckedSemanticNodeV2<CheckedJson>) -> Option<(&str, &str)> {\n     match node.declaration.as_ref()?.qualified_name.as_slice() {\n-        [type_name, operation, clause] if clause.as_ref() == \"body\" => {\n+        [type_name, operation, clause] if false /* ~ changed by cargo-mutants ~ */ => {\n             Some((type_name.as_ref(), operation.as_ref()))\n         }\n         _ => None,\n     }\n }\n \n /// A dispatch candidate's effective declaration (package and node), its\n /// selected operation name, and its operation body.\n",
+    "file": "crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs",
+    "function": {
+      "function_name": "source_body_declaration",
+      "return_type": "-> Option<(&str, &str)>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 222
+        },
+        "start": {
+          "column": 1,
+          "line": 213
+        }
+      }
+    },
+    "genre": "MatchArmGuard",
+    "name": "crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs:217:43: replace match guard clause.as_ref() == \"body\" with false in source_body_declaration",
+    "package": "filament-contract-model",
+    "replacement": "false",
+    "span": {
+      "end": {
+        "column": 68,
+        "line": 217
+      },
+      "start": {
+        "column": 43,
+        "line": 217
+      }
+    }
+  },
+  {
+    "diff": "--- crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs\n+++ replace == with != in source_body_declaration\n@@ -209,17 +209,17 @@\n         _ => None,\n     }\n }\n \n /// `[<type>, <operation>, \"body\"]` of a source clause function, when `node`\n /// is one: its `declaration` has exactly those three segments.\n fn source_body_declaration(node: &CheckedSemanticNodeV2<CheckedJson>) -> Option<(&str, &str)> {\n     match node.declaration.as_ref()?.qualified_name.as_slice() {\n-        [type_name, operation, clause] if clause.as_ref() == \"body\" => {\n+        [type_name, operation, clause] if clause.as_ref() != /* ~ changed by cargo-mutants ~ */ \"body\" => {\n             Some((type_name.as_ref(), operation.as_ref()))\n         }\n         _ => None,\n     }\n }\n \n /// A dispatch candidate's effective declaration (package and node), its\n /// selected operation name, and its operation body.\n",
+    "file": "crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs",
+    "function": {
+      "function_name": "source_body_declaration",
+      "return_type": "-> Option<(&str, &str)>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 222
+        },
+        "start": {
+          "column": 1,
+          "line": 213
+        }
+      }
+    },
+    "genre": "BinaryOperator",
+    "name": "crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs:217:59: replace == with != in source_body_declaration",
+    "package": "filament-contract-model",
+    "replacement": "!=",
+    "span": {
+      "end": {
+        "column": 61,
+        "line": 217
+      },
+      "start": {
+        "column": 59,
+        "line": 217
+      }
+    }
+  },
+  {
+    "diff": "--- crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs\n+++ replace validate -> Result<(), ValidationFailure> with Ok(())\n@@ -237,292 +237,17 @@\n pub(super) fn validate(\n     rows: Option<&[OperationBodyRow]>,\n     wire: &RawCheckedPackageWireV2,\n     kinds: &[CheckedNodeKind],\n     terms: &[CheckedTerm],\n     models: &RetainedModels,\n     meter: &mut WorkMeter,\n ) -> Result<(), ValidationFailure> {\n-    let Some(rows) = rows else {\n-        return Ok(());\n-    };\n-    let nodes = &wire.semantic_graph.nodes;\n-    // Graph positions by node ID, to resolve a body reference.\n-    let mut by_id: Vec<usize> = stage_storage::vec(meter, &site(0, rows_at()), nodes.len())?;\n-    by_id.extend(0..nodes.len());\n-    by_id.sort_unstable_by(|&left, &right| nodes[left].node_id.cmp(&nodes[right].node_id));\n-    // Dispatch candidates by selection-key declaration, to join a row to its candidates.\n-    let tables = wire\n-        .checked_term_data\n-        .as_ref()\n-        .map_or(&[][..], |data| data.dispatch_tables.as_slice());\n-    let count = tables.iter().map(|table| table.candidates.len()).sum();\n-    let mut candidates: Vec<Candidate<'_>> = stage_storage::vec(meter, &site(0, rows_at()), count)?;\n-    // The carrier runs before `checked_term_data` validation, so it joins only\n-    // a candidate whose receiver is in its table's family (the family owner's\n-    // package, and `operation_in_family`); any other candidate is left to\n-    // dispatch validation to refuse (FSpec OBD-01).\n-    for table in tables {\n-        let Some(family) = models.owner_by_key(&table.operation.declaring) else {\n-            continue;\n-        };\n-        let model = family.package;\n-        let name = table.operation.operation.as_ref();\n-        for candidate in &table.candidates {\n-            let original = &candidate.selection_key.original;\n-            if original.package.as_ref() != model.identity.as_ref() {\n-                continue;\n-            }\n-            let mut budget = Budget::new(meter, model.root, model.bytes);\n-            if !model.operation_in_family(&original.node, family.node, name, &mut budget)? {\n-                continue;\n-            }\n-            if let Some(owner) =\n-                model.effective_operation_owner(&original.node, name, &mut budget)?\n-            {\n-                candidates.push((\n-                    model.identity.as_ref(),\n-                    owner,\n-                    name,\n-                    &candidate.operation_body,\n-                ));\n-            }\n-        }\n-    }\n-    candidates.sort_unstable();\n-    let mut source_types: SourceTypes<'_> =\n-        stage_storage::vec(meter, &site(0, rows_at()), nodes.len())?;\n-    source_types.extend(nodes.iter().enumerate().filter_map(|(position, node)| {\n-        let identity = source_identity(node)?;\n-        let name = node.declaration.as_ref()?.qualified_name.last()?;\n-        super::source_object::is_source_declared_object_type(node, kinds[position]).then_some((\n-            identity,\n-            name.as_ref(),\n-            &node.node_id,\n-        ))\n-    }));\n-    source_types.sort_unstable();\n-    let mut source_bodies: Vec<SourceBody<'_>> =\n-        stage_storage::vec(meter, &site(0, rows_at()), nodes.len())?;\n-    source_bodies.extend(nodes.iter().enumerate().filter_map(|(position, node)| {\n-        if !matches!(kinds[position], CheckedNodeKind::Function(_)) {\n-            return None;\n-        }\n-        let (type_name, operation) = source_body_declaration(node)?;\n-        Some((\n-            (source_identity(node)?, type_name, operation),\n-            &node.node_id,\n-        ))\n-    }));\n-    source_bodies.sort_unstable();\n-    // FR-322 item 9: a source candidate joins the row of the type its body\n-    // clause function is declared under, whose `declaration` names it.\n-    let mut source_candidates: Vec<SourceCandidate<'_>> =\n-        stage_storage::vec(meter, &site(0, rows_at()), count)?;\n-    for table in tables {\n-        let operation = table.operation.operation.as_ref();\n-        for candidate in &table.candidates {\n-            stage_storage::work(meter, &site(0, rows_at()), 1)?;\n-            let Ok(found) = by_id.binary_search_by(|&position| {\n-                nodes[position].node_id.cmp(&candidate.operation_body)\n-            }) else {\n-                continue;\n-            };\n-            let body = &nodes[by_id[found]];\n-            let (Some(identity), Some((type_name, name))) =\n-                (source_identity(body), source_body_declaration(body))\n-            else {\n-                continue;\n-            };\n-            if name != operation {\n-                continue;\n-            }\n-            if let Ok(at) =\n-                source_types.binary_search_by(|held| (held.0, held.1).cmp(&(identity, type_name)))\n-            {\n-                source_candidates.push((\n-                    identity,\n-                    source_types[at].2,\n-                    name,\n-                    &candidate.operation_body,\n-                ));\n-            }\n-        }\n-    }\n-    source_candidates.sort_unstable();\n-    let covered = sorted_keys(\n-        meter,\n-        &site(0, rows_at()),\n-        rows.iter()\n-            .map(|row| key_of(&row.document, &row.declaring, &row.operation)),\n-    )?;\n-    let repeated = first_repeated(&covered);\n-    // The members that own a body clause function.\n-    let mut owned: Vec<&str> = stage_storage::vec(meter, &site(0, rows_at()), nodes.len())?;\n-    owned.extend(nodes.iter().enumerate().filter_map(|(position, node)| {\n-        match (\n-            node.owner.as_ref(),\n-            kinds.get(position),\n-            terms.get(position),\n-        ) {\n-            (Some(CheckedNodeOwner::Model { node: member, .. }), Some(kind), Some(term))\n-                if matches!(kind, CheckedNodeKind::Function(_))\n-                    && super::owner::is_body_clause(term) =>\n-            {\n-                Some(member.as_ref())\n-            }\n-            _ => None,\n-        }\n-    }));\n-    owned.sort_unstable();\n-    let mut previous: Option<Key<'_>> = None;\n-    for (index, row) in rows.iter().enumerate() {\n-        let at = rows_at().index(index);\n-        stage_storage::work(meter, &site(index, at), 1)?;\n-        if row.document.is_empty() {\n-            return Err(refused(\n-                meter,\n-                index,\n-                Code::MalformedWire,\n-                None,\n-                at.key(\"document\"),\n-            ));\n-        }\n-        if !is_identifier(&row.operation) {\n-            return Err(refused(\n-                meter,\n-                index,\n-                Code::MalformedWire,\n-                None,\n-                at.key(\"operation\"),\n-            ));\n-        }\n-        let source_declaring = by_id\n-            .binary_search_by(|&position| nodes[position].node_id.cmp(&row.declaring))\n-            .ok()\n-            .map(|found| by_id[found])\n-            .filter(|&position| {\n-                super::source_object::is_source_declared_object_type(\n-                    &nodes[position],\n-                    kinds[position],\n-                )\n-            });\n-        if let Some(declaring) = source_declaring {\n-            check_source_row(\n-                meter,\n-                index,\n-                row,\n-                &nodes[declaring],\n-                SourceJoin {\n-                    nodes,\n-                    kinds,\n-                    by_id: &by_id,\n-                    bodies: &source_bodies,\n-                },\n-            )?;\n-            let key = key_of(&row.document, &row.declaring, &row.operation);\n-            if repeated == Some(index) {\n-                return Err(refused(\n-                    meter,\n-                    index,\n-                    Code::InvalidPackage,\n-                    Some(Cause::ConflictingDefinition),\n-                    at,\n-                ));\n-            }\n-            if previous.is_some_and(|earlier| earlier >= key) {\n-                return Err(invalid(meter, index, at));\n-            }\n-            previous = Some(key);\n-            continue;\n-        }\n-        let (owner, operation) = join_member(\n-            models,\n-            &row.document,\n-            &row.declaring,\n-            &row.operation,\n-            at,\n-            meter,\n-            &mut |meter, code, cause, locus| refused(meter, index, code, Some(cause), locus),\n-        )?;\n-        let has_body = owned.binary_search(&operation.identity.as_ref()).is_ok();\n-        let body_at = at.key(\"body\");\n-        let node = match &row.body {\n-            OperationBody::Function { node } if has_body => Some(node),\n-            OperationBody::NoBody if !has_body => None,\n-            _ => return Err(invalid(meter, index, body_at)),\n-        };\n-        if let Some(node) = node {\n-            let node_at = body_at.key(\"node\");\n-            let Ok(found) = by_id.binary_search_by(|&position| nodes[position].node_id.cmp(node))\n-            else {\n-                return Err(refused(\n-                    meter,\n-                    index,\n-                    Code::MissingDeclaration,\n-                    Some(Cause::MissingName),\n-                    node_at,\n-                ));\n-            };\n-            let position = by_id[found];\n-            if !matches!(kinds.get(position), Some(CheckedNodeKind::Function(_))) {\n-                return Err(refused(\n-                    meter,\n-                    index,\n-                    Code::IllTyped,\n-                    Some(Cause::OperatorIneligible),\n-                    node_at,\n-                ));\n-            }\n-            let own = terms\n-                .get(position)\n-                .is_some_and(super::owner::is_body_clause)\n-                && owned_by(&nodes[position], &operation.identity);\n-            if !own {\n-                return Err(invalid(meter, index, node_at));\n-            }\n-        }\n-        let joined = (owner.package.identity.as_ref(), owner.node, &*row.operation);\n-        let start = candidates.partition_point(|held| (held.0, held.1, held.2) < joined);\n-        let agrees = candidates[start..]\n-            .iter()\n-            .take_while(|held| (held.0, held.1, held.2) == joined)\n-            .all(|held| node == Some(held.3));\n-        if !agrees {\n-            return Err(invalid(meter, index, body_at));\n-        }\n-        if repeated == Some(index) {\n-            return Err(refused(\n-                meter,\n-                index,\n-                Code::InvalidPackage,\n-                Some(Cause::ConflictingDefinition),\n-                at,\n-            ));\n-        }\n-        let key = key_of(&row.document, &row.declaring, &row.operation);\n-        if previous.is_some_and(|earlier| earlier >= key) {\n-            return Err(invalid(meter, index, at));\n-        }\n-        previous = Some(key);\n-    }\n-    let uncovered_source = source_candidates\n-        .iter()\n-        .any(|(identity, node, operation, _)| {\n-            covered\n-                .binary_search_by(|(key, _)| {\n-                    (key.0, key.1, key.2).cmp(&(*identity, *node, *operation))\n-                })\n-                .is_err()\n-        });\n-    if uncovered_source || has_uncovered_operation(models, &covered) {\n-        return Err(invalid(meter, 0, rows_at()));\n-    }\n-    Ok(())\n+    Ok(()) /* ~ changed by cargo-mutants ~ */\n }\n \n /// The package facts a source row joins.\n struct SourceJoin<'a> {\n     nodes: &'a [CheckedSemanticNodeV2<CheckedJson>],\n     kinds: &'a [CheckedNodeKind],\n     by_id: &'a [usize],\n     bodies: &'a [SourceBody<'a>],\n",
+    "file": "crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs",
+    "function": {
+      "function_name": "validate",
+      "return_type": "-> Result<(), ValidationFailure>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 521
+        },
+        "start": {
+          "column": 1,
+          "line": 235
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs:245:5: replace validate -> Result<(), ValidationFailure> with Ok(())",
+    "package": "filament-contract-model",
+    "replacement": "Ok(())",
+    "span": {
+      "end": {
+        "column": 11,
+        "line": 520
+      },
+      "start": {
+        "column": 5,
+        "line": 245
+      }
+    }
+  },
+  {
+    "diff": "--- crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs\n+++ delete ! in validate\n@@ -299,17 +299,17 @@\n             name.as_ref(),\n             &node.node_id,\n         ))\n     }));\n     source_types.sort_unstable();\n     let mut source_bodies: Vec<SourceBody<'_>> =\n         stage_storage::vec(meter, &site(0, rows_at()), nodes.len())?;\n     source_bodies.extend(nodes.iter().enumerate().filter_map(|(position, node)| {\n-        if !matches!(kinds[position], CheckedNodeKind::Function(_)) {\n+        if  /* ~ changed by cargo-mutants ~ */matches!(kinds[position], CheckedNodeKind::Function(_)) {\n             return None;\n         }\n         let (type_name, operation) = source_body_declaration(node)?;\n         Some((\n             (source_identity(node)?, type_name, operation),\n             &node.node_id,\n         ))\n     }));\n",
+    "file": "crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs",
+    "function": {
+      "function_name": "validate",
+      "return_type": "-> Result<(), ValidationFailure>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 521
+        },
+        "start": {
+          "column": 1,
+          "line": 235
+        }
+      }
+    },
+    "genre": "UnaryOperator",
+    "name": "crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs:307:12: delete ! in validate",
+    "package": "filament-contract-model",
+    "replacement": "",
+    "span": {
+      "end": {
+        "column": 13,
+        "line": 307
+      },
+      "start": {
+        "column": 12,
+        "line": 307
+      }
+    }
+  },
+  {
+    "diff": "--- crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs\n+++ replace != with == in validate\n@@ -328,17 +328,17 @@\n                 continue;\n             };\n             let body = &nodes[by_id[found]];\n             let (Some(identity), Some((type_name, name))) =\n                 (source_identity(body), source_body_declaration(body))\n             else {\n                 continue;\n             };\n-            if name != operation {\n+            if name == /* ~ changed by cargo-mutants ~ */ operation {\n                 continue;\n             }\n             if let Ok(at) =\n                 source_types.binary_search_by(|held| (held.0, held.1).cmp(&(identity, type_name)))\n             {\n                 source_candidates.push((\n                     identity,\n                     source_types[at].2,\n",
+    "file": "crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs",
+    "function": {
+      "function_name": "validate",
+      "return_type": "-> Result<(), ValidationFailure>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 521
+        },
+        "start": {
+          "column": 1,
+          "line": 235
+        }
+      }
+    },
+    "genre": "BinaryOperator",
+    "name": "crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs:336:21: replace != with == in validate",
+    "package": "filament-contract-model",
+    "replacement": "==",
+    "span": {
+      "end": {
+        "column": 23,
+        "line": 336
+      },
+      "start": {
+        "column": 21,
+        "line": 336
+      }
+    }
+  },
+  {
+    "diff": "--- crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs\n+++ replace == with != in validate\n@@ -415,17 +415,17 @@\n                 SourceJoin {\n                     nodes,\n                     kinds,\n                     by_id: &by_id,\n                     bodies: &source_bodies,\n                 },\n             )?;\n             let key = key_of(&row.document, &row.declaring, &row.operation);\n-            if repeated == Some(index) {\n+            if repeated != /* ~ changed by cargo-mutants ~ */ Some(index) {\n                 return Err(refused(\n                     meter,\n                     index,\n                     Code::InvalidPackage,\n                     Some(Cause::ConflictingDefinition),\n                     at,\n                 ));\n             }\n",
+    "file": "crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs",
+    "function": {
+      "function_name": "validate",
+      "return_type": "-> Result<(), ValidationFailure>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 521
+        },
+        "start": {
+          "column": 1,
+          "line": 235
+        }
+      }
+    },
+    "genre": "BinaryOperator",
+    "name": "crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs:423:25: replace == with != in validate",
+    "package": "filament-contract-model",
+    "replacement": "!=",
+    "span": {
+      "end": {
+        "column": 27,
+        "line": 423
+      },
+      "start": {
+        "column": 25,
+        "line": 423
+      }
+    }
+  },
+  {
+    "diff": "--- crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs\n+++ replace >= with < in validate\n@@ -424,17 +424,17 @@\n                 return Err(refused(\n                     meter,\n                     index,\n                     Code::InvalidPackage,\n                     Some(Cause::ConflictingDefinition),\n                     at,\n                 ));\n             }\n-            if previous.is_some_and(|earlier| earlier >= key) {\n+            if previous.is_some_and(|earlier| earlier < /* ~ changed by cargo-mutants ~ */ key) {\n                 return Err(invalid(meter, index, at));\n             }\n             previous = Some(key);\n             continue;\n         }\n         let (owner, operation) = join_member(\n             models,\n             &row.document,\n",
+    "file": "crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs",
+    "function": {
+      "function_name": "validate",
+      "return_type": "-> Result<(), ValidationFailure>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 521
+        },
+        "start": {
+          "column": 1,
+          "line": 235
+        }
+      }
+    },
+    "genre": "BinaryOperator",
+    "name": "crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs:432:55: replace >= with < in validate",
+    "package": "filament-contract-model",
+    "replacement": "<",
+    "span": {
+      "end": {
+        "column": 57,
+        "line": 432
+      },
+      "start": {
+        "column": 55,
+        "line": 432
+      }
+    }
+  },
+  {
+    "diff": "--- crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs\n+++ replace || with && in validate\n@@ -509,17 +509,17 @@\n         .iter()\n         .any(|(identity, node, operation, _)| {\n             covered\n                 .binary_search_by(|(key, _)| {\n                     (key.0, key.1, key.2).cmp(&(*identity, *node, *operation))\n                 })\n                 .is_err()\n         });\n-    if uncovered_source || has_uncovered_operation(models, &covered) {\n+    if uncovered_source && /* ~ changed by cargo-mutants ~ */ has_uncovered_operation(models, &covered) {\n         return Err(invalid(meter, 0, rows_at()));\n     }\n     Ok(())\n }\n \n /// The package facts a source row joins.\n struct SourceJoin<'a> {\n     nodes: &'a [CheckedSemanticNodeV2<CheckedJson>],\n",
+    "file": "crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs",
+    "function": {
+      "function_name": "validate",
+      "return_type": "-> Result<(), ValidationFailure>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 521
+        },
+        "start": {
+          "column": 1,
+          "line": 235
+        }
+      }
+    },
+    "genre": "BinaryOperator",
+    "name": "crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs:517:25: replace || with && in validate",
+    "package": "filament-contract-model",
+    "replacement": "&&",
+    "span": {
+      "end": {
+        "column": 27,
+        "line": 517
+      },
+      "start": {
+        "column": 25,
+        "line": 517
+      }
+    }
+  },
+  {
+    "diff": "--- crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs\n+++ replace check_source_row -> Result<(), ValidationFailure> with Ok(())\n@@ -534,79 +534,10 @@\n /// `[<type>, <operation>, \"body\"]` under that owner, naming it.\n fn check_source_row(\n     meter: &mut WorkMeter,\n     index: usize,\n     row: &OperationBodyRow,\n     declaring: &CheckedSemanticNodeV2<CheckedJson>,\n     join: SourceJoin<'_>,\n ) -> Result<(), ValidationFailure> {\n-    let at = rows_at().index(index);\n-    let Some(identity) = source_identity(declaring) else {\n-        return Err(invalid(meter, index, at.key(\"declaring\")));\n-    };\n-    let document_at = at.key(\"document\");\n-    if row.document.as_ref() != identity {\n-        let owned = join\n-            .nodes\n-            .iter()\n-            .any(|node| source_identity(node) == Some(row.document.as_ref()));\n-        return Err(if owned {\n-            invalid(meter, index, document_at)\n-        } else {\n-            refused(\n-                meter,\n-                index,\n-                Code::MissingDeclaration,\n-                Some(Cause::MissingSelection),\n-                document_at,\n-            )\n-        });\n-    }\n-    let type_name = declaring\n-        .declaration\n-        .as_ref()\n-        .and_then(|declaration| declaration.qualified_name.last())\n-        .map(AsRef::as_ref);\n-    let held = type_name.and_then(|type_name| {\n-        let key = (identity, type_name, row.operation.as_ref());\n-        join.bodies\n-            .binary_search_by(|(held, _)| (held.0, held.1, held.2).cmp(&key))\n-            .ok()\n-            .map(|found| join.bodies[found].1)\n-    });\n-    let body_at = at.key(\"body\");\n-    match (&row.body, held) {\n-        (OperationBody::Function { node }, Some(expected)) => {\n-            let node_at = body_at.key(\"node\");\n-            let Ok(found) = join\n-                .by_id\n-                .binary_search_by(|&position| join.nodes[position].node_id.cmp(node))\n-            else {\n-                return Err(refused(\n-                    meter,\n-                    index,\n-                    Code::MissingDeclaration,\n-                    Some(Cause::MissingName),\n-                    node_at,\n-                ));\n-            };\n-            if !matches!(\n-                join.kinds.get(join.by_id[found]),\n-                Some(CheckedNodeKind::Function(_))\n-            ) {\n-                return Err(refused(\n-                    meter,\n-                    index,\n-                    Code::IllTyped,\n-                    Some(Cause::OperatorIneligible),\n-                    node_at,\n-                ));\n-            }\n-            if node != expected {\n-                return Err(invalid(meter, index, node_at));\n-            }\n-        }\n-        (OperationBody::NoBody, None) => {}\n-        _ => return Err(invalid(meter, index, body_at)),\n-    }\n-    Ok(())\n+    Ok(()) /* ~ changed by cargo-mutants ~ */\n }\n",
+    "file": "crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs",
+    "function": {
+      "function_name": "check_source_row",
+      "return_type": "-> Result<(), ValidationFailure>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 612
+        },
+        "start": {
+          "column": 1,
+          "line": 531
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs:542:5: replace check_source_row -> Result<(), ValidationFailure> with Ok(())",
+    "package": "filament-contract-model",
+    "replacement": "Ok(())",
+    "span": {
+      "end": {
+        "column": 11,
+        "line": 611
+      },
+      "start": {
+        "column": 5,
+        "line": 542
+      }
+    }
+  },
+  {
+    "diff": "--- crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs\n+++ replace != with == in check_source_row\n@@ -539,17 +539,17 @@\n     declaring: &CheckedSemanticNodeV2<CheckedJson>,\n     join: SourceJoin<'_>,\n ) -> Result<(), ValidationFailure> {\n     let at = rows_at().index(index);\n     let Some(identity) = source_identity(declaring) else {\n         return Err(invalid(meter, index, at.key(\"declaring\")));\n     };\n     let document_at = at.key(\"document\");\n-    if row.document.as_ref() != identity {\n+    if row.document.as_ref() == /* ~ changed by cargo-mutants ~ */ identity {\n         let owned = join\n             .nodes\n             .iter()\n             .any(|node| source_identity(node) == Some(row.document.as_ref()));\n         return Err(if owned {\n             invalid(meter, index, document_at)\n         } else {\n             refused(\n",
+    "file": "crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs",
+    "function": {
+      "function_name": "check_source_row",
+      "return_type": "-> Result<(), ValidationFailure>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 612
+        },
+        "start": {
+          "column": 1,
+          "line": 531
+        }
+      }
+    },
+    "genre": "BinaryOperator",
+    "name": "crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs:547:30: replace != with == in check_source_row",
+    "package": "filament-contract-model",
+    "replacement": "==",
+    "span": {
+      "end": {
+        "column": 32,
+        "line": 547
+      },
+      "start": {
+        "column": 30,
+        "line": 547
+      }
+    }
+  },
+  {
+    "diff": "--- crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs\n+++ replace == with != in check_source_row\n@@ -543,17 +543,17 @@\n     let Some(identity) = source_identity(declaring) else {\n         return Err(invalid(meter, index, at.key(\"declaring\")));\n     };\n     let document_at = at.key(\"document\");\n     if row.document.as_ref() != identity {\n         let owned = join\n             .nodes\n             .iter()\n-            .any(|node| source_identity(node) == Some(row.document.as_ref()));\n+            .any(|node| source_identity(node) != /* ~ changed by cargo-mutants ~ */ Some(row.document.as_ref()));\n         return Err(if owned {\n             invalid(meter, index, document_at)\n         } else {\n             refused(\n                 meter,\n                 index,\n                 Code::MissingDeclaration,\n                 Some(Cause::MissingSelection),\n",
+    "file": "crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs",
+    "function": {
+      "function_name": "check_source_row",
+      "return_type": "-> Result<(), ValidationFailure>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 612
+        },
+        "start": {
+          "column": 1,
+          "line": 531
+        }
+      }
+    },
+    "genre": "BinaryOperator",
+    "name": "crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs:551:47: replace == with != in check_source_row",
+    "package": "filament-contract-model",
+    "replacement": "!=",
+    "span": {
+      "end": {
+        "column": 49,
+        "line": 551
+      },
+      "start": {
+        "column": 47,
+        "line": 551
+      }
+    }
+  },
+  {
+    "diff": "--- crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs\n+++ delete match arm (OperationBody::Function{node}, Some(expected)) in check_source_row\n@@ -570,43 +570,14 @@\n         let key = (identity, type_name, row.operation.as_ref());\n         join.bodies\n             .binary_search_by(|(held, _)| (held.0, held.1, held.2).cmp(&key))\n             .ok()\n             .map(|found| join.bodies[found].1)\n     });\n     let body_at = at.key(\"body\");\n     match (&row.body, held) {\n-        (OperationBody::Function { node }, Some(expected)) => {\n-            let node_at = body_at.key(\"node\");\n-            let Ok(found) = join\n-                .by_id\n-                .binary_search_by(|&position| join.nodes[position].node_id.cmp(node))\n-            else {\n-                return Err(refused(\n-                    meter,\n-                    index,\n-                    Code::MissingDeclaration,\n-                    Some(Cause::MissingName),\n-                    node_at,\n-                ));\n-            };\n-            if !matches!(\n-                join.kinds.get(join.by_id[found]),\n-                Some(CheckedNodeKind::Function(_))\n-            ) {\n-                return Err(refused(\n-                    meter,\n-                    index,\n-                    Code::IllTyped,\n-                    Some(Cause::OperatorIneligible),\n-                    node_at,\n-                ));\n-            }\n-            if node != expected {\n-                return Err(invalid(meter, index, node_at));\n-            }\n-        }\n+         /* ~ changed by cargo-mutants ~ */\n         (OperationBody::NoBody, None) => {}\n         _ => return Err(invalid(meter, index, body_at)),\n     }\n     Ok(())\n }\n",
+    "file": "crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs",
+    "function": {
+      "function_name": "check_source_row",
+      "return_type": "-> Result<(), ValidationFailure>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 612
+        },
+        "start": {
+          "column": 1,
+          "line": 531
+        }
+      }
+    },
+    "genre": "MatchArm",
+    "name": "crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs:578:9: delete match arm (OperationBody::Function{node}, Some(expected)) in check_source_row",
+    "package": "filament-contract-model",
+    "replacement": "",
+    "span": {
+      "end": {
+        "column": 10,
+        "line": 607
+      },
+      "start": {
+        "column": 9,
+        "line": 578
+      }
+    }
+  },
+  {
+    "diff": "--- crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs\n+++ delete match arm (OperationBody::NoBody, None) in check_source_row\n@@ -600,13 +600,13 @@\n                     Some(Cause::OperatorIneligible),\n                     node_at,\n                 ));\n             }\n             if node != expected {\n                 return Err(invalid(meter, index, node_at));\n             }\n         }\n-        (OperationBody::NoBody, None) => {}\n+         /* ~ changed by cargo-mutants ~ */\n         _ => return Err(invalid(meter, index, body_at)),\n     }\n     Ok(())\n }\n",
+    "file": "crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs",
+    "function": {
+      "function_name": "check_source_row",
+      "return_type": "-> Result<(), ValidationFailure>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 612
+        },
+        "start": {
+          "column": 1,
+          "line": 531
+        }
+      }
+    },
+    "genre": "MatchArm",
+    "name": "crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs:608:9: delete match arm (OperationBody::NoBody, None) in check_source_row",
+    "package": "filament-contract-model",
+    "replacement": "",
+    "span": {
+      "end": {
+        "column": 44,
+        "line": 608
+      },
+      "start": {
+        "column": 9,
+        "line": 608
+      }
+    }
+  },
+  {
+    "diff": "--- crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs\n+++ delete ! in check_source_row\n@@ -584,17 +584,17 @@\n                 return Err(refused(\n                     meter,\n                     index,\n                     Code::MissingDeclaration,\n                     Some(Cause::MissingName),\n                     node_at,\n                 ));\n             };\n-            if !matches!(\n+            if  /* ~ changed by cargo-mutants ~ */matches!(\n                 join.kinds.get(join.by_id[found]),\n                 Some(CheckedNodeKind::Function(_))\n             ) {\n                 return Err(refused(\n                     meter,\n                     index,\n                     Code::IllTyped,\n                     Some(Cause::OperatorIneligible),\n",
+    "file": "crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs",
+    "function": {
+      "function_name": "check_source_row",
+      "return_type": "-> Result<(), ValidationFailure>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 612
+        },
+        "start": {
+          "column": 1,
+          "line": 531
+        }
+      }
+    },
+    "genre": "UnaryOperator",
+    "name": "crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs:592:16: delete ! in check_source_row",
+    "package": "filament-contract-model",
+    "replacement": "",
+    "span": {
+      "end": {
+        "column": 17,
+        "line": 592
+      },
+      "start": {
+        "column": 16,
+        "line": 592
+      }
+    }
+  },
+  {
+    "diff": "--- crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs\n+++ replace != with == in check_source_row\n@@ -596,17 +596,17 @@\n                 return Err(refused(\n                     meter,\n                     index,\n                     Code::IllTyped,\n                     Some(Cause::OperatorIneligible),\n                     node_at,\n                 ));\n             }\n-            if node != expected {\n+            if node == /* ~ changed by cargo-mutants ~ */ expected {\n                 return Err(invalid(meter, index, node_at));\n             }\n         }\n         (OperationBody::NoBody, None) => {}\n         _ => return Err(invalid(meter, index, body_at)),\n     }\n     Ok(())\n }\n",
+    "file": "crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs",
+    "function": {
+      "function_name": "check_source_row",
+      "return_type": "-> Result<(), ValidationFailure>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 612
+        },
+        "start": {
+          "column": 1,
+          "line": 531
+        }
+      }
+    },
+    "genre": "BinaryOperator",
+    "name": "crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs:604:21: replace != with == in check_source_row",
+    "package": "filament-contract-model",
+    "replacement": "==",
+    "span": {
+      "end": {
+        "column": 23,
+        "line": 604
+      },
+      "start": {
+        "column": 21,
+        "line": 604
+      }
+    }
+  }
+]

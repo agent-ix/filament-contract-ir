@@ -1,0 +1,83 @@
+--- crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs
++++ replace check_source_row -> Result<(), ValidationFailure> with Ok(())
+@@ -534,79 +534,10 @@
+ /// `[<type>, <operation>, "body"]` under that owner, naming it.
+ fn check_source_row(
+     meter: &mut WorkMeter,
+     index: usize,
+     row: &OperationBodyRow,
+     declaring: &CheckedSemanticNodeV2<CheckedJson>,
+     join: SourceJoin<'_>,
+ ) -> Result<(), ValidationFailure> {
+-    let at = rows_at().index(index);
+-    let Some(identity) = source_identity(declaring) else {
+-        return Err(invalid(meter, index, at.key("declaring")));
+-    };
+-    let document_at = at.key("document");
+-    if row.document.as_ref() != identity {
+-        let owned = join
+-            .nodes
+-            .iter()
+-            .any(|node| source_identity(node) == Some(row.document.as_ref()));
+-        return Err(if owned {
+-            invalid(meter, index, document_at)
+-        } else {
+-            refused(
+-                meter,
+-                index,
+-                Code::MissingDeclaration,
+-                Some(Cause::MissingSelection),
+-                document_at,
+-            )
+-        });
+-    }
+-    let type_name = declaring
+-        .declaration
+-        .as_ref()
+-        .and_then(|declaration| declaration.qualified_name.last())
+-        .map(AsRef::as_ref);
+-    let held = type_name.and_then(|type_name| {
+-        let key = (identity, type_name, row.operation.as_ref());
+-        join.bodies
+-            .binary_search_by(|(held, _)| (held.0, held.1, held.2).cmp(&key))
+-            .ok()
+-            .map(|found| join.bodies[found].1)
+-    });
+-    let body_at = at.key("body");
+-    match (&row.body, held) {
+-        (OperationBody::Function { node }, Some(expected)) => {
+-            let node_at = body_at.key("node");
+-            let Ok(found) = join
+-                .by_id
+-                .binary_search_by(|&position| join.nodes[position].node_id.cmp(node))
+-            else {
+-                return Err(refused(
+-                    meter,
+-                    index,
+-                    Code::MissingDeclaration,
+-                    Some(Cause::MissingName),
+-                    node_at,
+-                ));
+-            };
+-            if !matches!(
+-                join.kinds.get(join.by_id[found]),
+-                Some(CheckedNodeKind::Function(_))
+-            ) {
+-                return Err(refused(
+-                    meter,
+-                    index,
+-                    Code::IllTyped,
+-                    Some(Cause::OperatorIneligible),
+-                    node_at,
+-                ));
+-            }
+-            if node != expected {
+-                return Err(invalid(meter, index, node_at));
+-            }
+-        }
+-        (OperationBody::NoBody, None) => {}
+-        _ => return Err(invalid(meter, index, body_at)),
+-    }
+-    Ok(())
++    Ok(()) /* ~ changed by cargo-mutants ~ */
+ }

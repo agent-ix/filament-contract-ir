@@ -1,0 +1,21 @@
+--- crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs
++++ replace == with != in check_source_row
+@@ -543,17 +543,17 @@
+     let Some(identity) = source_identity(declaring) else {
+         return Err(invalid(meter, index, at.key("declaring")));
+     };
+     let document_at = at.key("document");
+     if row.document.as_ref() != identity {
+         let owned = join
+             .nodes
+             .iter()
+-            .any(|node| source_identity(node) == Some(row.document.as_ref()));
++            .any(|node| source_identity(node) != /* ~ changed by cargo-mutants ~ */ Some(row.document.as_ref()));
+         return Err(if owned {
+             invalid(meter, index, document_at)
+         } else {
+             refused(
+                 meter,
+                 index,
+                 Code::MissingDeclaration,
+                 Some(Cause::MissingSelection),

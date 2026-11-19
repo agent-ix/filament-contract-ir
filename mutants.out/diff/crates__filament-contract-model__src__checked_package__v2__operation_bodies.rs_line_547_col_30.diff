@@ -1,0 +1,21 @@
+--- crates/filament-contract-model/src/checked_package/v2/operation_bodies.rs
++++ replace != with == in check_source_row
+@@ -539,17 +539,17 @@
+     declaring: &CheckedSemanticNodeV2<CheckedJson>,
+     join: SourceJoin<'_>,
+ ) -> Result<(), ValidationFailure> {
+     let at = rows_at().index(index);
+     let Some(identity) = source_identity(declaring) else {
+         return Err(invalid(meter, index, at.key("declaring")));
+     };
+     let document_at = at.key("document");
+-    if row.document.as_ref() != identity {
++    if row.document.as_ref() == /* ~ changed by cargo-mutants ~ */ identity {
+         let owned = join
+             .nodes
+             .iter()
+             .any(|node| source_identity(node) == Some(row.document.as_ref()));
+         return Err(if owned {
+             invalid(meter, index, document_at)
+         } else {
+             refused(
