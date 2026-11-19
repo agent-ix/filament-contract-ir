@@ -22,7 +22,7 @@ type: TestMatrix
 | FR-060 | FR-060-AC-6, FR-060-AC-8 | TC-487 | 🚧 Planned (QSL-2521, QSL-2558): the public `terminal_rows()` read in terminal row order with its per-model `ordinal` is not implemented, and a second terminal node or `claim` occurrence on one model node is refused today. |
 | FR-060 | FR-060-AC-7 | TC-061 | 🚧 Planned (QSL-2553): a Boolean `value`/`literal` terminal condition is refused `operator-ineligible` today. |
 | FR-376 | FR-376-AC-1 through FR-376-AC-3 | TC-488 | 🚧 Planned (QSL-2543): `requirement_items` rows and `claim`/`value_validity` nodes are refused by the closed gates today. |
-| FR-377 | FR-377-AC-1 through FR-377-AC-4 | TC-489 | 🚧 Planned: the `claim`/`probabilistic_claim` node's nine-binding body, FR-640 rules 6 and 7 and the `probabilistic_claims()` read are not implemented. |
+| FR-377 | FR-377-AC-1 through FR-377-AC-4 | TC-489 | 🚧 Partial (QSL-2554): the nine-binding body, FR-640 rules 6 and 7 with their visit charges, the placement of the `event` `formula` binding and the `probabilistic_claims()` read are implemented over the in-repo family package; the timed (`dense` and `tick`) claims, the writer round trip, the spelling and identity-change vectors, the `temporal`/`fairness` placement vector and the requirement-record ordering vector await FSpec's fixtures and FR-376. |
 | FR-362 | FR-362-AC-1 through FR-362-AC-3 | TC-475 | 🚧 Planned (IR-1529): unchanged read of packages without source objects, and source type admission. |
 | FR-363 | FR-363-AC-1 through FR-363-AC-5 | TC-475 | 🚧 Planned (IR-1529). |
 | FR-364 | FR-364-AC-1 through FR-364-AC-5 | TC-475 | 🚧 Planned (IR-1529). |
@@ -81,7 +81,7 @@ type: TestMatrix
 | TC-486 | Body wrapper over a model root | Property | P0 | FR-038-AC-562, FR-038-AC-563 | 🚧 Planned |
 | TC-487 | Terminal rows read from an admitted package | Property | P0 | FR-060-AC-6, FR-060-AC-8 | 🚧 Planned |
 | TC-488 | Requirement records read from an admitted package | Property | P0 | FR-376-AC-1, FR-376-AC-2, FR-376-AC-3 | 🚧 Planned |
-| TC-489 | Probabilistic claim node read from an admitted package | Property | P0 | FR-377-AC-1, FR-377-AC-2, FR-377-AC-3, FR-377-AC-4 | 🚧 Planned |
+| TC-489 | Probabilistic claim node read from an admitted package | Property | P0 | FR-377-AC-1, FR-377-AC-2, FR-377-AC-3, FR-377-AC-4 | 🚧 Partial |
 | TC-484 | Probabilistic nodes on source-declared operations | Property | P0 | FR-369-AC-25, FR-369-AC-26 | 🚧 Planned |
 | TC-485 | Source operation parameters in the identity rows | Property | P0 | FR-367-AC-8 | 🚧 Planned |
 | TC-471 | Monitor authority receipt, layout context and map collection closure | Property | P0 | FR-357-AC-16, FR-357-AC-17, FR-357-AC-18, FR-358-AC-10, FR-361-AC-1, FR-361-AC-2, FR-361-AC-3, FR-361-AC-4, FR-361-AC-5 | 🚧 Authority row, receipt and refusals implemented (IR-1384); layout context implemented (IR-722); map collection and locus rows remain planned. |

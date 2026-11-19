@@ -771,6 +771,22 @@ enum Slot {
     /// A direct member of a quantifier Group: where a fairness reference
     /// stands (FSpec FR-370-AC-21).
     GroupMember,
+    /// The `form` binding of a `claim`/`probabilistic_claim` body.
+    ClaimForm,
+    /// The aggregate a claim's `form` holds.
+    ClaimFormBody,
+    /// The `event` binding of a claim's `form`.
+    ClaimEvent,
+    /// The aggregate a claim's `event` holds.
+    ClaimEventBody,
+    /// The `formula` binding of a claim's `event`, whose reference is a formula.
+    ClaimFormula,
+}
+
+/// Whether `term` is the binding `name`.
+fn binding_named(term: &CheckedTerm, name: &str) -> bool {
+    matches!(term, CheckedTerm::Binding { name: held, .. }
+        if held.kind() == super::typed_terms::CheckedBindingNameKind::Other(name))
 }
 
 /// The slot of argument `index` of the application at the root of a node of
@@ -866,12 +882,21 @@ impl<'a> Walk for Placement<'_, 'a, '_> {
             CheckedTerm::Aggregate { members } => {
                 let hyper_root =
                     is_root && self.kind == CheckedNodeKind::Claim(super::ClaimForm::Hyperproperty);
+                let claim_root = is_root
+                    && self.kind == CheckedNodeKind::Claim(super::ClaimForm::ProbabilisticClaim);
                 children.extend(members.iter().enumerate().map(|(at, member_term)| {
                     let member = match slot {
                         Slot::FairnessList => Slot::Fairness,
                         Slot::QuantifierTuple => Slot::QuantifierGroup,
                         Slot::QuantifierGroup => Slot::GroupMember,
                         _ if hyper_root && at == 3 => Slot::HyperQuantifiers,
+                        _ if claim_root && at == 5 => Slot::ClaimForm,
+                        Slot::ClaimFormBody if binding_named(member_term, "event") => {
+                            Slot::ClaimEvent
+                        }
+                        Slot::ClaimEventBody if binding_named(member_term, "formula") => {
+                            Slot::ClaimFormula
+                        }
                         _ => Slot::Other,
                     };
                     (member_term, false, member)
@@ -884,7 +909,12 @@ impl<'a> Walk for Placement<'_, 'a, '_> {
                 {
                     Slot::QuantifierTuple
                 } else {
-                    Slot::Other
+                    match slot {
+                        Slot::ClaimForm => Slot::ClaimFormBody,
+                        Slot::ClaimEvent => Slot::ClaimEventBody,
+                        Slot::ClaimFormula => Slot::Formula,
+                        _ => Slot::Other,
+                    }
                 };
                 children.extend(std::iter::once((value.as_ref(), false, value_slot)));
             }

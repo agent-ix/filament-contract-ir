@@ -65,6 +65,7 @@ mod checked_package_v2_operation_effects;
 mod checked_package_v2_owners;
 mod checked_package_v2_parameters;
 mod checked_package_v2_probabilistic;
+mod checked_package_v2_probabilistic_claim;
 mod checked_package_v2_probabilistic_delay;
 mod checked_package_v2_protocol_body;
 mod checked_package_v2_protocol_reference;
