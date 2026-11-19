@@ -4917,3 +4917,227 @@ fn tc_048_an_aggregate_literal_of_the_wrong_kind_refuses_at_its_member() {
     );
     wrong_kind(DURATION, "duration", tick("0"), tick("5"), word("1"), 5);
 }
+
+// ---------------------------------------------------------------------------
+// FR-038-AC-562 / FR-038-AC-563 (FSpec FR-402-AC-11): a body wrapper over a
+// model root
+// ---------------------------------------------------------------------------
+
+fn model_root_id(package: &str) -> Value {
+    json!({"package": package, "path": ["model", "model_root"], "ordinal": 0})
+}
+
+/// The two-trace hyper clock fixture with its body wrapper's `over` edited to
+/// the `model_root` of `root`: the wrapper's and the hyperproperty's positions.
+pub(super) fn root_wrapper_fixture(root: &str) -> (Value, usize, usize) {
+    let (mut package, wrapper, hyper) = hyper_clock_fixture(&["s", "n"]);
+    select_model(&mut package, root);
+    package["semantic_graph"]["nodes"][wrapper]["body"]["arguments"][0] =
+        json!({"term": "reference", "target": model_root_id(root)});
+    settle(&mut package);
+    (package, wrapper, hyper)
+}
+
+fn at_over(wrapper: usize) -> String {
+    at_node(wrapper, "/body/arguments/0")
+}
+
+/// Asserts `invalid_model_binding`/`malformed-declaration` at the wrapper's
+/// `over`, located at the model root it names.
+fn expect_root_refused(case: &str, package: &Value, wrapper: usize, root: &str) {
+    let (outcome, locus) = refusal_of(case, package);
+    assert_eq!(
+        outcome,
+        (
+            Code::InvalidModelBinding,
+            Some(Cause::MalformedDeclaration),
+            Some(at_over(wrapper))
+        ),
+        "{case}"
+    );
+    let root: CheckedNodeId = serde_json::from_value(model_root_id(root)).expect("root ID");
+    assert_eq!(locus, Some(root), "{case}");
+}
+
+#[trace("TC-486", "FR-038-AC-562")]
+#[test]
+fn tc_486_a_body_wrapper_over_its_first_subjects_model_root_reads_and_writes() {
+    let (package, wrapper, hyper) = root_wrapper_fixture(ORDERS);
+    let admitted = admitted("a wrapper over the first subject's root", &package);
+    let hyper_id = typed_node_id_of(&package, hyper);
+    let rows = admitted.temporal_bindings().expect("rows");
+    assert_eq!(rows.len(), 2, "one row per quantified trace");
+    assert!(rows.iter().all(|row| row.declaration == hyper_id));
+    assert!(admitted.temporal_clause_names().is_none_or(|names| names
+        .iter()
+        .all(|row| row.declaration != typed_node_id_of(&package, wrapper))));
+    let encoded = filament_contract_model::encode_checked_package_v2(
+        admitted.name(),
+        admitted.lock(),
+        admitted.graph(),
+        filament_contract_model::CheckedPackageSourceCorrespondenceRef {
+            source_map: admitted.source_map(),
+            refinement_step_rows: admitted.refinement_step_rows(),
+        },
+        filament_contract_model::CheckedPackageSidecarsRef {
+            checked_term_data: admitted.checked_term_data(),
+            temporal_bindings: admitted.temporal_bindings(),
+            temporal_clause_names: admitted.temporal_clause_names(),
+            claim_names: admitted.claim_names(),
+            schedulability_claims: admitted.schedulability_claim_rows(),
+            operation_effects: admitted.operation_effect_rows(),
+            operation_bodies: admitted.operation_body_rows(),
+        },
+        admitted.capability_report(),
+        admitted.diagnostics(),
+        quire_canonical::Limits::new(1 << 24),
+    )
+    .expect("the typed writer encodes the package");
+    let evidence = evidence_with_document(&package, ORDERS, &orders_document());
+    let CheckedPackageV2ReadResult::Admitted(again) =
+        crate::read_and_account(&encoded, CheckedPackageReadLimits::bounded(), &evidence)
+    else {
+        panic!("the typed re-encoding admits")
+    };
+    assert_eq!(admitted, *again);
+}
+
+#[trace("TC-486", "FR-038-AC-563")]
+#[test]
+fn tc_486_a_model_root_over_refuses_everywhere_the_spec_names() {
+    // A wrapper over a selected package's root no `subjects` binding names:
+    // admitted by the temporal step, refused by the hyperproperty step.
+    let (package, wrapper, _) = root_wrapper_fixture(OTHER_PACKAGE);
+    expect_root_refused("a root no subject names", &package, wrapper, OTHER_PACKAGE);
+
+    // A single-trace clause: no body wrapper.
+    let mut package = v2_all_families();
+    select_model(&mut package, ORDERS);
+    let single = clause(&package);
+    package["semantic_graph"]["nodes"][single]["body"]["arguments"][0] =
+        json!({"term": "reference", "target": model_root_id(ORDERS)});
+    settle(&mut package);
+    expect_root_refused("a single-trace clause", &package, single, ORDERS);
+
+    // A wrapper whose formula reads a slot parameter, of any tag; a parameter
+    // that is no slot parameter is read freely.
+    for (name, slot) in [
+        ("slot_sv_sa", true),
+        ("op_sa", true),
+        ("rcv_sa", true),
+        ("arg_sa_sVault_sstep_si", true),
+        ("slot_sa__b_sc", true),
+        ("op_s_xC3_xA9", true),
+        ("slotted", false),
+        ("operand", false),
+        // Prefix-alike names that are no encoding: the wrong field count, no
+        // `_s` after the tag, a bad escape, escaped bytes that are no UTF-8.
+        ("slot_sv", false),
+        ("slot_sv_sa_sb", false),
+        ("op_sa_sb", false),
+        ("op_a", false),
+        ("op_", false),
+        ("rcv_s", false),
+        ("arg_sa_sb_sc", false),
+        ("op_sa_xzz", false),
+        ("op_sa_x4", false),
+        ("op_sa_x4a", false),
+        ("op_s_xC3", false),
+        ("op_sa_q", false),
+    ] {
+        let (mut package, wrapper, _) = root_wrapper_fixture(ORDERS);
+        let parameter = find_form(&package, "value", "parameter");
+        let holds = find_identity(&package, &temporal_identity("holds"));
+        package["semantic_graph"]["nodes"][parameter]["body"]["members"][0]["value"]["value"] =
+            json!(name);
+        let parameter_id = nodes(&package)[parameter]["node_id"].clone();
+        package["semantic_graph"]["nodes"][holds]["body"]["arguments"][0] =
+            json!({"term": "reference", "target": parameter_id});
+        settle(&mut package);
+        if slot {
+            expect_root_refused(name, &package, wrapper, ORDERS);
+        } else {
+            admitted(name, &package);
+        }
+    }
+
+    // A root outside the wrapper's dependencies keeps `missing-name`.
+    let (mut package, wrapper, _) = root_wrapper_fixture(ORDERS);
+    package["semantic_graph"]["nodes"][wrapper]["body"]["arguments"][0] =
+        json!({"term": "reference", "target": model_root_id("acme/absent")});
+    settle(&mut package);
+    let (outcome, _) = refusal_of("a root naming no node", &package);
+    assert_eq!(
+        outcome,
+        (
+            Code::MissingDeclaration,
+            Some(Cause::MissingName),
+            Some(at_over(wrapper))
+        )
+    );
+}
+
+/// The root-wrapper fixture with a second subject `k`, the `model_root` of
+/// `OTHER_PACKAGE`, named by trace `n`'s Group; the wrapper's `over` is the root
+/// of `over`.
+fn two_subject_fixture(over: &str) -> (Value, usize) {
+    let (mut package, wrapper, hyper) = root_wrapper_fixture(over);
+    select_model(&mut package, OTHER_PACKAGE);
+    let body = &mut package["semantic_graph"]["nodes"][hyper]["body"];
+    body["members"][1]["value"]["members"]
+        .as_array_mut()
+        .expect("subjects")
+        .push(named(
+            "k",
+            json!({"term": "reference", "target": model_root_id(OTHER_PACKAGE)}),
+        ));
+    body["members"][3]["value"]["members"][1]["members"][2]["value"]["value"] = json!("k");
+    settle(&mut package);
+    (package, wrapper)
+}
+
+#[trace("TC-486", "FR-038-AC-563")]
+#[test]
+fn tc_486_a_model_root_over_is_the_first_subjects_never_a_later_ones() {
+    let (package, _) = two_subject_fixture(ORDERS);
+    admitted("the first subject's root", &package);
+    let (package, wrapper) = two_subject_fixture(OTHER_PACKAGE);
+    expect_root_refused(
+        "the second subject's root",
+        &package,
+        wrapper,
+        OTHER_PACKAGE,
+    );
+}
+
+#[trace("TC-486", "FR-038-AC-563")]
+#[test]
+fn tc_486_the_wrapper_fairness_refusal_precedes_the_model_root_refusal() {
+    // FSpec FR-402 "Reader order" step 3: a non-empty `fairness` argument
+    // refuses before a root that is not the first subject's.
+    let (mut package, _) = hyper_resolution(
+        INFINITE,
+        fairness_member(&model_key(ORDER_NODE), "scaled"),
+        ORDERS,
+    );
+    select_model(&mut package, OTHER_PACKAGE);
+    let wrapper = clause(&package);
+    let hyper = find_form(&package, "claim", "hyperproperty");
+    let fair = package["semantic_graph"]["nodes"][hyper]["body"]["members"][3]["value"]["members"]
+        [0]["members"][3]
+        .clone();
+    package["semantic_graph"]["nodes"][wrapper]["body"]["arguments"][4] =
+        json!({"term": "aggregate", "members": [fair]});
+    package["semantic_graph"]["nodes"][wrapper]["body"]["arguments"][0] =
+        json!({"term": "reference", "target": model_root_id(OTHER_PACKAGE)});
+    settle(&mut package);
+    let (outcome, _) = refusal_of("fairness before the root", &package);
+    assert_eq!(
+        outcome,
+        (
+            Code::InvalidSemanticGraph,
+            None,
+            Some(at_node(wrapper, "/body/arguments/4"))
+        )
+    );
+}
