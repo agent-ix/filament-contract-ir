@@ -17,7 +17,7 @@ use filament_contract_model::{
     CheckedPackageRefusalCause, CheckedPackageRefusalCode, CheckedPackageSidecarsRef,
     CheckedPackageSourceCorrespondenceRef, CheckedPackageV2, CheckedPackageV2ReadResult,
     ProbabilisticActivation, ProbabilisticClaimForm, ProbabilisticEvent, ProbabilisticExact,
-    ProbabilisticMeasure, ProbabilisticScheduler,
+    ProbabilisticMeasure, ProbabilisticReachTarget, ProbabilisticScheduler, ProbabilisticWeighting,
 };
 use ix_trace_rs::trace;
 use serde_json::{json, Value};
@@ -177,6 +177,7 @@ fn fairness(kind: &str, granularity: &str, name: &str) -> Value {
 }
 
 /// The nine bindings of a claim node.
+#[derive(Clone)]
 struct Claim {
     scheduler: Value,
     reward: Vec<Value>,
@@ -363,6 +364,12 @@ fn document() -> Value {
 /// The package with the claims `(name, body)` added over a workload `Steady`
 /// and an integer reward `duration`.
 fn package(claims: Vec<(&str, Value)>) -> Value {
+    package_over(claims, true)
+}
+
+/// The package with the claims added; `nodes` adds the workload, rewards and
+/// random parameters the claims of the model read, or none of them.
+fn package_over(claims: Vec<(&str, Value)>, nodes: bool) -> Value {
     let mut value = v2_all_families();
     append(
         &mut value,
@@ -375,52 +382,20 @@ fn package(claims: Vec<(&str, Value)>) -> Value {
         ),
         "generated",
     );
-    let parameter = plain_node(
-        &["reward", "parameter"],
-        "value",
-        "parameter",
-        id(&["builtin/integer"]),
-        aggregate(vec![
-            binding("name", text("n")),
-            binding("level", integer("0")),
-        ]),
-    );
-    append(&mut value, parameter, "expression");
-    let mut function = plain_node(
-        &["reward", "function"],
-        "function",
-        "pure_function",
-        id(&["builtin/integer"]),
-        aggregate(vec![
-            binding(
-                "parameters",
-                aggregate(vec![reference(id(&["reward", "parameter"]))]),
-            ),
-            binding("clause", text("reward")),
-        ]),
-    );
-    function["owner"] = json!({"kind": "model", "identity": PACKAGE, "node": DEPOSIT});
-    append(&mut value, function, "generated");
-    append(
-        &mut value,
-        probabilistic("steady", "workload", workload()),
-        "declaration",
-    );
-    append(
-        &mut value,
-        probabilistic(
-            "duration",
-            "reward",
-            reward_of("deposit", "duration", "function"),
-        ),
-        "declaration",
-    );
-    for (label, name, function) in [
-        ("duration_withdraw", "duration", "function_withdraw"),
-        ("cost", "cost", "function_cost"),
-    ] {
-        let mut node = plain_node(
-            &["reward", function],
+    if nodes {
+        let parameter = plain_node(
+            &["reward", "parameter"],
+            "value",
+            "parameter",
+            id(&["builtin/integer"]),
+            aggregate(vec![
+                binding("name", text("n")),
+                binding("level", integer("0")),
+            ]),
+        );
+        append(&mut value, parameter, "expression");
+        let mut function = plain_node(
+            &["reward", "function"],
             "function",
             "pure_function",
             id(&["builtin/integer"]),
@@ -432,21 +407,55 @@ fn package(claims: Vec<(&str, Value)>) -> Value {
                 binding("clause", text("reward")),
             ]),
         );
-        node["owner"] = json!({"kind": "model", "identity": PACKAGE,
+        function["owner"] = json!({"kind": "model", "identity": PACKAGE, "node": DEPOSIT});
+        append(&mut value, function, "generated");
+        append(
+            &mut value,
+            probabilistic("steady", "workload", workload()),
+            "declaration",
+        );
+        append(
+            &mut value,
+            probabilistic(
+                "duration",
+                "reward",
+                reward_of("deposit", "duration", "function"),
+            ),
+            "declaration",
+        );
+        for (label, name, function) in [
+            ("duration_withdraw", "duration", "function_withdraw"),
+            ("cost", "cost", "function_cost"),
+        ] {
+            let mut node = plain_node(
+                &["reward", function],
+                "function",
+                "pure_function",
+                id(&["builtin/integer"]),
+                aggregate(vec![
+                    binding(
+                        "parameters",
+                        aggregate(vec![reference(id(&["reward", "parameter"]))]),
+                    ),
+                    binding("clause", text("reward")),
+                ]),
+            );
+            node["owner"] = json!({"kind": "model", "identity": PACKAGE,
             "node": "ix://test/families/Account/withdraw"});
-        append(&mut value, node, "generated");
-        append(
-            &mut value,
-            probabilistic(label, "reward", reward_of("withdraw", name, function)),
-            "declaration",
-        );
-    }
-    for (label, operation_name) in [("a_deposit", "deposit"), ("b_withdraw", "withdraw")] {
-        append(
-            &mut value,
-            probabilistic(label, "random_parameter", random_parameter(operation_name)),
-            "declaration",
-        );
+            append(&mut value, node, "generated");
+            append(
+                &mut value,
+                probabilistic(label, "reward", reward_of("withdraw", name, function)),
+                "declaration",
+            );
+        }
+        for (label, operation_name) in [("a_deposit", "deposit"), ("b_withdraw", "withdraw")] {
+            append(
+                &mut value,
+                probabilistic(label, "random_parameter", random_parameter(operation_name)),
+                "declaration",
+            );
+        }
     }
     let mut rows = Vec::new();
     for (name, body) in claims {
@@ -473,6 +482,73 @@ fn all() -> Value {
         ("Fair", fair().body()),
         ("P95", p95().body()),
     ])
+}
+
+/// The four claims under long, realistic names, for the whole-read
+/// accounting registry: a claim's structural key carries its label.
+pub(crate) fn accounting_fixture() -> (Value, &'static str, Value) {
+    let long = "a_probabilistic_claim_whose_name_is_as_long_as_a_real_one_is_";
+    let name = |stem: &str| format!("{long}{long}{stem}");
+    // No workload, reward or random-parameter nodes: those are read by other
+    // stages whose own accounting is registered elsewhere, so the registry
+    // bound sees only the claim read. Every set the claim reads is empty.
+    let bare = |mut claim: Claim, form: Option<Value>| {
+        claim.scheduler = fair().scheduler;
+        claim.distributions = empty();
+        if let Some(form) = form {
+            claim.form = form;
+        }
+        claim.body()
+    };
+    let mut confident = avail();
+    confident.confidence = aggregate(vec![
+        binding("alpha", rational("1/100")),
+        binding("beta", rational("1/100")),
+        binding("indifference", rational("1/100")),
+    ]);
+    let wide = "9".repeat(300);
+    let mut mean = extra(kinded(
+        "mean_of_fraction",
+        vec![
+            (
+                "measure",
+                kinded(
+                    "fraction",
+                    vec![
+                        ("predicate", reference(predicate())),
+                        ("window", integer(&wide)),
+                        ("weighting", kinded("none", vec![])),
+                    ],
+                ),
+            ),
+            ("bound", bound("at_least", rational("1/2"))),
+        ],
+    ));
+    mean.confidence = confident.confidence.clone();
+    // Many claims, so the unpaid heap of the read, if any, passes the
+    // registry's bound: the keys are cloned and the rationals, the integer
+    // and the fairness names are built once per claim.
+    let claims: Vec<(String, Value)> = (0..96)
+        .map(|at| {
+            let body = match at % 3 {
+                0 => bare(avail(), None),
+                1 => bare(confident.clone(), None),
+                _ => bare(mean.clone(), None),
+            };
+            (name(&format!("claim_{at:03}")), body)
+        })
+        .collect();
+    (
+        package_over(
+            claims
+                .iter()
+                .map(|(n, b)| (n.as_str(), b.clone()))
+                .collect(),
+            false,
+        ),
+        PACKAGE,
+        document(),
+    )
 }
 
 fn read(value: &Value) -> CheckedPackageV2ReadResult {
@@ -964,6 +1040,10 @@ fn the_claim_checks_charge_each_binding_in_body_order() {
     let order = [
         format!("/semantic_graph/nodes/{p95}"),
         claim_path("/members/5"),
+        claim_path("/members/5/value/members/0"),
+        claim_path("/members/5/value/members/1"),
+        claim_path("/members/5/value/members/2"),
+        claim_path("/members/5/value/members/3"),
         claim_path("/members/6"),
         claim_path("/members/7"),
         claim_path("/members/8"),
@@ -1344,4 +1424,609 @@ fn typed_literals_untimed_time_forms_and_path_rewrites() {
         .probabilistic_claims()
         .iter()
         .any(|claim| format!("{:?}", claim.node.path).contains('6')));
+}
+
+// ---- forms the first tests did not reach (QSL-2554 round 1) ----
+
+fn steps(within: Value) -> Value {
+    kinded(
+        "steps",
+        vec![
+            ("from", reference(predicate())),
+            ("until", reference(predicate())),
+            ("within", within),
+        ],
+    )
+}
+
+fn fraction_measure(weighting: &str) -> Value {
+    kinded(
+        "fraction",
+        vec![
+            ("predicate", reference(predicate())),
+            ("window", integer("10")),
+            ("weighting", kinded(weighting, vec![])),
+        ],
+    )
+}
+
+fn compare(measure: Value, threshold: Value) -> Value {
+    kinded(
+        "probability",
+        vec![
+            (
+                "event",
+                kinded(
+                    "compare",
+                    vec![
+                        ("measure", measure),
+                        ("bound", bound("at_least", threshold)),
+                    ],
+                ),
+            ),
+            ("bound", bound("at_least", rational("1/2"))),
+        ],
+    )
+}
+
+fn reach(target: Value) -> Value {
+    kinded(
+        "reach",
+        vec![
+            ("target", target),
+            ("bound", bound("at_least", rational("1/2"))),
+        ],
+    )
+}
+
+fn long_run(weighting: &str) -> Value {
+    kinded(
+        "long_run_fraction",
+        vec![
+            ("predicate", reference(predicate())),
+            ("weighting", kinded(weighting, vec![])),
+            ("bound", bound("at_least", rational("1/2"))),
+        ],
+    )
+}
+
+fn mean_of_fraction() -> Value {
+    kinded(
+        "mean_of_fraction",
+        vec![
+            ("measure", fraction_measure("none")),
+            ("bound", bound("at_least", rational("1/2"))),
+        ],
+    )
+}
+
+/// The package of `all()` plus the claim `Extra` with `claim`'s body.
+fn with_extra(claim: &Claim) -> Value {
+    package(vec![("Extra", claim.body())])
+}
+
+fn extra(form: Value) -> Claim {
+    claim(reference(steady()), form)
+}
+
+fn read_extra(claim: &Claim) -> filament_contract_model::CheckedProbabilisticClaimNode {
+    admitted(&with_extra(claim)).probabilistic_claims()[0].clone()
+}
+
+/// FR-377-AC-1: the read of every form, event, measure, weighting, activation
+/// and `over` the other tests do not read.
+#[trace("TC-489", "FR-377-AC-1")]
+#[test]
+fn the_public_read_covers_every_form_event_measure_and_activation() {
+    let some = |at: Value| {
+        serde_json::from_value::<filament_contract_model::CheckedNodeId>(at).expect("node id")
+    };
+    let predicate_id = some(predicate());
+    // `reach`, in each of its three targets.
+    for (target, expected) in [
+        (
+            kinded("eventually", vec![("predicate", reference(predicate()))]),
+            ProbabilisticReachTarget::Eventually(predicate_id.clone()),
+        ),
+        (
+            kinded("always", vec![("predicate", reference(predicate()))]),
+            ProbabilisticReachTarget::Always(predicate_id.clone()),
+        ),
+        (
+            kinded(
+                "until",
+                vec![
+                    ("left", reference(predicate())),
+                    ("right", reference(predicate())),
+                ],
+            ),
+            ProbabilisticReachTarget::Until(predicate_id.clone(), predicate_id.clone()),
+        ),
+    ] {
+        let read = read_extra(&extra(reach(target)));
+        assert!(
+            matches!(&read.form, ProbabilisticClaimForm::Reach { target, bound }
+                if *target == expected && bound.direction == BoundDirection::AtLeast),
+            "{:?}",
+            read.form
+        );
+    }
+    // A `compare` event over `steps`, with an integer threshold.
+    let read = read_extra(&extra(compare(steps(integer("10")), integer("5"))));
+    let ProbabilisticClaimForm::Probability { event, .. } = &read.form else {
+        panic!("probability")
+    };
+    let ProbabilisticEvent::Compare { measure, bound } = event else {
+        panic!("compare")
+    };
+    assert!(
+        matches!(measure, ProbabilisticMeasure::Steps { from, until, within }
+        if *from == predicate_id && *until == predicate_id
+            && matches!(within, ProbabilisticExact::Integer(ten) if *ten == 10.into()))
+    );
+    assert!(matches!(&bound.value, ProbabilisticExact::Integer(five) if *five == 5.into()));
+    // A `compare` event over a `fraction` measure, weighted by nothing.
+    let read = read_extra(&extra(compare(fraction_measure("none"), rational("1/4"))));
+    let ProbabilisticClaimForm::Probability {
+        event: ProbabilisticEvent::Compare { measure, bound },
+        ..
+    } = &read.form
+    else {
+        panic!("compare")
+    };
+    assert!(
+        matches!(measure, ProbabilisticMeasure::Fraction { predicate, window, weighting }
+        if *predicate == predicate_id
+            && matches!(window, ProbabilisticExact::Integer(ten) if *ten == 10.into())
+            && *weighting == ProbabilisticWeighting::None)
+    );
+    assert!(matches!(&bound.value, ProbabilisticExact::Rational(r)
+        if (&*r.numerator, &*r.denominator) == ("1", "4")));
+    // `mean_of_fraction` over a `fraction` measure.
+    let read = read_extra(&extra(mean_of_fraction()));
+    assert!(matches!(
+        &read.form,
+        ProbabilisticClaimForm::MeanOfFraction {
+            measure: ProbabilisticMeasure::Fraction { .. },
+            ..
+        }
+    ));
+    // `long_run_fraction` in each weighting the untimed model admits.
+    let read = read_extra(&extra(long_run("none")));
+    assert!(
+        matches!(&read.form, ProbabilisticClaimForm::LongRunFraction {
+        predicate, weighting: ProbabilisticWeighting::None, ..
+    } if *predicate == predicate_id)
+    );
+    let mut rewarded = extra(long_run("reward"));
+    rewarded.reward = vec![reference(duration()), reference(duration_withdraw())];
+    let read = read_extra(&rewarded);
+    assert!(matches!(
+        &read.form,
+        ProbabilisticClaimForm::LongRunFraction {
+            weighting: ProbabilisticWeighting::Reward,
+            ..
+        }
+    ));
+    assert_eq!(read.rewards.len(), 2);
+    // `activation` `each` and `over` a parameter node.
+    let mut each = avail();
+    each.activation = kinded(
+        "each",
+        vec![
+            ("trigger", reference(parameter())),
+            ("guard", reference(predicate())),
+        ],
+    );
+    each.over = reference(parameter());
+    let read = read_extra(&each);
+    assert_eq!(
+        read.activation,
+        ProbabilisticActivation::Each {
+            trigger: some(parameter()),
+            guard: predicate_id.clone(),
+        }
+    );
+    assert_eq!(read.over, Some(some(parameter())));
+    // The other claims read `Origin` and no `over`.
+    assert_eq!(read_extra(&avail()).over, None);
+}
+
+/// A second predicate node, `Idle`, a copy of the family predicate.
+fn idle() -> Value {
+    id(&["fixture/idle"])
+}
+
+fn with_idle(mut value: Value) -> Value {
+    let mut node = value["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|node| node["node_id"] == predicate())
+        .expect("predicate node")
+        .clone();
+    node["node_id"] = idle();
+    node["occurrences"] = json!([{"role": "generated", "ordinal": 0}]);
+    append(&mut value, node, "generated");
+    refresh_identity(&mut value);
+    value
+}
+
+/// FR-377-AC-1 (FR-640-AC-10): the identity changes the first test does not
+/// make: `activation` `each`, `from` to `Idle`, `Avail`'s event and form,
+/// `Cost`'s `until`. Each gives that claim another node and entry and leaves
+/// the others' unchanged.
+#[trace("TC-489", "FR-377-AC-1")]
+#[test]
+fn the_remaining_identity_changes_give_that_claim_another_entry() {
+    type Edit = Box<dyn Fn(&mut Value)>;
+    let cases: Vec<(&str, Edit)> = vec![
+        (
+            "Avail",
+            Box::new(|b| {
+                *member(b, 7) = kinded(
+                    "each",
+                    vec![
+                        ("trigger", reference(parameter())),
+                        ("guard", reference(predicate())),
+                    ],
+                )
+            }),
+        ),
+        (
+            "Avail",
+            Box::new(|b| {
+                *member(b, 5) = compare(steps(integer("10")), integer("5"));
+            }),
+        ),
+        (
+            "Avail",
+            Box::new(|b| {
+                *member(b, 5) = reach(kinded(
+                    "eventually",
+                    vec![("predicate", reference(predicate()))],
+                ));
+            }),
+        ),
+        (
+            "P95",
+            Box::new(|b| {
+                member(b, 5)["members"][2]["value"]["members"][1]["value"] = reference(idle());
+            }),
+        ),
+        (
+            "Cost",
+            Box::new(|b| {
+                member(b, 5)["members"][1]["value"] = reference(idle());
+            }),
+        ),
+    ];
+    let names = ["Avail", "Cost", "P95"];
+    let claims = || {
+        vec![
+            ("Avail", avail().body()),
+            ("Cost", cost().body()),
+            ("P95", p95().body()),
+        ]
+    };
+    let read_set = |claims: Vec<(&str, Value)>| {
+        let labelled: Vec<(String, Value)> = claims
+            .iter()
+            .map(|(name, body)| (format!("{name}@{body}"), body.clone()))
+            .collect();
+        let value = with_idle(package(
+            labelled
+                .iter()
+                .map(|(n, b)| (n.as_str(), b.clone()))
+                .collect(),
+        ));
+        let package = admitted(&value);
+        names
+            .map(|name| {
+                package
+                    .probabilistic_claims()
+                    .iter()
+                    .find(|claim| format!("{:?}", claim.node.path[2]).contains(name))
+                    .expect("claim")
+                    .clone()
+            })
+            .to_vec()
+    };
+    let base = read_set(claims());
+    for (name, edit) in cases {
+        let mut edited_claims = claims();
+        let at = edited_claims.iter().position(|(n, _)| *n == name).unwrap();
+        edit(&mut edited_claims[at].1);
+        let changed = read_set(edited_claims);
+        for (index, other) in names.iter().enumerate() {
+            if *other == name {
+                assert_ne!(changed[index].node, base[index].node, "{name}");
+                assert_ne!(changed[index], base[index], "{name}");
+            } else {
+                assert_eq!(changed[index], base[index], "{other}");
+            }
+        }
+    }
+}
+
+/// FR-377-AC-2 (FR-640-AC-11): the mutations FR-377-AC-2 names that the first
+/// refusal test does not make, each refused at its member.
+#[trace("TC-489", "FR-377-AC-2")]
+#[test]
+fn each_remaining_fr640_mutation_refuses_at_its_member() {
+    let form = |at: &str| format!("/body/members/5/value{at}");
+    let level = "/members/1/value";
+    // A `level` spelled `38/40`, at or below 0, and an Open01 `bound` at or
+    // below 0 (`Avail`'s probability, `Cost`'s is not a probability).
+    for spelling in ["38/40", "0", "-1/2"] {
+        let value = edited("P95", |b| {
+            member(b, 5)["members"][1]["value"] = rational(spelling)
+        });
+        assert_refused(&value, "P95", INVALID, invalid_value(), &form(level));
+    }
+    for spelling in ["0", "-1/2"] {
+        let value = edited("Avail", |b| {
+            member(b, 5)["members"][2]["value"]["members"][1]["value"] = rational(spelling)
+        });
+        assert_refused(
+            &value,
+            "Avail",
+            INVALID,
+            invalid_value(),
+            &form("/members/2/value/members/1/value"),
+        );
+    }
+    // `from` referencing the workload `Steady`, a real reference, not text.
+    let value = edited("P95", |b| {
+        member(b, 5)["members"][2]["value"]["members"][1]["value"] = reference(steady());
+    });
+    assert_refused(
+        &value,
+        "P95",
+        CheckedPackageRefusalCode::IllTyped,
+        Some(CheckedPackageRefusalCause::OperatorIneligible),
+        &form("/members/2/value/members/1/value/target"),
+    );
+    // `over` referencing `Steady` refuses as a malformed declaration.
+    let value = edited("Avail", |b| *member(b, 6) = reference(steady()));
+    assert_refused(
+        &value,
+        "Avail",
+        CheckedPackageRefusalCode::InvalidModelBinding,
+        Some(CheckedPackageRefusalCause::MalformedDeclaration),
+        "/body/members/6/value/target",
+    );
+    // A rational typed at a node that is not the rational type, and an
+    // integer typed at the rational type.
+    let value = edited("Avail", |b| {
+        member(b, 5)["members"][2]["value"]["members"][1]["value"]["type"] =
+            id(&["builtin/integer"]);
+    });
+    assert_refused(
+        &value,
+        "Avail",
+        CheckedPackageRefusalCode::IllTyped,
+        Some(CheckedPackageRefusalCause::OperatorIneligible),
+        &form("/members/2/value/members/1/value/type"),
+    );
+    for other in [id(&["fixture/a1a1"]), id(&["builtin/boolean"]), account()] {
+        let value = edited("Avail", |b| {
+            member(b, 5)["members"][2]["value"]["members"][1]["value"]["type"] = other.clone();
+        });
+        let refusal = refused(&value);
+        assert_eq!(
+            refusal.cause,
+            Some(CheckedPackageRefusalCause::OperatorIneligible)
+        );
+    }
+    let value = edited("P95", |b| {
+        member(b, 5)["members"][2]["value"]["members"][3]["value"]["type"] =
+            id(&["builtin/rational"]);
+    });
+    assert_refused(
+        &value,
+        "P95",
+        CheckedPackageRefusalCode::IllTyped,
+        Some(CheckedPackageRefusalCause::OperatorIneligible),
+        &form("/members/2/value/members/3/value/type"),
+    );
+    // A `steps` threshold is an integer: a rational literal, or an integer
+    // typed at the rational type, refuses.
+    let compare_at = "/members/1/value/members/2/value/members/1/value";
+    let value = with_extra(&extra(compare(steps(integer("10")), rational("1/2"))));
+    assert_refused(&value, "Extra", INVALID, invalid_value(), &form(compare_at));
+    let mut retyped = integer("5");
+    retyped["type"] = id(&["builtin/rational"]);
+    let value = with_extra(&extra(compare(steps(integer("10")), retyped)));
+    assert_refused(
+        &value,
+        "Extra",
+        CheckedPackageRefusalCode::IllTyped,
+        Some(CheckedPackageRefusalCause::OperatorIneligible),
+        &form(&format!("{compare_at}/type")),
+    );
+    admitted(&with_extra(&extra(compare(
+        steps(integer("10")),
+        integer("5"),
+    ))));
+    // A `within` of 0 is admitted (non-negative); `weighted by reward`
+    // needs a reward and a claim that weights by none needs no reward.
+    admitted(&edited("P95", |b| {
+        member(b, 5)["members"][2]["value"]["members"][3]["value"] = integer("0");
+    }));
+    let weighted = extra(long_run("reward"));
+    assert_refused(
+        &with_extra(&weighted),
+        "Extra",
+        INVALID,
+        invalid_value(),
+        "/body/members/2/value",
+    );
+    let mut unweighted = extra(long_run("none"));
+    unweighted.reward = vec![reference(duration()), reference(duration_withdraw())];
+    assert_refused(
+        &with_extra(&unweighted),
+        "Extra",
+        INVALID,
+        invalid_value(),
+        "/body/members/2/value",
+    );
+    // An extra binding after `origin`.
+    let value = edited("Avail", |b| {
+        member(b, 7)["members"]
+            .as_array_mut()
+            .unwrap()
+            .push(binding("extra", integer("1")));
+    });
+    assert_refused(
+        &value,
+        "Avail",
+        INVALID,
+        invalid_value(),
+        "/body/members/7/value",
+    );
+}
+
+/// FR-377-AC-2 (FR-640-AC-11): θ − ι > 0 and θ + ι < 1 hold for every form
+/// whose threshold is a probability, not only a quantile's `level`.
+#[trace("TC-489", "FR-377-AC-2")]
+#[test]
+fn the_confidence_bounds_hold_for_every_probability_form() {
+    let confidence = |indifference: &str| {
+        aggregate(vec![
+            binding("alpha", rational("1/100")),
+            binding("beta", rational("1/100")),
+            binding("indifference", rational(indifference)),
+        ])
+    };
+    let with_bound = |mut form: Value, threshold: &str| {
+        let at = form["members"].as_array().unwrap().len() - 1;
+        form["members"][at]["value"]["members"][1]["value"] = rational(threshold);
+        form
+    };
+    let forms = || -> Vec<(&'static str, Value)> {
+        vec![
+            (
+                "probability",
+                kinded(
+                    "probability",
+                    vec![
+                        (
+                            "event",
+                            kinded("formula", vec![("formula", reference(formula()))]),
+                        ),
+                        ("bound", bound("at_least", rational("1/2"))),
+                    ],
+                ),
+            ),
+            ("mean_of_fraction", mean_of_fraction()),
+            ("long_run_fraction", long_run("none")),
+            (
+                "reach",
+                reach(kinded(
+                    "eventually",
+                    vec![("predicate", reference(predicate()))],
+                )),
+            ),
+        ]
+    };
+    let at = "/body/members/8/value/members/2/value";
+    for (label, form) in forms() {
+        // θ = ι refuses, θ + ι = 1 refuses, and either side of them is
+        // admitted.
+        for (threshold, indifference, refused_at) in [
+            ("1/2", "1/2", true),
+            ("1/100", "1/100", true),
+            ("99/100", "1/100", true),
+            ("1/50", "1/100", false),
+            ("49/50", "1/100", false),
+        ] {
+            let mut claim = extra(with_bound(form.clone(), threshold));
+            claim.confidence = confidence(indifference);
+            let value = with_extra(&claim);
+            if refused_at {
+                assert_refused(&value, "Extra", INVALID, invalid_value(), at);
+            } else {
+                admitted(&value);
+            }
+            let _ = label;
+        }
+    }
+}
+
+/// FR-377-AC-2, FR-640-AC-11: a formula claim whose `delays` binding is
+/// missing refuses at rule 6's `/body`, not at the placement of its
+/// formula: the walk finds the `form` binding by its name.
+#[trace("TC-489", "FR-377-AC-2")]
+#[test]
+fn a_formula_claim_without_delays_refuses_at_rule_6_not_at_placement() {
+    let value = edited("Avail", |b| {
+        b["members"].as_array_mut().unwrap().remove(4);
+    });
+    assert_refused(&value, "Avail", INVALID, invalid_value(), "/body");
+    // The `form` binding moved to another index is still the form.
+    let value = edited("Avail", |b| {
+        let members = b["members"].as_array_mut().unwrap();
+        let form = members.remove(5);
+        members.insert(3, form);
+    });
+    assert_refused(&value, "Avail", INVALID, invalid_value(), "/body");
+}
+
+/// FR-322-AC-474 (reader side): two claims named `A` whose thresholds are
+/// `1/2` and `3/5` stand as two nodes and two rows, the `1/2` claim first;
+/// the rows reversed refuse at the second row; and a threshold spelled `2/4`
+/// refuses at the literal, so two spellings of one threshold never stand as
+/// two bodies.
+#[trace("TC-489", "FR-377-AC-2")]
+#[test]
+fn claims_named_alike_differ_by_threshold_and_a_threshold_spelled_2_4_refuses() {
+    let threshold = |value: &str| {
+        let mut claim = avail();
+        claim.form = kinded(
+            "probability",
+            vec![
+                (
+                    "event",
+                    kinded("formula", vec![("formula", reference(formula()))]),
+                ),
+                ("bound", bound("at_least", rational(value))),
+            ],
+        );
+        claim.body()
+    };
+    let value = package(vec![
+        ("A@1/2", threshold("1/2")),
+        ("A@3/5", threshold("3/5")),
+    ]);
+    let read = admitted(&value);
+    let [first, second] = read.probabilistic_claims() else {
+        panic!("two claims")
+    };
+    assert!(format!("{:?}", first.node.path).contains("1/2"));
+    assert!(format!("{:?}", second.node.path).contains("3/5"));
+    assert_ne!(first.node, second.node);
+    // The rows reversed refuse `invalid_package`/`invalid-semantic-graph`.
+    let mut reversed = value.clone();
+    reversed["checked_term_data"]["probabilistic_claims"]
+        .as_array_mut()
+        .expect("rows")
+        .reverse();
+    refresh_identity(&mut reversed);
+    let refusal = refused(&reversed);
+    assert_eq!(refusal.code, INVALID, "{refusal:?}");
+    assert_eq!(
+        refusal.cause,
+        Some(CheckedPackageRefusalCause::InvalidSemanticGraph),
+        "{refusal:?}"
+    );
+    // A threshold spelled `2/4` refuses at the literal.
+    let value = package(vec![("A@2/4", threshold("2/4"))]);
+    assert_refused(
+        &value,
+        "A@2/4",
+        INVALID,
+        invalid_value(),
+        "/body/members/5/value/members/2/value/members/1/value",
+    );
 }

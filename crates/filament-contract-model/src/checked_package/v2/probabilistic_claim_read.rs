@@ -272,20 +272,13 @@ impl CheckedPackageV2 {
 struct Reader<'k, 'm, 'b> {
     keys: &'k [Arc<CheckedNodeId>],
     meter: &'m mut WorkMeter<'b>,
+    site: super::read_charge::Site,
 }
 
 type Read<T> = Result<T, ValidationFailure>;
 
 fn value(term: &CheckedTerm, row: usize) -> &CheckedTerm {
     bound(term, row).expect("admitted claim binding")
-}
-
-fn rational(spelling: &str) -> CheckedRational {
-    let (numerator, denominator) = spelling.split_once('/').unwrap_or((spelling, "1"));
-    CheckedRational {
-        numerator: numerator.into(),
-        denominator: denominator.into(),
-    }
 }
 
 fn spelled(term: &CheckedTerm) -> &str {
@@ -296,6 +289,23 @@ fn spelled(term: &CheckedTerm) -> &str {
 }
 
 impl Reader<'_, '_, '_> {
+    /// Pays `bytes` of heap about to be requested.
+    fn pay(&mut self, bytes: usize) -> Read<()> {
+        use super::read_charge::ReadStorage;
+        ReadStorage::reserve(&mut *self.meter, bytes as u128, self.site)
+            .map_err(|_| ReadStorage::denial(&*self.meter))
+    }
+
+    /// An owned rational, its two boxed spellings paid first.
+    fn rational(&mut self, spelling: &str) -> Read<CheckedRational> {
+        self.pay(spelling.len().saturating_add(1))?;
+        let (numerator, denominator) = spelling.split_once('/').unwrap_or((spelling, "1"));
+        Ok(CheckedRational {
+            numerator: numerator.into(),
+            denominator: denominator.into(),
+        })
+    }
+
     fn id(&mut self, term: &CheckedTerm) -> Read<CheckedNodeId> {
         let id = target(term).expect("admitted claim reference");
         Ok(
@@ -324,6 +334,10 @@ impl Reader<'_, '_, '_> {
         let spelling = spelled(term);
         Ok(match value_kind {
             super::LiteralKind::Integer => {
+                // The digits parse into at most one byte of limb per digit,
+                // and the parse holds one transient copy: two bytes a digit
+                // bounds both.
+                self.pay(spelling.len().saturating_mul(2).saturating_add(32))?;
                 ProbabilisticExact::Integer(spelling.parse().expect("canonical integer"))
             }
             super::LiteralKind::Quantity => {
@@ -331,10 +345,10 @@ impl Reader<'_, '_, '_> {
                     .expect("admitted unit resolves");
                 ProbabilisticExact::Quantity {
                     unit,
-                    magnitude: rational(spelling),
+                    magnitude: self.rational(spelling)?,
                 }
             }
-            _ => ProbabilisticExact::Rational(rational(spelling)),
+            _ => ProbabilisticExact::Rational(self.rational(spelling)?),
         })
     }
 
@@ -408,7 +422,7 @@ impl Reader<'_, '_, '_> {
                 }
             }
             "quantile" => ProbabilisticClaimForm::Quantile {
-                level: rational(spelled(value(term, 1))),
+                level: self.rational(spelled(value(term, 1)))?,
                 measure: self.measure(value(term, 2))?,
                 bound: self.bound(value(term, 3))?,
             },
@@ -454,6 +468,11 @@ impl Reader<'_, '_, '_> {
         position: usize,
         body: &CheckedTerm,
     ) -> Read<CheckedProbabilisticClaimNode> {
+        super::read_charge::charge_node_id_clone(
+            &mut *self.meter,
+            self.site,
+            &self.keys[position],
+        )?;
         let node = (*self.keys[position]).clone();
         let scheduler = value(body, 1);
         let scheduler = match scheduler {
@@ -462,6 +481,8 @@ impl Reader<'_, '_, '_> {
                 let set = value(scheduler, 0);
                 let mut every = self.meter.vec(members(set).len())?;
                 for member in members(set) {
+                    let operation = text(value(member, 3)).expect("admitted operation");
+                    self.pay(operation.len())?;
                     every.push(FairnessMember {
                         kind: match text(value(member, 0)) {
                             Some("weak") => CheckedFairnessKind::Weak,
@@ -472,7 +493,7 @@ impl Reader<'_, '_, '_> {
                             _ => CheckedFairnessGranularity::Whole,
                         },
                         declaring: self.id(value(member, 2))?,
-                        operation: text(value(member, 3)).expect("admitted operation").into(),
+                        operation: operation.into(),
                     });
                 }
                 ProbabilisticScheduler::Every(every)
@@ -500,11 +521,15 @@ impl Reader<'_, '_, '_> {
                 },
                 _ => ProbabilisticActivation::Origin,
             },
-            confidence: (!members(confidence).is_empty()).then(|| ProbabilisticConfidence {
-                alpha: rational(spelled(value(confidence, 0))),
-                beta: rational(spelled(value(confidence, 1))),
-                indifference: rational(spelled(value(confidence, 2))),
-            }),
+            confidence: if members(confidence).is_empty() {
+                None
+            } else {
+                Some(ProbabilisticConfidence {
+                    alpha: self.rational(spelled(value(confidence, 0)))?,
+                    beta: self.rational(spelled(value(confidence, 1)))?,
+                    indifference: self.rational(spelled(value(confidence, 2)))?,
+                })
+            },
         })
     }
 }
@@ -524,12 +549,16 @@ pub(super) fn retain_claims(
     let mut reader = Reader {
         keys: structural_keys,
         meter: &mut meter,
+        site,
     };
     for (position, (node, held)) in nodes.iter().zip(kinds).enumerate() {
         if *held == kind {
             rows.push(reader.claim(position, &node.body)?);
         }
     }
+    // The sort compares plain node ids, as the join's own `by_id` sort does
+    // for every node of the package before this point; a claim pair adds no
+    // comparison class that sort has not already run.
     rows.sort_unstable_by(|left, right| left.node.cmp(&right.node));
     super::read_charge::new_arc(budget, site, rows)
 }

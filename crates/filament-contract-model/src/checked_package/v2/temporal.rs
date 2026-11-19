@@ -890,7 +890,7 @@ impl<'a> Walk for Placement<'_, 'a, '_> {
                         Slot::QuantifierTuple => Slot::QuantifierGroup,
                         Slot::QuantifierGroup => Slot::GroupMember,
                         _ if hyper_root && at == 3 => Slot::HyperQuantifiers,
-                        _ if claim_root && at == 5 => Slot::ClaimForm,
+                        _ if claim_root && binding_named(member_term, "form") => Slot::ClaimForm,
                         Slot::ClaimFormBody if binding_named(member_term, "event") => {
                             Slot::ClaimEvent
                         }

@@ -330,6 +330,8 @@ impl<'j, 'a> Check<'j, 'a> {
                 })
                 .and_then(|owner| owner.package.object_types.get(owner.node))
                 .and_then(|declared| own_operation(declared, operation));
+            // Plain node-id order, as the join's own `by_id` sort already runs
+            // over every node of the package (QSL-2554 review FND-003).
             let key = (declaring, operation, kind, granularity);
             if declared.is_none() || previous.is_some_and(|earlier| earlier >= key) {
                 return Err(invalid(meter, position, member_at));

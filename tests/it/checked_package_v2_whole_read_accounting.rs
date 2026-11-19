@@ -323,6 +323,17 @@ fn positive_cases() -> Vec<Case> {
             positive_operation_identities(),
         ),
     ];
+    // FR-377 (QSL-2554): probabilistic claims under long names.
+    let (wire, package, document) =
+        crate::checked_package_v2_probabilistic_claim::accounting_fixture();
+    let evidence =
+        crate::support::checked_package::evidence_with_document(&wire, package, &document);
+    cases.push(case(
+        "TC048/probabilistic_claims_long_names",
+        wire,
+        evidence,
+        Expected::Admitted,
+    ));
     // FR-038-AC-562: an object-free hyper body wrapper over its subject's root.
     let (wire, _, _) = crate::checked_package_v2_temporal::root_wrapper_fixture(
         crate::checked_package_v2_temporal::ORDERS,

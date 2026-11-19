@@ -37,6 +37,12 @@ const FORMULA: usize = 29;
 fn node_id(wire: &Value, position: usize) -> Value {
     wire["semantic_graph"]["nodes"][position]["node_id"].clone()
 }
+/// The node id of the second unit `with_claim` adds.
+fn other_unit_id(wire: &Value) -> Value {
+    let mut id = node_id(wire, UNIT);
+    id["path"] = json!(["Example", "ms"]);
+    id
+}
 fn binding(name: &str, value: Value) -> Value {
     json!({"term": "binding", "name": name, "value": value})
 }
@@ -153,6 +159,17 @@ fn with_claim(fixture: &str, form: impl Fn(&Wire) -> Value) -> Value {
         fixture_support::carry_check_mode(&mut node);
         node
     };
+    // A second unit of the same dimension, `ms`, for a quantity typed at a
+    // unit that is not the model's source unit.
+    let mut other_unit = nodes[UNIT].clone();
+    other_unit["node_id"] = other_unit_id(&wire.value);
+    other_unit["declaration"] = json!({"qualified_name": ["Example", "ms"]});
+    other_unit["body"]["target_unit_node_id"] = node_id(&wire.value, UNIT);
+    other_unit["body"]["scale"] = json!({"numerator": "1", "denominator": "1000"});
+    let mut dependencies = vec![node_id(&wire.value, UNIT), node_id(&wire.value, 42)];
+    dependencies.sort_by_key(Value::to_string);
+    other_unit["dependencies"] = json!(dependencies);
+    nodes.push(other_unit);
     nodes.push(node(
         &steady_id,
         "probabilistic",
@@ -329,4 +346,118 @@ fn a_delay_weighting_needs_a_dense_root() {
             member_at(&wire, 5, "/value/members/2/value/members/0/value")
         )
     );
+}
+
+/// FR-377-AC-4, FR-640-AC-11: the deepest locus the reader names, the `kind`
+/// of a `delay` weighting inside a `fraction` measure of a `compare` event
+/// inside the `form`, stands at nineteen JSON Pointer steps, one past what an
+/// 18-step pointer holds; the tick root refuses there.
+#[trace("TC-489", "FR-377-AC-4")]
+#[test]
+fn the_deepest_claim_locus_is_named_at_nineteen_steps() {
+    let delayed_compare = |wire: &Wire| {
+        wire.kinded(
+            "probability",
+            vec![
+                (
+                    "event",
+                    wire.kinded(
+                        "compare",
+                        vec![
+                            (
+                                "measure",
+                                wire.kinded(
+                                    "fraction",
+                                    vec![
+                                        ("predicate", wire.at(PREDICATE_P)),
+                                        ("window", wire.quantity("5")),
+                                        ("weighting", wire.kinded("delay", vec![])),
+                                    ],
+                                ),
+                            ),
+                            ("bound", wire.bound("at_least", wire.rational("1/2"))),
+                        ],
+                    ),
+                ),
+                ("bound", wire.bound("at_least", wire.rational("1/2"))),
+            ],
+        )
+    };
+    let wire = with_claim(TICK, delayed_compare);
+    let tail = "/value/members/1/value/members/1/value/members/3/value/members/0/value";
+    let (reading, at) = refusal_of(&wire);
+    assert_eq!(reading, "refused:invalid_package/invalid-value");
+    assert_eq!(at, member_at(&wire, 5, tail));
+    assert_eq!(
+        at.split('/').count() - 1,
+        19,
+        "the locus is nineteen steps deep: {at}"
+    );
+    // Over the dense root the same claim is admitted.
+    admitted(&with_claim(DENSE, delayed_compare));
+}
+
+/// FR-377-AC-2, FR-640-AC-11: a quantity typed at a node other than the timed
+/// root's source unit refuses at the literal: the dimension node, the text
+/// type and the rational type are not that unit.
+#[trace("TC-489", "FR-377-AC-2")]
+#[test]
+fn a_quantity_typed_at_another_node_refuses() {
+    const DIMENSION: usize = 42;
+    // `usize::MAX` stands for the second unit `ms`.
+    let typed_at = |wire: &Value, at: usize| {
+        if at == usize::MAX {
+            other_unit_id(wire)
+        } else {
+            node_id(wire, at)
+        }
+    };
+    for fixture in [DENSE, TICK] {
+        for wrong in [DIMENSION, TEXT, RATIONAL, usize::MAX] {
+            let retyped = |wire: &Wire| {
+                let mut within = wire.quantity("5");
+                within["type"] = typed_at(&wire.value, wrong);
+                elapsed(wire, within)
+            };
+            let wire = with_claim(fixture, retyped);
+            let (reading, at) = refusal_of(&wire);
+            assert!(
+                reading.starts_with("refused:"),
+                "{fixture} {wrong}: {reading}"
+            );
+            assert!(
+                at.starts_with(&member_at(
+                    &wire,
+                    5,
+                    "/value/members/2/value/members/3/value"
+                )),
+                "{fixture} {wrong}: {at}"
+            );
+            let bound_retyped = |wire: &Wire| {
+                let mut quantity = wire.quantity("3");
+                quantity["type"] = typed_at(&wire.value, wrong);
+                wire.kinded(
+                    "expected_elapsed",
+                    vec![
+                        ("until", wire.at(PREDICATE_P)),
+                        ("bound", wire.bound("at_most", quantity)),
+                    ],
+                )
+            };
+            let wire = with_claim(fixture, bound_retyped);
+            let (reading, at) = refusal_of(&wire);
+            assert!(
+                reading.starts_with("refused:"),
+                "{fixture} {wrong}: {reading}"
+            );
+            assert!(
+                at.starts_with(&member_at(
+                    &wire,
+                    5,
+                    "/value/members/2/value/members/1/value"
+                )),
+                "{fixture} {wrong}: {at}"
+            );
+        }
+    }
 }
