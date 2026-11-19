@@ -14119,6 +14119,7 @@ fn port_member_borrowed_read_and_typed_writer_preserve_the_exact_pair() {
             checked_term_data: admitted.checked_term_data(),
             temporal_bindings: admitted.temporal_bindings(),
             temporal_clause_names: admitted.temporal_clause_names(),
+            claim_names: admitted.claim_names(),
             schedulability_claims: admitted.schedulability_claim_rows(),
             operation_effects: admitted.operation_effect_rows(),
             operation_bodies: admitted.operation_body_rows(),

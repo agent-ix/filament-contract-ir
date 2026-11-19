@@ -2260,6 +2260,8 @@ pub enum CheckedTerm {
     },
     /// A closed model or protocol refinement declaration.
     Refinement {
+        /// The declared identifier the source writes (FR-322-AC-200).
+        name: Box<str>,
         /// Abstract model declaration.
         #[serde(rename = "abstract")]
         abstract_key: Box<RefinementKey>,
@@ -3573,6 +3575,7 @@ impl Encode for CheckedTerm {
                 super::guarantee_terms::encode_all(environment, writer)?;
             }
             Self::Refinement {
+                name,
                 abstract_key,
                 profile,
                 populations,
@@ -3587,6 +3590,8 @@ impl Encode for CheckedTerm {
             } => {
                 writer.name("term")?;
                 writer.string("refinement")?;
+                writer.name("name")?;
+                writer.string(name)?;
                 writer.name("abstract")?;
                 abstract_key.encode_into(writer)?;
                 writer.name("profile")?;
@@ -4471,7 +4476,7 @@ mod tests {
             "term":"abstraction_relation","objects":[],"populations":[],"frames":[]
         });
         let refinement = json!({
-            "term":"refinement", "abstract":node,
+            "term":"refinement", "name":"Refine", "abstract":node,
             "profile":{"authority":"test","identity":"trace"},
             "populations":[{"abstract":node,"concrete":node}],
             "objects":[{"abstract_type":node,"concrete_type":node,
@@ -4584,7 +4589,7 @@ mod tests {
         assert_eq!(wire["members"][1]["value"], "plain text");
 
         let refinement_wire = json!({
-            "term":"refinement", "abstract":old,
+            "term":"refinement", "name":"Refine", "abstract":old,
             "profile":{"authority":"test","identity":"trace"},
             "populations":[],"objects":[],
             "steps":[{"source_class":"finish","source_node":old,
