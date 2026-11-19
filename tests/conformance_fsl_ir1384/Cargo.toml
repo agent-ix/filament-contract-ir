@@ -12,7 +12,7 @@ description = "FR-361 explicit lane: a genuine FSL tick-monitor plan and its adm
 [dev-dependencies]
 ix-trace-rs = { git = "https://github.com/agent-ix/ix-trace-rs", tag = "v0.1.2" }
 filament-contract-model = { path = "../../crates/filament-contract-model" }
-filament-exact = { git = "https://github.com/agent-ix/filament-exact", tag = "v0.3.0" }
+filament-exact = { git = "https://github.com/agent-ix/filament-exact", rev = "b25ff96fee8ab80418e7f7aaf8e9441c60745ab1" }
 quire-canonical = { git = "https://github.com/agent-ix/quire-canonical", tag = "v0.3.1" }
 filament-observation = { git = "https://github.com/agent-ix/filament-observation", tag = "v0.1.0" }
 serde_json = "1"
