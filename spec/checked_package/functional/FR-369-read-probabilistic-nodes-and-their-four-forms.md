@@ -109,7 +109,9 @@ failure with `invalid_package` and cause `invalid-value`, at the failing member:
   quantity over a compound unit), or an
   `integer_range` node (`Int[lo, hi]`), the type nodes FSpec FR-322 gives an
   integer or quantity type, or whose `expression` is not a `function` node
-  owned by the model operation member, that lists exactly the operation's
+  owned by the model operation member, that is a clause function of clause
+  kind `reward` (its `clause` binding is the text `reward`; a `precondition`
+  or `body` one is refused, FR-038-AC-572), that lists exactly the operation's
   parameters in declared order in its `parameters` binding, and whose own type
   is the `value_type`;
 - a `reward` whose `expression` reads anything but the operation's parameters

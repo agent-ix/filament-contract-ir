@@ -6020,8 +6020,28 @@ fn concrete_protocol_refinement_with_model(
     base: Value,
     step_rows: ProtocolStepRows,
     clause_owner: ProtocolClauseOwner,
+    document: Value,
+    extra_model_nodes: Vec<Value>,
+) -> (Value, CheckedPackageEvidence) {
+    concrete_protocol_refinement_with_family(
+        base,
+        step_rows,
+        clause_owner,
+        document,
+        extra_model_nodes,
+        None,
+    )
+}
+
+/// As [`concrete_protocol_refinement_with_model`], with `family` the document
+/// supplied for the selected `test/families` model instead of the default.
+fn concrete_protocol_refinement_with_family(
+    base: Value,
+    step_rows: ProtocolStepRows,
+    clause_owner: ProtocolClauseOwner,
     mut document: Value,
     extra_model_nodes: Vec<Value>,
+    family: Option<Value>,
 ) -> (Value, CheckedPackageEvidence) {
     let (machine, _) = machine_package();
     let mut model = machine["semantic_graph"]["nodes"]
@@ -6158,7 +6178,30 @@ fn concrete_protocol_refinement_with_model(
         .expect("profile selections")
         .push(infinite);
     refresh_identity(&mut package);
-    let evidence = evidence_with_document(&package, MODEL_IDENTITY, &document);
+    let evidence = match family {
+        None => evidence_with_document(&package, MODEL_IDENTITY, &document),
+        Some(family) => {
+            let mut evidence = CheckedPackageEvidence::new();
+            for selected in crate::support::checked_package::selected_model_identities(&package) {
+                let supplied = if selected == MODEL_IDENTITY {
+                    document.clone()
+                } else if selected == FAMILY_MODEL_IDENTITY {
+                    family.clone()
+                } else {
+                    crate::support::checked_package::domain_package_document(
+                        &selected,
+                        "1",
+                        Vec::new(),
+                    )
+                };
+                evidence
+                    .insert_domain_package_document(selected, canonical(&supplied))
+                    .expect("domain evidence declarations agree on exact bytes");
+            }
+            evidence.support_feature(crate::support::checked_package::COMPLETE_VALUE_FEATURE);
+            evidence
+        }
+    };
     (package, evidence)
 }
 
@@ -8050,12 +8093,31 @@ fn derive_compensation_receiver_id(package: &mut Value) {
 }
 
 /// FR-426/FR-432 (W75 to add rows): a `recommend` is a node-row class like an
-/// `event`, spelled `<A>::<protocol>::<node>`.
-#[trace("TC-048", "FR-038-AC-570")]
+/// `event`, spelled `<A>::<protocol>::<node>`. FR-432-AC-23/24 (W76): its
+/// binder types are the receiver and one type per operation parameter, with no
+/// `result`; the declared binder type `B` of `as (r: B)` constrains nothing.
+#[trace("TC-048", "FR-038-AC-570", "FR-038-AC-573")]
 #[test]
 fn refinement_catalog_maps_a_recommend_as_a_node_row_class() {
     let (mut base, _, _) = crate::checked_package_v2_protocol_body::package_with_present_commit();
     derive_compensation_receiver_id(&mut base);
+    // The reader derives the Integer type's identity structurally.
+    let old_integer = base["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|node| node["semantic_form"] == "integer")
+        .expect("integer type node")["node_id"]
+        .clone();
+    crate::support::checked_package::reassign_node_id(
+        &mut base,
+        &old_integer,
+        &crate::support::checked_package::structural_id(
+            FAMILY_MODEL_IDENTITY,
+            vec![json!("scalar_type"), json!("integer")],
+            0,
+        ),
+    );
     // The `Event` step becomes a `recommend` of the attempt's operation: an
     // attempt cannot change, the compensation template and the effect read it.
     let (anchor, event) = {
@@ -8070,6 +8132,25 @@ fn refinement_catalog_maps_a_recommend_as_a_node_row_class() {
             .expect("event");
         (attempt["body"]["arguments"][1].clone(), event)
     };
+    // The recommend names `withdraw`, which takes `k: Integer` and returns an
+    // Integer; the attempt keeps `deposit`, which takes and returns nothing.
+    let mut anchor = anchor;
+    let deposit_anchor = anchor["value"]["target"].clone();
+    let mut withdraw_anchor = base["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|node| node["node_id"] == deposit_anchor)
+        .expect("deposit anchor")
+        .clone();
+    let withdraw_id = node_id("fixture/frame/withdraw-anchor");
+    withdraw_anchor["node_id"] = withdraw_id.clone();
+    withdraw_anchor["body"]["members"][1]["value"]["value"] = json!("withdraw");
+    anchor["value"]["target"] = withdraw_id;
+    base["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .push(withdraw_anchor);
     let body = &mut base["semantic_graph"]["nodes"][event]["body"];
     body["operation"]["member"]["operator"] = json!("recommend");
     let arguments = body["arguments"].as_array_mut().expect("arguments");
@@ -8079,10 +8160,20 @@ fn refinement_catalog_maps_a_recommend_as_a_node_row_class() {
         json!({"term": "binding", "name": "contracts", "value": {"term": "aggregate", "members": []}}),
     );
     settle(&mut base);
-    let (mut package, evidence) = concrete_protocol_refinement_on(
+    let one = json!({"lower": 1, "upper": 1, "ordered": false, "unique": true});
+    let mut family = crate::support::checked_package::family_model_document();
+    family["types"][0]["operations"][1]["params"] = json!([{
+        "name": "k", "typeRef": "ix://filament/native/Integer", "multiplicity": one,
+    }]);
+    family["types"][0]["operations"][1]["returns"] =
+        json!({"typeRef": "ix://filament/native/Integer", "multiplicity": one});
+    let (mut package, evidence) = concrete_protocol_refinement_with_family(
         base,
         ProtocolStepRows::Empty,
         ProtocolClauseOwner::SelectedModel,
+        model_document(),
+        Vec::new(),
+        Some(family),
     );
     let nodes = package["semantic_graph"]["nodes"]
         .as_array()
@@ -8112,6 +8203,11 @@ fn refinement_catalog_maps_a_recommend_as_a_node_row_class() {
     let recommend = by_name("Event");
     let effect = by_name("ForwardEffect");
     let boolean = node_id(&crate::support::checked_package::family_key("aaaa"));
+    let integer = crate::support::checked_package::structural_id(
+        FAMILY_MODEL_IDENTITY,
+        vec![json!("scalar_type"), json!("integer")],
+        0,
+    );
     let anchor = nodes
         .iter()
         .find(|node| node["semantic_form"] == "operation_anchor")
@@ -8152,13 +8248,47 @@ fn refinement_catalog_maps_a_recommend_as_a_node_row_class() {
     };
     let refinement = set_concrete_catalog(
         &mut package,
-        build("Example::OrderFlow::Event", vec![boolean.clone()]),
+        build(
+            "Example::OrderFlow::Event",
+            vec![receiver.clone(), integer.clone()],
+        ),
     );
     let admitted = read(&package, &evidence);
     assert!(
         matches!(admitted, CheckedPackageV2ReadResult::Admitted(_)),
         "{admitted:?}"
     );
+    // The declared binder type `B` (here Boolean), an empty binder and the
+    // receiver repeated are not the binder record of the node.
+    for wrong in [
+        vec![boolean.clone()],
+        vec![],
+        vec![receiver.clone()],
+        vec![receiver.clone(), integer.clone(), integer.clone()],
+    ] {
+        let mut wrong_package = package.clone();
+        set_concrete_catalog(
+            &mut wrong_package,
+            build("Example::OrderFlow::Event", wrong),
+        );
+        let CheckedPackageV2ReadResult::Refused(refusal) = read(&wrong_package, &evidence) else {
+            panic!("a recommend binder other than the receiver admitted");
+        };
+        assert_eq!(refusal.code, CheckedPackageRefusalCode::InvalidModelBinding);
+        assert_eq!(
+            refusal.cause,
+            Some(CheckedPackageRefusalCause::MalformedDeclaration)
+        );
+        assert!(
+            refusal.loci[0]
+                .path
+                .as_ref()
+                .is_some_and(|path| path.as_str().starts_with(&format!(
+                    "/semantic_graph/nodes/{refinement}/body/class_catalog/concrete"
+                ))),
+            "{refusal:?}"
+        );
+    }
     // A wrong spelling, including the step-row spelling `recommend ...`, is a
     // class the catalog does not contain.
     for wrong in [
@@ -8166,7 +8296,10 @@ fn refinement_catalog_maps_a_recommend_as_a_node_row_class() {
         "recommend Example::OrderFlow::Event",
     ] {
         let mut wrong_package = package.clone();
-        set_concrete_catalog(&mut wrong_package, build(wrong, vec![boolean.clone()]));
+        set_concrete_catalog(
+            &mut wrong_package,
+            build(wrong, vec![receiver.clone(), integer.clone()]),
+        );
         let CheckedPackageV2ReadResult::Refused(refusal) = read(&wrong_package, &evidence) else {
             panic!("{wrong} admitted");
         };

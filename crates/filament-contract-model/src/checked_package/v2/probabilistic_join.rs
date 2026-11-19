@@ -454,7 +454,12 @@ impl<'a> Join<'a> {
             Some(CheckedNodeOwner::Model { node: member, .. })
                 if member.as_ref() == operation.identity.as_ref()
         );
-        if !owned || &node.semantic_type != value_type {
+        // A reward's expression is a `reward` clause function, never a
+        // `precondition` or `body` one (FSpec FR-640 rule 4).
+        if !owned
+            || &node.semantic_type != value_type
+            || !super::owner::is_reward_clause(&self.terms[function])
+        {
             return Err(invalid(meter, holder, expression_at));
         }
         let parameters = bound(&self.terms[function], 0).map(members);
