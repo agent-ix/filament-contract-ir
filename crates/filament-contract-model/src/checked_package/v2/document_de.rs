@@ -251,6 +251,7 @@ const FORMS: &[(&[&str], &str)] = &[
     (&["checked_term_data"], "checked_term_data"),
     (&["temporal_bindings"], "temporal_bindings"),
     (&["temporal_clause_names"], "temporal_clause_names"),
+    (&["claim_names"], "claim_names"),
     (&["schedulability_claims"], "schedulability_claims"),
     (&["operation_effects"], "operation_effects"),
     (&["operation_bodies"], "operation_bodies"),

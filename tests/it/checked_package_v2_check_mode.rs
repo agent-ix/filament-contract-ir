@@ -60,6 +60,7 @@ fn written(package: &CheckedPackageV2) -> Value {
         },
         CheckedPackageSidecarsRef {
             temporal_clause_names: package.temporal_clause_names(),
+            claim_names: package.claim_names(),
             operation_effects: None,
             operation_bodies: None,
             schedulability_claims: None,

@@ -35,6 +35,7 @@ fn write(read: &CheckedPackageV2) -> Value {
         },
         filament_contract_model::CheckedPackageSidecarsRef {
             temporal_clause_names: read.temporal_clause_names(),
+            claim_names: read.claim_names(),
             operation_effects: None,
             operation_bodies: None,
             checked_term_data: read.checked_term_data(),
