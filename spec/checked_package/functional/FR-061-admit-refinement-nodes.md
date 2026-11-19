@@ -227,7 +227,11 @@ still refuses at `semantic_form`.
 
 For a model-only refinement with no `class_catalog`, the reader SHALL join
 each step's local `source_node` to an admitted `state`/`operation_anchor` node.
-The anchor's operation name SHALL equal the row's alias-free `source_class`.
+The row's `source_class` is the alias-free operation class spelling `T::op`
+that FSpec FR-375 fixes: `T` is the declaring type's full qualified name, its
+segments joined with `::`, and `op` is the operation name. The reader SHALL
+admit the row only when `T` equals the anchor `context`'s qualified name with
+its segments joined with `::` and `op` equals the anchor's operation name.
 Its `context` SHALL be the object type, process or state machine that declares
 that operation in the selected concrete model subject, including a declaration
 from which the selected type inherits the operation. The anchor remains at
@@ -243,9 +247,10 @@ check. An unresolved `source_node` SHALL refuse
 `missing_declaration`/`missing-name` at `source_node`. A present node of
 another kind or an anchor declaring an operation of a foreign or wrong
 selected model subject SHALL refuse
-`invalid_model_binding`/`malformed-declaration` at `source_node`; a mismatch
-between the anchor's operation name and `source_class` SHALL refuse that
-same code and cause at `source_class`. These joins SHALL run in FR-375's
+`invalid_model_binding`/`malformed-declaration` at `source_node`. A
+`source_class` that is not of the form `T::op`, such as the bare operation
+name `op`, and a `source_class` whose `T` or whose `op` differs from the
+anchor's, SHALL refuse that same code and cause at `source_class`. These joins SHALL run in FR-375's
 existing row order, after the earlier wire, identity, canonical-order,
 header and catalog checks. The present-`class_catalog` row-to-catalog path
 and its refusal order remain as specified above.
@@ -267,8 +272,8 @@ and its refusal order remain as specified above.
 | FR-061-AC-11 | Starting from an otherwise valid package, deleting `drain` from `memory drain`, changing its value or type, adding it to `memory flush`, assigning `memory flush` model `sc` or `ra`, or adding `node`, `binder_types` or another unknown entry member refuses `malformed_wire` at the closed-wire stage, with the offending node/member location and no admitted package or defaulted field. With structural ids retained, reordering the three drains, repeating a (`memory drain`, `memory_model`) pair, or repeating a declared class spelling refuses `invalid_semantic_graph` at the first out-of-order or later duplicate catalog entry after structural graph checks. | Test |
 | FR-061-AC-12 | A protocol refinement catalog includes one `memory drain` per distinct `sc`, `tso` or `ra` source-default model selected by a `parallel` in its subject and additionally one `memory flush` for a TSO source default. Two `parallel` controls selecting the same source-default model contribute one entry per model, not one per control. In a present catalog, an omitted required drain or TSO flush, an extra memory class, or a memory class from another selected subject refuses `invalid_semantic_graph` at the catalog array or entry after the protocol-body check; a wholly absent required catalog refuses earlier in the refinement step. A request-time memory override changes neither catalog nor package name. | Test |
 | FR-061-AC-13 | PLANNED/UNRUN (IR-1141). Changing a valid drain entry memory_model changes the complete retained refinement body, with no key recomputation. A local catalog class node or binder type omitted from the exact dependencies refuses invalid_semantic_graph at /dependencies before catalog joins; no memory entry contributes a node or binder dependency. | Test |
-| FR-061-AC-14 | In a model-only refinement without `class_catalog`, a step whose `source_class` names an operation and whose local `source_node` is that operation's anchor admits when the anchor `context` is the object type, process or state machine declaring the operation in the selected concrete model subject. The same holds when the selected type inherits the operation: the anchor stays at its declaring type, while the refinement `semantic_type` stays at the selected concrete model's canonical `model_root`. The admitted row and identities survive read/write/read. | Test |
-| FR-061-AC-15 | For a catalog-free operation step, an absent `source_node` refuses `invalid_semantic_graph` at the step entry in the earlier closed-body check; an unresolved `source_node` refuses `missing_declaration`/`missing-name` at `source_node`. A present wrong-kind node or an anchor for a foreign or wrong selected model subject refuses `invalid_model_binding`/`malformed-declaration` at `source_node`; an anchor whose operation name differs from `source_class` refuses the same pair at `source_class`. None admits a partial package. | Test |
+| FR-061-AC-14 | In a model-only refinement without `class_catalog`, a step whose `source_class` is the operation class spelling `T::op` (FSpec FR-375: `T` the declaring type's full qualified name joined with `::`, such as `Order::note`) and whose local `source_node` is that operation's anchor admits when the anchor `context` is the object type, process or state machine declaring the operation in the selected concrete model subject. The same holds when the selected type inherits the operation: the anchor stays at its declaring type, while the refinement `semantic_type` stays at the selected concrete model's canonical `model_root`. The admitted row and identities survive read/write/read. | Test |
+| FR-061-AC-15 | For a catalog-free operation step, an absent `source_node` refuses `invalid_semantic_graph` at the step entry in the earlier closed-body check; an unresolved `source_node` refuses `missing_declaration`/`missing-name` at `source_node`. A present wrong-kind node or an anchor for a foreign or wrong selected model subject refuses `invalid_model_binding`/`malformed-declaration` at `source_node`; a bare `source_class` `note`, and a `source_class` naming another type (`Item::note`) or another operation (`Order::cancel`) than the anchor's `Order::note`, each refuse the same pair at `source_class`. None admits a partial package. | Test |
 | FR-061-AC-16 | With a catalog-free step defect and an earlier wire, identity, canonical-order defect in another array, header or catalog defect, the earlier FR-375 stage wins; with two step-row defects, the first row in declaration order wins. A refinement with `class_catalog` continues to join a step to its concrete catalog entry, including the existing missing-class and wrong-node refusals, independently of the catalog-free anchor rule. | Test |
 
 ## Dependencies
