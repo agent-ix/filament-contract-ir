@@ -17,84 +17,50 @@ relationships:
 
 ## Description
 
-When the V2 reader finds two admitted `temporal`/`terminal` nodes for one
-model, or two `claim` occurrences on one terminal node, its refusal SHALL
-identify both conflicting parties through a typed payload. This completes
-[FR-060](./FR-060-admit-model-terminal-declarations.md)'s reader output for
-FSpec FR-476's one-per-model rule. The existing refusal code, cause, primary
-path and locus SHALL retain their specified values.
+Withdrawn. This requirement described the typed payload of two reader
+refusals: a second `temporal`/`terminal` node on one model node, and a second
+`claim` occurrence on one terminal node. FSpec FR-476 no longer refuses
+either. A package names a model by its selection identity, so two source
+aliases that select one model identity reference one model node, and each
+alias may carry its own `terminal` declaration; the reader admits both and
+exposes them as separate terminal rows ([FR-060](./FR-060-admit-model-terminal-declarations.md)
+"Public terminal rows"). With no duplicate refusal there is nothing for a
+typed duplicate payload to carry, so `CheckedTerminalDuplicate` and
+`CheckedPackageRefusal::terminal_duplicate` are removed rather than kept
+unused. The id is retained and never reused.
 
 ## Inputs
 
-An otherwise valid V2 package with terminal nodes that pass their individual
-body and target checks, and either two nodes referencing one model or one
-node carrying two or more `claim` occurrences. The reader compares nodes in
-ascending structural node-id order as FSpec FR-476 requires. A `CheckedNodeId`
-and `CheckedOccurrence` are the reader's existing public typed identities.
+None. No reader input produces a terminal-duplicate refusal.
 
 ## Outputs
 
-A `CheckedPackageRefusal` with code `ambiguous_declaration`, cause
-`ambiguous-name`, one primary RFC 6901 pointer in `loci`, one graph-node `locus`, and a
-terminal-specific public field
-`terminal_duplicate: Option<CheckedTerminalDuplicate>`. The public
-`CheckedTerminalDuplicate` enum is exported from the `filament_contract_model`
-crate root alongside `CheckedPackageRefusal`, `CheckedNodeId` and
-`CheckedOccurrence`, and has exactly these exhaustive variants:
-
-- `Nodes { first: CheckedNodeId, second: CheckedNodeId }`: two distinct
-  terminal nodes of one model, first and second in ascending structural node id
-  order;
-- `Occurrences { node: CheckedNodeId, first: CheckedOccurrence, second:
-  CheckedOccurrence }`: two `claim` occurrences of one terminal node, the
-  first two in that node's admitted occurrence order.
-
-`CheckedPackageRefusal::terminal_duplicate` is `Some` exactly for the two terminal-duplicate refusals and
-absent on every other refusal, including another cause of
-`ambiguous_declaration`/`ambiguous-name`. The two cases cannot be confused
-by a caller or collapsed to one node or ordinal. The payload is read-only
-diagnostic data: it changes neither the package wire nor identity.
+None. `CheckedPackageRefusal` carries no terminal-specific field.
 
 ## Behavior
 
-The V2 reader SHALL construct the `Nodes` case when FSpec FR-476's final
-one-per-model check finds a second distinct terminal node. `first` SHALL be
-the earlier node and `second` the node whose check fails. The refusal's
-primary `loci[0].path` SHALL point at that second node. Its graph-node `locus` SHALL be
-`second`. The payload SHALL also retain `first`. For a single terminal node
-with two or more `claim` occurrences, the reader SHALL construct the
-`Occurrences` case with the node key and the first two distinct occurrences.
-Its `loci[0].path` SHALL point at that node. Its graph-node `locus` SHALL be that node key. A third
-or later occurrence cannot replace either selected occurrence. These
-refusals retain `ambiguous_declaration`/`ambiguous-name` and FR-476's
-per-node-before-uniqueness ordering.
-
-The related identities SHALL not be encoded as message prose, another JSON
-pointer, a second location entry or graph-node `locus`, `document_pointer`,
-or an extension detail. `document_pointer` remains the
-FR-038 field for a selected document's number or a held extension
-definition; it SHALL be absent for both terminal-duplicate cases. No
-compatibility reader or fallback interpretation is introduced.
+The V2 reader SHALL NOT refuse a package for holding several terminal nodes
+on one model node or several `claim` occurrences on one terminal node
+(FR-060-AC-8), and SHALL expose no `CheckedTerminalDuplicate` type or
+`terminal_duplicate` refusal field.
 
 ## Acceptance Criteria
 
 | ID | Criteria | Verification |
 | --- | --- | --- |
-| FR-062-AC-1 | With two individually valid terminal nodes on one model and structural ids, the reader refuses `ambiguous_declaration`/`ambiguous-name` at the second node in structural node-id order, with `locus` equal to that node and typed `Nodes { first, second }` containing exactly both distinct node ids in that order. The same model with either node alone admits. | Test |
-| FR-062-AC-2 | One terminal node with two `claim` occurrences and matching source-map entries refuses `ambiguous_declaration`/`ambiguous-name` at the node with typed `Occurrences { node, first, second }`; the two occurrence values equal the first two checked occurrences, and a third occurrence does not replace them. One occurrence admits. | Test |
-| FR-062-AC-3 | The related payload is absent on a nonterminal `ambiguous_declaration`/`ambiguous-name` refusal and on each earlier strict-wire, graph-shape, key, source-map, body or target refusal; a terminal node with a wrong target and a duplicate still reports the target defect first with no related payload. | Test |
-| FR-062-AC-4 | A public consumer imports `CheckedTerminalDuplicate`, `CheckedPackageRefusal`, `CheckedNodeId` and `CheckedOccurrence` from `filament_contract_model`, reads the public `CheckedPackageRefusal::terminal_duplicate: Option<CheckedTerminalDuplicate>` member, and exhaustively matches `Nodes` and `Occurrences` without a wildcard or parsing prose, node-body JSON or paths. Each terminal-duplicate refusal retains its code, cause, one primary location pointer and graph-node locus and has no `document_pointer`, second location entry or extension detail. | Test |
+| FR-062-AC-1 | Withdrawn: FSpec FR-476 admits several terminal nodes on one model node; FR-060-AC-8 covers the admission. This id is retained and never reused. | Withdrawn |
+| FR-062-AC-2 | Withdrawn: FSpec FR-476 admits several `claim` occurrences on one terminal node; FR-060-AC-8 covers the admission. This id is retained and never reused. | Withdrawn |
+| FR-062-AC-3 | Withdrawn with the duplicate refusals it ordered. This id is retained and never reused. | Withdrawn |
+| FR-062-AC-4 | Withdrawn with the public duplicate payload type. This id is retained and never reused. | Withdrawn |
 
 ## Dependencies
 
 - [FR-060](./FR-060-admit-model-terminal-declarations.md) owns terminal
-  admission, the uniqueness check and its primary refusal code and locus.
-- [FR-038](./FR-038-consume-checked-package-v2.md) owns
-  `CheckedPackageRefusal` and its public typed fields.
-- `ix://agent-ix/filament-specification/FR-476` requires both node identities
-  or both occurrences to be named on a duplicate terminal refusal.
+  admission and the terminal rows.
+- `ix://agent-ix/filament-specification/FR-476` owns the rule that several
+  terminal nodes and occurrences on one model node are admitted.
 
 ## Status
 
-Planned. The current refusal type has one `locus` and no typed terminal
-duplicate pair; this requirement claims no implementation evidence.
+Withdrawn. Any implemented duplicate refusal and its payload type are removed
+with FR-060-AC-8.
