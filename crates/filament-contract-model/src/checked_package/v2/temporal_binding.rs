@@ -67,16 +67,22 @@ pub enum ClockConfiguration {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TemporalBinding {
-    /// Exact temporal clause or compensation declaration ID.
+    /// Exact ID of the temporal clause, compensation, await or
+    /// `claim`/`hyperproperty` node the row selects a clock for; never a
+    /// hyperproperty's body wrapper.
     pub declaration: CheckedNodeId,
-    /// Ordinal of the clause's claim or compensation's declaration occurrence.
+    /// Ordinal of the clause's or hyperproperty's claim occurrence, or of the
+    /// compensation's declaration occurrence.
     pub occurrence: u64,
-    /// Exact nonempty text of the declaration's clock argument.
+    /// Exact nonempty clock name: the declaration's clock argument (a
+    /// hyperproperty's wrapper's, under a behaviours domain) or, for a
+    /// finite-domain hyperproperty, the clock role its occurrence's rows share.
     pub clock_name: Box<str>,
     /// Closed clock configuration.
     pub clock: ClockConfiguration,
-    /// For a hyper clause body wrapper's row, the exact name of the quantified
-    /// trace variable the row's clock serves; absent on every other row.
+    /// For a `claim`/`hyperproperty` node's row, the exact name of the quantifier
+    /// Group variable whose trace the row's clock serves; absent on every other
+    /// row.
     #[serde(
         default,
         deserialize_with = "present_trace",

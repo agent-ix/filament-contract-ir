@@ -13,8 +13,9 @@
 
 use crate::support::checked_package::{
     canonical, evidence_with_document, family_key, fixture_source, model_owner,
-    node_id as fixture_node_id, owned_structural_node, reassign_node_id, select_model, settle,
-    source_owner, v2_all_families,
+    node_id as fixture_node_id, owned_structural_node, reassign_node_id,
+    rebuild_complete_source_map, refresh_claim_names, select_model, settle, source_owner,
+    v2_all_families,
 };
 use filament_contract_model::{
     CheckedNodeId, CheckedNodeTag, CheckedPackageLimit, CheckedPackageReadLimits,
@@ -3537,7 +3538,7 @@ fn finite_clock_fixture_with(variables: &[&str]) -> (Value, usize) {
 fn hyper_rows(package: &Value) -> Vec<usize> {
     package["temporal_bindings"]
         .as_array()
-        .expect("rows")
+        .map_or(&[][..], Vec::as_slice)
         .iter()
         .enumerate()
         .filter(|(_, row)| row.get("trace").is_some())
@@ -3590,6 +3591,66 @@ fn tc_483_a_finite_domain_row_is_refused_at_its_own_defect() {
         "unit": "tick",
     });
     refusal_at_trace(&kind, &format!("/temporal_bindings/{}/clock/kind", rows[0]));
+}
+
+#[trace("TC-483", "FR-038-AC-561")]
+#[test]
+fn tc_483_finite_domain_occurrences_may_carry_different_clock_roles() {
+    let (mut package, at) = finite_clock_fixture();
+    package["semantic_graph"]["nodes"][at]["occurrences"] =
+        json!([{"role": "claim", "ordinal": 0}, {"role": "claim", "ordinal": 1}]);
+    settle(&mut package);
+    rebuild_complete_source_map(&mut package);
+    refresh_claim_names(&mut package);
+    let rows = hyper_rows(&package);
+    assert_eq!(rows.len(), 4, "two Groups for each of two occurrences");
+    for &row in &rows[2..] {
+        package["temporal_bindings"][row]["clock_name"] = json!("u");
+    }
+    let admitted = admitted("two occurrences with roles t and u", &package);
+    let names: Vec<_> = admitted
+        .temporal_bindings()
+        .expect("rows")
+        .iter()
+        .filter(|row| row.trace.is_some())
+        .map(|row| &*row.clock_name)
+        .collect();
+    assert_eq!(names, ["t", "t", "u", "u"]);
+    // Agreement is within one occurrence.
+    let mut disagreeing = package.clone();
+    disagreeing["temporal_bindings"][rows[3]]["clock_name"] = json!("v");
+    refusal_at(
+        &disagreeing,
+        Code::InvalidPackage,
+        TIMED_NODE_REFERENCE,
+        &format!("/temporal_bindings/{}/clock_name", rows[3]),
+    );
+}
+
+#[trace("TC-483", "FR-038-AC-561")]
+#[test]
+fn tc_483_a_behaviours_node_under_a_timed_wrapper_profile_has_no_rows() {
+    let mut package = v2_all_families();
+    select_profile(&mut package, TIMED);
+    with_model(&mut package);
+    let root = find_identity(&package, &temporal_identity("eventually"));
+    package["semantic_graph"]["nodes"][root]["body"]["operation"]["member"] = unbounded();
+    settle(&mut package);
+    let clause_key = node_label(&package, clause(&package));
+    let hyper = push(
+        &mut package,
+        hyperproperty(
+            "hyperproperty",
+            vec![trace_group("s"), trace_group("n")],
+            vec![],
+            vec![],
+            refer(&clause_key),
+        ),
+    );
+    claim_occurrence(&mut package, hyper);
+    settle(&mut package);
+    assert!(hyper_rows(&package).is_empty());
+    admitted("a timed wrapper profile", &package);
 }
 
 #[trace("TC-483", "FR-038-AC-561")]
