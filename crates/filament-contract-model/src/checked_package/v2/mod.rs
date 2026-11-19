@@ -27,6 +27,7 @@ pub use model_operations::{
 };
 mod checked_term_data;
 mod claim_terminal;
+pub use claim_terminal::{TerminalDeclaration, TerminalRow};
 mod closure_index;
 mod comparison_operands;
 mod composite_operands;
@@ -1111,6 +1112,8 @@ pub struct CheckedPackageV2 {
     node_index: Arc<PositionIndex>,
     /// Graph-local wire IDs rebuilt as shared, document-independent keys.
     structural_keys: Vec<std::sync::Arc<CheckedNodeId>>,
+    /// Model terminal declarations retained in structural node-key order.
+    terminal_rows: Arc<Vec<TerminalRow>>,
     /// The graph in its wire form, node-held operands as operand slots,
     /// built on first use from the resolved graph in `wire`.
     slot_graph: Arc<std::sync::OnceLock<SlotView>>,
@@ -1732,6 +1735,12 @@ impl CheckedPackageV2 {
         };
         let node_index = retained_index::node_index(&wire, budget)?;
         let source_index = super::selected_population::source_index(&wire.source_map, budget)?;
+        let terminal_rows = claim_terminal::retain_rows(
+            &wire.semantic_graph.nodes,
+            &kinds,
+            &structural_keys,
+            budget,
+        )?;
         let is_timed_root =
             |kind: &CheckedNodeKind| *kind == CheckedNodeKind::TimedModel(TimedModelForm::Model);
         let mut timed_model_roots: Vec<usize> = read_charge::with_capacity(
@@ -1763,6 +1772,7 @@ impl CheckedPackageV2 {
             timed_model_roots,
             node_index,
             structural_keys,
+            terminal_rows,
             slot_graph,
             source_index,
             lowering_facts,

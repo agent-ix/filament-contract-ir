@@ -254,7 +254,8 @@ pub use checked_package::{
     SelectedTypeObject, SelectedTypeObjectField, SelectedTypeObjectOperation,
     SelectedTypeOperationParameter, SelectedTypeRecord, SelectedTypeTuple, SelectedTypeUnit,
     SelectedUnionMemberRow, StateForm, TemporalBinding, TemporalClauseName, TemporalForm,
-    TimedModelForm, ValueForm, CHECKED_PACKAGE_V2, CONTRACT_PACKAGE_VERSION,
+    TerminalDeclaration, TerminalRow, TimedModelForm, ValueForm, CHECKED_PACKAGE_V2,
+    CONTRACT_PACKAGE_VERSION,
 };
 
 pub use checked_package::CheckedFieldReadForm;
