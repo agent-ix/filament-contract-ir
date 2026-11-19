@@ -650,6 +650,7 @@ mod tests {
         CheckedPackageV2 {
             schedulability_claim_index: Vec::new(),
             monitor_plan_index: Vec::new(),
+            terminal_rows: std::sync::Arc::new(Vec::new()),
             timed_model_roots: Vec::new(),
             node_index: std::sync::Arc::new(retained_node_index(&wire)),
             structural_keys: Vec::new(),
