@@ -4929,7 +4929,7 @@ fn model_root_id(package: &str) -> Value {
 
 /// The two-trace hyper clock fixture with its body wrapper's `over` edited to
 /// the `model_root` of `root`: the wrapper's and the hyperproperty's positions.
-fn root_wrapper_fixture(root: &str) -> (Value, usize, usize) {
+pub(super) fn root_wrapper_fixture(root: &str) -> (Value, usize, usize) {
     let (mut package, wrapper, hyper) = hyper_clock_fixture(&["s", "n"]);
     select_model(&mut package, root);
     package["semantic_graph"]["nodes"][wrapper]["body"]["arguments"][0] =
@@ -5026,8 +5026,24 @@ fn tc_486_a_model_root_over_refuses_everywhere_the_spec_names() {
         ("op_sa", true),
         ("rcv_sa", true),
         ("arg_sa_sVault_sstep_si", true),
+        ("slot_sa__b_sc", true),
+        ("op_s_xC3_xA9", true),
         ("slotted", false),
         ("operand", false),
+        // Prefix-alike names that are no encoding: the wrong field count, no
+        // `_s` after the tag, a bad escape, escaped bytes that are no UTF-8.
+        ("slot_sv", false),
+        ("slot_sv_sa_sb", false),
+        ("op_sa_sb", false),
+        ("op_a", false),
+        ("op_", false),
+        ("rcv_s", false),
+        ("arg_sa_sb_sc", false),
+        ("op_sa_xzz", false),
+        ("op_sa_x4", false),
+        ("op_sa_x4a", false),
+        ("op_s_xC3", false),
+        ("op_sa_q", false),
     ] {
         let (mut package, wrapper, _) = root_wrapper_fixture(ORDERS);
         let parameter = find_form(&package, "value", "parameter");
@@ -5057,6 +5073,71 @@ fn tc_486_a_model_root_over_refuses_everywhere_the_spec_names() {
             Code::MissingDeclaration,
             Some(Cause::MissingName),
             Some(at_over(wrapper))
+        )
+    );
+}
+
+/// The root-wrapper fixture with a second subject `k`, the `model_root` of
+/// `OTHER_PACKAGE`, named by trace `n`'s Group; the wrapper's `over` is the root
+/// of `over`.
+fn two_subject_fixture(over: &str) -> (Value, usize) {
+    let (mut package, wrapper, hyper) = root_wrapper_fixture(over);
+    select_model(&mut package, OTHER_PACKAGE);
+    let body = &mut package["semantic_graph"]["nodes"][hyper]["body"];
+    body["members"][1]["value"]["members"]
+        .as_array_mut()
+        .expect("subjects")
+        .push(named(
+            "k",
+            json!({"term": "reference", "target": model_root_id(OTHER_PACKAGE)}),
+        ));
+    body["members"][3]["value"]["members"][1]["members"][2]["value"]["value"] = json!("k");
+    settle(&mut package);
+    (package, wrapper)
+}
+
+#[trace("TC-486", "FR-038-AC-563")]
+#[test]
+fn tc_486_a_model_root_over_is_the_first_subjects_never_a_later_ones() {
+    let (package, _) = two_subject_fixture(ORDERS);
+    admitted("the first subject's root", &package);
+    let (package, wrapper) = two_subject_fixture(OTHER_PACKAGE);
+    expect_root_refused(
+        "the second subject's root",
+        &package,
+        wrapper,
+        OTHER_PACKAGE,
+    );
+}
+
+#[trace("TC-486", "FR-038-AC-563")]
+#[test]
+fn tc_486_the_wrapper_fairness_refusal_precedes_the_model_root_refusal() {
+    // FSpec FR-402 "Reader order" step 3: a non-empty `fairness` argument
+    // refuses before a root that is not the first subject's.
+    let (mut package, _) = hyper_resolution(
+        INFINITE,
+        fairness_member(&model_key(ORDER_NODE), "scaled"),
+        ORDERS,
+    );
+    select_model(&mut package, OTHER_PACKAGE);
+    let wrapper = clause(&package);
+    let hyper = find_form(&package, "claim", "hyperproperty");
+    let fair = package["semantic_graph"]["nodes"][hyper]["body"]["members"][3]["value"]["members"]
+        [0]["members"][3]
+        .clone();
+    package["semantic_graph"]["nodes"][wrapper]["body"]["arguments"][4] =
+        json!({"term": "aggregate", "members": [fair]});
+    package["semantic_graph"]["nodes"][wrapper]["body"]["arguments"][0] =
+        json!({"term": "reference", "target": model_root_id(OTHER_PACKAGE)});
+    settle(&mut package);
+    let (outcome, _) = refusal_of("fairness before the root", &package);
+    assert_eq!(
+        outcome,
+        (
+            Code::InvalidSemanticGraph,
+            None,
+            Some(at_node(wrapper, "/body/arguments/4"))
         )
     );
 }

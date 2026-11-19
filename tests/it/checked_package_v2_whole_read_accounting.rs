@@ -323,6 +323,21 @@ fn positive_cases() -> Vec<Case> {
             positive_operation_identities(),
         ),
     ];
+    // FR-038-AC-562: an object-free hyper body wrapper over its subject's root.
+    let (wire, _, _) = crate::checked_package_v2_temporal::root_wrapper_fixture(
+        crate::checked_package_v2_temporal::ORDERS,
+    );
+    let evidence = crate::support::checked_package::evidence_with_document(
+        &wire,
+        crate::checked_package_v2_temporal::ORDERS,
+        &crate::checked_package_v2_temporal::orders_document(),
+    );
+    cases.push(case(
+        "native/temporal/root_wrapper_fixture",
+        wire,
+        evidence,
+        Expected::Admitted,
+    ));
     // These are the original native builders used by the corresponding
     // semantic tests, including their settled graph and model selections.
     // Construct outside the counter, then run the same public read oracle.
