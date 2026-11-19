@@ -1529,6 +1529,7 @@ impl RetainedModels {
         &self,
         context: &CheckedNodeId,
         name: &str,
+        with_result: bool,
         meter: &mut WorkMeter,
     ) -> Result<Option<Vec<CheckedNodeId>>, ValidationFailure> {
         let Some(declared) = self.index.0.get(context) else {
@@ -1538,7 +1539,7 @@ impl RetainedModels {
             return Ok(None);
         };
         let mut budget = Budget::new(meter, model.root, model.bytes);
-        model.effective_operation_binder_types(&declared.node, name, &mut budget)
+        model.effective_operation_binder_types_with(&declared.node, name, with_result, &mut budget)
     }
 
     /// The retained relationship the model declaration node `node` is.
