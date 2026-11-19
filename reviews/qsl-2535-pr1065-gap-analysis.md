@@ -43,3 +43,11 @@ On whether the SourceOwner reward case belongs in this PR: it does not. It needs
 | ID | Severity | Summary | Refs |
 | --- | --- | --- | --- |
 | FND-001 | medium | FSpec FR-640-AC-7's source half is neither implemented nor tracked: a reward `cost` on `Other::poke` whose function carries the unit's `SourceOwner` and the declaration `["Other","poke","reward","cost"]` is admitted, and the declaration `[...,"load"]` refuses rule 4 at `/body/expression`. FR-038-AC-571 defers it to "FR-369-AC-25", but that AC, TC-484 and QSL-2465 cover only delay, random_parameter and workload. Add the reward SourceOwner declaration check to QSL-2465's scope and to FR-369-AC-25/26 (or a new Planned AC) so the deferral has an owner. It is not required in this PR | spec/checked_package/functional/FR-038-consume-checked-package-v2.md:6716; spec/checked_package/matrix/tests.md:19 |
+
+## Dispositions
+
+Round 1, at head 0faf1c2b, with origin/main 358e9e2d merged.
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-001 | fixed | The case now has an owner. #1075 (W83e, on main) adds the source reward function to FR-369-AC-25/26 and TC-484 as Planned under QSL-2465 (tests.md:19), and QSL-2465 carries the scope addition. FR-038-AC-571 now points at FR-369's source-declared `reward` rule under QSL-2465. Implementation stays out of this PR, as judged in the review pass |

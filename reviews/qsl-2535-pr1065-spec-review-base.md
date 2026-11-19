@@ -30,3 +30,11 @@ The new and changed text is faithful to W76 and testable. One low wording defect
 | ID | Severity | Summary | Refs |
 | --- | --- | --- | --- |
 | FND-001 | low | FR-038-AC-571 says a source-declared `reward` clause function "is outside this reader until source-declared probabilistic nodes join (FR-369-AC-25)". But FR-369-AC-25 (and AC-26, and TC-484) states only delay, random_parameter and workload, so the pointer names an AC that will not bring the reward case in. Extend the FR-369 Planned ACs with FSpec FR-640-AC-7's SourceOwner reward declaration (`[<type>,<op>,"reward",<name>]`), or cite a new Planned AC | spec/checked_package/functional/FR-038-consume-checked-package-v2.md:6716 |
+
+## Dispositions
+
+Round 1, at head 0faf1c2b, with origin/main 358e9e2d merged.
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-001 | fixed | FR-038-AC-571 now reads "is the case FR-369's source-declared `reward` rule states; its owner and reader are planned under QSL-2465 and are not part of this criterion". With #1075, FR-369-AC-25/26 state the source reward function, so the pointer resolves |

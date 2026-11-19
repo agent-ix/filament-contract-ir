@@ -45,3 +45,23 @@ One medium test gap remains (FND-001): the abstract-side catalog of a dependency
 | --- | --- | --- | --- |
 | FND-001 | medium | Mutant M10 survives: passing `true` instead of `with_result` in `RetainedModels::operation_binder_types` (the `CatalogSignatures::External` path, used for the abstract protocol of a selected dependency package, refinement.rs:3155) fails no test, so a dependency-abstract `recommend` class would silently require the result type. FR-432-AC-24 states the abstract-side `class_catalog` entry `{class: "A::Adv", binder_types: [<Cell ref>, <Int[0, 3]>]}`; the only recommend test (`refinement_catalog_maps_a_recommend_as_a_node_row_class`) covers the concrete side (Local signatures) only. Add an abstract-side recommend over a dependency protocol whose operation has a result, asserting the result-free binder admits and the with-result binder refuses | crates/filament-contract-model/src/checked_package/v2/model_fields.rs:1542; crates/filament-contract-model/src/checked_package/v2/refinement.rs:3397; tests/it/checked_package_v2_refinement.rs:8101 |
 | FND-002 | low | The doc comment says the refused owners are "an object type, a field member or an operation of another type". The test actually uses `Account` (the object type), `Account/balance` (a field) and `Account/missing` (an undeclared member); no operation of another type is tried. Correct the comment, or add the case | tests/it/checked_package_v2_probabilistic.rs:1897-1900 |
+
+## Dispositions
+
+Round 1 was checked at head 0faf1c2b. That head carries fix commit 40e101e9 and merges origin/main 358e9e2d, which includes #1071 QSL-2391 and #1075 W83e. Gates at that head:
+
+- fmt, `make string-edge` and clippy (`--workspace --all-targets --features conformance-cli -D warnings`): clean.
+- Full workspace test: head 2401 passed, 37 failed. Clean origin/main 358e9e2d, run in its own worktree and target: 2397 passed, 37 failed.
+- The failing sets are identical, so the fix round adds no regression. They are:
+  - 18 `reached_model_read`
+  - 3 `public_interface` (the `CheckedTerminalDuplicate` FR-019 drift from W80)
+  - 2 `lock_coherence` (environmental)
+  - 14 await tests: 13 in `checked_package_v2_protocol_body`, plus `refinement_catalog_joins_timeout_on_await_node`
+- The await failures refuse `invalid_package`/`timed-node-reference` at `/semantic_graph/nodes/33/body` on clean main exactly as on head. They come from main's QSL-2391 await change (#1071), not from this PR.
+
+Mutant M10 was re-applied at 0faf1c2b and is now killed by `refinement_catalog_gives_an_external_abstract_recommend_no_result_binder`.
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-001 | fixed | `refinement_catalog_gives_an_external_abstract_recommend_no_result_binder` (tests/it/checked_package_v2_refinement.rs:9242) reads a selected dependency protocol through the External path. The abstract entry `[receiver, Integer]` admits, and the with-result, `[B]` and receiver-only entries refuse at `class_catalog/abstract/{i}`. M10 is killed |
+| FND-002 | fixed | The doc comment now reads "owned by an object type, by a field member or by an undeclared member", which matches the three owners the test runs |
