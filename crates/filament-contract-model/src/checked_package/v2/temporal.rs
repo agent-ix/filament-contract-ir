@@ -1121,6 +1121,85 @@ fn temporal_fault(
     )
 }
 
+/// The value of the aggregate binding `wanted` among `members`.
+fn member_binding<'a>(members: &'a [CheckedTerm], wanted: &str) -> Option<&'a CheckedTerm> {
+    members.iter().find_map(|member| match member {
+        CheckedTerm::Binding { name, value } if AsRef::<str>::as_ref(name) == wanted => {
+            Some(value.as_ref())
+        }
+        _ => None,
+    })
+}
+
+/// Whether `clause` is the `body` target of a `claim`/`hyperproperty` node, a
+/// body wrapper (FSpec FR-402 "Body wrapper").
+fn is_body_wrapper(
+    clause: &CheckedNodeId,
+    graph: &StepGraph<'_, '_>,
+    terms: &[Option<CheckedTerm>],
+) -> bool {
+    graph
+        .each(CheckedNodeKind::Claim(super::ClaimForm::Hyperproperty))
+        .any(
+            |(position, _)| match terms.get(position).and_then(Option::as_ref) {
+                Some(CheckedTerm::Aggregate { members }) => {
+                    member_binding(members, "body").and_then(typed_reference) == Some(clause)
+                }
+                _ => false,
+            },
+        )
+}
+
+/// Whether a `value`/`parameter` name is a slot parameter's (FSpec FR-402 "Slot
+/// parameters"): its tag, the text before the first `_`, is `slot`, `op`,
+/// `rcv` or `arg`, followed by `_s`.
+fn is_slot_parameter_name(name: &str) -> bool {
+    ["slot_s", "op_s", "rcv_s", "arg_s"]
+        .iter()
+        .any(|prefix| name.starts_with(prefix))
+}
+
+/// Whether the formula `reference` reaches, through `dependencies`, a slot
+/// parameter.
+fn formula_reads_slot_parameter(
+    reference: Option<&CheckedTerm>,
+    graph: &StepGraph<'_, '_>,
+    terms: &[Option<CheckedTerm>],
+    meter: &mut WorkMeter,
+) -> Result<bool, ValidationFailure> {
+    let Some(start) = reference
+        .and_then(typed_reference)
+        .and_then(|target| graph.index.get(target).copied())
+    else {
+        return Ok(false);
+    };
+    let mut seen = meter.filled(graph.nodes.len(), false)?;
+    let mut pending = meter.vec(1)?;
+    meter.push(&mut pending, start)?;
+    seen[start] = true;
+    while let Some(position) = pending.pop() {
+        if graph.kinds.get(position) == Some(&CheckedNodeKind::Value(ValueForm::Parameter)) {
+            let named = match terms.get(position).and_then(Option::as_ref) {
+                Some(CheckedTerm::Aggregate { members }) => member_binding(members, "name")
+                    .and_then(|name| aggregate_literal(name, LiteralKind::Text)),
+                _ => None,
+            };
+            if named.is_some_and(is_slot_parameter_name) {
+                return Ok(true);
+            }
+        }
+        for dependency in &graph.nodes[position].dependencies {
+            if let Some(&next) = graph.index.get(dependency) {
+                if !seen[next] {
+                    seen[next] = true;
+                    meter.push(&mut pending, next)?;
+                }
+            }
+        }
+    }
+    Ok(false)
+}
+
 /// One clause's checks, in order: profile identity, `over`, fairness
 /// resolution, profile fit, interval bounds, aggregate arguments. A part of the clause the
 /// operation step refuses (an unreadable `operation`, a missing law, a
@@ -1213,6 +1292,18 @@ fn check_clause(
             None => Some((ModelRefusal::missing_name(), &node.node_id)),
             Some(_) if !node.dependencies.contains(over) => {
                 Some((ModelRefusal::missing_name(), over))
+            }
+            // FR-370 "Temporal clause" step `over`: a declared `model`/`model_root`
+            // dependency is the target of a body wrapper (FR-402 "Body wrapper")
+            // whose formula reads no slot parameter, and of no other clause.
+            Some((_, CheckedNodeKind::Model(ModelForm::ModelRoot))) => {
+                if is_body_wrapper(&node.node_id, graph, terms)
+                    && !formula_reads_slot_parameter(arguments.get(5), graph, terms, meter)?
+                {
+                    None
+                } else {
+                    Some((ModelRefusal::malformed(), over))
+                }
             }
             Some((_, kind)) if kind != CheckedNodeKind::Value(ValueForm::Parameter) => {
                 Some((ModelRefusal::malformed(), over))
@@ -2601,6 +2692,36 @@ fn check_hyper_shape(
         let wrapper_position = body_target
             .as_ref()
             .and_then(|target| graph.index.get(target).copied());
+        // FSpec FR-402 "Reader order" step 3: a wrapper over a model root has
+        // the first `subjects` binding's root as its `over`.
+        let first_subject = subjects
+            .first()
+            .and_then(binding)
+            .and_then(|(_, value)| typed_reference(value));
+        let wrapper_over = wrapper_position
+            .and_then(|wrapper| meter.decode_body(wrapper).ok()?.ok())
+            .and_then(|body| match body {
+                CheckedTerm::Application { arguments, .. } => {
+                    arguments.first().and_then(typed_reference).cloned()
+                }
+                _ => None,
+            });
+        if let (Some(over), Some(wrapper_position)) = (wrapper_over, wrapper_position) {
+            let over_root = graph
+                .node(&over)
+                .is_some_and(|(_, kind)| kind == CheckedNodeKind::Model(ModelForm::ModelRoot));
+            if over_root && first_subject != Some(&over) {
+                return Err(ValidationFailure::refused_at(
+                    CheckedPackageRefusalCode::InvalidModelBinding,
+                    node_pointer(wrapper_position)
+                        .key("body")
+                        .key("arguments")
+                        .index(0),
+                    Some(CheckedPackageRefusalCause::MalformedDeclaration),
+                    over,
+                ));
+            }
+        }
         let wrapper_body =
             wrapper_position.and_then(|position| meter.decode_body(position).ok()?.ok());
         let fairness_nonempty = wrapper_body
