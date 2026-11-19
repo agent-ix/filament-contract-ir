@@ -25,6 +25,8 @@ relationships:
     type: references
   - target: ix://agent-ix/filament-specification/FR-322-AC-479
     type: references
+  - target: ix://agent-ix/filament-specification/FR-322-AC-480
+    type: references
   - target: ix://agent-ix/filament-specification/FR-322-AC-304
     type: references
   - target: ix://agent-ix/filament-specification/FR-322-AC-305
@@ -1939,10 +1941,13 @@ family part round-trips byte-identically. The quantifier is a structural term
 of the guard body and enters the guard's aggregate order key after the
 binders like any other text term; a model holds one guard per operation
 anchor, so the key is decided by the operation before any part is compared.
-A guard's node id is the producer's: as for every node, the reader neither
-derives it from the body nor checks it against the quantifier. FSpec FR-322
-requires a producer to give the `each` and the `some` guard different node
-ids; two such packages read back with whatever distinct ids they carry.
+A guard's node id is the producer's. FSpec FR-322-AC-480 has the producer
+append the segments `quantifier`, the part's position in `parts` as decimal
+text, and `each` or `some` to the guard's derived path, one triple per family
+part, so the `each` and the `some` guard of one operation have different node
+ids. The reader keeps the id its candidate wrote: as for every node, it
+neither derives the id from the body nor compares it with the quantifier,
+and a family part whose guard id lacks the suffix is not refused for that.
 
 Enabledness is not a reader obligation. FSpec FR-322 defines it (an `each`
 part is enabled when its predicate and constraints hold at every held slot or
@@ -1952,14 +1957,17 @@ in any state, so it has no enabledness behavior to test; the checkers and
 monitors that evaluate guards own it and read the quantifier from the body
 as above.
 
-FSpec's clause fixture has no family part: its unbounded places (`clock`,
-`g`, `s`) carry no binder-indexed constraint. The repository's
-`tests/fixtures/family-guard-part/family-part-vectors.json` supplies the
-admitted family part as replayable edits over the FSpec fixture, read by
-reference: on top of FSpec case `CL-57` (or `CL-58`), it removes the declared
-maximum of `Order.ts` in the selected document and writes `unbounded` in the
-`ts.x` place's slot step, its `resolved_path` row and every inline copy of
-the place's structural key, then adds or changes the part's `quantifier`.
+FSpec publishes the admitted `Sequence` family parts as clause cases `CL-65`
+(`each`) and `CL-66` (`some`): `CL-57`'s part over `Order.ts` with the
+declared maximum removed from the selected document, `unbounded` written in
+the `ts.x` place and every copy of its key, the `quantifier` binding, and the
+guard id suffix. The repository's
+`tests/fixtures/family-guard-part/family-part-vectors.json` adds the
+refusals, the binder-join order and the `Map` family as replayable edits over
+the same FSpec fixture, read by reference. Its `Map` case gives guard part 1
+of the fixture, whose constraint selects the unbounded `clock` map
+(`Map<Text, Clock>`) by the literal key `audit`, a new `Text` slot parameter
+`k` as binder and slot term, so the part ranges over every held key.
 
 The existing one-operand `filament.op.option.present` application over an
 Option-typed term SHALL retain its meaning and key. The reader SHALL also
@@ -6307,11 +6315,11 @@ the minimum the read uses.
 | FR-038-AC-384 | For the external temporal clause of AC-383, a compensation target not listed by any protocol clause, named in another package or naming a node of the wrong protocol form retains AC-103's missing-name or malformed-declaration refusal at the fairness target's `node` field, with the fairness node as locus. A fairness node omitted from every admitted temporal clause's fairness argument also refuses missing-name there even when its compensation target has a unique valid owner. A temporal clause listed in one protocol clause's `requirements` still refuses a compensation target owned only by another clause; the ownership join does not change the requirement association of protocol-root, attempt or parallel-branch fairness targets. | Test (TC-048) |
 | FR-038-AC-385 | The public V2 reader admits FSpec `timed-clause-node-vectors.json` cases `CL-57` and `CL-59`: a guard part and a time invariant each retain an ordered `binders` aggregate of typed slot-parameter references in the specified position. Existing unquantified `clock_guard` and `time_invariant` positive controls still admit with their original body and identity; no binder is dropped or interpreted as an unquantified approximation. | Test |
 | FR-038-AC-386 | The reader refuses FSpec cases `CL-58` (non-slot guard binder), `CL-60` (repeated invariant binder) and `CL-62` (reversed nested slot binders) with exactly `invalid_package`/`timed-node-reference` at each vector's first bad binder `target` RFC 6901 path and the containing timed node as locus. The test reads FSpec's proposal fixture and vectors by reference and compares the exact code, cause and path; no FSpec artifact is copied. | Test |
-| FR-038-AC-576 | The public V2 reader admits family-part vectors `FP-01` (`quantifier` `each`) and `FP-02` (`quantifier` `some`), each a `clock_guard` part `[predicate, binders [i], quantifier, ts[i].x >= 2 ms, …]` over `Order.ts` with no declared maximum. Each admitted package encodes to the candidate's exact canonical bytes; the part's third member is the `quantifier` binding with the written text; and the two packages differ only in that text, each guard keeping the node id its candidate wrote. The published clause fixture, FSpec `CL-57` and guard part 1 of node 47 (no binders, a literal `audit` key into the unbounded `clock` map, no `quantifier`) still admit with their original bodies and node ids. Against a reader without the third layout, `FP-01` and `FP-02` refuse `malformed_wire`, so the criterion can fail. | Test (TC-490) |
-| FR-038-AC-577 | FSpec `CL-64` (`quantifier` `each` on the bounded `ts` part) refuses `invalid_package`/`timed-node-reference` at `/semantic_graph/nodes/47/body/members/1/value/members/0/members/2/value`, and `FP-03` (the `FP-01` part without `quantifier`) refuses the same pair at the part, `/semantic_graph/nodes/47/body/members/1/value/members/0`, each with guard node 47 as locus. A reader that admits a family part without `quantifier`, or refuses `CL-64` as `malformed_wire`, fails. | Test (TC-490) |
-| FR-038-AC-578 | FSpec `CL-63` (`quantifier` `all` on the bounded part), `FP-04` (`quantifier` `all` on the family part) and `FP-05` (`quantifier` in place of `binders`) each refuse `malformed_wire`, with no cause, at the part `/semantic_graph/nodes/47/body/members/1/value/members/0`, before any timed join; the text is refused whether or not the part is a family part. | Test (TC-490) |
-| FR-038-AC-579 | The family rule runs after the part's binder join: `FP-06`, a family part with the non-slot binder `self` of FSpec `CL-58` and no `quantifier`, refuses `invalid_package`/`timed-node-reference` at that binder's `target`, `/semantic_graph/nodes/47/body/members/1/value/members/0/members/1/value/members/0/target`, not at the part. | Test (TC-490) |
-| FR-038-AC-580 | The family vectors are read by reference: TC-490 replays FSpec's clause fixture, selected document and `CL-57`/`CL-58` patches from the `FILAMENT_SPECIFICATION_DIR` checkout and applies only the edits of `tests/fixtures/family-guard-part/family-part-vectors.json`; no FSpec file is copied. Before applying its edits, the test checks that the selected document's field `/types/3/fields/2` is `ix://acme/orders/Order/ts` and that each member the edits replace holds `3` (or the integer 3) before the edit, so a changed FSpec fixture fails the test instead of silently retargeting it. | Test (TC-490) |
+| FR-038-AC-576 | The public V2 reader admits FSpec `CL-65` (`quantifier` `each`) and `CL-66` (`quantifier` `some`), each a `clock_guard` part `[predicate, binders [i], quantifier, ts[i].x >= 2 ms, …]` over `Order.ts` with no declared maximum, and family-part vector `FP-05`, the `Map` family: guard part 1 with binder `k` over the unbounded `clock` map `Map<Text, Clock>` and `quantifier` `each`. Each admitted package encodes to its candidate's exact canonical bytes, and the part's member after `binders` is the `quantifier` binding with the written text. The `CL-65` and `CL-66` packages differ in that text and in the guard id suffix (`quantifier`, `0`, `each` or `some`) that each candidate wrote; each guard keeps the node id its candidate wrote, and the reader derives and compares no id. The published clause fixture and FSpec `CL-57` still admit with their original bodies and node ids. A reader without the third layout refuses `CL-65`, `CL-66` and `FP-05` `malformed_wire` at the quantifier member, so the criterion can fail. | Test (TC-490) |
+| FR-038-AC-577 | FSpec `CL-64` (`quantifier` `each` on the bounded `ts` part) refuses `invalid_package`/`timed-node-reference` at `/semantic_graph/nodes/47/body/members/1/value/members/0/members/2/value`. `FP-01` (the `CL-65` part without `quantifier`) refuses the same pair at the part, `/semantic_graph/nodes/47/body/members/1/value/members/0`, and `FP-06` (the `FP-05` map part without `quantifier`) at `/semantic_graph/nodes/47/body/members/1/value/members/1`. Each refusal has guard node 47 as locus. `FP-01` and `FP-06` are admitted by a reader without the family rule, and `CL-64` is refused there as `malformed_wire`, so the criterion can fail. | Test (TC-490) |
+| FR-038-AC-578 | FSpec `CL-63` (`quantifier` `all` on the bounded part), `FP-02` (`quantifier` `all` on the family part) and `FP-03` (`quantifier` in place of `binders`) each refuse `malformed_wire`, with no cause, at the part `/semantic_graph/nodes/47/body/members/1/value/members/0`, before any timed join; the text is refused whether or not the part is a family part. | Test (TC-490) |
+| FR-038-AC-579 | The family rule runs after the part's binder join: `FP-04`, a family part with the non-slot binder `self` of FSpec `CL-58` and no `quantifier`, refuses `invalid_package`/`timed-node-reference` at that binder's `target`, `/semantic_graph/nodes/47/body/members/1/value/members/0/members/1/value/members/0/target`, not at the part. | Test (TC-490) |
+| FR-038-AC-580 | The family vectors are read by reference: TC-490 replays FSpec's clause fixture, selected document and `CL-57`, `CL-58`, `CL-63`..`CL-66` patches from the `FILAMENT_SPECIFICATION_DIR` checkout and applies only the edits of `tests/fixtures/family-guard-part/family-part-vectors.json`; no FSpec file is copied. Every member an `FP` edit replaces or removes is first checked by an RFC 6902 `test` operation against the value it must hold (the `ts` maximum `3` in the document and the package, the `audit` slot, the operand slots and rows it renumbers), so a changed FSpec fixture fails the test instead of silently retargeting it. | Test (TC-490) |
 | FR-038-AC-387 | The public reader admits FSpec `XP-01` and `XP-10`, with each local dimension operand as a local `NodeRef` and each foreign dimension operand as a closed `PackageNodeRef {package, node}` of a directly selected dependency. It resolves the foreign declared dimension in that dependency's admitted package, preserves the authored operand form in the typed nominal body and writer, compares the two resolved structural node ids for distinctness and ascending order, and retains only local operands in the equivalence node's `dependencies`. No foreign dimension node is minted into the importing graph. | Test (TC-280) |
 | FR-038-AC-388 | For FSpec `XP-11`, `XP-12` and `XP-15`, a package operand naming only a closure dependency, no selected dependency or the importing package refuses `missing_declaration`/`missing-selection` at `/semantic_graph/nodes/{i}/body/dimension_node_ids/{k}/package`. `XP-13` names no node in its directly selected dependency and refuses `missing_declaration`/`missing-name` at the corresponding `/node`. The reader checks these operands in listed order before pair rules; neither package display names nor an imported graph node substitute for the selected dependency lookup. | Test (TC-280) |
 | FR-038-AC-389 | FSpec `XP-14` supplies a self-minted foreign-package `NodeRef` and refuses `invalid_semantic_graph` at `/semantic_graph/nodes/{i}/body/dimension_node_ids/{k}`. A local operand naming no graph node, or a local or package operand resolving to a node other than `scalar_type`/`dimension`, refuses the same code at that operand before pair validation; `XP-05` names a unit node and refuses there at its wrong-kind operand. FSpec `XP-02` through `XP-04` and `XP-06` through `XP-09` keep their published `invalid_semantic_graph` pair outcomes after operand resolution; a valid mixed-package equivalence still admits. Reversed or duplicate resolved structural dimensions refuse `invalid_semantic_graph` at the later equivalence node in structural node-id order. | Test (TC-280) |
