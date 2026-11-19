@@ -8366,7 +8366,6 @@ fn compensation_clock_rows_follow_published_cases() {
     }
 }
 
-/// Trace: FR-038-AC-414, FR-038-AC-415; FSpec FR-322-AC-305.
 #[trace("TC-048", "FR-038-AC-414", "FR-038-AC-415")]
 #[test]
 fn await_clock_row_is_admitted_and_round_trips() {

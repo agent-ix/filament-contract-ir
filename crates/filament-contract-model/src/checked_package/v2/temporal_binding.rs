@@ -476,8 +476,7 @@ fn clock_matches(profile: Option<TemporalProfile>, clock: &ClockConfiguration) -
     )
 }
 
-/// Whether a protocol control node is the `await` declaration admitted by
-/// FR-322 for a temporal clock binding.
+/// Whether a protocol control node is its `await` declaration for a clock binding.
 fn is_await_node(
     position: usize,
     kinds: &[CheckedNodeKind],
