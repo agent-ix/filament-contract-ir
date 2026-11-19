@@ -23,6 +23,8 @@ use filament_contract_model::{
     SelectedOperationMembers, SelectedSourceOperationRow, SelectedSourceOperations,
 };
 use ix_trace_rs::trace;
+
+pub(crate) mod probabilistic;
 use quire_canonical::Limits;
 use serde_json::{json, Value};
 

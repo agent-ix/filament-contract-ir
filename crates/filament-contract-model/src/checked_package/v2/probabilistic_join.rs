@@ -17,6 +17,7 @@ use super::model_members::{
 };
 use super::native_join_budget::PackageReadStage;
 use super::operation_effects::own_operation;
+use super::source_object::is_source_declared_object_type;
 use super::stage_storage::{self, Path, Refusal, Site};
 use super::{
     BoundedDomainForm, CheckedBindingNameKind, CheckedNodeId, CheckedNodeKind, CheckedNodeOwner,
@@ -76,6 +77,37 @@ pub(super) fn binding_name(term: &CheckedTerm) -> Option<&str> {
             CheckedBindingNameKind::Other(name) => name,
         }),
         _ => None,
+    }
+}
+
+/// The operation an operation reference names: a selected model's operation
+/// or, for a source-declared `declaring` node, the operation's name, which the
+/// identity-row join resolves.
+enum Operation<'a> {
+    Selected {
+        model: &'a CheckedNodeId,
+        operation: &'a OperationDecl,
+        package: &'a DomainModel,
+    },
+    Source {
+        model: &'a CheckedNodeId,
+        position: usize,
+        name: &'a str,
+    },
+}
+
+impl<'a> Operation<'a> {
+    fn model(&self) -> &'a CheckedNodeId {
+        match self {
+            Self::Selected { model, .. } | Self::Source { model, .. } => model,
+        }
+    }
+
+    fn name(&self) -> &'a str {
+        match self {
+            Self::Selected { operation, .. } => member_name(&operation.identity),
+            Self::Source { name, .. } => name,
+        }
     }
 }
 
@@ -284,10 +316,10 @@ impl<'a> Join<'a> {
         &self,
         meter: &mut WorkMeter,
         holder: usize,
-        body: &CheckedTerm,
+        body: &'a CheckedTerm,
         declaring: usize,
         operation: usize,
-    ) -> Result<(&'a CheckedNodeId, &'a OperationDecl, &'a DomainModel), ValidationFailure> {
+    ) -> Result<Operation<'a>, ValidationFailure> {
         let declaring_at = binding_at(holder, declaring).key("target");
         let operation_at = binding_at(holder, operation).key("value");
         let Some(model) = bound(body, declaring).and_then(target) else {
@@ -296,6 +328,19 @@ impl<'a> Join<'a> {
         let Some(model_position) = self.position(model) else {
             return Err(invalid(meter, holder, declaring_at));
         };
+        if self.is_source_object(model_position) {
+            // A source-declared node has no domain document: the strict read
+            // checks its kind and `SourceOwner` only, and the identity-row
+            // join resolves the operation (FSpec FR-640 Reader rule 1).
+            let Some(name) = bound(body, operation).and_then(text) else {
+                return Err(invalid(meter, holder, operation_at));
+            };
+            return Ok(Operation::Source {
+                model: &self.nodes[model_position].node_id,
+                position: model_position,
+                name,
+            });
+        }
         let owner = matches!(
             self.kinds.get(model_position),
             Some(CheckedNodeKind::Model(_))
@@ -321,34 +366,53 @@ impl<'a> Join<'a> {
             return Err(invalid(meter, holder, operation_at));
         };
         match declared.and_then(|declared| own_operation(declared, name)) {
-            Some(found) => Ok((&self.nodes[model_position].node_id, found, owner.package)),
+            Some(found) => Ok(Operation::Selected {
+                model: &self.nodes[model_position].node_id,
+                operation: found,
+                package: owner.package,
+            }),
             None => Err(invalid(meter, holder, operation_at)),
         }
     }
 
-    /// The unit node of the `dense` time source of the timed model rooted on
-    /// `model`, or `None` when the model has no timed root or its source is
-    /// not `dense`. One validation visit is charged for each graph node
-    /// scanned for the root.
+    /// Whether the node at `position` is a source-declared object type: a
+    /// `model`/`object_type` node with a `declaration` and a `SourceOwner`
+    /// (FSpec FR-322 "Source-declared object types").
+    fn is_source_object(&self, position: usize) -> bool {
+        is_source_declared_object_type(&self.nodes[position], self.kinds[position])
+    }
+
+    /// The unit node of the `dense` time source of the timed model whose root
+    /// `model` `accepts` names, or `None` when no such root has a `dense`
+    /// source. With `any` false the first accepted root decides, whatever its
+    /// source; with `any` true the scan goes on to the next accepted root
+    /// while the source is not `dense`. One validation visit is charged for
+    /// each graph node scanned for the root.
     fn dense_unit(
         &self,
         meter: &mut WorkMeter,
         holder: usize,
-        model: &CheckedNodeId,
+        accepts: impl Fn(&CheckedNodeId) -> bool,
+        any: bool,
     ) -> Result<Option<&'a CheckedNodeId>, ValidationFailure> {
         for position in 0..self.nodes.len() {
             visit(meter, holder, node_at(holder))?;
             if self.kinds.get(position) == Some(&CheckedNodeKind::TimedModel(TimedModelForm::Model))
-                && bound(&self.terms[position], 0).and_then(target) == Some(model)
+                && bound(&self.terms[position], 0)
+                    .and_then(target)
+                    .is_some_and(&accepts)
             {
                 let source = bound(&self.terms[position], 2)
                     .and_then(target)
                     .and_then(|source| self.position(source));
-                return Ok(source.and_then(|source| {
+                let unit = source.and_then(|source| {
                     (bound(&self.terms[source], 0).and_then(text) == Some("dense"))
                         .then(|| bound(&self.terms[source], 1).and_then(target))
                         .flatten()
-                }));
+                });
+                if unit.is_some() || !any {
+                    return Ok(unit);
+                }
             }
         }
         Ok(None)
@@ -421,7 +485,7 @@ impl<'a> Join<'a> {
         meter: &mut WorkMeter,
         holder: usize,
         body: &CheckedTerm,
-        operation: &OperationDecl,
+        operation: &Operation<'_>,
     ) -> Result<(), ValidationFailure> {
         let value_type_at = binding_at(holder, 3).key("target");
         let Some(value_type) = bound(body, 3).and_then(target) else {
@@ -451,6 +515,18 @@ impl<'a> Join<'a> {
             return Err(invalid(meter, holder, expression_at));
         };
         let node = &self.nodes[function];
+        let operation = match operation {
+            Operation::Selected { operation, .. } => *operation,
+            Operation::Source { position, name, .. } => {
+                return self.source_reward(
+                    meter,
+                    holder,
+                    body,
+                    (*position, name),
+                    (function, value_type),
+                );
+            }
+        };
         let owned = matches!(
             node.owner.as_ref(),
             Some(CheckedNodeOwner::Model { node: member, .. })
@@ -490,6 +566,140 @@ impl<'a> Join<'a> {
         Ok(())
     }
 
+    /// FR-640 Reader rule 4 for a reward whose `declaring` node (at
+    /// `position`, the operation `name`) is source-declared: `function` is a
+    /// function node that carries the declaring node's `SourceOwner`, the
+    /// `declaration` `[<type>, <operation>, "reward", <name>]`, the clause
+    /// kind `reward` and the reward's `value_type` as its own type, and the
+    /// parameters it lists are read by the walk of its body. The parameter list is
+    /// compared with the operation's at the identity-row join.
+    fn source_reward(
+        &self,
+        meter: &mut WorkMeter,
+        holder: usize,
+        body: &CheckedTerm,
+        (declaring, operation): (usize, &str),
+        (function, value_type): (usize, &CheckedNodeId),
+    ) -> Result<(), ValidationFailure> {
+        let expression_at = binding_at(holder, 4).key("target");
+        let node = &self.nodes[function];
+        let name = bound(body, 2).and_then(text).unwrap_or_default();
+        let declared = &self.nodes[declaring];
+        let named = node
+            .declaration
+            .as_ref()
+            .zip(declared.declaration.as_ref())
+            .is_some_and(|(found, declaring)| {
+                let (type_name, rest) = found
+                    .qualified_name
+                    .split_at_checked(declaring.qualified_name.len())
+                    .unwrap_or_default();
+                type_name == declaring.qualified_name.as_slice()
+                    && matches!(rest, [op, kind, reward]
+                        if op.as_ref() == operation
+                            && kind.as_ref() == "reward"
+                            && reward.as_ref() == name)
+            });
+        if node.owner != declared.owner
+            || !named
+            || &node.semantic_type != value_type
+            || !super::owner::is_reward_clause(&self.terms[function])
+        {
+            return Err(invalid(meter, holder, expression_at));
+        }
+        let entries = bound(&self.terms[function], 0)
+            .map(members)
+            .unwrap_or_default();
+        let mut listed: Vec<usize> = stage_storage::vec(
+            meter,
+            &Site::new(PackageReadStage::Graph, holder, FORM, expression_at),
+            entries.len(),
+        )?;
+        for entry in entries {
+            let position = target(entry)
+                .and_then(|id| self.position(id))
+                .filter(|&position| {
+                    self.kinds[position] == CheckedNodeKind::Value(ValueForm::Parameter)
+                });
+            let Some(position) = position else {
+                return Err(invalid(meter, holder, expression_at));
+            };
+            listed.push(position);
+        }
+        if self.reads_beyond_parameters(meter, holder, function, &listed)? {
+            return Err(invalid(meter, holder, expression_at));
+        }
+        Ok(())
+    }
+
+    /// FR-640 Reader rule 2 for a random parameter of a selected operation:
+    /// the parameter is one of the operation's and each support value is a
+    /// member of its type. One validation visit is charged for each value.
+    fn random_parameter(
+        &self,
+        meter: &mut WorkMeter,
+        position: usize,
+        body: &CheckedTerm,
+        operation: &OperationDecl,
+        package: &DomainModel,
+    ) -> Result<(), ValidationFailure> {
+        let join = self;
+        let name = bound(body, 2).and_then(text).unwrap_or_default();
+        let parameter_at = binding_at(position, 2).key("value");
+        let Some(declared) = operation
+            .parameters
+            .iter()
+            .find(|declared| declared.name.as_deref() == Some(name))
+        else {
+            return Err(invalid(meter, position, parameter_at));
+        };
+        let expected = literal_kind(package, declared);
+        let unit = literal_unit(package, declared);
+        let support_at = binding_at(position, 3);
+        for (row, entry) in bound(body, 3)
+            .map(members)
+            .unwrap_or_default()
+            .iter()
+            .enumerate()
+        {
+            let value_at = support_at
+                .key("members")
+                .index(row)
+                .key("members")
+                .index(0)
+                .key("value");
+            visit(meter, position, value_at)?;
+            let (kind, typed_at) = match bound(entry, 0) {
+                Some(CheckedTerm::Literal {
+                    value_kind,
+                    type_id,
+                    ..
+                }) => (Some(*value_kind), Some(type_id)),
+                _ => (None, None),
+            };
+            if kind.is_none()
+                || kind != expected
+                || unit.as_ref().is_some_and(|unit| typed_at != Some(unit))
+            {
+                return Err(invalid(meter, position, value_at));
+            }
+            let verdict = match bound(entry, 0) {
+                Some(value) => not_member(meter, join.models, package, declared, value)?,
+                None => None,
+            };
+            match verdict {
+                Some(NotMember::Literal) => {
+                    return Err(invalid(meter, position, value_at));
+                }
+                Some(NotMember::Spelling) => {
+                    return Err(invalid(meter, position, value_at.key("value")));
+                }
+                None => {}
+            }
+        }
+        Ok(())
+    }
+
     /// FR-640 Reader rule 5: the delay's model is `time dense`, and each time
     /// quantity of its parameters is in the unit of that source (FR-640
     /// "Time quantities are in the timed model's time unit"). One validation
@@ -498,10 +708,31 @@ impl<'a> Join<'a> {
         &self,
         meter: &mut WorkMeter,
         holder: usize,
-        model: &CheckedNodeId,
+        operation: &Operation<'_>,
         body: &CheckedTerm,
     ) -> Result<(), ValidationFailure> {
-        let Some(unit) = self.dense_unit(meter, holder, model)? else {
+        let unit = match operation {
+            Operation::Selected { model, .. } => {
+                self.dense_unit(meter, holder, |root| root == *model, false)?
+            }
+            // One source time member times every source object type of the
+            // unit (FSpec FR-640 Reader rule 5, FR-415): any `dense` root
+            // whose model is a source-declared node of the same `SourceOwner`.
+            Operation::Source { position, .. } => {
+                let owner = self.nodes[*position].owner.as_ref();
+                self.dense_unit(
+                    meter,
+                    holder,
+                    |root| {
+                        self.position(root).is_some_and(|root| {
+                            self.is_source_object(root) && self.nodes[root].owner.as_ref() == owner
+                        })
+                    },
+                    true,
+                )?
+            }
+        };
+        let Some(unit) = unit else {
             return Err(invalid(meter, holder, binding_at(holder, 0).key("target")));
         };
         let parameters_at = binding_at(holder, 3);
@@ -573,6 +804,13 @@ impl<'a> Join<'a> {
         body: &CheckedTerm,
     ) -> Result<(), ValidationFailure> {
         let model_at = binding_at(holder, 0).key("target");
+        if let Some(model) = bound(body, 0)
+            .and_then(target)
+            .and_then(|id| self.position(id))
+            .filter(|&position| self.is_source_object(position))
+        {
+            return self.source_workload(meter, holder, body, model);
+        }
         let owner = bound(body, 0)
             .and_then(target)
             .and_then(|id| self.position(id))
@@ -642,6 +880,55 @@ impl<'a> Join<'a> {
     }
 }
 
+impl Join<'_> {
+    /// FR-640 Reader rule 3 for a workload whose `model` (at `model`) is
+    /// source-declared. The identity-row join resolves each row's operation
+    /// and the coverage of the model's own and inherited operations; the strict
+    /// read checks the order of the weights, that no operation name repeats
+    /// and that each row's `declaring` node is a source-declared node of the
+    /// model's `SourceOwner`. One validation visit is charged for each row.
+    fn source_workload(
+        &self,
+        meter: &mut WorkMeter,
+        holder: usize,
+        body: &CheckedTerm,
+        model: usize,
+    ) -> Result<(), ValidationFailure> {
+        let weights_at = binding_at(holder, 2);
+        let rows = bound(body, 2).map(members).unwrap_or_default();
+        let mut previous: Option<(&CheckedNodeId, &str)> = None;
+        let mut named: Vec<&str> = stage_storage::vec(
+            meter,
+            &Site::new(PackageReadStage::Graph, holder, FORM, weights_at),
+            rows.len(),
+        )?;
+        for (index, row) in rows.iter().enumerate() {
+            let row_at = weights_at.key("members").index(index);
+            visit(meter, holder, row_at)?;
+            let (Some(declaring), Some(name)) =
+                (bound(row, 0).and_then(target), bound(row, 1).and_then(text))
+            else {
+                return Err(invalid(meter, holder, row_at));
+            };
+            let declaring_at = row_at.key("members").index(0).key("value").key("target");
+            let declared = self.position(declaring).is_some_and(|position| {
+                self.is_source_object(position)
+                    && self.nodes[position].owner == self.nodes[model].owner
+            });
+            if !declared {
+                return Err(invalid(meter, holder, declaring_at));
+            }
+            if previous.is_some_and(|earlier| earlier >= (declaring, name)) || named.contains(&name)
+            {
+                return Err(invalid(meter, holder, row_at));
+            }
+            previous = Some((declaring, name));
+            named.push(name);
+        }
+        Ok(())
+    }
+}
+
 fn is_operation_owner(form: DeclarationForm) -> bool {
     matches!(
         form,
@@ -692,61 +979,23 @@ pub(super) fn validate(
         visit(meter, position, node_at(position))?;
         let key: Key<'_> = match form {
             ProbabilisticForm::RandomParameter => {
-                let (model, operation, package) = join.operation(meter, position, body, 0, 1)?;
-                let parameter_at = binding_at(position, 2).key("value");
+                let operation = join.operation(meter, position, body, 0, 1)?;
                 let name = bound(body, 2).and_then(text).unwrap_or_default();
-                let Some(declared) = operation
-                    .parameters
-                    .iter()
-                    .find(|declared| declared.name.as_deref() == Some(name))
-                else {
-                    return Err(invalid(meter, position, parameter_at));
-                };
-                let expected = literal_kind(package, declared);
-                let unit = literal_unit(package, declared);
-                let support_at = binding_at(position, 3);
-                for (row, entry) in bound(body, 3)
-                    .map(members)
-                    .unwrap_or_default()
-                    .iter()
-                    .enumerate()
-                {
-                    let value_at = support_at
-                        .key("members")
-                        .index(row)
-                        .key("members")
-                        .index(0)
-                        .key("value");
-                    visit(meter, position, value_at)?;
-                    let (kind, typed_at) = match bound(entry, 0) {
-                        Some(CheckedTerm::Literal {
-                            value_kind,
-                            type_id,
-                            ..
-                        }) => (Some(*value_kind), Some(type_id)),
-                        _ => (None, None),
-                    };
-                    if kind.is_none()
-                        || kind != expected
-                        || unit.as_ref().is_some_and(|unit| typed_at != Some(unit))
-                    {
-                        return Err(invalid(meter, position, value_at));
+                match operation {
+                    Operation::Selected {
+                        model,
+                        operation,
+                        package,
+                    } => {
+                        join.random_parameter(meter, position, body, operation, package)?;
+                        (0, Some(model), member_name(&operation.identity), name)
                     }
-                    let verdict = match bound(entry, 0) {
-                        Some(value) => not_member(meter, join.models, package, declared, value)?,
-                        None => None,
-                    };
-                    match verdict {
-                        Some(NotMember::Literal) => {
-                            return Err(invalid(meter, position, value_at));
-                        }
-                        Some(NotMember::Spelling) => {
-                            return Err(invalid(meter, position, value_at.key("value")));
-                        }
-                        None => {}
-                    }
+                    // The parameter and its support are checked against the
+                    // operation entry's `parameters` at the identity-row join.
+                    Operation::Source {
+                        model, name: op, ..
+                    } => (0, Some(model), op, name),
                 }
-                (0, Some(model), member_name(&operation.identity), name)
             }
             ProbabilisticForm::Workload => {
                 join.workload(meter, position, body)?;
@@ -758,19 +1007,19 @@ pub(super) fn validate(
                 )
             }
             ProbabilisticForm::Reward => {
-                let (model, operation, _) = join.operation(meter, position, body, 0, 1)?;
-                join.reward(meter, position, body, operation)?;
+                let operation = join.operation(meter, position, body, 0, 1)?;
+                join.reward(meter, position, body, &operation)?;
                 (
                     2,
-                    Some(model),
-                    member_name(&operation.identity),
+                    Some(operation.model()),
+                    operation.name(),
                     bound(body, 2).and_then(text).unwrap_or_default(),
                 )
             }
             ProbabilisticForm::DelayDistribution => {
-                let (model, operation, _) = join.operation(meter, position, body, 0, 1)?;
-                join.delay(meter, position, model, body)?;
-                (3, Some(model), member_name(&operation.identity), "")
+                let operation = join.operation(meter, position, body, 0, 1)?;
+                join.delay(meter, position, &operation, body)?;
+                (3, Some(operation.model()), operation.name(), "")
             }
         };
         match seen.binary_search(&key) {
