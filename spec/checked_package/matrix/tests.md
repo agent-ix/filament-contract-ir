@@ -19,7 +19,8 @@ type: TestMatrix
 | FR-369 | FR-369-AC-25, FR-369-AC-26 | TC-484 | 🚧 Planned: the join of probabilistic operation references whose declaring node is source-declared, through the source-object identity rows, is not implemented. |
 | FR-367 | FR-367-AC-8 | TC-485 | 🚧 Planned: the `parameters` member of source operation entries and the `clock_parameters` agreement refusal are not implemented. |
 | FR-038 | FR-038-AC-562, FR-038-AC-563 | TC-486 | 🚧 Planned: a body wrapper whose formula reads no slot parameter ranging over its first subject's `model_root` is not admitted yet. |
-| FR-060 | FR-060-AC-6 | TC-487 | 🚧 Planned (QSL-2521): the public `terminal_rows()` read in structural-key order is not implemented. |
+| FR-060 | FR-060-AC-6, FR-060-AC-8 | TC-487 | 🚧 Planned (QSL-2521, QSL-2558): the public `terminal_rows()` read in terminal row order with its per-model `ordinal` is not implemented, and a second terminal node or `claim` occurrence on one model node is refused today. |
+| FR-060 | FR-060-AC-7 | TC-061 | 🚧 Planned (QSL-2553): a Boolean `value`/`literal` terminal condition is refused `operator-ineligible` today. |
 | FR-376 | FR-376-AC-1 through FR-376-AC-3 | TC-488 | 🚧 Planned (QSL-2543): `requirement_items` rows and `claim`/`value_validity` nodes are refused by the closed gates today. |
 | FR-377 | FR-377-AC-1 through FR-377-AC-4 | TC-489 | 🚧 Planned: the `claim`/`probabilistic_claim` node's nine-binding body, FR-640 rules 6 and 7 and the `probabilistic_claims()` read are not implemented. |
 | FR-362 | FR-362-AC-1 through FR-362-AC-3 | TC-475 | 🚧 Planned (IR-1529): unchanged read of packages without source objects, and source type admission. |
@@ -78,7 +79,7 @@ type: TestMatrix
 | TC-477 | Claim declaration names reader | Property | P0 | FR-371-AC-1, FR-371-AC-2, FR-371-AC-3, FR-371-AC-4, FR-371-AC-5, FR-371-AC-6, FR-371-AC-7, FR-371-AC-8, FR-371-AC-9 | ✅ Implemented (QSL-2410, QSL-2433); tagged tests. |
 | TC-476 | Probabilistic node tag and four forms | Property | P0 | FR-369-AC-1, FR-369-AC-2, FR-369-AC-3, FR-369-AC-4, FR-369-AC-5, FR-369-AC-6, FR-369-AC-7, FR-369-AC-8, FR-369-AC-9, FR-369-AC-10, FR-369-AC-11, FR-369-AC-12, FR-369-AC-13, FR-369-AC-14, FR-369-AC-15, FR-369-AC-16, FR-369-AC-17, FR-369-AC-18, FR-369-AC-19, FR-369-AC-20, FR-369-AC-21, FR-369-AC-22, FR-369-AC-23, FR-369-AC-24 | 🚧 Partial (IR-1550, IR-1569): ACs 1-24 tested; the reward expression type of a bodyless function Planned |
 | TC-486 | Body wrapper over a model root | Property | P0 | FR-038-AC-562, FR-038-AC-563 | 🚧 Planned |
-| TC-487 | Terminal rows read from an admitted package | Property | P0 | FR-060-AC-6 | 🚧 Planned |
+| TC-487 | Terminal rows read from an admitted package | Property | P0 | FR-060-AC-6, FR-060-AC-8 | 🚧 Planned |
 | TC-488 | Requirement records read from an admitted package | Property | P0 | FR-376-AC-1, FR-376-AC-2, FR-376-AC-3 | 🚧 Planned |
 | TC-489 | Probabilistic claim node read from an admitted package | Property | P0 | FR-377-AC-1, FR-377-AC-2, FR-377-AC-3, FR-377-AC-4 | 🚧 Planned |
 | TC-484 | Probabilistic nodes on source-declared operations | Property | P0 | FR-369-AC-25, FR-369-AC-26 | 🚧 Planned |
