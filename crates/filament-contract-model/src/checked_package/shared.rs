@@ -479,6 +479,15 @@ pub enum CheckedProtocolRefusalDetail {
         /// The stable reason for rejecting this placement.
         reason: Box<str>,
     },
+    /// An action behind an observe-only boundary (FSpec FR-465, FR-466, FR-822).
+    ObserveOnlyBoundary {
+        /// The offending form: `attempt`, `effect`, `send`, `commit`, `event-for`
+        /// or `compensate`.
+        action: Box<str>,
+        /// The innermost observe-only control above the action, else the
+        /// observe-only role that performs it.
+        boundary: CheckedNodeId,
+    },
     /// A control interval has its bounds in reverse order.
     Interval {
         /// The argument holding the interval.

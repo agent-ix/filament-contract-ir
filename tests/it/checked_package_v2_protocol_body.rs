@@ -14294,6 +14294,7 @@ fn role_boundary_refuses_unknown_text_and_misplaced_member_malformed_wire() {
         ("before model_member", 4),
         ("repeated", 5),
         ("unknown text without member", 6),
+        ("non-text value without member", 7),
     ] {
         let mut wrong = package.clone();
         let arguments = role_arguments(&mut wrong, role);
@@ -14310,6 +14311,10 @@ fn role_boundary_refuses_unknown_text_and_misplaced_member_malformed_wire() {
             6 => {
                 arguments.pop();
                 arguments.push(boundary_binding(&package, role, json!("observe")));
+            }
+            7 => {
+                arguments.pop();
+                arguments.push(boundary_binding(&package, role, json!(7)));
             }
             _ => unreachable!(),
         }
@@ -14329,4 +14334,395 @@ fn role_boundary_refuses_unknown_text_and_misplaced_member_malformed_wire() {
             "{variant}: {refusal:?}"
         );
     }
+}
+
+/// A text literal `text`, typed as the first text literal the package holds.
+fn any_text_literal(package: &Value, text: Value) -> Value {
+    fn find(value: &Value) -> Option<Value> {
+        match value {
+            Value::Object(map) => {
+                if map.get("term").and_then(Value::as_str) == Some("literal")
+                    && map.get("value_kind").and_then(Value::as_str) == Some("text")
+                {
+                    return Some(value.clone());
+                }
+                map.values().find_map(find)
+            }
+            Value::Array(items) => items.iter().find_map(find),
+            _ => None,
+        }
+    }
+    let mut literal = find(&package["semantic_graph"]).expect("a text literal");
+    literal["value"] = text;
+    literal
+}
+
+/// Appends the `boundary` binding with `text` as the last argument of `position`.
+fn mark_boundary(package: &mut Value, position: usize, text: Value) {
+    let binding = json!({
+        "term": "binding", "name": "boundary", "value": any_text_literal(package, text)
+    });
+    package["semantic_graph"]["nodes"][position]["body"]["arguments"]
+        .as_array_mut()
+        .expect("arguments")
+        .push(binding);
+}
+
+fn id_at(package: &Value, position: usize) -> CheckedNodeId {
+    checked_node_id(&package["semantic_graph"]["nodes"][position]["node_id"])
+}
+
+/// The refusal of `package`, asserted to be the observe-only boundary refusal
+/// at `position` for `action` naming `boundary`.
+fn assert_observe_only_refusal(
+    package: &Value,
+    position: usize,
+    action: &str,
+    boundary: &CheckedNodeId,
+) {
+    let CheckedPackageV2ReadResult::Refused(refusal) = read(package) else {
+        panic!("{action} behind an observe-only boundary must refuse")
+    };
+    assert_eq!(
+        refusal.code,
+        CheckedPackageRefusalCode::IllTyped,
+        "{refusal:?}"
+    );
+    assert_eq!(
+        refusal.cause,
+        Some(CheckedPackageRefusalCause::OperatorIneligible)
+    );
+    assert_eq!(
+        refusal.loci[0].path.as_ref().map(|path| path.as_str()),
+        Some(format!("/semantic_graph/nodes/{position}").as_str()),
+        "{action}"
+    );
+    assert!(
+        matches!(refusal.protocol_detail.as_deref(),
+            Some(CheckedProtocolRefusalDetail::ObserveOnlyBoundary { action: found, boundary: node })
+                if found.as_ref() == action && node == boundary),
+        "{action}: {:?}",
+        refusal.protocol_detail
+    );
+}
+
+/// A `recommend` control: the admitted `attempt` without its `ordering`.
+fn package_with_admitted_recommend() -> (Value, usize) {
+    let (mut package, root, _) = package_with_admitted_attempt();
+    let body = &mut package["semantic_graph"]["nodes"][root]["body"];
+    body["operation"]["member"]["operator"] = json!("recommend");
+    body["arguments"]
+        .as_array_mut()
+        .expect("arguments")
+        .remove(2);
+    settle(&mut package);
+    (package, root)
+}
+
+#[trace("FR-038-AC-566")]
+#[test]
+fn recommend_control_admits_with_the_attempt_checks_and_without_ordering() {
+    let (package, root) = package_with_admitted_recommend();
+    assert!(
+        matches!(read(&package), CheckedPackageV2ReadResult::Admitted(_)),
+        "{:?}",
+        read(&package)
+    );
+    // Its contracts, references and constraint check as an attempt's do.
+    let mut wrong_contract = package.clone();
+    wrong_contract["semantic_graph"]["nodes"][root]["body"]["arguments"][2]["value"]["members"] = json!([{"term": "reference", "target": package["semantic_graph"]["nodes"][root]["body"]["arguments"][1]["value"]["target"]}]);
+    settle(&mut wrong_contract);
+    let CheckedPackageV2ReadResult::Refused(refusal) = read(&wrong_contract) else {
+        panic!("a recommend contract must be a state clause of the anchor")
+    };
+    assert_eq!(refusal.code, CheckedPackageRefusalCode::InvalidModelBinding);
+    // An `ordering` member belongs to `attempt` only.
+    let mut ordered = package.clone();
+    ordered["semantic_graph"]["nodes"][root]["body"]["arguments"]
+        .as_array_mut()
+        .expect("arguments")
+        .insert(
+            2,
+            json!({"term": "binding", "name": "ordering", "value": {"term": "aggregate", "members": []}}),
+        );
+    settle(&mut ordered);
+    let CheckedPackageV2ReadResult::Refused(refusal) = read(&ordered) else {
+        panic!("recommend has no ordering")
+    };
+    assert_eq!(refusal.code, CheckedPackageRefusalCode::MalformedWire);
+}
+
+#[trace("FR-038-AC-567")]
+#[test]
+fn control_boundary_admits_after_the_layout_and_refuses_unknown_text() {
+    let (package, root) = package_with_admitted_recommend();
+    let mut marked = package.clone();
+    mark_boundary(&mut marked, root, json!("observe-only"));
+    settle(&mut marked);
+    assert_eq!(
+        marked["semantic_graph"]["nodes"][root]["node_id"],
+        package["semantic_graph"]["nodes"][root]["node_id"],
+        "the mark is part of the body and not of the node id"
+    );
+    let CheckedPackageV2ReadResult::Admitted(admitted) = read(&marked) else {
+        panic!("an observe-only recommend admits: {:?}", read(&marked))
+    };
+    // The typed writer re-encodes the mark and the readback is equal.
+    let encoded = filament_contract_model::encode_checked_package_v2(
+        admitted.name(),
+        admitted.lock(),
+        admitted.graph(),
+        filament_contract_model::CheckedPackageSourceCorrespondenceRef {
+            source_map: admitted.source_map(),
+            refinement_step_rows: admitted.refinement_step_rows(),
+        },
+        filament_contract_model::CheckedPackageSidecarsRef {
+            checked_term_data: admitted.checked_term_data(),
+            temporal_bindings: admitted.temporal_bindings(),
+            temporal_clause_names: admitted.temporal_clause_names(),
+            claim_names: admitted.claim_names(),
+            schedulability_claims: admitted.schedulability_claim_rows(),
+            operation_effects: admitted.operation_effect_rows(),
+            operation_bodies: admitted.operation_body_rows(),
+        },
+        admitted.capability_report(),
+        admitted.diagnostics(),
+        quire_canonical::Limits::new(1 << 24),
+    )
+    .unwrap();
+    let CheckedPackageV2ReadResult::Admitted(again) = crate::read_and_account(
+        &encoded,
+        CheckedPackageReadLimits::bounded(),
+        &evidence_for(&marked),
+    ) else {
+        panic!("typed re-encoding admits")
+    };
+    assert_eq!(admitted, again);
+    for (variant, text) in [
+        ("unknown text", json!("observe")),
+        ("empty text", json!("")),
+        ("non-text value", json!(7)),
+    ] {
+        let mut wrong = package.clone();
+        mark_boundary(&mut wrong, root, text);
+        settle(&mut wrong);
+        let CheckedPackageV2ReadResult::Refused(refusal) = read(&wrong) else {
+            panic!("{variant}: must refuse")
+        };
+        assert_eq!(
+            refusal.code,
+            CheckedPackageRefusalCode::MalformedWire,
+            "{variant}"
+        );
+        assert_eq!(refusal.cause, None, "{variant}");
+        assert_eq!(
+            refusal.loci[0].path.as_ref().map(|path| path.as_str()),
+            Some(format!("/semantic_graph/nodes/{root}").as_str()),
+            "{variant}"
+        );
+    }
+    // Not last, and repeated.
+    let mut before = marked.clone();
+    let arguments = before["semantic_graph"]["nodes"][root]["body"]["arguments"]
+        .as_array_mut()
+        .expect("arguments");
+    let last = arguments.pop().expect("boundary");
+    arguments.insert(0, last);
+    settle(&mut before);
+    let mut twice = marked.clone();
+    mark_boundary(&mut twice, root, json!("observe-only"));
+    settle(&mut twice);
+    for (variant, wrong) in [("first", before), ("repeated", twice)] {
+        let CheckedPackageV2ReadResult::Refused(refusal) = read(&wrong) else {
+            panic!("{variant}: must refuse")
+        };
+        assert_eq!(
+            refusal.code,
+            CheckedPackageRefusalCode::MalformedWire,
+            "{variant}"
+        );
+    }
+}
+
+#[trace("FR-038-AC-567")]
+#[test]
+fn repeat_without_test_carries_the_boundary_in_its_test_place() {
+    let (mut package, _) = protocol_holder_case("repeat");
+    let holder = holder_position(&package);
+    let CheckedPackageV2ReadResult::Admitted(_) = read(&package) else {
+        panic!("the repeat fixture admits: {:?}", read(&package))
+    };
+    mark_boundary(&mut package, holder, json!("observe-only"));
+    settle(&mut package);
+    assert!(
+        matches!(read(&package), CheckedPackageV2ReadResult::Admitted(_)),
+        "{:?}",
+        read(&package)
+    );
+}
+
+#[trace("FR-038-AC-568")]
+#[test]
+fn role_observe_only_refuses_the_attempt_it_performs() {
+    let (package, root, _) = package_with_admitted_attempt();
+    let role = protocol_position(&package, "role");
+    let mut marked = package.clone();
+    mark_boundary(&mut marked, role, json!("observe-only"));
+    settle(&mut marked);
+    let boundary = id_at(&marked, role);
+    assert_observe_only_refusal(&marked, root, "attempt", &boundary);
+    // The same package admits with the mark removed.
+    assert!(matches!(
+        read(&package),
+        CheckedPackageV2ReadResult::Admitted(_)
+    ));
+}
+
+#[trace("FR-038-AC-568")]
+#[test]
+fn control_observe_only_marks_itself_and_the_controls_below() {
+    // The attempt carrying the mark is behind its own boundary.
+    let (package, root, _) = package_with_admitted_attempt();
+    let mut itself = package.clone();
+    mark_boundary(&mut itself, root, json!("observe-only"));
+    settle(&mut itself);
+    let own = id_at(&itself, root);
+    assert_observe_only_refusal(&itself, root, "attempt", &own);
+
+    // A sequence holds an attempt and its effect: the mark reaches both, and
+    // the first in node-key order is the refusal.
+    let (package, effect, _) = package_with_admitted_effect();
+    let attempt = effect - 1;
+    let sequence = protocol_position(&package, "control");
+    let mut region = package.clone();
+    mark_boundary(&mut region, sequence, json!("observe-only"));
+    settle(&mut region);
+    let boundary = id_at(&region, sequence);
+    let first = if id_at(&region, attempt) < id_at(&region, effect) {
+        (attempt, "attempt")
+    } else {
+        (effect, "effect")
+    };
+    assert_observe_only_refusal(&region, first.0, first.1, &boundary);
+
+    // An outer and an inner mark name the innermost control: the attempt
+    // carrying its own mark under the marked sequence names itself.
+    let mut inner = region.clone();
+    mark_boundary(&mut inner, attempt, json!("observe-only"));
+    settle(&mut inner);
+    assert_observe_only_refusal(&inner, attempt, "attempt", &id_at(&inner, attempt));
+}
+
+#[trace("FR-038-AC-568")]
+#[test]
+fn observe_only_boundary_admits_the_recommend_and_other_non_offending_controls() {
+    let (package, root) = package_with_admitted_recommend();
+    let role = protocol_position(&package, "role");
+    let mut marked = package.clone();
+    mark_boundary(&mut marked, role, json!("observe-only"));
+    mark_boundary(&mut marked, root, json!("observe-only"));
+    settle(&mut marked);
+    let CheckedPackageV2ReadResult::Admitted(admitted) = read(&marked) else {
+        panic!(
+            "recommend behind both boundaries admits: {:?}",
+            read(&marked)
+        )
+    };
+    assert_eq!(
+        admitted.protocol_role_boundary(&id_at(&marked, role)),
+        Some(filament_contract_model::CheckedProtocolBoundary::ObserveOnly)
+    );
+}
+
+#[trace("FR-038-AC-568")]
+#[test]
+fn role_observe_only_refuses_commit_event_for_send_and_compensate() {
+    // commit
+    let (package, root) = package_with_step_control("commit");
+    let role = protocol_position(&package, "role");
+    let mut marked = package.clone();
+    mark_boundary(&mut marked, role, json!("observe-only"));
+    settle(&mut marked);
+    assert_observe_only_refusal(&marked, root, "commit", &id_at(&marked, role));
+    // send on a channel whose `from` is the role
+    let (package, root, channel) = package_with_send();
+    let from = checked_node_id(
+        &package["semantic_graph"]["nodes"][channel]["body"]["arguments"][0]["value"]["target"],
+    );
+    let role = (0..package["semantic_graph"]["nodes"].as_array().unwrap().len())
+        .find(|&position| id_at(&package, position) == from)
+        .expect("the channel's from role");
+    let mut marked = package.clone();
+    mark_boundary(&mut marked, role, json!("observe-only"));
+    settle(&mut marked);
+    assert_observe_only_refusal(&marked, root, "send", &id_at(&marked, role));
+    // event with a compensation: the first offender in the control pass; the
+    // template follows once the event no longer carries the registration.
+    let (package, event, compensation) = package_with_admitted_compensation();
+    let role = protocol_position(&package, "role");
+    let mut marked = package.clone();
+    mark_boundary(&mut marked, role, json!("observe-only"));
+    settle(&mut marked);
+    assert_observe_only_refusal(&marked, event, "event-for", &id_at(&marked, role));
+    let mut template = package.clone();
+    let template_role = checked_node_id(
+        &template["semantic_graph"]["nodes"][compensation]["body"]["arguments"][2]["value"]
+            ["target"],
+    );
+    let template_role_position = (0..template["semantic_graph"]["nodes"]
+        .as_array()
+        .unwrap()
+        .len())
+        .find(|&position| id_at(&template, position) == template_role)
+        .expect("the template's role");
+    template["semantic_graph"]["nodes"][event]["body"]["arguments"][1]["value"]["members"] =
+        json!([]);
+    mark_boundary(&mut template, template_role_position, json!("observe-only"));
+    settle(&mut template);
+    assert_observe_only_refusal(
+        &template,
+        compensation,
+        "compensate",
+        &id_at(&template, template_role_position),
+    );
+}
+
+#[trace("FR-038-AC-569")]
+#[test]
+fn boundary_on_a_node_that_is_not_a_role_or_control_refuses_malformed_wire() {
+    let package = v2_all_families();
+    let nodes = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes");
+    let mut checked = 0;
+    for (position, node) in nodes.iter().enumerate() {
+        let is_application = node["body"]["term"] == "application";
+        let protocol_leaf = node["node_tag"] == "protocol"
+            && matches!(node["semantic_form"].as_str(), Some("role" | "control"));
+        if !is_application || protocol_leaf {
+            continue;
+        }
+        let mut wrong = package.clone();
+        mark_boundary(&mut wrong, position, json!("observe-only"));
+        settle(&mut wrong);
+        let CheckedPackageV2ReadResult::Refused(refusal) = read(&wrong) else {
+            panic!("a boundary on node {position} must refuse")
+        };
+        assert_eq!(
+            refusal.code,
+            CheckedPackageRefusalCode::MalformedWire,
+            "node {position} ({}): {refusal:?}",
+            node["semantic_form"]
+        );
+        assert_eq!(
+            refusal.loci[0].path.as_ref().map(|path| path.as_str()),
+            Some(format!("/semantic_graph/nodes/{position}").as_str()),
+            "node {position}"
+        );
+        checked += 1;
+    }
+    assert!(
+        checked >= 3,
+        "the fixture must exercise several node forms: {checked}"
+    );
 }

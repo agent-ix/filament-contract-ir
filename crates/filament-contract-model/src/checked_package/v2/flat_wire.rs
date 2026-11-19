@@ -39,6 +39,7 @@ use super::{
     TemporalForm, ValueForm,
 };
 use super::{ApplicationOperator, BodyTerm, RawCheckedPackageWireV2 as CheckedPackageWireV2};
+use crate::checked_package::common::TermField;
 use crate::checked_package::common::{Step, Trail, ValidationFailure};
 use crate::checked_package::shared::CheckedOperandEntry;
 use crate::checked_package::shared::{CheckedPackageRefusalCause, CheckedPackageRefusalCode};
@@ -109,6 +110,21 @@ enum Place {
     LeafOnly,
     /// The value of a Member's `binding`: a Leaf, a Group or a Tuple.
     BindingValue,
+}
+
+/// Whether an application body has a `boundary` binding among its arguments.
+#[ix_trace_rs::string_edge]
+fn carries_boundary_binding(body: TermNode<'_>) -> bool {
+    body.kind() == Some(BodyTerm::Application)
+        && body
+            .array(TermField::Arguments)
+            .is_some_and(|mut arguments| {
+                arguments.any(|argument| {
+                    argument.kind() == Some(BodyTerm::Binding)
+                        && argument.field(TermField::Name).and_then(TermNode::as_str)
+                            == Some("boundary")
+                })
+            })
 }
 
 /// The member `name` of an optional term.
@@ -390,6 +406,22 @@ pub(super) fn check(
                                         .index(ordinal)
                                         .key("role")));
                             }
+                        }
+                        // FSpec FR-322-AC-462: a `boundary` member on a node that
+                        // is not a `protocol`/`role` or `protocol`/`control` node.
+                        if !matches!(
+                            kind,
+                            CheckedNodeKind::Protocol(
+                                super::ProtocolForm::Role | super::ProtocolForm::Control
+                            )
+                        ) && carries_boundary_binding(body)
+                        {
+                            return Err(flat_refusal(
+                                &meter,
+                                position,
+                                CheckedPackageRefusalCode::MalformedWire,
+                                stage_storage::node_path(position),
+                            ));
                         }
                         let CheckedNodeKind::Protocol(form) = kind else {
                             return Ok(());
