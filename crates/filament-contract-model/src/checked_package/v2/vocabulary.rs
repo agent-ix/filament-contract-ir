@@ -423,6 +423,7 @@ closed_vocabulary! {
         Case => "case",
         TemporalFormula => "temporal_formula",
         TemporalFairness => "temporal_fairness",
+        Slots => "slots",
     }
 }
 
@@ -504,6 +505,8 @@ closed_vocabulary! {
         PromotesExact => "promotes_exact",
         UniformRest => "uniform_rest",
         UnionArms => "union_arms",
+        PlaceSlotTerms => "place_slot_terms",
+        QuantifierDomainOnly => "quantifier_domain_only",
     }
 }
 

@@ -2003,7 +2003,9 @@ impl CheckedBindingName {
             super::TermBindingName::Body => CheckedBindingNameKind::Body,
             super::TermBindingName::Optional => CheckedBindingNameKind::Optional,
             super::TermBindingName::Clause => CheckedBindingNameKind::Clause,
-            super::TermBindingName::Other => CheckedBindingNameKind::Other(&self.raw),
+            super::TermBindingName::Name
+            | super::TermBindingName::PointAnchor
+            | super::TermBindingName::Other => CheckedBindingNameKind::Other(&self.raw),
         }
     }
 }
