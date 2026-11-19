@@ -676,6 +676,34 @@ fn public_reader_refuses_requirement_row_mutations_at_their_rule_pointers() {
     );
 }
 
+#[trace("TC-488", "FR-376-AC-2")]
+#[test]
+fn public_reader_refuses_claim_names_that_name_a_valid_value_validity_node() {
+    let mut package = value_validity_package(false);
+    let record = package["requirement_items"][0]["record"].clone();
+    let region = package["source_map"]
+        .as_array()
+        .expect("source map")
+        .iter()
+        .find(|entry| entry["node_id"] == record)
+        .expect("record source row")["regions"][0]
+        .clone();
+    package["claim_names"] = json!([{
+        "declaration":record,
+        "occurrence":{"role":"claim","ordinal":0},
+        "name":"Generated",
+        "qualified_name":["Generated"],
+        "declaration_region":region,
+    }]);
+
+    assert_refusal(
+        &package,
+        CheckedPackageRefusalCode::InvalidPackage,
+        Some(CheckedPackageRefusalCause::InvalidValue),
+        "/claim_names/0/declaration",
+    );
+}
+
 fn assert_refusal(
     package: &Value,
     code: CheckedPackageRefusalCode,
