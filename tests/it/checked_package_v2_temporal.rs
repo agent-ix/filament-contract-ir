@@ -3655,6 +3655,25 @@ fn tc_483_a_behaviours_node_under_a_timed_wrapper_profile_has_no_rows() {
 
 #[trace("TC-483", "FR-038-AC-561")]
 #[test]
+fn tc_483_a_finite_domain_node_under_a_profile_without_a_clock_refuses_at_its_body() {
+    let (mut package, at) = finite_clock_fixture();
+    admitted("a clock-configured profile", &package);
+    select_profile(&mut package, INFINITE);
+    settle(&mut package);
+    assert!(
+        hyper_rows(&package).is_empty(),
+        "an infinite-trace lock configures no clock"
+    );
+    refusal_at(
+        &package,
+        Code::InvalidPackage,
+        TIMED_NODE_REFERENCE,
+        &at_node(at, "/body"),
+    );
+}
+
+#[trace("TC-483", "FR-038-AC-561")]
+#[test]
 fn tc_483_a_row_keyed_on_the_body_wrapper_refuses_at_its_declaration() {
     let (mut package, wrapper, _) = hyper_clock_fixture(&["s", "n"]);
     package["temporal_bindings"][0]["declaration"] = nodes(&package)[wrapper]["node_id"].clone();

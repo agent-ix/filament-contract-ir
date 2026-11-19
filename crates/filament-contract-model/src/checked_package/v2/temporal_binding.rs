@@ -699,14 +699,15 @@ pub(super) fn validate<B>(
         let role = if is_wrapper(position) {
             continue;
         } else if let Some(hyper) = hyper_of(position) {
-            let configured = if hyper.finite {
-                compensation_profile.is_some()
-            } else {
-                match hyper.wrapper {
+            // A finite-domain clause selects a finite-trace profile, each
+            // clock-configured: its rows are always required, so a lock whose
+            // profile is not clock-configured leaves the node without rows
+            // and refuses at its body.
+            let configured = hyper.finite
+                || match hyper.wrapper {
                     Some(wrapper) => configured_profile(wrapper, true, meter)?.is_some(),
                     None => false,
-                }
-            };
+                };
             if !configured {
                 continue;
             }
