@@ -63,10 +63,26 @@ gives.
 Rule 7's exact-value check SHALL read a literal's `value` only after FR-322's
 strict literal read has admitted its spelling, so a non-canonical rational,
 integer or quantity magnitude keeps FR-322's refusal at the literal's `value`
-and is never reported by rule 7. Rule 7 SHALL check a quantity's unit by the
-node id of the literal's `type`: the unit node of the reward nodes'
-`value_type` that binding 3 holds, or the unit node of the `dense` time source
-of the subject model's `timed_model` root (the root FR-369's delay rule finds).
+and is never reported by rule 7. Rule 7 SHALL check every exact value's `type` by
+node id: the builtin `scalar_type`/`rational` node for a `rational`, the
+builtin Integer node for an `integer` (an `integer` typed at an
+`integer_range` node refuses, though FR-322's family check admits it
+elsewhere), and for a `quantity` the unit node of the reward nodes'
+`value_type` that binding 3 holds, or the source unit node of the subject
+model's `timed_model` root. A subject is timed when such a root exists
+whatever its time source, `dense` or `tick` (FSpec FR-640 "Probabilistic
+claim node", FR-415): `elapsed`, `expected_elapsed` and a time-quantity
+`within` or `window` are admitted over either source, and only a `delay`
+weighting needs the `dense` root FR-369's delay rule finds.
+
+The temporal placement pass ([FR-038](./FR-038-consume-checked-package-v2.md)
+step 1, FSpec FR-370 "Placement and profile fit") SHALL admit a `reference`
+to a `temporal`/`formula` node as the `formula` binding of the `event` of a
+`claim`/`probabilistic_claim` node's `form`, and SHALL keep refusing such a
+reference anywhere else in that body, and any `temporal`/`fairness`
+reference in it, `ill_typed`/`operator-ineligible` at the claim node, before
+FR-640's rules run. This crate's placement walk (`temporal.rs`) gives that
+one binding the formula slot.
 
 The reader SHALL NOT compare a claim node's path with its body, re-derive a
 horizon from a formula, or check a formula's operators
@@ -138,7 +154,8 @@ The writer SHALL write each claim node exactly as admitted.
 | --- | --- | --- |
 | FR-377-AC-1 | The reader admits FSpec TC-1563's packages of FR-640-AC-8 and FR-640-AC-10. `probabilistic_claims()` returns `Avail`, `Cost`, `Fair` and `P95` in that order; `P95` gives `Quantile` with `level` `19/20`, an `Accumulate` measure whose `within` is `Integer(10)`, `bound` `AtMost` `Quantity` `5` at the unit node of `ms`, `over` `None`, `Origin` and confidence `1/100` three times; `Avail` gives `Probability` over a `Formula` event and `AtLeast` `Rational(1/2)`; `Cost` gives `ExpectedReward` with `AtMost` `Rational(3)`; `Fair` gives `Every` with its one fairness member. Each package of FR-640-AC-10's spellings returns equal entries, and each of its identity changes returns an entry with another `node`. The writer's output read back returns equal entries, and the same package with its nodes in another graph order returns equal entries. | Test (TC-489) |
 | FR-377-AC-2 | Each refusing mutation of FSpec FR-640-AC-9 and FR-640-AC-11 refuses with FR-640's exact code, cause and pointer, observed through the public reader, with no partial package: among them `P95`'s `form` `kind` `median` at that `kind`, `P95`'s `bound` `value` `Rational(5)` at the literal, `P95`'s `level` `1` at the literal, `P95`'s `level` spelled `38/40` at the literal's `value` (FR-322's refusal, not rule 7's), `Avail`'s `event` `formula` referencing the `true` literal node as `ill_typed`/`operator-ineligible`, `Avail`'s `trigger` referencing it as `invalid_model_binding`/`malformed-declaration`, `Cost`'s empty `reward` at `reward`, and the node with both a rule-6 and a rule-7 defect at rule 6's member. FR-640-AC-11's path rewrite is admitted. | Test (TC-489) |
-| FR-377-AC-3 | The claim checks run inside `probabilistic_join::validate` after rules 1 to 5 and before FR-376's step: a package with a rule-7 defect and a requirement-record defect refuses at the rule-7 defect. FR-640-AC-8's package is admitted with exactly its charged count, and a reader budget one visit short of that count returns `incomplete` at `P95`'s `confidence` `indifference` member, the last charged member (FSpec FR-640-AC-9), with no partial package. | Test (TC-489) |
+| FR-377-AC-3 | The claim checks run inside `probabilistic_join::validate` after rules 1 to 5 and before FR-376's step: a package with a rule-7 defect and a requirement-record defect refuses at the rule-7 defect. FR-640-AC-8's package is admitted with exactly its full charged count, which includes FR-376's visits for its `requirement_items` rows and their domains; a reader budget one visit short of the visits charged up to the end of FR-640's reader (every step before it included, FR-376's step excluded) returns `incomplete` at `P95`'s `confidence` `indifference` member, the last member FR-640's reader charges (FSpec FR-640-AC-9), with no partial package. | Test (TC-489) |
+| FR-377-AC-4 | The placement pass admits FSpec FR-640-AC-8's package, whose `Avail` and `Fair` `event` `formula` bindings reference a `temporal`/`formula` node, and refuses `ill_typed`/`operator-ineligible` at the claim node, before FR-640's rules, each package of FSpec FR-370-AC-22: the formula node referenced as `P95`'s `measure` `from`, and a `temporal`/`fairness` node referenced as `Avail`'s `event` `formula`. Over FSL FR-233-AC-3's `tick` `Rpc` model, the `expected_elapsed` and `elapsed` claims of FSpec FR-640-AC-11 are admitted with quantities at `ms`, and the `delay` weighting refuses at its `kind`; a `within` `integer` `10` typed at an `Int[0, 10]` node refuses `invalid-value` at the literal. | Test (TC-489) |
 
 ## Dependencies
 

@@ -15,7 +15,7 @@ Verify [FR-377](../functional/FR-377-admit-the-probabilistic-claim-node-and-what
 the reader admits FSpec FR-640's nine-binding `claim`/`probabilistic_claim`
 body, refuses each defect with FR-640 rule 6 or rule 7's code, cause and
 pointer in that order, charges the reader budget per binding, and exposes each
-claim through `probabilistic_claims()`. Scope: FR-377-AC-1 to FR-377-AC-3.
+claim through `probabilistic_claims()`. Scope: FR-377-AC-1 to FR-377-AC-4.
 
 ## Test Procedure
 
@@ -29,7 +29,11 @@ claim through `probabilistic_claims()`. Scope: FR-377-AC-1 to FR-377-AC-3.
    read FR-640-AC-11's path-rewrite package.
 3. Build a package with a rule-7 defect and a requirement-record defect
    (FSpec FR-825-AC-1's function added); read FR-640-AC-8's package with
-   exactly its charged count and with a budget one visit short.
+   exactly its full charged count and with a budget one visit short of the
+   visits charged through FR-640's reader.
+4. Read FSpec FR-370-AC-22's two misplaced-reference packages, and the tick
+   `Rpc` claims, the tick `delay` weighting and the `Int[0, 10]`-typed
+   `within` of FSpec FR-640-AC-11.
 
 ## Expected Results
 
@@ -40,4 +44,8 @@ claim through `probabilistic_claims()`. Scope: FR-377-AC-1 to FR-377-AC-3.
   gives, and no refusing package is admitted; the path rewrite is admitted.
 - Step 3: the refusal at the rule-7 defect; admission at exactly the charged
   count and `incomplete` at `P95`'s `confidence` `indifference` member one
-  visit short.
+  visit short of the count through FR-640's reader.
+- Step 4: the misplaced references refuse `ill_typed`/`operator-ineligible`
+  at the claim node; the tick claims are admitted with quantities at `ms`; the
+  `delay` weighting and the retyped `within` refuse `invalid-value` at the
+  stated member.
