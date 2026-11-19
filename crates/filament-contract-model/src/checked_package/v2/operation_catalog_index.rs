@@ -546,11 +546,21 @@ impl<'d> CatalogValue<'d> for super::operation_catalog::OperationConstraint {
         node: quire_canonical::NodeRef<'d>,
         reader: &mut CatalogDecoder<'_, 'd>,
     ) -> CatalogResultOf<'d, Self> {
-        reader.closed(node, &["kind", "operands"], &["family"])?;
+        let kind: super::OperationConstraintKind = reader.field(node, "kind")?;
+        let (operands, family) = if kind == super::OperationConstraintKind::QuantifierDomainOnly {
+            reader.closed(node, &["kind"], &[])?;
+            (Vec::new(), None)
+        } else {
+            reader.closed(node, &["kind", "operands"], &["family"])?;
+            (
+                reader.field(node, "operands")?,
+                reader.optional(node, "family")?,
+            )
+        };
         Ok(Self {
-            kind: reader.field(node, "kind")?,
-            operands: reader.field(node, "operands")?,
-            family: reader.optional(node, "family")?,
+            kind,
+            operands,
+            family,
         })
     }
 }
@@ -718,6 +728,85 @@ fn catalog_error_at(
 mod tests {
     use super::*;
     use ix_trace_rs::trace;
+
+    #[trace("TC-1862", "FR-772-AC-2")]
+    #[test]
+    fn operandless_consumer_constraint_is_closed_and_other_operands_stay_required() {
+        let mut catalog: serde_json::Value =
+            serde_json::from_str(super::super::operation_catalog::CATALOG_BYTES)
+                .expect("published catalog fixture");
+        let constraint_kinds = catalog["constraint_kinds"]
+            .as_array_mut()
+            .expect("constraint vocabulary");
+        for new_word in ["place_slot_terms", "quantifier_domain_only"] {
+            if !constraint_kinds.iter().any(|value| value == new_word) {
+                constraint_kinds.push(serde_json::json!(new_word));
+            }
+        }
+        constraint_kinds.sort_by(|left, right| left.as_str().cmp(&right.as_str()));
+        let operations = catalog["operations"].as_array_mut().expect("operations");
+        operations.push(serde_json::json!({
+            "identity": "filament.op.option.slots",
+            "operator": "slots",
+            "operands": ["object"],
+            "rest": "any_value",
+            "result": "set",
+            "laws": [],
+            "mode": null,
+            "member": null,
+            "constraints": [
+                {"kind": "place_slot_terms", "operands": [0]},
+                {"kind": "quantifier_domain_only"}
+            ],
+            "leaves": null
+        }));
+        operations
+            .sort_by(|left, right| left["identity"].as_str().cmp(&right["identity"].as_str()));
+        let bytes = serde_json::to_string(&catalog).expect("catalog encodes");
+        let admitted = read_catalog(&bytes).expect("operandless constraint is admitted");
+        let entry = admitted
+            .entry("filament.op.option.slots")
+            .expect("slot-domain entry");
+        assert!(entry.constraints[1].operands.is_empty());
+
+        let mut with_operands = catalog.clone();
+        let consumer_constraint = with_operands["operations"]
+            .as_array_mut()
+            .expect("operations")
+            .iter_mut()
+            .find(|operation| operation["identity"] == "filament.op.option.slots")
+            .and_then(|operation| operation["constraints"].as_array_mut())
+            .and_then(|constraints| constraints.get_mut(1))
+            .expect("consumer constraint");
+        consumer_constraint["operands"] = serde_json::json!([]);
+        let malformed = serde_json::to_string(&with_operands).expect("catalog encodes");
+        assert!(
+            read_catalog(&malformed).is_err(),
+            "consumer constraint has no operands field"
+        );
+
+        let constraint = catalog["operations"]
+            .as_array_mut()
+            .expect("operations")
+            .iter_mut()
+            .find_map(|operation| {
+                operation["constraints"]
+                    .as_array_mut()?
+                    .iter_mut()
+                    .find(|constraint| constraint["kind"] == "place_slot_terms")
+            })
+            .expect("operand-bearing constraint");
+        constraint
+            .as_object_mut()
+            .expect("constraint object")
+            .remove("operands");
+        let malformed = serde_json::to_string(&catalog).expect("malformed catalog encodes");
+        let failure = match read_catalog(&malformed) {
+            Err(failure) => failure,
+            Ok(_) => panic!("place_slot_terms needs operands"),
+        };
+        assert!(failure.path.contains("constraints"));
+    }
 
     /// Every catalog read owns its tables and reserves all measured storage,
     /// including the retained shared catalog, before making its requests.

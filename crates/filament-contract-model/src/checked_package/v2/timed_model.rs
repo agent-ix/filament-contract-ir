@@ -13,7 +13,7 @@ use super::read_charge::{self, Site};
 use super::stage_storage::{self, Refusal};
 use super::TermNode;
 use super::{
-    CheckedNodeId, CheckedNodeOwner, CheckedTerm, LiteralKind,
+    CheckedNodeId, CheckedNodeOwner, CheckedTerm, ExecutionPoint, LiteralKind,
     RawSemanticNodeV2 as CheckedSemanticNodeV2, TimedModelForm,
 };
 use crate::checked_package::common::{Step, Trail, ValidationFailure};
@@ -177,6 +177,43 @@ fn bindings<'a>(
             _ => return Err(malformed(member_at, failure_at)),
         };
         result.push(binding);
+    }
+    Ok(result)
+}
+
+/// Reads a timed-clause shape while retaining `point_anchor` for the semantic
+/// step. Its location and target are checked after the ordinary operation
+/// anchor join, so misplaced or cross-operation anchors receive the timed
+/// reference refusal rather than a wire-shape refusal.
+fn bindings_with_point_anchor<'a>(
+    value: TermNode<'a>,
+    names: &[&str],
+    at: &Path,
+    budget: &mut NativeJoinBudget,
+    site: Site,
+    failure_at: &mut Path,
+) -> Result<Vec<(TermNode<'a>, Path)>, WireFailure> {
+    let members = aggregate(value, at, budget, site, failure_at)?;
+    let mut result = Vec::new();
+    read_charge::reserve(budget, site, &mut result, names.len())?;
+    let mut expected = 0;
+    for (index, member) in members.into_iter().enumerate() {
+        let member_at = at.key("members").index(index);
+        let Some(super::TermView::Binding { name, value }) = member.view() else {
+            return Err(malformed(member_at, failure_at));
+        };
+        if super::TermBindingName::from_wire(name) == super::TermBindingName::PointAnchor {
+            reference(value, &member_at.key("value"), failure_at)?;
+            continue;
+        }
+        if names.get(expected).copied() != Some(name) {
+            return Err(malformed(member_at, failure_at));
+        }
+        result.push((value, member_at.key("value")));
+        expected += 1;
+    }
+    if expected != names.len() {
+        return Err(malformed(at.key("members"), failure_at));
     }
     Ok(result)
 }
@@ -538,7 +575,7 @@ fn check_wire_shape(
                 .ok_or_else(|| malformed(body_at, failure_at))?;
             match text(kind, &kind_at, failure_at)? {
                 "place" => {
-                    let b = bindings(
+                    let b = bindings_with_point_anchor(
                         body,
                         &[
                             "kind",
@@ -568,7 +605,7 @@ fn check_wire_shape(
                     magnitude(b[7].0, "quantity", &b[7].1, failure_at)?;
                 }
                 "parameter" => {
-                    let b = bindings(
+                    let b = bindings_with_point_anchor(
                         body,
                         &["kind", "operation", "parameter", "value"],
                         &body_at,
@@ -588,7 +625,7 @@ fn check_wire_shape(
             }
         }
         TimedModelForm::Guard => {
-            let b = bindings(
+            let b = bindings_with_point_anchor(
                 body,
                 &["operation", "parts"],
                 &body_at,
@@ -653,7 +690,7 @@ fn check_wire_shape(
                 })
             );
             let b = if quantified {
-                bindings(
+                bindings_with_point_anchor(
                     body,
                     &["predicate", "binders", "bounds"],
                     &body_at,
@@ -662,7 +699,7 @@ fn check_wire_shape(
                     failure_at,
                 )?
             } else {
-                bindings(
+                bindings_with_point_anchor(
                     body,
                     &["predicate", "bounds"],
                     &body_at,
@@ -706,7 +743,7 @@ fn check_wire_shape(
                 .ok_or_else(|| malformed(body_at, failure_at))?;
             match UrgencyKind::from_wire(text(kind, &kind_at, failure_at)?) {
                 Some(UrgencyKind::When) => {
-                    let b = bindings(
+                    let b = bindings_with_point_anchor(
                         body,
                         &["kind", "predicate"],
                         &body_at,
@@ -717,7 +754,7 @@ fn check_wire_shape(
                     reference(b[1].0, &b[1].1, failure_at)?;
                 }
                 Some(UrgencyKind::Operation) => {
-                    let b = bindings(
+                    let b = bindings_with_point_anchor(
                         body,
                         &["kind", "model", "operation_name"],
                         &body_at,
@@ -740,7 +777,7 @@ fn check_wire_shape(
                 .ok_or_else(|| malformed(body_at, failure_at))?;
             match text(kind, &kind_at, failure_at)? {
                 "place" => {
-                    let b = bindings(
+                    let b = bindings_with_point_anchor(
                         body,
                         &["kind", "place", "owner", "slots", "comparison", "bound"],
                         &body_at,
@@ -760,7 +797,7 @@ fn check_wire_shape(
                     magnitude(b[5].0, "quantity", &b[5].1, failure_at)?;
                 }
                 "parameter" => {
-                    let b = bindings(
+                    let b = bindings_with_point_anchor(
                         body,
                         &["kind", "operation", "parameter", "comparison", "bound"],
                         &body_at,
@@ -1517,6 +1554,63 @@ impl Graph<'_> {
         Ok(anchor)
     }
 
+    fn point_anchor(
+        &self,
+        meter: &mut WorkMeter,
+        position: usize,
+        term: Option<&CheckedTerm>,
+        at: Path,
+        base_anchor: usize,
+        model: usize,
+        pre: bool,
+    ) -> Result<(), ValidationFailure> {
+        let point_anchor = self.target(meter, position, term, at, |kind| {
+            kind == CheckedNodeKind::State(StateForm::OperationAnchor)
+        })?;
+        let base_body = self.body(meter, base_anchor)?;
+        let point_body = self.body(meter, point_anchor)?;
+        let Some(base) = super::structural::typed_anchor_body(base_body) else {
+            return Err(self.issue(
+                meter,
+                position,
+                CheckedPackageRefusalCause::TimedNodeReference,
+                at,
+            ));
+        };
+        let Some(point) = super::structural::typed_anchor_body(point_body) else {
+            return Err(self.issue(
+                meter,
+                position,
+                CheckedPackageRefusalCause::TimedNodeReference,
+                at,
+            ));
+        };
+        let expected_point = match (pre, point.execution_point) {
+            (true, Some(ExecutionPoint::Pre { operation })) => operation.as_str() == base.operation,
+            (false, Some(ExecutionPoint::Post { operation })) => {
+                operation.as_str() == base.operation
+            }
+            _ => false,
+        };
+        if point.context != base.context
+            || point.operation != base.operation
+            || !expected_point
+            || self
+                .index
+                .get(point.context)
+                .copied()
+                .is_none_or(|context| context != model)
+        {
+            return Err(self.issue(
+                meter,
+                position,
+                CheckedPackageRefusalCause::TimedNodeReference,
+                at,
+            ));
+        }
+        Ok(())
+    }
+
     fn place_terms(
         &self,
         position: usize,
@@ -1670,6 +1764,55 @@ impl Graph<'_> {
         }
         Ok(false)
     }
+}
+
+fn point_anchor_bindings(body: &CheckedTerm) -> impl Iterator<Item = (usize, &CheckedTerm)> {
+    typed_members(body)
+        .iter()
+        .enumerate()
+        .filter_map(|(index, member)| match member {
+            CheckedTerm::Binding { name, value }
+                if name.internal_kind() == super::TermBindingName::PointAnchor =>
+            {
+                Some((index, value.as_ref()))
+            }
+            _ => None,
+        })
+}
+
+fn validate_point_anchor_placement(
+    graph: &Graph<'_>,
+    meter: &mut WorkMeter,
+    position: usize,
+    body: &CheckedTerm,
+    expected_index: Option<usize>,
+    base_anchor: Option<usize>,
+    model: usize,
+    pre: bool,
+) -> Result<(), ValidationFailure> {
+    let mut found = false;
+    for (index, term) in point_anchor_bindings(body) {
+        let at = binding_at(position, index).key("target");
+        if expected_index != Some(index) || found {
+            return Err(graph.issue(
+                meter,
+                position,
+                CheckedPackageRefusalCause::TimedNodeReference,
+                at,
+            ));
+        }
+        found = true;
+        let Some(base_anchor) = base_anchor else {
+            return Err(graph.issue(
+                meter,
+                position,
+                CheckedPackageRefusalCause::TimedNodeReference,
+                at,
+            ));
+        };
+        graph.point_anchor(meter, position, Some(term), at, base_anchor, model, pre)?;
+    }
+    Ok(())
 }
 
 fn frame_writes_clock(
@@ -2370,6 +2513,13 @@ impl<'g> KeyWork<'_, 'g, '_> {
                     }
                     self.push(&mut key, OrderPart::End)?;
                     got!(self.extend(&mut key, bound(body, 7), Shape::Quantity));
+                    self.push(
+                        &mut key,
+                        OrderPart::Number(if bound(body, 8).is_some() { 1 } else { 0 }),
+                    )?;
+                    if let Some(point_anchor) = bound(body, 8) {
+                        got!(self.extend(&mut key, Some(point_anchor), Shape::Term));
+                    }
                 } else {
                     self.push(&mut key, OrderPart::Number(1))?;
                     let name = need!(operation_name(graph, bound(body, 1)));
@@ -2377,11 +2527,25 @@ impl<'g> KeyWork<'_, 'g, '_> {
                     let member = need!(text_member(body, 2));
                     self.push(&mut key, OrderPart::Word(Word::Borrowed(member)))?;
                     got!(self.extend(&mut key, bound(body, 3), Shape::Quantity));
+                    self.push(
+                        &mut key,
+                        OrderPart::Number(if bound(body, 4).is_some() { 1 } else { 0 }),
+                    )?;
+                    if let Some(point_anchor) = bound(body, 4) {
+                        got!(self.extend(&mut key, Some(point_anchor), Shape::Term));
+                    }
                 }
             }
             CheckedNodeKind::TimedModel(TimedModelForm::Guard) => {
                 let name = need!(operation_name(graph, bound(body, 0)));
                 self.push(&mut key, OrderPart::Word(Word::Borrowed(name)))?;
+                self.push(
+                    &mut key,
+                    OrderPart::Number(if bound(body, 2).is_some() { 1 } else { 0 }),
+                )?;
+                if let Some(point_anchor) = bound(body, 2) {
+                    got!(self.extend(&mut key, Some(point_anchor), Shape::Term));
+                }
             }
             CheckedNodeKind::TimedModel(TimedModelForm::Invariant) => {
                 self.push(&mut key, OrderPart::Start)?;
@@ -3374,6 +3538,11 @@ pub(super) fn validate_models<'a>(
                 )?;
             }
             Form::Reset | Form::Constraint => {
+                if form == Form::Constraint {
+                    validate_point_anchor_placement(
+                        &graph, meter, position, body, None, None, root_model, false,
+                    )?;
+                }
                 let place = bound(body, 0).and_then(spelling) == Some("place");
                 if place {
                     let place_index = if form == Form::Reset { 2 } else { 1 };
@@ -3390,6 +3559,18 @@ pub(super) fn validate_models<'a>(
                     } else {
                         None
                     };
+                    if let Some(anchor) = anchor {
+                        validate_point_anchor_placement(
+                            &graph,
+                            meter,
+                            position,
+                            body,
+                            Some(8),
+                            Some(anchor),
+                            root_model,
+                            false,
+                        )?;
+                    }
                     let place_position = graph.place_terms(
                         position,
                         body,
@@ -3468,6 +3649,18 @@ pub(super) fn validate_models<'a>(
                         binding_at(position, 1).key("target"),
                         root_model,
                     )?;
+                    if form == Form::Reset {
+                        validate_point_anchor_placement(
+                            &graph,
+                            meter,
+                            position,
+                            body,
+                            Some(4),
+                            Some(anchor),
+                            root_model,
+                            false,
+                        )?;
+                    }
                     let parameter_name = bound(body, 2).and_then(spelling).unwrap_or_default();
                     let operation_name = graph
                         .terms
@@ -3570,6 +3763,16 @@ pub(super) fn validate_models<'a>(
                     binding_at(position, 0).key("target"),
                     root_model,
                 )?;
+                validate_point_anchor_placement(
+                    &graph,
+                    meter,
+                    position,
+                    body,
+                    Some(2),
+                    Some(anchor),
+                    root_model,
+                    true,
+                )?;
                 for (part_index, part) in bound(body, 1)
                     .map(typed_members)
                     .unwrap_or_default()
@@ -3630,6 +3833,9 @@ pub(super) fn validate_models<'a>(
                 }
             }
             Form::Invariant => {
+                validate_point_anchor_placement(
+                    &graph, meter, position, body, None, None, root_model, false,
+                )?;
                 graph.boolean(
                     meter,
                     position,
@@ -3679,6 +3885,9 @@ pub(super) fn validate_models<'a>(
                 }
             }
             Form::Urgency => {
+                validate_point_anchor_placement(
+                    &graph, meter, position, body, None, None, root_model, false,
+                )?;
                 if bound(body, 0).and_then(spelling) == Some("when") {
                     graph.boolean(meter, position, bound(body, 1), binding_at(position, 1))?;
                 } else {
@@ -3897,6 +4106,201 @@ mod tests {
                 }
             })
             .collect()
+    }
+
+    #[trace("TC-1721", "FR-322-AC-454")]
+    #[test]
+    fn point_anchor_must_be_final_and_match_the_clause_execution_point() {
+        fn id(name: &str) -> CheckedNodeId {
+            CheckedNodeId {
+                package: "point-anchor-test".into(),
+                path: vec![CheckedNodePathSegment::Name(name.into())],
+                ordinal: 0,
+            }
+        }
+        fn binding(name: &str, value: Value) -> CheckedTerm {
+            let wire = json!({"term":"binding", "name":name, "value":value});
+            CheckedTerm::decode_admitted(&wire).expect("typed binding")
+        }
+        fn anchor_body(context: &CheckedNodeId, point: Option<ExecutionPoint>) -> CheckedTerm {
+            let frame = id("frame");
+            let operation_type = id("text-type");
+            CheckedTerm::OperationAnchorBody(Box::new(super::super::CheckedOperationAnchorBody {
+                members: [
+                    binding("context", json!({"term":"reference", "target":context})),
+                    binding(
+                        "operation",
+                        json!({
+                            "term":"literal", "type":operation_type,
+                            "value_kind":"text", "value":"reply"
+                        }),
+                    ),
+                    binding("frame", json!({"term":"reference", "target":frame})),
+                ],
+                execution_point: point,
+            }))
+        }
+        fn node(
+            node_id: &CheckedNodeId,
+            node_tag: &str,
+            semantic_form: &str,
+            semantic_type: &CheckedNodeId,
+        ) -> CheckedSemanticNodeV2 {
+            serde_json::from_value(json!({
+                "node_id":node_id,
+                "schema_version":"filament.checked-semantic-graph/v2",
+                "node_tag":node_tag,
+                "semantic_form":semantic_form,
+                "semantic_type":semantic_type,
+                "dependencies":[],
+                "occurrences":[],
+                "body":{"term":"aggregate", "members":[]}
+            }))
+            .expect("test graph node")
+        }
+
+        let model_id = id("model");
+        let base_id = id("base-anchor");
+        let pre_id = id("pre-anchor");
+        let post_id = id("post-anchor");
+        let clause_id = id("guard");
+        let nodes = vec![
+            node(&model_id, "model", "object_type", &model_id),
+            node(&base_id, "state", "operation_anchor", &model_id),
+            node(&pre_id, "state", "operation_anchor", &model_id),
+            node(&post_id, "state", "operation_anchor", &model_id),
+            node(&clause_id, "timed_model", "clock_guard", &model_id),
+            node(&id("reset-place"), "timed_model", "clock_reset", &model_id),
+            node(
+                &id("reset-parameter"),
+                "timed_model",
+                "clock_reset",
+                &model_id,
+            ),
+        ];
+        let kinds = vec![
+            CheckedNodeKind::Model(super::super::ModelForm::ObjectType),
+            CheckedNodeKind::State(super::super::StateForm::OperationAnchor),
+            CheckedNodeKind::State(super::super::StateForm::OperationAnchor),
+            CheckedNodeKind::State(super::super::StateForm::OperationAnchor),
+            CheckedNodeKind::TimedModel(TimedModelForm::Guard),
+            CheckedNodeKind::TimedModel(TimedModelForm::Reset),
+            CheckedNodeKind::TimedModel(TimedModelForm::Reset),
+        ];
+        let pre = ExecutionPoint::Pre {
+            operation: crate::ExecutionPointName::new("reply").expect("point name"),
+        };
+        let post = ExecutionPoint::Post {
+            operation: crate::ExecutionPointName::new("reply").expect("point name"),
+        };
+        let terms = vec![
+            None,
+            Some(anchor_body(&model_id, None)),
+            Some(anchor_body(&model_id, Some(pre))),
+            Some(anchor_body(&model_id, Some(post))),
+            None,
+            None,
+            None,
+        ];
+        let index: GraphIndex<'_> = nodes
+            .iter()
+            .enumerate()
+            .map(|(position, node)| (&node.node_id, position))
+            .collect();
+        let graph = Graph {
+            nodes: &nodes,
+            kinds: &kinds,
+            terms: &terms,
+            index: &index,
+        };
+        let clause_body = CheckedTerm::decode_admitted(&json!({
+            "term":"aggregate",
+            "members":[
+                {"term":"binding", "name":"operation", "value":{"term":"reference", "target":base_id}},
+                {"term":"binding", "name":"parts", "value":{"term":"aggregate", "members":[]}},
+                {"term":"binding", "name":"point_anchor", "value":{"term":"reference", "target":pre_id}}
+            ]
+        }))
+        .expect("guard body");
+        assert_eq!(
+            validate_point_anchor_placement(
+                &graph,
+                &mut WorkMeter::new(100),
+                4,
+                &clause_body,
+                Some(2),
+                Some(1),
+                0,
+                true,
+            ),
+            Ok(()),
+            "a final pre anchor of the same operation is admitted"
+        );
+        assert!(matches!(
+            validate_point_anchor_placement(
+                &graph,
+                &mut WorkMeter::new(100),
+                4,
+                &clause_body,
+                Some(1),
+                Some(1),
+                0,
+                true,
+            ),
+            Err(ValidationFailure::Refused(_))
+        ));
+        let reset_body = |names: &[&str]| {
+            let members: Vec<Value> = names
+                .iter()
+                .map(|name| {
+                    if *name == "point_anchor" {
+                        json!({"term":"binding", "name":name, "value":{"term":"reference", "target":post_id}})
+                    } else {
+                        json!({"term":"binding", "name":name, "value":{"term":"aggregate", "members":[]}})
+                    }
+                })
+                .collect();
+            CheckedTerm::decode_admitted(&json!({"term":"aggregate", "members":members}))
+                .expect("reset body")
+        };
+        for (position, names, expected_index) in [
+            (
+                5,
+                &[
+                    "kind",
+                    "operation",
+                    "place",
+                    "owner",
+                    "slots",
+                    "binders",
+                    "condition",
+                    "value",
+                    "point_anchor",
+                ][..],
+                8,
+            ),
+            (
+                6,
+                &["kind", "operation", "parameter", "value", "point_anchor"][..],
+                4,
+            ),
+        ] {
+            let body = reset_body(names);
+            assert_eq!(
+                validate_point_anchor_placement(
+                    &graph,
+                    &mut WorkMeter::new(100),
+                    position,
+                    &body,
+                    Some(expected_index),
+                    Some(1),
+                    0,
+                    false,
+                ),
+                Ok(()),
+                "a final post anchor is admitted for both reset kinds"
+            );
+        }
     }
 
     #[trace("TC-472", "FR-038-AC-511")]
