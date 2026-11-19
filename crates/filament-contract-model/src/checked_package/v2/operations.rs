@@ -4754,10 +4754,16 @@ fn check_place_slot_domain(
     graph: &Graph<'_>,
     meter: &mut WorkMeter,
 ) -> Result<bool, ValidationFailure> {
-    if application.node.semantic_form.as_ref() != "presence_read"
-        || operation.identity.as_ref() != "filament.op.option.slots"
-    {
+    if operation.identity.as_ref() != "filament.op.option.slots" {
         return Ok(false);
+    }
+    if application.node.semantic_form.as_ref() != "presence_read" {
+        return Err(application.refuse_read(
+            CheckedPackageRefusalCode::IllTyped,
+            application.read_node().key("semantic_form"),
+            CheckedPackageRefusalCause::OperatorIneligible,
+            meter,
+        ));
     }
     let Some(arguments) = admitted_arguments(application, graph) else {
         return Ok(false);
@@ -4790,7 +4796,7 @@ fn check_place_slot_domain(
     let Some(path_steps) = operation_bound(place_body, 1).map(operation_typed_members) else {
         return Ok(false);
     };
-    let Some((last_step_index, last_step)) = path_steps.iter().enumerate().last() else {
+    let Some((last_step_index, last_step)) = path_steps.iter().enumerate().next_back() else {
         return Err(refuse(meter, arguments_at.index(0)));
     };
     if operation_spelling(operation_bound(last_step, 0)) != Some("slot") {
@@ -4805,7 +4811,7 @@ fn check_place_slot_domain(
     }
     work_at_path(
         meter,
-        &OperationPath::Read(arguments_at.clone()),
+        &OperationPath::Read(arguments_at),
         units(selector_count),
     )?;
     let Some(last_selector) = selectors.iter().last() else {
@@ -4920,11 +4926,12 @@ fn slot_domain_result_matches(
     ) else {
         return false;
     };
-    if minimum != "0" {
+    if minimum.parse::<u64>().ok() != Some(0) {
         return false;
     }
     place_step_maximum(place_body, last_step_index)
-        .is_some_and(|expected| expected != "unbounded" && maximum == expected)
+        .and_then(|expected| expected.parse::<u64>().ok())
+        .is_some_and(|expected| maximum.parse::<u64>().ok() == Some(expected))
 }
 
 fn place_step_maximum(place_body: &CheckedTerm, step_index: usize) -> Option<&str> {
@@ -5078,7 +5085,7 @@ fn check_quantifier_slot_binder(
         for member in members {
             work_at_path(meter, &application.read_node().key("node_id"), 1)?;
             if let CheckedTerm::Binding { name: field, value } = member {
-                if field.as_ref() == "name" {
+                if field.internal_kind() == super::TermBindingName::Name {
                     if let CheckedTerm::Literal { value, .. } = value.as_ref() {
                         parameter_name = value.as_str();
                     }
@@ -13133,6 +13140,7 @@ mod tests {
         );
     }
 
+    #[trace("TC-1862", "FR-772-AC-2")]
     #[test]
     fn fr772_option_slots_is_only_a_quantifier_domain() {
         let mut slots =
@@ -13253,6 +13261,52 @@ mod tests {
                 if refusal.code == CheckedPackageRefusalCode::IllTyped
                     && refusal.cause == Some(CheckedPackageRefusalCause::OperatorIneligible)
         ));
+    }
+
+    #[trace("TC-1862", "FR-772-AC-2")]
+    #[test]
+    fn fr772_option_slots_rejects_non_presence_read_form() {
+        let mut application =
+            custom_application_node("slots", plain_operation("filament.op.option.slots"), vec![]);
+        application.semantic_form = "call".into();
+        let nodes = vec![application];
+        let kinds = kinds_of(&nodes);
+        let terms = decoded_terms(&nodes);
+        let index: GraphIndex<'_> = nodes
+            .iter()
+            .enumerate()
+            .map(|(position, node)| (&node.node_id, position))
+            .collect();
+        let graph = Graph {
+            nodes: &nodes,
+            kinds: &kinds,
+            terms: &terms,
+            index: &index,
+            structural_keys: &[],
+        };
+        let operation: super::OperationWire =
+            serde_json::from_value(nodes[0].body.to_value()["operation"].clone())
+                .expect("slot-domain operation");
+        let Err(ValidationFailure::Refused(refusal)) = super::check_place_slot_domain(
+            super::Application {
+                node: &nodes[0],
+                position: 0,
+            },
+            &operation,
+            &graph,
+            &mut WorkMeter::new(100),
+        ) else {
+            panic!("slot domains require the presence_read semantic form");
+        };
+        assert_eq!(refusal.code, CheckedPackageRefusalCode::IllTyped);
+        assert_eq!(
+            refusal.cause,
+            Some(CheckedPackageRefusalCause::OperatorIneligible)
+        );
+        assert!(refusal.loci[0]
+            .path
+            .as_ref()
+            .is_some_and(|path| path.to_string().ends_with("/semantic_form")));
     }
 
     #[trace("TC-1862", "FR-772-AC-1", "FR-772-AC-2")]
@@ -13528,7 +13582,7 @@ mod tests {
                     position: 0,
                 },
                 &operation,
-                &arguments,
+                arguments,
                 &graph,
                 &mut WorkMeter::new(1_000),
             )

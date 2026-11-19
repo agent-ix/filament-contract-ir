@@ -188,14 +188,11 @@ impl<'de> Deserialize<'de> for OperationConstraint {
     where
         D: serde::Deserializer<'de>,
     {
+        #[derive(Default)]
         enum Field<T> {
+            #[default]
             Missing,
             Present(T),
-        }
-        impl<T> Default for Field<T> {
-            fn default() -> Self {
-                Self::Missing
-            }
         }
         impl<'de, T: Deserialize<'de>> Deserialize<'de> for Field<T> {
             fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>

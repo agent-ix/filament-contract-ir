@@ -202,7 +202,7 @@ fn bindings_with_point_anchor<'a>(
         let Some(super::TermView::Binding { name, value }) = member.view() else {
             return Err(malformed(member_at, failure_at));
         };
-        if name == "point_anchor" {
+        if super::TermBindingName::from_wire(name) == super::TermBindingName::PointAnchor {
             reference(value, &member_at.key("value"), failure_at)?;
             continue;
         }
@@ -1597,7 +1597,7 @@ impl Graph<'_> {
             || !expected_point
             || self
                 .index
-                .get(&point.context)
+                .get(point.context)
                 .copied()
                 .is_none_or(|context| context != model)
         {
@@ -1771,7 +1771,9 @@ fn point_anchor_bindings(body: &CheckedTerm) -> impl Iterator<Item = (usize, &Ch
         .iter()
         .enumerate()
         .filter_map(|(index, member)| match member {
-            CheckedTerm::Binding { name, value } if name.as_ref() == "point_anchor" => {
+            CheckedTerm::Binding { name, value }
+                if name.internal_kind() == super::TermBindingName::PointAnchor =>
+            {
                 Some((index, value.as_ref()))
             }
             _ => None,
