@@ -97,9 +97,36 @@ its `SourceOwner`, so two `SourceOwner`s of one authority cannot each declare a
 type of one name: the package already refuses the second node as a repeated
 declaration, and no two rows can then share a key across owners.
 
-The row `members` check compares, in order, each member's name, field type
-node and optional presence with the node body's bindings: the binding name,
-the bound type node reference and its `optional` group. The `supertypes`
+The row `members` check compares, in order, each data entry's name, field
+type node and optional presence with the node body's bindings: the binding
+name, the bound type node reference and its `optional` group.
+
+### Member entries
+
+A row's `members` list every field of the effective view (FSpec FR-610
+"Identity rows"), so a clock field, which has no binding, is a member too.
+`SelectedSourceObjectMember` SHALL be `{name, optional, type_node:
+Option<CheckedNodeId>, member_type: Option<Box<str>>, collections:
+Vec<SelectedClockCollectionLayer { kind, minimum, maximum }>}`: a **data
+entry** has `type_node` and no `member_type` and empty `collections`; a
+**clock entry** has no `type_node`, `member_type` its FSpec FR-789
+rendering with presence, and one layer per collection of its type,
+outermost first. The data entries, in order, SHALL equal the bindings; a
+clock entry SHALL share no name with a binding and its `member_type` SHALL
+be a rendering whose terminal is `ix://filament/native/Clock` with no node
+(`Clock`, `Option<Clock>`, a collection or map of them). An entry with both
+or neither of `type_node` and `member_type`, or failing these, is Unknown.
+`SelectedSourceRecordMemberRow` and `SelectedTuplePositionRow` SHALL carry
+the same optional `type_node` (with `value_type` absent exactly for a clock
+entry, which no Exact projection reads) and `member_type` and `collections`,
+and `SelectedUnionMemberRow` SHALL gain `clock_payload`, the clock entries of
+its payload positions by ordinal. Each
+`SelectedSourceObjectOperation` SHALL also carry `clock_parameters:
+Vec<Box<str>>`, the names of the operation's `Clock` parameters in
+declaration order. These rows feed the clock join of
+[FR-374](./FR-374-join-source-timed-model-clock-places-at-the-identity-row-join.md)
+and the coverage check of
+[FR-375](./FR-375-check-source-operation-body-coverage-at-the-identity-row-join.md). The `supertypes`
 check requires each entry to name an admitted source-declared type node of the
 package that is not the row's own node, and the supertype relation of all rows
 to be acyclic. `identity_fields` and `populations` are producer facts read only
@@ -113,10 +140,11 @@ information against which to check them.
 | FR-367-AC-1 | `self.total` on a source type with a field `total` resolves to the type of the binding, and an inherited field resolves through the field view. | Test |
 | FR-367-AC-2 | A field name with no binding, and any field read on an `aggregate{[]}` source type, refuse `ill_typed`/`operator-ineligible` at the member. | Test |
 | FR-367-AC-3 | A supply holding a foreign row and an unknown row reports foreign whatever their order; one holding an unknown row and a duplicate-key pair reports unknown; one holding a duplicate-key pair and an omitted type reports conflicting; one omitting a type reports missing; one whose dispatch candidate lies outside its context's family reports mismatched only when no type is missing. A second type of the same name under another `SourceOwner` of the same authority refuses at admission. | Test |
-| FR-367-AC-4 | A row whose `members` differ from the body bindings in name, type node, optional presence or order refuses unknown. A row whose `supertypes` name a non-source node, the row's own node, or form a cycle refuses unknown. | Test |
+| FR-367-AC-4 | A row whose data entries differ from the body bindings in name, type node, optional presence or order refuses unknown; its clock entries are not compared with the bindings, and the FR-374 clock join checks them against the clock places. A row whose `supertypes` name a non-source node, the row's own node, or form a cycle refuses unknown. | Test |
 | FR-367-AC-5 | A complete row set exposes abstractness, supertypes, identity fields, members and populations for each source type through a typed read. | Test |
-| FR-367-AC-8 | The row of `O` for `object O { d: Clock; operation arm(x: Clock, k: Int[1, 3]) modifies self.d; }` whose `O::arm` entry has `parameters` the clock entry `x` then the data entry `k` (the `Int[1, 3]` type node) and `clock_parameters` `["x"]` joins and exposes both parameters through the typed read. Each refuses `UnknownIdentityWitness` at the `Package` locus: `clock_parameters` `[]` beside the clock entry `x`; `clock_parameters` `["k"]`; a parameter entry with both `type_node` and `member_type`; and two entries named `x`. | Test (TC-485) |
 | FR-367-AC-6 | A field read on a model-owned node reads unchanged in a package that also holds a source type. | Test |
+| FR-367-AC-7 | A row of `O` (`object O { w: W; d: Clock; }`) with the data entry `w` then the clock entry `d` (`member_type` `ix://filament/native/Clock`) joins; a clock entry `d` carrying a type node, an entry with neither `type_node` nor `member_type`, a clock entry named `w`, and a clock entry whose `member_type` is `Integer` each refuse unknown. | Test (TC-481) |
+| FR-367-AC-8 | The row of `O` for `object O { d: Clock; operation arm(x: Clock, k: Int[1, 3]) modifies self.d; }` whose `O::arm` entry has `parameters` the clock entry `x` then the data entry `k` (the `Int[1, 3]` type node) and `clock_parameters` `["x"]` joins and exposes both parameters through the typed read. Each refuses `UnknownIdentityWitness` at the `Package` locus: `clock_parameters` `[]` beside the clock entry `x`; `clock_parameters` `["k"]`; a parameter entry with both `type_node` and `member_type`; and two entries named `x`. | Test (TC-485) |
 
 ## Dependencies
 
