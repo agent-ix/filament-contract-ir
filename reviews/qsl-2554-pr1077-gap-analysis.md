@@ -59,3 +59,34 @@ The AC-2 list is not fully covered: nine reviewer mutants on rule 7 survive. The
 | FND-002 | medium | θ ± ι is tested only through a quantile's `level`. Dropping `self.theta = Some(value)` for probability-bounded forms (r33) survives, so `probability`, `mean_of_fraction`, `long_run_fraction` and `reach` confidence checks are unguarded. A reviewer probe (`Avail` with ι = 1/2) shows the code is right today. Charge order within `form` is not pinned either: charging `form` after its nested bindings (c12, one of the coder's own mutants, reported as killed) survives | tests/it/checked_package_v2_probabilistic_claim.rs:722-760,897-978; crates/filament-contract-model/src/checked_package/v2/probabilistic_join/claims.rs:737-738,1044-1047 |
 | FND-003 | medium | The matrix row says FR-377-AC-1..4 are implemented except FR-376's visits and a foreign-model workload. But the public read of `Reach`, `Steps`, `MeanOfFraction`, a `Compare` event, a `Fraction` measure, `Each` activation and `over: Some` has no test. A wrong `eventually`/`always` mapping in `probabilistic_claim_read.rs` would pass. AC-1's FR-640-AC-10 identity changes `on each`, `from` to `Idle`, `Avail`'s event and form changes, and `Cost`'s `until` change are also absent. And `whole_read_accounting` registers no claim package, which hides code-review FND-001. List these as Planned in the row, or add the tests | spec/checked_package/matrix/tests.md:26 |
 | FND-004 | low | No test reaches a reader locus deeper than 18 JSON Pointer steps (a `CAPACITY = 18` mutant survives), so the capacity raise to 20 is not test-pinned. The 19-step `fraction`-in-`compare` `delay` weighting is the case to add | crates/filament-contract-model/src/checked_package/v2/stage_storage.rs:49 |
+
+## Dispositions
+
+Round 1, at head 4c56c181 (origin/main 2ec296a1 merged), with FILAMENT_SPECIFICATION_DIR set to FSpec origin/main 1d205b5b.
+
+Failing set against clean origin/main 2ec296a1 (CIR-1077-main, own target, same FSpec):
+
+- Workspace: 32 failures on both, identical: 18 `reached_model_read` and 14 await tests. `public_interface` and `claim_names` are green on both.
+- `conformance_fspec`, full binary: 8 failures on the PR head and the same 8 on clean main, against the same FSpec (main: 459 passed, 8 failed; PR: 463 passed, 8 failed).
+
+The coder's count of 7 does not reproduce here: the full binary, run unfiltered against FSpec origin/main, gives 8. The eighth is `probabilistic_claims::claim_row_coverage_and_exact_work_boundary`, which the brief already names, so a filtered or partial run is the likely source of the 7.
+
+Mutant re-run against the claim suites:
+
+- Killed: `c12` (by `the_claim_checks_charge_each_binding_in_body_order`), `r21`, `r23b`, `r32`, `r37` (by `each_remaining_fr640_mutation_refuses_at_its_member`), `r24` (by `a_quantity_typed_at_another_node_refuses`), `r25` (by the deepest-locus test), `r30` and `r33` (by `the_confidence_bounds_hold_for_every_probability_form`).
+- Survives, deferred: `r35`.
+- Survives, live: `r38`.
+
+`r38` is not an equivalent mutant. The generic literal check in operations.rs `literal_defect` skips a literal whose type has no family (`if family.is_none() && !matches!(kind, Float32Bits | Float64Bits | Quantity) { continue; }`), so it never sees a `rational` typed at a familyless node. A reviewer probe set `P95`'s `level` to the `rational` `19/20` typed at the `workload` node `Steady`:
+
+- At the head, the claims-side `typed(ScalarTypeForm::Rational)` check refuses it `invalid_package`/`invalid-value` at `/body/members/5/value/members/1/value`.
+- With `r38` applied, the package is admitted.
+
+The check is live, and it needs a killing test. A rational typed at the integer node is refused earlier by the generic check (`ill_typed` at `/type`), which is why the coder's cases did not kill the mutant.
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-001 | still-open | Every AC-2 item listed is now tested and its mutant killed (unit `s`, `38/40`, `from` and `over` naming `Steady`, the `steps` type, the bounds at or below 0, the reward weighting, the extra `origin` binding, and the predicate slot), except `r38`. `r38` is a live check, not dead code: a `rational` exact value typed at a familyless node (e.g. `Steady`) is admitted when it is removed. Add that refusal case (`invalid-value` at the literal). `r35` (foreign-model workload) stays deferred in the matrix row |
+| FND-002 | fixed | `the_confidence_bounds_hold_for_every_probability_form` kills `r33`: θ = ι and θ + ι = 1 refuse, and their neighbours are admitted, for `probability`, `mean_of_fraction`, `long_run_fraction` and `reach`. `the_claim_checks_charge_each_binding_in_body_order` now pins `form` before its nested bindings and kills `c12` |
+| FND-003 | fixed | The matrix row is rewritten with the honest remainder: FR-376's step, the foreign-model workload and FSL's producer spelling and ordinal vectors. `the_public_read_covers_every_form_event_measure_and_activation` covers `Reach` (each target), `Steps`, `MeanOfFraction`, the `Compare` event, the `Fraction` measure, the weightings, `Each` and `over: Some`. `the_remaining_identity_changes_give_that_claim_another_entry` covers the AC-10 changes. The claim package is registered in `whole_read_accounting` |
+| FND-004 | fixed | The deepest-locus test reaches the 19-step `fraction`-in-`compare` `delay` weighting and kills `r25` (`CAPACITY = 18`) |

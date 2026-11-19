@@ -41,3 +41,14 @@ The grammar text the coder wrote into FR-377 is consistent with FR-640's binding
 | FND-002 | low | The "Public claim read" block declares `pub form: ProbabilisticForm` and `pub enum ProbabilisticForm { Probability … }`. That name is taken by the existing node-form enum, and the code and FR-019 export `ProbabilisticClaimForm`. The PR edits FR-377 but leaves this block contradicting the shipped API | spec/checked_package/functional/FR-377-admit-the-probabilistic-claim-node-and-what-it-states.md:131-144 |
 | FND-003 | low | Upstream (FSpec FR-640 rule 6 and FR-640-AC-9): "`invalid-value` at the failing member" and "at `subject`" / "at `scheduler`" do not say whether the pointer is the binding's `value` or the reference's `target`. The PR refuses set and shape failures at `…/members/N/value` and reference failures at `…/value/target`. Two readers could differ, so the conformance vectors cannot be exact. Sent to arch; not a PR defect | spec/checked_package/functional/FR-377-admit-the-probabilistic-claim-node-and-what-it-states.md:49-60 |
 | FND-004 | low | Upstream (FSpec FR-322 "Body grammar"): its five strata have no production for the `claim`/`probabilistic_claim` body, whose bindings nest aggregates of bindings below the Tuple stratum. The IR spec now carries its own grammar for it, in FR-377. FSpec should own that row, so that other readers agree. Arch has been asked; not a PR defect | spec/checked_package/functional/FR-377-admit-the-probabilistic-claim-node-and-what-it-states.md:100-115 |
+
+## Dispositions
+
+Round 1, at head 4c56c181.
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-001 | fixed | The FR-377 grammar paragraph now reads: "the deepest member the reader names, the `kind` of a `weighting` inside a `fraction` `measure` of a `compare` event inside the `form`, stands at nineteen JSON Pointer steps below the package root, and the reader's pointer builder holds twenty" |
+| FND-002 | fixed | The FR-377 "Public claim read" block now declares `pub form: ProbabilisticClaimForm` and `pub enum ProbabilisticClaimForm { … }`, matching the code and FR-019 |
+| FND-003 | deferred | This is upstream FSpec FR-640 wording: the refusal locus could be the binding `value` or the reference `target`. It was sent to arch and is outside this PR |
+| FND-004 | deferred | This is upstream FSpec FR-322 "Body grammar", which has no claim stratum. Arch has been asked, and FR-377 carries the IR's grammar in the meantime. Outside this PR |

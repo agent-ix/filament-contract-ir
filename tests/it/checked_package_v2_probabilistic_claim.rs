@@ -2030,3 +2030,35 @@ fn claims_named_alike_differ_by_threshold_and_a_threshold_spelled_2_4_refuses() 
         "/body/members/5/value/members/2/value/members/1/value",
     );
 }
+
+/// FR-377-AC-2 (FR-640-AC-11): a rational or an integer typed at a node that
+/// has no literal family (the workload `Steady`) is refused by the claim
+/// reader at the literal, the only guard for a familyless type.
+#[trace("TC-489", "FR-377-AC-2")]
+#[test]
+fn a_literal_typed_at_a_familyless_node_refuses_at_the_literal() {
+    let level = edited("P95", |b| {
+        member(b, 5)["members"][1]["value"] = json!({
+            "term": "literal", "type": steady(), "value_kind": "rational", "value": "19/20",
+        });
+    });
+    assert_refused(
+        &level,
+        "P95",
+        INVALID,
+        invalid_value(),
+        "/body/members/5/value/members/1/value",
+    );
+    let within = edited("P95", |b| {
+        member(b, 5)["members"][2]["value"]["members"][3]["value"] = json!({
+            "term": "literal", "type": steady(), "value_kind": "integer", "value": "10",
+        });
+    });
+    assert_refused(
+        &within,
+        "P95",
+        INVALID,
+        invalid_value(),
+        "/body/members/5/value/members/2/value/members/3/value",
+    );
+}
