@@ -14615,6 +14615,42 @@ fn control_observe_only_marks_itself_and_the_controls_below() {
 
 #[trace("FR-038-AC-568")]
 #[test]
+fn observe_only_names_the_control_before_the_role_and_refuses_each_action_alone() {
+    // The innermost control wins over the performing role.
+    let (package, root, _) = package_with_admitted_attempt();
+    let role = protocol_position(&package, "role");
+    let mut both = package.clone();
+    mark_boundary(&mut both, role, json!("observe-only"));
+    mark_boundary(&mut both, root, json!("observe-only"));
+    settle(&mut both);
+    assert_observe_only_refusal(&both, root, "attempt", &id_at(&both, root));
+    // An effect behind its own mark is refused while its unmarked attempt is admitted.
+    let (package, effect, _) = package_with_admitted_effect();
+    let mut alone = package.clone();
+    mark_boundary(&mut alone, effect, json!("observe-only"));
+    settle(&mut alone);
+    assert_observe_only_refusal(&alone, effect, "effect", &id_at(&alone, effect));
+    // An event with no compensation is not an offending action, even performed
+    // by an observe-only role.
+    let (package, event) = package_with_step_control("event");
+    assert!(matches!(
+        read(&package),
+        CheckedPackageV2ReadResult::Admitted(_)
+    ));
+    let role = protocol_position(&package, "role");
+    let mut marked = package.clone();
+    mark_boundary(&mut marked, role, json!("observe-only"));
+    mark_boundary(&mut marked, event, json!("observe-only"));
+    settle(&mut marked);
+    assert!(
+        matches!(read(&marked), CheckedPackageV2ReadResult::Admitted(_)),
+        "{:?}",
+        read(&marked)
+    );
+}
+
+#[trace("FR-038-AC-568")]
+#[test]
 fn observe_only_boundary_admits_the_recommend_and_other_non_offending_controls() {
     let (package, root) = package_with_admitted_recommend();
     let role = protocol_position(&package, "role");
@@ -14664,26 +14700,53 @@ fn role_observe_only_refuses_commit_event_for_send_and_compensate() {
     mark_boundary(&mut marked, role, json!("observe-only"));
     settle(&mut marked);
     assert_observe_only_refusal(&marked, event, "event-for", &id_at(&marked, role));
-    let mut template = package.clone();
-    let template_role = checked_node_id(
-        &template["semantic_graph"]["nodes"][compensation]["body"]["arguments"][2]["value"]
-            ["target"],
+    // The template of a second, observe-only role: the event registering it is
+    // performed by the first role and stays admitted.
+    let role_node = package["semantic_graph"]["nodes"][role].clone();
+    let model = role_node["body"]["arguments"][0]["value"]["target"].clone();
+    let second = protocol_named_node(
+        "role",
+        &["Example", "OrderFlow", "role", "Auditor"],
+        role_node["body"].clone(),
+        &[model["path"][0].as_str().expect("digest").to_owned()],
     );
-    let template_role_position = (0..template["semantic_graph"]["nodes"]
+    let second_key = second["node_id"].clone();
+    let first_key = role_node["node_id"].clone();
+    let clause = clause_position(&package);
+    let mut admitted_order = None;
+    for pair in [[&first_key, &second_key], [&second_key, &first_key]] {
+        let mut template = package.clone();
+        template["semantic_graph"]["nodes"]
+            .as_array_mut()
+            .expect("nodes")
+            .push(second.clone());
+        template["semantic_graph"]["nodes"][clause]["body"]["arguments"][3]["value"]["members"] =
+            json!(pair.map(|key| json!({"term": "reference", "target": key})));
+        template["semantic_graph"]["nodes"][compensation]["body"]["arguments"][2]["value"]
+            ["target"] = second_key.clone();
+        settle(&mut template);
+        if matches!(read(&template), CheckedPackageV2ReadResult::Admitted(_)) {
+            admitted_order = Some(template);
+            break;
+        }
+    }
+    let mut template = admitted_order.expect("the template of a second role admits");
+    let second_position = (0..template["semantic_graph"]["nodes"]
         .as_array()
         .unwrap()
         .len())
-        .find(|&position| id_at(&template, position) == template_role)
-        .expect("the template's role");
-    template["semantic_graph"]["nodes"][event]["body"]["arguments"][1]["value"]["members"] =
-        json!([]);
-    mark_boundary(&mut template, template_role_position, json!("observe-only"));
+        .find(|&position| {
+            template["semantic_graph"]["nodes"][position]["declaration"]["qualified_name"]
+                == json!(["Example", "OrderFlow", "role", "Auditor"])
+        })
+        .expect("second role");
+    mark_boundary(&mut template, second_position, json!("observe-only"));
     settle(&mut template);
     assert_observe_only_refusal(
         &template,
         compensation,
         "compensate",
-        &id_at(&template, template_role_position),
+        &id_at(&template, second_position),
     );
 }
 

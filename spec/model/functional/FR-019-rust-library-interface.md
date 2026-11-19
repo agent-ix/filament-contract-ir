@@ -224,7 +224,8 @@ the admitted selected-package and Port declaration text pair of FR-038-AC-463,
 with no replacement identity carrier. The implemented typed refusal context is
 `CheckedProtocolRefusalDetail::ModelMember` (FR-038-AC-464). The borrowed
 `CheckedPackageV2::protocol_role_boundary` method returns the non-exhaustive
-`CheckedProtocolBoundary` of an admitted role (FR-038-AC-564).
+`CheckedProtocolBoundary` of an admitted role (FR-038-AC-564). The `CheckedProtocolRefusalDetail::ObserveOnlyBoundary` variant carries the
+`action` and `boundary` of FR-038-AC-568.
 
 The authenticated schedulability carrier of FR-038-AC-396 through
 FR-038-AC-400 is implemented. The borrowed
