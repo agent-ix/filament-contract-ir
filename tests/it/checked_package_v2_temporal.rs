@@ -3444,6 +3444,64 @@ fn tc_346_a_hyperproperty_with_its_parameters_and_body_bindings_is_admitted() {
     }
 }
 
+/// A hyper clause is named by the `claim_names` rows of its `hyperproperty`
+/// node; its body wrapper has no `temporal_clause_names` row (FR-322-AC-466).
+#[trace("TC-477", "FR-371-AC-11")]
+#[test]
+fn a_hyper_clauses_body_wrapper_has_no_temporal_name_row_and_its_node_is_named() {
+    let (mut package, _, keys) = hyper_fixture();
+    let clause_key = keys.split('\n').nth(1).expect("clause").to_owned();
+    let mut node = hyperproperty(
+        "hyperproperty",
+        vec![group(vec![])],
+        vec![],
+        vec![],
+        refer(&clause_key),
+    );
+    node["occurrences"] = json!([{"role": "claim", "ordinal": 0}]);
+    let hyper = push(&mut package, node);
+    settle(&mut package);
+    let wrapper = nodes(&package)[clause(&package)]["node_id"].clone();
+    let hyper_id = nodes(&package)[hyper]["node_id"].clone();
+    // The wrapper carries a claim occurrence and no name row.
+    assert!(!package["temporal_clause_names"]
+        .as_array()
+        .is_some_and(|rows| rows.iter().any(|row| row["declaration"] == wrapper)));
+    let named: Vec<_> = package["claim_names"]
+        .as_array()
+        .expect("claim rows")
+        .iter()
+        .filter(|row| row["declaration"] == hyper_id)
+        .collect();
+    assert_eq!(named.len(), 1, "one row per claim occurrence of the node");
+    admitted("a body wrapper with no name row", &package);
+    // A row naming the wrapper refuses at its declaration.
+    let mut wrapped = package.clone();
+    let row = json!({
+        "declaration": wrapper,
+        "occurrence": 0,
+        "name": "Wrapped",
+        "declaration_region": crate::support::checked_package::occurrence_region(
+            &wrapped, &wrapper, "claim", 0),
+    });
+    if wrapped.get("temporal_clause_names").is_none() {
+        wrapped["temporal_clause_names"] = json!([]);
+    }
+    let rows = wrapped["temporal_clause_names"]
+        .as_array_mut()
+        .expect("clause rows");
+    rows.push(row);
+    let at = rows.len() - 1;
+    assert_eq!(
+        first_refusal("a row naming the body wrapper", &wrapped),
+        outcome(
+            Code::InvalidPackage,
+            Some(Cause::InvalidValue),
+            format!("/temporal_clause_names/{at}/declaration"),
+        )
+    );
+}
+
 #[trace("TC-346", "FR-038-AC-530")]
 #[test]
 fn tc_346_a_fairness_reference_in_a_quantifier_group_is_admitted() {

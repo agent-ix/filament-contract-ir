@@ -9901,8 +9901,55 @@ fn protocol_queue_checks_channel_form() {
     );
 }
 
+/// A literal queue capacity of 0 is a rendezvous channel (FSpec TC-947 QU3,
+/// FR-465 "a non-negative integer"; FSL FR-509-AC-9): it admits, and the
+/// package read, written and read again is the same package (QSL-2503).
+#[trace("TC-947", "FR-038-AC-286")]
+#[test]
+fn protocol_queue_admits_zero_and_positive_literal_capacity_and_round_trips() {
+    for capacity in ["0", "1", "4"] {
+        let (mut package, queue) = package_with_member_queue();
+        package["semantic_graph"]["nodes"][queue]["body"]["arguments"][1]["value"]["members"][1]
+            ["value"]["value"] = json!(capacity);
+        settle(&mut package);
+        let CheckedPackageV2ReadResult::Admitted(admitted) = read(&package) else {
+            panic!("capacity {capacity} admits");
+        };
+        let encoded = filament_contract_model::encode_checked_package_v2(
+            admitted.name(),
+            admitted.lock(),
+            admitted.graph(),
+            filament_contract_model::CheckedPackageSourceCorrespondenceRef {
+                source_map: admitted.source_map(),
+                refinement_step_rows: admitted.refinement_step_rows(),
+            },
+            filament_contract_model::CheckedPackageSidecarsRef {
+                checked_term_data: admitted.checked_term_data(),
+                temporal_bindings: admitted.temporal_bindings(),
+                temporal_clause_names: admitted.temporal_clause_names(),
+                claim_names: admitted.claim_names(),
+                schedulability_claims: admitted.schedulability_claim_rows(),
+                operation_effects: admitted.operation_effect_rows(),
+                operation_bodies: admitted.operation_body_rows(),
+            },
+            admitted.capability_report(),
+            admitted.diagnostics(),
+            quire_canonical::Limits::new(1 << 24),
+        )
+        .expect("re-encoding");
+        let CheckedPackageV2ReadResult::Admitted(again) = crate::read_and_account(
+            &encoded,
+            CheckedPackageReadLimits::bounded(),
+            &evidence_for(&package),
+        ) else {
+            panic!("capacity {capacity} re-reads");
+        };
+        assert_eq!(admitted, again, "capacity {capacity}");
+    }
+}
+
 /// Trace: FR-038-AC-286
-#[trace("TC-947")]
+#[trace("TC-947", "FR-038-AC-286")]
 #[test]
 fn protocol_queue_rejects_negative_literal_capacity() {
     let (mut package, queue) = package_with_member_queue();

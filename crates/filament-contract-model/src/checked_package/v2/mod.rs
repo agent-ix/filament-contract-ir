@@ -2032,15 +2032,52 @@ impl CheckedPackageV2 {
 
     /// The admitted row naming the declaration whose qualified path is
     /// `path`, matched segment by segment and byte for byte.
+    ///
+    /// The row is that of the one declaration carrying the path: its row on the
+    /// declaration's own node, the node whose declaration set (the
+    /// `declaration_region`s of its rows) is the smallest of those the path's
+    /// rows name, of least occurrence key whose role is `claim`, or else its
+    /// least row there.
     pub fn claim_name_for_path<S: AsRef<str>>(&self, path: &[S]) -> Option<&ClaimNameRow> {
-        self.claim_names()?.iter().find(|row| {
+        let rows = self.claim_names()?;
+        let carries = |row: &ClaimNameRow| {
             row.qualified_name.len() == path.len()
                 && row
                     .qualified_name
                     .iter()
                     .zip(path)
                     .all(|(segment, wanted)| segment.as_ref() == wanted.as_ref())
-        })
+        };
+        let declarations = |node: &CheckedNodeId| {
+            let mut regions: Vec<_> = rows
+                .iter()
+                .filter(|row| &row.declaration == node)
+                .map(|row| {
+                    (
+                        &row.declaration_region.source,
+                        row.declaration_region.start,
+                        row.declaration_region.end,
+                    )
+                })
+                .collect();
+            regions.sort_unstable();
+            regions.dedup();
+            regions.len()
+        };
+        let own = rows
+            .iter()
+            .filter(|row| carries(row))
+            .map(|row| &row.declaration)
+            .min_by_key(|node| declarations(node))?;
+        // The row is the declaration's own: structurally equal declarations
+        // share one node, so only a row that carries the path counts.
+        let on_own = || {
+            rows.iter()
+                .filter(|row| &row.declaration == own && carries(row))
+        };
+        on_own()
+            .find(|row| row.occurrence.role == CheckedOccurrenceRole::Claim)
+            .or_else(|| on_own().next())
     }
 
     /// Admitted selected operation effects, absent when the producer supplied no carrier.
@@ -3996,10 +4033,12 @@ fn validate_graph(
         ),
         meter,
     )?;
+    let wrappers = claim_names::body_wrappers(&kinds, &terms, &index, meter)?;
     temporal_clause_names::validate(
         wire.temporal_clause_names.as_deref(),
         &graph.nodes,
         &kinds,
+        &wrappers,
         &name_sources,
         &index,
         structural_keys,

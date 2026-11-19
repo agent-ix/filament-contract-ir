@@ -254,6 +254,9 @@ fn renaming_a_claim_changes_no_node_and_one_node_carries_two_occurrence_rows() {
         .clone();
     entry["role"] = json!("claim");
     entry["ordinal"] = json!(1);
+    // The second clause is its own declaration, so it has its own region.
+    entry["regions"][0]["start"] = json!(5000);
+    entry["regions"][0]["end"] = json!(5001);
     shared["source_map"]
         .as_array_mut()
         .expect("source map")
@@ -282,6 +285,18 @@ fn renaming_a_claim_changes_no_node_and_one_node_carries_two_occurrence_rows() {
     assert_eq!(twins.len(), 2);
     assert_ne!(twins[0].occurrence, twins[1].occurrence);
     assert_ne!(twins[0].qualified_name, twins[1].qualified_name);
+    // Structurally equal declarations share the node, and each name resolves
+    // to its own declaration's row, not to the first row of the node.
+    for twin in &twins {
+        let path: Vec<&str> = twin.qualified_name.iter().map(AsRef::as_ref).collect();
+        assert_eq!(admitted.claim_name_for_path(&path), Some(*twin), "{path:?}");
+    }
+    assert_eq!(
+        admitted
+            .claim_name_for_path(&["B"])
+            .map(|row| row.occurrence.ordinal),
+        Some(1)
+    );
 }
 
 #[trace("TC-477", "FR-371-AC-1")]
@@ -906,6 +921,331 @@ fn a_collision_with_a_name_shared_by_temporal_rows_names_the_first_row() {
         &format!("/claim_names/{index}/name"),
     );
     assert_document_pointer(&refusal, "/temporal_clause_names/0/name");
+}
+
+/// The `source_map` regions of one occurrence.
+fn regions_of(package: &Value, node: &Value, role: &str, ordinal: u64) -> Value {
+    package["source_map"]
+        .as_array()
+        .expect("source map")
+        .iter()
+        .find(|entry| {
+            &entry["node_id"] == node && entry["role"] == role && entry["ordinal"] == ordinal
+        })
+        .expect("source entry")["regions"]
+        .clone()
+}
+
+/// Gives `node` a second `claim` occurrence (ordinal 1) whose name-token region
+/// is `regions`, and re-derives the rows: the new occurrence's row carries the
+/// derived name and the declaration region the occurrence's regions give.
+fn add_claim_occurrence(package: &mut Value, node: &Value, regions: Value) {
+    let at = nodes(package)
+        .iter()
+        .position(|candidate| &candidate["node_id"] == node)
+        .expect("node");
+    package["semantic_graph"]["nodes"][at]["occurrences"]
+        .as_array_mut()
+        .expect("occurrences")
+        .push(json!({"role": "claim", "ordinal": 1}));
+    settle(package);
+    package["source_map"]
+        .as_array_mut()
+        .expect("source map")
+        .push(json!({"node_id": node, "role": "claim", "ordinal": 1, "regions": regions}));
+    refresh_identity(package);
+}
+
+/// A copy of the occurrence's regions moved to start at `at`, one byte wide.
+fn moved(regions: &Value, at: u64) -> Value {
+    let mut moved = regions.clone();
+    moved[0]["start"] = json!(at);
+    moved[0]["end"] = json!(at + 1);
+    moved
+}
+
+/// The row index of the node's `claim` occurrence `ordinal`.
+fn row_of(package: &Value, node: &Value, ordinal: u64) -> usize {
+    rows(package)
+        .iter()
+        .position(|row| {
+            &row["declaration"] == node
+                && row["occurrence"]["role"] == "claim"
+                && row["occurrence"]["ordinal"] == ordinal
+        })
+        .expect("row")
+}
+
+#[trace("TC-477", "FR-371-AC-10")]
+#[test]
+fn the_rows_of_one_declaration_share_its_name_and_are_no_duplicates() {
+    let (mut package, index, _) = namespace_package();
+    let node = rows(&package)[index]["declaration"].clone();
+    // One declaration, two occurrences of one node: the second occurrence's
+    // name token lies inside the first's region, so both rows carry one region.
+    let regions = regions_of(&package, &node, "claim", 0);
+    add_claim_occurrence(&mut package, &node, regions);
+    let (first, second) = (row_of(&package, &node, 0), row_of(&package, &node, 1));
+    assert_eq!(
+        rows(&package)[first]["declaration_region"],
+        rows(&package)[second]["declaration_region"]
+    );
+    assert_eq!(
+        rows(&package)[first]["name"],
+        rows(&package)[second]["name"]
+    );
+    assert_eq!(
+        rows(&package)[first]["qualified_name"],
+        rows(&package)[second]["qualified_name"]
+    );
+    let admitted = admitted(read_all(&package));
+    let path: Vec<String> = serde_json::from_value(rows(&package)[first]["qualified_name"].clone())
+        .expect("qualified name");
+    // The lookup returns the least `claim` row.
+    assert_eq!(
+        admitted.claim_name_for_path(&path),
+        Some(&admitted.claim_names().expect("rows")[first])
+    );
+    // One declaration has one name: the second row renamed refuses at the name.
+    let mut renamed = package.clone();
+    rename_row(&mut renamed, second, "Other", json!(["Other"]));
+    assert_refusal(
+        read_all(&renamed),
+        Code::InvalidPackage,
+        Some(Cause::InvalidValue),
+        &format!("/claim_names/{second}/name"),
+    );
+    // The same name over another region is another declaration: a duplicate.
+    let mut apart = package.clone();
+    let key = &mut apart["source_map"]
+        .as_array_mut()
+        .expect("source map")
+        .iter_mut()
+        .find(|entry| entry["node_id"] == node && entry["ordinal"] == 1)
+        .expect("second occurrence")["regions"];
+    *key = moved(key, 7000);
+    let name = rows(&apart)[first]["name"].clone();
+    let path = rows(&apart)[first]["qualified_name"].clone();
+    refresh_identity(&mut apart);
+    apart["claim_names"][second]["name"] = name;
+    apart["claim_names"][second]["qualified_name"] = path;
+    let refusal = assert_refusal(
+        read_all(&apart),
+        Code::AmbiguousDeclaration,
+        Some(Cause::AmbiguousName),
+        &format!("/claim_names/{second}/qualified_name"),
+    );
+    assert_document_pointer(&refusal, &format!("/claim_names/{first}/qualified_name"));
+}
+
+/// A derived conjunction node, as FSpec's `CL-P7` and `CL-R17` shape it: a
+/// second node carries a row for the declaration of another.
+/// Two nodes carry one name: `other` conjoins the declaration of `own`, so its
+/// second row repeats `own`'s name, path and region. Returns the package, the
+/// two node ids and the conjoined row.
+fn conjoined_package() -> (Value, Value, Value, usize) {
+    let (mut package, index, _) = namespace_package();
+    let own = rows(&package)[0]["declaration"].clone();
+    let other = rows(&package)[index]["declaration"].clone();
+    assert_ne!(own, other);
+    let own_region = regions_of(
+        &package,
+        &own,
+        rows(&package)[0]["occurrence"]["role"]
+            .as_str()
+            .expect("role"),
+        rows(&package)[0]["occurrence"]["ordinal"]
+            .as_u64()
+            .expect("ordinal"),
+    );
+    add_claim_occurrence(&mut package, &other, own_region);
+    let conjoined = row_of(&package, &other, 1);
+    for member in ["name", "qualified_name", "declaration_region"] {
+        let held = rows(&package)[0][member].clone();
+        package["claim_names"][conjoined][member] = held;
+    }
+    (package, own, other, conjoined)
+}
+
+#[trace("TC-477", "FR-371-AC-6")]
+#[test]
+fn the_own_node_check_costs_the_declaration_set_elements_it_compares() {
+    let (package, own, other, conjoined) = conjoined_package();
+    // `own`'s set is its one declaration; `other`'s set holds its own
+    // declaration and `own`'s.
+    let set = |node: &Value| -> usize {
+        let mut keys: Vec<_> = rows(&package)
+            .iter()
+            .filter(|row| &row["declaration"] == node)
+            .map(|row| row["declaration_region"].to_string())
+            .collect();
+        keys.sort();
+        keys.dedup();
+        keys.len()
+    };
+    let (inner, outer) = (set(&own), set(&other));
+    assert!(inner < outer);
+    let evidence = evidence_for(&package);
+    let shared = smallest_deciding_work_with(&package, &evidence);
+    // The same package with the conjoined row a declaration and name of its
+    // own has no name on two nodes and compares no sets.
+    let mut apart = package.clone();
+    let region = &mut apart["claim_names"][conjoined]["declaration_region"];
+    region["end"] = json!(region["end"].as_u64().expect("end") + 1);
+    rename_row(&mut apart, conjoined, "Alone", json!(["Alone"]));
+    admitted(read_all(&apart));
+    assert_eq!(
+        shared - smallest_deciding_work_with(&apart, &evidence),
+        (inner + outer) as u64
+    );
+}
+
+#[trace("TC-477", "FR-371-AC-6")]
+#[test]
+fn the_own_node_check_costs_two_work_visits_for_each_row() {
+    // One node with `extra` further claim occurrences of one declaration (0 or
+    // 1 here): the rows repeat one name. The marginal cost of one more row, beyond what a
+    // package refused at its first join pays, is the new row's join scan, its
+    // region compares, one coverage visit, one one-namespace visit and the
+    // own-node check's two.
+    let build = |extra: usize| {
+        let mut package = StatePackage::new().value;
+        let invariant = nodes(&package)
+            .iter()
+            .position(|node| {
+                node["semantic_form"] == "state_clause"
+                    && node["body"]["operation"]["member"]["clause"] == "invariant"
+            })
+            .expect("invariant clause");
+        for ordinal in 1..=extra as u64 {
+            package["semantic_graph"]["nodes"][invariant]["occurrences"]
+                .as_array_mut()
+                .expect("occurrences")
+                .push(json!({"role": "claim", "ordinal": ordinal}));
+            settle(&mut package);
+            let id = nodes(&package)[invariant]["node_id"].clone();
+            let mut entry = package["source_map"]
+                .as_array()
+                .expect("source map")
+                .iter()
+                .find(|entry| entry["node_id"] == id)
+                .expect("source entry")
+                .clone();
+            entry["role"] = json!("claim");
+            entry["ordinal"] = json!(ordinal);
+            let held = package["source_map"].as_array_mut().expect("source map");
+            held.retain(|candidate| {
+                !(candidate["node_id"] == id
+                    && candidate["role"] == "claim"
+                    && candidate["ordinal"] == ordinal)
+            });
+            held.push(entry);
+            refresh_identity(&mut package);
+        }
+        let node = nodes(&package)[invariant]["node_id"].clone();
+        let regions = regions_of(&package, &node, "claim", 0);
+        (package, node, regions)
+    };
+    let (two, node, regions) = build(1);
+    let (one, _, _) = build(0);
+    let first = |package: &Value| {
+        let mut damaged = package.clone();
+        damaged["claim_names"][0]["declaration"] =
+            json!({"package": "absent", "path": ["nothing"], "ordinal": 0});
+        damaged
+    };
+    for package in [&one, &two] {
+        admitted(read_all(package));
+        assert!(package["temporal_clause_names"].as_array().is_some());
+    }
+    let measure = |package: &Value| smallest_deciding_work_with(package, &evidence_for(package));
+    let decided = measure(&two) - measure(&one);
+    let refused_at_first_join = measure(&first(&two)) - measure(&first(&one));
+    let occurrences = nodes(&two)
+        .iter()
+        .find(|candidate| candidate["node_id"] == node)
+        .expect("node")["occurrences"]
+        .as_array()
+        .expect("occurrences")
+        .len();
+    let region_count = regions.as_array().expect("regions").len();
+    assert_eq!(
+        decided - refused_at_first_join,
+        (occurrences + region_count + 1 + 1 + 2) as u64
+    );
+}
+
+#[trace("TC-477", "FR-371-AC-10")]
+#[test]
+fn a_name_on_two_nodes_resolves_to_the_node_whose_declaration_set_nests() {
+    let (package, own, other, _) = conjoined_package();
+    let name = rows(&package)[0]["qualified_name"].clone();
+    let path: Vec<String> = serde_json::from_value(name).expect("path");
+    let admitted = admitted(read_all(&package));
+    // The declaration's own node answers, never the node that conjoins it.
+    assert_eq!(
+        admitted.claim_name_for_path(&path),
+        Some(&admitted.claim_names().expect("rows")[0])
+    );
+    // Give `own` a second declaration: the two sets `{own, B}` and
+    // `{other, own}` no longer nest.
+    let mut apart = package;
+    add_claim_occurrence_row(&mut apart, &own, 9000, "B");
+    let conjoined = row_of(&apart, &other, 1);
+    let refusal = assert_refusal(
+        read_all(&apart),
+        Code::AmbiguousDeclaration,
+        Some(Cause::AmbiguousName),
+        &format!("/claim_names/{conjoined}/qualified_name"),
+    );
+    assert_document_pointer(&refusal, "/claim_names/0/qualified_name");
+}
+
+/// A second `claim` occurrence (ordinal 1) of `node` for a declaration named
+/// `name` of its own at byte `at`; the rows are re-derived and the new row named.
+fn add_claim_occurrence_row(package: &mut Value, node: &Value, at: u64, name: &str) {
+    let held = package["claim_names"].clone();
+    let regions = moved(&regions_of(package, node, "claim", 0), at);
+    let next = nodes(package)
+        .iter()
+        .find(|candidate| &candidate["node_id"] == node)
+        .map(|candidate| {
+            candidate["occurrences"]
+                .as_array()
+                .expect("occurrences")
+                .len()
+        })
+        .expect("node") as u64;
+    let position = nodes(package)
+        .iter()
+        .position(|candidate| &candidate["node_id"] == node)
+        .expect("node");
+    package["semantic_graph"]["nodes"][position]["occurrences"]
+        .as_array_mut()
+        .expect("occurrences")
+        .push(json!({"role": "claim", "ordinal": next}));
+    settle(package);
+    package["source_map"]
+        .as_array_mut()
+        .expect("source map")
+        .push(json!({"node_id": node, "role": "claim", "ordinal": next, "regions": regions}));
+    refresh_identity(package);
+    let added = row_of(package, node, next);
+    package["claim_names"][added]["name"] = json!(name);
+    package["claim_names"][added]["qualified_name"] = json!([name]);
+    // The earlier rows keep the names the test gave them.
+    for (at, row) in held.as_array().expect("rows").iter().enumerate() {
+        let mut position = at;
+        if let Some(found) = rows(package).iter().position(|candidate| {
+            candidate["declaration"] == row["declaration"]
+                && candidate["occurrence"] == row["occurrence"]
+        }) {
+            position = found;
+        }
+        for member in ["name", "qualified_name"] {
+            package["claim_names"][position][member] = row[member].clone();
+        }
+    }
 }
 
 #[trace("TC-477", "FR-371-AC-7")]

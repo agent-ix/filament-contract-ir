@@ -11,6 +11,10 @@ relationships:
     type: references
   - target: ix://agent-ix/filament-specification/TC-2015
     type: references
+  - target: ix://agent-ix/filament-specification/TC-2035
+    type: references
+  - target: ix://agent-ix/filament-specification/TC-2036
+    type: references
 ---
 # TC-477: Checked-package reader admits claim_names and refuses every dangling, duplicate and uncovered row
 
@@ -34,7 +38,8 @@ from the shared V2 fixture. No FSpec vector is copied into this repository.
 4. Point a row at a missing node, a temporal clause and a missing occurrence;
    end the path in another segment; rename the refinement row
    (FR-371-AC-3).
-5. Repeat a name, repeat a key, reverse two rows (FR-371-AC-4).
+5. Repeat a name across two declarations, repeat a key, reverse two rows
+   (FR-371-AC-4).
 6. Remove a row and remove the member (FR-371-AC-5).
 7. Measure the smallest deciding work limit of packages refused at different
    rows and during coverage (FR-371-AC-6).
@@ -48,8 +53,16 @@ from the shared V2 fixture. No FSpec vector is copied into this repository.
 11. Replay FSpec's `claim-name-vectors.json` over its patched base: `CL-P1` to
     `CL-P4`, `CL-S1` to `CL-S3` and `CL-R1` to `CL-R9` (TC-2011), `CL-P5`,
     `CL-R14` and `CL-R15` (TC-2012), `CL-P1`, `CL-P6`, `CL-S4` to `CL-S6` and
-    `CL-R10` to `CL-R13` (TC-2015), and `refinement-body-name-vectors.json`
-    (FR-371-AC-1 to FR-371-AC-5, FR-371-AC-7 to FR-371-AC-9).
+    `CL-R10` to `CL-R13` (TC-2015), `CL-P7`, `CL-P8`, `CL-R16` and `CL-R17`
+    (TC-2035), `CL-R14` and `CL-R18` (TC-2036), and
+    `refinement-body-name-vectors.json` (FR-371-AC-1 to FR-371-AC-5,
+    FR-371-AC-7 to FR-371-AC-11).
+12. Give a second row to one declaration, on its own node and on another node,
+    repeat and rename it, and read two nodes whose declaration sets do not nest;
+    look the name up (FR-371-AC-10).
+13. Read a hyper clause with no row for its body wrapper, give the wrapper a
+    `temporal_clause_names` row, and collide a hyper clause name with a temporal
+    clause name over equal regions (FR-371-AC-11).
 
 ## Expected Results
 
