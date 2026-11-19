@@ -1,7 +1,8 @@
 //! FR-059 and FR-060: state-graph claims and model terminal declarations.
 //!
 //! These are separate body steps. Shape and form fit are checked before target
-//! meaning, and all terminal nodes are checked before uniqueness by model.
+//! meaning. Several terminal nodes on one model node are admitted; rows are
+//! ordered by model node key, then terminal node key (FR-060-AC-8).
 
 use super::frame::StepGraph;
 use super::graph_storage::GraphIndex;
@@ -16,7 +17,7 @@ use super::{
 use crate::checked_package::common::{node_pointer, ValidationFailure};
 use crate::checked_package::shared::{
     CheckedOccurrenceRole, CheckedPackageRefusalCause as Cause, CheckedPackageRefusalCode as Code,
-    CheckedTerminalDuplicate, JsonPointer,
+    JsonPointer,
 };
 use std::sync::Arc;
 
@@ -30,7 +31,7 @@ pub enum TerminalDeclaration {
         /// The level-0 `self` parameter node, present exactly when the
         /// condition reads `self`.
         parameter: Option<CheckedNodeId>,
-        /// The Boolean condition expression node.
+        /// The Boolean `expression` or `value`/`literal` condition node.
         condition: CheckedNodeId,
     },
 }
@@ -42,6 +43,9 @@ pub struct TerminalRow {
     pub node: CheckedNodeId,
     /// The model node the declaration belongs to.
     pub model: CheckedNodeId,
+    /// The zero-based position of this row among the rows of `model`, in
+    /// terminal node key order; (`model`, `ordinal`) is the terminal key.
+    pub ordinal: u32,
     /// The declaration's mode and optional condition.
     pub declaration: TerminalDeclaration,
 }
@@ -360,8 +364,6 @@ pub(super) fn validate_terminal(
     meter: &mut WorkMeter,
 ) -> Result<(), ValidationFailure> {
     let graph = graph_nodes(nodes, kinds, index, owners);
-    let mut by_model: Vec<(&CheckedNodeId, &CheckedSemanticNodeV2)> = Vec::new();
-    let mut terminals = Vec::new();
     for (position, node) in graph.each(CheckedNodeKind::Temporal(TemporalForm::Terminal)) {
         let [model, mode, parameters, condition] = terms
             .get(position)
@@ -497,7 +499,10 @@ pub(super) fn validate_terminal(
                     condition,
                 ));
             };
-            if !matches!(kind, CheckedNodeKind::Expression(_)) {
+            if !matches!(
+                kind,
+                CheckedNodeKind::Expression(_) | CheckedNodeKind::Value(ValueForm::Literal)
+            ) {
                 return Err(failure(
                     Code::IllTyped,
                     Some(Cause::OperatorIneligible),
@@ -534,55 +539,14 @@ pub(super) fn validate_terminal(
             ));
         }
         claim_occurrences(node, position)?;
-        meter.push(&mut terminals, (position, node, model))?;
-    }
-    for (position, node, model) in terminals {
-        let first = match by_model.binary_search_by(|(held, _)| (*held).cmp(model)) {
-            Ok(at) => Some(by_model[at].1),
-            Err(at) => {
-                meter.room(&mut by_model, 1)?;
-                by_model.insert(at, (model, node));
-                None
-            }
-        };
-        if let Some(first) = first {
-            let mut refusal = failure(
-                Code::AmbiguousDeclaration,
-                Some(Cause::AmbiguousName),
-                node_pointer(position),
-                &node.node_id,
-            );
-            if let ValidationFailure::Refused(ref mut value) = refusal {
-                value.terminal_duplicate = Some(CheckedTerminalDuplicate::Nodes {
-                    first: first.node_id.clone(),
-                    second: node.node_id.clone(),
-                });
-            }
-            return Err(refusal);
-        }
-        if node.occurrences.len() > 1 {
-            let mut refusal = failure(
-                Code::AmbiguousDeclaration,
-                Some(Cause::AmbiguousName),
-                node_pointer(position),
-                &node.node_id,
-            );
-            if let ValidationFailure::Refused(ref mut value) = refusal {
-                value.terminal_duplicate = Some(CheckedTerminalDuplicate::Occurrences {
-                    node: node.node_id.clone(),
-                    first: node.occurrences[0].clone(),
-                    second: node.occurrences[1].clone(),
-                });
-            }
-            return Err(refusal);
-        }
     }
     Ok(())
 }
 
 impl CheckedPackageV2 {
-    /// The admitted model terminal declarations in ascending structural
-    /// terminal-node key order. A model without a terminal node has no row.
+    /// The admitted model terminal declarations ordered by the model node's
+    /// structural key, then the terminal node's. A model without a terminal
+    /// node has no row; a model with several has one row each.
     pub fn terminal_rows(&self) -> &[TerminalRow] {
         self.terminal_rows.as_slice()
     }
@@ -658,10 +622,26 @@ pub(super) fn retain_rows(
         rows.push(TerminalRow {
             node: node_key,
             model,
+            ordinal: 0,
             declaration,
         });
     }
-    rows.sort_unstable_by(|left, right| left.node.cmp(&right.node));
+    rows.sort_unstable_by(|left, right| {
+        left.model
+            .cmp(&right.model)
+            .then_with(|| left.node.cmp(&right.node))
+    });
+    let mut ordinal = 0_u32;
+    for at in 0..rows.len() {
+        ordinal = if at > 0 && rows[at - 1].model == rows[at].model {
+            ordinal
+                .checked_add(1)
+                .expect("terminal row count is bounded by the node limit")
+        } else {
+            0
+        };
+        rows[at].ordinal = ordinal;
+    }
     super::read_charge::new_arc(budget, site, rows)
 }
 

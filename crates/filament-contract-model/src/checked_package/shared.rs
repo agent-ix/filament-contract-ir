@@ -371,27 +371,6 @@ pub struct CheckedExtensionRefusalDetail {
     pub actual_semantic_type: Option<CheckedNodeId>,
 }
 
-/// The two identities involved in a terminal declaration duplicate.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub enum CheckedTerminalDuplicate {
-    /// Distinct terminal nodes for the same model, in node-id order.
-    Nodes {
-        /// The earlier terminal node.
-        first: CheckedNodeId,
-        /// The terminal node whose uniqueness check failed.
-        second: CheckedNodeId,
-    },
-    /// Repeated claim occurrences on one terminal node.
-    Occurrences {
-        /// The terminal node carrying both occurrences.
-        node: CheckedNodeId,
-        /// Its first claim occurrence.
-        first: CheckedOccurrence,
-        /// Its second claim occurrence.
-        second: CheckedOccurrence,
-    },
-}
-
 /// Protocol control information retained at a typed reader refusal.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub enum CheckedProtocolRefusalDetail {
@@ -542,8 +521,6 @@ pub struct CheckedPackageRefusal {
     pub extension_detail: Option<Box<CheckedExtensionRefusalDetail>>,
     /// Protocol event, type or interval context for a control refusal.
     pub protocol_detail: Option<Box<CheckedProtocolRefusalDetail>>,
-    /// Both parties to a terminal declaration duplicate, when applicable.
-    pub terminal_duplicate: Option<CheckedTerminalDuplicate>,
 }
 
 impl std::fmt::Display for CheckedPackageRefusal {
@@ -576,7 +553,6 @@ impl CheckedPackageRefusal {
             document_pointer: fields.document_pointer,
             extension_detail: None,
             protocol_detail: None,
-            terminal_duplicate: None,
         }
     }
 
