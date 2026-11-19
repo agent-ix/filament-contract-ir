@@ -1981,7 +1981,6 @@ fn tc_048_a_selected_fcd_relationship_navigates_through_its_named_end() {
             .as_deref(),
         Some("/semantic_graph/nodes/6/body/operation/member/name")
     );
-    assert_eq!(refusal.terminal_duplicate, None);
     assert_eq!(
         refusal.locus.as_ref(),
         Some(

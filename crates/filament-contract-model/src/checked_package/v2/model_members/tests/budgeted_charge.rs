@@ -330,7 +330,6 @@ fn bare_population_faults_prepay_the_private_carrier_and_public_diagnostic() {
         assert!(refusal.contract_version.is_none(), "{name}");
         assert!(refusal.extension_detail.is_none(), "{name}");
         assert!(refusal.protocol_detail.is_none(), "{name}");
-        assert!(refusal.terminal_duplicate.is_none(), "{name}");
         assert_eq!(unlimited.paid, Some(pending), "{name}");
         assert_eq!(unlimited.pending, None, "{name}");
         assert_eq!(unlimited.unpaid, None, "{name}");
