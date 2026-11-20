@@ -1882,7 +1882,10 @@ impl MemberCheck<'_> {
                     | ScalarTypeForm::String
                     | ScalarTypeForm::Uuid
                     | ScalarTypeForm::Timestamp
+                    | ScalarTypeForm::Bytes
+                    | ScalarTypeForm::JsonObject
                     | ScalarTypeForm::Enum
+                    | ScalarTypeForm::Unit
                     | ScalarTypeForm::CompoundUnit,
                 ) => {}
                 CheckedNodeKind::CompositeType(CompositeTypeForm::Reference) => {}
