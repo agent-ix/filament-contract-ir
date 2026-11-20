@@ -1132,7 +1132,7 @@ fn protocol_location_origin_has_no_unpaid_allocation() {
             "application": application, "occurrence": occurrence, "term_ordinal": 0,
             "location": {"origin": {"kind": "type_declaration", "name": "Example"}, "path": []}
         }],
-        "dispatch_tables": [], "probabilistic_claims": []
+        "dispatch_tables": [], "body_locations": [], "probabilistic_claims": []
     });
     refresh_identity(&mut package);
     let observation = read_allocation_proof::measure_at::<ThreadCounter>(
@@ -1185,7 +1185,7 @@ fn protocol_location_refusals_have_no_unpaid_allocation() {
     row["occurrence"]["ordinal"] = serde_json::json!(999);
     package["checked_term_data"] = serde_json::json!({
         "equality_decisions": [], "protocol_locations": [row],
-        "dispatch_tables": [], "probabilistic_claims": []
+        "dispatch_tables": [], "body_locations": [], "probabilistic_claims": []
     });
     refresh_identity(&mut package);
     let observation = read_allocation_proof::measure_at::<ThreadCounter>(

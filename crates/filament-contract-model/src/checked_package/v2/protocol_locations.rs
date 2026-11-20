@@ -2,8 +2,10 @@
 //! Validation and borrowed reads of the canonical captured protocol locations.
 //! The common checked-term-data module owns all wire types and decoding.
 
-use super::checked_term_data::CheckedProtocolSemanticLocation;
-use super::checked_term_data::{CheckedKeyOrdinal, CheckedProtocolLocationOrigin};
+use super::checked_term_data::{
+    CheckedBodyLocationOrigin, CheckedBodySemanticLocation, CheckedKeyOrdinal,
+    CheckedProtocolLocationOrigin, CheckedProtocolSemanticLocation,
+};
 use super::dispatch_projection::{data_site, fail, invalid};
 use super::stage_storage::{self, Path};
 use super::{
@@ -18,11 +20,85 @@ use crate::checked_package::shared::{
 
 const MAX_SAFE: u64 = 9_007_199_254_740_991;
 
-fn at(row: usize) -> Path<'static> {
-    Path::root()
-        .key("checked_term_data")
-        .key("protocol_locations")
-        .index(row)
+fn at(array: &'static str, row: usize) -> Path<'static> {
+    Path::root().key("checked_term_data").key(array).index(row)
+}
+
+/// One captured location row of a retained array: the shared key, join and
+/// path shape of `protocol_locations` and `body_locations`.
+pub(super) trait LocationRow {
+    /// The local application node.
+    fn application(&self) -> &CheckedNodeId;
+    /// The occurrence of that application.
+    fn occurrence(&self) -> &CheckedOccurrence;
+    /// The term coordinate within the occurrence.
+    fn term_ordinal(&self) -> u64;
+    /// The captured child path.
+    fn path(&self) -> &[CheckedKeyOrdinal];
+    /// Check the origin wire grammar, without graph decisions.
+    fn check_origin(
+        &self,
+        array: &'static str,
+        index: usize,
+        meter: &mut WorkMeter,
+    ) -> Result<(), ValidationFailure>;
+}
+
+impl LocationRow for CheckedProtocolSemanticLocation {
+    fn application(&self) -> &CheckedNodeId {
+        &self.application
+    }
+    fn occurrence(&self) -> &CheckedOccurrence {
+        &self.occurrence
+    }
+    fn term_ordinal(&self) -> u64 {
+        self.term_ordinal
+    }
+    fn path(&self) -> &[CheckedKeyOrdinal] {
+        &self.location.path
+    }
+    fn check_origin(
+        &self,
+        array: &'static str,
+        index: usize,
+        meter: &mut WorkMeter,
+    ) -> Result<(), ValidationFailure> {
+        intake_protocol_origin(&self.location.origin, array, index, meter)
+    }
+}
+
+impl LocationRow for CheckedBodySemanticLocation {
+    fn application(&self) -> &CheckedNodeId {
+        &self.application
+    }
+    fn occurrence(&self) -> &CheckedOccurrence {
+        &self.occurrence
+    }
+    fn term_ordinal(&self) -> u64 {
+        self.term_ordinal
+    }
+    fn path(&self) -> &[CheckedKeyOrdinal] {
+        &self.location.path
+    }
+    fn check_origin(
+        &self,
+        array: &'static str,
+        index: usize,
+        meter: &mut WorkMeter,
+    ) -> Result<(), ValidationFailure> {
+        let CheckedBodyLocationOrigin::FunctionBody {
+            index: function_index,
+            ..
+        } = &self.location.origin;
+        if *function_index > MAX_SAFE {
+            return Err(malformed(
+                meter,
+                index,
+                at(array, index).key("location").key("origin").key("index"),
+            ));
+        }
+        Ok(())
+    }
 }
 
 /// A malformed-wire refusal at `path`, its diagnostic charged before it is built.
@@ -58,7 +134,8 @@ pub(super) fn validate<Body>(
     let Some(data) = wire.checked_term_data.as_ref() else {
         return Ok(());
     };
-    validate_rows(
+    let gap = validate_rows(
+        "protocol_locations",
         &wire.name,
         &wire.semantic_graph.nodes,
         kinds,
@@ -66,28 +143,55 @@ pub(super) fn validate<Body>(
         &wire.source_map,
         &data.protocol_locations,
         meter,
-    )
+    )?;
+    refuse_missing_predecessor("protocol_locations", gap, meter)
 }
 
-fn validate_rows<Body>(
+/// A retained successor witnesses a gap; a final row cannot witness an absent
+/// successor. Existing row shape, join, duplicate and ordering refusals keep
+/// their precedence over this array-level refusal.
+pub(super) fn refuse_missing_predecessor(
+    array: &'static str,
+    gap: bool,
+    meter: &mut WorkMeter,
+) -> Result<(), ValidationFailure> {
+    if gap {
+        return Err(invalid(
+            meter,
+            0,
+            Path::root().key("checked_term_data").key(array),
+        ));
+    }
+    Ok(())
+}
+
+/// Check every row of `array` in order and report whether a row follows a
+/// missing predecessor ordinal.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn validate_rows<Body, Row: LocationRow>(
+    array: &'static str,
     name: &str,
     nodes: &[CheckedSemanticNodeV2<Body>],
     kinds: &[CheckedNodeKind],
     terms: &[CheckedTerm],
     source_map: &[CheckedSourceMapEntry],
-    rows: &[CheckedProtocolSemanticLocation],
+    rows: &[Row],
     meter: &mut WorkMeter,
-) -> Result<(), ValidationFailure> {
-    let mut previous: Option<&CheckedProtocolSemanticLocation> = None;
+) -> Result<bool, ValidationFailure> {
+    let mut previous: Option<&Row> = None;
     let mut missing_predecessor = false;
     for (index, row) in rows.iter().enumerate() {
-        let here = at(index);
+        let here = at(array, index);
         work(meter, index, here, 1)?;
-        intake_local_application(&row.application, name, index, meter)?;
-        let term_ordinal = intake_term_ordinal(row.term_ordinal, index, meter)?;
+        intake_local_application(row.application(), name, array, index, meter)?;
+        let term_ordinal = intake_term_ordinal(row.term_ordinal(), array, index, meter)?;
         if let Some(before) = previous {
-            let key = (&row.application, &row.occurrence, term_ordinal);
-            let prior = (&before.application, &before.occurrence, before.term_ordinal);
+            let key = (row.application(), row.occurrence(), term_ordinal);
+            let prior = (
+                before.application(),
+                before.occurrence(),
+                before.term_ordinal(),
+            );
             if key == prior {
                 return Err(fail(
                     meter,
@@ -103,15 +207,15 @@ fn validate_rows<Body>(
         }
         let expected = previous
             .filter(|before| {
-                before.application == row.application && before.occurrence == row.occurrence
+                before.application() == row.application() && before.occurrence() == row.occurrence()
             })
-            .map_or(0, |before| before.term_ordinal + 1);
+            .map_or(0, |before| before.term_ordinal() + 1);
         missing_predecessor |= term_ordinal != expected;
         previous = Some(row);
         let mut selected = None;
         for (position, node) in nodes.iter().enumerate() {
             work(meter, index, here.key("application"), 1)?;
-            if node.node_id == row.application {
+            if &node.node_id == row.application() {
                 selected = Some((position, node));
                 break;
             }
@@ -129,7 +233,7 @@ fn validate_rows<Body>(
         let mut occurrence_found = false;
         for occurrence in &node.occurrences {
             work(meter, index, here.key("occurrence"), 1)?;
-            occurrence_found |= occurrence == &row.occurrence;
+            occurrence_found |= occurrence == row.occurrence();
         }
         if !occurrence_found {
             return Err(invalid(meter, index, here.key("occurrence")));
@@ -137,38 +241,32 @@ fn validate_rows<Body>(
         let mut mapped = false;
         for entry in source_map {
             work(meter, index, here.key("occurrence"), 1)?;
-            mapped |= entry.node_id == row.application
-                && entry.role == row.occurrence.role
-                && entry.ordinal == row.occurrence.ordinal;
+            mapped |= &entry.node_id == row.application()
+                && entry.role == row.occurrence().role
+                && entry.ordinal == row.occurrence().ordinal;
         }
         if !mapped {
             return Err(invalid(meter, index, here.key("occurrence")));
         }
-        intake_location_value(row, index, meter)?;
+        intake_location_value(row, array, index, meter)?;
     }
-    // A retained successor witnesses the gap; a final row cannot witness an absent successor.
-    // Existing row shape, join, duplicate and ordering refusals retain their precedence.
-    if missing_predecessor {
-        return Err(invalid(
-            meter,
-            0,
-            Path::root()
-                .key("checked_term_data")
-                .key("protocol_locations"),
-        ));
-    }
-    Ok(())
+    Ok(missing_predecessor)
 }
 
 /// Convert an incoming numeric term coordinate to its safe wire range.
 #[ix_trace_rs::string_edge]
 fn intake_term_ordinal(
     wire: u64,
+    array: &'static str,
     index: usize,
     meter: &mut WorkMeter,
 ) -> Result<u64, ValidationFailure> {
     if wire > MAX_SAFE {
-        return Err(malformed(meter, index, at(index).key("term_ordinal")));
+        return Err(malformed(
+            meter,
+            index,
+            at(array, index).key("term_ordinal"),
+        ));
     }
     Ok(wire)
 }
@@ -179,43 +277,27 @@ fn intake_term_ordinal(
 fn intake_local_application<'a>(
     wire_id: &'a CheckedNodeId,
     root_package: &str,
+    array: &'static str,
     index: usize,
     meter: &mut WorkMeter,
 ) -> Result<&'a CheckedNodeId, ValidationFailure> {
     if wire_id.package.as_ref() != root_package {
-        return Err(invalid(meter, index, at(index).key("application")));
+        return Err(invalid(meter, index, at(array, index).key("application")));
     }
     Ok(wire_id)
 }
 
 /// Check the captured origin and ordinal wire grammar, without graph decisions.
 #[ix_trace_rs::string_edge]
-fn intake_location_value(
-    row: &CheckedProtocolSemanticLocation,
+fn intake_location_value<Row: LocationRow>(
+    row: &Row,
+    array: &'static str,
     index: usize,
     meter: &mut WorkMeter,
 ) -> Result<(), ValidationFailure> {
-    let origin = at(index).key("location").key("origin");
-    match &row.location.origin {
-        CheckedProtocolLocationOrigin::TypeDeclaration { name } => {
-            work(
-                meter,
-                index,
-                origin,
-                u64::try_from(name.len()).unwrap_or(u64::MAX),
-            )?;
-            if name.is_empty() {
-                return Err(malformed(meter, index, origin));
-            }
-        }
-        CheckedProtocolLocationOrigin::ProtocolAttempt { protocol, attempt } => {
-            if *protocol > MAX_SAFE || *attempt > MAX_SAFE {
-                return Err(malformed(meter, index, origin));
-            }
-        }
-    }
-    for (position, ordinal) in row.location.path.iter().enumerate() {
-        let locus = at(index).key("location").key("path").index(position);
+    row.check_origin(array, index, meter)?;
+    for (position, ordinal) in row.path().iter().enumerate() {
+        let locus = at(array, index).key("location").key("path").index(position);
         work(meter, index, locus, 1)?;
         match ordinal {
             CheckedKeyOrdinal::Safe(value) if *value <= MAX_SAFE => {}
@@ -233,6 +315,36 @@ fn intake_location_value(
                 }
             }
             CheckedKeyOrdinal::Safe(_) => return Err(malformed(meter, index, locus)),
+        }
+    }
+    Ok(())
+}
+
+/// Check the protocol origin wire grammar.
+#[ix_trace_rs::string_edge]
+fn intake_protocol_origin(
+    origin_value: &CheckedProtocolLocationOrigin,
+    array: &'static str,
+    index: usize,
+    meter: &mut WorkMeter,
+) -> Result<(), ValidationFailure> {
+    let origin = at(array, index).key("location").key("origin");
+    match origin_value {
+        CheckedProtocolLocationOrigin::TypeDeclaration { name } => {
+            work(
+                meter,
+                index,
+                origin,
+                u64::try_from(name.len()).unwrap_or(u64::MAX),
+            )?;
+            if name.is_empty() {
+                return Err(malformed(meter, index, origin));
+            }
+        }
+        CheckedProtocolLocationOrigin::ProtocolAttempt { protocol, attempt } => {
+            if *protocol > MAX_SAFE || *attempt > MAX_SAFE {
+                return Err(malformed(meter, index, origin));
+            }
         }
     }
     Ok(())
@@ -348,6 +460,7 @@ mod tests {
             .chain([CheckedNodeKind::Expression(ExpressionForm::Reference)])
         {
             let result = validate_rows(
+                "protocol_locations",
                 "example",
                 std::slice::from_ref(&node),
                 &[kind],

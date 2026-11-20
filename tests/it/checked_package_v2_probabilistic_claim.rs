@@ -469,7 +469,7 @@ fn package_over(claims: Vec<(&str, Value)>, nodes: bool) -> Value {
     rows.sort_by_key(Value::to_string);
     value["checked_term_data"] = json!({
         "equality_decisions": [], "protocol_locations": [], "dispatch_tables": [],
-        "probabilistic_claims": rows,
+        "body_locations": [], "probabilistic_claims": rows,
     });
     refresh_identity(&mut value);
     value

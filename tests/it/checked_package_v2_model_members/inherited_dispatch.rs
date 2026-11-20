@@ -181,7 +181,7 @@ fn family_package(document: &Value, context: &str) -> Value {
     let context = node_id(&model_key("object_type", IDENTITY, context));
     let witness = json!({"declaring":declaring, "operation":"total"});
     package["checked_term_data"] = json!({
-        "equality_decisions":[], "protocol_locations":[], "probabilistic_claims":[],
+        "equality_decisions":[], "protocol_locations":[], "body_locations": [], "probabilistic_claims":[],
         "dispatch_tables":[{
             "application":call, "occurrence":{"role":"type", "ordinal":0},
             "operation":witness, "context":context,

@@ -88,6 +88,7 @@ mod operation_catalog;
 mod operation_catalog_index;
 pub(in crate::checked_package) mod read_charge;
 pub use operation_catalog::{initialize_operation_catalog, CatalogReadError};
+mod body_locations;
 mod claim_names;
 mod declaration_region;
 mod operation_bodies;
@@ -2336,6 +2337,7 @@ fn validate(
         )?;
     } else {
         require_probabilistic_sidecar(&kinds, &mut meter)?;
+        body_locations::validate(wire, &kinds, &terms, &[], &mut meter)?;
     }
     models.charge_selected_owner_visits(&mut meter)?;
     Ok(ValidatedPackage {
@@ -5831,7 +5833,7 @@ mod tests {
                     }
                 ]
             }],
-            "probabilistic_claims": []
+            "body_locations": [], "probabilistic_claims": []
         });
         let mut next_equality = populated["equality_decisions"][0].clone();
         next_equality["occurrence"]["ordinal"] = json!(1);
@@ -5847,7 +5849,7 @@ mod tests {
             .insert(0, next_location);
 
         let empty = json!({
-            "equality_decisions": [], "protocol_locations": [], "dispatch_tables": [], "probabilistic_claims": []
+            "equality_decisions": [], "protocol_locations": [], "dispatch_tables": [], "body_locations": [], "probabilistic_claims": []
         });
         let mut wire = tc_451_private_owned_wire();
         for sidecar in [None, Some(empty), Some(populated)] {

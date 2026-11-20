@@ -2579,7 +2579,127 @@ pub fn settle(package: &mut Value) {
     resolve_operands(package);
     join_application_dependencies(package);
     rebuild_source_map(package);
+    rebuild_body_locations(package);
     refresh_identity(package);
+}
+
+/// Gives every function body of `package` the `body_locations` rows its
+/// wire walk requires (FSpec FR-322): one row per term visit, at the node's
+/// first `expression` occurrence, with the empty path. A package whose
+/// `body_locations` a test already wrote is left alone.
+pub fn rebuild_body_locations(package: &mut Value) {
+    let Some(nodes) = package["semantic_graph"]["nodes"].as_array() else {
+        return;
+    };
+    if package["checked_term_data"]["body_locations"]
+        .as_array()
+        .is_some_and(|rows| !rows.is_empty())
+    {
+        return;
+    }
+    let positions: HashMap<String, usize> = nodes
+        .iter()
+        .enumerate()
+        .map(|(position, node)| (node["node_id"].to_string(), position))
+        .collect();
+    fn references<'a>(term: &'a Value, found: &mut Vec<&'a Value>) {
+        let mut stack = vec![term];
+        while let Some(next) = stack.pop() {
+            match next["term"].as_str() {
+                Some("reference") => found.push(&next["target"]),
+                Some("application") => {
+                    stack.extend(next["arguments"].as_array().into_iter().flatten().rev());
+                }
+                Some("aggregate") => {
+                    stack.extend(next["members"].as_array().into_iter().flatten().rev());
+                }
+                Some("binding") => stack.push(&next["value"]),
+                _ => {}
+            }
+        }
+    }
+    let mut rows: Vec<(usize, u64, u64, Value)> = Vec::new();
+    let mut index = 0_u64;
+    for node in nodes.iter().filter(|node| node["node_tag"] == "function") {
+        let Some(start) = node["body"]["members"]
+            .as_array()
+            .and_then(|members| members.iter().find(|member| member["name"] == "body"))
+            .filter(|member| member["value"]["term"] == "reference")
+            .map(|member| &member["value"]["target"])
+        else {
+            continue;
+        };
+        let name = node["declaration"]["qualified_name"]
+            .as_array()
+            .and_then(|name| name.last())
+            .and_then(Value::as_str)
+            .map_or_else(|| format!("f{index}"), str::to_owned);
+        let mut visits: HashMap<usize, u64> = HashMap::new();
+        let mut pending = vec![start];
+        while let Some(target) = pending.pop() {
+            let Some(&position) = positions.get(&target.to_string()) else {
+                continue;
+            };
+            let held = &nodes[position];
+            if held["node_tag"] != "expression" {
+                continue;
+            }
+            let control = held["body"]["term"] == "application"
+                && matches!(
+                    held["body"]["operation"]["identity"].as_str(),
+                    Some(
+                        "filament.op.control.let"
+                            | "filament.op.control.if"
+                            | "filament.op.control.case"
+                    )
+                );
+            if held["semantic_form"] != "reference" && !control {
+                let ordinal = visits.entry(position).or_default();
+                let occurrence = held["occurrences"]
+                    .as_array()
+                    .and_then(|all| all.iter().find(|each| each["role"] == "expression"))
+                    .cloned()
+                    .unwrap_or_else(|| json!({"role": "expression", "ordinal": 0}));
+                let row = json!({
+                    "application": held["node_id"],
+                    "occurrence": occurrence,
+                    "term_ordinal": *ordinal,
+                    "location": {
+                        "origin": {
+                            "kind": "function_body",
+                            "function": node["node_id"],
+                            "name": name,
+                            "index": index,
+                        },
+                        "path": [],
+                    },
+                });
+                rows.push((
+                    position,
+                    occurrence["ordinal"].as_u64().unwrap_or(0),
+                    *ordinal,
+                    row,
+                ));
+                *ordinal += 1;
+            }
+            let mut found = Vec::new();
+            references(&held["body"], &mut found);
+            pending.extend(found.into_iter().rev());
+        }
+        index += 1;
+    }
+    rows.sort_by_key(|row| (row.0, row.1, row.2));
+    let rows: Vec<Value> = rows.into_iter().map(|row| row.3).collect();
+    if rows.is_empty() && package.get("checked_term_data").is_none() {
+        return;
+    }
+    if package.get("checked_term_data").is_none() {
+        package["checked_term_data"] = json!({
+            "equality_decisions": [], "protocol_locations": [], "dispatch_tables": [],
+            "probabilistic_claims": [],
+        });
+    }
+    package["checked_term_data"]["body_locations"] = Value::Array(rows);
 }
 
 /// Keep synthetic clock and declared-name rows paired with their occurrences

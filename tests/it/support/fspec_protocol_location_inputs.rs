@@ -21,7 +21,7 @@ pub(crate) fn fixture(mut rows: Vec<Value>) -> (Value, usize) {
         row["application"] = application.clone();
         row["occurrence"] = occurrence.clone();
     }
-    wire["checked_term_data"] = json!({"equality_decisions":[], "protocol_locations":rows, "dispatch_tables":[], "probabilistic_claims":[]});
+    wire["checked_term_data"] = json!({"equality_decisions":[], "protocol_locations":rows, "dispatch_tables":[], "body_locations": [], "probabilistic_claims":[]});
     refresh_identity(&mut wire);
     (wire, position)
 }
@@ -74,7 +74,7 @@ pub(crate) fn published_leaf_fixture(vector: &Value) -> Value {
             bound
         })
         .collect();
-    wire["checked_term_data"] = json!({"equality_decisions":[], "protocol_locations":bound_rows, "dispatch_tables":[], "probabilistic_claims":[]});
+    wire["checked_term_data"] = json!({"equality_decisions":[], "protocol_locations":bound_rows, "dispatch_tables":[], "body_locations": [], "probabilistic_claims":[]});
     refresh_identity(&mut wire);
     wire
 }

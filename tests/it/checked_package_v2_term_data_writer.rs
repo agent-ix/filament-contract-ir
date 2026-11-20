@@ -67,7 +67,7 @@ fn empty_term_data() -> CheckedTermDataV2 {
         "equality_decisions": [],
         "protocol_locations": [],
         "dispatch_tables": [],
-        "probabilistic_claims": []
+        "body_locations": [], "probabilistic_claims": []
     }))
     .expect("closed empty sidecar")
 }
@@ -88,7 +88,7 @@ fn absent_and_present_empty_term_data_have_distinct_canonical_bytes() {
         "equality_decisions": [],
         "protocol_locations": [],
         "dispatch_tables": [],
-        "probabilistic_claims": []
+        "body_locations": [], "probabilistic_claims": []
     });
     assert_eq!(present, canonical(&expected));
     assert_ne!(present, absent);
@@ -148,7 +148,7 @@ fn typed_sidecar_preserves_all_arrays_candidate_order_and_byte_ceiling() {
                 }
             ]
         }],
-        "probabilistic_claims": []
+        "body_locations": [], "probabilistic_claims": []
     });
     let mut second_equality = raw["equality_decisions"][0].clone();
     second_equality["occurrence"]["ordinal"] = json!(1);
@@ -224,7 +224,7 @@ fn float_equality_schedule_roundtrips_in_checked_sidecar() {
         }],
         "protocol_locations": [],
         "dispatch_tables": [],
-        "probabilistic_claims": []
+        "body_locations": [], "probabilistic_claims": []
     }))
     .expect("float is a checked equality schedule");
 
@@ -253,7 +253,7 @@ fn present_dispatch_table_with_empty_candidates_is_preserved() {
             "context": node,
             "candidates": []
         }],
-        "probabilistic_claims": []
+        "body_locations": [], "probabilistic_claims": []
     });
     let term_data: CheckedTermDataV2 =
         serde_json::from_value(raw.clone()).expect("closed empty candidate table");
@@ -292,7 +292,7 @@ fn public_probabilistic_claim_row_has_exact_typed_canonical_bytes() {
     let mut expected = package;
     expected["checked_term_data"] = json!({
         "equality_decisions": [], "protocol_locations": [], "dispatch_tables": [],
-        "probabilistic_claims": [claim]
+        "body_locations": [], "probabilistic_claims": [claim]
     });
     assert_eq!(bytes, canonical(&expected));
 }

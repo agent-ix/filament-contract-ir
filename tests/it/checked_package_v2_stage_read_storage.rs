@@ -725,7 +725,7 @@ fn checked_term_data_tables_are_charged_at_the_checked_term_data() {
     let mut wire = v2_all_families();
     wire["checked_term_data"] = json!({
         "equality_decisions": [], "protocol_locations": [], "dispatch_tables": [],
-        "probabilistic_claims": []
+        "body_locations": [], "probabilistic_claims": []
     });
     check_stage(
         &wire,
@@ -942,7 +942,7 @@ fn with_equality_decision() -> Value {
         "units":[{"quantity_type":unit,"unit":unit,"form":{
             "kind":"declared","dimension_node":dimension,"dimension_terms":[],
             "root_unit":unit,"path":[]}}],"enum_members":[]
-    }],"protocol_locations":[],"dispatch_tables":[],"probabilistic_claims":[]});
+    }],"protocol_locations":[],"dispatch_tables":[],"body_locations": [], "probabilistic_claims":[]});
     wire
 }
 
