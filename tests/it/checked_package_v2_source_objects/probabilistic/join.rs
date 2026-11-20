@@ -6,8 +6,8 @@
 
 use super::super::*;
 use super::{
-    aggregate, id_value, int_literal, package, range, rational, redeclare, redepend, reference_to,
-    reward_function, segments, target_at,
+    aggregate, declared, id_value, int_literal, package, range, rational, redeclare, redepend,
+    reference_to, reward_function, segments, target_at,
 };
 use filament_contract_model::{NativeJoinBudget, NativeJoinChargeKind, SelectedSourceObjectError};
 
@@ -81,7 +81,7 @@ fn joined(
 ) -> Result<(), SelectedSourceObjectError> {
     let package = admitted(package);
     let selected = SelectedSourceObjects::from_stage_rows(&package, rows).expect("rows join");
-    selected.join_probabilistic(budget)
+    selected.join_probabilistic(&[], budget)
 }
 
 fn join(
@@ -174,7 +174,9 @@ fn the_golden_package_joins_and_its_typed_read_is_the_golden_one() {
     let selected =
         SelectedSourceObjects::from_stage_rows(&admitted, poke_rows()).expect("rows join");
     let mut budget = NativeJoinBudget::unlimited();
-    selected.join_probabilistic(&mut budget).expect("joined");
+    selected
+        .join_probabilistic(&[], &mut budget)
+        .expect("joined");
     let read = typed_read(&admitted);
     assert_eq!(read, golden_value("typed-read.json"));
     let independent: CheckedNodeId = serde_json::from_value(json!({
@@ -1155,6 +1157,170 @@ fn support_values_are_checked_against_the_entry_type_node() {
         budget.consumed().storage
     };
     assert_eq!(storage("1/3"), storage("1") + 2 + 2);
+}
+
+/// A source enumeration `name` with the `cases`, as the package node and the
+/// identity row the join reads it by.
+fn enumeration(
+    package: &mut Value,
+    name: &str,
+    cases: &[&str],
+) -> filament_contract_model::SelectedSourceEnumRow {
+    use filament_contract_model::{SelectedEnumDeclarationRow, SelectedEnumMemberRow};
+    use filament_exact::{EnumShape, NodeKey, PathSegment, VariantId};
+    let label = format!("qualified:{name}");
+    nodes_mut(package).push(declared(
+        plain(
+            &label,
+            "scalar_type",
+            "enum",
+            &id_value(&label),
+            &[],
+            "declaration",
+            json!({"term": "enum", "ordered": false, "members": cases}),
+        ),
+        &[name],
+    ));
+    let key = |text: &str| {
+        NodeKey::new("join-fixture", vec![PathSegment::Text(text.into())], 0).expect("key")
+    };
+    let variants: Vec<VariantId> = cases
+        .iter()
+        .map(|case| VariantId::new(key("owner"), *case).expect("variant"))
+        .collect();
+    let node = id(&label);
+    let source = source_identity();
+    filament_contract_model::SelectedSourceEnumRow {
+        declaration: SelectedEnumDeclarationRow {
+            structural_node: node.clone(),
+            source_authority: fixture_source()["authority"]
+                .as_str()
+                .expect("authority")
+                .into(),
+            source_identity: source.as_str().into(),
+            qualified_declaration: vec![name.into()],
+            node_key: key(name),
+            shape: EnumShape::new(false, variants.clone()),
+        },
+        members: cases
+            .iter()
+            .zip(variants)
+            .map(|(case, variant)| SelectedEnumMemberRow {
+                structural_node: id(&format!("value/enum_value/{name}/{case}")),
+                source_authority: fixture_source()["authority"]
+                    .as_str()
+                    .expect("authority")
+                    .into(),
+                source_identity: source.as_str().into(),
+                declaration_node: node.clone(),
+                declaration_qualified_name: vec![name.into()],
+                case: (*case).into(),
+                member_key: key(case),
+                variant,
+            })
+            .collect(),
+    }
+}
+
+/// FR-369-AC-23, FR-369-AC-26: a support value of an enumeration-typed entry
+/// is admitted when its literal is typed at the enumeration and names one of
+/// its cases, and refused otherwise; the cases compared are charged ahead.
+#[trace("TC-484", "FR-369-AC-23", "FR-369-AC-26")]
+#[test]
+fn an_enumeration_entry_checks_the_literal_against_the_cases_it_names() {
+    let mut package = package();
+    nodes_mut(&mut package).retain(|node| node["node_id"]["path"][2] != "reward_cost");
+    let status = enumeration(&mut package, "Status", &["ACTIVE", "DONE"]);
+    let other = enumeration(&mut package, "Shade", &["RED"]);
+    let status_node = id_value("qualified:Status");
+    let other_node = id_value("qualified:Shade");
+    let with_value = |value: Value| {
+        let mut package = package.clone();
+        edit_label(&mut package, "random_k", |node| {
+            node["body"]["members"][2]["value"]["value"] = json!("p");
+            node["body"]["members"][3]["value"] = aggregate(vec![aggregate(vec![
+                binding("value", value),
+                binding("weight", rational("1")),
+            ])]);
+            redepend(node);
+        });
+        settle(&mut package);
+        package
+    };
+    let entries = || rows(vec![data("k", &range()), data("p", &status_node)], vec![]);
+    let run = |value: Value, enums: &[filament_contract_model::SelectedSourceEnumRow]| {
+        let package = with_value(value);
+        let mut budget = NativeJoinBudget::unlimited();
+        let admitted = self::admitted(&package);
+        let selected =
+            SelectedSourceObjects::from_stage_rows(&admitted, entries()).expect("rows join");
+        let result = selected.join_probabilistic(enums, &mut budget);
+        (package, result, budget.consumed())
+    };
+    let named = |ty: &Value, case: &str| json!({"term": "literal", "type": ty, "value_kind": "enum", "value": case});
+    let both = [status.clone(), other.clone()];
+
+    // An admitted case, the first and the last.
+    let (_, first, first_cost) = run(named(&status_node, "ACTIVE"), &both);
+    first.expect("the first case is admitted");
+    let (_, last, last_cost) = run(named(&status_node, "DONE"), &both);
+    last.expect("the last case is admitted");
+    // The spelling of the value costs its bytes ("DONE" two fewer than
+    // "ACTIVE"), and each case compared a visit and the bytes of its text: the
+    // second case costs one more visit and the bytes of "DONE".
+    assert_eq!(
+        last_cost.work + ("ACTIVE".len() - "DONE".len()) as u64,
+        first_cost.work + 1 + "DONE".len() as u64
+    );
+
+    // A case the enumeration lacks, a case of another enumeration, and a
+    // literal typed at another declaration refuse at the literal.
+    for (case, value) in [
+        ("an unknown case", named(&status_node, "LATE")),
+        ("a case of another enumeration", named(&status_node, "RED")),
+        (
+            "a literal typed at another enumeration",
+            named(&other_node, "ACTIVE"),
+        ),
+    ] {
+        let (package, result, _) = run(value, &both);
+        let error = result.expect_err(case);
+        assert_eq!(error.code, RowError::InvalidValue, "{case}");
+        let at = format!(
+            "{}/members/0/members/0/value",
+            member_at(&package, "random_k", 3)
+        );
+        assert_eq!(locus_of(&error), at, "{case}");
+    }
+
+    // An enumeration `enums` does not hold refuses at the literal's type
+    // member.
+    let (package, result, _) = run(named(&status_node, "ACTIVE"), &[other]);
+    let error = result.expect_err("an absent enumeration");
+    assert_eq!(error.code, RowError::InvalidValue);
+    assert_eq!(
+        locus_of(&error),
+        format!(
+            "{}/members/0/members/0/value/type",
+            member_at(&package, "random_k", 3)
+        )
+    );
+
+    // A work allowance one short of the cases compared stops the join.
+    let allowed = last_cost.work;
+    let (_, stopped, _) = {
+        let package = with_value(named(&status_node, "DONE"));
+        let admitted = self::admitted(&package);
+        let selected =
+            SelectedSourceObjects::from_stage_rows(&admitted, entries()).expect("rows join");
+        let mut budget = NativeJoinBudget::new(allowed - 1, u64::MAX);
+        let result = selected.join_probabilistic(&both, &mut budget);
+        (package, result, budget.consumed())
+    };
+    assert_eq!(
+        stopped.expect_err("one unit short").code,
+        RowError::Incomplete
+    );
 }
 
 /// A row naming another type's operation by identity is no entry of the

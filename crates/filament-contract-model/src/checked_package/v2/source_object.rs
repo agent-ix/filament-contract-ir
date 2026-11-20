@@ -193,10 +193,10 @@ pub enum SelectedSourceObjectErrorCode {
     /// the context nor a transitive subtype of it (FR-366-AC-6).
     #[error("dispatch candidate is outside the source context's type family")]
     MismatchedIdentityWitness,
-    /// A probabilistic node's operation reference, parameter, support value,
-    /// workload coverage or reward parameter list disagrees with the identity
-    /// rows (FR-369-AC-26). Maps to `invalid_package`/`invalid-value`.
-    #[error("probabilistic node disagrees with the source-object identity rows")]
+    /// A value read against the source-object identity rows is refused at its
+    /// locus (FR-369-AC-26 for the probabilistic join; later joins reuse it).
+    /// Maps to `invalid_package`/`invalid-value`.
+    #[error("value disagrees with the source-object identity rows")]
     InvalidValue,
     /// The caller's budget denied a charge of the probabilistic join
     /// (FR-369): the read stopped at the first uncharged member.

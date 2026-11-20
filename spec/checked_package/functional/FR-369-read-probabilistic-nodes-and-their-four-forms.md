@@ -139,11 +139,14 @@ failure with `invalid_package` and cause `invalid-value`, at the failing member:
   quantities are then typed at that source's unit.
 
 The identity-row join is the metered method
-`SelectedSourceObjects::join_probabilistic(&self, budget: &mut NativeJoinBudget)
--> Result<(), SelectedSourceObjectError>`, which a caller runs after
+`SelectedSourceObjects::join_probabilistic(&self, enums: &[SelectedSourceEnumRow],
+budget: &mut NativeJoinBudget) -> Result<(), SelectedSourceObjectError>`, which a caller runs after
 `SelectedSourceObjects::from_stage_rows`
 ([FR-367](./FR-367-join-source-object-rows-and-field-reads.md)) has joined the
-source-object identity rows of a package the strict read admitted.
+source-object identity rows of a package the strict read admitted, with the
+source enumeration rows of that package
+([FR-352](./FR-352-project-admitted-exact-value-types.md)) as `enums`, the cases an
+enumeration-typed entry's support values name.
 `CheckedPackageV2::read` does not run it, because the read never receives the
 identity rows
 ([FR-374](./FR-374-join-source-timed-model-clock-places-at-the-identity-row-join.md)).
@@ -191,8 +194,9 @@ caller's shared `NativeJoinBudget`
 FR-352's post-admission joins charge (there is no second budget API): one
 visit per node met in ascending node-id order, per operation reference joined,
 per operation entry read, per parameter entry of the operation read, per
-supertype edge read, per support value checked and per reward function
-parameter compared, and for a workload one per element met by a lookup of its
+supertype edge read, per support value checked, per enumeration row met and per case compared
+when a support value of an enumeration-typed entry is checked, and per reward
+function parameter compared, and for a workload one per element met by a lookup of its
 lineage, declared operations or named operations; each visit that compares
 caller text (an entry identity, a parameter name, a literal's text) charges
 one more unit for each byte it compares. The join SHALL
@@ -200,7 +204,8 @@ charge FR-358 logical storage units ahead of the work they cover: the pointer
 of the failure it may name once before it starts (a budget that cannot pay for
 it stops the join with `Incomplete` and no locus), one unit for each list the
 join keeps and for each element pushed, and for each exact number it parses one
-unit and one for each limb of its digits. The join charges no read storage,
+unit and one for each limb of its digits, and for a rational written as a
+numerator over a denominator one more for the divisor it computes. The join charges no read storage,
 which only the strict read of FR-038 uses. A denied charge SHALL stop the
 join with `SelectedSourceObjectErrorCode::Incomplete` at the first uncharged
 member, the budget recording the FR-358 first unpaid kind, amount and locus,
@@ -289,20 +294,15 @@ union, for its nullary cases too), has no literal kind: FSpec has no literal
 form for these, and the reader's general literal check refuses it as
 `ill_typed`/`operator-ineligible` at the literal's `type`, before this join.
 
-### Planned
-
-**Source enumeration entries (QSL-2655).** `join_probabilistic` derives a
-support value's literal kind and membership from the entry's type node for
-the types FR-322 gives a selected parameter's: `Boolean`, `Integer`,
-`Int[lo, hi]`, `Rational`, `Rational[n1, n2; d1, d2]`, `Decimal`, `Float32`,
-`Float64`, `Text`, `Text[min, max; profile]`, `String`, `Uuid`, `Timestamp`, a
-unit (`Quantity<u>`) and a carried quantity over a `Rational[...]` carrier; a
-bounded quantity and an integer or decimal carried quantity have no literal
-kind there either, as in the strict read. An entry typed by a source
-enumeration has no derived literal kind in the join, because the identity rows
-carry no enumeration's cases, and refuses every support value: which input
-names the cases of a source enumeration, and so whether the join admits such
-a value, is awaiting an arch ruling. Owner: QSL-2655.
+**Source enumeration entries.** An entry typed by a source enumeration has the
+literal kind `enum`. `join_probabilistic` SHALL admit its support value when
+the literal is typed at that enumeration's declaration node and its text is
+one of the cases of the row in `enums` for that declaration (FR-369-AC-23), and
+SHALL refuse it as `InvalidValue` at the literal when the literal is typed at
+another declaration or names no case. An enumeration absent from `enums`
+refuses `InvalidValue` at the `type` member of the literal. A bounded quantity
+and an integer or decimal carried quantity have no literal kind, as in the
+strict read.
 
 IR reads FSpec FR-322 "Results" as leaving a function with no `body` binding (a
 clause function) outside the comparison of a body root with the function's

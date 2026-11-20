@@ -20,6 +20,7 @@ use super::source_object::{
     is_source_declared_object_type, SelectedSourceObjectError, SelectedSourceObjectErrorCode,
     SelectedSourceObjectMember, SelectedSourceObjectRow, SelectedSourceObjects,
 };
+use super::SelectedSourceEnumRow;
 use super::{
     BoundedDomainForm, CheckedNodeId, CheckedNodeKind, CheckedPackageV2, CheckedTerm, LiteralKind,
     ProbabilisticForm, ScalarTypeForm, ValueForm,
@@ -50,17 +51,29 @@ fn operation_of<'a>(identity: &'a str, type_name: &str) -> Option<&'a str> {
     (declared == type_name).then_some(operation)
 }
 
+/// Whether the enumeration case `candidate` is the case `case` names.
+#[ix_trace_rs::string_edge]
+fn is_case(candidate: &str, case: &str) -> bool {
+    candidate == case
+}
+
 /// The literal kind, the unit node position of a quantity and the membership
 /// rule of the values of a data entry's type node.
 struct Slot<'p> {
     kind: LiteralKind,
     unit: Option<usize>,
     rule: Bounded<'p>,
+    /// The source enumeration an enumeration entry's type node is, whose cases
+    /// its support values name.
+    enumeration: Option<&'p CheckedNodeId>,
 }
 
 struct Join<'p, 'b> {
     package: &'p CheckedPackageV2,
     selected: &'p SelectedSourceObjects<'p>,
+    /// The admitted source enumerations (FR-352) the join checks enumeration
+    /// literals against.
+    enums: &'b [SelectedSourceEnumRow],
     /// The caller's budget: work and logical storage are charged to it.
     budget: &'b mut NativeJoinBudget,
 }
@@ -117,10 +130,10 @@ impl ExactParse for Parser<'_> {
 /// `term` as the integer literal it spells, for the bounds of a type node the
 /// strict read has already admitted.
 fn integer_of(term: Option<&CheckedTerm>) -> Option<i128> {
-    match term? {
-        CheckedTerm::Literal { value, .. } => value.as_str()?.parse().ok(),
-        _ => None,
-    }
+    let CheckedTerm::Literal { value, .. } = term? else {
+        return None;
+    };
+    value.as_str()?.parse().ok()
 }
 
 fn natural_of(term: Option<&CheckedTerm>) -> Option<u64> {
@@ -228,7 +241,7 @@ impl<'p> Join<'p, '_> {
     }
 
     /// The literal kind and membership rule of a data entry.
-    fn slot(&self, entry: &SelectedSourceObjectMember) -> Option<Slot<'p>> {
+    fn slot(&self, entry: &'p SelectedSourceObjectMember) -> Option<Slot<'p>> {
         let package = self.package;
         let at = package.position_of(entry.type_node.as_ref()?)?;
         let body = package.term_at(at)?;
@@ -237,6 +250,7 @@ impl<'p> Join<'p, '_> {
                 kind,
                 unit: None,
                 rule: Bounded::Free,
+                enumeration: None,
             })
         };
         match package.kinds.get(at)? {
@@ -245,6 +259,7 @@ impl<'p> Join<'p, '_> {
                     kind: LiteralKind::Boolean,
                     unit: None,
                     rule: Bounded::Boolean,
+                    enumeration: None,
                 }),
                 ScalarTypeForm::Integer => plain(LiteralKind::Integer),
                 ScalarTypeForm::Rational => plain(LiteralKind::Rational),
@@ -259,6 +274,13 @@ impl<'p> Join<'p, '_> {
                     kind: LiteralKind::Quantity,
                     unit: Some(at),
                     rule: Bounded::Free,
+                    enumeration: None,
+                }),
+                ScalarTypeForm::Enum => Some(Slot {
+                    kind: LiteralKind::Enum,
+                    unit: None,
+                    rule: Bounded::Free,
+                    enumeration: entry.type_node.as_ref(),
                 }),
                 ScalarTypeForm::CarriedQuantity => {
                     let unit = bound(body, 0).and_then(target)?;
@@ -267,9 +289,16 @@ impl<'p> Join<'p, '_> {
                         kind: LiteralKind::Quantity,
                         unit: Some(package.position_of(unit)?),
                         rule: Bounded::Rationals(self.rational_bounds(carrier)?),
+                        enumeration: None,
                     })
                 }
-                _ => None,
+                ScalarTypeForm::Bytes
+                | ScalarTypeForm::JsonObject
+                | ScalarTypeForm::Dimension
+                | ScalarTypeForm::DimensionEquivalence
+                | ScalarTypeForm::CompoundUnit
+                | ScalarTypeForm::BoundedQuantity
+                | ScalarTypeForm::ClockReference => None,
             },
             CheckedNodeKind::BoundedDomain(BoundedDomainForm::IntegerRange) => Some(Slot {
                 kind: LiteralKind::Integer,
@@ -278,11 +307,13 @@ impl<'p> Join<'p, '_> {
                     lower: integer_of(bound(body, 0))?,
                     upper: integer_of(bound(body, 1))?,
                 }),
+                enumeration: None,
             }),
             CheckedNodeKind::BoundedDomain(BoundedDomainForm::RationalRange) => Some(Slot {
                 kind: LiteralKind::Rational,
                 unit: None,
                 rule: Bounded::Rationals(self.rational_bounds(at)?),
+                enumeration: None,
             }),
             CheckedNodeKind::BoundedDomain(BoundedDomainForm::TextBounds) => Some(Slot {
                 kind: LiteralKind::Text,
@@ -292,8 +323,30 @@ impl<'p> Join<'p, '_> {
                     upper: natural_of(bound(body, 1))?,
                     profile: text(bound(body, 2)?)?,
                 },
+                enumeration: None,
             }),
-            _ => None,
+            CheckedNodeKind::BoundedDomain(
+                BoundedDomainForm::DecimalRange
+                | BoundedDomainForm::FloatRounding
+                | BoundedDomainForm::CollectionBounds
+                | BoundedDomainForm::ModelPopulation
+                | BoundedDomainForm::FiniteTracePopulation,
+            )
+            | CheckedNodeKind::Extension(_)
+            | CheckedNodeKind::Hybrid(_)
+            | CheckedNodeKind::TimedModel(_)
+            | CheckedNodeKind::Probabilistic(_)
+            | CheckedNodeKind::CompositeType(_)
+            | CheckedNodeKind::Value(_)
+            | CheckedNodeKind::Expression(_)
+            | CheckedNodeKind::Function(_)
+            | CheckedNodeKind::Model(_)
+            | CheckedNodeKind::Relation(_)
+            | CheckedNodeKind::State(_)
+            | CheckedNodeKind::Temporal(_)
+            | CheckedNodeKind::Protocol(_)
+            | CheckedNodeKind::Claim(_)
+            | CheckedNodeKind::Correspondence(_) => None,
         }
     }
 
@@ -392,6 +445,11 @@ impl<'p> Join<'p, '_> {
             {
                 return Err(Self::refuse(&value_at));
             }
+            if let Some(enumeration) = slot.enumeration {
+                let type_at = || value_at().key("type");
+                self.enum_member(holder, enumeration, type_id, value, &value_at, &type_at)?;
+                continue;
+            }
             let mut parser = Parser {
                 budget: &mut *self.budget,
                 position: holder,
@@ -407,6 +465,47 @@ impl<'p> Join<'p, '_> {
             }
         }
         Ok(())
+    }
+
+    /// The support value `value` typed `type_id` against the cases of the
+    /// enumeration `enumeration` its entry is typed by: one visit for each
+    /// enumeration row met and, with the bytes of its text, one for each case
+    /// compared. An enumeration `enums` does not hold refuses at the literal's
+    /// `type` member; a literal typed at another declaration, or naming no
+    /// case, at the literal.
+    fn enum_member(
+        &mut self,
+        holder: usize,
+        enumeration: &CheckedNodeId,
+        type_id: &CheckedNodeId,
+        value: &super::CheckedJson,
+        value_at: At,
+        type_at: At,
+    ) -> Result<(), Failure> {
+        let mut found = None;
+        for row in self.enums {
+            self.charge(holder, value_at)?;
+            if row.declaration.structural_node == *enumeration {
+                found = Some(row);
+                break;
+            }
+        }
+        let Some(row) = found else {
+            return Err(Self::refuse(type_at));
+        };
+        if type_id != enumeration {
+            return Err(Self::refuse(value_at));
+        }
+        let Some(case) = value.as_str() else {
+            return Err(Self::refuse(value_at));
+        };
+        for member in &row.members {
+            self.charge_text(holder, member.case.len(), value_at)?;
+            if is_case(&member.case, case) {
+                return Ok(());
+            }
+        }
+        Err(Self::refuse(value_at))
     }
 
     /// The reward function's `parameters` against the operation entry's, by
@@ -654,6 +753,7 @@ impl SelectedSourceObjects<'_> {
     /// uncharged member when `budget` denies a charge, with no partial view.
     pub fn join_probabilistic(
         &self,
+        enums: &[SelectedSourceEnumRow],
         budget: &mut NativeJoinBudget,
     ) -> Result<(), SelectedSourceObjectError> {
         budget.resume();
@@ -673,6 +773,7 @@ impl SelectedSourceObjects<'_> {
         let mut join = Join {
             package: self.package(),
             selected: self,
+            enums,
             budget,
         };
         let joined = join.run();

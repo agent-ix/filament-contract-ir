@@ -198,7 +198,7 @@ fn literal_unit(package: &DomainModel, slot: &TypedSlot) -> Option<CheckedNodeId
 /// no normalization). The profile is the declaration's wire text, so its words
 /// gate the branch.
 #[ix_trace_rs::string_edge]
-pub(super) fn text_length(value: &str, profile: &str) -> Option<usize> {
+fn text_length(value: &str, profile: &str) -> Option<usize> {
     let normal = match profile {
         "nfc" => is_nfc(value),
         "nfd" => is_nfd(value),
@@ -251,7 +251,22 @@ impl<'a> Bounded<'a> {
                 upper: bounds.upper,
                 profile: &bounds.profile,
             },
-            _ => Self::Free,
+            MemberType::Integer
+            | MemberType::Float32
+            | MemberType::Float64
+            | MemberType::String
+            | MemberType::Uuid
+            | MemberType::Timestamp
+            | MemberType::Bytes
+            | MemberType::JsonObject
+            | MemberType::Clock
+            | MemberType::Reference(_)
+            | MemberType::Record(_)
+            | MemberType::Tuple(_)
+            | MemberType::Variant(_)
+            | MemberType::Quantity(_)
+            | MemberType::Option(_)
+            | MemberType::Collection { .. } => Self::Free,
         }
     }
 }
