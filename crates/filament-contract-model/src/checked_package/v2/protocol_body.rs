@@ -3,7 +3,7 @@
 //! The protocol step runs after refinement and timed models, before operations.
 
 use super::graph_storage::GraphIndex;
-use super::model_members::{Budget, ModelOwners};
+use super::model_members::{Budget, DeclarationForm, MemberType, ModelOwners, Owner};
 use super::stage_storage::{
     node_id_clone_bytes, node_path, refuse_at, refuse_unlocated, Path, Position, Refusal,
 };
@@ -1856,9 +1856,100 @@ impl MemberCheck<'_> {
         }
     }
 
+    /// FR-726: whether the model document declares a `float32` or `float64`
+    /// leaf, at any depth, under the model-owned record, tuple or variant at
+    /// `position`. The graph node of such a declaration has an empty body, so
+    /// its fields, tuple positions and variant payloads are read from the
+    /// selected model document through the same member-type accessors the
+    /// model-member rules use. Each declaration is expanded once.
+    fn model_value_holds_ieee_leaf(
+        &self,
+        position: usize,
+        owners: &ModelOwners<'_>,
+        meter: &mut WorkMeter,
+    ) -> Result<bool, ValidationFailure> {
+        let Some(root) = owners.owner_by_key(&self.nodes[position].node_id) else {
+            return Ok(false);
+        };
+        let mut visited = Vec::new();
+        let mut pending: Vec<MemberType> = meter.vec(1)?;
+        meter.insert_sorted(&mut visited, (root.package.identity.as_ref(), root.node))?;
+        self.expand_model_value(root, &mut pending, meter)?;
+        while let Some(member) = pending.pop() {
+            node_work(meter, position)?;
+            match member {
+                MemberType::Float32 | MemberType::Float64 => return Ok(true),
+                MemberType::Option(inner) => meter.push(&mut pending, *inner)?,
+                MemberType::Collection { element, .. } => meter.push(&mut pending, *element)?,
+                MemberType::Record(id) | MemberType::Tuple(id) | MemberType::Variant(id) => {
+                    let Some(owner) = owners.owner_by_key(&id) else {
+                        continue;
+                    };
+                    let key = (owner.package.identity.as_ref(), owner.node);
+                    if meter.insert_sorted(&mut visited, key)? {
+                        self.expand_model_value(owner, &mut pending, meter)?;
+                    }
+                }
+                _ => {}
+            }
+        }
+        Ok(false)
+    }
+
+    /// Pushes the member type of every field of a model record (own and
+    /// inherited), every position of a model tuple and every payload of a
+    /// model variant.
+    fn expand_model_value<'m>(
+        &self,
+        owner: Owner<'m>,
+        pending: &mut Vec<MemberType>,
+        meter: &mut WorkMeter,
+    ) -> Result<(), ValidationFailure> {
+        let package = owner.package;
+        match owner.form {
+            DeclarationForm::RecordValueType => {
+                for field in package
+                    .record_types
+                    .get(owner.node)
+                    .map_or(&[][..], |record| record.fields.as_slice())
+                {
+                    if let Some(member) = package.slot_type(&field.slot) {
+                        meter.push(pending, member)?;
+                    }
+                }
+            }
+            DeclarationForm::TupleValueType => {
+                for type_ref in package.tuple_types.get(owner.node).into_iter().flatten() {
+                    if let Some(member) = package.element_type(type_ref) {
+                        meter.push(pending, member)?;
+                    }
+                }
+            }
+            DeclarationForm::VariantType => {
+                for case in package
+                    .variant_types
+                    .get(owner.node)
+                    .into_iter()
+                    .flat_map(|cases| cases.values())
+                {
+                    if let Some(member) = case
+                        .payload
+                        .as_ref()
+                        .and_then(|ty| package.element_type(ty))
+                    {
+                        meter.push(pending, member)?;
+                    }
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
     fn equality_stable(
         &self,
         type_id: &CheckedNodeId,
+        owners: &ModelOwners<'_>,
         meter: &mut WorkMeter,
     ) -> Result<bool, ValidationFailure> {
         let mut pending = meter.vec(1)?;
@@ -1922,6 +2013,9 @@ impl MemberCheck<'_> {
                     | ModelForm::RecordValueType
                     | ModelForm::VariantType,
                 ) => {
+                    if self.model_value_holds_ieee_leaf(position, owners, meter)? {
+                        return Ok(false);
+                    }
                     let Some(term) = self.terms[position].as_ref() else {
                         return Ok(false);
                     };
@@ -3331,7 +3425,7 @@ fn check_member(
                 let key = group_value(ordering, "key").expect("validated fifo");
                 let key_type = check.term_type(key);
                 let stable = match key_type {
-                    Some(type_id) => check.equality_stable(type_id, meter)?,
+                    Some(type_id) => check.equality_stable(type_id, owners, meter)?,
                     None => false,
                 };
                 if !stable {

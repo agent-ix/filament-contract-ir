@@ -87,7 +87,9 @@ through its carrier; a `bounded_quantity`, the bare `unit` node (`Quantity<m>`),
 `compound_unit`, `bytes`, `json_object`, an enum and a reference are stable
 leaves; a model-owned `value_type`,
 `tuple_value_type`, `record_value_type` or `variant_type` is walked through
-its members. IEEE `numeric_equal` is not reflexive on NaN and equates `+0`
+its members, which for a record, tuple or variant are the fields (own and
+inherited), positions and payloads its selected model document declares, each
+declaration expanded once. IEEE `numeric_equal` is not reflexive on NaN and equates `+0`
 and `-0`, so a key type with a float leaf, a `float_rounding` bounded domain
 included, refuses `ill_typed`/`operator-ineligible` at the key, retaining the
 operator `=` and the type. A type with an `event_type` leaf is not
@@ -187,5 +189,8 @@ reads only of the clause's owner model. The post-test
 the negative cases of AC-4 and AC-5 and the back-edge reads of AC-7 have no
 tests yet. The negative cases of AC-3 are tested for a `float32`/`float64`
 leaf under option, sequence, tuple, union and record, a `float_rounding`
-domain and an `event_type` leaf; a model-owned `record_value_type` with a
-float field has no test yet.
+domain and an `event_type` leaf; a model-owned `record_value_type`, tuple
+and variant are tested for a document-declared `float32` or `float64` leaf
+in a record field, a nested record, a sequence or an option, a tuple position
+and a variant payload (a tuple is not an admitted `carries` type, so it is
+reached through a record field or a variant payload).

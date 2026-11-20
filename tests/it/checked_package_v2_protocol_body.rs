@@ -11213,6 +11213,330 @@ fn protocol_channel_admits_fifo_model_owned_stable_value_forms() {
     }
 }
 
+/// One model-document declaration of a FIFO key fixture: its short name, its
+/// FR-322 form and the document members that form carries.
+struct ModelDecl {
+    name: &'static str,
+    form: &'static str,
+    members: Value,
+}
+
+fn model_record(name: &'static str, fields: &[(&str, &str, bool)]) -> ModelDecl {
+    let identity = format!("ix://test/families/{name}");
+    let fields = fields
+        .iter()
+        .map(|(field, type_ref, many)| {
+            let multiplicity = if *many {
+                json!({"lower": 0, "upper": 3, "ordered": true, "unique": false})
+            } else {
+                json!({"lower": 1, "upper": 1, "ordered": false, "unique": true})
+            };
+            json!({
+                "identity": format!("{identity}/{field}"), "name": field, "typeRef": type_ref,
+                "presence": "required", "nullable": false, "defaultKind": "none",
+                "multiplicity": multiplicity
+            })
+        })
+        .collect::<Vec<_>>();
+    ModelDecl {
+        name,
+        form: "record_value_type",
+        members: json!({"supertypes": [], "fields": fields, "operations": [], "constraints": []}),
+    }
+}
+
+/// A core `Option<inner>` value definition of the model document.
+fn model_option(name: &'static str, inner: &str) -> ModelDecl {
+    ModelDecl {
+        name,
+        form: "option",
+        members: json!({"kind": "option", "inner": inner}),
+    }
+}
+
+fn model_tuple(name: &'static str, positions: &[&str]) -> ModelDecl {
+    let identity = format!("ix://test/families/{name}");
+    let positions = positions
+        .iter()
+        .enumerate()
+        .map(|(at, type_ref)| json!({"identity": format!("{identity}/p{at}"), "typeRef": type_ref}))
+        .collect::<Vec<_>>();
+    ModelDecl {
+        name,
+        form: "tuple_value_type",
+        members: json!({"positions": positions}),
+    }
+}
+
+fn model_variant(name: &'static str, payload: &str) -> ModelDecl {
+    let identity = format!("ix://test/families/{name}");
+    ModelDecl {
+        name,
+        form: "variant_type",
+        members: json!({"variants": [
+            {"identity": format!("{identity}/None"), "name": "None"},
+            {"identity": format!("{identity}/Some"), "name": "Some", "payloadType": payload}
+        ]}),
+    }
+}
+
+/// A FIFO channel keyed by the model declaration `key` of `declarations`.
+fn fifo_model_key_result(declarations: &[ModelDecl], key: &str) -> CheckedPackageV2ReadResult {
+    let (mut package, _) = package_with_member_queue();
+    let mut document = family_model_document();
+    let mut key_id = None;
+    for declaration in declarations {
+        if declaration.form == "option" {
+            let mut entry = declaration.members.clone();
+            entry["identity"] = json!(format!("ix://test/families/{}", declaration.name));
+            document["types"].as_array_mut().expect("types").push(entry);
+            continue;
+        }
+        let (kind, meaning) = match declaration.form {
+            "record_value_type" => ("record", "filament.meaning.model.record-value-type/v1"),
+            "tuple_value_type" => ("tuple", "filament.meaning.model.tuple-value-type/v1"),
+            _ => ("variant", "filament.meaning.model.variant-type/v1"),
+        };
+        let identity = format!("ix://test/families/{}", declaration.name);
+        let id = structural_id(
+            "test/families",
+            vec![
+                json!("model"),
+                json!(declaration.form),
+                json!(identity.clone()),
+            ],
+            0,
+        );
+        let mut node = selected_interface_model_node();
+        node["semantic_form"] = json!(declaration.form);
+        node["node_id"] = id.clone();
+        node["semantic_type"] = id.clone();
+        node["owner"]["node"] = json!(identity.clone());
+        package["semantic_graph"]["nodes"]
+            .as_array_mut()
+            .expect("nodes")
+            .push(node);
+        document["constructs"]
+            .as_array_mut()
+            .expect("constructs")
+            .push(json!({
+                "kind": {"module": "test/families", "name": kind},
+                "construct": {"meaning": meaning}
+            }));
+        let mut entry = json!({
+            "identity": identity, "displayName": declaration.name,
+            "kind": {"module": "test/families", "name": kind},
+            "roles": [], "extensions": [], "unknownPolicy": "reject"
+        });
+        for (member, value) in declaration.members.as_object().expect("members") {
+            entry[member] = value.clone();
+        }
+        document["types"].as_array_mut().expect("types").push(entry);
+        if declaration.name == key {
+            key_id = Some(id);
+        }
+    }
+    let id = key_id.expect("key declaration");
+    let binder = clause_parameter(&mut package, "model_record_key", "1");
+    let binder_position = node_position_for_key(&package, &binder);
+    package["semantic_graph"]["nodes"][binder_position]["semantic_type"] = id.clone();
+    let channel = protocol_position(&package, "channel");
+    package["semantic_graph"]["nodes"][channel]["body"]["arguments"][2]["value"]["target"] = id;
+    package["semantic_graph"]["nodes"][channel]["body"]["arguments"][3]["value"] = json!({
+        "term": "aggregate", "members": [
+            {"term": "binding", "name": "kind", "value": {
+                "term": "literal", "type": node_id(&family_key("a1a1")),
+                "value_kind": "text", "value": "fifo"
+            }},
+            {"term": "binding", "name": "binder", "value": {"term": "reference", "target": binder}},
+            {"term": "binding", "name": "key", "value": {"term": "reference", "target": binder}}
+        ]
+    });
+    settle(&mut package);
+    let evidence = evidence_with_document(&package, "test/families", &document);
+    crate::read_and_account(
+        &canonical(&package),
+        CheckedPackageReadLimits::bounded(),
+        &evidence,
+    )
+}
+
+const NATIVE_FLOAT64: &str = "ix://filament/native/Float64";
+const NATIVE_FLOAT32: &str = "ix://filament/native/Float32";
+const NATIVE_INT: &str = "ix://filament/native/Integer";
+const NATIVE_BOOL: &str = "ix://filament/native/Boolean";
+
+/// FR-726-AC-2: a model record, tuple or variant whose document-declared
+/// leaves are FIFO-key-stable is admitted, also nested.
+#[trace("TC-1770", "FR-726-AC-2", "FR-372-AC-2")]
+#[test]
+fn protocol_channel_admits_fifo_model_values_without_float_leaves() {
+    let plain = || model_record("Plain", &[("count", NATIVE_INT, false)]);
+    for (case, declarations, key) in [
+        ("record", vec![plain()], "Plain"),
+        (
+            "record in record",
+            vec![
+                plain(),
+                model_record("Outer", &[("inner", "ix://test/families/Plain", false)]),
+            ],
+            "Outer",
+        ),
+        (
+            "sequence of record",
+            vec![
+                plain(),
+                model_record("Series", &[("items", "ix://test/families/Plain", true)]),
+            ],
+            "Series",
+        ),
+        (
+            "recursive record",
+            vec![model_record(
+                "Tree",
+                &[
+                    ("count", NATIVE_INT, false),
+                    ("children", "ix://test/families/Tree", true),
+                ],
+            )],
+            "Tree",
+        ),
+        (
+            "record holding an Option of integer",
+            vec![
+                model_option("OptInt", NATIVE_INT),
+                model_record("Outer", &[("count", "ix://test/families/OptInt", false)]),
+            ],
+            "Outer",
+        ),
+        (
+            "record holding a tuple",
+            vec![
+                model_tuple("Pair", &[NATIVE_BOOL, NATIVE_INT]),
+                model_record("Outer", &[("pair", "ix://test/families/Pair", false)]),
+            ],
+            "Outer",
+        ),
+        (
+            "variant payload record",
+            vec![plain(), model_variant("Maybe", "ix://test/families/Plain")],
+            "Maybe",
+        ),
+    ] {
+        let result = fifo_model_key_result(&declarations, key);
+        assert!(
+            matches!(result, CheckedPackageV2ReadResult::Admitted(_)),
+            "{case} should admit: {result:?}"
+        );
+    }
+}
+
+/// FR-726-AC-3: a float32 or float64 leaf declared in the model document
+/// refuses the key, however deep the record, tuple or variant holds it.
+#[trace("TC-1770", "FR-726-AC-3", "FR-372-AC-3")]
+#[test]
+fn protocol_channel_fifo_refuses_model_values_with_float_leaves() {
+    let reading = || model_record("Reading", &[("value", NATIVE_FLOAT64, false)]);
+    for (case, declarations, key) in [
+        ("record float64", vec![reading()], "Reading"),
+        (
+            "record float32",
+            vec![model_record("Reading", &[("value", NATIVE_FLOAT32, false)])],
+            "Reading",
+        ),
+        (
+            "record in record",
+            vec![
+                reading(),
+                model_record("Outer", &[("inner", "ix://test/families/Reading", false)]),
+            ],
+            "Outer",
+        ),
+        (
+            "sequence of record",
+            vec![
+                reading(),
+                model_record("Series", &[("items", "ix://test/families/Reading", true)]),
+            ],
+            "Series",
+        ),
+        (
+            "sequence of float",
+            vec![model_record("Series", &[("items", NATIVE_FLOAT64, true)])],
+            "Series",
+        ),
+        (
+            "record holding an Option of float",
+            vec![
+                model_option("OptFloat", NATIVE_FLOAT64),
+                model_record(
+                    "Outer",
+                    &[("reading", "ix://test/families/OptFloat", false)],
+                ),
+            ],
+            "Outer",
+        ),
+        (
+            "record holding a tuple with a float position",
+            vec![
+                model_tuple("Pair", &[NATIVE_BOOL, NATIVE_FLOAT64]),
+                model_record("Outer", &[("pair", "ix://test/families/Pair", false)]),
+            ],
+            "Outer",
+        ),
+        (
+            "variant payload tuple with a float position",
+            vec![
+                model_tuple("Pair", &[NATIVE_BOOL, "ix://test/families/Reading"]),
+                reading(),
+                model_variant("Maybe", "ix://test/families/Pair"),
+            ],
+            "Maybe",
+        ),
+        (
+            "variant payload",
+            vec![model_variant("Maybe", NATIVE_FLOAT64)],
+            "Maybe",
+        ),
+        (
+            "variant payload record",
+            vec![
+                reading(),
+                model_variant("Maybe", "ix://test/families/Reading"),
+            ],
+            "Maybe",
+        ),
+        (
+            "record holding a float variant",
+            vec![
+                model_variant("Maybe", NATIVE_FLOAT64),
+                model_record("Outer", &[("maybe", "ix://test/families/Maybe", false)]),
+            ],
+            "Outer",
+        ),
+    ] {
+        let result = fifo_model_key_result(&declarations, key);
+        let CheckedPackageV2ReadResult::Refused(refusal) = &result else {
+            panic!("{case} must refuse: {result:?}");
+        };
+        assert_eq!(
+            refusal.code,
+            CheckedPackageRefusalCode::IllTyped,
+            "{case}: {refusal:?}"
+        );
+        assert_eq!(
+            refusal.cause,
+            Some(CheckedPackageRefusalCause::OperatorIneligible),
+            "{case}"
+        );
+        let path = refusal.loci[0].path.as_ref().expect("key path").to_string();
+        assert!(
+            path.ends_with("/body/arguments/3/value/members/2/value"),
+            "{case}: {path}"
+        );
+    }
+}
+
 /// Trace: FR-372-AC-2
 #[trace("FR-372-AC-2")]
 #[test]
