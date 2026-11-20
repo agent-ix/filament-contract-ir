@@ -493,12 +493,6 @@ fn add_declarations(wire: &mut Value) {
 /// Add a native clock-reference type, a `Reference<Order>` owner parameter and
 /// a place-reference application to an already admitted timed-slot package.
 fn add_clock_reference(wire: &mut Value, place: &Value) -> (Value, Value, Value, Value, Value) {
-    let order_position = wire["semantic_graph"]["nodes"]
-        .as_array()
-        .expect("nodes")
-        .iter()
-        .position(|node| node["node_id"] == order_node())
-        .expect("Order model node");
     let clock_id = fixture_support::structural_id(
         "example",
         vec![json!("scalar_type"), json!("clock_reference")],
@@ -506,11 +500,7 @@ fn add_clock_reference(wire: &mut Value, place: &Value) -> (Value, Value, Value,
     );
     let reference_type_id = fixture_support::structural_id(
         "example",
-        vec![
-            json!("composite_type"),
-            json!("reference"),
-            json!({"node":order_position}),
-        ],
+        vec![json!("composite_type"), json!("reference"), json!("order")],
         0,
     );
     let owner_id = json!({"ordinal":0,"package":"example","path":["value","parameter","self"]});
@@ -592,41 +582,12 @@ fn add_clock_reference(wire: &mut Value, place: &Value) -> (Value, Value, Value,
         9203,
     );
 
-    let place_position = wire["semantic_graph"]["nodes"]
-        .as_array()
-        .expect("nodes")
-        .iter()
-        .position(|node| node["node_id"] == *place)
-        .expect("clock place");
-    let owner_position = wire["semantic_graph"]["nodes"]
-        .as_array()
-        .expect("nodes")
-        .iter()
-        .position(|node| node["node_id"] == owner_id)
-        .expect("owner parameter");
-    let slot_position = wire["semantic_graph"]["nodes"]
-        .as_array()
-        .expect("nodes")
-        .iter()
-        .position(|node| node["node_id"] == integer_parameter_id)
-        .expect("slot parameter");
-    let clock_position = wire["semantic_graph"]["nodes"]
-        .as_array()
-        .expect("nodes")
-        .iter()
-        .position(|node| node["node_id"] == clock_id)
-        .expect("clock-reference type");
     let place_reference_id = fixture_support::structural_id(
         "example",
         vec![
             json!("expression"),
             json!("place_reference"),
-            json!({"node":place_position}),
-            json!({"node":owner_position}),
-            json!({"node":slot_position}),
-            json!("filament.op.clock_reference.ref"),
-            json!("place_ref"),
-            json!({"node":clock_position}),
+            json!("fr829-clock-place-ref"),
         ],
         0,
     );
@@ -1116,19 +1077,9 @@ fn clock_reference_adverse_applications_refuse_through_public_package_reader() {
         "fr829-slot-domain-owner-object",
     );
     let integer_type_id = integer_type();
-    let integer_position = slot_domain_owner["semantic_graph"]["nodes"]
-        .as_array()
-        .expect("nodes")
-        .iter()
-        .position(|node| node["node_id"] == integer_type_id)
-        .expect("Integer type");
     let set_type_id = fixture_support::structural_id(
         "example",
-        vec![
-            json!("composite_type"),
-            json!("set"),
-            json!({"node":integer_position}),
-        ],
+        vec![json!("composite_type"), json!("set"), json!("integer")],
         0,
     );
     let mut set_dependencies = vec![integer_type_id.clone()];

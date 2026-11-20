@@ -13898,7 +13898,7 @@ mod tests {
             &operation,
             &graph,
             &ModelOwners::default(),
-            &operation_catalog(),
+            operation_catalog(),
             &mut WorkMeter::new(10_000),
         )
     }
@@ -14063,7 +14063,7 @@ mod tests {
                 entry,
                 &graph,
                 &ModelOwners::default(),
-                &catalog,
+                catalog,
                 None,
                 &mut super::OperationWork {
                     meter: &mut meter,
