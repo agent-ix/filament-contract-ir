@@ -109,6 +109,10 @@ relationships:
     type: verifies
   - target: ix://agent-ix/filament-contract-ir/FR-038-AC-582
     type: verifies
+  - target: ix://agent-ix/filament-contract-ir/FR-038-AC-583
+    type: verifies
+  - target: ix://agent-ix/filament-contract-ir/FR-038-AC-584
+    type: verifies
   - target: ix://agent-ix/filament-specification/TC-187
     type: references
 ---

@@ -103,8 +103,9 @@ failure with `invalid_package` and cause `invalid-value`, at the failing member:
 - a `workload` whose `model` is not a `model` node, whose weights are not in
   strictly ascending order of (`declaring` node id, `operation` name), whose
   row names an operation that is neither the model's own nor inherited through
-  its supertypes, followed transitively, or repeats an operation name another row
-  already names, or that omits an operation the model
+  its supertypes, followed transitively, or repeats the (`declaring` node id, `operation` name) pair another
+  row already names (two inherited operations of one name, declared by two
+  supertypes, are two rows), or that omits an operation the model
   declares or inherits;
 - a `reward` whose `value_type` is none of an `integer`, a `carried_quantity`,
   a `bounded_quantity` or a unit (`Quantity<u>`, `Duration`) type node, a `compound_unit` node (a

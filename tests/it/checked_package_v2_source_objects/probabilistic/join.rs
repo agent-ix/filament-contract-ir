@@ -572,6 +572,48 @@ fn a_source_workload_covers_the_inherited_operations() {
     );
 }
 
+/// FR-640 Reader rule 3 (QSL-2707): a workload's rows are keyed by (declaring
+/// node, operation name), so two inherited operations of one name, declared
+/// by two supertypes (a diamond), are two rows and the strict read admits
+/// them, while one pair twice is a repeat.
+#[trace("TC-484", "FR-369-AC-26")]
+#[test]
+fn a_workload_row_is_keyed_by_its_declaring_node_and_operation_name() {
+    let row = |declaring: &str, operation: &str| {
+        aggregate(vec![
+            binding("declaring", reference_to(declaring)),
+            binding("operation", text(operation)),
+            binding("weight", rational("1")),
+        ])
+    };
+    let with_workload = |rows: Vec<Value>| {
+        let mut package = package();
+        nodes_mut(&mut package).push(super::probabilistic(
+            "workload_other",
+            "workload",
+            aggregate(vec![
+                binding("model", reference_to("qualified:Other")),
+                binding("name", text("W2")),
+                binding("weights", aggregate(rows)),
+            ]),
+        ));
+        settle(&mut package);
+        package
+    };
+    // `O::step` and `Other::step`: one name, two declaring nodes.
+    let same_name = vec![row("qualified:O", "step"), row("qualified:Other", "step")];
+    admitted(&with_workload(same_name));
+    // One (declaring, name) pair twice is a repeat, refused at the second row.
+    let twice = with_workload(vec![row("qualified:O", "step"), row("qualified:O", "step")]);
+    let at = format!("{}/members/1", member_at(&twice, "workload_other", 2));
+    let refusal = refused(&twice);
+    assert_eq!(
+        refusal.loci[0].path.as_ref().map(|path| path.as_str()),
+        Some(at.as_str()),
+        "{refusal:?}"
+    );
+}
+
 /// The work of the AC-25 join of `package`, counted independently of the
 /// reader: one unit for each node met, and for the probabilistic ones, in
 /// bytes of the caller text compared as well:

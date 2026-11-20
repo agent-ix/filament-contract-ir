@@ -696,12 +696,11 @@ fn a_source_workload_refuses_unordered_repeated_and_foreign_rows() {
         row("qualified:O", "step"),
     ]);
     fail("out of order", &package, &weights(&package, 1, ""));
-    let package = workload(vec![
-        row("qualified:O", "step"),
-        row("qualified:Other", "step"),
-    ]);
+    // Rows are keyed by (declaring node, operation name): the same name under
+    // two declaring nodes is two rows (QSL-2707), one pair twice is a repeat.
+    let package = workload(vec![row("qualified:O", "step"), row("qualified:O", "step")]);
     fail(
-        "a repeated operation name",
+        "a repeated (declaring, operation) pair",
         &package,
         &weights(&package, 1, ""),
     );
@@ -1095,12 +1094,13 @@ pub(crate) fn graph_requests_of(
     found
 }
 
-/// FR-369-AC-27: the two buffers the strict read keeps for a source reward's
-/// listed parameters (`usize`, one each) and a source workload's named
-/// operations (`&str`, one each row) are charged to the read-storage budget
-/// before they are made. The package whose reward lists 22 parameters and whose
-/// workload has 13 rows makes exactly one request of each buffer's size
-/// (8 x 22 and 16 x 13 bytes) at a probabilistic node.
+/// FR-369-AC-27: the buffer the strict read keeps for a source reward's
+/// listed parameters (`usize`, one each) is charged to the read-storage budget
+/// before it is made. The package whose reward lists 22 parameters makes
+/// exactly one request of its size (8 x 22 bytes) at a probabilistic node. A
+/// source workload keeps no buffer: its rows are keyed by (declaring node,
+/// operation name) and checked in order against the previous row alone
+/// (QSL-2707), so its 13 rows make no request of 16 x 13 bytes.
 #[trace("TC-484", "FR-369-AC-27")]
 #[test]
 fn the_source_buffers_are_charged_before_they_are_made() {
@@ -1115,7 +1115,7 @@ fn the_source_buffers_are_charged_before_they_are_made() {
         .collect();
     let count = |amount: u128| amounts.iter().filter(|&&found| found == amount).count();
     assert_eq!(count(listed), 1, "{amounts:?}");
-    assert_eq!(count(named), 1, "{amounts:?}");
+    assert_eq!(count(named), 0, "{amounts:?}");
 }
 
 mod join;

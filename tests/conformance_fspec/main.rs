@@ -113,6 +113,7 @@ mod timed_clock_no_row;
 mod timed_model;
 mod timed_slots;
 mod transition;
+mod type_argument_alias;
 
 /// The environment variable naming the root of a `filament-specification` checkout.
 const SPECIFICATION_DIR: &str = "FILAMENT_SPECIFICATION_DIR";
@@ -886,9 +887,16 @@ fn assert_fspec_operation_record(
             node(declaration, "declaration");
             assert_eq!(member["name"], name.as_ref());
         }
-        Some(CheckedOperationMember::TypeArgument { declaration }) => {
+        Some(CheckedOperationMember::TypeArgument { declaration, alias }) => {
             assert_eq!(member["kind"], "type_argument");
             node(declaration, "declaration");
+            match alias {
+                Some(alias) => {
+                    assert_eq!(member["alias"]["package"], alias.package.as_ref());
+                    assert_eq!(member["alias"]["node"], alias.node.as_ref());
+                }
+                None => assert!(member.get("alias").is_none()),
+            }
         }
         Some(CheckedOperationMember::ProfileOperator { operator }) => {
             assert_eq!(member["kind"], "profile_operator");

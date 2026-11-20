@@ -633,3 +633,61 @@ fn public_reader_keeps_the_one_operand_option_presence_form() {
     assert_eq!(operation.identity(), Some("filament.op.option.present"));
     assert_eq!(arguments.len(), 1);
 }
+
+/// QSL-2705: the reserved `#ieee_operand` binder name is admitted as the
+/// `name` of every `value`/`parameter` node the temporal clauses of the
+/// published timed-slot package read, not only a function body's (FSpec
+/// FR-322 "Parameter", FR-322-AC-490). Each parameter node of the package is
+/// renamed in turn and the package is read again.
+#[test]
+#[trace("TC-048", "FR-322-AC-490", "FR-038-AC-581")]
+fn the_reserved_ieee_operand_name_is_admitted_on_every_parameter_node_a_temporal_clause_reads() {
+    let (published, _vectors, fixtures) = published_slots();
+    let parameters: Vec<usize> = published["semantic_graph"]["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .enumerate()
+        .filter(|(_, node)| node["semantic_form"] == "parameter")
+        .map(|(position, _)| position)
+        .collect();
+    assert!(
+        parameters.len() >= 4,
+        "the package carries clause parameters"
+    );
+    for position in parameters {
+        let mut wire = published.clone();
+        let mut renamed = false;
+        for member in wire["semantic_graph"]["nodes"][position]["body"]["members"]
+            .as_array_mut()
+            .unwrap()
+        {
+            if member["name"] == "name" {
+                member["value"]["value"] = json!("#ieee_operand");
+                renamed = true;
+            }
+        }
+        assert!(renamed, "node {position} binds a name");
+        fixture_support::refresh_identity(&mut wire);
+        let result = read_selected(&wire, "ieee operand", &fixtures);
+        assert!(
+            matches!(result, CheckedPackageV2ReadResult::Admitted(_)),
+            "node {position}: {result:?}"
+        );
+    }
+    // The name stays reserved: another `#`-prefixed binder is refused.
+    let mut wire = published;
+    for member in wire["semantic_graph"]["nodes"][36]["body"]["members"]
+        .as_array_mut()
+        .unwrap()
+    {
+        if member["name"] == "name" {
+            member["value"]["value"] = json!("#other");
+        }
+    }
+    fixture_support::refresh_identity(&mut wire);
+    assert!(matches!(
+        read_selected(&wire, "other hash name", &fixtures),
+        CheckedPackageV2ReadResult::Refused(_)
+    ));
+}
