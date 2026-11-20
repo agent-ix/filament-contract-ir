@@ -334,6 +334,15 @@ fn positive_cases() -> Vec<Case> {
         evidence,
         Expected::Admitted,
     ));
+    // FR-369-AC-27 (IR-1576): probabilistic nodes on source-declared types.
+    let (wire, evidence) =
+        crate::checked_package_v2_source_objects::probabilistic::accounting_fixture();
+    cases.push(case(
+        "TC048/source_probabilistic",
+        wire,
+        evidence,
+        Expected::Admitted,
+    ));
     // FR-038-AC-562: an object-free hyper body wrapper over its subject's root.
     let (wire, _, _) = crate::checked_package_v2_temporal::root_wrapper_fixture(
         crate::checked_package_v2_temporal::ORDERS,

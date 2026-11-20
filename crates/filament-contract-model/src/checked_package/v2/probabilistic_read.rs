@@ -4,6 +4,16 @@
 //! The typed read of FSpec FR-640 "Typed read": the random parameters,
 //! rewards, workloads and delay distributions of an admitted package.
 //!
+//! # Source-declared nodes are unjoined
+//!
+//! A node whose `declaring` model is a source-declared object type is admitted
+//! by the strict read on its kind and `SourceOwner` alone. FR-369's identity-row
+//! join, which resolves the operation, the random parameter and its support, the
+//! workload's coverage and the reward function's parameter list against the
+//! source-object identity rows, has no entry point yet (QSL-2645), so these
+//! reads serve such a node **unjoined**: do not treat its operation, parameter,
+//! support or coverage as checked.
+//!
 //! Implements: FR-369 "Behavior" (typed read).
 
 use super::probabilistic_join::{binding_name, bound, members, target, text};

@@ -966,6 +966,17 @@ fn each_defect_refuses_at_its_member() {
     assert_refused(&value, "P95", INVALID, invalid_value(), "/body");
 }
 
+/// IR-1575 regression: the scheduler binding `Aggregate[Binding(fairness,
+/// Aggregate[])]`, an empty fairness set, is admitted at
+/// `/body/members/1/value/members/0/value` (the flat-wire claim stratum, #1077).
+#[trace("TC-489", "FR-377-AC-1")]
+#[test]
+fn an_empty_fairness_set_in_the_scheduler_binding_is_admitted() {
+    admitted(&edited("Fair", |b| {
+        *member(b, 1) = aggregate(vec![binding("fairness", aggregate(vec![]))]);
+    }));
+}
+
 /// FR-377-AC-3: the claim checks charge one visit per member and binding, in
 /// body order, so some budget stops the read at `P95`'s `indifference`.
 #[trace("TC-489", "FR-377-AC-3")]

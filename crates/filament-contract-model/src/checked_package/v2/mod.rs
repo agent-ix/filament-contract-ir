@@ -275,9 +275,9 @@ pub use schedulability::{
     CheckedTaskCriticality,
 };
 pub use source_object::{
-    SelectedSourceObjectError, SelectedSourceObjectErrorCode, SelectedSourceObjectMember,
-    SelectedSourceObjectOperation, SelectedSourceObjectRow, SelectedSourceObjects,
-    SelectedSourcePopulation,
+    SelectedClockCollectionLayer, SelectedSourceObjectError, SelectedSourceObjectErrorCode,
+    SelectedSourceObjectMember, SelectedSourceObjectOperation, SelectedSourceObjectRow,
+    SelectedSourceObjects, SelectedSourcePopulation,
 };
 pub use source_operation::{SelectedSourceOperationRow, SelectedSourceOperations};
 pub use step_relation::{
