@@ -29,3 +29,11 @@ PASS with one low clarity finding. FR-061 is consistent with FSpec FR-375 and wi
 | ID | Severity | Summary | Refs |
 | --- | --- | --- | --- |
 | FND-001 | low | FR-061 defines `T` as a full qualified name of several `::` segments. The concrete model's declaring types are model-owned nodes `ix://<identity>/<name>` with one flat name, and FSL emits flat names (`Cell::increment`). So no multi-segment `T` can resolve, and the reader matches only the flat name. State that `T` is the model-owned type's name, or say how a namespaced model type is spelled. | spec/checked_package/functional/FR-061-admit-refinement-nodes.md |
+
+## Dispositions
+
+Disposition pass 1 at head 767b4eee.
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-001 | fixed | FR-061 now states that a model-owned type is named by its node `ix://<package>/<name>`, a single name, so the reader's `T` is that `<name>` and the class carries no namespace beyond it. |

@@ -35,3 +35,11 @@ PARTIAL. The behaviour the ruling asks for is implemented and tested on its main
 | ID | Severity | Summary | Refs |
 | --- | --- | --- | --- |
 | FND-001 | medium | FR-375-AC-31 and FR-061-AC-15 refusals tagged by the new tests are not exercised: a point-qualified `source_node` (and a `(T, op)` with only a point-qualified anchor), and a `source_node` that is the anchor of another type declaring the same `op`. Mutants N1, N2 and N5 survive. | tests/it/checked_package_v2_refinement.rs:4257-4377 |
+
+## Dispositions
+
+Disposition pass 1 at head 767b4eee.
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-001 | still-open | The point-qualified `source_node` and the only-point-qualified `(T, op)` are now exercised (mutants P1 and P2 killed). The `source_node` anchor of another selected-model type declaring the same `op` (FR-375-AC-31, FR-061-AC-15) is still unexercised: mutant P4 survives. |

@@ -59,3 +59,25 @@ Four defects remain:
 | FND-002 | medium | `require_declared_operation_class` scans every term of the graph for each catalog-free step row and charges `terms.len()` each time. Read work is therefore rows × terms. A valid model refinement with many rows over a large package can exhaust `CheckedPackageReadLimits::bounded()` work (1,000,000) where the neighbouring joins use an index. Build the (type name, op) set of no-point anchors once per refinement, metered, and look each row up in it. | crates/filament-contract-model/src/checked_package/v2/refinement.rs:1897-1904 |
 | FND-003 | medium | Refusals the tagged tests claim are not exercised: mutants N1, N2, N5, N3, N4 and N8 survive. There is no test for a point-qualified anchor, either as the only anchor of `(T, op)` or as `source_node` next to a no-point anchor. There is no test for a `source_node` that is the anchor of another type declaring the same `op` (FR-375-AC-31 "an anchor of another operation or type"). A point fixture is feasible: push `binding("execution_point", {"kind":"pre","operation":"save"})` onto the anchor members, as `pointed_state_package` does. The exact charge of the scan is also unasserted. | tests/it/checked_package_v2_refinement.rs:4257-4377 |
 | FND-004 | low | `refinement_catalog_presence_precedes_declaration_backed_step_joins` used to assert that a step whose `source_node` is the state-machine declaration node refuses at `source_node`. That is the "model-owner node" case of FR-375-AC-31. The step's class is the bare `operation`, so the test now stops at `source_class` and that `source_node` case is no longer covered. Give the step a resolvable `T::op` so it still reaches `source_node`. | tests/it/checked_package_v2_refinement.rs:7218-7242 |
+
+## Dispositions
+
+Disposition pass 1 at head 767b4eee (fix commit bfe3fa75, merge base 312f3752).
+
+Gates at 767b4eee:
+
+- fmt, `make string-edge` and clippy (`--workspace --all-targets --features conformance-cli -D warnings`): clean.
+- `--test it refinement`: 99 passed, 0 failed.
+- Full workspace on head and on 312f3752: 18 failures on each, the same set. The head passes 4 more tests (2448 vs 2444).
+
+Mutants at 767b4eee:
+
+- Killed: P1 (the table ignores the execution point), P2 (the join ignores the execution point), P3 (the table ignores the selected model) and P7 (a bare class refuses as a missing class).
+- Survived: P4 (the join ignores the type, which is the old N5), P5 (the table is not sorted) and P6 (the scan charge is 0, the old N4/N8).
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-001 | fixed | `declared_operations` admits only anchors whose context's `Model` owner identity equals the selected `model_root` identity. A foreign-model `T::deposit` now refuses missing-name at `source_class`; the test was added and mutant P3 is killed. |
+| FND-002 | fixed | The (type name, operation) table is built once per refinement, with `terms.len()` work charged and the table's bytes charged through `stage_storage::vec` before allocation. Each row is a `binary_search`. |
+| FND-003 | still-open | The point-qualified checks are now tested (`catalog_free_operation_step_refuses_point_qualified_anchor`, P1 and P2 killed). P4/N5 still survives: no test has a `source_node` that is a selected-model anchor of another type declaring the same `op`. That is FR-375-AC-31's "anchor of another ... type" branch, and the type comparison is its only guard. The fixture is feasible: clone `types[0]` under a new identity with `rewrite_identity_prefix`, as the inheritance builder does, and point an `add_anchor_variant` clone's context at it. The exact scan charge (P6, N4/N8) is accepted with no change. FR-038 and FR-061 fix no per-step work amount, the charge-before-work rule holds by inspection, and an exact-constant test would only pin an implementation detail. |
+| FND-004 | fixed | The test now uses `catalog_free_operation_package("state_machine")`, whose class `Machine::toggle` resolves, so the model-owner node `source_node` again refuses `invalid_model_binding` at `source_node`. |

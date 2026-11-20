@@ -4449,6 +4449,99 @@ fn catalog_free_operation_step_refuses_point_qualified_anchor() {
     );
 }
 
+#[trace("TC-062", "FR-061-AC-15", "FR-375-AC-31")]
+#[test]
+fn catalog_free_operation_step_refuses_another_types_anchor_for_the_same_operation() {
+    let (mut package, evidence, position) = catalog_free_operation_package_config_with_document(
+        "object_type",
+        false,
+        false,
+        false,
+        |document| {
+            let mut twin = document["types"][4].clone();
+            rewrite_identity_prefix(
+                &mut twin,
+                &format!("ix://{MODEL_IDENTITY}/Account"),
+                &format!("ix://{MODEL_IDENTITY}/Twin"),
+            );
+            twin["displayName"] = json!("Twin");
+            twin["operations"] = json!([{
+                "identity": format!("ix://{MODEL_IDENTITY}/Twin/save"),
+                "name": "save", "params": []
+            }]);
+            document["types"].as_array_mut().expect("types").push(twin);
+        },
+    );
+    let twin_node = selected_form_node("object_type", &format!("ix://{MODEL_IDENTITY}/Twin"));
+    let twin = twin_node["node_id"].clone();
+    package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .push(twin_node);
+    let source = package["lock"]["sources"][0].clone();
+    package["source_map"]
+        .as_array_mut()
+        .expect("source map")
+        .push(json!({
+            "node_id":twin, "role":"type", "ordinal":0,
+            "regions":[{"source":source,"start":10,"end":11}]
+        }));
+    refresh_identity(&mut package);
+    // Class `Account::save` resolves; `source_node` is the anchor of
+    // `Twin::save`, another type's anchor for the same operation.
+    let anchor = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|node| node["semantic_form"] == "operation_anchor")
+        .expect("anchor")
+        .clone();
+    let frame_id = anchor["body"]["members"][2]["value"]["target"].clone();
+    let frame = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|node| node["node_id"] == frame_id)
+        .expect("frame")
+        .clone();
+    let twin_frame_id = node_id("qsl2506/twin-frame");
+    let other = node_id("qsl2506/twin-anchor");
+    let mut twin_frame = frame;
+    twin_frame["node_id"] = twin_frame_id.clone();
+    twin_frame["semantic_type"] = twin.clone();
+    let mut twin_anchor = anchor;
+    twin_anchor["node_id"] = other.clone();
+    twin_anchor["semantic_type"] = twin.clone();
+    twin_anchor["body"]["members"][0]["value"]["target"] = twin.clone();
+    twin_anchor["body"]["members"][2]["value"]["target"] = twin_frame_id.clone();
+    let mut dependencies = vec![twin.clone(), twin_frame_id];
+    dependencies.sort_by(node_id_order);
+    twin_anchor["dependencies"] = json!(dependencies);
+    let source = package["lock"]["sources"][0].clone();
+    for node in [twin_frame, twin_anchor] {
+        let occurrence = node["occurrences"][0].clone();
+        package["source_map"]
+            .as_array_mut()
+            .expect("source map")
+            .push(json!({
+                "node_id":node["node_id"], "role":occurrence["role"],
+                "ordinal":occurrence["ordinal"],
+                "regions":[{"source":source,"start":10,"end":11}]
+            }));
+        package["semantic_graph"]["nodes"]
+            .as_array_mut()
+            .expect("nodes")
+            .push(node);
+    }
+    set_catalog_free_source(&mut package, position, Some(other));
+    assert_step_refusal(
+        read(&package, &evidence),
+        CheckedPackageRefusalCode::InvalidModelBinding,
+        Some(CheckedPackageRefusalCause::MalformedDeclaration),
+        &format!("/semantic_graph/nodes/{position}/body/steps/0/source_node"),
+    );
+}
+
 #[trace("TC-062", "FR-061-AC-15")]
 #[test]
 fn catalog_free_operation_step_refuses_foreign_selected_model_anchor() {
