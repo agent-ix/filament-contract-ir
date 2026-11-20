@@ -276,7 +276,7 @@ pub(super) fn validate(
             .key("semantic_graph")
             .key("nodes")
             .index(position);
-        stage_storage::work(meter, &site(position, node_at.clone()), 1)?;
+        stage_storage::work(meter, &site(position, node_at), 1)?;
         if node.declaration.is_some()
             || node.occurrences.len() != 1
             || node.occurrences[0].role != CheckedOccurrenceRole::Generated
@@ -336,7 +336,7 @@ pub(super) fn validate(
         else {
             let at = terms.get(position).map_or_else(
                 || node_at.key("body"),
-                |term| record_body_failure_path(term, node_at.clone()),
+                |term| record_body_failure_path(term, node_at),
             );
             return Err(refuse(
                 position,
@@ -950,6 +950,7 @@ fn capability_wire(kind: CapabilityKind) -> &'static str {
     }
 }
 
+#[ix_trace_rs::string_edge]
 fn is_scalar_operation(identity: &str) -> bool {
     [
         "filament.op.integer",
