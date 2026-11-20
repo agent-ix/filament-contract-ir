@@ -1896,7 +1896,7 @@ fn selected_facts_join_only_explicit_model_field_and_charge_full_emission_rows()
             "right":{"operand":1,"source_type":node_id(boolean),"conversion_target":null},
             "units":[],"enum_members":[]
         }],
-        "protocol_locations":[],"dispatch_tables":[],"probabilistic_claims":[]
+        "protocol_locations":[],"dispatch_tables":[],"body_locations": [], "probabilistic_claims":[]
     });
     settle(&mut wire);
     let admitted = match read_with(&wire, &evidence, CheckedPackageReadLimits::bounded()) {
@@ -2464,7 +2464,7 @@ fn strict_reader_rejects_float_equality_conversion_targets() {
             "right":{"operand":1, "source_type":node_id(float), "conversion_target":null},
             "units":[], "enum_members":[]
         }],
-        "protocol_locations":[], "dispatch_tables":[], "probabilistic_claims":[]
+        "protocol_locations":[], "dispatch_tables":[], "body_locations": [], "probabilistic_claims":[]
     });
     settle(&mut wire);
     let direct = read_with(&wire, &evidence, CheckedPackageReadLimits::bounded());

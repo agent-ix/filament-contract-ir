@@ -1530,7 +1530,7 @@ pub(in crate::checked_package::v2) mod tests {
                 "right":{"operand":1,"source_type":ids[&'1'],"conversion_target":null},
                 "units":[],"enum_members":[]
             }],
-            "protocol_locations":[],"dispatch_tables":[],"probabilistic_claims":[]
+            "protocol_locations":[],"dispatch_tables":[],"body_locations": [], "probabilistic_claims":[]
         });
         wire
     }

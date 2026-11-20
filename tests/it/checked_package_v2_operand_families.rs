@@ -1588,6 +1588,7 @@ fn genuine_integer_fold_with_both_authored_binders_is_admitted() {
         serde_json::from_slice(include_bytes!("../fixtures/fold-binders/integer-fold.json"))
             .expect("Integer fold fixture");
     add_linked_check_modes(&mut fixture);
+    crate::support::checked_package::rebuild_body_locations(&mut fixture);
     let bytes = canonical(&fixture);
     let mut evidence = filament_contract_model::CheckedPackageEvidence::new();
     evidence.support_feature("filament.value.complete/v1");
@@ -1640,6 +1641,7 @@ fn genuine_monitor_base_fold_is_admitted_without_removing_semantics() {
         serde_json::from_slice(include_bytes!("../fixtures/fold-binders/monitor-base.json"))
             .expect("monitor-base fixture");
     add_linked_check_modes(&mut fixture);
+    crate::support::checked_package::rebuild_body_locations(&mut fixture);
     // The committed producer fixture predates FR-322 "Model declaration
     // occurrences".
     crate::support::checked_package::align_model_declarations(&mut fixture);
@@ -1981,4 +1983,241 @@ fn quantity_sum_uses_its_result_type_exact_rounding_pin() {
         CheckedPackageRefusalCause::OperationModeTypeMismatch,
         &format!("/semantic_graph/nodes/{at}/body/operation/mode/value"),
     );
+}
+
+/// The genuine Integer-fold package with the `body_locations` rows its function
+/// bodies' wire walk requires.
+fn fold_with_body_rows() -> Value {
+    let mut fixture: Value =
+        serde_json::from_slice(include_bytes!("../fixtures/fold-binders/integer-fold.json"))
+            .expect("Integer fold fixture");
+    add_linked_check_modes(&mut fixture);
+    crate::support::checked_package::rebuild_body_locations(&mut fixture);
+    fixture
+}
+
+fn read_fold(fixture: &Value) -> CheckedPackageV2ReadResult {
+    let mut evidence = filament_contract_model::CheckedPackageEvidence::new();
+    evidence.support_feature("filament.value.complete/v1");
+    crate::read_and_account(
+        &canonical(fixture),
+        CheckedPackageReadLimits::bounded(),
+        &evidence,
+    )
+}
+
+/// The refusal of `fixture` as its code, cause and first pointer.
+fn body_location_refusal(
+    fixture: &Value,
+) -> (
+    CheckedPackageRefusalCode,
+    Option<CheckedPackageRefusalCause>,
+    String,
+) {
+    let CheckedPackageV2ReadResult::Refused(refusal) = read_fold(fixture) else {
+        panic!("the package must refuse");
+    };
+    (
+        refusal.code,
+        refusal.cause,
+        refusal.loci[0]
+            .path
+            .as_ref()
+            .expect("pointer")
+            .as_str()
+            .to_owned(),
+    )
+}
+
+/// FR-038-AC-581 (TC-491): a package whose function bodies carry the rows of
+/// their wire walk is admitted; each row-level and array-level defect refuses
+/// `invalid_package`/`invalid-value` at its own pointer, in FR-038's order.
+#[trace("TC-491", "FR-038-AC-581")]
+#[test]
+fn body_location_rows_are_read_and_refused_at_their_own_pointers() {
+    let fixture = fold_with_body_rows();
+    assert!(
+        matches!(read_fold(&fixture), CheckedPackageV2ReadResult::Admitted(_)),
+        "{:?}",
+        read_fold(&fixture)
+    );
+    let rows = fixture["checked_term_data"]["body_locations"]
+        .as_array()
+        .expect("rows")
+        .clone();
+    assert!(!rows.is_empty(), "the fold's bodies hold terms");
+    let last = rows.len() - 1;
+    let expected = |pointer: String| {
+        (
+            CheckedPackageRefusalCode::InvalidPackage,
+            Some(CheckedPackageRefusalCause::InvalidValue),
+            pointer,
+        )
+    };
+    let with_rows = |edit: &dyn Fn(&mut Vec<Value>)| {
+        let mut changed = fixture.clone();
+        let mut held = rows.clone();
+        edit(&mut held);
+        changed["checked_term_data"]["body_locations"] = Value::Array(held);
+        changed
+    };
+    let at = |index: usize| format!("/checked_term_data/body_locations/{index}");
+
+    // A row missing: the package holds fewer rows than terms.
+    let missing = with_rows(&|held| {
+        held.pop();
+    });
+    assert_eq!(
+        body_location_refusal(&missing),
+        expected("/checked_term_data/body_locations".to_owned())
+    );
+    // A row naming another function name or index than its function's.
+    let renamed = with_rows(&|held| held[last]["location"]["origin"]["name"] = json!("other"));
+    assert_eq!(
+        body_location_refusal(&renamed),
+        expected(format!("{}/location/origin/name", at(last)))
+    );
+    let reindexed = with_rows(&|held| held[last]["location"]["origin"]["index"] = json!(99));
+    assert_eq!(
+        body_location_refusal(&reindexed),
+        expected(format!("{}/location/origin/index", at(last)))
+    );
+    // A row whose function is no function node.
+    let scalar = fixture["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|node| node["node_tag"] == "scalar_type")
+        .expect("a scalar type")["node_id"]
+        .clone();
+    let mut resolved = fixture.clone();
+    crate::support::checked_package::resolve_operands(&mut resolved);
+    let scalar = resolved["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|node| node["node_tag"] == "scalar_type")
+        .map_or(scalar, |node| node["node_id"].clone());
+    let not_function =
+        with_rows(&|held| held[0]["location"]["origin"]["function"] = scalar.clone());
+    assert_eq!(
+        body_location_refusal(&not_function),
+        expected(format!("{}/location/origin/function", at(0)))
+    );
+    // A row beyond the count of its function's terms at the application.
+    let extra = with_rows(&|held| {
+        let mut repeated = held[last].clone();
+        repeated["term_ordinal"] = json!(repeated["term_ordinal"].as_u64().expect("ordinal") + 1);
+        held.push(repeated);
+    });
+    assert_eq!(
+        body_location_refusal(&extra),
+        expected(format!("{}/application", at(rows.len())))
+    );
+    // A row naming an occurrence its node lacks.
+    let occurrence =
+        with_rows(&|held| held[0]["occurrence"] = json!({"role": "expression", "ordinal": 9999}));
+    assert_eq!(
+        body_location_refusal(&occurrence),
+        expected(format!("{}/occurrence", at(0)))
+    );
+    // Without the carrier, a function body has no row for any term.
+    let mut carrierless = fixture.clone();
+    carrierless
+        .as_object_mut()
+        .expect("package")
+        .remove("checked_term_data");
+    assert_eq!(
+        body_location_refusal(&carrierless),
+        expected("/checked_term_data/body_locations".to_owned())
+    );
+}
+
+/// The read of `fixture` under a work limit of `work`.
+fn read_fold_with_work(fixture: &Value, work: u64) -> CheckedPackageV2ReadResult {
+    let mut evidence = filament_contract_model::CheckedPackageEvidence::new();
+    evidence.support_feature("filament.value.complete/v1");
+    let mut limits = CheckedPackageReadLimits::bounded();
+    limits.work = work;
+    filament_contract_model::CheckedPackageV2::read(&canonical(fixture), limits, &evidence)
+}
+
+/// The least work limit under which `fixture` is admitted.
+fn least_admitting_work(fixture: &Value) -> u64 {
+    let (mut low, mut high) = (0_u64, CheckedPackageReadLimits::bounded().work);
+    while low < high {
+        let middle = low + (high - low) / 2;
+        if matches!(
+            read_fold_with_work(fixture, middle),
+            CheckedPackageV2ReadResult::Admitted(_)
+        ) {
+            high = middle;
+        } else {
+            low = middle + 1;
+        }
+    }
+    low
+}
+
+/// FR-322 `body_locations` origin grammar: the schema's `BodyLocationOrigin.name`
+/// is non-empty, so an empty name is `malformed_wire` at the origin's `name`,
+/// whichever row carries it first.
+#[trace("TC-491", "FR-038-AC-581")]
+#[test]
+fn an_empty_body_location_origin_name_is_malformed_wire() {
+    let mut fixture = fold_with_body_rows();
+    let rows = fixture["checked_term_data"]["body_locations"]
+        .as_array_mut()
+        .expect("rows");
+    assert!(!rows.is_empty(), "the fold's bodies hold terms");
+    rows[0]["location"]["origin"]["name"] = json!("");
+    assert_eq!(
+        body_location_refusal(&fixture),
+        (
+            CheckedPackageRefusalCode::MalformedWire,
+            Some(CheckedPackageRefusalCause::InvalidValue),
+            "/checked_term_data/body_locations/0/location/origin/name".to_owned()
+        )
+    );
+}
+
+/// The origin `name` is charged to the work budget by its length, at the wire
+/// check and at each comparison with the function's held name: a name longer
+/// by `extra` bytes raises the least admitting limit by at least `extra`, and
+/// one unit below that limit is incomplete.
+#[trace("TC-491", "FR-038-AC-581")]
+#[test]
+fn a_body_location_origin_name_is_charged_by_its_length() {
+    let short = fold_with_body_rows();
+    let mut long = short.clone();
+    let extra = 4096_usize;
+    for row in long["checked_term_data"]["body_locations"]
+        .as_array_mut()
+        .expect("rows")
+    {
+        let name = row["location"]["origin"]["name"]
+            .as_str()
+            .expect("name")
+            .to_owned();
+        row["location"]["origin"]["name"] = json!(format!("{name}{}", "n".repeat(extra)));
+    }
+    let base = least_admitting_work(&short);
+    let needed = least_admitting_work(&long);
+    assert!(
+        needed >= base + u64::try_from(extra).expect("extra"),
+        "the {extra}-byte longer name costs {} work units",
+        needed - base
+    );
+    assert!(matches!(
+        read_fold_with_work(&long, needed),
+        CheckedPackageV2ReadResult::Admitted(_)
+    ));
+    let CheckedPackageV2ReadResult::Incomplete(stopped) = read_fold_with_work(&long, needed - 1)
+    else {
+        panic!("one unit below the requirement is incomplete");
+    };
+    assert_eq!(stopped.limit_kind, CheckedPackageLimit::Work);
+    assert!(stopped.path.as_ref().is_some_and(|path| path
+        .as_str()
+        .starts_with("/checked_term_data/body_locations")));
 }

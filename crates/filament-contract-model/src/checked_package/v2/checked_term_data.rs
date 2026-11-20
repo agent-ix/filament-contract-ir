@@ -8,7 +8,7 @@ use crate::checked_package::shared::{CheckedNodeId, CheckedOccurrence};
 use quire_canonical::{Encode, FixedShape, Sink, Writer};
 use serde::{Deserialize, Serialize};
 
-/// The four producer-captured decision arrays in a present V2 sidecar.
+/// The five producer-captured decision arrays in a present V2 sidecar.
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CheckedTermDataV2 {
@@ -24,6 +24,9 @@ pub struct CheckedTermDataV2 {
     /// Exact declarations and occurrences of probabilistic claims.
     #[serde(deserialize_with = "super::document_de::exact_vec")]
     pub probabilistic_claims: Vec<CheckedProbabilisticClaim>,
+    /// Selected semantic locations for the terms of function bodies.
+    #[serde(deserialize_with = "super::document_de::exact_vec")]
+    pub body_locations: Vec<CheckedBodySemanticLocation>,
 }
 
 /// One probabilistic claim declaration at its exact source occurrence.
@@ -320,6 +323,113 @@ impl<'de> Deserialize<'de> for CheckedProtocolLocationOrigin {
     }
 }
 
+/// One producer-selected semantic location for a term of a function body.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CheckedBodySemanticLocation {
+    /// Local application node.
+    pub application: CheckedNodeId,
+    /// Exact occurrence of that application.
+    pub occurrence: CheckedOccurrence,
+    /// Zero-based term coordinate within the occurrence.
+    pub term_ordinal: u64,
+    /// Retained origin and child-index path.
+    pub location: CheckedBodyLocation,
+}
+
+/// The function-body origin and checker child path of one body term.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CheckedBodyLocation {
+    /// The function body that holds the term.
+    pub origin: CheckedBodyLocationOrigin,
+    /// Child positions from the body's root to this term.
+    #[serde(deserialize_with = "super::document_de::exact_vec")]
+    pub path: Vec<CheckedKeyOrdinal>,
+}
+
+/// The one closed kind of body-location origin.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum CheckedBodyLocationOrigin {
+    /// A function whose body holds the term.
+    FunctionBody {
+        /// The local `function` node holding the body.
+        function: CheckedNodeId,
+        /// The function name the producer's checker gave the body.
+        name: Box<str>,
+        /// The zero-based function index the producer's checker gave the body.
+        index: u64,
+    },
+}
+
+impl<'de> Deserialize<'de> for CheckedBodyLocationOrigin {
+    /// Decodes the closed tag in place, like [`CheckedProtocolLocationOrigin`].
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+        enum Wire {
+            FunctionBody {
+                function: CheckedNodeId,
+                name: Box<str>,
+                index: u64,
+            },
+        }
+        #[derive(Deserialize)]
+        #[serde(rename_all = "snake_case")]
+        enum Tag {
+            FunctionBody,
+        }
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Fields {
+            function: CheckedNodeId,
+            name: Box<str>,
+            index: u64,
+        }
+        struct Visitor;
+        impl<'de> serde::de::Visitor<'de> for Visitor {
+            type Value = CheckedBodyLocationOrigin;
+            fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str("a closed body location origin")
+            }
+            fn visit_newtype_struct<D2: serde::Deserializer<'de>>(
+                self,
+                inner: D2,
+            ) -> Result<Self::Value, D2::Error> {
+                let Wire::FunctionBody {
+                    function,
+                    name,
+                    index,
+                } = Wire::deserialize(inner)?;
+                Ok(CheckedBodyLocationOrigin::FunctionBody {
+                    function,
+                    name,
+                    index,
+                })
+            }
+            fn visit_enum<A: serde::de::EnumAccess<'de>>(
+                self,
+                record: A,
+            ) -> Result<Self::Value, A::Error> {
+                use serde::de::VariantAccess;
+                let (Tag::FunctionBody, fields) = record.variant::<Tag>()?;
+                let Fields {
+                    function,
+                    name,
+                    index,
+                } = fields.newtype_variant::<Fields>()?;
+                Ok(CheckedBodyLocationOrigin::FunctionBody {
+                    function,
+                    name,
+                    index,
+                })
+            }
+        }
+        deserializer.deserialize_newtype_struct(super::document_de::CLOSED_ENUM_TOKEN, Visitor)
+    }
+}
+
 /// A graph position represented by a safe JSON integer or a larger canonical string.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, FixedShape)]
 #[serde(untagged)]
@@ -432,6 +542,7 @@ encode_record!(CheckedTermDataV2 {
     protocol_locations: elements,
     dispatch_tables: elements,
     probabilistic_claims: elements,
+    body_locations: elements,
 });
 encode_record!(CheckedProbabilisticClaim {
     declaration: encoded,
@@ -485,6 +596,16 @@ encode_record!(CheckedProtocolSemanticLocation {
     location: encoded,
 });
 encode_record!(CheckedProtocolLocation {
+    origin: encoded,
+    path: fixed,
+});
+encode_record!(CheckedBodySemanticLocation {
+    application: encoded,
+    occurrence: fixed,
+    term_ordinal: fixed,
+    location: encoded,
+});
+encode_record!(CheckedBodyLocation {
     origin: encoded,
     path: fixed,
 });
@@ -576,6 +697,28 @@ impl Encode for CheckedProtocolLocationOrigin {
                 super::encode::member(writer, "kind", &"protocol_attempt")?;
                 super::encode::member(writer, "protocol", protocol)?;
                 super::encode::member(writer, "attempt", attempt)?;
+            }
+        }
+        writer.end_object()
+    }
+}
+
+impl Encode for CheckedBodyLocationOrigin {
+    fn encode_into<S: Sink + ?Sized>(
+        &self,
+        writer: &mut Writer<'_, S>,
+    ) -> Result<(), quire_canonical::Error> {
+        writer.begin_object()?;
+        match self {
+            Self::FunctionBody {
+                function,
+                name,
+                index,
+            } => {
+                super::encode::member(writer, "kind", &"function_body")?;
+                super::encode::encoded(writer, "function", function)?;
+                super::encode::member(writer, "name", name)?;
+                super::encode::member(writer, "index", index)?;
             }
         }
         writer.end_object()

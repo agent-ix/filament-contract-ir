@@ -1011,7 +1011,7 @@ mod tests {
         if wire["checked_term_data"].is_null() {
             wire["checked_term_data"] = serde_json::json!({
                 "equality_decisions":[],"protocol_locations":[],
-                "dispatch_tables":[],"probabilistic_claims":[]});
+                "dispatch_tables":[],"body_locations": [], "probabilistic_claims":[]});
         }
         let decided_occurrence = wire["semantic_graph"]["nodes"][equality_position]["occurrences"]
             .as_array()

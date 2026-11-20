@@ -1451,7 +1451,7 @@ fn table(application: &str, context: &Value, declaring: &Value, candidates: Vec<
 
 fn with_tables(mut package: Value, tables: Vec<Value>) -> Value {
     package["checked_term_data"] = json!({"equality_decisions": [], "protocol_locations": [],
-        "dispatch_tables": tables, "probabilistic_claims": []});
+        "dispatch_tables": tables, "body_locations": [], "probabilistic_claims": []});
     package
 }
 
