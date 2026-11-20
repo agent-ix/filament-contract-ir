@@ -787,7 +787,8 @@ fn descriptor(
             | ScalarTypeForm::Unit
             | ScalarTypeForm::CompoundUnit
             | ScalarTypeForm::CarriedQuantity
-            | ScalarTypeForm::BoundedQuantity,
+            | ScalarTypeForm::BoundedQuantity
+            | ScalarTypeForm::ClockReference,
         ) => (
             (!suppress(Suppression::Whole)?).then_some(D::Whole { kind: frame.kind }),
             inherited,
@@ -1374,7 +1375,7 @@ pub(in crate::checked_package::v2) mod tests {
     use super::*;
     use crate::{
         CheckedPackageEvidence, CheckedPackageReadLimits, CheckedPackageRefusalCode,
-        CheckedPackageV2ReadResult,
+        CheckedPackageV2, CheckedPackageV2ReadResult,
     };
     use ix_trace_rs::trace;
     use serde_json::json;

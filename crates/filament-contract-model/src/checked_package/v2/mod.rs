@@ -2704,7 +2704,8 @@ fn declaration_forbidden(kind: CheckedNodeKind) -> bool {
         K::ScalarType(
             ScalarTypeForm::CompoundUnit
             | ScalarTypeForm::CarriedQuantity
-            | ScalarTypeForm::BoundedQuantity,
+            | ScalarTypeForm::BoundedQuantity
+            | ScalarTypeForm::ClockReference,
         ) => true,
         K::CompositeType(
             CompositeTypeForm::Option
@@ -2756,7 +2757,8 @@ fn declaration_forbidden(kind: CheckedNodeKind) -> bool {
             | ExpressionForm::PresenceRead
             | ExpressionForm::ValueRead
             | ExpressionForm::Deref
-            | ExpressionForm::Reachability,
+            | ExpressionForm::Reachability
+            | ExpressionForm::PlaceReference,
         ) => true,
         K::Function(
             FunctionForm::PureFunction | FunctionForm::Predicate | FunctionForm::RecursiveFunction,
@@ -3136,7 +3138,8 @@ fn body_grammar(kind: CheckedNodeKind) -> BodyGrammar {
             | ScalarTypeForm::Enum
             | ScalarTypeForm::CompoundUnit
             | ScalarTypeForm::CarriedQuantity
-            | ScalarTypeForm::BoundedQuantity,
+            | ScalarTypeForm::BoundedQuantity
+            | ScalarTypeForm::ClockReference,
         ) => BodyGrammar::Term,
         K::CompositeType(
             CompositeTypeForm::Option
@@ -3187,7 +3190,8 @@ fn body_grammar(kind: CheckedNodeKind) -> BodyGrammar {
             | ExpressionForm::PresenceRead
             | ExpressionForm::ValueRead
             | ExpressionForm::Deref
-            | ExpressionForm::Reachability,
+            | ExpressionForm::Reachability
+            | ExpressionForm::PlaceReference,
         ) => BodyGrammar::Term,
         K::Function(
             FunctionForm::PureFunction | FunctionForm::Predicate | FunctionForm::RecursiveFunction,
