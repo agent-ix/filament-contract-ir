@@ -5141,3 +5141,233 @@ fn tc_486_the_wrapper_fairness_refusal_precedes_the_model_root_refusal() {
         )
     );
 }
+
+/// The all-families fixture with the clause's `holds` leaf made
+/// `let s = seq(0 .. 0: i) in <boolean>`, the `seq` binder `i` a
+/// `value`/`parameter` node named `i` at `level`. The clause puts its `over`
+/// parameter in scope (level 0) and the `let` binds `s` at level 1, so `i`
+/// sits at level 2 (FSpec FR-322 "Parameter": a binder's level is its position
+/// among the binders in scope where it is bound).
+fn clause_leaf_seq(level: u64, captures: usize, trigger: bool, in_guard: bool) -> Value {
+    let mut package = v2_all_families();
+    let integer = family_key("a3a3");
+    let boolean = family_key("aaaa");
+    let text = family_key("a1a1");
+    let literal = |ty: &str, kind: &str, value: Value| json!({"term": "literal", "type": node_id(ty), "value_kind": kind, "value": value});
+    let add = |package: &mut Value, key: &str, tag: &str, form: &str, ty: &str, body: Value| {
+        let mut node = node_with_key(key, tag, form, body);
+        node["semantic_type"] = node_id(ty);
+        node["occurrences"] = json!([{"role": "expression", "ordinal": 0}]);
+        push(package, node);
+    };
+    let bound = |name: &str, value: &str| json!({"term": "binding", "name": name, "value": literal(&integer, "integer", json!(value))});
+    let parameter = |name: &str, level: u64| {
+        json!({"term": "aggregate", "members": [
+            {"term": "binding", "name": "name", "value": literal(&text, "text", json!(name))},
+            {"term": "binding", "name": "level",
+             "value": literal(&integer, "integer", json!(level.to_string()))},
+        ]})
+    };
+    let range = "bounded/integer_range/seq-range";
+    let sequence = "composite/sequence/seq-range";
+    let counted = "bounded/collection_bounds/seq-range";
+    add(
+        &mut package,
+        range,
+        "bounded_domain",
+        "integer_range",
+        &integer,
+        json!({"term": "aggregate", "members": [bound("min", "0"), bound("max", "0")]}),
+    );
+    add(
+        &mut package,
+        sequence,
+        "composite_type",
+        "sequence",
+        sequence,
+        json!({"term": "aggregate", "members": [refer(range)]}),
+    );
+    add(
+        &mut package,
+        counted,
+        "bounded_domain",
+        "collection_bounds",
+        sequence,
+        json!({"term": "aggregate", "members": [bound("min", "0"), bound("max", "1")]}),
+    );
+    for key in ["seq-lower", "seq-upper"] {
+        add(
+            &mut package,
+            key,
+            "value",
+            "literal",
+            range,
+            literal(range, "integer", json!("0")),
+        );
+    }
+    add(
+        &mut package,
+        "seq-index",
+        "value",
+        "parameter",
+        range,
+        parameter("i", level),
+    );
+    add(
+        &mut package,
+        "seq-let-binder",
+        "value",
+        "parameter",
+        counted,
+        parameter("s", 1),
+    );
+    let seq_operation = json!({"identity": "filament.op.collection.seq", "laws": [], "mode": null,
+        "member": {"kind": "type_argument", "declaration": node_id(range)}, "leaves": []});
+    add(
+        &mut package,
+        "seq-application",
+        "expression",
+        "collection",
+        counted,
+        json!({
+        "term": "application", "operator": "collection", "operation": seq_operation,
+        "result_type": node_id(counted), "arguments": [
+            refer("seq-lower"), refer("seq-upper"),
+            {"term": "binding", "name": "i", "value": refer("seq-index")}]}),
+    );
+    let let_operation = json!({"identity": "filament.op.control.let", "laws": [], "mode": null,
+        "member": null, "leaves": []});
+    add(
+        &mut package,
+        "seq-let",
+        "expression",
+        "let",
+        &boolean,
+        json!({
+        "term": "application", "operator": "let", "operation": let_operation,
+        "result_type": node_id(&boolean), "arguments": [
+            {"term": "binding", "name": "s", "value": refer("seq-application")},
+            refer(&family_key("dddd"))]}),
+    );
+    let holds = find_identity(&package, &temporal_identity("holds"));
+    if !in_guard {
+        package["semantic_graph"]["nodes"][holds]["body"]["arguments"][0] = refer("seq-let");
+    }
+    if captures > 0 {
+        let at = clause(&package);
+        let members: Vec<Value> = (0..captures)
+            .map(|index| {
+                json!({"term": "binding", "name": format!("c{index}"),
+                "value": literal(&boolean, "boolean", json!(true))})
+            })
+            .collect();
+        package["semantic_graph"]["nodes"][at]["body"]["arguments"][3] =
+            json!({"term": "aggregate", "members": members});
+    }
+    if trigger {
+        add(
+            &mut package,
+            "seq-trigger",
+            "value",
+            "parameter",
+            &boolean,
+            parameter("t", 1),
+        );
+        let at = clause(&package);
+        package["semantic_graph"]["nodes"][at]["body"]["arguments"][2] = json!({
+            "term": "aggregate", "members": [
+                {"term": "binding", "name": "kind", "value": literal(&text, "text", json!("each"))},
+                {"term": "binding", "name": "trigger", "value": refer("seq-trigger")}]});
+        if in_guard {
+            package["semantic_graph"]["nodes"][at]["body"]["arguments"][2]["members"]
+                .as_array_mut()
+                .expect("members")
+                .push(json!({"term": "binding", "name": "guard", "value": refer("seq-let")}));
+        }
+    }
+    settle(&mut package);
+    package
+}
+
+/// FSpec FR-322 "Parameter" binder rule: a `seq` binder is a binder like any
+/// other, so its level counts the binders in scope at a temporal clause leaf
+/// (the clause's `over` parameter, then the enclosing `let`), not only a
+/// function's parameters.
+#[test]
+#[trace("TC-048", "FR-322-AC-455")]
+fn tc_048_a_seq_binder_in_a_clause_leaf_resolves_its_level_from_the_binders_in_scope() {
+    admitted(
+        "seq binder at level 2",
+        &clause_leaf_seq(2, 0, false, false),
+    );
+    // Each capture is one more binder in the clause's scope.
+    admitted("one capture, level 3", &clause_leaf_seq(3, 1, false, false));
+    // An `each` trigger is another.
+    admitted("trigger, level 3", &clause_leaf_seq(3, 0, true, false));
+    let package = clause_leaf_seq(2, 0, true, false);
+    let seq = find_identity(&package, "filament.op.collection.seq");
+    expect(
+        "trigger, level 2",
+        &package,
+        Code::IllTyped,
+        Cause::OperatorIneligible,
+        &at_node(seq, ""),
+    );
+    // The activation guard is a leaf of the same scope.
+    admitted("guard, level 3", &clause_leaf_seq(3, 0, true, true));
+    let package = clause_leaf_seq(2, 0, true, true);
+    let seq = find_identity(&package, "filament.op.collection.seq");
+    expect(
+        "guard, level 2",
+        &package,
+        Code::IllTyped,
+        Cause::OperatorIneligible,
+        &at_node(seq, ""),
+    );
+    // A function that also reads the leaf puts the binder at another level, and
+    // one binder has one level.
+    for level in [1, 2] {
+        let mut package = clause_leaf_seq(level, 0, false, false);
+        let mut owner = node_with_key(
+            "seq-owner",
+            "function",
+            "pure_function",
+            json!({
+        "term": "aggregate", "members": [
+            {"term": "binding", "name": "parameters", "value": {"term": "aggregate", "members": []}},
+            {"term": "binding", "name": "body", "value": refer("seq-let")}]}),
+        );
+        owner["semantic_type"] = node_id(&family_key("aaaa"));
+        owner["occurrences"] = json!([{"role": "expression", "ordinal": 0}]);
+        push(&mut package, owner);
+        settle(&mut package);
+        let seq = find_identity(&package, "filament.op.collection.seq");
+        expect(
+            &format!("two scopes, two levels, binder at {level}"),
+            &package,
+            Code::IllTyped,
+            Cause::OperatorIneligible,
+            &at_node(seq, ""),
+        );
+    }
+    let package = clause_leaf_seq(2, 1, false, false);
+    let seq = find_identity(&package, "filament.op.collection.seq");
+    expect(
+        "one capture, level 2",
+        &package,
+        Code::IllTyped,
+        Cause::OperatorIneligible,
+        &at_node(seq, ""),
+    );
+    for wrong in [0, 1, 3] {
+        let package = clause_leaf_seq(wrong, 0, false, false);
+        let seq = find_identity(&package, "filament.op.collection.seq");
+        expect(
+            &format!("seq binder at level {wrong}"),
+            &package,
+            Code::IllTyped,
+            Cause::OperatorIneligible,
+            &at_node(seq, ""),
+        );
+    }
+}

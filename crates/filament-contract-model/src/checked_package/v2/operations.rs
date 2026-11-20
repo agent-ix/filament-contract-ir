@@ -1590,7 +1590,101 @@ fn sequence_function_level(
             }
         }
     }
+    for (position, kind) in graph.kinds.iter().enumerate() {
+        work_at_path(meter, &application.read_node().key("node_id"), 1)?;
+        if *kind != CheckedNodeKind::Temporal(TemporalForm::TemporalClause) {
+            continue;
+        }
+        if !clause_leaf_levels(position, target, graph, application, meter, &mut found)? {
+            return Ok(None);
+        }
+    }
     Ok(found)
+}
+
+/// The levels a `seq` binder takes at the leaves of one temporal clause
+/// (FSpec FR-322: a binder's level is its position among the binders in scope
+/// where it is bound). The binders the clause puts in scope are its `over`
+/// parameter, its `each` trigger and its captures; the leaves are the
+/// activation guard and every expression a formula node of the clause names.
+/// Returns false when two places give the target different levels.
+fn clause_leaf_levels(
+    clause: usize,
+    target: &CheckedNodeId,
+    graph: &Graph<'_>,
+    application: Application<'_>,
+    meter: &mut WorkMeter,
+    found: &mut Option<usize>,
+) -> Result<bool, ValidationFailure> {
+    let Some(CheckedTerm::Application { arguments, .. }) =
+        graph.terms.get(clause).and_then(Option::as_ref)
+    else {
+        return Ok(true);
+    };
+    let [CheckedTerm::Reference { .. }, _, activation, captures, _, CheckedTerm::Reference { target: formula }] =
+        arguments.as_slice()
+    else {
+        return Ok(true);
+    };
+    let mut base = 1_usize;
+    let mut guard = None;
+    if let CheckedTerm::Aggregate { members } = activation {
+        for member in members {
+            work_at_path(meter, &application.read_node().key("node_id"), 1)?;
+            if let CheckedTerm::Binding { name, value } = member {
+                match name.as_ref() {
+                    "trigger" => base = base.saturating_add(1),
+                    "guard" => guard = Some(value.as_ref()),
+                    _ => {}
+                }
+            }
+        }
+    }
+    if let CheckedTerm::Aggregate { members } = captures {
+        base = base.saturating_add(members.len());
+    }
+    let mut roots = meter.vec(graph.nodes.len())?;
+    let mut visited = meter.vec(graph.nodes.len())?;
+    if let Some(guard) = guard {
+        meter.push(&mut roots, guard)?;
+    }
+    let mut pending = meter.vec(graph.nodes.len())?;
+    meter.push(&mut pending, formula)?;
+    while let Some(node) = pending.pop() {
+        work_at_path(meter, &application.read_node().key("node_id"), 1)?;
+        let Some(position) = graph.index.get(node).copied() else {
+            continue;
+        };
+        if graph.kinds.get(position) != Some(&CheckedNodeKind::Temporal(TemporalForm::Formula))
+            || visited.contains(&position)
+        {
+            continue;
+        }
+        meter.push(&mut visited, position)?;
+        let Some(term) = graph.terms.get(position).and_then(Option::as_ref) else {
+            continue;
+        };
+        meter.push(&mut roots, term)?;
+        if let CheckedTerm::Application { arguments, .. } = term {
+            for argument in arguments {
+                if let CheckedTerm::Reference { target } = argument {
+                    meter.push(&mut pending, target)?;
+                }
+            }
+        }
+    }
+    for root in roots {
+        if let Some(depth) = expression_scope_depth(root, target, graph, application, meter)? {
+            let Some(level) = base.checked_add(depth) else {
+                return Ok(false);
+            };
+            if found.is_some_and(|previous| previous != level) {
+                return Ok(false);
+            }
+            *found = Some(level);
+        }
+    }
+    Ok(true)
 }
 
 #[ix_trace_rs::string_edge]
