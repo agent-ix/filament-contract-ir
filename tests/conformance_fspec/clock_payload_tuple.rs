@@ -704,6 +704,112 @@ fn add_clock_reference_equality(wire: &mut Value, term: &Value, operation: &str)
     );
 }
 
+fn add_clock_reference_tag_and_tuple(
+    wire: &mut Value,
+    place_reference: &Value,
+    clock_type: &Value,
+) -> (Value, Value, Value, Value) {
+    let integer = integer_type();
+    let tag_type = fixture_support::structural_id(
+        "example",
+        vec![json!("composite_type"), json!("record"), json!("fr829-tag")],
+        0,
+    );
+    let tag_value = fixture_support::structural_id(
+        "example",
+        vec![json!("value"), json!("record_value"), json!("fr829-tag")],
+        0,
+    );
+    let tuple_type = fixture_support::structural_id(
+        "example",
+        vec![
+            json!("composite_type"),
+            json!("tuple"),
+            json!("fr829-clock-reference"),
+        ],
+        0,
+    );
+    let tuple_value = fixture_support::structural_id(
+        "example",
+        vec![
+            json!("value"),
+            json!("tuple_value"),
+            json!("fr829-clock-reference"),
+        ],
+        0,
+    );
+    let mut tag_type_dependencies = vec![clock_type.clone(), integer.clone()];
+    sort_ids(&mut tag_type_dependencies);
+    push_node(
+        wire,
+        json!({
+            "body":aggregate(vec![
+                bind("r", json!({"term":"reference","target":clock_type})),
+                bind("n", json!({"term":"reference","target":integer})),
+            ]),
+            "dependencies":tag_type_dependencies,
+            "node_id":tag_type,
+            "node_tag":"composite_type",
+            "occurrences":[{"ordinal":0,"role":"type"}],
+            "schema_version":"filament.checked-semantic-graph/v2",
+            "semantic_form":"record",
+            "semantic_type":tag_type,
+        }),
+        9212,
+    );
+    let mut tag_value_dependencies =
+        vec![tag_type.clone(), place_reference.clone(), integer.clone()];
+    sort_ids(&mut tag_value_dependencies);
+    push_node(
+        wire,
+        json!({
+            "body":aggregate(vec![
+                bind("r", json!({"term":"reference","target":place_reference})),
+                bind("n", json!({"term":"literal","type":integer,"value_kind":"integer","value":"0"})),
+            ]),
+            "dependencies":tag_value_dependencies,
+            "node_id":tag_value,
+            "node_tag":"value",
+            "occurrences":[{"ordinal":0,"role":"expression"}],
+            "schema_version":"filament.checked-semantic-graph/v2",
+            "semantic_form":"record_value",
+            "semantic_type":tag_type,
+        }),
+        9213,
+    );
+    push_node(
+        wire,
+        json!({
+            "body":aggregate(vec![json!({"term":"reference","target":clock_type})]),
+            "dependencies":[clock_type],
+            "node_id":tuple_type,
+            "node_tag":"composite_type",
+            "occurrences":[{"ordinal":0,"role":"type"}],
+            "schema_version":"filament.checked-semantic-graph/v2",
+            "semantic_form":"tuple",
+            "semantic_type":tuple_type,
+        }),
+        9214,
+    );
+    let mut tuple_dependencies = vec![tuple_type.clone(), place_reference.clone()];
+    sort_ids(&mut tuple_dependencies);
+    push_node(
+        wire,
+        json!({
+            "body":aggregate(vec![json!({"term":"reference","target":place_reference})]),
+            "dependencies":tuple_dependencies,
+            "node_id":tuple_value,
+            "node_tag":"value",
+            "occurrences":[{"ordinal":0,"role":"expression"}],
+            "schema_version":"filament.checked-semantic-graph/v2",
+            "semantic_form":"tuple_value",
+            "semantic_type":tuple_type,
+        }),
+        9215,
+    );
+    (tag_type, tag_value, tuple_type, tuple_value)
+}
+
 fn add_object_owner_term(wire: &mut Value, owner: &Value, suffix: &str) -> Value {
     let node_id = json!({
         "ordinal":0,"package":"example","path":["expression","deref",suffix]
@@ -740,6 +846,7 @@ fn clock_reference_wire() -> (Value, Value, PathBuf, Value, Value, Value, Value,
     let place = id_of("ss-set-tuple-0");
     let (place_reference, clock, owner, slot, reference_type) =
         add_clock_reference(&mut wire, &place);
+    add_clock_reference_tag_and_tuple(&mut wire, &place_reference, &clock);
     for operation in [
         "filament.op.clock_reference.eq",
         "filament.op.clock_reference.ne",
@@ -787,6 +894,18 @@ fn clock_reference_place_and_equalities_admit_through_public_package_reader() {
         .collect::<Vec<_>>();
     assert!(operations.contains(&"filament.op.clock_reference.eq"));
     assert!(operations.contains(&"filament.op.clock_reference.ne"));
+    assert!(operations.contains(&"filament.op.clock_reference.ref"));
+    assert!(nodes
+        .iter()
+        .any(|node| node.semantic_form.as_ref() == "record_value"));
+    let tuple_value = nodes
+        .iter()
+        .find(|node| node.semantic_form.as_ref() == "tuple_value")
+        .expect("one-element clock-reference tuple value");
+    let CheckedTerm::Aggregate { members } = &tuple_value.body else {
+        panic!("tuple value is an aggregate");
+    };
+    assert_eq!(members.len(), 1);
 }
 
 fn clock_reference_application(wire: &mut Value) -> &mut Value {
