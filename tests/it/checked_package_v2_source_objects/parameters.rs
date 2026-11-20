@@ -76,7 +76,12 @@ fn arm() -> SelectedSourceObjectOperation {
 #[test]
 fn an_operation_entry_exposes_its_clock_and_data_parameters() {
     let package = unit();
-    let joined = SelectedSourceObjects::from_stage_rows(&package, rows(arm())).expect("joins");
+    let joined = SelectedSourceObjects::from_stage_rows(
+        &package,
+        rows(arm()),
+        filament_contract_model::SelectedSourceClockRows::EMPTY,
+    )
+    .expect("joins");
     let entry = &joined
         .read(&package, &id("qualified:O"))
         .expect("row")
@@ -176,6 +181,7 @@ fn a_defective_operation_parameter_entry_refuses_as_unknown() {
             &["x", "y"],
             vec![clock("x"), optional, clock("y")],
         )),
+        filament_contract_model::SelectedSourceClockRows::EMPTY,
     )
     .expect("an Option<Clock> entry is not a clock_parameters name");
 }
@@ -195,10 +201,20 @@ fn clock_entries_of_the_members_are_checked_apart_from_the_bindings() {
         set[at].members.push(entry);
         set
     };
-    SelectedSourceObjects::from_stage_rows(&package, with(clock("d"))).expect("a clock member");
+    SelectedSourceObjects::from_stage_rows(
+        &package,
+        with(clock("d")),
+        filament_contract_model::SelectedSourceClockRows::EMPTY,
+    )
+    .expect("a clock member");
     let mut wrapped = clock("d");
     wrapped.member_type = Some("Map<Text, ix://filament/native/Clock>".into());
-    SelectedSourceObjects::from_stage_rows(&package, with(wrapped)).expect("a wrapped clock");
+    SelectedSourceObjects::from_stage_rows(
+        &package,
+        with(wrapped),
+        filament_contract_model::SelectedSourceClockRows::EMPTY,
+    )
+    .expect("a wrapped clock");
     let mut integer = clock("d");
     integer.member_type = Some("ix://filament/native/Integer".into());
     for (case, entry) in [

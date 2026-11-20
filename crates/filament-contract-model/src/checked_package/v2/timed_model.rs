@@ -22,6 +22,8 @@ use crate::checked_package::shared::{
     CheckedSourceMapEntry,
 };
 
+mod source_place;
+
 // Timed-model records name at most sixteen closed-schema steps. Arbitrary
 // term depth is inspected by retained handles and never extends these paths.
 #[derive(Clone, Copy)]
@@ -1163,17 +1165,23 @@ fn check_resolved_path(
         return Err(fail(meter, rows_at.key("members")));
     }
     let model_node = &graph.nodes[root_model];
-    let model_name: Option<Word<'_>> = match model_node.declaration.as_ref() {
-        Some(declaration) => Some(match declaration.qualified_name.as_slice() {
-            [only] => Word::Borrowed(only),
-            parts => Word::Owned(meter.formatted(format_args!("{}", Slashed(parts)))?),
-        }),
-        None => match model_node.owner.as_ref() {
-            Some(CheckedNodeOwner::Model { node, .. }) => Some(Word::Borrowed(node)),
-            _ => None,
-        },
+    let source_identity = source_place::source_root_identity(model_node);
+    let model_name: Option<Word<'_>> = if let Some(identity) = source_identity {
+        source_place::root_rendering(model_node, identity, meter)?
+    } else {
+        match model_node.declaration.as_ref() {
+            Some(declaration) => Some(match declaration.qualified_name.as_slice() {
+                [only] => Word::Borrowed(only),
+                parts => Word::Owned(meter.formatted(format_args!("{}", Slashed(parts)))?),
+            }),
+            None => match model_node.owner.as_ref() {
+                Some(CheckedNodeOwner::Model { node, .. }) => Some(Word::Borrowed(node)),
+                _ => None,
+            },
+        }
     };
     let mut expected_declaring = model_name;
+    let mut previous_kind: Option<PathStepKind> = None;
     for (index, (step, row)) in steps.iter().zip(rows).enumerate() {
         let at = rows_at.key("members").index(index);
         work(meter, at, 1)?;
@@ -1210,14 +1218,46 @@ fn check_resolved_path(
             Some(PathStepKind::Field) => {
                 text_member(step, 1).is_some_and(|name| concat_is(identity, &[declared, "/", name]))
             }
-            // Joined against the selected tuple or variant below.
-            Some(PathStepKind::Tuple | PathStepKind::Union) => true,
+            // A selected tuple or variant is joined below; a source one is
+            // spelled by FSpec FR-789 "Rendering".
+            Some(PathStepKind::Tuple | PathStepKind::Union) if source_identity.is_none() => true,
+            Some(PathStepKind::Tuple) => {
+                bound(step, 1)
+                    .and_then(integer_value)
+                    .is_some_and(|ordinal| {
+                        source_place::is_prefixed_decimal(identity, &[declared, "/p"], ordinal)
+                    })
+            }
+            Some(PathStepKind::Union) => {
+                text_member(step, 1).is_some_and(|case| concat_is(identity, &[declared, "/", case]))
+            }
             Some(PathStepKind::Slot) => {
                 parent_type.is_some_and(|name| concat_is(identity, &[name, "[slot]"]))
             }
             _ => false,
         });
-        if step_kind == Some(PathStepKind::Field) {
+        if let Some(identity_of_owner) = source_identity {
+            if step_kind != Some(PathStepKind::Slot) {
+                let next_slot = steps
+                    .get(index + 1)
+                    .filter(|next| path_step_kind(next) == Some(PathStepKind::Slot))
+                    .and(collection.zip(minimum).zip(maximum))
+                    .map(|((collection, minimum), maximum)| (collection, minimum, maximum));
+                if !source_place::check_row(
+                    graph,
+                    identity_of_owner,
+                    step_kind.unwrap_or(PathStepKind::Slot),
+                    step,
+                    declared,
+                    member_type.unwrap_or_default(),
+                    previous_kind == Some(PathStepKind::Union),
+                    next_slot,
+                    meter,
+                )? {
+                    return Err(fail(meter, at));
+                }
+            }
+        } else if step_kind == Some(PathStepKind::Field) {
             let path_at = binding_at(position, 1).key("members").index(index);
             let model_owner = owners
                 .recover(model_node)
@@ -1298,7 +1338,9 @@ fn check_resolved_path(
                 }
             }
         }
-        if matches!(step_kind, Some(PathStepKind::Tuple | PathStepKind::Union)) {
+        if source_identity.is_none()
+            && matches!(step_kind, Some(PathStepKind::Tuple | PathStepKind::Union))
+        {
             let path_at = binding_at(position, 1).key("members").index(index);
             let model_owner = owners
                 .recover(model_node)
@@ -1354,6 +1396,7 @@ fn check_resolved_path(
             return Err(fail(meter, at));
         }
         expected_declaring = member_type.map(Word::Borrowed);
+        previous_kind = step_kind;
     }
     if !rows
         .last()
@@ -1836,6 +1879,26 @@ fn frame_writes_clock(
     else {
         return Ok(false);
     };
+    if source_place::source_root_identity(&graph.nodes[model]).is_some() {
+        // A source root's frame writes a clock when it names a field of the
+        // root that has no binding in the root's body (FR-374).
+        for entry in modifies {
+            let CheckedFrameModification::Field {
+                declaration, name, ..
+            } = entry
+            else {
+                continue;
+            };
+            if meter
+                .compare_ids(declaration, &graph.nodes[model].node_id)?
+                .is_eq()
+                && source_place::names_clock_field(graph, model, name)
+            {
+                return Ok(true);
+            }
+        }
+        return Ok(false);
+    }
     let model_owner = owners.recover(&graph.nodes[model]).map_err(|_| {
         graph.issue(
             meter,
@@ -3669,39 +3732,46 @@ pub(super) fn validate_models<'a>(
                         .and_then(|body| bound(body, 1))
                         .and_then(spelling)
                         .unwrap_or_default();
-                    let model_owner = owners.recover(&nodes[root_model]).map_err(|_| {
-                        graph.issue(
-                            meter,
-                            position,
-                            Cause::TimedNodeReference,
-                            binding_at(position, 2),
-                        )
-                    })?;
-                    let mut budget =
-                        Budget::new(meter, model_owner.package.root, model_owner.package.bytes);
-                    let declared = model_owner.package.resolve(
-                        model_owner.node,
-                        MemberKind::Operation,
-                        operation_name,
-                        &mut budget,
-                    );
-                    let parameter = match declared {
-                        Ok(Resolved::Operation(operation)) => operation
-                            .parameters
-                            .iter()
-                            .find(|parameter| parameter.name.as_deref() == Some(parameter_name))
-                            .cloned(),
-                        Err(ModelFailure::Limit(failure)) => return Err(failure),
-                        _ => None,
+                    // A source root's operations are not resolved here: the
+                    // identity-row join checks the parameter (FR-374).
+                    let source_root =
+                        source_place::source_root_identity(&nodes[root_model]).is_some();
+                    let parameter_is_clock = source_root || {
+                        let model_owner = owners.recover(&nodes[root_model]).map_err(|_| {
+                            graph.issue(
+                                meter,
+                                position,
+                                Cause::TimedNodeReference,
+                                binding_at(position, 2),
+                            )
+                        })?;
+                        let mut budget =
+                            Budget::new(meter, model_owner.package.root, model_owner.package.bytes);
+                        let declared = model_owner.package.resolve(
+                            model_owner.node,
+                            MemberKind::Operation,
+                            operation_name,
+                            &mut budget,
+                        );
+                        let parameter = match declared {
+                            Ok(Resolved::Operation(operation)) => operation
+                                .parameters
+                                .iter()
+                                .find(|parameter| parameter.name.as_deref() == Some(parameter_name))
+                                .cloned(),
+                            Err(ModelFailure::Limit(failure)) => return Err(failure),
+                            _ => None,
+                        };
+                        parameter.is_some_and(|parameter| {
+                            matches!(
+                                parameter.type_ref,
+                                Some(SelectedTypeRef::Native(
+                                    super::model_members::NativeTypeRef::Clock
+                                ))
+                            )
+                        })
                     };
-                    if !parameter.is_some_and(|parameter| {
-                        matches!(
-                            parameter.type_ref,
-                            Some(SelectedTypeRef::Native(
-                                super::model_members::NativeTypeRef::Clock
-                            ))
-                        )
-                    }) {
+                    if !parameter_is_clock {
                         return Err(graph.issue(
                             meter,
                             position,

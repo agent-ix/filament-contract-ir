@@ -1,0 +1,4232 @@
+{
+ "capability_report": [
+  {
+   "disposition": "available",
+   "feature": "filament.value.complete/v1"
+  }
+ ],
+ "contract_version": "filament.checked-package/v2",
+ "diagnostics": {
+  "catalog": {
+   "authority": "agent-ix",
+   "identity": "filament.native.diagnostics/v1"
+  },
+  "entries": []
+ },
+ "lock": {
+  "definition_selections": [
+   {
+    "authority": "agent-ix",
+    "identity": "filament.state.core/v1"
+   },
+   {
+    "authority": "agent-ix",
+    "identity": "filament.state.queries/v1"
+   },
+   {
+    "authority": "agent-ix",
+    "identity": "filament.state.graph/v1"
+   },
+   {
+    "authority": "agent-ix",
+    "identity": "filament.value.complete/v1"
+   },
+   {
+    "authority": "agent-ix",
+    "identity": "filament.model.complete/v1"
+   },
+   {
+    "authority": "agent-ix",
+    "identity": "filament.temporal.complete/v1"
+   },
+   {
+    "authority": "agent-ix",
+    "identity": "filament.value.accounting/v1"
+   },
+   {
+    "authority": "agent-ix",
+    "identity": "filament.value.compound-unit/v1"
+   },
+   {
+    "authority": "agent-ix",
+    "identity": "filament.value.compound-unit.schema/v1"
+   },
+   {
+    "authority": "agent-ix",
+    "identity": "filament.value.compound-unit.vectors/v1"
+   },
+   {
+    "authority": "agent-ix",
+    "identity": "filament.rule.package-contract/v1"
+   },
+   {
+    "authority": "agent-ix",
+    "identity": "filament.rule.shared-grammar/v1"
+   },
+   {
+    "authority": "agent-ix",
+    "identity": "filament.rule.ad-005/v1"
+   },
+   {
+    "authority": "agent-ix",
+    "identity": "filament.rule.fr-140/v1"
+   },
+   {
+    "authority": "agent-ix",
+    "identity": "filament.rule.fr-141/v1"
+   },
+   {
+    "authority": "agent-ix",
+    "identity": "filament.rule.fr-142/v1"
+   },
+   {
+    "authority": "agent-ix",
+    "identity": "filament.rule.fr-147/v1"
+   },
+   {
+    "authority": "agent-ix",
+    "identity": "filament.rule.fr-148/v1"
+   },
+   {
+    "authority": "agent-ix",
+    "identity": "filament.rule.fr-149/v1"
+   },
+   {
+    "authority": "agent-ix",
+    "identity": "filament.model.complete.rules/v1"
+   },
+   {
+    "authority": "agent-ix",
+    "identity": "filament.model.effective-declaration.schema/v1"
+   },
+   {
+    "authority": "agent-ix",
+    "identity": "filament.model.effective-declaration.vectors/v1"
+   },
+   {
+    "authority": "agent-ix",
+    "identity": "filament.rule.ad-006/v1"
+   },
+   {
+    "authority": "agent-ix",
+    "identity": "filament.rule.fr-043/v1"
+   },
+   {
+    "authority": "agent-ix",
+    "identity": "filament.rule.fr-143/v1"
+   },
+   {
+    "authority": "agent-ix",
+    "identity": "filament.rule.fr-144/v1"
+   },
+   {
+    "authority": "agent-ix",
+    "identity": "filament.rule.fr-150/v1"
+   },
+   {
+    "authority": "agent-ix",
+    "identity": "filament.rule.fr-151/v1"
+   },
+   {
+    "authority": "agent-ix",
+    "identity": "filament.rule.fr-152/v1"
+   },
+   {
+    "authority": "agent-ix",
+    "identity": "filament.rule.fr-153/v1"
+   },
+   {
+    "authority": "agent-ix",
+    "identity": "filament.rule.fr-154/v1"
+   },
+   {
+    "authority": "agent-ix",
+    "identity": "filament.rule.fr-204/v1"
+   },
+   {
+    "authority": "agent-ix",
+    "identity": "filament.rule.fr-208/v1"
+   },
+   {
+    "authority": "agent-ix",
+    "identity": "filament.rule.fr-321/v1"
+   },
+   {
+    "authority": "agent-ix",
+    "identity": "filament.rule.interface_003/v1"
+   },
+   {
+    "authority": "agent-ix",
+    "identity": "filament.rule.fr-415/v1"
+   },
+   {
+    "authority": "agent-ix",
+    "identity": "filament.rule.fr-205/v1"
+   }
+  ],
+  "dependency_selections": [],
+  "edition": {
+   "definition": {
+    "authority": "agent-ix",
+    "identity": "ix:native"
+   },
+   "role": "edition"
+  },
+  "profile_selections": [],
+  "required_features": [
+   "filament.value.complete/v1"
+  ],
+  "sources": [
+   {
+    "authority": "agent-ix",
+    "identity": "test:spine-model"
+   }
+  ]
+ },
+ "name": "pkg",
+ "operation_bodies": [
+  {
+   "body": {
+    "kind": "no_body"
+   },
+   "declaring": {
+    "ordinal": 0,
+    "package": "pkg",
+    "path": [
+     "O"
+    ]
+   },
+   "document": "test:spine-model",
+   "operation": "arm"
+  }
+ ],
+ "operation_effects": [
+  {
+   "declaring": {
+    "ordinal": 0,
+    "package": "pkg",
+    "path": [
+     "O"
+    ]
+   },
+   "document": "test:spine-model",
+   "effect": {
+    "creates": [],
+    "deletes": [],
+    "deletes_scoped": [],
+    "modifies": [
+     {
+      "declaration": {
+       "ordinal": 0,
+       "package": "pkg",
+       "path": [
+        "O"
+       ]
+      },
+      "kind": "field",
+      "name": "d",
+      "scope": "receiver"
+     }
+    ]
+   },
+   "operation": "arm",
+   "provenance": {
+    "member": "O::arm",
+    "origin": "source_declaration_operation_frame"
+   }
+  }
+ ],
+ "semantic_graph": {
+  "graph_version": "filament.checked-semantic-graph/v2",
+  "nodes": [
+   {
+    "body": {
+     "base": true,
+     "term": "dimension",
+     "terms": []
+    },
+    "declaration": {
+     "qualified_name": [
+      "Time"
+     ]
+    },
+    "dependencies": [],
+    "node_id": {
+     "ordinal": 1,
+     "package": "pkg",
+     "path": [
+      "Time"
+     ]
+    },
+    "node_tag": "scalar_type",
+    "occurrences": [
+     {
+      "ordinal": 0,
+      "role": "declaration"
+     }
+    ],
+    "owner": {
+     "authority": "agent-ix",
+     "identity": "test:spine-model",
+     "kind": "source"
+    },
+    "schema_version": "filament.checked-semantic-graph/v2",
+    "semantic_form": "dimension",
+    "semantic_type": {
+     "ordinal": 1,
+     "package": "pkg",
+     "path": [
+      "Time"
+     ]
+    }
+   },
+   {
+    "body": {
+     "members": [],
+     "term": "aggregate"
+    },
+    "declaration": {
+     "qualified_name": [
+      "W"
+     ]
+    },
+    "dependencies": [],
+    "node_id": {
+     "ordinal": 0,
+     "package": "pkg",
+     "path": [
+      "W"
+     ]
+    },
+    "node_tag": "composite_type",
+    "occurrences": [
+     {
+      "ordinal": 0,
+      "role": "declaration"
+     }
+    ],
+    "owner": {
+     "authority": "agent-ix",
+     "identity": "test:spine-model",
+     "kind": "source"
+    },
+    "schema_version": "filament.checked-semantic-graph/v2",
+    "semantic_form": "record",
+    "semantic_type": {
+     "ordinal": 0,
+     "package": "pkg",
+     "path": [
+      "W"
+     ]
+    }
+   },
+   {
+    "body": {
+     "members": [
+      {
+       "target": {
+        "ordinal": 0,
+        "package": "pkg",
+        "path": [
+         "W"
+        ]
+       },
+       "term": "reference"
+      }
+     ],
+     "term": "aggregate"
+    },
+    "dependencies": [
+     {
+      "ordinal": 0,
+      "package": "pkg",
+      "path": [
+       "W"
+      ]
+     }
+    ],
+    "node_id": {
+     "ordinal": 0,
+     "package": "pkg",
+     "path": [
+      "composite_type",
+      "sequence",
+      {
+       "node": 1
+      }
+     ]
+    },
+    "node_tag": "composite_type",
+    "occurrences": [
+     {
+      "ordinal": 0,
+      "role": "generated"
+     }
+    ],
+    "schema_version": "filament.checked-semantic-graph/v2",
+    "semantic_form": "sequence",
+    "semantic_type": {
+     "ordinal": 0,
+     "package": "pkg",
+     "path": [
+      "composite_type",
+      "sequence",
+      {
+       "node": 1
+      }
+     ]
+    }
+   },
+   {
+    "body": {
+     "dimension_node_id": {
+      "ordinal": 1,
+      "package": "pkg",
+      "path": [
+       "Time"
+      ]
+     },
+     "offset": {
+      "denominator": "1",
+      "numerator": "0"
+     },
+     "scale": {
+      "denominator": "1",
+      "numerator": "1"
+     },
+     "target_unit_node_id": null,
+     "term": "unit"
+    },
+    "declaration": {
+     "qualified_name": [
+      "ms"
+     ]
+    },
+    "dependencies": [
+     {
+      "ordinal": 1,
+      "package": "pkg",
+      "path": [
+       "Time"
+      ]
+     }
+    ],
+    "node_id": {
+     "ordinal": 2,
+     "package": "pkg",
+     "path": [
+      "ms"
+     ]
+    },
+    "node_tag": "scalar_type",
+    "occurrences": [
+     {
+      "ordinal": 0,
+      "role": "declaration"
+     }
+    ],
+    "owner": {
+     "authority": "agent-ix",
+     "identity": "test:spine-model",
+     "kind": "source"
+    },
+    "schema_version": "filament.checked-semantic-graph/v2",
+    "semantic_form": "unit",
+    "semantic_type": {
+     "ordinal": 1,
+     "package": "pkg",
+     "path": [
+      "Time"
+     ]
+    }
+   },
+   {
+    "body": {
+     "members": [],
+     "term": "aggregate"
+    },
+    "dependencies": [],
+    "node_id": {
+     "ordinal": 0,
+     "package": "pkg",
+     "path": [
+      "scalar_type",
+      "integer"
+     ]
+    },
+    "node_tag": "scalar_type",
+    "occurrences": [
+     {
+      "ordinal": 0,
+      "role": "generated"
+     }
+    ],
+    "schema_version": "filament.checked-semantic-graph/v2",
+    "semantic_form": "integer",
+    "semantic_type": {
+     "ordinal": 0,
+     "package": "pkg",
+     "path": [
+      "scalar_type",
+      "integer"
+     ]
+    }
+   },
+   {
+    "body": {
+     "members": [
+      {
+       "name": "min",
+       "term": "binding",
+       "value": {
+        "term": "literal",
+        "type": {
+         "ordinal": 0,
+         "package": "pkg",
+         "path": [
+          "scalar_type",
+          "integer"
+         ]
+        },
+        "value": "0",
+        "value_kind": "integer"
+       }
+      },
+      {
+       "name": "max",
+       "term": "binding",
+       "value": {
+        "term": "literal",
+        "type": {
+         "ordinal": 0,
+         "package": "pkg",
+         "path": [
+          "scalar_type",
+          "integer"
+         ]
+        },
+        "value": "3",
+        "value_kind": "integer"
+       }
+      }
+     ],
+     "term": "aggregate"
+    },
+    "dependencies": [
+     {
+      "ordinal": 0,
+      "package": "pkg",
+      "path": [
+       "composite_type",
+       "sequence",
+       {
+        "node": 1
+       }
+      ]
+     }
+    ],
+    "node_id": {
+     "ordinal": 0,
+     "package": "pkg",
+     "path": [
+      "bounded_domain",
+      "collection_bounds",
+      "min",
+      {
+       "node": 4
+      },
+      "0",
+      "max",
+      "3",
+      {
+       "node": 2
+      }
+     ]
+    },
+    "node_tag": "bounded_domain",
+    "occurrences": [
+     {
+      "ordinal": 0,
+      "role": "generated"
+     }
+    ],
+    "schema_version": "filament.checked-semantic-graph/v2",
+    "semantic_form": "collection_bounds",
+    "semantic_type": {
+     "ordinal": 0,
+     "package": "pkg",
+     "path": [
+      "composite_type",
+      "sequence",
+      {
+       "node": 1
+      }
+     ]
+    }
+   },
+   {
+    "body": {
+     "members": [
+      {
+       "name": "r",
+       "term": "binding",
+       "value": {
+        "target": {
+         "ordinal": 0,
+         "package": "pkg",
+         "path": [
+          "bounded_domain",
+          "collection_bounds",
+          "min",
+          {
+           "node": 4
+          },
+          "0",
+          "max",
+          "3",
+          {
+           "node": 2
+          }
+         ]
+        },
+        "term": "reference"
+       }
+      }
+     ],
+     "term": "aggregate"
+    },
+    "declaration": {
+     "qualified_name": [
+      "O"
+     ]
+    },
+    "dependencies": [
+     {
+      "ordinal": 0,
+      "package": "pkg",
+      "path": [
+       "bounded_domain",
+       "collection_bounds",
+       "min",
+       {
+        "node": 4
+       },
+       "0",
+       "max",
+       "3",
+       {
+        "node": 2
+       }
+      ]
+     }
+    ],
+    "node_id": {
+     "ordinal": 0,
+     "package": "pkg",
+     "path": [
+      "O"
+     ]
+    },
+    "node_tag": "model",
+    "occurrences": [
+     {
+      "ordinal": 0,
+      "role": "declaration"
+     },
+     {
+      "ordinal": 0,
+      "role": "generated"
+     }
+    ],
+    "owner": {
+     "authority": "agent-ix",
+     "identity": "test:spine-model",
+     "kind": "source"
+    },
+    "schema_version": "filament.checked-semantic-graph/v2",
+    "semantic_form": "object_type",
+    "semantic_type": {
+     "ordinal": 0,
+     "package": "pkg",
+     "path": [
+      "O"
+     ]
+    }
+   },
+   {
+    "body": {
+     "members": [],
+     "term": "aggregate"
+    },
+    "dependencies": [],
+    "node_id": {
+     "ordinal": 0,
+     "package": "pkg",
+     "path": [
+      "scalar_type",
+      "text"
+     ]
+    },
+    "node_tag": "scalar_type",
+    "occurrences": [
+     {
+      "ordinal": 0,
+      "role": "generated"
+     }
+    ],
+    "schema_version": "filament.checked-semantic-graph/v2",
+    "semantic_form": "text",
+    "semantic_type": {
+     "ordinal": 0,
+     "package": "pkg",
+     "path": [
+      "scalar_type",
+      "text"
+     ]
+    }
+   },
+   {
+    "body": {
+     "members": [
+      {
+       "name": "model",
+       "term": "binding",
+       "value": {
+        "target": {
+         "ordinal": 0,
+         "package": "pkg",
+         "path": [
+          "O"
+         ]
+        },
+        "term": "reference"
+       }
+      },
+      {
+       "name": "path",
+       "term": "binding",
+       "value": {
+        "members": [
+         {
+          "members": [
+           {
+            "name": "kind",
+            "term": "binding",
+            "value": {
+             "term": "literal",
+             "type": {
+              "ordinal": 0,
+              "package": "pkg",
+              "path": [
+               "scalar_type",
+               "text"
+              ]
+             },
+             "value": "field",
+             "value_kind": "text"
+            }
+           },
+           {
+            "name": "name",
+            "term": "binding",
+            "value": {
+             "term": "literal",
+             "type": {
+              "ordinal": 0,
+              "package": "pkg",
+              "path": [
+               "scalar_type",
+               "text"
+              ]
+             },
+             "value": "d",
+             "value_kind": "text"
+            }
+           }
+          ],
+          "term": "aggregate"
+         }
+        ],
+        "term": "aggregate"
+       }
+      },
+      {
+       "name": "resolved_path",
+       "term": "binding",
+       "value": {
+        "members": [
+         {
+          "members": [
+           {
+            "name": "path_step",
+            "term": "binding",
+            "value": {
+             "term": "literal",
+             "type": {
+              "ordinal": 0,
+              "package": "pkg",
+              "path": [
+               "scalar_type",
+               "integer"
+              ]
+             },
+             "value": 0,
+             "value_kind": "integer"
+            }
+           },
+           {
+            "name": "declaring_type",
+            "term": "binding",
+            "value": {
+             "term": "literal",
+             "type": {
+              "ordinal": 0,
+              "package": "pkg",
+              "path": [
+               "scalar_type",
+               "text"
+              ]
+             },
+             "value": "ix://test:spine-model/O",
+             "value_kind": "text"
+            }
+           },
+           {
+            "name": "member_identity",
+            "term": "binding",
+            "value": {
+             "term": "literal",
+             "type": {
+              "ordinal": 0,
+              "package": "pkg",
+              "path": [
+               "scalar_type",
+               "text"
+              ]
+             },
+             "value": "ix://test:spine-model/O/d",
+             "value_kind": "text"
+            }
+           },
+           {
+            "name": "member_type",
+            "term": "binding",
+            "value": {
+             "term": "literal",
+             "type": {
+              "ordinal": 0,
+              "package": "pkg",
+              "path": [
+               "scalar_type",
+               "text"
+              ]
+             },
+             "value": "ix://filament/native/Clock",
+             "value_kind": "text"
+            }
+           },
+           {
+            "name": "collection_kind",
+            "term": "binding",
+            "value": {
+             "term": "literal",
+             "type": {
+              "ordinal": 0,
+              "package": "pkg",
+              "path": [
+               "scalar_type",
+               "text"
+              ]
+             },
+             "value": "none",
+             "value_kind": "text"
+            }
+           },
+           {
+            "name": "minimum",
+            "term": "binding",
+            "value": {
+             "term": "literal",
+             "type": {
+              "ordinal": 0,
+              "package": "pkg",
+              "path": [
+               "scalar_type",
+               "text"
+              ]
+             },
+             "value": "",
+             "value_kind": "text"
+            }
+           },
+           {
+            "name": "maximum",
+            "term": "binding",
+            "value": {
+             "term": "literal",
+             "type": {
+              "ordinal": 0,
+              "package": "pkg",
+              "path": [
+               "scalar_type",
+               "text"
+              ]
+             },
+             "value": "",
+             "value_kind": "text"
+            }
+           }
+          ],
+          "term": "aggregate"
+         }
+        ],
+        "term": "aggregate"
+       }
+      }
+     ],
+     "term": "aggregate"
+    },
+    "dependencies": [
+     {
+      "ordinal": 0,
+      "package": "pkg",
+      "path": [
+       "O"
+      ]
+     }
+    ],
+    "node_id": {
+     "ordinal": 0,
+     "package": "pkg",
+     "path": [
+      "timed_model",
+      "clock_place",
+      "model",
+      {
+       "node": 6
+      },
+      "path",
+      "kind",
+      {
+       "node": 7
+      },
+      "field",
+      "name",
+      {
+       "node": 7
+      },
+      "d",
+      "resolved_path",
+      "path_step",
+      {
+       "node": 4
+      },
+      "0",
+      "declaring_type",
+      {
+       "node": 7
+      },
+      "ix://test:spine-model/O",
+      "member_identity",
+      {
+       "node": 7
+      },
+      "ix://test:spine-model/O/d",
+      "member_type",
+      {
+       "node": 7
+      },
+      "ix://filament/native/Clock",
+      "collection_kind",
+      {
+       "node": 7
+      },
+      "none",
+      "minimum",
+      {
+       "node": 7
+      },
+      "",
+      "maximum",
+      {
+       "node": 7
+      },
+      ""
+     ]
+    },
+    "node_tag": "timed_model",
+    "occurrences": [
+     {
+      "ordinal": 0,
+      "role": "expression"
+     }
+    ],
+    "schema_version": "filament.checked-semantic-graph/v2",
+    "semantic_form": "clock_place",
+    "semantic_type": {
+     "ordinal": 0,
+     "package": "pkg",
+     "path": [
+      "timed_model",
+      "clock_place",
+      "model",
+      {
+       "node": 6
+      },
+      "path",
+      "kind",
+      {
+       "node": 7
+      },
+      "field",
+      "name",
+      {
+       "node": 7
+      },
+      "d",
+      "resolved_path",
+      "path_step",
+      {
+       "node": 4
+      },
+      "0",
+      "declaring_type",
+      {
+       "node": 7
+      },
+      "ix://test:spine-model/O",
+      "member_identity",
+      {
+       "node": 7
+      },
+      "ix://test:spine-model/O/d",
+      "member_type",
+      {
+       "node": 7
+      },
+      "ix://filament/native/Clock",
+      "collection_kind",
+      {
+       "node": 7
+      },
+      "none",
+      "minimum",
+      {
+       "node": 7
+      },
+      "",
+      "maximum",
+      {
+       "node": 7
+      },
+      ""
+     ]
+    }
+   },
+   {
+    "body": {
+     "members": [
+      {
+       "name": "model",
+       "term": "binding",
+       "value": {
+        "target": {
+         "ordinal": 0,
+         "package": "pkg",
+         "path": [
+          "O"
+         ]
+        },
+        "term": "reference"
+       }
+      },
+      {
+       "name": "path",
+       "term": "binding",
+       "value": {
+        "members": [
+         {
+          "members": [
+           {
+            "name": "kind",
+            "term": "binding",
+            "value": {
+             "term": "literal",
+             "type": {
+              "ordinal": 0,
+              "package": "pkg",
+              "path": [
+               "scalar_type",
+               "text"
+              ]
+             },
+             "value": "field",
+             "value_kind": "text"
+            }
+           },
+           {
+            "name": "name",
+            "term": "binding",
+            "value": {
+             "term": "literal",
+             "type": {
+              "ordinal": 0,
+              "package": "pkg",
+              "path": [
+               "scalar_type",
+               "text"
+              ]
+             },
+             "value": "q",
+             "value_kind": "text"
+            }
+           }
+          ],
+          "term": "aggregate"
+         },
+         {
+          "members": [
+           {
+            "name": "kind",
+            "term": "binding",
+            "value": {
+             "term": "literal",
+             "type": {
+              "ordinal": 0,
+              "package": "pkg",
+              "path": [
+               "scalar_type",
+               "text"
+              ]
+             },
+             "value": "slot",
+             "value_kind": "text"
+            }
+           },
+           {
+            "name": "collection",
+            "term": "binding",
+            "value": {
+             "term": "literal",
+             "type": {
+              "ordinal": 0,
+              "package": "pkg",
+              "path": [
+               "scalar_type",
+               "text"
+              ]
+             },
+             "value": "sequence",
+             "value_kind": "text"
+            }
+           },
+           {
+            "name": "selector",
+            "term": "binding",
+            "value": {
+             "target": {
+              "ordinal": 0,
+              "package": "pkg",
+              "path": [
+               "scalar_type",
+               "integer"
+              ]
+             },
+             "term": "reference"
+            }
+           },
+           {
+            "name": "minimum",
+            "term": "binding",
+            "value": {
+             "term": "literal",
+             "type": {
+              "ordinal": 0,
+              "package": "pkg",
+              "path": [
+               "scalar_type",
+               "integer"
+              ]
+             },
+             "value": 0,
+             "value_kind": "integer"
+            }
+           },
+           {
+            "name": "maximum",
+            "term": "binding",
+            "value": {
+             "term": "literal",
+             "type": {
+              "ordinal": 0,
+              "package": "pkg",
+              "path": [
+               "scalar_type",
+               "integer"
+              ]
+             },
+             "value": 3,
+             "value_kind": "integer"
+            }
+           }
+          ],
+          "term": "aggregate"
+         }
+        ],
+        "term": "aggregate"
+       }
+      },
+      {
+       "name": "resolved_path",
+       "term": "binding",
+       "value": {
+        "members": [
+         {
+          "members": [
+           {
+            "name": "path_step",
+            "term": "binding",
+            "value": {
+             "term": "literal",
+             "type": {
+              "ordinal": 0,
+              "package": "pkg",
+              "path": [
+               "scalar_type",
+               "integer"
+              ]
+             },
+             "value": 0,
+             "value_kind": "integer"
+            }
+           },
+           {
+            "name": "declaring_type",
+            "term": "binding",
+            "value": {
+             "term": "literal",
+             "type": {
+              "ordinal": 0,
+              "package": "pkg",
+              "path": [
+               "scalar_type",
+               "text"
+              ]
+             },
+             "value": "ix://test:spine-model/O",
+             "value_kind": "text"
+            }
+           },
+           {
+            "name": "member_identity",
+            "term": "binding",
+            "value": {
+             "term": "literal",
+             "type": {
+              "ordinal": 0,
+              "package": "pkg",
+              "path": [
+               "scalar_type",
+               "text"
+              ]
+             },
+             "value": "ix://test:spine-model/O/q",
+             "value_kind": "text"
+            }
+           },
+           {
+            "name": "member_type",
+            "term": "binding",
+            "value": {
+             "term": "literal",
+             "type": {
+              "ordinal": 0,
+              "package": "pkg",
+              "path": [
+               "scalar_type",
+               "text"
+              ]
+             },
+             "value": "Sequence<ix://filament/native/Clock>",
+             "value_kind": "text"
+            }
+           },
+           {
+            "name": "collection_kind",
+            "term": "binding",
+            "value": {
+             "term": "literal",
+             "type": {
+              "ordinal": 0,
+              "package": "pkg",
+              "path": [
+               "scalar_type",
+               "text"
+              ]
+             },
+             "value": "sequence",
+             "value_kind": "text"
+            }
+           },
+           {
+            "name": "minimum",
+            "term": "binding",
+            "value": {
+             "term": "literal",
+             "type": {
+              "ordinal": 0,
+              "package": "pkg",
+              "path": [
+               "scalar_type",
+               "text"
+              ]
+             },
+             "value": "0",
+             "value_kind": "text"
+            }
+           },
+           {
+            "name": "maximum",
+            "term": "binding",
+            "value": {
+             "term": "literal",
+             "type": {
+              "ordinal": 0,
+              "package": "pkg",
+              "path": [
+               "scalar_type",
+               "text"
+              ]
+             },
+             "value": "3",
+             "value_kind": "text"
+            }
+           }
+          ],
+          "term": "aggregate"
+         },
+         {
+          "members": [
+           {
+            "name": "path_step",
+            "term": "binding",
+            "value": {
+             "term": "literal",
+             "type": {
+              "ordinal": 0,
+              "package": "pkg",
+              "path": [
+               "scalar_type",
+               "integer"
+              ]
+             },
+             "value": 1,
+             "value_kind": "integer"
+            }
+           },
+           {
+            "name": "declaring_type",
+            "term": "binding",
+            "value": {
+             "term": "literal",
+             "type": {
+              "ordinal": 0,
+              "package": "pkg",
+              "path": [
+               "scalar_type",
+               "text"
+              ]
+             },
+             "value": "ix://filament/native/Clock",
+             "value_kind": "text"
+            }
+           },
+           {
+            "name": "member_identity",
+            "term": "binding",
+            "value": {
+             "term": "literal",
+             "type": {
+              "ordinal": 0,
+              "package": "pkg",
+              "path": [
+               "scalar_type",
+               "text"
+              ]
+             },
+             "value": "Sequence<ix://filament/native/Clock>[slot]",
+             "value_kind": "text"
+            }
+           },
+           {
+            "name": "member_type",
+            "term": "binding",
+            "value": {
+             "term": "literal",
+             "type": {
+              "ordinal": 0,
+              "package": "pkg",
+              "path": [
+               "scalar_type",
+               "text"
+              ]
+             },
+             "value": "ix://filament/native/Clock",
+             "value_kind": "text"
+            }
+           },
+           {
+            "name": "collection_kind",
+            "term": "binding",
+            "value": {
+             "term": "literal",
+             "type": {
+              "ordinal": 0,
+              "package": "pkg",
+              "path": [
+               "scalar_type",
+               "text"
+              ]
+             },
+             "value": "none",
+             "value_kind": "text"
+            }
+           },
+           {
+            "name": "minimum",
+            "term": "binding",
+            "value": {
+             "term": "literal",
+             "type": {
+              "ordinal": 0,
+              "package": "pkg",
+              "path": [
+               "scalar_type",
+               "text"
+              ]
+             },
+             "value": "",
+             "value_kind": "text"
+            }
+           },
+           {
+            "name": "maximum",
+            "term": "binding",
+            "value": {
+             "term": "literal",
+             "type": {
+              "ordinal": 0,
+              "package": "pkg",
+              "path": [
+               "scalar_type",
+               "text"
+              ]
+             },
+             "value": "",
+             "value_kind": "text"
+            }
+           }
+          ],
+          "term": "aggregate"
+         }
+        ],
+        "term": "aggregate"
+       }
+      }
+     ],
+     "term": "aggregate"
+    },
+    "dependencies": [
+     {
+      "ordinal": 0,
+      "package": "pkg",
+      "path": [
+       "O"
+      ]
+     },
+     {
+      "ordinal": 0,
+      "package": "pkg",
+      "path": [
+       "scalar_type",
+       "integer"
+      ]
+     }
+    ],
+    "node_id": {
+     "ordinal": 1,
+     "package": "pkg",
+     "path": [
+      "timed_model",
+      "clock_place",
+      "model",
+      {
+       "node": 6
+      },
+      "path",
+      "kind",
+      {
+       "node": 7
+      },
+      "field",
+      "name",
+      {
+       "node": 7
+      },
+      "q",
+      "kind",
+      {
+       "node": 7
+      },
+      "slot",
+      "collection",
+      {
+       "node": 7
+      },
+      "sequence",
+      "selector",
+      {
+       "node": 4
+      },
+      "minimum",
+      {
+       "node": 4
+      },
+      "0",
+      "maximum",
+      {
+       "node": 4
+      },
+      "3",
+      "resolved_path",
+      "path_step",
+      {
+       "node": 4
+      },
+      "0",
+      "declaring_type",
+      {
+       "node": 7
+      },
+      "ix://test:spine-model/O",
+      "member_identity",
+      {
+       "node": 7
+      },
+      "ix://test:spine-model/O/q",
+      "member_type",
+      {
+       "node": 7
+      },
+      "Sequence<ix://filament/native/Clock>",
+      "collection_kind",
+      {
+       "node": 7
+      },
+      "sequence",
+      "minimum",
+      {
+       "node": 7
+      },
+      "0",
+      "maximum",
+      {
+       "node": 7
+      },
+      "3",
+      "path_step",
+      {
+       "node": 4
+      },
+      "1",
+      "declaring_type",
+      {
+       "node": 7
+      },
+      "ix://filament/native/Clock",
+      "member_identity",
+      {
+       "node": 7
+      },
+      "Sequence<ix://filament/native/Clock>[slot]",
+      "member_type",
+      {
+       "node": 7
+      },
+      "ix://filament/native/Clock",
+      "collection_kind",
+      {
+       "node": 7
+      },
+      "none",
+      "minimum",
+      {
+       "node": 7
+      },
+      "",
+      "maximum",
+      {
+       "node": 7
+      },
+      ""
+     ]
+    },
+    "node_tag": "timed_model",
+    "occurrences": [
+     {
+      "ordinal": 0,
+      "role": "expression"
+     }
+    ],
+    "schema_version": "filament.checked-semantic-graph/v2",
+    "semantic_form": "clock_place",
+    "semantic_type": {
+     "ordinal": 1,
+     "package": "pkg",
+     "path": [
+      "timed_model",
+      "clock_place",
+      "model",
+      {
+       "node": 6
+      },
+      "path",
+      "kind",
+      {
+       "node": 7
+      },
+      "field",
+      "name",
+      {
+       "node": 7
+      },
+      "q",
+      "kind",
+      {
+       "node": 7
+      },
+      "slot",
+      "collection",
+      {
+       "node": 7
+      },
+      "sequence",
+      "selector",
+      {
+       "node": 4
+      },
+      "minimum",
+      {
+       "node": 4
+      },
+      "0",
+      "maximum",
+      {
+       "node": 4
+      },
+      "3",
+      "resolved_path",
+      "path_step",
+      {
+       "node": 4
+      },
+      "0",
+      "declaring_type",
+      {
+       "node": 7
+      },
+      "ix://test:spine-model/O",
+      "member_identity",
+      {
+       "node": 7
+      },
+      "ix://test:spine-model/O/q",
+      "member_type",
+      {
+       "node": 7
+      },
+      "Sequence<ix://filament/native/Clock>",
+      "collection_kind",
+      {
+       "node": 7
+      },
+      "sequence",
+      "minimum",
+      {
+       "node": 7
+      },
+      "0",
+      "maximum",
+      {
+       "node": 7
+      },
+      "3",
+      "path_step",
+      {
+       "node": 4
+      },
+      "1",
+      "declaring_type",
+      {
+       "node": 7
+      },
+      "ix://filament/native/Clock",
+      "member_identity",
+      {
+       "node": 7
+      },
+      "Sequence<ix://filament/native/Clock>[slot]",
+      "member_type",
+      {
+       "node": 7
+      },
+      "ix://filament/native/Clock",
+      "collection_kind",
+      {
+       "node": 7
+      },
+      "none",
+      "minimum",
+      {
+       "node": 7
+      },
+      "",
+      "maximum",
+      {
+       "node": 7
+      },
+      ""
+     ]
+    }
+   },
+   {
+    "body": {
+     "members": [
+      {
+       "name": "model",
+       "term": "binding",
+       "value": {
+        "target": {
+         "ordinal": 0,
+         "package": "pkg",
+         "path": [
+          "O"
+         ]
+        },
+        "term": "reference"
+       }
+      },
+      {
+       "name": "path",
+       "term": "binding",
+       "value": {
+        "members": [
+         {
+          "members": [
+           {
+            "name": "kind",
+            "term": "binding",
+            "value": {
+             "term": "literal",
+             "type": {
+              "ordinal": 0,
+              "package": "pkg",
+              "path": [
+               "scalar_type",
+               "text"
+              ]
+             },
+             "value": "field",
+             "value_kind": "text"
+            }
+           },
+           {
+            "name": "name",
+            "term": "binding",
+            "value": {
+             "term": "literal",
+             "type": {
+              "ordinal": 0,
+              "package": "pkg",
+              "path": [
+               "scalar_type",
+               "text"
+              ]
+             },
+             "value": "r",
+             "value_kind": "text"
+            }
+           }
+          ],
+          "term": "aggregate"
+         },
+         {
+          "members": [
+           {
+            "name": "kind",
+            "term": "binding",
+            "value": {
+             "term": "literal",
+             "type": {
+              "ordinal": 0,
+              "package": "pkg",
+              "path": [
+               "scalar_type",
+               "text"
+              ]
+             },
+             "value": "slot",
+             "value_kind": "text"
+            }
+           },
+           {
+            "name": "collection",
+            "term": "binding",
+            "value": {
+             "term": "literal",
+             "type": {
+              "ordinal": 0,
+              "package": "pkg",
+              "path": [
+               "scalar_type",
+               "text"
+              ]
+             },
+             "value": "sequence",
+             "value_kind": "text"
+            }
+           },
+           {
+            "name": "selector",
+            "term": "binding",
+            "value": {
+             "target": {
+              "ordinal": 0,
+              "package": "pkg",
+              "path": [
+               "scalar_type",
+               "integer"
+              ]
+             },
+             "term": "reference"
+            }
+           },
+           {
+            "name": "minimum",
+            "term": "binding",
+            "value": {
+             "term": "literal",
+             "type": {
+              "ordinal": 0,
+              "package": "pkg",
+              "path": [
+               "scalar_type",
+               "integer"
+              ]
+             },
+             "value": 0,
+             "value_kind": "integer"
+            }
+           },
+           {
+            "name": "maximum",
+            "term": "binding",
+            "value": {
+             "term": "literal",
+             "type": {
+              "ordinal": 0,
+              "package": "pkg",
+              "path": [
+               "scalar_type",
+               "integer"
+              ]
+             },
+             "value": 3,
+             "value_kind": "integer"
+            }
+           }
+          ],
+          "term": "aggregate"
+         },
+         {
+          "members": [
+           {
+            "name": "kind",
+            "term": "binding",
+            "value": {
+             "term": "literal",
+             "type": {
+              "ordinal": 0,
+              "package": "pkg",
+              "path": [
+               "scalar_type",
+               "text"
+              ]
+             },
+             "value": "field",
+             "value_kind": "text"
+            }
+           },
+           {
+            "name": "name",
+            "term": "binding",
+            "value": {
+             "term": "literal",
+             "type": {
+              "ordinal": 0,
+              "package": "pkg",
+              "path": [
+               "scalar_type",
+               "text"
+              ]
+             },
+             "value": "c",
+             "value_kind": "text"
+            }
+           }
+          ],
+          "term": "aggregate"
+         }
+        ],
+        "term": "aggregate"
+       }
+      },
+      {
+       "name": "resolved_path",
+       "term": "binding",
+       "value": {
+        "members": [
+         {
+          "members": [
+           {
+            "name": "path_step",
+            "term": "binding",
+            "value": {
+             "term": "literal",
+             "type": {
+              "ordinal": 0,
+              "package": "pkg",
+              "path": [
+               "scalar_type",
+               "integer"
+              ]
+             },
+             "value": 0,
+             "value_kind": "integer"
+            }
+           },
+           {
+            "name": "declaring_type",
+            "term": "binding",
+            "value": {
+             "term": "literal",
+             "type": {
+              "ordinal": 0,
+              "package": "pkg",
+              "path": [
+               "scalar_type",
+               "text"
+              ]
+             },
+             "value": "ix://test:spine-model/O",
+             "value_kind": "text"
+            }
+           },
+           {
+            "name": "member_identity",
+            "term": "binding",
+            "value": {
+             "term": "literal",
+             "type": {
+              "ordinal": 0,
+              "package": "pkg",
+              "path": [
+               "scalar_type",
+               "text"
+              ]
+             },
+             "value": "ix://test:spine-model/O/r",
+             "value_kind": "text"
+            }
+           },
+           {
+            "name": "member_type",
+            "term": "binding",
+            "value": {
+             "term": "literal",
+             "type": {
+              "ordinal": 0,
+              "package": "pkg",
+              "path": [
+               "scalar_type",
+               "text"
+              ]
+             },
+             "value": "Sequence<ix://test:spine-model/W>",
+             "value_kind": "text"
+            }
+           },
+           {
+            "name": "collection_kind",
+            "term": "binding",
+            "value": {
+             "term": "literal",
+             "type": {
+              "ordinal": 0,
+              "package": "pkg",
+              "path": [
+               "scalar_type",
+               "text"
+              ]
+             },
+             "value": "sequence",
+             "value_kind": "text"
+            }
+           },
+           {
+            "name": "minimum",
+            "term": "binding",
+            "value": {
+             "term": "literal",
+             "type": {
+              "ordinal": 0,
+              "package": "pkg",
+              "path": [
+               "scalar_type",
+               "text"
+              ]
+             },
+             "value": "0",
+             "value_kind": "text"
+            }
+           },
+           {
+            "name": "maximum",
+            "term": "binding",
+            "value": {
+             "term": "literal",
+             "type": {
+              "ordinal": 0,
+              "package": "pkg",
+              "path": [
+               "scalar_type",
+               "text"
+              ]
+             },
+             "value": "3",
+             "value_kind": "text"
+            }
+           }
+          ],
+          "term": "aggregate"
+         },
+         {
+          "members": [
+           {
+            "name": "path_step",
+            "term": "binding",
+            "value": {
+             "term": "literal",
+             "type": {
+              "ordinal": 0,
+              "package": "pkg",
+              "path": [
+               "scalar_type",
+               "integer"
+              ]
+             },
+             "value": 1,
+             "value_kind": "integer"
+            }
+           },
+           {
+            "name": "declaring_type",
+            "term": "binding",
+            "value": {
+             "term": "literal",
+             "type": {
+              "ordinal": 0,
+              "package": "pkg",
+              "path": [
+               "scalar_type",
+               "text"
+              ]
+             },
+             "value": "ix://test:spine-model/W",
+             "value_kind": "text"
+            }
+           },
+           {
+            "name": "member_identity",
+            "term": "binding",
+            "value": {
+             "term": "literal",
+             "type": {
+              "ordinal": 0,
+              "package": "pkg",
+              "path": [
+               "scalar_type",
+               "text"
+              ]
+             },
+             "value": "Sequence<ix://test:spine-model/W>[slot]",
+             "value_kind": "text"
+            }
+           },
+           {
+            "name": "member_type",
+            "term": "binding",
+            "value": {
+             "term": "literal",
+             "type": {
+              "ordinal": 0,
+              "package": "pkg",
+              "path": [
+               "scalar_type",
+               "text"
+              ]
+             },
+             "value": "ix://test:spine-model/W",
+             "value_kind": "text"
+            }
+           },
+           {
+            "name": "collection_kind",
+            "term": "binding",
+            "value": {
+             "term": "literal",
+             "type": {
+              "ordinal": 0,
+              "package": "pkg",
+              "path": [
+               "scalar_type",
+               "text"
+              ]
+             },
+             "value": "none",
+             "value_kind": "text"
+            }
+           },
+           {
+            "name": "minimum",
+            "term": "binding",
+            "value": {
+             "term": "literal",
+             "type": {
+              "ordinal": 0,
+              "package": "pkg",
+              "path": [
+               "scalar_type",
+               "text"
+              ]
+             },
+             "value": "",
+             "value_kind": "text"
+            }
+           },
+           {
+            "name": "maximum",
+            "term": "binding",
+            "value": {
+             "term": "literal",
+             "type": {
+              "ordinal": 0,
+              "package": "pkg",
+              "path": [
+               "scalar_type",
+               "text"
+              ]
+             },
+             "value": "",
+             "value_kind": "text"
+            }
+           }
+          ],
+          "term": "aggregate"
+         },
+         {
+          "members": [
+           {
+            "name": "path_step",
+            "term": "binding",
+            "value": {
+             "term": "literal",
+             "type": {
+              "ordinal": 0,
+              "package": "pkg",
+              "path": [
+               "scalar_type",
+               "integer"
+              ]
+             },
+             "value": 2,
+             "value_kind": "integer"
+            }
+           },
+           {
+            "name": "declaring_type",
+            "term": "binding",
+            "value": {
+             "term": "literal",
+             "type": {
+              "ordinal": 0,
+              "package": "pkg",
+              "path": [
+               "scalar_type",
+               "text"
+              ]
+             },
+             "value": "ix://test:spine-model/W",
+             "value_kind": "text"
+            }
+           },
+           {
+            "name": "member_identity",
+            "term": "binding",
+            "value": {
+             "term": "literal",
+             "type": {
+              "ordinal": 0,
+              "package": "pkg",
+              "path": [
+               "scalar_type",
+               "text"
+              ]
+             },
+             "value": "ix://test:spine-model/W/c",
+             "value_kind": "text"
+            }
+           },
+           {
+            "name": "member_type",
+            "term": "binding",
+            "value": {
+             "term": "literal",
+             "type": {
+              "ordinal": 0,
+              "package": "pkg",
+              "path": [
+               "scalar_type",
+               "text"
+              ]
+             },
+             "value": "ix://filament/native/Clock",
+             "value_kind": "text"
+            }
+           },
+           {
+            "name": "collection_kind",
+            "term": "binding",
+            "value": {
+             "term": "literal",
+             "type": {
+              "ordinal": 0,
+              "package": "pkg",
+              "path": [
+               "scalar_type",
+               "text"
+              ]
+             },
+             "value": "none",
+             "value_kind": "text"
+            }
+           },
+           {
+            "name": "minimum",
+            "term": "binding",
+            "value": {
+             "term": "literal",
+             "type": {
+              "ordinal": 0,
+              "package": "pkg",
+              "path": [
+               "scalar_type",
+               "text"
+              ]
+             },
+             "value": "",
+             "value_kind": "text"
+            }
+           },
+           {
+            "name": "maximum",
+            "term": "binding",
+            "value": {
+             "term": "literal",
+             "type": {
+              "ordinal": 0,
+              "package": "pkg",
+              "path": [
+               "scalar_type",
+               "text"
+              ]
+             },
+             "value": "",
+             "value_kind": "text"
+            }
+           }
+          ],
+          "term": "aggregate"
+         }
+        ],
+        "term": "aggregate"
+       }
+      }
+     ],
+     "term": "aggregate"
+    },
+    "dependencies": [
+     {
+      "ordinal": 0,
+      "package": "pkg",
+      "path": [
+       "O"
+      ]
+     },
+     {
+      "ordinal": 0,
+      "package": "pkg",
+      "path": [
+       "scalar_type",
+       "integer"
+      ]
+     }
+    ],
+    "node_id": {
+     "ordinal": 2,
+     "package": "pkg",
+     "path": [
+      "timed_model",
+      "clock_place",
+      "model",
+      {
+       "node": 6
+      },
+      "path",
+      "kind",
+      {
+       "node": 7
+      },
+      "field",
+      "name",
+      {
+       "node": 7
+      },
+      "r",
+      "kind",
+      {
+       "node": 7
+      },
+      "slot",
+      "collection",
+      {
+       "node": 7
+      },
+      "sequence",
+      "selector",
+      {
+       "node": 4
+      },
+      "minimum",
+      {
+       "node": 4
+      },
+      "0",
+      "maximum",
+      {
+       "node": 4
+      },
+      "3",
+      "kind",
+      {
+       "node": 7
+      },
+      "field",
+      "name",
+      {
+       "node": 7
+      },
+      "c",
+      "resolved_path",
+      "path_step",
+      {
+       "node": 4
+      },
+      "0",
+      "declaring_type",
+      {
+       "node": 7
+      },
+      "ix://test:spine-model/O",
+      "member_identity",
+      {
+       "node": 7
+      },
+      "ix://test:spine-model/O/r",
+      "member_type",
+      {
+       "node": 7
+      },
+      "Sequence<ix://test:spine-model/W>",
+      "collection_kind",
+      {
+       "node": 7
+      },
+      "sequence",
+      "minimum",
+      {
+       "node": 7
+      },
+      "0",
+      "maximum",
+      {
+       "node": 7
+      },
+      "3",
+      "path_step",
+      {
+       "node": 4
+      },
+      "1",
+      "declaring_type",
+      {
+       "node": 7
+      },
+      "ix://test:spine-model/W",
+      "member_identity",
+      {
+       "node": 7
+      },
+      "Sequence<ix://test:spine-model/W>[slot]",
+      "member_type",
+      {
+       "node": 7
+      },
+      "ix://test:spine-model/W",
+      "collection_kind",
+      {
+       "node": 7
+      },
+      "none",
+      "minimum",
+      {
+       "node": 7
+      },
+      "",
+      "maximum",
+      {
+       "node": 7
+      },
+      "",
+      "path_step",
+      {
+       "node": 4
+      },
+      "2",
+      "declaring_type",
+      {
+       "node": 7
+      },
+      "ix://test:spine-model/W",
+      "member_identity",
+      {
+       "node": 7
+      },
+      "ix://test:spine-model/W/c",
+      "member_type",
+      {
+       "node": 7
+      },
+      "ix://filament/native/Clock",
+      "collection_kind",
+      {
+       "node": 7
+      },
+      "none",
+      "minimum",
+      {
+       "node": 7
+      },
+      "",
+      "maximum",
+      {
+       "node": 7
+      },
+      ""
+     ]
+    },
+    "node_tag": "timed_model",
+    "occurrences": [
+     {
+      "ordinal": 0,
+      "role": "expression"
+     }
+    ],
+    "schema_version": "filament.checked-semantic-graph/v2",
+    "semantic_form": "clock_place",
+    "semantic_type": {
+     "ordinal": 2,
+     "package": "pkg",
+     "path": [
+      "timed_model",
+      "clock_place",
+      "model",
+      {
+       "node": 6
+      },
+      "path",
+      "kind",
+      {
+       "node": 7
+      },
+      "field",
+      "name",
+      {
+       "node": 7
+      },
+      "r",
+      "kind",
+      {
+       "node": 7
+      },
+      "slot",
+      "collection",
+      {
+       "node": 7
+      },
+      "sequence",
+      "selector",
+      {
+       "node": 4
+      },
+      "minimum",
+      {
+       "node": 4
+      },
+      "0",
+      "maximum",
+      {
+       "node": 4
+      },
+      "3",
+      "kind",
+      {
+       "node": 7
+      },
+      "field",
+      "name",
+      {
+       "node": 7
+      },
+      "c",
+      "resolved_path",
+      "path_step",
+      {
+       "node": 4
+      },
+      "0",
+      "declaring_type",
+      {
+       "node": 7
+      },
+      "ix://test:spine-model/O",
+      "member_identity",
+      {
+       "node": 7
+      },
+      "ix://test:spine-model/O/r",
+      "member_type",
+      {
+       "node": 7
+      },
+      "Sequence<ix://test:spine-model/W>",
+      "collection_kind",
+      {
+       "node": 7
+      },
+      "sequence",
+      "minimum",
+      {
+       "node": 7
+      },
+      "0",
+      "maximum",
+      {
+       "node": 7
+      },
+      "3",
+      "path_step",
+      {
+       "node": 4
+      },
+      "1",
+      "declaring_type",
+      {
+       "node": 7
+      },
+      "ix://test:spine-model/W",
+      "member_identity",
+      {
+       "node": 7
+      },
+      "Sequence<ix://test:spine-model/W>[slot]",
+      "member_type",
+      {
+       "node": 7
+      },
+      "ix://test:spine-model/W",
+      "collection_kind",
+      {
+       "node": 7
+      },
+      "none",
+      "minimum",
+      {
+       "node": 7
+      },
+      "",
+      "maximum",
+      {
+       "node": 7
+      },
+      "",
+      "path_step",
+      {
+       "node": 4
+      },
+      "2",
+      "declaring_type",
+      {
+       "node": 7
+      },
+      "ix://test:spine-model/W",
+      "member_identity",
+      {
+       "node": 7
+      },
+      "ix://test:spine-model/W/c",
+      "member_type",
+      {
+       "node": 7
+      },
+      "ix://filament/native/Clock",
+      "collection_kind",
+      {
+       "node": 7
+      },
+      "none",
+      "minimum",
+      {
+       "node": 7
+      },
+      "",
+      "maximum",
+      {
+       "node": 7
+      },
+      ""
+     ]
+    }
+   },
+   {
+    "body": {
+     "members": [
+      {
+       "name": "kind",
+       "term": "binding",
+       "value": {
+        "term": "literal",
+        "type": {
+         "ordinal": 0,
+         "package": "pkg",
+         "path": [
+          "scalar_type",
+          "text"
+         ]
+        },
+        "value": "dense",
+        "value_kind": "text"
+       }
+      },
+      {
+       "name": "unit",
+       "term": "binding",
+       "value": {
+        "target": {
+         "ordinal": 2,
+         "package": "pkg",
+         "path": [
+          "ms"
+         ]
+        },
+        "term": "reference"
+       }
+      }
+     ],
+     "term": "aggregate"
+    },
+    "dependencies": [
+     {
+      "ordinal": 2,
+      "package": "pkg",
+      "path": [
+       "ms"
+      ]
+     }
+    ],
+    "node_id": {
+     "ordinal": 0,
+     "package": "pkg",
+     "path": [
+      "timed_model",
+      "time_source",
+      "kind",
+      {
+       "node": 7
+      },
+      "dense",
+      "unit",
+      {
+       "node": 3
+      }
+     ]
+    },
+    "node_tag": "timed_model",
+    "occurrences": [
+     {
+      "ordinal": 0,
+      "role": "expression"
+     }
+    ],
+    "schema_version": "filament.checked-semantic-graph/v2",
+    "semantic_form": "time_source",
+    "semantic_type": {
+     "ordinal": 0,
+     "package": "pkg",
+     "path": [
+      "timed_model",
+      "time_source",
+      "kind",
+      {
+       "node": 7
+      },
+      "dense",
+      "unit",
+      {
+       "node": 3
+      }
+     ]
+    }
+   },
+   {
+    "body": {
+     "members": [
+      {
+       "name": "model",
+       "term": "binding",
+       "value": {
+        "target": {
+         "ordinal": 0,
+         "package": "pkg",
+         "path": [
+          "O"
+         ]
+        },
+        "term": "reference"
+       }
+      },
+      {
+       "name": "time_dimension",
+       "term": "binding",
+       "value": {
+        "target": {
+         "ordinal": 1,
+         "package": "pkg",
+         "path": [
+          "Time"
+         ]
+        },
+        "term": "reference"
+       }
+      },
+      {
+       "name": "source",
+       "term": "binding",
+       "value": {
+        "target": {
+         "ordinal": 0,
+         "package": "pkg",
+         "path": [
+          "timed_model",
+          "time_source",
+          "kind",
+          {
+           "node": 7
+          },
+          "dense",
+          "unit",
+          {
+           "node": 3
+          }
+         ]
+        },
+        "term": "reference"
+       }
+      },
+      {
+       "name": "clock_places",
+       "term": "binding",
+       "value": {
+        "members": [
+         {
+          "target": {
+           "ordinal": 0,
+           "package": "pkg",
+           "path": [
+            "timed_model",
+            "clock_place",
+            "model",
+            {
+             "node": 6
+            },
+            "path",
+            "kind",
+            {
+             "node": 7
+            },
+            "field",
+            "name",
+            {
+             "node": 7
+            },
+            "d",
+            "resolved_path",
+            "path_step",
+            {
+             "node": 4
+            },
+            "0",
+            "declaring_type",
+            {
+             "node": 7
+            },
+            "ix://test:spine-model/O",
+            "member_identity",
+            {
+             "node": 7
+            },
+            "ix://test:spine-model/O/d",
+            "member_type",
+            {
+             "node": 7
+            },
+            "ix://filament/native/Clock",
+            "collection_kind",
+            {
+             "node": 7
+            },
+            "none",
+            "minimum",
+            {
+             "node": 7
+            },
+            "",
+            "maximum",
+            {
+             "node": 7
+            },
+            ""
+           ]
+          },
+          "term": "reference"
+         },
+         {
+          "target": {
+           "ordinal": 1,
+           "package": "pkg",
+           "path": [
+            "timed_model",
+            "clock_place",
+            "model",
+            {
+             "node": 6
+            },
+            "path",
+            "kind",
+            {
+             "node": 7
+            },
+            "field",
+            "name",
+            {
+             "node": 7
+            },
+            "q",
+            "kind",
+            {
+             "node": 7
+            },
+            "slot",
+            "collection",
+            {
+             "node": 7
+            },
+            "sequence",
+            "selector",
+            {
+             "node": 4
+            },
+            "minimum",
+            {
+             "node": 4
+            },
+            "0",
+            "maximum",
+            {
+             "node": 4
+            },
+            "3",
+            "resolved_path",
+            "path_step",
+            {
+             "node": 4
+            },
+            "0",
+            "declaring_type",
+            {
+             "node": 7
+            },
+            "ix://test:spine-model/O",
+            "member_identity",
+            {
+             "node": 7
+            },
+            "ix://test:spine-model/O/q",
+            "member_type",
+            {
+             "node": 7
+            },
+            "Sequence<ix://filament/native/Clock>",
+            "collection_kind",
+            {
+             "node": 7
+            },
+            "sequence",
+            "minimum",
+            {
+             "node": 7
+            },
+            "0",
+            "maximum",
+            {
+             "node": 7
+            },
+            "3",
+            "path_step",
+            {
+             "node": 4
+            },
+            "1",
+            "declaring_type",
+            {
+             "node": 7
+            },
+            "ix://filament/native/Clock",
+            "member_identity",
+            {
+             "node": 7
+            },
+            "Sequence<ix://filament/native/Clock>[slot]",
+            "member_type",
+            {
+             "node": 7
+            },
+            "ix://filament/native/Clock",
+            "collection_kind",
+            {
+             "node": 7
+            },
+            "none",
+            "minimum",
+            {
+             "node": 7
+            },
+            "",
+            "maximum",
+            {
+             "node": 7
+            },
+            ""
+           ]
+          },
+          "term": "reference"
+         },
+         {
+          "target": {
+           "ordinal": 2,
+           "package": "pkg",
+           "path": [
+            "timed_model",
+            "clock_place",
+            "model",
+            {
+             "node": 6
+            },
+            "path",
+            "kind",
+            {
+             "node": 7
+            },
+            "field",
+            "name",
+            {
+             "node": 7
+            },
+            "r",
+            "kind",
+            {
+             "node": 7
+            },
+            "slot",
+            "collection",
+            {
+             "node": 7
+            },
+            "sequence",
+            "selector",
+            {
+             "node": 4
+            },
+            "minimum",
+            {
+             "node": 4
+            },
+            "0",
+            "maximum",
+            {
+             "node": 4
+            },
+            "3",
+            "kind",
+            {
+             "node": 7
+            },
+            "field",
+            "name",
+            {
+             "node": 7
+            },
+            "c",
+            "resolved_path",
+            "path_step",
+            {
+             "node": 4
+            },
+            "0",
+            "declaring_type",
+            {
+             "node": 7
+            },
+            "ix://test:spine-model/O",
+            "member_identity",
+            {
+             "node": 7
+            },
+            "ix://test:spine-model/O/r",
+            "member_type",
+            {
+             "node": 7
+            },
+            "Sequence<ix://test:spine-model/W>",
+            "collection_kind",
+            {
+             "node": 7
+            },
+            "sequence",
+            "minimum",
+            {
+             "node": 7
+            },
+            "0",
+            "maximum",
+            {
+             "node": 7
+            },
+            "3",
+            "path_step",
+            {
+             "node": 4
+            },
+            "1",
+            "declaring_type",
+            {
+             "node": 7
+            },
+            "ix://test:spine-model/W",
+            "member_identity",
+            {
+             "node": 7
+            },
+            "Sequence<ix://test:spine-model/W>[slot]",
+            "member_type",
+            {
+             "node": 7
+            },
+            "ix://test:spine-model/W",
+            "collection_kind",
+            {
+             "node": 7
+            },
+            "none",
+            "minimum",
+            {
+             "node": 7
+            },
+            "",
+            "maximum",
+            {
+             "node": 7
+            },
+            "",
+            "path_step",
+            {
+             "node": 4
+            },
+            "2",
+            "declaring_type",
+            {
+             "node": 7
+            },
+            "ix://test:spine-model/W",
+            "member_identity",
+            {
+             "node": 7
+            },
+            "ix://test:spine-model/W/c",
+            "member_type",
+            {
+             "node": 7
+            },
+            "ix://filament/native/Clock",
+            "collection_kind",
+            {
+             "node": 7
+            },
+            "none",
+            "minimum",
+            {
+             "node": 7
+            },
+            "",
+            "maximum",
+            {
+             "node": 7
+            },
+            ""
+           ]
+          },
+          "term": "reference"
+         }
+        ],
+        "term": "aggregate"
+       }
+      },
+      {
+       "name": "resets",
+       "term": "binding",
+       "value": {
+        "members": [],
+        "term": "aggregate"
+       }
+      },
+      {
+       "name": "guards",
+       "term": "binding",
+       "value": {
+        "members": [],
+        "term": "aggregate"
+       }
+      },
+      {
+       "name": "invariants",
+       "term": "binding",
+       "value": {
+        "members": [],
+        "term": "aggregate"
+       }
+      },
+      {
+       "name": "urgencies",
+       "term": "binding",
+       "value": {
+        "members": [],
+        "term": "aggregate"
+       }
+      },
+      {
+       "name": "constraints",
+       "term": "binding",
+       "value": {
+        "members": [],
+        "term": "aggregate"
+       }
+      }
+     ],
+     "term": "aggregate"
+    },
+    "declaration": {
+     "qualified_name": [
+      "O",
+      "Timed"
+     ]
+    },
+    "dependencies": [
+     {
+      "ordinal": 0,
+      "package": "pkg",
+      "path": [
+       "O"
+      ]
+     },
+     {
+      "ordinal": 1,
+      "package": "pkg",
+      "path": [
+       "Time"
+      ]
+     },
+     {
+      "ordinal": 0,
+      "package": "pkg",
+      "path": [
+       "timed_model",
+       "clock_place",
+       "model",
+       {
+        "node": 6
+       },
+       "path",
+       "kind",
+       {
+        "node": 7
+       },
+       "field",
+       "name",
+       {
+        "node": 7
+       },
+       "d",
+       "resolved_path",
+       "path_step",
+       {
+        "node": 4
+       },
+       "0",
+       "declaring_type",
+       {
+        "node": 7
+       },
+       "ix://test:spine-model/O",
+       "member_identity",
+       {
+        "node": 7
+       },
+       "ix://test:spine-model/O/d",
+       "member_type",
+       {
+        "node": 7
+       },
+       "ix://filament/native/Clock",
+       "collection_kind",
+       {
+        "node": 7
+       },
+       "none",
+       "minimum",
+       {
+        "node": 7
+       },
+       "",
+       "maximum",
+       {
+        "node": 7
+       },
+       ""
+      ]
+     },
+     {
+      "ordinal": 1,
+      "package": "pkg",
+      "path": [
+       "timed_model",
+       "clock_place",
+       "model",
+       {
+        "node": 6
+       },
+       "path",
+       "kind",
+       {
+        "node": 7
+       },
+       "field",
+       "name",
+       {
+        "node": 7
+       },
+       "q",
+       "kind",
+       {
+        "node": 7
+       },
+       "slot",
+       "collection",
+       {
+        "node": 7
+       },
+       "sequence",
+       "selector",
+       {
+        "node": 4
+       },
+       "minimum",
+       {
+        "node": 4
+       },
+       "0",
+       "maximum",
+       {
+        "node": 4
+       },
+       "3",
+       "resolved_path",
+       "path_step",
+       {
+        "node": 4
+       },
+       "0",
+       "declaring_type",
+       {
+        "node": 7
+       },
+       "ix://test:spine-model/O",
+       "member_identity",
+       {
+        "node": 7
+       },
+       "ix://test:spine-model/O/q",
+       "member_type",
+       {
+        "node": 7
+       },
+       "Sequence<ix://filament/native/Clock>",
+       "collection_kind",
+       {
+        "node": 7
+       },
+       "sequence",
+       "minimum",
+       {
+        "node": 7
+       },
+       "0",
+       "maximum",
+       {
+        "node": 7
+       },
+       "3",
+       "path_step",
+       {
+        "node": 4
+       },
+       "1",
+       "declaring_type",
+       {
+        "node": 7
+       },
+       "ix://filament/native/Clock",
+       "member_identity",
+       {
+        "node": 7
+       },
+       "Sequence<ix://filament/native/Clock>[slot]",
+       "member_type",
+       {
+        "node": 7
+       },
+       "ix://filament/native/Clock",
+       "collection_kind",
+       {
+        "node": 7
+       },
+       "none",
+       "minimum",
+       {
+        "node": 7
+       },
+       "",
+       "maximum",
+       {
+        "node": 7
+       },
+       ""
+      ]
+     },
+     {
+      "ordinal": 2,
+      "package": "pkg",
+      "path": [
+       "timed_model",
+       "clock_place",
+       "model",
+       {
+        "node": 6
+       },
+       "path",
+       "kind",
+       {
+        "node": 7
+       },
+       "field",
+       "name",
+       {
+        "node": 7
+       },
+       "r",
+       "kind",
+       {
+        "node": 7
+       },
+       "slot",
+       "collection",
+       {
+        "node": 7
+       },
+       "sequence",
+       "selector",
+       {
+        "node": 4
+       },
+       "minimum",
+       {
+        "node": 4
+       },
+       "0",
+       "maximum",
+       {
+        "node": 4
+       },
+       "3",
+       "kind",
+       {
+        "node": 7
+       },
+       "field",
+       "name",
+       {
+        "node": 7
+       },
+       "c",
+       "resolved_path",
+       "path_step",
+       {
+        "node": 4
+       },
+       "0",
+       "declaring_type",
+       {
+        "node": 7
+       },
+       "ix://test:spine-model/O",
+       "member_identity",
+       {
+        "node": 7
+       },
+       "ix://test:spine-model/O/r",
+       "member_type",
+       {
+        "node": 7
+       },
+       "Sequence<ix://test:spine-model/W>",
+       "collection_kind",
+       {
+        "node": 7
+       },
+       "sequence",
+       "minimum",
+       {
+        "node": 7
+       },
+       "0",
+       "maximum",
+       {
+        "node": 7
+       },
+       "3",
+       "path_step",
+       {
+        "node": 4
+       },
+       "1",
+       "declaring_type",
+       {
+        "node": 7
+       },
+       "ix://test:spine-model/W",
+       "member_identity",
+       {
+        "node": 7
+       },
+       "Sequence<ix://test:spine-model/W>[slot]",
+       "member_type",
+       {
+        "node": 7
+       },
+       "ix://test:spine-model/W",
+       "collection_kind",
+       {
+        "node": 7
+       },
+       "none",
+       "minimum",
+       {
+        "node": 7
+       },
+       "",
+       "maximum",
+       {
+        "node": 7
+       },
+       "",
+       "path_step",
+       {
+        "node": 4
+       },
+       "2",
+       "declaring_type",
+       {
+        "node": 7
+       },
+       "ix://test:spine-model/W",
+       "member_identity",
+       {
+        "node": 7
+       },
+       "ix://test:spine-model/W/c",
+       "member_type",
+       {
+        "node": 7
+       },
+       "ix://filament/native/Clock",
+       "collection_kind",
+       {
+        "node": 7
+       },
+       "none",
+       "minimum",
+       {
+        "node": 7
+       },
+       "",
+       "maximum",
+       {
+        "node": 7
+       },
+       ""
+      ]
+     },
+     {
+      "ordinal": 0,
+      "package": "pkg",
+      "path": [
+       "timed_model",
+       "time_source",
+       "kind",
+       {
+        "node": 7
+       },
+       "dense",
+       "unit",
+       {
+        "node": 3
+       }
+      ]
+     }
+    ],
+    "node_id": {
+     "ordinal": 0,
+     "package": "pkg",
+     "path": [
+      "O",
+      "Timed"
+     ]
+    },
+    "node_tag": "timed_model",
+    "occurrences": [
+     {
+      "ordinal": 0,
+      "role": "declaration"
+     }
+    ],
+    "owner": {
+     "authority": "agent-ix",
+     "identity": "test:spine-model",
+     "kind": "source"
+    },
+    "schema_version": "filament.checked-semantic-graph/v2",
+    "semantic_form": "timed_model",
+    "semantic_type": {
+     "ordinal": 0,
+     "package": "pkg",
+     "path": [
+      "O",
+      "Timed"
+     ]
+    }
+   }
+  ]
+ },
+ "source_map": [
+  {
+   "node_id": {
+    "ordinal": 1,
+    "package": "pkg",
+    "path": [
+     "Time"
+    ]
+   },
+   "ordinal": 0,
+   "regions": [
+    {
+     "end": 141,
+     "source": {
+      "authority": "agent-ix",
+      "identity": "test:spine-model"
+     },
+     "start": 137
+    }
+   ],
+   "role": "declaration"
+  },
+  {
+   "node_id": {
+    "ordinal": 0,
+    "package": "pkg",
+    "path": [
+     "W"
+    ]
+   },
+   "ordinal": 0,
+   "regions": [
+    {
+     "end": 184,
+     "source": {
+      "authority": "agent-ix",
+      "identity": "test:spine-model"
+     },
+     "start": 183
+    }
+   ],
+   "role": "declaration"
+  },
+  {
+   "node_id": {
+    "ordinal": 0,
+    "package": "pkg",
+    "path": [
+     "composite_type",
+     "sequence",
+     {
+      "node": 1
+     }
+    ]
+   },
+   "ordinal": 0,
+   "regions": [
+    {
+     "end": 207,
+     "source": {
+      "authority": "agent-ix",
+      "identity": "test:spine-model"
+     },
+     "start": 206
+    }
+   ],
+   "role": "generated"
+  },
+  {
+   "node_id": {
+    "ordinal": 2,
+    "package": "pkg",
+    "path": [
+     "ms"
+    ]
+   },
+   "ordinal": 0,
+   "regions": [
+    {
+     "end": 150,
+     "source": {
+      "authority": "agent-ix",
+      "identity": "test:spine-model"
+     },
+     "start": 148
+    }
+   ],
+   "role": "declaration"
+  },
+  {
+   "node_id": {
+    "ordinal": 0,
+    "package": "pkg",
+    "path": [
+     "scalar_type",
+     "integer"
+    ]
+   },
+   "ordinal": 0,
+   "regions": [
+    {
+     "end": 207,
+     "source": {
+      "authority": "agent-ix",
+      "identity": "test:spine-model"
+     },
+     "start": 206
+    }
+   ],
+   "role": "generated"
+  },
+  {
+   "node_id": {
+    "ordinal": 0,
+    "package": "pkg",
+    "path": [
+     "bounded_domain",
+     "collection_bounds",
+     "min",
+     {
+      "node": 4
+     },
+     "0",
+     "max",
+     "3",
+     {
+      "node": 2
+     }
+    ]
+   },
+   "ordinal": 0,
+   "regions": [
+    {
+     "end": 207,
+     "source": {
+      "authority": "agent-ix",
+      "identity": "test:spine-model"
+     },
+     "start": 206
+    }
+   ],
+   "role": "generated"
+  },
+  {
+   "node_id": {
+    "ordinal": 0,
+    "package": "pkg",
+    "path": [
+     "O"
+    ]
+   },
+   "ordinal": 0,
+   "regions": [
+    {
+     "end": 207,
+     "source": {
+      "authority": "agent-ix",
+      "identity": "test:spine-model"
+     },
+     "start": 206
+    }
+   ],
+   "role": "declaration"
+  },
+  {
+   "node_id": {
+    "ordinal": 0,
+    "package": "pkg",
+    "path": [
+     "O"
+    ]
+   },
+   "ordinal": 0,
+   "regions": [
+    {
+     "end": 207,
+     "source": {
+      "authority": "agent-ix",
+      "identity": "test:spine-model"
+     },
+     "start": 206
+    }
+   ],
+   "role": "generated"
+  },
+  {
+   "node_id": {
+    "ordinal": 0,
+    "package": "pkg",
+    "path": [
+     "scalar_type",
+     "text"
+    ]
+   },
+   "ordinal": 0,
+   "regions": [
+    {
+     "end": 332,
+     "source": {
+      "authority": "agent-ix",
+      "identity": "test:spine-model"
+     },
+     "start": 311
+    }
+   ],
+   "role": "generated"
+  },
+  {
+   "node_id": {
+    "ordinal": 0,
+    "package": "pkg",
+    "path": [
+     "timed_model",
+     "clock_place",
+     "model",
+     {
+      "node": 6
+     },
+     "path",
+     "kind",
+     {
+      "node": 7
+     },
+     "field",
+     "name",
+     {
+      "node": 7
+     },
+     "d",
+     "resolved_path",
+     "path_step",
+     {
+      "node": 4
+     },
+     "0",
+     "declaring_type",
+     {
+      "node": 7
+     },
+     "ix://test:spine-model/O",
+     "member_identity",
+     {
+      "node": 7
+     },
+     "ix://test:spine-model/O/d",
+     "member_type",
+     {
+      "node": 7
+     },
+     "ix://filament/native/Clock",
+     "collection_kind",
+     {
+      "node": 7
+     },
+     "none",
+     "minimum",
+     {
+      "node": 7
+     },
+     "",
+     "maximum",
+     {
+      "node": 7
+     },
+     ""
+    ]
+   },
+   "ordinal": 0,
+   "regions": [
+    {
+     "end": 332,
+     "source": {
+      "authority": "agent-ix",
+      "identity": "test:spine-model"
+     },
+     "start": 311
+    }
+   ],
+   "role": "expression"
+  },
+  {
+   "node_id": {
+    "ordinal": 1,
+    "package": "pkg",
+    "path": [
+     "timed_model",
+     "clock_place",
+     "model",
+     {
+      "node": 6
+     },
+     "path",
+     "kind",
+     {
+      "node": 7
+     },
+     "field",
+     "name",
+     {
+      "node": 7
+     },
+     "q",
+     "kind",
+     {
+      "node": 7
+     },
+     "slot",
+     "collection",
+     {
+      "node": 7
+     },
+     "sequence",
+     "selector",
+     {
+      "node": 4
+     },
+     "minimum",
+     {
+      "node": 4
+     },
+     "0",
+     "maximum",
+     {
+      "node": 4
+     },
+     "3",
+     "resolved_path",
+     "path_step",
+     {
+      "node": 4
+     },
+     "0",
+     "declaring_type",
+     {
+      "node": 7
+     },
+     "ix://test:spine-model/O",
+     "member_identity",
+     {
+      "node": 7
+     },
+     "ix://test:spine-model/O/q",
+     "member_type",
+     {
+      "node": 7
+     },
+     "Sequence<ix://filament/native/Clock>",
+     "collection_kind",
+     {
+      "node": 7
+     },
+     "sequence",
+     "minimum",
+     {
+      "node": 7
+     },
+     "0",
+     "maximum",
+     {
+      "node": 7
+     },
+     "3",
+     "path_step",
+     {
+      "node": 4
+     },
+     "1",
+     "declaring_type",
+     {
+      "node": 7
+     },
+     "ix://filament/native/Clock",
+     "member_identity",
+     {
+      "node": 7
+     },
+     "Sequence<ix://filament/native/Clock>[slot]",
+     "member_type",
+     {
+      "node": 7
+     },
+     "ix://filament/native/Clock",
+     "collection_kind",
+     {
+      "node": 7
+     },
+     "none",
+     "minimum",
+     {
+      "node": 7
+     },
+     "",
+     "maximum",
+     {
+      "node": 7
+     },
+     ""
+    ]
+   },
+   "ordinal": 0,
+   "regions": [
+    {
+     "end": 332,
+     "source": {
+      "authority": "agent-ix",
+      "identity": "test:spine-model"
+     },
+     "start": 311
+    }
+   ],
+   "role": "expression"
+  },
+  {
+   "node_id": {
+    "ordinal": 2,
+    "package": "pkg",
+    "path": [
+     "timed_model",
+     "clock_place",
+     "model",
+     {
+      "node": 6
+     },
+     "path",
+     "kind",
+     {
+      "node": 7
+     },
+     "field",
+     "name",
+     {
+      "node": 7
+     },
+     "r",
+     "kind",
+     {
+      "node": 7
+     },
+     "slot",
+     "collection",
+     {
+      "node": 7
+     },
+     "sequence",
+     "selector",
+     {
+      "node": 4
+     },
+     "minimum",
+     {
+      "node": 4
+     },
+     "0",
+     "maximum",
+     {
+      "node": 4
+     },
+     "3",
+     "kind",
+     {
+      "node": 7
+     },
+     "field",
+     "name",
+     {
+      "node": 7
+     },
+     "c",
+     "resolved_path",
+     "path_step",
+     {
+      "node": 4
+     },
+     "0",
+     "declaring_type",
+     {
+      "node": 7
+     },
+     "ix://test:spine-model/O",
+     "member_identity",
+     {
+      "node": 7
+     },
+     "ix://test:spine-model/O/r",
+     "member_type",
+     {
+      "node": 7
+     },
+     "Sequence<ix://test:spine-model/W>",
+     "collection_kind",
+     {
+      "node": 7
+     },
+     "sequence",
+     "minimum",
+     {
+      "node": 7
+     },
+     "0",
+     "maximum",
+     {
+      "node": 7
+     },
+     "3",
+     "path_step",
+     {
+      "node": 4
+     },
+     "1",
+     "declaring_type",
+     {
+      "node": 7
+     },
+     "ix://test:spine-model/W",
+     "member_identity",
+     {
+      "node": 7
+     },
+     "Sequence<ix://test:spine-model/W>[slot]",
+     "member_type",
+     {
+      "node": 7
+     },
+     "ix://test:spine-model/W",
+     "collection_kind",
+     {
+      "node": 7
+     },
+     "none",
+     "minimum",
+     {
+      "node": 7
+     },
+     "",
+     "maximum",
+     {
+      "node": 7
+     },
+     "",
+     "path_step",
+     {
+      "node": 4
+     },
+     "2",
+     "declaring_type",
+     {
+      "node": 7
+     },
+     "ix://test:spine-model/W",
+     "member_identity",
+     {
+      "node": 7
+     },
+     "ix://test:spine-model/W/c",
+     "member_type",
+     {
+      "node": 7
+     },
+     "ix://filament/native/Clock",
+     "collection_kind",
+     {
+      "node": 7
+     },
+     "none",
+     "minimum",
+     {
+      "node": 7
+     },
+     "",
+     "maximum",
+     {
+      "node": 7
+     },
+     ""
+    ]
+   },
+   "ordinal": 0,
+   "regions": [
+    {
+     "end": 332,
+     "source": {
+      "authority": "agent-ix",
+      "identity": "test:spine-model"
+     },
+     "start": 311
+    }
+   ],
+   "role": "expression"
+  },
+  {
+   "node_id": {
+    "ordinal": 0,
+    "package": "pkg",
+    "path": [
+     "timed_model",
+     "time_source",
+     "kind",
+     {
+      "node": 7
+     },
+     "dense",
+     "unit",
+     {
+      "node": 3
+     }
+    ]
+   },
+   "ordinal": 0,
+   "regions": [
+    {
+     "end": 332,
+     "source": {
+      "authority": "agent-ix",
+      "identity": "test:spine-model"
+     },
+     "start": 311
+    }
+   ],
+   "role": "expression"
+  },
+  {
+   "node_id": {
+    "ordinal": 0,
+    "package": "pkg",
+    "path": [
+     "O",
+     "Timed"
+    ]
+   },
+   "ordinal": 0,
+   "regions": [
+    {
+     "end": 332,
+     "source": {
+      "authority": "agent-ix",
+      "identity": "test:spine-model"
+     },
+     "start": 311
+    }
+   ],
+   "role": "declaration"
+  }
+ ]
+}

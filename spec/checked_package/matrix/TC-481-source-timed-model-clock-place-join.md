@@ -32,4 +32,4 @@ member entry refuses unknown. Every test binds its criterion with `#[trace]`.
 
 ## Status
 
-Planned (QSL-2347).
+Partial (QSL-2347); see the matrix row.

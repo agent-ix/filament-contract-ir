@@ -80,7 +80,12 @@ fn joined(
     budget: &mut NativeJoinBudget,
 ) -> Result<(), SelectedSourceObjectError> {
     let package = admitted(package);
-    let selected = SelectedSourceObjects::from_stage_rows(&package, rows).expect("rows join");
+    let selected = SelectedSourceObjects::from_stage_rows(
+        &package,
+        rows,
+        filament_contract_model::SelectedSourceClockRows::EMPTY,
+    )
+    .expect("rows join");
     selected.join_probabilistic(&[], budget)
 }
 
@@ -171,8 +176,12 @@ fn the_golden_package_joins_and_its_typed_read_is_the_golden_one() {
     let golden = golden_value("package.json");
     assert_eq!(golden, package, "the golden package is stale");
     let admitted = self::admitted(&golden);
-    let selected =
-        SelectedSourceObjects::from_stage_rows(&admitted, poke_rows()).expect("rows join");
+    let selected = SelectedSourceObjects::from_stage_rows(
+        &admitted,
+        poke_rows(),
+        filament_contract_model::SelectedSourceClockRows::EMPTY,
+    )
+    .expect("rows join");
     let mut budget = NativeJoinBudget::unlimited();
     selected
         .join_probabilistic(&[], &mut budget)
@@ -1433,8 +1442,12 @@ fn an_enumeration_entry_checks_the_literal_against_the_cases_it_names() {
         let package = with_value(value);
         let mut budget = NativeJoinBudget::unlimited();
         let admitted = self::admitted(&package);
-        let selected = SelectedSourceObjects::from_stage_rows(&admitted, entries(&status_node))
-            .expect("rows join");
+        let selected = SelectedSourceObjects::from_stage_rows(
+            &admitted,
+            entries(&status_node),
+            filament_contract_model::SelectedSourceClockRows::EMPTY,
+        )
+        .expect("rows join");
         let result = selected.join_probabilistic(enums, &mut budget);
         (package, result, budget.consumed())
     };
@@ -1508,8 +1521,12 @@ fn an_enumeration_entry_checks_the_literal_against_the_cases_it_names() {
     // the visits of the case "Y" behind a 2000-byte case is `Incomplete`.
     let long_package = with_value(named(&long_node, "Y"));
     let long_admitted = self::admitted(&long_package);
-    let long_selected =
-        SelectedSourceObjects::from_stage_rows(&long_admitted, entries(&long_node)).expect("rows");
+    let long_selected = SelectedSourceObjects::from_stage_rows(
+        &long_admitted,
+        entries(&long_node),
+        filament_contract_model::SelectedSourceClockRows::EMPTY,
+    )
+    .expect("rows");
     let long_run = |allowed: u64| {
         let mut budget = NativeJoinBudget::new(allowed, u64::MAX);
         let result = long_selected.join_probabilistic(std::slice::from_ref(&long), &mut budget);
@@ -1530,8 +1547,12 @@ fn an_enumeration_entry_checks_the_literal_against_the_cases_it_names() {
     for allowed in 0..=last_cost.work {
         let package = with_value(named(&status_node, "DONE"));
         let admitted = self::admitted(&package);
-        let selected = SelectedSourceObjects::from_stage_rows(&admitted, entries(&status_node))
-            .expect("rows join");
+        let selected = SelectedSourceObjects::from_stage_rows(
+            &admitted,
+            entries(&status_node),
+            filament_contract_model::SelectedSourceClockRows::EMPTY,
+        )
+        .expect("rows join");
         let mut budget = NativeJoinBudget::new(allowed, u64::MAX);
         let result = selected.join_probabilistic(&both, &mut budget);
         if allowed < last_cost.work {

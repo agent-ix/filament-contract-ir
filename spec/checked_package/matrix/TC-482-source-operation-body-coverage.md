@@ -25,4 +25,4 @@ at the stated locus. Every test binds its criterion with `#[trace]`.
 
 ## Status
 
-Planned (QSL-2347).
+Implemented (QSL-2347).

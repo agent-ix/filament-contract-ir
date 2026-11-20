@@ -481,11 +481,9 @@ impl SelectedExactIdentities {
             for (id, row) in self.source_records.iter() {
                 check_row_key(id, &row.structural_node, budget)?;
                 for member in &row.members {
-                    storage::preflight_value_type(
-                        &member.value_type,
-                        budget,
-                        &row.structural_node,
-                    )?;
+                    if let Some(value_type) = &member.value_type {
+                        storage::preflight_value_type(value_type, budget, &row.structural_node)?;
+                    }
                 }
                 charge_native_storage(
                     budget,
@@ -514,11 +512,9 @@ impl SelectedExactIdentities {
             for (id, row) in self.source_tuples.iter() {
                 check_row_key(id, &row.structural_node, budget)?;
                 for position in &row.positions {
-                    storage::preflight_value_type(
-                        &position.value_type,
-                        budget,
-                        &row.structural_node,
-                    )?;
+                    if let Some(value_type) = &position.value_type {
+                        storage::preflight_value_type(value_type, budget, &row.structural_node)?;
+                    }
                 }
                 charge_native_storage(
                     budget,

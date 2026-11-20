@@ -337,6 +337,23 @@ pub struct SelectedUnionMemberRow {
     pub payload_nodes: Vec<CheckedNodeId>,
     /// Payload types in declared position order.
     pub payload: Vec<ValueType>,
+    /// The clock entries of the payload positions, by ordinal in the declared
+    /// payload; `payload_nodes` and `payload` hold the data positions only.
+    pub clock_payload: Vec<SelectedUnionClockPayloadRow>,
+}
+
+/// One clock payload position of a source union member (FR-367 "Member
+/// entries").
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SelectedUnionClockPayloadRow {
+    /// The position in the declared payload.
+    pub ordinal: u64,
+    /// Declared presence.
+    pub presence: Presence,
+    /// The FSpec FR-789 rendering of the position's type.
+    pub member_type: Box<str>,
+    /// The collection layers of the position's type, outermost first.
+    pub collections: Vec<super::source_object::SelectedClockCollectionLayer>,
 }
 
 impl SelectedUnionMemberRow {
@@ -350,6 +367,7 @@ impl SelectedUnionMemberRow {
             member,
             payload_nodes,
             payload,
+            clock_payload: Vec::new(),
         }
     }
 }
@@ -386,10 +404,17 @@ pub struct SelectedSourceRecordMemberRow {
     pub admitted_name: Box<str>,
     /// Declared presence, independent of the field's Exact value type.
     pub presence: Presence,
-    /// Final emitted type node referenced by the binding.
-    pub type_node: CheckedNodeId,
-    /// FSL-issued Exact value type after presence handling.
-    pub value_type: ValueType,
+    /// Final emitted type node referenced by the binding; `None` for a clock
+    /// entry, which has no node (FR-367 "Member entries").
+    pub type_node: Option<CheckedNodeId>,
+    /// FSL-issued Exact value type after presence handling; `None` exactly
+    /// for a clock entry, which no Exact projection reads.
+    pub value_type: Option<ValueType>,
+    /// The FSpec FR-789 rendering of a clock entry's type; `None` for a data
+    /// entry.
+    pub member_type: Option<Box<str>>,
+    /// The collection layers of a clock entry, outermost first.
+    pub collections: Vec<super::source_object::SelectedClockCollectionLayer>,
 }
 
 /// One complete FSL-stage source-record declaration and ordered member witness.
@@ -417,10 +442,17 @@ pub struct SelectedSourceRecordRow {
 pub struct SelectedTuplePositionRow {
     /// Original positional identity in the source declaration.
     pub ordinal: u64,
-    /// Final emitted IR node of this position's type.
-    pub type_node: CheckedNodeId,
-    /// FSL-issued opaque Exact type of this position.
-    pub value_type: ValueType,
+    /// Final emitted IR node of this position's type; `None` for a clock
+    /// position, which has no node.
+    pub type_node: Option<CheckedNodeId>,
+    /// FSL-issued opaque Exact type of this position; `None` exactly for a
+    /// clock position.
+    pub value_type: Option<ValueType>,
+    /// The FSpec FR-789 rendering of a clock position's type; `None` for a
+    /// data position.
+    pub member_type: Option<Box<str>>,
+    /// The collection layers of a clock position, outermost first.
+    pub collections: Vec<super::source_object::SelectedClockCollectionLayer>,
 }
 
 /// Complete selected source tuple declaration and ordered position witness.
@@ -631,6 +663,28 @@ fn charge_source_union_text(
     Ok(())
 }
 
+/// Each entry is exactly a data entry (a type node, no rendering, no layers) or
+/// exactly a clock entry (no type node, a rendering): FR-367 "Member entries".
+fn clock_entries_are_well_formed<T>(
+    entries: &[T],
+    parts: impl Fn(
+        &T,
+    ) -> (
+        Option<&CheckedNodeId>,
+        Option<&str>,
+        &Vec<super::source_object::SelectedClockCollectionLayer>,
+    ),
+) -> bool {
+    entries.iter().all(|entry| {
+        let (node, rendering, layers) = parts(entry);
+        match (node, rendering) {
+            (Some(_), None) => layers.is_empty(),
+            (None, Some(_)) => true,
+            _ => false,
+        }
+    })
+}
+
 fn source_record_row_matches(package: &CheckedPackageV2, row: &SelectedSourceRecordRow) -> bool {
     let Some(node) = package.node(&row.structural_node) else {
         return false;
@@ -656,10 +710,26 @@ fn source_record_row_matches(package: &CheckedPackageV2, row: &SelectedSourceRec
         && selected_source
         && matching_owner
         && matching_declaration
-        && bindings.len() == row.members.len()
+        && clock_entries_are_well_formed(&row.members, |member| {
+            (
+                member.type_node.as_ref(),
+                member.member_type.as_deref(),
+                &member.collections,
+            )
+        })
+        && bindings.len()
+            == row
+                .members
+                .iter()
+                .filter(|member| member.type_node.is_some())
+                .count()
         && bindings
             .iter()
-            .zip(&row.members)
+            .zip(
+                row.members
+                    .iter()
+                    .filter(|member| member.type_node.is_some()),
+            )
             .all(|(binding, supplied)| {
                 let CheckedTerm::Binding { name, value } = binding else {
                     return false;
@@ -686,7 +756,7 @@ fn source_record_row_matches(package: &CheckedPackageV2, row: &SelectedSourceRec
                     }
                     _ => return false,
                 };
-                target == &supplied.type_node
+                supplied.type_node.as_ref() == Some(target)
                     && package.node(target).is_some()
                     && optional == (supplied.presence == Presence::Optional)
             })
@@ -716,15 +786,21 @@ fn source_tuple_row_matches(package: &CheckedPackageV2, row: &SelectedSourceTupl
         && selected_source
         && matching_owner
         && matching_declaration
-        && admitted.len() == row.positions.len()
+        && clock_entries_are_well_formed(&row.positions, |position| {
+            (position.type_node.as_ref(), position.member_type.as_deref(), &position.collections)
+        })
+        && row
+            .positions
+            .iter()
+            .enumerate()
+            .all(|(ordinal, position)| u64::try_from(ordinal) == Ok(position.ordinal))
+        && admitted.len() == row.positions.iter().filter(|p| p.type_node.is_some()).count()
         && admitted
             .iter()
-            .zip(&row.positions)
-            .enumerate()
-            .all(|(ordinal, (term, position))| {
-                u64::try_from(ordinal) == Ok(position.ordinal)
-                    && matches!(term, CheckedTerm::Reference { target }
-                        if target == &position.type_node && package.node(target).is_some())
+            .zip(row.positions.iter().filter(|position| position.type_node.is_some()))
+            .all(|(term, position)| {
+                matches!(term, CheckedTerm::Reference { target }
+                    if position.type_node.as_ref() == Some(target) && package.node(target).is_some())
             })
 }
 
@@ -1853,16 +1929,11 @@ impl SelectedExactIdentities {
                     )?;
                 }
                 for member in &row.members {
-                    charge_work(
-                        id,
-                        &member.type_node,
-                        "source_record_member",
-                        budget,
-                        work_limit,
-                    )?;
+                    let member_node = member.type_node.as_ref().unwrap_or(id);
+                    charge_work(id, member_node, "source_record_member", budget, work_limit)?;
                     charge_work_amount(
                         id,
-                        &member.type_node,
+                        member_node,
                         "source_record_member_identity",
                         budget,
                         work_limit,
@@ -1960,7 +2031,9 @@ impl SelectedExactIdentities {
                     return Err(error);
                 }
                 for member in &row.members {
-                    storage::preflight_value_type(&member.value_type, budget, id)?;
+                    if let Some(value_type) = &member.value_type {
+                        storage::preflight_value_type(value_type, budget, id)?;
+                    }
                 }
                 let row_units = storage::source_record(&row)
                     .saturating_add(storage::node(id))
@@ -2030,7 +2103,7 @@ impl SelectedExactIdentities {
                 for position in &row.positions {
                     charge_work(
                         id,
-                        &position.type_node,
+                        position.type_node.as_ref().unwrap_or(id),
                         "tuple_position",
                         budget,
                         work_limit,
@@ -2110,7 +2183,9 @@ impl SelectedExactIdentities {
                     return Err(error);
                 }
                 for position in &row.positions {
-                    storage::preflight_value_type(&position.value_type, budget, id)?;
+                    if let Some(value_type) = &position.value_type {
+                        storage::preflight_value_type(value_type, budget, id)?;
+                    }
                 }
                 let row_units = storage::source_tuple(&row)
                     .saturating_add(storage::node(id))
@@ -4165,16 +4240,17 @@ impl CheckedPackageV2 {
                     )?;
                 }
                 for member in &row.members {
+                    let member_node = member.type_node.as_ref().unwrap_or(requested);
                     charge_work(
                         requested,
-                        &member.type_node,
+                        member_node,
                         "source_record_member",
                         work,
                         work_limit,
                     )?;
                     charge_work_amount(
                         requested,
-                        &member.type_node,
+                        member_node,
                         "source_record_member_identity",
                         work,
                         work_limit,
@@ -4242,7 +4318,7 @@ impl CheckedPackageV2 {
                 for position in &row.positions {
                     charge_work(
                         requested,
-                        &position.type_node,
+                        position.type_node.as_ref().unwrap_or(requested),
                         "tuple_position",
                         work,
                         work_limit,
