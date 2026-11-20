@@ -16,7 +16,7 @@ use super::source_object::{
     SelectedSourceObjectErrorCode, SelectedSourceObjectMember, SelectedSourceObjectRow,
     NATIVE_CLOCK,
 };
-use super::source_rendering::{self as rendering, TypeGraph};
+use super::source_rendering::{self as rendering, Rendered, TypeGraph};
 use super::{
     CheckedFrameModification, CheckedNodeId, CheckedNodeKind, CheckedPackageV2, CheckedTerm,
     TimedModelForm,
@@ -217,9 +217,12 @@ fn join_places(
                     };
                     match kind {
                         "field" => {
-                            let Some(declared) =
-                                rendering::declaration_node(package, identity, declaring)
-                            else {
+                            let Some(declared) = rendering::declaration_node(
+                                package,
+                                identity,
+                                declaring,
+                                rendering::DeclaringStep::Field,
+                            ) else {
                                 continue;
                             };
                             if rendering::binding_of(package, declared, name).is_some() {
@@ -241,9 +244,12 @@ fn join_places(
                             let positions = match &previous_product {
                                 Some(positions) if declaring.starts_with('(') => positions.clone(),
                                 _ => {
-                                    let Some(declared) =
-                                        rendering::declaration_node(package, identity, declaring)
-                                    else {
+                                    let Some(declared) = rendering::declaration_node(
+                                        package,
+                                        identity,
+                                        declaring,
+                                        rendering::DeclaringStep::Tuple,
+                                    ) else {
                                         continue;
                                     };
                                     let Some(row) = tuple_row(package, clock, declared) else {
@@ -271,9 +277,12 @@ fn join_places(
                             slots = slots_of(package, found);
                         }
                         _ => {
-                            let Some(declared) =
-                                rendering::declaration_node(package, identity, declaring)
-                            else {
+                            let Some(declared) = rendering::declaration_node(
+                                package,
+                                identity,
+                                declaring,
+                                rendering::DeclaringStep::Union,
+                            ) else {
                                 continue;
                             };
                             let Some(row) = union_row(package, clock, declared) else {
@@ -290,16 +299,28 @@ fn join_places(
                             if positions.is_empty() {
                                 return Err(bad());
                             }
-                            let rendered = if let [only] = positions.as_slice() {
-                                position_rendering(package, only)
+                            let parts: Vec<Rendered> = positions
+                                .iter()
+                                .map(|position| position_rendering(package, position))
+                                .collect();
+                            let agrees = if parts.iter().any(|part| part == &Rendered::Unknown) {
+                                false
+                            } else if parts.iter().any(|part| part == &Rendered::Interim) {
+                                true
                             } else {
-                                positions
+                                let texts: Vec<&str> = parts
                                     .iter()
-                                    .map(|position| position_rendering(package, position))
-                                    .collect::<Option<Vec<_>>>()
-                                    .map(|parts| format!("({})", parts.join(", ")))
+                                    .filter_map(|part| match part {
+                                        Rendered::Known(text) => Some(text.as_str()),
+                                        _ => None,
+                                    })
+                                    .collect();
+                                match texts.as_slice() {
+                                    [only] => *only == member_type,
+                                    many => format!("({})", many.join(", ")) == member_type,
+                                }
                             };
-                            if rendered.is_some_and(|rendered| rendered != member_type) {
+                            if !agrees {
                                 return Err(bad());
                             }
                             if let [only] = positions.as_slice() {
@@ -325,7 +346,7 @@ fn join_places(
                             && layer.minimum.as_ref() == minimum
                             && layer.maximum.as_ref() == maximum
                     }),
-                    Slots::Node(node) => rendering::collection_layer(package, node)
+                    Slots::Node(node) => rendering::collection_layer(package, node, depth)
                         .is_some_and(|layer| layer == (collection, minimum, maximum)),
                 };
                 if !fits {
@@ -432,17 +453,15 @@ fn payload_positions(
 }
 
 /// A position's rendering: a clock position's own, a data position's from its
-/// type node; `None` for a node whose rendering the specification does not give.
-fn position_rendering(package: &CheckedPackageV2, position: &Position<'_>) -> Option<String> {
+/// type node.
+fn position_rendering(package: &CheckedPackageV2, position: &Position<'_>) -> Rendered {
     match (position.member_type, position.type_node) {
-        (Some(rendered), None) => Some(rendered.to_owned()),
-        (None, Some(node)) => {
-            let at = package.position_of(node)?;
-            rendering::render(package, at, &mut || Ok::<(), ()>(()))
-                .ok()
-                .flatten()
-        }
-        _ => None,
+        (Some(rendered), None) => Rendered::Known(rendered.to_owned()),
+        (None, Some(node)) => package
+            .position_of(node)
+            .and_then(|at| rendering::render(package, at, &mut || Ok::<(), ()>(())).ok())
+            .unwrap_or(Rendered::Unknown),
+        _ => Rendered::Unknown,
     }
 }
 
@@ -451,14 +470,11 @@ fn position_matches(
     position: &Position<'_>,
     member_type: &str,
 ) -> bool {
-    match (position.member_type, position.type_node) {
-        (Some(rendered), None) => rendered == member_type,
-        // A data position whose rendering the specification does not give is
-        // not compared.
-        (None, Some(_)) => {
-            position_rendering(package, position).is_none_or(|rendered| rendered == member_type)
-        }
-        _ => false,
+    match position_rendering(package, position) {
+        Rendered::Known(rendered) => rendered == member_type,
+        // A range, a text bound or a quantity has no rendering yet.
+        Rendered::Interim => true,
+        Rendered::Unknown => false,
     }
 }
 

@@ -103,7 +103,12 @@ pub(super) fn check_row(
             super::Path::root(),
             u64::try_from(graph.nodes.len()).unwrap_or(u64::MAX),
         )?;
-        match rendering::declaration_node(graph, identity, declaring) {
+        let step_kind = match kind {
+            PathStepKind::Field => rendering::DeclaringStep::Field,
+            PathStepKind::Tuple => rendering::DeclaringStep::Tuple,
+            _ => rendering::DeclaringStep::Union,
+        };
+        match rendering::declaration_node(graph, identity, declaring, step_kind) {
             Some(node) => Some(node),
             None => return Ok(false),
         }
@@ -112,10 +117,12 @@ pub(super) fn check_row(
         return Ok(false);
     }
     let Some(node) = node else {
-        return Ok(slot.is_none());
+        // A product's position is joined, with the slot bounds that follow,
+        // at the identity-row join.
+        return Ok(true);
     };
     if kind != PathStepKind::Field {
-        return Ok(slot.is_none());
+        return Ok(true);
     }
     let name = text_member(step, 1).unwrap_or_default();
     let Some((optional, target)) = rendering::binding_of(graph, node, name) else {
@@ -126,20 +133,25 @@ pub(super) fn check_row(
         return Ok(false);
     };
     let mut tick = || work(meter, super::Path::root(), 1);
-    if let Some(rendered) = rendering::render(graph, target, &mut tick)? {
-        let expected = if optional {
-            meter.formatted(format_args!("Option<{rendered}>"))?
-        } else {
-            rendered.into_boxed_str()
-        };
-        if expected.as_ref() != member_type {
-            return Ok(false);
+    match rendering::render(graph, target, &mut tick)? {
+        rendering::Rendered::Known(rendered) => {
+            let expected = if optional {
+                meter.formatted(format_args!("Option<{rendered}>"))?
+            } else {
+                rendered.into_boxed_str()
+            };
+            if expected.as_ref() != member_type {
+                return Ok(false);
+            }
         }
+        // FR-789 gives a range, a text bound or a quantity no rendering yet.
+        rendering::Rendered::Interim => {}
+        rendering::Rendered::Unknown => return Ok(false),
     }
     let Some((collection, minimum, maximum)) = slot else {
         return Ok(true);
     };
-    let Some((kind, lower, upper)) = rendering::collection_layer(graph, target) else {
+    let Some((kind, lower, upper)) = rendering::collection_layer(graph, target, 0) else {
         return Ok(false);
     };
     Ok(kind == collection && lower == minimum && upper == maximum)
