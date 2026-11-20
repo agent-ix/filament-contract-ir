@@ -1317,7 +1317,11 @@ fn clock_reference_adverse_applications_refuse_through_public_package_reader() {
         }),
         9207,
     );
-    let mut sum_dependencies = vec![place_reference.clone(), collection.clone()];
+    let mut sum_dependencies = vec![
+        place_reference.clone(),
+        collection.clone(),
+        integer_id.clone(),
+    ];
     sort_ids(&mut sum_dependencies);
     push_node(
         &mut sum,
