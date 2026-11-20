@@ -1206,7 +1206,7 @@ fn refusal_cases() -> Vec<Case> {
     mutate(
         "missing source correspondence",
         Code::InvalidSourceMap,
-        &|v| v["source_map"] = json!([]),
+        &|v| crate::support::checked_package::drop_a_non_model_source_entry(v),
     );
     mutate("unknown node tag", Code::UnsupportedNodeTag, &|v| {
         v["semantic_graph"]["nodes"][0]["node_tag"] = json!("unknown-tag")
