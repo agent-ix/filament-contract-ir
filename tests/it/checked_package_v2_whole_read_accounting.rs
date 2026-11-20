@@ -328,6 +328,13 @@ fn unpaid_heap_of_workload_rows_and_rational_spellings_does_not_grow() {
             proof::generous_limits(),
             u64::MAX,
         );
+        assert!(
+            matches!(
+                read.result,
+                filament_contract_model::CheckedPackageV2BudgetedReadResult::Admitted(_)
+            ),
+            "every fixture read is admitted"
+        );
         let unpaid = proof::unpaid(&read);
         proof::drop_without_request::<IntegrationCounter>(read);
         unpaid

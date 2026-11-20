@@ -609,8 +609,8 @@ pub(crate) fn accounting_fixture_of(rows: usize) -> (Value, &'static str, Value)
 /// FR-038-AC-511: a workload over 300 operations of a model-owner node is
 /// admitted, and the buffer its read keeps for the named operations is
 /// charged to the read-storage budget before it is made, one request of
-/// 16 bytes a row (`&str`) at the workload node.
-#[trace("TC-472", "FR-038-AC-511")]
+/// 16 bytes a row (`&str`), at a `probabilistic` node.
+#[trace("TC-472", "FR-038-AC-511", "FR-358-AC-12", "FR-369-AC-27")]
 #[test]
 fn a_wide_model_owner_workload_is_admitted_and_its_named_buffer_charged() {
     let (value, package, document) = accounting_fixture();
