@@ -33,3 +33,19 @@ The row's prose is accurate about the delivered and missing halves. Two bookkeep
 | FND-001 | low | The FR-369 AC-25/26 row now says "Partly implemented (IR-1576, QSL-2465)", but the TC-484 row in the TC table still reads "🚧 Planned (QSL-2465)". The two rows for the same TC disagree | spec/checked_package/matrix/tests.md:19,87 |
 | FND-002 | medium | The remainder rows name QSL-2465 as the tracker. QSL-2465 is Duplicate (closed) of IR-1576, so once this PR merges and IR-1576 closes, nothing owns the identity-row join, the golden pair or FR-367-AC-8 (TC-485). The readiness sweep on QSL-2465 already noted that FR-367-AC-8 has no other ticket. Name a live owning ticket in both rows | spec/checked_package/matrix/tests.md:19-20 |
 | FND-003 | medium | Upstream contradiction (send to arch). FR-369 requires the identity-row join to refuse `invalid_package`/`invalid-value` at the probabilistic member and to be charged so that a small bound "stops the read as incomplete". It also runs only after the strict read admitted the package and `SelectedSourceObjects` was admitted. FR-367's `SelectedSourceObjects::from_stage_rows` takes an admitted package, charges nothing and refuses only at the `Package` locus. No stated stage can produce FR-369's result, so FR-369-AC-25/26's join half and TC-484 steps 3, 5 and 6 cannot be built as written. State the entry point: either the join is part of a read that takes the identity rows as input, or it is a metered, member-located refusal of `from_stage_rows` | spec/checked_package/functional/FR-369-read-probabilistic-nodes-and-their-four-forms.md:139-178 |
+
+## Dispositions
+
+Round 1, at head 44ce41ca.
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-001 | fixed | The TC-484 row now reads "FR-369-AC-25, FR-369-AC-26, FR-369-AC-27, FR-369-AC-28 \| 🚧 Partly implemented (IR-1576): strict-read steps 1 (without the join), 2 and 4; steps 3, 5, 6 and the golden pair are Planned (QSL-2645)", which agrees with the FR-369 rows |
+| FND-002 | fixed | The deferred rows name QSL-2645 ("contract-ir: source-declared identity-row join ...", open, Backlog), which owns the join, the golden pair, the Clock variant and the budget. FR-367-AC-8/TC-485 moved to Implemented (IR-1576) |
+| FND-003 | deferred | This is an upstream spec contradiction (the join's entry point, locus and meter versus FR-367's unmetered `Package`-locus `from_stage_rows`). QSL-2645 records it as blocked on an arch ruling, and FR-369 "Planned" now states "the identity-row join above has no entry point, result type or meter in the FR-367 API yet". Out of this PR's scope |
+
+## New findings (disposition pass 1)
+
+| ID | Severity | Summary | Refs |
+| --- | --- | --- | --- |
+| FND-004 | low | Upstream ambiguity, not a PR defect. FR-367 "Member entries" names `collections: Vec<SelectedClockCollectionLayer { kind, minimum, maximum }>` without giving the field types. The PR chose `Box<str>` for all three, with the bounds as canonical decimal text or `unbounded`, per its reading of FSpec FR-789 "Rendering". A producer could read them as an enum and integers instead. Arch should pin the types in FR-367 (QSL-2645 or the FR-374/QSL-2347 owner) before FSL builds rows against this public type | spec/checked_package/functional/FR-367-join-source-object-rows-and-field-reads.md:104-115; crates/filament-contract-model/src/checked_package/v2/source_object.rs:55-63 |
