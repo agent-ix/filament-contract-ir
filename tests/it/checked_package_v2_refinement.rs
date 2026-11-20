@@ -3362,7 +3362,7 @@ fn history_read_requires_each_reaching_refinement_to_declare_it() {
     );
 }
 
-#[trace("TC-062", "FR-061-AC-5", "FR-375-AC-32")]
+#[trace("TC-062", "FR-061-AC-5")]
 #[test]
 fn seq_used_only_by_a_refinement_field_row_resolves_its_binder_scope() {
     let (mut package, evidence, position) = catalog_free_operation_package_config_with_document(
@@ -4287,7 +4287,7 @@ fn catalog_free_operation_step_refuses_missing_wrong_kind_and_wrong_name() {
     );
 }
 
-#[trace("TC-062", "FR-061-AC-14", "FR-061-AC-15", "FR-375-AC-31")]
+#[trace("TC-062", "FR-061-AC-14", "FR-061-AC-15")]
 #[test]
 fn catalog_free_operation_step_qualified_source_class_is_admitted() {
     let (baseline, evidence, position) = catalog_free_operation_package("object_type");
@@ -4302,7 +4302,7 @@ fn catalog_free_operation_step_qualified_source_class_is_admitted() {
     );
 }
 
-#[trace("TC-062", "FR-061-AC-15", "FR-375-AC-31")]
+#[trace("TC-062", "FR-061-AC-15")]
 #[test]
 fn catalog_free_operation_step_class_resolves_before_source_node() {
     let (baseline, evidence, position) = catalog_free_operation_package("object_type");
@@ -4355,7 +4355,7 @@ fn catalog_free_operation_step_class_resolves_before_source_node() {
     );
 }
 
-#[trace("TC-062", "FR-061-AC-15", "FR-375-AC-31")]
+#[trace("TC-062", "FR-061-AC-15")]
 #[test]
 fn catalog_free_operation_step_refuses_inherited_class_and_wrong_operation_anchor() {
     // An inherited operation spelled under the inheriting type.
@@ -4450,7 +4450,7 @@ fn with_execution_point(anchor: &mut Value) {
             "value":{"kind":"pre", "operation":"save"}}));
 }
 
-#[trace("TC-062", "FR-061-AC-15", "FR-375-AC-31")]
+#[trace("TC-062", "FR-061-AC-15")]
 #[test]
 fn catalog_free_operation_step_refuses_point_qualified_anchor() {
     // A no-point anchor of (T, op) exists beside a point-qualified one: the
@@ -4482,7 +4482,7 @@ fn catalog_free_operation_step_refuses_point_qualified_anchor() {
     );
 }
 
-#[trace("TC-062", "FR-061-AC-15", "FR-375-AC-31")]
+#[trace("TC-062", "FR-061-AC-15")]
 #[test]
 fn catalog_free_operation_step_refuses_another_types_anchor_for_the_same_operation() {
     let (mut package, evidence, position) = catalog_free_operation_package_config_with_document(

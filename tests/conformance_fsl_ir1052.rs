@@ -111,8 +111,10 @@ fn node<'a>(
     package: &'a CheckedPackageV2,
     id: &CheckedNodeId,
 ) -> &'a filament_contract_model::CheckedSemanticNodeV2 {
+    // A reference names its target in the form the reader checks (operands
+    // as node indexes), which only the resolved graph spells the same way.
     package
-        .graph()
+        .resolved_graph()
         .nodes
         .iter()
         .find(|node| &node.node_id == id)
@@ -222,7 +224,7 @@ fn fsl_boolean_transition_readback_retains_typed_subject_inputs_and_result() {
     let bytes = emit(&fsl, &binary, source, model, None);
     let package = admit(&bytes, &model_bytes);
     let transitions: Vec<_> = package
-        .graph()
+        .resolved_graph()
         .nodes
         .iter()
         .filter(|node| {
