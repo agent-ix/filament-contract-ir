@@ -117,10 +117,7 @@ fn label_of(id: &Value) -> String {
     }
     if path.len() == 3 && path[0] == "composite_type" {
         if path[1] == "tuple" {
-            let positions: Vec<String> = path[2..]
-                .iter()
-                .map(|segment| label_of(&segment["node"]))
-                .collect();
+            let positions: Vec<String> = path[2..].iter().map(label_of).collect();
             return format!(
                 "composite_type/tuple/{}",
                 serde_json::to_string(&positions).expect("tuple position key JSON")
@@ -133,10 +130,7 @@ fn label_of(id: &Value) -> String {
         );
     }
     if path.len() > 3 && path[0] == "composite_type" && path[1] == "tuple" {
-        let positions: Vec<String> = path[2..]
-            .iter()
-            .map(|segment| label_of(&segment["node"]))
-            .collect();
+        let positions: Vec<String> = path[2..].iter().map(label_of).collect();
         return format!(
             "composite_type/tuple/{}",
             serde_json::to_string(&positions).expect("tuple position key JSON")

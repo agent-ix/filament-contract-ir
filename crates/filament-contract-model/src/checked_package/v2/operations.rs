@@ -17,7 +17,9 @@ use super::model_members::{
 use super::operation_catalog::{
     CatalogLeafSource, CatalogResult, FamilyClass, OperationCatalog, OperationCatalogEntry,
 };
-use super::structural::{typed_union_type_body, typed_union_value_body, UnionMember};
+use super::structural::{
+    typed_aggregate, typed_reference, typed_union_type_body, typed_union_value_body, UnionMember,
+};
 use super::temporal::member_is_well_formed_node;
 use super::typed_terms::{
     CheckedApplicationOperationRecord, CheckedFieldReadForm, CheckedOperationConstraint,
@@ -431,6 +433,9 @@ pub(super) fn validate_operations(
                 // Union, literal and dependency-reference joins share this
                 // structural-order step (FSpec FR-322, step 7; FR-440).
                 if let Some(failure) = union_defect(position, &graph, owners, meter)? {
+                    return Err(failure);
+                }
+                if let Some(failure) = tuple_value_defect(position, &graph, owners, meter)? {
                     return Err(failure);
                 }
                 if let Some(term) = graph.terms.get(position).and_then(Option::as_ref) {
@@ -3936,6 +3941,144 @@ fn union_defect(
                 return Ok(mismatch());
             }
         }
+    }
+    Ok(None)
+}
+
+/// FR-347/TC-448: each data term in a tuple value conforms to the declared
+/// type at the same data-position ordinal. Clock positions in selected model
+/// tuples are metadata and have no corresponding tuple-value term.
+fn tuple_value_defect(
+    position: usize,
+    graph: &Graph<'_>,
+    owners: &ModelOwners<'_>,
+    meter: &mut WorkMeter,
+) -> Result<Option<ValidationFailure>, ValidationFailure> {
+    let Graph {
+        nodes,
+        kinds,
+        index,
+        ..
+    } = *graph;
+    let node = &nodes[position];
+    if kinds[position] != CheckedNodeKind::Value(ValueForm::TupleValue) {
+        return Ok(None);
+    }
+    let Some(values) = graph
+        .terms
+        .get(position)
+        .and_then(Option::as_ref)
+        .and_then(typed_aggregate)
+    else {
+        return Ok(None);
+    };
+    // An unresolved semantic_type edge is reported by the graph reference
+    // join. Other non-tuple types are handled by the node-form/type checks.
+    let Some(&declared) = index.get(&node.semantic_type) else {
+        return Ok(None);
+    };
+    let mismatch = || {
+        Some(ValidationFailure::refused_at(
+            CheckedPackageRefusalCode::IllTyped,
+            node_pointer(position),
+            Some(CheckedPackageRefusalCause::TypeMismatch),
+            node.node_id.clone(),
+        ))
+    };
+
+    match kinds[declared] {
+        CheckedNodeKind::CompositeType(CompositeTypeForm::Tuple) => {
+            let Some(type_term) = graph.terms.get(declared).and_then(Option::as_ref) else {
+                return Ok(None);
+            };
+            let Some(expected) = typed_aggregate(type_term) else {
+                return Ok(None);
+            };
+            for (value, expected) in values.iter().zip(expected) {
+                let Some(expected) = typed_reference(expected) else {
+                    return Ok(None);
+                };
+                if matches!(value, CheckedTerm::Reference { target } if !index.contains_key(target))
+                {
+                    return Ok(None);
+                }
+                if !conforms_to_type(
+                    expected,
+                    operand_type_node_typed(value, nodes, kinds, index),
+                    graph,
+                    owners,
+                    meter,
+                )? {
+                    return Ok(mismatch());
+                }
+            }
+        }
+        CheckedNodeKind::Model(ModelForm::TupleValueType) => {
+            let owner = match owners.recover(&nodes[declared]) {
+                Ok(owner) => owner,
+                Err(_) => return Ok(None),
+            };
+            let Some(positions) = owner.package.tuple_types.get(owner.node) else {
+                return Ok(None);
+            };
+            let mut value = values.iter();
+            for position_ref in positions {
+                let Some(member_type) = owner.package.element_type(position_ref) else {
+                    return Ok(None);
+                };
+                if member_type == MemberType::Clock {
+                    continue;
+                }
+                let Some(value_term) = value.next() else {
+                    break;
+                };
+                if matches!(value_term, CheckedTerm::Reference { target } if !index.contains_key(target))
+                {
+                    return Ok(None);
+                }
+                let actual = operand_type_node_typed(value_term, nodes, kinds, index);
+                let conforms = if let MemberType::Record(expected) = &member_type {
+                    let expected_name = match expected.path.last() {
+                        Some(CheckedNodePathSegment::Name(name)) => name.as_ref(),
+                        _ => return Ok(None),
+                    };
+                    let Some(actual) = actual.and_then(|actual| index.get(actual).copied()) else {
+                        return Ok(mismatch());
+                    };
+                    if kinds[actual] != CheckedNodeKind::Model(ModelForm::RecordValueType) {
+                        false
+                    } else {
+                        let Ok(actual_owner) = owners.recover(&nodes[actual]) else {
+                            return Ok(mismatch());
+                        };
+                        if !std::ptr::eq(actual_owner.package, owner.package) {
+                            false
+                        } else {
+                            let mut budget =
+                                Budget::new(meter, owner.package.root, owner.package.bytes);
+                            owner.package.conforms_to(
+                                actual_owner.node,
+                                expected_name,
+                                &mut budget,
+                            )?
+                        }
+                    }
+                } else {
+                    let expected = member_type.node_id_in(
+                        &owner.package.checked_package,
+                        &mut Budget::new(meter, owner.package.root, owner.package.bytes),
+                    )?;
+                    let Some(expected) = expected else {
+                        return Ok(None);
+                    };
+                    conforms_to_type(&expected, actual, graph, owners, meter)?
+                };
+                if !conforms {
+                    return Ok(mismatch());
+                }
+            }
+        }
+        _ => return Ok(None),
     }
     Ok(None)
 }
