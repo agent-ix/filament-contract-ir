@@ -45,3 +45,9 @@ Round 1 outcomes:
 | --- | --- | --- |
 | FND-001 | fixed | The matrix has tagged tests for all three FR-376 criteria, and the public-reader TC-488 suite is present. Focused execution remains pending. |
 | FND-002 | still-open: required acceptance cases remain untested | The suite omits the specified precedence cases and several refusal mutations. Its budget test derives the expected work from the same implementation's ample-budget run, so it does not independently assert the required count or one body walk per owner. The focused test run is also still pending. |
+
+Round 2. Reviewed exact head `1777c119b79df4484f9df110b4a9e4c340bcf0e3`. The matrix still binds all three FR-376 criteria. Both stage-precedence cases are present, but multiple FR-825 refusal cases and the independent owner-walk budget oracle remain absent. The focused 15-test run is still queued; no passing evidence is claimed.
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-002 | still-open: required refusal cases and an independent walk oracle remain absent | The suite still omits specified mutations including an owner function that cannot reach the application, wrong narrow/result-bound pairing, invalid guard cases, and non-root/out-of-order extent domains. `before_rows` is read from the implementation's own consumed budget, so it cannot prove the owner body was charged once. |

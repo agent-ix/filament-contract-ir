@@ -49,3 +49,9 @@ Round 1 outcomes:
 | --- | --- | --- |
 | FND-001 | fixed | Public-reader/admission regression tests were added and are trace-bound to FR-376. Their focused run remains pending. |
 | FND-002 | still-open: required acceptance cases remain untested | The suite omits the specified precedence cases and several refusal mutations. Its budget test derives the expected work from the same implementation's ample-budget run, so it does not independently assert the required count or one body walk per owner. The focused test run is also still pending. |
+
+Round 2. Reviewed exact head `1777c119b79df4484f9df110b4a9e4c340bcf0e3`. Both precedence cases are now present and the budget fixture derives the final two row charges from FR-825. The focused 15-test run is still queued and was not treated as passing.
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-002 | still-open: required refusal cases and an independent walk oracle remain absent | The suite still omits specified mutations including an owner function that cannot reach the application, wrong narrow/result-bound pairing, invalid guard cases, and non-root/out-of-order extent domains. `before_rows` is read from the implementation's own consumed budget, so it cannot prove the owner body was charged once. |

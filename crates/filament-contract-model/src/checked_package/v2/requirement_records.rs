@@ -1017,7 +1017,7 @@ pub struct ValueValidityRecord {
 
 pub(super) fn retain_rows(
     rows: Option<&[RequirementItemWireRow]>,
-    wire_nodes: &[RawSemanticNodeV2],
+    wire_nodes: &[CheckedSemanticNodeV2],
     nodes: &[CheckedSemanticNodeV2],
 ) -> Vec<RequirementItemRow> {
     rows.map_or_else(Vec::new, |rows| {
@@ -1060,7 +1060,7 @@ pub(super) fn retain_rows(
 
 fn resolved_graph_id(
     id: &CheckedNodeId,
-    wire_nodes: &[RawSemanticNodeV2],
+    wire_nodes: &[CheckedSemanticNodeV2],
     nodes: &[CheckedSemanticNodeV2],
 ) -> Option<CheckedNodeId> {
     let position = wire_nodes.iter().position(|node| &node.node_id == id)?;
@@ -1069,7 +1069,7 @@ fn resolved_graph_id(
 
 fn remap_domain_key(
     key: &DomainKey,
-    wire_nodes: &[RawSemanticNodeV2],
+    wire_nodes: &[CheckedSemanticNodeV2],
     nodes: &[CheckedSemanticNodeV2],
 ) -> DomainKey {
     match key {
