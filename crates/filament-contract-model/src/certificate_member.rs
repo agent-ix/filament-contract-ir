@@ -42,6 +42,7 @@ certificate_members! {
     Edges => "edges",
     Reasons => "reasons",
     Divergence => "divergence",
+    NonZeno => "non_zeno",
     Initials => "initials",
     Admitted => "admitted",
     Refinement => "refinement",
@@ -61,14 +62,23 @@ certificate_members! {
     Choice => "choice",
     Clock => "clock",
     Concrete => "concrete",
+    Conditional => "conditional",
     Constraint => "constraint",
+    Denominator => "denominator",
+    EfNodes => "ef_nodes",
+    Form => "form",
     Gain => "gain",
     History => "history",
     Lower => "lower",
+    Mode => "mode",
     Node => "node",
+    Numerator => "numerator",
+    Post => "post",
     Rank => "rank",
+    Reset => "reset",
     Set => "set",
     State => "state",
+    StateGraph => "state_graph",
     Strict => "strict",
     Target => "target",
     Transition => "transition",
@@ -77,4 +87,50 @@ certificate_members! {
     Upper => "upper",
     Value => "value",
     Zone => "zone",
+}
+
+#[cfg(test)]
+mod tests {
+    use super::CertificateMember;
+    use ix_trace_rs::trace;
+
+    /// FR-070-AC-4: the members the schema added after the original 51 spell exactly their names.
+    #[trace("FR-070-AC-3", "FR-070-AC-4")]
+    #[test]
+    fn schema_added_members_spell_their_names() {
+        let added = [
+            (CertificateMember::NonZeno, "non_zeno"),
+            (CertificateMember::Conditional, "conditional"),
+            (CertificateMember::Denominator, "denominator"),
+            (CertificateMember::EfNodes, "ef_nodes"),
+            (CertificateMember::Form, "form"),
+            (CertificateMember::Mode, "mode"),
+            (CertificateMember::Numerator, "numerator"),
+            (CertificateMember::Post, "post"),
+            (CertificateMember::Reset, "reset"),
+            (CertificateMember::StateGraph, "state_graph"),
+        ];
+        for (member, name) in added {
+            assert_eq!(member.as_str(), name);
+            assert_eq!(
+                CertificateMember::ALL
+                    .iter()
+                    .filter(|m| **m == member)
+                    .count(),
+                1,
+                "{name} appears once in ALL"
+            );
+        }
+        assert_eq!(CertificateMember::ALL.len(), 61);
+        // A path, index or alias spelling is no member.
+        for refused in [
+            "initial",
+            "initials[0]",
+            "position",
+            "refinement.node",
+            "state-graph",
+        ] {
+            assert!(CertificateMember::ALL.iter().all(|m| m.as_str() != refused));
+        }
+    }
 }
