@@ -622,6 +622,11 @@ mod canonical_class_denial;
 #[trace("TC-472", "FR-038-AC-511")]
 #[test]
 fn nominal_validation_work_denial_prepays_its_original_body_pointer() {
+    // The work limit that lands the denial on the nominal body pointer. Join
+    // stage 4 (edge existence) now pays 1 + dependencies per in-stage node of
+    // this four-node fixture (2 + 1 + 1 + 1 = 5) before the nominal join, so
+    // the same denial point sits 5 units higher than before stage 4 existed.
+    const WORK: u64 = 13 + 5;
     use filament_contract_model::{
         NativeJoinChargeKind, NativeJoinLocus, NativeJoinLocusSource, PackageReadResource,
         PackageReadStage,
@@ -630,18 +635,23 @@ fn nominal_validation_work_denial_prepays_its_original_body_pointer() {
     let bytes = canonical(&wire);
     let evidence = evidence_for(&wire);
     let limits = generous_limits();
-    let ample =
-        read_allocation_proof::measure_at::<ThreadCounter>(&bytes, &evidence, limits, 13, u64::MAX);
+    let ample = read_allocation_proof::measure_at::<ThreadCounter>(
+        &bytes,
+        &evidence,
+        limits,
+        WORK,
+        u64::MAX,
+    );
     let CheckedPackageV2BudgetedReadResult::BudgetIncomplete(outcome) = &ample.result else {
         panic!(
-            "the original Work13 control must return its affordable diagnostic: {:?}",
+            "the original Work control must return its affordable diagnostic: {:?}",
             ample.result
         );
     };
     assert_eq!(outcome.denied.resource, PackageReadResource::Work);
     assert_eq!(outcome.denied.amount, 1);
-    assert_eq!(outcome.limit, 13);
-    assert_eq!(outcome.consumed, 14);
+    assert_eq!(outcome.limit, WORK);
+    assert_eq!(outcome.consumed, WORK + 1);
     let path = outcome.path.as_ref().expect("original body pointer");
     assert_eq!(path.as_str(), "/semantic_graph/nodes/2/body");
     let locus = NativeJoinLocus {
@@ -663,11 +673,16 @@ fn nominal_validation_work_denial_prepays_its_original_body_pointer() {
         .checked_sub(pointer_bytes)
         .expect("actual prefix before the only outcome pointer");
     let exact =
-        read_allocation_proof::measure_at::<ThreadCounter>(&bytes, &evidence, limits, 13, paid);
+        read_allocation_proof::measure_at::<ThreadCounter>(&bytes, &evidence, limits, WORK, paid);
     assert_eq!(exact.result, ample.result);
     assert_eq!(exact.requested, ample.requested);
-    let short =
-        read_allocation_proof::measure_at::<ThreadCounter>(&bytes, &evidence, limits, 13, paid - 1);
+    let short = read_allocation_proof::measure_at::<ThreadCounter>(
+        &bytes,
+        &evidence,
+        limits,
+        WORK,
+        paid - 1,
+    );
     let CheckedPackageV2BudgetedReadResult::Exhausted(exhausted) = &short.result else {
         panic!(
             "one below the actual diagnostic request must exhaust: {:?}",
@@ -675,7 +690,7 @@ fn nominal_validation_work_denial_prepays_its_original_body_pointer() {
         );
     };
     assert_eq!(exhausted.denied, outcome.denied);
-    assert_eq!(exhausted.configured_bound, 13);
+    assert_eq!(exhausted.configured_bound, WORK);
     assert_eq!(exhausted.locus, locus);
     assert!(exhausted.pending.is_none());
     assert_eq!(short.budget.first_unpaid(), Some(denied));
@@ -688,8 +703,13 @@ fn nominal_validation_work_denial_prepays_its_original_body_pointer() {
         "the denied pointer makes no allocation request"
     );
     assert_eq!(short.budget.read_storage_consumed(), prefix);
-    let repeated =
-        read_allocation_proof::measure_at::<ThreadCounter>(&bytes, &evidence, limits, 13, paid - 1);
+    let repeated = read_allocation_proof::measure_at::<ThreadCounter>(
+        &bytes,
+        &evidence,
+        limits,
+        WORK,
+        paid - 1,
+    );
     assert_eq!(repeated.result, short.result);
     assert_eq!(repeated.budget, short.budget);
     assert_eq!(repeated.requested, short.requested);
@@ -704,6 +724,11 @@ mod dependency_selection_inputs;
 #[trace("TC-472", "FR-038-AC-511")]
 #[test]
 fn imported_nominals_work_denial_prepays_original_graph_pointer() {
+    // The work limit that lands the denial on the imported graph pointer.
+    // Join stage 4 (edge existence) pays 1 unit for this fixture's one
+    // in-stage node before the imported nominal walk, so the same denial
+    // point sits 1 unit higher than before stage 4 existed.
+    const WORK: u64 = 5 + 1;
     use filament_contract_model::{
         NativeJoinChargeKind, NativeJoinLocus, NativeJoinLocusSource, PackageReadResource,
         PackageReadStage,
@@ -719,18 +744,23 @@ fn imported_nominals_work_denial_prepays_original_graph_pointer() {
         .insert_dependency_package("test/geometry", dependency)
         .expect("dependency");
     let limits = generous_limits();
-    let ample =
-        read_allocation_proof::measure_at::<ThreadCounter>(&bytes, &evidence, limits, 5, u64::MAX);
+    let ample = read_allocation_proof::measure_at::<ThreadCounter>(
+        &bytes,
+        &evidence,
+        limits,
+        WORK,
+        u64::MAX,
+    );
     let CheckedPackageV2BudgetedReadResult::BudgetIncomplete(outcome) = &ample.result else {
         panic!(
-            "the original Work5 control must return its affordable diagnostic: {:?}",
+            "the original Work control must return its affordable diagnostic: {:?}",
             ample.result
         );
     };
     assert_eq!(outcome.denied.resource, PackageReadResource::Work);
     assert_eq!(outcome.denied.amount, 1);
-    assert_eq!(outcome.limit, 5);
-    assert_eq!(outcome.consumed, 6);
+    assert_eq!(outcome.limit, WORK);
+    assert_eq!(outcome.consumed, WORK + 1);
     let path = outcome.path.as_ref().expect("original body pointer");
     assert_eq!(path.as_str(), "/semantic_graph/nodes");
     let locus = NativeJoinLocus {
@@ -752,11 +782,16 @@ fn imported_nominals_work_denial_prepays_original_graph_pointer() {
         .checked_sub(pointer_bytes)
         .expect("actual prefix before the only outcome pointer");
     let exact =
-        read_allocation_proof::measure_at::<ThreadCounter>(&bytes, &evidence, limits, 5, paid);
+        read_allocation_proof::measure_at::<ThreadCounter>(&bytes, &evidence, limits, WORK, paid);
     assert_eq!(exact.result, ample.result);
     assert_eq!(exact.requested, ample.requested);
-    let short =
-        read_allocation_proof::measure_at::<ThreadCounter>(&bytes, &evidence, limits, 5, paid - 1);
+    let short = read_allocation_proof::measure_at::<ThreadCounter>(
+        &bytes,
+        &evidence,
+        limits,
+        WORK,
+        paid - 1,
+    );
     let CheckedPackageV2BudgetedReadResult::Exhausted(exhausted) = &short.result else {
         panic!(
             "one below the actual diagnostic request must exhaust: {:?}",
@@ -764,7 +799,7 @@ fn imported_nominals_work_denial_prepays_original_graph_pointer() {
         );
     };
     assert_eq!(exhausted.denied, outcome.denied);
-    assert_eq!(exhausted.configured_bound, 5);
+    assert_eq!(exhausted.configured_bound, WORK);
     assert_eq!(exhausted.locus, locus);
     assert!(exhausted.pending.is_none());
     assert_eq!(short.budget.first_unpaid(), Some(denied));
@@ -777,15 +812,21 @@ fn imported_nominals_work_denial_prepays_original_graph_pointer() {
         "the denied pointer makes no allocation request"
     );
     assert_eq!(short.budget.read_storage_consumed(), prefix);
-    let repeated =
-        read_allocation_proof::measure_at::<ThreadCounter>(&bytes, &evidence, limits, 5, paid - 1);
+    let repeated = read_allocation_proof::measure_at::<ThreadCounter>(
+        &bytes,
+        &evidence,
+        limits,
+        WORK,
+        paid - 1,
+    );
     assert_eq!(repeated.result, short.result);
     assert_eq!(repeated.budget, short.budget);
     assert_eq!(repeated.requested, short.requested);
     for observation in [ample, exact, short, repeated] {
         drop_without_request::<ThreadCounter>(observation);
     }
-    let zero = read_allocation_proof::measure_at::<ThreadCounter>(&bytes, &evidence, limits, 5, 0);
+    let zero =
+        read_allocation_proof::measure_at::<ThreadCounter>(&bytes, &evidence, limits, WORK, 0);
     let CheckedPackageV2BudgetedReadResult::BudgetIncomplete(zero_outcome) = &zero.result else {
         panic!(
             "zero storage denies the earlier pointer-free catalog reservation: {:?}",
@@ -810,7 +851,7 @@ fn imported_nominals_work_denial_prepays_original_graph_pointer() {
     assert_eq!(zero.budget.read_storage_consumed(), 0);
     assert_eq!(zero.requested, 0);
     let zero_repeat =
-        read_allocation_proof::measure_at::<ThreadCounter>(&bytes, &evidence, limits, 5, 0);
+        read_allocation_proof::measure_at::<ThreadCounter>(&bytes, &evidence, limits, WORK, 0);
     assert_eq!(zero_repeat.result, zero.result);
     assert_eq!(zero_repeat.budget, zero.budget);
     assert_eq!(zero_repeat.requested, zero.requested);
