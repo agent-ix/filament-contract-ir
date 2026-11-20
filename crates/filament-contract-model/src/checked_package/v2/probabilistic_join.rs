@@ -925,7 +925,7 @@ impl<'a> Join<'a> {
         let weights_at = binding_at(holder, 2);
         let rows = bound(body, 2).map(members).unwrap_or_default();
         let mut previous: Option<(&CheckedNodeId, &str)> = None;
-        let mut named: Vec<(_, &str)> = stage_storage::vec(
+        let mut named: Vec<&str> = stage_storage::vec(
             meter,
             &Site::new(PackageReadStage::Graph, holder, FORM, weights_at),
             rows.len(),
@@ -960,21 +960,19 @@ impl<'a> Join<'a> {
             if found.is_none() {
                 return Err(invalid(meter, holder, operation_at));
             }
-            // A row is one operation of one declaring node (FR-640 Reader rule
-            // 3): strict ascent of (declaring, name) refuses a repeat, while
-            // two inherited operations of one name stay distinct.
-            if previous.is_some_and(|earlier| earlier >= (declaring, name)) {
+            if previous.is_some_and(|earlier| earlier >= (declaring, name)) || named.contains(&name)
+            {
                 return Err(invalid(meter, holder, row_at));
             }
             previous = Some((declaring, name));
-            named.push((declared.node, name));
+            named.push(name);
         }
         for node in &lineage {
             let Some(declared) = owner.package.object_types.get(*node) else {
                 continue;
             };
             for operation in &declared.operations {
-                if !named.contains(&(*node, member_name(&operation.identity))) {
+                if !named.contains(&member_name(&operation.identity)) {
                     return Err(invalid(meter, holder, weights_at.key("members")));
                 }
             }
@@ -987,7 +985,7 @@ impl Join<'_> {
     /// FR-640 Reader rule 3 for a workload whose `model` (at `model`) is
     /// source-declared. The identity-row join resolves each row's operation
     /// and the coverage of the model's own and inherited operations; the strict
-    /// read checks the order of the weights, that no (declaring, operation)
+    /// read checks the order of the weights, that no (`declaring`, operation)
     /// pair repeats and that each row's `declaring` node is a source-declared node of the
     /// model's `SourceOwner`. One validation visit is charged for each row.
     fn source_workload(

@@ -1100,13 +1100,13 @@ pub(crate) fn graph_requests_of(
 /// exactly one request of its size (8 x 22 bytes) at a probabilistic node. A
 /// source workload keeps no buffer: its rows are keyed by (declaring node,
 /// operation name) and checked in order against the previous row alone
-/// (QSL-2707), so its 13 rows make no request of 16 x 13 bytes.
+/// (QSL-2707). The selected-model workload's buffer, 32 bytes a row, is pinned
+/// by `a_wide_model_owner_workload_is_admitted_and_its_named_buffer_charged`.
 #[trace("TC-484", "FR-369-AC-27")]
 #[test]
 fn the_source_buffers_are_charged_before_they_are_made() {
     let word = u128::try_from(std::mem::size_of::<usize>()).expect("bytes");
-    let name = u128::try_from(std::mem::size_of::<&str>()).expect("bytes");
-    let (listed, named) = (word * 22, name * 13);
+    let listed = word * 22;
     let requests = graph_requests(&wide(22, 13));
     let amounts: Vec<u128> = requests
         .iter()
@@ -1115,7 +1115,6 @@ fn the_source_buffers_are_charged_before_they_are_made() {
         .collect();
     let count = |amount: u128| amounts.iter().filter(|&&found| found == amount).count();
     assert_eq!(count(listed), 1, "{amounts:?}");
-    assert_eq!(count(named), 0, "{amounts:?}");
 }
 
 mod join;

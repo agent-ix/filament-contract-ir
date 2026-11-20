@@ -39,6 +39,7 @@ use crate::checked_package::common::ValidationFailure;
 use crate::checked_package::selected_population::{
     is_model_population, least_type_occurrence, population_maximum, population_object_type_typed,
 };
+use crate::checked_package::shared::CheckedTypeArgumentRefusalDetail;
 use crate::checked_package::shared::{
     CheckedNodePathSegment, CheckedPackageRefusalCause, CheckedPackageRefusalCode, JsonPointer,
 };
@@ -485,6 +486,30 @@ pub(super) fn validate_operations(
     Ok(admitted_views)
 }
 
+/// FR-322 "Named type arguments" rule 5 over `(alias, declaration, position)`
+/// rows of the `type_argument` members carrying an alias: the later and the
+/// earlier position of the conflict whose later member comes first in graph
+/// order, where a conflict is a member whose alias equals an earlier member's
+/// while its declaration differs.
+fn first_alias_conflict<D: PartialEq>(
+    rows: &mut [((&str, &str), &D, usize)],
+) -> Option<(usize, usize)> {
+    // Rows of one alias keep graph order; the first of a group is the
+    // earliest member carrying it.
+    rows.sort_by(|a, b| a.0.cmp(&b.0).then(a.2.cmp(&b.2)));
+    let mut first: Option<(usize, usize)> = None;
+    for group in rows.chunk_by(|a, b| a.0 == b.0) {
+        let earliest = &group[0];
+        let Some(later) = group.iter().find(|row| row.1 != earliest.1) else {
+            continue;
+        };
+        if first.is_none_or(|(held, _)| later.2 < held) {
+            first = Some((later.2, earliest.2));
+        }
+    }
+    first
+}
+
 /// FSpec FR-322 "Named type arguments", rule 5, run once every application
 /// has passed: in graph order, a `type_argument` member whose `alias` equals
 /// an earlier member's while its `declaration` names a different node is
@@ -495,12 +520,7 @@ fn one_alias_one_type(
     terms: &[Option<CheckedTerm>],
     meter: &mut WorkMeter,
 ) -> Result<(), ValidationFailure> {
-    struct Labelled<'a> {
-        alias: (&'a str, &'a str),
-        declaration: &'a CheckedNodeId,
-        position: usize,
-    }
-    let mut labelled: Vec<Labelled<'_>> = Vec::new();
+    let mut labelled: Vec<((&str, &str), &CheckedNodeId, usize)> = Vec::new();
     for (position, term) in terms.iter().enumerate() {
         let Some(CheckedTerm::Application { operation, .. }) = term else {
             continue;
@@ -518,30 +538,10 @@ fn one_alias_one_type(
         }
         if let Some(alias) = alias_of(member) {
             meter.room(&mut labelled, 1)?;
-            labelled.push(Labelled {
-                alias,
-                declaration,
-                position,
-            });
+            labelled.push((alias, declaration, position));
         }
     }
-    // Rows of one alias keep graph order; the first of a group is the earliest
-    // member carrying it.
-    labelled.sort_by(|a, b| a.alias.cmp(&b.alias).then(a.position.cmp(&b.position)));
-    let mut first_conflict: Option<(&Labelled<'_>, &Labelled<'_>)> = None;
-    for group in labelled.chunk_by(|a, b| a.alias == b.alias) {
-        let earliest = &group[0];
-        let Some(later) = group
-            .iter()
-            .find(|member| member.declaration != earliest.declaration)
-        else {
-            continue;
-        };
-        if first_conflict.is_none_or(|(held, _)| later.position < held.position) {
-            first_conflict = Some((later, earliest));
-        }
-    }
-    let Some((later, earlier)) = first_conflict else {
+    let Some((later, earlier)) = first_alias_conflict(&mut labelled) else {
         return Ok(());
     };
     let alias_at = |position: usize| {
@@ -553,12 +553,12 @@ fn one_alias_one_type(
     };
     let mut failure = ValidationFailure::refused_at(
         CheckedPackageRefusalCode::IllTyped,
-        alias_at(later.position),
+        alias_at(later),
         Some(CheckedPackageRefusalCause::TypeMismatch),
-        nodes[later.position].node_id.clone(),
+        nodes[later].node_id.clone(),
     );
     if let ValidationFailure::Refused(refusal) = &mut failure {
-        refusal.push_path(alias_at(earlier.position));
+        refusal.push_path(alias_at(earlier));
     }
     Err(failure)
 }
@@ -1857,16 +1857,22 @@ fn check_type_argument_alias(
             CheckedPackageRefusalCause::MissingName,
         )));
     };
-    if let (Some(resolved), Some(declaration)) = (resolved, member_declaration(operation)) {
-        if &resolved != declaration {
-            return Ok(Some(application.refuse(
-                CheckedPackageRefusalCode::IllTyped,
-                alias_at(&[]),
-                CheckedPackageRefusalCause::TypeMismatch,
-            )));
-        }
+    let declaration = member_declaration(operation);
+    if resolved.as_ref() == declaration && resolved.is_some() {
+        return Ok(None);
     }
-    Ok(None)
+    let mut failure = application.refuse(
+        CheckedPackageRefusalCode::IllTyped,
+        alias_at(&[]),
+        CheckedPackageRefusalCause::TypeMismatch,
+    );
+    if let ValidationFailure::Refused(refusal) = &mut failure {
+        refusal.type_argument_detail = Some(Box::new(CheckedTypeArgumentRefusalDetail {
+            expected: resolved,
+            actual: declaration.cloned(),
+        }));
+    }
+    Ok(Some(failure))
 }
 
 #[ix_trace_rs::string_edge]
@@ -7254,6 +7260,38 @@ mod tests {
     };
     use ix_trace_rs::trace;
     use serde_json::{json, Value};
+
+    /// FR-322 rule 5 reports the conflict whose later member is first in
+    /// graph order, not the one a group sort reaches first or last.
+    #[trace("TC-048", "FR-322-AC-492", "FR-038-AC-583")]
+    #[test]
+    fn the_earliest_alias_conflict_is_reported() {
+        // Alias ("p", "b") conflicts at position 3 (earlier 0); ("p", "a")
+        // conflicts at position 5 (earlier 1); ("p", "c") does not conflict.
+        let mut rows = vec![
+            (("p", "b"), &1, 0),
+            (("p", "a"), &1, 1),
+            (("p", "c"), &1, 2),
+            (("p", "b"), &2, 3),
+            (("p", "c"), &1, 4),
+            (("p", "a"), &2, 5),
+        ];
+        assert_eq!(super::first_alias_conflict(&mut rows), Some((3, 0)));
+        let mut calm = vec![
+            (("p", "a"), &1, 0),
+            (("p", "a"), &1, 1),
+            (("p", "b"), &2, 2),
+        ];
+        assert_eq!(super::first_alias_conflict(&mut calm), None);
+        // The conflict names the first differing member of its group.
+        let mut three = vec![
+            (("p", "a"), &1, 0),
+            (("p", "a"), &1, 4),
+            (("p", "a"), &2, 7),
+            (("p", "a"), &3, 9),
+        ];
+        assert_eq!(super::first_alias_conflict(&mut three), Some((7, 0)));
+    }
 
     #[trace("TC-472", "FR-038-AC-511")]
     #[test]

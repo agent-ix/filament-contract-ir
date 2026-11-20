@@ -634,60 +634,83 @@ fn public_reader_keeps_the_one_operand_option_presence_form() {
     assert_eq!(arguments.len(), 1);
 }
 
-/// QSL-2705: the reserved `#ieee_operand` binder name is admitted as the
-/// `name` of every `value`/`parameter` node the temporal clauses of the
-/// published timed-slot package read, not only a function body's (FSpec
-/// FR-322 "Parameter", FR-322-AC-490). Each parameter node of the package is
-/// renamed in turn and the package is read again.
+/// QSL-2705 / FR-038-AC-585: the package a checker emits for a temporal clause
+/// whose body holds the `#ieee_operand` `let` (FSpec FR-322 "Parameter"), read
+/// as emitted. The fixture is the package of `always [0, 3] holds(-A < Z)` over
+/// declared `Float64` values; node 12 is the `value`/`parameter` named
+/// `#ieee_operand`, node 20 the `filament.op.control.let` binding it and node 21
+/// the `holds` formula that reads the `let`.
 #[test]
-#[trace("TC-048", "FR-322-AC-490", "FR-038-AC-581")]
-fn the_reserved_ieee_operand_name_is_admitted_on_every_parameter_node_a_temporal_clause_reads() {
-    let (published, _vectors, fixtures) = published_slots();
-    let parameters: Vec<usize> = published["semantic_graph"]["nodes"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .enumerate()
-        .filter(|(_, node)| node["semantic_form"] == "parameter")
-        .map(|(position, _)| position)
-        .collect();
-    assert!(
-        parameters.len() >= 4,
-        "the package carries clause parameters"
+#[trace("TC-048", "FR-038-AC-585")]
+fn the_ieee_operand_let_of_a_temporal_clause_body_is_admitted() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/qsl-2705-ieee-operand/temporal-holds-let.json");
+    let mut wire = read_json(&path).expect("emitted package");
+    // The emitted `attemptUpdate` sidecars name an operation of the unit's own
+    // model; the stand-in model below declares none, and the sidecars play no
+    // part in a temporal clause.
+    wire.as_object_mut().unwrap().remove("operation_effects");
+    wire.as_object_mut().unwrap().remove("operation_bodies");
+    let nodes = wire["semantic_graph"]["nodes"].as_array().unwrap();
+    assert_eq!(nodes[12]["semantic_form"], "parameter");
+    assert_eq!(
+        nodes[12]["body"]["members"][0]["value"]["value"],
+        "#ieee_operand"
     );
-    for position in parameters {
-        let mut wire = published.clone();
-        let mut renamed = false;
-        for member in wire["semantic_graph"]["nodes"][position]["body"]["members"]
-            .as_array_mut()
-            .unwrap()
-        {
-            if member["name"] == "name" {
-                member["value"]["value"] = json!("#ieee_operand");
-                renamed = true;
-            }
-        }
-        assert!(renamed, "node {position} binds a name");
-        fixture_support::refresh_identity(&mut wire);
-        let result = read_selected(&wire, "ieee operand", &fixtures);
-        assert!(
-            matches!(result, CheckedPackageV2ReadResult::Admitted(_)),
-            "node {position}: {result:?}"
-        );
-    }
-    // The name stays reserved: another `#`-prefixed binder is refused.
-    let mut wire = published;
-    for member in wire["semantic_graph"]["nodes"][36]["body"]["members"]
-        .as_array_mut()
-        .unwrap()
-    {
-        if member["name"] == "name" {
-            member["value"]["value"] = json!("#other");
-        }
-    }
-    fixture_support::refresh_identity(&mut wire);
-    assert!(matches!(
-        read_selected(&wire, "other hash name", &fixtures),
-        CheckedPackageV2ReadResult::Refused(_)
-    ));
+    assert_eq!(
+        nodes[20]["body"]["operation"]["identity"],
+        "filament.op.control.let"
+    );
+    assert_eq!(nodes[20]["body"]["arguments"][0]["name"], "#ieee_operand");
+    assert_eq!(
+        nodes[21]["body"]["operation"]["identity"],
+        "filament.op.temporal.holds"
+    );
+    assert_eq!(
+        nodes[21]["body"]["arguments"][0]["target"], nodes[20]["node_id"],
+        "the clause's formula reads the let"
+    );
+    // The one model the clause's unit selects: the published orders document
+    // under that package's identity, its `Order` entity declared as
+    // `ConfigVersion`.
+    let document: Value = serde_json::from_str(
+        &read_json(&proposal_dir_of(&fixtures_dir()).join(DOMAIN_DOCUMENT))
+            .expect("domain document")
+            .to_string()
+            .replace(
+                "acme/orders/Order\"",
+                "example/config-version/ConfigVersion\"",
+            )
+            .replace(
+                "acme/orders/Order/",
+                "example/config-version/ConfigVersion/",
+            )
+            .replace("acme/orders", "example/config-version"),
+    )
+    .unwrap();
+    let read = |wire: &Value| {
+        crate::read_and_account(
+            &fixture_support::canonical(wire),
+            CheckedPackageReadLimits::bounded(),
+            &fixture_support::evidence_with_document(wire, "example/config-version", &document),
+        )
+    };
+    let result = read(&wire);
+    assert!(
+        matches!(result, CheckedPackageV2ReadResult::Admitted(_)),
+        "{result:?}"
+    );
+    // The name stays reserved: the same package under another `#`-prefixed
+    // binder name, in every node, path and reference, is refused.
+    let other: Value =
+        serde_json::from_str(&wire.to_string().replace("#ieee_operand", "#other")).unwrap();
+    let CheckedPackageV2ReadResult::Refused(refusal) = read(&other) else {
+        panic!("another reserved-looking name refuses");
+    };
+    assert_eq!(refusal.code, Code::InvalidSemanticGraph, "{refusal:?}");
+    assert_eq!(
+        refusal.loci[0].path.as_ref().unwrap().to_string(),
+        "/semantic_graph/nodes/12/body",
+        "{refusal:?}"
+    );
 }

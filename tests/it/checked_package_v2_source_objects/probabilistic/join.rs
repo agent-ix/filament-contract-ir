@@ -614,6 +614,92 @@ fn a_workload_row_is_keyed_by_its_declaring_node_and_operation_name() {
     );
 }
 
+/// QSL-2707 at the identity-row join: workload coverage is keyed by (declaring
+/// node, operation name) like the rows are. In a diamond `D` over `P` and `Q`,
+/// each declaring `step`, a workload weighing only one `step` omits the other
+/// and is refused; so is one that omits the inherited `O::step` where `Other`
+/// extends `O` and both declare `step`, and weighing every row is admitted.
+#[trace("TC-484", "FR-369-AC-26")]
+#[test]
+fn a_diamond_workload_must_weigh_every_declaring_nodes_operation_of_one_name() {
+    let weigh = |declaring: &str, operation: &str| {
+        aggregate(vec![
+            binding("declaring", reference_to(declaring)),
+            binding("operation", text(operation)),
+            binding("weight", rational("1")),
+        ])
+    };
+    let with_workload = |model: &str, extra: &[&str], rows: Vec<Value>| {
+        let mut package = package();
+        for name in extra {
+            let mut node = source_type(name, &[], &fixture_source());
+            node["dependencies"] = json!([integer()]);
+            nodes_mut(&mut package).push(node);
+        }
+        nodes_mut(&mut package).push(super::probabilistic(
+            "workload_other",
+            "workload",
+            aggregate(vec![
+                binding("model", reference_to(model)),
+                binding("name", text("W2")),
+                binding("weights", aggregate(rows)),
+            ]),
+        ));
+        settle(&mut package);
+        package
+    };
+    let diamond_rows = || {
+        let mut all = poke_rows();
+        for (name, operations, supertypes) in [
+            ("P", vec![operation("P::step", vec![])], vec![]),
+            ("Q", vec![operation("Q::step", vec![])], vec![]),
+            ("D", vec![], vec![id("qualified:P"), id("qualified:Q")]),
+        ] {
+            let mut entry = row(name, vec![], &[]);
+            entry.members = vec![];
+            entry.operations = operations;
+            entry.supertypes = supertypes;
+            all.push(entry);
+        }
+        all
+    };
+    let weights = |package: &Value| format!("{}/members", member_at(package, "workload_other", 2));
+    let both = with_workload(
+        "qualified:D",
+        &["P", "Q", "D"],
+        vec![weigh("qualified:P", "step"), weigh("qualified:Q", "step")],
+    );
+    join(&both, diamond_rows()).expect("both steps of the diamond");
+    for (case, kept) in [("Q::step omitted", "P"), ("P::step omitted", "Q")] {
+        let package = with_workload(
+            "qualified:D",
+            &["P", "Q", "D"],
+            vec![weigh(&format!("qualified:{kept}"), "step")],
+        );
+        refuses(case, &package, diamond_rows(), &weights(&package));
+    }
+    // `Other` extends `O`, and both declare `step`.
+    let chain_rows = || {
+        let mut all = rows(vec![data("k", &range())], vec![id("qualified:O")]);
+        all[2].operations.push(operation("Other::step", vec![]));
+        all
+    };
+    let weighed = [
+        weigh("qualified:O", "step"),
+        weigh("qualified:Other", "poke"),
+        weigh("qualified:Other", "step"),
+    ];
+    let full = with_workload("qualified:Other", &[], weighed.to_vec());
+    join(&full, chain_rows()).expect("every row weighed");
+    let omitted = with_workload("qualified:Other", &[], weighed[1..].to_vec());
+    refuses(
+        "the inherited O::step omitted",
+        &omitted,
+        chain_rows(),
+        &weights(&omitted),
+    );
+}
+
 /// The work of the AC-25 join of `package`, counted independently of the
 /// reader: one unit for each node met, and for the probabilistic ones, in
 /// bytes of the caller text compared as well:

@@ -588,18 +588,19 @@ impl<'p> Join<'p, '_> {
         Ok(false)
     }
 
-    /// Whether `named` holds `name`, one work unit and the bytes of the name
-    /// for each element met.
+    /// Whether `named` holds `name` of `declaring`, one work unit and the
+    /// bytes of the name for each element met.
     fn named_has(
         &mut self,
-        named: &[&str],
+        named: &[(usize, &str)],
+        declaring: usize,
         name: &str,
         holder: usize,
         at: At,
     ) -> Result<bool, Failure> {
-        for &candidate in named {
+        for &(position, candidate) in named {
             self.charge_text(holder, name.len(), at)?;
-            if candidate == name {
+            if position == declaring && candidate == name {
                 return Ok(true);
             }
         }
@@ -641,7 +642,7 @@ impl<'p> Join<'p, '_> {
                 }
             }
         }
-        let mut named: Vec<&str> = Vec::new();
+        let mut named: Vec<(usize, &str)> = Vec::new();
         for (index, row) in bound(body, 2)
             .map(members)
             .unwrap_or_default()
@@ -677,10 +678,12 @@ impl<'p> Join<'p, '_> {
             let Some(name) = name else {
                 return Err(Self::refuse(&name_at));
             };
-            self.push(&mut named, name, holder, &row_at)?;
+            self.push(&mut named, (declaring, name), holder, &row_at)?;
         }
-        for &(_, name) in &declared {
-            if !self.named_has(&named, name, holder, &|| weights_at().key("members"))? {
+        for &(declaring, name) in &declared {
+            if !self.named_has(&named, declaring, name, holder, &|| {
+                weights_at().key("members")
+            })? {
                 return Err(Self::refuse(&|| weights_at().key("members")));
             }
         }

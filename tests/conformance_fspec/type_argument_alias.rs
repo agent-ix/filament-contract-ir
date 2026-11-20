@@ -180,4 +180,229 @@ fn a_model_alias_resolving_to_another_type_than_the_declaration_is_a_type_mismat
         refusal.loci[0].path.as_ref().unwrap().to_string(),
         "/semantic_graph/nodes/7/body/operation/member/alias"
     );
+    // FR-322 rule 4: `expected` is the resolved type's node, `actual` the
+    // `declaration`.
+    let detail = refusal
+        .type_argument_detail
+        .as_deref()
+        .expect("rule 4 detail");
+    assert_eq!(
+        serde_json::to_value(detail.expected.as_ref().unwrap()).unwrap(),
+        json!({"ordinal": 0, "package": "example", "path": ["scalar_type", "integer"]})
+    );
+    assert_eq!(
+        serde_json::to_value(detail.actual.as_ref().unwrap()).unwrap(),
+        published_declaration(7)
+    );
+}
+
+/// The `declaration` the base package's node `position` names.
+fn published_declaration(position: usize) -> Value {
+    let (base, _) = base_of(&vectors());
+    base["semantic_graph"]["nodes"][position]["body"]["operation"]["member"]["declaration"].clone()
+}
+
+/// Reads the base package with node 7's `alias` over a model document that
+/// gains the alias `ix://acme/orders/<name>` onto `target`; `edit` may change
+/// the package further.
+fn read_with_model_alias(
+    name: &str,
+    target: &str,
+    edit: impl FnOnce(&mut Value),
+) -> CheckedPackageV2ReadResult {
+    let published = vectors();
+    let (base, _) = base_of(&published);
+    let source = proposal_dir_of(&fixtures_dir()).join(DOMAIN_DOCUMENT);
+    let mut document = read_json(&source).expect("domain document");
+    document["types"].as_array_mut().unwrap().push(json!({
+        "identity": format!("ix://acme/orders/{name}"),
+        "kind": "alias",
+        "target": target
+    }));
+    let path =
+        std::env::temp_dir().join(format!("qsl-2708-alias-{}-{name}.json", std::process::id()));
+    std::fs::write(&path, serde_json::to_vec(&document).unwrap()).unwrap();
+    let mut package = base;
+    package["semantic_graph"]["nodes"][7]["body"]["operation"]["member"]["alias"] =
+        json!({"package": "acme/orders", "node": format!("ix://acme/orders/{name}")});
+    edit(&mut package);
+    let result = read_package_with_document(&package, "model alias", &path).expect("evidence");
+    std::fs::remove_file(&path).ok();
+    result
+}
+
+/// FR-322-AC-492 rule 4: an alias whose resolution this reader cannot map to
+/// a node is not that node, so it refuses like any other mismatch, with no
+/// `expected` node.
+#[trace("TC-048", "FR-322-AC-492", "FR-038-AC-583")]
+#[test]
+fn a_model_alias_the_reader_cannot_map_to_a_node_is_a_type_mismatch() {
+    let result = read_with_model_alias("Unmapped", "ix://acme/orders/Flow", |_| {});
+    let CheckedPackageV2ReadResult::Refused(refusal) = result else {
+        panic!("an unmappable alias refuses: {result:?}");
+    };
+    assert_eq!(refusal.code, Code::IllTyped, "{refusal:?}");
+    assert_eq!(refusal.cause, Some(Cause::TypeMismatch), "{refusal:?}");
+    assert_eq!(
+        refusal.loci[0].path.as_ref().unwrap().to_string(),
+        "/semantic_graph/nodes/7/body/operation/member/alias"
+    );
+    let detail = refusal
+        .type_argument_detail
+        .as_deref()
+        .expect("rule 4 detail");
+    assert!(detail.expected.is_none(), "{detail:?}");
+    assert_eq!(
+        serde_json::to_value(detail.actual.as_ref().unwrap()).unwrap(),
+        published_declaration(7)
+    );
+}
+
+/// FR-322-AC-492 rule 4: an alias that resolves to the node `declaration`
+/// names is never refused at the alias. Node 7 is rewritten to name the
+/// `Integer` node (its dependency, result type and semantic type with it), and
+/// the alias to `Integer` resolves to that node; whatever the sum then refuses
+/// for its operand types, the alias is not at fault.
+#[trace("TC-048", "FR-322-AC-492", "FR-038-AC-583")]
+#[test]
+fn a_model_alias_resolving_to_the_declaration_is_not_refused_at_the_alias() {
+    let integer = json!({"ordinal": 0, "package": "example", "path": ["scalar_type", "integer"]});
+    let result = read_with_model_alias("Whole", "ix://filament/native/Integer", |package| {
+        let node = &mut package["semantic_graph"]["nodes"][7];
+        node["body"]["operation"]["member"]["declaration"] = integer.clone();
+        node["body"]["result_type"] = integer.clone();
+        node["semantic_type"] = integer.clone();
+        node["dependencies"][0] = integer.clone();
+    });
+    if let CheckedPackageV2ReadResult::Refused(refusal) = &result {
+        let at = refusal.loci[0].path.as_ref().unwrap().to_string();
+        assert!(
+            !at.ends_with("/member/alias"),
+            "the alias resolves to the declaration: {refusal:?}"
+        );
+        assert!(refusal.type_argument_detail.is_none(), "{refusal:?}");
+    }
+}
+
+fn refusal_of(package: &Value) -> (String, Option<String>) {
+    let reading = reading_of(package).expect("reading");
+    let locus = match read_package(package).expect("evidence") {
+        CheckedPackageV2ReadResult::Refused(refusal) => {
+            Some(refusal.loci[0].path.as_ref().unwrap().to_string())
+        }
+        _ => None,
+    };
+    (reading, locus)
+}
+
+/// FR-322-AC-493: two otherwise defective variants of the base package are
+/// refused the same way whatever `alias` they carry, and the typed `declaration`
+/// of every application is the same with and without it.
+#[trace("TC-048", "FR-322-AC-493", "FR-038-AC-584")]
+#[test]
+fn an_alias_label_changes_no_refusal_and_no_declaration() {
+    let published = vectors();
+    let (base, _) = base_of(&published);
+    let integer = json!({"ordinal": 0, "package": "example", "path": ["scalar_type", "integer"]});
+    let variants: [(&str, Box<dyn Fn(&mut Value)>); 2] = [
+        (
+            "result_type no operator admits",
+            Box::new(|package: &mut Value| {
+                package["semantic_graph"]["nodes"][7]["body"]["result_type"] = integer.clone();
+            }),
+        ),
+        (
+            "declaration another node than the constraints require",
+            Box::new(|package: &mut Value| {
+                package["semantic_graph"]["nodes"][7]["body"]["operation"]["member"]
+                    ["declaration"] = published_declaration(5);
+            }),
+        ),
+    ];
+    for (name, defect) in &variants {
+        let mut plain = base.clone();
+        defect(&mut plain);
+        let held = refusal_of(&plain);
+        assert!(held.0.starts_with("refused:"), "{name} refuses: {held:?}");
+        for (package, node) in [
+            ("example", "ix://example/Money"),
+            ("example", "ix://example/Other"),
+        ] {
+            let mut labelled = plain.clone();
+            labelled["semantic_graph"]["nodes"][7]["body"]["operation"]["member"]["alias"] =
+                json!({"package": package, "node": node});
+            assert_eq!(refusal_of(&labelled), held, "{name} with {node}");
+        }
+    }
+    // The typed `declaration` read is the same with and without the label.
+    let ta01 = published["cases"][0].clone();
+    for position in [5, 7] {
+        let read = |package: &Value| {
+            let CheckedPackageV2ReadResult::Admitted(admitted) =
+                read_package(package).expect("evidence")
+            else {
+                panic!("admitted");
+            };
+            let node = &admitted.resolved_graph().nodes[position];
+            let CheckedTerm::Application { operation, .. } = &node.body else {
+                panic!("application");
+            };
+            let Some(CheckedOperationMember::TypeArgument { declaration, .. }) =
+                operation.read().expect("view").member
+            else {
+                panic!("type_argument");
+            };
+            serde_json::to_value(declaration).unwrap()
+        };
+        assert_eq!(
+            read(&base),
+            read(&candidate(&base, &ta01)),
+            "node {position}"
+        );
+    }
+}
+
+/// FR-322-AC-492 rule 3: the key is `ix://` + package + `/` + identifier
+/// segments; a segment that is no identifier, or an empty one, is refused.
+#[trace("TC-048", "FR-322-AC-492", "FR-038-AC-583")]
+#[test]
+fn a_source_key_with_a_segment_that_is_no_identifier_is_invalid_value() {
+    let (base, _) = base_of(&vectors());
+    for node in [
+        "ix://example/Mo ney",
+        "ix://example/",
+        "ix://example/Money/",
+        "ix://example//Money",
+        "ix://example/9Money",
+        "ix://examplex/Money",
+    ] {
+        let mut package = base.clone();
+        package["semantic_graph"]["nodes"][7]["body"]["operation"]["member"]["alias"] =
+            json!({"package": "example", "node": node});
+        assert_eq!(
+            refusal_of(&package),
+            (
+                "refused:invalid_package/invalid-value".to_owned(),
+                Some("/semantic_graph/nodes/7/body/operation/member/alias/node".to_owned())
+            ),
+            "{node}"
+        );
+    }
+    let mut nested = base;
+    nested["semantic_graph"]["nodes"][7]["body"]["operation"]["member"]["alias"] =
+        json!({"package": "example", "node": "ix://example/Mod/Money"});
+    assert_eq!(reading_of(&nested).unwrap(), "admitted");
+}
+
+/// FR-322-AC-492 rule 2: the owner join also takes a `package` named only by a
+/// `lock.dependency_selections` entry.
+#[trace("TC-048", "FR-322-AC-492", "FR-038-AC-583")]
+#[test]
+fn an_alias_package_named_by_a_dependency_selection_joins() {
+    let (base, _) = base_of(&vectors());
+    let mut package = base;
+    package["lock"]["dependency_selections"] = json!([{"identity": "test/predicates"}]);
+    package["semantic_graph"]["nodes"][7]["body"]["operation"]["member"]["alias"] =
+        json!({"package": "test/predicates", "node": "ix://test/predicates/Money"});
+    assert_eq!(reading_of(&package).unwrap(), "admitted");
 }

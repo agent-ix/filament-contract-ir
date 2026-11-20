@@ -371,6 +371,18 @@ pub struct CheckedExtensionRefusalDetail {
     pub actual_semantic_type: Option<CheckedNodeId>,
 }
 
+/// The node ids a named type argument's `alias` resolution refused on
+/// (FR-322 "Named type arguments" rule 4).
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct CheckedTypeArgumentRefusalDetail {
+    /// The node of the type the alias resolves to, absent when the reader
+    /// cannot map the resolution to a node.
+    pub expected: Option<CheckedNodeId>,
+    /// The `declaration` the `type_argument` member names, absent when the
+    /// member names none.
+    pub actual: Option<CheckedNodeId>,
+}
+
 /// Protocol control information retained at a typed reader refusal.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub enum CheckedProtocolRefusalDetail {
@@ -521,6 +533,9 @@ pub struct CheckedPackageRefusal {
     pub extension_detail: Option<Box<CheckedExtensionRefusalDetail>>,
     /// Protocol event, type or interval context for a control refusal.
     pub protocol_detail: Option<Box<CheckedProtocolRefusalDetail>>,
+    /// The resolved and named type nodes at a named type argument's
+    /// `type-mismatch` refusal.
+    pub type_argument_detail: Option<Box<CheckedTypeArgumentRefusalDetail>>,
 }
 
 impl std::fmt::Display for CheckedPackageRefusal {
@@ -553,6 +568,7 @@ impl CheckedPackageRefusal {
             document_pointer: fields.document_pointer,
             extension_detail: None,
             protocol_detail: None,
+            type_argument_detail: None,
         }
     }
 
