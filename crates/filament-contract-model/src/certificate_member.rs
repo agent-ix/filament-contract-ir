@@ -42,6 +42,7 @@ certificate_members! {
     Edges => "edges",
     Reasons => "reasons",
     Divergence => "divergence",
+    NonZeno => "non_zeno",
     Initials => "initials",
     Admitted => "admitted",
     Refinement => "refinement",
@@ -61,14 +62,23 @@ certificate_members! {
     Choice => "choice",
     Clock => "clock",
     Concrete => "concrete",
+    Conditional => "conditional",
     Constraint => "constraint",
+    Denominator => "denominator",
+    EfNodes => "ef_nodes",
+    Form => "form",
     Gain => "gain",
     History => "history",
     Lower => "lower",
+    Mode => "mode",
     Node => "node",
+    Numerator => "numerator",
+    Post => "post",
     Rank => "rank",
+    Reset => "reset",
     Set => "set",
     State => "state",
+    StateGraph => "state_graph",
     Strict => "strict",
     Target => "target",
     Transition => "transition",
@@ -77,4 +87,36 @@ certificate_members! {
     Upper => "upper",
     Value => "value",
     Zone => "zone",
+}
+
+#[cfg(test)]
+mod tests {
+    use super::CertificateMember;
+    use ix_trace_rs::trace;
+
+    /// FR-070-AC-4: members named by the conformance-checked schema appear once in `ALL`,
+    /// each spelled distinctly and without a path, index or alias.
+    #[trace("FR-070-AC-4")]
+    #[test]
+    fn members_appear_once_with_distinct_plain_spellings() {
+        for member in CertificateMember::ALL {
+            assert_eq!(
+                CertificateMember::ALL
+                    .iter()
+                    .filter(|m| *m == member)
+                    .count(),
+                1
+            );
+            let name = member.as_str();
+            assert_eq!(
+                CertificateMember::ALL
+                    .iter()
+                    .filter(|m| m.as_str() == name)
+                    .count(),
+                1,
+                "{name} is spelled once"
+            );
+            assert!(name.chars().all(|c| c.is_ascii_lowercase() || c == '_'));
+        }
+    }
 }
