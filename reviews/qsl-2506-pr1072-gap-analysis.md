@@ -43,3 +43,9 @@ Disposition pass 1 at head 767b4eee.
 | FND | outcome | reason |
 | --- | --- | --- |
 | FND-001 | still-open | The point-qualified `source_node` and the only-point-qualified `(T, op)` are now exercised (mutants P1 and P2 killed). The `source_node` anchor of another selected-model type declaring the same `op` (FR-375-AC-31, FR-061-AC-15) is still unexercised: mutant P4 survives. |
+
+Disposition pass 2 at head 3eebae4f.
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-001 | fixed | The another-type anchor branch of FR-375-AC-31 and FR-061-AC-15 is now exercised by `catalog_free_operation_step_refuses_another_types_anchor_for_the_same_operation`. Mutant P4 is killed (the package is admitted under P4). The point-qualified branches were already covered in pass 1. |
