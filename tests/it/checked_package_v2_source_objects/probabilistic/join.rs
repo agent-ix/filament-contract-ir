@@ -546,6 +546,18 @@ fn a_source_workload_covers_the_inherited_operations() {
         poke_rows(),
         &format!("{row_at}/members/0/value/target"),
     );
+    // `step` is an operation of `O`, not of `Other`.
+    let wrong = with_workload(vec![
+        row("qualified:Other", "poke"),
+        row("qualified:Other", "step"),
+    ]);
+    let row_at = format!("{}/members/1", member_at(&wrong, "workload_other", 2));
+    refuses(
+        "an operation of another type of the lineage",
+        &wrong,
+        supers(),
+        &format!("{row_at}/members/1/value/value"),
+    );
     let ghost = with_workload(vec![
         row("qualified:O", "step"),
         row("qualified:Other", "ghost"),
@@ -739,6 +751,13 @@ fn the_exact_numbers_the_join_parses_are_charged_as_read_storage() {
         assert_eq!(error.code, RowError::Incomplete, "limit {limit}");
         assert!(short.first_unpaid_read_storage().is_some(), "limit {limit}");
         assert_eq!(locus_of(&error), value, "limit {limit}");
+        // The parse is charged at the node being joined.
+        let at = short.first_unpaid_locus().expect("a locus");
+        let holder = by_label(&package, "random_k");
+        assert!(
+            format!("{at:?}").contains(&format!("Graph, {holder}")),
+            "limit {limit}: {at:?}"
+        );
     }
 }
 
@@ -842,6 +861,25 @@ fn support_values_are_checked_against_the_entry_type_node() {
         Some("builtin/rational"),
         &rational_body,
     );
+    let carried_body = aggregate(vec![
+        bind("unit", reference(&id_value("qualified:ms"))),
+        bind("carrier", reference(&node_id(&rational_key))),
+        bind("rounding", lit("text", &text_scalar, "exact")),
+    ]);
+    // A carried quantity keeps its operands in its structural id.
+    let carried_id = crate::support::checked_package::structural_id(
+        node_id("x")["package"].as_str().expect("package"),
+        vec![
+            json!("scalar_type"),
+            json!("carried_quantity"),
+            id_value("qualified:ms"),
+            node_id(&rational_key),
+            json!("rounding"),
+            text_scalar.clone(),
+            json!("exact"),
+        ],
+        0,
+    );
     let with_support = |values: Vec<Value>| {
         let mut package = with_support(values);
         let mut added = vec![
@@ -873,6 +911,17 @@ fn support_values_are_checked_against_the_entry_type_node() {
                 rational_body.clone(),
             ),
         ];
+        let mut carried = plain(
+            "x",
+            "scalar_type",
+            "carried_quantity",
+            &carried_id,
+            &[&id_value("qualified:ms"), &node_id(&rational_key)],
+            "type",
+            carried_body.clone(),
+        );
+        carried["node_id"] = carried_id.clone();
+        added.push(carried);
         for node in &mut added {
             let mut ids: Vec<Value> = node["dependencies"]
                 .as_array()
@@ -886,6 +935,7 @@ fn support_values_are_checked_against_the_entry_type_node() {
         package
     };
     let text_node = node_id(&text_key);
+    let carried_node = carried_id.clone();
     let rational_node = node_id(&rational_key);
     let entry_rows = |node: &Value| rows(vec![data("k", &range()), data("p", node)], vec![]);
     let boolean = super::super::boolean();
@@ -924,6 +974,12 @@ fn support_values_are_checked_against_the_entry_type_node() {
             range(),
             vec![int_literal(&integer(), "2"), int_literal(&integer(), "0")],
             Some(1),
+        ),
+        (
+            "an integer spelt as a JSON number",
+            range(),
+            vec![literal(&integer(), "integer", json!(2))],
+            Some(0),
         ),
         (
             "an integer above the range",
@@ -1023,6 +1079,30 @@ fn support_values_are_checked_against_the_entry_type_node() {
             Some(0),
         ),
         (
+            "carried quantities of the unit in the bounds",
+            carried_node.clone(),
+            vec![
+                literal(&ms, "quantity", json!("1/3")),
+                literal(&ms, "quantity", json!("5")),
+            ],
+            None,
+        ),
+        (
+            "a carried quantity of another unit",
+            carried_node.clone(),
+            vec![literal(&id_value("qualified:s"), "quantity", json!("1"))],
+            Some(0),
+        ),
+        (
+            "a carried quantity outside the bounds",
+            carried_node.clone(),
+            vec![
+                literal(&ms, "quantity", json!("1")),
+                literal(&ms, "quantity", json!("6")),
+            ],
+            Some(1),
+        ),
+        (
             "a type node that has no literal kind",
             id_value("qualified:Order"),
             vec![int_literal(&integer(), "1")],
@@ -1031,6 +1111,16 @@ fn support_values_are_checked_against_the_entry_type_node() {
     ];
     for (case, node, values, refused) in cases {
         let package = with_support(values);
+        // A structural id is read from the indexed package.
+        let node = if case.contains("carried") {
+            nodes(&indexed(&package))
+                .iter()
+                .find(|node| node["semantic_form"] == "carried_quantity")
+                .map(|node| node["node_id"].clone())
+                .expect("the carried quantity node")
+        } else {
+            node
+        };
         let result = join(&package, entry_rows(&node));
         match refused {
             None => result.expect(case),
@@ -1146,6 +1236,8 @@ fn a_workloads_supertype_edges_are_charged() {
         let mut budget = work_only(total);
         joined(&package, rows(), &mut budget).expect("the full count admits");
         assert_eq!(budget.consumed().work, total);
+        // Two entries in each list of a workload fit its first growth.
+        assert_eq!(budget.consumed().storage, 2 * AC25_STORAGE);
         let mut budget = work_only(total - 1);
         let error = joined(&package, rows(), &mut budget).expect_err("one short");
         assert_eq!(error.code, RowError::Incomplete);
