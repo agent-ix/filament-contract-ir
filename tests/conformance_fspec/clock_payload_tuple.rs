@@ -539,12 +539,6 @@ fn add_clock_reference(wire: &mut Value, place: &Value) -> (Value, Value, Value,
     );
     let integer_id = integer_type();
     let text_id = text_type();
-    let mut owner_dependencies = vec![
-        reference_type_id.clone(),
-        integer_id.clone(),
-        text_id.clone(),
-    ];
-    sort_ids(&mut owner_dependencies);
     push_node(
         wire,
         json!({
@@ -552,7 +546,7 @@ fn add_clock_reference(wire: &mut Value, place: &Value) -> (Value, Value, Value,
                 bind("name", text("self")),
                 bind("level", integer(0)),
             ]),
-            "dependencies":owner_dependencies,
+            "dependencies":[],
             "node_id":owner_id,
             "node_tag":"value",
             "occurrences":[{"ordinal":0,"role":"expression"}],
@@ -562,8 +556,6 @@ fn add_clock_reference(wire: &mut Value, place: &Value) -> (Value, Value, Value,
         }),
         9202,
     );
-    let mut slot_dependencies = vec![integer_id.clone(), text_id.clone()];
-    sort_ids(&mut slot_dependencies);
     push_node(
         wire,
         json!({
@@ -571,7 +563,7 @@ fn add_clock_reference(wire: &mut Value, place: &Value) -> (Value, Value, Value,
                 bind("name", text("slot-index")),
                 bind("level", integer(0)),
             ]),
-            "dependencies":slot_dependencies,
+            "dependencies":[],
             "node_id":integer_parameter_id,
             "node_tag":"value",
             "occurrences":[{"ordinal":0,"role":"expression"}],
@@ -718,9 +710,6 @@ fn add_clock_reference_tag_and_tuple(
         }),
         9212,
     );
-    let mut tag_value_dependencies =
-        vec![tag_type.clone(), place_reference.clone(), integer.clone()];
-    sort_ids(&mut tag_value_dependencies);
     push_node(
         wire,
         json!({
@@ -728,7 +717,7 @@ fn add_clock_reference_tag_and_tuple(
                 bind("r", json!({"term":"reference","target":place_reference})),
                 bind("n", json!({"term":"literal","type":integer,"value_kind":"integer","value":"0"})),
             ]),
-            "dependencies":tag_value_dependencies,
+            "dependencies":[place_reference],
             "node_id":tag_value,
             "node_tag":"value",
             "occurrences":[{"ordinal":0,"role":"expression"}],
@@ -752,13 +741,11 @@ fn add_clock_reference_tag_and_tuple(
         }),
         9214,
     );
-    let mut tuple_dependencies = vec![tuple_type.clone(), place_reference.clone()];
-    sort_ids(&mut tuple_dependencies);
     push_node(
         wire,
         json!({
             "body":aggregate(vec![json!({"term":"reference","target":place_reference})]),
-            "dependencies":tuple_dependencies,
+            "dependencies":[place_reference],
             "node_id":tuple_value,
             "node_tag":"value",
             "occurrences":[{"ordinal":0,"role":"expression"}],
