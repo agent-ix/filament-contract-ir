@@ -47,6 +47,13 @@ fn node_id(key: &str) -> Value {
     if let Some(form) = key.strip_prefix("scalar_type/") {
         return structural_id("test/families", vec![json!("scalar_type"), json!(form)], 0);
     }
+    if let Some(encoded_positions) = key.strip_prefix("composite_type/tuple/") {
+        let positions: Vec<String> =
+            serde_json::from_str(encoded_positions).expect("encoded tuple position keys");
+        let mut path = vec![json!("composite_type"), json!("tuple")];
+        path.extend(positions.iter().map(|position| node_id(position)));
+        return structural_id("test/families", path, 0);
+    }
     for form in ["reference", "option", "set", "sequence"] {
         if let Some(element) = key.strip_prefix(&format!("composite_type/{form}/")) {
             return structural_id(
@@ -109,10 +116,30 @@ fn label_of(id: &Value) -> String {
         return format!("scalar_type/{}", path[1].as_str().expect("scalar form"));
     }
     if path.len() == 3 && path[0] == "composite_type" {
+        if path[1] == "tuple" {
+            let positions: Vec<String> = path[2..]
+                .iter()
+                .map(|segment| label_of(&segment["node"]))
+                .collect();
+            return format!(
+                "composite_type/tuple/{}",
+                serde_json::to_string(&positions).expect("tuple position key JSON")
+            );
+        }
         return format!(
             "composite_type/{}/{}",
             path[1].as_str().expect("composite form"),
             label_of(&path[2]),
+        );
+    }
+    if path.len() > 3 && path[0] == "composite_type" && path[1] == "tuple" {
+        let positions: Vec<String> = path[2..]
+            .iter()
+            .map(|segment| label_of(&segment["node"]))
+            .collect();
+        return format!(
+            "composite_type/tuple/{}",
+            serde_json::to_string(&positions).expect("tuple position key JSON")
         );
     }
     if path.len() == 7 && path[0] == "bounded_domain" && path[1] == "integer_range" {
@@ -364,6 +391,53 @@ fn ledger_document() -> Value {
     )
 }
 
+/// The ledger document with tuple declarations used by TC-448's tuple-value cases.
+fn ledger_tuple_document() -> Value {
+    let mut document = ledger_document();
+    document["constructs"]
+        .as_array_mut()
+        .expect("constructs")
+        .push(json!({
+            "kind": {"module": LEDGER, "name": "tuple"},
+            "construct": {"meaning": "filament.meaning.model.tuple-value-type/v1"}
+        }));
+    let source = |path: &str| {
+        json!({
+            "source": {
+                "path": path,
+                "sourceIdentity": iri(LEDGER, "spec"),
+                "startColumn": 1,
+                "startLine": 1
+            }
+        })
+    };
+    for (short, positions) in [
+        ("Pair", vec![iri(LEDGER, "Money"), native("Integer")]),
+        ("Clocked", vec![native("Clock"), native("Integer")]),
+    ] {
+        let identity = iri(LEDGER, short);
+        document["types"]
+            .as_array_mut()
+            .expect("types")
+            .push(json!({
+                "identity": identity,
+                "displayName": short,
+                "kind": {"module": LEDGER, "name": "tuple"},
+                "origin": source(&format!("{short}.md")),
+                "positions": positions.into_iter().enumerate().map(|(ordinal, type_ref)| {
+                    json!({
+                        "identity": format!("{identity}/p{ordinal}"),
+                        "typeRef": type_ref,
+                        "origin": source(&format!("{short}.md"))
+                    })
+                }).collect::<Vec<_>>(),
+                "constraints": [],
+                "extensions": []
+            }));
+    }
+    document
+}
+
 /// A second selected document declaring its own `Money` and `TaxedMoney`.
 fn vendor_document() -> Value {
     document(
@@ -396,6 +470,10 @@ enum Ty {
     Set(Box<Ty>, u64, u64),
     /// A `Sequence<E>[lower, upper]`.
     Sequence(Box<Ty>, u64, u64),
+    /// A source-declared tuple whose positions are these exact type nodes.
+    Tuple(Vec<Ty>),
+    /// A tuple value type selected from the ledger document.
+    ModelTuple(&'static str),
     /// A source-declared `composite_type`/`record` node named `name`.
     SourceRecord(&'static str),
     /// A raw node key.
@@ -506,6 +584,33 @@ impl Scene {
                     body,
                 ))
             }
+            Ty::Tuple(elements) => {
+                let element_keys = elements
+                    .iter()
+                    .map(|element| self.ty(element))
+                    .collect::<Vec<_>>();
+                let key = format!(
+                    "composite_type/tuple/{}",
+                    serde_json::to_string(&element_keys).expect("tuple position key JSON")
+                );
+                let body = aggregate(
+                    element_keys
+                        .iter()
+                        .map(|element| reference(element))
+                        .collect(),
+                );
+                let dependencies: Vec<&str> = element_keys.iter().map(String::as_str).collect();
+                self.add(wire_node(
+                    &key,
+                    "composite_type",
+                    "tuple",
+                    &key,
+                    &dependencies,
+                    "type",
+                    body,
+                ))
+            }
+            Ty::ModelTuple(short) => self.model(LEDGER, short, "tuple_value_type"),
             Ty::SourceRecord(name) => {
                 let integer = self.scalar("integer");
                 let body = aggregate(vec![binding("amount", reference(&integer))]);
@@ -688,6 +793,23 @@ impl Scene {
         ))
     }
 
+    /// A tuple value whose ordered members are already admitted terms.
+    fn tuple_value(&mut self, ty: &str, members: Vec<Value>) -> String {
+        let body = aggregate(members);
+        let key = format!("application/value/tuple_value/{}", self.nodes.len());
+        let dependencies = dependencies_of(&body);
+        let dependencies: Vec<&str> = dependencies.iter().map(String::as_str).collect();
+        self.add(wire_node(
+            &key,
+            "value",
+            "tuple_value",
+            ty,
+            &dependencies,
+            "expression",
+            body,
+        ))
+    }
+
     fn finish(self) -> Case {
         let mut documents = self.documents;
         documents.sort_by_key(|document| {
@@ -822,6 +944,10 @@ impl Case {
 
 fn ledger_scene() -> Scene {
     Scene::new(vec![ledger_document()])
+}
+
+fn ledger_tuple_scene() -> Scene {
+    Scene::new(vec![ledger_tuple_document()])
 }
 
 /// The result type each operation of the ledger declares.
@@ -1208,6 +1334,95 @@ fn tc_448_a_union_payload_conforms_to_the_declared_record() {
     payload_of("TaxedMoney", &Ty::Rec("Money")).mismatch("Money at TaxedMoney");
     // A non-record payload stays exact.
     payload_of("Money", &Ty::Integer).mismatch("Integer at Money");
+}
+
+/// Trace: FR-347-AC-15, TC-448.
+#[trace("TC-448", "FR-347-AC-15")]
+#[test]
+fn tc_448_tuple_value_positions_match_declared_types_exactly() {
+    let mut scene = ledger_tuple_scene();
+    let tuple = scene.ty(&Ty::ModelTuple("Pair"));
+    let taxed = scene.param("taxed", &Ty::Rec("TaxedMoney"));
+    let integer = scene.ty(&Ty::Integer);
+    let key = scene.tuple_value(
+        &tuple,
+        vec![reference(&taxed), literal(&integer, "integer", "1")],
+    );
+    scene
+        .finish()
+        .at(&key)
+        .admits("model tuple record position conforms");
+
+    let mut scene = ledger_tuple_scene();
+    let tuple = scene.ty(&Ty::ModelTuple("Pair"));
+    let taxed = scene.param("taxed", &Ty::Rec("TaxedMoney"));
+    let boolean = scene.ty(&Ty::Boolean);
+    let key = scene.tuple_value(
+        &tuple,
+        vec![reference(&taxed), literal(&boolean, "boolean", "true")],
+    );
+    scene
+        .finish()
+        .at(&key)
+        .mismatch("Boolean at the Integer position");
+
+    let mut scene = ledger_tuple_scene();
+    let tuple = scene.ty(&Ty::Tuple(vec![Ty::Rec("Money"), Ty::Integer]));
+    let taxed = scene.param("taxed", &Ty::Rec("TaxedMoney"));
+    let narrow = scene.param("narrow", &Ty::Range(0, 1000));
+    let integer = Ty::Integer;
+    let converted = numeric_to(
+        &mut scene,
+        "filament.op.numeric.convert",
+        &integer,
+        reference(&narrow),
+    );
+    let key = scene.tuple_value(&tuple, vec![reference(&taxed), reference(&converted)]);
+    scene
+        .finish()
+        .at(&key)
+        .admits("explicit numeric.convert at the Integer position");
+
+    let mut scene = ledger_tuple_scene();
+    let tuple = scene.ty(&Ty::Tuple(vec![Ty::Rec("Money"), Ty::Integer]));
+    let taxed = scene.param("taxed", &Ty::Rec("TaxedMoney"));
+    let narrow = scene.param("narrow", &Ty::Range(0, 1000));
+    let key = scene.tuple_value(&tuple, vec![reference(&taxed), reference(&narrow)]);
+    scene
+        .finish()
+        .at(&key)
+        .mismatch("bare narrow integer at the Integer position");
+
+    let mut scene = ledger_tuple_scene();
+    let tuple = scene.ty(&Ty::ModelTuple("Pair"));
+    let voucher = scene.param("voucher", &Ty::Rec("Voucher"));
+    let integer = scene.ty(&Ty::Integer);
+    let key = scene.tuple_value(
+        &tuple,
+        vec![reference(&voucher), literal(&integer, "integer", "1")],
+    );
+    scene
+        .finish()
+        .at(&key)
+        .mismatch("unrelated record at the Money position");
+
+    let mut scene = ledger_tuple_scene();
+    let tuple = scene.ty(&Ty::ModelTuple("Clocked"));
+    let integer = scene.ty(&Ty::Integer);
+    let key = scene.tuple_value(&tuple, vec![literal(&integer, "integer", "1")]);
+    scene
+        .finish()
+        .at(&key)
+        .admits("clock position is excluded from data terms");
+
+    let mut scene = ledger_tuple_scene();
+    let tuple = scene.ty(&Ty::ModelTuple("Clocked"));
+    let narrow = scene.param("narrow", &Ty::Range(0, 9));
+    let key = scene.tuple_value(&tuple, vec![reference(&narrow)]);
+    scene
+        .finish()
+        .at(&key)
+        .mismatch("narrow integer at a clock tuple data position");
 }
 
 // --- TC-448: body roots (FR-347-AC-12) ------------------------------------------------
