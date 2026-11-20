@@ -83,8 +83,9 @@ through `option`, collection, record, tuple and variant members to every leaf,
 charging the protocol step's work meter for each node it visits. A
 `bounded_domain` node other than `float_rounding` and `model_population`
 counts as a leaf of its base type's family; a `carried_quantity` is walked
-through its carrier; a `bounded_quantity`, `bytes`, `json_object`, an enum and
-a reference are stable leaves; a model-owned `value_type`,
+through its carrier; a `bounded_quantity`, the bare `unit` node (`Quantity<m>`), a
+`compound_unit`, `bytes`, `json_object`, an enum and a reference are stable
+leaves; a model-owned `value_type`,
 `tuple_value_type`, `record_value_type` or `variant_type` is walked through
 its members. IEEE `numeric_equal` is not reflexive on NaN and equates `+0`
 and `-0`, so a key type with a float leaf, a `float_rounding` bounded domain
@@ -183,5 +184,8 @@ population reads in the model-state slots, the carrier stop and the `test`
 admits `test` `pre`, which this requirement refuses, and admits population
 reads only of the clause's owner model. The post-test
 `maximum` 0 refusal, the post-test guard's scope over the body's binders, and
-the negative cases of AC-3 to AC-5 and the back-edge reads of AC-7 have no
-tests yet.
+the negative cases of AC-4 and AC-5 and the back-edge reads of AC-7 have no
+tests yet. The negative cases of AC-3 are tested for a `float32`/`float64`
+leaf under option, sequence, tuple, union and record, a `float_rounding`
+domain and an `event_type` leaf; a model-owned `record_value_type` with a
+float field has no test yet.

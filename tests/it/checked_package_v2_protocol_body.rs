@@ -10918,6 +10918,37 @@ fn fifo_unit_key_result(shape: &str) -> CheckedPackageV2ReadResult {
     let float64 = scalar("float64");
     let bytes = scalar("bytes");
     let json_object = scalar("json_object");
+    let dimension_equivalence = (shape == "dimension_equivalence").then(|| {
+        let source = fixture_source();
+        let owner = json!({"kind": "source", "authority": source["authority"],
+            "identity": source["identity"]});
+        let mut ends = Vec::new();
+        for name in ["Alpha", "Beta"] {
+            let id = json!({"package": "test/families", "path": ["Measure", name], "ordinal": 0});
+            nodes.push(json!({
+                "node_id": id, "schema_version": "filament.checked-semantic-graph/v2",
+                "node_tag": "scalar_type", "semantic_form": "dimension",
+                "semantic_type": id, "dependencies": [],
+                "declaration": {"qualified_name": ["Measure", name]},
+                "occurrences": [{"role": "declaration", "ordinal": 0}],
+                "owner": owner,
+                "body": {"term": "dimension", "base": true, "terms": []}
+            }));
+            ends.push(id);
+        }
+        let id = json!({"package": "test/families",
+            "path": ["scalar_type", "dimension_equivalence", ends[0], ends[1]], "ordinal": 0});
+        nodes.push(json!({
+            "node_id": id, "schema_version": "filament.checked-semantic-graph/v2",
+            "node_tag": "scalar_type", "semantic_form": "dimension_equivalence",
+            "semantic_type": id, "dependencies": ends,
+            "occurrences": [{"role": "anchor", "ordinal": 0}],
+            "owner": owner,
+            "body": {"term": "dimension_equivalence", "dimension_node_ids": ends,
+                "root_scale": {"numerator": "1", "denominator": "1"}}
+        }));
+        id
+    });
     let mut composite = |form: &str, members: Value, dependencies: Vec<Value>| {
         let body = json!({"term": "aggregate", "members": members});
         let id = node_id(&structural_key("composite_type", form, None, &body));
@@ -10948,6 +10979,43 @@ fn fifo_unit_key_result(shape: &str) -> CheckedPackageV2ReadResult {
             json!([field("length", &unit), field("ratio", &float64)]),
             vec![unit.clone(), float64],
         ),
+        "dimension" => dimension.clone(),
+        "dimension_equivalence" => dimension_equivalence.expect("fixture node"),
+        "tuple_quantity_float64" => composite(
+            "tuple",
+            json!([reference(&unit), reference(&float64)]),
+            vec![unit.clone(), float64],
+        ),
+        "union_float64" => {
+            let id = node_id("fixture/protocol-body/fifo/FloatShape");
+            nodes.push(owned_structural_node(
+                json!({
+                    "node_id": id, "schema_version": "filament.checked-semantic-graph/v2",
+                    "node_tag": "composite_type", "semantic_form": "union",
+                    "semantic_type": id, "dependencies": [float64],
+                    "occurrences": [{"role": "declaration", "ordinal": 0}],
+                    "declaration": {"qualified_name": ["FloatShape"]},
+                    "body": {"term": "aggregate", "members": [
+                        {"term": "binding", "name": "Reading", "value": {
+                            "term": "aggregate", "members": [reference(&float64)]
+                        }},
+                        {"term": "binding", "name": "Empty", "value": {
+                            "term": "aggregate", "members": []
+                        }}
+                    ]}
+                }),
+                source_owner(&fixture_source()),
+            ));
+            id
+        }
+        "sequence_tuple_quantity_float64" => {
+            let tuple = composite(
+                "tuple",
+                json!([reference(&unit), reference(&float64)]),
+                vec![unit.clone(), float64],
+            );
+            composite("sequence", json!([reference(&tuple)]), vec![tuple])
+        }
         "sequence_option_float64" => {
             let option = composite("option", json!([reference(&float64)]), vec![float64]);
             composite("sequence", json!([reference(&option)]), vec![option])
@@ -10988,10 +11056,10 @@ fn fifo_unit_key_result(shape: &str) -> CheckedPackageV2ReadResult {
     )
 }
 
-/// FR-726-AC-2: `Quantity<m>` (the unit node), `Option<Quantity<m>>` and
+/// FR-726-AC-2 / FR-372-AC-2: `Quantity<m>` (the unit node), `Option<Quantity<m>>` and
 /// `Sequence<Quantity<m>>` are FIFO-key-stable, as are `bytes` and
 /// `json_object` (FR-726 Description).
-#[trace("TC-1770", "FR-726-AC-2")]
+#[trace("TC-1770", "FR-726-AC-2", "FR-372-AC-2")]
 #[test]
 fn protocol_channel_admits_fifo_unit_quantity_keys() {
     for shape in [
@@ -11010,11 +11078,20 @@ fn protocol_channel_admits_fifo_unit_quantity_keys() {
     }
 }
 
-/// FR-726-AC-3: a float leaf at any depth keeps a quantity-bearing key out.
-#[trace("TC-1770", "FR-726-AC-3")]
+/// FR-726-AC-3 / FR-372-AC-3: a float leaf at any depth keeps a key out, and
+/// a `dimension` or `dimension_equivalence` node is not a value type.
+#[trace("TC-1770", "FR-726-AC-3", "FR-372-AC-3")]
 #[test]
-fn protocol_channel_fifo_refuses_a_float_leaf_beside_a_quantity() {
-    for shape in ["record_quantity_float64", "sequence_option_float64"] {
+fn protocol_channel_fifo_refuses_float_leaves_and_non_value_types() {
+    for shape in [
+        "record_quantity_float64",
+        "tuple_quantity_float64",
+        "union_float64",
+        "sequence_tuple_quantity_float64",
+        "sequence_option_float64",
+        "dimension",
+        "dimension_equivalence",
+    ] {
         let result = fifo_unit_key_result(shape);
         let CheckedPackageV2ReadResult::Refused(refusal) = &result else {
             panic!("FIFO key {shape} must refuse: {result:?}");
