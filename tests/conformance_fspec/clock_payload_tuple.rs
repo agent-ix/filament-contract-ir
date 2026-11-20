@@ -560,7 +560,7 @@ fn add_clock_reference(wire: &mut Value, place: &Value) -> (Value, Value, Value,
         wire,
         json!({
             "body":aggregate(vec![
-                bind("name", text("slot-index")),
+                bind("name", text("slot_index")),
                 bind("level", json!({"term":"literal","type":integer_id,"value_kind":"integer","value":"0"})),
             ]),
             "dependencies":[],
