@@ -193,6 +193,18 @@ cause of the `union_value` payload comparison, at the node
 application's `result_type` against the node's `semantic_type`, with the same
 refusal. A node whose body names no root takes no check.
 
+The comparison also admits FSpec FR-322 "Integer containment" at the result
+positions it names (FR-038-AC-586 to FR-038-AC-589): the `function` or
+`expression` root, each `case` arm body, both branches of a
+`filament.op.control.if`, the body of a `filament.op.control.let` and a `let`
+binder against its bound value. At those positions the expected type node
+admits a term whose type node it integer-contains: the builtin `Integer` node
+over an integer `bounded_domain` node, or an integer range whose bounds lie
+within the expected range's. A function-call argument, a union payload, a
+tuple position and a slot keep the exact match above, and a constructor over a
+contained element (`Sequence<Int[0, 9]>` at `Sequence<Int[0, 10]>`) is not
+contained.
+
 ### Work accounting
 
 The walk is the reader's existing ancestor walk, reused whole: it does not

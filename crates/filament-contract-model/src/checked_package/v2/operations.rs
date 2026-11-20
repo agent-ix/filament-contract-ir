@@ -2104,6 +2104,9 @@ fn operation_defect(
     if let Some(failure) = check_state_result(application, entry, graph) {
         return Ok(Some(failure));
     }
+    if let Some(failure) = check_control_result(application, &operation, graph, owners, meter)? {
+        return Ok(Some(failure));
+    }
     if entry.member == Some(OperationMemberKind::Position) {
         if let Some(failure) = check_tuple_position(application, &operation, graph, owners, meter)?
         {
@@ -3502,7 +3505,7 @@ fn union_arms_hold(
             return Ok(false);
         };
         if !binders_hold
-            || !conforms_to_type(
+            || !admits_at_result(
                 result,
                 operand_type_node_typed(body, nodes, kinds, index),
                 graph,
@@ -3808,6 +3811,159 @@ fn conforms_to_type(
         .conforms_to(argument.node, parameter.node, &mut budget)
 }
 
+/// Implements: FR-322 "Integer containment": the type node `expected`
+/// integer-contains the type node `actual` exactly when `expected` is the
+/// builtin `Integer` node and `actual` is a `bounded_domain`/`integer_range`
+/// node, or both are `integer_range` nodes and `actual`'s bounds lie within
+/// `expected`'s. Nothing else is contained: a rational, decimal, IEEE or
+/// quantity type, a constructor over a contained element and `Integer` at an
+/// `Int[..]` are not.
+fn integer_contains(expected: &CheckedNodeId, actual: &CheckedNodeId, graph: &Graph<'_>) -> bool {
+    let (Some(&expected), Some(&actual)) = (graph.index.get(expected), graph.index.get(actual))
+    else {
+        return false;
+    };
+    let range = CheckedNodeKind::BoundedDomain(BoundedDomainForm::IntegerRange);
+    let bounds = |position: usize| -> Option<(Integer, Integer)> {
+        let (lower, upper) =
+            super::extension::integer_range_bounds(graph.terms.get(position)?.as_ref()?)?;
+        Some((
+            lower.parse::<Integer>().ok()?,
+            upper.parse::<Integer>().ok()?,
+        ))
+    };
+    if graph.kinds.get(actual) != Some(&range) {
+        return false;
+    }
+    match graph.kinds.get(expected) {
+        Some(CheckedNodeKind::ScalarType(ScalarTypeForm::Integer)) => true,
+        Some(kind) if *kind == range => match (bounds(expected), bounds(actual)) {
+            (Some((expected_lower, expected_upper)), Some((lower, upper))) => {
+                expected_lower <= lower && upper <= expected_upper
+            }
+            _ => false,
+        },
+        _ => false,
+    }
+}
+
+/// Implements: FR-322 "Integer containment": a result position admits the
+/// term's type node `actual` at `expected` when it is `expected`, conforms to
+/// the record `expected` ([`conforms_to_type`]) or `expected` integer-contains
+/// it. Call arguments, union payloads, tuple positions and slots do not use
+/// this: they keep [`conforms_to_type`] alone.
+fn admits_at_result(
+    expected: &CheckedNodeId,
+    actual: Option<&CheckedNodeId>,
+    graph: &Graph<'_>,
+    owners: &ModelOwners<'_>,
+    meter: &mut WorkMeter,
+) -> Result<bool, ValidationFailure> {
+    if conforms_to_type(expected, actual, graph, owners, meter)? {
+        return Ok(true);
+    }
+    Ok(actual.is_some_and(|actual| integer_contains(expected, actual, graph)))
+}
+
+/// Implements: FR-322 "Integer containment" ("The `if` check", "The `let`
+/// binder check"): a `filament.op.control.if` application's branches and a
+/// `filament.op.control.let` application's body are admitted at the
+/// application's `result_type` ([`admits_at_result`]), and the binder a `let`
+/// binds has the bound value's type node, a record type node the value's
+/// conforms to, or a type node that integer-contains the value's. Any other
+/// is `ill_typed`/`operator-ineligible` at the application. A term whose type
+/// node does not resolve takes no check.
+#[ix_trace_rs::string_edge]
+fn check_control_result(
+    application: Application<'_>,
+    operation: &OperationWire,
+    graph: &Graph<'_>,
+    owners: &ModelOwners<'_>,
+    meter: &mut WorkMeter,
+) -> Result<Option<ValidationFailure>, ValidationFailure> {
+    let (branches, binds) = match operation.identity.as_ref() {
+        "filament.op.control.if" => (1..3, false),
+        "filament.op.control.let" => (1..2, true),
+        _ => return Ok(None),
+    };
+    let Graph {
+        nodes,
+        kinds,
+        index,
+        ..
+    } = *graph;
+    let Some(CheckedTerm::Application {
+        arguments,
+        result_type,
+        ..
+    }) = graph
+        .terms
+        .get(application.position)
+        .and_then(Option::as_ref)
+    else {
+        return Ok(None);
+    };
+    let refuse = || {
+        application.refuse(
+            CheckedPackageRefusalCode::IllTyped,
+            node_pointer(application.position),
+            CheckedPackageRefusalCause::OperatorIneligible,
+        )
+    };
+    for branch in arguments.get(branches).unwrap_or_default() {
+        let Some(actual) = operand_type_node_typed(branch, nodes, kinds, index) else {
+            continue;
+        };
+        if !admits_at_result(result_type, Some(actual), graph, owners, meter)? {
+            return Ok(Some(refuse()));
+        }
+    }
+    if !binds {
+        return Ok(None);
+    }
+    let Some(CheckedTerm::Binding { name, value }) = arguments.first() else {
+        return Ok(None);
+    };
+    let Some(bound) = operand_type_node_typed(value, nodes, kinds, index) else {
+        return Ok(None);
+    };
+    // The binder is the `value`/`parameter` node of the binding's name; it
+    // is found by that name, and the binding holds when any such node has an
+    // admitted type, so a same-named binder elsewhere never refuses this one.
+    let mut named = false;
+    for (position, kind) in kinds.iter().enumerate() {
+        work_at_path(meter, &application.read_node().key("node_id"), 1)?;
+        if *kind != CheckedNodeKind::Value(ValueForm::Parameter) {
+            continue;
+        }
+        let Some(CheckedTerm::Aggregate { members }) =
+            graph.terms.get(position).and_then(Option::as_ref)
+        else {
+            continue;
+        };
+        let called = members.iter().any(|member| {
+            matches!(member, CheckedTerm::Binding { name: field, value }
+                if field.as_ref() == "name"
+                    && matches!(value.as_ref(), CheckedTerm::Literal { value, .. }
+                        if value.as_str() == Some(name.as_ref())))
+        });
+        if !called {
+            continue;
+        }
+        named = true;
+        if admits_at_result(
+            &nodes[position].semantic_type,
+            Some(bound),
+            graph,
+            owners,
+            meter,
+        )? {
+            return Ok(None);
+        }
+    }
+    Ok(named.then(refuse))
+}
+
 /// Implements: FR-347 "Result positions": the root of a `function` or `expression` node
 /// has the node's `semantic_type`, or conforms to it when that is a record
 /// value type; else `ill_typed`/`type-mismatch` at the node. The root of a
@@ -3849,7 +4005,7 @@ fn body_root_defect(
     let Some(root_type) = root_type else {
         return Ok(None);
     };
-    if conforms_to_type(&node.semantic_type, Some(root_type), graph, owners, meter)? {
+    if admits_at_result(&node.semantic_type, Some(root_type), graph, owners, meter)? {
         return Ok(None);
     }
     Ok(Some(ValidationFailure::refused_at(
