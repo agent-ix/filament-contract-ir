@@ -680,6 +680,7 @@ fn support_values_are_checked_against_the_entry_type_node() {
             rational_node.clone(),
             vec![
                 lit("rational", &rational_scalar, "5"),
+                lit("rational", &rational_scalar, "0"),
                 lit("rational", &rational_scalar, "1/3"),
             ],
             None,
