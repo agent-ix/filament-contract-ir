@@ -456,7 +456,7 @@ fn claim_row_coverage_and_exact_work_boundary() {
 
 #[test]
 #[trace("TC-233", "FR-038-AC-390", "FR-038-AC-392", "FR-038-AC-395")]
-fn four_array_schema_and_graph_admission_precede_sidecar_join() {
+fn five_array_schema_and_graph_admission_precede_sidecar_join() {
     let all = vectors();
     let rows = all["positive"]["probabilistic_claims"]
         .as_array()

@@ -1742,6 +1742,13 @@ fn monitor_plan_refuses_a_clock_read_of_a_hybrid_subject_timed_clause() {
         .find(|n| n["node_id"] == parameter)
         .expect("over parameter");
     parameter["semantic_type"] = hybrid_model;
+    // FSpec FR-727: a protocol clause whose `over` input is not an object
+    // type carries no `owner_model` edge.
+    for node in wire["semantic_graph"]["nodes"].as_array_mut().unwrap() {
+        if node["node_tag"] == "protocol" && node["semantic_form"] == "protocol_clause" {
+            node.as_object_mut().unwrap().remove("owner_model");
+        }
+    }
     fixture_support::settle(&mut wire);
     finish(&mut wire);
     assert!(wire.get("temporal_bindings").is_none());

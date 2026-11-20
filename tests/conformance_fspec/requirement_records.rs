@@ -445,7 +445,12 @@ fn canonical_writer_readback_preserves_typed_requirement_rows() {
     )
     .expect("canonical writer retains requirement rows");
     let encoded: Value = serde_json::from_slice(&bytes).expect("canonical V2 JSON");
-    let CheckedPackageV2ReadResult::Admitted(round_trip) = read(&encoded) else {
+    // The writer's bytes are already canonical wire: read them as written.
+    let CheckedPackageV2ReadResult::Admitted(round_trip) = CheckedPackageV2::read(
+        &bytes,
+        CheckedPackageReadLimits::bounded(),
+        &evidence_for(&encoded),
+    ) else {
         panic!("writer output is admitted by the public reader")
     };
     assert_eq!(round_trip.requirement_items(), admitted.requirement_items());
@@ -606,11 +611,6 @@ fn public_reader_refuses_record_node_mutations_at_their_rule_pointers() {
     type Mutation = Box<dyn Fn(&mut Value)>;
     let mutations: Vec<(&str, Mutation, &str)> = vec![
         (
-            "declaration member",
-            Box::new(|record| record["declaration"] = json!({"qualified_name":["bad"]})),
-            "/occurrences",
-        ),
-        (
             "swapped result-bound and conversion bindings",
             Box::new(|record| {
                 record["body"]["members"][3]["name"] = json!("conversion");
@@ -705,6 +705,36 @@ fn public_reader_refuses_record_node_mutations_at_their_rule_pointers() {
             "{label}: {refusal:?}"
         );
     }
+}
+
+/// FSpec FR-825-AC-4 rule 1 names a record node with a `declaration` member
+/// as `invalid_package`/`invalid-value` at `occurrences`. The reader refuses
+/// it at an earlier stage: the closed schema's `OwnerPresenceRule` (a node with
+/// `declaration` needs an owner: `malformed_wire` at the node); with an owner,
+/// `DeclarationOccurrenceRule` (`invalid_semantic_graph` at `declaration`);
+/// with a `declaration` occurrence too, the `claim_names` stage
+/// (`invalid_package` at `/claim_names/0/declaration`). No schema-valid record
+/// node reaches rule 1, so this stays red pending an FSpec ruling.
+#[trace("TC-488", "FR-376-AC-2")]
+#[test]
+fn public_reader_refuses_a_record_node_with_a_declaration_member_at_occurrences() {
+    let mut package = value_validity_package(false);
+    let record_position = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .position(|node| {
+            node["semantic_form"] == "value_validity" && node["occurrences"][0]["ordinal"] == 0
+        })
+        .expect("first record");
+    package["semantic_graph"]["nodes"][record_position]["declaration"] =
+        json!({"qualified_name":["bad"]});
+    assert_refusal(
+        &package,
+        CheckedPackageRefusalCode::InvalidPackage,
+        Some(CheckedPackageRefusalCause::InvalidValue),
+        &format!("/semantic_graph/nodes/{record_position}/occurrences"),
+    );
 }
 
 #[trace("TC-488", "FR-376-AC-2")]
@@ -869,6 +899,19 @@ fn public_reader_refuses_requirement_row_mutations_at_their_rule_pointers() {
         ["ordinal"] = json!(1);
     wrong_owner_ordinals["semantic_graph"]["nodes"][record_positions[1]]["occurrences"][0]
         ["ordinal"] = json!(0);
+    // The source map stage precedes the record step: keep each swapped
+    // occurrence's source row at its new ordinal.
+    for position in [record_positions[0], record_positions[1]] {
+        let node = wrong_owner_ordinals["semantic_graph"]["nodes"][position].clone();
+        for entry in wrong_owner_ordinals["source_map"]
+            .as_array_mut()
+            .expect("source map")
+        {
+            if entry["node_id"] == node["node_id"] {
+                entry["ordinal"] = node["occurrences"][0]["ordinal"].clone();
+            }
+        }
+    }
     let first = record_positions[0];
     assert_refusal(
         &wrong_owner_ordinals,
@@ -898,11 +941,28 @@ fn public_reader_refuses_claim_names_that_name_a_valid_value_validity_node() {
         "declaration_region":region,
     }]);
 
-    assert_refusal(
-        &package,
-        CheckedPackageRefusalCode::InvalidPackage,
-        Some(CheckedPackageRefusalCause::InvalidValue),
-        "/claim_names/0/declaration",
+    // `read` re-derives `claim_names` from the graph (the fixture refresh),
+    // which would drop the injected row; keep it and refresh identity only.
+    let mut wire = package.clone();
+    let injected = wire["claim_names"].clone();
+    index_fixture_node_ids(&mut wire);
+    wire["claim_names"] = injected;
+    crate::fixture_support::refresh_identity_projection(&mut wire);
+    let CheckedPackageV2ReadResult::Refused(refusal) = CheckedPackageV2::read(
+        &canonical(&wire),
+        CheckedPackageReadLimits::bounded(),
+        &evidence_for(&wire),
+    ) else {
+        panic!("a claim_names row naming a value_validity node is refused")
+    };
+    assert_eq!(refusal.code, CheckedPackageRefusalCode::InvalidPackage);
+    assert_eq!(
+        refusal.cause,
+        Some(CheckedPackageRefusalCause::InvalidValue)
+    );
+    assert_eq!(
+        refusal.loci[0].path,
+        JsonPointer::parse("/claim_names/0/declaration")
     );
 }
 

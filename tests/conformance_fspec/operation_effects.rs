@@ -151,6 +151,75 @@ pub(super) fn normalize_relationship(value: &mut Value) {
     }
 }
 
+/// A source-declared object type of a `source: true` sketch document (FR-610):
+/// the declaration node owned by the unit's `SourceOwner`, and one frame and
+/// anchor per operation, as `checked_package_v2_source_objects` builds them.
+fn add_source_declaration(package: &mut Value, sketch: &Value) {
+    let unit = sketch["package"].as_str().expect("source package");
+    package["name"] = json!(unit);
+    let mut sources = package["lock"]["sources"].clone();
+    sources
+        .as_array_mut()
+        .expect("lock sources")
+        .push(json!({"authority": "agent-ix", "identity": sketch["identity"]}));
+    package["lock"]["sources"] = sources;
+    let owner = json!({"kind": "source", "authority": "agent-ix", "identity": sketch["identity"]});
+    let text = fixture::node_id("scalar_type/text");
+    let graph = package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("graph nodes");
+    if !graph.iter().any(|node| node["node_id"] == text) {
+        graph.push(json!({
+            "node_id": text, "schema_version": "filament.checked-semantic-graph/v2",
+            "node_tag": "scalar_type", "semantic_form": "text", "semantic_type": text,
+            "dependencies": [], "occurrences": [{"role": "type", "ordinal": 0}],
+            "body": {"term": "aggregate", "members": []}
+        }));
+    }
+    for ty in sketch["types"].as_array().expect("types") {
+        let name = ty["name"].as_str().expect("name");
+        let object = fixture::node_id(&format!("qualified:{name}"));
+        let mut nodes = vec![json!({
+            "node_id": object, "schema_version": "filament.checked-semantic-graph/v2",
+            "node_tag": "model", "semantic_form": "object_type", "semantic_type": object,
+            "dependencies": [], "occurrences": [{"role": "declaration", "ordinal": 0}],
+            "declaration": {"qualified_name": [name]}, "owner": owner,
+            "body": {"term": "aggregate", "members": []}
+        })];
+        for operation in ty["operations"].as_array().expect("operations") {
+            let operation = operation["name"].as_str().expect("operation name");
+            let frame = fixture::node_id(&format!("fixture/{name}/{operation}/frame"));
+            nodes.push(json!({
+                "node_id": frame, "schema_version": "filament.checked-semantic-graph/v2",
+                "node_tag": "state", "semantic_form": "frame", "semantic_type": object,
+                "dependencies": [object], "occurrences": [{"role": "generated", "ordinal": 0}],
+                "body": {"term": "frame", "modifies": [], "creates": [],
+                    "deletes": [], "deletes_scoped": []}
+            }));
+            nodes.push(json!({
+                "node_id": fixture::node_id(&format!("fixture/{name}/{operation}/anchor")),
+                "schema_version": "filament.checked-semantic-graph/v2",
+                "node_tag": "state", "semantic_form": "operation_anchor",
+                "semantic_type": object, "dependencies": [object, frame, text],
+                "occurrences": [{"role": "anchor", "ordinal": 0}],
+                "body": {"term": "aggregate", "members": [
+                    {"term": "binding", "name": "context",
+                        "value": {"term": "reference", "target": object}},
+                    {"term": "binding", "name": "operation", "value": {
+                        "term": "literal", "type": text,
+                        "value_kind": "text", "value": operation}},
+                    {"term": "binding", "name": "frame",
+                        "value": {"term": "reference", "target": frame}}
+                ]}
+            }));
+        }
+        package["semantic_graph"]["nodes"]
+            .as_array_mut()
+            .expect("graph nodes")
+            .extend(nodes);
+    }
+}
+
 fn read(case: &Value) -> CheckedPackageV2ReadResult {
     let mut case = case.clone();
     // FSpec sketches use a short relationship identifier; the selected FCD's
@@ -161,6 +230,10 @@ fn read(case: &Value) -> CheckedPackageV2ReadResult {
     let mut evidence = CheckedPackageEvidence::new();
     for sketch in case["documents"].as_array().expect("sketch documents") {
         let identity = sketch["identity"].as_str().expect("document identity");
+        if sketch["source"] == true {
+            add_source_declaration(&mut package, sketch);
+            continue;
+        }
         let document = expand_document(sketch);
         for ty in sketch["types"].as_array().expect("types") {
             let name = ty["name"].as_str().expect("name");
@@ -204,6 +277,26 @@ fn read(case: &Value) -> CheckedPackageV2ReadResult {
     }
     evidence.support_feature("filament.value.complete/v1");
     fixture::settle(&mut package);
+    // A source-declared node's regions cite its own unit's source.
+    let owned: Vec<(Value, Value)> = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("graph nodes")
+        .iter()
+        .filter(|node| node["owner"]["kind"] == "source")
+        .map(|node| {
+            (
+                node["node_id"].clone(),
+                json!({"authority": node["owner"]["authority"], "identity": node["owner"]["identity"]}),
+            )
+        })
+        .collect();
+    for entry in package["source_map"].as_array_mut().expect("source map") {
+        if let Some((_, source)) = owned.iter().find(|(id, _)| *id == entry["node_id"]) {
+            for region in entry["regions"].as_array_mut().expect("regions") {
+                region["source"] = source.clone();
+            }
+        }
+    }
     crate::read_and_account(
         &fixture::canonical(&package),
         CheckedPackageReadLimits::bounded(),

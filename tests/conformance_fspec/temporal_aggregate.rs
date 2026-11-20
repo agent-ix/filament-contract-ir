@@ -549,13 +549,15 @@ fn duration_bounds_match_every_occurrence_clock_unit() {
     second_source["ordinal"] = json!(1);
     second_source["regions"][0]["start"] = json!(11);
     second_source["regions"][0]["end"] = json!(12);
+    let second_region = second_source["regions"][0].clone();
     source_rows.insert(source_at + 1, second_source);
     package["temporal_clause_names"]
         .as_array_mut()
         .expect("clause names")
         .insert(
             1,
-            json!({"declaration": clause_id, "occurrence": 1, "name": "Clause1"}),
+            json!({"declaration": clause_id, "occurrence": 1, "name": "Clause1",
+                "declaration_region": second_region}),
         );
     let bindings = package["temporal_bindings"]
         .as_array_mut()

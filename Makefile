@@ -11,6 +11,9 @@ CARGO ?= cargo
 LOCKED ?= $(if $(wildcard .cargo/config.toml),,--locked)
 QUIRE ?= quire
 STRING_EDGE ?= fsl-string-edge
+# FILAMENT_SPEC_LANGUAGE_DIR names a checkout of CURRENT FSL origin/main (built with
+# its own CARGO_TARGET_DIR); a stale or detached checkout emits an older wire and
+# fails these lanes. No default is provided.
 FILAMENT_SPEC_LANGUAGE_BIN ?= $(FILAMENT_SPEC_LANGUAGE_DIR)/target/debug/fsl
 FSL_EMIT_CHECKED_V2_BIN ?= $(FILAMENT_SPEC_LANGUAGE_DIR)/target/debug/examples/emit_checked_v2
 
@@ -172,7 +175,7 @@ conformance-fsl-ir779:
 
 .PHONY: conformance-fsl-ir760
 conformance-fsl-ir760:
-	@test -n "$(FILAMENT_SPEC_LANGUAGE_DIR)" || { echo 'FILAMENT_SPEC_LANGUAGE_DIR is required' >&2; exit 1; }
+	@test -n "$(FILAMENT_SPEC_LANGUAGE_DIR)" || { echo 'FILAMENT_SPEC_LANGUAGE_DIR is required: a checkout of current FSL origin/main, not a stale detached checkout' >&2; exit 1; }
 	@FILAMENT_SPEC_LANGUAGE_DIR="$(FILAMENT_SPEC_LANGUAGE_DIR)" FILAMENT_SPEC_LANGUAGE_TARGET_DIR="$(CURDIR)/target/fsl-producer" CARGO_TARGET_DIR="$(CURDIR)/target" $(CARGO) test $(LOCKED) --manifest-path crates/filament-contract-model/Cargo.toml --test selected_population_public -- --nocapture
 	@FILAMENT_SPEC_LANGUAGE_DIR="$(FILAMENT_SPEC_LANGUAGE_DIR)" FILAMENT_SPEC_LANGUAGE_TARGET_DIR="$(CURDIR)/target/fsl-producer" CARGO_TARGET_DIR="$(CURDIR)/target" $(CARGO) test $(LOCKED) --test conformance_fsl_ir760 -- --nocapture
 
