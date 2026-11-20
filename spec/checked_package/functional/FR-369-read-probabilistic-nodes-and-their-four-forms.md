@@ -185,17 +185,25 @@ whose declaration names another type, operation or reward, or whose `clause`
 is another kind, belongs to no reward and is refused at the `expression`
 that names it, as a selected reward's function owned by another operation is.
 
-`join_probabilistic` SHALL charge one visit per operation reference joined, per
-operation entry and supertype edge read, per support value checked and per
-reward function parameter compared, ahead of the work, as FR-358 work on the
+`join_probabilistic` SHALL charge, ahead of the work, as FR-358 work on the
 caller's shared `NativeJoinBudget`
 ([FR-358](./FR-358-compose-native-identity-join-budget.md)), the meter
-FR-352's post-admission joins charge; there is no second budget API. A denied
-charge SHALL stop the join with `SelectedSourceObjectErrorCode::Incomplete` at
-the first uncharged member, the budget recording the FR-358 first unpaid kind,
-amount and locus, with no partial view. `Ok(())` SHALL mean the four typed
-reads of the package, `delay_distributions`, `random_parameters`, `rewards`
-and `workloads`, are joined.
+FR-352's post-admission joins charge (there is no second budget API): one
+visit per node met in ascending node-id order, per operation reference joined,
+per operation entry read, per parameter entry of the operation read, per
+supertype edge read, per support value checked and per reward function
+parameter compared, and for a workload one per element met by a lookup of its
+lineage, declared operations or named operations; each visit that compares
+caller text (an entry identity, a parameter name, a literal's text) charges
+one more unit for each byte it compares. The lists the join keeps and the
+pointer of a refusal SHALL be charged to the budget's logical storage
+(FR-358 storage) ahead of being built, and the exact numbers it parses to its
+read storage as the strict read charges them. A denied charge SHALL stop the
+join with `SelectedSourceObjectErrorCode::Incomplete` at the first uncharged
+member, the budget recording the FR-358 first unpaid kind, amount and locus,
+with no partial view. `Ok(())` SHALL mean the four typed reads of the package,
+`delay_distributions`, `random_parameters`, `rewards` and `workloads`, are
+joined, and the budget's last success delta SHALL be what the join charged.
 
 The strict V2 reader SHALL decide the read of a reward by following the
 dependencies of its function through functions, values and the expressions
@@ -280,16 +288,18 @@ form for these, and the reader's general literal check refuses it as
 
 ### Planned
 
-**Source-declared entry types (QSL-2645).** `join_probabilistic` derives a
+**Source enumeration entries (QSL-2655).** `join_probabilistic` derives a
 support value's literal kind and membership from the entry's type node for
 the types FR-322 gives a selected parameter's: `Boolean`, `Integer`,
 `Int[lo, hi]`, `Rational`, `Rational[n1, n2; d1, d2]`, `Decimal`, `Float32`,
 `Float64`, `Text`, `Text[min, max; profile]`, `String`, `Uuid`, `Timestamp`, a
-unit (`Quantity<u>`) and a carried quantity over a `Rational[...]` carrier. An
-entry typed by a source enumeration, a bounded quantity or an integer or
-decimal carried quantity has no derived literal kind in the join and refuses
-every support value; whether the join SHALL admit those is a spec question
-for QSL-2645's owner.
+unit (`Quantity<u>`) and a carried quantity over a `Rational[...]` carrier; a
+bounded quantity and an integer or decimal carried quantity have no literal
+kind there either, as in the strict read. An entry typed by a source
+enumeration has no derived literal kind in the join, because the identity rows
+carry no enumeration's cases, and refuses every support value: which input
+names the cases of a source enumeration, and so whether the join admits such
+a value, is awaiting an arch ruling. Owner: QSL-2655.
 
 IR reads FSpec FR-322 "Results" as leaving a function with no `body` binding (a
 clause function) outside the comparison of a body root with the function's
@@ -331,9 +341,9 @@ QSL-2310.
 | FR-369-AC-23 | A `random_parameter` of a Boolean parameter with `boolean` support literals `true` and `false`, and one of a declared enumeration parameter with `enum` support literals typed at that declaration and naming its cases, are admitted and read back with their supports. | Test |
 | FR-369-AC-24 | A Boolean parameter's support value given as the text `"true"`, as the number `1`, as an integer literal or as an `enum` literal, and an enumeration parameter's support value that names an unknown case, differs from a case in letter case, is typed at another enumeration, is a Boolean literal or is a text literal refuse `invalid_package`/`invalid-value` at the value. A support value of a variant type with a payload case (a union), for its payload case and its nullary case alike, refuses `ill_typed`/`operator-ineligible` at the literal's `type`, by the reader's general literal check before the join. | Test |
 | FR-369-AC-25 | A package of a unit with no selected model that declares `object O { d: Clock; operation step() modifies self.d; }`, `object Other { n: Integer; operation poke(k: Int[1, 3]) modifies self.n; }` and `time O dense unit ms;`, holding a `delay_distribution` on `O::step`, a `discrete` one on `Other::poke` with times typed at `ms`, a `random_parameter` of `Other::poke`'s `k` with support `1`, `3`, a `workload` on `O`, and a `reward` `cost` on `Other::poke` returning `k` with `value_type` the `Int[1, 3]` node, its `expression` the function carrying the unit's `SourceOwner`, `declaration` `["Other", "poke", "reward", "cost"]` at ordinal 0, `clause` `"reward"` and `parameters` `[k]`, each operation reference's `declaring` (the workload's `model`) a source `model`/`object_type` node, is admitted by the strict read and by the identity-row join, and the typed read gives each declaration keyed by its node, the reward with its name `cost`, its value type and that function. The package and that typed read are the checked-in golden pair of TC-484: the reward's function id must equal the declared-node id `{package, ["Other", "poke", "reward", "cost"], 0}` built independently of the reader, and the typed read must equal the golden one. | Test (TC-484) |
-| FR-369-AC-26 | Over the AC-25 package each refuses `invalid_package`/`invalid-value` at the member: at the strict read, a `declaring` that is a source `relation`/`population` node, and a delay whose source model has no `dense` time member; at the identity-row join, an `operation` `nudge` that `Other`'s row lists no entry for, a `parameter` `j` that `Other::poke`'s `parameters` lack, a support value `4` outside `Int[1, 3]`, and a workload that omits `O::step`. For the reward `cost`, each refuses `invalid_package`/`invalid-value` at the reward's `expression` (`/semantic_graph/nodes/{i}/body/members/4/value/target`): at the strict read, its function's `declaration` rewritten to `["Other", "poke", "reward", "load"]`, to `["Other", "step", "reward", "cost"]` and to `["O", "poke", "reward", "cost"]`, each with the function's `node_id` path and the reward's `expression` target rewritten to match (so FR-038-AC-21's `declaration-nominal-mismatch` does not fire first), its `clause` rewritten to `"precondition"`, and its owner replaced by the `SourceOwner` of a second lock-selected source (a second `lock.sources` row, the function's `declaration` source-map region naming it), which the owner join admits (FR-038-AC-155) and the probabilistic read refuses because it is not the declaring node's `SourceOwner`; at the identity-row join, its function's `parameters` listing a parameter `j` (read by the body) in place of `k`, and listing none with a constant body `1`. Over the AC-25 package with `Other::poke` declared `poke(x: Clock, k: Int[1, 3])` (its entry's `parameters` the clock entry `x` then the data entry `k`, `clock_parameters` `["x"]`), the reward function listing `x` then `k` is admitted, and one listing `k` alone refuses at the reward's `expression` at the identity-row join. The reward's `operation` rewritten to `nudge` refuses at `operation` at the identity-row join, as for the other forms. A budget one visit short of the join's charges, the reward's parameter comparison included, stops the join with `Incomplete` at the first uncharged member. | Test (TC-484) |
-| FR-369-AC-27 | Strict-read half of FR-369-AC-25 (the join half is Planned, QSL-2645): over the AC-25 package without identity rows, `CheckedPackageV2::read` admits the unit's `delay_distribution`, `random_parameter`, `workload` and `reward` nodes on source-declared `declaring` nodes, a delay finds the `dense` root of its own `SourceOwner` past a `tick` root, and the typed read gives each declaration keyed by its node, the reward's function being the declared node `{package, ["Other", "poke", "reward", "cost"], 0}` built independently of the reader. Admission is by kind and `SourceOwner` only; the operation, parameter, support and coverage are unjoined. | Test (TC-484) |
-| FR-369-AC-28 | Strict-read half of FR-369-AC-26 (the join half is Planned, QSL-2645): over the AC-27 package each refuses `invalid_package`/`invalid-value` at the member: a `declaring` that is a source dimension or population node, a delay on a unit with no `dense` root of its `SourceOwner`, a source workload with rows out of order, repeating an operation name or naming a `declaring` node that is no source object type of its owner, and, at the reward's `expression`, a function whose `declaration` is rewritten to another reward name, operation or type (with its `node_id` path and the `expression` target rewritten to match), another declaration kind, whose `clause` is `precondition`, whose owner is a second lock-selected source, whose own type is not the `value_type`, that lists a node that is no parameter, that reads beyond its parameters, or that reads a parameter it does not list. | Test (TC-484) |
+| FR-369-AC-26 | Over the AC-25 package each refuses `invalid_package`/`invalid-value` at the member: at the strict read, a `declaring` that is a source `relation`/`population` node, and a delay whose source model has no `dense` time member; at the identity-row join, an `operation` `nudge` that `Other`'s row lists no entry for, a `parameter` `j` that `Other::poke`'s `parameters` lack, a support value `4` outside `Int[1, 3]`, and a workload that omits `O::step`. For the reward `cost`, each refuses `invalid_package`/`invalid-value` at the reward's `expression` (`/semantic_graph/nodes/{i}/body/members/4/value/target`): at the strict read, its function's `declaration` rewritten to `["Other", "poke", "reward", "load"]`, to `["Other", "step", "reward", "cost"]` and to `["O", "poke", "reward", "cost"]`, each with the function's `node_id` path and the reward's `expression` target rewritten to match (so FR-038-AC-21's `declaration-nominal-mismatch` does not fire first), its `clause` rewritten to `"precondition"`, and its owner replaced by the `SourceOwner` of a second lock-selected source (a second `lock.sources` row, the function's `declaration` source-map region naming it), which the owner join admits (FR-038-AC-155) and the probabilistic read refuses because it is not the declaring node's `SourceOwner`; at the identity-row join, its function's `parameters` listing a parameter `j` (read by the body) in place of `k`, and listing none with a constant body `1`. Over the AC-25 package with `Other::poke` declared `poke(x: Clock, k: Int[1, 3])` (its entry's `parameters` the clock entry `x` then the data entry `k`, `clock_parameters` `["x"]`), the reward function listing `x` then `k` is admitted, and one listing `k` alone refuses at the reward's `expression` at the identity-row join. The reward's `operation` rewritten to `nudge` refuses at `operation` at the identity-row join, as for the other forms. A budget one work unit short of the join's charges, the reward's parameter comparison included, one byte of logical storage short of the lists it keeps and of a refusal's pointer, or one byte of read storage short of the exact numbers it parses, stops the join with `Incomplete` at the first uncharged member; a join that succeeds records its charges as the budget's last success delta. At the identity-row join the `operation` and the `parameter` are refused at the `value` of their literal, `/semantic_graph/nodes/{i}/body/members/{m}/value/value`, the member the strict read names for the same edit of a selected model's node. | Test (TC-484) |
+| FR-369-AC-27 | Strict-read half of FR-369-AC-25 (the join half is the identity-row join of QSL-2645): over the AC-25 package without identity rows, `CheckedPackageV2::read` admits the unit's `delay_distribution`, `random_parameter`, `workload` and `reward` nodes on source-declared `declaring` nodes, a delay finds the `dense` root of its own `SourceOwner` past a `tick` root, and the typed read gives each declaration keyed by its node, the reward's function being the declared node `{package, ["Other", "poke", "reward", "cost"], 0}` built independently of the reader. Admission is by kind and `SourceOwner` only; the operation, parameter, support and coverage are unjoined. | Test (TC-484) |
+| FR-369-AC-28 | Strict-read half of FR-369-AC-26 (the join half is the identity-row join of QSL-2645): over the AC-27 package each refuses `invalid_package`/`invalid-value` at the member: a `declaring` that is a source dimension or population node, a delay on a unit with no `dense` root of its `SourceOwner`, a source workload with rows out of order, repeating an operation name or naming a `declaring` node that is no source object type of its owner, and, at the reward's `expression`, a function whose `declaration` is rewritten to another reward name, operation or type (with its `node_id` path and the `expression` target rewritten to match), another declaration kind, whose `clause` is `precondition`, whose owner is a second lock-selected source, whose own type is not the `value_type`, that lists a node that is no parameter, that reads beyond its parameters, or that reads a parameter it does not list. | Test (TC-484) |
 
 ## Dependencies
 

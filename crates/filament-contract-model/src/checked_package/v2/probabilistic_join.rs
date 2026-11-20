@@ -213,7 +213,7 @@ pub(super) fn text_length(value: &str, profile: &str) -> Option<usize> {
 }
 
 /// Where a support value that is no member of its parameter's type is refused.
-enum NotMember {
+pub(super) enum NotMember {
     /// At the literal: outside the bounds, or a non-canonical integer or text.
     Literal,
     /// At the literal's `value` member: a rational spelled other than its one
@@ -221,14 +221,90 @@ enum NotMember {
     Spelling,
 }
 
-/// Why the support value `term` is no member of the bounded type `slot` has,
-/// or `None` when it is one: a spelling that is not the one canonical spelling
-/// of an integer or rational (FSpec FR-322), a number outside `Int[lo, hi]` or
-/// the bounds of `Rational[n1, n2; d1, d2]` (also for a quantity over one), a
-/// text that is not in its profile's normal form or whose length is outside
-/// `Text[min, max; profile]`, a Boolean whose value is no JSON boolean, or an
-/// enumeration literal typed at another declaration or naming a case the
-/// declaration lacks.
+/// The membership rule of the values of a type: the bounds
+/// `bounded_not_member` checks, shared by the strict read and the identity-row
+/// join of FR-369.
+#[derive(Clone, Copy)]
+pub(super) enum Bounded<'a> {
+    Boolean,
+    Integers(super::model_members::IntegerBounds),
+    Rationals(super::model_members::RationalBounds),
+    Text {
+        lower: u64,
+        upper: u64,
+        profile: &'a str,
+    },
+    Free,
+}
+
+impl<'a> Bounded<'a> {
+    /// The rule of the member type `kind`.
+    fn of(kind: &'a MemberType) -> Self {
+        match kind {
+            MemberType::Boolean => Self::Boolean,
+            MemberType::IntRange(bounds) => Self::Integers(*bounds),
+            MemberType::RationalRange(bounds) | MemberType::CarriedRational(bounds, _) => {
+                Self::Rationals(*bounds)
+            }
+            MemberType::TextBounds(bounds) => Self::Text {
+                lower: bounds.lower,
+                upper: bounds.upper,
+                profile: &bounds.profile,
+            },
+            _ => Self::Free,
+        }
+    }
+}
+
+/// Why `value` is no member of the type `rule` bounds, or `None` when it is
+/// one: a spelling that is not the one canonical spelling of an integer or
+/// rational (FSpec FR-322), a number outside `Int[lo, hi]` or the bounds of
+/// `Rational[n1, n2; d1, d2]` (also for a quantity over one), a text that is
+/// not in its profile's normal form or whose length is outside
+/// `Text[min, max; profile]`, or a Boolean whose value is no JSON boolean.
+/// Every exact number is parsed through the meter's reservation.
+pub(super) fn bounded_not_member(
+    meter: &mut WorkMeter,
+    rule: Bounded<'_>,
+    value: &super::CheckedJson,
+) -> Result<Option<NotMember>, ValidationFailure> {
+    use filament_exact::Integer as Exact;
+    if matches!(rule, Bounded::Boolean) {
+        return Ok(value.as_bool().is_none().then_some(NotMember::Literal));
+    }
+    let Some(spelled) = value.as_str() else {
+        return Ok(Some(NotMember::Literal));
+    };
+    let outside = match rule {
+        Bounded::Integers(bounds) => match meter.exact_integer(spelled)? {
+            Some(found) => found < Exact::from(bounds.lower) || found > Exact::from(bounds.upper),
+            None => true,
+        },
+        Bounded::Rationals(bounds) => match meter.canonical_rational(spelled)? {
+            Some((numerator, denominator)) => {
+                numerator < Exact::from(bounds.numerator_min)
+                    || numerator > Exact::from(bounds.numerator_max)
+                    || denominator < Exact::from(bounds.denominator_min)
+                    || denominator > Exact::from(bounds.denominator_max)
+            }
+            None => return Ok(Some(NotMember::Spelling)),
+        },
+        Bounded::Text {
+            lower,
+            upper,
+            profile,
+        } => text_length(spelled, profile)
+            .and_then(|length| u64::try_from(length).ok())
+            .is_none_or(|length| length < lower || length > upper),
+        Bounded::Boolean | Bounded::Free => false,
+    };
+    Ok(outside.then_some(NotMember::Literal))
+}
+
+/// Why the support value `term` is no member of the type `slot` has, or `None`
+/// when it is one: the bounds of `bounded_not_member`, and for an enumeration
+/// a literal typed at another declaration or naming a case the declaration
+/// lacks.
 fn not_member(
     meter: &mut WorkMeter,
     models: &RetainedModels,
@@ -236,47 +312,21 @@ fn not_member(
     slot: &TypedSlot,
     term: &CheckedTerm,
 ) -> Result<Option<NotMember>, ValidationFailure> {
-    use filament_exact::Integer as Exact;
     let CheckedTerm::Literal { value, type_id, .. } = term else {
         return Ok(None);
     };
-    match package.slot_type(slot) {
-        Some(MemberType::Boolean) => {
-            return Ok(value.as_bool().is_none().then_some(NotMember::Literal));
-        }
-        Some(MemberType::Variant(declaration)) => {
-            let declared = value
-                .as_str()
-                .is_some_and(|case| models.selected_variant_case(&declaration, case).is_some());
-            return Ok((!declared || type_id != &declaration).then_some(NotMember::Literal));
-        }
-        _ => {}
+    let member = package.slot_type(slot);
+    if let Some(MemberType::Variant(declaration)) = &member {
+        let declared = value
+            .as_str()
+            .is_some_and(|case| models.selected_variant_case(declaration, case).is_some());
+        return Ok((!declared || type_id != declaration).then_some(NotMember::Literal));
     }
-    let Some(spelled) = value.as_str() else {
-        return Ok(Some(NotMember::Literal));
-    };
-    let outside = match package.slot_type(slot) {
-        Some(MemberType::IntRange(bounds)) => match meter.exact_integer(spelled)? {
-            Some(found) => found < Exact::from(bounds.lower) || found > Exact::from(bounds.upper),
-            None => true,
-        },
-        Some(MemberType::RationalRange(bounds) | MemberType::CarriedRational(bounds, _)) => {
-            match meter.canonical_rational(spelled)? {
-                Some((numerator, denominator)) => {
-                    numerator < Exact::from(bounds.numerator_min)
-                        || numerator > Exact::from(bounds.numerator_max)
-                        || denominator < Exact::from(bounds.denominator_min)
-                        || denominator > Exact::from(bounds.denominator_max)
-                }
-                None => return Ok(Some(NotMember::Spelling)),
-            }
-        }
-        Some(MemberType::TextBounds(bounds)) => text_length(spelled, &bounds.profile)
-            .and_then(|length| u64::try_from(length).ok())
-            .is_none_or(|length| length < bounds.lower || length > bounds.upper),
-        _ => false,
-    };
-    Ok(outside.then_some(NotMember::Literal))
+    bounded_not_member(
+        meter,
+        member.as_ref().map_or(Bounded::Free, Bounded::of),
+        value,
+    )
 }
 
 /// The literal kind a support value of a parameter of `slot`'s type has: the

@@ -7,25 +7,36 @@
 //!
 //! Implements: FR-369 "Behavior" (identity-row join), FR-358.
 
-use filament_exact::Integer;
-
+use super::model_members::{IntegerBounds, RationalBounds};
 use super::native_join_budget::{
     NativeJoinBudget, NativeJoinChargeKind, NativeJoinLocus, NativeJoinLocusSource,
 };
-use super::probabilistic_join::{bound, members, target, text, text_length};
+use super::probabilistic_join::{
+    bound, bounded_not_member, members, target, text, Bounded, NotMember,
+};
 use super::source_object::{
     is_source_declared_object_type, SelectedSourceObjectError, SelectedSourceObjectErrorCode,
     SelectedSourceObjectMember, SelectedSourceObjectRow, SelectedSourceObjects,
 };
 use super::{
     BoundedDomainForm, CheckedNodeId, CheckedNodeKind, CheckedPackageV2, CheckedTerm, LiteralKind,
-    ProbabilisticForm, ScalarTypeForm, ValueForm,
+    ProbabilisticForm, ScalarTypeForm, ValueForm, WorkMeter,
 };
 use crate::checked_package::shared::{CheckedPackageRefusalLocation, JsonPointer};
 
 const FORM: &str = "probabilistic_join";
 
+/// The logical storage one refusal locus is charged, ahead of building it: a
+/// pointer of at most a dozen short segments.
+const LOCUS_BYTES: u128 = 256;
+
+/// The smallest capacity a charged list grows to, as in the strict read.
+const MINIMUM_CAPACITY: usize = 4;
+
 type Failure = SelectedSourceObjectError;
+
+/// Where a refusal or a budget stop is named, built only once it is needed.
+type At<'a> = &'a dyn Fn() -> JsonPointer;
 
 /// The `<operation>` of an entry identity `<type>::<operation>` of the row of
 /// `type_name`.
@@ -35,38 +46,25 @@ fn operation_of<'a>(identity: &'a str, type_name: &str) -> Option<&'a str> {
     (declared == type_name).then_some(operation)
 }
 
-/// What the entry's type node says about a support value.
-enum Membership {
-    /// Any value of the literal kind.
-    Any,
-    Boolean,
-    Integers(Integer, Integer),
-    Rationals([Integer; 4]),
-    Text(u64, u64, Box<str>),
-}
-
 /// The literal kind, the unit node position of a quantity and the membership
-/// rule of the values of a data entry's type node, `None` when the type has no
-/// literal kind.
-struct Slot {
+/// rule of the values of a data entry's type node.
+struct Slot<'p> {
     kind: LiteralKind,
     unit: Option<usize>,
-    membership: Membership,
-}
-
-/// Why a support value is no member of its type.
-enum NotMember {
-    Literal,
-    Spelling,
+    rule: Bounded<'p>,
 }
 
 struct Join<'p, 'b> {
     package: &'p CheckedPackageV2,
     selected: &'p SelectedSourceObjects<'p>,
-    budget: &'b mut NativeJoinBudget,
+    /// Charges the caller's budget: work, logical storage and the exact
+    /// numbers' read storage, as the strict read does.
+    meter: WorkMeter<'b>,
 }
 
-fn integer_of(term: Option<&CheckedTerm>) -> Option<Integer> {
+/// `term` as the integer literal it spells, for the bounds of a type node the
+/// strict read has already admitted.
+fn integer_of(term: Option<&CheckedTerm>) -> Option<i128> {
     match term? {
         CheckedTerm::Literal { value, .. } => value.as_str()?.parse().ok(),
         _ => None,
@@ -74,37 +72,90 @@ fn integer_of(term: Option<&CheckedTerm>) -> Option<Integer> {
 }
 
 fn natural_of(term: Option<&CheckedTerm>) -> Option<u64> {
-    u64::try_from(integer_of(term)?.to_string().parse::<i128>().ok()?).ok()
+    u64::try_from(integer_of(term)?).ok()
 }
 
 impl<'p> Join<'p, '_> {
-    fn location(at: &JsonPointer) -> Option<CheckedPackageRefusalLocation> {
+    fn location(at: At) -> Option<CheckedPackageRefusalLocation> {
         Some(CheckedPackageRefusalLocation {
-            path: Some(at.clone()),
+            path: Some(at()),
             source_region: None,
         })
     }
 
-    fn refuse(at: &JsonPointer) -> Failure {
+    /// The stop at `at`, the first member left uncharged. Its locus is a
+    /// bounded pointer of static keys and indices.
+    fn incomplete(at: At) -> Failure {
         Failure {
-            code: SelectedSourceObjectErrorCode::InvalidValue,
+            code: SelectedSourceObjectErrorCode::Incomplete,
             locus: Self::location(at),
         }
     }
 
-    /// Admits one work unit of the caller's budget ahead of the work at `at`,
-    /// of the node at `position`.
-    fn charge(&mut self, position: usize, at: &JsonPointer) -> Result<(), Failure> {
+    /// Admits `amount` of `kind` of the caller's budget ahead of the work at
+    /// `at`, of the node at `position`.
+    fn pay(
+        &mut self,
+        kind: NativeJoinChargeKind,
+        amount: u128,
+        position: usize,
+        at: At,
+    ) -> Result<(), Failure> {
         let locus = NativeJoinLocus {
             source: NativeJoinLocusSource::GraphNode(position),
             form: FORM,
         };
-        self.budget
-            .accounted_charge(NativeJoinChargeKind::Work, 1, locus)
-            .map_err(|_| Failure {
-                code: SelectedSourceObjectErrorCode::Incomplete,
+        match self.meter.budget_mut() {
+            Some(budget) => budget
+                .accounted_charge(kind, amount, locus)
+                .map_err(|_| Self::incomplete(at)),
+            None => Ok(()),
+        }
+    }
+
+    /// One work unit.
+    fn charge(&mut self, position: usize, at: At) -> Result<(), Failure> {
+        self.pay(NativeJoinChargeKind::Work, 1, position, at)
+    }
+
+    /// One work unit and one for each byte of the caller text it compares.
+    fn charge_text(&mut self, position: usize, length: usize, at: At) -> Result<(), Failure> {
+        let amount = u128::try_from(length)
+            .unwrap_or(u128::MAX)
+            .saturating_add(1);
+        self.pay(NativeJoinChargeKind::Work, amount, position, at)
+    }
+
+    /// The refusal at `at`: its pointer is paid before it is built.
+    fn refuse(&mut self, position: usize, at: At) -> Failure {
+        match self.pay(NativeJoinChargeKind::Storage, LOCUS_BYTES, position, at) {
+            Err(stop) => stop,
+            Ok(()) => Failure {
+                code: SelectedSourceObjectErrorCode::InvalidValue,
                 locus: Self::location(at),
-            })
+            },
+        }
+    }
+
+    /// Pushes onto `list`, charging each growth of its capacity first.
+    fn push<T>(
+        &mut self,
+        list: &mut Vec<T>,
+        item: T,
+        position: usize,
+        at: At,
+    ) -> Result<(), Failure> {
+        if list.len() == list.capacity() {
+            let capacity = list.capacity();
+            let extra = capacity.saturating_mul(2).max(MINIMUM_CAPACITY) - capacity;
+            let bytes =
+                u128::try_from(extra.saturating_mul(std::mem::size_of::<T>())).unwrap_or(u128::MAX);
+            self.pay(NativeJoinChargeKind::Storage, bytes, position, at)?;
+            list.try_reserve_exact(extra)
+                .map_err(|_| Self::incomplete(at))?;
+        }
+        list.push(item);
+        Ok(())
     }
 
     fn node_at(position: usize) -> JsonPointer {
@@ -114,6 +165,8 @@ impl<'p> Join<'p, '_> {
             .index(position)
     }
 
+    /// The `value` of the binding at `member` of the node at `position`, the
+    /// path the strict read names for it.
     fn member_at(position: usize, member: usize) -> JsonPointer {
         Self::node_at(position)
             .key("body")
@@ -134,22 +187,23 @@ impl<'p> Join<'p, '_> {
     }
 
     /// The literal kind and membership rule of a data entry.
-    fn slot(&self, entry: &SelectedSourceObjectMember) -> Option<Slot> {
-        let at = self.package.position_of(entry.type_node.as_ref()?)?;
-        let body = self.package.term_at(at)?;
+    fn slot(&self, entry: &SelectedSourceObjectMember) -> Option<Slot<'p>> {
+        let package = self.package;
+        let at = package.position_of(entry.type_node.as_ref()?)?;
+        let body = package.term_at(at)?;
         let plain = |kind| {
             Some(Slot {
                 kind,
                 unit: None,
-                membership: Membership::Any,
+                rule: Bounded::Free,
             })
         };
-        match self.package.kinds.get(at)? {
+        match package.kinds.get(at)? {
             CheckedNodeKind::ScalarType(form) => match form {
                 ScalarTypeForm::Boolean => Some(Slot {
                     kind: LiteralKind::Boolean,
                     unit: None,
-                    membership: Membership::Boolean,
+                    rule: Bounded::Boolean,
                 }),
                 ScalarTypeForm::Integer => plain(LiteralKind::Integer),
                 ScalarTypeForm::Rational => plain(LiteralKind::Rational),
@@ -163,16 +217,15 @@ impl<'p> Join<'p, '_> {
                 ScalarTypeForm::Unit => Some(Slot {
                     kind: LiteralKind::Quantity,
                     unit: Some(at),
-                    membership: Membership::Any,
+                    rule: Bounded::Free,
                 }),
                 ScalarTypeForm::CarriedQuantity => {
                     let unit = bound(body, 0).and_then(target)?;
-                    let carrier = self.package.position_of(bound(body, 1).and_then(target)?)?;
-                    let rational = self.rational_bounds(carrier)?;
+                    let carrier = package.position_of(bound(body, 1).and_then(target)?)?;
                     Some(Slot {
                         kind: LiteralKind::Quantity,
-                        unit: Some(self.package.position_of(unit)?),
-                        membership: Membership::Rationals(rational),
+                        unit: Some(package.position_of(unit)?),
+                        rule: Bounded::Rationals(self.rational_bounds(carrier)?),
                     })
                 }
                 _ => None,
@@ -180,24 +233,24 @@ impl<'p> Join<'p, '_> {
             CheckedNodeKind::BoundedDomain(BoundedDomainForm::IntegerRange) => Some(Slot {
                 kind: LiteralKind::Integer,
                 unit: None,
-                membership: Membership::Integers(
-                    integer_of(bound(body, 0))?,
-                    integer_of(bound(body, 1))?,
-                ),
+                rule: Bounded::Integers(IntegerBounds {
+                    lower: integer_of(bound(body, 0))?,
+                    upper: integer_of(bound(body, 1))?,
+                }),
             }),
             CheckedNodeKind::BoundedDomain(BoundedDomainForm::RationalRange) => Some(Slot {
                 kind: LiteralKind::Rational,
                 unit: None,
-                membership: Membership::Rationals(self.rational_bounds(at)?),
+                rule: Bounded::Rationals(self.rational_bounds(at)?),
             }),
             CheckedNodeKind::BoundedDomain(BoundedDomainForm::TextBounds) => Some(Slot {
                 kind: LiteralKind::Text,
                 unit: None,
-                membership: Membership::Text(
-                    natural_of(bound(body, 0))?,
-                    natural_of(bound(body, 1))?,
-                    text(bound(body, 2)?)?.into(),
-                ),
+                rule: Bounded::Text {
+                    lower: natural_of(bound(body, 0))?,
+                    upper: natural_of(bound(body, 1))?,
+                    profile: text(bound(body, 2)?)?,
+                },
             }),
             _ => None,
         }
@@ -205,69 +258,40 @@ impl<'p> Join<'p, '_> {
 
     /// The numerator and denominator bounds of the `rational_range` node at
     /// `at`.
-    fn rational_bounds(&self, at: usize) -> Option<[Integer; 4]> {
+    fn rational_bounds(&self, at: usize) -> Option<RationalBounds> {
         (self.package.kinds.get(at)?
             == &CheckedNodeKind::BoundedDomain(BoundedDomainForm::RationalRange))
             .then_some(())?;
         let body = self.package.term_at(at)?;
-        Some([
-            integer_of(bound(body, 0))?,
-            integer_of(bound(body, 1))?,
-            integer_of(bound(body, 2))?,
-            integer_of(bound(body, 3))?,
-        ])
-    }
-
-    /// Why `value` is no member of the slot's type, `None` when it is one.
-    fn not_member(slot: &Slot, value: &super::CheckedJson) -> Option<NotMember> {
-        if matches!(slot.membership, Membership::Boolean) {
-            return value.as_bool().is_none().then_some(NotMember::Literal);
-        }
-        let Some(spelled) = value.as_str() else {
-            return Some(NotMember::Literal);
-        };
-        let outside = match &slot.membership {
-            Membership::Integers(lower, upper) => match spelled.parse::<Integer>() {
-                Ok(found) => found < *lower || found > *upper,
-                Err(_) => true,
-            },
-            Membership::Rationals([n_min, n_max, d_min, d_max]) => {
-                let Some((numerator, denominator)) = canonical_rational(spelled) else {
-                    return Some(NotMember::Spelling);
-                };
-                numerator < *n_min
-                    || numerator > *n_max
-                    || denominator < *d_min
-                    || denominator > *d_max
-            }
-            Membership::Text(lower, upper, profile) => text_length(spelled, profile)
-                .and_then(|length| u64::try_from(length).ok())
-                .is_none_or(|length| length < *lower || length > *upper),
-            Membership::Any | Membership::Boolean => false,
-        };
-        outside.then_some(NotMember::Literal)
+        Some(RationalBounds {
+            numerator_min: integer_of(bound(body, 0))?,
+            numerator_max: integer_of(bound(body, 1))?,
+            denominator_min: integer_of(bound(body, 2))?,
+            denominator_max: integer_of(bound(body, 3))?,
+        })
     }
 
     /// The operation entry `name` of the row at `declaring`: one visit for
-    /// the reference joined and one for each entry read.
+    /// the reference joined and one for each entry read, with the bytes of the
+    /// identity compared.
     fn entry(
         &mut self,
         holder: usize,
         declaring: usize,
         name: Option<&str>,
     ) -> Result<&'p [SelectedSourceObjectMember], Failure> {
-        let at = Self::member_at(holder, 1);
+        let at = || Self::member_at(holder, 1).key("value");
         self.charge(holder, &at)?;
         let (Some(name), Some(row)) = (name, self.row(declaring)) else {
-            return Err(Self::refuse(&at));
+            return Err(self.refuse(holder, &at));
         };
         for entry in &row.operations {
-            self.charge(holder, &at)?;
+            self.charge_text(holder, entry.identity.len(), &at)?;
             if operation_of(&entry.identity, &row.source_identity) == Some(name) {
                 return Ok(&entry.parameters);
             }
         }
-        Err(Self::refuse(&at))
+        Err(self.refuse(holder, &at))
     }
 
     fn random_parameter(
@@ -276,55 +300,65 @@ impl<'p> Join<'p, '_> {
         body: &CheckedTerm,
         parameters: &'p [SelectedSourceObjectMember],
     ) -> Result<(), Failure> {
-        let parameter_at = Self::member_at(holder, 2);
+        let parameter_at = || Self::member_at(holder, 2).key("value");
         let name = bound(body, 2).and_then(text);
         let mut found = None;
         for entry in parameters {
-            self.charge(holder, &parameter_at)?;
+            self.charge_text(holder, entry.name.len(), &parameter_at)?;
             if name == Some(entry.name.as_ref()) {
                 found = Some(entry);
                 break;
             }
         }
         let Some(entry) = found else {
-            return Err(Self::refuse(&parameter_at));
+            return Err(self.refuse(holder, &parameter_at));
         };
         let slot = self.slot(entry);
-        let support_at = Self::member_at(holder, 3);
         for (row, support) in bound(body, 3)
             .map(members)
             .unwrap_or_default()
             .iter()
             .enumerate()
         {
-            let value_at = support_at
-                .clone()
-                .key("members")
-                .index(row)
-                .key("members")
-                .index(0)
-                .key("value");
-            self.charge(holder, &value_at)?;
+            let value_at = || {
+                Self::member_at(holder, 3)
+                    .key("members")
+                    .index(row)
+                    .key("members")
+                    .index(0)
+                    .key("value")
+            };
+            let literal = bound(support, 0);
+            let spelled = match literal {
+                Some(CheckedTerm::Literal { value, .. }) => value.as_str().map_or(0, str::len),
+                _ => 0,
+            };
+            self.charge_text(holder, spelled, &value_at)?;
             let Some(CheckedTerm::Literal {
                 value_kind,
                 type_id,
                 value,
-            }) = bound(support, 0)
+            }) = literal
             else {
-                return Err(Self::refuse(&value_at));
+                return Err(self.refuse(holder, &value_at));
             };
             let Some(slot) = slot.as_ref().filter(|slot| slot.kind == *value_kind) else {
-                return Err(Self::refuse(&value_at));
+                return Err(self.refuse(holder, &value_at));
             };
             if slot
                 .unit
                 .is_some_and(|unit| self.package.position_of(type_id) != Some(unit))
             {
-                return Err(Self::refuse(&value_at));
+                return Err(self.refuse(holder, &value_at));
             }
-            match Self::not_member(slot, value) {
-                Some(NotMember::Literal) => return Err(Self::refuse(&value_at)),
-                Some(NotMember::Spelling) => return Err(Self::refuse(&value_at.key("value"))),
+            self.meter.at_node(holder, FORM);
+            let refused = bounded_not_member(&mut self.meter, slot.rule, value)
+                .map_err(|_| Self::incomplete(&value_at))?;
+            match refused {
+                Some(NotMember::Literal) => return Err(self.refuse(holder, &value_at)),
+                Some(NotMember::Spelling) => {
+                    return Err(self.refuse(holder, &|| value_at().key("value")));
+                }
                 None => {}
             }
         }
@@ -332,14 +366,15 @@ impl<'p> Join<'p, '_> {
     }
 
     /// The reward function's `parameters` against the operation entry's, by
-    /// name and in declared order, one visit for each listed parameter.
+    /// name and in declared order, one visit for each listed parameter and
+    /// the bytes of the declared name compared.
     fn reward(
         &mut self,
         holder: usize,
         body: &CheckedTerm,
         parameters: &'p [SelectedSourceObjectMember],
     ) -> Result<(), Failure> {
-        let expression_at = Self::member_at(holder, 4).key("target");
+        let expression_at = || Self::member_at(holder, 4).key("target");
         let function = bound(body, 4)
             .and_then(target)
             .and_then(|id| self.package.position_of(id))
@@ -349,7 +384,12 @@ impl<'p> Join<'p, '_> {
             .map(members)
             .unwrap_or_default();
         for (index, entry) in listed.iter().enumerate() {
-            self.charge(holder, &expression_at)?;
+            let declared = parameters.get(index);
+            self.charge_text(
+                holder,
+                declared.map_or(0, |declared| declared.name.len()),
+                &expression_at,
+            )?;
             let name = target(entry)
                 .and_then(|id| self.package.position_of(id))
                 .filter(|&position| {
@@ -359,24 +399,78 @@ impl<'p> Join<'p, '_> {
                 .and_then(|position| self.package.term_at(position))
                 .and_then(|node| bound(node, 0))
                 .and_then(text);
-            let declared = parameters.get(index);
             if declared.is_none() || name != declared.map(|declared| declared.name.as_ref()) {
-                return Err(Self::refuse(&expression_at));
+                return Err(self.refuse(holder, &expression_at));
             }
         }
         if parameters.len() > listed.len() {
-            return Err(Self::refuse(&expression_at));
+            return Err(self.refuse(holder, &expression_at));
         }
         Ok(())
+    }
+
+    /// Whether `lineage` holds `needle`, one work unit for each element met.
+    fn lineage_has(
+        &mut self,
+        lineage: &[usize],
+        needle: usize,
+        holder: usize,
+        at: At,
+    ) -> Result<bool, Failure> {
+        for &position in lineage {
+            self.charge(holder, at)?;
+            if position == needle {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
+    /// Whether `declared` lists `name` of `declaring`, one work unit and the
+    /// bytes of the name for each element met.
+    fn declared_has(
+        &mut self,
+        declared: &[(usize, &str)],
+        declaring: usize,
+        name: &str,
+        holder: usize,
+        at: At,
+    ) -> Result<bool, Failure> {
+        for &(position, candidate) in declared {
+            self.charge_text(holder, name.len(), at)?;
+            if position == declaring && candidate == name {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
+    /// Whether `named` holds `name`, one work unit and the bytes of the name
+    /// for each element met.
+    fn named_has(
+        &mut self,
+        named: &[&str],
+        name: &str,
+        holder: usize,
+        at: At,
+    ) -> Result<bool, Failure> {
+        for &candidate in named {
+            self.charge_text(holder, name.len(), at)?;
+            if candidate == name {
+                return Ok(true);
+            }
+        }
+        Ok(false)
     }
 
     /// A workload of a source-declared `model`: its rows name the operations
     /// of the model's row and of its supertypes, followed transitively, and
     /// omit none.
     fn workload(&mut self, holder: usize, body: &CheckedTerm, model: usize) -> Result<(), Failure> {
-        let model_at = Self::member_at(holder, 0).key("target");
-        let weights_at = Self::member_at(holder, 2);
-        let mut lineage = vec![model];
+        let model_at = || Self::member_at(holder, 0).key("target");
+        let weights_at = || Self::member_at(holder, 2);
+        let mut lineage: Vec<usize> = Vec::new();
+        self.push(&mut lineage, model, holder, &model_at)?;
         let mut next = 0;
         while let Some(&current) = lineage.get(next) {
             next += 1;
@@ -386,8 +480,8 @@ impl<'p> Join<'p, '_> {
             for supertype in &row.supertypes {
                 self.charge(holder, &model_at)?;
                 if let Some(position) = self.package.position_of(supertype) {
-                    if !lineage.contains(&position) {
-                        lineage.push(position);
+                    if !self.lineage_has(&lineage, position, holder, &model_at)? {
+                        self.push(&mut lineage, position, holder, &model_at)?;
                     }
                 }
             }
@@ -398,9 +492,9 @@ impl<'p> Join<'p, '_> {
                 continue;
             };
             for entry in &row.operations {
-                self.charge(holder, &weights_at)?;
+                self.charge_text(holder, entry.identity.len(), &weights_at)?;
                 if let Some(name) = operation_of(&entry.identity, &row.source_identity) {
-                    declared.push((position, name));
+                    self.push(&mut declared, (position, name), holder, &weights_at)?;
                 }
             }
         }
@@ -411,55 +505,100 @@ impl<'p> Join<'p, '_> {
             .iter()
             .enumerate()
         {
-            let row_at = weights_at.clone().key("members").index(index);
+            let row_at = || weights_at().key("members").index(index);
             self.charge(holder, &row_at)?;
             let declaring = bound(row, 0)
                 .and_then(target)
-                .and_then(|id| self.package.position_of(id))
-                .filter(|position| lineage.contains(position));
+                .and_then(|id| self.package.position_of(id));
+            let declaring = match declaring {
+                Some(position) if self.lineage_has(&lineage, position, holder, &row_at)? => {
+                    Some(position)
+                }
+                _ => None,
+            };
             let Some(declaring) = declaring else {
-                return Err(Self::refuse(
-                    &row_at.key("members").index(0).key("value").key("target"),
-                ));
+                return Err(self.refuse(holder, &|| {
+                    row_at().key("members").index(0).key("value").key("target")
+                }));
             };
+            let name_at = || row_at().key("members").index(1).key("value").key("value");
             let name = bound(row, 1).and_then(text);
-            let Some(name) = name.filter(|name| declared.contains(&(declaring, *name))) else {
-                return Err(Self::refuse(
-                    &row_at.key("members").index(1).key("value").key("value"),
-                ));
+            let name = match name {
+                Some(name)
+                    if self.declared_has(&declared, declaring, name, holder, &name_at)? =>
+                {
+                    Some(name)
+                }
+                _ => None,
             };
-            named.push(name);
+            let Some(name) = name else {
+                return Err(self.refuse(holder, &name_at));
+            };
+            self.push(&mut named, name, holder, &row_at)?;
         }
-        if declared.iter().any(|(_, name)| !named.contains(name)) {
-            return Err(Self::refuse(&weights_at.key("members")));
+        for &(_, name) in &declared {
+            if !self.named_has(&named, name, holder, &|| weights_at().key("members"))? {
+                return Err(self.refuse(holder, &|| weights_at().key("members")));
+            }
         }
         Ok(())
     }
-}
 
-/// `text` as a canonical reduced rational, `n` or `n/d` with `d > 1` coprime
-/// to `n`.
-fn canonical_rational(text: &str) -> Option<(Integer, Integer)> {
-    let Some((numerator, denominator)) = text.split_once('/') else {
-        return Some((text.parse().ok()?, Integer::one()));
-    };
-    let (numerator, denominator): (Integer, Integer) =
-        (numerator.parse().ok()?, denominator.parse().ok()?);
-    (denominator > Integer::one() && numerator.gcd(&denominator) == Integer::one())
-        .then_some((numerator, denominator))
+    /// The join of every node in ascending node-id order, one work unit for
+    /// each node met.
+    fn run(&mut self) -> Result<(), Failure> {
+        let package = self.package;
+        for id in package.node_ids_ascending() {
+            let Some(position) = package.node_position(id) else {
+                continue;
+            };
+            self.charge(position, &|| Self::node_at(position))?;
+            let Some(CheckedNodeKind::Probabilistic(form)) = package.kinds.get(position) else {
+                continue;
+            };
+            let Some(body) = package.term_at(position) else {
+                continue;
+            };
+            let Some(declaring) = self.source_type(bound(body, 0).and_then(target)) else {
+                continue;
+            };
+            match form {
+                ProbabilisticForm::Workload => self.workload(position, body, declaring)?,
+                ProbabilisticForm::DelayDistribution => {
+                    self.entry(position, declaring, bound(body, 1).and_then(text))?;
+                }
+                ProbabilisticForm::RandomParameter => {
+                    let parameters =
+                        self.entry(position, declaring, bound(body, 1).and_then(text))?;
+                    self.random_parameter(position, body, parameters)?;
+                }
+                ProbabilisticForm::Reward => {
+                    let parameters =
+                        self.entry(position, declaring, bound(body, 1).and_then(text))?;
+                    self.reward(position, body, parameters)?;
+                }
+            }
+        }
+        Ok(())
+    }
 }
 
 impl SelectedSourceObjects<'_> {
     /// Join every operation reference of a `probabilistic` node whose
     /// `declaring` node (a workload's `model`) is source-declared through the
     /// identity row of that node, in ascending node-id order (FR-369). Each
-    /// operation reference joined, operation entry and supertype edge read,
-    /// support value checked and reward function parameter compared is one
-    /// work unit of `budget`, charged ahead of the work.
+    /// node met, operation reference joined, operation entry and supertype
+    /// edge read, support value checked and reward function parameter
+    /// compared is one work unit of `budget`, charged ahead of the work, with
+    /// one more for each byte of caller text it compares; the lists the join
+    /// keeps and the pointer of a refusal are charged to its logical storage
+    /// and the exact numbers it parses to its read storage, as the strict
+    /// read charges them.
     ///
     /// `Ok(())` means the typed reads `delay_distributions`,
     /// `random_parameters`, `rewards` and `workloads` of the package are
-    /// joined.
+    /// joined, and the work and storage the join charged are the budget's
+    /// last success delta.
     ///
     /// # Errors
     ///
@@ -472,49 +611,18 @@ impl SelectedSourceObjects<'_> {
         budget: &mut NativeJoinBudget,
     ) -> Result<(), SelectedSourceObjectError> {
         budget.resume();
-        let package = self.package();
-        let nodes = &package.resolved_graph().nodes;
-        let mut order: Vec<usize> = (0..nodes.len())
-            .filter(|&position| {
-                matches!(
-                    package.kinds.get(position),
-                    Some(CheckedNodeKind::Probabilistic(_))
-                )
-            })
-            .collect();
-        order.sort_by(|&left, &right| nodes[left].node_id.cmp(&nodes[right].node_id));
+        let before = budget.consumed();
         let mut join = Join {
-            package,
+            package: self.package(),
             selected: self,
-            budget,
+            meter: WorkMeter::over(budget),
         };
-        for position in order {
-            let Some(CheckedNodeKind::Probabilistic(form)) = package.kinds.get(position) else {
-                continue;
-            };
-            let Some(body) = package.term_at(position) else {
-                continue;
-            };
-            let Some(declaring) = join.source_type(bound(body, 0).and_then(target)) else {
-                continue;
-            };
-            match form {
-                ProbabilisticForm::Workload => join.workload(position, body, declaring)?,
-                ProbabilisticForm::DelayDistribution => {
-                    join.entry(position, declaring, bound(body, 1).and_then(text))?;
-                }
-                ProbabilisticForm::RandomParameter => {
-                    let parameters =
-                        join.entry(position, declaring, bound(body, 1).and_then(text))?;
-                    join.random_parameter(position, body, parameters)?;
-                }
-                ProbabilisticForm::Reward => {
-                    let parameters =
-                        join.entry(position, declaring, bound(body, 1).and_then(text))?;
-                    join.reward(position, body, parameters)?;
-                }
+        let joined = join.run();
+        if joined.is_ok() {
+            if let Some(budget) = join.meter.budget_mut() {
+                budget.finish(before);
             }
         }
-        Ok(())
+        joined
     }
 }
