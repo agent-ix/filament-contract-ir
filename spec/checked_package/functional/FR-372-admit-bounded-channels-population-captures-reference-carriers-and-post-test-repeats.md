@@ -87,7 +87,14 @@ through its carrier; a `bounded_quantity`, the bare `unit` node (`Quantity<m>`),
 `compound_unit`, `bytes`, `json_object`, an enum and a reference are stable
 leaves; a model-owned `value_type`,
 `tuple_value_type`, `record_value_type` or `variant_type` is walked through
-its members. IEEE `numeric_equal` is not reflexive on NaN and equates `+0`
+its members, which for a record, tuple or variant are the fields (own and
+inherited), positions and payloads its selected model document declares, each
+declaration expanded once. A member whose `typeRef` is a native `Decimal`, `Rational`
+or `Text`, or a model value type over any scalar but `float32` and `float64`,
+is a stable leaf though FR-322 step 4 gives it no member type. A map is walked
+through its key and value types, and a model value type whose `scalar` is
+`float32` or `float64` holds an IEEE leaf. A `Clock` member is not
+equality-stable. Each such leaf refuses the key like any float leaf. IEEE `numeric_equal` is not reflexive on NaN and equates `+0`
 and `-0`, so a key type with a float leaf, a `float_rounding` bounded domain
 included, refuses `ill_typed`/`operator-ineligible` at the key, retaining the
 operator `=` and the type. A type with an `event_type` leaf is not
@@ -187,5 +194,10 @@ reads only of the clause's owner model. The post-test
 the negative cases of AC-4 and AC-5 and the back-edge reads of AC-7 have no
 tests yet. The negative cases of AC-3 are tested for a `float32`/`float64`
 leaf under option, sequence, tuple, union and record, a `float_rounding`
-domain and an `event_type` leaf; a model-owned `record_value_type` with a
-float field has no test yet.
+domain and an `event_type` leaf; a model-owned `record_value_type`, tuple
+and variant are tested for a document-declared `float32` or `float64` leaf
+in a record field, an inherited field, a nested record, a sequence or an
+option, a tuple position, a variant payload, a map key or value, an alias and
+a float-scalar value type, for a `Clock` member, and are admitted over boolean,
+uuid, decimal and integer value types, native decimal, rational and text
+members and a map of integers.
