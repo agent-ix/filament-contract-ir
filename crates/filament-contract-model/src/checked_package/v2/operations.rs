@@ -3994,6 +3994,9 @@ fn tuple_value_defect(
             let Some(expected) = typed_aggregate(type_term) else {
                 return Ok(None);
             };
+            if values.len() != expected.len() {
+                return Ok(mismatch());
+            }
             for (value, expected) in values.iter().zip(expected) {
                 let Some(expected) = typed_reference(expected) else {
                     return Ok(None);
@@ -4022,6 +4025,7 @@ fn tuple_value_defect(
                 return Ok(None);
             };
             let mut value = values.iter();
+            let mut data_positions = 0;
             for position_ref in positions {
                 let Some(member_type) = owner.package.element_type(position_ref) else {
                     return Ok(None);
@@ -4029,8 +4033,9 @@ fn tuple_value_defect(
                 if member_type == MemberType::Clock {
                     continue;
                 }
+                data_positions += 1;
                 let Some(value_term) = value.next() else {
-                    break;
+                    return Ok(mismatch());
                 };
                 if matches!(value_term, CheckedTerm::Reference { target } if !index.contains_key(target))
                 {
@@ -4076,6 +4081,9 @@ fn tuple_value_defect(
                 if !conforms {
                     return Ok(mismatch());
                 }
+            }
+            if data_positions != values.len() || value.next().is_some() {
+                return Ok(mismatch());
             }
         }
         _ => return Ok(None),

@@ -1388,6 +1388,58 @@ fn tc_448_tuple_value_positions_match_declared_types_exactly() {
         .mismatch("bare narrow integer at the Integer position");
 
     let mut scene = ledger_tuple_scene();
+    let tuple = scene.ty(&Ty::Tuple(vec![Ty::Integer, Ty::Integer]));
+    let integer = scene.ty(&Ty::Integer);
+    let key = scene.tuple_value(&tuple, vec![literal(&integer, "integer", "1")]);
+    scene
+        .finish()
+        .at(&key)
+        .mismatch("short structural tuple value");
+
+    let mut scene = ledger_tuple_scene();
+    let tuple = scene.ty(&Ty::Tuple(vec![Ty::Integer, Ty::Integer]));
+    let integer = scene.ty(&Ty::Integer);
+    let key = scene.tuple_value(
+        &tuple,
+        vec![
+            literal(&integer, "integer", "1"),
+            literal(&integer, "integer", "2"),
+            literal(&integer, "integer", "3"),
+        ],
+    );
+    scene
+        .finish()
+        .at(&key)
+        .mismatch("overlong structural tuple value");
+
+    let mut scene = ledger_tuple_scene();
+    let tuple = scene.ty(&Ty::ModelTuple("Pair"));
+    let taxed = scene.param("taxed", &Ty::Rec("TaxedMoney"));
+    let key = scene.tuple_value(&tuple, vec![reference(&taxed)]);
+    scene
+        .finish()
+        .at(&key)
+        .mismatch("short selected model tuple value");
+
+    let mut scene = ledger_tuple_scene();
+    let tuple = scene.ty(&Ty::ModelTuple("Pair"));
+    let taxed = scene.param("taxed", &Ty::Rec("TaxedMoney"));
+    let integer = scene.ty(&Ty::Integer);
+    let key = scene.tuple_value(
+        &tuple,
+        vec![
+            reference(&taxed),
+            literal(&integer, "integer", "1"),
+            literal(&integer, "integer", "2"),
+            literal(&integer, "integer", "3"),
+        ],
+    );
+    scene
+        .finish()
+        .at(&key)
+        .mismatch("overlong selected model tuple value");
+
+    let mut scene = ledger_tuple_scene();
     let tuple = scene.ty(&Ty::ModelTuple("Pair"));
     let voucher = scene.param("voucher", &Ty::Rec("Voucher"));
     let integer = scene.ty(&Ty::Integer);
@@ -1408,6 +1460,29 @@ fn tc_448_tuple_value_positions_match_declared_types_exactly() {
         .finish()
         .at(&key)
         .admits("clock position is excluded from data terms");
+
+    let mut scene = ledger_tuple_scene();
+    let tuple = scene.ty(&Ty::ModelTuple("Clocked"));
+    let key = scene.tuple_value(&tuple, vec![]);
+    scene
+        .finish()
+        .at(&key)
+        .mismatch("short clocked tuple data positions");
+
+    let mut scene = ledger_tuple_scene();
+    let tuple = scene.ty(&Ty::ModelTuple("Clocked"));
+    let integer = scene.ty(&Ty::Integer);
+    let key = scene.tuple_value(
+        &tuple,
+        vec![
+            literal(&integer, "integer", "1"),
+            literal(&integer, "integer", "2"),
+        ],
+    );
+    scene
+        .finish()
+        .at(&key)
+        .mismatch("extra clocked tuple data term");
 
     let mut scene = ledger_tuple_scene();
     let tuple = scene.ty(&Ty::ModelTuple("Clocked"));
