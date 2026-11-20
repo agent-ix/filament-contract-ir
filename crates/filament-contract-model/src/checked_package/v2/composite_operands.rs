@@ -1631,7 +1631,7 @@ pub(in crate::checked_package::v2) mod tests {
             };
             let operation_id = expression_id(form);
             let application_dependencies =
-                fr829_dependencies(&[boolean_id.clone(), left_id.clone(), right_id.clone()]);
+                fr829_dependencies(&[left_id.clone(), right_id.clone()]);
             fr829_append_node(
                 &mut wire,
                 json!({
@@ -1712,7 +1712,7 @@ pub(in crate::checked_package::v2) mod tests {
             .expect("clock-reference equality application");
         application["body"]["arguments"][0] = fr829_reference_term(&id('5'));
         application["dependencies"] =
-            fr829_dependencies(&[id('1'), id('5'), fr829_node_id("right")]);
+            fr829_dependencies(&[id('5'), fr829_node_id("right")]);
         let bytes = crate::checked_package::v2::test_support::canonical(&wrong_operand);
         let refused = CheckedPackageV2::read(
             &bytes,
