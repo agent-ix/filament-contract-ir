@@ -1685,6 +1685,10 @@ fn typed_literal<'a>(
     }
 }
 
+/// The name the checker reserves for the binder of the `let` that lowering
+/// introduces for an IEEE ordering's operands; no source identifier spells it.
+const RESERVED_IEEE_OPERAND: &str = "#ieee_operand";
+
 pub(super) fn typed_parameter_binding<'a>(
     body: &'a super::CheckedTerm,
     kind_of: &impl Fn(&CheckedNodeId) -> Option<CheckedNodeKind>,
@@ -1706,7 +1710,7 @@ fn typed_parameter_binding_with<'a>(
             typed_literal(value, LiteralKind::Text, ScalarTypeForm::Text, type_matches)
         })
         .and_then(super::CheckedJson::as_str)
-        .filter(|name| is_identifier(name))?;
+        .filter(|name| is_identifier(name) || *name == RESERVED_IEEE_OPERAND)?;
     let level = typed_binding(level, "level")
         .and_then(|value| {
             typed_literal(

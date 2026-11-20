@@ -296,3 +296,35 @@ fn public_probabilistic_claim_row_has_exact_typed_canonical_bytes() {
     });
     assert_eq!(bytes, canonical(&expected));
 }
+
+/// Trace: FR-019-AC-29, FR-051-AC-5, TC-451.
+#[trace("FR-019-AC-29", "FR-051-AC-5", "TC-451")]
+#[test]
+fn non_empty_typed_body_locations_round_trip_through_the_writer() {
+    let package = v2_all_families();
+    let node = package["semantic_graph"]["nodes"][0]["node_id"].clone();
+    let row = |ordinal: u64, path: Value| {
+        json!({
+            "application": node,
+            "occurrence": {"role": "expression", "ordinal": 0},
+            "term_ordinal": ordinal,
+            "location": {
+                "origin": {"kind": "function_body", "function": node, "name": "f", "index": 0},
+                "path": path
+            }
+        })
+    };
+    let rows = json!([row(0, json!([])), row(1, json!([0, 1]))]);
+    let sidecar: CheckedTermDataV2 = serde_json::from_value(json!({
+        "equality_decisions": [], "protocol_locations": [], "dispatch_tables": [],
+        "body_locations": rows, "probabilistic_claims": []
+    }))
+    .expect("closed typed sidecar");
+    assert_eq!(sidecar.body_locations.len(), 2);
+    let bytes = encode(&package, Some(&sidecar), Limits::new(u64::MAX)).expect("typed rows encode");
+    let written: Value = serde_json::from_slice(&bytes).expect("canonical JSON");
+    assert_eq!(written["checked_term_data"]["body_locations"], rows);
+    let read_back: CheckedTermDataV2 = serde_json::from_value(written["checked_term_data"].clone())
+        .expect("the written sidecar decodes");
+    assert_eq!(read_back, sidecar);
+}

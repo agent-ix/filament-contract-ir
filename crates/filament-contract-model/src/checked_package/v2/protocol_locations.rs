@@ -86,18 +86,7 @@ impl LocationRow for CheckedBodySemanticLocation {
         index: usize,
         meter: &mut WorkMeter,
     ) -> Result<(), ValidationFailure> {
-        let CheckedBodyLocationOrigin::FunctionBody {
-            index: function_index,
-            ..
-        } = &self.location.origin;
-        if *function_index > MAX_SAFE {
-            return Err(malformed(
-                meter,
-                index,
-                at(array, index).key("location").key("origin").key("index"),
-            ));
-        }
-        Ok(())
+        intake_body_origin(&self.location.origin, array, index, meter)
     }
 }
 
@@ -346,6 +335,36 @@ fn intake_protocol_origin(
                 return Err(malformed(meter, index, origin));
             }
         }
+    }
+    Ok(())
+}
+
+/// Check the body origin wire grammar: a non-empty name, charged by length, and
+/// a safe function index.
+#[ix_trace_rs::string_edge]
+fn intake_body_origin(
+    origin_value: &CheckedBodyLocationOrigin,
+    array: &'static str,
+    index: usize,
+    meter: &mut WorkMeter,
+) -> Result<(), ValidationFailure> {
+    let CheckedBodyLocationOrigin::FunctionBody {
+        name,
+        index: function_index,
+        ..
+    } = origin_value;
+    let origin = at(array, index).key("location").key("origin");
+    work(
+        meter,
+        index,
+        origin.key("name"),
+        u64::try_from(name.len()).unwrap_or(u64::MAX),
+    )?;
+    if name.is_empty() {
+        return Err(malformed(meter, index, origin.key("name")));
+    }
+    if *function_index > MAX_SAFE {
+        return Err(malformed(meter, index, origin.key("index")));
     }
     Ok(())
 }

@@ -2132,3 +2132,92 @@ fn body_location_rows_are_read_and_refused_at_their_own_pointers() {
         expected("/checked_term_data/body_locations".to_owned())
     );
 }
+
+/// The read of `fixture` under a work limit of `work`.
+fn read_fold_with_work(fixture: &Value, work: u64) -> CheckedPackageV2ReadResult {
+    let mut evidence = filament_contract_model::CheckedPackageEvidence::new();
+    evidence.support_feature("filament.value.complete/v1");
+    let mut limits = CheckedPackageReadLimits::bounded();
+    limits.work = work;
+    filament_contract_model::CheckedPackageV2::read(&canonical(fixture), limits, &evidence)
+}
+
+/// The least work limit under which `fixture` is admitted.
+fn least_admitting_work(fixture: &Value) -> u64 {
+    let (mut low, mut high) = (0_u64, CheckedPackageReadLimits::bounded().work);
+    while low < high {
+        let middle = low + (high - low) / 2;
+        if matches!(
+            read_fold_with_work(fixture, middle),
+            CheckedPackageV2ReadResult::Admitted(_)
+        ) {
+            high = middle;
+        } else {
+            low = middle + 1;
+        }
+    }
+    low
+}
+
+/// FR-322 `body_locations` origin grammar: the schema's `BodyLocationOrigin.name`
+/// is non-empty, so an empty name is `malformed_wire` at the origin's `name`,
+/// whichever row carries it first.
+#[trace("TC-491", "FR-038-AC-581")]
+#[test]
+fn an_empty_body_location_origin_name_is_malformed_wire() {
+    let mut fixture = fold_with_body_rows();
+    let rows = fixture["checked_term_data"]["body_locations"]
+        .as_array_mut()
+        .expect("rows");
+    assert!(!rows.is_empty(), "the fold's bodies hold terms");
+    rows[0]["location"]["origin"]["name"] = json!("");
+    assert_eq!(
+        body_location_refusal(&fixture),
+        (
+            CheckedPackageRefusalCode::MalformedWire,
+            Some(CheckedPackageRefusalCause::InvalidValue),
+            "/checked_term_data/body_locations/0/location/origin/name".to_owned()
+        )
+    );
+}
+
+/// The origin `name` is charged to the work budget by its length, at the wire
+/// check and at each comparison with the function's held name: a name longer
+/// by `extra` bytes raises the least admitting limit by at least `extra`, and
+/// one unit below that limit is incomplete.
+#[trace("TC-491", "FR-038-AC-581")]
+#[test]
+fn a_body_location_origin_name_is_charged_by_its_length() {
+    let short = fold_with_body_rows();
+    let mut long = short.clone();
+    let extra = 4096_usize;
+    for row in long["checked_term_data"]["body_locations"]
+        .as_array_mut()
+        .expect("rows")
+    {
+        let name = row["location"]["origin"]["name"]
+            .as_str()
+            .expect("name")
+            .to_owned();
+        row["location"]["origin"]["name"] = json!(format!("{name}{}", "n".repeat(extra)));
+    }
+    let base = least_admitting_work(&short);
+    let needed = least_admitting_work(&long);
+    assert!(
+        needed >= base + u64::try_from(extra).expect("extra"),
+        "the {extra}-byte longer name costs {} work units",
+        needed - base
+    );
+    assert!(matches!(
+        read_fold_with_work(&long, needed),
+        CheckedPackageV2ReadResult::Admitted(_)
+    ));
+    let CheckedPackageV2ReadResult::Incomplete(stopped) = read_fold_with_work(&long, needed - 1)
+    else {
+        panic!("one unit below the requirement is incomplete");
+    };
+    assert_eq!(stopped.limit_kind, CheckedPackageLimit::Work);
+    assert!(stopped.path.as_ref().is_some_and(|path| path
+        .as_str()
+        .starts_with("/checked_term_data/body_locations")));
+}

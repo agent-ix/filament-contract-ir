@@ -198,6 +198,11 @@ pub(super) fn validate<Body>(
         };
         match names.get(&function_position) {
             Some((held_name, held_index)) => {
+                stage_storage::work(
+                    meter,
+                    &data_site(row_index, origin.key("name")),
+                    u64::try_from(name.len()).unwrap_or(u64::MAX),
+                )?;
                 if *held_name != name.as_ref() {
                     return Err(invalid(meter, row_index, origin.key("name")));
                 }

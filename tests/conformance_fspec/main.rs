@@ -43,6 +43,7 @@ use fspec_inputs::{
     vector_selected_documents, DOMAIN_DOCUMENT, POSITIVE_ALL,
 };
 
+mod body_locations;
 mod carried_quantity;
 mod certificate_member;
 mod check_mode_vectors;

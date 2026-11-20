@@ -2583,11 +2583,29 @@ pub fn settle(package: &mut Value) {
     refresh_identity(package);
 }
 
+thread_local! {
+    /// The row sets `rebuild_body_locations` wrote on this thread, so a later
+    /// rebuild tells them from a set a test wrote itself.
+    static BUILT_ROWS: std::cell::RefCell<std::collections::HashSet<String>> =
+        std::cell::RefCell::new(std::collections::HashSet::new());
+}
+
 /// Gives every function body of `package` the `body_locations` rows its
 /// wire walk requires (FSpec FR-322): one row per term visit, at the node's
-/// first `expression` occurrence, with the empty path. Rows already
-/// in `package` are replaced.
+/// first `expression` occurrence, with the empty path. Rows this helper wrote
+/// earlier are replaced; a row set a test wrote itself is kept.
 pub fn rebuild_body_locations(package: &mut Value) {
+    let explicit = package["checked_term_data"]["body_locations"]
+        .as_array()
+        .is_some_and(|rows| {
+            !rows.is_empty()
+                && !BUILT_ROWS.with_borrow(|built| {
+                    built.contains(&package["checked_term_data"]["body_locations"].to_string())
+                })
+        });
+    if explicit {
+        return;
+    }
     // Rows name nodes in resolved index form, whatever form the nodes are in.
     let mut resolved = package.clone();
     resolve_operands(&mut resolved);
@@ -2710,7 +2728,9 @@ pub fn rebuild_body_locations(package: &mut Value) {
             "probabilistic_claims": [],
         });
     }
-    package["checked_term_data"]["body_locations"] = Value::Array(rows);
+    let rows = Value::Array(rows);
+    BUILT_ROWS.with_borrow_mut(|built| built.insert(rows.to_string()));
+    package["checked_term_data"]["body_locations"] = rows;
 }
 
 /// Keep synthetic clock and declared-name rows paired with their occurrences
