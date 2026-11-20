@@ -65,3 +65,15 @@ Round 2, at head 63e40db63. Focused run: 86 passed, 0 failed.
 | FND | outcome | reason |
 | --- | --- | --- |
 | FND-004 | fixed | FR-369 now reads "The join charges no read storage, which only the strict read of FR-038 uses". Exact parses are FR-358 logical storage units (one for the number and one per limb), which agrees with FR-358:141-147. The tests assert `read_storage_consumed() == 0` and `first_unpaid_read_storage().is_none()`, and they run with `NativeJoinBudget::new(w, s)` (read-storage limit 0) |
+
+## New findings (disposition pass 3)
+
+| ID | Severity | Summary | Refs |
+| --- | --- | --- | --- |
+| FND-006 | low | Both TC-484 matrix rows are still 🚧 Partial, but neither names anything open. The FR-369-AC-25/26 row now describes the enumeration check as implemented, and the TC-484 row reads "🚧 Partial (IR-1576, QSL-2645, QSL-2655): every step is implemented". Either set them ✅ Implemented, or name what remains | spec/checked_package/matrix/tests.md:20,90 |
+
+Round 3, at head bb4be1211 (diff e4f345785..HEAD: ae47b5702, 87d55115e, and main merges that touch only other lanes and Cargo pins). Focused run: 88 passed, 0 failed.
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-005 | fixed | FR-369-AC-26 now reads "... the failure pointer, which is paid before the join starts, stops it with `Incomplete` and no locus", which agrees with Behavior and TC-484 step 6 |
