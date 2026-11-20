@@ -2683,6 +2683,7 @@ pub fn rebuild_body_locations(package: &mut Value) {
                 let occurrence = held["occurrences"]
                     .as_array()
                     .and_then(|all| all.iter().find(|each| each["role"] == "expression"))
+                    .or_else(|| held["occurrences"].as_array().and_then(|all| all.first()))
                     .cloned()
                     .unwrap_or_else(|| json!({"role": "expression", "ordinal": 0}));
                 let row = json!({

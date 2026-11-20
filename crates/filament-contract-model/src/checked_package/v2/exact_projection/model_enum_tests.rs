@@ -65,7 +65,7 @@ fn fixture() -> (
         .unwrap();
     evidence.support_feature("filament.value.complete/v1");
     let package = match CheckedPackageV2::read(
-        CHECKED,
+        &crate::checked_package::v2::monitor_plan::genuine_bytes_under_current_rules(CHECKED),
         CheckedPackageReadLimits {
             bytes: 67_108_864,
             nodes: 1_000_000,

@@ -1809,27 +1809,56 @@ fn add_second_concrete_root(package: &mut Value, evidence: &mut CheckedPackageEv
 
 fn add_second_concrete_object(package: &mut Value) -> Value {
     let selected = v2_all_families();
-    let object = selected["semantic_graph"]["nodes"]
+    let all = selected["semantic_graph"]["nodes"]
         .as_array()
-        .expect("nodes")
+        .expect("nodes");
+    let object = all
         .iter()
         .find(|node| node["semantic_form"] == "object_type")
         .expect("second model object")
         .clone();
     let source = package["lock"]["sources"][0].clone();
-    package["source_map"]
-        .as_array_mut()
-        .expect("source map")
-        .push(json!({
-            "node_id":object["node_id"],
-            "role":object["occurrences"][0]["role"],
-            "ordinal":object["occurrences"][0]["ordinal"],
-            "regions":[{"source":source,"start":10,"end":11}]
-        }));
-    package["semantic_graph"]["nodes"]
-        .as_array_mut()
-        .expect("nodes")
-        .push(object.clone());
+    // The object and every node its `dependencies` reach that the package
+    // lacks: join stage 4 refuses an edge that names no node.
+    let mut added = vec![object.clone()];
+    let mut next = 0;
+    while next < added.len() {
+        for dependency in added[next]["dependencies"]
+            .as_array()
+            .expect("edges")
+            .clone()
+        {
+            let present = package["semantic_graph"]["nodes"]
+                .as_array()
+                .expect("nodes")
+                .iter()
+                .chain(added.iter())
+                .any(|node| node["node_id"] == dependency);
+            if !present {
+                let node = all
+                    .iter()
+                    .find(|node| node["node_id"] == dependency)
+                    .expect("dependency of the second model object");
+                added.push(node.clone());
+            }
+        }
+        next += 1;
+    }
+    for node in added {
+        package["source_map"]
+            .as_array_mut()
+            .expect("source map")
+            .push(json!({
+                "node_id":node["node_id"],
+                "role":node["occurrences"][0]["role"],
+                "ordinal":node["occurrences"][0]["ordinal"],
+                "regions":[{"source":source,"start":10,"end":11}]
+            }));
+        package["semantic_graph"]["nodes"]
+            .as_array_mut()
+            .expect("nodes")
+            .push(node);
+    }
     object["node_id"].clone()
 }
 

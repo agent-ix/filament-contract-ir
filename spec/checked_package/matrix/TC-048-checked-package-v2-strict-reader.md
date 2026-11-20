@@ -3042,7 +3042,17 @@ vectors `TW-29` to `TW-34` of `model-tuple-union-vectors.json` are replayed by
 entry, missing root entry, precedence and relation-node cases are in
 `model_declaration_occurrence_stage_five_orders_and_locates_each_defect`; the
 two-model root table and the exact work and storage charges are unit tests in
-`v2/model_occurrence.rs`. The stage 4 order is a known deviation (QSL-2644).
+`v2/model_occurrence.rs`. The stage 4 edge existence pass (QSL-2644, `v2/edge_existence.rs`)
+runs before it: `a_dangling_edge_is_refused_before_a_model_declaration_occurrence_defect`
+replays a dangling `semantic_type` beside a stage 5 defect. Stage 4 is also the
+stage that refuses a `dependencies` entry that names no node and that a body
+reference lists: the stage 1 comparison does not resolve targets, so with the
+dependency loop disabled the listed absent population, record and set type
+tests (`reaches_population`, `recursive_leaves`) reach the operation stage and
+fail. Its charge (one plus the entries read), the `semantic_type`-before-
+`dependencies` and node order, the tag set and the nominal-scalar exemption are
+unit tests in `v2/edge_existence.rs`. The exemption is per FSpec FR-322 stage 4
+(FSpec PR #772, FR-038-AC-582).
 
 ## Observe-only boundary (FR-038-AC-564 through FR-038-AC-570)
 

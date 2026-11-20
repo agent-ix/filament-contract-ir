@@ -689,6 +689,87 @@ fn model_declaration_occurrence_stage_five_orders_and_locates_each_defect() {
     }
 }
 
+/// Join stage 4 before stage 5 (FSpec FR-322-AC-275): a package with a
+/// dangling `semantic_type` entry on a `value` node and a
+/// stage 5 defect (a model declaration node with no `source_map` entry) reports
+/// the stage 4 edge, `invalid_semantic_graph` with no cause at the edge member;
+/// with the edge restored it reports stage 5.
+#[trace("TC-048", "FR-038-AC-582")]
+#[test]
+fn a_dangling_edge_is_refused_before_a_model_declaration_occurrence_defect() {
+    let fixtures = fixtures_dir();
+    let proposal = proposal_dir_of(&fixtures);
+    let selected = selected_document(&proposal);
+    let base = read_json(&fixtures.join("positive-model-tuple-union.json"))
+        .expect("published positive package");
+    let mut evidence = CheckedPackageEvidence::new();
+    evidence
+        .insert_domain_package_document(
+            selected["package"]["identity"]
+                .as_str()
+                .expect("document identity"),
+            super::fixture_support::canonical(&selected),
+        )
+        .expect("selected document evidence");
+    evidence.support_feature("filament.value.complete/v1");
+    let absent = json!({
+        "package": "acme/shapes", "ordinal": 0,
+        "path": ["model", "tuple_value_type", "ix://acme/shapes/Absent"],
+    });
+    let stage_five = json!({"op": "remove", "path": "/source_map/3"});
+    let dangling_type = json!({
+        "op": "replace", "path": "/semantic_graph/nodes/14/semantic_type", "value": absent,
+    });
+    let cases = [
+        (
+            "a dangling semantic_type before a missing entry",
+            vec![dangling_type.clone(), stage_five.clone()],
+            Code::InvalidSemanticGraph,
+            None,
+            "/semantic_graph/nodes/14/semantic_type",
+        ),
+        (
+            "the missing entry alone is stage 5",
+            vec![stage_five],
+            Code::InvalidPackage,
+            Some(Cause::InvalidValue),
+            "/source_map",
+        ),
+        (
+            "the dangling semantic_type alone",
+            vec![dangling_type],
+            Code::InvalidSemanticGraph,
+            None,
+            "/semantic_graph/nodes/14/semantic_type",
+        ),
+    ];
+    for (name, patches, code, cause, locus) in cases {
+        let mut package = base.clone();
+        for patch in &patches {
+            apply_wire_patch(&mut package, patch);
+        }
+        let result = crate::read_and_account(
+            &super::fixture_support::canonical(&package),
+            CheckedPackageReadLimits::bounded(),
+            &evidence,
+        );
+        let CheckedPackageV2ReadResult::Refused(refusal) = result else {
+            panic!("{name}: expected a refusal, got {result:?}");
+        };
+        assert_eq!(refusal.code, code, "{name}: {refusal:?}");
+        assert_eq!(refusal.cause, cause, "{name}");
+        assert_eq!(
+            refusal.loci[0]
+                .path
+                .as_ref()
+                .map(ToString::to_string)
+                .as_deref(),
+            Some(locus),
+            "{name}: {refusal:?}"
+        );
+    }
+}
+
 /// The `relation` half of a model declaration node: the relationship
 /// `Order-order-Order` of `positive-all-families.json` (entry `/source_map/6`)
 /// is checked like a `model` node.

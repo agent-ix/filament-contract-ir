@@ -436,6 +436,11 @@ fn unavailable_reason(entry: &Value) -> Option<&'static str> {
             "requires a selected timed-model root and a resolved clock_place whose terminal slot bounds are joined to a model declaration",
         );
     }
+    if entry["identity"] == "filament.op.clock_reference.ref" {
+        return Some(
+            "requires a selected timed-model root and a resolved clock_place, joined to a reference owner whose type conforms to the place model; the place_identity_terms and place_has_id productions are read by the operations tests of FR-829",
+        );
+    }
     let operator = entry["operator"].as_str()?;
     let laws = entry["laws"].as_array()?;
     let operands = entry["operands"].as_array()?;
@@ -545,6 +550,20 @@ pub(crate) fn admitted_fixture(identity: &str) -> Option<Value> {
             let target = add_family_reference_target(&mut f.package);
             let reference_type = composite(&mut f.package, "reference", &target);
             let operand = parameter(&mut f, &reference_type, "same_reference");
+            application_with_member(
+                &mut f,
+                "binary",
+                "binary",
+                identity,
+                Value::Null,
+                Value::Null,
+                &b,
+                vec![reference(&operand), reference(&operand)],
+            );
+        }
+        "filament.op.clock_reference.eq" | "filament.op.clock_reference.ne" => {
+            let clock_reference = scalar(&mut f, "clock_reference");
+            let operand = parameter(&mut f, &clock_reference, "same_clock_reference");
             application_with_member(
                 &mut f,
                 "binary",
@@ -1331,6 +1350,13 @@ fn tc_048_every_catalogue_entry_retains_its_constructible_admission() {
         };
         let key = if identity == "filament.op.numeric.narrow" {
             family_key("a3a3")
+        } else if matches!(
+            identity,
+            "filament.op.collection.sum.quantity" | "filament.op.collection.sum.carried_quantity"
+        ) {
+            // The control keys its own scalars; a dangling `scalar_type/integer`
+            // would be refused by join stage 4 before the result check.
+            "operand/scalar/integer".to_owned()
         } else if identity == "filament.op.reference.upcast" {
             let flow = family_key("1616");
             let selected = v2_all_families();

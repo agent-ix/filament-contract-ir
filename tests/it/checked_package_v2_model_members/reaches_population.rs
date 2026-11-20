@@ -255,6 +255,32 @@ impl Scenario {
         admitted(&self.package, &self.evidence)
     }
 
+    /// The handle of the first node of the package: a node that exists.
+    fn first_node_handle(&mut self) -> String {
+        handle(&self.nodes()[0]["node_id"])
+    }
+
+    /// The pointer of the first `dependencies` entry that names no node: the
+    /// edge join stage 4 refuses.
+    fn dangling_edge(&self) -> String {
+        let nodes = self.package["semantic_graph"]["nodes"]
+            .as_array()
+            .expect("nodes");
+        for (position, node) in nodes.iter().enumerate() {
+            for (edge, dependency) in node["dependencies"]
+                .as_array()
+                .expect("edges")
+                .iter()
+                .enumerate()
+            {
+                if !nodes.iter().any(|other| other["node_id"] == *dependency) {
+                    return format!("/semantic_graph/nodes/{position}/dependencies/{edge}");
+                }
+            }
+        }
+        panic!("no dangling dependency");
+    }
+
     fn assert_refused(
         &self,
         expected: (
@@ -473,13 +499,24 @@ fn tc_048_a_population_that_is_not_a_listed_node_id_is_refused_ill_typed() {
         let mut scenario = Scenario::standard();
         scenario.link(Some(value), listed);
         let refusal = refused(&scenario.package, &scenario.evidence);
-        assert_eq!((refusal.code, refusal.cause), ILL_TYPED, "{label}");
+        // A listed node id that names no node is a dangling edge: join stage
+        // 4 (edge existence) refuses it before the population check.
+        let expected = if listed.is_some() {
+            BAD_GRAPH
+        } else {
+            ILL_TYPED
+        };
+        assert_eq!((refusal.code, refusal.cause), expected, "{label}");
         assert_ne!(
             refusal.code,
             CheckedPackageRefusalCode::MissingDeclaration,
             "{label}"
         );
-        scenario.assert_refused(ILL_TYPED, POPULATION_AT);
+        if listed.is_none() {
+            scenario.assert_refused(ILL_TYPED, POPULATION_AT);
+        } else {
+            scenario.assert_refused(BAD_GRAPH, &scenario.dangling_edge());
+        }
     }
 }
 
@@ -639,8 +676,19 @@ fn tc_048_a_navigate_application_never_carries_a_population() {
         let key = handle(&population);
         let listed = navigating(population.clone(), Some(&key), extra.clone());
         let refusal = refused(&listed.package, &listed.evidence);
-        assert_eq!((refusal.code, refusal.cause), ILL_TYPED, "{label}");
-        listed.assert_refused(ILL_TYPED, POPULATION_AT);
+        // An absent population is a dangling listed edge: join stage 4 (edge
+        // existence) refuses it before the population check.
+        let expected = if label == "absent node" {
+            BAD_GRAPH
+        } else {
+            ILL_TYPED
+        };
+        assert_eq!((refusal.code, refusal.cause), expected, "{label}");
+        if label == "absent node" {
+            listed.assert_refused(BAD_GRAPH, &listed.dangling_edge());
+        } else {
+            listed.assert_refused(ILL_TYPED, POPULATION_AT);
+        }
 
         let unlisted = navigating(population, None, extra);
         let refusal = refused(&unlisted.package, &unlisted.evidence);
@@ -1003,12 +1051,15 @@ fn tc_048_population_maximum_is_canonical_or_explicitly_unbounded() {
 #[trace("TC-048", "FR-038-AC-280")]
 #[test]
 fn tc_048_the_population_check_follows_every_earlier_check() {
+    // The population is a listed node that exists: an absent one is refused
+    // by join stage 4 (edge existence) before any member check can run.
     let absent = "f".repeat(64);
     let operand_one = "/semantic_graph/nodes/6/body/arguments/1";
     // An earlier defect in `check_relationship_member`: operand 1 does not
     // conform to the receiver end.
     let mut earlier = Scenario::over(authored_relationship(), ORDER, CUSTOMER);
-    earlier.link(Some(fixture_id(&absent)), Some(&absent));
+    let present = earlier.first_node_handle();
+    earlier.link(Some(fixture_id(&present)), Some(&present));
     earlier.assert_refused(ILL_TYPED, operand_one);
 
     // The `result_type` check is the member check just before the population
@@ -1016,7 +1067,7 @@ fn tc_048_the_population_check_follows_every_earlier_check() {
     let mut result = Scenario::standard();
     result.nodes()[CALL]["body"]["result_type"] = fixture_id(&INTEGER);
     result.nodes()[CALL]["semantic_type"] = fixture_id(&INTEGER);
-    result.link(Some(fixture_id(&absent)), Some(&absent));
+    result.link(Some(fixture_id(&present)), Some(&present));
     result.assert_refused(ILL_TYPED, "/semantic_graph/nodes/6/body/result_type");
 
     // The mode and the leaf are refused by the identity stage whatever the
@@ -1040,12 +1091,12 @@ fn tc_048_the_population_check_follows_every_earlier_check() {
         ),
     ] {
         let expected = (CheckedPackageRefusalCode::InvalidPackage, Some(cause));
-        for population in [Some(fixture_id(&absent)), None] {
+        for population in [Some(fixture_id(&present)), None] {
             let mut scenario = Scenario::standard();
             scenario.nodes()[CALL]["body"]["operation"][field] = value.clone();
             scenario.link(
                 population.clone(),
-                population.is_some().then_some(absent.as_str()),
+                population.is_some().then_some(present.as_str()),
             );
             let refusal = refused(&scenario.package, &scenario.evidence);
             assert_eq!((refusal.code, refusal.cause), expected, "{label}");
