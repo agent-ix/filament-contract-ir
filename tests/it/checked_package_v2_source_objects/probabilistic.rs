@@ -357,12 +357,10 @@ fn edit(package: &mut Value, form: &str, change: impl FnOnce(&mut Value)) {
 }
 
 /// The AC-25 package with a reward listing `parameters` parameters and a
-/// workload of `rows` rows. The registry holds 520 parameters, so the 8-byte
-/// buffer the strict read keeps for the listed ones would exceed its 4096-byte
-/// unpaid allowance were it not charged; the workload's 16-byte `named` buffer
-/// is pinned by its charged request (`the_source_buffers_are_charged_...`),
-/// because a workload of over 256 rows leaves other, older stages' memory
-/// unpaid (about 800 bytes a row) and cannot sit in the registry.
+/// workload of `rows` rows. The registry holds 520 parameters and 257 rows, so
+/// the 8-byte buffer the strict read keeps for the listed parameters and the
+/// 16-byte `named` buffer of the workload would each exceed the 4096-byte
+/// unpaid allowance were they not charged.
 fn wide(parameters: usize, rows: usize) -> Value {
     let mut package = package();
     let names: Vec<String> = (0..parameters)
@@ -400,15 +398,16 @@ fn wide(parameters: usize, rows: usize) -> Value {
 
 /// The registry fixture: the admitted AC-25 package and its evidence.
 pub(crate) fn accounting_fixture() -> (Value, filament_contract_model::CheckedPackageEvidence) {
-    let mut package = wide(520, 1);
-    // The rational parses of a `discrete` delay and of a support are paid by
-    // their own stages, whose accounting this registry does not yet hold; the
-    // registered input holds the paths this ticket adds: the source operation
-    // reference, reward function, workload and dense-root scan.
-    nodes_mut(&mut package).retain(|node| {
-        !["delay_poke", "random_k"].contains(&node["node_id"]["path"][2].as_str().unwrap_or(""))
-    });
-    settle(&mut package);
+    accounting_fixture_of(257)
+}
+
+/// The registry fixture with a workload of `rows` rows. It keeps the
+/// package's `discrete` delay and random parameter, so the rational spellings
+/// of both are read too.
+pub(crate) fn accounting_fixture_of(
+    rows: usize,
+) -> (Value, filament_contract_model::CheckedPackageEvidence) {
+    let package = wide(520, rows);
     let package = indexed(&package);
     let evidence = evidence_of(&package);
     (package, evidence)
@@ -1052,19 +1051,25 @@ fn a_source_operation_reference_without_a_text_operation_refuses_at_the_operatio
 /// Every request the read makes at the graph stage, as `(form, amount)`, found
 /// by raising the read-storage limit to admit each in turn.
 fn graph_requests(package: &Value) -> Vec<(&'static str, u128)> {
+    let package = indexed(package);
+    graph_requests_of(&canonical(&package), &evidence_of(&package))
+}
+
+/// [`graph_requests`] over the bytes and evidence of a package.
+pub(crate) fn graph_requests_of(
+    bytes: &[u8],
+    evidence: &filament_contract_model::CheckedPackageEvidence,
+) -> Vec<(&'static str, u128)> {
     use filament_contract_model::{
         CheckedPackageV2BudgetedReadResult as Result, NativeJoinBudget, NativeJoinLocusSource,
         PackageReadStage,
     };
-    let package = indexed(package);
-    let bytes = canonical(&package);
-    let evidence = evidence_of(&package);
     let read = |limit: u64| {
         let mut budget = NativeJoinBudget::new(u64::MAX, 0).with_read_storage_limit(limit);
         let result = CheckedPackageV2::read_with_budget(
-            &bytes,
+            bytes,
             CheckedPackageReadLimits::bounded(),
-            &evidence,
+            evidence,
             &mut budget,
         );
         (result, budget)

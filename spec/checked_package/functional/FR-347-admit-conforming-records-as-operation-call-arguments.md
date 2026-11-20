@@ -36,8 +36,8 @@ comparison for a record-typed parameter. FSpec FR-322-AC-69 relaxes other
 positions the same way, and this requirement states the reader's rule at each
 one the reader checks today: a field-read operand, a `case` arm body, a
 `union_value` payload and, with the callee's body `parameters` binding (FR-322-AC-70), a
-`function.call` argument. It also adds a body-root result check, which the
-reader does not make today. This requirement changes nothing else.
+`function.call` argument. It also adds a body-root result check and a
+`tuple_value` position check, which the reader does not make today. This requirement changes nothing else.
 
 A record **conforms** to a record `P` when it is `P` or `P` is among its
 ancestors at any depth. The relation is one-way: a child conforms to its
@@ -152,6 +152,32 @@ refuses as today: the `union_arms` constraint not holding is
 `/semantic_graph/nodes/{n}`, not at an argument. A failing payload is
 `ill_typed`/`type-mismatch` at the `union_value` node.
 
+### Tuple positions
+
+A `tuple_value` position term SHALL have exactly the type node its tuple
+type declares for that position, as a `union_value` payload term has exactly
+its member's declared payload type: the reader compares each term's type node
+with the declared position type node by node key, in ascending position
+ordinal. Where the declared position type is a record value type, a term
+whose type is a recovered `model`/`record_value_type` conforming to it is
+admitted by the rule above, as at a union payload; every other position type
+stays exact. A term whose type does not match refuses
+`ill_typed`/`type-mismatch` at the `tuple_value` node,
+`/semantic_graph/nodes/{n}`, the refusal the reader gives a `union_value`
+payload term that does not match. For a clock-bearing tuple the terms are
+compared with the data positions only, in ascending ordinal, after the term
+count check FSpec FR-322 states ("one term per data position").
+
+An integer term narrower than its position's type is not admitted by
+containment. The producer records the widening as one explicit
+`filament.op.numeric.convert` application to the position's type (FSpec
+FR-149 "Integer widening at declared parameter and payload positions"), so
+the converted term has the position's type node and passes the exact
+comparison; a bare `Int[0, 1000]` term at an `Integer` position refuses.
+This holds the reader to the same rule at the three positions that declare
+their argument's type: a function-call argument, a union payload and a tuple
+position.
+
 ### Result positions
 
 The reader compares no function or expression body root with the node's
@@ -256,6 +282,7 @@ outside this requirement's scope (FR-359 cross-repo requirement 7).
 | FR-347-AC-12 | A `function` node with declared `semantic_type` `Money` whose `body` binding references a root typed `Money`, `TaxedMoney` or `GiftTaxedMoney` admits, as does an `expression` node whose root application has that `result_type`; a root typed `Voucher`, or typed an ancestor at a child-typed declared type (`Money` under `TaxedMoney`), refuses `ill_typed`/`type-mismatch` at `/semantic_graph/nodes/{n}`; a non-record declared type stays exact. A `function`-tagged node whose body root is an application with `result_type` `TaxedMoney` under declared `Money` admits and with `Voucher` refuses the same way. | Test (TC-448) |
 | FR-347-AC-13 | A `function.call` whose callee is a `reference` to a `function` node with body binding `parameters` = `[reference(p0), reference(p1)]`, `p0` typed `Money` and `p1` typed `Integer`, admits arguments `[Money, Integer]`, `[TaxedMoney, Integer]` and `[GiftTaxedMoney, Integer]`. It refuses `ill_typed`/`operator-ineligible` at `arguments` for one or three arguments, and at the argument for `[Voucher, Integer]`, `[Money, Int[0, 5]]` and, with `p0` typed `TaxedMoney`, `[Money, Integer]`. A parameter the function body never reads still counts: a callee with three `parameters` references and a body reading one refuses two arguments. A callee function node with no `parameters` binding takes no argument check. | Test (TC-448) |
 | FR-347-AC-14 | A callee function node whose `parameters` member is present and malformed refuses `ill_typed`/`operator-ineligible` at `/semantic_graph/nodes/{n}/body/arguments/0` for each of: the member second in the body, a value that is not an `aggregate`, an entry that is a `literal`, an entry referencing an absent node, and an entry referencing a node that is not a `value`/`parameter` node. | Test (TC-448) |
+| FR-347-AC-15 | Over a source tuple `Pair(Integer, Int[0, 2000])` and a model tuple whose positions are `Money` and `Integer`, a `tuple_value` of `Pair` whose terms are typed `Integer` and `Int[0, 2000]`, and one whose position-0 term is a `filament.op.numeric.convert` application to `Integer` over a term typed `Int[0, 1000]`, each admit; the same `tuple_value` with its position-0 term the bare `Int[0, 1000]` term, with a `Boolean` term at position 0, or with an `Integer` term at position 1 each refuse `ill_typed`/`type-mismatch` at `/semantic_graph/nodes/{n}`, the `tuple_value` node. The model tuple's `tuple_value` admits a position-0 term typed `TaxedMoney` and refuses one typed `Voucher` the same way. A clock-bearing tuple (`p0` a clock, `p1` an `Integer`) admits one `Integer` term and refuses one `Int[0, 9]` term at the same node, and its term count check is unchanged. | Test (TC-448) |
 ## Open Questions
 
 - Whether the reader should also accept a conforming argument at a
