@@ -88,7 +88,7 @@ type: TestMatrix
 | TC-489 | Probabilistic claim node read from an admitted package | Property | P0 | FR-377-AC-1, FR-377-AC-2, FR-377-AC-3, FR-377-AC-4 | 🚧 Partial |
 | TC-490 | Family guard part quantifier read and refused at the V2 reader | Property | P0 | FR-038-AC-576, FR-038-AC-577, FR-038-AC-578, FR-038-AC-579, FR-038-AC-580 | 🚧 Planned (QSL-2570) |
 | TC-491 | Function body location rows read and refused at the V2 reader | Property | P0 | FR-038-AC-581, FR-019-AC-29, FR-051-AC-5 | 🚧 Planned (QSL-2625) |
-| TC-492 | CheckedPackage V2 integer containment at result positions | Property | P0 | FR-038-AC-586, FR-038-AC-587, FR-038-AC-588, FR-038-AC-589 | ✅ Implemented (QSL-2709) |
+| TC-492 | CheckedPackage V2 integer containment at result positions | Property | P0 | FR-038-AC-586, FR-038-AC-587, FR-038-AC-588, FR-038-AC-589 | 🚧 Partial (QSL-2709): the `let` binder check (IC-15) is not made, the wire gives the binder no node id |
 | TC-484 | Probabilistic nodes on source-declared operations | Property | P0 | FR-369-AC-25, FR-369-AC-26, FR-369-AC-27, FR-369-AC-28 | ✅ Implemented (IR-1576, QSL-2645, QSL-2655): every step is implemented |
 | TC-485 | Source operation parameters in the identity rows | Property | P0 | FR-367-AC-8 | ✅ Implemented (IR-1576) |
 | TC-471 | Monitor authority receipt, layout context and map collection closure | Property | P0 | FR-357-AC-16, FR-357-AC-17, FR-357-AC-18, FR-358-AC-10, FR-361-AC-1, FR-361-AC-2, FR-361-AC-3, FR-361-AC-4, FR-361-AC-5 | 🚧 Authority row, receipt and refusals implemented (IR-1384); layout context implemented (IR-722); map collection and locus rows remain planned. |

@@ -2000,8 +2000,8 @@ enum Expect {
 }
 
 /// The twenty packages of FSpec FR-322-AC-495 to FR-322-AC-502 (`IC-01` to
-/// `IC-20`), each built here and read below. A vector file is generated from
-/// this list: `Case.package` is the wire package of each.
+/// `IC-20`), each built here and read below. A vector file can be serialized
+/// from this list: `Case.package` is the wire package of each.
 fn ic_vectors() -> Vec<(&'static str, Case, Expect)> {
     let (nine, ten, eight) = (Ty::Range(0, 9), Ty::Range(0, 10), Ty::Range(0, 8));
     let (thousand, almost) = (Ty::Range(0, 1000), Ty::Range(0, 999));
@@ -2111,7 +2111,9 @@ fn tc_492_the_ic_vectors_read_as_fspec_specifies() {
             Expect::Admitted => case.admits(id),
             Expect::Mismatch => case.mismatch(id),
             Expect::Ineligible(tail) => case.ineligible(id, tail),
-            Expect::Unenforced => {}
+            // Today's admission, pinned so the FR-322 binder change that makes
+            // the refusal flips this test on purpose.
+            Expect::Unenforced => case.admits(id),
         }
     }
 }
