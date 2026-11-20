@@ -605,7 +605,9 @@ mod tests {
             work: 1_000_000_000,
         };
         let crate::CheckedPackageV2ReadResult::Admitted(package) = CheckedPackageV2::read(
-            include_bytes!("../../../../../../tests/fixtures/fold-binders/monitor-base.json"),
+            &super::super::genuine_bytes_under_current_rules(include_bytes!(
+                "../../../../../../tests/fixtures/fold-binders/monitor-base.json"
+            )),
             limits,
             &evidence,
         ) else {

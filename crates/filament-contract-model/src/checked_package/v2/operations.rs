@@ -8531,6 +8531,7 @@ mod tests {
                 ("scalar_type", "enum", "enum"),
                 ("scalar_type", "carried_quantity", "quantity"),
                 ("scalar_type", "bounded_quantity", "quantity"),
+                ("scalar_type", "clock_reference", "clock_reference"),
                 ("composite_type", "option", "option"),
                 ("composite_type", "sequence", "sequence"),
                 ("composite_type", "set", "set"),

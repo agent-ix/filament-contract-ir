@@ -4306,6 +4306,9 @@ mod tests {
     #[trace("TC-472", "FR-038-AC-511")]
     #[test]
     fn published_timed_wire_allocations_are_prepaid_at_exact_and_short_allowances() {
+        if !crate::checked_package::v2::test_support::specification_dir_present() {
+            return;
+        }
         let nodes = published_timed_nodes();
         assert!(!nodes.is_empty());
         let run = |limit| {
@@ -4339,6 +4342,9 @@ mod tests {
     #[trace("TC-472", "FR-038-AC-511")]
     #[test]
     fn every_published_slot_wire_shape_prepays_its_actual_requests() {
+        if !crate::checked_package::v2::test_support::specification_dir_present() {
+            return;
+        }
         let root = std::env::var("FILAMENT_SPECIFICATION_DIR").expect("published FSpec checkout");
         let vectors: Value = serde_json::from_slice(
             &std::fs::read(
@@ -4398,6 +4404,9 @@ mod tests {
     #[trace("TC-472", "FR-038-AC-511")]
     #[test]
     fn published_clock_place_semantic_paths_prepay_every_actual_request() {
+        if !crate::checked_package::v2::test_support::specification_dir_present() {
+            return;
+        }
         let root = std::env::var("FILAMENT_SPECIFICATION_DIR").expect("published FSpec checkout");
         let proposal = FilePath::new(&root).join("proposals/checked-package-v2");
         let vectors: Value = serde_json::from_slice(
@@ -4686,6 +4695,9 @@ mod tests {
     #[trace("TC-473", "FR-357-AC-24")]
     #[test]
     fn map_slot_spells_the_declared_bound_of_its_map_type() {
+        if !crate::checked_package::v2::test_support::specification_dir_present() {
+            return;
+        }
         // The package as published: `{lower: 0}` is unbounded.
         assert!(map_slot_place(None, None).is_ok());
         // A declared upper of 2 is spelled `2`.
@@ -4700,6 +4712,9 @@ mod tests {
     #[trace("TC-472", "FR-038-AC-511")]
     #[test]
     fn timed_wire_first_defect_refusal_and_its_denial_are_paid() {
+        if !crate::checked_package::v2::test_support::specification_dir_present() {
+            return;
+        }
         let (position, mut node, form) = published_timed_nodes()
             .into_iter()
             .find(|(_, _, form)| *form == TimedModelForm::Model)
@@ -5167,6 +5182,9 @@ mod tests {
     #[trace("TC-472", "FR-038-AC-516", "FR-038-AC-511")]
     #[test]
     fn timed_exact_magnitudes_use_reserved_reduction_and_keep_the_semantic_fault() {
+        if !crate::checked_package::v2::test_support::specification_dir_present() {
+            return;
+        }
         let (_, node, _) = published_timed_nodes()
             .into_iter()
             .next()

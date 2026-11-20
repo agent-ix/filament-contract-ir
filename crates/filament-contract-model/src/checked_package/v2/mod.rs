@@ -34,6 +34,7 @@ mod composite_operands;
 mod contract_package;
 mod dependency_references;
 mod dispatch_projection;
+mod edge_existence;
 pub(in crate::checked_package) mod encode;
 mod equality_projection;
 mod execution_point;
@@ -2233,7 +2234,10 @@ struct ValidatedPackage {
     structural_keys: Vec<std::sync::Arc<CheckedNodeId>>,
 }
 
-struct ValidatedGraph {
+struct ValidatedGraph<'w> {
+    /// The graph's node-ID table, built once by the graph stage and joined by
+    /// every later per-row stage.
+    index: GraphIndex<'w>,
     kinds: Vec<CheckedNodeKind>,
     schedulability_claim_index: Vec<(usize, usize)>,
     monitor_plan_index: Vec<monitor_plan::Plan>,
@@ -2265,6 +2269,7 @@ fn validate(
         dependencies,
     } = validate_lock(wire, evidence, &mut meter, limits.bytes)?;
     let ValidatedGraph {
+        index: graph_index,
         kinds,
         schedulability_claim_index,
         monitor_plan_index,
@@ -2318,10 +2323,6 @@ fn validate(
         &mut meter,
     )?;
     probabilistic_join::validate(wire, &kinds, &terms, &models, &structural_keys, &mut meter)?;
-    let graph_index = GraphIndex::build(
-        wire.semantic_graph.nodes.iter().map(|node| &node.node_id),
-        &mut meter,
-    )?;
     requirement_records::validate(
         wire.requirement_items.as_deref(),
         &wire.semantic_graph.nodes,
@@ -3686,9 +3687,9 @@ fn structural_key<'a>(
 // selected package's original views and its own operand row.
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments)] // the catalog and the node bodies are two inputs of one graph check
-fn validate_graph(
+fn validate_graph<'w>(
     catalog: &operation_catalog::OperationCatalog,
-    wire: &RawCheckedPackageWireV2,
+    wire: &'w RawCheckedPackageWireV2,
     bodies: &[CheckedJson],
     limits: CheckedPackageReadLimits,
     meter: &mut WorkMeter,
@@ -3696,7 +3697,7 @@ fn validate_graph(
     dependencies: &SuppliedDependencies<'_>,
     evidence: &CheckedPackageEvidence,
     structural_keys: &[std::sync::Arc<CheckedNodeId>],
-) -> Result<ValidatedGraph, ValidationFailure> {
+) -> Result<ValidatedGraph<'w>, ValidationFailure> {
     let graph = &wire.semantic_graph;
     check_graph_version(graph)?;
     if graph.nodes.is_empty() {
@@ -4197,6 +4198,8 @@ fn validate_graph(
         meter,
     )?;
     validate_selected_type_bounds(models, &terms, structural_keys, meter)?;
+    // Join stage 4 (FR-322 "One total order of the join stages").
+    edge_existence::validate(&graph.nodes, &kinds, &index, meter)?;
     // Join stage 5 (FR-322 "Model declaration occurrences").
     model_occurrence::validate(&graph.nodes, &kinds, &wire.source_map, &index, meter)?;
     for &position in index.values() {
@@ -4702,6 +4705,7 @@ fn validate_graph(
         meter.push(&mut admitted_terms, term)?;
     }
     Ok(ValidatedGraph {
+        index,
         kinds,
         schedulability_claim_index,
         monitor_plan_index,
@@ -5127,6 +5131,20 @@ fn validate_diagnostics(
 mod test_support {
     use super::{CheckedNodeId, CheckedPackageWireV2, CheckedTerm};
     use serde_json::{json, Value};
+
+    /// Whether `FILAMENT_SPECIFICATION_DIR` names a specification checkout.
+    /// A test that reads published FSpec vectors returns early, with this
+    /// reason on stderr, when it does not; the FSpec conformance lane sets it.
+    pub(super) fn specification_dir_present() -> bool {
+        let present = std::env::var_os("FILAMENT_SPECIFICATION_DIR").is_some();
+        if !present {
+            eprintln!(
+                "skipped: FILAMENT_SPECIFICATION_DIR does not name a filament-specification \
+                 checkout, and this test reads the vectors published there"
+            );
+        }
+        present
+    }
 
     /// Bytes of a package a test authored in resolved index form, written as
     /// the V2 wire: each node-held index segment becomes an operand slot,

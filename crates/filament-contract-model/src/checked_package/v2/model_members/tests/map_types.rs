@@ -235,6 +235,9 @@ fn reads(model: &DomainModel) -> Value {
 #[trace("TC-473", "FR-357-AC-23", "FR-357-AC-24")]
 #[test]
 fn published_package_map_types_match_the_reader() {
+    if !crate::checked_package::v2::test_support::specification_dir_present() {
+        return;
+    }
     let vectors = vectors();
     let cases = vectors["cases"].as_array().expect("cases");
     assert_eq!(cases.len(), 34);
@@ -283,6 +286,9 @@ fn published_package_map_types_match_the_reader() {
 #[trace("TC-473", "FR-357-AC-23")]
 #[test]
 fn package_map_retains_its_key_type_and_bound() {
+    if !crate::checked_package::v2::test_support::specification_dir_present() {
+        return;
+    }
     let vectors = vectors();
     let model = read_package(&vectors["base"]).expect("the base package");
     let Some(SelectedTypeDefinition::Map(map)) = model.collection_types.get(MAP) else {

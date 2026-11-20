@@ -806,6 +806,22 @@ impl CheckedMonitorPlanRef<'_> {
 #[path = "../../../../../../tests/it/support/checked_package.rs"]
 pub(in crate::checked_package::v2) mod fixture_support;
 
+/// A committed genuine producer package's bytes as the current reader's rules
+/// require them: the `body_locations` rows of every function body (FSpec
+/// FR-322, FR-038-AC-581) and the one `generated` occurrence of each model
+/// declaration node (FR-322 stage 5). The committed bytes predate both rules
+/// and are not regenerated here; nothing else in the package is rewritten.
+#[cfg(test)]
+pub(in crate::checked_package::v2) fn genuine_bytes_under_current_rules(
+    committed: &[u8],
+) -> Vec<u8> {
+    let mut package: serde_json::Value =
+        serde_json::from_slice(committed).expect("committed genuine package");
+    fixture_support::rebuild_body_locations(&mut package);
+    fixture_support::align_model_declarations(&mut package);
+    fixture_support::canonical(&package)
+}
+
 #[cfg(test)]
 fn fixture_read(
     bytes: &[u8],
@@ -1237,6 +1253,17 @@ mod tests {
         );
         let subject_type_at = monitor_plan_fixtures::position(wire, &subject_type);
         wire["semantic_graph"]["nodes"][parameter_at]["semantic_type"] = subject_type;
+        // The owner edge is derived from the `over` type: a clause whose
+        // `over` reaches an object type names that model (FR-064-AC-1).
+        let protocol = monitor_plan_fixtures::position(
+            wire,
+            &monitor_plan_fixtures::find(wire, "protocol_clause"),
+        );
+        wire["semantic_graph"]["nodes"][protocol]["owner_model"] = model.clone();
+        wire["semantic_graph"]["nodes"][protocol]["dependencies"]
+            .as_array_mut()
+            .unwrap()
+            .push(model.clone());
         let profile = json!({"role":"temporal_profile", "definition":{
             "authority":"agent-ix", "identity":"filament.temporal.timed/v1"}});
         wire["lock"]["profile_selections"]

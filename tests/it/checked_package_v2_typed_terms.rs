@@ -556,8 +556,15 @@ fn admitted_controls_expose_missing_catalog_constraint_productions() {
     ];
     // The separate FR-772 decoder and operation tests own these productions;
     // this census has no admitted full-package option.slots control because it
-    // requires a selected timed-model root and a resolved clock place.
-    let reader_specific_kinds = ["place_slot_terms", "quantifier_domain_only"];
+    // requires a selected timed-model root and a resolved clock place. The
+    // same holds for `clock_reference.ref`, the only entry with the
+    // place_identity_terms and place_has_id productions (FR-829).
+    let reader_specific_kinds = [
+        "place_slot_terms",
+        "place_identity_terms",
+        "place_has_id",
+        "quantifier_domain_only",
+    ];
     let covered: BTreeSet<&str> = fspec_positive_kinds
         .into_iter()
         .chain(controls.into_iter().map(|(_, kind)| kind))

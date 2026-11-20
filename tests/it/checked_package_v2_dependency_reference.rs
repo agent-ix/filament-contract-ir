@@ -612,6 +612,10 @@ fn tc_048_the_term_is_admitted_only_as_a_function_call_callee() {
         None,
     );
     expression["body"] = term.clone();
+    // `importing` renames the package: the node and its type name the
+    // importer's own boolean type node, which every stage 4 edge must resolve to.
+    expression["semantic_type"] = root["semantic_graph"]["nodes"][0]["node_id"].clone();
+    expression["node_id"]["package"] = root["name"].clone();
     let count = root["semantic_graph"]["nodes"]
         .as_array()
         .expect("nodes")

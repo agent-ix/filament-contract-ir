@@ -4338,8 +4338,9 @@ fn tc_048_relationship_end_is_not_a_field_and_exports_no_selected_population_ite
 
 /// A read-storage denial of the relationship end's destination type ends the
 /// read with a typed outcome: the denial borrows the budget that the failed
-/// read held. The limits are the read-storage window of the flat-wire stage's
-/// destination read for this fixture.
+/// read held. The limits are the 700 read-storage limits from the first that
+/// pays the canonical bytes, where the flat-wire stage's destination read is
+/// denied for this fixture.
 #[trace("TC-472", "FR-038-AC-511")]
 #[test]
 fn a_denied_relationship_destination_read_is_refused_not_a_double_borrow() {
@@ -4368,7 +4369,27 @@ fn a_denied_relationship_destination_read_is_refused_not_a_double_borrow() {
         read(u64::MAX).0,
         filament_contract_model::CheckedPackageV2BudgetedReadResult::Admitted(_)
     ));
-    for limit in 732_540..733_240 {
+    // The window opens at the first limit that pays the envelope and the
+    // canonical bytes: the fixture's size moves it, so it is found, not
+    // written down.
+    let before_wire = |limit: u64| {
+        matches!(
+            read(limit).1.first_unpaid_locus().map(|locus| locus.source),
+            Some(filament_contract_model::NativeJoinLocusSource::PackageRead(stage, _))
+                if stage < filament_contract_model::PackageReadStage::WireDecode
+        )
+    };
+    let (mut below, mut above) = (0_u64, 1_u64 << 30);
+    assert!(before_wire(below) && !before_wire(above));
+    while above - below > 1 {
+        let middle = below + (above - below) / 2;
+        if before_wire(middle) {
+            below = middle;
+        } else {
+            above = middle;
+        }
+    }
+    for limit in above..above + 700 {
         let (result, budget) = read(limit);
         assert!(
             !matches!(

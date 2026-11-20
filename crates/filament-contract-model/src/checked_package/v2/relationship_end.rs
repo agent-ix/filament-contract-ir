@@ -311,6 +311,7 @@ pub(super) mod tests {
                 .position(|n| n["node_id"] == raw_id(digit))
                 .expect("node");
             nodes[at]["owner"] = owner(node_name);
+            nodes[at]["occurrences"] = json!([{"role": "generated", "ordinal": 0}]);
         }
         let mut ids: BTreeMap<char, CheckedNodeId> = BTreeMap::new();
         for digit in ['1', '2', '3', 'a', 'b', '5', '8', 'c', 'd', '7'] {
@@ -380,12 +381,22 @@ pub(super) mod tests {
             "owner": root_owner, "body": root_body,
         }));
         let source = json!({"authority": "test", "identity": "relationship-end"});
+        // FR-322 stage 5: every model declaration node (a model or relation
+        // node with a model owner) has one `generated` ordinal-zero entry
+        // carrying exactly its model root's regions.
+        let root_at = nodes.len() - 1;
+        let root_regions = json!([{"source": source, "start": root_at, "end": root_at + 1}]);
         let source_map: Vec<Value> = nodes
             .iter()
             .enumerate()
             .map(|(at, n)| {
+                let regions = if n["owner"]["kind"] == "model" {
+                    root_regions.clone()
+                } else {
+                    json!([{"source": source, "start": at, "end": at + 1}])
+                };
                 json!({"node_id": n["node_id"], "role": n["occurrences"][0]["role"], "ordinal": 0,
-                    "regions": [{"source": source, "start": at, "end": at + 1}]})
+                    "regions": regions})
             })
             .collect();
         let wire = json!({

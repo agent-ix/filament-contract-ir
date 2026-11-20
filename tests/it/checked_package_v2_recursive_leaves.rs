@@ -12,8 +12,8 @@
 //! cycle's members share one `recursion_group`.
 
 use crate::support::checked_package::{
-    canonical, evidence_for, node_id, nominal_package, pointer, reassign_node_ids, refusal_at,
-    settle, BOOLEAN_KEY, INTEGER_KEY,
+    canonical, evidence_for, node_id, nominal_package, pointer, reassign_node_ids, refusal,
+    refusal_at, settle, ExpectedRefusal, BOOLEAN_KEY, INTEGER_KEY,
 };
 use filament_contract_model::{
     CheckedNodeId, CheckedNodePathSegment, CheckedNodeTag, CheckedPackageLimit,
@@ -735,23 +735,42 @@ fn residual_result_inner_set_like_elements_require_an_empty_path_leaf() {
     }
 }
 
+/// The refusal of the first dangling `dependencies` edge: join stage 4 (edge
+/// existence) reads it before the operation law can see the absent type.
+fn dangling_dependency(package: &Value) -> ExpectedRefusal {
+    let nodes = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes");
+    for (position, node) in nodes.iter().enumerate() {
+        for (edge, dependency) in node["dependencies"]
+            .as_array()
+            .expect("edges")
+            .iter()
+            .enumerate()
+        {
+            if !nodes.iter().any(|other| other["node_id"] == *dependency) {
+                return refusal(
+                    CheckedPackageRefusalCode::InvalidSemanticGraph,
+                    &format!("/semantic_graph/nodes/{position}/dependencies/{edge}"),
+                );
+            }
+        }
+    }
+    panic!("no dangling dependency");
+}
+
 #[trace("TC-048", "FR-038-AC-229", "FR-038-AC-230")]
 #[test]
 fn residual_required_leaf_sources_refuse_missing_referenced_types_on_public_read() {
     for leaves in [vec![], vec![text_leaf(&[])]] {
-        let (package, application) = equality_package(
+        let (package, _) = equality_package(
             vec![record("r", &[("value", "absent")])],
             "r",
             leaves.clone(),
         );
         assert_eq!(
             read(&package, CheckedPackageReadLimits::bounded()),
-            refusal_at(
-                CheckedPackageRefusalCode::IllTyped,
-                &leaves_pointer(&package, &application),
-                Some(CheckedPackageRefusalCause::OperatorIneligible),
-                &application,
-            ),
+            dangling_dependency(&package),
             "operand:0 outer record family fits but its compared child is absent"
         );
 
@@ -760,7 +779,7 @@ fn residual_required_leaf_sources_refuse_missing_referenced_types_on_public_read
             "r",
             leaves.clone(),
         );
-        let application = edit_application(&mut contains, |node| {
+        let _ = edit_application(&mut contains, |node| {
             let collection = node["body"]["arguments"][0].clone();
             node["semantic_form"] = json!("collection");
             node["body"]["operator"] = json!("collection");
@@ -769,12 +788,7 @@ fn residual_required_leaf_sources_refuse_missing_referenced_types_on_public_read
         });
         assert_eq!(
             read(&contains, CheckedPackageReadLimits::bounded()),
-            refusal_at(
-                CheckedPackageRefusalCode::IllTyped,
-                &leaves_pointer(&contains, &application),
-                Some(CheckedPackageRefusalCause::OperatorIneligible),
-                &application,
-            ),
+            dangling_dependency(&contains),
             "inner:0 collection family fits but its element type is absent"
         );
     }
@@ -790,7 +804,7 @@ fn residual_set_result_refuses_missing_element_type_on_public_read() {
             leaves,
         );
         let result_id = type_id(&package, "set");
-        let application = edit_application(&mut package, |node| {
+        let _ = edit_application(&mut package, |node| {
             let first = node["body"]["arguments"][0].clone();
             node["semantic_form"] = json!("collection");
             node["semantic_type"] = result_id.clone();
@@ -801,12 +815,7 @@ fn residual_set_result_refuses_missing_element_type_on_public_read() {
         });
         assert_eq!(
             read(&package, CheckedPackageReadLimits::bounded()),
-            refusal_at(
-                CheckedPackageRefusalCode::IllTyped,
-                &leaves_pointer(&package, &application),
-                Some(CheckedPackageRefusalCause::OperatorIneligible),
-                &application,
-            ),
+            dangling_dependency(&package),
             "result_inner set family fits but its element type is absent"
         );
     }
