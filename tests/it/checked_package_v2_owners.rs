@@ -748,8 +748,10 @@ fn read_with_selected_model(
     document: &Value,
 ) -> CheckedPackageV2ReadResult {
     let evidence = evidence_with_document(package, identity, document);
+    let mut package = package.clone();
+    crate::support::checked_package::align_model_declarations(&mut package);
     crate::read_and_account(
-        &canonical(package),
+        &canonical(&package),
         CheckedPackageReadLimits::bounded(),
         &evidence,
     )
@@ -1676,6 +1678,7 @@ pub(super) fn population_reference_fixture(
             })
             .collect(),
     );
+    crate::support::checked_package::align_model_declarations(&mut package);
     PopulationReferenceFixture {
         package,
         document,

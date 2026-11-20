@@ -34,8 +34,10 @@ fn read_with_retention_definition(
             definition,
         )
         .expect("extension evidence");
+    let mut package = package.clone();
+    crate::support::checked_package::align_model_declarations(&mut package);
     crate::read_and_account(
-        &crate::fixture_support::canonical(package),
+        &crate::fixture_support::canonical(&package),
         CheckedPackageReadLimits::bounded(),
         &evidence,
     )

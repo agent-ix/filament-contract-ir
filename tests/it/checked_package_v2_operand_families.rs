@@ -1640,6 +1640,9 @@ fn genuine_monitor_base_fold_is_admitted_without_removing_semantics() {
         serde_json::from_slice(include_bytes!("../fixtures/fold-binders/monitor-base.json"))
             .expect("monitor-base fixture");
     add_linked_check_modes(&mut fixture);
+    // The committed producer fixture predates FR-322 "Model declaration
+    // occurrences".
+    crate::support::checked_package::align_model_declarations(&mut fixture);
     let bytes = canonical(&fixture);
     let mut evidence = filament_contract_model::CheckedPackageEvidence::new();
     evidence.support_feature("filament.value.complete/v1");

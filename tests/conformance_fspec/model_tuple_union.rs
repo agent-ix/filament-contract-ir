@@ -509,7 +509,7 @@ fn assert_tk36_resolved(
 /// Apply one published RFC 6902 operation. The vector's patch is the source of
 /// both the mutation and its expected package identity.
 /// Replay every published wire row, including rows added after this test.
-#[trace("TC-048", "FR-069-AC-3", "FR-069-AC-5", "FR-069-AC-8")]
+#[trace("TC-048", "FR-069-AC-3", "FR-069-AC-5", "FR-069-AC-8", "FR-038-AC-582")]
 #[test]
 fn published_model_tuple_union_wire_cases_match_reader_refusals() {
     let fixtures = fixtures_dir();
@@ -575,7 +575,7 @@ fn published_model_tuple_union_wire_cases_match_reader_refusals() {
             }
         }
     }
-    for ordinal in (0..=26).filter(|ordinal| *ordinal != 5) {
+    for ordinal in (0..=34).filter(|ordinal| *ordinal != 5) {
         let id = format!("TW-{ordinal:02}");
         assert!(
             seen.contains(id.as_str()),
@@ -583,6 +583,166 @@ fn published_model_tuple_union_wire_cases_match_reader_refusals() {
         );
     }
     assert!(mismatches.is_empty(), "{}", mismatches.join("\n"));
+}
+
+/// Join stage 5 beyond the published vectors: a repeated entry, a model root
+/// with no entry, and the entry pass running before the missing-entry pass.
+/// Each refuses `invalid_package`/`invalid-value` at the exact entry.
+#[trace("TC-048", "FR-038-AC-582")]
+#[test]
+fn model_declaration_occurrence_stage_five_orders_and_locates_each_defect() {
+    let fixtures = fixtures_dir();
+    let proposal = proposal_dir_of(&fixtures);
+    let selected = selected_document(&proposal);
+    let base = read_json(&fixtures.join("positive-model-tuple-union.json"))
+        .expect("published positive package");
+    let mut evidence = CheckedPackageEvidence::new();
+    evidence
+        .insert_domain_package_document(
+            selected["package"]["identity"]
+                .as_str()
+                .expect("document identity"),
+            super::fixture_support::canonical(&selected),
+        )
+        .expect("selected document evidence");
+    evidence.support_feature("filament.value.complete/v1");
+    let own_region = json!([{"end": 1052, "source": {"authority": "agent-ix", "identity": "example"}, "start": 1048}]);
+    let repeated = base["source_map"][3].clone();
+    let root_id = base["source_map"][37]["node_id"].clone();
+    let generated_root = base["source_map"][37].clone();
+    let cases = [
+        (
+            "a second generated ordinal-zero entry for one node",
+            vec![json!({"op": "add", "path": "/source_map/-", "value": repeated})],
+            "/source_map/38",
+            true,
+        ),
+        (
+            "no root entry to select a region from",
+            vec![json!({"op": "remove", "path": "/source_map/37"})],
+            "/source_map/0",
+            true,
+        ),
+        (
+            "an entry defect is reported before a missing entry",
+            vec![
+                json!({"op": "remove", "path": "/source_map/3"}),
+                json!({"op": "replace", "path": "/source_map/1/regions", "value": own_region}),
+            ],
+            "/source_map/1",
+            true,
+        ),
+        (
+            "a non-generated entry of the root does not select the regions",
+            vec![
+                json!({"op": "remove", "path": "/source_map/37"}),
+                json!({"op": "add", "path": "/source_map/-", "value": {
+                    "node_id": root_id, "ordinal": 0, "role": "expression",
+                    "regions": own_region,
+                }}),
+                json!({"op": "add", "path": "/source_map/-", "value": generated_root}),
+            ],
+            "/source_map/37",
+            false,
+        ),
+        (
+            "the first missing entry is reported at the whole map",
+            vec![
+                json!({"op": "remove", "path": "/source_map/4"}),
+                json!({"op": "remove", "path": "/source_map/3"}),
+            ],
+            "/source_map",
+            true,
+        ),
+    ];
+    for (name, patches, locus, stage_five) in cases {
+        let mut package = base.clone();
+        for patch in &patches {
+            apply_wire_patch(&mut package, patch);
+        }
+        let result = crate::read_and_account(
+            &super::fixture_support::canonical(&package),
+            CheckedPackageReadLimits::bounded(),
+            &evidence,
+        );
+        let CheckedPackageV2ReadResult::Refused(refusal) = result else {
+            panic!("{name}: expected a refusal, got {result:?}");
+        };
+        // A root entry of another role is no stage 5 defect: the later
+        // source-map stage refuses the entry the graph holds no occurrence for.
+        let (code, cause) = if stage_five {
+            (Code::InvalidPackage, Some(Cause::InvalidValue))
+        } else {
+            (Code::InvalidSourceMap, None)
+        };
+        assert_eq!(refusal.code, code, "{name}: {refusal:?}");
+        assert_eq!(refusal.cause, cause, "{name}");
+        assert_eq!(
+            refusal.loci[0]
+                .path
+                .as_ref()
+                .map(ToString::to_string)
+                .as_deref(),
+            Some(locus),
+            "{name}: {refusal:?}"
+        );
+    }
+}
+
+/// The `relation` half of a model declaration node: the relationship
+/// `Order-order-Order` of `positive-all-families.json` (entry `/source_map/6`)
+/// is checked like a `model` node.
+#[trace("TC-048", "FR-038-AC-582")]
+#[test]
+fn a_relation_declaration_node_takes_the_same_stage_five_check() {
+    let base = read_json(&fixtures_dir().join("positive-all-families.json"))
+        .expect("published all-families package");
+    let relation = &base["source_map"][6]["node_id"]["path"];
+    assert_eq!(
+        relation[2], "ix://acme/orders/relationship/Order-order-Order",
+        "the relationship entry the cases edit"
+    );
+    let own = json!([{"end": 1052, "source": {"authority": "agent-ix", "identity": "example"}, "start": 1048}]);
+    let admitted = super::read_package(&base).expect("base read");
+    assert!(
+        matches!(admitted, CheckedPackageV2ReadResult::Admitted(_)),
+        "{admitted:?}"
+    );
+    for (name, patch, locus) in [
+        (
+            "a region of its own",
+            json!({"op": "replace", "path": "/source_map/6/regions", "value": own}),
+            "/source_map/6",
+        ),
+        (
+            "the role expression",
+            json!({"op": "replace", "path": "/source_map/6/role", "value": "expression"}),
+            "/source_map/6",
+        ),
+        (
+            "no entry",
+            json!({"op": "remove", "path": "/source_map/6"}),
+            "/source_map",
+        ),
+    ] {
+        let mut package = base.clone();
+        apply_wire_patch(&mut package, &patch);
+        let result = super::read_package(&package).expect("read");
+        let CheckedPackageV2ReadResult::Refused(refusal) = result else {
+            panic!("{name}: expected a refusal, got {result:?}");
+        };
+        assert_eq!(refusal.code, Code::InvalidPackage, "{name}: {refusal:?}");
+        assert_eq!(refusal.cause, Some(Cause::InvalidValue), "{name}");
+        assert_eq!(
+            refusal.loci[0]
+                .path
+                .as_ref()
+                .map(ToString::to_string)
+                .as_deref(),
+            Some(locus),
+            "{name}: {refusal:?}"
+        );
+    }
 }
 
 /// Translate the published projection mutation to the corresponding member of

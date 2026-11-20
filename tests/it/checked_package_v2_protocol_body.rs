@@ -8371,7 +8371,7 @@ fn compensation_clock_rows_follow_published_cases() {
 fn await_clock_row_is_admitted_and_round_trips() {
     let (mut package, _) = protocol_holder_case("await");
     let position = holder_position(&package);
-    let awaited = &package["semantic_graph"]["nodes"][position];
+    let awaited = package["semantic_graph"]["nodes"][position].clone();
     assert_eq!(awaited["body"]["operation"]["member"]["operator"], "await");
     let declaration = awaited["node_id"].clone();
     let occurrence = awaited["occurrences"]
@@ -8381,7 +8381,25 @@ fn await_clock_row_is_admitted_and_round_trips() {
         .find(|occurrence| occurrence["role"] == "declaration")
         .expect("await declaration occurrence")["ordinal"]
         .clone();
-    let selected_clock = package["temporal_bindings"][0]["clock"].clone();
+    crate::support::checked_package::refresh_temporal_bindings(&mut package);
+    crate::support::checked_package::refresh_temporal_bindings(&mut package);
+    assert_eq!(
+        package["temporal_bindings"]
+            .as_array()
+            .expect("temporal bindings")
+            .iter()
+            .filter(|row| row["declaration"] == declaration)
+            .count(),
+        1,
+        "repeated fixture refreshes keep one await clock row"
+    );
+    let await_row_index = package["temporal_bindings"]
+        .as_array()
+        .expect("temporal bindings")
+        .iter()
+        .position(|row| row["declaration"] == declaration)
+        .expect("fixture includes the await clock row");
+    let selected_clock = package["temporal_bindings"][await_row_index]["clock"].clone();
     let await_clock_argument = &awaited["body"]["arguments"][1];
     let selected_clock_name = if await_clock_argument["term"] == "binding" {
         await_clock_argument["value"]["value"].clone()
@@ -8392,29 +8410,6 @@ fn await_clock_row_is_admitted_and_round_trips() {
         serde_json::from_value(selected_clock.clone()).expect("selected clock");
     let expected_clock_name: String =
         serde_json::from_value(selected_clock_name.clone()).expect("selected clock name");
-    let row = json!({
-        "declaration": declaration,
-        "occurrence": occurrence,
-        "clock_name": selected_clock_name,
-        "clock": selected_clock,
-    });
-    let rows = package["temporal_bindings"]
-        .as_array_mut()
-        .expect("the temporal clause has its own row");
-    rows.push(row);
-    rows.sort_by(|left, right| {
-        let left_id: CheckedNodeId =
-            serde_json::from_value(left["declaration"].clone()).expect("left declaration");
-        let right_id: CheckedNodeId =
-            serde_json::from_value(right["declaration"].clone()).expect("right declaration");
-        left_id.cmp(&right_id).then_with(|| {
-            left["occurrence"]
-                .as_u64()
-                .cmp(&right["occurrence"].as_u64())
-        })
-    });
-    refresh_identity_projection(&mut package);
-
     let CheckedPackageV2ReadResult::Admitted(admitted) = read(&package) else {
         panic!(
             "await-keyed clock row must be admitted: {:?}",
@@ -8424,9 +8419,10 @@ fn await_clock_row_is_admitted_and_round_trips() {
     let rows = admitted.temporal_bindings().expect("admitted clock rows");
     let expected_declaration: CheckedNodeId =
         serde_json::from_value(declaration.clone()).expect("await key");
+    let expected_occurrence = occurrence.as_u64().expect("occurrence ordinal");
     assert!(rows.iter().any(|row| {
         row.declaration == expected_declaration
-            && row.occurrence == 0
+            && row.occurrence == expected_occurrence
             && row.clock_name.as_ref() == expected_clock_name
             && row.clock == expected_clock
     }));
