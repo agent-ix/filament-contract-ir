@@ -31,3 +31,11 @@ One defect. FSpec places stage 5 "after the edge existence check of stage 4". Th
 | ID | Severity | Summary | Refs |
 | --- | --- | --- | --- |
 | FND-001 | medium | FR-038-AC-582 orders stage 5 "after the owner, derived-shape and selected-bound stages", omitting FSpec FR-322's "after the edge existence check of stage 4". Because the reader has no stage-4 pass, the omission hides a real divergence: a package with a dangling stage-4 edge and a stage-5 defect reports stage 5. Either add the stage-4 pass and state the full order, or state the deviation in the AC and the matrix row ("stage 4 not yet a graph pass; follow-up <ticket>") so the row is not read as full conformance | spec/checked_package/functional/FR-038-consume-checked-package-v2.md:6323 |
+
+## Dispositions
+
+Round 1, at head de77dc0a (fix commit over 3585ced2), against FSpec 45b5e1b6. The focused runs are all green: `filament-contract-model --lib model_occurrence` 4/4, `conformance_fspec` (`model_tuple_union`, `clock_payload_tuple`, `extension`) 39/39, and `it --features conformance-cli` (the same filter as the review pass) 57/57. `rustfmt --check` is clean.
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-001 | fixed | FR-038-AC-582 now says FSpec orders stage 5 after the stage-4 edge existence check, that the reader has no stage-4 graph pass yet so a package with both defects reports stage 5, and that QSL-2644 adds the pass. The TC-048 section and the matrix row repeat the known deviation (QSL-2644) |

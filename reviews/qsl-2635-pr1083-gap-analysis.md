@@ -35,3 +35,12 @@ Two parts of AC-582 have no test that could fail. The first is the `relation` ha
 | --- | --- | --- | --- |
 | FND-001 | medium | FR-038-AC-582 defines a model declaration node as "a `model` or `relation` node carrying a `ModelOwner`", but every stage-5 vector and case uses `model` nodes of `positive-model-tuple-union.json`. Dropping `CheckedNodeKind::Relation(_)` from `is_declaration` survives. Add cases over `positive-all-families.json`'s relationship `Order-order-Order` (entry `/source_map/6`): own region and role `expression` refuse at `/source_map/6`, and removing the entry refuses at `/source_map` (reviewer probe P4 confirms each outcome) | crates/filament-contract-model/src/checked_package/v2/model_occurrence.rs:22-27 |
 | FND-002 | medium | FR-038-AC-582 states the pass charges one work unit per model root entry, per declaration entry and per declaration node checked, and holds exactly two exact-capacity tables. No test pins a stage-5 work count, or a work or storage denial inside stage 5. The accounting registry only checks that the TW reads stay within the bound, so changing or removing any of the three `stage_storage::work` charges would survive. Add an exact-work boundary case (least admitting budget, with a denial located in stage 5 one unit short), as other stages do, or drop the exact-charge wording from the AC | tests/conformance_fspec/model_tuple_union.rs:588-690 |
+
+## Dispositions
+
+Round 1, at head de77dc0a (fix commit over 3585ced2), against FSpec 45b5e1b6. The focused runs are all green: `filament-contract-model --lib model_occurrence` 4/4, `conformance_fspec` (`model_tuple_union`, `clock_payload_tuple`, `extension`) 39/39, and `it --features conformance-cli` (the same filter as the review pass) 57/57. `rustfmt --check` is clean.
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-001 | fixed | `a_relation_declaration_node_takes_the_same_stage_five_check` (tagged TC-048, FR-038-AC-582) reads `positive-all-families.json` `Order-order-Order`. It admits the base, refuses its own region and role `expression` at `/source_map/6`, and refuses the removed entry at `/source_map`, so dropping `Relation(_)` from `is_declaration` now fails |
+| FND-002 | fixed | `the_stage_charges_exactly_its_work_and_its_two_tables` pins work 6 and storage of exactly the two tables, refuses with a `Budget` failure inside the stage at one unit less, and pins zero charge when there is no declaration. Changing or removing any `stage_storage::work` charge now fails it. The AC wording was kept and is now tested |
