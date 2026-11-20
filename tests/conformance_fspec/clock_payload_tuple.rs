@@ -1279,9 +1279,9 @@ fn clock_reference_adverse_applications_refuse_through_public_package_reader() {
 
     let mut sum = base;
     let integer_id = integer_type();
-    let set_integer = fixture_support::structural_id(
+    let sequence_integer = fixture_support::structural_id(
         "example",
-        vec![json!("composite_type"), json!("set"), json!("integer")],
+        vec![json!("composite_type"), json!("sequence"), json!("integer")],
         0,
     );
     push_node(
@@ -1289,31 +1289,34 @@ fn clock_reference_adverse_applications_refuse_through_public_package_reader() {
         json!({
             "body": aggregate(vec![json!({"term":"reference", "target":integer_id})]),
             "dependencies": [integer_id],
-            "node_id": set_integer,
+            "node_id": sequence_integer,
             "node_tag": "composite_type",
             "occurrences": [{"ordinal":0,"role":"type"}],
             "schema_version": "filament.checked-semantic-graph/v2",
-            "semantic_form": "set",
-            "semantic_type": set_integer,
+            "semantic_form": "sequence",
+            "semantic_type": sequence_integer,
         }),
         9206,
     );
     let collection = json!({"ordinal":0,"package":"example",
-        "path":["value","parameter","fr829-integer-collection"]});
+        "path":["expression","collection","fr829-integer-collection"]});
     push_node(
         &mut sum,
         json!({
-            "body": aggregate(vec![
-                bind("name", text("values")),
-                bind("level", integer(0)),
-            ]),
+            "body": {
+                "term":"application",
+                "operator":"collection",
+                "operation":{"identity":"filament.op.collection.sequence","laws":[],"leaves":[],"member":null,"mode":null},
+                "result_type":sequence_integer,
+                "arguments":[{"term":"literal","type":integer_id,"value_kind":"integer","value":"1"}]
+            },
             "dependencies": [],
             "node_id": collection,
-            "node_tag": "value",
+            "node_tag": "expression",
             "occurrences": [{"ordinal":0,"role":"expression"}],
             "schema_version": "filament.checked-semantic-graph/v2",
-            "semantic_form": "parameter",
-            "semantic_type": set_integer,
+            "semantic_form": "collection",
+            "semantic_type": sequence_integer,
         }),
         9207,
     );
