@@ -5142,20 +5142,22 @@ fn tc_486_the_wrapper_fairness_refusal_precedes_the_model_root_refusal() {
     );
 }
 
-/// The all-families fixture with the clause's `holds` leaf made
-/// `let s = seq(0 .. 0: i) in <boolean>`, the `seq` binder `i` a
-/// `value`/`parameter` node named `i` at `level`. The clause puts its `over`
-/// parameter in scope (level 0) and the `let` binds `s` at level 1, so `i`
-/// sits at level 2 (FSpec FR-322 "Parameter": a binder's level is its position
-/// among the binders in scope where it is bound).
-fn clause_leaf_seq(
-    level: u64,
-    captures: usize,
-    trigger: bool,
-    in_guard: bool,
-    in_capture: Option<usize>,
-) -> Value {
-    let mut package = v2_all_families();
+/// The all-families fixture, or `package`, with a clause leaf made
+/// `let s = seq(0 .. 0: i) in <boolean>` (the `seq` binder `i` a
+/// `value`/`parameter` node at the shape's level).
+fn clause_leaf_seq(shape: Shape, mut package: Value) -> Value {
+    let Shape {
+        level,
+        captures,
+        trigger,
+        place,
+        nested,
+    } = shape;
+    let in_guard = place == Place::Guard;
+    let in_capture = match place {
+        Place::Capture(index) => Some(index),
+        _ => None,
+    };
     let integer = family_key("a3a3");
     let boolean = family_key("aaaa");
     let text = family_key("a1a1");
@@ -5243,6 +5245,22 @@ fn clause_leaf_seq(
     );
     let let_operation = json!({"identity": "filament.op.control.let", "laws": [], "mode": null,
         "member": null, "leaves": []});
+    if nested {
+        // `let t = <boolean> in seq(...)`: the `seq` sits in the body of a
+        // `let`, one binder inside the bound value of the outer `let`.
+        add(
+            &mut package,
+            "seq-inner",
+            "expression",
+            "let",
+            counted,
+            json!({
+            "term": "application", "operator": "let", "operation": let_operation.clone(),
+            "result_type": node_id(counted), "arguments": [
+                {"term": "binding", "name": "t", "value": refer(&family_key("dddd"))},
+                refer("seq-application")]}),
+        );
+    }
     add(
         &mut package,
         "seq-let",
@@ -5252,11 +5270,12 @@ fn clause_leaf_seq(
         json!({
         "term": "application", "operator": "let", "operation": let_operation,
         "result_type": node_id(&boolean), "arguments": [
-            {"term": "binding", "name": "s", "value": refer("seq-application")},
+            {"term": "binding", "name": "s",
+             "value": refer(if nested { "seq-inner" } else { "seq-application" })},
             refer(&family_key("dddd"))]}),
     );
     let holds = find_identity(&package, &temporal_identity("holds"));
-    if !in_guard && in_capture.is_none() {
+    if place == Place::Formula {
         package["semantic_graph"]["nodes"][holds]["body"]["arguments"][0] = refer("seq-let");
     }
     if captures > 0 {
@@ -5299,59 +5318,154 @@ fn clause_leaf_seq(
     package
 }
 
-/// FSpec FR-322 "Parameter" binder rule: a `seq` binder is a binder like any
-/// other, so its level counts the binders in scope at a temporal clause leaf
-/// (the clause's `over` parameter, then the enclosing `let`), not only a
-/// function's parameters.
+/// Where the `let` holding the `seq` stands in the clause.
+#[derive(Clone, Copy, PartialEq)]
+enum Place {
+    /// The `holds` leaf of the clause's formula.
+    Formula,
+    /// The activation guard (needs a trigger).
+    Guard,
+    /// The initializer of this capture.
+    Capture(usize),
+}
+
+/// A clause with `captures` captures, optionally an `each` trigger, and a
+/// `seq` whose index binder carries `level`.
+#[derive(Clone, Copy)]
+struct Shape {
+    level: u64,
+    captures: usize,
+    trigger: bool,
+    place: Place,
+    /// Whether the `seq` is in the body of a `let` nested in the bound value.
+    nested: bool,
+}
+
+impl Shape {
+    fn at(level: u64) -> Self {
+        Self {
+            level,
+            captures: 0,
+            trigger: false,
+            place: Place::Formula,
+            nested: false,
+        }
+    }
+}
+
+/// Asserts the shape admits at `level` and refuses one level either side.
+fn admits_only_at(label: &str, level: u64, shape: impl Fn(u64) -> Shape, base: impl Fn() -> Value) {
+    admitted(
+        &format!("{label}: level {level}"),
+        &clause_leaf_seq(shape(level), base()),
+    );
+    for wrong in [level.checked_sub(1), level.checked_add(1)]
+        .into_iter()
+        .flatten()
+    {
+        let package = clause_leaf_seq(shape(wrong), base());
+        let seq = find_identity(&package, "filament.op.collection.seq");
+        expect(
+            &format!("{label}: level {wrong}"),
+            &package,
+            Code::IllTyped,
+            Cause::OperatorIneligible,
+            &at_node(seq, ""),
+        );
+    }
+}
+
+/// The binder rule of FSpec FR-322 "Parameter" for a `seq` binder at a
+/// temporal clause leaf: its level is its position among the binders in
+/// scope where it is bound (the clause's `over`, `each` trigger and captures,
+/// then the binders of the leaf; the bound value of a `let` is outside its
+/// binder and its body inside). FSL FR-337 gives the clause scopes: a capture
+/// is not in the guard's scope, and capture `k` sees the captures before it.
 #[test]
-#[trace("TC-048", "FR-322-AC-455")]
+#[trace("TC-048")]
 fn tc_048_a_seq_binder_in_a_clause_leaf_resolves_its_level_from_the_binders_in_scope() {
-    admitted(
-        "seq binder at level 2",
-        &clause_leaf_seq(2, 0, false, false, None),
+    let base = v2_all_families;
+    // A leaf under `over` alone: the bound value of a `let` is outside it.
+    admits_only_at("formula leaf", 1, Shape::at, base);
+    // In the body of a `let`, one binder further in.
+    admits_only_at(
+        "let body",
+        2,
+        |l| Shape {
+            nested: true,
+            ..Shape::at(l)
+        },
+        base,
     );
-    // Each capture is one more binder in the clause's scope.
-    admitted(
-        "one capture, level 3",
-        &clause_leaf_seq(3, 1, false, false, None),
+    // Each capture and the trigger are one more binder in the formula's scope.
+    admits_only_at(
+        "one capture",
+        2,
+        |l| Shape {
+            captures: 1,
+            ..Shape::at(l)
+        },
+        base,
     );
-    // An `each` trigger is another.
-    admitted(
-        "trigger, level 3",
-        &clause_leaf_seq(3, 0, true, false, None),
+    admits_only_at(
+        "trigger",
+        2,
+        |l| Shape {
+            trigger: true,
+            ..Shape::at(l)
+        },
+        base,
     );
-    let package = clause_leaf_seq(2, 0, true, false, None);
-    let seq = find_identity(&package, "filament.op.collection.seq");
-    expect(
-        "trigger, level 2",
-        &package,
-        Code::IllTyped,
-        Cause::OperatorIneligible,
-        &at_node(seq, ""),
+    admits_only_at(
+        "trigger and two captures",
+        4,
+        |l| Shape {
+            trigger: true,
+            captures: 2,
+            ..Shape::at(l)
+        },
+        base,
     );
-    // The activation guard is a leaf of the same scope.
-    admitted("guard, level 3", &clause_leaf_seq(3, 0, true, true, None));
-    let package = clause_leaf_seq(2, 0, true, true, None);
-    let seq = find_identity(&package, "filament.op.collection.seq");
-    expect(
-        "guard, level 2",
-        &package,
-        Code::IllTyped,
-        Cause::OperatorIneligible,
-        &at_node(seq, ""),
-    );
-    // A function that also reads the leaf puts the binder at another level, and
-    // one binder has one level.
-    for level in [1, 2] {
-        let mut package = clause_leaf_seq(level, 0, false, false, None);
+    // The guard is over `over` and the trigger only, whatever the captures.
+    for captures in [0, 2] {
+        admits_only_at(
+            &format!("guard, {captures} captures"),
+            2,
+            |l| Shape {
+                trigger: true,
+                captures,
+                place: Place::Guard,
+                ..Shape::at(l)
+            },
+            base,
+        );
+    }
+    // Capture k reads over, the trigger and the captures before k.
+    for (capture, trigger, level) in [(0, false, 1), (1, false, 2), (0, true, 2), (1, true, 3)] {
+        admits_only_at(
+            &format!("capture {capture} initializer, trigger {trigger}"),
+            level,
+            |l| Shape {
+                trigger,
+                captures: 2,
+                place: Place::Capture(capture),
+                ..Shape::at(l)
+            },
+            base,
+        );
+    }
+    // A function that also reads the leaf puts the binder at another level,
+    // and one binder has one level.
+    for level in [0, 1] {
+        let mut package = clause_leaf_seq(Shape::at(level), v2_all_families());
         let mut owner = node_with_key(
             "seq-owner",
             "function",
             "pure_function",
-            json!({
-        "term": "aggregate", "members": [
-            {"term": "binding", "name": "parameters", "value": {"term": "aggregate", "members": []}},
-            {"term": "binding", "name": "body", "value": refer("seq-let")}]}),
+            json!({"term": "aggregate", "members": [
+                {"term": "binding", "name": "parameters",
+                 "value": {"term": "aggregate", "members": []}},
+                {"term": "binding", "name": "body", "value": refer("seq-let")}]}),
         );
         owner["semantic_type"] = node_id(&family_key("aaaa"));
         owner["occurrences"] = json!([{"role": "expression", "ordinal": 0}]);
@@ -5366,44 +5480,13 @@ fn tc_048_a_seq_binder_in_a_clause_leaf_resolves_its_level_from_the_binders_in_s
             &at_node(seq, ""),
         );
     }
-    // The initializer of capture k reads over, the trigger and the captures
-    // declared before k: capture 0 sees one binder, capture 1 sees two (the `let` adds one more), and a
-    // later capture is not in scope.
-    for (capture, level) in [(0, 2), (1, 3)] {
-        admitted(
-            &format!("capture {capture} initializer, level {level}"),
-            &clause_leaf_seq(level, 2, false, false, Some(capture)),
-        );
-        for wrong in [level + 1, level - 1] {
-            let package = clause_leaf_seq(wrong, 2, false, false, Some(capture));
-            let seq = find_identity(&package, "filament.op.collection.seq");
-            expect(
-                &format!("capture {capture} initializer, level {wrong}"),
-                &package,
-                Code::IllTyped,
-                Cause::OperatorIneligible,
-                &at_node(seq, ""),
-            );
-        }
-    }
-    admitted(
-        "trigger and capture 0 initializer, level 3",
-        &clause_leaf_seq(3, 1, true, false, Some(0)),
-    );
-    let package = clause_leaf_seq(2, 1, false, false, None);
-    let seq = find_identity(&package, "filament.op.collection.seq");
-    expect(
-        "one capture, level 2",
-        &package,
-        Code::IllTyped,
-        Cause::OperatorIneligible,
-        &at_node(seq, ""),
-    );
-    for wrong in [0, 1, 3] {
-        let package = clause_leaf_seq(wrong, 0, false, false, None);
+    // A hyper body wrapper reads its leaves over its atom slots, a count the
+    // wire does not carry: a `seq` there is refused at every level.
+    for level in 0..4 {
+        let package = clause_leaf_seq(Shape::at(level), hyper_clock_fixture(&["s", "n"]).0);
         let seq = find_identity(&package, "filament.op.collection.seq");
         expect(
-            &format!("seq binder at level {wrong}"),
+            &format!("hyper wrapper, binder at {level}"),
             &package,
             Code::IllTyped,
             Cause::OperatorIneligible,

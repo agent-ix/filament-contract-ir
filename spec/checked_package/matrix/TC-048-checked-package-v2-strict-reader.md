@@ -3121,17 +3121,23 @@ published no vector file for them.
   binder refuses `wrong_snapshot` with reason `ineligible-kind`.
 - Send performer (AC-568): with a channel from one role to another, observe-only
   on the `to` role admits the `send` and on the `from` role refuses it.
-- Seq binder level at a temporal clause leaf (FSpec FR-322 "Parameter",
-  FR-322-AC-455; QSL-2726, test
+- Seq binder level at a temporal clause leaf (FSpec FR-322 "Parameter";
+  QSL-2726; test
   `tc_048_a_seq_binder_in_a_clause_leaf_resolves_its_level_from_the_binders_in_scope`):
   a binder's level is its position among the binders in scope where it is
-  bound. In a clause, the `over` parameter is level 0, an `each` trigger adds
-  one, each capture adds one in declaration order, and a `let` or quantifier
-  binder inside the leaf adds its depth. The activation guard and every
-  formula leaf are read over all of the clause's binders; the initializer of
-  capture `k` is read over `over`, the trigger and the captures declared
-  before `k`, never `k` or later ones. A `seq` binder whose
-  `value`/`parameter` node carries another level, or one leaf read at two
-  levels, refuses `ill_typed`/`operator-ineligible` at the `seq` application.
-  FSpec holds no acceptance criterion with this numbering: FSpec needs the AC
-  text.
+  bound. In a clause, `over` is the first binder, an `each` trigger adds one,
+  and each capture adds one in declaration order. The formula leaves are read
+  over `over`, the trigger and all the captures; the activation guard over
+  `over` and the trigger only (a capture is not in the guard's scope, FSL
+  FR-337); the initializer of capture `k` over `over`, the trigger and the
+  captures declared before `k`. Inside a leaf, the bound value of a `let` is
+  outside its binder and its body inside it (one level further); a `fold` or
+  `reduce` step is inside its accumulator and element binders (two further);
+  any other binding argument opens one binder. A hyper body wrapper (FSpec
+  FR-402) is read over its atom slots, a count the wire does not carry, so a
+  `seq` reachable from one refuses. A `seq` binder whose `value`/`parameter`
+  node carries another level, or one leaf read at two levels, refuses
+  `ill_typed`/`operator-ineligible` at the `seq` application. No FSpec
+  acceptance criterion states this numbering yet (FR-322-AC-455 covers the
+  catalog entries only), so the test is tagged TC-048 alone; FSpec needs the
+  AC text.
