@@ -39,6 +39,7 @@ use crate::checked_package::common::ValidationFailure;
 use crate::checked_package::selected_population::{
     is_model_population, least_type_occurrence, population_maximum, population_object_type_typed,
 };
+use crate::checked_package::shared::CheckedTypeArgumentRefusalDetail;
 use crate::checked_package::shared::{
     CheckedNodePathSegment, CheckedPackageRefusalCause, CheckedPackageRefusalCode, JsonPointer,
 };
@@ -481,7 +482,85 @@ pub(super) fn validate_operations(
     if let Some((_, failure)) = first_refusal {
         return Err(failure);
     }
+    one_alias_one_type(nodes, terms, meter)?;
     Ok(admitted_views)
+}
+
+/// FR-322 "Named type arguments" rule 5 over `(alias, declaration, position)`
+/// rows of the `type_argument` members carrying an alias: the later and the
+/// earlier position of the conflict whose later member comes first in graph
+/// order, where a conflict is a member whose alias equals an earlier member's
+/// while its declaration differs.
+fn first_alias_conflict<D: PartialEq>(
+    rows: &mut [((&str, &str), &D, usize)],
+) -> Option<(usize, usize)> {
+    // Rows of one alias keep graph order; the first of a group is the
+    // earliest member carrying it.
+    rows.sort_by(|a, b| a.0.cmp(&b.0).then(a.2.cmp(&b.2)));
+    let mut first: Option<(usize, usize)> = None;
+    for group in rows.chunk_by(|a, b| a.0 == b.0) {
+        let earliest = &group[0];
+        let Some(later) = group.iter().find(|row| row.1 != earliest.1) else {
+            continue;
+        };
+        if first.is_none_or(|(held, _)| later.2 < held) {
+            first = Some((later.2, earliest.2));
+        }
+    }
+    first
+}
+
+/// FSpec FR-322 "Named type arguments", rule 5, run once every application
+/// has passed: in graph order, a `type_argument` member whose `alias` equals
+/// an earlier member's while its `declaration` names a different node is
+/// `ill_typed`/`type-mismatch` at the later member's `alias`, naming both
+/// applications.
+fn one_alias_one_type(
+    nodes: &[CheckedSemanticNodeV2],
+    terms: &[Option<CheckedTerm>],
+    meter: &mut WorkMeter,
+) -> Result<(), ValidationFailure> {
+    let mut labelled: Vec<((&str, &str), &CheckedNodeId, usize)> = Vec::new();
+    for (position, term) in terms.iter().enumerate() {
+        let Some(CheckedTerm::Application { operation, .. }) = term else {
+            continue;
+        };
+        let record = operation.record();
+        let (Some(member), Some(declaration)) = (
+            record.member.as_ref(),
+            record.member_ids.declaration.as_ref(),
+        ) else {
+            continue;
+        };
+        let member = super::TermNode::of(member);
+        if member.get("kind").and_then(super::TermNode::as_str) != Some("type_argument") {
+            continue;
+        }
+        if let Some(alias) = alias_of(member) {
+            meter.room(&mut labelled, 1)?;
+            labelled.push((alias, declaration, position));
+        }
+    }
+    let Some((later, earlier)) = first_alias_conflict(&mut labelled) else {
+        return Ok(());
+    };
+    let alias_at = |position: usize| {
+        node_pointer(position)
+            .key("body")
+            .key("operation")
+            .key("member")
+            .key("alias")
+    };
+    let mut failure = ValidationFailure::refused_at(
+        CheckedPackageRefusalCode::IllTyped,
+        alias_at(later),
+        Some(CheckedPackageRefusalCause::TypeMismatch),
+        nodes[later].node_id.clone(),
+    );
+    if let ValidationFailure::Refused(refusal) = &mut failure {
+        refusal.push_path(alias_at(earlier));
+    }
+    Err(failure)
 }
 
 /// A sorted lookup of flat IDs for repeated operand-family reads. Deep
@@ -1702,6 +1781,100 @@ struct OperationResolution<'a> {
     fast_index: Option<&'a FlatWireIndex<'a>>,
 }
 
+/// The text of the `alias` label `member` carries, as `(package, node)`; the
+/// wire-validation stage has already shaped it (FSpec FR-322 "Named type
+/// arguments", rule 1).
+pub(super) fn alias_of<'d>(member: super::TermNode<'d>) -> Option<(&'d str, &'d str)> {
+    let alias = member.get("alias")?;
+    Some((
+        alias.get("package")?.as_str()?,
+        alias.get("node")?.as_str()?,
+    ))
+}
+
+/// Whether `node` is `ix://` + `package` + `/` + one or more
+/// identifier-grammar segments joined by `/` (FSpec FR-610 "Declaration
+/// keys").
+#[ix_trace_rs::string_edge]
+fn is_declaration_key_of(package: &str, node: &str) -> bool {
+    node.strip_prefix("ix://")
+        .and_then(|rest| rest.strip_prefix(package))
+        .and_then(|rest| rest.strip_prefix('/'))
+        .is_some_and(|path| path.split('/').all(super::identity::is_identifier))
+}
+
+/// FSpec FR-322 "Named type arguments", rules 2 to 4, for one application:
+/// the `alias` label of its `type_argument` member joins an owner, is
+/// spelled as a declaration key, and for a selected domain package names an
+/// alias that resolves to the member's `declaration`. Nothing here changes
+/// how the application is otherwise checked.
+fn check_type_argument_alias(
+    application: Application<'_>,
+    operation: &OperationWire,
+    lock: &CheckedPackageLockV2,
+    owners: &ModelOwners<'_>,
+    meter: &mut WorkMeter,
+) -> Result<Option<ValidationFailure>, ValidationFailure> {
+    let Some((package, node)) = operation.member_node().and_then(alias_of) else {
+        return Ok(None);
+    };
+    let alias_at = |member: &[&str]| {
+        let mut path = vec!["operation", "member", "alias"];
+        path.extend_from_slice(member);
+        application.body(&path)
+    };
+    let model = owners.model(package);
+    let source = lock
+        .sources
+        .iter()
+        .any(|source| source.identity.as_ref() == package)
+        || lock
+            .dependency_selections
+            .iter()
+            .any(|selection| selection.identity.as_ref() == package);
+    if model.is_none() && !source {
+        return Ok(Some(application.refuse(
+            CheckedPackageRefusalCode::MissingDeclaration,
+            alias_at(&["package"]),
+            CheckedPackageRefusalCause::MissingSelection,
+        )));
+    }
+    let Some(model) = model else {
+        if !is_declaration_key_of(package, node) {
+            return Ok(Some(application.refuse(
+                CheckedPackageRefusalCode::InvalidPackage,
+                alias_at(&["node"]),
+                CheckedPackageRefusalCause::InvalidValue,
+            )));
+        }
+        return Ok(None);
+    };
+    let mut budget = Budget::new(meter, model.root, model.bytes);
+    let Some(resolved) = model.alias_resolved_node(node, &mut budget)? else {
+        return Ok(Some(application.refuse(
+            CheckedPackageRefusalCode::MissingDeclaration,
+            alias_at(&["node"]),
+            CheckedPackageRefusalCause::MissingName,
+        )));
+    };
+    let declaration = member_declaration(operation);
+    if resolved.as_ref() == declaration && resolved.is_some() {
+        return Ok(None);
+    }
+    let mut failure = application.refuse(
+        CheckedPackageRefusalCode::IllTyped,
+        alias_at(&[]),
+        CheckedPackageRefusalCause::TypeMismatch,
+    );
+    if let ValidationFailure::Refused(refusal) = &mut failure {
+        refusal.type_argument_detail = Some(Box::new(CheckedTypeArgumentRefusalDetail {
+            expected: resolved,
+            actual: declaration.cloned(),
+        }));
+    }
+    Ok(Some(failure))
+}
+
 #[ix_trace_rs::string_edge]
 fn operation_defect(
     application: Application<'_>,
@@ -1940,6 +2113,13 @@ fn operation_defect(
                 None,
                 application.node.node_id.clone(),
             )));
+        }
+    }
+    if wire_member_kind == Some(Some(OperationMemberKind::TypeArgument)) {
+        if let Some(failure) =
+            check_type_argument_alias(application, &operation, lock, owners, meter)?
+        {
+            return Ok(Some(failure));
         }
     }
     let profile_operator = operation
@@ -7080,6 +7260,38 @@ mod tests {
     };
     use ix_trace_rs::trace;
     use serde_json::{json, Value};
+
+    /// FR-322 rule 5 reports the conflict whose later member is first in
+    /// graph order, not the one a group sort reaches first or last.
+    #[trace("TC-048", "FR-322-AC-492", "FR-038-AC-583")]
+    #[test]
+    fn the_earliest_alias_conflict_is_reported() {
+        // Alias ("p", "b") conflicts at position 3 (earlier 0); ("p", "a")
+        // conflicts at position 5 (earlier 1); ("p", "c") does not conflict.
+        let mut rows = vec![
+            (("p", "b"), &1, 0),
+            (("p", "a"), &1, 1),
+            (("p", "c"), &1, 2),
+            (("p", "b"), &2, 3),
+            (("p", "c"), &1, 4),
+            (("p", "a"), &2, 5),
+        ];
+        assert_eq!(super::first_alias_conflict(&mut rows), Some((3, 0)));
+        let mut calm = vec![
+            (("p", "a"), &1, 0),
+            (("p", "a"), &1, 1),
+            (("p", "b"), &2, 2),
+        ];
+        assert_eq!(super::first_alias_conflict(&mut calm), None);
+        // The conflict names the first differing member of its group.
+        let mut three = vec![
+            (("p", "a"), &1, 0),
+            (("p", "a"), &1, 4),
+            (("p", "a"), &2, 7),
+            (("p", "a"), &3, 9),
+        ];
+        assert_eq!(super::first_alias_conflict(&mut three), Some((7, 0)));
+    }
 
     #[trace("TC-472", "FR-038-AC-511")]
     #[test]

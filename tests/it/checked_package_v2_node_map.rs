@@ -299,7 +299,7 @@ fn member_slots(member: &CheckedOperationMember) -> Vec<(&'static str, CheckedNo
         | CheckedOperationMember::Element { declaration }
         | CheckedOperationMember::Operation { declaration, .. }
         | CheckedOperationMember::History { declaration, .. }
-        | CheckedOperationMember::TypeArgument { declaration } => {
+        | CheckedOperationMember::TypeArgument { declaration, .. } => {
             vec![("/declaration", declaration.clone())]
         }
         CheckedOperationMember::RelationshipEnd {

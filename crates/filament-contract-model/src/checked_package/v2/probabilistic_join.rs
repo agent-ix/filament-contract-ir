@@ -985,8 +985,8 @@ impl Join<'_> {
     /// FR-640 Reader rule 3 for a workload whose `model` (at `model`) is
     /// source-declared. The identity-row join resolves each row's operation
     /// and the coverage of the model's own and inherited operations; the strict
-    /// read checks the order of the weights, that no operation name repeats
-    /// and that each row's `declaring` node is a source-declared node of the
+    /// read checks the order of the weights, that no (`declaring`, operation)
+    /// pair repeats and that each row's `declaring` node is a source-declared node of the
     /// model's `SourceOwner`. One validation visit is charged for each row.
     fn source_workload(
         &self,
@@ -998,11 +998,6 @@ impl Join<'_> {
         let weights_at = binding_at(holder, 2);
         let rows = bound(body, 2).map(members).unwrap_or_default();
         let mut previous: Option<(&CheckedNodeId, &str)> = None;
-        let mut named: Vec<&str> = stage_storage::vec(
-            meter,
-            &Site::new(PackageReadStage::Graph, holder, FORM, weights_at),
-            rows.len(),
-        )?;
         for (index, row) in rows.iter().enumerate() {
             let row_at = weights_at.key("members").index(index);
             visit(meter, holder, row_at)?;
@@ -1019,12 +1014,10 @@ impl Join<'_> {
             if !declared {
                 return Err(invalid(meter, holder, declaring_at));
             }
-            if previous.is_some_and(|earlier| earlier >= (declaring, name)) || named.contains(&name)
-            {
+            if previous.is_some_and(|earlier| earlier >= (declaring, name)) {
                 return Err(invalid(meter, holder, row_at));
             }
             previous = Some((declaring, name));
-            named.push(name);
         }
         Ok(())
     }

@@ -602,8 +602,12 @@ pub(super) fn member_is_well_formed_node(
                 _ => false,
             }
         }
+        // The optional `alias` label is shaped by the wire-validation stage
+        // (FSpec FR-322 "Named type arguments", rule 1).
         OperationMemberKind::TypeArgument => {
-            member.exact_members(&["kind", "declaration"]) && ids.declaration.is_some()
+            (member.exact_members(&["kind", "declaration"])
+                || member.exact_members(&["kind", "declaration", "alias"]))
+                && ids.declaration.is_some()
         }
         OperationMemberKind::Field => {
             member.get("name").and_then(TermNode::as_str).is_some() && ids.declaration.is_some()

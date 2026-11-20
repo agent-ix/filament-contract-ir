@@ -375,6 +375,29 @@ pub(super) fn check(
                             return Err(flat_refusal(&meter, position, CheckedPackageRefusalCode::MalformedWire, at.key("operation").key("member").key("operator")));
                         }
                         let member = member_of(operation, "member");
+                        // FSpec FR-322 "Named type arguments", rule 1: the
+                        // optional `alias` label of a `type_argument` member
+                        // is `{package, node}`, two nonempty strings, and
+                        // appears on no other member kind.
+                        if let Some(alias) = member_of(member, "alias") {
+                            let operation_at = at.key("operation");
+                            let member_at = operation_at.key("member");
+                            let alias_at = member_at.key("alias");
+                            let on_type_argument = member_of(member, "kind")
+                                .and_then(TermNode::as_str)
+                                == Some("type_argument");
+                            if !on_type_argument || !alias.exact_members(&["package", "node"]) {
+                                return Err(flat_refusal(&meter, position, CheckedPackageRefusalCode::MalformedWire, alias_at));
+                            }
+                            for name in ["package", "node"] {
+                                if !member_of(Some(alias), name)
+                                    .and_then(TermNode::as_str)
+                                    .is_some_and(|text| !text.is_empty())
+                                {
+                                    return Err(flat_refusal(&meter, position, CheckedPackageRefusalCode::MalformedWire, alias_at.key(name)));
+                                }
+                            }
+                        }
                         let relationship_end = member_of(member, "kind")
                             .and_then(TermNode::as_str)
                             == Some("relationship_end");

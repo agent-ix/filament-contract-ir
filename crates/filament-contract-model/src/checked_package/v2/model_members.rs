@@ -1733,6 +1733,27 @@ pub(super) mod probe {
 }
 
 impl DomainModel {
+    /// FSpec FR-322 "Named type arguments", rule 4. `None` when `node` names
+    /// no alias of this package. Otherwise the node ID of the type the alias
+    /// resolves to through every alias it reaches (FR-154), itself `None` for
+    /// a chain this reader cannot map to a node.
+    pub(super) fn alias_resolved_node(
+        &self,
+        node: &str,
+        budget: &mut Budget<'_, '_>,
+    ) -> Result<Option<Option<CheckedNodeId>>, ValidationFailure> {
+        if self.population_alias_target(node).is_none() {
+            return Ok(None);
+        }
+        let Some(type_ref) = self.selected_type_ref(node, budget)? else {
+            return Ok(Some(None));
+        };
+        let Some(member_type) = self.element_type_in(&type_ref, budget)? else {
+            return Ok(Some(None));
+        };
+        Ok(Some(member_type.node_id_in(&self.checked_package, budget)?))
+    }
+
     /// One admitted alias edge, borrowed from the selected document's retained index.
     pub(super) fn population_alias_target(&self, name: &str) -> Option<&str> {
         self.aliases.get(name).map(AsRef::as_ref)
@@ -2863,6 +2884,8 @@ pub(super) struct ModelOwners<'m> {
     by_declaration: Vec<usize>,
     /// The identity of every selected domain package, sorted.
     identities: Vec<&'m str>,
+    /// Every selected domain package, as read.
+    models: &'m [DomainModel],
 }
 
 impl<'m> ModelOwners<'m> {
@@ -2899,6 +2922,13 @@ impl<'m> ModelOwners<'m> {
         }
         let mut budget = Budget::new(meter, owner.package.root, owner.package.bytes);
         owner.package.bears_clock(owner.node, &mut budget)
+    }
+
+    /// The selected domain package of `identity`.
+    pub(super) fn model(&self, identity: &str) -> Option<&'m DomainModel> {
+        self.models
+            .iter()
+            .find(|model| model.identity.as_ref() == identity)
     }
 
     /// Whether a domain package of `identity` is selected.
@@ -3176,6 +3206,7 @@ impl<'m> ModelOwners<'m> {
             by_key,
             by_declaration,
             identities,
+            models,
         })
     }
 

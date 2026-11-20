@@ -731,6 +731,17 @@ pub struct CheckedOperationConstraint {
     pub family: Option<Box<str>>,
 }
 
+/// The original declaration key `{package, node}` of the type alias a
+/// `type_argument` member's source wrote (FSpec FR-322 "Named type arguments").
+/// It is a printing label: every check of the application reads `declaration`.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CheckedTypeArgumentAlias {
+    /// The identity of the package that declares the alias.
+    pub package: Box<str>,
+    /// The alias declaration's key, `ix://<package>/<path>`.
+    pub node: Box<str>,
+}
+
 /// The closed shape of an admitted operation member.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CheckedOperationMember {
@@ -784,6 +795,9 @@ pub enum CheckedOperationMember {
     TypeArgument {
         /// Type argument declaration node.
         declaration: CheckedNodeId,
+        /// The declaration key of the type alias the source wrote, a printing
+        /// label no check reads (FSpec FR-322 "Named type arguments").
+        alias: Option<CheckedTypeArgumentAlias>,
     },
     /// An operator selected by a profile.
     ProfileOperator {
@@ -1203,7 +1217,7 @@ impl CheckedOperationMember {
             | Self::Element { declaration }
             | Self::Operation { declaration, .. }
             | Self::History { declaration, .. }
-            | Self::TypeArgument { declaration } => replace(declaration)?,
+            | Self::TypeArgument { declaration, .. } => replace(declaration)?,
             Self::Fairness { target, .. } => replace(target.node_mut())?,
             Self::RelationshipEnd {
                 declaration,
@@ -1340,6 +1354,15 @@ impl CheckedOperationMember {
             },
             OperationMemberKind::TypeArgument => Self::TypeArgument {
                 declaration: meter.clone_id(need!(declaration))?,
+                alias: match value.get("alias") {
+                    Some(alias) => Some(CheckedTypeArgumentAlias {
+                        package: meter
+                            .boxed_str(need!(alias.get("package").and_then(TermNode::as_str)))?,
+                        node: meter
+                            .boxed_str(need!(alias.get("node").and_then(TermNode::as_str)))?,
+                    }),
+                    None => None,
+                },
             },
             OperationMemberKind::ProfileOperator => Self::ProfileOperator {
                 operator: value
@@ -1434,6 +1457,13 @@ impl CheckedOperationMember {
             },
             OperationMemberKind::TypeArgument => Self::TypeArgument {
                 declaration: declaration()?,
+                alias: match value.get("alias") {
+                    Some(alias) => Some(CheckedTypeArgumentAlias {
+                        package: alias.get("package")?.as_str()?.into(),
+                        node: alias.get("node")?.as_str()?.into(),
+                    }),
+                    None => None,
+                },
             },
             OperationMemberKind::ProfileOperator => Self::ProfileOperator {
                 operator: value
@@ -1470,7 +1500,7 @@ impl CheckedOperationMember {
             | Self::Element { declaration }
             | Self::Operation { declaration, .. }
             | Self::History { declaration, .. }
-            | Self::TypeArgument { declaration } => replace(declaration),
+            | Self::TypeArgument { declaration, .. } => replace(declaration),
             Self::Fairness { target, .. } => replace(target.node_mut()),
             Self::RelationshipEnd {
                 declaration,
@@ -2566,7 +2596,7 @@ fn map_operation_ids(
             | CheckedOperationMember::Position { declaration, .. }
             | CheckedOperationMember::Element { declaration }
             | CheckedOperationMember::Operation { declaration, .. }
-            | CheckedOperationMember::TypeArgument { declaration }
+            | CheckedOperationMember::TypeArgument { declaration, .. }
             | CheckedOperationMember::History { declaration, .. } => {
                 replace(declaration, &["declaration"])
             }
@@ -2805,7 +2835,7 @@ impl CheckedTerm {
                             | CheckedOperationMember::Position { declaration, .. }
                             | CheckedOperationMember::Element { declaration }
                             | CheckedOperationMember::Operation { declaration, .. }
-                            | CheckedOperationMember::TypeArgument { declaration }
+                            | CheckedOperationMember::TypeArgument { declaration, .. }
                             | CheckedOperationMember::History { declaration, .. } => {
                                 member_id(declaration)?;
                             }
@@ -4307,7 +4337,7 @@ mod tests {
                 | CheckedOperationMember::Position { declaration, .. }
                 | CheckedOperationMember::Element { declaration }
                 | CheckedOperationMember::Operation { declaration, .. }
-                | CheckedOperationMember::TypeArgument { declaration } => declaration,
+                | CheckedOperationMember::TypeArgument { declaration, .. } => declaration,
                 _ => panic!("single-declaration member changed kind"),
             };
             assert_eq!(declaration, &replacement);
