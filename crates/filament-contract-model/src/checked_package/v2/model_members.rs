@@ -661,6 +661,10 @@ pub(super) struct DomainModel {
     pub(super) tuple_types: SortedMap<Box<str>, Vec<SelectedTypeRef>>,
     /// Value types by IR node identity; `None` for an unmapped value type.
     pub(super) value_types: SortedMap<Box<str>, Option<ValueBounds>>,
+    /// The value types whose `scalar` is `float32` or `float64`: they have no
+    /// member type (`value_types` holds `None`), but FR-726 must still see
+    /// the IEEE leaf.
+    ieee_value_types: SortedSet<Box<str>>,
     /// Core Semantic IR aliases, resolved before model member type mapping.
     aliases: SortedMap<Box<str>, Box<str>>,
     /// Exact semantic cases, original identities, and authored positions.
@@ -1838,9 +1842,108 @@ impl DomainModel {
             .get(node)
             .or_else(|| self.record_types.get(node))
     }
+    /// FSpec FR-726: whether the model-owned record, tuple or variant `node`
+    /// is not FIFO-key-stable by what this document declares: a `float32`,
+    /// `float64` or clock leaf at any depth (through fields own and
+    /// inherited, tuple positions, variant payloads, options, sequences, map
+    /// keys and values, and value types whose scalar is a float). Every other
+    /// type, including a native `Decimal`, `Rational` or `Text` and a value
+    /// type over any other scalar, is stable. Each declaration is expanded
+    /// once, and each step is charged to `budget`.
+    pub(super) fn holds_key_unstable_leaf(
+        &self,
+        node: &str,
+        budget: &mut Budget<'_, '_>,
+    ) -> Result<bool, ValidationFailure> {
+        enum Item<'a> {
+            Ref(&'a SelectedTypeRef),
+            Name(&'a str),
+        }
+        let mut visited: SortedSet<&str> = SortedSet::new();
+        let mut pending: Vec<Item<'_>> = budget.vec(1, MODEL)?;
+        pending.push(Item::Name(node));
+        while let Some(item) = pending.pop() {
+            budget.charge(1)?;
+            let name = match item {
+                Item::Ref(SelectedTypeRef::Native(native)) => {
+                    if matches!(
+                        native,
+                        NativeTypeRef::Float32 | NativeTypeRef::Float64 | NativeTypeRef::Clock
+                    ) {
+                        return Ok(true);
+                    }
+                    continue;
+                }
+                Item::Ref(SelectedTypeRef::Unit(_)) => continue,
+                // Unreachable: an inline `Map<K, V>` `typeRef` is refused when
+                // the document is read, and a declared map is a
+                // `collection_types` definition walked below. Fail closed
+                // rather than guess at the raw key and value text.
+                Item::Ref(SelectedTypeRef::Map(..)) => return Ok(true),
+                Item::Ref(SelectedTypeRef::Declared(name)) => name.as_ref(),
+                Item::Name(name) => name,
+            };
+            if !visited.insert(budget, name, MODEL)? {
+                continue;
+            }
+            // A field's `typeRef` is alias-resolved when the document is read,
+            // so no alias name reaches this walk.
+            if let Some(definition) = self.collection_types.get(name) {
+                match definition {
+                    SelectedTypeDefinition::Sequence(inner)
+                    | SelectedTypeDefinition::Option(inner) => {
+                        budget.push(&mut pending, Item::Ref(inner), MODEL)?;
+                    }
+                    // A reference compares by identity.
+                    SelectedTypeDefinition::Reference(_) => {}
+                    SelectedTypeDefinition::Map(map) => {
+                        budget.push(&mut pending, Item::Ref(&map.keys), MODEL)?;
+                        budget.push(&mut pending, Item::Ref(&map.values), MODEL)?;
+                    }
+                }
+            } else if self.value_types.contains_key(name) {
+                if self.ieee_value_types.contains(name) {
+                    return Ok(true);
+                }
+            } else if self.record_types.contains_key(name) {
+                let ancestors = self.ancestors(name, budget)?;
+                for declaration in std::iter::once(name).chain(ancestors.iter().copied()) {
+                    let Some(record) = self.field_owner(declaration) else {
+                        continue;
+                    };
+                    for field in &record.fields {
+                        match field.slot.type_ref.as_ref() {
+                            Some(type_ref) => {
+                                budget.push(&mut pending, Item::Ref(type_ref), MODEL)?;
+                            }
+                            // The document stage refuses a field without a
+                            // `typeRef`, so this is unreachable; fail closed.
+                            None => return Ok(true),
+                        }
+                    }
+                }
+            } else if let Some(positions) = self.tuple_types.get(name) {
+                for type_ref in positions {
+                    budget.push(&mut pending, Item::Ref(type_ref), MODEL)?;
+                }
+            } else if let Some(cases) = self.variant_types.get(name) {
+                for case in cases.values() {
+                    if let Some(type_ref) = case.payload.as_ref() {
+                        budget.push(&mut pending, Item::Ref(type_ref), MODEL)?;
+                    }
+                }
+            } else if !self.object_types.contains_key(name) {
+                // The document stage refuses a `typeRef` that names no
+                // declaration, so this is unreachable; fail closed.
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
     /// The proper ancestors of `node` along its declared supertypes; one
     /// work unit per supertype edge followed.
-    fn ancestors(
+    pub(super) fn ancestors(
         &self,
         node: &str,
         budget: &mut Budget<'_, '_>,
@@ -4773,6 +4876,7 @@ pub(super) fn read_semantic_ir(
         event_types: SortedSet::with_capacity(budget, counts.events, F)?,
         tuple_types: SortedMap::with_capacity(budget, counts.tuple_types, F)?,
         value_types: SortedMap::with_capacity(budget, counts.value_types, F)?,
+        ieee_value_types: SortedSet::with_capacity(budget, counts.value_types, F)?,
         aliases,
         variant_types: SortedMap::with_capacity(budget, counts.variant_types, F)?,
         dimensions,
@@ -4937,6 +5041,13 @@ pub(super) fn read_semantic_ir(
                 } else {
                     semantic_ir_value_type_charged(declared_node, &model.unit_refs, budget)?
                 };
+                if matches!(
+                    declared_node.get("scalar").and_then(View::as_str),
+                    Some("float32" | "float64")
+                ) {
+                    let key = budget.text(node, F)?;
+                    model.ieee_value_types.insert(budget, key, F)?;
+                }
                 let key = budget.text(node, F)?;
                 model.value_types.insert(budget, key, bounds, F)?;
             }
