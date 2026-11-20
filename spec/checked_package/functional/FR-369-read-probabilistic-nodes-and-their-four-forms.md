@@ -280,17 +280,16 @@ form for these, and the reader's general literal check refuses it as
 
 ### Planned
 
-**Identity-row join (QSL-2645).** FR-369-AC-25 and FR-369-AC-26 are Planned:
-`SelectedSourceObjects::join_probabilistic` is not yet implemented. Until it
-exists, `CheckedPackageV2::read`
-admits a source-declared `declaring` node on the strict read alone (FR-369-AC-27,
-FR-369-AC-28), and the typed read (`delay_distributions`, `random_parameters`,
-`rewards`, `workloads`) serves a source-declared probabilistic node **unjoined**:
-the operation name, the random parameter and its support, the workload's
-coverage and the reward function's parameter list have been checked against no
-identity row, and a package that FR-369-AC-26's join would refuse is admitted. A
-consumer of a source-declared node's typed read SHALL NOT treat it as joined.
-FR-367-AC-8 lands the `parameters` entries the join reads. Owner: QSL-2645.
+**Source-declared entry types (QSL-2645).** `join_probabilistic` derives a
+support value's literal kind and membership from the entry's type node for
+the types FR-322 gives a selected parameter's: `Boolean`, `Integer`,
+`Int[lo, hi]`, `Rational`, `Rational[n1, n2; d1, d2]`, `Decimal`, `Float32`,
+`Float64`, `Text`, `Text[min, max; profile]`, `String`, `Uuid`, `Timestamp`, a
+unit (`Quantity<u>`) and a carried quantity over a `Rational[...]` carrier. An
+entry typed by a source enumeration, a bounded quantity or an integer or
+decimal carried quantity has no derived literal kind in the join and refuses
+every support value; whether the join SHALL admit those is a spec question
+for QSL-2645's owner.
 
 IR reads FSpec FR-322 "Results" as leaving a function with no `body` binding (a
 clause function) outside the comparison of a body root with the function's
