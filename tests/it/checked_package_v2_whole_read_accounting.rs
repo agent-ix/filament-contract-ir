@@ -334,7 +334,7 @@ fn positive_cases() -> Vec<Case> {
         evidence,
         Expected::Admitted,
     ));
-    // FR-369-AC-25 (IR-1576): probabilistic nodes on source-declared types.
+    // FR-369-AC-27 (IR-1576): probabilistic nodes on source-declared types.
     let (wire, evidence) =
         crate::checked_package_v2_source_objects::probabilistic::accounting_fixture();
     cases.push(case(

@@ -2,8 +2,8 @@
 // Copyright (C) 2026 Agent-IX
 
 //! TC-484: probabilistic nodes whose `declaring` node is a source-declared
-//! object type, the strict-read halves FR-369-AC-27 and FR-369-AC-28 of
-//! FR-369-AC-25 and FR-369-AC-26 (FSpec FR-640-AC-6, FR-640-AC-7). The
+//! object type, the strict-read halves FR-369-AC-27 and FR-369-AC-28 of the
+//! join ACs the matrix holds Planned (FSpec FR-640-AC-6, FR-640-AC-7). The
 //! identity-row join half has no entry point yet (QSL-2645): the packages read
 //! here are admitted with their operations, parameters and supports unjoined.
 
@@ -465,7 +465,7 @@ fn fail(case: &str, package: &Value, path: &str) {
     expect(case, package, invalid().0, invalid().1, path);
 }
 
-/// FR-369-AC-25 (strict-read half): the unit's delays, random parameter,
+/// FR-369-AC-27 (strict-read half): the unit's delays, random parameter,
 /// workload and reward on source-declared types are admitted, and the typed
 /// read gives each keyed by its node, the reward function being the declared
 /// node `{package, ["Other", "poke", "reward", "cost"], 0}` built here
@@ -523,7 +523,7 @@ fn source_declared_probabilistic_nodes_are_admitted_and_read() {
     assert!(read.rewards(&o, "step").is_empty());
 }
 
-/// FR-369-AC-26 (strict-read half): each refuses `invalid_package`/
+/// FR-369-AC-28 (strict-read half): each refuses `invalid_package`/
 /// `invalid-value` at the member.
 #[trace("TC-484", "FR-369-AC-28")]
 #[test]
@@ -568,7 +568,7 @@ fn source_declared_declaring_nodes_refuse_at_the_member() {
     );
 }
 
-/// FR-369-AC-26 (strict-read half): the reward `cost`'s function is refused at
+/// FR-369-AC-28 (strict-read half): the reward `cost`'s function is refused at
 /// the reward's `expression` when it is not the reward's own source clause
 /// function.
 #[trace("TC-484", "FR-369-AC-28")]
@@ -812,7 +812,7 @@ fn with_tick_root_first(package: &mut Value) {
     settle(package);
 }
 
-/// FR-369-AC-25, FSpec FR-640 Reader rule 5: the delay of a source node finds
+/// FR-369-AC-27, FSpec FR-640 Reader rule 5: the delay of a source node finds
 /// the `dense` root of its unit though a `tick` root over another source type
 /// of the unit comes first.
 #[trace("TC-484", "FR-369-AC-27")]
@@ -848,7 +848,7 @@ fn other_owned(package: &mut Value) {
     }
 }
 
-/// FR-369-AC-26: a delay on a source type of another `SourceOwner` than the
+/// FR-369-AC-28: a delay on a source type of another `SourceOwner` than the
 /// owner of every `dense` root refuses at `declaring`.
 #[trace("TC-484", "FR-369-AC-28")]
 #[test]
