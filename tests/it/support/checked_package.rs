@@ -889,9 +889,7 @@ pub fn select_model(package: &mut Value, identity: &str) {
             .as_array()
             .expect("synthetic graph nodes")
             .iter()
-            .filter(|node| {
-                node["owner"]["kind"] == "model" && node["owner"]["identity"] == identity
-            })
+            .filter(|node| is_model_declaration(node) && node["owner"]["identity"] == identity)
             .map(|node| node["node_id"].clone())
             .collect();
         for entry in package["source_map"]
@@ -2265,6 +2263,14 @@ fn fixture_lock(profile_selections: Vec<Value>) -> Value {
     })
 }
 
+/// Whether a fixture node is a model declaration node: a `model` or
+/// `relation` node carrying a `ModelOwner` (FSpec FR-322 "Model declaration
+/// occurrences"). A model-owned `function` node is not one.
+fn is_model_declaration(node: &Value) -> bool {
+    node["owner"]["kind"] == "model"
+        && matches!(node["node_tag"].as_str(), Some("model" | "relation"))
+}
+
 /// Brings every model declaration node and its `source_map` entry to the shape
 /// FSpec FR-322 "Model declaration occurrences" fixes, for a fixture whose
 /// nodes and source map were authored apart: one `generated` ordinal-zero
@@ -2293,10 +2299,7 @@ pub fn align_model_declarations(package: &mut Value) {
         .as_array()
         .expect("nodes")
         .iter()
-        .filter(|node| {
-            node["owner"]["kind"] == "model"
-                && matches!(node["node_tag"].as_str(), Some("model" | "relation"))
-        })
+        .filter(|node| is_model_declaration(node))
         .map(|node| (node["node_id"].clone(), node["owner"]["identity"].clone()))
         .collect();
     // One entry per declaration node: the first one found stays, with the
@@ -2329,7 +2332,7 @@ pub fn drop_a_non_model_source_entry(package: &mut Value) {
         .as_array()
         .expect("nodes")
         .iter()
-        .filter(|node| matches!(node["owner"]["kind"].as_str(), Some("model" | "model_root")))
+        .filter(|node| is_model_declaration(node) || node["owner"]["kind"] == "model_root")
         .map(|node| node["node_id"].clone())
         .collect();
     let entries = package["source_map"].as_array_mut().expect("source map");
@@ -2348,9 +2351,7 @@ pub fn generate_model_declaration_occurrences(package: &mut Value) {
         .as_array_mut()
         .expect("nodes")
     {
-        if node["owner"]["kind"] == "model"
-            && matches!(node["node_tag"].as_str(), Some("model" | "relation"))
-        {
+        if is_model_declaration(node) {
             node["occurrences"] = json!([{"role": "generated", "ordinal": 0}]);
         }
     }
@@ -3005,7 +3006,7 @@ fn source_map_for(nodes: &[Value], source: &Value) -> Value {
         .enumerate()
         .map(|(position, node)| {
             let occurrence = &node["occurrences"][0];
-            let region = if node["owner"]["kind"] == "model" {
+            let region = if is_model_declaration(node) {
                 root_position(&node["owner"]["identity"]).unwrap_or(position)
             } else {
                 position

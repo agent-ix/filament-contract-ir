@@ -3039,8 +3039,10 @@ Implemented (QSL-2635, QSL-2619). Read FSpec FR-322 "Model declaration
 occurrences" and FR-322-AC-486 from the selected checkout. The published
 vectors `TW-29` to `TW-34` of `model-tuple-union-vectors.json` are replayed by
 `published_model_tuple_union_wire_cases_match_reader_refusals`; the repeated
-entry, missing root entry and precedence cases are in
-`model_declaration_occurrence_stage_five_orders_and_locates_each_defect`.
+entry, missing root entry, precedence and relation-node cases are in
+`model_declaration_occurrence_stage_five_orders_and_locates_each_defect`; the
+two-model root table and the exact work and storage charges are unit tests in
+`v2/model_occurrence.rs`. The stage 4 order is a known deviation (QSL-2644).
 
 ## Observe-only boundary (FR-038-AC-564 through FR-038-AC-570)
 

@@ -689,6 +689,62 @@ fn model_declaration_occurrence_stage_five_orders_and_locates_each_defect() {
     }
 }
 
+/// The `relation` half of a model declaration node: the relationship
+/// `Order-order-Order` of `positive-all-families.json` (entry `/source_map/6`)
+/// is checked like a `model` node.
+#[trace("TC-048", "FR-038-AC-582")]
+#[test]
+fn a_relation_declaration_node_takes_the_same_stage_five_check() {
+    let base = read_json(&fixtures_dir().join("positive-all-families.json"))
+        .expect("published all-families package");
+    let relation = &base["source_map"][6]["node_id"]["path"];
+    assert_eq!(
+        relation[2], "ix://acme/orders/relationship/Order-order-Order",
+        "the relationship entry the cases edit"
+    );
+    let own = json!([{"end": 1052, "source": {"authority": "agent-ix", "identity": "example"}, "start": 1048}]);
+    let admitted = super::read_package(&base).expect("base read");
+    assert!(
+        matches!(admitted, CheckedPackageV2ReadResult::Admitted(_)),
+        "{admitted:?}"
+    );
+    for (name, patch, locus) in [
+        (
+            "a region of its own",
+            json!({"op": "replace", "path": "/source_map/6/regions", "value": own}),
+            "/source_map/6",
+        ),
+        (
+            "the role expression",
+            json!({"op": "replace", "path": "/source_map/6/role", "value": "expression"}),
+            "/source_map/6",
+        ),
+        (
+            "no entry",
+            json!({"op": "remove", "path": "/source_map/6"}),
+            "/source_map",
+        ),
+    ] {
+        let mut package = base.clone();
+        apply_wire_patch(&mut package, &patch);
+        let result = super::read_package(&package).expect("read");
+        let CheckedPackageV2ReadResult::Refused(refusal) = result else {
+            panic!("{name}: expected a refusal, got {result:?}");
+        };
+        assert_eq!(refusal.code, Code::InvalidPackage, "{name}: {refusal:?}");
+        assert_eq!(refusal.cause, Some(Cause::InvalidValue), "{name}");
+        assert_eq!(
+            refusal.loci[0]
+                .path
+                .as_ref()
+                .map(ToString::to_string)
+                .as_deref(),
+            Some(locus),
+            "{name}: {refusal:?}"
+        );
+    }
+}
+
 /// Translate the published projection mutation to the corresponding member of
 /// FSpec's full Semantic IR document. The projection ordinals are represented
 /// by position identities in that document.
