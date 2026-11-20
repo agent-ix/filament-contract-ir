@@ -606,6 +606,7 @@ pub fn index_fixture_node_ids(package: &mut Value) {
     }
 
     rewrite(package, &ids);
+    align_model_declarations(package);
     refresh_identity(package);
 }
 
@@ -801,6 +802,7 @@ pub fn identity_input(package: &Value) -> Value {
 pub fn refresh_identity(package: &mut Value) {
     resolve_operands(package);
     name_refinement_bodies(package);
+    align_model_declarations(package);
     refresh_identity_projection(package);
     refresh_temporal_bindings(package);
     recompute_declaration_regions(package);
@@ -881,6 +883,23 @@ pub fn select_model(package: &mut Value, identity: &str) {
                 json!({"node_id": node_id, "role": "generated", "ordinal": 0,
                 "regions": [region]}),
             );
+        // Each model declaration node of the identity takes the selecting
+        // region (FR-322 "Model declaration occurrences").
+        let declared: Vec<Value> = package["semantic_graph"]["nodes"]
+            .as_array()
+            .expect("synthetic graph nodes")
+            .iter()
+            .filter(|node| is_model_declaration(node) && node["owner"]["identity"] == identity)
+            .map(|node| node["node_id"].clone())
+            .collect();
+        for entry in package["source_map"]
+            .as_array_mut()
+            .expect("synthetic source map")
+        {
+            if declared.contains(&entry["node_id"]) {
+                entry["regions"] = json!([region]);
+            }
+        }
     }
 }
 
@@ -2244,9 +2263,104 @@ fn fixture_lock(profile_selections: Vec<Value>) -> Value {
     })
 }
 
+/// Whether a fixture node is a model declaration node: a `model` or
+/// `relation` node carrying a `ModelOwner` (FSpec FR-322 "Model declaration
+/// occurrences"). A model-owned `function` node is not one.
+fn is_model_declaration(node: &Value) -> bool {
+    node["owner"]["kind"] == "model"
+        && matches!(node["node_tag"].as_str(), Some("model" | "relation"))
+}
+
+/// Brings every model declaration node and its `source_map` entry to the shape
+/// FSpec FR-322 "Model declaration occurrences" fixes, for a fixture whose
+/// nodes and source map were authored apart: one `generated` ordinal-zero
+/// occurrence carrying exactly the regions of its identity's `model_root`
+/// entry. A node whose identity has no root entry keeps its regions.
+pub fn align_model_declarations(package: &mut Value) {
+    if !package["semantic_graph"]["nodes"].is_array() || !package["source_map"].is_array() {
+        return;
+    }
+    generate_model_declaration_occurrences(package);
+    let roots: Vec<(Value, Value)> = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .filter(|node| node["owner"]["kind"] == "model_root")
+        .filter_map(|node| {
+            let entry = package["source_map"].as_array()?.iter().find(|entry| {
+                entry["node_id"] == node["node_id"]
+                    && entry["role"] == "generated"
+                    && entry["ordinal"] == 0
+            })?;
+            Some((node["owner"]["identity"].clone(), entry["regions"].clone()))
+        })
+        .collect();
+    let declared: Vec<(Value, Value)> = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .filter(|node| is_model_declaration(node))
+        .map(|node| (node["node_id"].clone(), node["owner"]["identity"].clone()))
+        .collect();
+    // One entry per declaration node: the first one found stays, with the
+    // fixed role, ordinal and regions; any further entry of the node goes.
+    let mut kept: Vec<Value> = Vec::new();
+    let entries = package["source_map"].as_array_mut().expect("source map");
+    entries.retain_mut(|entry| {
+        let Some((_, identity)) = declared.iter().find(|(id, _)| *id == entry["node_id"]) else {
+            return true;
+        };
+        if kept.contains(&entry["node_id"]) {
+            return false;
+        }
+        kept.push(entry["node_id"].clone());
+        entry["role"] = json!("generated");
+        entry["ordinal"] = json!(0);
+        if let Some((_, regions)) = roots.iter().find(|(root, _)| root == identity) {
+            entry["regions"] = regions.clone();
+        }
+        true
+    });
+}
+
+/// Removes the last `source_map` entry of a node that is neither a model
+/// declaration node nor a model root, so the package keeps every entry join stage 5 reads and
+/// the later source-map stage refuses the missing correspondence.
+pub fn drop_a_non_model_source_entry(package: &mut Value) {
+    align_model_declarations(package);
+    let model_ids: Vec<Value> = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .filter(|node| is_model_declaration(node) || node["owner"]["kind"] == "model_root")
+        .map(|node| node["node_id"].clone())
+        .collect();
+    let entries = package["source_map"].as_array_mut().expect("source map");
+    let at = entries
+        .iter()
+        .rposition(|entry| !model_ids.contains(&entry["node_id"]))
+        .expect("a source entry of a node that is not a model declaration");
+    entries.remove(at);
+}
+
+/// A model declaration node (a `model` or `relation` node with a `ModelOwner`)
+/// is compiler-derived: its one occurrence is `generated` at ordinal 0 (FSpec
+/// FR-322 "Model declaration occurrences").
+pub fn generate_model_declaration_occurrences(package: &mut Value) {
+    for node in package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+    {
+        if is_model_declaration(node) {
+            node["occurrences"] = json!([{"role": "generated", "ordinal": 0}]);
+        }
+    }
+}
+
 /// Rebuilds a fixture package's source map from its nodes' first
 /// occurrences, after a test changed a node's occurrences.
 pub fn rebuild_source_map(package: &mut Value) {
+    generate_model_declaration_occurrences(package);
     let nodes = package["semantic_graph"]["nodes"]
         .as_array()
         .expect("nodes")
@@ -2893,16 +3007,28 @@ pub fn refresh_claim_names(package: &mut Value) {
 /// disagreed with the declaring node's own recorded occurrence, which
 /// `validate_source_map_entries` refuses as `invalid_source_map`.
 fn source_map_for(nodes: &[Value], source: &Value) -> Value {
+    // A model declaration node takes the regions of its identity's
+    // `model_root` entry (FR-322 "Model declaration occurrences").
+    let root_position = |identity: &Value| {
+        nodes.iter().position(|root| {
+            root["owner"]["kind"] == "model_root" && root["owner"]["identity"] == *identity
+        })
+    };
     let entries = nodes
         .iter()
         .enumerate()
         .map(|(position, node)| {
             let occurrence = &node["occurrences"][0];
+            let region = if is_model_declaration(node) {
+                root_position(&node["owner"]["identity"]).unwrap_or(position)
+            } else {
+                position
+            };
             json!({
                 "node_id": node["node_id"],
                 "role": occurrence["role"],
                 "ordinal": occurrence["ordinal"],
-                "regions": [{"source": source, "start": position, "end": position + 1}],
+                "regions": [{"source": source, "start": region, "end": region + 1}],
             })
         })
         .collect::<Vec<_>>();

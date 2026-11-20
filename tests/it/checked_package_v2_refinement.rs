@@ -3614,6 +3614,7 @@ pub(super) fn orphan_history_control() -> (Value, CheckedPackageEvidence) {
     settle_refinement(&mut orphan, position);
     let preserved_map = orphan["source_map"].clone();
     merge_history_source_map(&mut orphan, preserved_map);
+    crate::support::checked_package::align_model_declarations(&mut orphan);
     (orphan, evidence)
 }
 
