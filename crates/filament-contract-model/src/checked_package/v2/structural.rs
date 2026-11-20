@@ -267,7 +267,8 @@ impl StructuralForm {
                 | ScalarTypeForm::Dimension
                 | ScalarTypeForm::DimensionEquivalence
                 | ScalarTypeForm::Unit
-                | ScalarTypeForm::Enum,
+                | ScalarTypeForm::Enum
+                | ScalarTypeForm::ClockReference,
             ) => None,
             K::CompositeType(CompositeTypeForm::Union) => Some(Self::UnionType),
             K::CompositeType(CompositeTypeForm::Map) => Some(Self::MapType),
@@ -317,7 +318,8 @@ impl StructuralForm {
                 | ExpressionForm::PresenceRead
                 | ExpressionForm::ValueRead
                 | ExpressionForm::Deref
-                | ExpressionForm::Reachability,
+                | ExpressionForm::Reachability
+                | ExpressionForm::PlaceReference,
             ) => None,
             K::Function(
                 FunctionForm::PureFunction
@@ -981,6 +983,7 @@ pub(super) fn validate_derived_type_shapes(
                             | ScalarTypeForm::Unit | ScalarTypeForm::Enum
                             | ScalarTypeForm::CompoundUnit | ScalarTypeForm::CarriedQuantity
                             | ScalarTypeForm::BoundedQuantity
+                            | ScalarTypeForm::ClockReference
                         )))
                             && matches!(graph.kind(value),
                                 Some(CheckedNodeKind::ScalarType(_)

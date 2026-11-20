@@ -1155,7 +1155,8 @@ impl NominalKind {
                 | ScalarTypeForm::Timestamp
                 | ScalarTypeForm::CompoundUnit
                 | ScalarTypeForm::CarriedQuantity
-                | ScalarTypeForm::BoundedQuantity,
+                | ScalarTypeForm::BoundedQuantity
+                | ScalarTypeForm::ClockReference,
             ) => None,
             K::CompositeType(
                 CompositeTypeForm::Option
@@ -1205,7 +1206,8 @@ impl NominalKind {
                 | ExpressionForm::PresenceRead
                 | ExpressionForm::ValueRead
                 | ExpressionForm::Deref
-                | ExpressionForm::Reachability,
+                | ExpressionForm::Reachability
+                | ExpressionForm::PlaceReference,
             ) => None,
             K::Function(
                 FunctionForm::PureFunction
