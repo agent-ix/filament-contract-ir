@@ -1875,11 +1875,11 @@ impl DomainModel {
                     continue;
                 }
                 Item::Ref(SelectedTypeRef::Unit(_)) => continue,
-                Item::Ref(SelectedTypeRef::Map(keys, values)) => {
-                    budget.push(&mut pending, Item::Name(keys), MODEL)?;
-                    budget.push(&mut pending, Item::Name(values), MODEL)?;
-                    continue;
-                }
+                // Unreachable: an inline `Map<K, V>` `typeRef` is refused when
+                // the document is read, and a declared map is a
+                // `collection_types` definition walked below. Fail closed
+                // rather than guess at the raw key and value text.
+                Item::Ref(SelectedTypeRef::Map(..)) => return Ok(true),
                 Item::Ref(SelectedTypeRef::Declared(name)) => name.as_ref(),
                 Item::Name(name) => name,
             };

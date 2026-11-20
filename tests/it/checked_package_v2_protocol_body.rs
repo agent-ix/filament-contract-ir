@@ -11821,9 +11821,9 @@ fn protocol_channel_admits_fifo_inherited_and_tuple_model_keys() {
     }
 }
 
-/// The model-document walk is charged to the work meter: a chain of records
-/// needs more work than one record, and a read one unit short of the chain's
-/// requirement stops `Incomplete` on the work limit.
+/// The model-document walk is charged to the work meter. The same document
+/// keyed `fifo` (the walk runs) costs more to read than declared `unordered`
+/// (it does not), and the difference grows with the chain the walk follows.
 #[trace("TC-1770", "FR-726-AC-2", "FR-372-AC-2")]
 #[test]
 fn protocol_channel_fifo_model_walk_is_charged_to_the_work_meter() {
@@ -11848,7 +11848,7 @@ fn protocol_channel_fifo_model_walk_is_charged_to_the_work_meter() {
         }
         fifo_model_key_package(&declarations, names[0])
     };
-    let work_needed = |(package, evidence): &(Value, CheckedPackageEvidence)| {
+    let work_needed = |package: &Value, evidence: &CheckedPackageEvidence| {
         let read = |work: u64| {
             let mut limits = CheckedPackageReadLimits::bounded();
             limits.work = work;
@@ -11874,9 +11874,25 @@ fn protocol_channel_fifo_model_walk_is_charged_to_the_work_meter() {
         ));
         upper
     };
-    let short = work_needed(&chain(1));
-    let long = work_needed(&chain(12));
-    assert!(long > short, "walking 12 records needs more work than 1");
+    // The walk's own work: the FIFO read less the same document, `unordered`.
+    let walk_work = |length: usize| {
+        let (fifo, evidence) = chain(length);
+        let mut unordered = fifo.clone();
+        let channel = protocol_position(&unordered, "channel");
+        unordered["semantic_graph"]["nodes"][channel]["body"]["arguments"][3]["value"] = json!({
+            "term": "aggregate", "members": [{"term": "binding", "name": "kind", "value": {
+                "term": "literal", "type": node_id(&family_key("a1a1")),
+                "value_kind": "text", "value": "unordered"
+            }}]
+        });
+        settle(&mut unordered);
+        work_needed(&fifo, &evidence) - work_needed(&unordered, &evidence)
+    };
+    let (short, long) = (walk_work(1), walk_work(12));
+    assert!(
+        long > short + 11,
+        "the walk charges each declaration it follows: 1 record {short}, 12 records {long}"
+    );
 }
 
 /// Trace: FR-372-AC-2
