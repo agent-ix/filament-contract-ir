@@ -1232,8 +1232,11 @@ fn an_enumeration_entry_checks_the_literal_against_the_cases_it_names() {
     nodes_mut(&mut package).retain(|node| node["node_id"]["path"][2] != "reward_cost");
     let status = enumeration(&mut package, "Status", &["ACTIVE", "DONE"]);
     let other = enumeration(&mut package, "Shade", &["RED"]);
+    let long_case = "L".repeat(2000);
+    let long = enumeration(&mut package, "Long", &[long_case.as_str(), "Y"]);
     let status_node = id_value("qualified:Status");
     let other_node = id_value("qualified:Shade");
+    let long_node = id_value("qualified:Long");
     let with_value = |value: Value| {
         let mut package = package.clone();
         edit_label(&mut package, "random_k", |node| {
@@ -1247,13 +1250,13 @@ fn an_enumeration_entry_checks_the_literal_against_the_cases_it_names() {
         settle(&mut package);
         package
     };
-    let entries = || rows(vec![data("k", &range()), data("p", &status_node)], vec![]);
+    let entries = |node: &Value| rows(vec![data("k", &range()), data("p", node)], vec![]);
     let run = |value: Value, enums: &[filament_contract_model::SelectedSourceEnumRow]| {
         let package = with_value(value);
         let mut budget = NativeJoinBudget::unlimited();
         let admitted = self::admitted(&package);
-        let selected =
-            SelectedSourceObjects::from_stage_rows(&admitted, entries()).expect("rows join");
+        let selected = SelectedSourceObjects::from_stage_rows(&admitted, entries(&status_node))
+            .expect("rows join");
         let result = selected.join_probabilistic(enums, &mut budget);
         (package, result, budget.consumed())
     };
@@ -1279,6 +1282,10 @@ fn an_enumeration_entry_checks_the_literal_against_the_cases_it_names() {
         ("an unknown case", named(&status_node, "LATE")),
         ("a case of another enumeration", named(&status_node, "RED")),
         (
+            "a value that is not text",
+            json!({"term": "literal", "type": status_node, "value_kind": "enum", "value": 1}),
+        ),
+        (
             "a literal typed at another enumeration",
             named(&other_node, "ACTIVE"),
         ),
@@ -1295,7 +1302,7 @@ fn an_enumeration_entry_checks_the_literal_against_the_cases_it_names() {
 
     // An enumeration `enums` does not hold refuses at the literal's type
     // member.
-    let (package, result, _) = run(named(&status_node, "ACTIVE"), &[other]);
+    let (package, result, _) = run(named(&status_node, "ACTIVE"), std::slice::from_ref(&other));
     let error = result.expect_err("an absent enumeration");
     assert_eq!(error.code, RowError::InvalidValue);
     assert_eq!(
@@ -1306,21 +1313,59 @@ fn an_enumeration_entry_checks_the_literal_against_the_cases_it_names() {
         )
     );
 
-    // A work allowance one short of the cases compared stops the join.
-    let allowed = last_cost.work;
-    let (_, stopped, _) = {
+    // The scan stops at the row of the enumeration: rows after it cost nothing.
+    let (_, alone, alone_cost) = run(named(&status_node, "DONE"), std::slice::from_ref(&status));
+    alone.expect("the enumeration alone");
+    assert_eq!(alone_cost.work, last_cost.work);
+    // A row met before the enumeration's row costs one visit.
+    let (_, behind, behind_cost) = run(
+        named(&status_node, "DONE"),
+        &[other.clone(), status.clone()],
+    );
+    behind.expect("the enumeration behind another");
+    assert_eq!(behind_cost.work, alone_cost.work + 1);
+
+    // A denied charge of a long case that is not the match stops the join
+    // although the shorter cases after it would fit: every allowance short of
+    // the visits of the case "Y" behind a 2000-byte case is `Incomplete`.
+    let long_package = with_value(named(&long_node, "Y"));
+    let long_admitted = self::admitted(&long_package);
+    let long_selected =
+        SelectedSourceObjects::from_stage_rows(&long_admitted, entries(&long_node)).expect("rows");
+    let long_run = |allowed: u64| {
+        let mut budget = NativeJoinBudget::new(allowed, u64::MAX);
+        let result = long_selected.join_probabilistic(std::slice::from_ref(&long), &mut budget);
+        (result, budget.consumed())
+    };
+    let (whole, long_cost) = long_run(u64::MAX);
+    whole.expect("the long enumeration joins");
+    for allowed in 0..long_cost.work {
+        assert_eq!(
+            long_run(allowed).0.expect_err("a short allowance").code,
+            RowError::Incomplete,
+            "{allowed}"
+        );
+    }
+
+    // Every work allowance short of the visits stops the join as `Incomplete`
+    // and the allowance of them all joins it.
+    for allowed in 0..=last_cost.work {
         let package = with_value(named(&status_node, "DONE"));
         let admitted = self::admitted(&package);
-        let selected =
-            SelectedSourceObjects::from_stage_rows(&admitted, entries()).expect("rows join");
-        let mut budget = NativeJoinBudget::new(allowed - 1, u64::MAX);
+        let selected = SelectedSourceObjects::from_stage_rows(&admitted, entries(&status_node))
+            .expect("rows join");
+        let mut budget = NativeJoinBudget::new(allowed, u64::MAX);
         let result = selected.join_probabilistic(&both, &mut budget);
-        (package, result, budget.consumed())
-    };
-    assert_eq!(
-        stopped.expect_err("one unit short").code,
-        RowError::Incomplete
-    );
+        if allowed < last_cost.work {
+            assert_eq!(
+                result.expect_err("a short allowance").code,
+                RowError::Incomplete,
+                "{allowed}"
+            );
+        } else {
+            result.expect("the whole allowance");
+        }
+    }
 }
 
 /// A row naming another type's operation by identity is no entry of the
