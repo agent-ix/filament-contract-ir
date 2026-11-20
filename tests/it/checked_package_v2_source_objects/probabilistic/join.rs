@@ -703,6 +703,12 @@ fn support_values_are_checked_against_the_entry_type_node() {
             Some(0),
         ),
         (
+            "a rational spelt with the denominator 1",
+            rational_node.clone(),
+            vec![lit("rational", &rational_scalar, "3/1")],
+            Some(0),
+        ),
+        (
             "a rational that is not in lowest terms",
             rational_node.clone(),
             vec![lit("rational", &rational_scalar, "2/4")],
@@ -724,7 +730,7 @@ fn support_values_are_checked_against_the_entry_type_node() {
                 let error = result.expect_err(case);
                 assert_eq!(error.code, RowError::InvalidValue, "{case}");
                 // A misspelt rational refuses at the literal's `value` member.
-                let tail = if case.contains("lowest terms") {
+                let tail = if case.contains("lowest terms") || case.contains("denominator 1") {
                     "/value"
                 } else {
                     ""
@@ -736,5 +742,94 @@ fn support_values_are_checked_against_the_entry_type_node() {
                 assert_eq!(locus_of(&error), at, "{case}");
             }
         }
+    }
+}
+
+/// A row naming another type's operation by identity is no entry of the
+/// operation (`<type>::<operation>` of the row's own type).
+#[trace("TC-484", "FR-369-AC-26")]
+#[test]
+fn an_entry_of_another_type_is_no_entry_of_the_operation() {
+    let mut rows = poke_rows();
+    rows[2].operations[0].identity = "O::poke".into();
+    let package = package();
+    let path = member_at(&package, "delay_poke", 1);
+    refuses("an entry named for another type", &package, rows, &path);
+}
+
+/// A node whose `declaring` node is a selected model is not the join's.
+#[trace("TC-484", "FR-369-AC-25")]
+#[test]
+fn a_selected_models_probabilistic_node_is_left_to_the_strict_read() {
+    let account = node_id(&family_key("1515"));
+    let row = |operation: &str| {
+        aggregate(vec![
+            binding("declaring", json!({"term": "reference", "target": account})),
+            binding("operation", text(operation)),
+            binding("weight", rational("1")),
+        ])
+    };
+    let mut package = super::package_over(mixed_package());
+    nodes_mut(&mut package).push(super::probabilistic(
+        "workload_selected",
+        "workload",
+        aggregate(vec![
+            binding("model", json!({"term": "reference", "target": account})),
+            binding("name", text("Steady")),
+            binding("weights", aggregate(vec![row("deposit"), row("withdraw")])),
+        ]),
+    ));
+    let at = nodes(&package).len() - 1;
+    let dependencies = nodes_mut(&mut package)[at]["dependencies"]
+        .as_array_mut()
+        .expect("dependencies");
+    dependencies.reverse();
+    settle(&mut package);
+    let mut budget = NativeJoinBudget::unlimited();
+    joined(&package, poke_rows(), &mut budget).expect("selected nodes are not joined");
+    assert_eq!(budget.consumed().work, AC25_VISITS);
+}
+
+/// The workload of a model with supertypes charges one visit for each
+/// supertype edge read, one for each operation entry of the lineage and one
+/// for each row; a repeated supertype edge is read and charged each time.
+#[trace("TC-484", "FR-369-AC-26")]
+#[test]
+fn a_workloads_supertype_edges_are_charged() {
+    let row = |declaring: &str, operation: &str| {
+        aggregate(vec![
+            binding("declaring", reference_to(declaring)),
+            binding("operation", text(operation)),
+            binding("weight", rational("1")),
+        ])
+    };
+    let mut package = package();
+    nodes_mut(&mut package).push(super::probabilistic(
+        "workload_other",
+        "workload",
+        aggregate(vec![
+            binding("model", reference_to("qualified:Other")),
+            binding("name", text("W2")),
+            binding(
+                "weights",
+                aggregate(vec![
+                    row("qualified:O", "step"),
+                    row("qualified:Other", "poke"),
+                ]),
+            ),
+        ]),
+    ));
+    settle(&mut package);
+    let o = || id("qualified:O");
+    // Edges, entries of `Other` and `O`, rows.
+    for (supertypes, extra) in [(vec![o()], 1 + 2 + 2), (vec![o(), o()], 2 + 2 + 2)] {
+        let rows = || rows(vec![data("k", &range())], supertypes.clone());
+        let total = AC25_VISITS + extra;
+        let mut budget = NativeJoinBudget::new(total, 0);
+        joined(&package, rows(), &mut budget).expect("the full count admits");
+        assert_eq!(budget.consumed().work, total);
+        let mut budget = NativeJoinBudget::new(total - 1, 0);
+        let error = joined(&package, rows(), &mut budget).expect_err("one short");
+        assert_eq!(error.code, RowError::Incomplete);
     }
 }

@@ -153,7 +153,11 @@ fn parameter(label: &str, name: &str) -> Value {
 /// The AC-25 package: source types `O` and `Other`, the dense source time
 /// `time O dense unit ms`, and one node of each probabilistic form.
 pub(super) fn package() -> Value {
-    let mut package = source_package();
+    package_over(source_package())
+}
+
+/// The AC-25 unit added to `base`, a package with the source type `Order`.
+fn package_over(mut package: Value) -> Value {
     let source = fixture_source();
     let dimension = declared(
         plain(
