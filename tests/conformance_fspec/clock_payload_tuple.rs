@@ -503,9 +503,10 @@ fn add_clock_reference(wire: &mut Value, place: &Value) -> (Value, Value, Value,
         vec![json!("composite_type"), json!("reference"), json!("order")],
         0,
     );
-    let owner_id = json!({"ordinal":0,"package":"example","path":["value","parameter","self"]});
+    let owner_id =
+        json!({"ordinal":0,"package":"example","path":["value","parameter","fr829-clock-owner"]});
     let integer_parameter_id =
-        json!({"ordinal":0,"package":"example","path":["value","parameter","slot-index"]});
+        json!({"ordinal":0,"package":"example","path":["value","parameter","fr829-clock-slot"]});
     let model_id = order_node();
     push_node(
         wire,
@@ -538,7 +539,6 @@ fn add_clock_reference(wire: &mut Value, place: &Value) -> (Value, Value, Value,
         9201,
     );
     let integer_id = integer_type();
-    let text_id = text_type();
     push_node(
         wire,
         json!({
