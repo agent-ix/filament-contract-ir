@@ -1608,6 +1608,7 @@ fn sequence_function_level(
 /// parameter, its `each` trigger and its captures; the leaves are the
 /// activation guard and every expression a formula node of the clause names.
 /// Returns false when two places give the target different levels.
+#[ix_trace_rs::string_edge]
 fn clause_leaf_levels(
     clause: usize,
     target: &CheckedNodeId,
