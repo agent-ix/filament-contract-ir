@@ -52,15 +52,67 @@ pub(super) fn bound_type(value: &CheckedTerm) -> Option<&CheckedNodeId> {
     }
 }
 
-/// One field of a source-declared object type in the producer's identity row.
+/// The native clock type's rendering, the terminal of a clock entry's
+/// `member_type` (FSpec FR-789 "Rendering").
+const NATIVE_CLOCK: &str = "ix://filament/native/Clock";
+
+/// One collection layer of a clock entry's type, outermost first (FSpec
+/// FR-789 "Rendering"): the collection's kind and its slot bounds, each bound
+/// a canonical decimal or the text `unbounded`.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SelectedClockCollectionLayer {
+    /// The collection kind as FR-789 spells it.
+    pub kind: Box<str>,
+    /// The minimum, a canonical decimal.
+    pub minimum: Box<str>,
+    /// The maximum, a canonical decimal or `unbounded`.
+    pub maximum: Box<str>,
+}
+
+/// One member entry of a source-declared object type's identity row: a field
+/// of the effective view or a parameter of an operation (FR-367 "Member
+/// entries", "Operation parameters"). A **data entry** has a `type_node` and
+/// no `member_type`; a **clock entry** has no `type_node`, a FSpec FR-789
+/// `member_type` and one `collections` layer per collection of its type.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SelectedSourceObjectMember {
-    /// Field name.
+    /// Field or parameter name.
     pub name: Box<str>,
-    /// The type node the field's binding references.
-    pub type_node: CheckedNodeId,
     /// Whether the binding carries the `optional` group.
     pub optional: bool,
+    /// The type node a data entry references; `None` for a clock entry.
+    pub type_node: Option<CheckedNodeId>,
+    /// The FR-789 rendering of a clock entry's type; `None` for a data entry.
+    pub member_type: Option<Box<str>>,
+    /// The collection layers of a clock entry, outermost first; empty for a
+    /// data entry.
+    pub collections: Vec<SelectedClockCollectionLayer>,
+}
+
+impl SelectedSourceObjectMember {
+    /// A data entry over the type node `type_node`.
+    #[must_use]
+    pub fn data(name: impl Into<Box<str>>, type_node: CheckedNodeId, optional: bool) -> Self {
+        Self {
+            name: name.into(),
+            optional,
+            type_node: Some(type_node),
+            member_type: None,
+            collections: Vec::new(),
+        }
+    }
+
+    /// A clock entry whose type renders as `member_type`.
+    #[must_use]
+    pub fn clock(name: impl Into<Box<str>>, member_type: impl Into<Box<str>>) -> Self {
+        Self {
+            name: name.into(),
+            optional: false,
+            type_node: None,
+            member_type: Some(member_type.into()),
+            collections: Vec::new(),
+        }
+    }
 }
 
 /// One population a source-declared object type declares itself.
@@ -84,6 +136,11 @@ pub struct SelectedSourceObjectOperation {
     /// The names of the operation's parameters whose declared type is `Clock`
     /// or an alias of it, in declaration order; empty when it has none.
     pub clock_parameters: Vec<Box<str>>,
+    /// One member entry per parameter, in declaration order (FSpec FR-610
+    /// "Identity rows"): a data entry for a parameter whose type has a node,
+    /// a clock entry for one whose type has none. The probabilistic join of
+    /// FR-369 reads a source operation's parameter names and types from here.
+    pub parameters: Vec<SelectedSourceObjectMember>,
 }
 
 /// One FSL-stage source-object identity row for an admitted source-declared
@@ -382,16 +439,38 @@ fn row_matches_node(
     let Some(bindings) = body_bindings(package, position) else {
         return false;
     };
-    if bindings.len() != row.members.len()
+    // The data entries, in order, equal the bindings; a clock entry shares no
+    // name with a binding and is not compared with them (FR-367 "Member
+    // entries").
+    let data: Vec<&SelectedSourceObjectMember> = row
+        .members
+        .iter()
+        .filter(|member| member.type_node.is_some())
+        .collect();
+    if bindings.len() != data.len()
         || !bindings
             .iter()
-            .zip(&row.members)
+            .zip(&data)
             .all(|((name, target, optional), member)| {
                 *name == member.name.as_ref()
                     && *optional == member.optional
                     && package.position_of(target).is_some()
-                    && package.position_of(target) == package.position_of(&member.type_node)
+                    && member.type_node.as_ref().is_some_and(|node| {
+                        package.position_of(target) == package.position_of(node)
+                    })
             })
+        || !row.members.iter().all(|member| {
+            entry_shape_holds(package, member)
+                && (member.type_node.is_some()
+                    || (member.member_type.as_deref().is_some_and(clock_terminal)
+                        && !bindings
+                            .iter()
+                            .any(|(name, ..)| *name == member.name.as_ref())))
+        })
+        || !row
+            .operations
+            .iter()
+            .all(|operation| operation_holds(package, operation))
     {
         return false;
     }
@@ -400,6 +479,66 @@ fn row_matches_node(
             .position_of(supertype)
             .is_some_and(|at| at != position && is_type(at))
     })
+}
+
+/// Whether the rendering `member_type` ends in the native clock type, under
+/// any `Option`, collection or map wrappers (FSpec FR-789 "Rendering").
+#[ix_trace_rs::string_edge]
+fn clock_terminal(member_type: &str) -> bool {
+    let inner = member_type.trim_end_matches('>');
+    let terminal = inner.rsplit(['<', ',']).next().unwrap_or(inner).trim();
+    terminal == NATIVE_CLOCK
+}
+
+/// Whether `entry` has exactly one of `type_node` and `member_type`, a data
+/// entry's `type_node` names a type node of the package and carries no clock
+/// collection layers.
+fn entry_shape_holds(
+    package: &super::CheckedPackageV2,
+    entry: &SelectedSourceObjectMember,
+) -> bool {
+    match (&entry.type_node, &entry.member_type) {
+        (Some(node), None) => {
+            entry.collections.is_empty()
+                && package.position_of(node).is_some_and(|at| {
+                    matches!(
+                        package.kinds.get(at),
+                        Some(
+                            CheckedNodeKind::ScalarType(_)
+                                | CheckedNodeKind::CompositeType(_)
+                                | CheckedNodeKind::BoundedDomain(_)
+                                | CheckedNodeKind::Model(_)
+                        )
+                    )
+                })
+        }
+        (None, Some(_)) => true,
+        _ => false,
+    }
+}
+
+/// Whether an operation entry's `parameters` are well-formed entries of
+/// distinct names and its `clock_parameters` are exactly the names, in order,
+/// of the clock entries whose `member_type` is the native clock type
+/// (FR-367 "Operation parameters").
+fn operation_holds(
+    package: &super::CheckedPackageV2,
+    operation: &SelectedSourceObjectOperation,
+) -> bool {
+    let mut names = std::collections::BTreeSet::new();
+    operation
+        .parameters
+        .iter()
+        .all(|entry| entry_shape_holds(package, entry) && names.insert(entry.name.as_ref()))
+        && operation
+            .clock_parameters
+            .iter()
+            .map(AsRef::as_ref)
+            .eq(operation
+                .parameters
+                .iter()
+                .filter(|entry| entry.member_type.as_deref() == Some(NATIVE_CLOCK))
+                .map(|entry| entry.name.as_ref()))
 }
 
 /// Whether the supertype relation of the supplied rows has a cycle.

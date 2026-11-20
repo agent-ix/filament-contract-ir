@@ -23,10 +23,11 @@ use filament_contract_model::{
     SelectedOperationMembers, SelectedSourceOperationRow, SelectedSourceOperations,
 };
 use ix_trace_rs::trace;
-
-pub(crate) mod probabilistic;
 use quire_canonical::Limits;
 use serde_json::{json, Value};
+
+pub(crate) mod parameters;
+pub(crate) mod probabilistic;
 
 type EffectCase = (
     &'static str,
@@ -2193,11 +2194,11 @@ fn row(
         is_abstract: false,
         supertypes,
         identity_fields: vec!["total".into()],
-        members: vec![SelectedSourceObjectMember {
-            name: "total".into(),
-            type_node: id(&family_key("a3a3")),
-            optional: false,
-        }],
+        members: vec![SelectedSourceObjectMember::data(
+            "total",
+            id(&family_key("a3a3")),
+            false,
+        )],
         populations: populations
             .iter()
             .map(|name| SelectedSourcePopulation {
@@ -2209,6 +2210,10 @@ fn row(
             identity: format!("{name}::deposit").into(),
             query: false,
             clock_parameters: vec!["t".into()],
+            parameters: vec![SelectedSourceObjectMember::clock(
+                "t",
+                "ix://filament/native/Clock",
+            )],
         }],
     }
 }
@@ -2247,7 +2252,11 @@ fn a_complete_row_set_exposes_every_source_type_through_a_typed_read() {
         [SelectedSourceObjectOperation {
             identity: "Order::deposit".into(),
             query: false,
-            clock_parameters: vec!["t".into()]
+            clock_parameters: vec!["t".into()],
+            parameters: vec![SelectedSourceObjectMember::clock(
+                "t",
+                "ix://filament/native/Clock"
+            )],
         }]
     );
     let sub = rows.read(&package, &id("qualified:Sub")).expect("Sub row");
@@ -2333,7 +2342,7 @@ fn rows_whose_members_or_supertypes_the_package_does_not_support_are_unknown() {
         ("name", Box::new(|row| row.members[0].name = "other".into())),
         (
             "type node",
-            Box::new(|row| row.members[0].type_node = id(&family_key("aaaa"))),
+            Box::new(|row| row.members[0].type_node = Some(id(&family_key("aaaa")))),
         ),
         ("optional", Box::new(|row| row.members[0].optional = true)),
         ("missing member", Box::new(|row| row.members.clear())),
@@ -2375,11 +2384,8 @@ fn rows_whose_members_or_supertypes_the_package_does_not_support_are_unknown() {
     nodes_mut(&mut package_two_fields).push(pair);
     settle(&mut package_two_fields);
     let two_fields = admitted(&package_two_fields);
-    let member = |name: &str| SelectedSourceObjectMember {
-        name: name.into(),
-        type_node: id(&family_key("a3a3")),
-        optional: false,
-    };
+    let member =
+        |name: &str| SelectedSourceObjectMember::data(name, id(&family_key("a3a3")), false);
     let mut pair_row = row("Pair", vec![], &[]);
     pair_row.members = vec![member("total"), member("count")];
     let order_row = row("Order", vec![], &[]);

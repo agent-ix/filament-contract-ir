@@ -10,7 +10,7 @@ relationships:
 
 ## Description
 
-Verify the probabilistic join of operation references whose `declaring` node is a source-declared object type: the strict read's kind, timed-root and reward-function checks and the identity-row join's operation, parameter, workload and reward-parameter checks (FR-369-AC-25, FR-369-AC-26; FSpec FR-640-AC-6, FR-640-AC-7).
+Verify the probabilistic join of operation references whose `declaring` node is a source-declared object type: the strict read's kind, timed-root and reward-function checks and the identity-row join's operation, parameter, workload and reward-parameter checks (FR-369-AC-25, FR-369-AC-26; FSpec FR-640-AC-6, FR-640-AC-7). Steps 1 (admission and typed read), 2 and 4 verify the strict-read halves FR-369-AC-27 and FR-369-AC-28; steps 3, 5 and 6 and the golden pair are the identity-row join, Planned under QSL-2645.
 
 The golden pair is a checked-in fixture directory holding FR-369-AC-25's package and the expected typed read of its declarations. The test reads the package, compares the typed read with the golden one, and compares the reward function's id with the declared-node id `{package, ["Other", "poke", "reward", "cost"], 0}` the test builds itself, so a reader that resolves the reward through another node, keys it by an ordinal, or drops it from the typed read fails.
 
