@@ -3121,3 +3121,17 @@ published no vector file for them.
   binder refuses `wrong_snapshot` with reason `ineligible-kind`.
 - Send performer (AC-568): with a channel from one role to another, observe-only
   on the `to` role admits the `send` and on the `from` role refuses it.
+- Seq binder level at a temporal clause leaf (FSpec FR-322 "Parameter",
+  FR-322-AC-455; QSL-2726, test
+  `tc_048_a_seq_binder_in_a_clause_leaf_resolves_its_level_from_the_binders_in_scope`):
+  a binder's level is its position among the binders in scope where it is
+  bound. In a clause, the `over` parameter is level 0, an `each` trigger adds
+  one, each capture adds one in declaration order, and a `let` or quantifier
+  binder inside the leaf adds its depth. The activation guard and every
+  formula leaf are read over all of the clause's binders; the initializer of
+  capture `k` is read over `over`, the trigger and the captures declared
+  before `k`, never `k` or later ones. A `seq` binder whose
+  `value`/`parameter` node carries another level, or one leaf read at two
+  levels, refuses `ill_typed`/`operator-ineligible` at the `seq` application.
+  FSpec holds no acceptance criterion with this numbering: FSpec needs the AC
+  text.

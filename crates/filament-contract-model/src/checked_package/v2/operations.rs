@@ -1604,9 +1604,13 @@ fn sequence_function_level(
 
 /// The levels a `seq` binder takes at the leaves of one temporal clause
 /// (FSpec FR-322: a binder's level is its position among the binders in scope
-/// where it is bound). The binders the clause puts in scope are its `over`
-/// parameter, its `each` trigger and its captures; the leaves are the
-/// activation guard and every expression a formula node of the clause names.
+/// where it is bound). Numbering (ruled by arch): the `over` parameter is
+/// level 0 (one binder in scope), an `each` trigger adds one, each capture
+/// adds one in declaration order, and a `let` or quantifier binder inside a
+/// leaf adds its depth. The leaves and their base are: the activation guard
+/// and every expression a formula node of the clause names, over all of the
+/// clause's binders; and the initializer of capture `k`, over `over`, the
+/// trigger and the captures declared before `k` (not `k` or later ones).
 /// Returns false when two places give the target different levels.
 #[ix_trace_rs::string_edge]
 fn clause_leaf_levels(
@@ -1629,6 +1633,7 @@ fn clause_leaf_levels(
     };
     let mut base = 1_usize;
     let mut guard = None;
+    let mut initializers = meter.vec(graph.nodes.len())?;
     if let CheckedTerm::Aggregate { members } = activation {
         for member in members {
             work_at_path(meter, &application.read_node().key("node_id"), 1)?;
@@ -1641,13 +1646,21 @@ fn clause_leaf_levels(
             }
         }
     }
+    let mut scope = base;
     if let CheckedTerm::Aggregate { members } = captures {
         base = base.saturating_add(members.len());
+        for member in members {
+            work_at_path(meter, &application.read_node().key("node_id"), 1)?;
+            if let CheckedTerm::Binding { value, .. } = member {
+                meter.push(&mut initializers, (value.as_ref(), scope))?;
+            }
+            scope = scope.saturating_add(1);
+        }
     }
-    let mut roots = meter.vec(graph.nodes.len())?;
+    let mut roots = initializers;
     let mut visited = meter.vec(graph.nodes.len())?;
     if let Some(guard) = guard {
-        meter.push(&mut roots, guard)?;
+        meter.push(&mut roots, (guard, base))?;
     }
     let mut pending = meter.vec(graph.nodes.len())?;
     meter.push(&mut pending, formula)?;
@@ -1665,7 +1678,7 @@ fn clause_leaf_levels(
         let Some(term) = graph.terms.get(position).and_then(Option::as_ref) else {
             continue;
         };
-        meter.push(&mut roots, term)?;
+        meter.push(&mut roots, (term, base))?;
         if let CheckedTerm::Application { arguments, .. } = term {
             for argument in arguments {
                 if let CheckedTerm::Reference { target } = argument {
@@ -1674,9 +1687,9 @@ fn clause_leaf_levels(
             }
         }
     }
-    for root in roots {
+    for (root, root_base) in roots {
         if let Some(depth) = expression_scope_depth(root, target, graph, application, meter)? {
-            let Some(level) = base.checked_add(depth) else {
+            let Some(level) = root_base.checked_add(depth) else {
                 return Ok(false);
             };
             if found.is_some_and(|previous| previous != level) {
