@@ -11467,6 +11467,72 @@ fn protocol_channel_admits_fifo_model_values_without_float_leaves() {
             "Outer",
         ),
         (
+            "alias of an integer",
+            vec![
+                model_definition("Count", json!({"kind": "alias", "target": NATIVE_INT})),
+                model_record("Outer", &[("count", "ix://test/families/Count", false)]),
+            ],
+            "Outer",
+        ),
+        (
+            "boolean value type member",
+            vec![
+                model_value("Flag", "boolean"),
+                model_record("Outer", &[("flag", "ix://test/families/Flag", false)]),
+            ],
+            "Outer",
+        ),
+        (
+            "uuid value type member",
+            vec![
+                model_value("Ident", "uuid"),
+                model_record("Outer", &[("id", "ix://test/families/Ident", false)]),
+            ],
+            "Outer",
+        ),
+        (
+            "decimal value type member",
+            vec![
+                model_value("Money", "decimal"),
+                model_record("Outer", &[("amount", "ix://test/families/Money", false)]),
+            ],
+            "Outer",
+        ),
+        (
+            "option over a decimal value type",
+            vec![
+                model_value("Money", "decimal"),
+                model_option("OptMoney", "ix://test/families/Money"),
+                model_record("Outer", &[("amount", "ix://test/families/OptMoney", false)]),
+            ],
+            "Outer",
+        ),
+        (
+            "native decimal, rational and text members",
+            vec![model_record(
+                "Outer",
+                &[
+                    ("decimal", "ix://filament/native/Decimal", false),
+                    ("rational", "ix://filament/native/Rational", false),
+                    ("text", "ix://filament/native/Text", false),
+                ],
+            )],
+            "Outer",
+        ),
+        (
+            "map of integers",
+            vec![
+                {
+                    let mut map: Value = serde_json::from_str(MAP_OF_FLOAT).expect("map");
+                    map["identity"] = json!("ix://test/families/IntMap");
+                    map["values"] = json!(NATIVE_INT);
+                    model_definition("IntMap", map)
+                },
+                model_record("Outer", &[("map", "ix://test/families/IntMap", false)]),
+            ],
+            "Outer",
+        ),
+        (
             "record holding a tuple",
             vec![
                 model_tuple("Pair", &[NATIVE_BOOL, NATIVE_INT]),
@@ -11594,11 +11660,10 @@ fn protocol_channel_fifo_refuses_model_values_with_float_leaves() {
     }
 }
 
-/// FR-726-AC-3: a model-owned key whose member has no FR-322 step-4 member
-/// type (a map, a value type with an unmapped scalar, an option over either)
-/// or a clock leaf is refused, as is a float leaf on a supertype at any
-/// distance. The walk cannot see the leaves of such a member, so it fails
-/// closed.
+/// FR-726-AC-3: a model-owned key whose document declares a float leaf the
+/// FR-322 step-4 member types do not show (a map key or value, a value type
+/// over a float scalar, an option over either, an alias), a float on a
+/// supertype at any distance, or a clock leaf, is refused.
 #[trace("TC-1770", "FR-726-AC-3", "FR-372-AC-3")]
 #[test]
 fn protocol_channel_fifo_refuses_model_members_it_cannot_prove_stable() {
@@ -11629,6 +11694,28 @@ fn protocol_channel_fifo_refuses_model_members_it_cannot_prove_stable() {
                 model_record_over("Derived", &["ix://test/families/Middle"], &[]),
             ],
             "Derived",
+        ),
+        (
+            "alias of a float",
+            vec![
+                model_definition("Score", json!({"kind": "alias", "target": NATIVE_FLOAT64})),
+                model_record("Outer", &[("score", "ix://test/families/Score", false)]),
+            ],
+            "Outer",
+        ),
+        (
+            "map with float keys",
+            vec![
+                {
+                    let mut map: Value = serde_json::from_str(MAP_OF_FLOAT).expect("map");
+                    map["identity"] = json!("ix://test/families/FloatKeys");
+                    map["keys"] = json!(NATIVE_FLOAT32);
+                    map["values"] = json!(NATIVE_INT);
+                    model_definition("FloatKeys", map)
+                },
+                model_record("Outer", &[("map", "ix://test/families/FloatKeys", false)]),
+            ],
+            "Outer",
         ),
         (
             "map member",
