@@ -1856,13 +1856,17 @@ impl MemberCheck<'_> {
         }
     }
 
-    /// FR-726: whether the model document declares a `float32` or `float64`
-    /// leaf, at any depth, under the model-owned record, tuple or variant at
-    /// `position`. The graph node of such a declaration has an empty body, so
-    /// its fields, tuple positions and variant payloads are read from the
-    /// selected model document through the same member-type accessors the
-    /// model-member rules use. Each declaration is expanded once.
-    fn model_value_holds_ieee_leaf(
+    /// FR-726: whether the model-owned record, tuple or variant at `position`
+    /// is not FIFO-key-stable by what its selected model document declares.
+    /// The graph node of such a declaration has an empty body, so its fields
+    /// (own and inherited), tuple positions and variant payloads are read
+    /// through the same member-type accessors the model-member rules use. A
+    /// member is unstable when its type holds a `float32`, `float64` or clock
+    /// leaf at any depth, and also when the model has no FR-322 step-4 member
+    /// type for it (a map, a value type with an unmapped scalar, an
+    /// unresolved `typeRef`): the walk cannot see its leaves, so it fails
+    /// closed. Each declaration is expanded once.
+    fn model_value_is_key_unstable(
         &self,
         position: usize,
         owners: &ModelOwners<'_>,
@@ -1874,23 +1878,39 @@ impl MemberCheck<'_> {
         let mut visited = Vec::new();
         let mut pending: Vec<MemberType> = meter.vec(1)?;
         meter.insert_sorted(&mut visited, (root.package.identity.as_ref(), root.node))?;
-        self.expand_model_value(root, &mut pending, meter)?;
+        if self.expand_model_value(root, &mut pending, meter)? {
+            return Ok(true);
+        }
         while let Some(member) = pending.pop() {
-            node_work(meter, position)?;
+            node_work(meter, self.position)?;
             match member {
-                MemberType::Float32 | MemberType::Float64 => return Ok(true),
+                MemberType::Float32 | MemberType::Float64 | MemberType::Clock => return Ok(true),
                 MemberType::Option(inner) => meter.push(&mut pending, *inner)?,
                 MemberType::Collection { element, .. } => meter.push(&mut pending, *element)?,
                 MemberType::Record(id) | MemberType::Tuple(id) | MemberType::Variant(id) => {
                     let Some(owner) = owners.owner_by_key(&id) else {
-                        continue;
+                        return Ok(true);
                     };
                     let key = (owner.package.identity.as_ref(), owner.node);
-                    if meter.insert_sorted(&mut visited, key)? {
-                        self.expand_model_value(owner, &mut pending, meter)?;
+                    if meter.insert_sorted(&mut visited, key)?
+                        && self.expand_model_value(owner, &mut pending, meter)?
+                    {
+                        return Ok(true);
                     }
                 }
-                _ => {}
+                MemberType::Boolean
+                | MemberType::Integer
+                | MemberType::String
+                | MemberType::Uuid
+                | MemberType::Timestamp
+                | MemberType::Bytes
+                | MemberType::JsonObject
+                | MemberType::IntRange(_)
+                | MemberType::RationalRange(_)
+                | MemberType::CarriedRational(..)
+                | MemberType::TextBounds(_)
+                | MemberType::Reference(_)
+                | MemberType::Quantity(_) => {}
             }
         }
         Ok(false)
@@ -1898,30 +1918,38 @@ impl MemberCheck<'_> {
 
     /// Pushes the member type of every field of a model record (own and
     /// inherited), every position of a model tuple and every payload of a
-    /// model variant.
+    /// model variant. `true` when one of them has no member type.
     fn expand_model_value<'m>(
         &self,
         owner: Owner<'m>,
         pending: &mut Vec<MemberType>,
         meter: &mut WorkMeter,
-    ) -> Result<(), ValidationFailure> {
+    ) -> Result<bool, ValidationFailure> {
         let package = owner.package;
         match owner.form {
             DeclarationForm::RecordValueType => {
-                for field in package
-                    .record_types
-                    .get(owner.node)
-                    .map_or(&[][..], |record| record.fields.as_slice())
-                {
-                    if let Some(member) = package.slot_type(&field.slot) {
-                        meter.push(pending, member)?;
+                let ancestors =
+                    package.ancestors(owner.node, &mut Budget::node(meter, self.position))?;
+                let declarations = std::iter::once(owner.node).chain(ancestors.iter().copied());
+                for declaration in declarations {
+                    let Some(record) = package.field_owner(declaration) else {
+                        continue;
+                    };
+                    for field in &record.fields {
+                        node_work(meter, self.position)?;
+                        match package.slot_type(&field.slot) {
+                            Some(member) => meter.push(pending, member)?,
+                            None => return Ok(true),
+                        }
                     }
                 }
             }
             DeclarationForm::TupleValueType => {
                 for type_ref in package.tuple_types.get(owner.node).into_iter().flatten() {
-                    if let Some(member) = package.element_type(type_ref) {
-                        meter.push(pending, member)?;
+                    node_work(meter, self.position)?;
+                    match package.element_type(type_ref) {
+                        Some(member) => meter.push(pending, member)?,
+                        None => return Ok(true),
                     }
                 }
             }
@@ -1932,18 +1960,19 @@ impl MemberCheck<'_> {
                     .into_iter()
                     .flat_map(|cases| cases.values())
                 {
-                    if let Some(member) = case
-                        .payload
-                        .as_ref()
-                        .and_then(|ty| package.element_type(ty))
-                    {
-                        meter.push(pending, member)?;
+                    let Some(type_ref) = case.payload.as_ref() else {
+                        continue;
+                    };
+                    node_work(meter, self.position)?;
+                    match package.element_type(type_ref) {
+                        Some(member) => meter.push(pending, member)?,
+                        None => return Ok(true),
                     }
                 }
             }
             _ => {}
         }
-        Ok(())
+        Ok(false)
     }
 
     fn equality_stable(
@@ -2013,7 +2042,7 @@ impl MemberCheck<'_> {
                     | ModelForm::RecordValueType
                     | ModelForm::VariantType,
                 ) => {
-                    if self.model_value_holds_ieee_leaf(position, owners, meter)? {
+                    if self.model_value_is_key_unstable(position, owners, meter)? {
                         return Ok(false);
                     }
                     let Some(term) = self.terms[position].as_ref() else {
@@ -3407,6 +3436,7 @@ fn check_member(
                         )
                         | CheckedNodeKind::Model(
                             ModelForm::RecordValueType
+                                | ModelForm::TupleValueType
                                 | ModelForm::EventType
                                 | ModelForm::VariantType
                         )

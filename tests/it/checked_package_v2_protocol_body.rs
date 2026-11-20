@@ -11254,6 +11254,41 @@ fn model_option(name: &'static str, inner: &str) -> ModelDecl {
     }
 }
 
+/// A core value definition (`map`, `option`) of the model document.
+fn model_definition(name: &'static str, members: Value) -> ModelDecl {
+    ModelDecl {
+        name,
+        form: "option",
+        members,
+    }
+}
+
+/// A model value type over `scalar`, which FR-322 step 4 maps to a member
+/// type only for an integer, rational or string scalar.
+fn model_value(name: &'static str, scalar: &str) -> ModelDecl {
+    ModelDecl {
+        name,
+        form: "value",
+        members: json!({
+            "roles": [], "extensions": [], "unknownPolicy": "reject",
+            "scalar": scalar, "constraints": []
+        }),
+    }
+}
+
+/// `model_record` with declared `supertypes`.
+fn model_record_over(
+    name: &'static str,
+    supertypes: &[&str],
+    fields: &[(&str, &str, bool)],
+) -> ModelDecl {
+    let mut record = model_record(name, fields);
+    record.members["supertypes"] = json!(supertypes);
+    record
+}
+
+const MAP_OF_FLOAT: &str = r#"{"kind":"map","keys":"ix://filament/native/String","values":"ix://filament/native/Float64","bound":{"lower":0,"upper":3}}"#;
+
 fn model_tuple(name: &'static str, positions: &[&str]) -> ModelDecl {
     let identity = format!("ix://test/families/{name}");
     let positions = positions
@@ -11282,10 +11317,36 @@ fn model_variant(name: &'static str, payload: &str) -> ModelDecl {
 
 /// A FIFO channel keyed by the model declaration `key` of `declarations`.
 fn fifo_model_key_result(declarations: &[ModelDecl], key: &str) -> CheckedPackageV2ReadResult {
+    let (package, evidence) = fifo_model_key_package(declarations, key);
+    crate::read_and_account(
+        &canonical(&package),
+        CheckedPackageReadLimits::bounded(),
+        &evidence,
+    )
+}
+
+fn fifo_model_key_package(
+    declarations: &[ModelDecl],
+    key: &str,
+) -> (Value, CheckedPackageEvidence) {
     let (mut package, _) = package_with_member_queue();
     let mut document = family_model_document();
     let mut key_id = None;
     for declaration in declarations {
+        if declaration.form == "value" {
+            let mut entry = declaration.members.clone();
+            entry["identity"] = json!(format!("ix://test/families/{}", declaration.name));
+            entry["kind"] = json!({"module": "test/families", "name": "digit"});
+            document["constructs"]
+                .as_array_mut()
+                .expect("constructs")
+                .push(json!({
+                    "kind": {"module": "test/families", "name": "digit"},
+                    "construct": {"meaning": "filament.meaning.model.value-type/v1"}
+                }));
+            document["types"].as_array_mut().expect("types").push(entry);
+            continue;
+        }
         if declaration.form == "option" {
             let mut entry = declaration.members.clone();
             entry["identity"] = json!(format!("ix://test/families/{}", declaration.name));
@@ -11354,11 +11415,7 @@ fn fifo_model_key_result(declarations: &[ModelDecl], key: &str) -> CheckedPackag
     });
     settle(&mut package);
     let evidence = evidence_with_document(&package, "test/families", &document);
-    crate::read_and_account(
-        &canonical(&package),
-        CheckedPackageReadLimits::bounded(),
-        &evidence,
-    )
+    (package, evidence)
 }
 
 const NATIVE_FLOAT64: &str = "ix://filament/native/Float64";
@@ -11535,6 +11592,204 @@ fn protocol_channel_fifo_refuses_model_values_with_float_leaves() {
             "{case}: {path}"
         );
     }
+}
+
+/// FR-726-AC-3: a model-owned key whose member has no FR-322 step-4 member
+/// type (a map, a value type with an unmapped scalar, an option over either)
+/// or a clock leaf is refused, as is a float leaf on a supertype at any
+/// distance. The walk cannot see the leaves of such a member, so it fails
+/// closed.
+#[trace("TC-1770", "FR-726-AC-3", "FR-372-AC-3")]
+#[test]
+fn protocol_channel_fifo_refuses_model_members_it_cannot_prove_stable() {
+    let reading = || model_record("Reading", &[("value", NATIVE_FLOAT64, false)]);
+    let fmap = || {
+        let mut map: Value = serde_json::from_str(MAP_OF_FLOAT).expect("map definition");
+        map["identity"] = json!("ix://test/families/FMap");
+        model_definition("FMap", map)
+    };
+    for (case, declarations, key) in [
+        (
+            "inherited float field",
+            vec![
+                reading(),
+                model_record_over(
+                    "Derived",
+                    &["ix://test/families/Reading"],
+                    &[("count", NATIVE_INT, false)],
+                ),
+            ],
+            "Derived",
+        ),
+        (
+            "float two supertypes up",
+            vec![
+                reading(),
+                model_record_over("Middle", &["ix://test/families/Reading"], &[]),
+                model_record_over("Derived", &["ix://test/families/Middle"], &[]),
+            ],
+            "Derived",
+        ),
+        (
+            "map member",
+            vec![
+                fmap(),
+                model_record("Outer", &[("map", "ix://test/families/FMap", false)]),
+            ],
+            "Outer",
+        ),
+        (
+            "option over a map member",
+            vec![
+                fmap(),
+                model_option("OptMap", "ix://test/families/FMap"),
+                model_record("Outer", &[("map", "ix://test/families/OptMap", false)]),
+            ],
+            "Outer",
+        ),
+        (
+            "float scalar value type",
+            vec![
+                model_value("Temperature", "float64"),
+                model_record(
+                    "Outer",
+                    &[("reading", "ix://test/families/Temperature", false)],
+                ),
+            ],
+            "Outer",
+        ),
+        (
+            "option over a float scalar value type",
+            vec![
+                model_value("Temperature", "float32"),
+                model_option("OptTemperature", "ix://test/families/Temperature"),
+                model_record(
+                    "Outer",
+                    &[("reading", "ix://test/families/OptTemperature", false)],
+                ),
+            ],
+            "Outer",
+        ),
+        (
+            "clock member",
+            vec![model_record(
+                "Outer",
+                &[("clock", "ix://filament/native/Clock", false)],
+            )],
+            "Outer",
+        ),
+        (
+            "tuple key with a float position",
+            vec![model_tuple("Pair", &[NATIVE_BOOL, NATIVE_FLOAT64])],
+            "Pair",
+        ),
+    ] {
+        let result = fifo_model_key_result(&declarations, key);
+        let CheckedPackageV2ReadResult::Refused(refusal) = &result else {
+            panic!("{case} must refuse: {result:?}");
+        };
+        assert_eq!(
+            refusal.code,
+            CheckedPackageRefusalCode::IllTyped,
+            "{case}: {refusal:?}"
+        );
+        assert_eq!(
+            refusal.cause,
+            Some(CheckedPackageRefusalCause::OperatorIneligible),
+            "{case}"
+        );
+        let path = refusal.loci[0].path.as_ref().expect("key path").to_string();
+        assert!(
+            path.ends_with("/body/arguments/3/value/members/2/value"),
+            "{case}: {path}"
+        );
+    }
+}
+
+/// FR-726-AC-2: a stable inherited field, and a tuple, are admitted as keys
+/// (FR-465 reader step 2 admits `tuple_value_type` as `carries`).
+#[trace("TC-1770", "FR-726-AC-2", "FR-372-AC-2")]
+#[test]
+fn protocol_channel_admits_fifo_inherited_and_tuple_model_keys() {
+    for (case, declarations, key) in [
+        (
+            "stable inherited field",
+            vec![
+                model_record("Base", &[("count", NATIVE_INT, false)]),
+                model_record_over("Derived", &["ix://test/families/Base"], &[]),
+            ],
+            "Derived",
+        ),
+        (
+            "tuple key",
+            vec![model_tuple("Pair", &[NATIVE_BOOL, NATIVE_INT])],
+            "Pair",
+        ),
+    ] {
+        let result = fifo_model_key_result(&declarations, key);
+        assert!(
+            matches!(result, CheckedPackageV2ReadResult::Admitted(_)),
+            "{case} should admit: {result:?}"
+        );
+    }
+}
+
+/// The model-document walk is charged to the work meter: a chain of records
+/// needs more work than one record, and a read one unit short of the chain's
+/// requirement stops `Incomplete` on the work limit.
+#[trace("TC-1770", "FR-726-AC-2", "FR-372-AC-2")]
+#[test]
+fn protocol_channel_fifo_model_walk_is_charged_to_the_work_meter() {
+    let chain = |length: usize| {
+        let names: Vec<&'static str> = (0..length)
+            .map(|at| &*Box::leak(format!("Link{at}").into_boxed_str()))
+            .collect();
+        let mut declarations = Vec::new();
+        for (at, name) in names.iter().enumerate() {
+            let next = names.get(at + 1);
+            let identity = next.map(|next| format!("ix://test/families/{next}"));
+            declarations.push(match identity {
+                Some(identity) => model_record(
+                    name,
+                    &[
+                        ("count", NATIVE_INT, false),
+                        ("next", identity.as_str(), false),
+                    ],
+                ),
+                None => model_record(name, &[("count", NATIVE_INT, false)]),
+            });
+        }
+        fifo_model_key_package(&declarations, names[0])
+    };
+    let work_needed = |(package, evidence): &(Value, CheckedPackageEvidence)| {
+        let read = |work: u64| {
+            let mut limits = CheckedPackageReadLimits::bounded();
+            limits.work = work;
+            crate::read_and_account(&canonical(package), limits, evidence)
+        };
+        let (mut lower, mut upper) = (0, CheckedPackageReadLimits::bounded().work);
+        assert!(matches!(
+            read(upper),
+            CheckedPackageV2ReadResult::Admitted(_)
+        ));
+        while lower + 1 < upper {
+            let middle = lower + (upper - lower) / 2;
+            if matches!(read(middle), CheckedPackageV2ReadResult::Incomplete(_)) {
+                lower = middle;
+            } else {
+                upper = middle;
+            }
+        }
+        assert!(matches!(
+            read(upper - 1),
+            CheckedPackageV2ReadResult::Incomplete(ref incomplete)
+                if incomplete.limit_kind == CheckedPackageLimit::Work
+        ));
+        upper
+    };
+    let short = work_needed(&chain(1));
+    let long = work_needed(&chain(12));
+    assert!(long > short, "walking 12 records needs more work than 1");
 }
 
 /// Trace: FR-372-AC-2

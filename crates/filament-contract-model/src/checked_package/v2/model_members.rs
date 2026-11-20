@@ -1840,7 +1840,7 @@ impl DomainModel {
     }
     /// The proper ancestors of `node` along its declared supertypes; one
     /// work unit per supertype edge followed.
-    fn ancestors(
+    pub(super) fn ancestors(
         &self,
         node: &str,
         budget: &mut Budget<'_, '_>,
