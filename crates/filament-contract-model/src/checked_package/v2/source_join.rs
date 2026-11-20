@@ -588,19 +588,46 @@ impl<'p> Join<'p, '_> {
         Ok(false)
     }
 
-    /// Whether `named` holds `name`, one work unit and the bytes of the name
-    /// for each element met.
+    /// Whether `named` holds `name` of `declaring`, one work unit and the
+    /// bytes of the name for each element met.
     fn named_has(
         &mut self,
-        named: &[&str],
+        named: &[(usize, &str)],
+        declaring: usize,
         name: &str,
         holder: usize,
         at: At,
     ) -> Result<bool, Failure> {
-        for &candidate in named {
+        for &(position, candidate) in named {
             self.charge_text(holder, name.len(), at)?;
-            if candidate == name {
+            if position == declaring && candidate == name {
                 return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
+    /// Whether `from` reaches `to` through its supertypes, followed
+    /// transitively, one work unit for each supertype edge met.
+    fn reaches(&mut self, from: usize, to: usize, holder: usize, at: At) -> Result<bool, Failure> {
+        let mut seen: Vec<usize> = Vec::new();
+        self.push(&mut seen, from, holder, at)?;
+        let mut next = 0;
+        while let Some(&current) = seen.get(next) {
+            next += 1;
+            let Some(row) = self.row(current) else {
+                continue;
+            };
+            for supertype in &row.supertypes {
+                self.charge(holder, at)?;
+                if let Some(position) = self.package.position_of(supertype) {
+                    if position == to {
+                        return Ok(true);
+                    }
+                    if !self.lineage_has(&seen, position, holder, at)? {
+                        self.push(&mut seen, position, holder, at)?;
+                    }
+                }
             }
         }
         Ok(false)
@@ -641,7 +668,28 @@ impl<'p> Join<'p, '_> {
                 }
             }
         }
-        let mut named: Vec<&str> = Vec::new();
+        // The effective operations (FSL FR-185 "Workloads"): a declaration
+        // that a type below it in the lineage redeclares by name is counted
+        // once, as the nearer declaration, while declarations of one name by
+        // unrelated nearest ancestors (a diamond) are one operation each.
+        let mut effective: Vec<(usize, &str)> = Vec::new();
+        for &(ancestor, name) in &declared {
+            let mut redeclared = false;
+            for &(descendant, other) in &declared {
+                self.charge_text(holder, name.len(), &weights_at)?;
+                if other == name
+                    && descendant != ancestor
+                    && self.reaches(descendant, ancestor, holder, &weights_at)?
+                {
+                    redeclared = true;
+                    break;
+                }
+            }
+            if !redeclared {
+                self.push(&mut effective, (ancestor, name), holder, &weights_at)?;
+            }
+        }
+        let mut named: Vec<(usize, &str)> = Vec::new();
         for (index, row) in bound(body, 2)
             .map(members)
             .unwrap_or_default()
@@ -668,7 +716,7 @@ impl<'p> Join<'p, '_> {
             let name = bound(row, 1).and_then(text);
             let name = match name {
                 Some(name)
-                    if self.declared_has(&declared, declaring, name, holder, &name_at)? =>
+                    if self.declared_has(&effective, declaring, name, holder, &name_at)? =>
                 {
                     Some(name)
                 }
@@ -677,10 +725,12 @@ impl<'p> Join<'p, '_> {
             let Some(name) = name else {
                 return Err(Self::refuse(&name_at));
             };
-            self.push(&mut named, name, holder, &row_at)?;
+            self.push(&mut named, (declaring, name), holder, &row_at)?;
         }
-        for &(_, name) in &declared {
-            if !self.named_has(&named, name, holder, &|| weights_at().key("members"))? {
+        for &(declaring, name) in &effective {
+            if !self.named_has(&named, declaring, name, holder, &|| {
+                weights_at().key("members")
+            })? {
                 return Err(Self::refuse(&|| weights_at().key("members")));
             }
         }

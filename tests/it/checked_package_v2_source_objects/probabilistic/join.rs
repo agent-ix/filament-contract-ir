@@ -572,6 +572,183 @@ fn a_source_workload_covers_the_inherited_operations() {
     );
 }
 
+/// FR-640 Reader rule 3 (QSL-2707): a workload's rows are keyed by (declaring
+/// node, operation name), so two inherited operations of one name, declared
+/// by two supertypes (a diamond), are two rows and the strict read admits
+/// them, while one pair twice is a repeat.
+#[trace("TC-484", "FR-369-AC-26")]
+#[test]
+fn a_workload_row_is_keyed_by_its_declaring_node_and_operation_name() {
+    let row = |declaring: &str, operation: &str| {
+        aggregate(vec![
+            binding("declaring", reference_to(declaring)),
+            binding("operation", text(operation)),
+            binding("weight", rational("1")),
+        ])
+    };
+    let with_workload = |rows: Vec<Value>| {
+        let mut package = package();
+        nodes_mut(&mut package).push(super::probabilistic(
+            "workload_other",
+            "workload",
+            aggregate(vec![
+                binding("model", reference_to("qualified:Other")),
+                binding("name", text("W2")),
+                binding("weights", aggregate(rows)),
+            ]),
+        ));
+        settle(&mut package);
+        package
+    };
+    // `O::step` and `Other::step`: one name, two declaring nodes.
+    let same_name = vec![row("qualified:O", "step"), row("qualified:Other", "step")];
+    admitted(&with_workload(same_name));
+    // One (declaring, name) pair twice is a repeat, refused at the second row.
+    let twice = with_workload(vec![row("qualified:O", "step"), row("qualified:O", "step")]);
+    let at = format!("{}/members/1", member_at(&twice, "workload_other", 2));
+    let refusal = refused(&twice);
+    assert_eq!(
+        refusal.loci[0].path.as_ref().map(|path| path.as_str()),
+        Some(at.as_str()),
+        "{refusal:?}"
+    );
+}
+
+/// QSL-2707 at the identity-row join: workload coverage is keyed by (declaring
+/// node, operation name) like the rows are. In a diamond `D` over `P` and `Q`,
+/// each declaring `step`, a workload weighing only one `step` omits the other
+/// and is refused, and weighing both is admitted. Where `Other` extends `O`
+/// and redeclares `step`, the nearest declaration is the one operation: the
+/// workload of `Other::poke` and `Other::step` is admitted, and omitting
+/// `Other::step` or weighing the shadowed `O::step` is refused.
+#[trace("TC-484", "FR-369-AC-26")]
+#[test]
+fn a_diamond_workload_must_weigh_every_declaring_nodes_operation_of_one_name() {
+    let weigh = |declaring: &str, operation: &str| {
+        aggregate(vec![
+            binding("declaring", reference_to(declaring)),
+            binding("operation", text(operation)),
+            binding("weight", rational("1")),
+        ])
+    };
+    let with_workload = |model: &str, extra: &[&str], rows: Vec<Value>| {
+        let mut package = package();
+        for name in extra {
+            let mut node = source_type(name, &[], &fixture_source());
+            node["dependencies"] = json!([integer()]);
+            nodes_mut(&mut package).push(node);
+        }
+        nodes_mut(&mut package).push(super::probabilistic(
+            "workload_other",
+            "workload",
+            aggregate(vec![
+                binding("model", reference_to(model)),
+                binding("name", text("W2")),
+                binding("weights", aggregate(rows)),
+            ]),
+        ));
+        settle(&mut package);
+        package
+    };
+    let diamond_rows = || {
+        let mut all = poke_rows();
+        for (name, operations, supertypes) in [
+            ("P", vec![operation("P::step", vec![])], vec![]),
+            ("Q", vec![operation("Q::step", vec![])], vec![]),
+            ("D", vec![], vec![id("qualified:P"), id("qualified:Q")]),
+        ] {
+            let mut entry = row(name, vec![], &[]);
+            entry.members = vec![];
+            entry.operations = operations;
+            entry.supertypes = supertypes;
+            all.push(entry);
+        }
+        all
+    };
+    let weights = |package: &Value| format!("{}/members", member_at(package, "workload_other", 2));
+    let both = with_workload(
+        "qualified:D",
+        &["P", "Q", "D"],
+        vec![weigh("qualified:P", "step"), weigh("qualified:Q", "step")],
+    );
+    join(&both, diamond_rows()).expect("both steps of the diamond");
+    for (case, kept) in [("Q::step omitted", "P"), ("P::step omitted", "Q")] {
+        let package = with_workload(
+            "qualified:D",
+            &["P", "Q", "D"],
+            vec![weigh(&format!("qualified:{kept}"), "step")],
+        );
+        refuses(case, &package, diamond_rows(), &weights(&package));
+    }
+    // `Other` extends `O` and redeclares `step` (FSL FR-185 "Workloads"): the
+    // redeclared `O::step` is counted once, as `Other::step`.
+    let chain_rows = || {
+        let mut all = rows(vec![data("k", &range())], vec![id("qualified:O")]);
+        all[2].operations.push(operation("Other::step", vec![]));
+        all
+    };
+    let nearest = with_workload(
+        "qualified:Other",
+        &[],
+        vec![
+            weigh("qualified:Other", "poke"),
+            weigh("qualified:Other", "step"),
+        ],
+    );
+    join(&nearest, chain_rows()).expect("the redeclared ancestor operation is one operation");
+    let omitted = with_workload(
+        "qualified:Other",
+        &[],
+        vec![weigh("qualified:Other", "poke")],
+    );
+    refuses(
+        "the redeclaring Other::step omitted",
+        &omitted,
+        chain_rows(),
+        &weights(&omitted),
+    );
+    // A row for the redeclared ancestor operation names no operation of the model.
+    let both = with_workload(
+        "qualified:Other",
+        &[],
+        vec![
+            weigh("qualified:O", "step"),
+            weigh("qualified:Other", "poke"),
+            weigh("qualified:Other", "step"),
+        ],
+    );
+    let name_at = format!("{}/0/members/1/value/value", weights(&both));
+    refuses(
+        "the shadowed O::step weighed",
+        &both,
+        chain_rows(),
+        &name_at,
+    );
+    // A diamond below the redeclaration keeps both nearest declarations: `D`
+    // over `P` and `Q`, `P` extending `O`, all three declaring `step`.
+    let nested_rows = || {
+        let mut all = diamond_rows();
+        let p = all
+            .iter()
+            .position(|row| row.source_identity.as_ref() == "P")
+            .unwrap();
+        all[p].supertypes = vec![id("qualified:O")];
+        all
+    };
+    let nested = with_workload(
+        "qualified:D",
+        &["P", "Q", "D"],
+        vec![weigh("qualified:P", "step"), weigh("qualified:Q", "step")],
+    );
+    join(&nested, nested_rows()).expect("P::step and Q::step, O::step redeclared by P");
+    let lone = with_workload(
+        "qualified:D",
+        &["P", "Q", "D"],
+        vec![weigh("qualified:P", "step")],
+    );
+    refuses("Q::step omitted", &lone, nested_rows(), &weights(&lone));
+}
+
 /// The work of the AC-25 join of `package`, counted independently of the
 /// reader: one unit for each node met, and for the probabilistic ones, in
 /// bytes of the caller text compared as well:
@@ -584,22 +761,23 @@ fn a_source_workload_covers_the_inherited_operations() {
 ///   parameter `k` against the declared name (1 + 1);
 /// - `workload_w`: the entry `O::step` of the lineage (1 + 7), its row (1),
 ///   the lineage lookup of the row's type (1), the operation `step` against
-///   the declared ones (1 + 4) and against the named ones (1 + 4).
+///   the declared ones (1 + 4), the effective-operation check of `step`
+///   against the declared ones (1 + 4) and the named ones (1 + 4).
 fn ac25_work(package: &Value) -> u64 {
     let delays = (1 + 1 + 11) + (1 + 1 + 7);
     let random = 1 + (1 + 11) + (1 + 1) + (2 + 2);
     let reward = 1 + (1 + 11) + (1 + 1);
-    let workload = (1 + 7) + 1 + 1 + (1 + 4) + (1 + 4);
+    let workload = (1 + 7) + 1 + 1 + (1 + 4) + (1 + 4) + (1 + 4);
     nodes(package).len() as u64 + delays + random + reward + workload
 }
 
 /// The logical storage units of the AC-25 join: the pointer of the failure it
 /// may name, paid first (one container and 256 bytes), and for the workload
-/// three lists (lineage, declared, named), each a container (1) and its one
+/// four lists (lineage, declared, effective, named), each a container (1) and its one
 /// element (1), and for `random_k` the parse of each of the two support
 /// values of one digit against `Int[1, 3]` (a number and one limb).
 const LOCUS_UNITS: u64 = 1 + 256;
-const AC25_STORAGE: u64 = LOCUS_UNITS + 3 * (1 + 1) + 2 * (1 + 1);
+const AC25_STORAGE: u64 = LOCUS_UNITS + 4 * (1 + 1) + 2 * (1 + 1);
 
 /// FR-369-AC-26: the join's charges are ahead of the work: the full count
 /// admits, and every smaller work budget stops as incomplete at the first
@@ -1453,8 +1631,10 @@ fn a_workloads_supertype_edges_are_charged() {
     // the row `O::step`: itself (1), its type in the lineage (2), `step`
     // among the declared (2 * (1 + 4)); the row `Other::poke`: itself (1), its
     // type (1), `poke` among the declared (1 + 4); `poke` among the named
-    // (2 * (1 + 4)) and `step` among them (1 + 4).
-    let rest = (1 + 11) + (1 + 7) + (1 + 2 + 10) + (1 + 1 + 5) + 10 + 5;
+    // (2 * (1 + 4)) and `step` among them (1 + 4); and the effective
+    // operations: each of the 2 declared operations against the 2 declared
+    // ones (4 * (1 + 4)).
+    let rest = (1 + 11) + (1 + 7) + (1 + 2 + 10) + (1 + 1 + 5) + 10 + 5 + 20;
     for (supertypes, edges) in [(vec![o()], 1 + 1), (vec![o(), o()], (1 + 1) + (1 + 2))] {
         let rows = || rows(vec![data("k", &range())], supertypes.clone());
         let total = ac25_work(&package) + edges + rest;
@@ -1462,7 +1642,7 @@ fn a_workloads_supertype_edges_are_charged() {
         joined(&package, rows(), &mut budget).expect("the full count admits");
         assert_eq!(budget.consumed().work, total);
         // Each list of the second workload holds two elements.
-        assert_eq!(budget.consumed().storage, AC25_STORAGE + 3 * (1 + 2));
+        assert_eq!(budget.consumed().storage, AC25_STORAGE + 4 * (1 + 2));
         let mut budget = work_only(total - 1);
         let error = joined(&package, rows(), &mut budget).expect_err("one short");
         assert_eq!(error.code, RowError::Incomplete);
