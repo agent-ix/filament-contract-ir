@@ -166,6 +166,33 @@ fn set_place() -> Place {
     }
 }
 
+fn clock_reference_slot_domain_place() -> Place {
+    Place {
+        name: "fr829-slot-domain",
+        steps: vec![field("clocks"), slot("set", 0, 2)],
+        rows: vec![
+            row(
+                0,
+                ORDER,
+                "ix://acme/orders/Order/clocks",
+                "Set<ix://filament/native/Clock>",
+                "set",
+                "0",
+                "2",
+            ),
+            row(
+                1,
+                CLOCK,
+                "Set<ix://filament/native/Clock>[slot]",
+                CLOCK,
+                "none",
+                "",
+                "",
+            ),
+        ],
+    }
+}
+
 fn id_of(name: &str) -> Value {
     super::fixture_support::structural_id(
         "example",
@@ -314,6 +341,7 @@ fn selected_document(proposal: &Path) -> Value {
         ("sl", SLOT, 1, 1, false),
         ("ph", PHASE, 1, 1, false),
         ("sls", SLOT, 0, 2, false),
+        ("clocks", CLOCK, 0, 2, false),
         ("w", WRAP, 1, 1, false),
         ("h", HELD, 1, 1, false),
     ] {
@@ -1059,11 +1087,11 @@ fn clock_reference_adverse_applications_refuse_through_public_package_reader() {
     );
 
     let mut slot_domain_owner = base.clone();
-    let mut slot_domain_place_definition = set_place();
-    slot_domain_place_definition.name = "fr829-slot-domain";
-    slot_domain_place_definition.steps.truncate(2);
-    slot_domain_place_definition.rows.truncate(2);
-    let slot_domain_place = add_place(&mut slot_domain_owner, &slot_domain_place_definition, 9212);
+    let slot_domain_place = add_place(
+        &mut slot_domain_owner,
+        &clock_reference_slot_domain_place(),
+        9212,
+    );
     let object_owner_id = add_object_owner_term(
         &mut slot_domain_owner,
         &owner,
