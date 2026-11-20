@@ -1676,6 +1676,20 @@ fn the_public_reader_refuses_a_support_value_outside_its_declared_type() {
     support_case("l", texts(&[composed, decomposed]), Refused::Literal(1));
 }
 
+/// FR-369-AC-18: a support value of a parameter of the plain native `Integer`
+/// type has no bounds to leave: any canonical integer is admitted.
+#[trace("TC-476", "FR-369-AC-18")]
+#[test]
+fn the_public_reader_admits_any_integer_support_value_of_a_plain_integer() {
+    for value in ["7", "-9", "100000000000000000000"] {
+        admitted(&package_of(
+            "deposit",
+            "n",
+            vec![literal("integer", json!(value))],
+        ));
+    }
+}
+
 /// A reward whose function has the root node `root` of type `root_type` as
 /// its body.
 fn reward_with_body(root_type: Value) -> Value {

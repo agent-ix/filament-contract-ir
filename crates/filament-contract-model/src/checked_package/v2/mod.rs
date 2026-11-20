@@ -109,6 +109,7 @@ mod schedulability;
 mod selected_document;
 mod selected_facts;
 mod selection_equality;
+mod source_join;
 mod source_map;
 mod source_object;
 mod source_operation;

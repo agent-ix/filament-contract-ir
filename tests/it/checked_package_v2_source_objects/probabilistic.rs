@@ -3,9 +3,10 @@
 
 //! TC-484: probabilistic nodes whose `declaring` node is a source-declared
 //! object type, the strict-read halves FR-369-AC-27 and FR-369-AC-28 of the
-//! join ACs the matrix holds Planned (FSpec FR-640-AC-6, FR-640-AC-7). The
-//! identity-row join half has no entry point yet (QSL-2645): the packages read
-//! here are admitted with their operations, parameters and supports unjoined.
+//! join ACs (FSpec FR-640-AC-6, FR-640-AC-7). The packages read here are
+//! admitted by the strict read with their operations, parameters and supports
+//! unjoined; the identity-row join half (FR-369-AC-25, FR-369-AC-26, QSL-2645)
+//! is `join` below.
 
 use super::*;
 
@@ -152,7 +153,11 @@ fn parameter(label: &str, name: &str) -> Value {
 /// The AC-25 package: source types `O` and `Other`, the dense source time
 /// `time O dense unit ms`, and one node of each probabilistic form.
 pub(super) fn package() -> Value {
-    let mut package = source_package();
+    package_over(source_package())
+}
+
+/// The AC-25 unit added to `base`, a package with the source type `Order`.
+fn package_over(mut package: Value) -> Value {
     let source = fixture_source();
     let dimension = declared(
         plain(
@@ -1112,3 +1117,5 @@ fn the_source_buffers_are_charged_before_they_are_made() {
     assert_eq!(count(listed), 1, "{amounts:?}");
     assert_eq!(count(named), 1, "{amounts:?}");
 }
+
+mod join;

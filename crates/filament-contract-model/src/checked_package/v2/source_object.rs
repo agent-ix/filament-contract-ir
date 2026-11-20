@@ -193,14 +193,27 @@ pub enum SelectedSourceObjectErrorCode {
     /// the context nor a transitive subtype of it (FR-366-AC-6).
     #[error("dispatch candidate is outside the source context's type family")]
     MismatchedIdentityWitness,
+    /// A value read against the source-object identity rows is refused at its
+    /// locus (FR-369-AC-26 for the probabilistic join; later joins reuse it).
+    /// Maps to `invalid_package`/`invalid-value`.
+    #[error("value disagrees with the source-object identity rows")]
+    InvalidValue,
+    /// The caller's budget denied a charge of the probabilistic join
+    /// (FR-369): the read stopped at the first uncharged member.
+    #[error("probabilistic join stopped at the first uncharged member")]
+    Incomplete,
 }
 
-/// A refused supply, at the `Package` locus, with no partial view.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
+/// A refused supply, with no partial view: at the `Package` locus, or at the
+/// `locus` of the member the strict read would name.
+#[derive(Clone, Debug, Eq, PartialEq, thiserror::Error)]
 #[error("{code}")]
 pub struct SelectedSourceObjectError {
     /// The first reason in precedence order.
     pub code: SelectedSourceObjectErrorCode,
+    /// The member of the package the refusal names; `None` for a refusal at
+    /// the `Package` locus.
+    pub locus: Option<crate::checked_package::shared::CheckedPackageRefusalLocation>,
 }
 
 /// The complete joined source-object rows of one admitted package instance.
@@ -218,7 +231,7 @@ impl<'a> SelectedSourceObjects<'a> {
         rows: impl IntoIterator<Item = SelectedSourceObjectRow>,
     ) -> Result<Self, SelectedSourceObjectError> {
         let rows: Vec<SelectedSourceObjectRow> = rows.into_iter().collect();
-        let fail = |code| Err(SelectedSourceObjectError { code });
+        let fail = |code| Err(SelectedSourceObjectError { code, locus: None });
         let graph = package.resolved_graph();
         let is_type = |position: usize| {
             graph
@@ -281,6 +294,14 @@ impl<'a> SelectedSourceObjects<'a> {
             package,
             rows: joined,
         })
+    }
+
+    pub(super) fn package(&self) -> &'a super::CheckedPackageV2 {
+        self.package
+    }
+
+    pub(super) fn row_at(&self, position: usize) -> Option<&SelectedSourceObjectRow> {
+        self.rows.get(&position)
     }
 
     /// The joined row of a source-declared object type, `None` for another
