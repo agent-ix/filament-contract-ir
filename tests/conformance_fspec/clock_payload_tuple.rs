@@ -877,6 +877,7 @@ fn clock_reference_dependencies(application: &mut Value) {
         })
         .collect::<Vec<_>>();
     sort_ids(&mut dependencies);
+    dependencies.dedup();
     application["dependencies"] = json!(dependencies);
 }
 
@@ -892,8 +893,8 @@ fn assert_clock_reference_refusal(
     let CheckedPackageV2ReadResult::Refused(refusal) = result else {
         panic!("{name} must refuse through the strict package reader: {result:?}");
     };
-    assert_eq!(refusal.code, Code::IllTyped, "{name}");
-    assert_eq!(refusal.cause, Some(cause), "{name}");
+    assert_eq!(refusal.code, Code::IllTyped, "{name}: {refusal:?}");
+    assert_eq!(refusal.cause, Some(cause), "{name}: {refusal:?}");
     assert!(
         refusal.loci[0]
             .path
