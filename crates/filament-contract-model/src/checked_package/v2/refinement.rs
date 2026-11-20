@@ -1881,6 +1881,107 @@ impl RefinementGraph<'_, '_> {
         Ok(operation)
     }
 
+    /// The `(type name, operation)` of every no-point operation anchor whose
+    /// declaring type belongs to the selected concrete model, sorted. Built
+    /// once per refinement: the scan is charged `terms.len()` work and the
+    /// table its bytes before it is allocated.
+    fn declared_operations(
+        &self,
+        meter: &mut super::WorkMeter,
+        selected_root: &CheckedNodeId,
+        at: Path<'_>,
+    ) -> Result<Vec<(&str, &str)>, ValidationFailure> {
+        charge_amount_at(meter, at, self.terms.len() as u64)?;
+        let site = super::natural::site(meter, at);
+        let mut table: Vec<(&str, &str)> =
+            super::stage_storage::vec(meter, &site, self.terms.len())?;
+        let selected = self
+            .local_node(selected_root)
+            .and_then(|root| match &root.owner {
+                Some(super::CheckedNodeOwner::ModelRoot { identity, .. }) => {
+                    Some(identity.as_ref())
+                }
+                _ => None,
+            });
+        for term in self.terms.iter().flatten() {
+            let Some(anchor) = super::structural::typed_anchor_body(term) else {
+                continue;
+            };
+            if anchor.execution_point.is_some() {
+                continue;
+            }
+            let Some(super::CheckedNodeOwner::Model { identity, node }) = self
+                .local_node(anchor.context)
+                .and_then(|declaration| declaration.owner.as_ref())
+            else {
+                continue;
+            };
+            if Some(identity.as_ref()) != selected {
+                continue;
+            }
+            if let Some((_, name)) = super::source_object::source_type_identity(node) {
+                table.push((name, anchor.operation));
+            }
+        }
+        table.sort_unstable();
+        Ok(table)
+    }
+
+    /// Resolve a catalog-free class among the operations the selected model's
+    /// types themselves declare: a bare `op` is a wrong binding, and a `T::op`
+    /// with no no-point anchor at a selected-model type named `T` is a missing
+    /// class.
+    fn require_declared_operation_class(
+        meter: &mut super::WorkMeter,
+        operations: &[(&str, &str)],
+        class: &str,
+        at: Path<'_>,
+        locus: &CheckedNodeId,
+    ) -> Result<(), ValidationFailure> {
+        let Some(key) = class.rsplit_once("::") else {
+            return Err(wrong_binding(meter, at, locus));
+        };
+        if operations.binary_search(&key).is_ok() {
+            Ok(())
+        } else {
+            Err(missing_class(meter, at, locus))
+        }
+    }
+
+    /// FR-375 `T::op`: a catalog-free class is `T::op`, the anchor's declaring type
+    /// `T` and its operation `op`; a bare `op` never names an anchor.
+    fn source_class_names_anchor(
+        &self,
+        class: &str,
+        source: &CheckedNodeId,
+        operation: &str,
+    ) -> bool {
+        let Some((type_name, class_operation)) = class.rsplit_once("::") else {
+            return false;
+        };
+        class_operation == operation
+            && self
+                .local_term(source)
+                .and_then(super::structural::typed_anchor_body)
+                .is_some_and(|anchor| anchor.execution_point.is_none())
+            && self
+                .local_anchor(source)
+                .is_some_and(|(context, _)| self.declares_type_name(context, type_name))
+    }
+
+    /// Whether `type_name` is the declaring type's source name `T`. A model
+    /// type's node is `ix://<package identity>/<name>` (one flat name, no
+    /// nested model-owned types), so `T` is that name. Allocation-free.
+    fn declares_type_name(&self, id: &CheckedNodeId, type_name: &str) -> bool {
+        let Some(super::CheckedNodeOwner::Model { identity, node }) =
+            self.local_node(id).and_then(|node| node.owner.as_ref())
+        else {
+            return false;
+        };
+        super::source_object::source_type_identity(node)
+            .is_some_and(|(owner, name)| owner == identity.as_ref() && name == type_name)
+    }
+
     fn require_concrete_owner(
         &self,
         meter: &mut super::WorkMeter,
@@ -2253,6 +2354,7 @@ fn validate_rows(
             }
         }
     }
+    let mut operations: Option<Vec<(&str, &str)>> = None;
     for (index, row) in steps.iter().enumerate() {
         let at = root.key("steps").index(index);
         charge_at(meter, at)?;
@@ -2282,6 +2384,21 @@ fn validate_rows(
                 )?;
             }
         } else if let Some(source) = &row.source_node {
+            // FR-375 order: the class resolves before any `source_node` check.
+            if operations.is_none() {
+                operations = Some(graph.declared_operations(
+                    meter,
+                    &node.semantic_type,
+                    root.key("steps"),
+                )?);
+            }
+            RefinementGraph::require_declared_operation_class(
+                meter,
+                operations.as_deref().unwrap_or_default(),
+                &row.source_class,
+                at.key("source_class"),
+                locus,
+            )?;
             let operation = graph.require_concrete_step_anchor(
                 meter,
                 source,
@@ -2289,8 +2406,8 @@ fn validate_rows(
                 at.key("source_node"),
                 locus,
             )?;
-            if row.source_class.as_ref() != operation {
-                return Err(wrong_binding(meter, at.key("source_class"), locus));
+            if !graph.source_class_names_anchor(&row.source_class, source, operation) {
+                return Err(wrong_binding(meter, at.key("source_node"), locus));
             }
         } else {
             return Err(missing_class(meter, at.key("source_class"), locus));
