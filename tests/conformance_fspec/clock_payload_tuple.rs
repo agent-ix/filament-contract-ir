@@ -1179,32 +1179,68 @@ fn clock_reference_adverse_applications_refuse_through_public_package_reader() {
         declaration_node("object_type", call_identity),
         9208,
     );
-    let order_model = order_node();
-    let place_node = wrong_reference["semantic_graph"]["nodes"]
-        .as_array_mut()
-        .expect("nodes")
-        .iter_mut()
-        .find(|node| node["node_id"] == id_of("ss-set-tuple-0"))
-        .expect("slot place");
-    place_node["body"]["members"][0]["value"]["target"] = call_model.clone();
-    replace_json_text(
-        &mut place_node["body"],
-        "ix://acme/orders/Order",
-        call_identity,
+    // Keep the published Order timed root and its places valid. Give Call its
+    // own well-formed clock place/root so the strict reader reaches the
+    // Reference<Order> owner check instead of rejecting a mismatched root.
+    let mut call_place = clock_reference_slot_domain_place();
+    for row in &mut call_place.rows {
+        replace_json_text(row, "ix://acme/orders/Order", call_identity);
+    }
+    let call_place_id = id_of("fr829-call-clock-place");
+    let mut call_place_dependencies = vec![call_model.clone(), integer_type()];
+    sort_ids(&mut call_place_dependencies);
+    push_node(
+        &mut wrong_reference,
+        json!({
+            "body": aggregate(vec![
+                bind("model", json!({"term":"reference", "target":call_model})),
+                bind("path", aggregate(call_place.steps)),
+                bind("resolved_path", aggregate(call_place.rows)),
+            ]),
+            "dependencies": call_place_dependencies,
+            "node_id": call_place_id,
+            "node_tag": "timed_model",
+            "occurrences": [{"ordinal":0,"role":"expression"}],
+            "schema_version": "filament.checked-semantic-graph/v2",
+            "semantic_form": "clock_place",
+            "semantic_type": call_place_id,
+        }),
+        9209,
     );
-    place_node["dependencies"] = place_node["dependencies"]
+    let mut call_root = wrong_reference["semantic_graph"]["nodes"]
         .as_array()
-        .expect("place dependencies")
+        .expect("nodes")
         .iter()
-        .map(|dependency| {
-            if dependency == &order_model {
-                call_model.clone()
-            } else {
-                dependency.clone()
-            }
-        })
-        .collect::<Vec<_>>()
-        .into();
+        .find(|node| node["semantic_form"] == "timed_model")
+        .expect("published timed root")
+        .clone();
+    let call_root_id =
+        fixture_support::structural_id("example", vec![json!("Example"), json!("TimedCall")], 0);
+    call_root["node_id"] = call_root_id.clone();
+    call_root["semantic_type"] = call_root_id;
+    call_root["declaration"]["qualified_name"] = json!(["Example", "TimedCall"]);
+    call_root["body"]["members"][0]["value"]["target"] = call_model.clone();
+    call_root["body"]["members"][3]["value"]["members"] =
+        json!([{"term":"reference", "target":call_place_id}]);
+    for member in call_root["body"]["members"]
+        .as_array_mut()
+        .expect("timed root bindings")
+        .iter_mut()
+        .skip(4)
+    {
+        member["value"]["members"] = json!([]);
+    }
+    let time_dimension = call_root["body"]["members"][1]["value"]["target"].clone();
+    let source = call_root["body"]["members"][2]["value"]["target"].clone();
+    let mut call_root_dependencies =
+        vec![call_model, time_dimension, source, call_place_id.clone()];
+    sort_ids(&mut call_root_dependencies);
+    call_root_dependencies.dedup();
+    call_root["dependencies"] = json!(call_root_dependencies);
+    push_node(&mut wrong_reference, call_root, 9210);
+    let app = clock_reference_application(&mut wrong_reference);
+    app["body"]["arguments"][0] = json!({"term":"reference", "target":call_place_id});
+    clock_reference_dependencies(app);
     fixture_support::refresh_identity(&mut wrong_reference);
     assert_clock_reference_refusal(
         &wrong_reference,
@@ -1242,29 +1278,69 @@ fn clock_reference_adverse_applications_refuse_through_public_package_reader() {
     }
 
     let mut sum = base;
-    let integer = integer_type();
+    let integer_id = integer_type();
+    let set_integer = fixture_support::structural_id(
+        "example",
+        vec![json!("composite_type"), json!("set"), json!("integer")],
+        0,
+    );
+    push_node(
+        &mut sum,
+        json!({
+            "body": aggregate(vec![json!({"term":"reference", "target":integer_id})]),
+            "dependencies": [integer_id],
+            "node_id": set_integer,
+            "node_tag": "composite_type",
+            "occurrences": [{"ordinal":0,"role":"type"}],
+            "schema_version": "filament.checked-semantic-graph/v2",
+            "semantic_form": "set",
+            "semantic_type": set_integer,
+        }),
+        9206,
+    );
+    let collection = json!({"ordinal":0,"package":"example",
+        "path":["value","parameter","fr829-integer-collection"]});
+    push_node(
+        &mut sum,
+        json!({
+            "body": aggregate(vec![
+                bind("name", text("values")),
+                bind("level", integer(0)),
+            ]),
+            "dependencies": [],
+            "node_id": collection,
+            "node_tag": "value",
+            "occurrences": [{"ordinal":0,"role":"expression"}],
+            "schema_version": "filament.checked-semantic-graph/v2",
+            "semantic_form": "parameter",
+            "semantic_type": set_integer,
+        }),
+        9207,
+    );
+    let mut sum_dependencies = vec![place_reference.clone(), collection.clone()];
+    sort_ids(&mut sum_dependencies);
     push_node(
         &mut sum,
         json!({
             "body":{
                 "term":"application",
                 "operator":"collection",
-                "operation":{"identity":"filament.op.collection.sum.integer","laws":[],"leaves":[],"member":null,"mode":null},
-                "result_type":integer,
+                "operation":{"identity":"filament.op.collection.sum.integer","laws":[],"leaves":[],"member":{"kind":"type_argument","declaration":integer_id},"mode":null},
+                "result_type":integer_id,
                 "arguments":[
-                    {"term":"literal","type":integer,"value_kind":"integer","value":"1"},
+                    {"term":"reference","target":collection},
                     {"term":"binding","name":"item","value":{"term":"reference","target":place_reference}}
                 ]
             },
-            "dependencies":[place_reference],
+            "dependencies":sum_dependencies,
             "node_id":{"ordinal":0,"package":"example","path":["expression","collection","fr829-clock-reference-sum"]},
             "node_tag":"expression",
             "occurrences":[{"ordinal":0,"role":"expression"}],
             "schema_version":"filament.checked-semantic-graph/v2",
             "semantic_form":"collection",
-            "semantic_type":integer,
+            "semantic_type":integer_id,
         }),
-        9206,
+        9208,
     );
     fixture_support::refresh_identity(&mut sum);
     assert_clock_reference_refusal(
