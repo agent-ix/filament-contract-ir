@@ -69,7 +69,7 @@ pub(super) fn conflicting(
 }
 
 /// The graph's node ids with their positions, ascending by identity.
-fn node_positions<'w, Body>(
+pub(super) fn node_positions<'w, Body>(
     wire: &'w CheckedPackageWireV2<Body>,
     meter: &mut WorkMeter,
 ) -> Result<Vec<(&'w CheckedNodeId, usize)>, ValidationFailure> {
@@ -444,6 +444,7 @@ pub(super) fn validate_checked_term_data<Body>(
         }
     }
     validate_probabilistic_claims(data, wire, kinds, &index, &source_occurrences, meter)?;
+    super::body_locations::validate(wire, kinds, terms, &data.body_locations, meter)?;
     Ok(())
 }
 

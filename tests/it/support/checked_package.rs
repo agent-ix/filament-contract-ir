@@ -2371,6 +2371,7 @@ pub fn rebuild_source_map(package: &mut Value) {
         .expect("locked fixture source")
         .clone();
     package["source_map"] = source_map_for(&nodes, &source);
+    rebuild_body_locations(package);
 }
 
 /// Rebuilds source correspondence for every actual node occurrence, preserving
@@ -2580,6 +2581,156 @@ pub fn settle(package: &mut Value) {
     join_application_dependencies(package);
     rebuild_source_map(package);
     refresh_identity(package);
+}
+
+thread_local! {
+    /// The row sets `rebuild_body_locations` wrote on this thread, so a later
+    /// rebuild tells them from a set a test wrote itself.
+    static BUILT_ROWS: std::cell::RefCell<std::collections::HashSet<String>> =
+        std::cell::RefCell::new(std::collections::HashSet::new());
+}
+
+/// Gives every function body of `package` the `body_locations` rows its
+/// wire walk requires (FSpec FR-322): one row per term visit, at the node's
+/// first `expression` occurrence, with the empty path. Rows this helper wrote
+/// earlier are replaced; a row set a test wrote itself is kept.
+pub fn rebuild_body_locations(package: &mut Value) {
+    let explicit = package["checked_term_data"]["body_locations"]
+        .as_array()
+        .is_some_and(|rows| {
+            !rows.is_empty()
+                && !BUILT_ROWS.with_borrow(|built| {
+                    built.contains(&package["checked_term_data"]["body_locations"].to_string())
+                })
+        });
+    if explicit {
+        return;
+    }
+    // Rows name nodes in resolved index form, whatever form the nodes are in.
+    let mut resolved = package.clone();
+    resolve_operands(&mut resolved);
+    let Some(nodes) = resolved["semantic_graph"]["nodes"].as_array() else {
+        return;
+    };
+    let positions: HashMap<String, usize> = nodes
+        .iter()
+        .enumerate()
+        .map(|(position, node)| (node["node_id"].to_string(), position))
+        .collect();
+    fn references<'a>(term: &'a Value, found: &mut Vec<&'a Value>) {
+        let mut stack = vec![term];
+        while let Some(next) = stack.pop() {
+            match next["term"].as_str() {
+                Some("reference") => found.push(&next["target"]),
+                Some("application") => {
+                    stack.extend(next["arguments"].as_array().into_iter().flatten().rev());
+                }
+                Some("aggregate") => {
+                    stack.extend(next["members"].as_array().into_iter().flatten().rev());
+                }
+                Some("binding") => stack.push(&next["value"]),
+                _ => {}
+            }
+        }
+    }
+    let mut rows: Vec<(usize, u64, u64, Value)> = Vec::new();
+    let mut index = 0_u64;
+    let mut visits: HashMap<usize, u64> = HashMap::new();
+    let local = resolved["name"].clone();
+    for node in nodes
+        .iter()
+        .filter(|node| node["node_tag"] == "function" && node["node_id"]["package"] == local)
+    {
+        let Some(start) = node["body"]["members"]
+            .as_array()
+            .and_then(|members| members.iter().find(|member| member["name"] == "body"))
+            .filter(|member| member["value"]["term"] == "reference")
+            .map(|member| &member["value"]["target"])
+        else {
+            continue;
+        };
+        let name = node["declaration"]["qualified_name"]
+            .as_array()
+            .and_then(|name| name.last())
+            .and_then(Value::as_str)
+            .map_or_else(|| format!("f{index}"), str::to_owned);
+        let mut pending = vec![start];
+        let mut at_start = true;
+        while let Some(target) = pending.pop() {
+            let is_start = std::mem::take(&mut at_start);
+            let Some(&position) = positions.get(&target.to_string()) else {
+                continue;
+            };
+            if target["package"] != local {
+                continue;
+            }
+            let held = &nodes[position];
+            if held["node_tag"] != "expression" && !is_start {
+                continue;
+            }
+            let control = held["body"]["term"] == "application"
+                && matches!(
+                    held["body"]["operation"]["identity"].as_str(),
+                    Some(
+                        "filament.op.control.let"
+                            | "filament.op.control.if"
+                            | "filament.op.control.case"
+                    )
+                );
+            if held["node_tag"] == "expression" && held["semantic_form"] != "reference" && !control
+            {
+                let ordinal = visits.entry(position).or_default();
+                let occurrence = held["occurrences"]
+                    .as_array()
+                    .and_then(|all| all.iter().find(|each| each["role"] == "expression"))
+                    .cloned()
+                    .unwrap_or_else(|| json!({"role": "expression", "ordinal": 0}));
+                let row = json!({
+                    "application": held["node_id"],
+                    "occurrence": occurrence,
+                    "term_ordinal": *ordinal,
+                    "location": {
+                        "origin": {
+                            "kind": "function_body",
+                            "function": node["node_id"],
+                            "name": name,
+                            "index": index,
+                        },
+                        "path": [],
+                    },
+                });
+                rows.push((
+                    position,
+                    occurrence["ordinal"].as_u64().unwrap_or(0),
+                    *ordinal,
+                    row,
+                ));
+                *ordinal += 1;
+            }
+            let mut found = Vec::new();
+            references(&held["body"], &mut found);
+            pending.extend(found.into_iter().rev());
+        }
+        index += 1;
+    }
+    rows.sort_by_cached_key(|row| {
+        let application: CheckedNodeId =
+            serde_json::from_value(row.3["application"].clone()).expect("application id");
+        (application, row.1, row.2)
+    });
+    let rows: Vec<Value> = rows.into_iter().map(|row| row.3).collect();
+    if rows.is_empty() && package.get("checked_term_data").is_none() {
+        return;
+    }
+    if package.get("checked_term_data").is_none() {
+        package["checked_term_data"] = json!({
+            "equality_decisions": [], "protocol_locations": [], "dispatch_tables": [],
+            "probabilistic_claims": [],
+        });
+    }
+    let rows = Value::Array(rows);
+    BUILT_ROWS.with_borrow_mut(|built| built.insert(rows.to_string()));
+    package["checked_term_data"]["body_locations"] = rows;
 }
 
 /// Keep synthetic clock and declared-name rows paired with their occurrences
