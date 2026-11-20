@@ -273,7 +273,7 @@ fn aggregate(value: TermNode<'_>, at: Path) -> Result<super::TermItems<'_>, Fail
     value
         .get("members")
         .and_then(TermNode::items)
-        .ok_or(wire(at.key("members")))
+        .ok_or_else(|| wire(at.key("members")))
 }
 
 /// An aggregate of exactly the bindings `names`, in that order, with each
@@ -336,7 +336,7 @@ fn spelling<'a>((value, at): Bound<'a>, kind: LiteralKind) -> Result<&'a str, Fa
     match value.view() {
         Some(TermView::Literal {
             value_kind, value, ..
-        }) if value_kind == kind => value.as_str().ok_or(wire(at.key("value"))),
+        }) if value_kind == kind => value.as_str().ok_or_else(|| wire(at.key("value"))),
         _ => Err(wire(at)),
     }
 }

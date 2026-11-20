@@ -312,6 +312,63 @@ fn original_protocol_term_tree_prepays_each_reserved_walk_growth() {
     proof::drop_without_request::<IntegrationCounter>(reference);
 }
 
+/// The heap a read requests beyond the read storage it charged does not grow
+/// with the rows of a workload or with the rational spellings it holds: the
+/// source fixture (a `discrete` delay, a random parameter, 520 listed
+/// parameters) and the model-owner fixture read at 20, 300 and 600 rows leave
+/// the same unpaid bytes, within the general bound.
+#[trace("TC-472", "FR-038-AC-511")]
+#[test]
+fn unpaid_heap_of_workload_rows_and_rational_spellings_does_not_grow() {
+    initialize_operation_catalog().expect("catalog gate");
+    let unpaid = |bytes: &[u8], evidence: &CheckedPackageEvidence| {
+        let read = proof::measure_read::<IntegrationCounter>(
+            bytes,
+            evidence,
+            proof::generous_limits(),
+            u64::MAX,
+        );
+        assert!(
+            matches!(
+                read.result,
+                filament_contract_model::CheckedPackageV2BudgetedReadResult::Admitted(_)
+            ),
+            "every fixture read is admitted"
+        );
+        let unpaid = proof::unpaid(&read);
+        proof::drop_without_request::<IntegrationCounter>(read);
+        unpaid
+    };
+    let source: Vec<u64> = [20, 300, 600]
+        .map(|rows| {
+            let (wire, evidence) =
+                crate::checked_package_v2_source_objects::probabilistic::accounting_fixture_of(
+                    rows,
+                );
+            unpaid(&canonical(&wire), &evidence)
+        })
+        .into();
+    let owner: Vec<u64> = [20, 300, 600]
+        .map(|rows| {
+            let (wire, package, document) =
+                crate::checked_package_v2_probabilistic::accounting_fixture_of(rows);
+            let evidence =
+                crate::support::checked_package::evidence_with_document(&wire, package, &document);
+            unpaid(&canonical(&wire), &evidence)
+        })
+        .into();
+    for (label, unpaid) in [("source", source), ("model-owner", owner)] {
+        assert!(
+            unpaid.iter().all(|bytes| *bytes <= proof::UNPAID_BOUND),
+            "{label}: {unpaid:?}"
+        );
+        assert!(
+            unpaid.windows(2).all(|pair| pair[0] == pair[1]),
+            "{label}: {unpaid:?}"
+        );
+    }
+}
+
 /// Reuses the exact builder dispatch of the existing catalogue admission
 /// test, including its model-document controls. No copied wire builders.
 fn positive_cases() -> Vec<Case> {
@@ -339,6 +396,16 @@ fn positive_cases() -> Vec<Case> {
         crate::checked_package_v2_source_objects::probabilistic::accounting_fixture();
     cases.push(case(
         "TC048/source_probabilistic",
+        wire,
+        evidence,
+        Expected::Admitted,
+    ));
+    // A workload of over 256 rows over a model-owner node.
+    let (wire, package, document) = crate::checked_package_v2_probabilistic::accounting_fixture();
+    let evidence =
+        crate::support::checked_package::evidence_with_document(&wire, package, &document);
+    cases.push(case(
+        "TC048/model_owner_workload",
         wire,
         evidence,
         Expected::Admitted,
