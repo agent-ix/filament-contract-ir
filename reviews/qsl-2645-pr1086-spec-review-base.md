@@ -53,3 +53,15 @@ Round 1, at head 0c9d47aea.
 | FND-001 | fixed | The Planned paragraph is now "Source enumeration entries (QSL-2655)". It names the missing input (the identity rows carry no enumeration's cases), states that the bounded and int/decimal carried quantities have no literal kind "there either, as in the strict read", and gives "Owner: QSL-2655" |
 | FND-002 | fixed | Both rows are now 🚧 Partial: the FR-369-AC-25/26 row names the refusal "at the member the strict read names for the same edit" and the QSL-2655 gap, and the TC-484 row reads "every step is implemented; entries typed by a source enumeration are open on QSL-2655" |
 | FND-003 | fixed | AC-27 and AC-28 now read "(the join half is the identity-row join of QSL-2645)". The remaining "unjoined" in AC-27 describes the strict read without identity rows, which is accurate |
+
+## New findings (disposition pass 2)
+
+| ID | Severity | Summary | Refs |
+| --- | --- | --- | --- |
+| FND-005 | low | FR-369-AC-26 now says that "one unit of logical storage short of the failure pointer, the lists it keeps or the exact numbers it parses, stops the join with `Incomplete` at the first uncharged member". Behavior (FR-369:201) and TC-484 step 6 say that a budget that cannot pay for the failure pointer stops "with `Incomplete` and no locus", and the test asserts `error.locus.is_none()`. Move "the failure pointer" out of that list, and say it stops with no locus | spec/checked_package/functional/FR-369-read-probabilistic-nodes-and-their-four-forms.md:347 |
+
+Round 2, at head 63e40db63. Focused run: 86 passed, 0 failed.
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-004 | fixed | FR-369 now reads "The join charges no read storage, which only the strict read of FR-038 uses". Exact parses are FR-358 logical storage units (one for the number and one per limb), which agrees with FR-358:141-147. The tests assert `read_storage_consumed() == 0` and `first_unpaid_read_storage().is_none()`, and they run with `NativeJoinBudget::new(w, s)` (read-storage limit 0) |

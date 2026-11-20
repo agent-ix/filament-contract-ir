@@ -63,3 +63,10 @@ Round 1, at head 0c9d47aea (fix 94821764f, survivor tests d4e58d837, merge of or
 | FND-005 | fixed | The FR-019 row now ends "A breaking change that rides the next contract-ir tag: the error type gains the public field locus and is no longer Copy, and its code enum, which is not non-exhaustive, gains two variants", and the PR body has a "Breaking API" section listing both |
 | FND-006 | fixed | Membership is shared: `Bounded` and `bounded_not_member` in `probabilistic_join.rs` serve both the strict read and the join. The duplicated `canonical_rational` is gone, and parses use the strict read's metered helpers. The row-based lineage walk necessarily differs from the strict read's domain walk. QSL-2653's fixes to the shared helpers now reach the join |
 | FND-007 | fixed | The write path now panics after writing: "the golden pair is rewritten: review its diff, then run without QSL_2645_WRITE_GOLDEN" |
+
+Round 2, at head 63e40db63 (fix 40413e6bf, then a merge of origin/main and the review-artifacts commit). Focused run: 86 passed, 0 failed (same filter as round 1).
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-008 | fixed | `push` now charges FR-358 logical units: 2 for the first element of a list (container and element) and 1 for each later one, then `try_reserve(1)`. Exact parses charge one unit for the number and one per nine-digit limb (`Parser::pay`), and the failure pointer is charged 1 + 256 units. `AC25_STORAGE = LOCUS_UNITS + 3 * (1 + 1) + 2 * (1 + 1)` no longer depends on `size_of` |
+| FND-009 | fixed | The pointer of the failure the join may name is paid once, before any work (`accounted_charge(Storage, LOCUS_UNITS)` at the `Package` locus). A budget that cannot pay for it stops as `Incomplete` with `locus: None`, which is FR-358's compact form, and every later stop or refusal pointer is already paid for. The parses charge at `GraphNode(holder)` through `Parser`, not the strict read's `PackageRead` locus. The join charges no read storage, so `finish` without a read-storage delta matches the FR-352 joins |
