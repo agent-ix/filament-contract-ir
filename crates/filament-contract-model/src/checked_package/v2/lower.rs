@@ -864,6 +864,7 @@ fn quantity_chain(kind: CheckedNodeKind) -> QuantityChain {
             | ScalarTypeForm::DimensionEquivalence
             | ScalarTypeForm::CarriedQuantity
             | ScalarTypeForm::BoundedQuantity
+            | ScalarTypeForm::ClockReference
             | ScalarTypeForm::Enum,
         ) => QuantityChain::Other,
         K::BoundedDomain(
@@ -955,7 +956,8 @@ fn requires_bound(kind: CheckedNodeKind) -> bool {
             | ScalarTypeForm::Enum
             | ScalarTypeForm::CompoundUnit
             | ScalarTypeForm::CarriedQuantity
-            | ScalarTypeForm::BoundedQuantity,
+            | ScalarTypeForm::BoundedQuantity
+            | ScalarTypeForm::ClockReference,
         ) => false,
         K::CompositeType(
             CompositeTypeForm::Sequence
@@ -1008,7 +1010,8 @@ fn requires_bound(kind: CheckedNodeKind) -> bool {
             | ExpressionForm::PresenceRead
             | ExpressionForm::ValueRead
             | ExpressionForm::Deref
-            | ExpressionForm::Reachability,
+            | ExpressionForm::Reachability
+            | ExpressionForm::PlaceReference,
         ) => false,
         K::Function(
             FunctionForm::PureFunction | FunctionForm::Predicate | FunctionForm::RecursiveFunction,
@@ -1075,7 +1078,8 @@ fn requires_bound(kind: CheckedNodeKind) -> bool {
             | ClaimForm::StateGraph
             | ClaimForm::StepRelation
             | ClaimForm::Schedulability
-            | ClaimForm::ProbabilisticClaim,
+            | ClaimForm::ProbabilisticClaim
+            | ClaimForm::ValueValidity,
         ) => false,
         K::Correspondence(
             CorrespondenceForm::SourceLocus

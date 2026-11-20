@@ -71,6 +71,10 @@ over the package's dispatch tables, which refuses with
 name, `MismatchedIdentityWitness` being the FR-352 outcome for a stale or
 mismatched stage row.
 
+`SelectedSourceObjects::from_stage_rows` SHALL stay unmetered; the metered
+probabilistic join is the separate method `join_probabilistic` of
+[FR-369](./FR-369-read-probabilistic-nodes-and-their-four-forms.md).
+
 ### Operation parameters
 
 Each `SelectedSourceObjectOperation` SHALL also carry `parameters:
@@ -111,7 +115,12 @@ Vec<SelectedClockCollectionLayer { kind, minimum, maximum }>}`: a **data
 entry** has `type_node` and no `member_type` and empty `collections`; a
 **clock entry** has no `type_node`, `member_type` its FSpec FR-789
 rendering with presence, and one layer per collection of its type,
-outermost first. The data entries, in order, SHALL equal the bindings; a
+outermost first. `SelectedClockCollectionLayer` SHALL be `{kind: Box<str>,
+minimum: Box<str>, maximum: Box<str>}` carrying the FSL FR-531 `collections`
+values unchanged: `kind` one of `sequence`, `set`, `bag`, `ordered_set`,
+`map`, `minimum` a canonical decimal and `maximum` a canonical decimal or
+`unbounded`, which the FR-374 clock join compares as text with the place's
+`slot` row `collection_kind`, `minimum` and `maximum`. The data entries, in order, SHALL equal the bindings; a
 clock entry SHALL share no name with a binding and its `member_type` SHALL
 be a rendering whose terminal is `ix://filament/native/Clock` with no node
 (`Clock`, `Option<Clock>`, a collection or map of them). An entry with both

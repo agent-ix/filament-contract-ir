@@ -23,7 +23,7 @@ fn binding(name: &str, value: Value) -> Value {
 
 /// The published timed model with delay distributions `(label, family,
 /// parameters)` on `Order::reset` (`unit` is the quantity type they use).
-fn with_delays(delays: &[(&str, &str, Value)], unit: Option<Value>) -> Value {
+pub(crate) fn with_delays(delays: &[(&str, &str, Value)], unit: Option<Value>) -> Value {
     let mut wire = read_json(&fixtures_dir().join(FIXTURE)).expect("published timed model");
     let order = node_id(&wire, 53);
     let text = node_id(&wire, 23);

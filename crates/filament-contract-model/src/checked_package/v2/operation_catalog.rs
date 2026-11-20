@@ -215,12 +215,18 @@ impl<'de> Deserialize<'de> for OperationConstraint {
 
         let wire = Wire::deserialize(deserializer)?;
         let operands = match (wire.kind, wire.operands, &wire.family) {
-            (OperationConstraintKind::QuantifierDomainOnly, Field::Missing, Field::Missing) => {
-                Vec::new()
-            }
-            (OperationConstraintKind::QuantifierDomainOnly, _, _) => {
+            (
+                OperationConstraintKind::QuantifierDomainOnly | OperationConstraintKind::PlaceHasId,
+                Field::Missing,
+                Field::Missing,
+            ) => Vec::new(),
+            (
+                OperationConstraintKind::QuantifierDomainOnly | OperationConstraintKind::PlaceHasId,
+                _,
+                _,
+            ) => {
                 return Err(serde::de::Error::custom(
-                    "quantifier_domain_only has no operands or family",
+                    "operandless constraint has no operands or family",
                 ));
             }
             (_, Field::Present(operands), _) => operands,

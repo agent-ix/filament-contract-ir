@@ -99,6 +99,8 @@ struct BorrowedWire {
     claim_names: Option<Vec<super::ClaimNameRow>>,
     #[serde(default, deserialize_with = "super::document_de::exact_optional_vec")]
     schedulability_claims: Option<Vec<super::CheckedSchedulabilityClaimRow>>,
+    #[serde(default, deserialize_with = "super::document_de::exact_optional_vec")]
+    requirement_items: Option<Vec<super::requirement_records::RequirementItemWireRow>>,
     #[serde(default, deserialize_with = "super::operation_effects::present_rows")]
     operation_effects: Option<Vec<super::CheckedOperationEffectRow>>,
     #[serde(default, deserialize_with = "super::operation_effects::present_rows")]
@@ -326,6 +328,7 @@ pub(super) fn decode_borrowed_wire(
         temporal_clause_names: wire.temporal_clause_names,
         claim_names: wire.claim_names,
         schedulability_claims: wire.schedulability_claims,
+        requirement_items: wire.requirement_items,
         operation_effects: wire.operation_effects,
         operation_bodies: wire.operation_bodies,
         capability_report: wire.capability_report,
@@ -706,6 +709,12 @@ pub(super) fn check_lossless_source(
         root,
         "schedulability_claims",
         wire.schedulability_claims.as_deref(),
+        meter,
+    )?;
+    compare_optional_rows(
+        root,
+        "requirement_items",
+        wire.requirement_items.as_deref(),
         meter,
     )?;
     let entries = root

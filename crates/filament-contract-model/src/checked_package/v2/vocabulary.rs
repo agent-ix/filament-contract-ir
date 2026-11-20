@@ -147,6 +147,7 @@ closed_vocabulary! {
         CompoundUnit => "compound_unit",
         CarriedQuantity => "carried_quantity",
         BoundedQuantity => "bounded_quantity",
+        ClockReference => "clock_reference",
     }
 }
 
@@ -214,6 +215,7 @@ closed_vocabulary! {
         ValueRead => "value_read",
         Deref => "deref",
         Reachability => "reachability",
+        PlaceReference => "place_reference",
     }
 }
 
@@ -321,6 +323,7 @@ closed_vocabulary! {
         StateGraph => "state_graph",
         StepRelation => "step_relation",
         Schedulability => "schedulability",
+        ValueValidity => "value_validity",
     }
 }
 
@@ -424,6 +427,7 @@ closed_vocabulary! {
         TemporalFormula => "temporal_formula",
         TemporalFairness => "temporal_fairness",
         Slots => "slots",
+        PlaceRef => "place_ref",
     }
 }
 
@@ -506,6 +510,8 @@ closed_vocabulary! {
         UniformRest => "uniform_rest",
         UnionArms => "union_arms",
         PlaceSlotTerms => "place_slot_terms",
+        PlaceIdentityTerms => "place_identity_terms",
+        PlaceHasId => "place_has_id",
         QuantifierDomainOnly => "quantifier_domain_only",
     }
 }
