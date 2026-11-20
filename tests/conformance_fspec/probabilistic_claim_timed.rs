@@ -188,7 +188,7 @@ fn with_claim(fixture: &str, form: impl Fn(&Wire) -> Value) -> Value {
     ));
     value["checked_term_data"] = json!({
         "equality_decisions": [], "protocol_locations": [], "dispatch_tables": [],
-        "probabilistic_claims": [{"declaration": claim_id,
+        "body_locations": [], "probabilistic_claims": [{"declaration": claim_id,
             "occurrence": {"role": "claim", "ordinal": 0}}],
     });
     fixture_support::rebuild_source_map(&mut value);

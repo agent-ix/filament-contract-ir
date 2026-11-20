@@ -2726,7 +2726,7 @@ pub fn rebuild_body_locations(package: &mut Value) {
     if package.get("checked_term_data").is_none() {
         package["checked_term_data"] = json!({
             "equality_decisions": [], "protocol_locations": [], "dispatch_tables": [],
-            "probabilistic_claims": [],
+            "body_locations": [], "probabilistic_claims": [],
         });
     }
     let rows = Value::Array(rows);
