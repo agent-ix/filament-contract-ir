@@ -1059,6 +1059,15 @@ fn clock_reference_adverse_applications_refuse_through_public_package_reader() {
     );
 
     let mut slot_domain_owner = base.clone();
+    let mut slot_domain_place_definition = set_place();
+    slot_domain_place_definition.name = "fr829-slot-domain";
+    slot_domain_place_definition.steps.truncate(2);
+    slot_domain_place_definition.rows.truncate(2);
+    let slot_domain_place = add_place(
+        &mut slot_domain_owner,
+        &slot_domain_place_definition,
+        9212,
+    );
     let object_owner_id = add_object_owner_term(
         &mut slot_domain_owner,
         &owner,
@@ -1086,7 +1095,7 @@ fn clock_reference_adverse_applications_refuse_through_public_package_reader() {
         }),
         9210,
     );
-    let mut dependencies = vec![place.clone(), object_owner_id.clone()];
+    let mut dependencies = vec![slot_domain_place.clone(), object_owner_id.clone()];
     sort_ids(&mut dependencies);
     push_node(
         &mut slot_domain_owner,
@@ -1097,7 +1106,7 @@ fn clock_reference_adverse_applications_refuse_through_public_package_reader() {
                 "operation":{"identity":"filament.op.option.slots","laws":[],"leaves":[],"member":null,"mode":null},
                 "result_type":set_type_id,
                 "arguments":[
-                    {"term":"reference","target":place},
+                    {"term":"reference","target":slot_domain_place},
                     {"term":"reference","target":object_owner_id}
                 ]
             },
