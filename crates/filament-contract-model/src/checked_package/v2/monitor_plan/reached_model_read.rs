@@ -811,6 +811,12 @@ pub(in crate::checked_package::v2) mod fixture_support;
 /// FR-322, FR-038-AC-581) and the one `generated` occurrence of each model
 /// declaration node (FR-322 stage 5). The committed bytes predate both rules
 /// and are not regenerated here; nothing else in the package is rewritten.
+///
+/// Known limit (QSL-2694 review): because the rules are applied at read time,
+/// the committed files stay non-conforming on disk, and a later drift of the
+/// producer's output is not surfaced by these tests until the fixtures are
+/// regenerated from the producer. Regeneration needs the producer tool, which
+/// this crate does not depend on; it belongs to the producer's fixture refresh.
 #[cfg(test)]
 pub(in crate::checked_package::v2) fn genuine_bytes_under_current_rules(
     committed: &[u8],

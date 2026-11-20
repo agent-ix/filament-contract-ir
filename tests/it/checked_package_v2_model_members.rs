@@ -4338,14 +4338,21 @@ fn tc_048_relationship_end_is_not_a_field_and_exports_no_selected_population_ite
 
 /// A read-storage denial of the relationship end's destination type ends the
 /// read with a typed outcome: the denial borrows the budget that the failed
-/// read held. The limits are the 700 read-storage limits from the first that
-/// pays the canonical bytes, where the flat-wire stage's destination read is
-/// denied for this fixture.
+/// read held. The flat-wire stage charges that read at the navigate
+/// application's node (`WireChecks`, its position), so the limits are those
+/// whose first unpaid charge is that site: they are found by search, because
+/// the fixture's size moves them.
 #[trace("TC-472", "FR-038-AC-511")]
 #[test]
 fn a_denied_relationship_destination_read_is_refused_not_a_double_borrow() {
     let (mut wire, evidence) = model_member_control("filament.op.model.navigate");
     index_fixture_node_ids(&mut wire);
+    let application = wire["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .position(|node| node["body"]["operation"]["identity"] == "filament.op.model.navigate")
+        .expect("the navigate application");
     let bytes = canonical(&wire);
     let read = |limit: u64| {
         let mut budget = filament_contract_model::NativeJoinBudget::new(u64::MAX, 0)
@@ -4369,27 +4376,51 @@ fn a_denied_relationship_destination_read_is_refused_not_a_double_borrow() {
         read(u64::MAX).0,
         filament_contract_model::CheckedPackageV2BudgetedReadResult::Admitted(_)
     ));
-    // The window opens at the first limit that pays the envelope and the
-    // canonical bytes: the fixture's size moves it, so it is found, not
-    // written down.
-    let before_wire = |limit: u64| {
-        matches!(
-            read(limit).1.first_unpaid_locus().map(|locus| locus.source),
-            Some(filament_contract_model::NativeJoinLocusSource::PackageRead(stage, _))
-                if stage < filament_contract_model::PackageReadStage::WireDecode
-        )
+    let stage_of = |limit: u64| match read(limit).1.first_unpaid_locus().map(|locus| locus.source) {
+        Some(filament_contract_model::NativeJoinLocusSource::PackageRead(stage, index)) => {
+            Some((stage, index))
+        }
+        _ => None,
+    };
+    // The first limit that pays everything before the flat-wire checks.
+    let before_wire_checks = |limit: u64| {
+        stage_of(limit)
+            .is_some_and(|(stage, _)| stage < filament_contract_model::PackageReadStage::WireChecks)
     };
     let (mut below, mut above) = (0_u64, 1_u64 << 30);
-    assert!(before_wire(below) && !before_wire(above));
+    assert!(before_wire_checks(below) && !before_wire_checks(above));
     while above - below > 1 {
         let middle = below + (above - below) / 2;
-        if before_wire(middle) {
+        if before_wire_checks(middle) {
             below = middle;
         } else {
             above = middle;
         }
     }
-    for limit in above..above + 700 {
+    // The limits whose first unpaid charge is the application's own flat-wire
+    // site, from the first that reaches it until the read moves past it.
+    let site = Some((
+        filament_contract_model::PackageReadStage::WireChecks,
+        application,
+    ));
+    let mut limits = Vec::new();
+    for limit in above..above + 100_000 {
+        match stage_of(limit) {
+            found if found == site => limits.push(limit),
+            Some((stage, index))
+                if stage > filament_contract_model::PackageReadStage::WireChecks
+                    || index > application =>
+            {
+                break;
+            }
+            _ => {}
+        }
+    }
+    assert!(
+        !limits.is_empty(),
+        "no limit stops at the application's flat-wire site"
+    );
+    for limit in limits {
         let (result, budget) = read(limit);
         assert!(
             !matches!(
@@ -4427,16 +4458,12 @@ fn a_denied_relationship_destination_read_is_refused_not_a_double_borrow() {
         let first_unpaid_locus = budget
             .first_unpaid_locus()
             .expect("a typed read-storage denial retains its first unpaid locus");
-        assert!(
-            matches!(
-                first_unpaid_locus.source,
-                filament_contract_model::NativeJoinLocusSource::PackageRead(
-                    filament_contract_model::PackageReadStage::WireDecode
-                        | filament_contract_model::PackageReadStage::WireChecks,
-                    _
-                )
-            ),
-            "unexpected first unpaid locus at limit {limit}: {first_unpaid_locus:?}"
+        assert_eq!(
+            Some(first_unpaid_locus.source),
+            site.map(|(stage, index)| {
+                filament_contract_model::NativeJoinLocusSource::PackageRead(stage, index)
+            }),
+            "limit {limit} stops at the application's flat-wire site"
         );
         if let Some(outcome_locus) = outcome_locus {
             assert_eq!(outcome_locus, first_unpaid_locus);

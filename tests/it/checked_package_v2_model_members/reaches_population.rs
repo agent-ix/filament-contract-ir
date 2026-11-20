@@ -260,6 +260,27 @@ impl Scenario {
         handle(&self.nodes()[0]["node_id"])
     }
 
+    /// The pointer of the first `dependencies` entry that names no node: the
+    /// edge join stage 4 refuses.
+    fn dangling_edge(&self) -> String {
+        let nodes = self.package["semantic_graph"]["nodes"]
+            .as_array()
+            .expect("nodes");
+        for (position, node) in nodes.iter().enumerate() {
+            for (edge, dependency) in node["dependencies"]
+                .as_array()
+                .expect("edges")
+                .iter()
+                .enumerate()
+            {
+                if !nodes.iter().any(|other| other["node_id"] == *dependency) {
+                    return format!("/semantic_graph/nodes/{position}/dependencies/{edge}");
+                }
+            }
+        }
+        panic!("no dangling dependency");
+    }
+
     fn assert_refused(
         &self,
         expected: (
@@ -493,6 +514,8 @@ fn tc_048_a_population_that_is_not_a_listed_node_id_is_refused_ill_typed() {
         );
         if listed.is_none() {
             scenario.assert_refused(ILL_TYPED, POPULATION_AT);
+        } else {
+            scenario.assert_refused(BAD_GRAPH, &scenario.dangling_edge());
         }
     }
 }
@@ -661,7 +684,9 @@ fn tc_048_a_navigate_application_never_carries_a_population() {
             ILL_TYPED
         };
         assert_eq!((refusal.code, refusal.cause), expected, "{label}");
-        if label != "absent node" {
+        if label == "absent node" {
+            listed.assert_refused(BAD_GRAPH, &listed.dangling_edge());
+        } else {
             listed.assert_refused(ILL_TYPED, POPULATION_AT);
         }
 
