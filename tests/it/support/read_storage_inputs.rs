@@ -83,16 +83,18 @@ pub fn dependencies_10000() -> Input {
         .find(|node| node["node_tag"] == "expression" && node["semantic_form"] == "reference")
         .expect("reference")
         .clone();
-    let boolean = template["semantic_type"].clone();
     let tuple = node_id("allocation-tuple/type");
     let mut ty = template.clone();
     ty["node_id"] = tuple.clone();
     ty["node_tag"] = json!("composite_type");
     ty["semantic_form"] = json!("tuple");
     ty["semantic_type"] = tuple.clone();
-    ty["dependencies"] = json!([boolean]);
+    // The flat nodes are `reference` type nodes, so each one is its own
+    // operand type: the tuple type declares position i as flat node i, and the
+    // tuple value (FR-347 position conformance) references that same node.
+    ty["dependencies"] = json!(values);
     ty["occurrences"] = json!([{"role":"type","ordinal":0}]);
-    ty["body"] = json!({"term":"aggregate","members":(0..10_000).map(|_|json!({"term":"reference","target":boolean})).collect::<Vec<_>>()});
+    ty["body"] = json!({"term":"aggregate","members":values.iter().map(|id|json!({"term":"reference","target":id})).collect::<Vec<_>>()});
     nodes.push(ty);
     let mut row = template;
     row["node_id"] = node_id("allocation-tuple/value");
