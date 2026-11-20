@@ -5527,13 +5527,14 @@ The reader SHALL decide this before operation admission.
 ### Present checked-term data and probabilistic claim admission
 
 The optional FSpec FR-322 checked-term-data sidecar is a closed, present V2
-object with four required arrays: `equality_decisions`, `protocol_locations`,
-`dispatch_tables` and `probabilistic_claims`. Each array may be empty. An absent
-sidecar and a present sidecar with four empty arrays remain distinct on read
+object with five required arrays: `equality_decisions`, `protocol_locations`,
+`dispatch_tables`, `probabilistic_claims` and `body_locations`. Each array may be
+empty. An absent sidecar and a present sidecar with five empty arrays remain
+distinct on read
 and write. A present object missing any array, or containing an unknown member,
 is malformed wire at the missing object or offending member. The public typed
 `CheckedTermDataV2` and private owned, raw-intake and borrowed-encode wire paths
-use this same four-array shape; a nonempty `probabilistic_claims` array is not
+use this same five-array shape; a nonempty `probabilistic_claims` array is not
 refused merely for being nonempty.
 
 For `protocol_locations`, the strict reader SHALL join each row's `application`
@@ -5544,6 +5545,42 @@ at that row's `application` member. A leaf obtains its semantic location from
 its own admitted node and SHALL NOT inherit an enclosing application's row
 location. This leaf rule does not assign a new refusal to an absent, foreign
 or other non-application node; those retain the existing row-join behavior.
+
+For `body_locations` (FSpec FR-322), the strict reader SHALL apply the
+`protocol_locations` row shape, key, consecutive-ordinal, row-join and leaf
+rules to each row, at `body_locations` loci, and SHALL admit only the closed
+origin `{kind: "function_body", function, name, index}`; any other `kind` is
+`malformed_wire` at that `kind` member. A function's *body walk* is computed
+from the admitted graph alone: it starts at the local node the function's
+`body` binding references and visits nodes in pre-order, following, in the
+order they occur in a pre-order traversal of each visited node's `body` term
+(members, then arguments, left to right), every `reference` leaf whose target
+is a local `expression` node, and no other reference; a node reached twice is
+visited twice, and a function node with no `body` binding has no walk. A visit
+is a *term* exactly when its node is an `expression` node other than a
+reference, a let, a conditional or a case: an `expression`/`reference` node
+and an `expression`/`application` node whose operator is
+`filament.op.control.let`, `filament.op.control.if` or
+`filament.op.control.case` are walked through and are not terms; every other
+expression form is a term (FSpec FR-322). Refusal order: the shared
+`protocol_locations` rules run first, row by row in array order (row shape and
+the origin `kind`, then the row join, the leaf rule, the duplicate-key rule
+and canonical order); then the body-location row checks below, row by row in
+array order; then the array-level checks, the shared missing-predecessor
+(consecutive-ordinal) check first and the missing-term check last. The
+body-location checks refuse `invalid_package`/`invalid-value`, in this order
+within a row: at a row's `function` when
+it names no local `function` node with a `body` binding; at the later row's
+`name` or `index` when two rows of one function differ in it; at the later
+row's `index` when rows of two functions share an `index`; at a row's
+`application` when the rows of its function and application outnumber that
+function's terms at that application; and, after every row passes, at
+`/checked_term_data/body_locations` when a function and application have
+fewer rows than terms, which includes a package with no sidecar whose
+function bodies have any term. The reader keeps each row's `name` as an
+opaque string and its `path` as captured, and checks neither against the
+walk. The typed view exposes each admitted row with its `function`, `name`,
+`index` and path.
 
 The closed `ClaimForm` vocabulary includes `ProbabilisticClaim` for the
 `claim`/`probabilistic_claim` semantic form. Its body is an ordinary retained
@@ -6321,10 +6358,11 @@ the minimum the read uses.
 | FR-038-AC-579 | The family rule runs after the part's binder join: `FP-04`, a family part with the non-slot binder `self` of FSpec `CL-58` and no `quantifier`, refuses `invalid_package`/`timed-node-reference` at that binder's `target`, `/semantic_graph/nodes/47/body/members/1/value/members/0/members/1/value/members/0/target`, not at the part. | Test (TC-490) |
 | FR-038-AC-580 | The family vectors are read by reference: TC-490 replays FSpec's clause fixture, selected document and `CL-57`, `CL-58`, `CL-63`..`CL-66` patches from the `FILAMENT_SPECIFICATION_DIR` checkout and applies only the edits of `tests/fixtures/family-guard-part/family-part-vectors.json`; no FSpec file is copied. Every member an `FP` edit replaces or removes is first checked by an RFC 6902 `test` operation against the value it must hold (the `ts` maximum `3` in the document and the package, the `audit` slot, the operand slots and rows it renumbers), so a changed FSpec fixture fails the test instead of silently retargeting it. | Test (TC-490) |
 | FR-038-AC-582 | Join stage 5 of FSpec FR-322-AC-275, the model declaration occurrence check of `source_map` (FSpec FR-322 "Model declaration occurrences", FR-322-AC-486), runs in `validate_graph` after the owner, derived-shape and selected-bound stages and before every declaration, frame, state and operation refusal. FSpec also orders it after the stage 4 edge existence check; the reader has no stage 4 graph pass yet (a dangling `semantic_type` or `dependencies` entry is resolved only at the end of `validate_graph`), so a package with both a dangling edge and a stage 5 defect reports stage 5. That deviation is QSL-2644, which adds the pass. A model declaration node is a `model` or `relation` node carrying a `ModelOwner`. In `source_map` order the reader refuses the first entry of such a node whose role is not `generated`, whose ordinal is not 0, that repeats an earlier entry of the node, or whose `regions` are not exactly those of the `generated` ordinal-zero entry of the `model_root` node with the same owner `identity` (a package with no such root entry included), as `invalid_package`/`invalid-value` at `/source_map/{i}` with the node as locus; only when every entry passes it refuses the first such node (graph order) with no entry, at `/source_map`. Over FSpec `positive-model-tuple-union.json`, `TW-29` (no entry), `TW-30` (role `expression`), `TW-31` (ordinal 1), `TW-32` (a region of its own) and `TW-33` (a second entry) refuse so, at `/source_map`, `/source_map/3`, `/source_map/3`, `/source_map/3` and `/source_map/38`, and `TW-34` (the root and every declaration entry moved together) is admitted. A `relation` declaration node is checked the same way (`positive-all-families.json` `Order-order-Order`, entry `/source_map/6`: a region of its own or the role `expression` refuse at `/source_map/6`, and removing the entry refuses at `/source_map`). With two selected models, a repeated entry of one root does not hide the other root's entry. A repeated entry, a missing root entry, an entry defect beside a missing entry (the entry is reported) and two missing entries (the first is reported) refuse likewise. The pass charges one work unit per model root entry it puts in its table and per model declaration entry it reads and per model declaration node it checks for an entry, and its two tables (one row per model root and one flag per graph node) as exact-capacity storage and nothing else, to the same read meter as the other graph stages; a package with no model declaration node is not charged. | Test (TC-048) |
+| FR-038-AC-581 | On packages built by reference from FSpec `checked-term-data-vectors.json` `body_locations` cases (FSpec FR-322-AC-490), BL-01 is admitted with one typed row per term of `f`'s body walk, the two `sqrt` rows reading paths `[0]` and `[1]`; BL-02 (one path changed to `[0]`) is admitted with that path; BL-R1 refuses `invalid_package`/`invalid-value` at `/checked_term_data/body_locations`, BL-R2 at the row's `application`, BL-R3 at the last row's `name`, BL-R4 at the last row's `index`, BL-R5 at the row's `function`, BL-R6 at the added row's `application`; BL-01 without its sidecar refuses at `/checked_term_data/body_locations`; a row whose origin `kind` is `type_declaration` is `malformed_wire` at that `kind`. A reader that walks the `dependencies` array instead of the `body` term, or that counts a node reached twice once, counts one row too many for BL-03, whose one `+` node is reached twice, and fails: BL-03 is admitted with two rows for that node, at its `expression` occurrences 0 and 1 with `term_ordinal` 0 each, and refused at `/checked_term_data/body_locations` with the occurrence-1 row removed. A reader that counts a `filament.op.control.let` application as a term finds BL-01's two `#ieee_operand` `let`s without rows and wrongly refuses it. | Test (TC-491) |
 | FR-038-AC-387 | The public reader admits FSpec `XP-01` and `XP-10`, with each local dimension operand as a local `NodeRef` and each foreign dimension operand as a closed `PackageNodeRef {package, node}` of a directly selected dependency. It resolves the foreign declared dimension in that dependency's admitted package, preserves the authored operand form in the typed nominal body and writer, compares the two resolved structural node ids for distinctness and ascending order, and retains only local operands in the equivalence node's `dependencies`. No foreign dimension node is minted into the importing graph. | Test (TC-280) |
 | FR-038-AC-388 | For FSpec `XP-11`, `XP-12` and `XP-15`, a package operand naming only a closure dependency, no selected dependency or the importing package refuses `missing_declaration`/`missing-selection` at `/semantic_graph/nodes/{i}/body/dimension_node_ids/{k}/package`. `XP-13` names no node in its directly selected dependency and refuses `missing_declaration`/`missing-name` at the corresponding `/node`. The reader checks these operands in listed order before pair rules; neither package display names nor an imported graph node substitute for the selected dependency lookup. | Test (TC-280) |
 | FR-038-AC-389 | FSpec `XP-14` supplies a self-minted foreign-package `NodeRef` and refuses `invalid_semantic_graph` at `/semantic_graph/nodes/{i}/body/dimension_node_ids/{k}`. A local operand naming no graph node, or a local or package operand resolving to a node other than `scalar_type`/`dimension`, refuses the same code at that operand before pair validation; `XP-05` names a unit node and refuses there at its wrong-kind operand. FSpec `XP-02` through `XP-04` and `XP-06` through `XP-09` keep their published `invalid_semantic_graph` pair outcomes after operand resolution; a valid mixed-package equivalence still admits. Reversed or duplicate resolved structural dimensions refuse `invalid_semantic_graph` at the later equivalence node in structural node-id order. | Test (TC-280) |
-| FR-038-AC-390 | A present `CheckedTermDataV2` has exactly four required arrays, `equality_decisions`, `protocol_locations`, `dispatch_tables` and `probabilistic_claims`, including when all are empty. `None` omits the sidecar, while `Some(empty)` retains it through typed write and strict read. Removing any required array or adding an unknown member refuses `malformed_wire` at the missing object or unknown member; the public and private wire paths agree. | Test (TC-048, TC-451) |
+| FR-038-AC-390 | A present `CheckedTermDataV2` has exactly five required arrays, `equality_decisions`, `protocol_locations`, `dispatch_tables`, `probabilistic_claims` and `body_locations`, including when all are empty. `None` omits the sidecar, while `Some(empty)` retains it through typed write and strict read. Removing any required array or adding an unknown member refuses `malformed_wire` at the missing object or unknown member; the public and private wire paths agree. | Test (TC-048, TC-451) |
 | FR-038-AC-391 | The strict reader admits an IR-constructed complete V2 package containing FSpec `checked-term-data-vectors.json` positive `PC-01` and `PC-02` identities as two nonempty probabilistic-claim rows. It retains each exact local `claim`/`probabilistic_claim` declaration `NodeRef` and its own declared `claim` occurrence. Their equal display names and source spans do not merge them or determine identity; a probabilistic-claim declaration without its one required row is refused under FSpec FR-322-AC-297. | Test (TC-048, TC-233) |
 | FR-038-AC-392 | The reader checks FSpec `PC-S1` missing occurrence and `PC-S2` extra member as closed-schema `malformed_wire` refusals. For `PC-R1` foreign, `PC-R2` wrong-kind, `PC-R3` absent-local and a non-probabilistic claim declaration, it returns `invalid_package`/`invalid-value` at `/checked_term_data/probabilistic_claims/{i}/declaration`; for `PC-R6` mis-mapped occurrence or wrong occurrence role, it returns that code/cause at `/checked_term_data/probabilistic_claims/{i}/occurrence`. Each refusal has the exact published primary RFC 6901 locus and no admitted package. | Test (TC-048, TC-233) |
 | FR-038-AC-393 | FSpec `PC-R4`'s second row for one declaration with a different valid occurrence and `PC-R5`'s repeated declaration-occurrence key both refuse `invalid_package`/`conflicting-definition` at the later row. `PC-R7`'s reversal of two valid rows refuses `invalid_package`/`invalid-semantic-graph` at the second row. Structural declaration identity and occurrence determine order; display name, source span and graph-array position do not. | Test (TC-048, TC-233) |
