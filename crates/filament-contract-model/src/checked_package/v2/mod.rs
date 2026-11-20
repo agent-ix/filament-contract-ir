@@ -110,10 +110,12 @@ mod schedulability;
 mod selected_document;
 mod selected_facts;
 mod selection_equality;
+mod source_clock_join;
 mod source_join;
 mod source_map;
 mod source_object;
 mod source_operation;
+mod source_rendering;
 mod stage_storage;
 mod state;
 mod step_relation;
@@ -249,7 +251,8 @@ pub use exact_projection::{
     SelectedExactIdentity, SelectedRecordFieldView, SelectedRecordView,
     SelectedSourceCollectionRow, SelectedSourceEnumRow, SelectedSourceRecordMemberRow,
     SelectedSourceRecordRow, SelectedSourceTupleRow, SelectedSourceUnionRow, SelectedSourceUnitRow,
-    SelectedTupleDeclarationRow, SelectedTuplePositionRow, SelectedUnionMemberRow,
+    SelectedTupleDeclarationRow, SelectedTuplePositionRow, SelectedUnionClockPayloadRow,
+    SelectedUnionMemberRow,
 };
 pub use operation_bodies::{OperationBody, OperationBodyRow};
 pub use operation_effects::{
@@ -282,6 +285,7 @@ pub use schedulability::{
     CheckedSchedulabilityTaskRef, CheckedSchedulingPolicy, CheckedTaskArrival,
     CheckedTaskCriticality,
 };
+pub use source_clock_join::SelectedSourceClockRows;
 pub use source_object::{
     SelectedClockCollectionLayer, SelectedSourceObjectError, SelectedSourceObjectErrorCode,
     SelectedSourceObjectMember, SelectedSourceObjectOperation, SelectedSourceObjectRow,

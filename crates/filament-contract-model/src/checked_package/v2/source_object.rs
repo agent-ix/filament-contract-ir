@@ -54,7 +54,7 @@ pub(super) fn bound_type(value: &CheckedTerm) -> Option<&CheckedNodeId> {
 
 /// The native clock type's rendering, the terminal of a clock entry's
 /// `member_type` (FSpec FR-789 "Rendering").
-const NATIVE_CLOCK: &str = "ix://filament/native/Clock";
+pub(super) const NATIVE_CLOCK: &str = "ix://filament/native/Clock";
 
 /// One collection layer of a clock entry's type, outermost first (FSpec
 /// FR-789 "Rendering"): the collection's kind and its slot bounds, each bound
@@ -193,6 +193,15 @@ pub enum SelectedSourceObjectErrorCode {
     /// the context nor a transitive subtype of it (FR-366-AC-6).
     #[error("dispatch candidate is outside the source context's type family")]
     MismatchedIdentityWitness,
+    /// A clock place's row disagrees with the identity rows (FR-374); maps to
+    /// `invalid_package`/`malformed-clock-place` at the row.
+    #[error("clock place row disagrees with the source-object identity rows")]
+    MalformedClockPlace,
+    /// A parameter constraint or reset of a source timed model names no clock
+    /// parameter or writes no clock (FR-374); maps to
+    /// `invalid_package`/`timed-node-reference`.
+    #[error("timed-model clause disagrees with the source-object identity rows")]
+    TimedNodeReference,
     /// A value read against the source-object identity rows is refused at its
     /// locus (FR-369-AC-26 for the probabilistic join; later joins reuse it).
     /// Maps to `invalid_package`/`invalid-value`.
@@ -229,6 +238,7 @@ impl<'a> SelectedSourceObjects<'a> {
     pub fn from_stage_rows(
         package: &'a super::CheckedPackageV2,
         rows: impl IntoIterator<Item = SelectedSourceObjectRow>,
+        clock_rows: super::source_clock_join::SelectedSourceClockRows<'_>,
     ) -> Result<Self, SelectedSourceObjectError> {
         let rows: Vec<SelectedSourceObjectRow> = rows.into_iter().collect();
         let fail = |code| Err(SelectedSourceObjectError { code, locus: None });
@@ -290,6 +300,7 @@ impl<'a> SelectedSourceObjects<'a> {
         if !dispatch_families_hold(package, &joined) {
             return fail(SelectedSourceObjectErrorCode::MismatchedIdentityWitness);
         }
+        super::source_clock_join::join(package, &joined, clock_rows)?;
         Ok(Self {
             package,
             rows: joined,
@@ -505,7 +516,7 @@ fn row_matches_node(
 /// Whether the rendering `member_type` ends in the native clock type, under
 /// any `Option`, collection or map wrappers (FSpec FR-789 "Rendering").
 #[ix_trace_rs::string_edge]
-fn clock_terminal(member_type: &str) -> bool {
+pub(super) fn clock_terminal(member_type: &str) -> bool {
     let inner = member_type.trim_end_matches('>');
     let terminal = inner.rsplit(['<', ',']).next().unwrap_or(inner).trim();
     terminal == NATIVE_CLOCK

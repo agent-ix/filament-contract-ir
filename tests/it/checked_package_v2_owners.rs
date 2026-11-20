@@ -161,14 +161,18 @@ fn selected_source_tuple_requires_complete_ordered_position_rows() {
         positions: vec![
             SelectedTuplePositionRow {
                 ordinal: 0,
-                type_node: serde_json::from_value(boolean).unwrap(),
+                type_node: Some(serde_json::from_value(boolean).unwrap()),
                 // Opaque producer claims are retained, not rederived from IR.
-                value_type: ValueType::Uuid,
+                value_type: Some(ValueType::Uuid),
+                member_type: None,
+                collections: Vec::new(),
             },
             SelectedTuplePositionRow {
                 ordinal: 1,
-                type_node: serde_json::from_value(integer).unwrap(),
-                value_type: ValueType::Integer,
+                type_node: Some(serde_json::from_value(integer).unwrap()),
+                value_type: Some(ValueType::Integer),
+                member_type: None,
+                collections: Vec::new(),
             },
         ],
     };
@@ -222,7 +226,7 @@ fn selected_source_tuple_requires_complete_ordered_position_rows() {
     assert_eq!(projected.source_tuple_view(), Some(&row));
     assert_eq!(
         projected.source_tuple_view().unwrap().positions[0].value_type,
-        ValueType::Uuid
+        Some(ValueType::Uuid)
     );
     let exact = projected.work();
     assert_eq!(
@@ -317,7 +321,7 @@ fn selected_source_tuple_requires_complete_ordered_position_rows() {
             ..row.clone()
         },
         SelectedSourceTupleRow {
-            structural_node: row.positions[0].type_node.clone(),
+            structural_node: row.positions[0].type_node.clone().unwrap(),
             ..row.clone()
         },
     ] {
@@ -408,8 +412,10 @@ fn selected_source_record_requires_complete_ordered_producer_rows() {
             } else {
                 Presence::Required
             },
-            type_node,
-            value_type,
+            type_node: Some(type_node),
+            value_type: Some(value_type),
+            member_type: None,
+            collections: Vec::new(),
         }
     })
     .collect();
@@ -430,10 +436,10 @@ fn selected_source_record_requires_complete_ordered_producer_rows() {
             )
         });
     let mut dynamic = row.clone();
-    dynamic.members[1].value_type = ValueType::Reference(EffectiveId::new(
+    dynamic.members[1].value_type = Some(ValueType::Reference(EffectiveId::new(
         None,
         OriginalDeclarationKey::new("p".repeat(64), "n".repeat(64)),
-    ));
+    )));
     let mut dynamic_budget = filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX);
     let retained_dynamic = SelectedExactIdentities::empty()
         .with_source_record_rows(&package, [dynamic.clone()], &mut dynamic_budget)
@@ -530,7 +536,7 @@ fn selected_source_record_requires_complete_ordered_producer_rows() {
         denied
     );
     let mut opaque = row.clone();
-    opaque.members[0].value_type = ValueType::String;
+    opaque.members[0].value_type = Some(ValueType::String);
     let opaque_identities = SelectedExactIdentities::empty()
         .with_source_record_rows(
             &package,
@@ -547,11 +553,11 @@ fn selected_source_record_requires_complete_ordered_producer_rows() {
         .expect("structural join does not invent a different Exact field type");
     assert_eq!(
         opaque_projection.source_record_view().unwrap().members[0].value_type,
-        ValueType::String
+        Some(ValueType::String)
     );
     assert_ne!(
         opaque_projection.source_record_view().unwrap().members[0].value_type,
-        ValueType::Boolean
+        Some(ValueType::Boolean)
     );
     let absent = package
         .project_exact_type(
@@ -583,7 +589,7 @@ fn selected_source_record_requires_complete_ordered_producer_rows() {
         },
         {
             let mut r = row.clone();
-            r.members[0].type_node = record.clone();
+            r.members[0].type_node = Some(record.clone());
             r
         },
         {
@@ -2721,8 +2727,10 @@ fn native_source_family_fixture_with_authority(
             original_member_identity: "n".into(),
             admitted_name: "n".into(),
             presence: Presence::Required,
-            type_node: integer.clone(),
-            value_type: ValueType::Integer,
+            type_node: Some(integer.clone()),
+            value_type: Some(ValueType::Integer),
+            member_type: None,
+            collections: Vec::new(),
         }],
     };
     let tuple = SelectedSourceTupleRow {
@@ -2733,8 +2741,10 @@ fn native_source_family_fixture_with_authority(
         type_handle: key("tuple"),
         positions: vec![SelectedTuplePositionRow {
             ordinal: 0,
-            type_node: integer.clone(),
-            value_type: ValueType::Integer,
+            type_node: Some(integer.clone()),
+            value_type: Some(ValueType::Integer),
+            member_type: None,
+            collections: Vec::new(),
         }],
     };
     let variant = VariantId::new(key("variant-owner"), "opaque-A").unwrap();

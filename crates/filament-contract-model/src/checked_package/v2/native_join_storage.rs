@@ -396,8 +396,14 @@ pub(super) fn source_record(row: &SelectedSourceRecordRow) -> u128 {
         units = add(units, 2);
         units = add(units, text(&member.original_member_identity));
         units = add(units, text(&member.admitted_name));
-        units = add(units, node(&member.type_node));
-        units = add(units, value_type(&member.value_type));
+        if let Some(type_node) = &member.type_node {
+            units = add(units, node(type_node));
+        }
+        if let Some(exact) = &member.value_type {
+            units = add(units, value_type(exact));
+        }
+        units = add(units, member.member_type.as_deref().map_or(0, text));
+        units = add(units, member.collections.len() as u128);
     }
     units
 }
@@ -410,8 +416,14 @@ pub(super) fn source_tuple(row: &SelectedSourceTupleRow) -> u128 {
     units = add(units, 1);
     for position in &row.positions {
         units = add(units, 1);
-        units = add(units, node(&position.type_node));
-        units = add(units, value_type(&position.value_type));
+        if let Some(type_node) = &position.type_node {
+            units = add(units, node(type_node));
+        }
+        if let Some(exact) = &position.value_type {
+            units = add(units, value_type(exact));
+        }
+        units = add(units, position.member_type.as_deref().map_or(0, text));
+        units = add(units, position.collections.len() as u128);
     }
     units
 }

@@ -2501,8 +2501,10 @@ mod tests {
                                 original_member_identity: name.to_string().into(),
                                 admitted_name: name.to_string().into(),
                                 presence,
-                                type_node: target,
-                                value_type: ValueType::Integer,
+                                type_node: Some(target),
+                                value_type: Some(ValueType::Integer),
+                                member_type: None,
+                                collections: Vec::new(),
                             }
                         })
                         .collect();
@@ -2528,8 +2530,10 @@ mod tests {
                             };
                             SelectedTuplePositionRow {
                                 ordinal: ordinal as u64,
-                                type_node: target.clone(),
-                                value_type: ValueType::Integer,
+                                type_node: Some(target.clone()),
+                                value_type: Some(ValueType::Integer),
+                                member_type: None,
+                                collections: Vec::new(),
                             }
                         })
                         .collect();
@@ -2673,11 +2677,11 @@ mod tests {
         }
         for record in &mut records {
             for member in &mut record.members {
-                if let Some(map) = collections
-                    .iter()
-                    .find(|row| row.key_node.is_some() && row.structural_node == member.type_node)
-                {
-                    member.value_type = map.value_type.clone();
+                if let Some(map) = collections.iter().find(|row| {
+                    row.key_node.is_some()
+                        && member.type_node.as_ref() == Some(&row.structural_node)
+                }) {
+                    member.value_type = Some(map.value_type.clone());
                 }
             }
         }
@@ -2764,7 +2768,7 @@ mod tests {
         assert_eq!(record.members.len(), 2);
         assert_eq!(record.members[0].admitted_name.as_ref(), "instance");
         assert_eq!(record.members[1].admitted_name.as_ref(), "outcome");
-        assert_eq!(record.members[1].value_type, ValueType::Integer);
+        assert_eq!(record.members[1].value_type, Some(ValueType::Integer));
         let used = budget.consumed();
         assert_eq!(closure.work(), used.work);
         let mut model_budget = NativeJoinBudget::new(u64::MAX, u64::MAX);
@@ -3098,7 +3102,7 @@ mod tests {
         );
         assert_eq!(error.at.as_deref(), Some(&foreign[0].structural_node));
         let mut stale = source_records.clone();
-        stale[0].members[0].type_node = plan.state().clone();
+        stale[0].members[0].type_node = Some(plan.state().clone());
         let error = read(&stale).expect_err("stale member type refuses");
         assert_eq!(
             error.code,
@@ -4055,10 +4059,10 @@ mod tests {
                 .identities()
                 .source_record_rows()
                 .flat_map(|record| record.members.iter())
-                .find(|member| member.type_node == row.structural_node)
+                .find(|member| member.type_node.as_ref() == Some(&row.structural_node))
                 .expect("the retained Inputs member names the reached map");
             assert_eq!(member.admitted_name.as_ref(), "by_key");
-            assert_eq!(member.value_type, row.value_type);
+            assert_eq!(member.value_type.as_ref(), Some(&row.value_type));
 
             assert_eq!(
                 package.node_kind(row.key_node.as_ref().expect("key")),

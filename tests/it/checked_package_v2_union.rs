@@ -205,8 +205,10 @@ fn source_record_and_union_reject_one_opaque_type_handle_in_either_order() {
             original_member_identity: "n".into(),
             admitted_name: "n".into(),
             presence: Presence::Required,
-            type_node: typed_node_id(INTEGER_KEY),
-            value_type: ValueType::Integer,
+            type_node: Some(typed_node_id(INTEGER_KEY)),
+            value_type: Some(ValueType::Integer),
+            member_type: None,
+            collections: Vec::new(),
         }],
     };
     let record_first = SelectedExactIdentities::empty()

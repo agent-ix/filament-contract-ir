@@ -26,6 +26,7 @@ use ix_trace_rs::trace;
 use quire_canonical::Limits;
 use serde_json::{json, Value};
 
+pub(crate) mod clock;
 pub(crate) mod parameters;
 pub(crate) mod probabilistic;
 
@@ -1725,7 +1726,12 @@ fn source_candidate_selection_keys_refuse_unless_they_name_a_source_type_of_the_
 fn the_source_object_read_refuses_a_candidate_outside_the_context_family() {
     // `Sub` redefines `deposit` for `Order`: the base table admits.
     let base = admitted(&dispatch_package());
-    SelectedSourceObjects::from_stage_rows(&base, complete_rows()).expect("Sub is a subtype");
+    SelectedSourceObjects::from_stage_rows(
+        &base,
+        complete_rows(),
+        filament_contract_model::SelectedSourceClockRows::EMPTY,
+    )
+    .expect("Sub is a subtype");
 
     // `Other` is a third source type with its own `deposit` body.
     let mut package = dispatch_package();
@@ -1764,8 +1770,12 @@ fn the_source_object_read_refuses_a_candidate_outside_the_context_family() {
         "a subtype row that does not reach the context"
     );
     // Reaching the context through a transitive supertype admits.
-    SelectedSourceObjects::from_stage_rows(&package, rows_with(vec![id("qualified:Sub")], order()))
-        .expect("Other reaches Order through Sub");
+    SelectedSourceObjects::from_stage_rows(
+        &package,
+        rows_with(vec![id("qualified:Sub")], order()),
+        filament_contract_model::SelectedSourceClockRows::EMPTY,
+    )
+    .expect("Other reaches Order through Sub");
     // A clause function is declared under the candidate's type or a supertype.
     let with_body = |candidate: usize, body: &str| {
         let mut package = dispatch_package();
@@ -1775,8 +1785,12 @@ fn the_source_object_read_refuses_a_candidate_outside_the_context_family() {
         admitted(&package)
     };
     let inherited = with_body(1, "qualified:Order/deposit/body");
-    SelectedSourceObjects::from_stage_rows(&inherited, complete_rows())
-        .expect("Sub inherits Order's deposit");
+    SelectedSourceObjects::from_stage_rows(
+        &inherited,
+        complete_rows(),
+        filament_contract_model::SelectedSourceClockRows::EMPTY,
+    )
+    .expect("Sub inherits Order's deposit");
     let upside_down = with_body(0, "qualified:Sub/deposit/body");
     assert_eq!(
         code_of(&upside_down, complete_rows()),
@@ -2226,9 +2240,13 @@ fn complete_rows() -> Vec<SelectedSourceObjectRow> {
 }
 
 fn code_of(package: &CheckedPackageV2, rows: Vec<SelectedSourceObjectRow>) -> RowError {
-    SelectedSourceObjects::from_stage_rows(package, rows)
-        .expect_err("the supply must be refused")
-        .code
+    SelectedSourceObjects::from_stage_rows(
+        package,
+        rows,
+        filament_contract_model::SelectedSourceClockRows::EMPTY,
+    )
+    .expect_err("the supply must be refused")
+    .code
 }
 
 /// Trace: FR-367-AC-5.
@@ -2236,8 +2254,12 @@ fn code_of(package: &CheckedPackageV2, rows: Vec<SelectedSourceObjectRow>) -> Ro
 #[test]
 fn a_complete_row_set_exposes_every_source_type_through_a_typed_read() {
     let package = two_types();
-    let rows = SelectedSourceObjects::from_stage_rows(&package, complete_rows())
-        .expect("the complete supply");
+    let rows = SelectedSourceObjects::from_stage_rows(
+        &package,
+        complete_rows(),
+        filament_contract_model::SelectedSourceClockRows::EMPTY,
+    )
+    .expect("the complete supply");
     assert_eq!(rows.rows().len(), 2);
     let order = rows
         .read(&package, &id("qualified:Order"))
@@ -2389,8 +2411,12 @@ fn rows_whose_members_or_supertypes_the_package_does_not_support_are_unknown() {
     let mut pair_row = row("Pair", vec![], &[]);
     pair_row.members = vec![member("total"), member("count")];
     let order_row = row("Order", vec![], &[]);
-    SelectedSourceObjects::from_stage_rows(&two_fields, [order_row.clone(), pair_row.clone()])
-        .expect("members in body order");
+    SelectedSourceObjects::from_stage_rows(
+        &two_fields,
+        [order_row.clone(), pair_row.clone()],
+        filament_contract_model::SelectedSourceClockRows::EMPTY,
+    )
+    .expect("members in body order");
     pair_row.members = vec![member("count"), member("total")];
     assert_eq!(
         code_of(&two_fields, vec![order_row, pair_row]),

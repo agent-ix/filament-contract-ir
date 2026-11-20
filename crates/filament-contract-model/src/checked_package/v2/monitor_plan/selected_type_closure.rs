@@ -471,8 +471,10 @@ fn preflight_source_record(
             .saturating_add(row.members.len()),
     )?;
     for member in &row.members {
-        storage::preflight_value_type(&member.value_type, budget, &member.type_node)
-            .map_err(|error| exact_error(error, budget))?;
+        if let (Some(value_type), Some(type_node)) = (&member.value_type, &member.type_node) {
+            storage::preflight_value_type(value_type, budget, type_node)
+                .map_err(|error| exact_error(error, budget))?;
+        }
     }
     Ok(())
 }
@@ -488,8 +490,10 @@ fn preflight_source_tuple(
             .saturating_add(row.positions.len()),
     )?;
     for position in &row.positions {
-        storage::preflight_value_type(&position.value_type, budget, &position.type_node)
-            .map_err(|error| exact_error(error, budget))?;
+        if let (Some(value_type), Some(type_node)) = (&position.value_type, &position.type_node) {
+            storage::preflight_value_type(value_type, budget, type_node)
+                .map_err(|error| exact_error(error, budget))?;
+        }
     }
     Ok(())
 }
@@ -950,7 +954,9 @@ impl<'a> CheckedMonitorPlanRef<'a> {
                         .map_err(|_| native_error(budget))?;
                     read_charge(budget, NativeJoinChargeKind::Storage, 1)
                         .map_err(|_| native_error(budget))?;
-                    required_types.insert(&member.type_node);
+                    if let Some(type_node) = &member.type_node {
+                        required_types.insert(type_node);
+                    }
                 }
             }
             for row in identities.source_tuple_rows() {
@@ -959,7 +965,9 @@ impl<'a> CheckedMonitorPlanRef<'a> {
                         .map_err(|_| native_error(budget))?;
                     read_charge(budget, NativeJoinChargeKind::Storage, 1)
                         .map_err(|_| native_error(budget))?;
-                    required_types.insert(&position.type_node);
+                    if let Some(type_node) = &position.type_node {
+                        required_types.insert(type_node);
+                    }
                 }
             }
             for row in identities.source_union_rows() {
