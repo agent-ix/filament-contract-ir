@@ -1061,6 +1061,7 @@ pub fn encode_checked_package_v2<Body: quire_canonical::Encode>(
 }
 
 /// Canonically encodes a complete checked-package V2 envelope with requirement rows.
+#[allow(clippy::too_many_arguments)] // Requirement rows are an independent optional envelope sidecar.
 pub fn encode_checked_package_v2_with_requirement_items<Body: quire_canonical::Encode>(
     name: &str,
     lock: &CheckedPackageLockV2,
