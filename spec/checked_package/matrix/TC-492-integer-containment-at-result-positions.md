@@ -1,5 +1,5 @@
 ---
-id: TC-2099
+id: TC-492
 title: "Integer containment at result positions at the V2 reader"
 type: TC
 relationships:
@@ -9,18 +9,25 @@ relationships:
     type: verifies
   - target: ix://agent-ix/filament-specification/FR-322-AC-495
     type: references
+  - target: ix://agent-ix/filament-specification/TC-2099
+    type: references
 ---
-# TC-2099: Integer containment at result positions at the V2 reader
+# TC-492: Integer containment at result positions at the V2 reader
 
 ## Description
+
+This local test case implements FSpec TC-2099 ("Integer containment at result
+positions") at this repository's reader; it carries its own local id.
 
 Verify FR-038-AC-586 to FR-038-AC-589 at the public V2 reader: a term whose
 integer type an expected type contains is admitted with no convert node at the
 result positions of FSpec FR-322 "Integer containment", and nothing else is
 widened. The packages are built node by node in
 `tests/it/checked_package_v2_operation_arguments.rs`, one per FSpec vector
-`IC-01` to `IC-20` (FSpec publishes the vector file with the checked-package
-corpus; this repository builds the same packages from its own vocabulary).
+`IC-01` to `IC-20`. FSpec b90d84ec does not yet publish
+`integer-containment-vectors.json`, so this repository builds the packages from
+its own vocabulary; the reader should switch to the published bytes when FSpec
+ships them.
 
 ## Test Procedure
 
@@ -40,5 +47,6 @@ corpus; this repository builds the same packages from its own vocabulary).
 - Step 3: `IC-09`, `IC-10`, `IC-11`, `IC-16` and the hull-typed `IC-17`
   admitted; `IC-12` and `IC-18` `ill_typed`/`operator-ineligible` at the `if`
   application, `IC-13` at the `case` node.
-- Step 4: `IC-14` and `IC-20` admitted; `IC-15` refused at the `let`
-  application; `IC-19` refused at the call.
+- Step 4: `IC-14` and `IC-20` admitted; `IC-19` refused at the call. `IC-15`
+  is read but not asserted: the reader makes no `let` binder check (the `let`
+  application carries no node id for its binder).

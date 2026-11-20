@@ -3865,14 +3865,15 @@ fn admits_at_result(
     Ok(actual.is_some_and(|actual| integer_contains(expected, actual, graph)))
 }
 
-/// Implements: FR-322 "Integer containment" ("The `if` check", "The `let`
-/// binder check"): a `filament.op.control.if` application's branches and a
+/// Implements: FR-322 "Integer containment" ("The `if` check"): a
+/// `filament.op.control.if` application's two branches and a
 /// `filament.op.control.let` application's body are admitted at the
-/// application's `result_type` ([`admits_at_result`]), and the binder a `let`
-/// binds has the bound value's type node, a record type node the value's
-/// conforms to, or a type node that integer-contains the value's. Any other
-/// is `ill_typed`/`operator-ineligible` at the application. A term whose type
-/// node does not resolve takes no check.
+/// application's `result_type` ([`admits_at_result`]); any other is
+/// `ill_typed`/`operator-ineligible` at the application. A term whose type
+/// node does not resolve takes no check. The `let` binder check of FR-322 is
+/// not made: the wire gives the `let` application no node id for its binder
+/// (its operand 0 is a `binding` of a name and a value term), and a binder
+/// is never found by name.
 #[ix_trace_rs::string_edge]
 fn check_control_result(
     application: Application<'_>,
@@ -3881,9 +3882,9 @@ fn check_control_result(
     owners: &ModelOwners<'_>,
     meter: &mut WorkMeter,
 ) -> Result<Option<ValidationFailure>, ValidationFailure> {
-    let (branches, binds) = match operation.identity.as_ref() {
-        "filament.op.control.if" => (1..3, false),
-        "filament.op.control.let" => (1..2, true),
+    let branches = match operation.identity.as_ref() {
+        "filament.op.control.if" => 1..3,
+        "filament.op.control.let" => 1..2,
         _ => return Ok(None),
     };
     let Graph {
@@ -3918,50 +3919,7 @@ fn check_control_result(
             return Ok(Some(refuse()));
         }
     }
-    if !binds {
-        return Ok(None);
-    }
-    let Some(CheckedTerm::Binding { name, value }) = arguments.first() else {
-        return Ok(None);
-    };
-    let Some(bound) = operand_type_node_typed(value, nodes, kinds, index) else {
-        return Ok(None);
-    };
-    // The binder is the `value`/`parameter` node of the binding's name; it
-    // is found by that name, and the binding holds when any such node has an
-    // admitted type, so a same-named binder elsewhere never refuses this one.
-    let mut named = false;
-    for (position, kind) in kinds.iter().enumerate() {
-        work_at_path(meter, &application.read_node().key("node_id"), 1)?;
-        if *kind != CheckedNodeKind::Value(ValueForm::Parameter) {
-            continue;
-        }
-        let Some(CheckedTerm::Aggregate { members }) =
-            graph.terms.get(position).and_then(Option::as_ref)
-        else {
-            continue;
-        };
-        let called = members.iter().any(|member| {
-            matches!(member, CheckedTerm::Binding { name: field, value }
-                if field.as_ref() == "name"
-                    && matches!(value.as_ref(), CheckedTerm::Literal { value, .. }
-                        if value.as_str() == Some(name.as_ref())))
-        });
-        if !called {
-            continue;
-        }
-        named = true;
-        if admits_at_result(
-            &nodes[position].semantic_type,
-            Some(bound),
-            graph,
-            owners,
-            meter,
-        )? {
-            return Ok(None);
-        }
-    }
-    Ok(named.then(refuse))
+    Ok(None)
 }
 
 /// Implements: FR-347 "Result positions": the root of a `function` or `expression` node

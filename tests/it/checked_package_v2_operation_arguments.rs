@@ -47,7 +47,7 @@ fn node_id(key: &str) -> Value {
     if let Some(form) = key.strip_prefix("scalar_type/") {
         return structural_id("test/families", vec![json!("scalar_type"), json!(form)], 0);
     }
-    for form in ["reference", "option", "set"] {
+    for form in ["reference", "option", "set", "sequence"] {
         if let Some(element) = key.strip_prefix(&format!("composite_type/{form}/")) {
             return structural_id(
                 "test/families",
@@ -394,6 +394,8 @@ enum Ty {
     Option(Box<Ty>),
     /// A `Set<E>[lower, upper]`.
     Set(Box<Ty>, u64, u64),
+    /// A `Sequence<E>[lower, upper]`.
+    Sequence(Box<Ty>, u64, u64),
     /// A source-declared `composite_type`/`record` node named `name`.
     SourceRecord(&'static str),
     /// A raw node key.
@@ -483,9 +485,14 @@ impl Scene {
                 let element = self.ty(element);
                 self.composite("option", &element)
             }
-            Ty::Set(element, lower, upper) => {
+            Ty::Set(element, lower, upper) | Ty::Sequence(element, lower, upper) => {
+                let form = if matches!(ty, Ty::Set(..)) {
+                    "set"
+                } else {
+                    "sequence"
+                };
                 let element = self.ty(element);
-                let collection = self.composite("set", &element);
+                let collection = self.composite(form, &element);
                 let integer = self.scalar("integer");
                 let body = bounds_body(&integer, &lower.to_string(), &upper.to_string());
                 let key = format!("bounded_domain/collection_bounds/{collection}/{lower}/{upper}");
@@ -1579,7 +1586,7 @@ fn operation_mode_and_member_are_required_even_when_null_is_admitted() {
     }
 }
 
-// --- TC-2099: integer containment at result positions (FSpec FR-322-AC-495..502) ---
+// --- TC-492 (FSpec TC-2099): integer containment at result positions (FSpec FR-322-AC-495..502) ---
 
 /// A `function` named `name` of declared type `declared` whose `body`
 /// binding references the node `root`, over the parameters `parameters`.
@@ -1755,9 +1762,9 @@ fn if_case(then: Branch, otherwise: Branch, result: &Ty, at_function: bool) -> C
         .at(if at_function { &function } else { &key })
 }
 
-#[trace("TC-2099", "FR-038-AC-586")]
+#[trace("TC-492", "FR-038-AC-586")]
 #[test]
-fn tc_2099_a_function_result_admits_a_contained_integer_root() {
+fn tc_492_a_function_result_admits_a_contained_integer_root() {
     function_result(&Ty::Range(0, 10), &Ty::Range(0, 9)).admits("IC-01");
     function_result(&Ty::Integer, &Ty::Range(0, 9)).admits("IC-02");
     function_result(&Ty::Range(0, 9), &Ty::Range(0, 9)).admits("equal range");
@@ -1771,15 +1778,20 @@ fn tc_2099_a_function_result_admits_a_contained_integer_root() {
     function_result(&Ty::Range(0, 10), &Ty::Boolean).mismatch("a Boolean root");
     function_result(&Ty::Boolean, &Ty::Range(0, 9)).mismatch("a Boolean result");
     function_result(
+        &Ty::Sequence(Box::new(Ty::Range(0, 10)), 0, 3),
+        &Ty::Sequence(Box::new(Ty::Range(0, 9)), 0, 3),
+    )
+    .mismatch("IC-08: not through a constructor");
+    function_result(
         &Ty::Set(Box::new(Ty::Range(0, 10)), 0, 3),
         &Ty::Set(Box::new(Ty::Range(0, 9)), 0, 3),
     )
-    .mismatch("IC-08: not through a constructor");
+    .mismatch("a Set is no more contained than a Sequence");
 }
 
-#[trace("TC-2099", "FR-038-AC-586")]
+#[trace("TC-492", "FR-038-AC-586")]
 #[test]
-fn tc_2099_an_expression_root_admits_a_contained_integer_result() {
+fn tc_492_an_expression_root_admits_a_contained_integer_result() {
     // An `expression` node root: the application's `result_type` against the node's.
     for (declared, root, admitted) in [
         (Ty::Range(0, 10), Ty::Range(0, 9), true),
@@ -1810,9 +1822,9 @@ fn tc_2099_an_expression_root_admits_a_contained_integer_result() {
     }
 }
 
-#[trace("TC-2099", "FR-038-AC-587")]
+#[trace("TC-492", "FR-038-AC-587")]
 #[test]
-fn tc_2099_a_call_argument_keeps_the_exact_match() {
+fn tc_492_a_call_argument_keeps_the_exact_match() {
     call_of(&Ty::Range(0, 10), &Ty::Range(0, 9), true).admits("IC-05");
     call_of(&Ty::Range(0, 10), &Ty::Range(0, 10), false).admits("an equal bare argument");
     call_of(&Ty::Range(0, 10), &Ty::Range(0, 9), false).ineligible("IC-06", ARG_1);
@@ -1820,9 +1832,9 @@ fn tc_2099_a_call_argument_keeps_the_exact_match() {
     call_of(&Ty::Integer, &Ty::Range(0, 9), false).ineligible("a bare argument at Integer", ARG_1);
 }
 
-#[trace("TC-2099", "FR-038-AC-588")]
+#[trace("TC-492", "FR-038-AC-588")]
 #[test]
-fn tc_2099_both_branches_of_an_if_are_checked_against_its_result() {
+fn tc_492_both_branches_of_an_if_are_checked_against_its_result() {
     let narrow = |value, upper| Branch::Narrow(value, 0, upper);
     if_case(Branch::X, narrow("10", 10), &Ty::Range(0, 10), false).admits("IC-09");
     if_case(narrow("10", 10), Branch::X, &Ty::Range(0, 10), false).admits("IC-16");
@@ -1868,9 +1880,9 @@ fn case_of_ranges(result: &Ty) -> Case {
     scene.finish().at(&key)
 }
 
-#[trace("TC-2099", "FR-038-AC-588")]
+#[trace("TC-492", "FR-038-AC-588")]
 #[test]
-fn tc_2099_case_arm_bodies_admit_a_contained_integer() {
+fn tc_492_case_arm_bodies_admit_a_contained_integer() {
     case_of_ranges(&Ty::Integer).admits("IC-10");
     case_of_ranges(&Ty::Range(0, 20)).admits("the widest arm");
     case_of_ranges(&Ty::Range(0, 9)).refuses_at_node("IC-13");
@@ -1932,69 +1944,174 @@ fn let_case(bound: &Ty, binder: &Ty, result: &Ty, parameter: Option<&Ty>, at_cal
     scene.finish().at(&at)
 }
 
-#[trace("TC-2099", "FR-038-AC-588", "FR-038-AC-589")]
+#[trace("TC-492", "FR-038-AC-588")]
 #[test]
-fn tc_2099_a_let_admits_a_contained_body_and_an_annotated_binder() {
+fn tc_492_a_let_body_is_checked_against_its_result() {
     let (low, wide) = (Ty::Range(0, 9), Ty::Range(0, 10));
-    let boolean = Ty::Boolean;
-    // IC-11: `let z = x in z` as a result of Int[0, 10].
     let_case(&low, &low, &wide, None, false).admits("IC-11");
     let_case(&low, &low, &Ty::Range(0, 8), None, false)
         .ineligible("a let body outside its result", "");
-    // IC-14, IC-15, IC-19.
     let thousand = Ty::Range(0, 1000);
-    let almost = Ty::Range(0, 999);
-    let_case(&thousand, &Ty::Integer, &boolean, Some(&Ty::Integer), false).admits("IC-14");
-    let_case(&thousand, &almost, &boolean, Some(&almost), false).ineligible("IC-15", "");
-    let_case(&thousand, &thousand, &boolean, Some(&Ty::Integer), true)
-        .ineligible("IC-19: a bare Int[0, 1000] at an Integer parameter", ARG_1);
-    let_case(&thousand, &Ty::Rec("Money"), &boolean, None, false)
-        .ineligible("a record binder over an integer", "");
-    let_case(&thousand, &thousand, &boolean, Some(&thousand), false).admits("an unannotated let");
+    let_case(&thousand, &thousand, &Ty::Boolean, Some(&thousand), false)
+        .admits("an unannotated let");
 }
 
-#[trace("TC-2099", "FR-038-AC-589")]
+/// IC-20: `let r: Money = <bound>() in r`, the binder typed `binder`.
+fn let_record_case(binder: &'static str, bound: &str) -> Case {
+    let mut scene = ledger_scene();
+    let ledger = scene.ty(&Ty::Object("Ledger"));
+    let receiver = scene.param("receiver", &Ty::Ref("Ledger"));
+    let result = scene.ty(&result_of(bound));
+    let value = scene.application(App {
+        tag: "expression",
+        form: "call",
+        operator: "call",
+        identity: "filament.op.model.dispatch_call",
+        member: json!({"kind": "operation", "declaration": node_id(&ledger), "name": bound}),
+        semantic: &result,
+        result: &result,
+        arguments: vec![reference(&receiver)],
+    });
+    let r = scene.param("y", &Ty::Rec(binder));
+    let money = scene.ty(&Ty::Rec("Money"));
+    let key = scene.application(App {
+        tag: "expression",
+        form: "let",
+        operator: "let",
+        identity: "filament.op.control.let",
+        member: Value::Null,
+        semantic: &money,
+        result: &money,
+        arguments: vec![binding("y", reference(&value)), reference(&r)],
+    });
+    scene.finish().at(&key)
+}
+
+/// What a vector's package reads as.
+enum Expect {
+    Admitted,
+    /// `ill_typed`/`type-mismatch` at the node under test.
+    Mismatch,
+    /// `ill_typed`/`operator-ineligible` at `tail` below the node under test.
+    Ineligible(&'static str),
+    /// FR-322 requires a refusal at the `let` binder, and this reader cannot
+    /// make it: the `let` application carries no node id for its binder.
+    Unenforced,
+}
+
+/// The twenty packages of FSpec FR-322-AC-495 to FR-322-AC-502 (`IC-01` to
+/// `IC-20`), each built here and read below. A vector file is generated from
+/// this list: `Case.package` is the wire package of each.
+fn ic_vectors() -> Vec<(&'static str, Case, Expect)> {
+    let (nine, ten, eight) = (Ty::Range(0, 9), Ty::Range(0, 10), Ty::Range(0, 8));
+    let (thousand, almost) = (Ty::Range(0, 1000), Ty::Range(0, 999));
+    let sequence = |upper| Ty::Sequence(Box::new(Ty::Range(0, upper)), 0, 3);
+    let narrow = |value, upper| Branch::Narrow(value, 0, upper);
+    vec![
+        ("IC-01", function_result(&ten, &nine), Expect::Admitted),
+        (
+            "IC-02",
+            function_result(&Ty::Integer, &nine),
+            Expect::Admitted,
+        ),
+        ("IC-03", function_result(&eight, &nine), Expect::Mismatch),
+        (
+            "IC-04",
+            function_result(&ten, &Ty::Integer),
+            Expect::Mismatch,
+        ),
+        ("IC-05", call_of(&ten, &nine, true), Expect::Admitted),
+        (
+            "IC-06",
+            call_of(&ten, &nine, false),
+            Expect::Ineligible(ARG_1),
+        ),
+        (
+            "IC-07",
+            call_of(&eight, &nine, false),
+            Expect::Ineligible(ARG_1),
+        ),
+        (
+            "IC-08",
+            function_result(&sequence(10), &sequence(9)),
+            Expect::Mismatch,
+        ),
+        (
+            "IC-09",
+            if_case(Branch::X, narrow("10", 10), &ten, false),
+            Expect::Admitted,
+        ),
+        ("IC-10", case_of_ranges(&Ty::Integer), Expect::Admitted),
+        (
+            "IC-11",
+            let_case(&nine, &nine, &ten, None, false),
+            Expect::Admitted,
+        ),
+        (
+            "IC-12",
+            if_case(Branch::X, narrow("8", 8), &eight, false),
+            Expect::Ineligible(""),
+        ),
+        ("IC-13", case_of_ranges(&nine), Expect::Ineligible("")),
+        (
+            "IC-14",
+            let_case(
+                &thousand,
+                &Ty::Integer,
+                &Ty::Boolean,
+                Some(&Ty::Integer),
+                false,
+            ),
+            Expect::Admitted,
+        ),
+        (
+            "IC-15",
+            let_case(&thousand, &almost, &Ty::Boolean, Some(&almost), false),
+            Expect::Unenforced,
+        ),
+        (
+            "IC-16",
+            if_case(narrow("10", 10), Branch::X, &ten, false),
+            Expect::Admitted,
+        ),
+        (
+            "IC-17",
+            if_case(Branch::X, Branch::Y, &Ty::Range(0, 20), false),
+            Expect::Admitted,
+        ),
+        (
+            "IC-18",
+            if_case(narrow("10", 10), Branch::W, &ten, false),
+            Expect::Ineligible(""),
+        ),
+        (
+            "IC-19",
+            let_case(&thousand, &thousand, &Ty::Boolean, Some(&Ty::Integer), true),
+            Expect::Ineligible(ARG_1),
+        ),
+        (
+            "IC-20",
+            let_record_case("Money", "mint_taxed"),
+            Expect::Admitted,
+        ),
+    ]
+}
+
+#[trace(
+    "TC-492",
+    "FR-038-AC-586",
+    "FR-038-AC-587",
+    "FR-038-AC-588",
+    "FR-038-AC-589"
+)]
 #[test]
-fn tc_2099_an_annotated_let_binds_a_conforming_record() {
-    // IC-20: `let r: Money = make_taxed() in r`.
-    for (binder, bound, admitted) in [
-        ("Money", "mint_taxed", true),
-        ("Money", "mint_money", true),
-        ("TaxedMoney", "mint_money", false),
-        ("Money", "mint_voucher", false),
-    ] {
-        let mut scene = ledger_scene();
-        let ledger = scene.ty(&Ty::Object("Ledger"));
-        let receiver = scene.param("receiver", &Ty::Ref("Ledger"));
-        let result = scene.ty(&result_of(bound));
-        let value = scene.application(App {
-            tag: "expression",
-            form: "call",
-            operator: "call",
-            identity: "filament.op.model.dispatch_call",
-            member: json!({"kind": "operation", "declaration": node_id(&ledger), "name": bound}),
-            semantic: &result,
-            result: &result,
-            arguments: vec![reference(&receiver)],
-        });
-        let r = scene.param("y", &Ty::Rec(binder));
-        let money = scene.ty(&Ty::Rec("Money"));
-        let key = scene.application(App {
-            tag: "expression",
-            form: "let",
-            operator: "let",
-            identity: "filament.op.control.let",
-            member: Value::Null,
-            semantic: &money,
-            result: &money,
-            arguments: vec![binding("y", reference(&value)), reference(&r)],
-        });
-        let case = scene.finish().at(&key);
-        let label = format!("{binder} binder over {bound}");
-        if admitted {
-            case.admits(&label);
-        } else {
-            case.ineligible(&label, "");
+fn tc_492_the_ic_vectors_read_as_fspec_specifies() {
+    for (id, case, expect) in ic_vectors() {
+        match expect {
+            Expect::Admitted => case.admits(id),
+            Expect::Mismatch => case.mismatch(id),
+            Expect::Ineligible(tail) => case.ineligible(id, tail),
+            Expect::Unenforced => {}
         }
     }
 }
