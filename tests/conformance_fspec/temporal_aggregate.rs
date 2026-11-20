@@ -208,6 +208,31 @@ fn replace_value(value: &mut Value, from: &Value, to: &Value) {
     }
 }
 
+/// FR-778: a clause's result type (the built-in Boolean) names no owner; its
+/// owner is its subject's. The clause is typed by an ownerless built-in and its
+/// `over` parameter's reference type refers to a `SourceOwner`'s model.
+fn ownerless_clause_over_source_subject(package: &mut Value) {
+    let nodes = package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes");
+    let subject = nodes
+        .iter()
+        .find(|node| node["node_id"]["path"] == json!(["Example", "Account"]))
+        .expect("source model node")["node_id"]
+        .clone();
+    for node in nodes {
+        if node["semantic_form"] == "temporal_clause" {
+            node["semantic_type"] = id(&["scalar_type", "integer"]);
+        }
+        if node["node_id"]["path"][0] == "composite_type"
+            && node["node_id"]["path"][1] == "reference"
+        {
+            node["dependencies"] = json!([subject]);
+            node["body"]["members"][0]["target"] = subject.clone();
+        }
+    }
+}
+
 fn source_duration_package(
     mut case: Value,
     mut published: Value,
@@ -247,6 +272,7 @@ fn source_duration_package(
                     Some("dimension" | "unit")
                 )
         });
+    ownerless_clause_over_source_subject(&mut package);
     if include_clause_owner_units {
         add_node(&mut package, source_dimension("Time"));
         add_node(&mut package, source_unit("ms", "Time"));
@@ -593,9 +619,12 @@ fn duration_bounds_match_every_occurrence_clock_unit() {
     assert_eq!(refusal.locus.as_ref(), Some(&expected_id));
 }
 
-/// Trace: FR-778-AC-1/3, TC-1890.
+/// FR-778-AC-1/3: the clock unit's owner is the clause subject's, not its
+/// result type's: the clause is typed by an ownerless built-in and ranges over
+/// a source model, so an `ms` its source declares is admitted, another owner's
+/// `ms` is refused, and an affine or nested one is refused.
 /// Provenance: QSL-2338.
-#[trace("TC-1890", "QSL-2338")]
+#[trace("TC-1890", "FR-778-AC-1", "FR-778-AC-3", "QSL-2338")]
 #[test]
 fn timestamped_duration_bounds_admit_only_linear_source_time_units() {
     let published = vectors();

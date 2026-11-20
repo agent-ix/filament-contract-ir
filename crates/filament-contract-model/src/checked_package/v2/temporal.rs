@@ -1597,7 +1597,7 @@ fn check_clause(
     {
         validate_source_clock_unit(context, position, &node.node_id, graph, terms, meter)?;
     }
-    let source_owner = source_owner_for_clause(&node.node_id, graph);
+    let source_owner = source_owner_for_clause(position, terms, graph);
     for formula in aggregates {
         check_aggregate(
             formula,
@@ -1916,16 +1916,27 @@ fn is_clock_unit_path(
     }
 }
 
+/// The owner of a clause's subject (FR-778): the first owner among the
+/// declarations that the type of the node its `over` argument references
+/// refers to. A clause's own `semantic_type` is its result type (the built-in
+/// Boolean) and names no owner. Callers join it to source units by equality,
+/// so only a `SourceOwner` can match one.
 fn source_owner_for_clause<'a>(
-    clause: &CheckedNodeId,
+    position: usize,
+    terms: &[Option<CheckedTerm>],
     graph: &'a StepGraph<'_, '_>,
 ) -> Option<&'a super::CheckedNodeOwner> {
-    let (clause_node, _) = graph.node(clause)?;
-    let (declaring_type, _) = graph.node(&clause_node.semantic_type)?;
-    declaring_type
-        .owner
-        .as_ref()
-        .filter(|owner| matches!(owner, super::CheckedNodeOwner::Source { .. }))
+    let Some(CheckedTerm::Application { arguments, .. }) =
+        terms.get(position).and_then(Option::as_ref)
+    else {
+        return None;
+    };
+    let (subject, _) = graph.node(arguments.first().and_then(typed_reference)?)?;
+    let (subject_type, _) = graph.node(&subject.semantic_type)?;
+    subject_type
+        .dependencies
+        .iter()
+        .find_map(|declared| graph.node(declared)?.0.owner.as_ref())
 }
 
 fn aggregate_declares_duration_window(formula: usize, terms: &[Option<CheckedTerm>]) -> bool {
@@ -1963,7 +1974,7 @@ fn validate_source_clock_unit(
     terms: &[Option<CheckedTerm>],
     meter: &mut WorkMeter,
 ) -> Result<(), ValidationFailure> {
-    let source_owner = source_owner_for_clause(clause, graph);
+    let source_owner = source_owner_for_clause(position, terms, graph);
     let Some(bindings) = context.bindings else {
         return Ok(());
     };
