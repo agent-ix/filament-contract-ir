@@ -1063,11 +1063,7 @@ fn clock_reference_adverse_applications_refuse_through_public_package_reader() {
     slot_domain_place_definition.name = "fr829-slot-domain";
     slot_domain_place_definition.steps.truncate(2);
     slot_domain_place_definition.rows.truncate(2);
-    let slot_domain_place = add_place(
-        &mut slot_domain_owner,
-        &slot_domain_place_definition,
-        9212,
-    );
+    let slot_domain_place = add_place(&mut slot_domain_owner, &slot_domain_place_definition, 9212);
     let object_owner_id = add_object_owner_term(
         &mut slot_domain_owner,
         &owner,
