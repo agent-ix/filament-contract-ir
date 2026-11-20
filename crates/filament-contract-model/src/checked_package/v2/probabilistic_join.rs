@@ -256,18 +256,54 @@ impl<'a> Bounded<'a> {
     }
 }
 
+/// The exact-number parses a membership check asks of its meter: the strict
+/// read parses through its read-storage reservation, the identity-row join
+/// pays the logical storage of each parse ahead of it.
+pub(super) trait ExactParse {
+    /// What a refused charge returns.
+    type Error;
+
+    /// `text` as an exact integer, `None` when it is not the canonical spelling.
+    fn exact_integer(&mut self, text: &str)
+        -> Result<Option<filament_exact::Integer>, Self::Error>;
+
+    /// `text` as a canonical reduced rational: its numerator and denominator.
+    fn canonical_rational(
+        &mut self,
+        text: &str,
+    ) -> Result<Option<(filament_exact::Integer, filament_exact::Integer)>, Self::Error>;
+}
+
+impl ExactParse for WorkMeter<'_> {
+    type Error = ValidationFailure;
+
+    fn exact_integer(
+        &mut self,
+        text: &str,
+    ) -> Result<Option<filament_exact::Integer>, ValidationFailure> {
+        WorkMeter::exact_integer(self, text)
+    }
+
+    fn canonical_rational(
+        &mut self,
+        text: &str,
+    ) -> Result<Option<(filament_exact::Integer, filament_exact::Integer)>, ValidationFailure> {
+        WorkMeter::canonical_rational(self, text)
+    }
+}
+
 /// Why `value` is no member of the type `rule` bounds, or `None` when it is
 /// one: a spelling that is not the one canonical spelling of an integer or
 /// rational (FSpec FR-322), a number outside `Int[lo, hi]` or the bounds of
 /// `Rational[n1, n2; d1, d2]` (also for a quantity over one), a text that is
 /// not in its profile's normal form or whose length is outside
 /// `Text[min, max; profile]`, or a Boolean whose value is no JSON boolean.
-/// Every exact number is parsed through the meter's reservation.
-pub(super) fn bounded_not_member(
-    meter: &mut WorkMeter,
+/// Every exact number is parsed through `meter`.
+pub(super) fn bounded_not_member<M: ExactParse>(
+    meter: &mut M,
     rule: Bounded<'_>,
     value: &super::CheckedJson,
-) -> Result<Option<NotMember>, ValidationFailure> {
+) -> Result<Option<NotMember>, M::Error> {
     use filament_exact::Integer as Exact;
     if matches!(rule, Bounded::Boolean) {
         return Ok(value.as_bool().is_none().then_some(NotMember::Literal));

@@ -11,10 +11,9 @@ use super::{
 };
 use filament_contract_model::{NativeJoinBudget, NativeJoinChargeKind, SelectedSourceObjectError};
 
-/// An allowance that bites on work only: storage and read storage never run
-/// out.
+/// An allowance that bites on work only: storage never runs out.
 fn work_only(work: u64) -> NativeJoinBudget {
-    NativeJoinBudget::new(work, u64::MAX).with_read_storage_limit(u64::MAX)
+    NativeJoinBudget::new(work, u64::MAX)
 }
 
 const CLOCK: &str = "ix://filament/native/Clock";
@@ -592,10 +591,13 @@ fn ac25_work(package: &Value) -> u64 {
     nodes(package).len() as u64 + delays + random + reward + workload
 }
 
-/// The logical storage of the AC-25 join: the workload's lineage (one
-/// `usize`), declared (one `(usize, &str)`) and named (one `&str`) lists, each
-/// of the smallest capacity of four.
-const AC25_STORAGE: u64 = 4 * 8 + 4 * 24 + 4 * 16;
+/// The logical storage units of the AC-25 join: the pointer of the failure it
+/// may name, paid first (one container and 256 bytes), and for the workload
+/// three lists (lineage, declared, named), each a container (1) and its one
+/// element (1), and for `random_k` the parse of each of the two support
+/// values of one digit against `Int[1, 3]` (a number and one limb).
+const LOCUS_UNITS: u64 = 1 + 256;
+const AC25_STORAGE: u64 = LOCUS_UNITS + 3 * (1 + 1) + 2 * (1 + 1);
 
 /// FR-369-AC-26: the join's charges are ahead of the work: the full count
 /// admits, and every smaller work budget stops as incomplete at the first
@@ -665,14 +667,15 @@ fn a_joined_package_records_its_charges_as_the_success_delta() {
 }
 
 /// FR-358: the lists the join keeps are logical storage of the caller's
-/// budget, charged ahead of their growth: the full count admits and every
-/// smaller storage budget stops the join as incomplete at the workload.
+/// budget, one unit for each list and each element, charged ahead of the push,
+/// after the pointer of the failure: the full count admits and every smaller
+/// storage budget stops the join as incomplete, with no locus when the pointer
+/// itself cannot be paid, else at the workload.
 #[trace("TC-484", "FR-369-AC-26")]
 #[test]
-fn a_storage_budget_one_byte_short_stops_the_join_as_incomplete() {
+fn a_storage_budget_one_unit_short_stops_the_join_as_incomplete() {
     let package = package();
-    let budget =
-        |storage| NativeJoinBudget::new(u64::MAX, storage).with_read_storage_limit(u64::MAX);
+    let budget = |storage| NativeJoinBudget::new(u64::MAX, storage);
     joined(&package, poke_rows(), &mut budget(AC25_STORAGE)).expect("the full count admits");
     let weights = member_at(&package, "workload_w", 2);
     let row = format!("{weights}/members/0");
@@ -684,20 +687,29 @@ fn a_storage_budget_one_byte_short_stops_the_join_as_incomplete() {
         let denied = short.first_unpaid().expect("first unpaid");
         assert_eq!(denied.kind, NativeJoinChargeKind::Storage);
         assert!(short.consumed().storage <= limit, "limit {limit}");
-        let at = locus_of(&error);
-        assert!(
-            at == model || at == weights || at == row,
-            "limit {limit}: {at}"
-        );
+        if limit < LOCUS_UNITS {
+            assert!(error.locus.is_none(), "limit {limit}");
+            assert_eq!(denied.amount, u128::from(LOCUS_UNITS));
+        } else {
+            let at = locus_of(&error);
+            let support = member_at(&package, "random_k", 3);
+            assert!(
+                at == model
+                    || at == weights
+                    || at == row
+                    || at.starts_with(&format!("{support}/members/")),
+                "limit {limit}: {at}"
+            );
+        }
     }
 }
 
-/// FR-358: the pointer of a refusal is logical storage, charged ahead of it: a
-/// budget with the storage of the refusal's pointer names the member, and one
-/// byte less stops as incomplete at the same member.
+/// FR-358: the pointer of the failure is logical storage, paid before the
+/// join starts: a budget with the storage of a refusal's join names the member,
+/// and one without the pointer's units stops with no locus.
 #[trace("TC-484", "FR-369-AC-26")]
 #[test]
-fn the_locus_of_a_refusal_is_paid_before_it_is_built() {
+fn the_pointer_of_a_refusal_is_paid_before_the_join_starts() {
     let mut broken = package();
     edit_label(&mut broken, "random_k", |node| {
         node["body"]["members"][2]["value"]["value"] = json!("j");
@@ -706,28 +718,24 @@ fn the_locus_of_a_refusal_is_paid_before_it_is_built() {
     let error = joined(&broken, poke_rows(), &mut full).expect_err("refused");
     assert_eq!(error.code, RowError::InvalidValue);
     let paid = full.consumed().storage;
-    assert!(paid >= 256, "the pointer was charged: {paid}");
-    let path = locus_of(&error).to_owned();
-    let mut exact = NativeJoinBudget::new(u64::MAX, paid).with_read_storage_limit(u64::MAX);
+    assert!(paid >= LOCUS_UNITS, "the pointer was charged: {paid}");
+    let mut exact = NativeJoinBudget::new(u64::MAX, paid);
     let error = joined(&broken, poke_rows(), &mut exact).expect_err("refused");
     assert_eq!(error.code, RowError::InvalidValue);
-    let mut short = NativeJoinBudget::new(u64::MAX, paid - 1).with_read_storage_limit(u64::MAX);
+    let mut short = NativeJoinBudget::new(u64::MAX, LOCUS_UNITS - 1);
     let error = joined(&broken, poke_rows(), &mut short).expect_err("stopped");
     assert_eq!(error.code, RowError::Incomplete);
-    assert_eq!(locus_of(&error), path);
-    assert_eq!(
-        short.first_unpaid().map(|denied| denied.kind),
-        Some(NativeJoinChargeKind::Storage)
-    );
+    assert!(error.locus.is_none());
 }
 
-/// FR-358: the exact numbers the join parses are read storage of the caller's
-/// budget, as in the strict read: a support value of a hundred digits against
-/// `Int[1, 3]` is refused when its limb block is paid, and one byte less of
-/// read storage stops the join as incomplete at the value.
+/// FR-358: the exact numbers the join parses are logical storage, paid ahead
+/// of the parse (one unit for the number and one for each nine-digit limb), and
+/// no read storage: a support value of a hundred digits against `Int[1, 3]`
+/// costs 1 + 12 units, is refused when they are paid, and one unit less stops
+/// the join as incomplete at the value.
 #[trace("TC-484", "FR-369-AC-26")]
 #[test]
-fn the_exact_numbers_the_join_parses_are_charged_as_read_storage() {
+fn the_exact_numbers_the_join_parses_are_charged_as_logical_storage() {
     let mut package = package();
     edit_label(&mut package, "random_k", |node| {
         node["body"]["members"][3]["value"]["members"][0]["members"][0]["value"]["value"] =
@@ -736,29 +744,26 @@ fn the_exact_numbers_the_join_parses_are_charged_as_read_storage() {
     let mut full = NativeJoinBudget::unlimited();
     let error = joined(&package, poke_rows(), &mut full).expect_err("outside the range");
     assert_eq!(error.code, RowError::InvalidValue);
-    let paid = full.read_storage_consumed();
-    assert!(paid > 0, "the parse is paid through the meter");
-    let budget = |read| NativeJoinBudget::new(u64::MAX, u64::MAX).with_read_storage_limit(read);
-    let error = joined(&package, poke_rows(), &mut budget(paid)).expect_err("refused");
-    assert_eq!(error.code, RowError::InvalidValue);
+    assert_eq!(full.read_storage_consumed(), 0);
+    let paid = full.consumed().storage;
     let value = format!(
         "{}/members/0/members/0/value",
         member_at(&package, "random_k", 3)
     );
-    for limit in [0, paid / 2, paid - 1] {
-        let mut short = budget(limit);
-        let error = joined(&package, poke_rows(), &mut short).expect_err("short");
-        assert_eq!(error.code, RowError::Incomplete, "limit {limit}");
-        assert!(short.first_unpaid_read_storage().is_some(), "limit {limit}");
-        assert_eq!(locus_of(&error), value, "limit {limit}");
-        // The parse is charged at the node being joined.
-        let at = short.first_unpaid_locus().expect("a locus");
-        let holder = by_label(&package, "random_k");
-        assert!(
-            format!("{at:?}").contains(&format!("Graph, {holder}")),
-            "limit {limit}: {at:?}"
-        );
-    }
+    let mut short = NativeJoinBudget::new(u64::MAX, paid - 1);
+    let error = joined(&package, poke_rows(), &mut short).expect_err("short");
+    assert_eq!(error.code, RowError::Incomplete);
+    assert_eq!(locus_of(&error), value);
+    let denied = short.first_unpaid().expect("first unpaid");
+    assert_eq!(denied.kind, NativeJoinChargeKind::Storage);
+    assert_eq!(denied.amount, 1 + 12);
+    assert!(short.first_unpaid_read_storage().is_none());
+    let at = short.first_unpaid_locus().expect("a locus");
+    let holder = by_label(&package, "random_k");
+    assert!(
+        format!("{at:?}").contains(&format!("GraphNode({holder})")),
+        "{at:?}"
+    );
 }
 
 /// FR-358: the join starts its own accounting phase on the caller's allowance:
@@ -1141,6 +1146,15 @@ fn support_values_are_checked_against_the_entry_type_node() {
             }
         }
     }
+    // A rational `n/d` costs a number each for `n` and `d` and one for the
+    // divisor (a number and a limb apiece); an integer costs one number.
+    let storage = |value: &str| {
+        let package = with_support(vec![lit("rational", &rational_scalar, value)]);
+        let mut budget = NativeJoinBudget::unlimited();
+        joined(&package, entry_rows(&rational_node), &mut budget).expect("joins");
+        budget.consumed().storage
+    };
+    assert_eq!(storage("1/3"), storage("1") + 2 + 2);
 }
 
 /// A row naming another type's operation by identity is no entry of the
@@ -1236,8 +1250,8 @@ fn a_workloads_supertype_edges_are_charged() {
         let mut budget = work_only(total);
         joined(&package, rows(), &mut budget).expect("the full count admits");
         assert_eq!(budget.consumed().work, total);
-        // Two entries in each list of a workload fit its first growth.
-        assert_eq!(budget.consumed().storage, 2 * AC25_STORAGE);
+        // Each list of the second workload holds two elements.
+        assert_eq!(budget.consumed().storage, AC25_STORAGE + 3 * (1 + 2));
         let mut budget = work_only(total - 1);
         let error = joined(&package, rows(), &mut budget).expect_err("one short");
         assert_eq!(error.code, RowError::Incomplete);

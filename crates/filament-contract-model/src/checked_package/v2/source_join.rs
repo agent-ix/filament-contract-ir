@@ -7,12 +7,14 @@
 //!
 //! Implements: FR-369 "Behavior" (identity-row join), FR-358.
 
+use filament_exact::Integer;
+
 use super::model_members::{IntegerBounds, RationalBounds};
 use super::native_join_budget::{
     NativeJoinBudget, NativeJoinChargeKind, NativeJoinLocus, NativeJoinLocusSource,
 };
 use super::probabilistic_join::{
-    bound, bounded_not_member, members, target, text, Bounded, NotMember,
+    bound, bounded_not_member, members, target, text, Bounded, ExactParse, NotMember,
 };
 use super::source_object::{
     is_source_declared_object_type, SelectedSourceObjectError, SelectedSourceObjectErrorCode,
@@ -20,18 +22,20 @@ use super::source_object::{
 };
 use super::{
     BoundedDomainForm, CheckedNodeId, CheckedNodeKind, CheckedPackageV2, CheckedTerm, LiteralKind,
-    ProbabilisticForm, ScalarTypeForm, ValueForm, WorkMeter,
+    ProbabilisticForm, ScalarTypeForm, ValueForm,
 };
 use crate::checked_package::shared::{CheckedPackageRefusalLocation, JsonPointer};
 
 const FORM: &str = "probabilistic_join";
 
-/// The logical storage one refusal locus is charged, ahead of building it: a
-/// pointer of at most a dozen short segments.
-const LOCUS_BYTES: u128 = 256;
+/// The logical storage units of the pointer a failure names, charged once
+/// ahead of the join: one container and one unit for each byte of a pointer of
+/// at most a dozen short segments.
+const LOCUS_UNITS: u128 = 1 + 256;
 
-/// The smallest capacity a charged list grows to, as in the strict read.
-const MINIMUM_CAPACITY: usize = 4;
+/// The decimal digits a 32-bit limb of an exact number holds at most, so a
+/// parse of `n` digits owns at most `n / 9 + 1` limbs.
+const DIGITS_PER_LIMB: usize = 9;
 
 type Failure = SelectedSourceObjectError;
 
@@ -57,9 +61,57 @@ struct Slot<'p> {
 struct Join<'p, 'b> {
     package: &'p CheckedPackageV2,
     selected: &'p SelectedSourceObjects<'p>,
-    /// Charges the caller's budget: work, logical storage and the exact
-    /// numbers' read storage, as the strict read does.
-    meter: WorkMeter<'b>,
+    /// The caller's budget: work and logical storage are charged to it.
+    budget: &'b mut NativeJoinBudget,
+}
+
+/// The exact-number parses of a support value, each paid in logical storage
+/// ahead of being made: one unit for the number and one for each limb.
+struct Parser<'a> {
+    budget: &'a mut NativeJoinBudget,
+    position: usize,
+}
+
+impl Parser<'_> {
+    fn pay(&mut self, digits: usize) -> Result<(), ()> {
+        let units = 1 + digits.div_ceil(DIGITS_PER_LIMB) as u128;
+        let locus = NativeJoinLocus {
+            source: NativeJoinLocusSource::GraphNode(self.position),
+            form: FORM,
+        };
+        self.budget
+            .accounted_charge(NativeJoinChargeKind::Storage, units, locus)
+            .map_err(|_| ())
+    }
+}
+
+impl ExactParse for Parser<'_> {
+    type Error = ();
+
+    fn exact_integer(&mut self, text: &str) -> Result<Option<Integer>, ()> {
+        self.pay(text.len())?;
+        Ok(text.parse().ok())
+    }
+
+    fn canonical_rational(&mut self, text: &str) -> Result<Option<(Integer, Integer)>, ()> {
+        let Some((numerator, denominator)) = text.split_once('/') else {
+            return Ok(self
+                .exact_integer(text)?
+                .map(|numerator| (numerator, Integer::one())));
+        };
+        let (Some(numerator), Some(denominator)) = (
+            self.exact_integer(numerator)?,
+            self.exact_integer(denominator)?,
+        ) else {
+            return Ok(None);
+        };
+        if denominator <= Integer::one() {
+            return Ok(None);
+        }
+        // The divisor is a number of the size of the larger operand.
+        self.pay(text.len())?;
+        Ok((numerator.gcd(&denominator) == Integer::one()).then_some((numerator, denominator)))
+    }
 }
 
 /// `term` as the integer literal it spells, for the bounds of a type node the
@@ -83,8 +135,8 @@ impl<'p> Join<'p, '_> {
         })
     }
 
-    /// The stop at `at`, the first member left uncharged. Its locus is a
-    /// bounded pointer of static keys and indices.
+    /// The stop at `at`, the first member left uncharged. Its pointer is the
+    /// one paid for ahead of the join.
     fn incomplete(at: At) -> Failure {
         Failure {
             code: SelectedSourceObjectErrorCode::Incomplete,
@@ -105,12 +157,9 @@ impl<'p> Join<'p, '_> {
             source: NativeJoinLocusSource::GraphNode(position),
             form: FORM,
         };
-        match self.meter.budget_mut() {
-            Some(budget) => budget
-                .accounted_charge(kind, amount, locus)
-                .map_err(|_| Self::incomplete(at)),
-            None => Ok(()),
-        }
+        self.budget
+            .accounted_charge(kind, amount, locus)
+            .map_err(|_| Self::incomplete(at))
     }
 
     /// One work unit.
@@ -126,18 +175,16 @@ impl<'p> Join<'p, '_> {
         self.pay(NativeJoinChargeKind::Work, amount, position, at)
     }
 
-    /// The refusal at `at`: its pointer is paid before it is built.
-    fn refuse(&mut self, position: usize, at: At) -> Failure {
-        match self.pay(NativeJoinChargeKind::Storage, LOCUS_BYTES, position, at) {
-            Err(stop) => stop,
-            Ok(()) => Failure {
-                code: SelectedSourceObjectErrorCode::InvalidValue,
-                locus: Self::location(at),
-            },
+    /// The refusal at `at`; its pointer was paid for ahead of the join.
+    fn refuse(at: At) -> Failure {
+        Failure {
+            code: SelectedSourceObjectErrorCode::InvalidValue,
+            locus: Self::location(at),
         }
     }
 
-    /// Pushes onto `list`, charging each growth of its capacity first.
+    /// Pushes onto `list`, charging a logical storage unit for the element and
+    /// one for the container when it is the first, ahead of the push.
     fn push<T>(
         &mut self,
         list: &mut Vec<T>,
@@ -145,15 +192,9 @@ impl<'p> Join<'p, '_> {
         position: usize,
         at: At,
     ) -> Result<(), Failure> {
-        if list.len() == list.capacity() {
-            let capacity = list.capacity();
-            let extra = capacity.saturating_mul(2).max(MINIMUM_CAPACITY) - capacity;
-            let bytes =
-                u128::try_from(extra.saturating_mul(std::mem::size_of::<T>())).unwrap_or(u128::MAX);
-            self.pay(NativeJoinChargeKind::Storage, bytes, position, at)?;
-            list.try_reserve_exact(extra)
-                .map_err(|_| Self::incomplete(at))?;
-        }
+        let units = if list.is_empty() { 2 } else { 1 };
+        self.pay(NativeJoinChargeKind::Storage, units, position, at)?;
+        list.try_reserve(1).map_err(|_| Self::incomplete(at))?;
         list.push(item);
         Ok(())
     }
@@ -283,7 +324,7 @@ impl<'p> Join<'p, '_> {
         let at = || Self::member_at(holder, 1).key("value");
         self.charge(holder, &at)?;
         let (Some(name), Some(row)) = (name, self.row(declaring)) else {
-            return Err(self.refuse(holder, &at));
+            return Err(Self::refuse(&at));
         };
         for entry in &row.operations {
             self.charge_text(holder, entry.identity.len(), &at)?;
@@ -291,7 +332,7 @@ impl<'p> Join<'p, '_> {
                 return Ok(&entry.parameters);
             }
         }
-        Err(self.refuse(holder, &at))
+        Err(Self::refuse(&at))
     }
 
     fn random_parameter(
@@ -311,7 +352,7 @@ impl<'p> Join<'p, '_> {
             }
         }
         let Some(entry) = found else {
-            return Err(self.refuse(holder, &parameter_at));
+            return Err(Self::refuse(&parameter_at));
         };
         let slot = self.slot(entry);
         for (row, support) in bound(body, 3)
@@ -340,24 +381,27 @@ impl<'p> Join<'p, '_> {
                 value,
             }) = literal
             else {
-                return Err(self.refuse(holder, &value_at));
+                return Err(Self::refuse(&value_at));
             };
             let Some(slot) = slot.as_ref().filter(|slot| slot.kind == *value_kind) else {
-                return Err(self.refuse(holder, &value_at));
+                return Err(Self::refuse(&value_at));
             };
             if slot
                 .unit
                 .is_some_and(|unit| self.package.position_of(type_id) != Some(unit))
             {
-                return Err(self.refuse(holder, &value_at));
+                return Err(Self::refuse(&value_at));
             }
-            self.meter.at_node(holder, FORM);
-            let refused = bounded_not_member(&mut self.meter, slot.rule, value)
-                .map_err(|_| Self::incomplete(&value_at))?;
+            let mut parser = Parser {
+                budget: &mut *self.budget,
+                position: holder,
+            };
+            let refused = bounded_not_member(&mut parser, slot.rule, value)
+                .map_err(|()| Self::incomplete(&value_at))?;
             match refused {
-                Some(NotMember::Literal) => return Err(self.refuse(holder, &value_at)),
+                Some(NotMember::Literal) => return Err(Self::refuse(&value_at)),
                 Some(NotMember::Spelling) => {
-                    return Err(self.refuse(holder, &|| value_at().key("value")));
+                    return Err(Self::refuse(&|| value_at().key("value")));
                 }
                 None => {}
             }
@@ -400,11 +444,11 @@ impl<'p> Join<'p, '_> {
                 .and_then(|node| bound(node, 0))
                 .and_then(text);
             if declared.is_none() || name != declared.map(|declared| declared.name.as_ref()) {
-                return Err(self.refuse(holder, &expression_at));
+                return Err(Self::refuse(&expression_at));
             }
         }
         if parameters.len() > listed.len() {
-            return Err(self.refuse(holder, &expression_at));
+            return Err(Self::refuse(&expression_at));
         }
         Ok(())
     }
@@ -517,7 +561,7 @@ impl<'p> Join<'p, '_> {
                 _ => None,
             };
             let Some(declaring) = declaring else {
-                return Err(self.refuse(holder, &|| {
+                return Err(Self::refuse(&|| {
                     row_at().key("members").index(0).key("value").key("target")
                 }));
             };
@@ -532,13 +576,13 @@ impl<'p> Join<'p, '_> {
                 _ => None,
             };
             let Some(name) = name else {
-                return Err(self.refuse(holder, &name_at));
+                return Err(Self::refuse(&name_at));
             };
             self.push(&mut named, name, holder, &row_at)?;
         }
         for &(_, name) in &declared {
             if !self.named_has(&named, name, holder, &|| weights_at().key("members"))? {
-                return Err(self.refuse(holder, &|| weights_at().key("members")));
+                return Err(Self::refuse(&|| weights_at().key("members")));
             }
         }
         Ok(())
@@ -590,15 +634,17 @@ impl SelectedSourceObjects<'_> {
     /// node met, operation reference joined, operation entry and supertype
     /// edge read, support value checked and reward function parameter
     /// compared is one work unit of `budget`, charged ahead of the work, with
-    /// one more for each byte of caller text it compares; the lists the join
-    /// keeps and the pointer of a refusal are charged to its logical storage
-    /// and the exact numbers it parses to its read storage, as the strict
-    /// read charges them.
+    /// one more for each byte of caller text it compares. Logical storage
+    /// (FR-358 storage units) is charged ahead as well: the pointer of the
+    /// failure the join may name first, then one unit for each list the join
+    /// keeps and for each element, and for each exact number it parses one
+    /// unit and one for each limb. No read storage is charged.
     ///
     /// `Ok(())` means the typed reads `delay_distributions`,
     /// `random_parameters`, `rewards` and `workloads` of the package are
     /// joined, and the work and storage the join charged are the budget's
-    /// last success delta.
+    /// last success delta. A budget that cannot pay for the failure pointer
+    /// stops the join as incomplete with no locus.
     ///
     /// # Errors
     ///
@@ -612,16 +658,26 @@ impl SelectedSourceObjects<'_> {
     ) -> Result<(), SelectedSourceObjectError> {
         budget.resume();
         let before = budget.consumed();
+        // The pointer of the failure the join may name is paid for first; a
+        // budget that cannot pay for it stops the join with no locus.
+        let locus = NativeJoinLocus {
+            source: NativeJoinLocusSource::Package,
+            form: FORM,
+        };
+        budget
+            .accounted_charge(NativeJoinChargeKind::Storage, LOCUS_UNITS, locus)
+            .map_err(|_| Failure {
+                code: SelectedSourceObjectErrorCode::Incomplete,
+                locus: None,
+            })?;
         let mut join = Join {
             package: self.package(),
             selected: self,
-            meter: WorkMeter::over(budget),
+            budget,
         };
         let joined = join.run();
         if joined.is_ok() {
-            if let Some(budget) = join.meter.budget_mut() {
-                budget.finish(before);
-            }
+            join.budget.finish(before);
         }
         joined
     }
