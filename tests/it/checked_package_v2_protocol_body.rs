@@ -10859,6 +10859,180 @@ fn protocol_channel_admits_fifo_carried_quantity_key() {
     );
 }
 
+/// A FIFO channel keyed by a type built over a model-owned unit node
+/// (`Quantity<m>`, FR-322 "Derived type forms"), a `bytes` / `json_object`
+/// scalar and an optional `float64` leaf. `shape` selects the key type.
+fn fifo_unit_key_result(shape: &str) -> CheckedPackageV2ReadResult {
+    let (mut package, _) = package_with_member_queue();
+    let dimension_identity = "ix://test/families/dimension/Length";
+    let unit_identity = "ix://test/families/unit/metre";
+    let dimension = structural_id(
+        "test/families",
+        vec![
+            json!("scalar_type"),
+            json!("dimension"),
+            json!(dimension_identity),
+        ],
+        0,
+    );
+    let unit = structural_id(
+        "test/families",
+        vec![json!("scalar_type"), json!("unit"), json!(unit_identity)],
+        0,
+    );
+    let nodes = package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes");
+    nodes.extend([
+        json!({
+            "node_id": dimension,
+            "schema_version": "filament.checked-semantic-graph/v2",
+            "node_tag": "scalar_type", "semantic_form": "dimension",
+            "semantic_type": dimension, "dependencies": [],
+            "occurrences": [{"role": "generated", "ordinal": 0}],
+            "owner": {"kind": "model", "identity": "test/families", "node": dimension_identity},
+            "body": {"term": "aggregate", "members": []}
+        }),
+        json!({
+            "node_id": unit,
+            "schema_version": "filament.checked-semantic-graph/v2",
+            "node_tag": "scalar_type", "semantic_form": "unit",
+            "semantic_type": dimension, "dependencies": [dimension],
+            "occurrences": [{"role": "generated", "ordinal": 0}],
+            "owner": {"kind": "model", "identity": "test/families", "node": unit_identity},
+            "body": {"term": "aggregate", "members": []}
+        }),
+    ]);
+    let mut scalar = |form: &str| {
+        let id = node_id(&format!("fixture/protocol-body/fifo/unit-key/{form}"));
+        nodes.push(json!({
+            "node_id": id,
+            "schema_version": "filament.checked-semantic-graph/v2",
+            "node_tag": "scalar_type", "semantic_form": form,
+            "semantic_type": id, "dependencies": [],
+            "occurrences": [{"role": "type", "ordinal": 0}],
+            "body": {"term": "aggregate", "members": []}
+        }));
+        id
+    };
+    let float64 = scalar("float64");
+    let bytes = scalar("bytes");
+    let json_object = scalar("json_object");
+    let mut composite = |form: &str, members: Value, dependencies: Vec<Value>| {
+        let body = json!({"term": "aggregate", "members": members});
+        let id = node_id(&structural_key("composite_type", form, None, &body));
+        nodes.push(json!({
+            "node_id": id,
+            "schema_version": "filament.checked-semantic-graph/v2",
+            "node_tag": "composite_type", "semantic_form": form,
+            "semantic_type": id, "dependencies": dependencies,
+            "occurrences": [{"role": "type", "ordinal": 0}],
+            "body": body
+        }));
+        id
+    };
+    let reference = |target: &Value| json!({"term": "reference", "target": target});
+    let field = |name: &str, target: &Value| json!({"term": "binding", "name": name, "value": reference(target)});
+    let key_type = match shape {
+        "quantity" => unit.clone(),
+        "option_quantity" => composite("option", json!([reference(&unit)]), vec![unit.clone()]),
+        "sequence_quantity" => composite("sequence", json!([reference(&unit)]), vec![unit.clone()]),
+        "bytes" => bytes,
+        "json_object" => json_object,
+        "sequence_option_quantity" => {
+            let option = composite("option", json!([reference(&unit)]), vec![unit.clone()]);
+            composite("sequence", json!([reference(&option)]), vec![option])
+        }
+        "record_quantity_float64" => composite(
+            "record",
+            json!([field("length", &unit), field("ratio", &float64)]),
+            vec![unit.clone(), float64],
+        ),
+        "sequence_option_float64" => {
+            let option = composite("option", json!([reference(&float64)]), vec![float64]);
+            composite("sequence", json!([reference(&option)]), vec![option])
+        }
+        other => unreachable!("fixture key shape {other}"),
+    };
+    let text = node_id(&family_key("a1a1"));
+    let binder = clause_parameter(&mut package, "unit_key", "1");
+    let binder_position = node_position_for_key(&package, &binder);
+    package["semantic_graph"]["nodes"][binder_position]["semantic_type"] = key_type.clone();
+    let channel = protocol_position(&package, "channel");
+    package["semantic_graph"]["nodes"][channel]["body"]["arguments"][2]["value"]["target"] =
+        key_type;
+    package["semantic_graph"]["nodes"][channel]["body"]["arguments"][3]["value"] = json!({
+        "term": "aggregate", "members": [
+            {"term": "binding", "name": "kind", "value": {
+                "term": "literal", "type": text, "value_kind": "text", "value": "fifo"
+            }},
+            {"term": "binding", "name": "binder", "value": {"term": "reference", "target": binder}},
+            {"term": "binding", "name": "key", "value": {"term": "reference", "target": binder}}
+        ]
+    });
+    settle_after_structural_rekey(&mut package);
+    let mut document = family_model_document();
+    document["dimensions"] = json!([{
+        "identity": dimension_identity, "name": "Length", "base": true, "terms": []
+    }]);
+    document["units"] = json!([{
+        "identity": unit_identity, "name": "metre", "dimension": dimension_identity,
+        "scale": "1", "offset": "0"
+    }]);
+    let evidence = evidence_with_document(&package, "test/families", &document);
+    crate::support::checked_package::index_fixture_node_ids(&mut package);
+    crate::read_and_account(
+        &canonical(&package),
+        CheckedPackageReadLimits::bounded(),
+        &evidence,
+    )
+}
+
+/// FR-726-AC-2: `Quantity<m>` (the unit node), `Option<Quantity<m>>` and
+/// `Sequence<Quantity<m>>` are FIFO-key-stable, as are `bytes` and
+/// `json_object` (FR-726 Description).
+#[trace("TC-1770", "FR-726-AC-2")]
+#[test]
+fn protocol_channel_admits_fifo_unit_quantity_keys() {
+    for shape in [
+        "quantity",
+        "option_quantity",
+        "sequence_quantity",
+        "sequence_option_quantity",
+        "bytes",
+        "json_object",
+    ] {
+        let result = fifo_unit_key_result(shape);
+        assert!(
+            matches!(result, CheckedPackageV2ReadResult::Admitted(_)),
+            "FIFO key {shape} should admit: {result:?}"
+        );
+    }
+}
+
+/// FR-726-AC-3: a float leaf at any depth keeps a quantity-bearing key out.
+#[trace("TC-1770", "FR-726-AC-3")]
+#[test]
+fn protocol_channel_fifo_refuses_a_float_leaf_beside_a_quantity() {
+    for shape in ["record_quantity_float64", "sequence_option_float64"] {
+        let result = fifo_unit_key_result(shape);
+        let CheckedPackageV2ReadResult::Refused(refusal) = &result else {
+            panic!("FIFO key {shape} must refuse: {result:?}");
+        };
+        assert_eq!(refusal.code, CheckedPackageRefusalCode::IllTyped, "{shape}");
+        assert_eq!(
+            refusal.cause,
+            Some(CheckedPackageRefusalCause::OperatorIneligible),
+            "{shape}"
+        );
+        let path = refusal.loci[0].path.as_ref().expect("key path").to_string();
+        assert!(
+            path.ends_with("/body/arguments/3/value/members/2/value"),
+            "{shape}: {path}"
+        );
+    }
+}
+
 /// Trace: FR-372-AC-2
 #[trace("FR-372-AC-2")]
 #[test]
