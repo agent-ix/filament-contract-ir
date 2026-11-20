@@ -548,6 +548,7 @@ fn source_union_row_matches(package: &CheckedPackageV2, row: &SelectedSourceUnio
                             return false;
                         };
                     name.as_ref() == supplied.member.identifier()
+                        && clock_payload_holds(supplied)
                         && typed_aggregate(value).is_some_and(|payload| {
                             payload.len() == supplied.payload.len()
                                 && payload.len() == supplied.payload_nodes.len()
@@ -685,6 +686,25 @@ fn clock_entries_are_well_formed<T>(
     })
 }
 
+/// FR-367 "Member entries": a clock entry's `member_type` is a rendering
+/// whose terminal is the native clock type.
+fn clock_entry_terminal(rendering: Option<&str>) -> bool {
+    rendering.is_some_and(super::source_object::clock_terminal)
+}
+
+/// The payload ordinals of a union member's clock entries are unique and
+/// within the declared payload, which is its data positions and its clock
+/// positions together (FR-367 "Member entries").
+fn clock_payload_holds(member: &SelectedUnionMemberRow) -> bool {
+    let total = member.payload_nodes.len() + member.clock_payload.len();
+    let mut seen = BTreeSet::new();
+    member.clock_payload.iter().all(|entry| {
+        clock_entry_terminal(Some(&entry.member_type))
+            && usize::try_from(entry.ordinal).is_ok_and(|ordinal| ordinal < total)
+            && seen.insert(entry.ordinal)
+    })
+}
+
 fn source_record_row_matches(package: &CheckedPackageV2, row: &SelectedSourceRecordRow) -> bool {
     let Some(node) = package.node(&row.structural_node) else {
         return false;
@@ -717,6 +737,17 @@ fn source_record_row_matches(package: &CheckedPackageV2, row: &SelectedSourceRec
                 &member.collections,
             )
         })
+        && row
+            .members
+            .iter()
+            .filter(|member| member.type_node.is_none())
+            .all(|member| {
+                clock_entry_terminal(member.member_type.as_deref())
+                    && !bindings.iter().any(|binding| {
+                        matches!(binding, CheckedTerm::Binding { name, .. }
+                            if name.as_ref() == member.admitted_name.as_ref())
+                    })
+            })
         && bindings.len()
             == row
                 .members
@@ -789,6 +820,11 @@ fn source_tuple_row_matches(package: &CheckedPackageV2, row: &SelectedSourceTupl
         && clock_entries_are_well_formed(&row.positions, |position| {
             (position.type_node.as_ref(), position.member_type.as_deref(), &position.collections)
         })
+        && row
+            .positions
+            .iter()
+            .filter(|position| position.type_node.is_none())
+            .all(|position| clock_entry_terminal(position.member_type.as_deref()))
         && row
             .positions
             .iter()

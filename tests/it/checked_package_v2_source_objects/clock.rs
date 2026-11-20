@@ -1341,3 +1341,244 @@ fn the_strict_read_admits_a_slot_after_a_product_row() {
     let (product, _) = product_place(&package, &sequence, INTEGER, Some(("0", "2")));
     admitted(&product);
 }
+
+/// The complete witness fixture's identities without the source `family`
+/// rows (4 union, 5 record, 6 tuple), which a test then joins itself.
+fn identities_without(
+    fixture: &crate::checked_package_v2_owners::CompleteWitnessFixture,
+    family: usize,
+) -> filament_contract_model::SelectedExactIdentities {
+    use filament_contract_model::{NativeJoinBudget, SelectedExactIdentities};
+    let mut budget = NativeJoinBudget::new(u64::MAX, u64::MAX);
+    let declarations: Vec<_> = fixture.identities.declaration_rows().cloned().collect();
+    let fields = fixture.identities.field_rows().to_vec();
+    let mut selected = SelectedExactIdentities::from_stage_rows(
+        &fixture.package,
+        declarations,
+        fields,
+        &mut budget,
+    )
+    .expect("declarations");
+    selected = selected
+        .with_admitted_type_rows(
+            &fixture.package,
+            &fixture.tuples,
+            &fixture.units,
+            &mut budget,
+        )
+        .expect("admitted types");
+    if family != 4 {
+        selected = selected
+            .with_source_union_rows(
+                &fixture.package,
+                fixture.identities.source_union_rows().cloned(),
+                &mut budget,
+            )
+            .expect("unions");
+    }
+    if family != 5 {
+        selected = selected
+            .with_source_record_rows(
+                &fixture.package,
+                fixture.identities.source_record_rows().cloned(),
+                &mut budget,
+            )
+            .expect("records");
+    }
+    if family != 6 {
+        selected = selected
+            .with_source_tuple_rows(
+                &fixture.package,
+                fixture.identities.source_tuple_rows().cloned(),
+                &mut budget,
+            )
+            .expect("tuples");
+    }
+    selected
+}
+
+/// FR-367 "Member entries" at the record, tuple and union identity rows: a
+/// clock entry is a rendering ending in the native clock type, a record's
+/// clock entry shares no name with a binding, and a union member's clock
+/// payload entries have unique ordinals within the declared payload.
+#[trace("TC-481", "FR-367-AC-7")]
+#[test]
+fn record_tuple_and_union_clock_entries_follow_the_fr_367_entry_rules() {
+    use crate::checked_package_v2_owners::complete_witness_fixture;
+    use filament_contract_model::{ExactTypeProjectionErrorCode as Witness, NativeJoinBudget};
+    let fixture = complete_witness_fixture();
+    let ample = || NativeJoinBudget::new(u64::MAX, u64::MAX);
+    let records: Vec<SelectedSourceRecordRow> =
+        fixture.identities.source_record_rows().cloned().collect();
+    let tuples: Vec<SelectedSourceTupleRow> =
+        fixture.identities.source_tuple_rows().cloned().collect();
+    let unions: Vec<SelectedSourceUnionRow> =
+        fixture.identities.source_union_rows().cloned().collect();
+    let record_join = |rows: Vec<SelectedSourceRecordRow>| {
+        identities_without(&fixture, 5)
+            .with_source_record_rows(&fixture.package, rows, &mut ample())
+            .map(|_| ())
+    };
+    let tuple_join = |rows: Vec<SelectedSourceTupleRow>| {
+        identities_without(&fixture, 6)
+            .with_source_tuple_rows(&fixture.package, rows, &mut ample())
+            .map(|_| ())
+    };
+    let union_join = |rows: Vec<SelectedSourceUnionRow>| {
+        identities_without(&fixture, 4)
+            .with_source_union_rows(&fixture.package, rows, &mut ample())
+            .map(|_| ())
+    };
+    let clock_member = |name: &str, rendering: &str| SelectedSourceRecordMemberRow {
+        original_member_identity: name.into(),
+        admitted_name: name.into(),
+        presence: Presence::Required,
+        type_node: None,
+        value_type: None,
+        member_type: Some(rendering.into()),
+        collections: vec![],
+    };
+    let refused_as =
+        |case: &str, result: Result<(), filament_contract_model::ExactTypeProjectionError>| {
+            let error = result.expect_err(case);
+            assert_eq!(
+                error.code,
+                Witness::MismatchedIdentityWitness,
+                "{case}: {error:?}"
+            );
+        };
+    // The record: a Clock entry beside the data entry, wrapped or not.
+    for rendering in [
+        CLOCK.to_owned(),
+        format!("Option<{CLOCK}>"),
+        format!("Sequence<{CLOCK}>"),
+    ] {
+        let mut rows = records.clone();
+        rows[0].members.push(clock_member("k", &rendering));
+        record_join(rows).unwrap_or_else(|error| panic!("{rendering}: {error:?}"));
+    }
+    let mut rows = records.clone();
+    rows[0].members.push(clock_member("k", INTEGER));
+    refused_as("a record clock entry that is no Clock", record_join(rows));
+    let mut rows = records.clone();
+    rows[0]
+        .members
+        .push(clock_member("k", "ix://filament/native/Clocks"));
+    refused_as("a rendering that only resembles Clock", record_join(rows));
+    let mut rows = records.clone();
+    rows[0].members.push(clock_member("n", CLOCK));
+    refused_as("a record clock entry named as a binding", record_join(rows));
+    // The tuple: a Clock position after the data position.
+    let mut rows = tuples.clone();
+    rows[0].positions.push(clock_position(1, CLOCK));
+    tuple_join(rows).expect("a Clock position");
+    let mut rows = tuples.clone();
+    rows[0].positions.push(clock_position(1, INTEGER));
+    refused_as("a tuple clock position that is no Clock", tuple_join(rows));
+    // The union: a Clock payload entry after the data position.
+    let entry = |ordinal: u64, rendering: &str| SelectedUnionClockPayloadRow {
+        ordinal,
+        presence: Presence::Required,
+        member_type: rendering.into(),
+        collections: vec![],
+    };
+    let mut rows = unions.clone();
+    rows[0].members[0].clock_payload = vec![entry(1, CLOCK)];
+    union_join(rows).expect("a Clock payload entry");
+    let mut rows = unions.clone();
+    rows[0].members[0].clock_payload = vec![entry(0, CLOCK)];
+    union_join(rows).expect("a clock position before the data position");
+    let mut rows = unions.clone();
+    rows[0].members[0].clock_payload = vec![entry(1, INTEGER)];
+    refused_as("a union clock payload that is no Clock", union_join(rows));
+    let mut rows = unions.clone();
+    rows[0].members[0].clock_payload = vec![entry(2, CLOCK)];
+    refused_as("a union clock ordinal past the payload", union_join(rows));
+    let mut rows = unions.clone();
+    rows[0].members[0].clock_payload = vec![entry(1, CLOCK), entry(1, CLOCK)];
+    refused_as("a repeated union clock ordinal", union_join(rows));
+}
+
+/// A record clock entry is compared with every binding, not only the first
+/// or the last: `W` is given a second binding `m`.
+#[trace("TC-481", "FR-367-AC-7")]
+#[test]
+fn a_record_clock_entry_shares_no_name_with_any_of_several_bindings() {
+    use filament_contract_model::{
+        ExactTypeProjectionErrorCode as Witness, NativeJoinBudget, SelectedExactIdentities,
+    };
+    let mut package = tuple_union();
+    let w = nodes(&package)
+        .iter()
+        .position(|node| node["declaration"]["qualified_name"][0] == "W")
+        .expect("W");
+    let integer = nodes(&package)
+        [position_where(&package, |node| node["semantic_form"] == "integer")]["node_id"]
+        .clone();
+    let node = &mut package["semantic_graph"]["nodes"][w];
+    node["body"]["members"]
+        .as_array_mut()
+        .expect("members")
+        .push(binding(
+            "m",
+            json!({"term": "reference", "target": integer}),
+        ));
+    node["dependencies"]
+        .as_array_mut()
+        .expect("dependencies")
+        .insert(0, integer.clone());
+    let admitted_package = admitted(&package);
+    let row = |clock_name: &str| {
+        let data = |name: &str, node: &Value| SelectedSourceRecordMemberRow {
+            original_member_identity: name.into(),
+            admitted_name: name.into(),
+            presence: Presence::Required,
+            type_node: Some(serde_json::from_value(node.clone()).expect("id")),
+            value_type: Some(ValueType::Integer),
+            member_type: None,
+            collections: vec![],
+        };
+        let range = nodes(&package)
+            [position_where(&package, |node| node["semantic_form"] == "integer_range")]["node_id"]
+            .clone();
+        let mut row = record_row(&package);
+        row.members = vec![
+            SelectedSourceRecordMemberRow {
+                original_member_identity: clock_name.into(),
+                admitted_name: clock_name.into(),
+                presence: Presence::Required,
+                type_node: None,
+                value_type: None,
+                member_type: Some(CLOCK.into()),
+                collections: vec![],
+            },
+            data("n", &range),
+            data("m", &integer),
+        ];
+        row
+    };
+    let join = |row: SelectedSourceRecordRow| {
+        SelectedExactIdentities::from_stage_rows(
+            &admitted_package,
+            [],
+            [],
+            &mut NativeJoinBudget::new(u64::MAX, u64::MAX),
+        )
+        .expect("identities")
+        .with_source_record_rows(
+            &admitted_package,
+            [row],
+            &mut NativeJoinBudget::new(u64::MAX, u64::MAX),
+        )
+        .map(|_| ())
+    };
+    join(row("c")).expect("a clock entry named for neither binding");
+    for taken in ["n", "m"] {
+        let error = join(row(taken)).expect_err(taken);
+        assert_eq!(
+            error.code,
+            Witness::MismatchedIdentityWitness,
+            "{taken}: {error:?}"
+        );
+    }
+}

@@ -516,7 +516,7 @@ fn row_matches_node(
 /// Whether the rendering `member_type` ends in the native clock type, under
 /// any `Option`, collection or map wrappers (FSpec FR-789 "Rendering").
 #[ix_trace_rs::string_edge]
-fn clock_terminal(member_type: &str) -> bool {
+pub(super) fn clock_terminal(member_type: &str) -> bool {
     let inner = member_type.trim_end_matches('>');
     let terminal = inner.rsplit(['<', ',']).next().unwrap_or(inner).trim();
     terminal == NATIVE_CLOCK
