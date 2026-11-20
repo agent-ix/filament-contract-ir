@@ -1100,7 +1100,7 @@ pub(crate) fn graph_requests_of(
 /// exactly one request of its size (8 x 22 bytes) at a probabilistic node. A
 /// source workload keeps no buffer: its rows are keyed by (declaring node,
 /// operation name) and checked in order against the previous row alone
-/// (QSL-2707). The selected-model workload's buffer, 32 bytes a row, is pinned
+/// (QSL-2707). The selected-model workload's buffer, 16 bytes a row (`&str`), is pinned
 /// by `a_wide_model_owner_workload_is_admitted_and_its_named_buffer_charged`.
 #[trace("TC-484", "FR-369-AC-27")]
 #[test]

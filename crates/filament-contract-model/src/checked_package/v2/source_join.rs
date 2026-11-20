@@ -607,6 +607,32 @@ impl<'p> Join<'p, '_> {
         Ok(false)
     }
 
+    /// Whether `from` reaches `to` through its supertypes, followed
+    /// transitively, one work unit for each supertype edge met.
+    fn reaches(&mut self, from: usize, to: usize, holder: usize, at: At) -> Result<bool, Failure> {
+        let mut seen: Vec<usize> = Vec::new();
+        self.push(&mut seen, from, holder, at)?;
+        let mut next = 0;
+        while let Some(&current) = seen.get(next) {
+            next += 1;
+            let Some(row) = self.row(current) else {
+                continue;
+            };
+            for supertype in &row.supertypes {
+                self.charge(holder, at)?;
+                if let Some(position) = self.package.position_of(supertype) {
+                    if position == to {
+                        return Ok(true);
+                    }
+                    if !self.lineage_has(&seen, position, holder, at)? {
+                        self.push(&mut seen, position, holder, at)?;
+                    }
+                }
+            }
+        }
+        Ok(false)
+    }
+
     /// A workload of a source-declared `model`: its rows name the operations
     /// of the model's row and of its supertypes, followed transitively, and
     /// omit none.
@@ -642,6 +668,27 @@ impl<'p> Join<'p, '_> {
                 }
             }
         }
+        // The effective operations (FSL FR-185 "Workloads"): a declaration
+        // that a type below it in the lineage redeclares by name is counted
+        // once, as the nearer declaration, while declarations of one name by
+        // unrelated nearest ancestors (a diamond) are one operation each.
+        let mut effective: Vec<(usize, &str)> = Vec::new();
+        for &(ancestor, name) in &declared {
+            let mut redeclared = false;
+            for &(descendant, other) in &declared {
+                self.charge_text(holder, name.len(), &weights_at)?;
+                if other == name
+                    && descendant != ancestor
+                    && self.reaches(descendant, ancestor, holder, &weights_at)?
+                {
+                    redeclared = true;
+                    break;
+                }
+            }
+            if !redeclared {
+                self.push(&mut effective, (ancestor, name), holder, &weights_at)?;
+            }
+        }
         let mut named: Vec<(usize, &str)> = Vec::new();
         for (index, row) in bound(body, 2)
             .map(members)
@@ -669,7 +716,7 @@ impl<'p> Join<'p, '_> {
             let name = bound(row, 1).and_then(text);
             let name = match name {
                 Some(name)
-                    if self.declared_has(&declared, declaring, name, holder, &name_at)? =>
+                    if self.declared_has(&effective, declaring, name, holder, &name_at)? =>
                 {
                     Some(name)
                 }
@@ -680,7 +727,7 @@ impl<'p> Join<'p, '_> {
             };
             self.push(&mut named, (declaring, name), holder, &row_at)?;
         }
-        for &(declaring, name) in &declared {
+        for &(declaring, name) in &effective {
             if !self.named_has(&named, declaring, name, holder, &|| {
                 weights_at().key("members")
             })? {
