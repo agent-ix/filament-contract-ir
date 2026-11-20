@@ -1183,10 +1183,12 @@ fn catalog_free_operation_package_config_with_document(
         }));
     }
     refresh_identity(&mut package);
+    let class = format!("{}::{operation}", declared_type_name(&package, &declaring));
     one_step_refinement_with_step(
         &mut package,
         json!({
-            "source_class":operation, "source_node":anchor, "target":{"kind":"stutter"}
+            "source_class":class,
+            "source_node":anchor, "target":{"kind":"stutter"}
         }),
     );
     let position = package["semantic_graph"]["nodes"]
@@ -2447,10 +2449,12 @@ fn complete_model_refinement_retains_all_rows_through_public_roundtrip() {
             .push(node);
     }
     refresh_identity(&mut package);
+    let class = format!("{}::toggle", declared_type_name(&package, &machine));
     one_step_refinement_with_step(
         &mut package,
         json!({
-            "source_class":"toggle", "source_node":anchor, "target":{"kind":"stutter"}
+            "source_class":class,
+            "source_node":anchor, "target":{"kind":"stutter"}
         }),
     );
     let position = package["semantic_graph"]["nodes"]
@@ -3024,7 +3028,7 @@ fn swapped_concrete_root_refuses_foreign_catalog_step_before_catalog_difference(
     package["semantic_graph"]["nodes"][position]["semantic_type"] = alternate;
     set_concrete_catalog(
         &mut package,
-        vec![json!({"class":"save", "node":anchor, "binder_types":[]})],
+        vec![json!({"class":"Account::save", "node":anchor, "binder_types":[]})],
     );
     assert_concrete_row_binding(
         &package,
@@ -4251,6 +4255,294 @@ fn catalog_free_operation_step_refuses_missing_wrong_kind_and_wrong_name() {
     );
 }
 
+#[trace("TC-062", "FR-061-AC-14", "FR-061-AC-15", "FR-375-AC-31")]
+#[test]
+fn catalog_free_operation_step_qualified_source_class_is_admitted() {
+    let (baseline, evidence, position) = catalog_free_operation_package("object_type");
+    let class = baseline["semantic_graph"]["nodes"][position]["body"]["steps"][0]["source_class"]
+        .as_str()
+        .expect("class");
+    assert_eq!(class, "Account::save");
+    let admitted = read(&baseline, &evidence);
+    assert!(
+        matches!(admitted, CheckedPackageV2ReadResult::Admitted(_)),
+        "{admitted:?}"
+    );
+}
+
+#[trace("TC-062", "FR-061-AC-15", "FR-375-AC-31")]
+#[test]
+fn catalog_free_operation_step_class_resolves_before_source_node() {
+    let (baseline, evidence, position) = catalog_free_operation_package("object_type");
+    let at = format!("/semantic_graph/nodes/{position}/body/steps/0");
+    let with_class = |class: &str| {
+        let mut package = baseline.clone();
+        package["semantic_graph"]["nodes"][position]["body"]["steps"][0]["source_class"] =
+            json!(class);
+        settle_refinement(&mut package, position);
+        read(&package, &evidence)
+    };
+    // (1) a bare operation is not `T::op`.
+    assert_step_refusal(
+        with_class("save"),
+        CheckedPackageRefusalCode::InvalidModelBinding,
+        Some(CheckedPackageRefusalCause::MalformedDeclaration),
+        &format!("{at}/source_class"),
+    );
+    // (2) a type that is not declared, or an operation T does not declare.
+    for class in [
+        "Other::save",
+        "Account::other",
+        "Account::Account::save",
+        "ccount::save",
+        "Accoun::save",
+        "Account::sav",
+        "Account::ave",
+        "::save",
+        "Account::",
+    ] {
+        assert_step_refusal(
+            with_class(class),
+            CheckedPackageRefusalCode::MissingDeclaration,
+            Some(CheckedPackageRefusalCause::MissingName),
+            &format!("{at}/source_class"),
+        );
+    }
+    // The class is resolved before `source_node`: an unresolvable class
+    // refuses at `source_class` whatever `source_node` holds.
+    let mut both = baseline.clone();
+    let model_root = both["semantic_graph"]["nodes"][position]["semantic_type"].clone();
+    both["semantic_graph"]["nodes"][position]["body"]["steps"][0]["source_class"] =
+        json!("Other::save");
+    set_catalog_free_source(&mut both, position, Some(model_root));
+    assert_step_refusal(
+        read(&both, &evidence),
+        CheckedPackageRefusalCode::MissingDeclaration,
+        Some(CheckedPackageRefusalCause::MissingName),
+        &format!("{at}/source_class"),
+    );
+}
+
+#[trace("TC-062", "FR-061-AC-15", "FR-375-AC-31")]
+#[test]
+fn catalog_free_operation_step_refuses_inherited_class_and_wrong_operation_anchor() {
+    // An inherited operation spelled under the inheriting type.
+    let (inherited, evidence, position) =
+        catalog_free_operation_package_with_inheritance("object_type", true);
+    let at = format!("/semantic_graph/nodes/{position}/body/steps/0");
+    let mut under_child = inherited.clone();
+    under_child["semantic_graph"]["nodes"][position]["body"]["steps"][0]["source_class"] =
+        json!("SubAccount::save");
+    settle_refinement(&mut under_child, position);
+    assert_step_refusal(
+        read(&under_child, &evidence),
+        CheckedPackageRefusalCode::MissingDeclaration,
+        Some(CheckedPackageRefusalCause::MissingName),
+        &format!("{at}/source_class"),
+    );
+    // A resolved class whose `source_node` anchors another operation.
+    let (mut package, evidence, position) = catalog_free_operation_package("state_machine");
+    let anchor = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|node| node["semantic_form"] == "operation_anchor")
+        .expect("anchor")
+        .clone();
+    let first_id = anchor["node_id"].clone();
+    let mut reassigned = first_id.clone();
+    reassigned["ordinal"] = json!(1);
+    crate::support::checked_package::reassign_node_id(&mut package, &first_id, &reassigned);
+    let mut other = anchor;
+    other["body"]["members"][1]["value"]["value"] = json!("toggleAgain");
+    let other_id = other["node_id"].clone();
+    package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .push(other);
+    let source = package["lock"]["sources"][0].clone();
+    package["source_map"]
+        .as_array_mut()
+        .expect("source map")
+        .push(json!({
+            "node_id":other_id,"role":"anchor","ordinal":0,
+            "regions":[{"source":source,"start":10,"end":11}]
+        }));
+    set_catalog_free_source(&mut package, position, Some(other_id));
+    assert_step_refusal(
+        read(&package, &evidence),
+        CheckedPackageRefusalCode::InvalidModelBinding,
+        Some(CheckedPackageRefusalCause::MalformedDeclaration),
+        &format!("/semantic_graph/nodes/{position}/body/steps/0/source_node"),
+    );
+}
+
+/// Clones the package's operation anchor into a second node (the clone keeps
+/// the original id; the original is renumbered), adds its source-map entry, and
+/// lets `edit` change the clone. Returns the clone's id.
+fn add_anchor_variant(package: &mut Value, edit: impl FnOnce(&mut Value)) -> Value {
+    let anchor = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|node| node["semantic_form"] == "operation_anchor")
+        .expect("anchor")
+        .clone();
+    let first_id = anchor["node_id"].clone();
+    let mut reassigned = first_id.clone();
+    reassigned["ordinal"] = json!(1);
+    crate::support::checked_package::reassign_node_id(package, &first_id, &reassigned);
+    let mut variant = anchor;
+    edit(&mut variant);
+    let id = variant["node_id"].clone();
+    package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .push(variant);
+    let source = package["lock"]["sources"][0].clone();
+    package["source_map"]
+        .as_array_mut()
+        .expect("source map")
+        .push(json!({
+            "node_id":id,"role":"anchor","ordinal":0,
+            "regions":[{"source":source,"start":10,"end":11}]
+        }));
+    id
+}
+
+fn with_execution_point(anchor: &mut Value) {
+    anchor["body"]["members"]
+        .as_array_mut()
+        .expect("members")
+        .push(json!({"term":"binding", "name":"execution_point",
+            "value":{"kind":"pre", "operation":"save"}}));
+}
+
+#[trace("TC-062", "FR-061-AC-15", "FR-375-AC-31")]
+#[test]
+fn catalog_free_operation_step_refuses_point_qualified_anchor() {
+    // A no-point anchor of (T, op) exists beside a point-qualified one: the
+    // class resolves, and a point-qualified `source_node` refuses at it.
+    let (mut package, evidence, position) = catalog_free_operation_package("object_type");
+    let pointed = add_anchor_variant(&mut package, with_execution_point);
+    set_catalog_free_source(&mut package, position, Some(pointed));
+    assert_step_refusal(
+        read(&package, &evidence),
+        CheckedPackageRefusalCode::InvalidModelBinding,
+        Some(CheckedPackageRefusalCause::MalformedDeclaration),
+        &format!("/semantic_graph/nodes/{position}/body/steps/0/source_node"),
+    );
+    // A point-qualified anchor alone does not resolve the class.
+    let (mut only_pointed, evidence, position) = catalog_free_operation_package("object_type");
+    let anchor = only_pointed["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .iter_mut()
+        .find(|node| node["semantic_form"] == "operation_anchor")
+        .expect("anchor");
+    with_execution_point(anchor);
+    settle_refinement(&mut only_pointed, position);
+    assert_step_refusal(
+        read(&only_pointed, &evidence),
+        CheckedPackageRefusalCode::MissingDeclaration,
+        Some(CheckedPackageRefusalCause::MissingName),
+        &format!("/semantic_graph/nodes/{position}/body/steps/0/source_class"),
+    );
+}
+
+#[trace("TC-062", "FR-061-AC-15", "FR-375-AC-31")]
+#[test]
+fn catalog_free_operation_step_refuses_another_types_anchor_for_the_same_operation() {
+    let (mut package, evidence, position) = catalog_free_operation_package_config_with_document(
+        "object_type",
+        false,
+        false,
+        false,
+        |document| {
+            let mut twin = document["types"][4].clone();
+            rewrite_identity_prefix(
+                &mut twin,
+                &format!("ix://{MODEL_IDENTITY}/Account"),
+                &format!("ix://{MODEL_IDENTITY}/Twin"),
+            );
+            twin["displayName"] = json!("Twin");
+            twin["operations"] = json!([{
+                "identity": format!("ix://{MODEL_IDENTITY}/Twin/save"),
+                "name": "save", "params": []
+            }]);
+            document["types"].as_array_mut().expect("types").push(twin);
+        },
+    );
+    let twin_node = selected_form_node("object_type", &format!("ix://{MODEL_IDENTITY}/Twin"));
+    let twin = twin_node["node_id"].clone();
+    package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .push(twin_node);
+    let source = package["lock"]["sources"][0].clone();
+    package["source_map"]
+        .as_array_mut()
+        .expect("source map")
+        .push(json!({
+            "node_id":twin, "role":"type", "ordinal":0,
+            "regions":[{"source":source,"start":10,"end":11}]
+        }));
+    refresh_identity(&mut package);
+    // Class `Account::save` resolves; `source_node` is the anchor of
+    // `Twin::save`, another type's anchor for the same operation.
+    let anchor = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|node| node["semantic_form"] == "operation_anchor")
+        .expect("anchor")
+        .clone();
+    let frame_id = anchor["body"]["members"][2]["value"]["target"].clone();
+    let frame = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|node| node["node_id"] == frame_id)
+        .expect("frame")
+        .clone();
+    let twin_frame_id = node_id("qsl2506/twin-frame");
+    let other = node_id("qsl2506/twin-anchor");
+    let mut twin_frame = frame;
+    twin_frame["node_id"] = twin_frame_id.clone();
+    twin_frame["semantic_type"] = twin.clone();
+    let mut twin_anchor = anchor;
+    twin_anchor["node_id"] = other.clone();
+    twin_anchor["semantic_type"] = twin.clone();
+    twin_anchor["body"]["members"][0]["value"]["target"] = twin.clone();
+    twin_anchor["body"]["members"][2]["value"]["target"] = twin_frame_id.clone();
+    let mut dependencies = vec![twin.clone(), twin_frame_id];
+    dependencies.sort_by(node_id_order);
+    twin_anchor["dependencies"] = json!(dependencies);
+    let source = package["lock"]["sources"][0].clone();
+    for node in [twin_frame, twin_anchor] {
+        let occurrence = node["occurrences"][0].clone();
+        package["source_map"]
+            .as_array_mut()
+            .expect("source map")
+            .push(json!({
+                "node_id":node["node_id"], "role":occurrence["role"],
+                "ordinal":occurrence["ordinal"],
+                "regions":[{"source":source,"start":10,"end":11}]
+            }));
+        package["semantic_graph"]["nodes"]
+            .as_array_mut()
+            .expect("nodes")
+            .push(node);
+    }
+    set_catalog_free_source(&mut package, position, Some(other));
+    assert_step_refusal(
+        read(&package, &evidence),
+        CheckedPackageRefusalCode::InvalidModelBinding,
+        Some(CheckedPackageRefusalCause::MalformedDeclaration),
+        &format!("/semantic_graph/nodes/{position}/body/steps/0/source_node"),
+    );
+}
+
 #[trace("TC-062", "FR-061-AC-15")]
 #[test]
 fn catalog_free_operation_step_refuses_foreign_selected_model_anchor() {
@@ -4329,6 +4621,18 @@ fn catalog_free_operation_step_refuses_foreign_selected_model_anchor() {
         Some(CheckedPackageRefusalCause::MalformedDeclaration),
         &format!("/semantic_graph/nodes/{position}/body/steps/0/source_node"),
     );
+    // A class naming the foreign model's type resolves nowhere in the
+    // selected concrete model: it refuses at `source_class`, not `source_node`.
+    let foreign_type = declared_type_name(&package, &context);
+    package["semantic_graph"]["nodes"][position]["body"]["steps"][0]["source_class"] =
+        json!(format!("{foreign_type}::deposit"));
+    settle_refinement(&mut package, position);
+    assert_step_refusal(
+        read(&package, &evidence),
+        CheckedPackageRefusalCode::MissingDeclaration,
+        Some(CheckedPackageRefusalCause::MissingName),
+        &format!("/semantic_graph/nodes/{position}/body/steps/0/source_class"),
+    );
 }
 
 #[trace("TC-062", "FR-061-AC-16")]
@@ -4399,6 +4703,24 @@ fn catalog_free_operation_step_respects_earlier_reader_stages() {
     assert_row(&catalog);
 }
 
+/// Source name `T` of the model declaration `id`, as spelled in a `T::op` class.
+fn declared_type_name(package: &Value, id: &Value) -> String {
+    let node = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|node| node["node_id"] == *id)
+        .expect("declaring node");
+    let identity = node["owner"]["identity"].as_str().expect("identity");
+    node["owner"]["node"]
+        .as_str()
+        .and_then(|path| path.strip_prefix("ix://"))
+        .and_then(|path| path.strip_prefix(identity))
+        .and_then(|path| path.strip_prefix('/'))
+        .expect("type name")
+        .to_owned()
+}
+
 fn append_catalog_free_step(package: &mut Value, position: usize, class: &str) {
     let first = package["semantic_graph"]["nodes"][position]["body"]["steps"][0].clone();
     let mut second = first;
@@ -4442,7 +4764,7 @@ fn catalog_free_operation_steps_join_in_received_order() {
     let rows = package["semantic_graph"]["nodes"][position]["body"]["steps"]
         .as_array()
         .expect("steps");
-    assert_eq!(rows[0]["source_class"], "save");
+    assert_eq!(rows[0]["source_class"], "Account::save");
     assert_eq!(rows[1]["source_class"], "zzz");
     assert_eq!(rows[0]["source_node"], rows[1]["source_node"]);
     let at = format!("/semantic_graph/nodes/{position}/body/steps");
@@ -6389,6 +6711,13 @@ fn refinement_occurrences_follow_proof_eligibility_and_step_count() {
     crate::support::checked_package::reassign_node_id(&mut two, &first_id, &first_reassigned);
     let mut second_anchor = source_anchor.clone();
     second_anchor["body"]["members"][1]["value"]["value"] = json!("toggleAgain");
+    let again = format!(
+        "{}::toggleAgain",
+        declared_type_name(
+            &two,
+            &source_anchor["body"]["members"][0]["value"]["target"]
+        )
+    );
     let second_id = second_anchor["node_id"].clone();
     two["semantic_graph"]["nodes"]
         .as_array_mut()
@@ -6402,7 +6731,7 @@ fn refinement_occurrences_follow_proof_eligibility_and_step_count() {
             "node_id":second_id,"role":"anchor","ordinal":0,
             "regions":[{"source":source,"start":10,"end":11}]
         }));
-    append_catalog_free_step(&mut two, two_position, "toggleAgain");
+    append_catalog_free_step(&mut two, two_position, &again);
     let node = &mut two["semantic_graph"]["nodes"][two_position];
     node["body"]["steps"][1]["source_node"] = second_id.clone();
     let dependencies = node["dependencies"].as_array_mut().expect("dependencies");
@@ -6412,8 +6741,10 @@ fn refinement_occurrences_follow_proof_eligibility_and_step_count() {
         .as_array_mut()
         .expect("steps")
         .reverse();
-    assert_eq!(node["body"]["steps"][0]["source_class"], "toggleAgain");
-    assert_eq!(node["body"]["steps"][1]["source_class"], "toggle");
+    assert_eq!(node["body"]["steps"][0]["source_class"], again.as_str());
+    assert!(node["body"]["steps"][1]["source_class"]
+        .as_str()
+        .is_some_and(|class| class.ends_with("::toggle")));
     settle_refinement(&mut two, two_position);
     two["refinement_step_rows"][0]["region"]["start"] = json!(33);
     two["refinement_step_rows"][0]["region"]["end"] = json!(34);
@@ -7101,7 +7432,9 @@ fn refinement_catalog_presence_precedes_declaration_backed_step_joins() {
         Some(format!("/semantic_graph/nodes/{refinement}/body/steps/0/source_class").as_str())
     );
 
-    let (mut nonprotocol, evidence) = machine_package();
+    // The class resolves (`Machine::toggle`), so a wrong-kind `source_node`
+    // (the model-owner node) is reached and refuses at `source_node`.
+    let (mut nonprotocol, evidence, position) = catalog_free_operation_package("state_machine");
     let model = nonprotocol["semantic_graph"]["nodes"]
         .as_array()
         .expect("nodes")
@@ -7109,18 +7442,7 @@ fn refinement_catalog_presence_precedes_declaration_backed_step_joins() {
         .find(|node| node["semantic_form"] == "state_machine")
         .expect("state machine")["node_id"]
         .clone();
-    one_step_refinement_with_step(
-        &mut nonprotocol,
-        json!({
-            "source_class": "operation", "source_node": model,
-            "target": {"kind": "stutter"}
-        }),
-    );
-    let position = nonprotocol["semantic_graph"]["nodes"]
-        .as_array()
-        .expect("nodes")
-        .len()
-        - 1;
+    set_catalog_free_source(&mut nonprotocol, position, Some(model));
     let CheckedPackageV2ReadResult::Refused(refusal) = read(&nonprotocol, &evidence) else {
         panic!("non-protocol row with a wrong-kind source must refuse at the row");
     };
@@ -7384,12 +7706,13 @@ fn refinement_catalog_presence_uses_clause_owner_without_step_rows() {
         .len()
         - 1;
     let CheckedPackageV2ReadResult::Refused(refusal) = read(&foreign_row, &evidence) else {
-        panic!("foreign protocol row must refuse at its binding");
+        panic!("foreign protocol row must refuse at its class");
     };
-    assert_eq!(refusal.code, CheckedPackageRefusalCode::InvalidModelBinding);
+    // FR-375: a catalog-free class resolves among declared operations first.
+    assert_eq!(refusal.code, CheckedPackageRefusalCode::MissingDeclaration);
     assert_eq!(
         refusal.loci[0].path.as_ref().map(|path| path.as_str()),
-        Some(format!("/semantic_graph/nodes/{position}/body/steps/0/source_node").as_str())
+        Some(format!("/semantic_graph/nodes/{position}/body/steps/0/source_class").as_str())
     );
 }
 

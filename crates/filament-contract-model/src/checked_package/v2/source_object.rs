@@ -366,7 +366,7 @@ fn dispatch_families_hold(
 
 /// The checked-package source selection-key spelling: `ix://<owner>/<name>`.
 #[ix_trace_rs::string_edge]
-fn source_type_identity(node: &str) -> Option<(&str, &str)> {
+pub(super) fn source_type_identity(node: &str) -> Option<(&str, &str)> {
     node.strip_prefix("ix://")?.rsplit_once('/')
 }
 
