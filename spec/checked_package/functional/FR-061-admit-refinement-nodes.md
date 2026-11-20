@@ -229,7 +229,11 @@ For a model-only refinement with no `class_catalog`, the reader SHALL join
 each step's local `source_node` to an admitted `state`/`operation_anchor` node.
 The row's `source_class` is the alias-free operation class spelling `T::op`
 that FSpec FR-375 fixes: `T` is the declaring type's full qualified name, its
-segments joined with `::`, and `op` is the operation name. The reader SHALL
+segments joined with `::`, and `op` is the operation name. A model-owned type
+is named by its node `ix://<package>/<name>` (a single name, with no nested
+model-owned types), so the reader's `T` for a type owned by the selected
+concrete model is that `<name>`; the reader compares `T` to it segment-free and
+the class spelling carries no namespace beyond it. The reader SHALL
 resolve the class before it reads `source_node`, deriving `T` and `op` from
 `source_class`, and SHALL then admit the row only when the anchor's `context`
 is `T` and its operation is `op`. The anchor's `context` SHALL be the object type, process or state machine that declares

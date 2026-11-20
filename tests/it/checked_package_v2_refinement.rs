@@ -4376,6 +4376,79 @@ fn catalog_free_operation_step_refuses_inherited_class_and_wrong_operation_ancho
     );
 }
 
+/// Clones the package's operation anchor into a second node (the clone keeps
+/// the original id; the original is renumbered), adds its source-map entry, and
+/// lets `edit` change the clone. Returns the clone's id.
+fn add_anchor_variant(package: &mut Value, edit: impl FnOnce(&mut Value)) -> Value {
+    let anchor = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|node| node["semantic_form"] == "operation_anchor")
+        .expect("anchor")
+        .clone();
+    let first_id = anchor["node_id"].clone();
+    let mut reassigned = first_id.clone();
+    reassigned["ordinal"] = json!(1);
+    crate::support::checked_package::reassign_node_id(package, &first_id, &reassigned);
+    let mut variant = anchor;
+    edit(&mut variant);
+    let id = variant["node_id"].clone();
+    package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .push(variant);
+    let source = package["lock"]["sources"][0].clone();
+    package["source_map"]
+        .as_array_mut()
+        .expect("source map")
+        .push(json!({
+            "node_id":id,"role":"anchor","ordinal":0,
+            "regions":[{"source":source,"start":10,"end":11}]
+        }));
+    id
+}
+
+fn with_execution_point(anchor: &mut Value) {
+    anchor["body"]["members"]
+        .as_array_mut()
+        .expect("members")
+        .push(json!({"term":"binding", "name":"execution_point",
+            "value":{"kind":"pre", "operation":"save"}}));
+}
+
+#[trace("TC-062", "FR-061-AC-15", "FR-375-AC-31")]
+#[test]
+fn catalog_free_operation_step_refuses_point_qualified_anchor() {
+    // A no-point anchor of (T, op) exists beside a point-qualified one: the
+    // class resolves, and a point-qualified `source_node` refuses at it.
+    let (mut package, evidence, position) = catalog_free_operation_package("object_type");
+    let pointed = add_anchor_variant(&mut package, with_execution_point);
+    set_catalog_free_source(&mut package, position, Some(pointed));
+    assert_step_refusal(
+        read(&package, &evidence),
+        CheckedPackageRefusalCode::InvalidModelBinding,
+        Some(CheckedPackageRefusalCause::MalformedDeclaration),
+        &format!("/semantic_graph/nodes/{position}/body/steps/0/source_node"),
+    );
+    // A point-qualified anchor alone does not resolve the class.
+    let (mut only_pointed, evidence, position) = catalog_free_operation_package("object_type");
+    let anchor = only_pointed["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .iter_mut()
+        .find(|node| node["semantic_form"] == "operation_anchor")
+        .expect("anchor");
+    with_execution_point(anchor);
+    settle_refinement(&mut only_pointed, position);
+    assert_step_refusal(
+        read(&only_pointed, &evidence),
+        CheckedPackageRefusalCode::MissingDeclaration,
+        Some(CheckedPackageRefusalCause::MissingName),
+        &format!("/semantic_graph/nodes/{position}/body/steps/0/source_class"),
+    );
+}
+
 #[trace("TC-062", "FR-061-AC-15")]
 #[test]
 fn catalog_free_operation_step_refuses_foreign_selected_model_anchor() {
@@ -4453,6 +4526,18 @@ fn catalog_free_operation_step_refuses_foreign_selected_model_anchor() {
         CheckedPackageRefusalCode::InvalidModelBinding,
         Some(CheckedPackageRefusalCause::MalformedDeclaration),
         &format!("/semantic_graph/nodes/{position}/body/steps/0/source_node"),
+    );
+    // A class naming the foreign model's type resolves nowhere in the
+    // selected concrete model: it refuses at `source_class`, not `source_node`.
+    let foreign_type = declared_type_name(&package, &context);
+    package["semantic_graph"]["nodes"][position]["body"]["steps"][0]["source_class"] =
+        json!(format!("{foreign_type}::deposit"));
+    settle_refinement(&mut package, position);
+    assert_step_refusal(
+        read(&package, &evidence),
+        CheckedPackageRefusalCode::MissingDeclaration,
+        Some(CheckedPackageRefusalCause::MissingName),
+        &format!("/semantic_graph/nodes/{position}/body/steps/0/source_class"),
     );
 }
 
@@ -7210,7 +7295,9 @@ fn refinement_catalog_presence_precedes_declaration_backed_step_joins() {
         Some(format!("/semantic_graph/nodes/{refinement}/body/steps/0/source_class").as_str())
     );
 
-    let (mut nonprotocol, evidence) = machine_package();
+    // The class resolves (`Machine::toggle`), so a wrong-kind `source_node`
+    // (the model-owner node) is reached and refuses at `source_node`.
+    let (mut nonprotocol, evidence, position) = catalog_free_operation_package("state_machine");
     let model = nonprotocol["semantic_graph"]["nodes"]
         .as_array()
         .expect("nodes")
@@ -7218,26 +7305,14 @@ fn refinement_catalog_presence_precedes_declaration_backed_step_joins() {
         .find(|node| node["semantic_form"] == "state_machine")
         .expect("state machine")["node_id"]
         .clone();
-    one_step_refinement_with_step(
-        &mut nonprotocol,
-        json!({
-            "source_class": "operation", "source_node": model,
-            "target": {"kind": "stutter"}
-        }),
-    );
-    let position = nonprotocol["semantic_graph"]["nodes"]
-        .as_array()
-        .expect("nodes")
-        .len()
-        - 1;
+    set_catalog_free_source(&mut nonprotocol, position, Some(model));
     let CheckedPackageV2ReadResult::Refused(refusal) = read(&nonprotocol, &evidence) else {
-        panic!("non-protocol row with a bare class must refuse at the row");
+        panic!("non-protocol row with a wrong-kind source must refuse at the row");
     };
-    // FR-375: the class resolves before `source_node`; a bare `op` is not `T::op`.
     assert_eq!(refusal.code, CheckedPackageRefusalCode::InvalidModelBinding);
     assert_eq!(
         refusal.loci[0].path.as_ref().map(|path| path.as_str()),
-        Some(format!("/semantic_graph/nodes/{position}/body/steps/0/source_class").as_str())
+        Some(format!("/semantic_graph/nodes/{position}/body/steps/0/source_node").as_str())
     );
 
     let (mut model_only, evidence) = machine_package();

@@ -1881,28 +1881,67 @@ impl RefinementGraph<'_, '_> {
         Ok(operation)
     }
 
-    /// Resolve a catalog-free class among the operations their declaring type
-    /// itself declares: a bare `op` is a wrong binding, and a `T::op` with no
-    /// no-point anchor at a type named `T` is a missing class.
-    fn require_declared_operation_class(
+    /// The `(type name, operation)` of every no-point operation anchor whose
+    /// declaring type belongs to the selected concrete model, sorted. Built
+    /// once per refinement: the scan is charged `terms.len()` work and the
+    /// table its bytes before it is allocated.
+    fn declared_operations(
         &self,
         meter: &mut super::WorkMeter,
+        selected_root: &CheckedNodeId,
+        at: Path<'_>,
+    ) -> Result<Vec<(&str, &str)>, ValidationFailure> {
+        charge_amount_at(meter, at, self.terms.len() as u64)?;
+        let site = super::natural::site(meter, at);
+        let mut table: Vec<(&str, &str)> =
+            super::stage_storage::vec(meter, &site, self.terms.len())?;
+        let selected = self
+            .local_node(selected_root)
+            .and_then(|root| match &root.owner {
+                Some(super::CheckedNodeOwner::ModelRoot { identity, .. }) => {
+                    Some(identity.as_ref())
+                }
+                _ => None,
+            });
+        for term in self.terms.iter().flatten() {
+            let Some(anchor) = super::structural::typed_anchor_body(term) else {
+                continue;
+            };
+            if anchor.execution_point.is_some() {
+                continue;
+            }
+            let Some(super::CheckedNodeOwner::Model { identity, node }) = self
+                .local_node(anchor.context)
+                .and_then(|declaration| declaration.owner.as_ref())
+            else {
+                continue;
+            };
+            if Some(identity.as_ref()) != selected {
+                continue;
+            }
+            if let Some((_, name)) = super::source_object::source_type_identity(node) {
+                table.push((name, anchor.operation));
+            }
+        }
+        table.sort_unstable();
+        Ok(table)
+    }
+
+    /// Resolve a catalog-free class among the operations the selected model's
+    /// types themselves declare: a bare `op` is a wrong binding, and a `T::op`
+    /// with no no-point anchor at a selected-model type named `T` is a missing
+    /// class.
+    fn require_declared_operation_class(
+        meter: &mut super::WorkMeter,
+        operations: &[(&str, &str)],
         class: &str,
         at: Path<'_>,
         locus: &CheckedNodeId,
     ) -> Result<(), ValidationFailure> {
-        let Some((type_name, operation)) = class.rsplit_once("::") else {
+        let Some(key) = class.rsplit_once("::") else {
             return Err(wrong_binding(meter, at, locus));
         };
-        charge_amount_at(meter, at, self.terms.len() as u64)?;
-        let declared = self.terms.iter().flatten().any(|term| {
-            super::structural::typed_anchor_body(term).is_some_and(|anchor| {
-                anchor.execution_point.is_none()
-                    && anchor.operation == operation
-                    && self.declares_type_name(anchor.context, type_name)
-            })
-        });
-        if declared {
+        if operations.binary_search(&key).is_ok() {
             Ok(())
         } else {
             Err(missing_class(meter, at, locus))
@@ -2315,6 +2354,7 @@ fn validate_rows(
             }
         }
     }
+    let mut operations: Option<Vec<(&str, &str)>> = None;
     for (index, row) in steps.iter().enumerate() {
         let at = root.key("steps").index(index);
         charge_at(meter, at)?;
@@ -2345,8 +2385,16 @@ fn validate_rows(
             }
         } else if let Some(source) = &row.source_node {
             // FR-375 order: the class resolves before any `source_node` check.
-            graph.require_declared_operation_class(
+            if operations.is_none() {
+                operations = Some(graph.declared_operations(
+                    meter,
+                    &node.semantic_type,
+                    root.key("steps"),
+                )?);
+            }
+            RefinementGraph::require_declared_operation_class(
                 meter,
+                operations.as_deref().unwrap_or_default(),
                 &row.source_class,
                 at.key("source_class"),
                 locus,
