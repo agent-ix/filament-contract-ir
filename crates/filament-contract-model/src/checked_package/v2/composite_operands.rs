@@ -1534,6 +1534,15 @@ pub(in crate::checked_package::v2) mod tests {
         let integer_id = id('2');
         let boolean_id = id('1');
         let text_id = id('3');
+        let order_id = fr829_node_id("order");
+        let place_id = fr829_node_id("place");
+        let reference_type_id = fr829_node_id("order-reference-type");
+        let owner_id = fr829_node_id("owner");
+        let slot_id = fr829_node_id("slot");
+        let place_reference_id = fr829_node_id("place-reference");
+        let tag_value_id = fr829_node_id("tag-value");
+        let tuple_type_id = fr829_node_id("tuple-type");
+        let tuple_value_id = fr829_node_id("tuple-value");
 
         fr829_append_node(
             &mut wire,
@@ -1550,6 +1559,104 @@ pub(in crate::checked_package::v2) mod tests {
             20,
         );
 
+        fr829_append_node(
+            &mut wire,
+            json!({
+                "node_id":order_id,
+                "schema_version":"filament.checked-semantic-graph/v2",
+                "node_tag":"model",
+                "semantic_form":"object_type",
+                "semantic_type":order_id,
+                "dependencies":[],
+                "occurrences":[{"role":"type","ordinal":0}],
+                "body":{"term":"aggregate","members":[]}
+            }),
+            21,
+        );
+        fr829_append_node(
+            &mut wire,
+            json!({
+                "node_id":place_id,
+                "schema_version":"filament.checked-semantic-graph/v2",
+                "node_tag":"timed_model",
+                "semantic_form":"clock_place",
+                "semantic_type":place_id,
+                "dependencies":fr829_dependencies(&[order_id.clone()]),
+                "occurrences":[{"role":"expression","ordinal":0}],
+                "body":{"term":"aggregate","members":[
+                    {"term":"binding","name":"model","value":fr829_reference_term(&order_id)},
+                    {"term":"binding","name":"path","value":{"term":"aggregate","members":[]}},
+                    {"term":"binding","name":"resolved_path","value":{"term":"aggregate","members":[]}}
+                ]}
+            }),
+            22,
+        );
+        fr829_append_node(
+            &mut wire,
+            json!({
+                "node_id":reference_type_id,
+                "schema_version":"filament.checked-semantic-graph/v2",
+                "node_tag":"composite_type",
+                "semantic_form":"reference",
+                "semantic_type":reference_type_id,
+                "dependencies":fr829_dependencies(&[order_id.clone()]),
+                "occurrences":[{"role":"type","ordinal":0}],
+                "body":{"term":"aggregate","members":[fr829_reference_term(&order_id)]}
+            }),
+            23,
+        );
+        fr829_append_node(
+            &mut wire,
+            json!({
+                "node_id":owner_id,
+                "schema_version":"filament.checked-semantic-graph/v2",
+                "node_tag":"value",
+                "semantic_form":"parameter",
+                "semantic_type":reference_type_id,
+                "dependencies":fr829_dependencies(&[reference_type_id.clone(), integer_id.clone(), text_id.clone()]),
+                "occurrences":[{"role":"expression","ordinal":0}],
+                "body":{"term":"aggregate","members":[
+                    {"term":"binding","name":"name","value":{"term":"literal","type":text_id,"value_kind":"text","value":"self"}},
+                    {"term":"binding","name":"level","value":{"term":"literal","type":integer_id,"value_kind":"integer","value":"0"}}
+                ]}
+            }),
+            24,
+        );
+        fr829_append_node(
+            &mut wire,
+            json!({
+                "node_id":slot_id,
+                "schema_version":"filament.checked-semantic-graph/v2",
+                "node_tag":"value",
+                "semantic_form":"parameter",
+                "semantic_type":integer_id,
+                "dependencies":fr829_dependencies(&[integer_id.clone(), text_id.clone()]),
+                "occurrences":[{"role":"expression","ordinal":0}],
+                "body":{"term":"aggregate","members":[
+                    {"term":"binding","name":"name","value":{"term":"literal","type":text_id,"value_kind":"text","value":"slot-index"}},
+                    {"term":"binding","name":"level","value":{"term":"literal","type":integer_id,"value_kind":"integer","value":"0"}}
+                ]}
+            }),
+            25,
+        );
+        fr829_append_node(
+            &mut wire,
+            json!({
+                "node_id":place_reference_id,
+                "schema_version":"filament.checked-semantic-graph/v2",
+                "node_tag":"expression",
+                "semantic_form":"place_reference",
+                "semantic_type":clock_id,
+                "dependencies":fr829_dependencies(&[place_id.clone(), owner_id.clone(), slot_id.clone()]),
+                "occurrences":[{"role":"expression","ordinal":0}],
+                "body":{"term":"application","operator":"place_ref",
+                    "operation":{"identity":"filament.op.clock_reference.ref","laws":[],"mode":null,"member":null,"leaves":[]},
+                    "result_type":clock_id,
+                    "arguments":[fr829_reference_term(&place_id),fr829_reference_term(&owner_id),fr829_reference_term(&slot_id)]}
+            }),
+            26,
+        );
+
         let tag_body = json!({"term":"aggregate","members":[
             {"term":"binding","name":"r","value":fr829_reference_term(&clock_id)},
             {"term":"binding","name":"n","value":fr829_reference_term(&integer_id)}
@@ -1563,30 +1670,23 @@ pub(in crate::checked_package::v2) mod tests {
         tag["body"] = tag_body;
         tag["dependencies"] = fr829_dependencies(&[clock_id.clone(), integer_id.clone()]);
 
-        let left_id = fr829_node_id("left");
-        let right_id = fr829_node_id("right");
-        let tuple_type_id = fr829_node_id("tuple-type");
-        let tuple_value_id = fr829_node_id("tuple-value");
-        let expression_id = |form: &str| fr829_node_id(form);
-        let parameter = |node_id: &CheckedNodeId, name: &str| {
+        fr829_append_node(
+            &mut wire,
             json!({
-                "node_id":node_id,
+                "node_id":tag_value_id,
                 "schema_version":"filament.checked-semantic-graph/v2",
                 "node_tag":"value",
-                "semantic_form":"parameter",
-                "semantic_type":clock_id,
-                "dependencies":fr829_dependencies(&[
-                    clock_id.clone(), integer_id.clone(), text_id.clone()
-                ]),
+                "semantic_form":"record_value",
+                "semantic_type":tag_id,
+                "dependencies":fr829_dependencies(&[tag_id.clone(), place_reference_id.clone(), slot_id.clone()]),
                 "occurrences":[{"role":"expression","ordinal":0}],
                 "body":{"term":"aggregate","members":[
-                    {"term":"binding","name":"name","value":{"term":"literal","type":text_id,"value_kind":"text","value":name}},
-                    {"term":"binding","name":"level","value":{"term":"literal","type":integer_id,"value_kind":"integer","value":"0"}}
+                    {"term":"binding","name":"r","value":fr829_reference_term(&place_reference_id)},
+                    {"term":"binding","name":"n","value":fr829_reference_term(&slot_id)}
                 ]}
-            })
-        };
-        fr829_append_node(&mut wire, parameter(&left_id, "left-clock"), 21);
-        fr829_append_node(&mut wire, parameter(&right_id, "right-clock"), 22);
+            }),
+            27,
+        );
 
         fr829_append_node(
             &mut wire,
@@ -1600,7 +1700,7 @@ pub(in crate::checked_package::v2) mod tests {
                 "occurrences":[{"role":"type","ordinal":0}],
                 "body":{"term":"aggregate","members":[fr829_reference_term(&clock_id)]}
             }),
-            23,
+            28,
         );
         fr829_append_node(
             &mut wire,
@@ -1610,11 +1710,11 @@ pub(in crate::checked_package::v2) mod tests {
                 "node_tag":"value",
                 "semantic_form":"tuple_value",
                 "semantic_type":tuple_type_id,
-                "dependencies":fr829_dependencies(&[clock_id.clone(), tuple_type_id.clone(), left_id.clone()]),
+                "dependencies":fr829_dependencies(&[tuple_type_id.clone(), place_reference_id.clone()]),
                 "occurrences":[{"role":"expression","ordinal":0}],
-                "body":{"term":"aggregate","members":[fr829_reference_term(&left_id)]}
+                "body":{"term":"aggregate","members":[fr829_reference_term(&place_reference_id)]}
             }),
-            24,
+            29,
         );
 
         for (ordinal, identity) in [
@@ -1624,14 +1724,9 @@ pub(in crate::checked_package::v2) mod tests {
         .into_iter()
         .enumerate()
         {
-            let form = if identity.ends_with(".eq") {
-                "eq"
-            } else {
-                "ne"
-            };
-            let operation_id = expression_id(form);
-            let application_dependencies =
-                fr829_dependencies(&[left_id.clone(), right_id.clone()]);
+            let form = if identity.ends_with(".eq") { "eq" } else { "ne" };
+            let operation_id = fr829_node_id(form);
+            let application_dependencies = fr829_dependencies(&[place_reference_id.clone()]);
             fr829_append_node(
                 &mut wire,
                 json!({
@@ -1645,9 +1740,9 @@ pub(in crate::checked_package::v2) mod tests {
                     "body":{"term":"application","operator":"binary",
                         "operation":{"identity":identity,"laws":[],"mode":null,"member":null,"leaves":[]},
                         "result_type":boolean_id,
-                        "arguments":[fr829_reference_term(&left_id),fr829_reference_term(&right_id)]}
+                        "arguments":[fr829_reference_term(&place_reference_id),fr829_reference_term(&place_reference_id)]}
                 }),
-                25 + ordinal as u64,
+                30 + ordinal as u64,
             );
         }
         wire
@@ -1673,6 +1768,17 @@ pub(in crate::checked_package::v2) mod tests {
             .expect("Tag record");
         let CheckedTerm::Aggregate { members } = &tag.body else {
             panic!("Tag is an aggregate record body");
+        };
+        assert!(matches!(&members[0], CheckedTerm::Binding { name, .. } if name.as_ref() == "r"));
+        assert!(matches!(&members[1], CheckedTerm::Binding { name, .. } if name.as_ref() == "n"));
+
+        let tag_value = nodes
+            .iter()
+            .find(|node| node.node_id == fr829_node_id("tag-value"))
+            .expect("Tag record data");
+        assert_eq!(tag_value.semantic_form.as_ref(), "record_value");
+        let CheckedTerm::Aggregate { members } = &tag_value.body else {
+            panic!("Tag data is an aggregate record value");
         };
         assert!(matches!(&members[0], CheckedTerm::Binding { name, .. } if name.as_ref() == "r"));
         assert!(matches!(&members[1], CheckedTerm::Binding { name, .. } if name.as_ref() == "n"));
@@ -1711,8 +1817,7 @@ pub(in crate::checked_package::v2) mod tests {
             .find(|node| node["body"]["operation"]["identity"] == "filament.op.clock_reference.eq")
             .expect("clock-reference equality application");
         application["body"]["arguments"][0] = fr829_reference_term(&id('5'));
-        application["dependencies"] =
-            fr829_dependencies(&[id('5'), fr829_node_id("right")]);
+        application["dependencies"] = fr829_dependencies(&[id('5'), fr829_node_id("place-reference")]);
         let bytes = crate::checked_package::v2::test_support::canonical(&wrong_operand);
         let refused = CheckedPackageV2::read(
             &bytes,
