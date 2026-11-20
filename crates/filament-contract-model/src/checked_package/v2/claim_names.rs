@@ -67,7 +67,16 @@ fn is_claim_bearing(kind: CheckedNodeKind) -> bool {
         kind,
         CheckedNodeKind::State(StateForm::StateClause)
             | CheckedNodeKind::Relation(RelationForm::Refinement)
-            | CheckedNodeKind::Claim(_)
+            | CheckedNodeKind::Claim(
+                ClaimForm::VerificationClaim
+                    | ClaimForm::AnalysisClaim
+                    | ClaimForm::Hyperproperty
+                    | ClaimForm::SynthesisRequest
+                    | ClaimForm::ProbabilisticClaim
+                    | ClaimForm::StateGraph
+                    | ClaimForm::StepRelation
+                    | ClaimForm::Schedulability
+            )
     )
 }
 

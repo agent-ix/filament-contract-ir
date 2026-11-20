@@ -262,6 +262,11 @@ pub use checked_package::{
     CHECKED_PACKAGE_V2, CONTRACT_PACKAGE_VERSION,
 };
 
+pub use checked_package::{
+    encode_checked_package_v2_with_requirement_items, CapabilityKind, DomainKey, DomainKind,
+    RequirementExtent, RequirementGuard, RequirementItemRow, ValueValidityRecord,
+};
+
 pub use checked_package::CheckedFieldReadForm;
 pub use checked_package::{
     AdmittedEqualityReadError, AdmittedEqualityReadErrorCode, EqualityDimensionRole,
