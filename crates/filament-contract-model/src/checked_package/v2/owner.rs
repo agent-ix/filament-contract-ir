@@ -464,6 +464,9 @@ enum OwnerClauseKind {
     Invariant,
     Precondition,
     Body,
+    /// The clause function of an FR-640 `reward` node (FSpec FR-322 "Owner
+    /// joins"): owned by an operation member, neither a guard nor a body.
+    Reward,
     Other,
 }
 
@@ -474,6 +477,7 @@ impl OwnerClauseKind {
             "invariant" => Self::Invariant,
             "precondition" => Self::Precondition,
             "body" => Self::Body,
+            "reward" => Self::Reward,
             _ => Self::Other,
         }
     }
@@ -508,6 +512,11 @@ fn clause_kind(body: &CheckedTerm) -> Option<OwnerClauseKind> {
 /// Whether `body` is the body of a `body` clause function.
 pub(super) fn is_body_clause(body: &CheckedTerm) -> bool {
     clause_kind(body) == Some(OwnerClauseKind::Body)
+}
+
+/// Whether `body` is the body of a `reward` clause function.
+pub(super) fn is_reward_clause(body: &CheckedTerm) -> bool {
+    clause_kind(body) == Some(OwnerClauseKind::Reward)
 }
 
 fn model_kind_matches(
@@ -565,9 +574,9 @@ fn model_kind_matches(
                 }) || model.record_types.contains_key(declared)
                     || model.event_types.contains(declared)
             }
-            Some(OwnerClauseKind::Precondition | OwnerClauseKind::Body) => {
-                operations.binary_search(&declared).is_ok()
-            }
+            Some(
+                OwnerClauseKind::Precondition | OwnerClauseKind::Body | OwnerClauseKind::Reward,
+            ) => operations.binary_search(&declared).is_ok(),
             _ => false,
         },
         _ => false,
@@ -747,7 +756,11 @@ pub(super) fn validate_owner_joins(
                         .is_some_and(|term| {
                             matches!(
                                 clause_kind(term),
-                                Some(OwnerClauseKind::Invariant | OwnerClauseKind::Precondition)
+                                Some(
+                                    OwnerClauseKind::Invariant
+                                        | OwnerClauseKind::Precondition
+                                        | OwnerClauseKind::Reward
+                                )
                             )
                         })
                 {

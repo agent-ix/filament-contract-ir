@@ -28,6 +28,8 @@ use crate::checked_package::shared::{
     CheckedPackageRefusalCause as Cause, CheckedPackageRefusalCode as Code,
 };
 
+mod claims;
+
 const FORM: &str = "probabilistic";
 
 /// The term bound to the `index`th member of an aggregate body.
@@ -454,7 +456,12 @@ impl<'a> Join<'a> {
             Some(CheckedNodeOwner::Model { node: member, .. })
                 if member.as_ref() == operation.identity.as_ref()
         );
-        if !owned || &node.semantic_type != value_type {
+        // A reward's expression is a `reward` clause function, never a
+        // `precondition` or `body` one (FSpec FR-640 rule 4).
+        if !owned
+            || &node.semantic_type != value_type
+            || !super::owner::is_reward_clause(&self.terms[function])
+        {
             return Err(invalid(meter, holder, expression_at));
         }
         let parameters = bound(&self.terms[function], 0).map(members);
@@ -657,7 +664,11 @@ pub(super) fn validate(
         .iter()
         .filter(|kind| matches!(kind, CheckedNodeKind::Probabilistic(_)))
         .count();
-    if count == 0 {
+    let claims = kinds
+        .iter()
+        .filter(|kind| **kind == CheckedNodeKind::Claim(super::ClaimForm::ProbabilisticClaim))
+        .count();
+    if count == 0 && claims == 0 {
         return Ok(());
     }
     let site = Site::new(PackageReadStage::Graph, 0, FORM, Path::root());
@@ -774,5 +785,5 @@ pub(super) fn validate(
             Err(at) => seen.insert(at, key),
         }
     }
-    Ok(())
+    claims::validate(&join, meter)
 }

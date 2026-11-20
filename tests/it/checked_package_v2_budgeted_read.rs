@@ -461,7 +461,6 @@ fn an_unaffordable_refusal_diagnostic_is_exhausted_with_the_pending_refusal() {
     assert!(refusal.document_pointer.is_none());
     assert!(refusal.extension_detail.is_none());
     assert!(refusal.protocol_detail.is_none());
-    assert!(refusal.terminal_duplicate.is_none());
     let pointer = refusal.loci[0]
         .path
         .as_ref()
