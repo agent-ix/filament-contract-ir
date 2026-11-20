@@ -1374,8 +1374,8 @@ pub(in crate::checked_package::v2) mod tests {
     use super::super::CheckedOccurrenceRole;
     use super::*;
     use crate::{
-        CheckedPackageEvidence, CheckedPackageReadLimits, CheckedPackageRefusalCode,
-        CheckedPackageV2ReadResult,
+        CheckedPackageEvidence, CheckedPackageReadLimits, CheckedPackageRefusalCause,
+        CheckedPackageRefusalCode, CheckedPackageV2, CheckedPackageV2ReadResult,
     };
     use ix_trace_rs::trace;
     use serde_json::json;
@@ -1479,6 +1479,258 @@ pub(in crate::checked_package::v2) mod tests {
             .get(&digit)
             .cloned()
             .unwrap_or_else(|| raw_id(digit))
+    }
+
+    fn fr829_node_id(path: &str) -> CheckedNodeId {
+        CheckedNodeId {
+            package: "composite".into(),
+            path: vec![super::super::CheckedNodePathSegment::Name(
+                format!("fr829-{path}").into(),
+            )],
+            ordinal: 0,
+        }
+    }
+
+    fn fr829_dependencies(ids: &[CheckedNodeId]) -> Value {
+        let mut ids = ids.to_vec();
+        ids.sort();
+        json!(ids)
+    }
+
+    fn fr829_append_node(wire: &mut Value, node: Value, region: u64) {
+        let source = wire["lock"]["sources"][0].clone();
+        let node_id = node["node_id"].clone();
+        let role = node["occurrences"][0]["role"].clone();
+        wire["semantic_graph"]["nodes"]
+            .as_array_mut()
+            .expect("fixture nodes")
+            .push(node);
+        wire["source_map"]
+            .as_array_mut()
+            .expect("fixture source map")
+            .push(json!({
+                "node_id":node_id,
+                "role":role,
+                "ordinal":0,
+                "regions":[{"source":source,"start":region,"end":region + 1}]
+            }));
+    }
+
+    fn fr829_reference_term(target: &CheckedNodeId) -> Value {
+        json!({"term":"reference","target":target})
+    }
+
+    fn fr829_clock_reference_package() -> Value {
+        let mut wire = fixture().0.clone();
+        let clock_id = CheckedNodeId {
+            package: "composite".into(),
+            path: vec![
+                super::super::CheckedNodePathSegment::Name("scalar_type".into()),
+                super::super::CheckedNodePathSegment::Name("clock_reference".into()),
+            ],
+            ordinal: 0,
+        };
+        let tag_id = id('4');
+        let integer_id = id('2');
+        let boolean_id = id('1');
+        let text_id = id('3');
+
+        fr829_append_node(
+            &mut wire,
+            json!({
+                "node_id":clock_id,
+                "schema_version":"filament.checked-semantic-graph/v2",
+                "node_tag":"scalar_type",
+                "semantic_form":"clock_reference",
+                "semantic_type":clock_id,
+                "dependencies":[],
+                "occurrences":[{"role":"type","ordinal":0}],
+                "body":{"term":"aggregate","members":[]}
+            }),
+            20,
+        );
+
+        let tag_body = json!({"term":"aggregate","members":[
+            {"term":"binding","name":"r","value":fr829_reference_term(&clock_id)},
+            {"term":"binding","name":"n","value":fr829_reference_term(&integer_id)}
+        ]});
+        let tag = wire["semantic_graph"]["nodes"]
+            .as_array_mut()
+            .expect("fixture nodes")
+            .iter_mut()
+            .find(|node| node["node_id"] == json!(tag_id))
+            .expect("record type");
+        tag["body"] = tag_body;
+        tag["dependencies"] = fr829_dependencies(&[clock_id.clone(), integer_id.clone()]);
+
+        let left_id = fr829_node_id("left");
+        let right_id = fr829_node_id("right");
+        let tuple_type_id = fr829_node_id("tuple-type");
+        let tuple_value_id = fr829_node_id("tuple-value");
+        let expression_id = |form: &str| fr829_node_id(form);
+        let parameter = |node_id: &CheckedNodeId, name: &str| {
+            json!({
+                "node_id":node_id,
+                "schema_version":"filament.checked-semantic-graph/v2",
+                "node_tag":"value",
+                "semantic_form":"parameter",
+                "semantic_type":clock_id,
+                "dependencies":fr829_dependencies(&[
+                    clock_id.clone(), integer_id.clone(), text_id.clone()
+                ]),
+                "occurrences":[{"role":"expression","ordinal":0}],
+                "body":{"term":"aggregate","members":[
+                    {"term":"binding","name":"name","value":{"term":"literal","type":text_id,"value_kind":"text","value":name}},
+                    {"term":"binding","name":"level","value":{"term":"literal","type":integer_id,"value_kind":"integer","value":"0"}}
+                ]}
+            })
+        };
+        fr829_append_node(&mut wire, parameter(&left_id, "left-clock"), 21);
+        fr829_append_node(&mut wire, parameter(&right_id, "right-clock"), 22);
+
+        fr829_append_node(
+            &mut wire,
+            json!({
+                "node_id":tuple_type_id,
+                "schema_version":"filament.checked-semantic-graph/v2",
+                "node_tag":"composite_type",
+                "semantic_form":"tuple",
+                "semantic_type":tuple_type_id,
+                "dependencies":fr829_dependencies(&[clock_id.clone()]),
+                "occurrences":[{"role":"type","ordinal":0}],
+                "body":{"term":"aggregate","members":[fr829_reference_term(&clock_id)]}
+            }),
+            23,
+        );
+        fr829_append_node(
+            &mut wire,
+            json!({
+                "node_id":tuple_value_id,
+                "schema_version":"filament.checked-semantic-graph/v2",
+                "node_tag":"value",
+                "semantic_form":"tuple_value",
+                "semantic_type":tuple_type_id,
+                "dependencies":fr829_dependencies(&[clock_id.clone(), tuple_type_id.clone(), left_id.clone()]),
+                "occurrences":[{"role":"expression","ordinal":0}],
+                "body":{"term":"aggregate","members":[fr829_reference_term(&left_id)]}
+            }),
+            24,
+        );
+
+        for (ordinal, identity) in [
+            "filament.op.clock_reference.eq",
+            "filament.op.clock_reference.ne",
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let form = if identity.ends_with(".eq") {
+                "eq"
+            } else {
+                "ne"
+            };
+            let operation_id = expression_id(form);
+            let application_dependencies =
+                fr829_dependencies(&[boolean_id.clone(), left_id.clone(), right_id.clone()]);
+            fr829_append_node(
+                &mut wire,
+                json!({
+                    "node_id":operation_id,
+                    "schema_version":"filament.checked-semantic-graph/v2",
+                    "node_tag":"expression",
+                    "semantic_form":"binary",
+                    "semantic_type":boolean_id,
+                    "dependencies":application_dependencies,
+                    "occurrences":[{"role":"expression","ordinal":0}],
+                    "body":{"term":"application","operator":"binary",
+                        "operation":{"identity":identity,"laws":[],"mode":null,"member":null,"leaves":[]},
+                        "result_type":boolean_id,
+                        "arguments":[fr829_reference_term(&left_id),fr829_reference_term(&right_id)]}
+                }),
+                25 + ordinal as u64,
+            );
+        }
+        wire
+    }
+
+    #[trace("FR-829-AC-5")]
+    #[test]
+    fn fr829_clock_reference_tag_tuple_and_equalities_admit_through_package_reader() {
+        let wire = fr829_clock_reference_package();
+        let bytes = crate::checked_package::v2::test_support::canonical(&wire);
+        let result = CheckedPackageV2::read(
+            &bytes,
+            CheckedPackageReadLimits::bounded(),
+            &CheckedPackageEvidence::new(),
+        );
+        let CheckedPackageV2ReadResult::Admitted(package) = result else {
+            panic!("Tag, tuple clock-reference value, and clock-reference eq/ne must admit: {result:?}");
+        };
+        let nodes = &package.resolved_graph().nodes;
+        let tag = nodes
+            .iter()
+            .find(|node| node.node_id == id('4'))
+            .expect("Tag record");
+        let CheckedTerm::Aggregate { members } = &tag.body else {
+            panic!("Tag is an aggregate record body");
+        };
+        assert!(matches!(&members[0], CheckedTerm::Binding { name, .. } if name.as_ref() == "r"));
+        assert!(matches!(&members[1], CheckedTerm::Binding { name, .. } if name.as_ref() == "n"));
+
+        let tuple_value = nodes
+            .iter()
+            .find(|node| node.node_id == fr829_node_id("tuple-value"))
+            .expect("tuple value carrying the clock-reference term");
+        assert_eq!(tuple_value.semantic_form.as_ref(), "tuple_value");
+        let CheckedTerm::Aggregate { members } = &tuple_value.body else {
+            panic!("tuple value is an aggregate");
+        };
+        assert_eq!(members.len(), 1);
+
+        let operations = nodes
+            .iter()
+            .filter_map(|node| match &node.body {
+                CheckedTerm::Application { operation, .. } => {
+                    operation.identity().map(str::to_owned)
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert!(operations
+            .iter()
+            .any(|id| id == "filament.op.clock_reference.eq"));
+        assert!(operations
+            .iter()
+            .any(|id| id == "filament.op.clock_reference.ne"));
+
+        let mut wrong_operand = wire;
+        let application = wrong_operand["semantic_graph"]["nodes"]
+            .as_array_mut()
+            .expect("graph nodes")
+            .iter_mut()
+            .find(|node| node["body"]["operation"]["identity"] == "filament.op.clock_reference.eq")
+            .expect("clock-reference equality application");
+        application["body"]["arguments"][0] = fr829_reference_term(&id('5'));
+        application["dependencies"] =
+            fr829_dependencies(&[id('1'), id('5'), fr829_node_id("right")]);
+        let bytes = crate::checked_package::v2::test_support::canonical(&wrong_operand);
+        let refused = CheckedPackageV2::read(
+            &bytes,
+            CheckedPackageReadLimits::bounded(),
+            &CheckedPackageEvidence::new(),
+        );
+        let CheckedPackageV2ReadResult::Refused(refusal) = refused else {
+            panic!("record-valued equality operand must refuse: {refused:?}");
+        };
+        assert_eq!(refusal.code, CheckedPackageRefusalCode::IllTyped);
+        assert_eq!(
+            refusal.cause,
+            Some(CheckedPackageRefusalCause::OperatorIneligible)
+        );
+        assert!(refusal.loci[0]
+            .path
+            .as_ref()
+            .is_some_and(|path| path.to_string().ends_with("/body/arguments/0")));
     }
 
     /// Every corruption below starts from a genuinely reader-admitted package.

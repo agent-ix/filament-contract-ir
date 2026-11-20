@@ -490,6 +490,702 @@ fn add_declarations(wire: &mut Value) {
     }
 }
 
+/// Add a native clock-reference type, a `Reference<Order>` owner parameter and
+/// a place-reference application to an already admitted timed-slot package.
+fn add_clock_reference(wire: &mut Value, place: &Value) -> (Value, Value, Value, Value, Value) {
+    let order_position = wire["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .position(|node| node["node_id"] == order_node())
+        .expect("Order model node");
+    let clock_id = fixture_support::structural_id(
+        "example",
+        vec![json!("scalar_type"), json!("clock_reference")],
+        0,
+    );
+    let reference_type_id = fixture_support::structural_id(
+        "example",
+        vec![
+            json!("composite_type"),
+            json!("reference"),
+            json!({"node":order_position}),
+        ],
+        0,
+    );
+    let owner_id = json!({"ordinal":0,"package":"example","path":["value","parameter","self"]});
+    let integer_parameter_id =
+        json!({"ordinal":0,"package":"example","path":["value","parameter","slot-index"]});
+    let model_id = order_node();
+    push_node(
+        wire,
+        json!({
+            "body":aggregate(vec![]),
+            "dependencies":[],
+            "node_id":clock_id,
+            "node_tag":"scalar_type",
+            "occurrences":[{"ordinal":0,"role":"type"}],
+            "schema_version":"filament.checked-semantic-graph/v2",
+            "semantic_form":"clock_reference",
+            "semantic_type":clock_id,
+        }),
+        9200,
+    );
+    let mut reference_dependencies = vec![model_id.clone()];
+    sort_ids(&mut reference_dependencies);
+    push_node(
+        wire,
+        json!({
+            "body":aggregate(vec![json!({"term":"reference","target":model_id})]),
+            "dependencies":reference_dependencies,
+            "node_id":reference_type_id,
+            "node_tag":"composite_type",
+            "occurrences":[{"ordinal":0,"role":"type"}],
+            "schema_version":"filament.checked-semantic-graph/v2",
+            "semantic_form":"reference",
+            "semantic_type":reference_type_id,
+        }),
+        9201,
+    );
+    let integer_id = integer_type();
+    let text_id = text_type();
+    let mut owner_dependencies = vec![
+        reference_type_id.clone(),
+        integer_id.clone(),
+        text_id.clone(),
+    ];
+    sort_ids(&mut owner_dependencies);
+    push_node(
+        wire,
+        json!({
+            "body":aggregate(vec![
+                bind("name", text("self")),
+                bind("level", integer(0)),
+            ]),
+            "dependencies":owner_dependencies,
+            "node_id":owner_id,
+            "node_tag":"value",
+            "occurrences":[{"ordinal":0,"role":"expression"}],
+            "schema_version":"filament.checked-semantic-graph/v2",
+            "semantic_form":"parameter",
+            "semantic_type":reference_type_id,
+        }),
+        9202,
+    );
+    let mut slot_dependencies = vec![integer_id.clone(), text_id.clone()];
+    sort_ids(&mut slot_dependencies);
+    push_node(
+        wire,
+        json!({
+            "body":aggregate(vec![
+                bind("name", text("slot-index")),
+                bind("level", integer(0)),
+            ]),
+            "dependencies":slot_dependencies,
+            "node_id":integer_parameter_id,
+            "node_tag":"value",
+            "occurrences":[{"ordinal":0,"role":"expression"}],
+            "schema_version":"filament.checked-semantic-graph/v2",
+            "semantic_form":"parameter",
+            "semantic_type":integer_id,
+        }),
+        9203,
+    );
+
+    let place_position = wire["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .position(|node| node["node_id"] == *place)
+        .expect("clock place");
+    let owner_position = wire["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .position(|node| node["node_id"] == owner_id)
+        .expect("owner parameter");
+    let slot_position = wire["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .position(|node| node["node_id"] == integer_parameter_id)
+        .expect("slot parameter");
+    let clock_position = wire["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .position(|node| node["node_id"] == clock_id)
+        .expect("clock-reference type");
+    let place_reference_id = fixture_support::structural_id(
+        "example",
+        vec![
+            json!("expression"),
+            json!("place_reference"),
+            json!({"node":place_position}),
+            json!({"node":owner_position}),
+            json!({"node":slot_position}),
+            json!("filament.op.clock_reference.ref"),
+            json!("place_ref"),
+            json!({"node":clock_position}),
+        ],
+        0,
+    );
+    let mut dependencies = vec![
+        place.clone(),
+        owner_id.clone(),
+        integer_parameter_id.clone(),
+    ];
+    sort_ids(&mut dependencies);
+    push_node(
+        wire,
+        json!({
+            "body":{
+                "term":"application",
+                "operator":"place_ref",
+                "operation":{"identity":"filament.op.clock_reference.ref","laws":[],"leaves":[],"member":null,"mode":null},
+                "result_type":clock_id,
+                "arguments":[
+                    {"term":"reference","target":place},
+                    {"term":"reference","target":owner_id},
+                    {"term":"reference","target":integer_parameter_id}
+                ]
+            },
+            "dependencies":dependencies,
+            "node_id":place_reference_id,
+            "node_tag":"expression",
+            "occurrences":[{"ordinal":0,"role":"expression"}],
+            "schema_version":"filament.checked-semantic-graph/v2",
+            "semantic_form":"place_reference",
+            "semantic_type":clock_id,
+        }),
+        9204,
+    );
+    (
+        place_reference_id,
+        clock_id,
+        owner_id,
+        integer_parameter_id,
+        reference_type_id,
+    )
+}
+
+fn add_clock_reference_equality(wire: &mut Value, term: &Value, operation: &str) {
+    let boolean = wire["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|node| node["node_tag"] == "scalar_type" && node["semantic_form"] == "boolean")
+        .expect("Boolean type")["node_id"]
+        .clone();
+    let mut dependencies = vec![term.clone()];
+    sort_ids(&mut dependencies);
+    push_node(
+        wire,
+        json!({
+            "body":{
+                "term":"application",
+                "operator":"binary",
+                "operation":{"identity":operation,"laws":[],"leaves":[],"member":null,"mode":null},
+                "result_type":boolean,
+                "arguments":[
+                    {"term":"reference","target":term},
+                    {"term":"reference","target":term}
+                ]
+            },
+            "dependencies":dependencies,
+            "node_id":{"ordinal":0,"package":"example","path":["expression","binary",operation]},
+            "node_tag":"expression",
+            "occurrences":[{"ordinal":0,"role":"expression"}],
+            "schema_version":"filament.checked-semantic-graph/v2",
+            "semantic_form":"binary",
+            "semantic_type":boolean,
+        }),
+        9205,
+    );
+}
+
+fn add_object_owner_term(wire: &mut Value, owner: &Value, suffix: &str) -> Value {
+    let node_id = json!({
+        "ordinal":0,"package":"example","path":["expression","deref",suffix]
+    });
+    let model_id = order_node();
+    let mut dependencies = vec![owner.clone()];
+    sort_ids(&mut dependencies);
+    push_node(
+        wire,
+        json!({
+            "body":{
+                "term":"application",
+                "operator":"deref",
+                "operation":{"identity":"filament.op.model.deref","laws":[],"leaves":[],"member":null,"mode":null},
+                "result_type":model_id,
+                "arguments":[{"term":"reference","target":owner}]
+            },
+            "dependencies":dependencies,
+            "node_id":node_id,
+            "node_tag":"expression",
+            "occurrences":[{"ordinal":0,"role":"expression"}],
+            "schema_version":"filament.checked-semantic-graph/v2",
+            "semantic_form":"deref",
+            "semantic_type":model_id,
+        }),
+        9207,
+    );
+    node_id
+}
+
+fn clock_reference_wire() -> (Value, Value, PathBuf, Value, Value, Value, Value, Value) {
+    let (mut wire, document, proposal) = admitted_with(&[set_place()]);
+    add_declarations(&mut wire);
+    let place = id_of("ss-set-tuple-0");
+    let (place_reference, clock, owner, slot, reference_type) =
+        add_clock_reference(&mut wire, &place);
+    for operation in [
+        "filament.op.clock_reference.eq",
+        "filament.op.clock_reference.ne",
+    ] {
+        add_clock_reference_equality(&mut wire, &place_reference, operation);
+    }
+    fixture_support::refresh_identity(&mut wire);
+    let place_reference = wire["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|node| node["body"]["operation"]["identity"] == "filament.op.clock_reference.ref")
+        .expect("place-reference application")["node_id"]
+        .clone();
+    (
+        wire,
+        document,
+        proposal,
+        place_reference,
+        clock,
+        owner,
+        slot,
+        reference_type,
+    )
+}
+
+#[trace("FR-829-AC-1", "FR-829-AC-5")]
+#[test]
+fn clock_reference_place_and_equalities_admit_through_public_package_reader() {
+    let (wire, document, proposal, _, _, _, _, _) = clock_reference_wire();
+    let result = read(&wire, &document, &proposal, "clock-reference place read");
+    let CheckedPackageV2ReadResult::Admitted(package) = result else {
+        panic!("clock-reference place and equality package must admit: {result:?}");
+    };
+    let nodes = &package.resolved_graph().nodes;
+    assert!(nodes
+        .iter()
+        .any(|node| node.semantic_form.as_ref() == "place_reference"));
+    let operations = nodes
+        .iter()
+        .filter_map(|node| match &node.body {
+            CheckedTerm::Application { operation, .. } => Some(operation.identity()?),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert!(operations.contains(&"filament.op.clock_reference.eq"));
+    assert!(operations.contains(&"filament.op.clock_reference.ne"));
+}
+
+fn clock_reference_application(wire: &mut Value) -> &mut Value {
+    wire["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .iter_mut()
+        .find(|node| node["body"]["operation"]["identity"] == "filament.op.clock_reference.ref")
+        .expect("place-reference application")
+}
+
+fn clock_reference_dependencies(application: &mut Value) {
+    let mut dependencies = application["body"]["arguments"]
+        .as_array()
+        .expect("arguments")
+        .iter()
+        .filter_map(|argument| {
+            argument["target"]
+                .as_object()
+                .map(|_| argument["target"].clone())
+        })
+        .collect::<Vec<_>>();
+    sort_ids(&mut dependencies);
+    application["dependencies"] = json!(dependencies);
+}
+
+fn assert_clock_reference_refusal(
+    wire: &Value,
+    document: &Value,
+    proposal: &Path,
+    name: &str,
+    cause: Cause,
+    pointer: &str,
+) {
+    let result = read(wire, document, proposal, name);
+    let CheckedPackageV2ReadResult::Refused(refusal) = result else {
+        panic!("{name} must refuse through the strict package reader: {result:?}");
+    };
+    assert_eq!(refusal.code, Code::IllTyped, "{name}");
+    assert_eq!(refusal.cause, Some(cause), "{name}");
+    assert!(
+        refusal.loci[0]
+            .path
+            .as_ref()
+            .is_some_and(|actual| actual.to_string().ends_with(pointer)),
+        "{name}: {:?} must end with {pointer}",
+        refusal.loci[0].path
+    );
+}
+
+fn replace_json_text(value: &mut Value, old: &str, new: &str) {
+    match value {
+        Value::String(text) => *text = text.replace(old, new),
+        Value::Array(values) => values
+            .iter_mut()
+            .for_each(|value| replace_json_text(value, old, new)),
+        Value::Object(values) => values
+            .values_mut()
+            .for_each(|value| replace_json_text(value, old, new)),
+        _ => {}
+    }
+}
+
+#[trace("FR-829-AC-6")]
+#[test]
+fn clock_reference_adverse_applications_refuse_through_public_package_reader() {
+    let (base, document, proposal, place_reference, clock_type, owner, slot, reference_type) =
+        clock_reference_wire();
+
+    let mut wrong_count = base.clone();
+    clock_reference_application(&mut wrong_count)["body"]["arguments"]
+        .as_array_mut()
+        .expect("arguments")
+        .remove(2);
+    let app = clock_reference_application(&mut wrong_count);
+    clock_reference_dependencies(app);
+    fixture_support::refresh_identity(&mut wrong_count);
+    assert_clock_reference_refusal(
+        &wrong_count,
+        &document,
+        &proposal,
+        "place reference missing its slot argument",
+        Cause::OperatorIneligible,
+        "/body/arguments",
+    );
+
+    let mut wrong_place = base.clone();
+    clock_reference_application(&mut wrong_place)["body"]["arguments"][0] =
+        json!({"term":"reference","target":clock_type});
+    let app = clock_reference_application(&mut wrong_place);
+    clock_reference_dependencies(app);
+    fixture_support::refresh_identity(&mut wrong_place);
+    assert_clock_reference_refusal(
+        &wrong_place,
+        &document,
+        &proposal,
+        "place reference with a scalar type as its first argument",
+        Cause::OperatorIneligible,
+        "/body/arguments/0",
+    );
+
+    let map_place = base["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|node| {
+            node["semantic_form"] == "clock_place" && node["body"].to_string().contains("map")
+        })
+        .expect("published Map clock place")["node_id"]
+        .clone();
+    let mut map_place_reference = base.clone();
+    clock_reference_application(&mut map_place_reference)["body"]["arguments"][0] =
+        json!({"term":"reference","target":map_place});
+    let app = clock_reference_application(&mut map_place_reference);
+    clock_reference_dependencies(app);
+    fixture_support::refresh_identity(&mut map_place_reference);
+    assert_clock_reference_refusal(
+        &map_place_reference,
+        &document,
+        &proposal,
+        "place reference under a Map slot",
+        Cause::TypeMismatch,
+        "/body/arguments/0",
+    );
+
+    let mut integer_owner = base.clone();
+    clock_reference_application(&mut integer_owner)["body"]["arguments"][1] =
+        json!({"term":"reference","target":slot});
+    let app = clock_reference_application(&mut integer_owner);
+    clock_reference_dependencies(app);
+    fixture_support::refresh_identity(&mut integer_owner);
+    assert_clock_reference_refusal(
+        &integer_owner,
+        &document,
+        &proposal,
+        "place reference with an Integer owner",
+        Cause::TypeMismatch,
+        "/body/arguments/1",
+    );
+
+    let mut object_owner = base.clone();
+    let object_owner_id = add_object_owner_term(&mut object_owner, &owner, "fr829-owner-object");
+    clock_reference_application(&mut object_owner)["body"]["arguments"][1] =
+        json!({"term":"reference","target":object_owner_id});
+    let app = clock_reference_application(&mut object_owner);
+    clock_reference_dependencies(app);
+    fixture_support::refresh_identity(&mut object_owner);
+    assert_clock_reference_refusal(
+        &object_owner,
+        &document,
+        &proposal,
+        "place reference with an object-valued dereference owner",
+        Cause::OperatorIneligible,
+        "/body/arguments/1",
+    );
+
+    let place = id_of("ss-set-tuple-0");
+    let boolean = base["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|node| node["node_tag"] == "scalar_type" && node["semantic_form"] == "boolean")
+        .expect("Boolean type")["node_id"]
+        .clone();
+    let mut presence_owner = base.clone();
+    let object_owner_id =
+        add_object_owner_term(&mut presence_owner, &owner, "fr829-presence-owner-object");
+    let mut dependencies = vec![place.clone(), object_owner_id.clone(), slot.clone()];
+    sort_ids(&mut dependencies);
+    push_node(
+        &mut presence_owner,
+        json!({
+            "body":{
+                "term":"application",
+                "operator":"present",
+                "operation":{"identity":"filament.op.option.present","laws":[],"leaves":[],"member":null,"mode":null},
+                "result_type":boolean,
+                "arguments":[
+                    {"term":"reference","target":place},
+                    {"term":"reference","target":object_owner_id},
+                    {"term":"reference","target":slot}
+                ]
+            },
+            "dependencies":dependencies,
+            "node_id":{"ordinal":0,"package":"example","path":["expression","presence_read","fr829-object-owner"]},
+            "node_tag":"expression",
+            "occurrences":[{"ordinal":0,"role":"expression"}],
+            "schema_version":"filament.checked-semantic-graph/v2",
+            "semantic_form":"presence_read",
+            "semantic_type":boolean,
+        }),
+        9209,
+    );
+    fixture_support::refresh_identity(&mut presence_owner);
+    assert_clock_reference_refusal(
+        &presence_owner,
+        &document,
+        &proposal,
+        "presence_read with an object-valued dereference owner",
+        Cause::OperatorIneligible,
+        "/body/arguments/1",
+    );
+
+    let mut slot_domain_owner = base.clone();
+    let object_owner_id = add_object_owner_term(
+        &mut slot_domain_owner,
+        &owner,
+        "fr829-slot-domain-owner-object",
+    );
+    let integer_type_id = integer_type();
+    let integer_position = slot_domain_owner["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .position(|node| node["node_id"] == integer_type_id)
+        .expect("Integer type");
+    let set_type_id = fixture_support::structural_id(
+        "example",
+        vec![
+            json!("composite_type"),
+            json!("set"),
+            json!({"node":integer_position}),
+        ],
+        0,
+    );
+    let mut set_dependencies = vec![integer_type_id.clone()];
+    sort_ids(&mut set_dependencies);
+    push_node(
+        &mut slot_domain_owner,
+        json!({
+            "body":aggregate(vec![json!({"term":"reference","target":integer_type_id})]),
+            "dependencies":set_dependencies,
+            "node_id":set_type_id,
+            "node_tag":"composite_type",
+            "occurrences":[{"ordinal":0,"role":"type"}],
+            "schema_version":"filament.checked-semantic-graph/v2",
+            "semantic_form":"set",
+            "semantic_type":set_type_id,
+        }),
+        9210,
+    );
+    let mut dependencies = vec![place.clone(), object_owner_id.clone()];
+    sort_ids(&mut dependencies);
+    push_node(
+        &mut slot_domain_owner,
+        json!({
+            "body":{
+                "term":"application",
+                "operator":"slots",
+                "operation":{"identity":"filament.op.option.slots","laws":[],"leaves":[],"member":null,"mode":null},
+                "result_type":set_type_id,
+                "arguments":[
+                    {"term":"reference","target":place},
+                    {"term":"reference","target":object_owner_id}
+                ]
+            },
+            "dependencies":dependencies,
+            "node_id":{"ordinal":0,"package":"example","path":["expression","presence_read","fr829-slot-domain-owner"]},
+            "node_tag":"expression",
+            "occurrences":[{"ordinal":0,"role":"expression"}],
+            "schema_version":"filament.checked-semantic-graph/v2",
+            "semantic_form":"presence_read",
+            "semantic_type":set_type_id,
+        }),
+        9211,
+    );
+    fixture_support::refresh_identity(&mut slot_domain_owner);
+    assert_clock_reference_refusal(
+        &slot_domain_owner,
+        &document,
+        &proposal,
+        "FR-772 slot domain with an object-valued dereference owner",
+        Cause::OperatorIneligible,
+        "/body/arguments/1",
+    );
+
+    let mut wrong_reference = base.clone();
+    let mut call_document = document.clone();
+    let order_type = call_document["types"]
+        .as_array()
+        .expect("types")
+        .iter()
+        .find(|ty| ty["identity"] == "ix://acme/orders/Order")
+        .expect("Order object type")
+        .clone();
+    let call_identity = "ix://acme/orders/Call";
+    let mut call_type = order_type;
+    replace_json_text(&mut call_type, "ix://acme/orders/Order", call_identity);
+    replace_json_text(&mut call_type, "Order", "Call");
+    call_type["identity"] = json!(call_identity);
+    call_type["displayName"] = json!("Call");
+    call_document["types"]
+        .as_array_mut()
+        .expect("selected document types")
+        .push(call_type);
+    let call_model = declaration_id("object_type", call_identity);
+    push_node(
+        &mut wrong_reference,
+        declaration_node("object_type", call_identity),
+        9208,
+    );
+    let order_model = order_node();
+    let place_node = wrong_reference["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .iter_mut()
+        .find(|node| node["node_id"] == id_of("ss-set-tuple-0"))
+        .expect("slot place");
+    place_node["body"]["members"][0]["value"]["target"] = call_model.clone();
+    replace_json_text(
+        &mut place_node["body"],
+        "ix://acme/orders/Order",
+        call_identity,
+    );
+    place_node["dependencies"] = place_node["dependencies"]
+        .as_array()
+        .expect("place dependencies")
+        .iter()
+        .map(|dependency| {
+            if dependency == &order_model {
+                call_model.clone()
+            } else {
+                dependency.clone()
+            }
+        })
+        .collect::<Vec<_>>()
+        .into();
+    fixture_support::refresh_identity(&mut wrong_reference);
+    assert_clock_reference_refusal(
+        &wrong_reference,
+        &call_document,
+        &proposal,
+        "Reference<Order> owner for a Call clock place",
+        Cause::TypeMismatch,
+        "/body/arguments/1",
+    );
+
+    let mut wrong_result = base.clone();
+    clock_reference_application(&mut wrong_result)["body"]["result_type"] = reference_type;
+    fixture_support::refresh_identity(&mut wrong_result);
+    assert_clock_reference_refusal(
+        &wrong_result,
+        &document,
+        &proposal,
+        "place reference with a Reference result type",
+        Cause::TypeMismatch,
+        "/body/result_type",
+    );
+
+    for operation in ["filament.op.reference.eq", "filament.op.integer.lt"] {
+        let mut ineligible = base.clone();
+        add_clock_reference_equality(&mut ineligible, &place_reference, operation);
+        fixture_support::refresh_identity(&mut ineligible);
+        assert_clock_reference_refusal(
+            &ineligible,
+            &document,
+            &proposal,
+            operation,
+            Cause::OperatorIneligible,
+            "/body/arguments/0",
+        );
+    }
+
+    let mut sum = base;
+    let integer = integer_type();
+    push_node(
+        &mut sum,
+        json!({
+            "body":{
+                "term":"application",
+                "operator":"collection",
+                "operation":{"identity":"filament.op.collection.sum.integer","laws":[],"leaves":[],"member":null,"mode":null},
+                "result_type":integer,
+                "arguments":[
+                    {"term":"literal","type":integer,"value_kind":"integer","value":"1"},
+                    {"term":"binding","name":"item","value":{"term":"reference","target":place_reference}}
+                ]
+            },
+            "dependencies":[place_reference],
+            "node_id":{"ordinal":0,"package":"example","path":["expression","collection","fr829-clock-reference-sum"]},
+            "node_tag":"expression",
+            "occurrences":[{"ordinal":0,"role":"expression"}],
+            "schema_version":"filament.checked-semantic-graph/v2",
+            "semantic_form":"collection",
+            "semantic_type":integer,
+        }),
+        9206,
+    );
+    fixture_support::refresh_identity(&mut sum);
+    assert_clock_reference_refusal(
+        &sum,
+        &document,
+        &proposal,
+        "sum with a clock-reference binder body",
+        Cause::OperatorIneligible,
+        "/body/arguments/1",
+    );
+}
+
 /// A `value`/`union_value` of `Phase` selecting `case` over `payload` terms.
 fn phase_value(case: &str, payload: Vec<Value>, dependencies: Vec<Value>) -> Value {
     let id = json!({"ordinal": 0, "package": "example",
