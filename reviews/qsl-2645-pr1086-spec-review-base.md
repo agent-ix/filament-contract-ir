@@ -37,3 +37,19 @@ The FR-019 breaking-change omission is recorded as FND-005 in the code-review SR
 | FND-001 | medium | The new FR-369 Planned paragraph ends "whether the join SHALL admit those is a spec question for QSL-2645's owner": an open question with no ticket and an owner that this PR closes. It also lists the source enumeration, which is a join-only gap because `join_probabilistic` lacks the FR-352 source enum rows, beside the bounded and int/decimal carried quantities, which the strict read's selected-parameter rule also leaves without a literal kind (`member_literal_kind`). Split it: file an arch ticket for the enumeration input, and state the quantity forms as shared with FR-369's strict-read rule, with their own owner | spec/checked_package/functional/FR-369-read-probabilistic-nodes-and-their-four-forms.md:283-292 |
 | FND-002 | medium | The FR-369-AC-25/26 matrix row is ✅ Implemented and says "refusals `InvalidValue` at the strict read's member". The operation and parameter refusals are one level above the strict read's member (code-review SR FND-001), and TC-484 step 5's body variants are not built (gap-analysis SR FND-001). The TC-484 summary row is also ✅. Keep the rows 🚧 Partial, naming what is open, until both land | spec/checked_package/matrix/tests.md:20; spec/checked_package/matrix/tests.md:90 |
 | FND-003 | low | FR-369-AC-27 and FR-369-AC-28 still read "(the join half is Planned, QSL-2645)" although this PR implements the join, and AC-27 still says "the operation, parameter, support and coverage are unjoined". Reword them as the strict-read halves whose join half is FR-369-AC-25/26 | spec/checked_package/functional/FR-369-read-probabilistic-nodes-and-their-four-forms.md:335-336 |
+
+## New findings (disposition pass 1)
+
+| ID | Severity | Summary | Refs |
+| --- | --- | --- | --- |
+| FND-004 | high | FR-369, as amended in this PR, says the join charges "the exact numbers it parses to its read storage as the strict read charges them". FR-358 says the read-storage counter is "used only by the strict V2 checked-package read of FR-038 ... and no other operation charges read storage", so the two requirements contradict each other. The consequence is that a caller following FR-358 (`NativeJoinBudget::new(w, s)`, whose read-storage limit is 0) is stopped as `Incomplete` on a parse that needs a limb block, and the read-storage denial is invisible to `first_unpaid()`. Either charge the parse heap to logical storage as copied owned payload, one unit per byte, which conforms to FR-358 unchanged, or have arch amend FR-358 to admit `join_probabilistic` as a second read-storage user | spec/checked_package/functional/FR-369-read-probabilistic-nodes-and-their-four-forms.md:198-201; spec/checked_package/functional/FR-358-compose-native-identity-join-budget.md:141-147 |
+
+## Dispositions
+
+Round 1, at head 0c9d47aea.
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-001 | fixed | The Planned paragraph is now "Source enumeration entries (QSL-2655)". It names the missing input (the identity rows carry no enumeration's cases), states that the bounded and int/decimal carried quantities have no literal kind "there either, as in the strict read", and gives "Owner: QSL-2655" |
+| FND-002 | fixed | Both rows are now 🚧 Partial: the FR-369-AC-25/26 row names the refusal "at the member the strict read names for the same edit" and the QSL-2655 gap, and the TC-484 row reads "every step is implemented; entries typed by a source enumeration are open on QSL-2655" |
+| FND-003 | fixed | AC-27 and AC-28 now read "(the join half is the identity-row join of QSL-2645)". The remaining "unjoined" in AC-27 describes the strict read without identity rows, which is accurate |
