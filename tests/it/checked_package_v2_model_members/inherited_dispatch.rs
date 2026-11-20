@@ -88,6 +88,7 @@ fn genuine_fsl_d10_retains_static_context_and_complete_selected_family() {
     crate::support::checked_package::refresh_claim_names(&mut package);
     // The emitted fixture predates FR-322 "Model declaration occurrences".
     crate::support::checked_package::align_model_declarations(&mut package);
+    crate::support::checked_package::rebuild_body_locations(&mut package);
     let document = d10_model_document();
     let evidence = evidence_with_document(&package, PACKAGE, &document);
     let bytes = canonical(&package);
@@ -474,6 +475,7 @@ fn converted_d10_fixture_resolves_to_the_admitted_index_form_graph() {
     );
     let document = d10_model_document();
     crate::support::checked_package::align_model_declarations(&mut wire);
+    crate::support::checked_package::rebuild_body_locations(&mut wire);
     let evidence = evidence_with_document(&wire, PACKAGE, &document);
     let bytes = canonical(&wire);
     let result = CheckedPackageV2::read(&bytes, CheckedPackageReadLimits::bounded(), &evidence);

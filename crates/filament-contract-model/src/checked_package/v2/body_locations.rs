@@ -223,9 +223,8 @@ pub(super) fn validate<Body>(
         let held = counts.entry((function_position, application)).or_default();
         *held += 1;
         let held = *held;
-        if !walks.contains_key(&function_position) {
-            let walk = graph.walk(function_position, row_index, meter)?;
-            walks.insert(function_position, walk);
+        if let std::collections::btree_map::Entry::Vacant(slot) = walks.entry(function_position) {
+            slot.insert(graph.walk(function_position, row_index, meter)?);
         }
         let terms_at = walks
             .get(&function_position)
@@ -238,13 +237,17 @@ pub(super) fn validate<Body>(
     }
     refuse_missing_predecessor(ARRAY, gap, meter)?;
     for (position, term) in terms.iter().enumerate() {
-        let is_function = matches!(kinds.get(position), Some(CheckedNodeKind::Function(_)));
+        let is_function = matches!(kinds.get(position), Some(CheckedNodeKind::Function(_)))
+            && wire
+                .semantic_graph
+                .nodes
+                .get(position)
+                .is_some_and(|node| node.node_id.package == wire.name);
         if !is_function || body_binding(term).is_none() {
             continue;
         }
-        if !walks.contains_key(&position) {
-            let walk = graph.walk(position, 0, meter)?;
-            walks.insert(position, walk);
+        if let std::collections::btree_map::Entry::Vacant(slot) = walks.entry(position) {
+            slot.insert(graph.walk(position, 0, meter)?);
         }
         let Some(walk) = walks.get(&position) else {
             continue;

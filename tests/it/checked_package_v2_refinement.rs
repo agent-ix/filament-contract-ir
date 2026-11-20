@@ -791,6 +791,9 @@ pub(super) fn writer_bytes(package: &Value) -> Vec<u8> {
     let rows: Option<Vec<CheckedRefinementStepRowRegion>> = package
         .get("refinement_step_rows")
         .map(|value| serde_json::from_value(value.clone()).expect("step rows"));
+    let term_data: Option<filament_contract_model::CheckedTermDataV2> = package
+        .get("checked_term_data")
+        .map(|value| serde_json::from_value(value.clone()).expect("term data"));
     let capabilities: Vec<CheckedCapability> =
         serde_json::from_value(package["capability_report"].clone()).expect("capabilities");
     let diagnostics: CheckedDiagnosticsV2 =
@@ -817,7 +820,7 @@ pub(super) fn writer_bytes(package: &Value) -> Vec<u8> {
             claim_names: claim_names.as_deref(),
             operation_effects: None,
             operation_bodies: None,
-            checked_term_data: None,
+            checked_term_data: term_data.as_ref(),
             temporal_bindings: temporal_bindings.as_deref(),
             schedulability_claims: None,
         },
