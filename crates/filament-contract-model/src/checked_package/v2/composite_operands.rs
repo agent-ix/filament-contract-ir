@@ -1374,8 +1374,8 @@ pub(in crate::checked_package::v2) mod tests {
     use super::super::CheckedOccurrenceRole;
     use super::*;
     use crate::{
-        CheckedPackageEvidence, CheckedPackageReadLimits, CheckedPackageRefusalCause,
-        CheckedPackageRefusalCode, CheckedPackageV2, CheckedPackageV2ReadResult,
+        CheckedPackageEvidence, CheckedPackageReadLimits, CheckedPackageRefusalCode,
+        CheckedPackageV2, CheckedPackageV2ReadResult,
     };
     use ix_trace_rs::trace;
     use serde_json::json;
