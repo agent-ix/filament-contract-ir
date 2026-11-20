@@ -3051,8 +3051,8 @@ dependency loop disabled the listed absent population, record and set type
 tests (`reaches_population`, `recursive_leaves`) reach the operation stage and
 fail. Its charge (one plus the entries read), the `semantic_type`-before-
 `dependencies` and node order, the tag set and the nominal-scalar exemption are
-unit tests in `v2/edge_existence.rs`. The exemption is a recorded deviation from
-FSpec FR-322 (FR-038-AC-582).
+unit tests in `v2/edge_existence.rs`. The exemption is per FSpec FR-322 stage 4
+(FSpec PR #772, FR-038-AC-582).
 
 ## Observe-only boundary (FR-038-AC-564 through FR-038-AC-570)
 
