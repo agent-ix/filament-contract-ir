@@ -5151,8 +5151,9 @@ fn clause_leaf_seq(shape: Shape, mut package: Value) -> Value {
         captures,
         trigger,
         place,
-        nested,
+        wrap,
     } = shape;
+    let nested = wrap == Wrap::Let;
     let in_guard = place == Place::Guard;
     let in_capture = match place {
         Place::Capture(index) => Some(index),
@@ -5271,9 +5272,55 @@ fn clause_leaf_seq(shape: Shape, mut package: Value) -> Value {
         "term": "application", "operator": "let", "operation": let_operation,
         "result_type": node_id(&boolean), "arguments": [
             {"term": "binding", "name": "s",
-             "value": refer(if nested { "seq-inner" } else { "seq-application" })},
+             "value": refer(if wrap == Wrap::Bare { "seq-application" } else { "seq-inner" })},
             refer(&family_key("dddd"))]}),
     );
+    if let Wrap::Step(identity) = wrap {
+        // `fold(acc, j in set: size(seq(...)), identity: 1)`: the step is
+        // under the accumulator and the element binder.
+        let member = json!({"kind": "type_argument", "declaration": node_id(&integer)});
+        let operation = |identity: &str| {
+            json!({"identity": identity, "laws": [], "mode": null,
+                "member": member.clone(), "leaves": []})
+        };
+        add(
+            &mut package,
+            "seq-set",
+            "composite_type",
+            "set",
+            "seq-set",
+            json!({"term": "aggregate", "members": [refer(&integer)]}),
+        );
+        add(
+            &mut package,
+            "seq-size",
+            "expression",
+            "collection",
+            &integer,
+            json!({"term": "application", "operator": "collection",
+                "operation": operation("filament.op.collection.size"),
+                "result_type": node_id(&integer), "arguments": [refer("seq-application")]}),
+        );
+        let mut arguments = vec![
+            refer("seq-set"),
+            json!({"term": "binding", "name": "acc", "value": {
+                "term": "aggregate", "members": [
+                    {"term": "binding", "name": "j", "value": refer("seq-size")}]}}),
+        ];
+        if identity == "filament.op.collection.fold" {
+            arguments.push(literal(&integer, "integer", json!("1")));
+        }
+        add(
+            &mut package,
+            "seq-inner",
+            "expression",
+            "collection",
+            &integer,
+            json!({"term": "application", "operator": "collection",
+                "operation": operation(identity),
+                "result_type": node_id(&integer), "arguments": arguments}),
+        );
+    }
     let holds = find_identity(&package, &temporal_identity("holds"));
     if place == Place::Formula {
         package["semantic_graph"]["nodes"][holds]["body"]["arguments"][0] = refer("seq-let");
@@ -5329,6 +5376,17 @@ enum Place {
     Capture(usize),
 }
 
+/// What stands between the outer `let` and the `seq`.
+#[derive(Clone, Copy, PartialEq)]
+enum Wrap {
+    /// Nothing: the `seq` is the bound value.
+    Bare,
+    /// The body of an inner `let`.
+    Let,
+    /// The step of a `fold` or `reduce`, as `size(seq(...))`.
+    Step(&'static str),
+}
+
 /// A clause with `captures` captures, optionally an `each` trigger, and a
 /// `seq` whose index binder carries `level`.
 #[derive(Clone, Copy)]
@@ -5337,8 +5395,7 @@ struct Shape {
     captures: usize,
     trigger: bool,
     place: Place,
-    /// Whether the `seq` is in the body of a `let` nested in the bound value.
-    nested: bool,
+    wrap: Wrap,
 }
 
 impl Shape {
@@ -5348,7 +5405,7 @@ impl Shape {
             captures: 0,
             trigger: false,
             place: Place::Formula,
-            nested: false,
+            wrap: Wrap::Bare,
         }
     }
 }
@@ -5392,11 +5449,26 @@ fn tc_048_a_seq_binder_in_a_clause_leaf_resolves_its_level_from_the_binders_in_s
         "let body",
         2,
         |l| Shape {
-            nested: true,
+            wrap: Wrap::Let,
             ..Shape::at(l)
         },
         base,
     );
+    // A `fold` or `reduce` step is under its accumulator and element binders.
+    for identity in [
+        "filament.op.collection.fold",
+        "filament.op.collection.reduce",
+    ] {
+        admits_only_at(
+            identity,
+            3,
+            |l| Shape {
+                wrap: Wrap::Step(identity),
+                ..Shape::at(l)
+            },
+            base,
+        );
+    }
     // Each capture and the trigger are one more binder in the formula's scope.
     admits_only_at(
         "one capture",
