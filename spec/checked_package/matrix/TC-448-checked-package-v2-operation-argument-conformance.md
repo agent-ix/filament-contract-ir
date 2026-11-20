@@ -12,7 +12,7 @@ relationships:
 
 ## Description
 
-Verify FR-347-AC-1 through FR-347-AC-14: the V2 reader admits an operation-call
+Verify FR-347-AC-1 through FR-347-AC-15: the V2 reader admits an operation-call
 argument whose record type conforms to the parameter's declared record type,
 refuses an unrelated, ancestor or foreign-document record with
 `ill_typed`/`operator-ineligible` at the argument, and keeps every
@@ -65,6 +65,14 @@ binding, per AC-10 to AC-13; body roots typed `Money`, child, grandchild
 `aggregate`, with a literal entry, with an absent target and with a non-parameter
 target (AC-14).
 
+Tuple positions (AC-15): over a source tuple `Pair(Integer, Int[0, 2000])`, a
+model tuple with positions `Money` and `Integer`, and a clock-bearing tuple
+(`p0` a clock, `p1` an `Integer`), read a `tuple_value` with exact terms, one
+with a `filament.op.numeric.convert` term to `Integer` at position 0, and its
+mutations: a bare `Int[0, 1000]`, a `Boolean` or a mistyped position-1 term,
+`TaxedMoney` and `Voucher` at the `Money` position, and `Int[0, 9]` at the
+clock-bearing tuple's data position.
+
 ## Expected Results
 
 Positive packages admit with no `supertypes` member or conversion node.
@@ -73,9 +81,12 @@ returns `ill_typed`/`operator-ineligible` at
 `/semantic_graph/nodes/{n}/body/arguments/{position}` of the first offending
 argument (the arity case at `arguments`), and no package. The measured work
 admits and one less returns `incomplete` for `work`.
+Each AC-15 package with exact, converted or conforming terms admits; each
+mismatched tuple term returns `ill_typed`/`type-mismatch` at the `tuple_value`
+node `/semantic_graph/nodes/{n}`.
 
 ## Status
 
 PLANNED/UNRUN (IR-1141 structural identity migration; existing QSL-737 semantic controls retain their evidence): `tests/it/checked_package_v2_operation_arguments.rs`
-holds one tagged test per criterion, FR-347-AC-1 through FR-347-AC-14. Each package must be built with structural node ids over the selected Semantic
+holds one tagged test per criterion, FR-347-AC-1 through FR-347-AC-15. Each package must be built with structural node ids over the selected Semantic
 IR 2.0.0 document before this procedure can claim full current-contract coverage.
