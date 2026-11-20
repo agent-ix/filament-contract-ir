@@ -429,10 +429,16 @@ fn assemble(nodes: Vec<(Value, &str)>) -> Value {
 }
 
 fn assemble_with(chain: usize, nodes: Vec<(Value, &str)>) -> Value {
+    assemble_models(chain, &[], nodes)
+}
+
+/// [`assemble_with`] with the model nodes `extra` added to the family's.
+fn assemble_models(chain: usize, extra: &[&str], nodes: Vec<(Value, &str)>) -> Value {
     let mut value = v2_all_families();
     add_units(&mut value);
     let mut names = vec!["Base".to_owned(), "Mid".to_owned(), "Leaf".to_owned()];
     names.extend((0..chain).map(|index| format!("Up{index}")));
+    names.extend(extra.iter().map(|name| (*name).to_owned()));
     for name in names {
         let identity = format!("ix://{PACKAGE}/{name}");
         let mut model = plain_node(
@@ -533,6 +539,101 @@ fn collect_references(term: &Value, found: &mut Vec<Value>) {
             .for_each(|inner| collect_references(inner, found)),
         _ => {}
     }
+}
+
+/// The name of the `index`th operation of the `Wide` model.
+fn wide_operation(index: usize) -> String {
+    format!("op{index:04}")
+}
+
+/// [`document`] with the model `Wide`, which declares `rows` operations.
+fn wide_document(rows: usize) -> Value {
+    let mut document = document();
+    let operations: Vec<Value> = (0..rows)
+        .map(|index| {
+            json!({"identity": format!("ix://{PACKAGE}/Wide/{}", wide_operation(index)),
+                "params": []})
+        })
+        .collect();
+    document["types"]
+        .as_array_mut()
+        .expect("types")
+        .push(json!({
+            "identity": format!("ix://{PACKAGE}/Wide"), "displayName": "Wide",
+            "kind": {"module": PACKAGE, "name": "entity"},
+            "roles": [], "constraints": [], "extensions": [], "unknownPolicy": "reject",
+            "supertypes": [], "fields": [], "relationships": [],
+            "operations": operations,
+        }));
+    document
+}
+
+/// A package whose workload covers the `rows` operations of the model `Wide`.
+fn wide_workload(rows: usize) -> Value {
+    let wide = id(&["model", "object_type", &format!("ix://{PACKAGE}/Wide")]);
+    let weights: Vec<Value> = (0..rows)
+        .map(|index| {
+            aggregate(vec![
+                binding("declaring", reference(wide.clone())),
+                binding("operation", text(&wide_operation(index))),
+                binding("weight", rational("1")),
+            ])
+        })
+        .collect();
+    let body = with(
+        vec![
+            binding("model", reference(wide)),
+            binding("name", text("Steady")),
+        ],
+        vec![binding("weights", aggregate(weights))],
+    );
+    assemble_models(
+        0,
+        &["Wide"],
+        vec![(probabilistic("only", "workload", body), "declaration")],
+    )
+}
+
+/// A workload of 300 rows over a model-owner node, for the whole-read
+/// accounting registry: its `named` buffer alone is over the 4096-byte unpaid
+/// allowance if it is not charged.
+pub(crate) fn accounting_fixture() -> (Value, &'static str, Value) {
+    accounting_fixture_of(300)
+}
+
+/// [`accounting_fixture`] with a workload of `rows` rows.
+pub(crate) fn accounting_fixture_of(rows: usize) -> (Value, &'static str, Value) {
+    (wide_workload(rows), PACKAGE, wide_document(rows))
+}
+
+/// FR-038-AC-511: a workload over 300 operations of a model-owner node is
+/// admitted, and the buffer its read keeps for the named operations is
+/// charged to the read-storage budget before it is made, one request of
+/// 16 bytes a row (`&str`) at the workload node.
+#[trace("TC-472", "FR-038-AC-511")]
+#[test]
+fn a_wide_model_owner_workload_is_admitted_and_its_named_buffer_charged() {
+    let (value, package, document) = accounting_fixture();
+    let evidence = evidence_with_document(&value, package, &document);
+    assert!(matches!(
+        CheckedPackageV2::read(
+            &canonical(&value),
+            CheckedPackageReadLimits::bounded(),
+            &evidence
+        ),
+        CheckedPackageV2ReadResult::Admitted(_)
+    ));
+    let evidence = evidence_with_document(&value, package, &document);
+    let requests = crate::checked_package_v2_source_objects::probabilistic::graph_requests_of(
+        &canonical(&value),
+        &evidence,
+    );
+    let name = u128::try_from(std::mem::size_of::<&str>()).expect("bytes") * 300;
+    let named = requests
+        .iter()
+        .filter(|(form, amount)| *form == "probabilistic" && *amount == name)
+        .count();
+    assert_eq!(named, 1, "{requests:?}");
 }
 
 fn read(value: &Value) -> CheckedPackageV2ReadResult {
