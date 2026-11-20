@@ -52,4 +52,4 @@ Round 2. Reviewed exact head `1777c119b79df4484f9df110b4a9e4c340bcf0e3`. The mat
 | --- | --- | --- |
 | FND-002 | still-open: required refusal cases and an independent walk oracle remain absent | The suite still omits specified mutations including an owner function that cannot reach the application, wrong narrow/result-bound pairing, invalid guard cases, and non-root/out-of-order extent domains. `before_rows` is read from the implementation's own consumed budget, so it cannot prove the owner body was charged once. |
 
-Rebased fix head `4e0de1db` onto `origin/main` `b0d65ff1`. The `lib.rs` and V2 module exports compose without a conflict. The retained-row ID remapping now uses checked semantic nodes; the focused public-reader test is pending. Round 2 findings remain unchanged.
+Rebased fix head `4e0de1db` onto `origin/main` `b0d65ff1`. The `lib.rs` and V2 module exports compose without a conflict. The retained-row ID remapping now uses checked semantic nodes. On test head `2a3abc20`, `public_reader_retains_value_validity_record_facts_and_owner_index` passed 1/1. Round 2 findings remain unchanged.
