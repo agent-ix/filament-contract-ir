@@ -3,9 +3,10 @@
 
 //! TC-484: probabilistic nodes whose `declaring` node is a source-declared
 //! object type, the strict-read halves FR-369-AC-27 and FR-369-AC-28 of the
-//! join ACs the matrix holds Planned (FSpec FR-640-AC-6, FR-640-AC-7). The
-//! identity-row join half has no entry point yet (QSL-2645): the packages read
-//! here are admitted with their operations, parameters and supports unjoined.
+//! join ACs (FSpec FR-640-AC-6, FR-640-AC-7). The packages read here are
+//! admitted by the strict read with their operations, parameters and supports
+//! unjoined; the identity-row join half (FR-369-AC-25, FR-369-AC-26, QSL-2645)
+//! is `join` below.
 
 use super::*;
 
@@ -1107,3 +1108,5 @@ fn the_source_buffers_are_charged_before_they_are_made() {
     assert_eq!(count(listed), 1, "{amounts:?}");
     assert_eq!(count(named), 1, "{amounts:?}");
 }
+
+mod join;

@@ -1,0 +1,66 @@
+{
+  "delay_distributions": [
+    {
+      "family": "Uniform",
+      "operation": "step"
+    },
+    {
+      "family": "Discrete([(CheckedDelayQuantity { magnitude: CheckedRational { numerator: \"1\", denominator: \"1\" }, unit: CheckedNodeId(NodeTable { roots: [#0], nodes: [#0 { package: \"test/families\", path: [Name(\"ms\")], ordinal: 0 }] }) }, CheckedRational { numerator: \"9\", denominator: \"1\" }), (CheckedDelayQuantity { magnitude: CheckedRational { numerator: \"3\", denominator: \"1\" }, unit: CheckedNodeId(NodeTable { roots: [#0], nodes: [#0 { package: \"test/families\", path: [Name(\"ms\")], ordinal: 0 }] }) }, CheckedRational { numerator: \"1\", denominator: \"1\" })])",
+      "operation": "poke"
+    }
+  ],
+  "random_parameters": [
+    {
+      "parameter": "k",
+      "support": [
+        [
+          "1",
+          "4"
+        ],
+        [
+          "3",
+          "4"
+        ]
+      ]
+    }
+  ],
+  "rewards": [
+    {
+      "function": {
+        "ordinal": 0,
+        "package": "test/families",
+        "path": [
+          "Other",
+          "poke",
+          "reward",
+          "cost"
+        ]
+      },
+      "name": "cost",
+      "value_type": {
+        "ordinal": 0,
+        "package": "test/families",
+        "path": [
+          "structural/{\"body\":{\"members\":[{\"name\":\"min\",\"term\":\"binding\",\"value\":{\"term\":\"literal\",\"type\":{\"ordinal\":0,\"package\":\"test/families\",\"path\":[\"builtin/integer\"]},\"value\":\"1\",\"value_kind\":\"integer\"}},{\"name\":\"max\",\"term\":\"binding\",\"value\":{\"term\":\"literal\",\"type\":{\"ordinal\":0,\"package\":\"test/families\",\"path\":[\"builtin/integer\"]},\"value\":\"3\",\"value_kind\":\"integer\"}}],\"term\":\"aggregate\"},\"declaration\":null,\"node_tag\":\"bounded_domain\",\"recursion\":null,\"semantic_form\":\"integer_range\",\"semantic_type\":{\"ordinal\":0,\"package\":\"test/families\",\"path\":[\"builtin/integer\"]},\"version\":\"filament.structural-node/v1\"}"
+        ]
+      }
+    }
+  ],
+  "workloads": [
+    {
+      "name": "W",
+      "weights": [
+        [
+          {
+            "ordinal": 0,
+            "package": "test/families",
+            "path": [
+              "O"
+            ]
+          },
+          "step"
+        ]
+      ]
+    }
+  ]
+}
