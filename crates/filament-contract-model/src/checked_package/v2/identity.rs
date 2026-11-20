@@ -1276,7 +1276,8 @@ impl NominalKind {
                 | ClaimForm::StateGraph
                 | ClaimForm::StepRelation
                 | ClaimForm::Schedulability
-                | ClaimForm::ProbabilisticClaim,
+                | ClaimForm::ProbabilisticClaim
+                | ClaimForm::ValueValidity,
             ) => None,
             K::Correspondence(
                 CorrespondenceForm::SourceLocus

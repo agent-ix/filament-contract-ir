@@ -18,7 +18,7 @@ use ix_trace_rs::trace;
 use serde_json::{json, Value};
 use std::{fs, path::PathBuf};
 
-fn vectors() -> Value {
+pub(crate) fn vectors() -> Value {
     let root = PathBuf::from(
         std::env::var_os("FILAMENT_SPECIFICATION_DIR")
             .expect("FILAMENT_SPECIFICATION_DIR must select the owning FSpec checkout"),
@@ -28,7 +28,7 @@ fn vectors() -> Value {
         .expect("FSpec checked-term vectors")
 }
 
-fn row(value: &Value, package: &str) -> Value {
+pub(crate) fn row(value: &Value, package: &str) -> Value {
     let mut declaration = value["declaration"].clone();
     if declaration["package"] == "example" {
         declaration["package"] = json!(package);
@@ -42,7 +42,7 @@ fn row(value: &Value, package: &str) -> Value {
     row
 }
 
-fn fixture(rows: Vec<Value>, vectors: &Value) -> Value {
+pub(crate) fn fixture(rows: Vec<Value>, vectors: &Value) -> Value {
     let mut wire = v2_all_families();
     let package = wire["name"].as_str().expect("fixture package").to_owned();
     let ty = wire["semantic_graph"]["nodes"][0]["semantic_type"].clone();

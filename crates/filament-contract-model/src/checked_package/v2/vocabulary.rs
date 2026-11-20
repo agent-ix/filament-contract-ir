@@ -323,6 +323,7 @@ closed_vocabulary! {
         StateGraph => "state_graph",
         StepRelation => "step_relation",
         Schedulability => "schedulability",
+        ValueValidity => "value_validity",
     }
 }
 

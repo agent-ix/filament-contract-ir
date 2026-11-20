@@ -2501,7 +2501,8 @@ fn operand_family(kind: CheckedNodeKind) -> Option<&'static str> {
             | ClaimForm::StateGraph
             | ClaimForm::StepRelation
             | ClaimForm::Schedulability
-            | ClaimForm::ProbabilisticClaim,
+            | ClaimForm::ProbabilisticClaim
+            | ClaimForm::ValueValidity,
         ) => None,
         K::Correspondence(
             CorrespondenceForm::SourceLocus
@@ -2663,7 +2664,8 @@ pub(super) fn is_type_shaped(kind: CheckedNodeKind) -> bool {
             | ClaimForm::StateGraph
             | ClaimForm::StepRelation
             | ClaimForm::Schedulability
-            | ClaimForm::ProbabilisticClaim,
+            | ClaimForm::ProbabilisticClaim
+            | ClaimForm::ValueValidity,
         ) => false,
         K::Correspondence(
             CorrespondenceForm::SourceLocus

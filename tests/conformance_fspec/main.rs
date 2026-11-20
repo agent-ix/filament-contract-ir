@@ -101,6 +101,7 @@ mod protocol_locations;
 mod protocol_mutation_manifest;
 mod protocol_vectors;
 mod reaches_population;
+mod requirement_records;
 mod schedulability;
 mod selection_vectors;
 mod single_body;
