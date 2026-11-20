@@ -1724,7 +1724,11 @@ pub(in crate::checked_package::v2) mod tests {
         .into_iter()
         .enumerate()
         {
-            let form = if identity.ends_with(".eq") { "eq" } else { "ne" };
+            let form = if identity.ends_with(".eq") {
+                "eq"
+            } else {
+                "ne"
+            };
             let operation_id = fr829_node_id(form);
             let application_dependencies = fr829_dependencies(&[place_reference_id.clone()]);
             fr829_append_node(
@@ -1817,7 +1821,8 @@ pub(in crate::checked_package::v2) mod tests {
             .find(|node| node["body"]["operation"]["identity"] == "filament.op.clock_reference.eq")
             .expect("clock-reference equality application");
         application["body"]["arguments"][0] = fr829_reference_term(&id('5'));
-        application["dependencies"] = fr829_dependencies(&[id('5'), fr829_node_id("place-reference")]);
+        application["dependencies"] =
+            fr829_dependencies(&[id('5'), fr829_node_id("place-reference")]);
         let bytes = crate::checked_package::v2::test_support::canonical(&wrong_operand);
         let refused = CheckedPackageV2::read(
             &bytes,
