@@ -144,9 +144,10 @@ pub(super) fn check_row(
                 return Ok(false);
             }
         }
-        // FR-789 gives a range, a text bound or a quantity no rendering yet.
-        rendering::Rendered::Interim => {}
-        rendering::Rendered::Unknown => return Ok(false),
+        // A range, a text bound or a quantity can never hold a Clock, so a
+        // clock place cannot pass through a field of that type, whatever
+        // spelling FSpec FR-789 later gives it.
+        rendering::Rendered::Interim | rendering::Rendered::Unknown => return Ok(false),
     }
     let Some((collection, minimum, maximum)) = slot else {
         return Ok(true);

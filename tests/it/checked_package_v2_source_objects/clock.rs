@@ -845,12 +845,17 @@ fn a_data_field_retyped_to_another_declaration_refuses_at_the_strict_read() {
     }
 }
 
+/// A range, a text bound, a quantity and the like can never hold a Clock, so
+/// a clock place through a field of one is refused at the strict read.
 #[trace("TC-481", "FR-374-AC-2")]
 #[test]
-fn a_data_field_over_a_range_stays_admitted_until_fspec_renders_it() {
+fn a_data_field_over_a_type_that_cannot_hold_a_clock_refuses_at_the_strict_read() {
     let package = tuple_union();
-    let range = position_where(&package, |node| node["semantic_form"] == "integer_range");
-    admitted(&retyped(&package, "O", "w", range));
+    let w = place_of(&package, "w");
+    for form in ["integer_range", "text_bounds"] {
+        let to = position_where(&package, |node| node["semantic_form"] == form);
+        refused_at(form, &retyped(&package, "O", "w", to), w, 0);
+    }
 }
 
 fn id_of(path: &[&str]) -> Value {
@@ -1065,8 +1070,8 @@ fn data_position(ordinal: u64, node: CheckedNodeId) -> SelectedTuplePositionRow 
     }
 }
 
-/// A data tuple position is compared by its rendering: a range has none yet
-/// (FR-789 gives it no spelling), a time source is no type at all.
+/// A data tuple position is compared by its rendering: a range can never hold
+/// a Clock, a time source is no type at all.
 #[trace("TC-481", "FR-789-AC-4")]
 #[test]
 fn a_data_tuple_position_joins_by_its_rendering_where_fr_789_gives_one() {
@@ -1074,7 +1079,7 @@ fn a_data_tuple_position_joins_by_its_rendering_where_fr_789_gives_one() {
     let p = place_of(&package, "p");
     let mut interim = tuple_union_rows(&package);
     interim.tuples[0].positions[0] = data_position(0, node_id_of(&package, "integer_range"));
-    join_rows(&package, &interim).expect("a range-typed position has no rendering to compare");
+    refuses_at_row("a range-typed position", &package, &interim, p, 1);
     let mut unknown = tuple_union_rows(&package);
     unknown.tuples[0].positions[0] = data_position(0, node_id_of(&package, "time_source"));
     refuses_at_row("unrenderable position", &package, &unknown, p, 1);
@@ -1298,32 +1303,26 @@ fn the_strict_read_refuses_a_row_it_cannot_ground_in_the_package() {
         w,
         0,
     );
-    // The field is a range, so its type text is not compared, but the next
-    // row's declaring type must still name a declaration.
-    let range = position_where(&package, |node| node["semantic_form"] == "integer_range");
-    let mut ghost = retyped(&package, "O", "w", range);
-    set_row(
-        &mut ghost,
-        w,
-        0,
-        "member_type",
-        "ix://test:spine-model/Nope",
-    );
+    // The field is a source unit: its row is as its type spells it, but a
+    // field step cannot name a unit as its declaring type.
+    let unit = position_where(&package, |node| node["semantic_form"] == "unit");
+    let mut ghost = retyped(&package, "O", "w", unit);
+    set_row(&mut ghost, w, 0, "member_type", "ix://test:spine-model/ms");
     set_row(
         &mut ghost,
         w,
         1,
         "declaring_type",
-        "ix://test:spine-model/Nope",
+        "ix://test:spine-model/ms",
     );
     set_row(
         &mut ghost,
         w,
         1,
         "member_identity",
-        "ix://test:spine-model/Nope/c",
+        "ix://test:spine-model/ms/c",
     );
-    refused_at("undeclared declaring type", &ghost, w, 1);
+    refused_at("a unit as the declaring type", &ghost, w, 1);
     // A union row's payload product is not a type spelling.
     let (mut malformed, u) = product_place(&package, CLOCK, INTEGER, None);
     set_row(&mut malformed, u, 1, "member_type", "Sequence<");
@@ -1581,4 +1580,66 @@ fn a_record_clock_entry_shares_no_name_with_any_of_several_bindings() {
             "{taken}: {error:?}"
         );
     }
+}
+
+/// A slot straight after a union row whose payload is a product has no
+/// collection layer to check against: a product is not a collection. The
+/// strict read passes it only while a part of the product has no rendering,
+/// whose text is then not compared; the join refuses it.
+#[trace("TC-481", "FR-789-AC-4")]
+#[test]
+fn a_slot_straight_after_a_payload_product_is_refused() {
+    let package = tuple_union();
+    let (u, q) = (place_of(&package, "u"), place_of(&package, "q"));
+    let mut forged = package.clone();
+    let (slot_step, mut slot_row) = (
+        step_mut(&mut forged, q, 1).clone(),
+        row_mut(&mut forged, q, 1).clone(),
+    );
+    let integer = forged["semantic_graph"]["nodes"][q]["dependencies"][1].clone();
+    *binding_mut(&mut slot_row, "path_step") = json!(2);
+    set_row(
+        &mut forged,
+        u,
+        1,
+        "member_type",
+        &format!("Sequence<{CLOCK}>"),
+    );
+    set_row(&mut forged, u, 1, "collection_kind", "sequence");
+    set_row(&mut forged, u, 1, "minimum", "0");
+    set_row(&mut forged, u, 1, "maximum", "3");
+    forged["semantic_graph"]["nodes"][u]["body"]["members"][1]["value"]["members"]
+        .as_array_mut()
+        .expect("steps")
+        .push(slot_step);
+    rows_mut(&mut forged, u).push(slot_row);
+    forged["semantic_graph"]["nodes"][u]["dependencies"]
+        .as_array_mut()
+        .expect("dependencies")
+        .push(integer);
+    // `armed(Clock, <range>)`: the second part has no rendering yet.
+    let mut rows = tuple_union_rows(&package);
+    let armed = &mut rows.unions[0].members[0];
+    armed.payload_nodes = vec![node_id_of(&package, "integer_range")];
+    armed.payload = vec![ValueType::Integer];
+    refuses_at_row("a slot after a product", &forged, &rows, u, 1);
+    // One position is a collection: the same place joins.
+    let mut single = tuple_union_rows(&package);
+    single.unions[0].members[0].clock_payload[0].member_type = format!("Sequence<{CLOCK}>").into();
+    single.unions[0].members[0].clock_payload[0].collections = vec![layer("sequence", "0", "3")];
+    join_rows(&forged, &single).expect("a single collection position");
+}
+
+/// A single union position with no rendering yet cannot be a Clock.
+#[trace("TC-481", "FR-789-AC-4")]
+#[test]
+fn a_single_union_position_that_cannot_hold_a_clock_is_refused() {
+    let package = tuple_union();
+    let u = place_of(&package, "u");
+    let mut rows = tuple_union_rows(&package);
+    let armed = &mut rows.unions[0].members[0];
+    armed.clock_payload.clear();
+    armed.payload_nodes = vec![node_id_of(&package, "integer_range")];
+    armed.payload = vec![ValueType::Integer];
+    refuses_at_row("a range as the only position", &package, &rows, u, 1);
 }

@@ -82,9 +82,10 @@ pub(super) fn binding_of<'g, G: TypeGraph + ?Sized>(
 pub(super) enum Rendered {
     /// The node's rendering.
     Known(String),
-    /// A node of a form FR-789 gives no rendering and the architecture rules
-    /// interim: an integer or other range, a text bound, a quantity. Its
-    /// field's `member_type` is not compared.
+    /// A node of a form FR-789 gives no rendering and that can never hold a
+    /// Clock: an integer or other range, a text bound, a quantity. A clock
+    /// place cannot pass through it; only a union payload product's whole text
+    /// skips such a part.
     Interim,
     /// A node no rendering names: a row over it does not join.
     Unknown,

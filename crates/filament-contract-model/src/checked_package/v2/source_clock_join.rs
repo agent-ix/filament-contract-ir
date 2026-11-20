@@ -225,20 +225,26 @@ fn join_places(
                             ) else {
                                 continue;
                             };
-                            if rendering::binding_of(package, declared, name).is_some() {
-                                // A data field's row is complete at the strict read.
-                                continue;
-                            }
-                            let Some(entry) = clock_entry(package, joined, clock, declared, name)
-                            else {
-                                return Err(bad());
-                            };
-                            if entry.type_node.is_some()
-                                || entry.member_type.as_deref() != Some(member_type)
+                            if let Some((_, target)) =
+                                rendering::binding_of(package, declared, name)
                             {
-                                return Err(bad());
+                                // The strict read compared the row's type; the
+                                // collections under it are read layer by layer.
+                                slots =
+                                    package.position_of(target).map_or(Slots::None, Slots::Node);
+                            } else {
+                                let Some(entry) =
+                                    clock_entry(package, joined, clock, declared, name)
+                                else {
+                                    return Err(bad());
+                                };
+                                if entry.type_node.is_some()
+                                    || entry.member_type.as_deref() != Some(member_type)
+                                {
+                                    return Err(bad());
+                                }
+                                slots = Slots::Layers(entry.collections);
                             }
-                            slots = Slots::Layers(entry.collections);
                         }
                         "tuple" => {
                             let positions = match &previous_product {
@@ -305,7 +311,11 @@ fn join_places(
                                 .collect();
                             let agrees = if parts.iter().any(|part| part == &Rendered::Unknown) {
                                 false
-                            } else if parts.iter().any(|part| part == &Rendered::Interim) {
+                            } else if parts.len() > 1
+                                && parts.iter().any(|part| part == &Rendered::Interim)
+                            {
+                                // Only a product's whole text may skip a part
+                                // FSpec FR-789 gives no rendering yet.
                                 true
                             } else {
                                 let texts: Vec<&str> = parts
@@ -315,9 +325,10 @@ fn join_places(
                                         _ => None,
                                     })
                                     .collect();
-                                match texts.as_slice() {
-                                    [only] => *only == member_type,
-                                    many => format!("({})", many.join(", ")) == member_type,
+                                match (parts.len(), texts.as_slice()) {
+                                    (1, [only]) => *only == member_type,
+                                    (1, _) => false,
+                                    (_, many) => format!("({})", many.join(", ")) == member_type,
                                 }
                             };
                             if !agrees {
@@ -340,7 +351,8 @@ fn join_places(
                 let minimum = text(bound(row, 5)).unwrap_or_default();
                 let maximum = text(bound(row, 6)).unwrap_or_default();
                 let fits = match slots {
-                    Slots::None => true,
+                    // A slot needs a collection layer to check against.
+                    Slots::None => false,
                     Slots::Layers(layers) => layers.get(depth).is_some_and(|layer| {
                         layer.kind.as_ref() == collection
                             && layer.minimum.as_ref() == minimum
@@ -472,9 +484,8 @@ fn position_matches(
 ) -> bool {
     match position_rendering(package, position) {
         Rendered::Known(rendered) => rendered == member_type,
-        // A range, a text bound or a quantity has no rendering yet.
-        Rendered::Interim => true,
-        Rendered::Unknown => false,
+        // A range, a text bound or a quantity can never hold a Clock.
+        Rendered::Interim | Rendered::Unknown => false,
     }
 }
 
