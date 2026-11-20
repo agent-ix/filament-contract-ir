@@ -597,8 +597,10 @@ mod tests {
         assert_eq!(render_at(&graph, bad_key), Rendered::Unknown);
         for form in [
             BoundedDomainForm::IntegerRange,
+            BoundedDomainForm::RationalRange,
             BoundedDomainForm::TextBounds,
             BoundedDomainForm::DecimalRange,
+            BoundedDomainForm::FloatRounding,
         ] {
             let at = graph.push(CheckedNodeKind::BoundedDomain(form), None, None);
             assert_eq!(render_at(&graph, at), Rendered::Interim);
@@ -606,6 +608,7 @@ mod tests {
         for form in [
             ScalarTypeForm::CarriedQuantity,
             ScalarTypeForm::BoundedQuantity,
+            ScalarTypeForm::CompoundUnit,
         ] {
             let at = scalar(&mut graph, form);
             assert_eq!(render_at(&graph, at), Rendered::Interim);
@@ -647,5 +650,100 @@ mod tests {
         );
         assert_eq!(collection_layer(&graph, outer, 1), Some(("set", "1", "2")));
         assert_eq!(collection_layer(&graph, outer, 2), None);
+    }
+
+    /// A source-owned node of any scalar, object or composite form renders
+    /// as its declaration key; the same form without an owner is a native.
+    #[trace("TC-481", "FR-374-AC-2")]
+    #[test]
+    fn every_source_owned_declaration_renders_as_its_key() {
+        let mut graph = Mock { nodes: vec![] };
+        let unit = graph.push(
+            CheckedNodeKind::ScalarType(ScalarTypeForm::Unit),
+            Some("ms"),
+            None,
+        );
+        assert_eq!(render_at(&graph, unit), known("ix://I/ms"));
+        let object = graph.push(
+            CheckedNodeKind::Model(ModelForm::ObjectType),
+            Some("O"),
+            Some(aggregate(vec![])),
+        );
+        assert_eq!(render_at(&graph, object), known("ix://I/O"));
+        let union = graph.push(
+            CheckedNodeKind::CompositeType(CompositeTypeForm::Union),
+            Some("U"),
+            Some(aggregate(vec![])),
+        );
+        assert_eq!(render_at(&graph, union), known("ix://I/U"));
+        let native = scalar(&mut graph, ScalarTypeForm::Unit);
+        assert_eq!(render_at(&graph, native), Rendered::Unknown);
+    }
+
+    /// The step's kind picks the declaration: a field's declaring type is an
+    /// object type or a record, a tuple step's a tuple, a union step's a union.
+    #[trace("TC-481", "FR-374-AC-3")]
+    #[test]
+    fn a_declaring_type_is_found_by_the_kind_the_step_names() {
+        let mut graph = Mock { nodes: vec![] };
+        let record = graph.push(
+            CheckedNodeKind::CompositeType(CompositeTypeForm::Record),
+            Some("R"),
+            Some(aggregate(vec![])),
+        );
+        let object = graph.push(
+            CheckedNodeKind::Model(ModelForm::ObjectType),
+            Some("O"),
+            Some(aggregate(vec![])),
+        );
+        let tuple = graph.push(
+            CheckedNodeKind::CompositeType(CompositeTypeForm::Tuple),
+            Some("P"),
+            Some(aggregate(vec![])),
+        );
+        let union = graph.push(
+            CheckedNodeKind::CompositeType(CompositeTypeForm::Union),
+            Some("U"),
+            Some(aggregate(vec![])),
+        );
+        let found =
+            |name: &str, step| declaration_node(&graph, "I", &format!("ix://I/{name}"), step);
+        assert_eq!(found("R", DeclaringStep::Field), Some(record));
+        assert_eq!(found("O", DeclaringStep::Field), Some(object));
+        assert_eq!(found("P", DeclaringStep::Field), None);
+        assert_eq!(found("U", DeclaringStep::Field), None);
+        assert_eq!(found("P", DeclaringStep::Tuple), Some(tuple));
+        assert_eq!(found("R", DeclaringStep::Tuple), None);
+        assert_eq!(found("U", DeclaringStep::Union), Some(union));
+        assert_eq!(found("P", DeclaringStep::Union), None);
+        assert_eq!(found("Nope", DeclaringStep::Field), None);
+    }
+
+    /// An inner collection without its own bounds is unbounded, not the
+    /// outer collection's.
+    #[trace("TC-481", "FR-374-AC-3")]
+    #[test]
+    fn an_inner_collection_does_not_inherit_the_outer_bounds() {
+        let mut graph = Mock { nodes: vec![] };
+        let integer = scalar(&mut graph, ScalarTypeForm::Integer);
+        let inner = wrapped(&mut graph, CompositeTypeForm::Set, integer);
+        let outer = wrapped(&mut graph, CompositeTypeForm::Sequence, inner);
+        let limits = graph.push(
+            CheckedNodeKind::BoundedDomain(BoundedDomainForm::CollectionBounds),
+            None,
+            Some(aggregate(vec![
+                bound("min", json!({"term": "literal", "type": {"package": "p", "path": ["0"], "ordinal": 0}, "value": "1", "value_kind": "integer"})),
+                bound("max", json!({"term": "literal", "type": {"package": "p", "path": ["0"], "ordinal": 0}, "value": "2", "value_kind": "integer"})),
+            ])),
+        );
+        graph.nodes[limits].dependencies = vec![id(outer)];
+        assert_eq!(
+            collection_layer(&graph, limits, 0),
+            Some(("sequence", "1", "2"))
+        );
+        assert_eq!(
+            collection_layer(&graph, limits, 1),
+            Some(("set", "0", "unbounded"))
+        );
     }
 }

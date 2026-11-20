@@ -885,7 +885,7 @@ fn clause_node(path: &[&str], form: &str, body: Value, dependencies: Vec<Value>)
 /// anchor of `arm`, whose frame writes the field `written`. (A constraint is
 /// only reachable through a guard, which needs an expression node; the join
 /// reads a reset and a constraint alike.)
-fn with_parameter_clauses(parameter: &str, written: &str) -> Value {
+fn with_parameter_clauses(parameter: &str, written: &[&str]) -> Value {
     let mut package = collections();
     let o = node_of(&package, "O");
     let o = serde_json::to_value(o).expect("O id");
@@ -896,7 +896,7 @@ fn with_parameter_clauses(parameter: &str, written: &str) -> Value {
         .clone();
     let frame = json!({
         "body": {"creates": [], "deletes": [], "deletes_scoped": [], "term": "frame",
-            "modifies": [{"declaration": o, "kind": "field", "name": written, "scope": "receiver"}]},
+            "modifies": written.iter().map(|name| json!({"declaration": o, "kind": "field", "name": name, "scope": "receiver"})).collect::<Vec<_>>()},
         "dependencies": [o], "node_id": id_of(&["state", "frame", "arm"]),
         "node_tag": "state", "occurrences": [{"ordinal": 0, "role": "generated"}],
         "schema_version": "filament.checked-semantic-graph/v2", "semantic_form": "frame",
@@ -963,19 +963,24 @@ fn with_parameter_clauses(parameter: &str, written: &str) -> Value {
     // Dependencies are in node-id order: the reset precedes the time source.
     let last = dependencies.len() - 1;
     dependencies.insert(last, id_of(&reset_path));
+    // The operation's declared effect is the frame it anchors.
+    package["operation_effects"][0]["effect"]["modifies"] = json!(written
+        .iter()
+        .map(|name| json!({"declaration": o, "kind": "field", "name": name, "scope": "receiver"}))
+        .collect::<Vec<_>>());
     package
 }
 
 #[trace("TC-481", "FR-374-AC-4")]
 #[test]
 fn a_parameter_reset_joins_the_operations_clock_parameters() {
-    let package = with_parameter_clauses("x", "d");
+    let package = with_parameter_clauses("x", &["d"]);
     let object = collections_object(&package);
     joined(&package, object.clone(), Some(record_row(&package))).expect("x is a Clock parameter");
     let reset = nodes(&package).len() - 2;
     let at = format!("/semantic_graph/nodes/{reset}/body/members/2");
     // `k` names no Clock parameter of `arm`.
-    let other = with_parameter_clauses("k", "d");
+    let other = with_parameter_clauses("k", &["d"]);
     let error = joined(&other, collections_object(&other), Some(record_row(&other)))
         .expect_err("k is no clock parameter");
     assert_eq!(error.code, RowError::TimedNodeReference);
@@ -995,7 +1000,7 @@ fn a_parameter_reset_joins_the_operations_clock_parameters() {
 #[test]
 fn a_parameter_reset_whose_frame_writes_no_clock_refuses_at_the_strict_read() {
     // `r` is a data field of `O`: the frame writes no clock.
-    let data = with_parameter_clauses("x", "r");
+    let data = with_parameter_clauses("x", &["r"]);
     let reset = nodes(&data).len() - 2;
     let refusal = refused(&data);
     assert_eq!(refusal.code, Code::InvalidPackage);
@@ -1005,7 +1010,7 @@ fn a_parameter_reset_whose_frame_writes_no_clock_refuses_at_the_strict_read() {
         Some(format!("/semantic_graph/nodes/{reset}/body/members/1/value/target").as_str())
     );
     // `d` is a clock member of `O`: no binding names it.
-    admitted(&with_parameter_clauses("x", "d"));
+    admitted(&with_parameter_clauses("x", &["d"]));
 }
 
 #[trace("TC-481", "FR-374-AC-2")]
@@ -1043,4 +1048,296 @@ fn a_declaring_type_of_the_wrong_declaration_kind_refuses_at_the_strict_read() {
             "{case}: {refusal:?}"
         );
     }
+}
+
+fn node_id_of(package: &Value, form: &str) -> CheckedNodeId {
+    let at = position_where(package, |node| node["semantic_form"] == form);
+    serde_json::from_value(nodes(package)[at]["node_id"].clone()).expect("node id")
+}
+
+fn data_position(ordinal: u64, node: CheckedNodeId) -> SelectedTuplePositionRow {
+    SelectedTuplePositionRow {
+        ordinal,
+        type_node: Some(node),
+        value_type: Some(ValueType::Integer),
+        member_type: None,
+        collections: vec![],
+    }
+}
+
+/// A data tuple position is compared by its rendering: a range has none yet
+/// (FR-789 gives it no spelling), a time source is no type at all.
+#[trace("TC-481", "FR-789-AC-4")]
+#[test]
+fn a_data_tuple_position_joins_by_its_rendering_where_fr_789_gives_one() {
+    let package = tuple_union();
+    let p = place_of(&package, "p");
+    let mut interim = tuple_union_rows(&package);
+    interim.tuples[0].positions[0] = data_position(0, node_id_of(&package, "integer_range"));
+    join_rows(&package, &interim).expect("a range-typed position has no rendering to compare");
+    let mut unknown = tuple_union_rows(&package);
+    unknown.tuples[0].positions[0] = data_position(0, node_id_of(&package, "time_source"));
+    refuses_at_row("unrenderable position", &package, &unknown, p, 1);
+    let mut known = tuple_union_rows(&package);
+    known.tuples[0].positions[0] = data_position(0, integer_node(&package));
+    refuses_at_row("a position of another type", &package, &known, p, 1);
+}
+
+const INTEGER: &str = "ix://filament/native/Integer";
+
+/// `u`, `union(armed)`, `tuple(0)` over `union U { armed(first, second) }`:
+/// the product `(first, second)` is the tuple row's declaring type. With
+/// `bounds`, a `slot` step follows the position, which is then a `Sequence`
+/// of Clock.
+fn product_place(
+    package: &Value,
+    first: &str,
+    second: &str,
+    bounds: Option<(&str, &str)>,
+) -> (Value, usize) {
+    let mut package = package.clone();
+    let (u, p, q) = (
+        place_of(&package, "u"),
+        place_of(&package, "p"),
+        place_of(&package, "q"),
+    );
+    let product = format!("({first}, {second})");
+    let (tuple_step, mut tuple_row) = (
+        step_mut(&mut package, p, 1).clone(),
+        row_mut(&mut package, p, 1).clone(),
+    );
+    let (slot_step, slot_row) = (
+        step_mut(&mut package, q, 1).clone(),
+        row_mut(&mut package, q, 1).clone(),
+    );
+    let integer = package["semantic_graph"]["nodes"][q]["dependencies"][1].clone();
+    set_row(&mut package, u, 1, "member_type", &product);
+    *binding_mut(&mut tuple_row, "path_step") = json!(2);
+    *binding_mut(&mut tuple_row, "declaring_type") = json!(product);
+    *binding_mut(&mut tuple_row, "member_identity") = json!(format!("{product}/p0"));
+    *binding_mut(&mut tuple_row, "member_type") = json!(first);
+    let mut steps = vec![tuple_step];
+    let mut rows = vec![tuple_row];
+    if let Some((minimum, maximum)) = bounds {
+        *binding_mut(&mut rows[0], "collection_kind") = json!("sequence");
+        *binding_mut(&mut rows[0], "minimum") = json!(minimum);
+        *binding_mut(&mut rows[0], "maximum") = json!(maximum);
+        let (mut step, mut row) = (slot_step, slot_row);
+        *binding_mut(&mut step, "minimum") = json!(minimum.parse::<u64>().expect("minimum"));
+        *binding_mut(&mut step, "maximum") = json!(maximum.parse::<u64>().expect("maximum"));
+        *binding_mut(&mut row, "path_step") = json!(3);
+        steps.push(step);
+        rows.push(row);
+        package["semantic_graph"]["nodes"][u]["dependencies"]
+            .as_array_mut()
+            .expect("dependencies")
+            .push(integer);
+    }
+    package["semantic_graph"]["nodes"][u]["body"]["members"][1]["value"]["members"]
+        .as_array_mut()
+        .expect("steps")
+        .extend(steps);
+    rows_mut(&mut package, u).extend(rows);
+    (package, u)
+}
+
+/// The identity rows for a product `armed(first, <data>)`: the clock position
+/// at ordinal 0 and `data` as the position at ordinal 1.
+fn product_rows(package: &Value, first: &str, data: CheckedNodeId) -> Rows {
+    let mut rows = tuple_union_rows(package);
+    let armed = &mut rows.unions[0].members[0];
+    armed.payload_nodes = vec![data];
+    armed.payload = vec![ValueType::Integer];
+    armed.clock_payload[0].member_type = first.into();
+    if first != CLOCK {
+        armed.clock_payload[0].collections = vec![layer("sequence", "0", "2")];
+    }
+    rows
+}
+
+/// A union member with several payload positions is joined as the product
+/// of their renderings.
+#[trace("TC-481", "FR-789-AC-4")]
+#[test]
+fn a_union_payload_product_joins_the_renderings_of_its_positions() {
+    let package = tuple_union();
+    let integer = integer_node(&package);
+    let (joined, u) = product_place(&package, CLOCK, INTEGER, None);
+    join_rows(&joined, &product_rows(&package, CLOCK, integer.clone()))
+        .expect("the product of both positions");
+    let (text, _) = product_place(&package, CLOCK, "ix://filament/native/Text", None);
+    refuses_at_row(
+        "another second position",
+        &text,
+        &product_rows(&package, CLOCK, integer.clone()),
+        u,
+        1,
+    );
+    refuses_at_row(
+        "a second position unrenderable",
+        &joined,
+        &product_rows(&package, CLOCK, node_id_of(&package, "time_source")),
+        u,
+        1,
+    );
+    join_rows(
+        &joined,
+        &product_rows(&package, CLOCK, node_id_of(&package, "integer_range")),
+    )
+    .expect("a position without a rendering yet is not compared");
+    // `idle` carries no payload, whatever product the rows spell for it.
+    let (mut nullary, _) = product_place(&package, CLOCK, INTEGER, None);
+    *binding_mut(step_mut(&mut nullary, u, 1), "case") = json!("idle");
+    set_row(
+        &mut nullary,
+        u,
+        1,
+        "member_identity",
+        "ix://test:spine-model/U/idle",
+    );
+    set_row(&mut nullary, u, 1, "member_type", "()");
+    set_row(&mut nullary, u, 2, "declaring_type", "()");
+    set_row(&mut nullary, u, 2, "member_identity", "()/p0");
+    refuses_at_row(
+        "nullary case typed as the empty product",
+        &nullary,
+        &tuple_union_rows(&package),
+        u,
+        1,
+    );
+}
+
+/// FR-789 join rule 2 after a union's product: a `slot` step follows the
+/// tuple row, whose bounds the identity rows then check.
+#[trace("TC-481", "FR-789-AC-4")]
+#[test]
+fn a_slot_after_a_union_payload_product_is_admitted_and_joined() {
+    let package = tuple_union();
+    let sequence = format!("Sequence<{CLOCK}>");
+    let (joined, u) = product_place(&package, &sequence, INTEGER, Some(("0", "2")));
+    let rows = product_rows(&package, &sequence, integer_node(&package));
+    join_rows(&joined, &rows).expect("the product position's bounds");
+    let mut wrong = product_rows(&package, &sequence, integer_node(&package));
+    wrong.unions[0].members[0].clock_payload[0].collections = vec![layer("sequence", "0", "3")];
+    refuses_at_row("slot bounds after a product", &joined, &wrong, u, 2);
+}
+
+/// The reset's frame is joined against the identity rows: it writes a clock
+/// member when any one of its modifications names a member whose entry is
+/// exactly `Clock`, and a `Sequence` of Clock is not one.
+#[trace("TC-481", "FR-374-AC-4")]
+#[test]
+fn a_reset_frame_must_write_a_clock_member_the_rows_list() {
+    let both = with_parameter_clauses("x", &["d", "r"]);
+    joined(&both, collections_object(&both), Some(record_row(&both)))
+        .expect("one clock modification among others");
+    let sequence = with_parameter_clauses("x", &["q"]);
+    let reset = nodes(&sequence).len() - 2;
+    let error = joined(
+        &sequence,
+        collections_object(&sequence),
+        Some(record_row(&sequence)),
+    )
+    .expect_err("a Sequence of Clock is no clock member");
+    assert_eq!(error.code, RowError::TimedNodeReference);
+    assert_eq!(
+        locus_path(&error),
+        format!("/semantic_graph/nodes/{reset}/body/members/1/value/target")
+    );
+}
+
+fn refused_at(case: &str, package: &Value, node: usize, row: usize) {
+    let refusal = refused(package);
+    assert_eq!(refusal.code, Code::InvalidPackage, "{case}: {refusal:?}");
+    assert_eq!(refusal.cause, Some(Cause::MalformedClockPlace), "{case}");
+    assert_eq!(
+        refusal.loci[0].path.as_ref().map(|at| at.as_str()),
+        Some(format!("/semantic_graph/nodes/{node}/body/members/2/value/members/{row}").as_str()),
+        "{case}: {refusal:?}"
+    );
+}
+
+/// The row and the slot step that follows it agree, so that only the binding
+/// can refuse: the bounds are the type's own at the strict read.
+#[trace("TC-481", "FR-374-AC-3")]
+#[test]
+fn the_strict_read_checks_a_slot_against_the_bindings_own_bounds() {
+    let package = collections();
+    let r = place(&package, "W/c");
+    admitted(&package);
+    let edits: [(&str, &str, Value, &str); 3] = [
+        ("maximum", "maximum", json!(4), "4"),
+        ("minimum", "minimum", json!(1), "1"),
+        ("kind", "collection", json!("set"), "set"),
+    ];
+    for (case, step_name, step_value, row_value) in edits {
+        let mut broken = package.clone();
+        *binding_mut(step_mut(&mut broken, r, 1), step_name) = step_value;
+        let row_name = if step_name == "collection" {
+            "collection_kind"
+        } else {
+            step_name
+        };
+        set_row(&mut broken, r, 0, row_name, row_value);
+        refused_at(case, &broken, r, 0);
+    }
+}
+
+/// A data field's binding that has no FR-789 rendering is refused, and a row
+/// that names a type the package does not declare is refused, not skipped.
+#[trace("TC-481", "FR-374-AC-2")]
+#[test]
+fn the_strict_read_refuses_a_row_it_cannot_ground_in_the_package() {
+    let package = tuple_union();
+    let w = place_of(&package, "w");
+    // A time source is no type a field has.
+    let source = position_where(&package, |node| node["semantic_form"] == "time_source");
+    refused_at(
+        "unrenderable binding",
+        &retyped(&package, "O", "w", source),
+        w,
+        0,
+    );
+    // The field is a range, so its type text is not compared, but the next
+    // row's declaring type must still name a declaration.
+    let range = position_where(&package, |node| node["semantic_form"] == "integer_range");
+    let mut ghost = retyped(&package, "O", "w", range);
+    set_row(
+        &mut ghost,
+        w,
+        0,
+        "member_type",
+        "ix://test:spine-model/Nope",
+    );
+    set_row(
+        &mut ghost,
+        w,
+        1,
+        "declaring_type",
+        "ix://test:spine-model/Nope",
+    );
+    set_row(
+        &mut ghost,
+        w,
+        1,
+        "member_identity",
+        "ix://test:spine-model/Nope/c",
+    );
+    refused_at("undeclared declaring type", &ghost, w, 1);
+    // A union row's payload product is not a type spelling.
+    let (mut malformed, u) = product_place(&package, CLOCK, INTEGER, None);
+    set_row(&mut malformed, u, 1, "member_type", "Sequence<");
+    set_row(&mut malformed, u, 2, "declaring_type", "Sequence<");
+    refused_at("malformed member type", &malformed, u, 1);
+}
+
+/// A tuple row's slot is joined at the identity rows, also after a union's
+/// product.
+#[trace("TC-481", "FR-789-AC-4")]
+#[test]
+fn the_strict_read_admits_a_slot_after_a_product_row() {
+    let package = tuple_union();
+    let sequence = format!("Sequence<{CLOCK}>");
+    let (product, _) = product_place(&package, &sequence, INTEGER, Some(("0", "2")));
+    admitted(&product);
 }
