@@ -2312,6 +2312,7 @@ impl DomainModel {
             }
         }
         let leaf = if clock_reference {
+            runtime_storage(&mut budget, 1)?;
             Some(MemberType::ClockReference)
         } else {
             self.element_type_leaf_runtime(current, &mut budget)?

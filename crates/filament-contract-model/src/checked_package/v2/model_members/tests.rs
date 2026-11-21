@@ -1785,6 +1785,8 @@ fn runtime_member_helpers_precharge_each_owned_layer_and_unit_handle() {
         object_type(WIDGET, &[], vec![many]),
         json!({"identity":"ix://acme/orders/Units", "kind":"sequence", "items":"ix://filament/unit/metre"}),
         json!({"identity":"ix://acme/orders/MaybeUnits", "kind":"option", "inner":"ix://acme/orders/Units"}),
+        json!({"identity":"ix://acme/orders/ClockRef", "kind":"reference", "target":"ix://filament/native/Clock"}),
+        json!({"identity":"ix://acme/orders/MaybeClockRef", "kind":"option", "inner":"ix://acme/orders/ClockRef"}),
     ]), &unit_refs).unwrap();
     let mut no_key_storage = NativeJoinBudget::new(u64::MAX, 0);
     model
@@ -1796,6 +1798,14 @@ fn runtime_member_helpers_precharge_each_owned_layer_and_unit_handle() {
         NativeJoinChargeKind::Storage
     );
     for (type_ref, expected) in [
+        (
+            SelectedTypeRef::Declared("ix://acme/orders/ClockRef".into()),
+            MemberType::ClockReference,
+        ),
+        (
+            SelectedTypeRef::Declared("ix://acme/orders/MaybeClockRef".into()),
+            MemberType::Option(Box::new(MemberType::ClockReference)),
+        ),
         (
             SelectedTypeRef::Native(NativeTypeRef::Integer),
             MemberType::Integer,
