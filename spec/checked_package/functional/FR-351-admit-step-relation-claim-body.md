@@ -52,8 +52,9 @@ incomplete result.
 
 The reader shall add `step_relation` to the closed `claim` form vocabulary and
 shall retain its body as a distinct typed production, not as a caller-inspected
-JSON object. The body shall be an aggregate of exactly four ordered bindings:
-`subjects`, `executions`, `invariants`, `body`. `subjects` is an aggregate of
+JSON object. The body shall be an aggregate of four ordered bindings:
+`subjects`, `executions`, `invariants`, `body`, optionally followed by one final
+binding `subject_declaration_order`. `subjects` is an aggregate of
 bindings from each distinct model alias, in first-named order, to a reference
 to its model node. `executions` is an aggregate of bindings in source order,
 one per execution variable. Each execution value is an aggregate of exactly
@@ -66,6 +67,24 @@ holding invariant-clause references. `body` references a Boolean expression.
 The node's `semantic_type` shall name the Boolean scalar type; its
 `declaration` shall be the declared relation name; its required source owner
 shall be retained; and it shall have one declaration and one claim occurrence.
+
+The optional `subject_declaration_order` is a Group of bindings `(alias, reference to
+model root)` in source model declaration order, using the `subjects` entry
+production. It shall be an exact permutation of `subjects` by alias and model
+root reference: every subject alias occurs once, none is unknown, duplicate or
+missing, and each reference equals that alias's `subjects` reference. Distinct
+aliases may reference one model root. The reader shall retain the supplied
+sequence without sorting or inferring it from first execution use. A body
+without it remains admitted, and the reader exposes the sequence through a
+borrowed `(alias, root)` view that is absent for such a body. Its refusals are
+`invalid_semantic_graph` with no cause at `P = /semantic_graph/nodes/N/body/members/4`:
+a wrong final binding or name at `P`; a non-Group value at `P/value`; a
+malformed entry at `P/value/members/K`; a duplicate or unknown alias at that
+entry's `name`; a wrong alias/root join or reference at that entry's
+`value/target`; and, only after every supplied entry is checked in sequence, a
+missing alias at `P/value/members/LEN`, `LEN` being the supplied entry count.
+This is an explicit narrow extension of the current four-binding profile, not
+a seven-binding migration.
 
 The reader shall require every alias to name a subject and every subject to be
 named by an execution. It shall require each subject target to be a model node,
@@ -115,6 +134,8 @@ their precedence; a malformed or duplicate structural id or wrong dependency lis
 | FR-351-AC-3 | PLANNED/UNRUN (IR-1141). Adding a Vault invariant, changing step precondition or swapping x and y changes the complete step-relation body; whitespace and comment changes leave that body unchanged. Writing an admitted typed package and reading its canonical bytes preserves body, typed form and structural id; canonical output from the external FSL producer admits. | Test |
 | FR-351-AC-4 | A missing execution `implementation` binding refuses `invalid_semantic_graph`; an unknown alias refuses `missing_declaration`/`missing-name`; an operation target naming an object type and an implementation relation lacking the operation's frame each refuse `invalid_model_binding`/`malformed-declaration`; omitted precondition or invariant references refuse the same at their aggregate; an integer-typed body expression refuses `ill_typed`/`non-boolean-root`, each at FR-477's locus and first applicable reader step. | Test |
 | FR-351-AC-5 | Replacing `y`'s `self` and `i` parameter references with `x`'s nodes, while updating the exact dependencies, refuses `invalid_model_binding`/`malformed-declaration` at `y`'s `parameters`; a simultaneous earlier-stage defect wins before this semantic refusal. | Test |
+| FR-351-AC-6 | A relation with two aliases `A`, `B` over one model root and first-use subjects `[A, B]` carries `subject_declaration_order` `[B, A]`. The reader admits it, `step_relation_subject_declaration_order` returns `[B, A]` with each alias's root, and writing then reading preserves it. A package without the member admits unchanged and the view is `None`. The existing `step_relation_body` output is the same with or without the member. | Test |
+| FR-351-AC-7 | Each of a wrong final binding name, a non-Group value, a malformed entry, a duplicate alias, an unknown alias, a non-reference value, a reference to another subject's root and an omitted alias refuses the whole package with `invalid_semantic_graph`, no cause, at the pointer FR-351 names; with two defects, the first supplied entry is reported before a missing alias. | Test |
 
 ## Dependencies
 

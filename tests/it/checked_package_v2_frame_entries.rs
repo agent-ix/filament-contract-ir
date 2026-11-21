@@ -5784,3 +5784,300 @@ fn step_relation_tables_are_charged_to_the_read_budget_at_the_relation_node() {
     );
     assert_exact_and_one_short(&read, &requests);
 }
+
+/// The relation's two aliases `V` and `W` over one model root, `V` first used
+/// by `x` and `W` by `y`, carrying `declared` as its declaration order.
+fn declaration_order_package(declared: Option<&[&str]>) -> Value {
+    let base = step_relation_package();
+    rekey_step_relation(base, |node| {
+        let members = node["body"]["members"].as_array_mut().expect("body");
+        let model = members[0]["value"]["members"][0]["value"]["target"].clone();
+        members[0]["value"]["members"]
+            .as_array_mut()
+            .expect("subjects")
+            .push(binding(
+                "W",
+                json!({"term": "reference", "target": model.clone()}),
+            ));
+        members[1]["value"]["members"][1]["value"]["members"][0]["value"]["value"] = json!("W");
+        let invariant = members[2]["value"]["members"][0]["value"].clone();
+        members[2]["value"]["members"]
+            .as_array_mut()
+            .expect("invariants")
+            .push(binding("W", invariant));
+        if let Some(declared) = declared {
+            let entries = declared
+                .iter()
+                .map(|alias| binding(alias, json!({"term": "reference", "target": model})))
+                .collect::<Vec<_>>();
+            members.push(binding(
+                "subject_declaration_order",
+                json!({"term": "aggregate", "members": entries}),
+            ));
+        }
+    })
+}
+
+fn admitted_relation(package: &Value) -> CheckedPackageV2 {
+    match read(package) {
+        CheckedPackageV2ReadResult::Admitted(package) => *package,
+        other => panic!("baseline must admit: {other:?}"),
+    }
+}
+
+fn declared_order(package: &CheckedPackageV2) -> Option<Vec<(String, CheckedNodeId)>> {
+    let relation = package
+        .graph()
+        .nodes
+        .iter()
+        .find(|node| node.semantic_form.as_ref() == "step_relation")
+        .expect("relation");
+    relation
+        .step_relation_subject_declaration_order()
+        .map(|order| {
+            assert_eq!(order.len(), order.size_hint().0);
+            order
+                .map(|(alias, root)| (alias.to_owned(), root.clone()))
+                .collect()
+        })
+}
+
+/// Trace: FR-351-AC-6
+#[trace("FR-351-AC-6")]
+#[test]
+fn step_relation_declaration_order_is_optional_and_legacy_four_binding_admits() {
+    let legacy = step_relation_package();
+    let relation = position(&legacy, "claim", "step_relation");
+    assert_eq!(
+        legacy["semantic_graph"]["nodes"][relation]["body"]["members"]
+            .as_array()
+            .expect("members")
+            .len(),
+        4
+    );
+    let admitted = admitted_relation(&legacy);
+    assert_eq!(declared_order(&admitted), None);
+    let with_member = declaration_order_package(Some(&["V", "W"]));
+    let without_member = declaration_order_package(None);
+    let (with_member, without_member) = (
+        admitted_relation(&with_member),
+        admitted_relation(&without_member),
+    );
+    assert_eq!(declared_order(&without_member), None);
+    let body = |package: &CheckedPackageV2| {
+        package
+            .graph()
+            .nodes
+            .iter()
+            .find(|node| node.semantic_form.as_ref() == "step_relation")
+            .and_then(|node| node.step_relation_body())
+            .expect("typed body")
+    };
+    assert_eq!(body(&with_member), body(&without_member));
+    assert_eq!(
+        declared_order(&with_member).expect("present").len(),
+        2,
+        "the member is exposed once present"
+    );
+}
+
+/// Trace: FR-351-AC-6
+#[trace("FR-351-AC-6")]
+#[test]
+fn step_relation_declaration_order_preserves_supplied_order_over_one_root_and_roundtrips() {
+    let package = declaration_order_package(Some(&["W", "V"]));
+    let relation = position(&package, "claim", "step_relation");
+    let model = package["semantic_graph"]["nodes"][relation]["body"]["members"][0]["value"]
+        ["members"][0]["value"]["target"]
+        .clone();
+    let model: CheckedNodeId = serde_json::from_value(model).expect("model root id");
+    let admitted = admitted_relation(&package);
+    let expected = vec![("W".to_owned(), model.clone()), ("V".to_owned(), model)];
+    assert_eq!(declared_order(&admitted), Some(expected.clone()));
+    let first_use = admitted
+        .graph()
+        .nodes
+        .iter()
+        .find(|node| node.semantic_form.as_ref() == "step_relation")
+        .and_then(|node| node.step_relation_body())
+        .expect("typed body")
+        .subjects
+        .into_iter()
+        .map(|(alias, _)| alias.to_string())
+        .collect::<Vec<_>>();
+    assert_eq!(first_use, ["V", "W"], "first-use subjects are unchanged");
+    let bytes = encode_checked_package_v2(
+        admitted.name(),
+        admitted.lock(),
+        admitted.graph(),
+        CheckedPackageSourceCorrespondenceRef {
+            source_map: admitted.source_map(),
+            refinement_step_rows: admitted.refinement_step_rows(),
+        },
+        filament_contract_model::CheckedPackageSidecarsRef {
+            temporal_clause_names: admitted.temporal_clause_names(),
+            claim_names: admitted.claim_names(),
+            operation_effects: None,
+            operation_bodies: None,
+            checked_term_data: admitted.checked_term_data(),
+            temporal_bindings: admitted.temporal_bindings(),
+            schedulability_claims: None,
+        },
+        admitted.capability_report(),
+        admitted.diagnostics(),
+        Limits::new(u64::MAX),
+    )
+    .expect("canonical writer");
+    match crate::read_and_account(
+        &bytes,
+        CheckedPackageReadLimits::bounded(),
+        &step_relation_evidence(&package),
+    ) {
+        CheckedPackageV2ReadResult::Admitted(reloaded) => {
+            assert_eq!(declared_order(&reloaded), Some(expected));
+        }
+        other => panic!("written package must read back: {other:?}"),
+    }
+}
+
+/// Trace: FR-351-AC-7
+#[trace("FR-351-AC-7")]
+#[test]
+fn step_relation_declaration_order_refuses_each_defect_at_its_pointer() {
+    admitted_relation(&declaration_order_package(Some(&["W", "V"])));
+    let anchor = nodes(&step_relation_package())
+        .iter()
+        .find(|node| node["node_tag"] == "state" && node["semantic_form"] == "operation_anchor")
+        .expect("anchor")["node_id"]
+        .clone();
+    let edit = |change: &dyn Fn(&mut Value)| {
+        rekey_step_relation(declaration_order_package(Some(&["W", "V"])), |node| {
+            change(&mut node["body"]["members"][4]);
+        })
+    };
+    let check = |case: &str, package: &Value, tail: &str| {
+        let at = position(package, "claim", "step_relation");
+        expect(
+            case,
+            package,
+            Code::InvalidSemanticGraph,
+            None,
+            &format!("/semantic_graph/nodes/{at}/body/members/4{tail}"),
+            None,
+        );
+    };
+    let model = declaration_order_package(None)["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|node| node["semantic_form"] == "step_relation")
+        .expect("claim")["body"]["members"][0]["value"]["members"][0]["value"]["target"]
+        .clone();
+    let reference = |target: &Value| json!({"term": "reference", "target": target});
+    check(
+        "wrong binding name",
+        &edit(&|member| member["name"] = json!("declaration_order")),
+        "",
+    );
+    check(
+        "non-group value",
+        &edit(&|member| member["value"] = text("W")),
+        "/value",
+    );
+    check(
+        "malformed entry",
+        &edit(&|member| member["value"]["members"][1] = text("W")),
+        "/value/members/1",
+    );
+    check(
+        "duplicate alias",
+        &edit(&|member| member["value"]["members"][1]["name"] = json!("W")),
+        "/value/members/1/name",
+    );
+    check(
+        "unknown alias",
+        &edit(&|member| member["value"]["members"][1]["name"] = json!("Z")),
+        "/value/members/1/name",
+    );
+    check(
+        "non-reference value",
+        &edit(&|member| member["value"]["members"][0]["value"] = text("W")),
+        "/value/members/0/value/target",
+    );
+    check(
+        "wrong root join",
+        &edit(&|member| {
+            member["value"]["members"][0]["value"] = reference(&anchor);
+        }),
+        "/value/members/0/value/target",
+    );
+    check(
+        "omitted alias",
+        &edit(&|member| {
+            member["value"]["members"]
+                .as_array_mut()
+                .expect("entries")
+                .pop();
+        }),
+        "/value/members/1",
+    );
+    check(
+        "empty group omits the first slot",
+        &edit(&|member| member["value"]["members"] = json!([])),
+        "/value/members/0",
+    );
+    check(
+        "supplied offender precedes the omitted alias",
+        &edit(&|member| {
+            member["value"]["members"] = json!([binding("Z", reference(&model))]);
+        }),
+        "/value/members/0/name",
+    );
+    check(
+        "first supplied offender wins, shape or join",
+        &edit(&|member| {
+            member["value"]["members"][0]["value"] = reference(&anchor);
+            member["value"]["members"][1] = text("W");
+        }),
+        "/value/members/0/value/target",
+    );
+    let sixth = rekey_step_relation(declaration_order_package(Some(&["W", "V"])), |node| {
+        node["body"]["members"]
+            .as_array_mut()
+            .expect("members")
+            .push(binding(
+                "extra",
+                json!({"term": "aggregate", "members": []}),
+            ));
+    });
+    let at = position(&sixth, "claim", "step_relation");
+    expect(
+        "sixth binding",
+        &sixth,
+        Code::InvalidSemanticGraph,
+        None,
+        &format!("/semantic_graph/nodes/{at}/body/members/5"),
+        None,
+    );
+}
+
+/// Trace: FR-351-AC-6
+#[trace("FR-351-AC-6")]
+#[test]
+fn step_relation_first_use_subject_controls_survive_the_declaration_order() {
+    let package = rekey_step_relation(declaration_order_package(Some(&["W", "V"])), |node| {
+        node["body"]["members"][0]["value"]["members"]
+            .as_array_mut()
+            .expect("subjects")
+            .swap(0, 1);
+    });
+    let at = position(&package, "claim", "step_relation");
+    expect(
+        "subjects must stay in first-use order",
+        &package,
+        Code::InvalidSemanticGraph,
+        None,
+        &format!("/semantic_graph/nodes/{at}/body/members/0/value/members/0"),
+        None,
+    );
+}
