@@ -1344,10 +1344,92 @@ pub struct SelectedExactIdentities {
     source_tuples: Arc<BTreeMap<CheckedNodeId, Arc<SelectedSourceTupleRow>>>,
     source_enums: Arc<BTreeMap<CheckedNodeId, Arc<SelectedSourceEnumRow>>>,
     source_collections: Arc<BTreeMap<CheckedNodeId, Arc<SelectedSourceCollectionRow>>>,
-    model_enum_shapes: Arc<BTreeMap<CheckedNodeId, EnumShape>>,
+    model_enum_shapes: Arc<BTreeMap<CheckedNodeId, super::SelectedModelEnumShapeRow>>,
 }
 
 impl SelectedExactIdentities {
+    /// Join complete model enum evidence from the package's selecting stage.
+    ///
+    /// Every selected enum, including unused declarations, needs a complete
+    /// declaration, member and canonical shape witness. The caller's native
+    /// budget covers the entire acquisition; failure exposes no partial index.
+    pub fn with_admitted_model_enum_rows(
+        self,
+        package: &CheckedPackageV2,
+        rows: super::SelectedModelEnumRows<'_>,
+        budget: &mut NativeJoinBudget,
+    ) -> Result<Self, ExactTypeProjectionError> {
+        self.with_model_enum_rows_for_nodes(
+            package,
+            rows,
+            package.models.selected_declarations().map(|(id, _)| id),
+            budget,
+        )
+    }
+
+    pub(super) fn with_model_enum_rows_for_nodes<'a>(
+        self,
+        package: &CheckedPackageV2,
+        rows: super::SelectedModelEnumRows<'_>,
+        required: impl IntoIterator<Item = &'a CheckedNodeId>,
+        budget: &mut NativeJoinBudget,
+    ) -> Result<Self, ExactTypeProjectionError> {
+        let before = budget.begin();
+        let previous_locus = budget.active_locus();
+        let result = (|| {
+            if let Some(first) = package.resolved_graph().nodes.first() {
+                self.check_binding(package, budget, &first.node_id)?;
+            }
+            let shapes =
+                super::model_enum_witness::join_shapes_runtime(package, rows, required, budget)
+                    .map_err(|error| match error {
+                        super::model_enum_witness::RuntimeEnumError::Native(_) => {
+                            let denied = budget
+                                .first_unpaid()
+                                .expect("native enum refusal records its unpaid charge");
+                            ExactTypeProjectionError::compact_native(
+                                budget,
+                                denied.kind,
+                                denied.amount,
+                            )
+                        }
+                        super::model_enum_witness::RuntimeEnumError::Semantic(error) => {
+                            use super::SelectedModelEnumErrorCode as Code;
+                            let code = match error.code {
+                                Code::ForeignPackage => ExactTypeProjectionErrorCode::ForeignNode,
+                                Code::UnknownNode => ExactTypeProjectionErrorCode::UnknownNode,
+                                Code::WrongForm | Code::MismatchedWitness => {
+                                    ExactTypeProjectionErrorCode::MismatchedIdentityWitness
+                                }
+                                Code::UnavailableWitness => {
+                                    ExactTypeProjectionErrorCode::UnavailableIdentityWitness
+                                }
+                                Code::ConflictingWitness => {
+                                    ExactTypeProjectionErrorCode::ConflictingIdentityWitness
+                                }
+                                Code::WorkLimit => ExactTypeProjectionErrorCode::ExhaustedWork,
+                            };
+                            exact_diagnostic(
+                                budget,
+                                code,
+                                &error.node,
+                                Some(&error.node),
+                                ExactDiagnosticForm::Literal("selected_model_enum"),
+                            )
+                        }
+                    })?;
+            let mut selected = self.with_model_enum_shapes(&shapes, budget)?;
+            selected.binding = package.admission_binding.clone();
+            Ok(selected)
+        })();
+        budget.set_active_locus(previous_locus);
+        match &result {
+            Ok(_) => budget.finish(before),
+            Err(_) => budget.abort(),
+        }
+        result
+    }
+
     /// Attach only model enum shapes already joined to admitted declaration and case rows.
     pub(in crate::checked_package::v2) fn with_model_enum_shapes(
         mut self,
@@ -1398,19 +1480,62 @@ impl SelectedExactIdentities {
                 node.package.len() as u128,
             )?;
             storage::preflight_enum_shape(&row.shape, budget, node)?;
+            if let Some(previous) = self.model_enum_shapes.get(node) {
+                charge_native_work(budget, node, node, "model_enum_rejoin", 1)?;
+                if previous != row {
+                    return Err(exact_diagnostic(
+                        budget,
+                        ExactTypeProjectionErrorCode::ConflictingIdentityWitness,
+                        node,
+                        Some(node),
+                        ExactDiagnosticForm::Literal("model_enum_rejoin"),
+                    ));
+                }
+            }
+            for declaration in self.declarations.values() {
+                charge_native_work(
+                    budget,
+                    node,
+                    &declaration.structural_node,
+                    "model_enum_key",
+                    1,
+                )?;
+                let key = match &declaration.exact_identity {
+                    SelectedExactIdentity::Record(key)
+                    | SelectedExactIdentity::Union(key)
+                    | SelectedExactIdentity::DeclaredUnit(UnitId::Declared(key)) => Some(key),
+                    SelectedExactIdentity::Object(_)
+                    | SelectedExactIdentity::DeclaredUnit(UnitId::Compound(_)) => None,
+                };
+                if key == Some(&row.node_key) {
+                    return Err(exact_diagnostic(
+                        budget,
+                        ExactTypeProjectionErrorCode::ConflictingIdentityWitness,
+                        node,
+                        Some(&declaration.structural_node),
+                        ExactDiagnosticForm::Literal("model_enum_key"),
+                    ));
+                }
+            }
             charge_native_storage(
                 budget,
                 node,
                 node,
                 "model_enum_shape_index",
                 storage::node(node)
-                    .saturating_add(storage::enum_shape(&row.shape))
+                    .saturating_add(storage::model_enum_shape(row))
                     .saturating_add(1),
             )?;
-            shapes.insert(node.clone(), row.shape.clone());
+            shapes.insert(node.clone(), row.clone());
         }
         self.model_enum_shapes = Arc::new(shapes);
         Ok(self)
+    }
+
+    pub(super) fn model_enum_rows(
+        &self,
+    ) -> impl Iterator<Item = &super::SelectedModelEnumShapeRow> {
+        self.model_enum_shapes.values()
     }
 
     /// An empty selection for reads of types without declaration identities.
@@ -3316,7 +3441,7 @@ pub(super) fn project_record_field_type(
                 )
             })?;
             charge_native_storage(budget, requested, requested, "record_field_variant", 1)?;
-            return Ok(ValueType::Enum(shape.clone()));
+            return Ok(ValueType::Enum(shape.shape.clone()));
         }
         MemberType::Float32
         | MemberType::Float64
@@ -4155,15 +4280,15 @@ impl CheckedPackageV2 {
                 let shape = identities.model_enum_shapes.get(type_id).ok_or_else(|| {
                     refuse!(ExactTypeProjectionErrorCode::UnavailableIdentityWitness)
                 })?;
-                storage::preflight_enum_shape(shape, work, type_id)?;
+                storage::preflight_enum_shape(&shape.shape, work, type_id)?;
                 charge_native_storage(
                     work,
                     requested,
                     type_id,
                     "model_enum_projection",
-                    storage::enum_shape(shape).saturating_add(1),
+                    storage::enum_shape(&shape.shape).saturating_add(1),
                 )?;
-                ValueType::Enum(shape.clone())
+                ValueType::Enum(shape.shape.clone())
             }
             CheckedNodeKind::Model(ModelForm::RecordValueType) => {
                 let identity = identities

@@ -59,13 +59,24 @@ fn fixture() -> (
     Vec<SelectedModelEnumDeclarationRow>,
     Vec<SelectedModelEnumMemberRow>,
 ) {
+    fixture_with_checked(CHECKED)
+}
+
+fn fixture_with_checked(
+    checked: &[u8],
+) -> (
+    Box<CheckedPackageV2>,
+    SelectedModelEnumShapeRow,
+    Vec<SelectedModelEnumDeclarationRow>,
+    Vec<SelectedModelEnumMemberRow>,
+) {
     let mut evidence = CheckedPackageEvidence::new();
     evidence
         .insert_domain_package_document("example/config-version", DOMAIN)
         .unwrap();
     evidence.support_feature("filament.value.complete/v1");
     let package = match CheckedPackageV2::read(
-        &crate::checked_package::v2::monitor_plan::genuine_bytes_under_current_rules(CHECKED),
+        &crate::checked_package::v2::monitor_plan::genuine_bytes_under_current_rules(checked),
         CheckedPackageReadLimits {
             bytes: 67_108_864,
             nodes: 1_000_000,
@@ -198,4 +209,188 @@ fn genuine_tier_projects_the_authenticated_installed_producer_shape() {
         assert!(short.first_unpaid_locus().is_some());
         assert_eq!(short.last_success_delta(), None);
     }
+}
+
+fn runtime_fixture() -> (
+    Box<CheckedPackageV2>,
+    SelectedModelEnumShapeRow,
+    Vec<SelectedModelEnumDeclarationRow>,
+    Vec<SelectedModelEnumMemberRow>,
+) {
+    // Supply the separate operation-effect channel required by the full view.
+    let mut checked: Value = serde_json::from_slice(CHECKED).unwrap();
+    let object = checked["semantic_graph"]["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|node| node["semantic_form"] == "object_type")
+        .unwrap()["node_id"]
+        .clone();
+    checked["operation_effects"] = serde_json::json!([{
+        "document": "example/config-version", "declaring": object,
+        "operation": "attemptUpdate",
+        "effect": {"modifies": [], "creates": [], "deletes": [], "deletes_scoped": []},
+        "provenance": {"origin": "model_document_operation_frame",
+            "member": "ix://example/config-version/ConfigVersion/attemptUpdate"}
+    }]);
+    fixture_with_checked(&serde_json::to_vec(&checked).unwrap())
+}
+
+fn runtime_identities(
+    package: &CheckedPackageV2,
+    budget: &mut NativeJoinBudget,
+) -> SelectedExactIdentities {
+    use filament_exact::OriginalDeclarationKey;
+    let object = package
+        .resolved_graph()
+        .nodes
+        .iter()
+        .find(|node| node.semantic_form.as_ref() == "object_type")
+        .unwrap();
+    let original = "ix://example/config-version/ConfigVersion";
+    SelectedExactIdentities::from_stage_rows(
+        package,
+        [SelectedExactDeclarationRow::new(
+            object.node_id.clone(),
+            "example/config-version",
+            SelectedExactDeclarationForm::ObjectType,
+            original,
+            SelectedExactIdentity::Object(EffectiveId::new(
+                None,
+                OriginalDeclarationKey::new("example/config-version", original),
+            )),
+        )],
+        [],
+        budget,
+    )
+    .unwrap()
+}
+
+#[trace("FR-354-AC-1", "FR-354-AC-6", "FR-354-AC-7", "FR-352-AC-30")]
+#[test]
+fn model_enum_runtime_full_view_matches_direct_field_and_literal_types_with_cumulative_budget() {
+    use crate::SelectedModelEnumRows;
+    let (package, shape, declarations, members) = runtime_fixture();
+    let read = |package: &CheckedPackageV2, budget: &mut NativeJoinBudget| {
+        let identities = runtime_identities(package, budget).with_admitted_model_enum_rows(
+            package,
+            SelectedModelEnumRows {
+                declarations: &declarations,
+                members: &members,
+                shapes: std::slice::from_ref(&shape),
+            },
+            budget,
+        )?;
+        let types = package
+            .project_selected_type_declarations(&identities, &[], &[], budget)
+            .map_err(|error| ExactTypeProjectionError {
+                code: error.code,
+                requested: error.at.clone(),
+                at: error.at,
+                form: error.form,
+                work: error.work,
+                denied: error.denied,
+                configured_bound: None,
+            })?;
+        let literal =
+            package.project_exact_type(&members[0].structural_node, &identities, budget)?;
+        Ok::<_, ExactTypeProjectionError>((types, literal))
+    };
+    let mut ample = NativeJoinBudget::new(u64::MAX, u64::MAX);
+    let (types, literal) = read(&package, &mut ample).expect("complete enum environment");
+    assert_eq!(types.enums(), std::slice::from_ref(&shape));
+    assert_eq!(literal.value_type(), &ValueType::Enum(shape.shape.clone()));
+    let field = types.objects()[0]
+        .fields()
+        .iter()
+        .find(|field| field.name() == "tier")
+        .unwrap();
+    assert_eq!(field.value_type(), literal.value_type());
+    let used = ample.consumed();
+    let mut exact = NativeJoinBudget::new(used.work, used.storage);
+    assert_eq!(
+        read(&package, &mut exact).unwrap(),
+        (types.clone(), literal.clone())
+    );
+    assert_eq!(
+        read(
+            &package.clone(),
+            &mut NativeJoinBudget::new(used.work, used.storage)
+        )
+        .unwrap(),
+        (types, literal)
+    );
+    for (work, storage, kind) in [
+        (used.work - 1, u64::MAX, NativeJoinChargeKind::Work),
+        (u64::MAX, used.storage - 1, NativeJoinChargeKind::Storage),
+    ] {
+        let mut short = NativeJoinBudget::new(work, storage);
+        let error = read(&package, &mut short).expect_err("one-short cumulative read is atomic");
+        assert_eq!(error.denied.unwrap().kind, kind);
+        assert!(short.first_unpaid_locus().is_some());
+        assert_eq!(short.last_success_delta(), None);
+    }
+}
+
+#[trace("FR-354-AC-2", "FR-354-AC-6", "FR-352-AC-30")]
+#[test]
+fn model_enum_runtime_rejects_missing_conflicting_foreign_and_incomplete_witnesses() {
+    use crate::SelectedModelEnumRows;
+    let (package, shape, declarations, members) = runtime_fixture();
+    let mut missing_case = shape.clone();
+    missing_case.cases.pop();
+    missing_case.shape = EnumShape::new(
+        false,
+        missing_case.cases.iter().map(|case| case.variant.clone()),
+    );
+    let mut foreign = shape.clone();
+    foreign.selected_document = "foreign/document".into();
+    for (rows, expected) in [
+        (
+            vec![],
+            ExactTypeProjectionErrorCode::UnavailableIdentityWitness,
+        ),
+        (
+            vec![shape.clone(), shape.clone()],
+            ExactTypeProjectionErrorCode::ConflictingIdentityWitness,
+        ),
+        (
+            vec![foreign],
+            ExactTypeProjectionErrorCode::MismatchedIdentityWitness,
+        ),
+        (
+            vec![missing_case],
+            ExactTypeProjectionErrorCode::MismatchedIdentityWitness,
+        ),
+    ] {
+        let mut budget = NativeJoinBudget::new(u64::MAX, u64::MAX);
+        let identities = runtime_identities(&package, &mut budget);
+        let error = identities
+            .with_admitted_model_enum_rows(
+                &package,
+                SelectedModelEnumRows {
+                    declarations: &declarations,
+                    members: &members,
+                    shapes: &rows,
+                },
+                &mut budget,
+            )
+            .expect_err("incomplete or foreign evidence cannot expose any table");
+        assert_eq!(error.code, expected);
+        assert_eq!(budget.last_success_delta(), None);
+    }
+    let mut budget = NativeJoinBudget::new(u64::MAX, u64::MAX);
+    let error = package
+        .project_selected_type_declarations(
+            &runtime_identities(&package, &mut budget),
+            &[],
+            &[],
+            &mut budget,
+        )
+        .expect_err("a selected enum cannot be silently omitted from a full view");
+    assert_eq!(
+        error.code,
+        ExactTypeProjectionErrorCode::UnavailableIdentityWitness
+    );
+    assert_eq!(error.at.as_deref(), Some(&shape.structural_node));
 }

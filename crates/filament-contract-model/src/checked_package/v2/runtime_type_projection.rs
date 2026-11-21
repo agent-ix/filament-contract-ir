@@ -262,10 +262,10 @@ impl SelectedTypeRecord {
 
 /// Complete selected types for a package with supported declarations.
 ///
-/// The view contains no partial tables. Unsupported enum and model-unit
-/// selections refuse rather than reconstructing missing producer authority.
+/// The view contains no partial tables. Missing producer authority refuses.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SelectedTypeDeclarations {
+    enums: Vec<super::SelectedModelEnumShapeRow>,
     records: Vec<SelectedTypeRecord>,
     tuples: Vec<SelectedTypeTuple>,
     objects: Vec<SelectedTypeObject>,
@@ -276,6 +276,11 @@ pub struct SelectedTypeDeclarations {
 }
 
 impl SelectedTypeDeclarations {
+    /// Complete selected enum declarations and canonical cases in structural order.
+    pub fn enums(&self) -> &[super::SelectedModelEnumShapeRow] {
+        &self.enums
+    }
+
     /// Selected records in structural identity order.
     pub fn records(&self) -> &[SelectedTypeRecord] {
         &self.records
@@ -732,8 +737,9 @@ fn projected_field_type(
 impl CheckedPackageV2 {
     /// Project every selected record, tuple, object and source unit as one bounded view.
     ///
-    /// Enum and model-unit selections return a typed refusal before a view is
-    /// exposed. Identity rows must originate from
+    /// Enum shapes must first join through `with_admitted_model_enum_rows`.
+    /// Model-unit selections return a typed refusal before a view is exposed.
+    /// Identity rows must originate from
     /// the stage selecting the same documents; IR checks their structural join
     /// but cannot authenticate an opaque Exact key supplied by another caller.
     /// The caller budget charges cumulative traversal work and owned storage;
@@ -888,12 +894,28 @@ impl CheckedPackageV2 {
                         "selected_declaration",
                     ));
                 }
-                if reached.is_none() && matches!(declaration.form, DeclarationForm::VariantType) {
-                    return Err(ctx.error(
-                        ExactTypeProjectionErrorCode::UnavailableIdentityWitness,
-                        id,
-                        declaration.form.form(),
-                    ));
+                if declaration.form == DeclarationForm::VariantType {
+                    ctx.charge_structural_id(id, "selected_variant")?;
+                    if self.models.variant_family(id) == Some("enum") {
+                        let mut found = false;
+                        for row in identities.model_enum_rows() {
+                            ctx.charge(&row.structural_node, "selected_variant")?;
+                            found |= &row.structural_node == id;
+                        }
+                        if !found {
+                            return Err(ctx.error(
+                                ExactTypeProjectionErrorCode::UnavailableIdentityWitness,
+                                id,
+                                "selected_variant",
+                            ));
+                        }
+                    } else {
+                        return Err(ctx.error(
+                            ExactTypeProjectionErrorCode::UnsupportedExactType,
+                            id,
+                            "selected_union",
+                        ));
+                    }
                 }
             }
 
@@ -941,15 +963,15 @@ impl CheckedPackageV2 {
                         ));
                     }
                 }
-                if let Some(original) = model.variant_types.keys().next() {
+                for original in model.variant_types.keys() {
                     ctx.charge(root, "selected_document_type")?;
-                    return Err(ctx.error(
-                        ExactTypeProjectionErrorCode::UnavailableIdentityWitness,
-                        by_original
-                            .get(&(selection, original.as_ref()))
-                            .map_or(root, |(id, _)| id),
-                        "selected_variant",
-                    ));
+                    if !by_original.contains_key(&(selection, original.as_ref())) {
+                        return Err(ctx.error(
+                            ExactTypeProjectionErrorCode::UnresolvedSelectedDeclaration,
+                            root,
+                            "selected_variant",
+                        ));
+                    }
                 }
                 if !model.units.is_empty() {
                     ctx.charge(root, "selected_unit")?;
@@ -1115,7 +1137,13 @@ impl CheckedPackageV2 {
 
             let identities = &admitted_identities;
             ctx.package_locus("runtime_declarations");
-            ctx.charge_storage(3)?;
+            ctx.charge_storage(4)?;
+            let mut enums = Vec::new();
+            for row in identities.model_enum_rows() {
+                ctx.charge_structural_id(&row.structural_node, "selected_enum_output")?;
+                ctx.charge_storage(native_join_storage::model_enum_shape(row).saturating_add(1))?;
+                enums.push(row.clone());
+            }
             let mut records = Vec::new();
             let mut tuples = Vec::new();
             let mut objects = Vec::new();
@@ -1819,6 +1847,7 @@ impl CheckedPackageV2 {
 
             ctx.budget.finish(before);
             Ok(SelectedTypeDeclarations {
+                enums,
                 records,
                 tuples,
                 objects,

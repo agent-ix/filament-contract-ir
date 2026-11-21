@@ -15,9 +15,8 @@ use crate::checked_package::v2::{
     CheckedNodeId, CheckedNodeKind, CheckedNodeOwner, CheckedTerm, ExactTypeProjectionError,
     NativeJoinBudget, ScalarTypeForm, SelectedExactDeclarationRow, SelectedExactFieldRow,
     SelectedExactIdentities, SelectedModelEnumDeclarationRow, SelectedModelEnumError,
-    SelectedModelEnumErrorCode, SelectedModelEnumMemberRow, SelectedModelEnumShapeRow,
-    SelectedModelEnums, SelectedSourceUnitRow, SelectedTupleDeclarationRow,
-    SelectedTypeDeclarations, SelectedTypeDeclarationsError,
+    SelectedModelEnumMemberRow, SelectedModelEnumShapeRow, SelectedSourceUnitRow,
+    SelectedTupleDeclarationRow, SelectedTypeDeclarations, SelectedTypeDeclarationsError,
 };
 use crate::checked_package::v2::{NativeJoinChargeKind, NativeJoinLocus, NativeJoinLocusSource};
 use std::collections::BTreeSet;
@@ -97,25 +96,6 @@ fn enum_error(error: RuntimeEnumError, work: u64) -> ReachedModelError {
     }
 }
 
-fn checked_enum_error(
-    budget: &mut NativeJoinBudget,
-    code: SelectedModelEnumErrorCode,
-    id: &CheckedNodeId,
-    work: u64,
-) -> ReachedModelError {
-    if let Err(error) = read_node_storage(budget, id) {
-        return error.into();
-    }
-    ReachedModelError::Enum {
-        prior_work: work,
-        error: SelectedModelEnumError {
-            code,
-            node: id.clone(),
-            consumed_work: 0,
-            attempted_work: 0,
-        },
-    }
-}
 fn text_work(budget: &mut NativeJoinBudget, value: &str) -> Result<(), ReachedModelError> {
     read_charge(budget, NativeJoinChargeKind::Work, value.len() as u128)?;
     Ok(())
@@ -706,63 +686,18 @@ impl CheckedMonitorPlanRef<'_> {
                 error,
             })?;
             work = budget.consumed().work - before.work;
-            let enums = SelectedModelEnums::from_stage_rows_runtime(
-                self.package,
-                enum_declarations,
-                enum_members,
-                budget,
-            )
-            .map_err(|error| enum_error(error, work))?;
-            work = budget.consumed().work - before.work;
-            retain(budget, 1)?;
-            let mut selected_enums = Vec::new();
-            for (index, id) in reached.iter().enumerate() {
-                budget.set_active_locus(Some(NativeJoinLocus {
-                    source: NativeJoinLocusSource::ReachedRow(index),
-                    form: "reached_enum",
-                }));
-                charge(&mut work, budget, id)?;
-                if let Some((position, _)) = self.package.node_with_position(id) {
-                    budget.set_locus_source(NativeJoinLocusSource::GraphNode(position));
-                }
-                if self.package.node_kind(id)
-                    != Some(crate::checked_package::v2::CheckedNodeKind::Model(
-                        crate::checked_package::v2::ModelForm::VariantType,
-                    ))
-                {
-                    continue;
-                }
-                let mut selected_shape = None;
-                for row in &enum_shapes {
-                    charge(&mut work, budget, &row.structural_node)?;
-                    if &row.structural_node != id {
-                        continue;
-                    }
-                    if selected_shape.replace(row).is_some() {
-                        return Err(checked_enum_error(
-                            budget,
-                            SelectedModelEnumErrorCode::ConflictingWitness,
-                            id,
-                            work,
-                        ));
-                    }
-                }
-                let Some(row) = selected_shape else {
-                    return Err(checked_enum_error(
-                        budget,
-                        SelectedModelEnumErrorCode::UnavailableWitness,
-                        id,
-                        work,
-                    ));
-                };
-                enums
-                    .read_shape_runtime(self.package, row, budget)
-                    .map_err(|error| enum_error(error, work))?;
-                charge(&mut work, budget, id)?;
-                preflight_enum_shapes(row, budget)?;
-                retain(budget, storage::model_enum_shape(row).saturating_add(1))?;
-                selected_enums.push(row.clone());
-            }
+            let selected_enums =
+                crate::checked_package::v2::model_enum_witness::join_shapes_runtime(
+                    self.package,
+                    crate::SelectedModelEnumRows {
+                        declarations: &enum_declarations,
+                        members: &enum_members,
+                        shapes: &enum_shapes,
+                    },
+                    &reached,
+                    budget,
+                )
+                .map_err(|error| enum_error(error, work))?;
             let identities = identities
                 .with_model_enum_shapes(&selected_enums, budget)
                 .map_err(|error| ReachedModelError::Exact {
@@ -865,8 +800,8 @@ mod tests {
         ExactTypeProjectionErrorCode, SelectedExactDeclarationForm, SelectedExactIdentity,
     };
     use crate::{
-        NativeJoinChargeKind, SelectedMonitorClosureRows, SelectedMonitorTypeClosureError,
-        SelectedMonitorTypeClosureErrorCode,
+        NativeJoinChargeKind, SelectedModelEnumErrorCode, SelectedMonitorClosureRows,
+        SelectedMonitorTypeClosureError, SelectedMonitorTypeClosureErrorCode,
     };
     use filament_exact::{
         CollectionKind, CollectionType, EffectiveId, Location, MemberId, MemberOwner, NodeKey,
