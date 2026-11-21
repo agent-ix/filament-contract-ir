@@ -904,6 +904,28 @@ impl SelectedExactIdentities {
                     Err(code) => Err(fail(budget, code, node, "/payload/node")),
                 }
             }
+            Some(CheckedNodeKind::ScalarType(ScalarTypeForm::Unit)) => {
+                match self.declaration_identity(package, node) {
+                    Ok(SelectedExactIdentity::DeclaredUnit(unit)) => {
+                        storage::preflight_unit(unit, budget, node)?;
+                        charge_native_storage(
+                            budget,
+                            node,
+                            node,
+                            "model_union_payload_type",
+                            storage::unit(unit).saturating_add(1),
+                        )?;
+                        Ok(ValueType::Quantity(unit.clone()))
+                    }
+                    Ok(_) => Err(fail(
+                        budget,
+                        ExactTypeProjectionErrorCode::MismatchedIdentityWitness,
+                        node,
+                        "/payload/node",
+                    )),
+                    Err(code) => Err(fail(budget, code, node, "/payload/node")),
+                }
+            }
             Some(CheckedNodeKind::ScalarType(
                 ScalarTypeForm::Boolean
                 | ScalarTypeForm::Integer
@@ -913,8 +935,7 @@ impl SelectedExactIdentities {
                 | ScalarTypeForm::Bytes
                 | ScalarTypeForm::JsonObject
                 | ScalarTypeForm::Float32
-                | ScalarTypeForm::Float64
-                | ScalarTypeForm::Unit,
+                | ScalarTypeForm::Float64,
             )) => package
                 .project_exact_type(node, self, budget)
                 .map(|projection| projection.value_type().clone()),

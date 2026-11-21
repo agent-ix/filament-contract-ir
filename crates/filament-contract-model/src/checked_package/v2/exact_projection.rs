@@ -2980,7 +2980,8 @@ fn selected_declaration_error(
 ) -> ExactTypeProjectionError {
     let code = if package.node(node).is_some() {
         ExactTypeProjectionErrorCode::UnresolvedSelectedDeclaration
-    } else if node.package == package.wire.name {
+    } else if node.package == package.wire.name
+        || package.models.selected_model(&node.package).is_some() {
         ExactTypeProjectionErrorCode::UnknownNode
     } else {
         ExactTypeProjectionErrorCode::ForeignNode
@@ -2994,7 +2995,7 @@ fn selected_declaration_error_budgeted(
     requested: &CheckedNodeId,
     work: &mut impl WorkMeter,
 ) -> ExactTypeProjectionError {
-    let code = if node.package == package.wire.name {
+    let code = if node.package == package.wire.name || package.models.selected_model(&node.package).is_some() {
         ExactTypeProjectionErrorCode::UnknownNode
     } else {
         ExactTypeProjectionErrorCode::ForeignNode
