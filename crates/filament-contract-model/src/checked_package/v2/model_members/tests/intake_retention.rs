@@ -46,9 +46,43 @@ fn refusal(document: Value) -> SelectionRefusal {
 }
 
 fn bad_type(origin: Value) -> Value {
-    let mut node = object_type("ix://acme/orders/bad-id", &[], vec![]);
+    let mut node = object_type("ix://acme/orders/bad.id", &[], vec![]);
     node["origin"] = origin;
     node
+}
+
+/// Selected type and population artifact ids use FR-154's artifact grammar.
+#[trace("TC-048", "FR-038-AC-174")]
+#[test]
+fn selected_artifact_ids_admit_hyphens_and_reject_other_punctuation() {
+    const OBJECT: &str = "ix://acme/orders/Widget-type";
+    const POPULATION: &str = "ix://acme/orders/widgets-second";
+    let mut input = document(vec![object_type(OBJECT, &[], vec![])]);
+    input["constructs"]
+        .as_array_mut()
+        .expect("constructs")
+        .push(json!({
+            "kind": {"module": "acme/orders", "name": "population"},
+            "construct": {"meaning": "filament.meaning.model.population/v1"}
+        }));
+    input["populations"] = json!([{
+        "identity": POPULATION,
+        "kind": {"module": "acme/orders", "name": "population"},
+        "members": [OBJECT], "extent": "closed"
+    }]);
+    let model = selected(input.clone(), u64::MAX)
+        .0
+        .expect("hyphenated artifact ids admit");
+    assert!(model.object_types.get(OBJECT).is_some());
+    assert!(model.populations.contains(POPULATION));
+    assert!(model
+        .population_members
+        .get(POPULATION)
+        .expect("population members")
+        .contains(OBJECT));
+
+    input["populations"][0]["identity"] = json!("ix://acme/orders/widgets.second");
+    assert_eq!(refusal(input).refusal, ModelRefusal::malformed());
 }
 
 #[trace("TC-048", "FR-038-AC-174", "FR-038-AC-175", "FR-038-AC-186")]
@@ -59,7 +93,7 @@ fn tc_048_intake_retains_source_values_after_authentic_document_release() {
     assert_eq!(value.member, None);
     assert_eq!(
         value.declaration_identity.as_deref(),
-        Some("ix://acme/orders/bad-id")
+        Some("ix://acme/orders/bad.id")
     );
     assert_eq!(
         value.declaration_origin,
@@ -406,7 +440,7 @@ fn tc_048_intake_group_origin_requires_every_valid_equal_candidate() {
         let retained = refusal(document(vec![bad_type(origin)]));
         assert_eq!(
             retained.declaration_identity.as_deref(),
-            Some("ix://acme/orders/bad-id")
+            Some("ix://acme/orders/bad.id")
         );
         assert_eq!(retained.declaration_origin, None);
     }

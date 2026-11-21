@@ -3757,7 +3757,16 @@ pub(super) fn admit_selection(
     Ok((model, selected))
 }
 
-/// Whether `text` is an FR-154 object id, `^[A-Za-z][A-Za-z0-9_]*$`.
+/// Whether `text` is an FR-154 artifact id, `^[A-Za-z][A-Za-z0-9_-]*$`.
+fn is_artifact_id(text: &str) -> bool {
+    let mut bytes = text.bytes();
+    bytes
+        .next()
+        .is_some_and(|first| first.is_ascii_alphabetic())
+        && bytes.all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+}
+
+/// Whether `text` is an FR-154 member name, `^[A-Za-z][A-Za-z0-9_]*$`.
 fn is_object_id(text: &str) -> bool {
     let mut bytes = text.bytes();
     bytes
@@ -4680,7 +4689,7 @@ fn classify<'v>(
     node: &str,
 ) -> ClassifiedType<'v> {
     let one = |declared: View<'v>| -> ClassifiedType<'v> {
-        if !node.strip_prefix(prefix).is_some_and(is_object_id) {
+        if !node.strip_prefix(prefix).is_some_and(is_artifact_id) {
             return Err(ModelRefusal::malformed());
         }
         let meaning = match declared.get("kind") {
