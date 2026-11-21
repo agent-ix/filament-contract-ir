@@ -2010,6 +2010,7 @@ fn monitor_root_location_join_admits_under_one_million_work() {
         serde_json::from_slice(include_bytes!("../fixtures/fold-binders/monitor-base.json"))
             .unwrap();
     add_linked_check_modes(&mut fixture);
+    crate::support::checked_package::link_let_binders(&mut fixture);
     crate::support::checked_package::rebuild_body_locations(&mut fixture);
     crate::support::checked_package::align_model_declarations(&mut fixture);
     let mut evidence = filament_contract_model::CheckedPackageEvidence::new();
