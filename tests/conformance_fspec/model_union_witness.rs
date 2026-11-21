@@ -269,6 +269,16 @@ fn run(vectors: &Value, id: &str, limits: Option<(u64, u64)>) -> String {
 
 /// The outcome and the budget's consumed `(work, storage)` after the call.
 fn run_measured(vectors: &Value, id: &str, limits: Option<(u64, u64)>) -> (String, (u64, u64)) {
+    let (outcome, _, consumed) = run_located(vectors, id, limits);
+    (outcome, consumed)
+}
+
+/// The outcome, the refusal locus (the error form) and the consumed counters.
+fn run_located(
+    vectors: &Value,
+    id: &str,
+    limits: Option<(u64, u64)>,
+) -> (String, Option<String>, (u64, u64)) {
     let case = resolve(vectors, id);
     let fixtures = fixtures_dir();
     let proposal = proposal_dir_of(&fixtures);
@@ -303,7 +313,13 @@ fn run_measured(vectors: &Value, id: &str, limits: Option<(u64, u64)>) -> (Strin
     let identities =
         match SelectedExactIdentities::from_stage_rows(&admitted, declarations, [], &mut budget) {
             Ok(identities) => identities,
-            Err(error) => return (error.code.as_str().into(), (0, 0)),
+            Err(error) => {
+                return (
+                    error.code.as_str().into(),
+                    error.form.as_deref().map(str::to_owned),
+                    (0, 0),
+                );
+            }
         };
     let tuples: Vec<_> = case.sidecar["model_tuples"]
         .as_array()
@@ -334,13 +350,18 @@ fn run_measured(vectors: &Value, id: &str, limits: Option<(u64, u64)>) -> (Strin
                         "{id}: a returned row differs from its input"
                     );
                 }
-                "admitted".into()
+                ("admitted".into(), None)
             }
-            Err(error) => error.code.as_str().into(),
+            Err(error) => (
+                error.code.as_str().into(),
+                error.form.as_deref().map(str::to_owned),
+            ),
         };
+    let (outcome, locus) = outcome;
     let consumed = budget.consumed();
     (
         outcome,
+        locus,
         (
             consumed.work,
             u64::try_from(consumed.storage).unwrap_or(u64::MAX),
@@ -354,7 +375,7 @@ fn vectors() -> Value {
 }
 
 /// Fixture C holds source rows this adapter does not build; the source-row
-/// non-substitution controls are asserted by the native tests of the crate.
+/// non-substitution controls are not executed here and remain an open boundary.
 fn uses_source_rows(vectors: &Value, id: &str) -> bool {
     find(vectors, id).to_string().contains("/source_") || resolve_fixtures(vectors, id) == "C"
 }
@@ -395,9 +416,15 @@ fn published_reader_refusals_keep_their_codes() {
             // The closed-format codec is the FSL identity-file parser's.
             continue;
         }
-        let actual = run(&vectors, id, None);
-        if actual != expected {
-            mismatches.push(format!("{id}: expected {expected}, got {actual}"));
+        let (actual, locus, _) = run_located(&vectors, id, None);
+        let want = row["expected"]["locus"].as_str().unwrap_or("");
+        // A tuple-channel refusal keeps the existing tuple stage form; the
+        // model-tuple row pointers are reported as a boundary, not asserted.
+        let tuple_stage = id.contains("-TR-");
+        if actual != expected || (!tuple_stage && locus.as_deref().unwrap_or("") != want) {
+            mismatches.push(format!(
+                "{id}: expected {expected} at {want}, got {actual} at {locus:?}"
+            ));
         }
         run_count += 1;
     }

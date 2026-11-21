@@ -494,7 +494,9 @@ impl SelectedExactIdentities {
                 ));
             }
             if package.node(id).is_none() {
-                return Err(selected_declaration_error(package, id));
+                let mut error = selected_declaration_error(package, id);
+                error.form = Some(at("/structural_node").into());
+                return Err(error);
             }
             let Some(entry) = package.models.selected_declaration_entry(id) else {
                 return Err(fail(
@@ -669,7 +671,11 @@ impl SelectedExactIdentities {
                         budget,
                         ExactTypeProjectionErrorCode::MismatchedIdentityWitness,
                         id,
-                        &case_at("/member"),
+                        &case_at(if case.member.identifier() != case.name.as_ref() {
+                            "/member/identifier"
+                        } else {
+                            "/member/declaration"
+                        }),
                     ));
                 }
                 let member = match &document_case.payload {
@@ -741,6 +747,7 @@ impl SelectedExactIdentities {
                             package,
                             node,
                             &joined_handles,
+                            &case_at("/payload/node"),
                             budget,
                         )?;
                         storage::preflight_value_type(original_type, budget, node)?;
@@ -850,6 +857,7 @@ impl SelectedExactIdentities {
         package: &CheckedPackageV2,
         node: &CheckedNodeId,
         joined: &BTreeMap<&CheckedNodeId, &NodeKey>,
+        locus: &str,
         budget: &mut NativeJoinBudget,
     ) -> Result<ValueType, ExactTypeProjectionError> {
         let unavailable = |budget: &mut NativeJoinBudget| {
@@ -857,7 +865,7 @@ impl SelectedExactIdentities {
                 budget,
                 ExactTypeProjectionErrorCode::UnavailableIdentityWitness,
                 node,
-                "/payload/node",
+                locus,
             )
         };
         charge_native_work(budget, node, node, "model_union_payload_type", 2)?;
@@ -873,7 +881,7 @@ impl SelectedExactIdentities {
                         budget,
                         ExactTypeProjectionErrorCode::UnsupportedExactType,
                         node,
-                        "/payload/node",
+                        locus,
                     ));
                 }
                 joined
@@ -893,9 +901,9 @@ impl SelectedExactIdentities {
                         budget,
                         ExactTypeProjectionErrorCode::MismatchedIdentityWitness,
                         node,
-                        "/payload/node",
+                        locus,
                     )),
-                    Err(code) => Err(fail(budget, code, node, "/payload/node")),
+                    Err(code) => Err(fail(budget, code, node, locus)),
                 }
             }
             Some(CheckedNodeKind::Model(ModelForm::ObjectType)) => {
@@ -915,9 +923,9 @@ impl SelectedExactIdentities {
                         budget,
                         ExactTypeProjectionErrorCode::MismatchedIdentityWitness,
                         node,
-                        "/payload/node",
+                        locus,
                     )),
-                    Err(code) => Err(fail(budget, code, node, "/payload/node")),
+                    Err(code) => Err(fail(budget, code, node, locus)),
                 }
             }
             Some(CheckedNodeKind::ScalarType(ScalarTypeForm::Unit)) => {
@@ -937,9 +945,9 @@ impl SelectedExactIdentities {
                         budget,
                         ExactTypeProjectionErrorCode::MismatchedIdentityWitness,
                         node,
-                        "/payload/node",
+                        locus,
                     )),
-                    Err(code) => Err(fail(budget, code, node, "/payload/node")),
+                    Err(code) => Err(fail(budget, code, node, locus)),
                 }
             }
             Some(CheckedNodeKind::ScalarType(
@@ -959,7 +967,7 @@ impl SelectedExactIdentities {
                 budget,
                 ExactTypeProjectionErrorCode::UnsupportedExactType,
                 node,
-                "/payload/node",
+                locus,
             )),
         }
     }
