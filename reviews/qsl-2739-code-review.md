@@ -49,3 +49,25 @@ Mutant M-end: `member.end < declaration.end` weakened to `<=`. It survives by st
 | FND-007 | low | When there is no single-region declaration-at-0 entry, the overlap check is skipped as well as the inside check. Overlapping members then refuse at `/source_map` instead of at the first overlapping entry's `/source_map/{i}`. FR-491 lists overlap as an entry defect that does not depend on the declaration. | crates/filament-contract-model/src/checked_package/v2/composition_coordinates.rs:93 |
 | FND-008 | low | `CompositionSources` was inserted between `validate`'s doc comment and `fn validate`. "The guarantee step… Implements: FR-038 …" now documents the struct, and `validate` has lost its doc and its Implements tag. | crates/filament-contract-model/src/checked_package/v2/guarantee_composition.rs:388 |
 | FND-009 | low | The `validate_declaration` doc still says `declaration` is forbidden on `correspondence` nodes. This PR makes `component_composition` the exception. | crates/filament-contract-model/src/checked_package/v2/mod.rs:2732 |
+
+## New findings (disposition pass 1)
+
+| ID | Severity | Summary | Refs |
+| --- | --- | --- | --- |
+| FND-010 | low | FND-006's fix is the package-level once-flag (mod.rs:4332) plus the final-stage skip (mod.rs:2305), and no test exercises either. The AC-612 test injects its own counting closure into `guarantee_composition::validate`, so it checks only the per-loop flag that already existed at ddfb8854e. Deleting the `source_map_checked` short-circuit or the final skip restores the double charge and every test stays green. | crates/filament-contract-model/src/checked_package/v2/guarantee_composition.rs:1451, crates/filament-contract-model/src/checked_package/v2/mod.rs:2305 |
+
+## Dispositions
+
+Disposition pass 1 covers fix commit 009c94728 at head 009c9472805e4a80d4851ccf0d0ff2fe57f061b8. Merge da71ade54 brings in only origin/main a03c86b3b on top of the reviewed change.
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-001 | fixed | Disjointness now uses a charged Fenwick rank index. There are three tables: positions, candidates (capacity = node entries) and the tree. All are precharged through `stage_storage::vec`, with 1 + 6·steps work per member and steps = bits(n)+1. That bound covers the binary search, two prefix sums, two selections and one insert, and there is no shifting insert. The nearest-neighbour test is sufficient because the accepted set stays pairwise disjoint and is grouped by source. The O(n log n) candidate sort follows the repo's charged-storage-only precedent and is covered by the per-member charge. AC-611 unit tests check exact storage (from size_of) and exact work, refuse one unit short of either, and refuse at the first overlapping entry among 64 descending entries. |
+| FND-002 | fixed | AC-609 adds a member ending at the declaration end (refused at its entry) with a one-unit-inside control that admits. AC-608 is the start-side pair. The coder's mutant `<=` on the end bound turned that test red (/tmp/qsl2739-mA.log), the source was restored, and the head tree is clean. |
+| FND-003 | fixed | AC-13 gives the composition a real `claim` occurrence and entry, plus a row whose region equals the entry. The row passes the join and only the new guard refuses it, at `/claim_names/{i}/occurrence`. The guard-deletion mutant turned it red (/tmp/qsl2739-mB.log), and the source was restored. |
+| FND-004 | fixed | The test was replaced by FR-371-AC-15. It asserts the literal regions per canonical path under both source_map orders and the canonical node-id row order, with no self-computed sort. FR-371 now states that the reader SHALL NOT select or order source units, and that the consumer owns this. |
+| FND-005 | fixed | The helper is renamed `refused_as_ambiguous`, the case label states the refusal, and a positive control (distinct names admit with 2 rows) was added. |
+| FND-006 | fixed | The double charge is removed. The package-wide pass runs through one Cell-guarded closure, set true only after success, over the immutable `wire.semantic_graph` and `source_map`. MonitorPlan, composition and refinement share it, and the final package stage skips the pass after that success. A package with neither a composition nor a MonitorPlan keeps its old single final pass and precedence. Refusal outcomes and precedence are unchanged, because skipping happens only after the pure check has succeeded, and charges can only fall. The missing test for this is FND-010. |
+| FND-007 | fixed | The overlap check no longer depends on the declaration. Only the inside test is gated by `declaration.is_some_and(..)`. The AC-613 unit test covers an absent anchor: an overlap refuses at `/source_map/1` and disjoint members refuse at `/source_map`. |
+| FND-008 | fixed | The doc comment and Implements tag are back on `fn validate`. `CompositionSources` keeps its own doc. |
+| FND-009 | fixed | The `validate_declaration` doc now names `component_composition` as the one correspondence exception. |

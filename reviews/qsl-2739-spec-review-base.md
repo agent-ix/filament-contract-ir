@@ -33,3 +33,13 @@ Ticket: QSL-2739. This is the base checklist review of the spec text the PR adds
 | FND-001 | medium | FR-038-AC-605 states only an empty interval and a repeated key as generic precedence. FSpec FR-491 also requires the unknown-node and total-occurrence/source-map refusals, and a generic defect of another node, to keep their precedence over composition coordinates. The AC narrows the standard to what the implementation tests. | FR-038-AC-605 |
 | FND-002 | medium | FR-371-AC-12 consumes FR-322-AC-514 but omits two of its clauses without naming their owner. One is source-order default selection by lock-source position, then start, then end. The other is that another correspondence form stays ineligible for a claim-name row. | FR-371-AC-12 |
 | FND-003 | low | FR-038-AC-604 lists "outside" and "equal to it" for the strict-inside boundary, but not a member region sharing only the declaration's start or only its end. Those are the boundaries that distinguish strict from non-strict containment. | FR-038-AC-604 |
+
+## Dispositions
+
+Disposition pass 1 covers fix commit 009c94728 at head 009c9472805e4a80d4851ccf0d0ff2fe57f061b8. The new ids FR-038-AC-606..613 and FR-371-AC-13..15 do not appear on origin/main (a03c86b3b), so none collides.
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-001 | fixed | FR-038-AC-605 now states the full generic set FSpec FR-491 keeps ahead of coordinates: empty interval, repeated key, unknown node, another node without the occurrence, and an occurrence without an entry. |
+| FND-002 | fixed | FR-371-AC-13 (composition claim row ineligible), AC-14 (other correspondence ineligible) and AC-15 (reader returns regions as authored; consumer owns selection and source order) were added, and the FR-371 Behavior paragraph states the reader SHALL NOT select or order. |
+| FND-003 | fixed | FR-038-AC-608 (start-sharing) and AC-609 (end-sharing) were added, each with its one-unit-inside admit. |

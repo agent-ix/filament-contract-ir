@@ -33,3 +33,12 @@ Ticket: QSL-2739. This is the integrity analysis (completeness, consistency, ato
 | --- | --- | --- | --- |
 | FND-001 | low | FR-038-AC-603 bundles three independent obligations: an `implementation_guarantee` still refuses a `declaration` member, a composition requires its `declaration`, and a declared path other than `node_id.path` refuses `declaration-nominal-mismatch`. One failing clause cannot be traced on its own. | FR-038-AC-603 |
 | FND-002 | low | FR-038-AC-602..605 are inserted between AC-601 and AC-596, which extends the AC table's non-sequential order. A reader scanning for the highest id or the next free id can misread it. | FR-038-AC-602 |
+
+## Dispositions
+
+Disposition pass 1 covers fix commit 009c94728 at head 009c9472805e4a80d4851ccf0d0ff2fe57f061b8.
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-001 | fixed | AC-603 is split into atomic AC-603 (guarantee declaration refused), AC-606 (composition declaration required, with a positive control) and AC-607 (path mismatch nominal), each with its own test. |
+| FND-002 | fixed | Rows FR-038-AC-602..613 now follow the AC-596 row, so the 596, 602..613 block is in numeric order. |

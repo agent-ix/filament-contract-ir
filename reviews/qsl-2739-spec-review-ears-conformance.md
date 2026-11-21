@@ -29,3 +29,11 @@ Ticket: QSL-2739. This is the EARS requirement-grammar check of the two normativ
 | ID | Severity | Summary | Refs |
 | --- | --- | --- | --- |
 | FND-001 | low | The FR-038 composition paragraph states mandatory reader behaviour (the member-coordinate check, its order and its refusals) with no SHALL. FR-371's paired paragraph uses SHALL, so the two owned statements of one rule use different requirement grammars. | FR-038 |
+
+## Dispositions
+
+Disposition pass 1 covers fix commit 009c94728 at head 009c9472805e4a80d4851ccf0d0ff2fe57f061b8.
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-001 | fixed | The FR-038 composition paragraph now opens "Where a node is a correspondence/component_composition, the reader SHALL apply ...". Its obligations use SHALL (carry, run, examine and refuse, refuse at /source_map, expose, read no source text, SHALL NOT give a member the declaration's region), matching FR-371. |

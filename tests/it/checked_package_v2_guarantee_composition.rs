@@ -2481,3 +2481,177 @@ fn a_member_ending_at_the_declaration_end_refuses_at_its_entry() {
         (DECLARATION.1 - 10, DECLARATION.1),
     );
 }
+
+/// Moves every structural node id of the importer to package `name`.
+fn rehome(value: &mut Value, name: &str) {
+    match value {
+        Value::Object(object) => {
+            if object.get("package") == Some(&json!(IMPORTER))
+                && object.contains_key("path")
+                && object.contains_key("ordinal")
+            {
+                object.insert("package".to_owned(), json!(name));
+            }
+            object.values_mut().for_each(|member| rehome(member, name));
+        }
+        Value::Array(items) => items.iter_mut().for_each(|item| rehome(item, name)),
+        _ => {}
+    }
+}
+
+/// An authored composition without an environment member beside an empty
+/// refinement, in the refinement fixture's package: the phases that need the
+/// package-wide source-map check meet in one read. Returns the package, its
+/// evidence and the number of `source_map` entries.
+fn hosted() -> (Value, filament_contract_model::CheckedPackageEvidence) {
+    let (mut host, mut evidence) = crate::checked_package_v2_refinement::machine_package();
+    crate::checked_package_v2_refinement::row_empty_refinement(&mut host);
+    let name = host["name"].as_str().expect("name").to_owned();
+    let (mut guest, position) = composed(|body| body["environment"] = json!([]));
+    author(&mut guest, position, DECLARATION, &AUTHORED);
+    rehome(&mut guest, &name);
+    let composition = nodes(&guest)[position].clone();
+    let id = composition["node_id"].clone();
+    host["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .push(composition);
+    let source = host["lock"]["sources"][0].clone();
+    for entry in guest["source_map"].as_array().expect("map") {
+        if entry["node_id"] == id {
+            let mut entry = entry.clone();
+            for region in entry["regions"].as_array_mut().expect("regions") {
+                region["source"] = source.clone();
+            }
+            host["source_map"].as_array_mut().expect("map").push(entry);
+        }
+    }
+    host["lock"]["dependency_selections"] = json!([{"identity": DEPENDENCY}]);
+    let dependency = match read(&base()) {
+        CheckedPackageV2ReadResult::Admitted(dependency) => *dependency,
+        other => panic!("the component package admits, read {other:?}"),
+    };
+    evidence
+        .insert_dependency_package(DEPENDENCY, dependency)
+        .expect("dependency evidence");
+    crate::support::checked_package::refresh_claim_names(&mut host);
+    crate::support::checked_package::refresh_identity(&mut host);
+    (host, evidence)
+}
+
+#[cfg(feature = "test-support")]
+mod charge_events {
+    use super::*;
+    use filament_contract_model::{
+        with_native_budget_observer, NativeBudgetEvent, NativeBudgetResource,
+        NativeJoinLocusSource, PackageReadStage,
+    };
+    use std::cell::RefCell;
+
+    thread_local! {
+        static AMOUNTS: RefCell<Vec<u128>> = const { RefCell::new(Vec::new()) };
+    }
+
+    /// Records the read-storage requests of the package-wide source-map check.
+    /// The buffer is reserved before the read: the observer must not allocate.
+    fn record(event: NativeBudgetEvent) {
+        let source_map = event.resource == NativeBudgetResource::ReadStorage
+            && event.admitted
+            && event.amount > 0
+            && event.locus.is_some_and(|locus| {
+                locus.form == "source_map"
+                    && matches!(
+                        locus.source,
+                        NativeJoinLocusSource::PackageRead(PackageReadStage::SourceMap, _)
+                    )
+            });
+        if source_map {
+            AMOUNTS.with(|amounts| amounts.borrow_mut().push(event.amount));
+        }
+    }
+
+    /// The sizes, ascending, of the tables one run of the check requests,
+    /// from the package alone: the graph's occurrence keys (a node, a role
+    /// and an ordinal: three words), the entries' keys with positions (four
+    /// words), the locked sources (one word) and, per entry, its regions with
+    /// their source, bounds and position (four words each).
+    fn one_pass(package: &Value) -> Vec<u128> {
+        let word = size_of::<usize>() as u128;
+        let occurrences: usize = nodes(package)
+            .iter()
+            .map(|node| node["occurrences"].as_array().map_or(0, Vec::len))
+            .sum();
+        let entries = package["source_map"].as_array().expect("entries");
+        let mut sizes = vec![
+            occurrences as u128 * 3 * word,
+            entries.len() as u128 * 4 * word,
+            package["lock"]["sources"]
+                .as_array()
+                .expect("sources")
+                .len() as u128
+                * word,
+        ];
+        sizes.extend(
+            entries.iter().map(|entry| {
+                entry["regions"].as_array().expect("regions").len() as u128 * 4 * word
+            }),
+        );
+        sizes.sort_unstable();
+        sizes
+    }
+
+    /// The source-map check's requests during one admitting read of `bytes`.
+    fn requests(
+        bytes: &[u8],
+        evidence: &filament_contract_model::CheckedPackageEvidence,
+    ) -> Vec<u128> {
+        AMOUNTS.with(|amounts| {
+            let mut amounts = amounts.borrow_mut();
+            amounts.clear();
+            amounts.reserve(1 << 16);
+        });
+        let result = with_native_budget_observer(record, || {
+            CheckedPackageV2::read(bytes, CheckedPackageReadLimits::bounded(), evidence)
+        });
+        assert!(
+            matches!(result, CheckedPackageV2ReadResult::Admitted(_)),
+            "the package admits, read {result:?}"
+        );
+        let mut amounts = AMOUNTS.with(|amounts| amounts.take());
+        amounts.sort_unstable();
+        amounts
+    }
+
+    #[trace("TC-474", "FR-038-AC-612")]
+    #[test]
+    fn a_composition_read_requests_the_source_map_check_tables_once() {
+        // A composition alone: the check runs for the coordinates and the
+        // package stage then reads the recorded success.
+        let (package, _) = authored();
+        let dependency = match read(&base()) {
+            CheckedPackageV2ReadResult::Admitted(dependency) => *dependency,
+            other => panic!("the component package admits, read {other:?}"),
+        };
+        let mut evidence = evidence_with_document(&package, ORDERS, &orders_document());
+        evidence
+            .insert_dependency_package(DEPENDENCY, dependency)
+            .expect("dependency evidence");
+        assert_eq!(
+            requests(&canonical(&package), &evidence),
+            one_pass(&package)
+        );
+    }
+
+    #[trace("TC-474", "FR-038-AC-612")]
+    #[test]
+    fn a_composition_beside_a_refinement_requests_the_source_map_check_tables_once() {
+        // The refinement step and the composition both need the check, and the
+        // package stage follows them: three phases, one run.
+        let (host, evidence) = hosted();
+        let indexed = crate::checked_package_v2_refinement::indexed_package(&host);
+        assert_eq!(
+            requests(&canonical(&indexed), &evidence),
+            one_pass(&indexed)
+        );
+    }
+}

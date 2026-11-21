@@ -35,3 +35,12 @@ Ticket: QSL-2739. This is a planless, repository-driven audit of the PR's spec, 
 - Untraced behaviors / stubs: 0. The new `composition_coordinates.rs`, `is_exactly`, `of_node`, `at` and the claim-row checks are all owned by FR-038-AC-602..605 and FR-371-AC-12.
 - Bindings judged: the AC-12 binding of `composition_source_order_comes_from_declaration_regions_not_node_ids` is wrong (SR-967175026302197768900474181941935084520 FND-004). The AC-12 claim-role case does not reach its branch (SR-967175026302197768900474181941935084520 FND-003). The AC-604 boundary set lacks an end-sharing case (SR-967175026302197768900474181941935084520 FND-002).
 - Semantic review: ran over FR-371-AC-12 and FR-038-AC-602..605 against FSpec FR-322 and FR-491 at 9add8a0f.
+
+## Dispositions
+
+Disposition pass 1 covers fix commit 009c94728 at head 009c9472805e4a80d4851ccf0d0ff2fe57f061b8. Recomputed with `quoin matrix` (quoin 0.29.1): all 16 owned criteria are tagged (FR-038-AC-602..613, FR-371-AC-12..15). Repo-wide untagged is still 76, none of them owned here.
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-001 | fixed | AC-605 now combines an earlier coordinate defect with each of: an entry naming an unknown node, an entry moved to another node that has no such occurrence, and an occurrence left without an entry. The first two refuse `invalid_source_map` at the entry and the third at `/source_map`. Each passes on the head. |
+| FND-002 | fixed | FR-371-AC-14: a row for an `implementation_guarantee` refuses at `/claim_names/0/declaration`, and the same package without the row admits. |
