@@ -42,7 +42,7 @@ The reader SHALL add `terminal` to the closed `temporal` form vocabulary
 while continuing to refuse every unknown `temporal` form as
 `invalid_semantic_graph` at `/semantic_graph/nodes/{n}/semantic_form`. A
 terminal body is an aggregate of four bindings in fixed order: `model`,
-`mode`, `parameters`, `condition`. `model` references the selected model
+`mode`, `parameters`, `condition`. `model` references the selection's `model`/`model_root`
 node. `mode` is a text literal `when` or `any`. `parameters` is empty or holds
 one reference to the level-0 `self` `value`/`parameter` node, typed
 `Reference<M::T>` for the referenced model's FR-366 object type. It is empty
@@ -69,8 +69,7 @@ and, after every node's own checks, the ordering of the admitted nodes into
 terminal rows. Shape and mode-fit
 defects refuse `invalid_semantic_graph` at the body or offending binding.
 Unknown mode refuses `invalid_package`/`invalid-value` at `body/members/1`.
-A `model` target that is not a `model`/`model_root` node, a
-`model`/`object_type` node included, refuses `invalid_model_binding`/
+A `model` target that is not the `model`/`model_root` node refuses `invalid_model_binding`/
 `malformed-declaration` at the target; a wrong `self` target refuses
 `ill_typed`/`operator-ineligible`; a condition that is a Boolean
 `expression` or `value`/`literal` node passes this check, and a condition

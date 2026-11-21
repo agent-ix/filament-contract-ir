@@ -189,16 +189,16 @@ fn object_key() -> String {
     family_key("1515")
 }
 
-fn terminal_with_self(target_model: &str, parameter_name: &str, level: &str) -> Value {
+fn terminal_with_self(object_type_key: &str, parameter_name: &str, level: &str) -> Value {
     let mut package = families();
     let model = family_key("model-root");
-    let reference_body = json!({"term": "aggregate", "members": [reference(target_model)]});
-    let reference_type = format!("fixture/claim-terminal/reference/{target_model}");
+    let reference_body = json!({"term": "aggregate", "members": [reference(object_type_key)]});
+    let reference_type = format!("fixture/claim-terminal/reference/{object_type_key}");
     let mut reference_node = node(
         "composite_type",
         "reference",
         reference_body,
-        &[target_model.to_owned()],
+        &[object_type_key.to_owned()],
     );
     reference_node["node_id"] = node_id(&reference_type);
     reference_node["semantic_type"] = node_id(&reference_type);
@@ -230,7 +230,7 @@ fn terminal_with_self(target_model: &str, parameter_name: &str, level: &str) -> 
         reference(&condition),
         &[model, parameter, condition],
     );
-    if target_model == other_object_key() {
+    if object_type_key == other_object_key() {
         package["semantic_graph"]["nodes"]
             .as_array_mut()
             .expect("nodes")
@@ -267,6 +267,24 @@ fn other_object_node() -> Value {
         "dependencies": [], "occurrences": [{"role": "generated", "ordinal": 0}],
         "owner": model_owner("test/families", "ix://test/families/Other"), "body": empty(),
     })
+}
+
+/// One `any` terminal, under a fixed node id, on the `model_root` node of the
+/// selected model `identity`.
+fn terminal_on_selected_root(identity: &str) -> Value {
+    let mut package = families();
+    select_model(&mut package, identity);
+    let root = json!({"package": identity, "path": ["model", "model_root"], "ordinal": 0});
+    let mut terminal_node = terminal("any", empty(), empty(), empty(), &[]);
+    terminal_node["body"]["members"][0]["value"] = json!({"term": "reference", "target": root});
+    terminal_node["dependencies"] = json!([root]);
+    terminal_node["node_id"] = node_id("fixture/claim-terminal/identity-control");
+    package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .push(terminal_node);
+    settle(&mut package);
+    package
 }
 
 fn terminal_for_selected_model(model: &str) -> Value {
@@ -1364,6 +1382,33 @@ fn terminal_identity_and_several_terminals_per_model() {
     );
     second_claim_occurrence(&mut repeated);
     assert_eq!(one_row(&repeated).len(), 3);
+
+    // Two packages that differ only in which selected `model_root` the terminal
+    // binds both admit with distinct complete bodies, keep the one assigned
+    // terminal node id, and round-trip through the writer.
+    let first_root = terminal_on_selected_root("test/families");
+    let second_root = terminal_on_selected_root("test/families-other");
+    let terminal_of = |package: &Value| {
+        package["semantic_graph"]["nodes"]
+            .as_array()
+            .expect("nodes")
+            .iter()
+            .find(|node| node["semantic_form"] == "terminal")
+            .expect("terminal")
+            .clone()
+    };
+    let (first_terminal, second_terminal) = (terminal_of(&first_root), terminal_of(&second_root));
+    assert_eq!(first_terminal["node_id"], second_terminal["node_id"]);
+    assert_ne!(first_terminal["body"], second_terminal["body"]);
+    assert_ne!(encoded(&first_root), encoded(&second_root));
+    for package in [&first_root, &second_root] {
+        let read = admitted_with_population(package);
+        assert_eq!(read.terminal_rows().len(), 1);
+        assert_eq!(
+            reread_written_with_population(package).terminal_rows(),
+            read.terminal_rows()
+        );
+    }
 }
 
 /// FR-476: a terminal's `model` binding names the selection's `model_root`
@@ -1483,8 +1528,8 @@ fn terminal_self_parameter_must_have_right_name_level_and_type() {
             other => panic!("expected self refusal, got {other:?}"),
         }
     }
-    let other_model = other_object_key();
-    let mistyped = terminal_with_self(&other_model, "self", "0");
+    let other_object = other_object_key();
+    let mistyped = terminal_with_self(&other_object, "self", "0");
     match read_with_population(&mistyped) {
         CheckedPackageV2ReadResult::Refused(value) => {
             assert_eq!(value.code, Code::IllTyped);
