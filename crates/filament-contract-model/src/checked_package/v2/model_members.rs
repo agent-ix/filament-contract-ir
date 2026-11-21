@@ -4789,6 +4789,30 @@ pub(super) fn read_semantic_ir(
             return Err(SelectionRefusal::located(ModelRefusal::malformed(), row, budget)?.into());
         };
         if names_a_native(row) {
+            if row.get("kind").and_then(View::as_str) != Some("alias") {
+                // A value type bound to a native by `target`: an unknown
+                // native, or a second binding by `scalar`, is malformed.
+                let member = if row
+                    .get("target")
+                    .and_then(View::as_str)
+                    .and_then(|target| target.strip_prefix(NATIVE_PREFIX))
+                    .and_then(NativeTypeRef::from_name)
+                    .is_none()
+                {
+                    Some("target")
+                } else if row.get("scalar").is_some() {
+                    Some("scalar")
+                } else {
+                    None
+                };
+                if let Some(member) = member {
+                    let mut refusal =
+                        SelectionRefusal::located(ModelRefusal::malformed(), row, budget)?;
+                    refusal.document_pointer =
+                        Some(JsonPointer::root().key("types").index(position).key(member));
+                    return Err(refusal.into());
+                }
+            }
             budget.charge(node_size(row))?;
             let target = text(row, "target")?;
             let key = budget.text(node, F)?;

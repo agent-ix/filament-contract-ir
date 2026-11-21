@@ -2246,3 +2246,74 @@ fn tc_234_a_reference_to_clock_is_a_data_member() {
         ModelRefusal::new(Code::IllTyped, Cause::OperatorIneligible)
     );
 }
+
+/// FR-154 "Value types bound to a native by `target`": a `target` naming no
+/// native refuses at `TypeDefinition.target`, a second binding by `scalar` at
+/// `TypeDefinition.scalar`, and an option over a reference type is admitted
+/// (FR-154 "Option value types": `inner` may name a reference type).
+#[trace("TC-234", "FR-154-AC-53", "TC-048", "FR-038-AC-591")]
+#[test]
+fn tc_234_bound_value_type_refusals_and_option_over_a_reference() {
+    const CLOCK: &str = "ix://filament/native/Clock";
+    let bound = |target: &str, scalar: Option<&str>| {
+        let mut row = json!({
+            "identity": "ix://acme/orders/CV", "displayName": "CV",
+            "kind": {"module": "acme/orders", "name": "digit"}, "roles": [], "extensions": [],
+            "unknownPolicy": "reject", "target": target, "constraints": [],
+        });
+        if let Some(scalar) = scalar {
+            row["scalar"] = json!(scalar);
+        }
+        row
+    };
+    let pointer_of = |row: Value| {
+        let mut meter = WorkMeter::new(u64::MAX);
+        let document = document(vec![object_type(WIDGET, &[], vec![]), row]);
+        match read_semantic_ir(
+            view_of(&document),
+            "checked",
+            &mut Budget::new(&mut meter, 0, BYTES),
+            &UnitRefs::default(),
+        ) {
+            Err(SelectionFailure::Refused(refusal)) => (
+                refusal.refusal,
+                refusal.document_pointer.expect("located").to_string(),
+            ),
+            _ => panic!("must refuse"),
+        }
+    };
+    let malformed = ModelRefusal::malformed();
+    assert_eq!(
+        pointer_of(bound("ix://filament/native/Int64", None)),
+        (malformed, "/types/1/target".to_owned())
+    );
+    assert_eq!(
+        pointer_of(bound(CLOCK, Some("integer"))),
+        (malformed, "/types/1/scalar".to_owned())
+    );
+
+    // Option over a reference type, and over a reference to Clock.
+    let model = read(&document(vec![
+        object_type(
+            WIDGET,
+            &[],
+            vec![
+                field(WIDGET, "x", CLOCK),
+                field(WIDGET, "o", "ix://acme/orders/MaybeRef"),
+            ],
+        ),
+        json!({"identity": "ix://acme/orders/ClockRef", "kind": "reference", "target": CLOCK}),
+        json!({"identity": "ix://acme/orders/MaybeRef", "kind": "option",
+            "inner": "ix://acme/orders/ClockRef"}),
+    ]))
+    .expect("an option over a reference type is admitted");
+    let Resolved::Field(field) =
+        resolve(&model, WIDGET, MemberKind::Field, "o").expect("field resolves")
+    else {
+        panic!("expected a field");
+    };
+    assert_eq!(
+        model.field_type(field),
+        Some(MemberType::Option(Box::new(MemberType::ClockReference)))
+    );
+}
