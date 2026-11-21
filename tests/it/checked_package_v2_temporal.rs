@@ -5740,6 +5740,104 @@ fn slot_wrapper_fixture_with(
 const SLOT_A: &str = "slot_sv_sa";
 const SLOT_B: &str = "slot_sv_sb";
 
+/// A seq index witnesses the lexical depth inside each binder form: let and
+/// forall add one level; fold/reduce reserve accumulator n and element n+1.
+fn wrapper_binder_level_case(form: &str, level: u64) -> Value {
+    let base = slot_wrapper_fixture_with(&[(SLOT_A, "0"), (SLOT_B, "1")], true).0;
+    let wrap = match form {
+        "let" => Wrap::Let,
+        "fold" => Wrap::Step("filament.op.collection.fold"),
+        "reduce" => Wrap::Step("filament.op.collection.reduce"),
+        "forall" => Wrap::Bare,
+        _ => panic!("unknown fixture binder"),
+    };
+    let mut package = clause_leaf_seq(
+        Shape {
+            wrap,
+            ..Shape::at(level)
+        },
+        base,
+    );
+    // The let binder node records the same base whose nested seq witnesses.
+    let binder = find(&package, |node| node["node_id"] == node_id("seq-t-binder"));
+    package["semantic_graph"]["nodes"][binder]["body"]["members"][1]["value"]["value"] = json!("2");
+    if form == "forall" {
+        let integer = family_key("a3a3");
+        let boolean = family_key("aaaa");
+        let mut domain = node_with_key(
+            "wrapper-quantifier-domain",
+            "composite_type",
+            "set",
+            json!({"term":"aggregate", "members":[refer(&integer)]}),
+        );
+        domain["semantic_type"] = node_id("wrapper-quantifier-domain");
+        push(&mut package, domain);
+        let mut quantifier = node_with_key(
+            "wrapper-quantifier",
+            "expression",
+            "quantify",
+            json!({"term":"application", "operator":"quantify", "operation": {
+                "identity":"filament.op.collection.forall", "laws":[], "mode":null, "member":null, "leaves":[]},
+                "result_type":node_id(&boolean), "arguments":[refer("wrapper-quantifier-domain"),
+                    {"term":"binding", "name":"q", "value":refer("seq-let")}]}),
+        );
+        quantifier["semantic_type"] = node_id(&boolean);
+        push(&mut package, quantifier);
+        let holds = find_identity(&package, &temporal_identity("holds"));
+        package["semantic_graph"]["nodes"][holds]["body"]["arguments"][0] =
+            refer("wrapper-quantifier");
+    }
+    settle(&mut package);
+    package
+}
+
+#[trace("TC-048", "FR-038-AC-598")]
+#[test]
+fn hyper_wrapper_leaf_let_and_quantifier_start_after_the_slot_scope() {
+    for form in ["let", "forall"] {
+        for level in [2, 3, 4] {
+            let package = wrapper_binder_level_case(form, level);
+            if level == 3 {
+                admitted(&format!("{form} binder 2, nested seq 3"), &package);
+            } else {
+                let seq = find_identity(&package, "filament.op.collection.seq");
+                expect(
+                    &format!("{form}: wrong nested seq level {level}"),
+                    &package,
+                    Code::IllTyped,
+                    Cause::OperatorIneligible,
+                    &at_node(seq, ""),
+                );
+            }
+        }
+    }
+}
+
+#[trace("TC-048", "FR-038-AC-598")]
+#[test]
+fn hyper_wrapper_leaf_fold_reserves_accumulator_and_element_levels() {
+    for form in ["fold", "reduce"] {
+        for level in [2, 3, 4, 5] {
+            let package = wrapper_binder_level_case(form, level);
+            if level == 4 {
+                admitted(
+                    &format!("{form}: accumulator 2, element 3, seq 4"),
+                    &package,
+                );
+            } else {
+                let seq = find_identity(&package, "filament.op.collection.seq");
+                expect(
+                    &format!("{form}: wrong step seq level {level}"),
+                    &package,
+                    Code::IllTyped,
+                    Cause::OperatorIneligible,
+                    &at_node(seq, ""),
+                );
+            }
+        }
+    }
+}
+
 #[trace("TC-048", "FR-038-AC-598")]
 #[test]
 fn hyper_wrapper_over_must_be_its_first_slot_even_for_an_ordinary_parameter() {
@@ -5755,11 +5853,11 @@ fn hyper_wrapper_over_must_be_its_first_slot_even_for_an_ordinary_parameter() {
     package["semantic_graph"]["nodes"][wrapper]["body"]["arguments"][0] =
         refer(&node_label(&package, ordinary));
     settle(&mut package);
-    expect(
+    expect_at(
         "ordinary over with nonempty scope",
         &package,
         Code::InvalidModelBinding,
-        Cause::MalformedDeclaration,
+        Some(Cause::MalformedDeclaration),
         &at_node(wrapper, "/body/arguments/0"),
     );
 }
@@ -5977,6 +6075,11 @@ fn add_hyper_source_units(package: &mut Value, source: &Value, ordinal: u64) {
         );
         unit["node_id"] = hyper_source_unit_id(name, ordinal);
         unit["semantic_type"] = dimension.clone();
+        unit["dependencies"] = if let Some(target) = &target {
+            json!([dimension, target])
+        } else {
+            json!([dimension])
+        };
         unit["owner"] = owner.clone();
         unit["declaration"] = json!({"qualified_name": [name]});
         unit["occurrences"] = json!([{"role":"declaration","ordinal":0}]);
@@ -5996,9 +6099,6 @@ fn hyper_duration_fixture() -> (Value, usize, usize, usize) {
         json!("filament.op.temporal.aggregate");
     package["semantic_graph"]["nodes"][formula]["body"]["arguments"] = json!([
         {"term":"aggregate", "members": count_members("duration", bound("0"), bound("5"), scalar("integer", "0"))}]);
-    let eventually = find_identity(&package, &temporal_identity("eventually"));
-    package["semantic_graph"]["nodes"][eventually]["body"]["operation"]["member"] =
-        timed_closed(whole("0"), whole("3"));
     settle(&mut package);
     rebuild_complete_source_map(&mut package);
     for row in package["temporal_bindings"]
@@ -6036,8 +6136,7 @@ fn hyper_wrapper_duration_resolves_only_in_its_claim_source_unit() {
         foreign["claim_names"][at]["source_unit"] = other.clone();
     }
     let row = hyper_rows(&foreign)[0];
-    expect(
-        "ms declared only in another locked source",
+    refusal_at(
         &foreign,
         Code::MissingDeclaration,
         Cause::MissingName,
