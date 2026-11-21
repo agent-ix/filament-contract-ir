@@ -2789,7 +2789,10 @@ pub fn rebuild_body_locations(package: &mut Value) {
             }
             let held = &nodes[position];
             let composite_value = held["node_tag"] == "value"
-                && matches!(held["semantic_form"].as_str(), Some("record_value" | "tuple_value"));
+                && matches!(
+                    held["semantic_form"].as_str(),
+                    Some("record_value" | "tuple_value")
+                );
             if held["node_tag"] != "expression" && !composite_value && !is_start {
                 continue;
             }

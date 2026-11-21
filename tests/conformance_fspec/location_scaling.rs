@@ -3,7 +3,7 @@
 
 use crate::fixture_support::{canonical, evidence_for};
 use filament_contract_model::{
-    CheckedPackageReadLimits, CheckedPackageV2, CheckedPackageV2ReadResult,
+    CheckedPackageLimit, CheckedPackageReadLimits, CheckedPackageV2, CheckedPackageV2ReadResult,
 };
 use ix_trace_rs::trace;
 use serde_json::{json, Value};
@@ -103,16 +103,18 @@ fn least_work(package: &Value, bound: u64) -> u64 {
         read(package, low),
         CheckedPackageV2ReadResult::Admitted(_)
     ));
-    assert!(matches!(
-        read(package, low - 1),
-        CheckedPackageV2ReadResult::Incomplete(_)
-    ));
+    let CheckedPackageV2ReadResult::Incomplete(stopped) = read(package, low - 1) else {
+        panic!("one unit below the least admitting work must be incomplete");
+    };
+    assert_eq!(stopped.limit_kind, CheckedPackageLimit::Work);
+    assert_eq!(stopped.limit, low - 1);
+    assert!(stopped.consumed > stopped.limit);
     low
 }
 
 #[test]
 #[trace("TC-491", "FR-038-AC-597")]
-fn body_location_join_scales_linearly_and_admits_monitor_root_under_default_work() {
+fn body_location_join_scales_linearly_and_admits_a_thousand_terms() {
     let small = least_work(&chain(100, true), 1_000_000);
     let large = least_work(&chain(200, true), 1_000_000);
     assert!(large <= small * 2 + 100, "{small} -> {large}");
@@ -120,7 +122,7 @@ fn body_location_join_scales_linearly_and_admits_monitor_root_under_default_work
         read(&chain(1_000, true), 1_000_000),
         CheckedPackageV2ReadResult::Admitted(_)
     ));
-    println!("body indexed work: 100={small}, 200={large}; exact/one-short passed; monitor_root 1000 admitted at 1000000");
+    println!("body indexed work: 100={small}, 200={large}; exact/one-short passed; 1000 body terms admitted at 1000000");
 }
 
 #[test]
@@ -217,7 +219,7 @@ fn nested_lets(count: usize) -> Value {
     };
     let let_id = |index: usize| {
         id(
-            json!(["expression","let",{"node":add_at(index)},format!("x{:06}",index+1),{"node":if index+1 == count {index+3} else {let_at(index+1)}},{"node":0},"filament.op.control.let","let",{"node":0}]),
+            json!(["expression","let",{"node":index+3},format!("x{:06}",index+1),{"node":add_at(index)},{"node":if index+1 == count {index+3} else {let_at(index+1)}},"filament.op.control.let","let",{"node":0}]),
         )
     };
     let reference = |target: Value| json!({"term":"reference","target":target});

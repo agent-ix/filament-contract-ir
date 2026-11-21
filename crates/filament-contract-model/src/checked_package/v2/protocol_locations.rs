@@ -514,11 +514,20 @@ mod tests {
             "semantic_type":{"package":"example","path":["leaf"],"ordinal":0},
             "dependencies":[],"occurrences":[{"role":"expression","ordinal":0}],
             "body":{"term":"aggregate","members":[]}
-        })).unwrap();
+        }))
+        .unwrap();
         let nodes = std::slice::from_ref(&node);
         let (gap, index) = validate_rows::<_, CheckedProtocolSemanticLocation>(
-            "protocol_locations", "example", nodes, &[], &[], &[], &[], &mut meter,
-        ).unwrap();
+            "protocol_locations",
+            "example",
+            nodes,
+            &[],
+            &[],
+            &[],
+            &[],
+            &mut meter,
+        )
+        .unwrap();
         assert!(!gap);
         assert!(index.is_empty());
         assert_eq!(meter.consumed(), 0);
