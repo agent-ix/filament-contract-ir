@@ -21,6 +21,10 @@
 //! 3. **Targets,** in body order, for a guarantee: `clause` is an
 //!    infinite-trace temporal clause, `relation` an `abstraction_relation`
 //!    node, a `context` an object type and an `assumption` a `predicate`.
+//!    A composition then checks its member coordinates (FSpec FR-491
+//!    "Composition member occurrences"; [`super::composition_coordinates`]),
+//!    after the package-wide source-map checks, which run once at the first
+//!    composition to reach this point.
 //! 4. **Members,** a guarantee's operations, Rust spellings and uniqueness
 //!    (FSpec FR-490 static checks 4 to 6), a composition's component names,
 //!    the components its entries name and its premises (FSpec FR-491 static
@@ -384,6 +388,13 @@ fn malformed(at: Path<'static>, locus: &CheckedNodeId, meter: &mut WorkMeter) ->
 /// The guarantee step. See the module documentation for the order.
 ///
 /// Implements: FR-038 "Implementation guarantee and component composition bodies".
+/// The package's `source_map`, as a composition's coordinate check reads it: the
+/// indexed entries and the package-wide check that must refuse first.
+pub(super) struct CompositionSources<'a, 'g> {
+    pub(super) entries: &'a super::declaration_region::SourceEntries<'a>,
+    pub(super) generic: &'g dyn Fn(&mut WorkMeter) -> Result<(), ValidationFailure>,
+}
+
 pub(super) fn validate<Body: super::model_members::EmptyAggregateBody>(
     nodes: &[CheckedSemanticNodeV2<Body>],
     kinds: &[CheckedNodeKind],
@@ -391,6 +402,7 @@ pub(super) fn validate<Body: super::model_members::EmptyAggregateBody>(
     index: &super::graph_storage::GraphIndex<'_>,
     owners: &ModelOwners<'_>,
     dependencies: &SuppliedDependencies<'_>,
+    sources: &CompositionSources<'_, '_>,
     meter: &mut WorkMeter,
 ) -> Result<(), ValidationFailure> {
     let graph = StepGraph {
@@ -406,12 +418,22 @@ pub(super) fn validate<Body: super::model_members::EmptyAggregateBody>(
         let site = Site { node, position };
         check_guarantee(&site, &graph, terms, meter)?;
     }
+    // FR-322's generic source-map checks precede every composition
+    // coordinate check; the first node to reach one runs them, once.
+    let mut generic_checked = false;
     for (position, node) in graph.each(CheckedNodeKind::Correspondence(
         CorrespondenceForm::ComponentComposition,
     )) {
         meter.at_node(position, "correspondence");
         let site = Site { node, position };
-        check_composition(&site, &graph, dependencies, meter)?;
+        check_composition(
+            &site,
+            &graph,
+            dependencies,
+            sources,
+            &mut generic_checked,
+            meter,
+        )?;
     }
     Ok(())
 }
@@ -681,6 +703,8 @@ fn check_composition<'e, Body: super::model_members::EmptyAggregateBody>(
     site: &Site<'_, Body>,
     graph: &StepGraph<'_, '_, Body>,
     dependencies: &SuppliedDependencies<'e>,
+    sources: &CompositionSources<'_, '_>,
+    generic_checked: &mut bool,
     meter: &mut WorkMeter,
 ) -> Result<(), ValidationFailure> {
     if let Some(failure) = root_application(site, meter) {
@@ -701,6 +725,17 @@ fn check_composition<'e, Body: super::model_members::EmptyAggregateBody>(
         body: &body,
     };
     check_composition_targets(site, &body, &places, graph, meter)?;
+    if !*generic_checked {
+        (sources.generic)(meter)?;
+        *generic_checked = true;
+    }
+    let members = body.components.len()
+        + body.guarantees.len()
+        + body.relies.len()
+        + body.liveness_dependencies.len()
+        + body.supplies.len()
+        + body.environment.len();
+    super::composition_coordinates::validate(&site.node.node_id, members, sources.entries, meter)?;
     check_composition_members(site, &body, meter)?;
     check_composition_clauses(site, &body, &places, meter)?;
     check_composition_operations(site, &body, &places, meter)?;
@@ -1330,7 +1365,8 @@ mod document_storage_tests {
             } else {
                 json!({"term":"component_composition","rule":"interface","components":[],"guarantees":[],"relies":[],"liveness_dependencies":[],"supplies":[],"environment":[]})
             };
-            let nodes:[CheckedSemanticNodeV2<CheckedJson>;1]=[serde_json::from_value(json!({"node_id":node_id('a'),"schema_version":"filament.checked-semantic-graph/v2","node_tag":"correspondence","semantic_form":if guarantee {"implementation_guarantee"} else {"component_composition"},"semantic_type":node_id('a'),"dependencies":[],"occurrences":[],"body":body})).unwrap()];
+            let nodes:[CheckedSemanticNodeV2<CheckedJson>;1]=[serde_json::from_value(json!({"node_id":node_id('a'),"schema_version":"filament.checked-semantic-graph/v2","node_tag":"correspondence","semantic_form":if guarantee {"implementation_guarantee"} else {"component_composition"},"semantic_type":node_id('a'),"dependencies":[],"occurrences":[{"role":"declaration","ordinal":0}],"body":body})).unwrap()];
+            let source_map: Vec<super::super::CheckedSourceMapEntry> = serde_json::from_value(json!([{"node_id":node_id('a'),"role":"declaration","ordinal":0,"regions":[{"source":{"authority":"agent-ix","identity":"example"},"start":0,"end":10}]}])).unwrap();
             let kinds = [CheckedNodeKind::Correspondence(if guarantee {
                 CorrespondenceForm::ImplementationGuarantee
             } else {
@@ -1345,12 +1381,28 @@ mod document_storage_tests {
             let rows = [vec![]];
             let owners = ModelOwners::default();
             let dependencies = SuppliedDependencies::default();
+            // The index of the source map is built by the caller, on its own budget.
+            let mut index_budget =
+                NativeJoinBudget::new(u64::MAX, 0).with_read_storage_limit(u64::MAX);
+            let entries = super::super::declaration_region::SourceEntries::build(
+                &source_map,
+                true,
+                &stage_storage::Site::new(
+                    PackageReadStage::Graph,
+                    0,
+                    "name_sources",
+                    stage_storage::Path::root(),
+                ),
+                &mut WorkMeter::over(&mut index_budget),
+            )
+            .unwrap();
             let run = |limit| {
                 let mut budget = NativeJoinBudget::new(u64::MAX, 0).with_read_storage_limit(limit);
                 let mut result = None;
                 let measured = allocation_counter::measure(|| {
                     let mut meter = WorkMeter::over(&mut budget);
                     meter.attach_bodies(&handles, &rows);
+                    let generic = |_: &mut WorkMeter| Ok(());
                     result = Some(validate(
                         &nodes,
                         &kinds,
@@ -1358,6 +1410,10 @@ mod document_storage_tests {
                         &index,
                         &owners,
                         &dependencies,
+                        &CompositionSources {
+                            entries: &entries,
+                            generic: &generic,
+                        },
                         &mut meter,
                     ));
                 });

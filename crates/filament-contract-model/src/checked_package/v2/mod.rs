@@ -92,6 +92,7 @@ pub use operation_catalog::{initialize_operation_catalog, CatalogReadError};
 mod body_location_read;
 mod body_locations;
 mod claim_names;
+mod composition_coordinates;
 mod declaration_region;
 mod operation_bodies;
 mod operation_effects;
@@ -2926,14 +2927,16 @@ fn declaration_forbidden(kind: CheckedNodeKind) -> bool {
             | ClaimForm::ProbabilisticClaim
             | ClaimForm::ValueValidity,
         ) => false,
+        // FSpec FR-491 "Checked-package node": a composition declares its
+        // package-local name; no other correspondence form becomes eligible.
+        K::Correspondence(CorrespondenceForm::ComponentComposition) => false,
         K::Correspondence(
             CorrespondenceForm::SourceLocus
             | CorrespondenceForm::ModelCorrespondence
             | CorrespondenceForm::BindingRole
             | CorrespondenceForm::ProfileCorrespondence
             | CorrespondenceForm::AbstractionRelation
-            | CorrespondenceForm::ImplementationGuarantee
-            | CorrespondenceForm::ComponentComposition,
+            | CorrespondenceForm::ImplementationGuarantee,
         ) => true,
     }
 }
@@ -4147,7 +4150,11 @@ fn validate_graph<'w>(
     }
     let name_sources = declaration_region::SourceEntries::build(
         &wire.source_map,
-        wire.temporal_clause_names.is_some() || wire.claim_names.is_some(),
+        wire.temporal_clause_names.is_some()
+            || wire.claim_names.is_some()
+            || kinds.contains(&CheckedNodeKind::Correspondence(
+                CorrespondenceForm::ComponentComposition,
+            )),
         &stage_storage::Site::new(
             PackageReadStage::Graph,
             0,
@@ -4349,6 +4356,18 @@ fn validate_graph<'w>(
         meter,
     )?;
     abstraction::validate_abstraction(&graph.nodes, &kinds, &index, &owners, meter)?;
+    let generic_source_map = |meter: &mut WorkMeter| {
+        validate_source_map_entries(
+            graph
+                .nodes
+                .iter()
+                .map(|node| (&node.node_id, node.occurrences.as_slice())),
+            &wire.source_map,
+            &wire.lock.sources,
+            limits,
+            meter,
+        )
+    };
     guarantee_composition::validate(
         &graph.nodes,
         &kinds,
@@ -4356,6 +4375,10 @@ fn validate_graph<'w>(
         &index,
         &owners,
         dependencies,
+        &guarantee_composition::CompositionSources {
+            entries: &name_sources,
+            generic: &generic_source_map,
+        },
         meter,
     )?;
     claim_terminal::validate_terminal(&graph.nodes, &kinds, &terms, &index, &owners, meter)?;
