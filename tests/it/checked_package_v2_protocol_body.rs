@@ -15732,6 +15732,303 @@ fn recommend_contracts_and_related_refuse_a_noncanonical_set() {
     );
 }
 
+/// `package_with_admitted_attempt` with its `contracts` set listing the
+/// operation's precondition and two postconditions (the shape of the SB
+/// two-location read-modify-write attempt: three contracts), with the node
+/// ids of the set in the order `order` names them.
+fn attempt_with_three_contracts(order: [usize; 3]) -> (Value, usize, Vec<Value>) {
+    let (mut package, root, _) = package_with_admitted_attempt();
+    let nodes = package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes");
+    let precondition = nodes
+        .iter()
+        .find(|node| {
+            node["semantic_form"] == "state_clause"
+                && node["body"]["operation"]["member"]["clause"] == "precondition"
+        })
+        .expect("precondition")
+        .clone();
+    let mut ids = vec![precondition["node_id"].clone()];
+    for name in ["post-a", "post-b"] {
+        let mut postcondition = precondition.clone();
+        postcondition["body"]["operation"]["member"]["clause"] = json!("postcondition");
+        let segments = postcondition["node_id"]["path"]
+            .as_array_mut()
+            .expect("path");
+        let last = segments.len() - 1;
+        let renamed = format!("{}-{name}", segments[last].as_str().unwrap_or("clause"));
+        segments[last] = json!(renamed);
+        ids.push(postcondition["node_id"].clone());
+        nodes.push(postcondition);
+    }
+    ids.sort_by_key(|id| id.to_string());
+    let members: Vec<Value> = order
+        .iter()
+        .map(|&at| json!({"term": "reference", "target": ids[at]}))
+        .collect();
+    package["semantic_graph"]["nodes"][root]["body"]["arguments"][3]["value"]["members"] =
+        json!(members);
+    settle(&mut package);
+    (package, root, ids)
+}
+
+/// FR-038-AC-596: a reference set is ordered by structural node-id order of its
+/// targets, so the three-contract attempt of the SB two-location
+/// read-modify-write admits; an out-of-order set and a repeated target
+/// still refuse `invalid_semantic_graph` at the node.
+#[trace("TC-048", "FR-038-AC-596")]
+#[test]
+fn reference_sets_compare_by_resolved_structural_key() {
+    let (package, root, _) = attempt_with_three_contracts([0, 1, 2]);
+    assert!(
+        matches!(read(&package), CheckedPackageV2ReadResult::Admitted(_)),
+        "{:?}",
+        read(&package)
+    );
+    for (what, order) in [
+        ("a set out of structural order", [0, 2, 1]),
+        ("a reversed set", [2, 1, 0]),
+        ("a repeated target", [0, 1, 1]),
+        ("a repeated first target", [0, 0, 1]),
+    ] {
+        let (package, root, _) = attempt_with_three_contracts(order);
+        let key = package["semantic_graph"]["nodes"][root]["node_id"].clone();
+        assert_eq!(
+            read(&package),
+            refusal_at_id(
+                CheckedPackageRefusalCode::InvalidSemanticGraph,
+                &format!("/semantic_graph/nodes/{root}"),
+                None,
+                &key,
+            ),
+            "{what}"
+        );
+    }
+    let _ = root;
+}
+
+/// Reverses resolved graph positions before the fixture writer allocates
+/// node-local operand slots. Foreign package positions belong to another graph.
+fn reverse_reference_set_graph(package: &mut Value) {
+    fn remap(value: &mut Value, count: usize) {
+        match value {
+            Value::Array(items) => {
+                for item in items {
+                    remap(item, count);
+                }
+            }
+            Value::Object(object) => {
+                if object.contains_key("package") && object.contains_key("node") {
+                    return;
+                }
+                if object.len() == 1 {
+                    if let Some(position) = object.get("node").and_then(Value::as_u64) {
+                        object.insert(
+                            "node".into(),
+                            json!(count - 1 - usize::try_from(position).expect("position")),
+                        );
+                        return;
+                    }
+                }
+                for item in object.values_mut() {
+                    remap(item, count);
+                }
+            }
+            _ => {}
+        }
+    }
+    assert!(package["semantic_graph"].get("operand_rows").is_none());
+    let nodes = package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes");
+    let count = nodes.len();
+    nodes.reverse();
+    remap(package, count);
+    settle(package);
+}
+
+/// FSpec FR-322-AC-95 permits a reversed graph. Reference-set order follows
+/// resolved structural keys, so reversing graph positions preserves admission.
+#[trace("TC-048", "FR-038-AC-596")]
+#[test]
+fn reference_sets_admit_a_reversed_graph() {
+    let (mut package, _, _) = attempt_with_three_contracts([0, 1, 2]);
+    reverse_reference_set_graph(&mut package);
+    assert!(
+        matches!(read(&package), CheckedPackageV2ReadResult::Admitted(_)),
+        "{:?}",
+        read(&package)
+    );
+}
+
+fn operand_bearing_visible_set(operator: &str) -> (Value, usize) {
+    let (mut package, _) = protocol_holder_case(operator);
+    let holder = holder_position(&package);
+    let (low, high) = boolean_atoms(&mut package);
+    // Graph positions deliberately disagree with the atoms' structural order.
+    // Their flat IDs have no index operands to remap when the two rows move.
+    let nodes = package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes");
+    let count = nodes.len();
+    nodes.swap(count - 2, count - 1);
+    // The first member encounters high before low. Its second operand is
+    // structurally smaller, but gets the later node-local wire slot.
+    let first = boolean_expression(
+        &mut package,
+        "filament.op.boolean.and",
+        &[high.clone(), low.clone()],
+    );
+    let second = boolean_expression(
+        &mut package,
+        "filament.op.boolean.and",
+        &[high.clone(), high.clone()],
+    );
+    let low_position = node_position_for_key(&package, &low);
+    let high_position = node_position_for_key(&package, &high);
+    for (target, right) in [(&first, low_position), (&second, high_position)] {
+        let key = structural_id(
+            package["name"].as_str().expect("package name"),
+            vec![
+                json!("expression"),
+                json!("binary"),
+                json!("filament.op.boolean.and"),
+                json!({"node": high_position}),
+                json!({"node": right}),
+            ],
+            0,
+        );
+        reassign_node_id(&mut package, target, &key);
+    }
+    let nodes = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes");
+    let visible = nodes[nodes.len() - 2..]
+        .iter()
+        .map(|node| json!({"term":"reference", "target":node["node_id"]}))
+        .collect::<Vec<_>>();
+    package["semantic_graph"]["nodes"][holder]["body"]["arguments"][1]["value"]["members"] =
+        json!(visible);
+    settle(&mut package);
+    (package, holder)
+}
+
+#[trace("TC-048", "FR-038-AC-596")]
+#[test]
+fn reference_sets_operand_keys_admit_despite_wire_slot_order() {
+    for operator in ["choice", "repeat"] {
+        let (package, holder) = operand_bearing_visible_set(operator);
+        let CheckedPackageV2ReadResult::Admitted(admitted) = read(&package) else {
+            panic!("{operator}: {:?}", read(&package));
+        };
+        let CheckedTerm::Application { arguments, .. } = &admitted.graph().nodes[holder].body
+        else {
+            panic!("control application")
+        };
+        let CheckedTerm::Binding { value, .. } = &arguments[1] else {
+            panic!("visible binding")
+        };
+        let CheckedTerm::Aggregate { members } = value.as_ref() else {
+            panic!("visible set")
+        };
+        let [CheckedTerm::Reference { target: first }, CheckedTerm::Reference { target: second }] =
+            members.as_slice()
+        else {
+            panic!("two visible references")
+        };
+        assert!(
+            first > second,
+            "wire operand slots must disagree with structural order: {first:?}, {second:?}"
+        );
+        let first_key = admitted
+            .resolve_node_held(holder, first)
+            .expect("first resolved key");
+        let second_key = admitted
+            .resolve_node_held(holder, second)
+            .expect("second resolved key");
+        assert!(
+            first_key < second_key,
+            "resolved structural keys must be strictly ascending"
+        );
+        let mut reversed = package;
+        reverse_reference_set_graph(&mut reversed);
+        assert!(
+            matches!(read(&reversed), CheckedPackageV2ReadResult::Admitted(_)),
+            "reversed {operator}: {:?}",
+            read(&reversed)
+        );
+    }
+}
+
+#[trace("TC-048", "FR-038-AC-596")]
+#[test]
+fn reference_sets_choice_repeat_visible_refuse_order_and_duplicates() {
+    for operator in ["choice", "repeat"] {
+        let (package, holder) = operand_bearing_visible_set(operator);
+        for duplicate in [false, true] {
+            let mut wrong = package.clone();
+            let members = wrong["semantic_graph"]["nodes"][holder]["body"]["arguments"][1]["value"]
+                ["members"]
+                .as_array_mut()
+                .expect("visible");
+            if duplicate {
+                members[1] = members[0].clone();
+            } else {
+                members.swap(0, 1);
+            }
+            settle(&mut wrong);
+            let key = wrong["semantic_graph"]["nodes"][holder]["node_id"].clone();
+            assert_eq!(
+                read(&wrong),
+                refusal_at_id(
+                    CheckedPackageRefusalCode::InvalidSemanticGraph,
+                    &format!("/semantic_graph/nodes/{holder}"),
+                    None,
+                    &key
+                ),
+                "{operator}, duplicate={duplicate}"
+            );
+        }
+    }
+}
+
+#[trace("TC-048", "FR-038-AC-596")]
+#[test]
+fn reference_sets_fairness_prepass_preserves_temporal_precedence() {
+    let (package, fair, _) = admitted_protocol_fairness_case("parallel_branch");
+    let clause = clause_position(&package);
+    let mut wrong = package;
+    let requirements = wrong["semantic_graph"]["nodes"][clause]["body"]["arguments"][7]["value"]
+        ["members"]
+        .as_array_mut()
+        .expect("requirements");
+    requirements.push(requirements[0].clone());
+    settle(&mut wrong);
+    let key = wrong["semantic_graph"]["nodes"][clause]["node_id"].clone();
+    assert_eq!(
+        read(&wrong),
+        refusal_at_id(
+            CheckedPackageRefusalCode::InvalidSemanticGraph,
+            &format!("/semantic_graph/nodes/{clause}"),
+            None,
+            &key
+        )
+    );
+    wrong["semantic_graph"]["nodes"][fair]["body"]["operation"]["member"]["target"]["branch"] =
+        json!("absent");
+    settle(&mut wrong);
+    let CheckedPackageV2ReadResult::Refused(refusal) = read(&wrong) else {
+        panic!("combined defects refuse")
+    };
+    assert_eq!(refusal.code, CheckedPackageRefusalCode::MissingDeclaration);
+    assert_eq!(refusal.cause, Some(CheckedPackageRefusalCause::MissingName));
+    assert_eq!(
+        refusal.loci[0].path.as_ref().map(|path| path.as_str()),
+        Some(format!("/semantic_graph/nodes/{fair}/body/operation/member/target/branch").as_str())
+    );
+}
+
 #[trace("FR-038-AC-567")]
 #[test]
 fn control_boundary_admits_after_the_layout_and_refuses_unknown_text() {
