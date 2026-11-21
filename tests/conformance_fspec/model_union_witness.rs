@@ -989,9 +989,45 @@ fn budget_case_b02_reached_closure_edge_boundary_denies_edge_then_first_row_join
         last_work,
         "W-1",
     );
+    // The published document fixes the edges: Shape has two typed cases (Flag:
+    // Boolean, Both: Pair; Empty is nullary) and Pair two positions, 4 edges in
+    // all. Each edge charge is located at the graph node it is examined from.
+    let graph = prepared.admitted.resolved_graph();
+    let origin = |event: &NativeBudgetEvent| match source_of(event) {
+        NativeJoinLocusSource::GraphNode(position) => leaf(&graph.nodes[position].node_id),
+        other => panic!("a closure edge names its graph node, not {other:?}"),
+    };
+    let mut origins: Vec<_> = base
+        .events
+        .iter()
+        .filter(|event| edge(event) && event.admitted && event.amount > 0)
+        .map(|event| (origin(event), event.amount))
+        .collect();
+    origins.sort();
+    assert_eq!(
+        origins,
+        [
+            ("ix://acme/shapes/Pair".to_owned(), 1),
+            ("ix://acme/shapes/Pair".to_owned(), 1),
+            ("ix://acme/shapes/Shape".to_owned(), 1),
+            ("ix://acme/shapes/Shape".to_owned(), 1),
+        ]
+    );
     // Ec-1: the denied charge is the last closure edge, before any row joins.
     let denied = probe(&prepared, ec - 1, u64::MAX);
     assert_denied_at(&denied, &base.events, ec_at, "Ec-1");
+    assert_eq!(
+        denied.locus.map(|locus| (locus.form, locus.source)),
+        Some(("model_union_closure_edge", source_of(&base.events[ec_at]))),
+        "Ec-1: the denial names the edge origin node"
+    );
+    assert!(
+        matches!(
+            denied.locus.map(|locus| locus.source),
+            Some(NativeJoinLocusSource::GraphNode(_))
+        ),
+        "Ec-1: not the package"
+    );
     assert!(
         denied.events.iter().all(|event| !matches!(
             form_of(event),

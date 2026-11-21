@@ -190,6 +190,21 @@ fn at_locus(budget: &mut NativeJoinBudget, source: NativeJoinLocusSource, form: 
     budget.set_active_locus(Some(NativeJoinLocus { source, form }));
 }
 
+/// Locate the following closure charges at the admitted graph node being
+/// closed: a reached closure walks package nodes, not sidecar rows, so the node
+/// is the actual coordinate of the edge examined.
+fn at_closure_node(
+    package: &CheckedPackageV2,
+    budget: &mut NativeJoinBudget,
+    node: &CheckedNodeId,
+    form: &'static str,
+) {
+    let source = package
+        .node_position(node)
+        .map_or(NativeJoinLocusSource::Package, NativeJoinLocusSource::GraphNode);
+    at_locus(budget, source, form);
+}
+
 /// The one package node a member type's edge names, when it names one.
 fn member_target(member: &MemberType) -> Option<&CheckedNodeId> {
     let mut current = member;
@@ -327,6 +342,7 @@ impl SelectedExactIdentities {
         pending: &mut Vec<&'p CheckedNodeId>,
         budget: &mut NativeJoinBudget,
     ) -> Res<()> {
+        at_closure_node(package, budget, target, "model_union_closure_node");
         let units = Self::model_union_scan_units(package, target);
         charge_native_work(budget, start, target, "model_union_closure_node", units)?;
         charge_native_storage(
@@ -362,6 +378,7 @@ impl SelectedExactIdentities {
                 Self::model_union_enter(package, &node.node_id, start, visited, pending, budget)?;
             }
         }
+        at_closure_node(package, budget, at, "model_union_closure_edge");
         charge_native_work(budget, start, at, "model_union_closure_edge", 1)
     }
 
@@ -374,14 +391,10 @@ impl SelectedExactIdentities {
         start: &CheckedNodeId,
         budget: &mut NativeJoinBudget,
     ) -> Res<BTreeSet<&'p CheckedNodeId>> {
-        at_locus(
-            budget,
-            NativeJoinLocusSource::Package,
-            "model_union_closure",
-        );
         let Some(start_node) = package.node(start) else {
             return Err(absent_node(package, budget, start, "/scope/request"));
         };
+        at_closure_node(package, budget, start, "model_union_closure");
         charge_native_storage(budget, start, start, "model_union_closure", 5)?;
         let mut visited = BTreeSet::new();
         let mut pending = Vec::new();
@@ -407,11 +420,7 @@ impl SelectedExactIdentities {
                             let Some(payload) = &case.payload else {
                                 continue;
                             };
-                            at_locus(
-                                budget,
-                                NativeJoinLocusSource::Package,
-                                "model_union_closure_type",
-                            );
+                            at_closure_node(package, budget, id, "model_union_closure_type");
                             let member = model
                                 .element_type_runtime(payload, budget)
                                 .map_err(|_| Self::runtime_denied(budget))?;
@@ -432,11 +441,7 @@ impl SelectedExactIdentities {
                 DeclarationForm::TupleValueType => {
                     if let Some(positions) = model.tuple_types.get(&entry.node) {
                         for position in positions {
-                            at_locus(
-                                budget,
-                                NativeJoinLocusSource::Package,
-                                "model_union_closure_type",
-                            );
+                            at_closure_node(package, budget, id, "model_union_closure_type");
                             let member = model
                                 .element_type_runtime(position, budget)
                                 .map_err(|_| Self::runtime_denied(budget))?;
