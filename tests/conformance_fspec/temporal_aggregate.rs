@@ -778,7 +778,8 @@ fn source_record_subject(package: &mut Value) {
     "FR-778-AC-8",
     "FR-778-AC-9",
     "FR-778-AC-10",
-    "FR-778-AC-11"
+    "FR-778-AC-11",
+    "FR-778-AC-12"
 )]
 #[test]
 fn source_unit_vectors_resolve_the_clock_unit_in_the_named_unit_only() {
@@ -788,33 +789,67 @@ fn source_unit_vectors_resolve_the_clock_unit_in_the_named_unit_only() {
     let cases = published["source_unit_cases"]
         .as_array()
         .expect("source unit cases");
-    assert_eq!(cases.len(), 4);
+    let ids: Vec<&str> = cases
+        .iter()
+        .map(|case| case["id"].as_str().expect("case id"))
+        .collect();
+    for expected in ["SU-01", "SU-02", "SU-03", "SU-04", "SU-05"] {
+        assert!(ids.contains(&expected), "published case {expected}");
+    }
+    let mut decided = 0;
     for case in cases {
         let name = case["id"].as_str().expect("case id");
+        // A case holds one `row`, or `rows` (one clause read at several claim
+        // occurrences): both are decided from the published members.
+        let rows: Vec<Value> = match (case.get("row"), case.get("rows")) {
+            (Some(row), None) => vec![row.clone()],
+            (None, Some(rows)) => rows.as_array().expect("rows").clone(),
+            _ => panic!("{name}: one of row and rows"),
+        };
         let owners: Vec<&str> = case["time_units"]
             .as_object()
             .expect("time units")
             .keys()
             .map(String::as_str)
             .collect();
-        assert_eq!(owners.len(), 1, "{name}: one declaring unit");
-        assert_eq!(
-            case["bound_unit"]["owner"], owners[0],
-            "{name}: the bound is typed by the declaring unit's node"
+        // The fixture declares the units once, in the unit its first row names
+        // when that unit declares them, else in the one that does.
+        let first = rows[0]["source_unit"]["identity"].as_str().expect("unit");
+        let units_owner = if owners.contains(&first) {
+            first
+        } else {
+            assert_eq!(owners.len(), 1, "{name}: one declaring unit");
+            owners[0]
+        };
+        assert!(
+            owners.contains(&case["bound_unit"]["owner"].as_str().expect("owner")),
+            "{name}: the bound is typed by a declaring unit's node"
         );
         let (ms_case, published_vectors) = ms_case();
         let mut package =
-            source_duration_package_in(ms_case, published_vectors, id(&["ms"]), owners[0]);
+            source_duration_package_in(ms_case, published_vectors, id(&["ms"]), units_owner);
         assert_eq!(case["bound_unit"]["path"], json!(["ms"]));
-        // The row's clock and `source_unit`, as published; its `clock_name` is
-        // the vector's notation (`ts`) and stays the clause's own role name.
-        for member in ["clock", "source_unit"] {
-            package["temporal_bindings"][0][member] = case["row"][member].clone();
-        }
-        // The locked sources are the published ones plus the declaring unit.
-        let locked = package["lock"]["sources"].as_array().expect("lock sources");
+        // The locked sources are the published ones.
         for source in case["lock_sources"].as_array().expect("lock sources") {
-            assert!(locked.contains(source), "{name}: locks {source}");
+            let locked = package["lock"]["sources"].as_array_mut().expect("lock");
+            if !locked.contains(source) {
+                locked.push(source.clone());
+            }
+        }
+        package["lock"]["sources"]
+            .as_array_mut()
+            .expect("lock")
+            .sort_by_key(ToString::to_string);
+        // The rows' `clock` and `source_unit`, as published; `clock_name` is
+        // the vector's notation (`ts`) and stays the clause's own role name.
+        if rows.len() > 1 {
+            let units: Vec<Value> = rows.iter().map(|row| row["source_unit"].clone()).collect();
+            package = with_occurrences(&package, &units);
+        }
+        for (at, row) in rows.iter().enumerate() {
+            for member in ["clock", "source_unit"] {
+                package["temporal_bindings"][at][member] = row[member].clone();
+            }
         }
         // The subject: a `Reference<Order>` declared by the selected model
         // `acme/orders` is the fixture's own; a source `Pulse` is retargeted.
@@ -826,6 +861,7 @@ fn source_unit_vectors_resolve_the_clock_unit_in_the_named_unit_only() {
             "example" => source_record_subject(&mut package),
             other => panic!("{name}: subject unit {other}"),
         }
+        decided += 1;
         if case["expected"] == "admitted" {
             assert!(su_admitted(&package), "{name}");
         } else {
@@ -836,6 +872,7 @@ fn source_unit_vectors_resolve_the_clock_unit_in_the_named_unit_only() {
                     Some(match case["cause"].as_str().expect("cause") {
                         "missing-name" => "missing-name",
                         "invalid-value" => "invalid-value",
+                        "timed-node-reference" => "timed-node-reference",
                         other => panic!("{other}"),
                     }),
                     case["locus"].as_str().expect("locus").to_owned()
@@ -844,6 +881,30 @@ fn source_unit_vectors_resolve_the_clock_unit_in_the_named_unit_only() {
             );
         }
     }
+    assert_eq!(decided, cases.len(), "every published case is decided");
+}
+
+/// The units are declared in `example`, the row names a second locked unit
+/// that declares nothing: the name resolves in that unit only, so it is
+/// refused even though another unit of the package declares it.
+#[trace("TC-1890", "FR-778-AC-10")]
+#[test]
+fn a_named_unit_that_declares_nothing_refuses_the_clock_unit() {
+    let other = json!({"authority": "agent-ix", "identity": "other"});
+    let mut package = su_package("example", EXAMPLE_UNIT());
+    package["lock"]["sources"]
+        .as_array_mut()
+        .unwrap()
+        .push(other.clone());
+    package["temporal_bindings"][0]["source_unit"] = other;
+    assert_eq!(
+        su_refusal(&package),
+        (
+            "missing_declaration".to_owned(),
+            Some("missing-name"),
+            "/temporal_bindings/0/clock/timestamp_unit".to_owned()
+        )
+    );
 }
 
 /// FR-778-AC-9: a clause over a source record in the unit that declares the
@@ -983,7 +1044,7 @@ fn with_occurrences(package: &Value, units: &[Value]) -> Value {
 /// FR-322 "Clause source unit" (arch ruling): a clause is declared in one
 /// unit, so every row of one clause names the unit its first row names; the
 /// first row that differs refuses `timed-node-reference` at that row.
-#[trace("TC-048", "FR-038-AC-590")]
+#[trace("TC-048", "FR-038-AC-590", "FR-778-AC-12")]
 #[test]
 fn every_row_of_one_clause_names_one_source_unit() {
     let example = EXAMPLE_UNIT();

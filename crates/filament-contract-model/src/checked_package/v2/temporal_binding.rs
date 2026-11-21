@@ -628,10 +628,11 @@ pub(super) fn validate<B>(
     let mut seen: Vec<(usize, u64, usize)> = meter.vec(rows.len())?;
     let mut previous: Option<(super::graph_storage::ResolvedKey<'_>, u64, usize)> = None;
     let mut resolved = meter.vec(rows.len())?;
-    let mut clause_unit: Option<(
+    // The first row's `source_unit` of each clause node, by node position.
+    let mut clause_units: Vec<(
         usize,
         &Option<crate::checked_package::shared::CheckedSourceRef>,
-    )> = None;
+    )> = meter.vec(rows.len())?;
     for (row_index, row) in rows.iter().enumerate() {
         let at = || row_path(row_index);
         let Some(&position) = index.get(&row.declaration) else {
@@ -708,13 +709,20 @@ pub(super) fn validate<B>(
         // A clause is declared in one unit: every row of one clause node names
         // the unit its first row names.
         if is_clause {
-            match clause_unit {
-                Some((first, unit)) if first == position => {
-                    if unit != &row.source_unit {
-                        return Err(invalid(meter, at(), &row.declaration));
-                    }
+            let mut first = None;
+            for (clause, unit) in &clause_units {
+                binding_work(meter, at())?;
+                if *clause == position {
+                    first = Some(*unit);
+                    break;
                 }
-                _ => clause_unit = Some((position, &row.source_unit)),
+            }
+            match first {
+                Some(unit) if unit != &row.source_unit => {
+                    return Err(invalid(meter, at(), &row.declaration));
+                }
+                Some(_) => {}
+                None => clause_units.push((position, &row.source_unit)),
             }
         }
         // A hyperproperty row names one of the node's quantified traces, and

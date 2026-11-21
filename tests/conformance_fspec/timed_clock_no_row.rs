@@ -185,7 +185,7 @@ fn timed_clock_no_row_vectors_join_model_and_refuse_extra_row() {
             )
         )
     );
-    let timed_row = |name: &str, clock: Value| {
+    let timed_row = |name: &str, clock: Value, source_unit: Value| {
         let mut package = trace_clause(name);
         let declaration = package["semantic_graph"]["nodes"][8]["node_id"].clone();
         package["temporal_bindings"] = json!([{
@@ -193,10 +193,7 @@ fn timed_clock_no_row_vectors_join_model_and_refuse_extra_row() {
             "occurrence": 0,
             "clock_name": name,
             "clock": clock,
-            // The published TN rows carry no `source_unit` (FSpec #777 TN-04,
-            // TN-06..TN-09 lack it): the harness names the package's own locked
-            // unit, as FR-322 "Clause source unit" requires of every clause row.
-            "source_unit": package["lock"]["sources"][0].clone(),
+            "source_unit": source_unit,
         }]);
         fixture_support::refresh_identity_projection(&mut package);
         package
@@ -204,7 +201,11 @@ fn timed_clock_no_row_vectors_join_model_and_refuse_extra_row() {
     let row_of = |id: &str| case(id)["row"].clone();
     for id in ["TN-06"] {
         let row = row_of(id);
-        let trace_row = timed_row(row["clock_name"].as_str().unwrap(), row["clock"].clone());
+        let trace_row = timed_row(
+            row["clock_name"].as_str().unwrap(),
+            row["clock"].clone(),
+            row["source_unit"].clone(),
+        );
         let trace_package = admitted(&trace_row);
         let trace_clause = trace_package
             .document_held_id(8)
@@ -235,7 +236,11 @@ fn timed_clock_no_row_vectors_join_model_and_refuse_extra_row() {
     for id in ["TN-08", "TN-09"] {
         let row = row_of(id);
         let name = row["clock_name"].as_str().unwrap();
-        let rejected = refusal(&timed_row(name, row["clock"].clone()));
+        let rejected = refusal(&timed_row(
+            name,
+            row["clock"].clone(),
+            row["source_unit"].clone(),
+        ));
         assert_eq!(
             (
                 rejected.code,
@@ -256,6 +261,7 @@ fn timed_clock_no_row_vectors_join_model_and_refuse_extra_row() {
     // The `timed` alternative is closed: an empty unit is malformed, a missing
     // unit, an extra member and an unknown clock kind are each refused, and
     // none is defaulted or substituted.
+    let unit = row_of("TN-06")["source_unit"].clone();
     let refused: Vec<_> = [
         json!({"kind": "timed", "unit": ""}),
         json!({"kind": "timed"}),
@@ -265,7 +271,7 @@ fn timed_clock_no_row_vectors_join_model_and_refuse_extra_row() {
     ]
     .into_iter()
     .map(|clock| {
-        let rejected = refusal(&timed_row("plant", clock));
+        let rejected = refusal(&timed_row("plant", clock, unit.clone()));
         (
             rejected.code,
             rejected.loci[0].path.as_ref().map(ToString::to_string),
@@ -378,6 +384,7 @@ fn timed_clock_no_row_vectors_join_model_and_refuse_extra_row() {
     fixture_support::refresh_identity_projection(&mut original);
     let mut row = original["temporal_bindings"][0].clone();
     row["declaration"] = extra["semantic_graph"]["nodes"][8]["node_id"].clone();
+    row["source_unit"] = case("TN-04")["row"]["source_unit"].clone();
     extra["temporal_bindings"] = json!([row]);
     fixture_support::refresh_identity_projection(&mut extra);
     let actual = refusal(&extra);
