@@ -792,6 +792,30 @@ refuses `invalid_package`/`invalid-derived-shape` at the reference node's
 existing reference body-shape and graph/owner checks independent. These
 reader controls are PLANNED/UNRUN.
 
+## Clock references and target-bound natives (FR-038-AC-591, FR-038-AC-598)
+
+1. Select an object with Clock fields and data fields typed by a reference
+   targeting Clock directly, through an alias, and through a value type bound
+   to Clock by `target`. Verify `ClockReference` for each data field, the exact
+   `scalar_type`/`clock_reference` identity in both charged and plain derivation,
+   and Option and bounded Sequence wrappers. Verify the Clock field remains a
+   clock member.
+2. Replace a field's `typeRef` with `ix://filament/native/ClockReference`.
+   Expect `invalid_model_binding`/`malformed-declaration` at that `typeRef`.
+   Use the reference as a map key and expect `ill_typed`/`operator-ineligible`
+   at the map's `keys`.
+3. Select value types bound to Clock, Integer, Boolean and String by `target`.
+   Verify required and optional fields derive the corresponding native type.
+   Admit Clock constraints `min` and `max` for the checker; refuse another
+   keyword on Clock, or any constraint on another native, with
+   `invalid_model_binding`/`malformed-declaration` at the exact constraint's
+   `keyword`. Constraints remain in the selected raw document; clock bounds
+   and the timed `min` refusal belong to the checker.
+4. Refuse an unknown native at `target` and a simultaneous scalar binding at
+   `scalar` (FSpec FR-154-AC-51; TC-2048). Verify an object with a native
+   `target` remains an object reference and retains its fields; numeric and
+   undeclared kinds must refuse malformed declaration.
+
 ## Model-owned members (FR-038-AC-27 through FR-038-AC-30)
 
 Build a Semantic IR 2.0.0 document with an object type `Order` declaring the
