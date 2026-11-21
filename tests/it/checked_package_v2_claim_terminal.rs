@@ -20,11 +20,19 @@ use serde::de::DeserializeOwned;
 use serde_json::{json, Value};
 use std::sync::OnceLock;
 
+/// The all-family fixture with its selected model's `model_root` node, the node
+/// every terminal declaration binds.
+fn families() -> Value {
+    let mut package = v2_all_families();
+    select_model(&mut package, "test/families");
+    package
+}
+
 /// The shared V2 fixture grows as independent families become admissible.
 fn base_node_index() -> usize {
     static COUNT: OnceLock<usize> = OnceLock::new();
     *COUNT.get_or_init(|| {
-        v2_all_families()["semantic_graph"]["nodes"]
+        families()["semantic_graph"]["nodes"]
             .as_array()
             .expect("fixture nodes")
             .len()
@@ -167,7 +175,7 @@ fn package_with(node: Value) -> Value {
 }
 
 fn package_with_nodes(nodes: Vec<Value>) -> Value {
-    let mut package = v2_all_families();
+    let mut package = families();
     package["semantic_graph"]["nodes"]
         .as_array_mut()
         .expect("nodes")
@@ -176,9 +184,14 @@ fn package_with_nodes(nodes: Vec<Value>) -> Value {
     package
 }
 
+/// The object type node the `self` parameter is typed against.
+fn object_key() -> String {
+    family_key("1515")
+}
+
 fn terminal_with_self(target_model: &str, parameter_name: &str, level: &str) -> Value {
-    let mut package = v2_all_families();
-    let model = family_key("1515");
+    let mut package = families();
+    let model = family_key("model-root");
     let reference_body = json!({"term": "aggregate", "members": [reference(target_model)]});
     let reference_type = format!("fixture/claim-terminal/reference/{target_model}");
     let mut reference_node = node(
@@ -257,7 +270,7 @@ fn other_object_node() -> Value {
 }
 
 fn terminal_for_selected_model(model: &str) -> Value {
-    let mut package = v2_all_families();
+    let mut package = families();
     package["semantic_graph"]["nodes"]
         .as_array_mut()
         .expect("nodes")
@@ -513,7 +526,7 @@ fn state_graph_forms_read_and_write() {
 #[trace("FR-060-AC-1", "FR-060-AC-5")]
 #[test]
 fn terminal_any_reads_and_writes() {
-    let model = family_key("1515");
+    let model = family_key("model-root");
     let terminal_node = terminal("any", reference(&model), empty(), empty(), &[model]);
     let package = package_with(terminal_node);
     let admitted = admitted(&package);
@@ -544,9 +557,8 @@ fn terminal_any_reads_and_writes() {
 /// Two selected models `M` and `N` (and an unused `K`) with MT-01 on `M` and
 /// MT-02 on `N`; the graph holds `N`'s terminal node before `M`'s.
 fn two_model_package(model_n: &str, model_k: &str) -> (Value, Value, Value) {
-    let model_m = family_key("1515");
     let model_n_id = json!({"package": model_n, "path": ["model", "model_root"], "ordinal": 0});
-    let mut package = terminal_with_self(&model_m, "self", "0");
+    let mut package = terminal_with_self(&object_key(), "self", "0");
     select_model(&mut package, model_n);
     select_model(&mut package, model_k);
     refresh_identity(&mut package);
@@ -589,16 +601,16 @@ fn two_model_package(model_n: &str, model_k: &str) -> (Value, Value, Value) {
 #[trace("TC-487", "FR-060-AC-6")]
 #[test]
 fn terminal_rows_retain_structural_order_and_round_trip() {
-    let model_m = family_key("1515");
+    let model_m = family_key("model-root");
     let model_n = "zz/second-selected-model";
     let model_k = "zz/third-selected-model";
     let model_n_id = json!({"package": model_n, "path": ["model", "model_root"], "ordinal": 0});
-    let mut no_terminals = v2_all_families();
+    let mut no_terminals = families();
     select_model(&mut no_terminals, model_n);
     select_model(&mut no_terminals, model_k);
     refresh_identity(&mut no_terminals);
     assert!(admitted(&no_terminals).terminal_rows().is_empty());
-    let mut single = terminal_with_self(&model_m, "self", "0");
+    let mut single = terminal_with_self(&object_key(), "self", "0");
     select_model(&mut single, model_n);
     select_model(&mut single, model_k);
     refresh_identity(&mut single);
@@ -692,10 +704,10 @@ fn terminal_rows_retain_structural_order_and_round_trip() {
         expected
     );
 
-    assert!(admitted(&v2_all_families()).terminal_rows().is_empty());
+    assert!(admitted(&families()).terminal_rows().is_empty());
 
     let condition = family_key("eeee");
-    let mut no_self = v2_all_families();
+    let mut no_self = families();
     let mut terminal_no_self = terminal(
         "when",
         reference(&model_m),
@@ -774,7 +786,7 @@ fn model_m_key_for_test(model_m: &str) -> CheckedNodeId {
 #[trace("TC-487", "FR-060-AC-8")]
 #[test]
 fn terminal_rows_order_by_model_key_before_terminal_key() {
-    let model_m = family_key("1515");
+    let model_m = family_key("model-root");
     let model_n = "aa/before-selected-model";
     let (package, terminal_m, terminal_n) = two_model_package(model_n, "zz/third-selected-model");
     let m_node: CheckedNodeId =
@@ -909,7 +921,7 @@ fn state_graph_refuses_kind_fit_and_target_meaning() {
         None,
         "/body/members/2",
     );
-    let temporal_target = v2_all_families()["semantic_graph"]["nodes"]
+    let temporal_target = families()["semantic_graph"]["nodes"]
         .as_array()
         .expect("nodes")
         .iter()
@@ -936,7 +948,7 @@ fn state_graph_refuses_kind_fit_and_target_meaning() {
 #[trace("FR-060-AC-1", "FR-060-AC-2", "FR-060-AC-5")]
 #[test]
 fn terminal_when_and_mode_refusals() {
-    let model = family_key("1515");
+    let model = family_key("model-root");
     let predicate = family_key("eeee");
     let when = terminal(
         "when",
@@ -1053,10 +1065,10 @@ fn terminal_when_and_mode_refusals() {
     expression["semantic_type"] = node_id(&integer);
     let mut wrong_condition = package_with(terminal(
         "when",
-        reference(&family_key("1515")),
+        reference(&family_key("model-root")),
         empty(),
         reference(&integer_condition),
-        &[family_key("1515"), integer_condition],
+        &[family_key("model-root"), integer_condition],
     ));
     wrong_condition["semantic_graph"]["nodes"]
         .as_array_mut()
@@ -1212,7 +1224,7 @@ fn state_graph_constant_predicate_and_absent_over() {
 #[trace("FR-060-AC-2", "FR-060-AC-4", "FR-060-AC-5", "FR-060-AC-8")]
 #[test]
 fn terminal_identity_and_several_terminals_per_model() {
-    let model = family_key("1515");
+    let model = family_key("model-root");
     let predicate = family_key("eeee");
     let any = package_with(terminal(
         "any",
@@ -1260,7 +1272,7 @@ fn terminal_identity_and_several_terminals_per_model() {
             read.graph().nodes[base_node_index()]
         );
     }
-    assert_ne!(encoded(&any), encoded(&v2_all_families()));
+    assert_ne!(encoded(&any), encoded(&families()));
     let changed_body = reference(&predicate);
     let changed_condition = "fixture/claim-terminal/changed-condition".to_owned();
     let mut changed_node = node(
@@ -1352,38 +1364,78 @@ fn terminal_identity_and_several_terminals_per_model() {
     );
     second_claim_occurrence(&mut repeated);
     assert_eq!(one_row(&repeated).len(), 3);
-    let first_model = terminal_for_selected_model(&model);
-    let second_model = terminal_for_selected_model(&other_object_key());
-    assert!(matches!(
-        read_with_population(&first_model),
-        CheckedPackageV2ReadResult::Admitted(_)
-    ));
-    assert!(matches!(
-        read_with_population(&second_model),
-        CheckedPackageV2ReadResult::Admitted(_)
-    ));
-    assert_ne!(
-        first_model["semantic_graph"]["nodes"]
-            .as_array()
-            .expect("nodes")
-            .iter()
-            .find(|node| node["semantic_form"] == "terminal")
-            .expect("first terminal")["node_id"],
-        second_model["semantic_graph"]["nodes"]
-            .as_array()
-            .expect("nodes")
-            .iter()
-            .find(|node| node["semantic_form"] == "terminal")
-            .expect("second terminal")["node_id"]
+}
+
+/// FR-476: a terminal's `model` binding names the selection's `model_root`
+/// node. An `object_type` node is refused as a malformed declaration at the
+/// target, whether or not the terminal reads `self`.
+#[trace("FR-060-AC-2", "FR-060-AC-5")]
+#[test]
+fn terminal_model_must_be_the_model_root_not_an_object_type() {
+    let root = family_key("model-root");
+    let admitted_root = terminal_for_selected_model(&root);
+    let rows = admitted_with_population(&admitted_root);
+    assert_eq!(rows.terminal_rows().len(), 1);
+    assert_eq!(
+        reread_written_with_population(&admitted_root).terminal_rows(),
+        rows.terminal_rows()
     );
-    assert_ne!(encoded(&first_model), encoded(&second_model));
+    let with_self = model_root_terminal_with_self();
+    assert_eq!(
+        admitted_with_population(&with_self).terminal_rows().len(),
+        1
+    );
+    assert_eq!(
+        reread_written_with_population(&with_self).terminal_rows(),
+        admitted_with_population(&with_self).terminal_rows()
+    );
+
+    let refused_at_model = |package: &Value| match read_with_population(package) {
+        CheckedPackageV2ReadResult::Refused(value) => {
+            assert_eq!(value.code, Code::InvalidModelBinding, "{value:?}");
+            assert_eq!(value.cause, Some(Cause::MalformedDeclaration));
+            assert!(
+                value.loci[0]
+                    .path
+                    .as_ref()
+                    .is_some_and(|path| path.as_str().ends_with("/body/members/0/value/target")),
+                "{value:?}"
+            );
+        }
+        other => panic!("expected an object_type model binding to refuse, got {other:?}"),
+    };
+    for object in [object_key(), other_object_key()] {
+        refused_at_model(&terminal_for_selected_model(&object));
+    }
+
+    let mut object_with_self = with_self;
+    let object = object_key();
+    let terminal_node = object_with_self["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .iter_mut()
+        .find(|node| node["semantic_form"] == "terminal")
+        .expect("terminal");
+    terminal_node["body"]["members"][0]["value"] = reference(&object);
+    let mut dependencies = terminal_node["dependencies"]
+        .as_array()
+        .expect("dependencies")
+        .iter()
+        .filter(|id| **id != node_id(&root))
+        .cloned()
+        .collect::<Vec<_>>();
+    dependencies.push(node_id(&object));
+    dependencies
+        .sort_by_key(|id| serde_json::from_value::<CheckedNodeId>(id.clone()).expect("node ID"));
+    terminal_node["dependencies"] = json!(dependencies);
+    settle(&mut object_with_self);
+    refused_at_model(&object_with_self);
 }
 
 #[trace("FR-060-AC-1", "FR-060-AC-2", "FR-060-AC-5")]
 #[test]
 fn terminal_self_parameter_must_have_right_name_level_and_type() {
-    let model = family_key("1515");
-    let valid = terminal_with_self(&model, "self", "0");
+    let valid = terminal_with_self(&object_key(), "self", "0");
     assert!(matches!(
         read_with_population(&valid),
         CheckedPackageV2ReadResult::Admitted(_)
@@ -1416,7 +1468,7 @@ fn terminal_self_parameter_must_have_right_name_level_and_type() {
         other => panic!("expected omitted self refusal, got {other:?}"),
     }
     for (name, level) in [("result", "1"), ("self", "1")] {
-        let invalid = terminal_with_self(&model, name, level);
+        let invalid = terminal_with_self(&object_key(), name, level);
         match read_with_population(&invalid) {
             CheckedPackageV2ReadResult::Refused(value) => {
                 assert_eq!(value.code, Code::IllTyped);
@@ -1446,34 +1498,11 @@ fn terminal_self_parameter_must_have_right_name_level_and_type() {
 /// `model_root` node, as FR-476 "Several terminal nodes on one model node"
 /// fixes, with `self` typed `Reference` to the selection's one object type.
 fn model_root_terminal_with_self() -> Value {
-    model_root_terminal_with_self_typed(&family_key("1515"))
+    model_root_terminal_with_self_typed(&object_key())
 }
 
 fn model_root_terminal_with_self_typed(self_object: &str) -> Value {
-    let object = family_key("1515");
-    let mut package = terminal_with_self(self_object, "self", "0");
-    select_model(&mut package, "test/families");
-    let root = json!({"package": "test/families", "path": ["model", "model_root"], "ordinal": 0});
-    let terminal_node = package["semantic_graph"]["nodes"]
-        .as_array_mut()
-        .expect("nodes")
-        .iter_mut()
-        .find(|node| node["semantic_form"] == "terminal")
-        .expect("terminal");
-    terminal_node["body"]["members"][0]["value"] = json!({"term": "reference", "target": root});
-    let mut dependencies = terminal_node["dependencies"]
-        .as_array()
-        .expect("dependencies")
-        .iter()
-        .filter(|id| **id != node_id(&object))
-        .cloned()
-        .collect::<Vec<_>>();
-    dependencies.push(root);
-    dependencies
-        .sort_by_key(|id| serde_json::from_value::<CheckedNodeId>(id.clone()).expect("node ID"));
-    terminal_node["dependencies"] = json!(dependencies);
-    settle(&mut package);
-    package
+    terminal_with_self(self_object, "self", "0")
 }
 
 fn read_with_document(package: &Value, document: &Value) -> CheckedPackageV2ReadResult {
@@ -1635,7 +1664,7 @@ fn model_root_terminal_with_self_refuses_several_population_objects() {
 #[trace("FR-060-AC-1", "FR-038-AC-121")]
 #[test]
 fn terminal_self_population_scan_obeys_work_limit() {
-    let package = terminal_with_self(&family_key("1515"), "self", "0");
+    let package = terminal_with_self(&object_key(), "self", "0");
     let read_at = |work| {
         let mut limits = CheckedPackageReadLimits::bounded();
         limits.work = work;
@@ -1689,7 +1718,7 @@ fn terminal_self_population_scan_obeys_work_limit() {
 fn graph_shape_then_state_graph_then_terminal_order() {
     let over = family_key("a4a4");
     let predicate = family_key("eeee");
-    let model = family_key("1515");
+    let model = family_key("model-root");
     let bad_claim = state_graph(
         "not-a-kind",
         reference(&over),
@@ -1772,10 +1801,10 @@ fn graph_shape_then_state_graph_then_terminal_order() {
         valid_terminal,
         terminal(
             "not-a-mode",
-            reference(&family_key("1515")),
+            reference(&family_key("model-root")),
             empty(),
             empty(),
-            &[family_key("1515")],
+            &[family_key("model-root")],
         ),
     ]);
     refused(
@@ -1792,7 +1821,7 @@ fn graph_shape_then_state_graph_then_terminal_order() {
         .position(|node| node["semantic_form"] == "temporal_clause")
         .expect("temporal clause");
     bad_temporal["semantic_graph"]["nodes"][temporal_position]["body"]["arguments"][0] =
-        reference(&family_key("1515"));
+        reference(&family_key("model-root"));
     settle(&mut bad_temporal);
     refused(
         &bad_temporal,
@@ -1923,7 +1952,7 @@ fn literal_terminal(name: &str, condition: &str, model: &str) -> Value {
 #[trace("TC-061", "FR-060-AC-7")]
 #[test]
 fn terminal_admits_a_boolean_literal_condition() {
-    let model = family_key("1515");
+    let model = family_key("model-root");
     for (name, value) in [("true", true), ("false", false)] {
         let literal = boolean_literal(name, value);
         let literal_id = format!("fixture/claim-terminal/literal/{name}");
@@ -1962,7 +1991,7 @@ fn terminal_admits_a_boolean_literal_condition() {
     }
     // A literal condition with a `self` parameter reads no `self`.
     let literal_id = "fixture/claim-terminal/literal/true".to_owned();
-    let mut with_self = terminal_with_self(&model, "self", "0");
+    let mut with_self = terminal_with_self(&object_key(), "self", "0");
     let parameter = "fixture/claim-terminal/parameter/self/0".to_owned();
     with_self["semantic_graph"]["nodes"]
         .as_array_mut()
@@ -1989,7 +2018,7 @@ fn terminal_admits_a_boolean_literal_condition() {
     }
 
     // The `self` parameter as the condition is not a predicate node.
-    let base = terminal_with_self(&model, "self", "0");
+    let base = terminal_with_self(&object_key(), "self", "0");
     let mut parameter_condition = base.clone();
     let edited = parameter_condition["semantic_graph"]["nodes"]
         .as_array_mut()
@@ -2041,7 +2070,7 @@ fn terminal_admits_a_boolean_literal_condition() {
 #[trace("TC-487", "FR-060-AC-8")]
 #[test]
 fn three_terminal_nodes_on_one_model_get_ordinals_in_key_order() {
-    let model = family_key("1515");
+    let model = family_key("model-root");
     let literals = [("one", true), ("two", false)];
     let mut nodes = vec![terminal(
         "any",
@@ -2083,7 +2112,7 @@ fn terminal_rows_order_a_prefix_model_before_its_extension() {
         )
     };
     assert!(key(vault) < key(other), "the prefix key sorts first");
-    let mut package = v2_all_families();
+    let mut package = families();
     select_model(&mut package, vault);
     select_model(&mut package, other);
     let mut ids = Vec::new();

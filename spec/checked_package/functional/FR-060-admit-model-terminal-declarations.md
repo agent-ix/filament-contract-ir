@@ -69,8 +69,9 @@ and, after every node's own checks, the ordering of the admitted nodes into
 terminal rows. Shape and mode-fit
 defects refuse `invalid_semantic_graph` at the body or offending binding.
 Unknown mode refuses `invalid_package`/`invalid-value` at `body/members/1`.
-A non-model `model` target refuses `invalid_model_binding`/
-`malformed-declaration`; a wrong `self` target refuses
+A `model` target that is not a `model`/`model_root` node, a
+`model`/`object_type` node included, refuses `invalid_model_binding`/
+`malformed-declaration` at the target; a wrong `self` target refuses
 `ill_typed`/`operator-ineligible`; a condition that is a Boolean
 `expression` or `value`/`literal` node passes this check, and a condition
 that is neither (a `value`/`parameter` node, say) refuses
@@ -157,7 +158,7 @@ by (model, ordinal).
 | ID | Criteria | Verification |
 | --- | --- | --- |
 | FR-060-AC-1 | The reader admits FSpec TC-961 MT-01 through MT-03 as `temporal`/`terminal` nodes with the exact four-binding body, `when` and `any` modes, level-0 `self` parameter only when read, Boolean type, absent `declaration`, exact dependency set and `claim` occurrence. The writer emits the complete admitted shape, and a read of its output returns the same nodes and occurrences. | Test |
-| FR-060-AC-2 | FSpec TC-961 MT-07 through MT-11 and MT-13 through MT-15 refuse with FR-476's exact code, cause and pointer after identities are rebuilt: swapped bindings, invalid mode, wrong mode fit, wrong model, wrong or mistyped `self` and non-Boolean condition are separately observed. MT-12 (two terminal nodes on one model) and MT-16 (two `claim` occurrences on one node) are admitted (FR-060-AC-8). An unknown `temporal` form still refuses at `semantic_form`, and no malformed terminal node is omitted or reinterpreted. | Test |
+| FR-060-AC-2 | FSpec TC-961 MT-07 through MT-11 and MT-13 through MT-15 refuse with FR-476's exact code, cause and pointer after identities are rebuilt: swapped bindings, invalid mode, wrong mode fit, wrong model (a non-model node, or a `model`/`object_type` node, with and without `self`, refusing `invalid_model_binding`/`malformed-declaration` at the `model` target while the `model_root` node admits and its writer output reads back equal), wrong or mistyped `self` and non-Boolean condition are separately observed. MT-12 (two terminal nodes on one model) and MT-16 (two `claim` occurrences on one node) are admitted (FR-060-AC-8). An unknown `temporal` form still refuses at `semantic_form`, and no malformed terminal node is omitted or reinterpreted. | Test |
 | FR-060-AC-3 | The reader observes FR-322 and FR-476 precedence: graph-shape defects precede the terminal step; state-graph, temporal and abstraction body defects precede it; each terminal node's own checks precede row ordering; nodes visit in structural node-id order; and a terminal defect precedes step-relation and later body defects. | Test |
 | FR-060-AC-4 | Withdrawn by the IR-1141 structural-identity decision under FSpec #517: the reader does not recompute identity from body content or refuse a retained structural id solely because a valid body changed. This id is retained and never reused. | Withdrawn |
 | FR-060-AC-5 | IR-owned positive and negative read/write vectors for FSpec TC-961 MT-01 through MT-16 assert the published wire shapes and refusals through the public V2 reader and writer, without copying FSpec fixture or schema files into IR. | Test |

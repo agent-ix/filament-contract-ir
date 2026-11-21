@@ -501,6 +501,9 @@ pub fn node_id(path_label: &str) -> Value {
     let model_path = match path_label {
         "fixture/1515" => Some(json!(["model", "object_type", FAMILY_OBJECT])),
         "fixture/1616" => Some(json!(["model", "process", FAMILY_PROCESS])),
+        "fixture/model-root" => {
+            return json!({"package": FAMILY_MODEL_IDENTITY, "path": ["model", "model_root"], "ordinal": 0});
+        }
         "fixture/2020" => Some(json!(["relation", "relationship", FAMILY_RELATIONSHIP])),
         _ => None,
     };
