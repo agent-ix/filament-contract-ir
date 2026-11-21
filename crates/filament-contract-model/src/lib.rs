@@ -151,6 +151,7 @@ pub use checked_package::{
     read_checked_package, read_checked_package_with_budget, AdmissionBinding, BoundDirection,
     BoundedDomainForm, CatalogReadError, CheckMode, CheckedArtifactLocator, CheckedArtifactRef,
     CheckedAuthoredCompositeDomain, CheckedBodyLocation, CheckedBodyLocationOrigin,
+    CheckedBodyLocationRead, CheckedBodyLocationReadError, CheckedBodyLocations,
     CheckedBodySemanticLocation, CheckedCallable, CheckedCallableIdentity,
     CheckedCallableReadError, CheckedCallableReadErrorCode, CheckedCallableTable,
     CheckedCanonicalIntegerBound, CheckedCapability, CheckedCapabilityDisposition,

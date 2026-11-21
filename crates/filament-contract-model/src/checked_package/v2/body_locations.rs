@@ -50,7 +50,7 @@ struct Walk {
 
 /// The `body` binding of a function node: `Some(target)` when the aggregate
 /// body has one, where `target` is the node it references, if it references one.
-fn body_binding(term: &CheckedTerm) -> Option<Option<&CheckedNodeId>> {
+pub(super) fn body_binding(term: &CheckedTerm) -> Option<Option<&CheckedNodeId>> {
     let CheckedTerm::Aggregate { members } = term else {
         return None;
     };
@@ -66,7 +66,7 @@ fn body_binding(term: &CheckedTerm) -> Option<Option<&CheckedNodeId>> {
 }
 
 /// Whether a visit of `kind`/`term` is a term of the walk.
-fn is_term(kind: CheckedNodeKind, term: &CheckedTerm) -> bool {
+pub(super) fn is_term(kind: CheckedNodeKind, term: &CheckedTerm) -> bool {
     match (kind, term) {
         (CheckedNodeKind::Expression(ExpressionForm::Reference), _) => false,
         (CheckedNodeKind::Expression(_), CheckedTerm::Application { operation, .. }) => !operation

@@ -44,4 +44,4 @@ its own locus.
 - Step 4: BL-R9, BL-R10 and BL-R11 refuse `invalid_package`/`invalid-value` at the row's `location/up`; all five malformed relative locations refuse `malformed_wire` at the row's `location`.
 - Step 5: the encoder writes all five arrays in producer order and the strict
   reader returns the same typed rows.
-- Step 6: both deep bodies are admitted with 100,000 rows. Doubling the row count doubles work up to fixed overhead. The exact limit admits and one unit short is incomplete. The public typed view keeps compact `up`/`down` under the architectural ruling, without a whole-path accessor.
+- Step 6: both deep bodies are admitted with 100,000 rows. Doubling the row count doubles work up to fixed overhead. The exact limit admits and one unit short is incomplete. The lazy typed cursor returns each kth rebuilt path with linear state; its exact work limit completes, one unit short exhausts without a partial view and further calls are fused.

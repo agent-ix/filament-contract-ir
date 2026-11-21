@@ -3,6 +3,7 @@
 
 use crate::fixture_support::{canonical, evidence_for};
 use filament_contract_model::{
+    CheckedBodyLocationOrigin, CheckedBodyLocationReadError, CheckedKeyOrdinal,
     CheckedPackageLimit, CheckedPackageReadLimits, CheckedPackageV2, CheckedPackageV2ReadResult,
 };
 use ix_trace_rs::trace;
@@ -150,6 +151,69 @@ fn bl_d1_one_hundred_thousand_left_nested_applications_admit_at_the_reader() {
         admitted.checked_term_data().unwrap().body_locations.len(),
         100_000
     );
+    assert_lazy_paths(&admitted, 100_000, false);
+}
+
+fn assert_lazy_paths(package: &CheckedPackageV2, count: usize, lets: bool) {
+    let rows = &package.checked_term_data().unwrap().body_locations;
+    let CheckedBodyLocationOrigin::FunctionBody { function, .. } = &rows[0].location.origin;
+    let bound = u64::try_from(count).unwrap() * 100 + 10_000;
+    let mut cursor = package.body_locations(function, bound).unwrap();
+    let mut seen = 0;
+    while let Some(location) = cursor.next_location().unwrap() {
+        assert_eq!(location.path.len(), seen + usize::from(lets));
+        if [0, count / 2, count - 1].contains(&seen) {
+            if lets {
+                assert!(location.path[..seen]
+                    .iter()
+                    .all(|entry| *entry == CheckedKeyOrdinal::Safe(1)));
+                assert_eq!(location.path.last(), Some(&CheckedKeyOrdinal::Safe(0)));
+            } else {
+                assert!(location
+                    .path
+                    .iter()
+                    .all(|entry| *entry == CheckedKeyOrdinal::Safe(0)));
+            }
+        }
+        seen += 1;
+    }
+    assert_eq!(seen, count);
+    let exact = cursor.work_consumed();
+    assert!(
+        exact <= bound,
+        "lazy reconstruction stays linear: {exact}/{bound}"
+    );
+    let mut exact_cursor = package.body_locations(function, exact).unwrap();
+    let mut seen = 0;
+    while exact_cursor.next_location().unwrap().is_some() {
+        seen += 1;
+    }
+    assert_eq!(seen, count);
+    assert_eq!(exact_cursor.work_consumed(), exact);
+    let mut short = package.body_locations(function, exact - 1).unwrap();
+    loop {
+        match short.next_location() {
+            Ok(Some(_)) => {}
+            Err(CheckedBodyLocationReadError::WorkExhausted { limit, consumed }) => {
+                assert_eq!(limit, exact - 1);
+                assert!(consumed > limit);
+                break;
+            }
+            other => panic!("one-short lazy cursor must exhaust: {}", other.is_ok()),
+        }
+    }
+    assert!(
+        short.next_location().unwrap().is_none(),
+        "exhaustion is fused"
+    );
+    assert!(matches!(
+        package.body_locations(function, 0),
+        Err(CheckedBodyLocationReadError::WorkExhausted {
+            limit: 0,
+            consumed: 1
+        })
+    ));
+    println!("lazy paths: lets={lets}, rows={count}, exact_work={exact}; kth path oracles and one-short passed");
 }
 
 #[test]
@@ -301,5 +365,6 @@ fn bl_d2_one_hundred_thousand_nested_lets_admit_at_the_reader() {
             admitted.checked_term_data().unwrap().body_locations.len(),
             count
         );
+        assert_lazy_paths(&admitted, count, true);
     }
 }

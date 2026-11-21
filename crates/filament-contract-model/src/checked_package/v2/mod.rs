@@ -89,6 +89,7 @@ mod operation_catalog;
 mod operation_catalog_index;
 pub(in crate::checked_package) mod read_charge;
 pub use operation_catalog::{initialize_operation_catalog, CatalogReadError};
+mod body_location_read;
 mod body_locations;
 mod claim_names;
 mod declaration_region;
@@ -230,6 +231,9 @@ pub(in crate::checked_package) fn observe_allocation_class<R>(
     }
 }
 
+pub use body_location_read::{
+    CheckedBodyLocationRead, CheckedBodyLocationReadError, CheckedBodyLocations,
+};
 pub use native_join_budget::{
     NativeJoinBudget, NativeJoinCharge, NativeJoinChargeKind, NativeJoinDeniedCharge,
     NativeJoinLocus, NativeJoinLocusSource, PackageReadStage,
