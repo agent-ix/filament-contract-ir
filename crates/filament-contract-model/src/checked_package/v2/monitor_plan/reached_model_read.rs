@@ -4373,9 +4373,9 @@ mod tests {
     /// The reached read joins the model-union row of the closure and projects
     /// it, through a direct and an optional record field,
     /// as the composite its own `type_handle` names.
-    #[trace("FR-352-AC-35", "FR-358-AC-17")]
+    #[trace("FR-352-AC-35", "FR-358-AC-16")]
     #[test]
-    fn reached_read_joins_model_union_rows_and_projects_every_field_form() {
+    fn reached_read_joins_model_union_rows_and_projects_direct_and_optional_record_fields() {
         let package = admitted_monitor_reaching_a_union();
         let (declarations, fields, units) = union_producer_rows(&package);
         let row = choice_row(&package);

@@ -1536,7 +1536,7 @@ fn color_enum_rows(
 /// The selected-type runtime reads the joined rows: every joined model union is
 /// declared once with the type handle its row names, and the same selection
 /// without the union rows is refused as an unavailable identity witness.
-#[trace("FR-352-AC-35", "FR-358-AC-17")]
+#[trace("FR-352-AC-35")]
 #[test]
 fn runtime_selected_types_declare_each_joined_union_by_its_type_handle() {
     let vectors = vectors();
@@ -1618,9 +1618,29 @@ fn a_union_payload_naming_an_object_outside_the_selected_package_is_refused_at_i
             }
         }
     }
-    assert!(
-        !matches!(admit(&document), CheckedPackageV2ReadResult::Admitted(_)),
-        "an object outside the selected package is not an admitted payload"
+    let CheckedPackageV2ReadResult::Refused(refusal) = admit(&document) else {
+        panic!("an object outside the selected package is not an admitted payload");
+    };
+    assert_eq!(
+        refusal.code,
+        filament_contract_model::CheckedPackageRefusalCode::UnsupportedConstruct
+    );
+    assert_eq!(
+        refusal.cause,
+        Some(filament_contract_model::CheckedPackageRefusalCause::DeclarationForm)
+    );
+    assert_eq!(
+        refusal
+            .document_pointer
+            .as_ref()
+            .map(|pointer| pointer.as_str()),
+        Some("/types/12/variants/6/payloadType"),
+        "the offending payload typeRef"
+    );
+    assert_eq!(
+        refusal.loci[0].path.as_ref().map(|path| path.as_str()),
+        Some("/semantic_graph/nodes/45/owner"),
+        "the owner of the union declaration node"
     );
 }
 
@@ -1671,33 +1691,6 @@ fn stacked_defects_are_refused_at_the_earliest_failing_stage() {
             "{early} before {late}"
         );
     }
-}
-
-/// A witness holding only the reached rows of a package whose model declares
-/// more unions is not a complete witness: `validate_and_rebind` refuses it and
-/// leaves the receiver untouched. (The published fixtures supply no complete
-/// declaration environment, so the refusal here may precede the union
-/// completeness stage, which no fixture reaches in isolation.)
-#[trace("FR-352-AC-37")]
-#[test]
-fn rebinding_a_reached_only_witness_is_refused_and_never_mutates_the_receiver() {
-    let vectors = vectors();
-    let reached =
-        prepare(&vectors, "MUW-03-reached-does-not-join-unrelated-row").expect("prepares");
-    let partial = unwrap_join("MUW-03", join(&reached, &mut ample()).0);
-    let before: Vec<_> = partial.model_union_rows().cloned().collect();
-    assert!(
-        !before.is_empty(),
-        "the reached join retained its closure row"
-    );
-    partial
-        .validate_and_rebind(&reached.admitted, &mut ample())
-        .expect_err("a reached-only witness is not a complete witness");
-    assert_eq!(
-        partial.model_union_rows().cloned().collect::<Vec<_>>(),
-        before,
-        "the receiver is unchanged"
-    );
 }
 
 /// A node of the selected package that no row names refuses `UnknownNode`

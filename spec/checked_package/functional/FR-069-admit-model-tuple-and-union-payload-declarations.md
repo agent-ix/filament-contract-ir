@@ -164,7 +164,7 @@ silently skipped by an in-repo fixed count or range.
 | FR-069-AC-9 | IMPLEMENTED (IR-1552). The published TK-08 (a variant payload) and TK-09 (a tuple position) typed `ix://filament/native/Clock` admit through the production reader; the arity of the clock case is zero, and the position and payload types of the selected declarations are unchanged by the clock members. | Test (TC-048; FSpec FR-322-AC-399) |
 | FR-069-AC-10 | IMPLEMENTED (IR-1552). `filament.op.structural.eq` and `filament.op.structural.ne` over a tuple or union declared with a `Clock` position or payload, directly or through a nested tuple, union, option or record, refuse `invalid_timed_model`/`clock-read-outside-constraint` at the application node, and the same operations over a tuple with no clock admit. | Test (TC-048; FSpec FR-322-AC-399, TC-1361 CP-07) |
 | FR-069-AC-11 | A model union variant payload naming an object type of the selected package is admitted as a `Reference` payload, so a union such as `Mix.Held(Holder)` passes intake. | Test |
-| FR-069-AC-12 | A model union variant payload naming an object type that no selected-package declaration provides is refused by the strict read and is not admitted. | Test |
+| FR-069-AC-12 | A model union variant payload naming an object type that no selected-package declaration provides is refused by the strict read with `UnsupportedConstruct`, cause `DeclarationForm`, at the payload `typeRef` of the offending variant in the document and at the `owner` of the union declaration node in the package; the same union naming the selected-package object is admitted. | Test |
 
 ## Dependencies
 
