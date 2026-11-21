@@ -32,3 +32,9 @@ CONDITIONAL, with low findings only. The implementation is correct. One test's n
 | ID | Severity | Summary | Refs |
 | --- | --- | --- | --- |
 | FND-001 | low | The "every other nominal form" loop never passes a unit or enum body to the accessor: nodes 1 and 2 are dimensions, and node 0 is a boolean empty-aggregate node that the let-else drops before the accessor runs. TC-048 says the view returns none for dimension, unit and enum bodies. The wrong-kind test's doc comment also calls node 0 a unit. | tests/it/checked_package_v2_dimension_equivalence.rs:581-584,639-646; spec/checked_package/matrix/TC-048-checked-package-v2-strict-reader.md:2797 |
+
+## Dispositions
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-001 | fixed | Round 1, fix head 843beccb. The new test other_nominal_forms_have_no_equivalence_view calls dimension_equivalence_details on every admitted NominalBody of the v2_nominal fixture. It asserts the forms seen are exactly {dimension, enum, unit}, all None, and adds a non-vacuity check that the equivalence body returns Some. The wrong-kind doc comment now says boolean empty-aggregate node. Coder log /tmp/ir-qsl2734-f1-eq.log: 13 passed, exit 0, run after the last source edit. |

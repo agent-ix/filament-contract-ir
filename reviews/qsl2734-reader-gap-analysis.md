@@ -30,3 +30,10 @@ CONDITIONAL, with low trace findings only.
 ## Coverage
 
 FR-038-AC-601: 3 tagged tests, structural claims, and the exact accessor tests rerun at the frozen head (2 passed). FR-019 inventory: tc_058 passed (coder log). Plan completion: not assessed. Semantic review: done inline by the reviewer per the dispatch brief (oracle strength); no subagent fan-out.
+
+## Dispositions
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-001 | fixed | Round 1, fix head 843beccb. TC-058 gains the section "Dimension-equivalence borrowed view boundary (FR-038-AC-601)". identity.rs adds three compile_fail doctests on the method: operand element assignment, ratio field assignment, and conversion of the view into NominalBody. The coder log /tmp/ir-qsl2734-f1-doc.log shows 3 passed, exit 0. The reviewer compiled the same snippets with rustc against the built rlib, under the shared slot. They fail with E0594, E0594 and E0277 for the intended borrow and conversion reasons, and a positive-control read snippet compiles (rc=0). |
+| FND-002 | fixed | Round 1, fix head 843beccb. The new helper reread_local runs encode_checked_package_v2 and then the strict reader, using the same dependencies. The local test asserts that the reread view equals the original (operands and ratio), and the package test asserts equivalence_view(&reread, 3) == Some((operands, ratio)). |
