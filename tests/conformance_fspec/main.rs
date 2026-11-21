@@ -54,6 +54,7 @@ mod extension;
 mod fairness_targets;
 #[path = "../it/support/checked_package.rs"]
 mod fixture_support;
+mod location_scaling;
 use fixture_support::retention_definition;
 mod fma_application;
 mod grouped_ordinal;

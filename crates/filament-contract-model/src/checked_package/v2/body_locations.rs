@@ -17,7 +17,7 @@ use super::protocol_locations::{refuse_missing_predecessor, validate_rows};
 use super::stage_storage::{self, Path};
 use super::{
     CheckedBindingNameKind, CheckedNodeKind, CheckedPackageWireV2, CheckedTerm, ExpressionForm,
-    WorkMeter,
+    ValueForm, WorkMeter,
 };
 use crate::checked_package::common::ValidationFailure;
 use crate::checked_package::shared::CheckedNodeId;
@@ -86,8 +86,9 @@ struct Graph<'a, 'w, Body> {
 }
 
 impl<Body> Graph<'_, '_, Body> {
-    /// The positions of the local `expression` nodes `term` references, in the
-    /// order a pre-order traversal of the term meets them.
+    /// The positions of local expression and composite-value nodes `term`
+    /// references, in the order a pre-order traversal meets them. Record and
+    /// tuple aggregates expose their children without contributing a term.
     fn expression_references(&self, term: &CheckedTerm) -> Vec<usize> {
         let mut found = Vec::new();
         let mut stack = vec![term];
@@ -99,6 +100,9 @@ impl<Body> Graph<'_, '_, Body> {
                             if matches!(
                                 self.kinds.get(position),
                                 Some(CheckedNodeKind::Expression(_))
+                                    | Some(CheckedNodeKind::Value(
+                                        ValueForm::RecordValue | ValueForm::TupleValue
+                                    ))
                             ) {
                                 found.push(position);
                             }
@@ -168,7 +172,7 @@ pub(super) fn validate<Body>(
     rows: &[CheckedBodySemanticLocation],
     meter: &mut WorkMeter,
 ) -> Result<(), ValidationFailure> {
-    let gap = validate_rows(
+    let (gap, index) = validate_rows(
         ARRAY,
         &wire.name,
         &wire.semantic_graph.nodes,
@@ -178,7 +182,11 @@ pub(super) fn validate<Body>(
         rows,
         meter,
     )?;
-    let index = node_positions(wire, meter)?;
+    let index = if rows.is_empty() {
+        node_positions(wire, meter)?
+    } else {
+        index
+    };
     let graph = Graph {
         wire,
         kinds,

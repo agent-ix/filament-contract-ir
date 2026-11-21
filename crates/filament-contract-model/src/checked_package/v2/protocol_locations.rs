@@ -18,6 +18,9 @@ use crate::checked_package::shared::{
     CheckedSourceMapEntry,
 };
 
+/// Sorted borrowed node identities, shared with the body walk.
+pub(super) type NodeIndex<'a> = Vec<(&'a CheckedNodeId, usize)>;
+
 const MAX_SAFE: u64 = 9_007_199_254_740_991;
 
 fn at(array: &'static str, row: usize) -> Path<'static> {
@@ -97,7 +100,7 @@ impl LocationRow for CheckedBodySemanticLocation {
         let up = at(array, index).key("location").key("up");
         work(meter, index, up, 1)?;
         if self.location.up > MAX_SAFE {
-            return Err(malformed(meter, index, up));
+            return Err(malformed(meter, index, at(array, index).key("location")));
         }
         intake_body_origin(&self.location.origin, array, index, meter)
     }
@@ -136,7 +139,7 @@ pub(super) fn validate<Body>(
     let Some(data) = wire.checked_term_data.as_ref() else {
         return Ok(());
     };
-    let gap = validate_rows(
+    let (gap, _) = validate_rows(
         "protocol_locations",
         &wire.name,
         &wire.semantic_graph.nodes,
@@ -170,16 +173,51 @@ pub(super) fn refuse_missing_predecessor(
 /// Check every row of `array` in order and report whether a row follows a
 /// missing predecessor ordinal.
 #[allow(clippy::too_many_arguments)]
-pub(super) fn validate_rows<Body, Row: LocationRow>(
+pub(super) fn validate_rows<'a, Body, Row: LocationRow>(
     array: &'static str,
     name: &str,
-    nodes: &[CheckedSemanticNodeV2<Body>],
+    nodes: &'a [CheckedSemanticNodeV2<Body>],
     kinds: &[CheckedNodeKind],
     terms: &[CheckedTerm],
     source_map: &[CheckedSourceMapEntry],
     rows: &[Row],
     meter: &mut WorkMeter,
-) -> Result<bool, ValidationFailure> {
+) -> Result<(bool, NodeIndex<'a>), ValidationFailure> {
+    if rows.is_empty() {
+        return Ok((false, Vec::new()));
+    }
+    let site = data_site(0, Path::root().key("checked_term_data").key(array));
+    stage_storage::work(meter, &site, u64::try_from(nodes.len()).unwrap_or(u64::MAX))?;
+    let mut node_index = stage_storage::vec(meter, &site, nodes.len())?;
+    node_index.extend(nodes.iter().enumerate().map(|(i, node)| (&node.node_id, i)));
+    node_index.sort_unstable();
+    stage_storage::work(
+        meter,
+        &site,
+        u64::try_from(source_map.len()).unwrap_or(u64::MAX),
+    )?;
+    let mut sources = stage_storage::vec(meter, &site, source_map.len())?;
+    sources.extend(
+        source_map
+            .iter()
+            .map(|entry| (&entry.node_id, &entry.role, entry.ordinal)),
+    );
+    sources.sort_unstable();
+    let occurrence_count = nodes.iter().fold(0_usize, |total, node| {
+        total.saturating_add(node.occurrences.len())
+    });
+    stage_storage::work(
+        meter,
+        &site,
+        u64::try_from(occurrence_count).unwrap_or(u64::MAX),
+    )?;
+    let mut occurrences = stage_storage::vec(meter, &site, occurrence_count)?;
+    occurrences.extend(nodes.iter().enumerate().flat_map(|(i, node)| {
+        node.occurrences
+            .iter()
+            .map(move |occurrence| (i, occurrence))
+    }));
+    occurrences.sort_unstable();
     let mut previous: Option<&Row> = None;
     let mut missing_predecessor = false;
     for (index, row) in rows.iter().enumerate() {
@@ -214,17 +252,15 @@ pub(super) fn validate_rows<Body, Row: LocationRow>(
             .map_or(0, |before| before.term_ordinal() + 1);
         missing_predecessor |= term_ordinal != expected;
         previous = Some(row);
-        let mut selected = None;
-        for (position, node) in nodes.iter().enumerate() {
-            work(meter, index, here.key("application"), 1)?;
-            if &node.node_id == row.application() {
-                selected = Some((position, node));
-                break;
-            }
-        }
-        let Some((position, node)) = selected else {
+        work(meter, index, here.key("application"), 1)?;
+        let found = node_index.partition_point(|(id, _)| *id < row.application());
+        let Some((_, position)) = node_index
+            .get(found)
+            .filter(|(id, _)| *id == row.application())
+        else {
             return Err(invalid(meter, index, here.key("application")));
         };
+        let position = *position;
         // A leaf owns its location on its graph node. Its occurrence and a
         // matching enclosing application location cannot make a row valid.
         match (kinds.get(position), terms.get(position)) {
@@ -232,27 +268,26 @@ pub(super) fn validate_rows<Body, Row: LocationRow>(
                 if *form != ExpressionForm::Reference => {}
             _ => return Err(invalid(meter, index, here.key("application"))),
         }
-        let mut occurrence_found = false;
-        for occurrence in &node.occurrences {
-            work(meter, index, here.key("occurrence"), 1)?;
-            occurrence_found |= occurrence == row.occurrence();
-        }
-        if !occurrence_found {
+        work(meter, index, here.key("occurrence"), 1)?;
+        if occurrences
+            .binary_search(&(position, row.occurrence()))
+            .is_err()
+        {
             return Err(invalid(meter, index, here.key("occurrence")));
         }
-        let mut mapped = false;
-        for entry in source_map {
-            work(meter, index, here.key("occurrence"), 1)?;
-            mapped |= &entry.node_id == row.application()
-                && entry.role == row.occurrence().role
-                && entry.ordinal == row.occurrence().ordinal;
-        }
-        if !mapped {
+        if sources
+            .binary_search(&(
+                row.application(),
+                &row.occurrence().role,
+                row.occurrence().ordinal,
+            ))
+            .is_err()
+        {
             return Err(invalid(meter, index, here.key("occurrence")));
         }
         intake_location_value(row, array, index, meter)?;
     }
-    Ok(missing_predecessor)
+    Ok((missing_predecessor, node_index))
 }
 
 /// Convert an incoming numeric term coordinate to its safe wire range.
@@ -467,6 +502,19 @@ mod tests {
     use super::*;
     use ix_trace_rs::trace;
     use serde_json::json;
+
+    #[test]
+    #[trace("TC-491", "FR-038-AC-597")]
+    fn empty_location_rows_build_no_join_indexes_or_work() {
+        let mut meter = WorkMeter::new(0);
+        let nodes: &[CheckedSemanticNodeV2] = &[];
+        let (gap, index) = validate_rows::<_, CheckedProtocolSemanticLocation>(
+            "protocol_locations", "example", nodes, &[], &[], &[], &[], &mut meter,
+        ).unwrap();
+        assert!(!gap);
+        assert!(index.is_empty());
+        assert_eq!(meter.consumed(), 0);
+    }
 
     #[test]
     #[trace("TC-048", "FR-038-AC-448")]

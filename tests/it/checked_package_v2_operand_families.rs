@@ -2001,6 +2001,45 @@ fn fold_with_body_rows() -> Value {
     fixture
 }
 
+/// The genuine monitor-root package fits the default work limit with indexed
+/// captured-location joins, preserving its selected model evidence.
+#[trace("TC-491", "FR-038-AC-597")]
+#[test]
+fn monitor_root_location_join_admits_under_one_million_work() {
+    let mut fixture: Value =
+        serde_json::from_slice(include_bytes!("../fixtures/fold-binders/monitor-base.json"))
+            .unwrap();
+    add_linked_check_modes(&mut fixture);
+    crate::support::checked_package::rebuild_body_locations(&mut fixture);
+    crate::support::checked_package::align_model_declarations(&mut fixture);
+    let mut evidence = filament_contract_model::CheckedPackageEvidence::new();
+    evidence.support_feature("filament.value.complete/v1");
+    evidence
+        .insert_domain_package_document(
+            "example/config-version",
+            include_bytes!("../fixtures/fold-binders/config-version-domain.json").to_vec(),
+        )
+        .unwrap();
+    let limits = CheckedPackageReadLimits {
+        bytes: 1 << 26,
+        nodes: 1_000_000,
+        edges: 10_000_000,
+        occurrences: 10_000_000,
+        diagnostics: 10_000,
+        work: 1_000_000,
+    };
+    let result =
+        filament_contract_model::CheckedPackageV2::read(&canonical(&fixture), limits, &evidence);
+    let CheckedPackageV2ReadResult::Admitted(admitted) = result else {
+        panic!("monitor root must admit at default work: {result:?}");
+    };
+    assert!(!admitted
+        .checked_term_data()
+        .unwrap()
+        .body_locations
+        .is_empty());
+}
+
 fn read_fold(fixture: &Value) -> CheckedPackageV2ReadResult {
     let mut evidence = filament_contract_model::CheckedPackageEvidence::new();
     evidence.support_feature("filament.value.complete/v1");

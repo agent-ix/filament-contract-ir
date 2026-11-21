@@ -179,6 +179,11 @@ fn the_earlier_whole_path_form_and_a_partial_relative_form_are_malformed_wire() 
             CheckedPackageRefusalCode::MalformedWire,
             "{id}"
         );
+        assert_eq!(
+            refusal.loci[0].path.as_ref().unwrap().as_str(),
+            "/checked_term_data/body_locations/0/location",
+            "{id}: malformed relative locations refuse at the whole location"
+        );
         seen += 1;
     }
     assert_eq!(seen, 5);

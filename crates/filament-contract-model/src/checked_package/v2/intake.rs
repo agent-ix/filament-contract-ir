@@ -451,6 +451,26 @@ fn classify_wire_fault(
             length = parent;
         }
     }
+    // Relative body-location shape faults name the closed location object;
+    // origin grammar faults retain their more specific member pointers.
+    if matches!(
+        original,
+        [
+            Step::Key("checked_term_data"),
+            Step::Key("body_locations"),
+            Step::Index(_),
+            Step::Key("location")
+        ] | [
+            Step::Key("checked_term_data"),
+            Step::Key("body_locations"),
+            Step::Index(_),
+            Step::Key("location"),
+            Step::Key("path" | "up" | "down")
+        ]
+    ) {
+        code = MalformedWire;
+        length = 4;
+    }
     super::stage_storage::refuse(
         meter,
         &super::stage_storage::Site::new(
