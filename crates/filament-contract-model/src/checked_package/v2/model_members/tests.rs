@@ -2282,7 +2282,7 @@ fn located_refusal(document: &Value) -> (ModelRefusal, String) {
 
 #[trace("TC-2048", "FR-154-AC-51", "TC-048", "FR-038-AC-598")]
 #[test]
-fn native_target_requires_value_meaning_and_validates_constraint_keywords() {
+fn native_target_values_validate_constraint_keywords() {
     const VALUE: &str = "ix://acme/orders/Bound";
     let bound = |native: &str, keywords: &[&str]| {
         json!({
@@ -2348,6 +2348,11 @@ fn native_target_requires_value_meaning_and_validates_constraint_keywords() {
             "{native} {keywords:?}"
         );
     }
+}
+
+#[trace("TC-2048", "FR-154-AC-51", "TC-048", "FR-038-AC-598")]
+#[test]
+fn native_target_object_kind_preserves_reference_and_fields() {
     let mut gadget = object_type(
         GADGET,
         &[],
@@ -2373,12 +2378,20 @@ fn native_target_requires_value_meaning_and_validates_constraint_keywords() {
         panic!("field");
     };
     assert_eq!(model.field_type(n), Some(MemberType::Integer));
+}
+
+#[trace("TC-2048", "FR-154-AC-51", "TC-048", "FR-038-AC-598")]
+#[test]
+fn native_target_numeric_and_undeclared_kinds_refuse() {
     for kind in [
         json!(42),
         json!({"module": "acme/orders", "name": "undeclared"}),
     ] {
-        let mut row = bound("Integer", &[]);
-        row["kind"] = kind;
+        let row = json!({
+            "identity": "ix://acme/orders/Bound", "displayName": "Bound", "kind": kind,
+            "roles": [], "extensions": [], "unknownPolicy": "reject",
+            "target": "ix://filament/native/Integer", "constraints": [],
+        });
         assert_eq!(
             read(&document(vec![row])).map(|_| ()),
             Err(ModelRefusal::malformed())
