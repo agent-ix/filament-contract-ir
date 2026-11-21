@@ -533,7 +533,8 @@ fn second_selected_model_work_is_charged_before_its_document_is_read() {
 }
 
 #[cfg(feature = "test-support")]
-#[trace("TC-472", "FR-038-AC-507")]
+/// Trace: FR-378-AC-4, FR-038-AC-507
+#[trace("TC-472", "FR-038-AC-507", "FR-378-AC-4")]
 #[test]
 fn retained_dependency_and_package_allocations_are_denied_before_admission() {
     let input = direct_dependencies_input();
