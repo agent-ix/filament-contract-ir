@@ -202,8 +202,10 @@ sidecar and bounded dispatch view. The sidecar has five required arrays, includi
 `CheckedBodySemanticLocation` holds the application `CheckedNodeId`, its
 `CheckedOccurrence`, the `term_ordinal` and a `CheckedBodyLocation` whose
 `CheckedBodyLocationOrigin` is the closed `function_body` origin (the function
-`CheckedNodeId`, `name` and `index`) and whose path is a list of
-`CheckedKeyOrdinal`; the probabilistic-claim row type `CheckedProbabilisticClaim` exposes the
+`CheckedNodeId`, `name` and `index`) and whose path is written relative to the
+previous term of the same body walk: a count of entries to remove (up) and a list
+of `CheckedKeyOrdinal` to append (down), which the strict reader rebuilds in walk
+order (FSpec FR-322-AC-510); the probabilistic-claim row type `CheckedProbabilisticClaim` exposes the
 exact local declaration `CheckedNodeId` and declared `CheckedOccurrence`.
 `ClaimForm::ProbabilisticClaim` is the planned closed graph form for that declaration.
 FR-051's optional typed writer input is exported alongside the reader sidecar.
@@ -428,7 +430,7 @@ old-wire admission path is exported.
 | FR-019-AC-26 | A default-feature consumer matches `ScalarTypeForm::BoundedQuantity` after strict admission and reads the typed unit, min and max bindings of a FSpec FR-322 bounded quantity, preserving its exact endpoints and structural identity. | Test (TC-058; FSpec FR-322-AC-384) |
 | FR-019-AC-27 | A default-feature external consumer imports `SelectedMonitorAuthorityRow`, `SelectedMonitorAuthorityRowError`, `SelectedMonitorAuthorityComponent`, `SelectedMonitorTimeSource`, `SelectedMonitorAuthorityReceipt`, `SelectedMonitorAuthorityErrorCode` and `SelectedMonitorLayoutContext`, builds a row only through `try_new`, and reads `authority()` and `layout_context()` from a closure with the exact FR-361 signatures. Compile controls show no public row field, receipt or context constructor, and no borrow escaping the admitted package. The new types join the exact implemented inventory when FR-361 is implemented. | Test |
 | FR-019-AC-28 | A default-feature external producer constructs `OperationBodyRow` inputs with `OperationBody::Function` or `OperationBody::NoBody` and passes them as optional borrowed `CheckedPackageSidecarsRef::operation_bodies` to the V2 encoder without raw JSON. A consumer obtains `None` from `CheckedPackageV2::operation_body_rows` when the carrier is absent, and after strict admission the exact rows, and one body by `(document, declaring, operation)` from `operation_body`. | Test |
-| FR-019-AC-29 | The default-feature model crate exports `CheckedBodySemanticLocation`, `CheckedBodyLocation` and `CheckedBodyLocationOrigin`, usable in the fifth required `CheckedTermDataV2::body_locations` array and in borrowed `encode_checked_package_v2` input. A public consumer constructs a row from typed `CheckedNodeId`, `CheckedOccurrence`, `term_ordinal`, function `CheckedNodeId`, `name`, `index` and path without importing a private wire type, writes FSpec BL-01, and reads the same typed values back from the strictly admitted package; a `CheckedTermDataV2` value cannot be built without the `body_locations` member. | Test (TC-491, TC-451) |
+| FR-019-AC-29 | The default-feature model crate exports `CheckedBodySemanticLocation`, `CheckedBodyLocation` and `CheckedBodyLocationOrigin`, usable in the fifth required `CheckedTermDataV2::body_locations` array and in borrowed `encode_checked_package_v2` input. A public consumer constructs a row from typed `CheckedNodeId`, `CheckedOccurrence`, `term_ordinal`, function `CheckedNodeId`, `name`, `index`, up count and down list without importing a private wire type, writes FSpec BL-01, and reads the same typed values back from the strictly admitted package; a `CheckedTermDataV2` value cannot be built without the `body_locations` member. | Test (TC-491, TC-451) |
 
 ## Dependencies
 

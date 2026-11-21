@@ -43,7 +43,7 @@ fn read(package: &Value) -> CheckedPackageV2ReadResult {
 }
 
 #[test]
-#[trace("TC-2090", "FR-322-AC-490", "FR-038-AC-581")]
+#[trace("TC-2090", "FR-322-AC-490", "FR-038-AC-581", "FR-038-AC-591")]
 fn every_published_body_location_vector_runs_through_the_strict_reader() {
     let cases = vectors();
     let mut seen = Vec::new();
@@ -113,7 +113,9 @@ fn every_published_body_location_vector_runs_through_the_strict_reader() {
             "BL-R5",
             "BL-R6",
             "BL-R7-no-occurrence-1",
-            "BL-R8-bl03-without-occurrence-1-row"
+            "BL-R8-bl03-without-occurrence-1-row",
+            "BL-R9-up-beyond-previous-path",
+            "BL-R10-up-not-least"
         ]
     );
 }
@@ -133,4 +135,51 @@ fn a_carrier_without_body_locations_is_malformed_wire() {
         panic!("a carrier without `body_locations` must refuse");
     };
     assert_eq!(refusal.code, CheckedPackageRefusalCode::MalformedWire);
+}
+
+/// BL-S5 and BL-S6 (FR-322-AC-510): a row location in the earlier `{origin,
+/// path}` form, and one with `up` and no `down`, are `malformed_wire`; so is
+/// one with `down` and no `up` and an `up` past the safe integer range.
+#[test]
+#[trace("TC-491", "FR-038-AC-591", "FR-322-AC-510")]
+fn the_earlier_whole_path_form_and_a_partial_relative_form_are_malformed_wire() {
+    let cases = vectors();
+    let mut seen = 0;
+    let mut values: Vec<(String, Value)> = Vec::new();
+    for case in cases["schema_invalid"].as_array().unwrap() {
+        if case["target"] == "BodyLocation" {
+            values.push((
+                case["id"].as_str().unwrap().to_owned(),
+                case["value"].clone(),
+            ));
+        }
+    }
+    let origin = values[0].1["origin"].clone();
+    values.push((
+        "down-without-up".to_owned(),
+        serde_json::json!({"origin": origin, "down": []}),
+    ));
+    values.push((
+        "up-beyond-safe".to_owned(),
+        serde_json::json!({"origin": origin, "up": 9_007_199_254_740_992_u64, "down": []}),
+    ));
+    values.push((
+        "path-beside-relative".to_owned(),
+        serde_json::json!({"origin": origin, "up": 0, "down": [], "path": []}),
+    ));
+    for (id, value) in values {
+        let mut package = package_with(&cases, &cases["positive"][0]);
+        package["checked_term_data"]["body_locations"][0]["location"] = value;
+        refresh_identity(&mut package);
+        let CheckedPackageV2ReadResult::Refused(refusal) = read(&package) else {
+            panic!("{id} must refuse");
+        };
+        assert_eq!(
+            refusal.code,
+            CheckedPackageRefusalCode::MalformedWire,
+            "{id}"
+        );
+        seen += 1;
+    }
+    assert_eq!(seen, 5);
 }

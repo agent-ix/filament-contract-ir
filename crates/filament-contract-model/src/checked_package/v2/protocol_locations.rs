@@ -33,8 +33,10 @@ pub(super) trait LocationRow {
     fn occurrence(&self) -> &CheckedOccurrence;
     /// The term coordinate within the occurrence.
     fn term_ordinal(&self) -> u64;
-    /// The captured child path.
+    /// The captured child path entries, as written.
     fn path(&self) -> &[CheckedKeyOrdinal];
+    /// The wire member that holds `path()`.
+    fn path_member(&self) -> &'static str;
     /// Check the origin wire grammar, without graph decisions.
     fn check_origin(
         &self,
@@ -57,6 +59,9 @@ impl LocationRow for CheckedProtocolSemanticLocation {
     fn path(&self) -> &[CheckedKeyOrdinal] {
         &self.location.path
     }
+    fn path_member(&self) -> &'static str {
+        "path"
+    }
     fn check_origin(
         &self,
         array: &'static str,
@@ -78,7 +83,10 @@ impl LocationRow for CheckedBodySemanticLocation {
         self.term_ordinal
     }
     fn path(&self) -> &[CheckedKeyOrdinal] {
-        &self.location.path
+        &self.location.down
+    }
+    fn path_member(&self) -> &'static str {
+        "down"
     }
     fn check_origin(
         &self,
@@ -86,6 +94,11 @@ impl LocationRow for CheckedBodySemanticLocation {
         index: usize,
         meter: &mut WorkMeter,
     ) -> Result<(), ValidationFailure> {
+        let up = at(array, index).key("location").key("up");
+        work(meter, index, up, 1)?;
+        if self.location.up > MAX_SAFE {
+            return Err(malformed(meter, index, up));
+        }
         intake_body_origin(&self.location.origin, array, index, meter)
     }
 }
@@ -286,7 +299,10 @@ fn intake_location_value<Row: LocationRow>(
 ) -> Result<(), ValidationFailure> {
     row.check_origin(array, index, meter)?;
     for (position, ordinal) in row.path().iter().enumerate() {
-        let locus = at(array, index).key("location").key("path").index(position);
+        let locus = at(array, index)
+            .key("location")
+            .key(row.path_member())
+            .index(position);
         work(meter, index, locus, 1)?;
         match ordinal {
             CheckedKeyOrdinal::Safe(value) if *value <= MAX_SAFE => {}

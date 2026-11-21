@@ -337,15 +337,23 @@ pub struct CheckedBodySemanticLocation {
     pub location: CheckedBodyLocation,
 }
 
-/// The function-body origin and checker child path of one body term.
+/// The function-body origin and the checker child path of one body term,
+/// written relative to the previous term of the same body walk (FSpec FR-322).
+///
+/// The term's path is the previous term's path with its last `up` entries
+/// removed and `down` appended; the first term of a walk has the empty path
+/// before it. The strict reader refuses an `up` that exceeds the previous path
+/// or is not the least one that leaves a prefix of the path.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CheckedBodyLocation {
     /// The function body that holds the term.
     pub origin: CheckedBodyLocationOrigin,
-    /// Child positions from the body's root to this term.
+    /// Entries removed from the end of the previous term's path.
+    pub up: u64,
+    /// Child positions appended after the removal.
     #[serde(deserialize_with = "super::document_de::exact_vec")]
-    pub path: Vec<CheckedKeyOrdinal>,
+    pub down: Vec<CheckedKeyOrdinal>,
 }
 
 /// The one closed kind of body-location origin.
@@ -606,8 +614,9 @@ encode_record!(CheckedBodySemanticLocation {
     location: encoded,
 });
 encode_record!(CheckedBodyLocation {
+    down: fixed,
     origin: encoded,
-    path: fixed,
+    up: fixed,
 });
 encode_record!(CheckedDispatchCandidateTable {
     application: encoded,

@@ -2820,7 +2820,8 @@ pub fn rebuild_body_locations(package: &mut Value) {
                             "name": name,
                             "index": index,
                         },
-                        "path": [],
+                        "up": 0,
+                        "down": [],
                     },
                 });
                 rows.push((
