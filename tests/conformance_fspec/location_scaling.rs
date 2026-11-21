@@ -82,6 +82,25 @@ fn read(package: &Value, work: u64) -> CheckedPackageV2ReadResult {
     CheckedPackageV2::read(&bytes, limits, &evidence_for(package))
 }
 
+// Large fixture builders relinquish their JSON before admission. Retaining
+// both a producer-sized Value tree and the admitted reader state would measure
+// fixture duplication rather than the reader's linear storage.
+fn read_owned(mut package: Value, work: u64) -> CheckedPackageV2ReadResult {
+    let evidence = evidence_for(&package);
+    crate::fixture_support::wire_operands(&mut package);
+    let bytes = serde_json::to_vec(&package).unwrap();
+    drop(package);
+    let limits = CheckedPackageReadLimits {
+        bytes: u64::try_from(bytes.len()).unwrap() + 1024,
+        nodes: 300_010,
+        edges: 600_010,
+        occurrences: 600_010,
+        diagnostics: 1,
+        work,
+    };
+    CheckedPackageV2::read(&bytes, limits, &evidence)
+}
+
 fn least_work(package: &Value, bound: u64) -> u64 {
     assert!(
         matches!(
@@ -142,8 +161,7 @@ fn protocol_location_join_scales_linearly_and_admits_one_hundred_thousand_rows()
 #[test]
 #[trace("TC-491", "FR-038-AC-597", "FR-322-AC-510")]
 fn bl_d1_one_hundred_thousand_left_nested_applications_admit_at_the_reader() {
-    let package = chain(100_000, true);
-    let result = read(&package, 100_000_000);
+    let result = read_owned(chain(100_000, true), 100_000_000);
     let CheckedPackageV2ReadResult::Admitted(admitted) = result else {
         panic!("BL-D1 must admit: {result:?}");
     };
@@ -231,7 +249,7 @@ fn assert_lazy_paths(package: &CheckedPackageV2, count: usize, lets: bool) {
             consumed: 1
         })
     ));
-    println!("lazy paths: lets={lets}, rows={count}, exact_work={exact}; kth path oracles and one-short passed");
+    println!("lazy paths: lets={lets}, rows={count}, exact_work={exact}, peak_bytes={}, storage_bound={storage_bound}; kth path oracles, cancellation and one-short passed", allocations.bytes_max);
 }
 
 #[test]
@@ -372,8 +390,8 @@ fn nested_lets(count: usize) -> Value {
 #[trace("TC-491", "FR-038-AC-597", "FR-322-AC-510")]
 fn bl_d2_one_hundred_thousand_nested_lets_admit_at_the_reader() {
     for count in [10, 100_000] {
-        let result = read(
-            &nested_lets(count),
+        let result = read_owned(
+            nested_lets(count),
             u64::try_from(count).unwrap() * 1_000 + 10_000,
         );
         let CheckedPackageV2ReadResult::Admitted(admitted) = result else {
