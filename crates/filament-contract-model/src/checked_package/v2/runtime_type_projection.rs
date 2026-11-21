@@ -469,13 +469,17 @@ impl ProjectionBudget<'_> {
 
     fn storage_value_type(
         &mut self,
+        at: &CheckedNodeId,
         value: &ValueType,
     ) -> Result<(), SelectedTypeDeclarationsError> {
+        native_join_storage::preflight_value_type(value, self.budget, at)
+            .map_err(|error| self.exact_error(error))?;
         self.charge_storage(native_join_storage::value_type(value))
     }
 
     fn storage_record_view(
         &mut self,
+        at: &CheckedNodeId,
         view: &SelectedRecordView,
     ) -> Result<(), SelectedTypeDeclarationsError> {
         self.charge_storage(2)?;
@@ -484,7 +488,7 @@ impl ProjectionBudget<'_> {
             self.storage_text(field.ir_identity())?;
             self.storage_text(field.name())?;
             self.charge_storage(native_join_storage::member_identity(field.member_id()))?;
-            self.storage_value_type(field.value_type())?;
+            self.storage_value_type(at, field.value_type())?;
         }
         Ok(())
     }
@@ -1338,7 +1342,7 @@ impl CheckedPackageV2 {
                                 "record_value_type",
                             )
                         })?;
-                        ctx.storage_record_view(view)?;
+                        ctx.storage_record_view(id, view)?;
                         ctx.storage_text(&declaration.node)?;
                         ctx.charge_storage(1)?;
                         records.push(SelectedTypeRecord {
@@ -1554,7 +1558,7 @@ impl CheckedPackageV2 {
                             ctx.charge_storage(1)?;
                             ctx.storage_text(projected.original_identity())?;
                             ctx.storage_text(projected.name())?;
-                            ctx.storage_value_type(projected.value_type())?;
+                            ctx.storage_value_type(id, projected.value_type())?;
                             declared_fields.push((*projected).clone());
                         }
                         ctx.charge_storage(1)?;

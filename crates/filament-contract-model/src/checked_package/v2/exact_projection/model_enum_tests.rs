@@ -317,6 +317,19 @@ fn model_enum_runtime_full_view_matches_direct_field_and_literal_types_with_cumu
             .iter_mut()
             .find(|field| field["name"] == "tier")
             .unwrap()["typeRef"] = "ix://example/config-version/TierAlias".into();
+        let tier = object["fields"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|field| field["name"] == "tier")
+            .unwrap()
+            .clone();
+        for name in ["previousTier", "nextTier"] {
+            let mut field = tier.clone();
+            field["identity"] = format!("ix://example/config-version/ConfigVersion/{name}").into();
+            field["name"] = name.into();
+            object["fields"].as_array_mut().unwrap().push(field);
+        }
     });
     let read = |package: &CheckedPackageV2, budget: &mut NativeJoinBudget| {
         let identities = runtime_identities(package, budget).with_admitted_model_enum_rows(
@@ -388,6 +401,19 @@ fn model_enum_runtime_full_view_matches_direct_field_and_literal_types_with_cumu
         .find(|field| field.name() == "tier")
         .unwrap();
     assert_eq!(field.value_type(), literal.value_type());
+    for fields in [
+        types.objects()[0].fields(),
+        types.objects()[0].declared_fields(),
+    ] {
+        let enum_fields: Vec<_> = fields
+            .iter()
+            .filter(|field| ["tier", "previousTier", "nextTier"].contains(&field.name()))
+            .collect();
+        assert_eq!(enum_fields.len(), 3);
+        for field in enum_fields {
+            assert_eq!(field.value_type(), literal.value_type());
+        }
+    }
     let used = ample.consumed();
     let mut exact = NativeJoinBudget::new(used.work, used.storage);
     assert_eq!(

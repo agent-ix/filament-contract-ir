@@ -3268,6 +3268,24 @@ fn exact_integer_interval(
         .map_err(|_| ExactTypeProjectionErrorCode::UnsupportedExactType)
 }
 
+fn copy_enum_value_type(
+    shape: &EnumShape,
+    requested: &CheckedNodeId,
+    at: &CheckedNodeId,
+    form: &'static str,
+    budget: &mut NativeJoinBudget,
+) -> Result<ValueType, ExactTypeProjectionError> {
+    storage::preflight_enum_shape(shape, budget, at)?;
+    charge_native_storage(
+        budget,
+        requested,
+        at,
+        form,
+        storage::enum_shape(shape).saturating_add(1),
+    )?;
+    Ok(ValueType::Enum(shape.clone()))
+}
+
 pub(super) fn project_record_field_type(
     package: &CheckedPackageV2,
     identities: &SelectedExactIdentities,
@@ -3405,15 +3423,13 @@ pub(super) fn project_record_field_type(
                     Some(target)
                 )
             })?;
-            storage::preflight_enum_shape(&shape.shape, budget, requested)?;
-            charge_native_storage(
-                budget,
+            return copy_enum_value_type(
+                &shape.shape,
                 requested,
                 requested,
                 "record_field_variant",
-                storage::enum_shape(&shape.shape).saturating_add(1),
-            )?;
-            return Ok(ValueType::Enum(shape.shape.clone()));
+                budget,
+            );
         }
         MemberType::Float32
         | MemberType::Float64
@@ -4028,16 +4044,15 @@ impl CheckedPackageV2 {
                     refuse!(ExactTypeProjectionErrorCode::UnavailableIdentityWitness)
                 })?;
                 validate_source_enum_row(self, row, requested, work, work_limit)?;
-                storage::preflight_enum_shape(&row.declaration.shape, work, type_id)?;
-                charge_native_storage(
-                    work,
+                let value = copy_enum_value_type(
+                    &row.declaration.shape,
                     requested,
                     type_id,
                     "source_enum_projection",
-                    storage::enum_shape(&row.declaration.shape).saturating_add(1),
+                    work,
                 )?;
                 source_enum_view = Some(Arc::clone(row));
-                ValueType::Enum(row.declaration.shape.clone())
+                value
             }
             CheckedNodeKind::BoundedDomain(BoundedDomainForm::IntegerRange) => {
                 let (lower, upper) = range_bounds
@@ -4252,15 +4267,13 @@ impl CheckedPackageV2 {
                 let shape = identities.model_enum_shapes.get(type_id).ok_or_else(|| {
                     refuse!(ExactTypeProjectionErrorCode::UnavailableIdentityWitness)
                 })?;
-                storage::preflight_enum_shape(&shape.shape, work, type_id)?;
-                charge_native_storage(
-                    work,
+                copy_enum_value_type(
+                    &shape.shape,
                     requested,
                     type_id,
                     "model_enum_projection",
-                    storage::enum_shape(&shape.shape).saturating_add(1),
-                )?;
-                ValueType::Enum(shape.shape.clone())
+                    work,
+                )?
             }
             CheckedNodeKind::Model(ModelForm::RecordValueType) => {
                 let identity = identities
