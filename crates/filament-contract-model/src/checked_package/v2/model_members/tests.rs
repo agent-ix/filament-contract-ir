@@ -2225,14 +2225,30 @@ fn tc_234_a_reference_to_clock_is_a_data_member() {
             &mut Budget::new(&mut meter, 0, BYTES),
         )
         .expect("no limit is reached");
-    assert!(id.is_some(), "the one clock_reference scalar node");
+    let expected = Some(CheckedNodeId {
+        package: model.checked_package.clone(),
+        path: vec![
+            CheckedNodePathSegment::Name("scalar_type".into()),
+            CheckedNodePathSegment::Name("clock_reference".into()),
+        ],
+        ordinal: 0,
+    });
+    assert_eq!(id, expected, "charged clock-reference identity");
+    assert_eq!(
+        MemberType::ClockReference.node_id(&model.checked_package),
+        expected,
+        "plain clock-reference identity"
+    );
 
     // The native set holds no clock-reference name.
     let mut wrong = types.clone();
     wrong[0]["fields"][1]["typeRef"] = json!("ix://filament/native/ClockReference");
     assert_eq!(
-        read(&document(wrong)).map(|_| ()),
-        Err(ModelRefusal::malformed())
+        located_refusal(&document(wrong)),
+        (
+            ModelRefusal::malformed(),
+            "/types/0/fields/1/typeRef".into()
+        )
     );
     // A reference type is never a map key.
     types.push(json!({
@@ -2240,18 +2256,141 @@ fn tc_234_a_reference_to_clock_is_a_data_member() {
         "keys": "ix://acme/orders/ClockRef", "values": "ix://filament/native/Integer",
         "bound": {"lower": 0},
     }));
-    let refused = read(&document(types)).map(|_| ()).expect_err("refused");
+    let (refused, pointer) = located_refusal(&document(types));
     assert_eq!(
         refused,
         ModelRefusal::new(Code::IllTyped, Cause::OperatorIneligible)
     );
+    assert_eq!(pointer, "/types/6/keys");
+}
+
+fn located_refusal(document: &Value) -> (ModelRefusal, String) {
+    let mut meter = WorkMeter::new(u64::MAX);
+    match read_semantic_ir(
+        view_of(document),
+        "checked",
+        &mut Budget::new(&mut meter, 0, BYTES),
+        &UnitRefs::default(),
+    ) {
+        Err(SelectionFailure::Refused(refusal)) => (
+            refusal.refusal,
+            refusal.document_pointer.expect("located").to_string(),
+        ),
+        _ => panic!("must refuse"),
+    }
+}
+
+#[trace("TC-2048", "FR-154-AC-51", "TC-048", "FR-038-AC-598")]
+#[test]
+fn native_target_requires_value_meaning_and_validates_constraint_keywords() {
+    const VALUE: &str = "ix://acme/orders/Bound";
+    let bound = |native: &str, keywords: &[&str]| {
+        json!({
+            "identity": VALUE, "displayName": "Bound",
+            "kind": {"module": "acme/orders", "name": "digit"},
+            "roles": [], "extensions": [], "unknownPolicy": "reject",
+            "target": format!("ix://filament/native/{native}"),
+            "constraints": keywords.iter().map(|keyword| json!({
+                "keyword": keyword, "appliesTo": VALUE, "operands": {"value": 3}
+            })).collect::<Vec<_>>()
+        })
+    };
+    for native in ["Clock", "Integer", "Boolean", "String"] {
+        let mut optional = field(WIDGET, "optional", VALUE);
+        optional["presence"] = json!("optional");
+        let rows = vec![
+            object_type(
+                WIDGET,
+                &[],
+                vec![field(WIDGET, "required", VALUE), optional],
+            ),
+            bound(native, &[]),
+        ];
+        let model = read(&document(rows)).expect("bound native");
+        let expected = match native {
+            "Clock" => MemberType::Clock,
+            "Integer" => MemberType::Integer,
+            "Boolean" => MemberType::Boolean,
+            "String" => MemberType::String,
+            _ => unreachable!(),
+        };
+        for name in ["required", "optional"] {
+            let Resolved::Field(field) =
+                resolve(&model, WIDGET, MemberKind::Field, name).expect("resolves")
+            else {
+                panic!("field");
+            };
+            let expected = if name == "optional" {
+                MemberType::Option(Box::new(expected.clone()))
+            } else {
+                expected.clone()
+            };
+            assert_eq!(model.field_type(field), Some(expected));
+        }
+    }
+    for keyword in ["min", "max"] {
+        read(&document(vec![bound("Clock", &[keyword])]))
+            .expect("Clock bound admitted for checker");
+    }
+    for (native, keywords, index) in [
+        ("Clock", vec!["max", "maxLength"], 1),
+        ("Clock", vec!["pattern"], 0),
+        ("Integer", vec!["min"], 0),
+        ("Integer", vec!["max"], 0),
+        ("Boolean", vec!["min"], 0),
+    ] {
+        assert_eq!(
+            located_refusal(&document(vec![bound(native, &keywords)])),
+            (
+                ModelRefusal::malformed(),
+                format!("/types/0/constraints/{index}/keyword")
+            ),
+            "{native} {keywords:?}"
+        );
+    }
+    let mut gadget = object_type(
+        GADGET,
+        &[],
+        vec![field(GADGET, "n", "ix://filament/native/Integer")],
+    );
+    gadget["target"] = json!("ix://filament/native/Integer");
+    let model = read(&document(vec![
+        object_type(WIDGET, &[], vec![field(WIDGET, "g", GADGET)]),
+        gadget,
+    ]))
+    .expect("object meaning remains object");
+    let Resolved::Field(g) = resolve(&model, WIDGET, MemberKind::Field, "g").expect("object field")
+    else {
+        panic!("field");
+    };
+    assert!(
+        matches!(model.field_type(g), Some(MemberType::Reference(_))),
+        "object reference retained"
+    );
+    let Resolved::Field(n) =
+        resolve(&model, GADGET, MemberKind::Field, "n").expect("Gadget retains its fields")
+    else {
+        panic!("field");
+    };
+    assert_eq!(model.field_type(n), Some(MemberType::Integer));
+    for kind in [
+        json!(42),
+        json!({"module": "acme/orders", "name": "undeclared"}),
+    ] {
+        let mut row = bound("Integer", &[]);
+        row["kind"] = kind;
+        assert_eq!(
+            read(&document(vec![row])).map(|_| ()),
+            Err(ModelRefusal::malformed())
+        );
+    }
 }
 
 /// FR-154 "Value types bound to a native by `target`": a `target` naming no
 /// native refuses at `TypeDefinition.target`, a second binding by `scalar` at
 /// `TypeDefinition.scalar`, and an option over a reference type is admitted
 /// (FR-154 "Option value types": `inner` may name a reference type).
-#[trace("TC-234", "FR-154-AC-53", "TC-048", "FR-038-AC-591")]
+#[trace("TC-2048", "FR-154-AC-51", "TC-048", "FR-038-AC-598")]
 #[test]
 fn tc_234_bound_value_type_refusals_and_option_over_a_reference() {
     const CLOCK: &str = "ix://filament/native/Clock";

@@ -4820,6 +4820,31 @@ pub(super) fn read_semantic_ir(
                         Some(JsonPointer::root().key("types").index(position).key(member));
                     return Err(refusal.into());
                 }
+                // Native-target value types retain their raw constraints for
+                // the checker. Intake validates only the keyword vocabulary;
+                // Clock bounds are interpreted by the owning checker.
+                let clock =
+                    row.get("target").and_then(View::as_str) == Some("ix://filament/native/Clock");
+                for (index, constraint) in list(row, "constraints")?.iter().enumerate() {
+                    if !clock
+                        || !matches!(
+                            constraint.get("keyword").and_then(View::as_str),
+                            Some("min" | "max")
+                        )
+                    {
+                        let mut refusal =
+                            SelectionRefusal::located(ModelRefusal::malformed(), row, budget)?;
+                        refusal.document_pointer = Some(
+                            JsonPointer::root()
+                                .key("types")
+                                .index(position)
+                                .key("constraints")
+                                .index(index)
+                                .key("keyword"),
+                        );
+                        return Err(refusal.into());
+                    }
+                }
             }
             budget.charge(node_size(row))?;
             let target = text(row, "target")?;

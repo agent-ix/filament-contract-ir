@@ -3,6 +3,12 @@ id: TC-048
 title: "CheckedPackage V2 strict reader validates structural identities"
 type: TC
 relationships:
+  - target: ix://agent-ix/filament-contract-ir/FR-038-AC-591
+    type: verifies
+  - target: ix://agent-ix/filament-contract-ir/FR-038-AC-598
+    type: verifies
+  - target: ix://agent-ix/filament-specification/TC-2048
+    type: references
   - target: ix://agent-ix/filament-specification/TC-976
     type: references
   - target: ix://agent-ix/filament-contract-ir/FR-038
