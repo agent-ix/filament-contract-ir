@@ -1411,6 +1411,7 @@ fn package(
                 | "record_value_type"
                 | "event_type"
                 | "tuple_value_type"
+                | "variant_type"
                 | "process"
                 | "state_machine"
                 | "persistence_interface"
@@ -8758,4 +8759,324 @@ fn runtime_two_tuple_indices_activate_the_first_row_after_witness_join() {
     assert_eq!(error.at, None);
     assert_eq!(error.form, None);
     assert_eq!(before_declaration.consumed().work, work);
+}
+
+// --- a selected model union reached through every field form ----------------------
+
+/// A selected package declaring the union `Choice { Num(Integer), Nothing }`,
+/// a record field, an object field and a tuple position typed by it, plus the
+/// Integer read the union's payload node needs in the graph.
+fn union_environment_wire(num_payload: &str) -> (Value, Value) {
+    let tuple = orders("Pair");
+    let choice = orders("Choice");
+    let mut selected = document(vec![
+        json!({"identity":choice,"displayName":"Choice",
+        "kind":{"module":IDENTITY,"name":"variant"},
+        "variants":[
+            {"identity":format!("{choice}/variant/Num"),"name":"Num","payloadType":num_payload},
+            {"identity":format!("{choice}/variant/Nothing"),"name":"Nothing"}
+        ]}),
+        typed_object(
+            "Receipt",
+            "record",
+            &[],
+            &[
+                field("total", "ix://filament/native/Integer"),
+                field("choice", &choice),
+            ],
+        ),
+        object("Node", &[], &[field("held", &choice)]),
+        json!({"identity":tuple,"displayName":"Pair", "kind":{"module":IDENTITY,"name":"tuple"},
+            "positions":[{"identity":format!("{tuple}/p0"),"typeRef":choice}]}),
+    ]);
+    for (name, meaning) in [
+        ("record", "filament.meaning.model.record-value-type/v1"),
+        ("tuple", "filament.meaning.model.tuple-value-type/v1"),
+        ("variant", "filament.meaning.model.variant-type/v1"),
+    ] {
+        selected["constructs"].as_array_mut().unwrap().push(json!({
+            "kind":{"module":IDENTITY,"name":name},"construct":{"meaning":meaning}
+        }));
+    }
+    let (wire, _, _) = package(
+        &selected,
+        &[
+            ("Choice", "variant_type"),
+            ("Receipt", "record_value_type"),
+            ("Node", OBJECT),
+            ("Pair", "tuple_value_type"),
+        ],
+        &[Read {
+            owner: "Receipt",
+            field: "total",
+            ty: Ty::Integer,
+        }],
+    );
+    (wire, selected)
+}
+
+fn admit_union_environment(num_payload: &str) -> CheckedPackageV2 {
+    let (wire, selected) = union_environment_wire(num_payload);
+    let evidence = evidence_with_document(&wire, IDENTITY, &selected);
+    match read_with(&wire, &evidence, CheckedPackageReadLimits::bounded()) {
+        CheckedPackageV2ReadResult::Admitted(package) => *package,
+        other => panic!("the union environment admits: {other:?}"),
+    }
+}
+
+struct UnionEnvironmentRows {
+    declarations: Vec<SelectedExactDeclarationRow>,
+    fields: Vec<SelectedExactFieldRow>,
+    tuples: Vec<SelectedTupleDeclarationRow>,
+    unions: Vec<filament_contract_model::SelectedModelUnionRow>,
+    handle: NodeKey,
+}
+
+fn union_environment_rows(
+    package: &CheckedPackageV2,
+    num_original: ValueType,
+) -> UnionEnvironmentRows {
+    use filament_contract_model::{
+        SelectedModelUnionCaseRow, SelectedModelUnionPayload, SelectedModelUnionRow,
+    };
+    let id = |original: &str| {
+        package
+            .resolved_graph()
+            .nodes
+            .iter()
+            .find(|node| matches!(&node.owner, Some(filament_contract_model::CheckedNodeOwner::Model { identity, node }) if identity.as_ref() == IDENTITY && node.as_ref() == original))
+            .expect("a selected declaration")
+            .node_id
+            .clone()
+    };
+    let key = |name: &str| {
+        NodeKey::new("complete-stage", vec![PathSegment::Text(name.into())], 0).unwrap()
+    };
+    let record_id = id(&orders("Receipt"));
+    let declarations = vec![
+        SelectedExactDeclarationRow::new(
+            record_id.clone(),
+            IDENTITY,
+            SelectedExactDeclarationForm::RecordValueType,
+            orders("Receipt"),
+            SelectedExactIdentity::Record(key("Receipt")),
+        ),
+        SelectedExactDeclarationRow::new(
+            id(&orders("Node")),
+            IDENTITY,
+            SelectedExactDeclarationForm::ObjectType,
+            orders("Node"),
+            SelectedExactIdentity::Object(EffectiveId::new(
+                None,
+                OriginalDeclarationKey::new(IDENTITY, orders("Node")),
+            )),
+        ),
+    ];
+    let fields = ["total", "choice"]
+        .into_iter()
+        .map(|name| {
+            SelectedExactFieldRow::new(
+                record_id.clone(),
+                IDENTITY,
+                orders("Receipt"),
+                format!("{}/{name}", orders("Receipt")),
+                MemberId::new(MemberOwner::Node(key("Receipt")), name).unwrap(),
+            )
+        })
+        .collect();
+    let tuples = vec![SelectedTupleDeclarationRow::new(
+        id(&orders("Pair")),
+        IDENTITY,
+        orders("Pair"),
+        key("Pair"),
+    )];
+    let choice = orders("Choice");
+    let settled = key("Choice");
+    let handle = NodeKey::new(
+        "complete-stage",
+        vec![PathSegment::Text("Choice-handle".into())],
+        0,
+    )
+    .unwrap();
+    let member = |name: &str| {
+        filament_exact::UnionMember::from_admitted(settled.clone(), name).expect("a sealed member")
+    };
+    let integer: CheckedNodeId =
+        serde_json::from_value(node_id("scalar_type/integer")).expect("Integer node");
+    let unions = vec![SelectedModelUnionRow {
+        structural_node: id(&choice),
+        selected_document: IDENTITY.into(),
+        type_handle: handle.clone(),
+        settled_key: settled.clone(),
+        cases: vec![
+            SelectedModelUnionCaseRow {
+                rank: 0,
+                position: 1,
+                name: "Nothing".into(),
+                original_case: OriginalDeclarationKey::new(
+                    IDENTITY,
+                    format!("{choice}/variant/Nothing"),
+                ),
+                member: member("Nothing"),
+                payload: SelectedModelUnionPayload::None,
+            },
+            SelectedModelUnionCaseRow {
+                rank: 1,
+                position: 0,
+                name: "Num".into(),
+                original_case: OriginalDeclarationKey::new(
+                    IDENTITY,
+                    format!("{choice}/variant/Num"),
+                ),
+                member: member("Num"),
+                payload: SelectedModelUnionPayload::Data {
+                    node: integer,
+                    original_type: num_original,
+                },
+            },
+        ],
+    }];
+    UnionEnvironmentRows {
+        declarations,
+        fields,
+        tuples,
+        unions,
+        handle,
+    }
+}
+
+fn union_witness_before_union_rows(
+    package: &CheckedPackageV2,
+    rows: &UnionEnvironmentRows,
+    budget: &mut filament_contract_model::NativeJoinBudget,
+) -> SelectedExactIdentities {
+    SelectedExactIdentities::from_stage_rows(
+        package,
+        rows.declarations.clone(),
+        rows.fields.clone(),
+        budget,
+    )
+    .expect("declaration and field rows join")
+    .with_admitted_type_rows(package, &rows.tuples, &[], budget)
+    .expect("the tuple row joins")
+}
+
+/// A model union typed record field, object field and tuple position project
+/// to the union's type handle through the full join, and the complete witness
+/// of that environment rebinds.
+#[trace("FR-352-AC-35", "FR-352-AC-37")]
+#[test]
+fn a_model_union_in_a_record_field_an_object_field_and_a_tuple_position_projects_its_handle() {
+    use filament_contract_model::ModelUnionScope;
+    let package = admit_union_environment("ix://filament/native/Integer");
+    let rows = union_environment_rows(&package, ValueType::Integer);
+    let mut budget = filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX);
+    let witness = union_witness_before_union_rows(&package, &rows, &mut budget)
+        .with_model_union_rows(
+            &package,
+            &rows.tuples,
+            &rows.unions,
+            ModelUnionScope::Full,
+            &mut budget,
+        )
+        .expect("the union row joins in the complete environment");
+    let handle = ValueType::Composite(rows.handle.clone());
+    let view = package
+        .project_selected_type_declarations(&witness, &rows.tuples, &[], &mut budget)
+        .expect("the complete environment projects");
+    assert_eq!(view.unions().len(), 1);
+    assert_eq!(view.unions()[0].type_handle, rows.handle);
+    // The record field.
+    let record_fields = view.records()[0].view().fields();
+    let choice = record_fields
+        .iter()
+        .find(|field| field.name() == "choice")
+        .expect("the record's union field");
+    assert_eq!(choice.value_type(), &handle);
+    let total = record_fields
+        .iter()
+        .find(|field| field.name() == "total")
+        .expect("the record's Integer field");
+    assert_eq!(total.value_type(), &ValueType::Integer);
+    // The object field retains its admitted field identity and presence.
+    let object = view
+        .objects()
+        .iter()
+        .find(|object| object.original_identity() == orders("Node"))
+        .expect("the selected object");
+    let held = object
+        .fields()
+        .iter()
+        .find(|field| field.name() == "held")
+        .expect("the object's union field");
+    assert_eq!(held.original_identity(), format!("{}/held", orders("Node")));
+    assert_eq!(held.value_type(), &handle);
+    assert_eq!(held.presence(), Presence::Required);
+    // The tuple position, by its author order.
+    let pair = view
+        .tuples()
+        .iter()
+        .find(|tuple| tuple.original_identity() == orders("Pair"))
+        .expect("the selected tuple");
+    assert_eq!(pair.positions(), [handle.clone()]);
+    // Without the union row none of the three can be projected.
+    let missing = package
+        .project_selected_type_declarations(
+            &union_witness_before_union_rows(&package, &rows, &mut budget),
+            &rows.tuples,
+            &[],
+            &mut budget,
+        )
+        .expect_err("a union-typed field needs the union row");
+    assert_eq!(
+        missing.code,
+        ExactTypeProjectionErrorCode::UnavailableIdentityWitness
+    );
+    // Positive full rebind of the complete witness: nothing is missing.
+    let rebound = witness
+        .validate_and_rebind(&package, &mut budget)
+        .expect("the complete witness rebinds");
+    assert_eq!(rebound.model_union_rows().count(), 1);
+    assert_eq!(rebound.model_tuple_rows().count(), 1);
+    assert_eq!(rebound, witness);
+}
+
+/// Every other family complete, only the union row missing: the rebind refuses
+/// at the union completeness stage, at the union's own node, and leaves the
+/// receiver as it was; the same environment with the union row rebinds.
+#[trace("FR-352-AC-37")]
+#[test]
+fn a_witness_missing_only_the_union_row_is_refused_at_the_union_completeness_stage() {
+    use filament_contract_model::ModelUnionScope;
+    let package = admit_union_environment("ix://filament/native/Integer");
+    let rows = union_environment_rows(&package, ValueType::Integer);
+    let mut budget = filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX);
+    let without_union = union_witness_before_union_rows(&package, &rows, &mut budget);
+    let before = without_union.clone();
+    let refusal = without_union
+        .validate_and_rebind(&package, &mut budget)
+        .expect_err("a witness without the union row is incomplete");
+    let choice: CheckedNodeId =
+        serde_json::from_value(node_id(&declaration_key("Choice", "variant_type")))
+            .expect("the union node");
+    assert_eq!(
+        refusal.code,
+        ExactTypeProjectionErrorCode::IncompleteIdentityWitness
+    );
+    assert_eq!(refusal.at.as_deref(), Some(&choice));
+    assert_eq!(refusal.requested.as_deref(), Some(&choice));
+    assert_eq!(refusal.form.as_deref(), Some("selected_model_union"));
+    assert_eq!(without_union, before, "the receiver is unchanged");
+    assert_eq!(without_union.model_union_rows().count(), 0);
+    // The same stage with the union row joined is complete.
+    let complete = without_union
+        .with_model_union_rows(
+            &package,
+            &rows.tuples,
+            &rows.unions,
+            ModelUnionScope::Full,
+            &mut budget,
+        )
+        .expect("the union row joins");
+    assert!(complete.validate_and_rebind(&package, &mut budget).is_ok());
 }

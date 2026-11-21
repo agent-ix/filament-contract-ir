@@ -935,12 +935,18 @@ impl SelectedExactIdentities {
                     ));
                 }
             }
-            if let Some(original) = model.variant_types.keys().next() {
+            // A union-family variant is complete when its model-union row is
+            // (`selected_model_union`, below); any other selected variant has no
+            // complete-witness acquisition.
+            for original in model.variant_types.keys() {
                 charge_native_work(budget, root, root, "complete_selected_variant", 1)?;
-                let at = selected_original_locus(package, selection, root, original, budget)?
-                    .unwrap_or(root);
+                let located = selected_original_locus(package, selection, root, original, budget)?;
+                if located.is_some_and(|node| package.models.variant_family(node) == Some("union"))
+                {
+                    continue;
+                }
                 return Err(witness_error(
-                    at,
+                    located.unwrap_or(root),
                     ExactTypeProjectionErrorCode::UnavailableIdentityWitness,
                 ));
             }
@@ -1324,6 +1330,21 @@ fn binding_error(
     let mut error = witness_error_with_budget(at, code, budget);
     error.work = budget.consumed().work;
     error
+}
+
+#[cfg(test)]
+impl SelectedExactIdentities {
+    /// A copy bound to no admission whose retained row for `row`'s node is
+    /// `row`, as a witness assembled outside the joins would hold it.
+    pub(in crate::checked_package::v2) fn unbound_with_model_union_row_for_tests(
+        &self,
+        row: super::model_union::SelectedModelUnionRow,
+    ) -> Self {
+        let mut copy = self.clone();
+        copy.binding = None;
+        Arc::make_mut(&mut copy.model_unions).insert(row.structural_node.clone(), Arc::new(row));
+        copy
+    }
 }
 
 #[cfg(test)]

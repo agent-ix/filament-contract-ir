@@ -813,8 +813,9 @@ mod tests {
         ExactTypeProjectionErrorCode, SelectedExactDeclarationForm, SelectedExactIdentity,
     };
     use crate::{
-        NativeJoinChargeKind, SelectedModelEnumErrorCode, SelectedMonitorClosureRows,
-        SelectedMonitorTypeClosureError, SelectedMonitorTypeClosureErrorCode,
+        NativeJoinChargeKind, SelectedModelEnumErrorCode, SelectedModelUnionPayload,
+        SelectedMonitorClosureRows, SelectedMonitorTypeClosureError,
+        SelectedMonitorTypeClosureErrorCode,
     };
     use filament_exact::{
         CollectionKind, CollectionType, EffectiveId, Location, MemberId, MemberOwner, NodeKey,
@@ -4444,6 +4445,80 @@ mod tests {
                     && error.at.as_deref() == Some(&row.structural_node)
                     && error.form.as_deref() == Some("/model_unions")),
             "{refused:?}"
+        );
+    }
+
+    /// Rebinding re-validates a retained union row's contents against the
+    /// package it is rebound to, before completeness: rows valid in one admission
+    /// are checked again against an independent second admission.
+    #[trace("FR-352-AC-37")]
+    #[test]
+    fn rebinding_re_validates_union_row_contents_against_an_independent_admission() {
+        let first = admitted_monitor_reaching_a_union();
+        let (declarations, fields, units) = union_producer_rows(&first);
+        let row = choice_row(&first);
+        let plan = first.monitor_plans().next().unwrap();
+        let complete = plan
+            .read_reached_model_facts(
+                ReachedProducerRows {
+                    declarations: &declarations,
+                    fields: &fields,
+                    tuples: &[],
+                    source_units: &units,
+                    enum_declarations: &[],
+                    enum_members: &[],
+                    enum_shapes: &[],
+                    model_unions: std::slice::from_ref(&row),
+                },
+                &mut NativeJoinBudget::new(u64::MAX, u64::MAX),
+            )
+            .expect("the row joins");
+        let second = admitted_monitor_reaching_a_union();
+        let mut wrong = row.clone();
+        let SelectedModelUnionPayload::Data { original_type, .. } = &mut wrong.cases[1].payload
+        else {
+            panic!("Num carries data");
+        };
+        *original_type = ValueType::String;
+        let tampered = complete
+            .identities
+            .unbound_with_model_union_row_for_tests(wrong);
+        let before = tampered.clone();
+        let mut budget = NativeJoinBudget::new(u64::MAX, u64::MAX);
+        let refusal = tampered
+            .validate_and_rebind(&second, &mut budget)
+            .expect_err("a wrong union row fails content re-validation");
+        assert_eq!(
+            refusal.code,
+            ExactTypeProjectionErrorCode::MismatchedIdentityWitness
+        );
+        let SelectedModelUnionPayload::Data {
+            node: payload_node, ..
+        } = &row.cases[1].payload
+        else {
+            panic!("Num carries data");
+        };
+        assert_eq!(refusal.at.as_deref(), Some(payload_node));
+        assert_eq!(
+            refusal.form.as_deref(),
+            Some("/model_unions/0/cases/1/payload/original_type")
+        );
+        assert_eq!(tampered, before, "the receiver is unchanged");
+        // The same rows, correct, pass the content stage on the second admission.
+        let valid = complete
+            .identities
+            .unbound_with_model_union_row_for_tests(row);
+        let verdict = valid
+            .validate_and_rebind(&second, &mut NativeJoinBudget::new(u64::MAX, u64::MAX))
+            .expect_err("the fixture's selected process has no complete witness");
+        assert_eq!(
+            verdict.code,
+            ExactTypeProjectionErrorCode::UnsupportedExactType
+        );
+        assert_eq!(
+            verdict.at.as_deref(),
+            Some(&selected_node(&second, "ix://test/families/Flow")),
+            "the correct rows pass contents and stop at the completeness stage"
         );
     }
 }
