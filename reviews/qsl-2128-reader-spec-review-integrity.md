@@ -30,3 +30,19 @@ One medium integrity gap and two low findings.
 | FND-001 | medium | FR-351's intra-node order ("check shape, aliases, targets in body order, premises, then Boolean body ... reporting the first failure") does not say where the new member's checks run. The code runs the entry shape, alias and join checks (step_relation.rs:727-787) after the subject model-root targets and before the execution operation targets. Two consequences follow. A shape-malformed declaration entry is reported after an alias fault. A join fault in member 4 is reported before an operation-target fault in member 1. Neither order can be derived from the text, so two implementers would disagree. Fix: add one sentence placing the declaration-order checks, for example "after the subject targets and before the operation targets", or reorder the code to match "body order", and add a two-defect test. | spec/checked_package/functional/FR-351-admit-step-relation-claim-body.md:116-119; crates/filament-contract-model/src/checked_package/v2/step_relation.rs:727-787 |
 | FND-002 | low | FR-351-AC-6 combines five obligations in one criterion: admission and getter order, the write and read roundtrip, legacy admission with `None`, and `step_relation_body` invariance. A failure does not identify which one broke. Fix: split it into AC-6 (order and roundtrip) and a separate legacy and invariance AC, or accept it in the style of the existing FR-351 ACs. | spec/checked_package/functional/FR-351-admit-step-relation-claim-body.md:137 |
 | FND-003 | low | FR-351 adds the contract that FSL FR-940 "Declaration-order member contract" names as "the optional fifth member of the current four-binding filament-contract-ir FR-351 body", but FR-351 has no `references` relationship to `ix://agent-ix/filament-spec-language/FR-940`. Its prose does not cite FR-940 either, so the upstream source cannot be traced from IR. Fix: add the `references` edge. | spec/checked_package/functional/FR-351-admit-step-relation-claim-body.md:1-23 |
+
+## New findings (disposition pass 1)
+
+Round 1 at c4dd58a5170bbb2fd40eb6166d71a0b7c202fc20 (fix commit c4dd58a51 on base 2eec4f97c, which merges origin/main 7e4f5409).
+
+| ID | Severity | Summary | Refs |
+| --- | --- | --- | --- |
+| FND-004 | low | The AC-13 oracle "exceeds ... by the literal count of its entries plus the binding's own terms" cannot be derived. The fifth binding has 6 terms and 2 entries, but the test pins a measured EXPECTED_WORK_DELTA = 22 (2 per-entry units plus 20 "retained walk"; mutant m1 shows 1330 vs 1310). The spec does not model the 20, so a reader cannot check 22 against the AC, and an unrelated walk-cost change would break the test. Fix: state the per-term walk unit that yields 20, or reword AC-13 to "one unit per entry over the binding's retained term walk" and assert the per-entry part differentially. | spec/checked_package/functional/FR-351-admit-step-relation-claim-body.md:151; tests/it/checked_package_v2_frame_entries.rs:6335 |
+
+## Dispositions
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-001 | fixed | round 1 at c4dd58a51: The order is now explicit: shape, aliases, subject targets, declaration order (entries left to right, then omission), remaining targets in body order, premises, body. AC-12 tests the declaration join before a wrong operation target (with an operation-only control) and a subject target before the declaration order. |
+| FND-002 | fixed | round 1 at c4dd58a51: Split into AC-6..AC-13. quoin matrix (RC=0) shows each one tagged by the test that asserts it. |
+| FND-003 | fixed | round 1 at c4dd58a51: A references edge to ix://agent-ix/filament-spec-language/FR-940 was added, and the prose names FR-940 as owning the package form. quire validate RC=0. |

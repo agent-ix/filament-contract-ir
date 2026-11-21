@@ -26,3 +26,17 @@ One low wording finding. No statement conflicts with FSL FR-940.
 | ID | Severity | Summary | Refs |
 | --- | --- | --- | --- |
 | FND-001 | low | Three new normative statements are declaratives rather than shall statements: "The optional `subject_declaration_order` is a Group ...", "A body without it remains admitted, and the reader exposes the sequence ...", and "Its refusals are `invalid_semantic_graph` ...". The rest of FR-351, and FSL FR-940's paragraph, use SHALL. Fix: use "shall be", "shall remain admitted ... shall expose" and "shall refuse ... with". | spec/checked_package/functional/FR-351-admit-step-relation-claim-body.md:71-80 |
+
+## New findings (disposition pass 1)
+
+Round 1 at c4dd58a5170bbb2fd40eb6166d71a0b7c202fc20 (fix commit c4dd58a51 on base 2eec4f97c, which merges origin/main 7e4f5409).
+
+| ID | Severity | Summary | Refs |
+| --- | --- | --- | --- |
+| FND-002 | low | The new precedence sentence "The binding's own shape (`P`, `P/value`) is read after every other body shape, so a defect in the first four bindings keeps its existing pointer" is normative but declarative. Fix: "The reader shall read the binding's own shape after every other body shape". | spec/checked_package/functional/FR-351-admit-step-relation-claim-body.md:89-91 |
+
+## Dispositions
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-001 | fixed | round 1 at c4dd58a51: The three statements are now shall statements: "shall admit", "shall require ... shall retain ... shall not sort", "shall admit ... shall be absent", and "refusals shall be". |

@@ -27,3 +27,17 @@ One medium coverage gap: AC-7's cross-subject root join is untested. Everything 
 | ID | Severity | Summary | Refs |
 | --- | --- | --- | --- |
 | FND-001 | medium | FR-351-AC-7 "a reference to another subject's root" is not tested. `declaration_order_package` binds `V` and `W` to one model root (tests:5794), so no other subject's root exists. The "wrong root join" case (tests:6008) points at the operation anchor, which is not a model root. Two mutants pass every test: one that replaces the per-alias equality at step_relation.rs:766-769 with membership in the subjects' root set, and one that compares against `subjects[0]`. FSL FR-940-AC-27 also names "an alias joined to the other subject's root". Fix: build a fixture with two subjects over distinct model roots, swap their declaration-order targets, and assert `/body/members/4/value/members/0/value/target`. | tests/it/checked_package_v2_frame_entries.rs:5794,6008; crates/filament-contract-model/src/checked_package/v2/step_relation.rs:766-769 |
+
+## New findings (disposition pass 1)
+
+Round 1 at c4dd58a5170bbb2fd40eb6166d71a0b7c202fc20 (fix commit c4dd58a51 on base 2eec4f97c, which merges origin/main 7e4f5409).
+
+| ID | Severity | Summary | Refs |
+| --- | --- | --- | --- |
+| FND-002 | low | In every declaration-order fixture, the lexical alias order (V < W) equals the first-use subject order (V, W). So the sorted `aliases` position equals the subject slot. A mutant that uses the binary-search position as the slot, dropping `.and_then(\|at\| aliases.get(at)).map(\|&(_, slot)\| slot)` at step_relation.rs:753, passes every test. This was traced by hand, not run, because no source edits are allowed. Fix: name the second-root alias so that it sorts before the first, for example `A` used after `V`, and keep the swap cases. | crates/filament-contract-model/src/checked_package/v2/step_relation.rs:753; tests/it/checked_package_v2_frame_entries.rs:6088 |
+
+## Dispositions
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-001 | fixed | round 1 at c4dd58a51: Fixed, with a qualification. two_root_package selects a second model root. A full swap, a single swap and a second-only swap each refuse at the exact entry value/target. Mutant m3 (per-alias equality replaced by membership) is RED. The correct join passes the declaration-order stage and is then refused later, at execution y operation target, with InvalidModelBinding/MalformedDeclaration. That is a later stage at its own pointer, not an earlier setup failure. FR-351 orders the declaration checks before the remaining targets, and AC-12 tests that order. The positive branch is therefore proven, and it is exactly what AC-10 states ("not refused there"). Full admission of a two-root package is not shown and is not claimed. AC-10 and FR-940-AC-27 do not require it, because shared-root admission is AC-6. |

@@ -87,8 +87,9 @@ a duplicate or unknown alias at that entry's `name`; a wrong alias/root join or
 reference at that entry's `value/target`; and, only after every supplied entry
 is checked in sequence, a missing alias at `P/value/members/LEN`, `LEN` being
 the supplied entry count. A sixth body binding shall refuse at `members/5`. The
-binding's own shape (`P`, `P/value`) is read after every other body shape, so a
-defect in the first four bindings keeps its existing pointer. This is an
+reader shall read the binding's own shape (`P`, `P/value`) after every other
+body shape, so that a defect in the first four bindings keeps its existing
+pointer. This is an
 explicit narrow extension of the current four-binding profile, not a
 seven-binding migration; filament-spec-language FR-940 owns the package form.
 
@@ -148,7 +149,7 @@ their precedence; a malformed or duplicate structural id or wrong dependency lis
 | FR-351-AC-10 | With two subjects over two distinct model roots, an entry whose reference is the other subject's already-selected root refuses `invalid_semantic_graph`, no cause, at that entry's `value/target`, while the correctly joined order is not refused there. | Test |
 | FR-351-AC-11 | An omitted alias refuses at `P/value/members/LEN`, and a defect in a supplied entry is reported at its own pointer before an omission; of two defective entries the first supplied is reported. | Test |
 | FR-351-AC-12 | A declaration-order join defect refuses at its entry pointer before a wrong operation target, while a wrong subject target refuses at the subject's pointer before a declaration-order defect; a non-aggregate `subjects` value together with a non-Group declaration value refuses at `/body/members/0/value`. | Test |
-| FR-351-AC-13 | The declaration-order check's heap request and per-entry work are charged to the read budget at the relation node: the exact allowance is admitted and one unit short is denied at the request, and the work of the package with the binding exceeds that of the same package without it by the literal count of its entries plus the binding's own terms. | Test |
+| FR-351-AC-13 | The declaration-order check charges its coverage flags as one read-storage request, one byte per subject, before allocating them, and charges each supplied entry as one unit of work at the relation before reading it. Over two aliases the exact allowance for every graph request admits and one byte short is denied at it; of two otherwise identical packages refused at their first unknown alias, the one refused after two entries has consumed exactly one more unit of work than the one refused after one. | Test |
 
 ## Dependencies
 

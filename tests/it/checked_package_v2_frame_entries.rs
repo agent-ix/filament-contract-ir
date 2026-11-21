@@ -6101,15 +6101,15 @@ fn two_root_package(declared: &[(&str, usize)]) -> (Value, [Value; 2]) {
             .as_array_mut()
             .expect("subjects")
             .push(binding(
-                "W",
+                "A",
                 json!({"term": "reference", "target": roots[1].clone()}),
             ));
-        members[1]["value"]["members"][1]["value"]["members"][0]["value"]["value"] = json!("W");
+        members[1]["value"]["members"][1]["value"]["members"][0]["value"]["value"] = json!("A");
         let invariant = members[2]["value"]["members"][0]["value"].clone();
         members[2]["value"]["members"]
             .as_array_mut()
             .expect("invariants")
-            .push(binding("W", invariant));
+            .push(binding("A", invariant));
         let entries = declared
             .iter()
             .map(|&(alias, root)| {
@@ -6131,7 +6131,7 @@ fn two_root_package(declared: &[(&str, usize)]) -> (Value, [Value; 2]) {
 #[trace("FR-351-AC-10")]
 #[test]
 fn step_relation_declaration_order_joins_each_alias_to_its_own_distinct_root() {
-    let (swapped, roots) = two_root_package(&[("W", 0), ("V", 1)]);
+    let (swapped, roots) = two_root_package(&[("A", 0), ("V", 1)]);
     assert_ne!(roots[0], roots[1], "two distinct selected model roots");
     let at = position(&swapped, "claim", "step_relation");
     let pointer = format!("/semantic_graph/nodes/{at}/body/members/4/value/members");
@@ -6144,7 +6144,7 @@ fn step_relation_declaration_order_joins_each_alias_to_its_own_distinct_root() {
         &format!("{pointer}/0/value/target"),
         None,
     );
-    let (one_swapped, _) = two_root_package(&[("V", 1), ("W", 1)]);
+    let (one_swapped, _) = two_root_package(&[("V", 1), ("A", 1)]);
     expect(
         "first alias joined to the other root",
         &one_swapped,
@@ -6153,7 +6153,7 @@ fn step_relation_declaration_order_joins_each_alias_to_its_own_distinct_root() {
         &format!("{pointer}/0/value/target"),
         None,
     );
-    let (second_only, _) = two_root_package(&[("V", 0), ("W", 0)]);
+    let (second_only, _) = two_root_package(&[("V", 0), ("A", 0)]);
     expect(
         "second alias joined to the other root",
         &second_only,
@@ -6164,7 +6164,7 @@ fn step_relation_declaration_order_joins_each_alias_to_its_own_distinct_root() {
     );
     // The correct join passes the order check; the relation then stops at
     // the execution `y` whose operation anchor is not over `W`'s second root.
-    let (joined, _) = two_root_package(&[("W", 1), ("V", 0)]);
+    let (joined, _) = two_root_package(&[("A", 1), ("V", 0)]);
     expect(
         "correct join reaches the later operation join",
         &joined,
@@ -6304,7 +6304,15 @@ fn step_relation_declaration_order_storage_and_work_are_charged_at_the_relation(
         twos(&legacy) + 1,
         "{declared:?} {legacy:?}"
     );
-    // Each entry is one unit of work at the relation.
+}
+
+/// Trace: FR-351-AC-13
+#[trace("FR-351-AC-13")]
+#[test]
+fn step_relation_declaration_order_work_is_charged_per_entry() {
+    // Each supplied entry is one unit of work at the relation, charged before
+    // it is read. Two packages with identical terms, each refused at its first
+    // unknown alias, differ only in how many entries were charged before it.
     let work = |package: &Value| {
         let evidence = step_relation_evidence(package);
         let mut budget = filament_contract_model::NativeJoinBudget::new(u64::MAX, 0)
@@ -6315,21 +6323,16 @@ fn step_relation_declaration_order_storage_and_work_are_charged_at_the_relation(
             &evidence,
             &mut budget,
         );
-        assert!(matches!(
-            result,
-            filament_contract_model::CheckedPackageV2BudgetedReadResult::Admitted(_)
-        ));
+        assert!(
+            matches!(
+                result,
+                filament_contract_model::CheckedPackageV2BudgetedReadResult::Refused(_)
+            ),
+            "{result:?}"
+        );
         budget.consumed().work
     };
-    assert_eq!(
-        work(&with) - work(&without),
-        EXPECTED_WORK_DELTA,
-        "{} {}",
-        work(&with),
-        work(&without)
-    );
+    let after_one_entry = work(&declaration_order_package(Some(&["Z", "V"])));
+    let after_two_entries = work(&declaration_order_package(Some(&["W", "Z"])));
+    assert_eq!(after_two_entries - after_one_entry, 1);
 }
-
-/// Measured on the two-alias fixture: 2 units are the per-entry charges at the
-/// relation, the rest the retained fifth binding's own term walk.
-const EXPECTED_WORK_DELTA: u64 = 22;
