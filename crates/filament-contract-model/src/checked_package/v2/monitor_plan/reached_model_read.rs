@@ -29,6 +29,7 @@ pub(super) struct ReachedProducerRows<'a> {
     pub(super) enum_declarations: &'a [SelectedModelEnumDeclarationRow],
     pub(super) enum_members: &'a [SelectedModelEnumMemberRow],
     pub(super) enum_shapes: &'a [SelectedModelEnumShapeRow],
+    pub(super) model_unions: &'a [crate::SelectedModelUnionRow],
 }
 
 #[derive(Debug)]
@@ -704,6 +705,18 @@ impl CheckedMonitorPlanRef<'_> {
                     prior_work: work,
                     error,
                 })?;
+            let identities = identities
+                .with_model_union_rows_over(
+                    self.package,
+                    rows.tuples,
+                    rows.model_unions,
+                    &reached,
+                    budget,
+                )
+                .map_err(|error| ReachedModelError::Exact {
+                    prior_work: work,
+                    error,
+                })?;
             let prior_projection_work = budget.consumed().work - before.work;
             let types = self
                 .package
@@ -800,8 +813,9 @@ mod tests {
         ExactTypeProjectionErrorCode, SelectedExactDeclarationForm, SelectedExactIdentity,
     };
     use crate::{
-        NativeJoinChargeKind, SelectedModelEnumErrorCode, SelectedMonitorClosureRows,
-        SelectedMonitorTypeClosureError, SelectedMonitorTypeClosureErrorCode,
+        NativeJoinChargeKind, SelectedModelEnumErrorCode, SelectedModelUnionPayload,
+        SelectedMonitorClosureRows, SelectedMonitorTypeClosureError,
+        SelectedMonitorTypeClosureErrorCode,
     };
     use filament_exact::{
         CollectionKind, CollectionType, EffectiveId, Location, MemberId, MemberOwner, NodeKey,
@@ -1418,6 +1432,7 @@ mod tests {
             model_enum_declarations: &[],
             model_enum_members: &[],
             model_enum_shapes: &[],
+            model_unions: &[],
             source_records: &source_records,
             source_tuples: &source_tuples,
             source_unions: &source_unions,
@@ -1555,6 +1570,7 @@ mod tests {
                 model_enum_declarations: &[],
                 model_enum_members: &[],
                 model_enum_shapes: &[],
+                model_unions: &[],
                 source_records: &self.records,
                 source_tuples: &self.tuples,
                 source_unions: &self.unions,
@@ -2255,6 +2271,7 @@ mod tests {
                     enum_declarations: &[],
                     enum_members: &[],
                     enum_shapes: &[],
+                    model_unions: &[],
                 },
                 &mut NativeJoinBudget::new(limit, u64::MAX),
             )
@@ -2641,6 +2658,7 @@ mod tests {
             model_enum_declarations: &[],
             model_enum_members: &[],
             model_enum_shapes: &[],
+            model_unions: &[],
             source_records: &source_records,
             source_tuples: &source_tuples,
             source_unions: &source_unions,
@@ -2717,6 +2735,7 @@ mod tests {
                 enum_declarations: &[],
                 enum_members: &[],
                 enum_shapes: &[],
+                model_unions: &[],
             },
             &mut model_budget,
         )
@@ -2822,6 +2841,7 @@ mod tests {
                     model_enum_declarations: &[],
                     model_enum_members: &[],
                     model_enum_shapes: &[],
+                    model_unions: &[],
                     source_records: &source_records,
                     source_tuples: &source_tuples,
                     source_unions: &source_unions,
@@ -2911,6 +2931,7 @@ mod tests {
                 model_enum_declarations: &[],
                 model_enum_members: &[],
                 model_enum_shapes: &[],
+                model_unions: &[],
                 source_records: records,
                 source_tuples: &source_tuples,
                 source_unions: &source_unions,
@@ -2933,6 +2954,7 @@ mod tests {
                 model_enum_declarations: &[],
                 model_enum_members: &[],
                 model_enum_shapes: &[],
+                model_unions: &[],
                 source_records: &source_records,
                 source_tuples: &source_tuples,
                 source_unions: &source_unions,
@@ -3001,6 +3023,7 @@ mod tests {
             model_enum_declarations: &[],
             model_enum_members: &[],
             model_enum_shapes: &[],
+            model_unions: &[],
             source_records: &missing,
             source_tuples: &source_tuples,
             source_unions: &source_unions,
@@ -3083,6 +3106,7 @@ mod tests {
                     model_enum_declarations: &[],
                     model_enum_members: &[],
                     model_enum_shapes: &[],
+                    model_unions: &[],
                     source_records: &unrepresentable_records,
                     source_tuples: &unrepresentable_tuples,
                     source_unions: &unrepresentable_unions,
@@ -3483,7 +3507,7 @@ mod tests {
                 .iter_mut()
                 .find(|ty| ty["identity"] == "ix://test/families/Receipt")
                 .unwrap();
-            receipt["fields"][0]["typeRef"] = serde_json::json!("ix://filament/native/Float32");
+            receipt["fields"][0]["typeRef"] = serde_json::json!("ix://filament/native/Clock");
         });
         let (decl, fields, units) = producer_rows(&package);
         let record = selected_node(&package, "ix://test/families/Receipt");
@@ -3526,6 +3550,7 @@ mod tests {
                     enum_declarations: &[],
                     enum_members: &[],
                     enum_shapes: &[],
+                    model_unions: &[],
                 },
                 budget,
             )
@@ -3650,6 +3675,7 @@ mod tests {
                     enum_declarations: &enum_declarations,
                     enum_members: &enum_members,
                     enum_shapes: &enum_shapes,
+                    model_unions: &[],
                 },
                 budget,
             )
@@ -3782,6 +3808,7 @@ mod tests {
                         enum_declarations: &[],
                         enum_members: &[],
                         enum_shapes: &[],
+                        model_unions: &[],
                     },
                     budget,
                 )
@@ -3956,6 +3983,7 @@ mod tests {
                     model_enum_declarations: &[],
                     model_enum_members: &[],
                     model_enum_shapes: &[],
+                    model_unions: &[],
                     source_records: &self.records,
                     source_tuples: &self.tuples,
                     source_unions: &self.unions,
@@ -4197,5 +4225,300 @@ mod tests {
             assert_eq!(error.at, None);
             assert_eq!(zero.consumed().storage, 0);
         }
+    }
+
+    const CHOICE: &str = "ix://test/families/Choice";
+
+    /// The IR-owned monitor fixture whose selected model also declares the
+    /// union `Choice {Num(Integer), Nothing}` and reaches it from the record
+    /// `Receipt` (required and optional fields).
+    fn admitted_monitor_reaching_a_union() -> CheckedPackageV2 {
+        let (mut wire, mut document) =
+            monitor_plan_fixtures::model_fact_monitor_with_variant(false);
+        let model = "test/families";
+        let field = |owner: &str, name: &str, presence: &str| {
+            serde_json::json!({"identity": format!("{owner}/{name}"), "name": name,
+                "typeRef": CHOICE, "presence": presence, "nullable": false,
+                "defaultKind": "none",
+                "multiplicity": {"lower": 1, "upper": 1, "ordered": false, "unique": true}})
+        };
+        document["types"]
+            .as_array_mut()
+            .unwrap()
+            .push(serde_json::json!({
+                "identity": CHOICE, "displayName": "Choice",
+                "kind": {"module": model, "name": "variant"},
+                "roles": [], "constraints": [], "extensions": [], "unknownPolicy": "reject",
+                "variants": [
+                    {"identity": format!("{CHOICE}/Num"), "name": "Num",
+                        "payloadType": "ix://filament/native/Integer"},
+                    {"identity": format!("{CHOICE}/Nothing"), "name": "Nothing"}
+                ]
+            }));
+        for ty in document["types"].as_array_mut().unwrap() {
+            if ty["identity"] == "ix://test/families/Receipt" {
+                let owner = "ix://test/families/Receipt";
+                ty["fields"].as_array_mut().unwrap().extend([
+                    field(owner, "choice", "required"),
+                    field(owner, "maybe", "optional"),
+                ]);
+            }
+        }
+        let id = fixture_support::structural_id(
+            model,
+            vec![
+                serde_json::json!("model"),
+                serde_json::json!("variant_type"),
+                serde_json::json!(CHOICE),
+            ],
+            0,
+        );
+        wire["semantic_graph"]["nodes"]
+            .as_array_mut()
+            .unwrap()
+            .push(serde_json::json!({
+                "node_id": id, "schema_version": "filament.checked-semantic-graph/v2",
+                "node_tag": "model", "semantic_form": "variant_type", "semantic_type": id,
+                "dependencies": [], "occurrences": [{"role": "generated", "ordinal": 0}],
+                "owner": {"kind": "model", "identity": model, "node": CHOICE},
+                "body": serde_json::json!({"term": "aggregate", "members": []})
+            }));
+        let integer = fixture_support::structural_id(
+            model,
+            vec![
+                serde_json::json!("scalar_type"),
+                serde_json::json!("integer"),
+            ],
+            0,
+        );
+        wire["semantic_graph"]["nodes"]
+            .as_array_mut()
+            .unwrap()
+            .push(serde_json::json!({
+                "node_id": integer, "schema_version": "filament.checked-semantic-graph/v2",
+                "node_tag": "scalar_type", "semantic_form": "integer", "semantic_type": integer,
+                "dependencies": [], "occurrences": [{"role": "generated", "ordinal": 0}],
+                "body": {"term": "aggregate", "members": []}
+            }));
+        fixture_support::rebuild_complete_source_map(&mut wire);
+        fixture_support::refresh_identity(&mut wire);
+        admit_wire(&wire, &document)
+    }
+
+    fn choice_row(package: &CheckedPackageV2) -> crate::SelectedModelUnionRow {
+        use crate::{SelectedModelUnionCaseRow, SelectedModelUnionPayload, SelectedModelUnionRow};
+        let node = selected_node(package, CHOICE);
+        let integer = package
+            .resolved_graph()
+            .nodes
+            .iter()
+            .find(|candidate| {
+                candidate.semantic_form.as_ref() == "integer"
+                    && format!("{:?}", candidate.node_id).contains("scalar_type")
+            })
+            .expect("the integer scalar node")
+            .node_id
+            .clone();
+        let settled = key("ChoiceSettled");
+        let case = |rank, position, name: &str, payload| SelectedModelUnionCaseRow {
+            rank,
+            position,
+            name: name.into(),
+            original_case: OriginalDeclarationKey::new("test/families", format!("{CHOICE}/{name}")),
+            member: UnionMember::from_admitted(settled.clone(), name).unwrap(),
+            payload,
+        };
+        SelectedModelUnionRow {
+            structural_node: node,
+            selected_document: "test/families".into(),
+            type_handle: key("Choice"),
+            settled_key: settled.clone(),
+            cases: vec![
+                case(0, 1, "Nothing", SelectedModelUnionPayload::None),
+                case(
+                    1,
+                    0,
+                    "Num",
+                    SelectedModelUnionPayload::Data {
+                        node: integer,
+                        original_type: ValueType::Integer,
+                    },
+                ),
+            ],
+        }
+    }
+
+    fn union_producer_rows(
+        package: &CheckedPackageV2,
+    ) -> (
+        Vec<SelectedExactDeclarationRow>,
+        Vec<SelectedExactFieldRow>,
+        Vec<SelectedSourceUnitRow>,
+    ) {
+        let (declarations, mut fields, units) = producer_rows(package);
+        let model = "test/families";
+        let record = selected_node(package, "ix://test/families/Receipt");
+        for name in ["choice", "maybe"] {
+            fields.push(SelectedExactFieldRow::new(
+                record.clone(),
+                model,
+                "ix://test/families/Receipt",
+                format!("ix://test/families/Receipt/{name}"),
+                MemberId::new(MemberOwner::Node(key("Receipt")), name).unwrap(),
+            ));
+        }
+        (declarations, fields, units)
+    }
+
+    /// The reached read joins the model-union row of the closure and projects
+    /// it, through a direct and an optional record field,
+    /// as the composite its own `type_handle` names.
+    #[trace("FR-352-AC-35", "FR-358-AC-16")]
+    #[test]
+    fn reached_read_joins_model_union_rows_and_projects_direct_and_optional_record_fields() {
+        let package = admitted_monitor_reaching_a_union();
+        let (declarations, fields, units) = union_producer_rows(&package);
+        let row = choice_row(&package);
+        let plan = package.monitor_plans().next().unwrap();
+        let read = |budget: &mut NativeJoinBudget, unions: &[crate::SelectedModelUnionRow]| {
+            plan.read_reached_model_facts(
+                ReachedProducerRows {
+                    declarations: &declarations,
+                    fields: &fields,
+                    tuples: &[],
+                    source_units: &units,
+                    enum_declarations: &[],
+                    enum_members: &[],
+                    enum_shapes: &[],
+                    model_unions: unions,
+                },
+                budget,
+            )
+        };
+        let mut budget = NativeJoinBudget::new(u64::MAX, u64::MAX);
+        let complete = read(&mut budget, std::slice::from_ref(&row)).expect("the row joins");
+        assert_eq!(complete.types.unions(), std::slice::from_ref(&row));
+        assert_eq!(
+            complete.identities.model_union_row(&row.structural_node),
+            Some(&row)
+        );
+        let handle = ValueType::Composite(row.type_handle.clone());
+        let record = &complete.types.records()[0];
+        let by_name = |name: &str| {
+            record
+                .view()
+                .fields()
+                .iter()
+                .find(|field| field.name() == name)
+                .unwrap_or_else(|| panic!("{name}"))
+                .value_type()
+                .clone()
+        };
+        assert_eq!(by_name("choice"), handle, "a direct record field");
+        assert_eq!(
+            by_name("maybe"),
+            handle.clone(),
+            "an optional record field keeps the union handle; presence is not a wrapper"
+        );
+        // The shared budget: the exact allowance reproduces, one below exhausts.
+        let used = budget.consumed();
+        let mut exact = NativeJoinBudget::new(used.work, used.storage);
+        assert_eq!(
+            read(&mut exact, std::slice::from_ref(&row)).unwrap().types,
+            complete.types
+        );
+        assert_eq!(exact.consumed(), used);
+        for (work, storage, kind) in [
+            (used.work - 1, u64::MAX, NativeJoinChargeKind::Work),
+            (u64::MAX, used.storage - 1, NativeJoinChargeKind::Storage),
+        ] {
+            let mut short = NativeJoinBudget::new(work, storage);
+            assert!(read(&mut short, std::slice::from_ref(&row)).is_err());
+            assert_eq!(short.first_unpaid().unwrap().kind, kind);
+        }
+        // Without the row the closure is unavailable, at the union node.
+        let refused = read(&mut NativeJoinBudget::new(u64::MAX, u64::MAX), &[])
+            .expect_err("a reached union without its row");
+        assert!(
+            matches!(&refused, ReachedModelError::Exact { error, .. }
+                if error.code == ExactTypeProjectionErrorCode::UnavailableIdentityWitness
+                    && error.at.as_deref() == Some(&row.structural_node)
+                    && error.form.as_deref() == Some("/model_unions")),
+            "{refused:?}"
+        );
+    }
+
+    /// Rebinding re-validates a retained union row's contents against the
+    /// package it is rebound to, before completeness: rows valid in one admission
+    /// are checked again against an independent second admission.
+    #[trace("FR-352-AC-37")]
+    #[test]
+    fn rebinding_re_validates_union_row_contents_against_an_independent_admission() {
+        let first = admitted_monitor_reaching_a_union();
+        let (declarations, fields, units) = union_producer_rows(&first);
+        let row = choice_row(&first);
+        let plan = first.monitor_plans().next().unwrap();
+        let complete = plan
+            .read_reached_model_facts(
+                ReachedProducerRows {
+                    declarations: &declarations,
+                    fields: &fields,
+                    tuples: &[],
+                    source_units: &units,
+                    enum_declarations: &[],
+                    enum_members: &[],
+                    enum_shapes: &[],
+                    model_unions: std::slice::from_ref(&row),
+                },
+                &mut NativeJoinBudget::new(u64::MAX, u64::MAX),
+            )
+            .expect("the row joins");
+        let second = admitted_monitor_reaching_a_union();
+        let mut wrong = row.clone();
+        let SelectedModelUnionPayload::Data { original_type, .. } = &mut wrong.cases[1].payload
+        else {
+            panic!("Num carries data");
+        };
+        *original_type = ValueType::String;
+        let tampered = complete
+            .identities
+            .unbound_with_model_union_row_for_tests(wrong);
+        let before = tampered.clone();
+        let mut budget = NativeJoinBudget::new(u64::MAX, u64::MAX);
+        let refusal = tampered
+            .validate_and_rebind(&second, &mut budget)
+            .expect_err("a wrong union row fails content re-validation");
+        assert_eq!(
+            refusal.code,
+            ExactTypeProjectionErrorCode::MismatchedIdentityWitness
+        );
+        let SelectedModelUnionPayload::Data {
+            node: payload_node, ..
+        } = &row.cases[1].payload
+        else {
+            panic!("Num carries data");
+        };
+        assert_eq!(refusal.at.as_deref(), Some(payload_node));
+        assert_eq!(
+            refusal.form.as_deref(),
+            Some("/model_unions/0/cases/1/payload/original_type")
+        );
+        assert_eq!(tampered, before, "the receiver is unchanged");
+        // The same rows, correct, pass the content stage on the second admission.
+        let valid = complete
+            .identities
+            .unbound_with_model_union_row_for_tests(row);
+        let verdict = valid
+            .validate_and_rebind(&second, &mut NativeJoinBudget::new(u64::MAX, u64::MAX))
+            .expect_err("the fixture's selected process has no complete witness");
+        assert_eq!(
+            verdict.code,
+            ExactTypeProjectionErrorCode::UnsupportedExactType
+        );
+        assert_eq!(
+            verdict.at.as_deref(),
+            Some(&selected_node(&second, "ix://test/families/Flow")),
+            "the correct rows pass contents and stop at the completeness stage"
+        );
     }
 }

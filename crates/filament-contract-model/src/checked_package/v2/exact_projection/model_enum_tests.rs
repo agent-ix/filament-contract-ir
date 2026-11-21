@@ -792,9 +792,12 @@ fn model_enum_runtime_payload_variant_refuses_without_becoming_an_enum() {
     let refusal = package
         .project_selected_type_declarations(&identities, &[], &[], &mut budget)
         .unwrap_err();
+    // FR-830 supersedes the old unsupported gap: a payload union is witnessed by
+    // its own model-union row, never by an enum row, so the absent row is the
+    // named missing-witness refusal at the same locus.
     assert_eq!(
         refusal.code,
-        ExactTypeProjectionErrorCode::UnsupportedExactType
+        ExactTypeProjectionErrorCode::UnavailableIdentityWitness
     );
     assert_eq!(refusal.form.as_deref(), Some("selected_union"));
     assert_eq!(budget.last_success_delta(), None);
