@@ -5559,7 +5559,11 @@ from the admitted graph alone: it starts at the local node the function's
 `body` binding references and visits nodes in pre-order, following, in the
 order they occur in a pre-order traversal of each visited node's `body` term
 (members, then arguments, left to right), every `reference` leaf whose target
-is a local `expression` node, and no other reference; a node reached twice is
+is a local `expression` node or a composite `value`/`record_value` or
+`value`/`tuple_value` node. A composite value is walked through without
+counting a term: its stored record fields or ascending tuple positions expose
+their expression-reference leaves in that order. Atomic literals and parameters
+end the branch, as do function, type and foreign nodes. A node reached twice is
 visited twice, and a function node with no `body` binding has no walk. A visit
 is a *term* exactly when its node is an `expression` node other than a
 reference, a let, a conditional or a case: an `expression`/`reference` node
@@ -5582,9 +5586,43 @@ function's terms at that application; and, after every row passes, at
 `/checked_term_data/body_locations` when a function and application have
 fewer rows than terms, which includes a package with no sidecar whose
 function bodies have any term. The reader keeps each row's `name` as an
-opaque string and its `path` as captured, and checks neither against the
-walk. The typed view exposes each admitted row with its `function`, `name`,
-`index` and path.
+opaque string and its path as captured, and checks neither against the
+walk. A row's `location` is `{origin, up, down}` (FSpec FR-322-AC-510): its
+path is the path of the previous term of the same function's body walk with
+its last `up` entries removed and `down` appended. Once every check above
+passes, the reader rebuilds the paths in walk order, the `k`-th walk visit at
+an application pairing with that application's row of rank `k` in
+(`occurrence`, `term_ordinal`) order, and refuses
+`invalid_package`/`invalid-value` at
+`/checked_term_data/body_locations/{i}/location/up` the first row in walk
+order whose `up` exceeds the previous path or is not the least `up` (`down`
+non-empty and beginning with the entry `up` removed last). A location that
+carries `path`, or lacks `up` or `down`, or an `up` above the safe integer
+range, is `malformed_wire` at the row's `location`. The rebuild charges one
+unit per row and one per entry removed, so the reader's work is linear in the
+body walk and the entries the rows hold. The typed view exposes each admitted
+row with its `function`, `name`, `index`, `up` and `down`. This replaces the
+earlier public stored `path` field and changes the canonical row bytes.
+`CheckedPackageV2::body_locations(function, work_limit)` SHALL return a lazy
+typed cursor in body-walk order. Each `next_location` view borrows the exact
+captured row and its rebuilt path, keeping only the current path in memory.
+The caller prepays setup entries, traversal steps, pending-task capacity and
+removed/appended path entries; wide decimal ordinals also charge their byte
+length before cloning. Exhaustion returns a typed `WorkExhausted` error and
+no partial view, then ends the cursor. Dropping the cursor cancels the read.
+One complete traversal retains linear state and charges linear work in the
+graph, rows, walk and encoded entries, without eagerly storing every full path.
+
+For each nonempty `protocol_locations` or `body_locations` array, the reader
+builds one sorted node-position index, one source-map occurrence index and one
+node-occurrence index. The node index is shared with the body walk. It charges
+each indexed node, source-map entry and node occurrence once, and charges the
+index allocations, at `/checked_term_data/<array>`. Each row charges one unit
+for its application lookup and one for its occurrence lookups. An empty array
+builds no row-join indexes. Duplicate, order, missing-node, wrong-form,
+missing-occurrence, unmapped-occurrence, location-intake and missing-predecessor
+refusals retain their precedence. The joins perform logarithmic lookups rather
+than scanning the graph, source map or a node's occurrences per row.
 
 The closed `ClaimForm` vocabulary includes `ProbabilisticClaim` for the
 `claim`/`probabilistic_claim` semantic form. Its body is an ordinary retained
@@ -6372,6 +6410,7 @@ the minimum the read uses.
 | FR-038-AC-589 | Annotated `let` (FR-322-AC-501, IC-14, IC-15, IC-19, IC-20). `let y: Integer = x in g(y)` over `x: Int[0, 1000]`, whose binder `y` is typed by the builtin `Integer` node, and `let r: Money = make_taxed() in r` are admitted. A bare `Int[0, 1000]` binder passed to an `Integer` parameter refuses `ill_typed`/`operator-ineligible` at the call, not the `let`. The reader checks a `let` binder's `semantic_type` against the bound value through the binder link of FR-038-AC-595, so IC-15 (an `Int[0, 999]` binder over an `Int[0, 1000]` value) refuses `ill_typed`/`operator-ineligible` at the `let` application. | Test (TC-492) |
 | FR-038-AC-590 | Implemented (QSL-2338). Consumes FSpec FR-322 "Clause source unit" (FR-322-AC-359, AC-503) and FR-778-AC-1..AC-12. `TemporalBinding` gains `source_unit`, an optional `CheckedSourceRef` carried by the strict reader and canonical writer; a `temporal`/`temporal_clause` row must name one of the lock's sources and no other row may. After the occurrence join and before the repeated-key check the reader refuses a clause row without it, or a compensation, await or hyperproperty row with it, `invalid_package`/`timed-node-reference` at `/temporal_bindings/{i}`, and an unlocked unit `invalid_package`/`invalid-value` at `/temporal_bindings/{i}/source_unit`. The row's `timestamp_unit` is resolved only among the units that source declares (`missing_declaration`/`missing-name` otherwise, `ill_typed`/`unit-mismatch` for a non-Time or affine unit), never inferred from the clause's subject; every row of one clause names the unit its first row names, and the first row that differs refuses `timed-node-reference` at that row. This is a breaking change of the public `TemporalBinding` (a new field: struct literals and exhaustive destructures outside this crate must change) and the reader now refuses a clause row written without `source_unit`. | Test (TC-048; FSpec FR-322-AC-359, AC-503, FR-778-AC-1..AC-12) |
 | FR-038-AC-595 | Implemented (QSL-2728). Consumes FSpec FR-322 "The binder link" (FR-322-AC-512, IC-14, IC-15, IC-21). The binding term of a `filament.op.control.let` application carries `binder`, the `NodeRef` of its binder's `value`/`parameter` node, and that node is among the application's `dependencies`. The typed `CheckedTerm` binding gains the optional `binder` member and the constructor binding_with_binder; the strict reader and canonical writer carry it. The reader refuses `invalid_package`/`invalid-value` for a `binder` absent from a `let` binding term (at `arguments/0`), for a `binder` that names no `value`/`parameter` node, is outside the `dependencies`, or is named otherwise than the binding (at `arguments/0/binder`), for a `binder` on any other binding term (at that `binder`), and for a read in the `let` body of a second `value`/`parameter` node of the binder's name and level (at that reference). It then checks the binder node's `semantic_type` against the bound value's type, for a binder the body reads and one it never reads, and refuses `ill_typed`/`operator-ineligible` at the `let` application. It never finds a binder by name. This is a breaking change of the public `CheckedTerm` (a new field on its binding variant: exhaustive destructures outside this crate must change), and the reader now refuses a `let` binding term written without `binder`. | Test (TC-492; FSpec FR-322-AC-512) |
+| FR-038-AC-597 | Implemented (QSL-2691). Consumes FSpec FR-322-AC-510 and FR-322-AC-513. BL-04 and BL-05 each return eighteen reconstructed paths across both composite components without resetting the previous path; BL-06 returns [0, 0] and [1, 0] for the shared application occurrence 2 at term ordinals 0 and 1. BL-R11 refuses the nonleast composite delta at row 16 location/up. The public `CheckedBodyLocation.path` field is removed and the canonical row bytes change. The lazy typed body-location cursor returns rebuilt paths in walk order with linear state, caller-prepaid work, exact/one-short exhaustion and cancellation. `CheckedBodyLocation` is `{origin, up, down}`: `up` a safe non-negative integer, `down` a list of `CheckedKeyOrdinal`. On FSpec's `body_locations` vectors BL-01 to BL-03 are admitted; BL-R9 (`up` beyond the previous path) and BL-R10 (`up` not least) are `invalid_package`/`invalid-value` at `/checked_term_data/body_locations/8/location/up`; BL-S5 (`{origin, path}`) and BL-S6 (`up` without `down`) are `malformed_wire`. A path of 100,000 left-nested terms (BL-D1) and 100,000 nested `let`s (BL-D2) rebuild in work linear in the body. | Test (TC-491) |
 | FR-038-AC-387 | The public reader admits FSpec `XP-01` and `XP-10`, with each local dimension operand as a local `NodeRef` and each foreign dimension operand as a closed `PackageNodeRef {package, node}` of a directly selected dependency. It resolves the foreign declared dimension in that dependency's admitted package, preserves the authored operand form in the typed nominal body and writer, compares the two resolved structural node ids for distinctness and ascending order, and retains only local operands in the equivalence node's `dependencies`. No foreign dimension node is minted into the importing graph. | Test (TC-280) |
 | FR-038-AC-388 | For FSpec `XP-11`, `XP-12` and `XP-15`, a package operand naming only a closure dependency, no selected dependency or the importing package refuses `missing_declaration`/`missing-selection` at `/semantic_graph/nodes/{i}/body/dimension_node_ids/{k}/package`. `XP-13` names no node in its directly selected dependency and refuses `missing_declaration`/`missing-name` at the corresponding `/node`. The reader checks these operands in listed order before pair rules; neither package display names nor an imported graph node substitute for the selected dependency lookup. | Test (TC-280) |
 | FR-038-AC-389 | FSpec `XP-14` supplies a self-minted foreign-package `NodeRef` and refuses `invalid_semantic_graph` at `/semantic_graph/nodes/{i}/body/dimension_node_ids/{k}`. A local operand naming no graph node, or a local or package operand resolving to a node other than `scalar_type`/`dimension`, refuses the same code at that operand before pair validation; `XP-05` names a unit node and refuses there at its wrong-kind operand. FSpec `XP-02` through `XP-04` and `XP-06` through `XP-09` keep their published `invalid_semantic_graph` pair outcomes after operand resolution; a valid mixed-package equivalence still admits. Reversed or duplicate resolved structural dimensions refuse `invalid_semantic_graph` at the later equivalence node in structural node-id order. | Test (TC-280) |

@@ -2788,7 +2788,12 @@ pub fn rebuild_body_locations(package: &mut Value) {
                 continue;
             }
             let held = &nodes[position];
-            if held["node_tag"] != "expression" && !is_start {
+            let composite_value = held["node_tag"] == "value"
+                && matches!(
+                    held["semantic_form"].as_str(),
+                    Some("record_value" | "tuple_value")
+                );
+            if held["node_tag"] != "expression" && !composite_value && !is_start {
                 continue;
             }
             let control = held["body"]["term"] == "application"
@@ -2820,7 +2825,8 @@ pub fn rebuild_body_locations(package: &mut Value) {
                             "name": name,
                             "index": index,
                         },
-                        "path": [],
+                        "up": 0,
+                        "down": [],
                     },
                 });
                 rows.push((

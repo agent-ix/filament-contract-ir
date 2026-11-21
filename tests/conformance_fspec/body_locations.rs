@@ -43,7 +43,90 @@ fn read(package: &Value) -> CheckedPackageV2ReadResult {
 }
 
 #[test]
-#[trace("TC-2090", "FR-322-AC-490", "FR-038-AC-581")]
+#[trace("TC-491", "FR-038-AC-597", "FR-322-AC-510", "FR-322-AC-513")]
+fn shared_record_parents_preserve_two_visits_of_one_application_occurrence() {
+    let cases = vectors();
+    let case = cases["positive"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|case| case["id"] == "BL-06")
+        .unwrap();
+    let package = package_with(&cases, case);
+    let result = read(&package);
+    let CheckedPackageV2ReadResult::Admitted(admitted) = result else {
+        panic!("BL-06 must admit: {result:?}");
+    };
+    let rows = &admitted.checked_term_data().unwrap().body_locations;
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[0].application, rows[1].application);
+    assert_eq!(rows[0].occurrence, rows[1].occurrence);
+    assert_eq!(rows[0].occurrence.ordinal, 2);
+    assert_eq!((rows[0].term_ordinal, rows[1].term_ordinal), (0, 1));
+    let filament_contract_model::CheckedBodyLocationOrigin::FunctionBody { function, .. } =
+        &rows[0].location.origin;
+    let mut cursor = admitted.body_locations(function, 1_000).unwrap();
+    let first = cursor.next_location().unwrap().unwrap();
+    assert_eq!(
+        first.path,
+        [
+            filament_contract_model::CheckedKeyOrdinal::Safe(0),
+            filament_contract_model::CheckedKeyOrdinal::Safe(0)
+        ]
+    );
+    let second = cursor.next_location().unwrap().unwrap();
+    assert_eq!(
+        second.path,
+        [
+            filament_contract_model::CheckedKeyOrdinal::Safe(1),
+            filament_contract_model::CheckedKeyOrdinal::Safe(0)
+        ]
+    );
+    assert!(cursor.next_location().unwrap().is_none());
+    for (member, value, locus) in [
+        (
+            "up",
+            serde_json::json!(1),
+            "/checked_term_data/body_locations/1/location/up",
+        ),
+        (
+            "up",
+            serde_json::json!(3),
+            "/checked_term_data/body_locations/1/location/up",
+        ),
+    ] {
+        let mut changed = package.clone();
+        changed["checked_term_data"]["body_locations"][1]["location"][member] = value;
+        if changed["checked_term_data"]["body_locations"][1]["location"]["up"] == 1 {
+            changed["checked_term_data"]["body_locations"][1]["location"]["down"] =
+                serde_json::json!([0, 1, 0]);
+        }
+        let CheckedPackageV2ReadResult::Refused(refusal) = read(&changed) else {
+            panic!("bad compact path must refuse");
+        };
+        assert_eq!(refusal.code, CheckedPackageRefusalCode::InvalidPackage);
+        assert_eq!(refusal.loci[0].path.as_ref().unwrap().as_str(), locus);
+    }
+    let mut changed = package.clone();
+    changed["checked_term_data"]["body_locations"][1]["occurrence"]["ordinal"] =
+        serde_json::json!(3);
+    let CheckedPackageV2ReadResult::Refused(refusal) = read(&changed) else {
+        panic!("absent occurrence must refuse");
+    };
+    assert_eq!(
+        refusal.loci[0].path.as_ref().unwrap().as_str(),
+        "/checked_term_data/body_locations/1/occurrence"
+    );
+}
+
+#[test]
+#[trace(
+    "TC-2090",
+    "FR-322-AC-490",
+    "FR-322-AC-513",
+    "FR-038-AC-581",
+    "FR-038-AC-597"
+)]
 fn every_published_body_location_vector_runs_through_the_strict_reader() {
     let cases = vectors();
     let mut seen = Vec::new();
@@ -58,6 +141,28 @@ fn every_published_body_location_vector_runs_through_the_strict_reader() {
         let held = admitted.checked_term_data().expect("the sidecar is kept");
         let held = serde_json::to_value(&held.body_locations).unwrap();
         assert_eq!(held, case["rows"], "{id}");
+        if matches!(id, "BL-04" | "BL-05") {
+            let rows = &admitted.checked_term_data().unwrap().body_locations;
+            let filament_contract_model::CheckedBodyLocationOrigin::FunctionBody {
+                function, ..
+            } = &rows[0].location.origin;
+            let mut cursor = admitted.body_locations(function, 10_000).unwrap();
+            for visit in 0..18 {
+                let location = cursor
+                    .next_location()
+                    .unwrap()
+                    .expect("each composite component has nine terms");
+                let component = visit / 9;
+                let mut expected =
+                    vec![filament_contract_model::CheckedKeyOrdinal::Safe(component)];
+                if visit % 9 < 2 {
+                    expected.push(filament_contract_model::CheckedKeyOrdinal::Safe(visit % 9));
+                }
+                assert_eq!(location.path, expected, "{id} visit {visit}");
+                assert_eq!(location.row.term_ordinal, component, "{id} visit rank");
+            }
+            assert!(cursor.next_location().unwrap().is_none());
+        }
         seen.push(id.to_owned());
     }
     for case in cases["reader_refusals"].as_array().unwrap() {
@@ -106,6 +211,9 @@ fn every_published_body_location_vector_runs_through_the_strict_reader() {
             "BL-01",
             "BL-02",
             "BL-03",
+            "BL-04",
+            "BL-05",
+            "BL-06",
             "BL-R1",
             "BL-R2",
             "BL-R3",
@@ -113,7 +221,10 @@ fn every_published_body_location_vector_runs_through_the_strict_reader() {
             "BL-R5",
             "BL-R6",
             "BL-R7-no-occurrence-1",
-            "BL-R8-bl03-without-occurrence-1-row"
+            "BL-R8-bl03-without-occurrence-1-row",
+            "BL-R9-up-beyond-previous-path",
+            "BL-R10-up-not-least",
+            "BL-R11-composite-up-not-least"
         ]
     );
 }
@@ -133,4 +244,56 @@ fn a_carrier_without_body_locations_is_malformed_wire() {
         panic!("a carrier without `body_locations` must refuse");
     };
     assert_eq!(refusal.code, CheckedPackageRefusalCode::MalformedWire);
+}
+
+/// BL-S5 and BL-S6 (FR-322-AC-510): a row location in the earlier `{origin,
+/// path}` form, and one with `up` and no `down`, are `malformed_wire`; so is
+/// one with `down` and no `up` and an `up` past the safe integer range.
+#[test]
+#[trace("TC-491", "FR-038-AC-597", "FR-322-AC-510")]
+fn the_earlier_whole_path_form_and_a_partial_relative_form_are_malformed_wire() {
+    let cases = vectors();
+    let mut seen = 0;
+    let mut values: Vec<(String, Value)> = Vec::new();
+    for case in cases["schema_invalid"].as_array().unwrap() {
+        if case["target"] == "BodyLocation" {
+            values.push((
+                case["id"].as_str().unwrap().to_owned(),
+                case["value"].clone(),
+            ));
+        }
+    }
+    let origin = values[0].1["origin"].clone();
+    values.push((
+        "down-without-up".to_owned(),
+        serde_json::json!({"origin": origin, "down": []}),
+    ));
+    values.push((
+        "up-beyond-safe".to_owned(),
+        serde_json::json!({"origin": origin, "up": 9_007_199_254_740_992_u64, "down": []}),
+    ));
+    values.push((
+        "path-beside-relative".to_owned(),
+        serde_json::json!({"origin": origin, "up": 0, "down": [], "path": []}),
+    ));
+    for (id, value) in values {
+        let mut package = package_with(&cases, &cases["positive"][0]);
+        package["checked_term_data"]["body_locations"][0]["location"] = value;
+        refresh_identity(&mut package);
+        let CheckedPackageV2ReadResult::Refused(refusal) = read(&package) else {
+            panic!("{id} must refuse");
+        };
+        assert_eq!(
+            refusal.code,
+            CheckedPackageRefusalCode::MalformedWire,
+            "{id}"
+        );
+        assert_eq!(
+            refusal.loci[0].path.as_ref().unwrap().as_str(),
+            "/checked_term_data/body_locations/0/location",
+            "{id}: malformed relative locations refuse at the whole location"
+        );
+        seen += 1;
+    }
+    assert_eq!(seen, 5);
 }
