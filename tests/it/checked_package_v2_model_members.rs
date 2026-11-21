@@ -1544,6 +1544,270 @@ fn selected_variant_admits_enum_equality_and_refuses_order_or_structural_equalit
     }
 }
 
+/// A held selected-model enum equality: its admitted package, the selected application row, the
+/// producer fact rows (two operand types, two members) and the enum shape they carry.
+struct HeldModelEnumEquality {
+    package: CheckedPackageV2,
+    application: filament_contract_model::SelectedEqualityApplicationRow,
+    facts: Vec<filament_contract_model::SelectedEqualityFactRow>,
+    shape: filament_exact::ValueType,
+    declaration: CheckedNodeId,
+}
+
+fn held_model_enum_equality(operation: &str) -> HeldModelEnumEquality {
+    use filament_contract_model::{
+        CheckedOccurrence, CheckedOccurrenceRole, EqualityFactWitness, EqualityOperandTypeRole,
+        SelectedEqualityApplicationRow, SelectedEqualityFactRow,
+    };
+    use filament_exact::{Location, Origin, Role, ValueType};
+
+    let (mut wire, evidence) = variant_binary_package(operation);
+    let tier = node_id(&model_key("variant_type", IDENTITY, TIER));
+    let gold = node_id(&format!("enum-value/{TIER}/Gold"));
+    let two = node_id(&format!("enum-value/{TIER}/2x"));
+    let application_id = node_id("binary/variant-comparison");
+    let members = json!([
+        {"enum_type": tier, "member": gold, "case": "Gold", "ordinal": 0, "ordered": false},
+        {"enum_type": tier, "member": two, "case": "2x", "ordinal": 1, "ordered": false},
+    ]);
+    wire["checked_term_data"] = json!({"equality_decisions": [{
+        "application": application_id,
+        "occurrence": {"role": "expression", "ordinal": 0},
+        "term_path": [],
+        "operator": if operation.ends_with(".ne") { "not_equal" } else { "equal" },
+        "schedule": "enum",
+        "left": {"operand": 0, "source_type": tier, "conversion_target": null},
+        "right": {"operand": 1, "source_type": tier, "conversion_target": null},
+        "units": [], "enum_members": members,
+    }], "protocol_locations": [], "dispatch_tables": [], "body_locations": [],
+        "probabilistic_claims": []});
+    refresh_identity(&mut wire);
+    let CheckedPackageV2ReadResult::Admitted(package) = read(&wire, &evidence) else {
+        panic!("held model enum equality must admit");
+    };
+    let package = *package;
+    let held = |value: &Value| -> CheckedNodeId {
+        let id: CheckedNodeId = serde_json::from_value(value.clone()).expect("fixture node id");
+        assert!(
+            package
+                .resolved_graph()
+                .nodes
+                .iter()
+                .any(|node| node.node_id == id),
+            "fixture node {id:?} must be held by the package"
+        );
+        id
+    };
+    let declaration = held(&tier);
+    // The held model enum keeps its original owning package name, never the wire name.
+    assert_ne!(&*declaration.package, package.name());
+    let occurrence = CheckedOccurrence {
+        role: CheckedOccurrenceRole::Expression,
+        ordinal: 0,
+    };
+    let original = enum_key("equality-application");
+    let application = SelectedEqualityApplicationRow::new(
+        held(&application_id),
+        occurrence.clone(),
+        serde_json::from_value(
+            wire["source_map"]
+                .as_array()
+                .expect("source map")
+                .iter()
+                .find(|entry| entry["node_id"] == application_id)
+                .expect("application source entry")
+                .clone(),
+        )
+        .expect("application source row"),
+        original.clone(),
+        Location::new(original.clone(), Origin::new(Role::from("expression"), 0)),
+    );
+    let owner_of = |id: &CheckedNodeId| {
+        package
+            .resolved_graph()
+            .nodes
+            .iter()
+            .find(|node| &node.node_id == id)
+            .expect("held node")
+            .owner
+            .clone()
+    };
+    let declaration_key = enum_key("Tier");
+    let shape = ValueType::Enum(EnumShape::new(
+        false,
+        ["Gold", "2x"].map(|case| VariantId::new(declaration_key.clone(), case).expect("variant")),
+    ));
+    let row =
+        |key: NodeKey, node: &CheckedNodeId, fact: EqualityFactWitness| SelectedEqualityFactRow {
+            application: original.clone(),
+            checked_application: application.application.clone(),
+            occurrence: occurrence.clone(),
+            source_map_entry: application.source_map_entry.clone(),
+            structural_key: key,
+            structural_node: node.clone(),
+            owner: owner_of(node),
+            value_type: Some(shape.clone()),
+            fact,
+        };
+    let mut facts = Vec::new();
+    for position in 0..2 {
+        facts.push(row(
+            declaration_key.clone(),
+            &declaration,
+            EqualityFactWitness::OperandType {
+                position,
+                role: EqualityOperandTypeRole::Source,
+            },
+        ));
+    }
+    for (ordinal, (case, member)) in [("Gold", &gold), ("2x", &two)].into_iter().enumerate() {
+        let member = held(member);
+        facts.push(row(
+            enum_key(case),
+            &member,
+            EqualityFactWitness::EnumMember {
+                source_declaration: declaration_key.clone(),
+                source_declaration_node: declaration.clone(),
+                declaration: declaration_key.clone(),
+                declaration_node: declaration.clone(),
+                member: enum_key(case),
+                member_node: member.clone(),
+                case: case.into(),
+                ordinal,
+                ordered: false,
+            },
+        ));
+    }
+    HeldModelEnumEquality {
+        package,
+        application,
+        facts,
+        shape,
+        declaration,
+    }
+}
+
+/// Trace: FR-353-AC-1, FR-353-AC-6, FR-038-AC-237.
+/// A selected model enum is held locally under its original owning package name, so its
+/// equality facts are local: the held node, not the node id's package name, decides locality.
+#[test]
+fn held_model_enum_equality_facts_are_local_for_eq_and_ne() {
+    use filament_contract_model::{CheckedOccurrence, CheckedOccurrenceRole, NativeJoinBudget};
+
+    let occurrence = CheckedOccurrence {
+        role: CheckedOccurrenceRole::Expression,
+        ordinal: 0,
+    };
+    for (operation, operator) in [
+        ("filament.op.enum.eq", "Equal"),
+        ("filament.op.enum.ne", "NotEqual"),
+    ] {
+        let case = held_model_enum_equality(operation);
+        let admitted = case
+            .package
+            .admitted_equality(
+                &case.application.application,
+                &occurrence,
+                std::slice::from_ref(&case.application),
+                &case.facts,
+                &[],
+                &mut NativeJoinBudget::new(u64::MAX, u64::MAX),
+            )
+            .unwrap_or_else(|error| panic!("{operation}: held model enum must admit: {error:?}"));
+        assert_eq!(
+            format!("{:?}", admitted.operator()),
+            operator,
+            "{operation}"
+        );
+        assert_eq!(format!("{:?}", admitted.schedule()), "Enum", "{operation}");
+        assert_eq!(
+            admitted.location(),
+            &case.application.location,
+            "{operation}"
+        );
+        assert_eq!(admitted.left().source(), &case.shape, "{operation}");
+        assert_eq!(admitted.right().source(), &case.shape, "{operation}");
+        let members = admitted.enum_members();
+        assert_eq!(members.len(), 2, "{operation}");
+        for (position, expected) in ["Gold", "2x"].into_iter().enumerate() {
+            let member = &members[position];
+            assert_eq!(&*member.case, expected, "{operation}");
+            assert_eq!(member.position, position, "{operation}");
+            assert!(!member.ordered, "{operation}");
+            assert_eq!(member.declaration, enum_key("Tier"), "{operation}");
+            assert_eq!(member.member, enum_key(expected), "{operation}");
+            assert_eq!(
+                member.variant,
+                VariantId::new(enum_key("Tier"), expected).expect("variant"),
+                "{operation}"
+            );
+        }
+    }
+}
+
+/// Trace: FR-353-AC-7.
+/// The admitted graph and sidecar stay valid; only a fact whose structural node the package
+/// does not hold is foreign, and a held node with a different owner is still a mismatch.
+#[test]
+fn unheld_or_wrong_owner_model_enum_fact_refuses_with_node() {
+    use filament_contract_model::{
+        AdmittedEqualityReadErrorCode, CheckedOccurrence, CheckedOccurrenceRole, NativeJoinBudget,
+    };
+
+    let occurrence = CheckedOccurrence {
+        role: CheckedOccurrenceRole::Expression,
+        ordinal: 0,
+    };
+    let case = held_model_enum_equality("filament.op.enum.eq");
+    let read = |facts: &[filament_contract_model::SelectedEqualityFactRow]| {
+        case.package
+            .admitted_equality(
+                &case.application.application,
+                &occurrence,
+                std::slice::from_ref(&case.application),
+                facts,
+                &[],
+                &mut NativeJoinBudget::new(u64::MAX, u64::MAX),
+            )
+            .expect_err("changed fact refuses")
+    };
+
+    // The last member row names a node this package does not hold; the earlier held-model
+    // operand rows must not be what refuses.
+    let unheld: CheckedNodeId = serde_json::from_value(
+        json!({"package": IDENTITY, "path": ["model", "variant_type", "ix://acme/orders/Gone"],
+            "ordinal": 0}),
+    )
+    .expect("unheld id");
+    assert!(!case
+        .package
+        .resolved_graph()
+        .nodes
+        .iter()
+        .any(|node| node.node_id == unheld));
+    let mut foreign = case.facts.clone();
+    foreign.last_mut().expect("member row").structural_node = unheld.clone();
+    let refusal = read(&foreign);
+    assert_eq!(
+        refusal.code,
+        filament_contract_model::AdmittedEqualityReadErrorCode::ForeignEqualityWitness
+    );
+    assert_eq!(refusal.at.as_deref(), Some(&unheld));
+    assert_eq!(
+        refusal.application.as_deref(),
+        Some(&case.application.application)
+    );
+
+    let mut wrong_owner = case.facts.clone();
+    wrong_owner[0].owner = None;
+    let refusal = read(&wrong_owner);
+    assert_eq!(
+        refusal.code,
+        AdmittedEqualityReadErrorCode::MismatchedEqualityWitness
+    );
+    assert_eq!(refusal.at.as_deref(), Some(&case.declaration));
+}
+
 #[trace("TC-048", "FR-038-AC-238")]
 #[test]
 fn selected_variant_refuses_absent_case_and_empty_declaration() {

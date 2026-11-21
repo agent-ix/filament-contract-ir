@@ -359,7 +359,8 @@ fn select_admitted(
     let Some(source) = selected_source(
         package.source_map(),
         &package.source_index,
-        &selector.binding,
+        // `node` is the wire node, so its ID is the document-held spelling the source map uses.
+        &node.node_id,
         selector.occurrence.ordinal,
     ) else {
         return CheckedSelectedPopulationOutcome::MissingOccurrence(selector);
@@ -385,7 +386,7 @@ fn select_admitted(
     match maximum {
         Some(maximum) => CheckedSelectedPopulationOutcome::Finite(CheckedSelectedPopulation {
             package_name: package.name().into(),
-            binding: node.node_id.clone(),
+            binding: selector.binding.clone(),
             occurrence: selector.occurrence,
             object_type,
             minimum: 0,
@@ -395,7 +396,7 @@ fn select_admitted(
         None => CheckedSelectedPopulationOutcome::AdmittedUnbounded(
             CheckedAdmittedUnboundedPopulation {
                 package_name: package.name().into(),
-                binding: node.node_id.clone(),
+                binding: selector.binding.clone(),
                 occurrence: selector.occurrence,
                 object_type,
                 provenance: source.regions.clone(),
