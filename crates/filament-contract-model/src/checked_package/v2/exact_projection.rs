@@ -24,6 +24,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 mod complete_witness;
+mod model_union;
+pub use model_union::{
+    ModelUnionScope, SelectedModelUnionCaseRow, SelectedModelUnionPayload, SelectedModelUnionRow,
+};
 
 /// The Exact identity produced for one selected declaration form.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1345,6 +1349,7 @@ pub struct SelectedExactIdentities {
     source_enums: Arc<BTreeMap<CheckedNodeId, Arc<SelectedSourceEnumRow>>>,
     source_collections: Arc<BTreeMap<CheckedNodeId, Arc<SelectedSourceCollectionRow>>>,
     model_enum_shapes: Arc<BTreeMap<CheckedNodeId, super::SelectedModelEnumShapeRow>>,
+    model_unions: Arc<BTreeMap<CheckedNodeId, Arc<model_union::SelectedModelUnionRow>>>,
 }
 
 impl SelectedExactIdentities {
@@ -3417,6 +3422,16 @@ pub(super) fn project_record_field_type(
                     Some(target)
                 ));
             }
+            if package.models.variant_family(target) == Some("union") {
+                let row = identities.model_unions.get(target).ok_or_else(|| {
+                    refuse!(
+                        ExactTypeProjectionErrorCode::UnavailableIdentityWitness,
+                        Some(target)
+                    )
+                })?;
+                charge_native_storage(budget, requested, requested, "record_field_union", 2)?;
+                return Ok(ValueType::Composite(row.type_handle.clone()));
+            }
             let shape = identities.model_enum_shapes.get(target).ok_or_else(|| {
                 refuse!(
                     ExactTypeProjectionErrorCode::UnavailableIdentityWitness,
@@ -4261,6 +4276,22 @@ impl CheckedPackageV2 {
                         ));
                     }
                 }
+            }
+            CheckedNodeKind::Model(ModelForm::VariantType)
+                if self.models.variant_family(type_id) == Some("union") =>
+            {
+                identities.check_binding(self, work, type_id)?;
+                let row = identities.model_unions.get(type_id).ok_or_else(|| {
+                    refuse!(ExactTypeProjectionErrorCode::UnavailableIdentityWitness)
+                })?;
+                charge_native_storage(
+                    work,
+                    requested,
+                    type_id,
+                    "model_union_projection",
+                    2,
+                )?;
+                ValueType::Composite(row.type_handle.clone())
             }
             CheckedNodeKind::Model(ModelForm::VariantType) => {
                 identities.check_binding(self, work, type_id)?;

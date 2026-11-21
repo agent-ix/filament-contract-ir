@@ -256,6 +256,7 @@ pub use checked_package::{
     SelectedSourceObjectRow, SelectedSourceObjects, SelectedSourceOperationRow,
     SelectedSourceOperations, SelectedSourcePopulation, SelectedSourceRecordMemberRow,
     SelectedSourceRecordRow, SelectedSourceTupleRow, SelectedSourceUnionRow, SelectedSourceUnitRow,
+    ModelUnionScope, SelectedModelUnionCaseRow, SelectedModelUnionPayload, SelectedModelUnionRow,
     SelectedTupleDeclarationRow, SelectedTuplePositionRow, SelectedTypeDeclarations,
     SelectedTypeDeclarationsError, SelectedTypeDimension, SelectedTypeModelUnit,
     SelectedTypeObject, SelectedTypeObjectField, SelectedTypeObjectOperation,

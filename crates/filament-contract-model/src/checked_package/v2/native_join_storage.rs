@@ -600,3 +600,29 @@ mod map_copy_tests {
         }
     }
 }
+
+/// One staged model-union row: its node, texts, keys, cases and payloads.
+pub(super) fn model_union(row: &super::exact_projection::SelectedModelUnionRow) -> u128 {
+    use super::exact_projection::SelectedModelUnionPayload as Payload;
+    let mut units = add(6, node(&row.structural_node));
+    units = add(units, text(&row.selected_document));
+    for case in &row.cases {
+        units = add(units, 6);
+        units = add(units, text(&case.name));
+        units = add(units, text(case.original_case.package()));
+        units = add(units, text(case.original_case.node()));
+        units = add(units, text(case.member.identifier()));
+        units = add(
+            units,
+            match &case.payload {
+                Payload::None => 1,
+                Payload::Clock { payload_type } => text(payload_type),
+                Payload::Data {
+                    node: payload,
+                    original_type,
+                } => add(node(payload), value_type(original_type)),
+            },
+        );
+    }
+    units
+}

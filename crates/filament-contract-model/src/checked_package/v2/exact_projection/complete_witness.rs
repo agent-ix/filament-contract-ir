@@ -299,6 +299,10 @@ impl SelectedExactIdentities {
         for row in self.source_enums.values() {
             compare(&row.declaration.structural_node, &row.declaration.node_key)?;
         }
+        for row in self.model_unions.values() {
+            compare(&row.structural_node, &row.type_handle)?;
+            compare(&row.structural_node, &row.settled_key)?;
+        }
         for row in self.model_enum_shapes.values() {
             compare(&row.structural_node, &row.node_key)?;
             for case in &row.cases {
@@ -315,6 +319,16 @@ impl SelectedExactIdentities {
         at: &CheckedNodeId,
         budget: &mut NativeJoinBudget,
     ) -> Result<(), ExactTypeProjectionError> {
+        for (id, row) in self.model_unions.iter() {
+            charge_native_work(budget, at, id, "source_admitted_handle_owner", 1)?;
+            if &row.type_handle == key || &row.settled_key == key {
+                return Err(binding_error(
+                    at,
+                    ExactTypeProjectionErrorCode::ConflictingIdentityWitness,
+                    budget,
+                ));
+            }
+        }
         for row in self.model_enum_shapes.values() {
             charge_native_work(
                 budget,
