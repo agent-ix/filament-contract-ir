@@ -1,5 +1,6 @@
 ---
-id: SR-17940486709564847048142
+id: SR-39290815262041397005569950602234931401
+duplicate_review_alias: "SR-17940486709564847048142"
 title: "IR-1112 spec-review-ears-conformance"
 type: SpecReview
 analysis: ears-conformance
@@ -85,4 +86,9 @@ The edited scope adds acceptance criteria and an API-inventory row; it changes n
 ## Validation evidence and limits
 
 Read-only review; no Cargo, make, new worktree, source edit, push or merge. The dispatch supplied /private/tmp/ir-1112-tc492.log: 11 selected tc_492 tests passed, including IC-01 through IC-21. /private/tmp/ir-1112-compile.log records four focused conformance targets compiling successfully with conformance-cli; formatting was reported successful. These are prior-run evidence, not newly executed reviewer gates. Broad crate/workspace gates were prohibited by the dispatch. Normative FSpec dependency f73bd9f3fe5091ab8b459126808d7149cdb02b08 is merged; schema and vectors were fetched at that exact revision into scratch. No repository fixture pin needs updating because CI checks out main.
+
+## Review identity correction
+
+Canonical identity: SR-39290815262041397005569950602234931401. The former IR-1112 alias SR-17940486709564847048142 collided with an earlier independently allocated review identity in the parallel review lanes. It is retained only as a noncanonical historical alias, not reused as this document's identity. Immutable pre-correction copies of this artifact and original private comment are retained at /private/tmp/ir-1112-review/original-duplicate-aliases/. IR-1107's original identities and records were not changed. Six fresh UUID-derived decimal identities were checked against this worktree's reviews/spec-reviews and the available QSL-2717/QSL-2728 comment records before use.
+
 

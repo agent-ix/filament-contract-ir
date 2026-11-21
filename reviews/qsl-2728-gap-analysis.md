@@ -1,5 +1,6 @@
 ---
-id: SR-17940486709564847048139
+id: SR-112259010033744557987310838477872830073
+duplicate_review_alias: "SR-17940486709564847048139"
 title: "IR-1112 gap-analysis"
 type: SpecReview
 analysis: gap-analysis
@@ -87,4 +88,38 @@ This is a ticket-scoped gap review under the dispatch's scope override, not a fu
 ## Validation evidence and limits
 
 Read-only review; no Cargo, make, new worktree, source edit, push or merge. The dispatch supplied /private/tmp/ir-1112-tc492.log: 11 selected tc_492 tests passed, including IC-01 through IC-21. /private/tmp/ir-1112-compile.log records four focused conformance targets compiling successfully with conformance-cli; formatting was reported successful. These are prior-run evidence, not newly executed reviewer gates. Broad crate/workspace gates were prohibited by the dispatch. Normative FSpec dependency f73bd9f3fe5091ab8b459126808d7149cdb02b08 is merged; schema and vectors were fetched at that exact revision into scratch. No repository fixture pin needs updating because CI checks out main.
+
+## Review identity correction
+
+Canonical identity: SR-112259010033744557987310838477872830073. The former IR-1112 alias SR-17940486709564847048139 collided with an earlier independently allocated review identity in the parallel review lanes. It is retained only as a noncanonical historical alias, not reused as this document's identity. Immutable pre-correction copies of this artifact and original private comment are retained at /private/tmp/ir-1112-review/original-duplicate-aliases/. IR-1107's original identities and records were not changed. Six fresh UUID-derived decimal identities were checked against this worktree's reviews/spec-reviews and the available QSL-2717/QSL-2728 comment records before use.
+
+## Dispositions
+
+Fix round 1; independently inspected head a9f0f2d4c9d62d0cce6be1ce60bac798d4496dbd. Original finding rows and excerpts above are unchanged.
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-001 | fixed | New tests cover each of five value-container wrong-read paths with correct-link admission controls, function/initializer boundaries, a shared body checked against distinct links, 100000 nested lets, and six budget accounting/exact/one-short cases. |
+
+## Current verdict
+
+**PASS** — all original findings in this method are fixed; no new finding was identified in this disposition pass. No new review was started.
+
+```yaml
+{
+  "round": 1,
+  "reviewed_head": "a9f0f2d4c9d62d0cce6be1ce60bac798d4496dbd",
+  "dispositions": [
+    {
+      "fnd": "FND-001",
+      "outcome": "fixed",
+      "after_excerpt": "let_container_case(form, true).refuses(\n            form,\n            Code::InvalidPackage,\n            Cause::InvalidValue,\n            tail,\n        );\n    }\n}",
+      "reason": "New tests cover each of five value-container wrong-read paths with correct-link admission controls, function/initializer boundaries, a shared body checked against distinct links, 100000 nested lets, and six budget accounting/exact/one-short cases."
+    }
+  ]
+}
+```
+
+Execution evidence read directly: /private/tmp/ir-1112-fix1-tc492.log (15 passed including the public 100000-let test); /private/tmp/ir-1112-fix1-shared-body.log (1 passed); /private/tmp/ir-1112-fix1-budget.log (1 passed, six exact/one-short cases); /private/tmp/ir-1112-fix1-compile.log (four focused targets compiled); check and formatting logs successful. No reviewer Cargo command ran. Source and original findings remained frozen throughout this read-only pass.
+
 
