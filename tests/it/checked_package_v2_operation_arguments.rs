@@ -2637,6 +2637,284 @@ fn tc_492_a_binder_on_another_binding_is_refused() {
     );
 }
 
+/// A let returns a container with one integer parameter read. The counterfeit
+/// parameter deliberately has the same name, level and type as the binder.
+fn let_container_case(form: &str, wrong: bool) -> Case {
+    let mut scene = ledger_scene();
+    let integer = scene.ty(&Ty::Integer);
+    let x = scene.param("x", &Ty::Integer);
+    let y = scene.param("y", &Ty::Integer);
+    let mut other = scene
+        .nodes
+        .iter()
+        .find(|node| node["node_id"] == node_id(&y))
+        .expect("y")
+        .clone();
+    let other_key = "value/parameter/y-other";
+    other["node_id"] = node_id(other_key);
+    scene.add(other);
+    let read = if wrong { other_key } else { &y };
+    let (ty, body) = match form {
+        "tuple_value" => (
+            scene.ty(&Ty::Tuple(vec![Ty::Integer])),
+            aggregate(vec![reference(read)]),
+        ),
+        "record_value" => (
+            scene.ty(&Ty::Rec("Money")),
+            aggregate(vec![binding("amount", reference(read))]),
+        ),
+        "collection_value" => (
+            scene.ty(&Ty::Sequence(Box::new(Ty::Integer), 0, 3)),
+            aggregate(vec![reference(read)]),
+        ),
+        "union_value" => {
+            let ty = scene.union("BinderContainer", &[("Some", vec![integer.clone()])]);
+            (
+                ty,
+                aggregate(vec![binding("Some", aggregate(vec![reference(read)]))]),
+            )
+        }
+        "option_value" => (
+            scene.ty(&Ty::Option(Box::new(Ty::Integer))),
+            aggregate(vec![binding("some", reference(read))]),
+        ),
+        _ => panic!("test container form"),
+    };
+    let container_key = format!("application/value/{form}/container");
+    scene.add(wire_node(
+        &container_key,
+        "value",
+        form,
+        &ty,
+        &[read],
+        "expression",
+        body,
+    ));
+    let key = scene.application(App {
+        tag: "expression",
+        form: "let",
+        operator: "let",
+        identity: "filament.op.control.let",
+        member: Value::Null,
+        semantic: &ty,
+        result: &ty,
+        arguments: vec![
+            let_binding("y", &y, reference(&x)),
+            reference(&container_key),
+        ],
+    });
+    let mut case = scene.finish().at(&key);
+    // The refusal belongs to the read in the container, not the let.
+    if wrong {
+        case = case.at(&container_key);
+    }
+    case
+}
+
+#[trace("TC-492", "FR-038-AC-595")]
+#[test]
+fn tc_492_binder_reads_follow_value_containers() {
+    for (form, tail) in [
+        ("tuple_value", "/body/members/0"),
+        ("record_value", "/body/members/0/value"),
+        ("collection_value", "/body/members/0"),
+        ("union_value", "/body/members/0/value/members/0"),
+        ("option_value", "/body/members/0/value"),
+    ] {
+        let_container_case(form, false).admits(&format!("linked binder in {form}"));
+        let_container_case(form, true).refuses(
+            form,
+            Code::InvalidPackage,
+            Cause::InvalidValue,
+            tail,
+        );
+    }
+}
+
+#[trace("TC-492", "FR-038-AC-595")]
+#[test]
+fn tc_492_binder_scope_stops_at_functions_and_excludes_the_bound_value() {
+    let mut scene = ledger_scene();
+    let integer = scene.ty(&Ty::Integer);
+    let y = scene.param("y", &Ty::Integer);
+    let mut other = scene
+        .nodes
+        .iter()
+        .find(|node| node["node_id"] == node_id(&y))
+        .expect("y")
+        .clone();
+    let other_key = "value/parameter/y-other";
+    other["node_id"] = node_id(other_key);
+    scene.add(other);
+    // g's own parameter also spells y at level zero, but is not captured by
+    // the let surrounding a call to g.
+    let g = scene.function(
+        "binder_scope_g",
+        &integer,
+        vec![
+            binding("parameters", aggregate(vec![reference(other_key)])),
+            binding("body", reference(other_key)),
+        ],
+    );
+    let call = scene.application(App {
+        tag: "expression",
+        form: "call",
+        operator: "call",
+        identity: "filament.op.function.call",
+        member: Value::Null,
+        semantic: &integer,
+        result: &integer,
+        arguments: vec![reference(&g), reference(&y)],
+    });
+    let key = scene.application(App {
+        tag: "expression",
+        form: "let",
+        operator: "let",
+        identity: "filament.op.control.let",
+        member: Value::Null,
+        semantic: &integer,
+        result: &integer,
+        // The outer y is also legitimate in the bound value, before this
+        // let's binder enters scope.
+        arguments: vec![let_binding("y", &y, reference(other_key)), reference(&call)],
+    });
+    scene
+        .finish()
+        .at(&key)
+        .admits("function boundary and bound value scope");
+}
+
+fn nested_linked_lets(count: usize) -> Case {
+    let mut scene = ledger_scene();
+    let integer = scene.ty(&Ty::Integer);
+    let mut binders = Vec::with_capacity(count + 1);
+    for i in 0..=count {
+        binders.push(scene.param(&format!("x{i:06}"), &Ty::Integer));
+        scene.nodes.last_mut().expect("new parameter")["body"]["members"][1]["value"]["value"] =
+            json!(i.to_string());
+    }
+    let mut body = binders[count].clone();
+    for i in (1..=count).rev() {
+        body = scene.application(App {
+            tag: "expression",
+            form: "let",
+            operator: "let",
+            identity: "filament.op.control.let",
+            member: Value::Null,
+            semantic: &integer,
+            result: &integer,
+            arguments: vec![
+                let_binding(&format!("x{i:06}"), &binders[i], reference(&binders[i - 1])),
+                reference(&body),
+            ],
+        });
+    }
+    scene.finish().at(&body)
+}
+
+#[trace("TC-492", "FR-038-AC-595", "FR-038-AC-504")]
+#[test]
+fn tc_492_one_hundred_thousand_nested_lets_share_the_binder_walk() {
+    for count in [10, 100_000] {
+        let case = nested_linked_lets(count);
+        let mut wire = case.package;
+        index_fixture_node_ids(&mut wire);
+        let bytes = canonical(&wire);
+        let limits = CheckedPackageReadLimits {
+            bytes: bytes.len() as u64,
+            nodes: 4 * count as u64 + 1000,
+            edges: 10 * count as u64 + 1000,
+            occurrences: 10 * count as u64 + 1000,
+            diagnostics: 1000,
+            work: 1000 * count as u64 + 10_000,
+        };
+        let result = CheckedPackageV2::read(&bytes, limits, &case.evidence);
+        assert!(
+            matches!(result, CheckedPackageV2ReadResult::Admitted(_)),
+            "{count} linked lets: {result:?}"
+        );
+    }
+}
+
+#[trace("TC-492", "FR-038-AC-595")]
+#[test]
+fn tc_492_linked_let_read_storage_is_accounted_at_exact_and_one_short() {
+    use filament_contract_model::{
+        initialize_operation_catalog, CheckedPackageV2BudgetedReadResult as Outcome,
+        NativeJoinBudget,
+    };
+    initialize_operation_catalog().expect("operation catalog");
+    for (label, case, admitted) in [
+        ("linked", let_container_case("tuple_value", false), true),
+        ("shared nested body", nested_linked_lets(128), true),
+        (
+            "wrong linked read",
+            let_container_case("tuple_value", true),
+            false,
+        ),
+        (
+            "unread incompatible binder",
+            let_unread_case(&Ty::Range(0, 1000), &Ty::Range(0, 999)),
+            false,
+        ),
+    ] {
+        let mut wire = case.package;
+        index_fixture_node_ids(&mut wire);
+        let bytes = canonical(&wire);
+        let read = |budget: &mut NativeJoinBudget| {
+            CheckedPackageV2::read_with_budget(
+                &bytes,
+                CheckedPackageReadLimits::bounded(),
+                &case.evidence,
+                budget,
+            )
+        };
+        let mut measure = NativeJoinBudget::unlimited();
+        let mut result = None;
+        let allocated = allocation_counter::measure(|| {
+            result = Some(read(&mut measure));
+        })
+        .bytes_total;
+        let reference = result.expect("read ran");
+        assert_eq!(
+            matches!(reference, Outcome::Admitted(_)),
+            admitted,
+            "{label}: {reference:?}"
+        );
+        assert!(
+            matches!(reference, Outcome::Admitted(_) | Outcome::Refused(_)),
+            "{label}: {reference:?}"
+        );
+        let required = measure.read_storage_consumed();
+        assert!(
+            allocated <= required + 4096,
+            "{label}: {allocated} requested, {required} charged"
+        );
+        let mut exact = NativeJoinBudget::new(u64::MAX, 0).with_read_storage_limit(required);
+        let exact_result = read(&mut exact);
+        assert_eq!(
+            exact_result, reference,
+            "{label}: exact storage changes outcome"
+        );
+        assert_eq!(exact.read_storage_consumed(), required);
+        let mut short = NativeJoinBudget::new(u64::MAX, 0).with_read_storage_limit(required - 1);
+        let mut denied = None;
+        let allocated = allocation_counter::measure(|| {
+            denied = Some(read(&mut short));
+        })
+        .bytes_total;
+        assert!(
+            matches!(denied, Some(Outcome::BudgetIncomplete(_))),
+            "{label}: {denied:?}"
+        );
+        assert!(short.first_unpaid_read_storage().is_some(), "{label}");
+        assert!(
+            allocated <= short.read_storage_consumed() + 4096,
+            "{label}: short read allocated {allocated} bytes"
+        );
+    }
+}
+
 #[trace(
     "TC-492",
     "FR-038-AC-586",

@@ -49,6 +49,9 @@ use filament_exact::{Integer, TextProfile};
 use serde::Deserialize;
 use std::rc::Rc;
 
+mod let_binders;
+use let_binders::BinderReads;
+
 /// One application node under validation, and pointers into its body.
 #[derive(Clone, Copy)]
 struct Application<'a> {
@@ -417,6 +420,7 @@ pub(super) fn validate_operations(
             return Err(failure);
         }
     }
+    let binder_reads = BinderReads::new(&graph, meter)?;
     // Select the first defect of this whole step by rebuilt structural key.
     // Comparing only defective entries keeps a valid deep chain linear in
     // its shared-key depth. An incomplete read cannot establish a first
@@ -426,7 +430,7 @@ pub(super) fn validate_operations(
         let node = &nodes[position];
         meter.at_node(position, super::graph_storage::node_form(&node.node_tag));
         let checked = (|| -> Result<(), ValidationFailure> {
-            if let Some(failure) = stray_binder_defect(position, &graph, meter)? {
+            if let Some(failure) = binder_reads.stray_defect(position, &graph, meter)? {
                 return Err(failure);
             }
             if !matches!(
@@ -462,6 +466,7 @@ pub(super) fn validate_operations(
                 OperationResolution {
                     catalog,
                     fast_index: Some(&flat_index),
+                    binder_reads: Some(&binder_reads),
                 },
                 meter,
                 &mut admitted_views,
@@ -2004,6 +2009,7 @@ fn check_sequence_bounds(
 struct OperationResolution<'a> {
     catalog: &'a OperationCatalog,
     fast_index: Option<&'a FlatWireIndex<'a>>,
+    binder_reads: Option<&'a BinderReads<'a>>,
 }
 
 /// The text of the `alias` label `member` carries, as `(package, node)`; the
@@ -2114,6 +2120,7 @@ fn operation_defect(
     let OperationResolution {
         catalog,
         fast_index,
+        binder_reads,
     } = resolution;
     let Graph {
         nodes,
@@ -2509,7 +2516,9 @@ fn operation_defect(
     if let Some(failure) = check_state_result(application, entry, graph) {
         return Ok(Some(failure));
     }
-    if let Some(failure) = check_control_result(application, &operation, graph, owners, meter)? {
+    if let Some(failure) =
+        check_control_result(application, &operation, graph, owners, binder_reads, meter)?
+    {
         return Ok(Some(failure));
     }
     if entry.member == Some(OperationMemberKind::Position) {
@@ -4429,6 +4438,7 @@ fn check_control_result(
     operation: &OperationWire,
     graph: &Graph<'_>,
     owners: &ModelOwners<'_>,
+    binder_reads: Option<&BinderReads<'_>>,
     meter: &mut WorkMeter,
 ) -> Result<Option<ValidationFailure>, ValidationFailure> {
     let branches = match operation.identity.as_ref() {
@@ -4461,7 +4471,9 @@ fn check_control_result(
         )
     };
     if operation.identity.as_ref() == "filament.op.control.let" {
-        if let Some(failure) = check_let_binder(application, arguments, graph, owners, meter)? {
+        if let Some(failure) =
+            check_let_binder(application, arguments, graph, owners, binder_reads, meter)?
+        {
             return Ok(Some(failure));
         }
     }
@@ -4471,100 +4483,6 @@ fn check_control_result(
         };
         if !admits_at_result(result_type, Some(actual), graph, owners, meter)? {
             return Ok(Some(refuse()));
-        }
-    }
-    Ok(None)
-}
-
-/// Implements: FR-322 "The binder link": a `binder` on any binding term other
-/// than the `arguments[0]` of a `filament.op.control.let` application refuses
-/// `invalid_package`/`invalid-value` at that `binder`.
-fn stray_binder_defect(
-    position: usize,
-    graph: &Graph<'_>,
-    meter: &mut WorkMeter,
-) -> Result<Option<ValidationFailure>, ValidationFailure> {
-    let Some(root) = graph.terms.get(position).and_then(Option::as_ref) else {
-        return Ok(None);
-    };
-    // Most nodes carry no stray binder: find out without building pointers.
-    let mut scan: Vec<(&CheckedTerm, bool)> = meter.vec(1)?;
-    meter.push(&mut scan, (root, false))?;
-    let mut stray = false;
-    while let Some((term, is_let_binding)) = scan.pop() {
-        match term {
-            CheckedTerm::Application {
-                operation,
-                arguments,
-                ..
-            } => {
-                let is_let = operation.identity() == Some("filament.op.control.let");
-                for (index, child) in arguments.iter().enumerate() {
-                    meter.push(&mut scan, (child, is_let && index == 0))?;
-                }
-            }
-            CheckedTerm::Aggregate { members } => {
-                for child in members {
-                    meter.push(&mut scan, (child, false))?;
-                }
-            }
-            CheckedTerm::Binding { binder, value, .. } => {
-                if binder.is_some() && !is_let_binding {
-                    stray = true;
-                    break;
-                }
-                meter.push(&mut scan, (value, false))?;
-            }
-            _ => {}
-        }
-    }
-    if !stray {
-        return Ok(None);
-    }
-    let mut pending: Vec<(&CheckedTerm, JsonPointer, bool)> = meter.vec(1)?;
-    meter.push(
-        &mut pending,
-        (root, node_pointer(position).key("body"), false),
-    )?;
-    while let Some((term, pointer, is_let_binding)) = pending.pop() {
-        match term {
-            CheckedTerm::Application {
-                operation,
-                arguments,
-                ..
-            } => {
-                let is_let = operation.identity() == Some("filament.op.control.let");
-                for (index, child) in arguments.iter().enumerate() {
-                    meter.push(
-                        &mut pending,
-                        (
-                            child,
-                            pointer.clone().key("arguments").index(index),
-                            is_let && index == 0,
-                        ),
-                    )?;
-                }
-            }
-            CheckedTerm::Aggregate { members } => {
-                for (index, child) in members.iter().enumerate() {
-                    meter.push(
-                        &mut pending,
-                        (child, pointer.clone().key("members").index(index), false),
-                    )?;
-                }
-            }
-            CheckedTerm::Binding { binder, value, .. } => {
-                if binder.is_some() && !is_let_binding {
-                    return Ok(Some(ValidationFailure::refused_at(
-                        CheckedPackageRefusalCode::InvalidPackage,
-                        pointer.key("binder"),
-                        Some(CheckedPackageRefusalCause::InvalidValue),
-                        graph.nodes[position].node_id.clone(),
-                    )));
-                }
-                meter.push(&mut pending, (value, pointer.key("value"), false))?;
-            }
-            _ => {}
         }
     }
     Ok(None)
@@ -4610,6 +4528,7 @@ fn check_let_binder(
     arguments: &[CheckedTerm],
     graph: &Graph<'_>,
     owners: &ModelOwners<'_>,
+    binder_reads: Option<&BinderReads<'_>>,
     meter: &mut WorkMeter,
 ) -> Result<Option<ValidationFailure>, ValidationFailure> {
     let Some(CheckedTerm::Binding {
@@ -4620,21 +4539,34 @@ fn check_let_binder(
     else {
         return Ok(None);
     };
-    let invalid = |path: JsonPointer, node: &CheckedNodeId| {
-        ValidationFailure::refused_at(
+    let invalid = |path, meter: &mut WorkMeter| {
+        application.refuse_read(
             CheckedPackageRefusalCode::InvalidPackage,
             path,
-            Some(CheckedPackageRefusalCause::InvalidValue),
-            node.clone(),
+            CheckedPackageRefusalCause::InvalidValue,
+            meter,
         )
     };
-    let here = &application.node.node_id;
     let Some(binder) = binder else {
-        return Ok(Some(invalid(application.body(&["arguments", "0"]), here)));
+        return Ok(Some(invalid(
+            application
+                .read_node()
+                .key("body")
+                .key("arguments")
+                .index(0),
+            meter,
+        )));
     };
-    let at_binder = || application.body(&["arguments", "0", "binder"]);
+    let at_binder = || {
+        application
+            .read_node()
+            .key("body")
+            .key("arguments")
+            .index(0)
+            .key("binder")
+    };
     let Some(position) = graph.index.get(binder).copied() else {
-        return Ok(Some(invalid(at_binder(), here)));
+        return Ok(Some(invalid(at_binder(), meter)));
     };
     work_at_path(meter, &application.read_node().key("node_id"), 1)?;
     let mut listed = false;
@@ -4649,82 +4581,20 @@ fn check_let_binder(
         == Some(&CheckedNodeKind::Value(ValueForm::Parameter)))
     .then(|| parameter_name_level(position, graph))
     .flatten();
-    let Some((declared_name, declared_level)) =
-        declared.filter(|(declared_name, _)| listed && *declared_name == name.as_ref())
+    let Some(_) = declared.filter(|(declared_name, _)| listed && *declared_name == name.as_ref())
     else {
-        return Ok(Some(invalid(at_binder(), here)));
+        return Ok(Some(invalid(at_binder(), meter)));
     };
-    // Every read of the binder is the linked node.
-    let mut pending: Vec<(&CheckedTerm, usize, JsonPointer)> = meter.vec(1)?;
-    let mut visited: Vec<usize> = Vec::new();
-    for (offset, argument) in arguments.iter().enumerate().skip(1) {
-        meter.push(
-            &mut pending,
-            (
-                argument,
-                application.position,
-                application.body(&["arguments"]).index(offset),
-            ),
-        )?;
-    }
-    while let Some((term, at, pointer)) = pending.pop() {
-        work_at_path(meter, &application.read_node().key("node_id"), 1)?;
-        match term {
-            CheckedTerm::Reference { target } => {
-                let Some(target_position) = graph.index.get(target).copied() else {
-                    continue;
-                };
-                match graph.kinds.get(target_position) {
-                    Some(CheckedNodeKind::Value(ValueForm::Parameter)) => {
-                        if target_position != position
-                            && parameter_name_level(target_position, graph)
-                                == Some((declared_name, declared_level))
-                        {
-                            return Ok(Some(invalid(pointer, &graph.nodes[at].node_id)));
-                        }
-                    }
-                    Some(CheckedNodeKind::Expression(_)) => {
-                        if visited.contains(&target_position) {
-                            continue;
-                        }
-                        meter.push(&mut visited, target_position)?;
-                        if let Some(node_term) =
-                            graph.terms.get(target_position).and_then(Option::as_ref)
-                        {
-                            meter.push(
-                                &mut pending,
-                                (
-                                    node_term,
-                                    target_position,
-                                    node_pointer(target_position).key("body"),
-                                ),
-                            )?;
-                        }
-                    }
-                    _ => {}
-                }
-            }
-            CheckedTerm::Application { arguments, .. } => {
-                for (index, child) in arguments.iter().enumerate() {
-                    meter.push(
-                        &mut pending,
-                        (child, at, pointer.clone().key("arguments").index(index)),
-                    )?;
-                }
-            }
-            CheckedTerm::Aggregate { members } => {
-                for (index, child) in members.iter().enumerate() {
-                    meter.push(
-                        &mut pending,
-                        (child, at, pointer.clone().key("members").index(index)),
-                    )?;
-                }
-            }
-            CheckedTerm::Binding { value, .. } => {
-                meter.push(&mut pending, (value, at, pointer.clone().key("value")))?;
-            }
-            _ => {}
+    let local_reads;
+    let reads = match binder_reads {
+        Some(reads) => reads,
+        None => {
+            local_reads = BinderReads::new(graph, meter)?;
+            &local_reads
         }
+    };
+    if let Some(failure) = reads.wrong_read(application.position, position, graph, meter)? {
+        return Ok(Some(failure));
     }
     // The binder check proper.
     let Some(bound) = operand_type_node_typed(value, graph.nodes, graph.kinds, graph.index) else {
@@ -4739,10 +4609,11 @@ fn check_let_binder(
     )? {
         return Ok(None);
     }
-    Ok(Some(application.refuse(
+    Ok(Some(application.refuse_read(
         CheckedPackageRefusalCode::IllTyped,
-        node_pointer(application.position),
+        application.read_node(),
         CheckedPackageRefusalCause::OperatorIneligible,
+        meter,
     )))
 }
 
@@ -9234,6 +9105,7 @@ mod tests {
             super::OperationResolution {
                 catalog: operation_catalog(),
                 fast_index: None,
+                binder_reads: None,
             },
             &mut meter,
             &mut Vec::new(),
@@ -9279,6 +9151,7 @@ mod tests {
             super::OperationResolution {
                 catalog: operation_catalog(),
                 fast_index: None,
+                binder_reads: None,
             },
             &mut WorkMeter::new(1_000),
             &mut Vec::new(),
@@ -9374,6 +9247,7 @@ mod tests {
             super::OperationResolution {
                 catalog: operation_catalog(),
                 fast_index: None,
+                binder_reads: None,
             },
             &mut meter,
             &mut Vec::new(),
@@ -13259,6 +13133,7 @@ mod tests {
             super::OperationResolution {
                 catalog: operation_catalog(),
                 fast_index: None,
+                binder_reads: None,
             },
             &mut meter,
             &mut Vec::new(),

@@ -861,12 +861,13 @@ pub(super) fn validate_structural_nodes_with_keys(
             let actual = if binders.is_empty() {
                 &node.dependencies
             } else {
-                unbound = node
-                    .dependencies
-                    .iter()
-                    .filter(|id| !binders.contains(id) || expected.contains(id))
-                    .cloned()
-                    .collect();
+                let mut filtered = meter.vec(node.dependencies.len())?;
+                for id in &node.dependencies {
+                    if !binders.contains(id) || expected.contains(id) {
+                        filtered.push(meter.clone_id(id)?);
+                    }
+                }
+                unbound = filtered;
                 &unbound
             };
             if !dependency_order.matches(actual, &listed, index, structural_keys, meter)? {
