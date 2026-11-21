@@ -9,13 +9,13 @@
 
 use super::super::model_members::{DeclarationForm, MemberType};
 use super::super::native_join_storage as storage;
+use super::super::NativeJoinBudget;
 use super::super::{CheckedNodeId, CheckedNodeKind, CheckedPackageV2, ModelForm, ScalarTypeForm};
 use super::{
     charge_native_storage, charge_native_work, exact_diagnostic, selected_declaration_error,
     witness_error, ExactDiagnosticForm, ExactTypeProjectionError, ExactTypeProjectionErrorCode,
     SelectedExactIdentities, SelectedExactIdentity, SelectedTupleDeclarationRow,
 };
-use super::super::NativeJoinBudget;
 use filament_exact::{NodeKey, OriginalDeclarationKey, UnionMember, UnitId, ValueType};
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
@@ -301,9 +301,13 @@ impl SelectedExactIdentities {
                 | SelectedExactIdentity::DeclaredUnit(UnitId::Declared(key)) => {
                     take!(&row.structural_node, key)
                 }
-                _ => {
-                    charge_native_work(budget, first, &row.structural_node, "model_union_handle", 1)?
-                }
+                _ => charge_native_work(
+                    budget,
+                    first,
+                    &row.structural_node,
+                    "model_union_handle",
+                    1,
+                )?,
             }
         }
         for (id, row) in self.admitted_tuples.iter() {
@@ -376,7 +380,8 @@ impl SelectedExactIdentities {
             ModelUnionScope::Full => Extent::Full,
             ModelUnionScope::Reached(requested) => Extent::Requested(requested),
         };
-        let result = self.join_model_unions(package, tuple_rows, union_rows, extent, &first, budget);
+        let result =
+            self.join_model_unions(package, tuple_rows, union_rows, extent, &first, budget);
         match &result {
             Ok(_) => budget.finish(before),
             Err(_) => budget.abort(),
@@ -435,7 +440,10 @@ impl SelectedExactIdentities {
         let in_scope = |id: &CheckedNodeId| closure.is_none_or(|set| set.contains(id));
         // Tuples first, through the existing typed tuple join.
         let mut joined_tuples = Vec::new();
-        for row in tuple_rows.iter().filter(|row| in_scope(&row.structural_node)) {
+        for row in tuple_rows
+            .iter()
+            .filter(|row| in_scope(&row.structural_node))
+        {
             charge_native_storage(
                 budget,
                 first,
@@ -448,9 +456,11 @@ impl SelectedExactIdentities {
         let mut selected = self.with_admitted_type_rows(package, &joined_tuples, &[], budget)?;
         for row in &joined_tuples {
             // A model tuple's key must not collide with a union handle.
-            if selected.model_unions.values().any(|union| {
-                union.type_handle == row.node_key || union.settled_key == row.node_key
-            }) {
+            if selected
+                .model_unions
+                .values()
+                .any(|union| union.type_handle == row.node_key || union.settled_key == row.node_key)
+            {
                 return Err(witness_error(
                     &row.structural_node,
                     ExactTypeProjectionErrorCode::ConflictingIdentityWitness,
@@ -460,7 +470,10 @@ impl SelectedExactIdentities {
         handles.extend(joined_tuples.iter().map(|row| row.node_key.clone()));
         // Union handles of the rows joined here, for payload composite keys.
         let mut joined_handles: BTreeMap<&CheckedNodeId, &NodeKey> = BTreeMap::new();
-        for row in union_rows.iter().filter(|row| in_scope(&row.structural_node)) {
+        for row in union_rows
+            .iter()
+            .filter(|row| in_scope(&row.structural_node))
+        {
             joined_handles.insert(&row.structural_node, &row.type_handle);
         }
         let mut staged: BTreeMap<CheckedNodeId, Arc<SelectedModelUnionRow>> = BTreeMap::new();
@@ -509,8 +522,7 @@ impl SelectedExactIdentities {
                 id,
                 id,
                 "model_union_document",
-                (row.selected_document.len() as u128)
-                    .saturating_add(model.identity.len() as u128),
+                (row.selected_document.len() as u128).saturating_add(model.identity.len() as u128),
             )?;
             if row.selected_document.as_ref() != model.identity.as_ref() {
                 return Err(fail(
@@ -679,9 +691,13 @@ impl SelectedExactIdentities {
                             ));
                         }
                     }
-                    (SelectedModelUnionPayload::Data { node, original_type }, Some(_))
-                        if !is_clock =>
-                    {
+                    (
+                        SelectedModelUnionPayload::Data {
+                            node,
+                            original_type,
+                        },
+                        Some(_),
+                    ) if !is_clock => {
                         let Some(member) = member else {
                             return Err(fail(
                                 budget,

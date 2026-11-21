@@ -76,7 +76,11 @@ fn original_type(value: &Value) -> ValueType {
                     .expect("compound terms")
                     .iter()
                     .map(|term| {
-                        let exponent: i64 = term["exponent"].as_str().expect("exponent").parse().expect("integer");
+                        let exponent: i64 = term["exponent"]
+                            .as_str()
+                            .expect("exponent")
+                            .parse()
+                            .expect("integer");
                         (key(&term["node"]), filament_exact::Integer::from(exponent))
                     })
                     .collect(),
@@ -121,9 +125,11 @@ fn union_row(value: &Value) -> SelectedModelUnionRow {
                 ),
                 member: UnionMember::from_admitted(
                     key(&case["member"]["declaration"]),
-                    case["member"]["identifier"].as_str().expect("member identifier"),
+                    case["member"]["identifier"]
+                        .as_str()
+                        .expect("member identifier"),
                 )
-                    .expect("a member"),
+                .expect("a member"),
                 payload,
             }
         })
@@ -177,7 +183,9 @@ fn patch(target: &mut Value, operations: &Value) {
     for operation in operations.as_array().expect("patch operations") {
         let path = operation["path"].as_str().expect("patch path");
         let (parent, member) = path.rsplit_once('/').expect("patch member");
-        let parent = target.pointer_mut(parent).unwrap_or_else(|| panic!("patch parent of {path}"));
+        let parent = target
+            .pointer_mut(parent)
+            .unwrap_or_else(|| panic!("patch parent of {path}"));
         match (operation["op"].as_str().expect("op"), parent) {
             ("replace", Value::Object(map)) => {
                 *map.get_mut(member).expect("replace target") = operation["value"].clone();
@@ -192,7 +200,10 @@ fn patch(target: &mut Value, operations: &Value) {
                 items.push(operation["value"].clone());
             }
             ("add", Value::Array(items)) => {
-                items.insert(member.parse::<usize>().expect("index"), operation["value"].clone());
+                items.insert(
+                    member.parse::<usize>().expect("index"),
+                    operation["value"].clone(),
+                );
             }
             ("remove", Value::Object(map)) => {
                 map.remove(member);
@@ -264,8 +275,9 @@ fn run_measured(vectors: &Value, id: &str, limits: Option<(u64, u64)>) -> (Strin
     let pair = &vectors["fixtures"][&case.fixtures];
     let package = read_json(&proposal.join(pair["package"].as_str().expect("package")))
         .expect("published package");
-    let mut document_value = read_json(&proposal.join(pair["document"].as_str().expect("document")))
-        .expect("published document");
+    let mut document_value =
+        read_json(&proposal.join(pair["document"].as_str().expect("document")))
+            .expect("published document");
     if let Some(operations) = &case.document_patch {
         patch(&mut document_value, operations);
     }
@@ -305,23 +317,35 @@ fn run_measured(vectors: &Value, id: &str, limits: Option<(u64, u64)>) -> (Strin
         .flatten()
         .map(union_row)
         .collect();
-    let request = case.scope["request"].as_object().map(|_| node_id(&case.scope["request"]));
+    let request = case.scope["request"]
+        .as_object()
+        .map(|_| node_id(&case.scope["request"]));
     let scope = match &request {
         Some(request) => ModelUnionScope::Reached(request),
         None => ModelUnionScope::Full,
     };
-    let outcome = match identities.with_model_union_rows(&admitted, &tuples, &unions, scope, &mut budget) {
-        Ok(joined) => {
-            // Every joined union row is returned unchanged.
-            for row in joined.model_union_rows() {
-                assert!(unions.contains(row), "{id}: a returned row differs from its input");
+    let outcome =
+        match identities.with_model_union_rows(&admitted, &tuples, &unions, scope, &mut budget) {
+            Ok(joined) => {
+                // Every joined union row is returned unchanged.
+                for row in joined.model_union_rows() {
+                    assert!(
+                        unions.contains(row),
+                        "{id}: a returned row differs from its input"
+                    );
+                }
+                "admitted".into()
             }
-            "admitted".into()
-        }
-        Err(error) => error.code.as_str().into(),
-    };
+            Err(error) => error.code.as_str().into(),
+        };
     let consumed = budget.consumed();
-    (outcome, (consumed.work, u64::try_from(consumed.storage).unwrap_or(u64::MAX)))
+    (
+        outcome,
+        (
+            consumed.work,
+            u64::try_from(consumed.storage).unwrap_or(u64::MAX),
+        ),
+    )
 }
 
 fn vectors() -> Value {
@@ -335,7 +359,7 @@ fn uses_source_rows(vectors: &Value, id: &str) -> bool {
     find(vectors, id).to_string().contains("/source_") || resolve_fixtures(vectors, id) == "C"
 }
 
-/// Trace: FR-830-AC-1 FR-830-AC-2 FR-830-AC-3 FR-830-AC-4 FR-830-AC-5 FR-830-AC-12 FR-830-AC-13.
+/// Trace: FR-352-AC-31 FR-069-AC-11 FR-830-AC-1 FR-830-AC-2 FR-830-AC-3 FR-830-AC-4 FR-830-AC-5 FR-830-AC-12 FR-830-AC-13.
 /// Every published positive is admitted by the strict read and the native join.
 #[trace("FR-830-AC-1")]
 #[test]
@@ -353,7 +377,7 @@ fn published_positive_vectors_are_admitted_with_their_rows_returned() {
     assert!(run_count >= 17, "ran {run_count} positives");
 }
 
-/// Trace: FR-830-AC-7 FR-830-AC-8 FR-830-AC-9 FR-830-AC-10 FR-830-AC-13 FR-830-AC-14 FR-830-AC-15.
+/// Trace: FR-352-AC-31 FR-830-AC-7 FR-830-AC-8 FR-830-AC-9 FR-830-AC-10 FR-830-AC-13 FR-830-AC-14 FR-830-AC-15.
 /// Every published reader refusal keeps its code.
 #[trace("FR-830-AC-9")]
 #[test]
@@ -377,7 +401,11 @@ fn published_reader_refusals_keep_their_codes() {
         }
         run_count += 1;
     }
-    assert!(mismatches.is_empty(), "{} of {run_count}: {mismatches:#?}", mismatches.len());
+    assert!(
+        mismatches.is_empty(),
+        "{} of {run_count}: {mismatches:#?}",
+        mismatches.len()
+    );
     assert!(run_count >= 40, "ran {run_count} refusals");
 }
 
@@ -390,7 +418,7 @@ fn resolve_fixtures(vectors: &Value, id: &str) -> String {
     }
 }
 
-/// Trace: FR-830-AC-11.
+/// Trace: FR-830-AC-11 FR-358-AC-15.
 /// On the shared budget the measured baseline admits; one unit less of either
 /// counter exhausts that counter, and the zero limits exhaust at once.
 #[trace("FR-830-AC-11")]
@@ -405,7 +433,11 @@ fn the_measured_baseline_admits_and_one_unit_less_exhausts_each_counter() {
         let (outcome, (work, storage)) = run_measured(&vectors, id, None);
         assert_eq!(outcome, "admitted", "{id}");
         assert!(work > 0 && storage > 0, "{id}: the join is measured");
-        assert_eq!(run(&vectors, id, Some((work, storage))), "admitted", "{id}: baseline");
+        assert_eq!(
+            run(&vectors, id, Some((work, storage))),
+            "admitted",
+            "{id}: baseline"
+        );
         assert_eq!(
             run(&vectors, id, Some((work - 1, storage))),
             "exhausted_work",
@@ -416,7 +448,11 @@ fn the_measured_baseline_admits_and_one_unit_less_exhausts_each_counter() {
             "exhausted_storage",
             "{id}: one unit less storage"
         );
-        assert_eq!(run(&vectors, id, Some((0, u64::MAX))), "exhausted_work", "{id}: zero work");
+        assert_eq!(
+            run(&vectors, id, Some((0, u64::MAX))),
+            "exhausted_work",
+            "{id}: zero work"
+        );
         assert_eq!(
             run(&vectors, id, Some((u64::MAX, 0))),
             "exhausted_storage",
@@ -425,7 +461,7 @@ fn the_measured_baseline_admits_and_one_unit_less_exhausts_each_counter() {
     }
 }
 
-/// Trace: FR-830-AC-1 FR-830-AC-10.
+/// Trace: FR-352-AC-31 FR-830-AC-1 FR-830-AC-10.
 /// The joined union is projected as the composite its own `type_handle` names,
 /// never as an enum; without the row the projection is unavailable.
 #[trace("FR-830-AC-1")]
@@ -461,7 +497,13 @@ fn a_joined_model_union_projects_to_its_type_handle_and_never_to_an_enum() {
     let mut budget = NativeJoinBudget::new(u64::MAX, u64::MAX);
     let empty = SelectedExactIdentities::empty();
     let joined = empty
-        .with_model_union_rows(&admitted, &tuples, &unions, ModelUnionScope::Full, &mut budget)
+        .with_model_union_rows(
+            &admitted,
+            &tuples,
+            &unions,
+            ModelUnionScope::Full,
+            &mut budget,
+        )
         .expect("the published full environment joins");
     for row in &unions {
         let projection = admitted

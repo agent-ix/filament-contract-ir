@@ -706,7 +706,13 @@ impl CheckedMonitorPlanRef<'_> {
                     error,
                 })?;
             let identities = identities
-                .with_model_union_rows_over(self.package, rows.tuples, rows.model_unions, &reached, budget)
+                .with_model_union_rows_over(
+                    self.package,
+                    rows.tuples,
+                    rows.model_unions,
+                    &reached,
+                    budget,
+                )
                 .map_err(|error| ReachedModelError::Exact {
                     prior_work: work,
                     error,

@@ -249,11 +249,11 @@ pub use timed_model::{
 mod exact_projection;
 pub use claim_names::ClaimNameRow;
 pub use exact_projection::{
-    ModelUnionScope, SelectedModelUnionCaseRow, SelectedModelUnionPayload, SelectedModelUnionRow,
-    ExactTypeProjection, ExactTypeProjectionError, ExactTypeProjectionErrorCode,
+    ExactTypeProjection, ExactTypeProjectionError, ExactTypeProjectionErrorCode, ModelUnionScope,
     SelectedEnumDeclarationRow, SelectedEnumMemberRow, SelectedExactDeclarationForm,
     SelectedExactDeclarationRow, SelectedExactFieldRow, SelectedExactIdentities,
-    SelectedExactIdentity, SelectedRecordFieldView, SelectedRecordView,
+    SelectedExactIdentity, SelectedModelUnionCaseRow, SelectedModelUnionPayload,
+    SelectedModelUnionRow, SelectedRecordFieldView, SelectedRecordView,
     SelectedSourceCollectionRow, SelectedSourceEnumRow, SelectedSourceRecordMemberRow,
     SelectedSourceRecordRow, SelectedSourceTupleRow, SelectedSourceUnionRow, SelectedSourceUnitRow,
     SelectedTupleDeclarationRow, SelectedTuplePositionRow, SelectedUnionClockPayloadRow,

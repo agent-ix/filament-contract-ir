@@ -2981,7 +2981,8 @@ fn selected_declaration_error(
     let code = if package.node(node).is_some() {
         ExactTypeProjectionErrorCode::UnresolvedSelectedDeclaration
     } else if node.package == package.wire.name
-        || package.models.selected_model(&node.package).is_some() {
+        || package.models.selected_model(&node.package).is_some()
+    {
         ExactTypeProjectionErrorCode::UnknownNode
     } else {
         ExactTypeProjectionErrorCode::ForeignNode
@@ -2995,7 +2996,9 @@ fn selected_declaration_error_budgeted(
     requested: &CheckedNodeId,
     work: &mut impl WorkMeter,
 ) -> ExactTypeProjectionError {
-    let code = if node.package == package.wire.name || package.models.selected_model(&node.package).is_some() {
+    let code = if node.package == package.wire.name
+        || package.models.selected_model(&node.package).is_some()
+    {
         ExactTypeProjectionErrorCode::UnknownNode
     } else {
         ExactTypeProjectionErrorCode::ForeignNode
@@ -4285,13 +4288,7 @@ impl CheckedPackageV2 {
                 let row = identities.model_unions.get(type_id).ok_or_else(|| {
                     refuse!(ExactTypeProjectionErrorCode::UnavailableIdentityWitness)
                 })?;
-                charge_native_storage(
-                    work,
-                    requested,
-                    type_id,
-                    "model_union_projection",
-                    2,
-                )?;
+                charge_native_storage(work, requested, type_id, "model_union_projection", 2)?;
                 ValueType::Composite(row.type_handle.clone())
             }
             CheckedNodeKind::Model(ModelForm::VariantType) => {
