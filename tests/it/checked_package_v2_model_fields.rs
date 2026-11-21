@@ -597,7 +597,7 @@ fn nested_collection_of_nominal_record_keeps_target_identity_and_refuses_missing
             "Bad",
             "record",
             &[],
-            &[field("float", "ix://filament/native/Float32").many((0, None, false, true))],
+            &[field("float", "ix://filament/native/Clock").many((0, None, false, true))],
         ),
     ]);
     selected["constructs"].as_array_mut().unwrap().push(json!({
@@ -1852,7 +1852,7 @@ fn selected_facts_join_only_explicit_model_field_and_charge_full_emission_rows()
         &[
             field("total", "ix://filament/native/Integer"),
             field("note", "ix://filament/native/String").optional(),
-            field("raw", "ix://filament/native/Float32"),
+            field("raw", "ix://filament/native/Clock"),
         ],
     )]);
     selected["constructs"].as_array_mut().unwrap().push(json!({
@@ -4048,7 +4048,7 @@ fn admitted_record_with_unsupported_field_refuses_without_view() {
         "Unsupported",
         "record",
         &[],
-        &[field("value", "ix://filament/native/Float32")],
+        &[field("value", "ix://filament/native/Clock")],
     )]);
     selected["constructs"]
         .as_array_mut()
@@ -4090,7 +4090,7 @@ fn admitted_record_with_unsupported_field_refuses_without_view() {
             &witnesses,
             &mut filament_contract_model::NativeJoinBudget::new(100, u64::MAX),
         )
-        .expect_err("Float32 mode is not represented by this field projection");
+        .expect_err("a Clock field is not represented by this field projection");
     assert_eq!(
         refusal.code,
         ExactTypeProjectionErrorCode::UnsupportedExactType
@@ -4105,7 +4105,7 @@ fn admitted_native_record_late_unsupported_field_respects_exact_work_boundary() 
     const COMPLETE_WORK: u64 = 6;
     const BEFORE_SECOND_FIELD: u64 = 5;
     for (name, second_type) in [
-        ("LateUnsupported", "ix://filament/native/Float32"),
+        ("LateUnsupported", "ix://filament/native/Clock"),
         ("CompleteInteger", "ix://filament/native/Integer"),
     ] {
         let mut selected = document(vec![typed_object(
