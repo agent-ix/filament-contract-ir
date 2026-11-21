@@ -266,6 +266,7 @@ impl SelectedTypeRecord {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SelectedTypeDeclarations {
     enums: Vec<super::SelectedModelEnumShapeRow>,
+    unions: Vec<super::SelectedModelUnionRow>,
     records: Vec<SelectedTypeRecord>,
     tuples: Vec<SelectedTypeTuple>,
     objects: Vec<SelectedTypeObject>,
@@ -279,6 +280,12 @@ impl SelectedTypeDeclarations {
     /// Complete selected enum declarations and canonical cases in structural order.
     pub fn enums(&self) -> &[super::SelectedModelEnumShapeRow] {
         &self.enums
+    }
+
+    /// Complete selected model unions, each with its original declaration,
+    /// case and payload identities, in structural order.
+    pub fn unions(&self) -> &[super::SelectedModelUnionRow] {
+        &self.unions
     }
 
     /// Selected records in structural identity order.
@@ -357,6 +364,8 @@ impl SelectedTypeDeclarationsError {
             | NativeJoinLocusSource::PreparationSelection(_)
             | NativeJoinLocusSource::PreparationOutput(_)
             | NativeJoinLocusSource::MonitorAuthority
+            | NativeJoinLocusSource::ModelTupleRow(_)
+            | NativeJoinLocusSource::ModelUnionRow(_)
             | NativeJoinLocusSource::PackageRead(..) => None,
             NativeJoinLocusSource::GraphNode(index) => package
                 .resolved_graph()
@@ -931,11 +940,18 @@ impl CheckedPackageV2 {
                             ));
                         }
                     } else {
-                        return Err(ctx.error(
-                            ExactTypeProjectionErrorCode::UnsupportedExactType,
-                            id,
-                            "selected_union",
-                        ));
+                        let mut found = false;
+                        for row in identities.model_union_rows() {
+                            ctx.charge(&row.structural_node, "selected_union")?;
+                            found |= &row.structural_node == id;
+                        }
+                        if !found {
+                            return Err(ctx.error(
+                                ExactTypeProjectionErrorCode::UnavailableIdentityWitness,
+                                id,
+                                "selected_union",
+                            ));
+                        }
                     }
                 }
             }
@@ -1192,6 +1208,17 @@ impl CheckedPackageV2 {
                 }
                 ctx.charge_storage(native_join_storage::model_enum_shape(row).saturating_add(1))?;
                 enums.push(row.clone());
+            }
+            let mut unions = Vec::new();
+            for row in identities.model_union_rows() {
+                ctx.charge_structural_id(&row.structural_node, "selected_union_output")?;
+                ctx.charge_work(
+                    &row.structural_node,
+                    "selected_union_output",
+                    row.selected_document.len(),
+                )?;
+                ctx.charge_storage(native_join_storage::model_union(row).saturating_add(1))?;
+                unions.push(row.clone());
             }
             let mut records = Vec::new();
             let mut tuples = Vec::new();
@@ -1897,6 +1924,7 @@ impl CheckedPackageV2 {
             ctx.budget.finish(before);
             Ok(SelectedTypeDeclarations {
                 enums,
+                unions,
                 records,
                 tuples,
                 objects,

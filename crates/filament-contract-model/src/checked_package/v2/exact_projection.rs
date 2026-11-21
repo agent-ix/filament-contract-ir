@@ -16,14 +16,19 @@ use super::{
     CheckedPackageV2, CheckedTerm, CompositeTypeForm, ModelForm, ScalarTypeForm, ValueForm,
 };
 use filament_exact::{
-    CardinalityBound, CollectionKind, CollectionType, EffectiveId, EnumShape, FieldDeclaration,
-    Integer, IntegerInterval, MapType, MemberId, MemberOwner, NodeKey, Presence, UnionMember,
-    UnitId, ValueType, VariantId,
+    CardinalityBound, CarriedQuantityType, CollectionKind, CollectionType, EffectiveId, EnumShape,
+    FieldDeclaration, FloatType, IeeeWidth, Integer, IntegerInterval, MapType, MemberId,
+    MemberOwner, NodeKey, Presence, QuantityCarrier, RationalDomain, TextProfile, TextType,
+    UnionMember, UnitId, ValueType, VariantId,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 mod complete_witness;
+mod model_union;
+pub use model_union::{
+    ModelUnionScope, SelectedModelUnionCaseRow, SelectedModelUnionPayload, SelectedModelUnionRow,
+};
 
 /// The Exact identity produced for one selected declaration form.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1345,6 +1350,7 @@ pub struct SelectedExactIdentities {
     source_enums: Arc<BTreeMap<CheckedNodeId, Arc<SelectedSourceEnumRow>>>,
     source_collections: Arc<BTreeMap<CheckedNodeId, Arc<SelectedSourceCollectionRow>>>,
     model_enum_shapes: Arc<BTreeMap<CheckedNodeId, super::SelectedModelEnumShapeRow>>,
+    model_unions: Arc<BTreeMap<CheckedNodeId, Arc<model_union::SelectedModelUnionRow>>>,
 }
 
 impl SelectedExactIdentities {
@@ -3417,6 +3423,16 @@ pub(super) fn project_record_field_type(
                     Some(target)
                 ));
             }
+            if package.models.variant_family(target) == Some("union") {
+                let row = identities.model_unions.get(target).ok_or_else(|| {
+                    refuse!(
+                        ExactTypeProjectionErrorCode::UnavailableIdentityWitness,
+                        Some(target)
+                    )
+                })?;
+                charge_native_storage(budget, requested, requested, "record_field_union", 2)?;
+                return Ok(ValueType::Composite(row.type_handle.clone()));
+            }
             let shape = identities.model_enum_shapes.get(target).ok_or_else(|| {
                 refuse!(
                     ExactTypeProjectionErrorCode::UnavailableIdentityWitness,
@@ -3431,15 +3447,59 @@ pub(super) fn project_record_field_type(
                 budget,
             );
         }
-        MemberType::Float32
-        | MemberType::Float64
-        | MemberType::Bytes
-        | MemberType::JsonObject
-        | MemberType::Clock
+        MemberType::Float32 => (ValueType::Float(FloatType::exact(IeeeWidth::Binary32)), 3),
+        MemberType::Float64 => (ValueType::Float(FloatType::exact(IeeeWidth::Binary64)), 3),
+        MemberType::Bytes => (ValueType::Bytes, 1),
+        MemberType::JsonObject => (ValueType::JsonObject, 1),
+        MemberType::RationalRange(bounds) => {
+            charge_native_storage(budget, requested, requested, "record_field_rational", 80)?;
+            let domain = rational_domain(bounds).ok_or_else(|| {
+                refuse!(
+                    ExactTypeProjectionErrorCode::UnsupportedExactType,
+                    Some(requested)
+                )
+            })?;
+            return Ok(ValueType::Rational(domain));
+        }
+        MemberType::TextBounds(bounds) => {
+            charge_native_storage(budget, requested, requested, "record_field_text", 8)?;
+            let text = TextProfile::from_code(&bounds.profile)
+                .and_then(|profile| TextType::new(bounds.lower, bounds.upper, profile).ok())
+                .ok_or_else(|| {
+                    refuse!(
+                        ExactTypeProjectionErrorCode::UnsupportedExactType,
+                        Some(requested)
+                    )
+                })?;
+            return Ok(ValueType::Text(text));
+        }
+        MemberType::CarriedRational(bounds, unit) => {
+            let quantity = project_record_field_type(
+                package,
+                identities,
+                &MemberType::Quantity(unit.clone()),
+                requested,
+                budget,
+            )?;
+            let ValueType::Quantity(unit) = &quantity else {
+                return Err(refuse!(
+                    ExactTypeProjectionErrorCode::UnsupportedExactType,
+                    Some(unit)
+                ));
+            };
+            charge_native_storage(budget, requested, requested, "record_field_carried", 100)?;
+            let domain = rational_domain(bounds).ok_or_else(|| {
+                refuse!(
+                    ExactTypeProjectionErrorCode::UnsupportedExactType,
+                    Some(requested)
+                )
+            })?;
+            return Ok(ValueType::CarriedQuantity(Arc::new(
+                CarriedQuantityType::new(unit.clone(), QuantityCarrier::Rational(domain)),
+            )));
+        }
+        MemberType::Clock
         | MemberType::ClockReference
-        | MemberType::RationalRange(_)
-        | MemberType::CarriedRational(..)
-        | MemberType::TextBounds(_)
         | MemberType::Option(_)
         | MemberType::Collection { .. } => {
             return Err(refuse!(
@@ -3463,7 +3523,7 @@ enum FieldWrapper {
     Collection(CheckedCollectionKind, Option<(u64, u64)>),
 }
 
-fn project_wrapped_record_field_type(
+pub(super) fn project_wrapped_record_field_type(
     package: &CheckedPackageV2,
     identities: &SelectedExactIdentities,
     requested: &CheckedNodeId,
@@ -4262,6 +4322,16 @@ impl CheckedPackageV2 {
                     }
                 }
             }
+            CheckedNodeKind::Model(ModelForm::VariantType)
+                if self.models.variant_family(type_id) == Some("union") =>
+            {
+                identities.check_binding(self, work, type_id)?;
+                let row = identities.model_unions.get(type_id).ok_or_else(|| {
+                    refuse!(ExactTypeProjectionErrorCode::UnavailableIdentityWitness)
+                })?;
+                charge_native_storage(work, requested, type_id, "model_union_projection", 2)?;
+                ValueType::Composite(row.type_handle.clone())
+            }
             CheckedNodeKind::Model(ModelForm::VariantType) => {
                 identities.check_binding(self, work, type_id)?;
                 let shape = identities.model_enum_shapes.get(type_id).ok_or_else(|| {
@@ -4996,4 +5066,20 @@ mod tests {
             )
         );
     }
+}
+
+/// The Exact rational domain a bounded rational member type names, when its
+/// numerator and denominator intervals are valid.
+fn rational_domain(bounds: &super::model_members::RationalBounds) -> Option<RationalDomain> {
+    let numerator = IntegerInterval::new(
+        Integer::from(bounds.numerator_min),
+        Integer::from(bounds.numerator_max),
+    )
+    .ok()?;
+    let denominator = IntegerInterval::new(
+        Integer::from(bounds.denominator_min),
+        Integer::from(bounds.denominator_max),
+    )
+    .ok()?;
+    RationalDomain::new(numerator, denominator).ok()
 }
