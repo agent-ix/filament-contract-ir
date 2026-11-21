@@ -208,31 +208,6 @@ fn replace_value(value: &mut Value, from: &Value, to: &Value) {
     }
 }
 
-/// FR-778: a clause's result type (the built-in Boolean) names no owner; its
-/// owner is its subject's. The clause is typed by an ownerless built-in and its
-/// `over` parameter's reference type refers to a `SourceOwner`'s model.
-fn ownerless_clause_over_source_subject(package: &mut Value) {
-    let nodes = package["semantic_graph"]["nodes"]
-        .as_array_mut()
-        .expect("nodes");
-    let subject = nodes
-        .iter()
-        .find(|node| node["node_id"]["path"] == json!(["Example", "Account"]))
-        .expect("source model node")["node_id"]
-        .clone();
-    for node in nodes {
-        if node["semantic_form"] == "temporal_clause" {
-            node["semantic_type"] = id(&["scalar_type", "integer"]);
-        }
-        if node["node_id"]["path"][0] == "composite_type"
-            && node["node_id"]["path"][1] == "reference"
-        {
-            node["dependencies"] = json!([subject]);
-            node["body"]["members"][0]["target"] = subject.clone();
-        }
-    }
-}
-
 fn source_duration_package(
     mut case: Value,
     mut published: Value,
@@ -272,7 +247,6 @@ fn source_duration_package(
                     Some("dimension" | "unit")
                 )
         });
-    ownerless_clause_over_source_subject(&mut package);
     if include_clause_owner_units {
         add_node(&mut package, source_dimension("Time"));
         add_node(&mut package, source_unit("ms", "Time"));
@@ -619,12 +593,9 @@ fn duration_bounds_match_every_occurrence_clock_unit() {
     assert_eq!(refusal.locus.as_ref(), Some(&expected_id));
 }
 
-/// FR-778-AC-1/3: the clock unit's owner is the clause subject's, not its
-/// result type's: the clause is typed by an ownerless built-in and ranges over
-/// a source model, so an `ms` its source declares is admitted, another owner's
-/// `ms` is refused, and an affine or nested one is refused.
+/// Trace: FR-778-AC-1/3, TC-1890.
 /// Provenance: QSL-2338.
-#[trace("TC-1890", "FR-778-AC-1", "FR-778-AC-3", "QSL-2338")]
+#[trace("TC-1890", "QSL-2338")]
 #[test]
 fn timestamped_duration_bounds_admit_only_linear_source_time_units() {
     let published = vectors();
@@ -706,6 +677,261 @@ fn timestamped_duration_bounds_admit_only_linear_source_time_units() {
         refusal.loci[0].path.as_ref().map(ToString::to_string),
         Some("/temporal_bindings/0/clock/timestamp_unit".to_owned())
     );
+}
+
+const EXAMPLE_UNIT: fn() -> Value = || json!({"authority": "agent-ix", "identity": "example"});
+
+/// A duration clause package whose `Time`, `s`, `ms` are declared by `owner`
+/// units, row naming `source_unit`.
+fn su_package(units_in_example: bool, source_unit: Value) -> Value {
+    let published = vectors();
+    let case = published["positive"]
+        .as_array()
+        .expect("positive cases")
+        .iter()
+        .find(|case| case["id"] == "AG-07-duration-quantile")
+        .expect("published duration case")
+        .clone();
+    let bound = if units_in_example {
+        id(&["ms"])
+    } else {
+        other_id(&["ms"])
+    };
+    let mut package = source_duration_package(case, published, bound, units_in_example);
+    package["temporal_bindings"][0]["source_unit"] = source_unit;
+    package
+}
+
+fn su_refusal(package: &Value) -> (String, Option<&'static str>, String) {
+    let CheckedPackageV2ReadResult::Refused(refusal) =
+        read_package(package).expect("complete package read")
+    else {
+        panic!("package must refuse");
+    };
+    (
+        code_word(refusal.code).to_owned(),
+        refusal.cause.map(cause_word),
+        refusal.loci[0]
+            .path
+            .as_ref()
+            .map(ToString::to_string)
+            .expect("locus"),
+    )
+}
+
+fn su_admitted(package: &Value) -> bool {
+    matches!(
+        read_package(package).expect("complete package read"),
+        CheckedPackageV2ReadResult::Admitted(_)
+    )
+}
+
+/// FR-778-AC-8..11: the published SU vectors, SU-01..SU-04.
+#[trace(
+    "TC-1890",
+    "FR-778-AC-8",
+    "FR-778-AC-9",
+    "FR-778-AC-10",
+    "FR-778-AC-11"
+)]
+#[test]
+fn source_unit_vectors_resolve_the_clock_unit_in_the_named_unit_only() {
+    let cases =
+        read_json(&proposal_dir_of(&fixtures_dir()).join("temporal-clock-binding-vectors.json"))
+            .expect("published vectors")["source_unit_cases"]
+            .clone();
+    let cases = cases.as_array().expect("source unit cases");
+    assert_eq!(cases.len(), 4);
+    for case in cases {
+        let in_example = case["time_units"].get("example").is_some();
+        let package = su_package(in_example, case["row"]["source_unit"].clone());
+        if case["expected"] == "admitted" {
+            assert!(su_admitted(&package), "{}", case["id"]);
+        } else {
+            assert_eq!(
+                su_refusal(&package),
+                (
+                    case["code"].as_str().unwrap().to_owned(),
+                    case["cause"].as_str().map(|cause| match cause {
+                        "missing-name" => "missing-name",
+                        "invalid-value" => "invalid-value",
+                        other => panic!("{other}"),
+                    }),
+                    case["locus"].as_str().unwrap().to_owned()
+                ),
+                "{}",
+                case["id"]
+            );
+        }
+    }
+}
+
+/// FR-778-AC-9: a clause over a source record (Pulse) in the unit that declares
+/// the clock units is admitted; the subject is never read.
+#[trace("TC-1890", "FR-778-AC-9")]
+#[test]
+fn clause_over_a_source_record_subject_is_admitted() {
+    let mut package = su_package(true, EXAMPLE_UNIT());
+    let record = id(&["Example", "Account"]);
+    for node in package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+    {
+        if node["node_id"]["path"][0] == "composite_type"
+            && node["node_id"]["path"][1] == "reference"
+        {
+            node["dependencies"] = json!([record]);
+            node["body"]["members"][0]["target"] = record.clone();
+        }
+    }
+    assert!(su_admitted(&package));
+}
+
+/// FR-322-AC-503 / FR-778-AC-11: a missing member, and an unlocked unit.
+#[trace("TC-233", "TC-1890", "FR-038-AC-590", "FR-322-AC-503", "FR-778-AC-11")]
+#[test]
+fn clause_row_requires_a_locked_source_unit() {
+    let mut package = su_package(true, EXAMPLE_UNIT());
+    package["temporal_bindings"][0]
+        .as_object_mut()
+        .expect("row")
+        .remove("source_unit");
+    assert_eq!(
+        su_refusal(&package),
+        (
+            "invalid_package".to_owned(),
+            Some("timed-node-reference"),
+            "/temporal_bindings/0".to_owned()
+        )
+    );
+    let unlocked = su_package(true, json!({"authority": "agent-ix", "identity": "other"}));
+    assert_eq!(
+        su_refusal(&unlocked),
+        (
+            "invalid_package".to_owned(),
+            Some("invalid-value"),
+            "/temporal_bindings/0/source_unit".to_owned()
+        )
+    );
+    // The same authority under another identity, and another authority under
+    // the same identity, are both unlocked.
+    for unit in [
+        json!({"authority": "other", "identity": "example"}),
+        json!({"authority": "agent-ix", "identity": "Example"}),
+    ] {
+        assert_eq!(su_refusal(&su_package(true, unit)).1, Some("invalid-value"));
+    }
+}
+
+/// Types every quantity bound of the package's aggregate by `unit`.
+fn type_bounds(package: &mut Value, unit: Value) {
+    for node in package["semantic_graph"]["nodes"].as_array_mut().unwrap() {
+        if let Some(members) = node
+            .pointer_mut("/body/arguments/0/members")
+            .and_then(Value::as_array_mut)
+        {
+            for member in members {
+                if member["value"]["value_kind"] == "quantity" {
+                    member["value"]["type"] = unit.clone();
+                }
+            }
+        }
+    }
+}
+
+/// FR-778-AC-1, AC-3..AC-7 over the named unit.
+#[trace(
+    "TC-1890",
+    "FR-778-AC-1",
+    "FR-778-AC-3",
+    "FR-778-AC-4",
+    "FR-778-AC-5",
+    "FR-778-AC-6",
+    "FR-778-AC-7"
+)]
+#[test]
+fn source_clock_unit_refusals_and_admissions() {
+    let base = su_package(true, EXAMPLE_UNIT());
+    assert!(su_admitted(&base));
+    assert!(
+        base["semantic_graph"]["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|node| node["node_id"]["path"] != json!(["scalar_type", "unit", "ms"])),
+        "AC-1: no model-owned ms node"
+    );
+    let locus = "/temporal_bindings/0/clock/timestamp_unit";
+    let unit_refusal = |package: &Value| {
+        let CheckedPackageV2ReadResult::Refused(refusal) = read_package(package).expect("read")
+        else {
+            panic!("must refuse");
+        };
+        // AC-6: the clock name and T are retained at the row.
+        let retained = refusal.locus.clone();
+        (
+            code_word(refusal.code),
+            refusal.cause.map(cause_word),
+            refusal.loci[0].path.as_ref().map(ToString::to_string),
+            retained,
+        )
+    };
+    let clause = serde_json::from_value::<CheckedNodeId>(
+        base["temporal_bindings"][0]["declaration"].clone(),
+    )
+    .unwrap();
+    // AC-3: `us` is declared by no unit.
+    let mut us = base.clone();
+    us["temporal_bindings"][0]["clock"]["timestamp_unit"] = json!("us");
+    assert_eq!(
+        unit_refusal(&us),
+        (
+            "missing_declaration",
+            Some("missing-name"),
+            Some(locus.to_owned()),
+            Some(clause.clone())
+        )
+    );
+    // AC-6: a bound typed by `s` beside the bad row still reports only the row.
+    let mut bound_s = us.clone();
+    type_bounds(&mut bound_s, id(&["s"]));
+    assert_eq!(unit_refusal(&bound_s).0, "missing_declaration");
+    // AC-4: a unit of another dimension.
+    let mut length = base.clone();
+    add_node(&mut length, source_dimension("Length"));
+    add_node(&mut length, source_unit("m", "Length"));
+    length["temporal_bindings"][0]["clock"]["timestamp_unit"] = json!("m");
+    assert_eq!(
+        unit_refusal(&length),
+        (
+            "ill_typed",
+            Some("unit-mismatch"),
+            Some(locus.to_owned()),
+            Some(clause.clone())
+        )
+    );
+    // AC-5: an affine unit of Time.
+    let mut affine = base.clone();
+    affine["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|node| node["node_id"]["path"] == json!(["ms"]))
+        .unwrap()["body"]["offset"]["numerator"] = json!("1");
+    assert_eq!(
+        unit_refusal(&affine),
+        (
+            "ill_typed",
+            Some("unit-mismatch"),
+            Some(locus.to_owned()),
+            Some(clause.clone())
+        )
+    );
+    // AC-1: a bound typed by the source `s` node refuses at the bound.
+    let mut bound_s = base.clone();
+    type_bounds(&mut bound_s, id(&["s"]));
+    let (code, cause, _, _) = unit_refusal(&bound_s);
+    assert_eq!((code, cause), ("ill_typed", Some("unit-mismatch")));
 }
 
 /// Operand order does not choose the first aggregate refusal.
@@ -852,7 +1078,7 @@ fn document_with_time_units() -> std::path::PathBuf {
 
 /// The clock unit node is the unit's own node in its owning package (FSpec
 /// FR-370-AC-20), not in the package of the clause that uses it.
-#[trace("TC-048", "FR-038-AC-518")]
+#[trace("TC-048", "TC-1890", "FR-038-AC-518", "FR-778-AC-2")]
 #[test]
 fn duration_bounds_are_typed_by_the_clock_unit_in_its_owning_package() {
     let published = vectors();

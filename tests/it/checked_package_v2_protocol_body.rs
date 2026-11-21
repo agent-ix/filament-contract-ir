@@ -8207,6 +8207,11 @@ pub(super) fn compensation_clock_case(
     for row in &mut rows {
         let key = row["declaration"].as_str().expect("declaration key");
         row["declaration"] = ids[key].clone();
+        // The vector names the published unit `example`; this package locks
+        // its own source.
+        if row.get("source_unit").is_some() {
+            row["source_unit"] = package["lock"]["sources"][0].clone();
+        }
     }
     if case["id"] == "CB-01" {
         rows.sort_by(|left, right| {
@@ -8234,7 +8239,8 @@ pub(super) fn compensation_clock_case(
     "FR-038-AC-414",
     "FR-038-AC-415",
     "FR-038-AC-416",
-    "FR-019-AC-22"
+    "FR-019-AC-22",
+    "FR-322-AC-503"
 )]
 #[test]
 fn compensation_clock_rows_follow_published_cases() {
@@ -8290,6 +8296,25 @@ fn compensation_clock_rows_follow_published_cases() {
                 }
                 assert_ne!(ids["k1"], ids["k2"], "{id}");
                 if id == "CB-01" {
+                    // FR-322-AC-503: a compensation row carries no `source_unit`.
+                    let mut extra = package.clone();
+                    let at = extra["temporal_bindings"]
+                        .as_array()
+                        .expect("rows")
+                        .iter()
+                        .position(|row| row["declaration"] == ids["k1"])
+                        .expect("k1 row");
+                    extra["temporal_bindings"][at]["source_unit"] =
+                        extra["lock"]["sources"][0].clone();
+                    assert_eq!(
+                        read(&extra),
+                        refusal_at_id(
+                            CheckedPackageRefusalCode::InvalidPackage,
+                            &format!("/temporal_bindings/{at}"),
+                            Some(CheckedPackageRefusalCause::TimedNodeReference),
+                            &ids["k1"],
+                        )
+                    );
                     let mut missing = package.clone();
                     missing
                         .as_object_mut()

@@ -80,6 +80,11 @@ pub struct TemporalBinding {
     pub clock_name: Box<str>,
     /// Closed clock configuration.
     pub clock: ClockConfiguration,
+    /// For a `temporal`/`temporal_clause` node's row, the `lock.sources` entry
+    /// of the source unit that declares the clause (FR-322 "Clause source
+    /// unit"); absent on every other row.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_unit: Option<crate::checked_package::shared::CheckedSourceRef>,
     /// For a `claim`/`hyperproperty` node's row, the exact name of the quantifier
     /// Group variable whose trace the row's clock serves; absent on every other
     /// row.
@@ -105,6 +110,9 @@ impl Encode for TemporalBinding {
         super::encode::member(writer, "occurrence", &self.occurrence)?;
         super::encode::member(writer, "clock_name", self.clock_name.as_ref())?;
         super::encode::member(writer, "clock", &self.clock)?;
+        if let Some(source_unit) = &self.source_unit {
+            super::encode::member(writer, "source_unit", source_unit)?;
+        }
         if let Some(trace) = &self.trace {
             super::encode::member(writer, "trace", trace.as_ref())?;
         }
@@ -668,6 +676,23 @@ pub(super) fn validate<B>(
         if !owned {
             return Err(invalid(meter, at().key("occurrence"), &row.declaration));
         }
+        // FR-322 "Clause source unit": a clause row names a locked source unit,
+        // and no other row names one.
+        let is_clause = kinds[position] == CheckedNodeKind::Temporal(TemporalForm::TemporalClause);
+        match (&row.source_unit, is_clause) {
+            (Some(unit), true) => {
+                if !lock.sources.contains(unit) {
+                    return Err(binding_refusal(
+                        meter,
+                        at().key("source_unit"),
+                        &row.declaration,
+                        CheckedPackageRefusalCause::InvalidValue,
+                    ));
+                }
+            }
+            (None, false) => {}
+            _ => return Err(invalid(meter, at(), &row.declaration)),
+        }
         // A hyperproperty row names one of the node's quantified traces, and
         // no other row names a trace.
         let trace_at = match (traces_of(position), row.trace.as_deref()) {
@@ -1014,6 +1039,7 @@ mod tests {
                     sequence_authority: "source".into(),
                 },
                 trace: None,
+                source_unit: None,
             })
             .collect();
         let lock: CheckedPackageLockV2 = serde_json::from_value(json!({

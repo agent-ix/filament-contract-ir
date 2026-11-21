@@ -427,7 +427,8 @@ fn selected_package(case: &Value) -> Value {
         "declaration": new_id,
         "occurrence": 0,
         "clock_name": case["clock_name"],
-        "clock": case["clock"]
+        "clock": case["clock"],
+        "source_unit": {"authority": "agent-ix", "identity": "example"}
     }]);
     package
 }
@@ -666,7 +667,14 @@ fn refused(package: &Value, case: &Value) {
 }
 
 /// Trace: FSpec FR-322-AC-294, TC-134, TC-233.
-#[trace("TC-134", "TC-233", "FR-322-AC-294")]
+#[trace(
+    "TC-134",
+    "TC-233",
+    "TC-1890",
+    "FR-322-AC-294",
+    "FR-322-AC-359",
+    "FR-778-AC-7"
+)]
 #[test]
 fn temporal_clock_binding_vectors_read_at_their_exact_loci() {
     let published = vectors();

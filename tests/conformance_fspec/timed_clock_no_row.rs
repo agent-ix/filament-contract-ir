@@ -193,6 +193,7 @@ fn timed_clock_no_row_vectors_join_model_and_refuse_extra_row() {
             "occurrence": 0,
             "clock_name": name,
             "clock": clock,
+            "source_unit": package["lock"]["sources"][0].clone(),
         }]);
         fixture_support::refresh_identity_projection(&mut package);
         package
@@ -213,6 +214,10 @@ fn timed_clock_no_row_vectors_join_model_and_refuse_extra_row() {
                 occurrence: 0,
                 clock_name: "plant".into(),
                 trace: None,
+                source_unit: Some(filament_contract_model::CheckedSourceRef {
+                    authority: "agent-ix".into(),
+                    identity: "example".into(),
+                }),
                 clock: filament_contract_model::ClockConfiguration::Timed { unit: "ms".into() },
             }]
         );

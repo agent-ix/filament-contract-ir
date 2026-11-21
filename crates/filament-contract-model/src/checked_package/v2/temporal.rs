@@ -1597,13 +1597,13 @@ fn check_clause(
     {
         validate_source_clock_unit(context, position, &node.node_id, graph, terms, meter)?;
     }
-    let source_owner = source_owner_for_clause(position, terms, graph);
+    let source_owner = source_owner_for_clause(&node.node_id, context.bindings);
     for formula in aggregates {
         check_aggregate(
             formula,
             profile,
             clock_unit,
-            source_owner,
+            source_owner.as_ref(),
             graph,
             terms,
             meter,
@@ -1916,27 +1916,25 @@ fn is_clock_unit_path(
     }
 }
 
-/// The owner of a clause's subject (FR-778): the first owner among the
-/// declarations that the type of the node its `over` argument references
-/// refers to. A clause's own `semantic_type` is its result type (the built-in
-/// Boolean) and names no owner. Callers join it to source units by equality,
-/// so only a `SourceOwner` can match one.
-fn source_owner_for_clause<'a>(
-    position: usize,
-    terms: &[Option<CheckedTerm>],
-    graph: &'a StepGraph<'_, '_>,
-) -> Option<&'a super::CheckedNodeOwner> {
-    let Some(CheckedTerm::Application { arguments, .. }) =
-        terms.get(position).and_then(Option::as_ref)
-    else {
-        return None;
-    };
-    let (subject, _) = graph.node(arguments.first().and_then(typed_reference)?)?;
-    let (subject_type, _) = graph.node(&subject.semantic_type)?;
-    subject_type
-        .dependencies
-        .iter()
-        .find_map(|declared| graph.node(declared)?.0.owner.as_ref())
+/// The source owner a binding row names (FR-322 "Clause source unit"): the
+/// unit that declares the clause, stated by the producer and never inferred
+/// from the clause's subject.
+fn row_source_owner(row: &TemporalBinding) -> Option<super::CheckedNodeOwner> {
+    row.source_unit
+        .as_ref()
+        .map(|unit| super::CheckedNodeOwner::Source {
+            authority: unit.authority.clone(),
+            identity: unit.identity.clone(),
+        })
+}
+
+/// The source owner of a clause's aggregate checks: its first row's
+/// `source_unit` (each row's own unit resolves its `timestamp_unit`).
+fn source_owner_for_clause(
+    clause: &CheckedNodeId,
+    bindings: Option<&[TemporalBinding]>,
+) -> Option<super::CheckedNodeOwner> {
+    row_source_owner(bindings?.iter().find(|row| &row.declaration == clause)?)
 }
 
 fn aggregate_declares_duration_window(formula: usize, terms: &[Option<CheckedTerm>]) -> bool {
@@ -1974,7 +1972,6 @@ fn validate_source_clock_unit(
     terms: &[Option<CheckedTerm>],
     meter: &mut WorkMeter,
 ) -> Result<(), ValidationFailure> {
-    let source_owner = source_owner_for_clause(position, terms, graph);
     let Some(bindings) = context.bindings else {
         return Ok(());
     };
@@ -1986,7 +1983,8 @@ fn validate_source_clock_unit(
         let ClockConfiguration::TimestampedEvent { timestamp_unit } = &row.clock else {
             continue;
         };
-        let source_unit = source_owner.is_some_and(|source_owner| {
+        let source_owner = row_source_owner(row);
+        let source_unit = source_owner.as_ref().is_some_and(|source_owner| {
             graph.nodes.iter().any(|node| {
                 is_scalar_type_unit(&node.node_tag, &node.semantic_form)
                     && node.owner.as_ref() == Some(source_owner)
@@ -2024,7 +2022,7 @@ fn validate_source_clock_unit(
             ));
         }
         if source_unit {
-            if let Some(source_owner) = source_owner {
+            if let Some(source_owner) = source_owner.as_ref() {
                 if !super::identity::source_clock_unit_is_linear_time(
                     graph.nodes,
                     terms,
