@@ -3405,7 +3405,14 @@ pub(super) fn project_record_field_type(
                     Some(target)
                 )
             })?;
-            charge_native_storage(budget, requested, requested, "record_field_variant", 1)?;
+            storage::preflight_enum_shape(&shape.shape, budget, requested)?;
+            charge_native_storage(
+                budget,
+                requested,
+                requested,
+                "record_field_variant",
+                storage::enum_shape(&shape.shape).saturating_add(1),
+            )?;
             return Ok(ValueType::Enum(shape.shape.clone()));
         }
         MemberType::Float32

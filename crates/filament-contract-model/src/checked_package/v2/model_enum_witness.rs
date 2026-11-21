@@ -616,15 +616,30 @@ impl<'a> SelectedModelEnums<'a> {
         }
         meter.storage(1)?;
         let mut cases = BTreeSet::new();
-        for (index, (case, variant)) in row.cases.iter().zip(row.shape.variants()).enumerate() {
+        for (index, ((case, variant), canonical_name)) in row
+            .cases
+            .iter()
+            .zip(row.shape.variants())
+            .zip(declared_cases.keys())
+            .enumerate()
+        {
             meter.row(index, "model_enum_shape_case");
             meter.charge(&case.structural_node)?;
             meter.text(&case.member_original_identity)?;
             meter.text(case.variant.case())?;
             let member = self.read_member_inner(package, &case.structural_node, meter)?;
             meter.text(&case.case)?;
+            meter.text(canonical_name)?;
+            let canonical_position = if row.shape.is_ordered() {
+                declared_cases
+                    .get(&case.case)
+                    .is_some_and(|declared| declared.position == index)
+            } else {
+                &case.case == canonical_name
+            };
             meter.storage(1)?;
-            if member.declaration_node != *node
+            if !canonical_position
+                || member.declaration_node != *node
                 || member.case != case.case
                 || member.member_key != case.member_key
                 || member.member_original_identity != case.member_original_identity

@@ -802,3 +802,148 @@ fn model_enum_runtime_payload_variant_refuses_without_becoming_an_enum() {
         ExactTypeProjectionErrorCode::MismatchedIdentityWitness
     );
 }
+
+#[trace("FR-354-AC-6", "FR-354-AC-2", "FR-352-AC-30")]
+#[test]
+fn model_enum_runtime_authenticates_case_order_against_selected_declaration() {
+    use crate::SelectedModelEnumRows;
+    for ordered in [false, true] {
+        let (package, mut row, declarations, members) = runtime_fixture();
+        row.shape = EnumShape::new(ordered, row.cases.iter().map(|case| case.variant.clone()));
+        let join = |row: &SelectedModelEnumShapeRow, budget: &mut NativeJoinBudget| {
+            runtime_identities(&package, budget).with_admitted_model_enum_rows(
+                &package,
+                SelectedModelEnumRows {
+                    declarations: &declarations,
+                    members: &members,
+                    shapes: std::slice::from_ref(row),
+                },
+                budget,
+            )
+        };
+        let mut budget = NativeJoinBudget::new(u64::MAX, u64::MAX);
+        join(&row, &mut budget)
+            .expect("Gold precedes Standard in both canonical and authored order");
+        row.cases.reverse();
+        row.shape = EnumShape::new(ordered, row.cases.iter().map(|case| case.variant.clone()));
+        let error = join(&row, &mut budget)
+            .expect_err("permuting both channels cannot change admitted ranks");
+        assert_eq!(
+            error.code,
+            ExactTypeProjectionErrorCode::MismatchedIdentityWitness,
+            "ordered={ordered}"
+        );
+        assert_eq!(budget.last_success_delta(), None);
+    }
+
+    let (package, mut row, declarations, members) = runtime_fixture_with(|_, domain| {
+        let tier = domain["types"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|ty| ty["identity"] == "ix://example/config-version/Tier")
+            .unwrap();
+        tier["variants"].as_array_mut().unwrap().reverse();
+    });
+    let mut budget = NativeJoinBudget::new(u64::MAX, u64::MAX);
+    let join = |row: &SelectedModelEnumShapeRow, budget: &mut NativeJoinBudget| {
+        runtime_identities(&package, budget).with_admitted_model_enum_rows(
+            &package,
+            SelectedModelEnumRows {
+                declarations: &declarations,
+                members: &members,
+                shapes: std::slice::from_ref(row),
+            },
+            budget,
+        )
+    };
+    join(&row, &mut budget)
+        .expect("unordered cases keep UTF-8 order even when authored in reverse");
+    row.shape = EnumShape::new(true, row.cases.iter().map(|case| case.variant.clone()));
+    assert_eq!(
+        join(&row, &mut budget).unwrap_err().code,
+        ExactTypeProjectionErrorCode::MismatchedIdentityWitness
+    );
+    row.cases.reverse();
+    row.shape = EnumShape::new(true, row.cases.iter().map(|case| case.variant.clone()));
+    let identities = join(&row, &mut budget)
+        .expect("ordered cases preserve the selected document's authored positions");
+    let projected = package
+        .project_exact_type(&row.structural_node, &identities, &mut budget)
+        .unwrap();
+    assert_eq!(projected.value_type(), &ValueType::Enum(row.shape));
+}
+
+#[trace("FR-358-AC-3", "FR-354-AC-1", "FR-354-AC-7", "FR-352-AC-30")]
+#[test]
+fn model_enum_runtime_field_copies_pay_for_every_variant_and_case_byte() {
+    use crate::SelectedModelEnumRows;
+    let (package, row, declarations, members) = runtime_fixture();
+    let mut setup = NativeJoinBudget::new(u64::MAX, u64::MAX);
+    let identities = runtime_identities(&package, &mut setup)
+        .with_admitted_model_enum_rows(
+            &package,
+            SelectedModelEnumRows {
+                declarations: &declarations,
+                members: &members,
+                shapes: std::slice::from_ref(&row),
+            },
+            &mut setup,
+        )
+        .unwrap();
+    let (position, _) = package.node_with_position(&row.structural_node).unwrap();
+    let read = |budget: &mut NativeJoinBudget| {
+        budget.set_active_locus(Some(crate::NativeJoinLocus {
+            source: crate::NativeJoinLocusSource::GraphNode(position),
+            form: "enum_field_copy",
+        }));
+        (0..3)
+            .map(|_| {
+                project_record_field_type(
+                    &package,
+                    &identities,
+                    &MemberType::Variant(row.structural_node.clone()),
+                    &row.structural_node,
+                    budget,
+                )
+            })
+            .collect::<Result<Vec<_>, _>>()
+    };
+    // Each copy inspects two variants and 12 case bytes: 16 work units.
+    // Storage owns one ValueType, one vector, two variant slots, two strings
+    // and 12 string bytes: 18 units. Three fields must pay this three times.
+    let mut ample = NativeJoinBudget::new(u64::MAX, u64::MAX);
+    let values = read(&mut ample).unwrap();
+    assert_eq!(values, vec![ValueType::Enum(row.shape.clone()); 3]);
+    assert_eq!(
+        ample.consumed(),
+        NativeJoinCharge {
+            work: 48,
+            storage: 54
+        }
+    );
+    let mut exact = NativeJoinBudget::new(48, 54);
+    assert_eq!(read(&mut exact).unwrap(), values);
+    for (work, storage, kind) in [
+        (47, 54, NativeJoinChargeKind::Work),
+        (48, 53, NativeJoinChargeKind::Storage),
+    ] {
+        let mut short = NativeJoinBudget::new(work, storage);
+        let error =
+            read(&mut short).expect_err("a one-short budget cannot return all three field types");
+        assert_eq!(error.denied.unwrap().kind, kind);
+        assert_eq!(short.last_success_delta(), None);
+        let locus = short.first_unpaid_locus().unwrap();
+        assert_eq!(
+            locus.source,
+            crate::NativeJoinLocusSource::GraphNode(position)
+        );
+        assert_eq!(
+            locus.form,
+            match kind {
+                NativeJoinChargeKind::Work => "native_enum_footprint",
+                NativeJoinChargeKind::Storage => "record_field_variant",
+            }
+        );
+    }
+}
