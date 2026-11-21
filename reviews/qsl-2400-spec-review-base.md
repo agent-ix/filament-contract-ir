@@ -36,3 +36,7 @@ PASS for the changed specification text. Implementation defects and missing beha
 Checked identifier uniqueness, existing structured upstream relationships, exact refusal codes/paths, source validation order, byte-name scope order, semantic carrier ownership, breakage notice and computed new-criterion tags. The change consumes the existing upstream value-object contract rather than creating a new domain object, endpoint, dependency relationship, requirement statement or system boundary; separate object, dependency, EARS and scope-boundary artifacts are not applicable. No active AssuranceProfile applies. Criterion-strength/Jev was not selected or run. No new file-tracking, digest ledger, duplicated normative vocabulary, or tool pin is introduced.
 
 quire validate of both changed specification files exits 0. It emits four existing non-canonical-shape warnings elsewhere in FR-038 (lines 6722, 6864, 6875 and 6876), outside this diff. These were not edited or hidden. Matrix and source evidence limitations are recorded in the gap artifact.
+
+## Round 1 verification
+
+PASS at f23a39ec8693f1b0d32b68794c18db1262252b20. Original review and placeholder are unchanged; this method had no defect requiring disposition. The additive rebase preserves FR-038-AC-595 together with AC-598/599, and FR-019 retains the ClaimNameRow source_unit API notice. No new specification finding was identified. Code and gap dispositions are recorded in their own unchanged-id artifacts. Final compact-body API integration remains with the coordinator.
