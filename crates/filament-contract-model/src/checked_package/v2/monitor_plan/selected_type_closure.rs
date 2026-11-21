@@ -49,6 +49,8 @@ pub struct SelectedMonitorClosureRows<'a> {
     pub model_enum_members: &'a [SelectedModelEnumMemberRow],
     /// Complete selected model enum shapes.
     pub model_enum_shapes: &'a [SelectedModelEnumShapeRow],
+    /// Complete selected model-union witness rows, joined after the model tuples.
+    pub model_unions: &'a [crate::SelectedModelUnionRow],
     /// Complete selected source records.
     pub source_records: &'a [SelectedSourceRecordRow],
     /// Complete selected source tuples.
@@ -710,6 +712,7 @@ impl<'a> CheckedMonitorPlanRef<'a> {
                         enum_declarations: rows.model_enum_declarations,
                         enum_members: rows.model_enum_members,
                         enum_shapes: rows.model_enum_shapes,
+                        model_unions: rows.model_unions,
                     },
                     budget,
                 )

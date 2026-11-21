@@ -254,10 +254,11 @@ pub use protocol_correlation::{
     ProtocolCorrelationRow, ProtocolCorrelationTable, UnavailableCorrelationProvenance,
 };
 pub use exact_projection::{
-    ExactTypeProjection, ExactTypeProjectionError, ExactTypeProjectionErrorCode,
+    ExactTypeProjection, ExactTypeProjectionError, ExactTypeProjectionErrorCode, ModelUnionScope,
     SelectedEnumDeclarationRow, SelectedEnumMemberRow, SelectedExactDeclarationForm,
     SelectedExactDeclarationRow, SelectedExactFieldRow, SelectedExactIdentities,
-    SelectedExactIdentity, SelectedRecordFieldView, SelectedRecordView,
+    SelectedExactIdentity, SelectedModelUnionCaseRow, SelectedModelUnionPayload,
+    SelectedModelUnionRow, SelectedRecordFieldView, SelectedRecordView,
     SelectedSourceCollectionRow, SelectedSourceEnumRow, SelectedSourceRecordMemberRow,
     SelectedSourceRecordRow, SelectedSourceTupleRow, SelectedSourceUnionRow, SelectedSourceUnitRow,
     SelectedTupleDeclarationRow, SelectedTuplePositionRow, SelectedUnionClockPayloadRow,
