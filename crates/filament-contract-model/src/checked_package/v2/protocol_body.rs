@@ -491,7 +491,7 @@ fn named_fields<'a, const N: usize>(
     let mut values = [term; N];
     for ((slot, field), expected) in values.iter_mut().zip(fields).zip(names) {
         match field {
-            CheckedTerm::Binding { name, value } if name.as_ref() == *expected => {
+            CheckedTerm::Binding { name, value, .. } if name.as_ref() == *expected => {
                 *slot = value.as_ref();
             }
             _ => return None,
@@ -563,7 +563,7 @@ fn clause_activation_fits(term: &CheckedTerm) -> bool {
     let Some(fields) = members(term) else {
         return false;
     };
-    let Some(CheckedTerm::Binding { name, value }) = fields.first() else {
+    let Some(CheckedTerm::Binding { name, value, .. }) = fields.first() else {
         return false;
     };
     if name.as_ref() != "kind" {
@@ -712,7 +712,7 @@ fn group_fields_fit(term: &CheckedTerm, fields: &[(&str, Shape)]) -> bool {
     members(term).is_some_and(|values| {
         values.len() == fields.len()
             && values.iter().zip(fields).all(|(value, (name, shape))| {
-                matches!(value, CheckedTerm::Binding { name: actual, value }
+                matches!(value, CheckedTerm::Binding { name: actual, value, .. }
                     if actual.as_ref() == *name && shape_fits(value, *shape))
             })
     })
@@ -1042,7 +1042,7 @@ fn validate_envelope<'a>(
 fn role_tail_fits(tail: &[CheckedTerm]) -> bool {
     match tail {
         [] => true,
-        [member] => matches!(member, CheckedTerm::Binding { name, value }
+        [member] => matches!(member, CheckedTerm::Binding { name, value, .. }
             if name.as_ref() == "model_member" && shape_fits(value, Shape::Group)),
         _ => false,
     }
@@ -1109,7 +1109,7 @@ fn validate_layout(
             .iter()
             .zip(&expected[..arguments.len()])
             .all(|(argument, binding)| {
-                matches!(argument, CheckedTerm::Binding { name, value }
+                matches!(argument, CheckedTerm::Binding { name, value, .. }
                     if name.as_ref() == binding.name && shape_fits(value, binding.shape))
             });
     if (arguments.len() != expected.len() && !optional_role_member) && !optional_repeat_test
@@ -1118,7 +1118,7 @@ fn validate_layout(
             .take(expected.len())
             .zip(expected)
             .all(|(argument, binding)| {
-                matches!(argument, CheckedTerm::Binding { name, value }
+                matches!(argument, CheckedTerm::Binding { name, value, .. }
                 if name.as_ref() == binding.name && shape_fits(value, binding.shape))
             })
     {
@@ -1500,6 +1500,7 @@ pub(super) fn binding_value<'a>(
         CheckedTerm::Binding {
             name: actual,
             value,
+            ..
         } if actual.as_ref() == name => Some(value.as_ref()),
         _ => None,
     })
@@ -4885,7 +4886,7 @@ impl<'a, 'b> ProtocolScope<'a, 'b> {
                         meter.push(&mut pending, SlotWalk::Term(body, scope))?;
                     }
                 }
-                SlotWalk::Bind(CheckedTerm::Binding { name, value }, scope) => {
+                SlotWalk::Bind(CheckedTerm::Binding { name, value, .. }, scope) => {
                     let scope = Some(locals.bind(scope, name.as_ref(), meter)?);
                     if matches!(value.as_ref(), CheckedTerm::Binding { .. }) {
                         meter.push(&mut pending, SlotWalk::Bind(value, scope))?;
@@ -4913,7 +4914,7 @@ impl<'a, 'b> ProtocolScope<'a, 'b> {
                             .and_then(|id| self.check.catalog.entry(id))
                             .filter(|entry| entry.operator == *operator);
                         if entry.is_some() && *operator == ApplicationOperator::Let {
-                            if let [CheckedTerm::Binding { name, value }, body] =
+                            if let [CheckedTerm::Binding { name, value, .. }, body] =
                                 arguments.as_slice()
                             {
                                 let inner = Some(locals.bind(scope, name.as_ref(), meter)?);

@@ -166,6 +166,11 @@ fn binding(name: &str, value: Value) -> Value {
     json!({"term": "binding", "name": name, "value": value})
 }
 
+/// The binding term of a `let`, carrying the `NodeRef` of its binder.
+fn let_binding(name: &str, binder: &str, value: Value) -> Value {
+    json!({"term": "binding", "name": name, "binder": node_id(binder), "value": value})
+}
+
 fn reference(key: &str) -> Value {
     json!({"term": "reference", "target": node_id(key)})
 }
@@ -221,7 +226,13 @@ fn targets(term: &Value, out: &mut BTreeSet<String>) {
                 targets(member, out);
             }
         }
-        Some("binding") => targets(&term["value"], out),
+        Some("binding") => {
+            // FR-322 "The binder link": a binding's `binder` is a dependency.
+            if let Some(binder) = term.get("binder") {
+                out.insert(label_of(binder));
+            }
+            targets(&term["value"], out);
+        }
         _ => {}
     }
 }
@@ -2218,7 +2229,7 @@ fn let_case(bound: &Ty, binder: &Ty, result: &Ty, parameter: Option<&Ty>, at_cal
         member: Value::Null,
         semantic: &result,
         result: &result,
-        arguments: vec![binding("y", reference(&x)), body],
+        arguments: vec![let_binding("y", &y, reference(&x)), body],
     });
     let at = if at_call {
         call_key.unwrap_or(key)
@@ -2266,7 +2277,7 @@ fn let_record_case(binder: &'static str, bound: &str) -> Case {
         member: Value::Null,
         semantic: &money,
         result: &money,
-        arguments: vec![binding("y", reference(&value)), reference(&r)],
+        arguments: vec![let_binding("y", &r, reference(&value)), reference(&r)],
     });
     scene.finish().at(&key)
 }
@@ -2278,13 +2289,10 @@ enum Expect {
     Mismatch,
     /// `ill_typed`/`operator-ineligible` at `tail` below the node under test.
     Ineligible(&'static str),
-    /// FR-322 requires a refusal at the `let` binder, and this reader cannot
-    /// make it: the `let` application carries no node id for its binder.
-    Unenforced,
 }
 
-/// The twenty packages of FSpec FR-322-AC-495 to FR-322-AC-502 (`IC-01` to
-/// `IC-20`), each built here and read below. A vector file can be serialized
+/// The twenty-one packages of FSpec FR-322-AC-495 to FR-322-AC-502 and
+/// FR-322-AC-512 (`IC-01` to `IC-21`), each built here and read below. A vector file can be serialized
 /// from this list: `Case.package` is the wire package of each.
 fn ic_vectors() -> Vec<(&'static str, Case, Expect)> {
     let (nine, ten, eight) = (Ty::Range(0, 9), Ty::Range(0, 10), Ty::Range(0, 8));
@@ -2351,7 +2359,7 @@ fn ic_vectors() -> Vec<(&'static str, Case, Expect)> {
         (
             "IC-15",
             let_case(&thousand, &almost, &Ty::Boolean, Some(&almost), false),
-            Expect::Unenforced,
+            Expect::Ineligible(""),
         ),
         (
             "IC-16",
@@ -2378,7 +2386,255 @@ fn ic_vectors() -> Vec<(&'static str, Case, Expect)> {
             let_record_case("Money", "mint_taxed"),
             Expect::Admitted,
         ),
+        (
+            "IC-21",
+            let_unread_case(&thousand, &almost),
+            Expect::Ineligible(""),
+        ),
     ]
+}
+
+/// IC-21: `let y: <binder> = x in true` over `x: <bound>`; the body never
+/// reads the binder, so only its link finds it.
+fn let_unread_case(bound: &Ty, binder: &Ty) -> Case {
+    let mut scene = ledger_scene();
+    let x = scene.param("x", bound);
+    let y = scene.param("y", binder);
+    let body = truth(&mut scene);
+    let boolean = scene.ty(&Ty::Boolean);
+    let key = scene.application(App {
+        tag: "expression",
+        form: "let",
+        operator: "let",
+        identity: "filament.op.control.let",
+        member: Value::Null,
+        semantic: &boolean,
+        result: &boolean,
+        arguments: vec![let_binding("y", &y, reference(&x)), reference(&body)],
+    });
+    scene.finish().at(&key)
+}
+
+/// `Case::package`'s `filament.op.control.let` node, edited by `edit`.
+fn edit_let(case: &mut Case, edit: impl FnOnce(&mut Value)) {
+    let nodes = case.package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes");
+    let node = nodes
+        .iter_mut()
+        .find(|node| node["body"]["operation"]["identity"] == "filament.op.control.let")
+        .expect("a let node");
+    edit(node);
+}
+
+/// IC-14 as built, whose `let` is the node under test.
+fn ic_14_let() -> Case {
+    let thousand = Ty::Range(0, 1000);
+    let mut case = let_case(
+        &thousand,
+        &Ty::Integer,
+        &Ty::Boolean,
+        Some(&Ty::Integer),
+        false,
+    );
+    let position = case.package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .position(|node| node["body"]["operation"]["identity"] == "filament.op.control.let")
+        .expect("a let node");
+    case.node = position;
+    case
+}
+
+#[trace("TC-492", "FR-038-AC-595")]
+#[test]
+fn tc_492_ic_21_an_unread_narrow_binder_is_refused() {
+    let thousand = Ty::Range(0, 1000);
+    let almost = Ty::Range(0, 999);
+    let_unread_case(&thousand, &almost).ineligible("IC-21", "");
+    let_unread_case(&thousand, &thousand).admits("an unread binder of its value's type");
+    let_unread_case(&thousand, &Ty::Integer).admits("an unread Integer binder");
+    let_unread_case(&almost, &thousand).admits("an unread wider binder");
+}
+
+#[trace("TC-492", "FR-038-AC-595")]
+#[test]
+fn tc_492_the_let_binder_link_is_checked() {
+    ic_14_let().admits("IC-14 carries its binder link");
+    let invalid = |case: &Case, label: &str, tail: &str| {
+        case.refuses(label, Code::InvalidPackage, Cause::InvalidValue, tail);
+    };
+
+    let mut missing = ic_14_let();
+    edit_let(&mut missing, |node| {
+        let binder = node["body"]["arguments"][0]
+            .as_object_mut()
+            .expect("binding")
+            .remove("binder");
+        // The join then names no binder either.
+        node["dependencies"]
+            .as_array_mut()
+            .expect("dependencies")
+            .retain(|dependency| Some(dependency) != binder.as_ref());
+    });
+    invalid(&missing, "binder removed", "/body/arguments/0");
+
+    let mut misnamed = ic_14_let();
+    {
+        let mut scene = ledger_scene();
+        let z = scene.param("z", &Ty::Integer);
+        let nodes = scene.finish().package["semantic_graph"]["nodes"].clone();
+        let z = nodes
+            .as_array()
+            .expect("nodes")
+            .iter()
+            .find(|node| node["node_id"] == node_id(&z))
+            .expect("z")
+            .clone();
+        let id = z["node_id"].clone();
+        misnamed.package["semantic_graph"]["nodes"]
+            .as_array_mut()
+            .expect("nodes")
+            .push(z);
+        edit_let(&mut misnamed, |node| {
+            let old = node["body"]["arguments"][0]["binder"].clone();
+            node["body"]["arguments"][0]["binder"] = id.clone();
+            let dependencies = node["dependencies"].as_array_mut().expect("dependencies");
+            dependencies.retain(|dependency| *dependency != old);
+            dependencies.push(id);
+        });
+    }
+    invalid(&misnamed, "binder named z", "/body/arguments/0/binder");
+
+    let mut unlisted = ic_14_let();
+    edit_let(&mut unlisted, |node| {
+        let binder = node["body"]["arguments"][0]["binder"].clone();
+        node["dependencies"]
+            .as_array_mut()
+            .expect("dependencies")
+            .retain(|dependency| *dependency != binder);
+    });
+    invalid(
+        &unlisted,
+        "binder outside dependencies",
+        "/body/arguments/0/binder",
+    );
+
+    let mut not_a_parameter = ic_14_let();
+    edit_let(&mut not_a_parameter, |node| {
+        let target = node["body"]["arguments"][0]["value"]["target"].clone();
+        let old = std::mem::replace(&mut node["body"]["arguments"][0]["binder"], target);
+        node["dependencies"]
+            .as_array_mut()
+            .expect("dependencies")
+            .retain(|dependency| *dependency != old);
+    });
+    invalid(
+        &not_a_parameter,
+        "binder names a non-binder",
+        "/body/arguments/0/binder",
+    );
+
+    let mut dangling = ic_14_let();
+    edit_let(&mut dangling, |node| {
+        let old = std::mem::replace(
+            &mut node["body"]["arguments"][0]["binder"],
+            node_id("value/parameter/absent"),
+        );
+        node["dependencies"]
+            .as_array_mut()
+            .expect("dependencies")
+            .retain(|dependency| *dependency != old);
+    });
+    invalid(
+        &dangling,
+        "binder names no node",
+        "/body/arguments/0/binder",
+    );
+}
+
+#[trace("TC-492", "FR-038-AC-595")]
+#[test]
+fn tc_492_a_read_of_another_same_named_binder_is_refused() {
+    let mut case = ic_14_let();
+    let wire = case.package.clone();
+    let nodes = wire["semantic_graph"]["nodes"].as_array().expect("nodes");
+    let call = nodes
+        .iter()
+        .position(|node| node["body"]["operation"]["identity"] == "filament.op.function.call")
+        .expect("the call");
+    let binder = nodes
+        .iter()
+        .find(|node| node["node_id"] == nodes[case.node]["body"]["arguments"][0]["binder"])
+        .expect("the binder")
+        .clone();
+    // A second `y` at the binder's level. (Another type at the call's
+    // `Integer` parameter would meet the call's own refusal first.)
+    let mut other = binder.clone();
+    other["node_id"] = node_id("value/parameter/y-other");
+    case.package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .push(other);
+    let call_id = nodes[call]["node_id"].clone();
+    let old_binder = binder["node_id"]["path"][0]
+        .as_str()
+        .expect("key")
+        .to_owned();
+    let graph = case.package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes");
+    let call_node = graph
+        .iter_mut()
+        .find(|node| node["node_id"] == call_id)
+        .expect("the call");
+    call_node["body"]["arguments"][1]["target"] = node_id("value/parameter/y-other");
+    let dependencies = call_node["dependencies"]
+        .as_array_mut()
+        .expect("dependencies");
+    dependencies.retain(|dependency| *dependency != node_id(&old_binder));
+    dependencies.push(node_id("value/parameter/y-other"));
+    let CheckedPackageV2ReadResult::Refused(refusal) = case.read() else {
+        panic!("a read of another same-named binder must be refused");
+    };
+    assert_eq!(
+        (refusal.code, refusal.cause),
+        (Code::InvalidPackage, Some(Cause::InvalidValue)),
+        "{refusal:?}"
+    );
+    let expected = format!("/semantic_graph/nodes/{call}/body/arguments/1");
+    assert_eq!(
+        refusal.loci[0].path,
+        Some(pointer(&expected)),
+        "{refusal:?}"
+    );
+}
+
+#[trace("TC-492", "FR-038-AC-595")]
+#[test]
+fn tc_492_a_binder_on_another_binding_is_refused() {
+    let mut case = ic_14_let();
+    let node = case.node;
+    let binder =
+        case.package["semantic_graph"]["nodes"][node]["body"]["arguments"][0]["binder"].clone();
+    // The call's callee function node: its `parameters` binding.
+    let nodes = case.package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes");
+    let (position, function) = nodes
+        .iter_mut()
+        .enumerate()
+        .find(|(_, node)| node["node_tag"] == "function")
+        .expect("g");
+    function["body"]["members"][0]["binder"] = binder;
+    case.node = position;
+    case.refuses(
+        "binder on a function body binding",
+        Code::InvalidPackage,
+        Cause::InvalidValue,
+        "/body/members/0/binder",
+    );
 }
 
 #[trace(
@@ -2395,9 +2651,6 @@ fn tc_492_the_ic_vectors_read_as_fspec_specifies() {
             Expect::Admitted => case.admits(id),
             Expect::Mismatch => case.mismatch(id),
             Expect::Ineligible(tail) => case.ineligible(id, tail),
-            // Today's admission, pinned so the FR-322 binder change that makes
-            // the refusal flips this test on purpose.
-            Expect::Unenforced => case.admits(id),
         }
     }
 }

@@ -5239,6 +5239,23 @@ fn clause_leaf_seq(shape: Shape, mut package: Value) -> Value {
         counted,
         parameter("s", 1),
     );
+    // The `fold` step form binds an integer value, not the sequence.
+    add(
+        &mut package,
+        "seq-let-binder-int",
+        "value",
+        "parameter",
+        &integer,
+        parameter("s", 1),
+    );
+    add(
+        &mut package,
+        "seq-t-binder",
+        "value",
+        "parameter",
+        &boolean,
+        parameter("t", 1),
+    );
     let seq_operation = json!({"identity": "filament.op.collection.seq", "laws": [], "mode": null,
         "member": {"kind": "type_argument", "declaration": node_id(range)}, "leaves": []});
     add(
@@ -5267,7 +5284,8 @@ fn clause_leaf_seq(shape: Shape, mut package: Value) -> Value {
             json!({
             "term": "application", "operator": "let", "operation": let_operation.clone(),
             "result_type": node_id(counted), "arguments": [
-                {"term": "binding", "name": "t", "value": refer(&family_key("dddd"))},
+                {"term": "binding", "name": "t", "binder": node_id("seq-t-binder"),
+                 "value": refer(&family_key("dddd"))},
                 refer("seq-application")]}),
         );
     }
@@ -5281,6 +5299,7 @@ fn clause_leaf_seq(shape: Shape, mut package: Value) -> Value {
         "term": "application", "operator": "let", "operation": let_operation,
         "result_type": node_id(&boolean), "arguments": [
             {"term": "binding", "name": "s",
+             "binder": node_id(if matches!(wrap, Wrap::Step(_)) { "seq-let-binder-int" } else { "seq-let-binder" }),
              "value": refer(if wrap == Wrap::Bare { "seq-application" } else { "seq-inner" })},
             refer(&family_key("dddd"))]}),
     );

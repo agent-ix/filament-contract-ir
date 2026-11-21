@@ -4107,10 +4107,12 @@ fn binder_signature(
 
 fn bound_reference<'a>(arguments: &'a [CheckedTerm], field: &str) -> Option<&'a CheckedNodeId> {
     arguments.iter().find_map(|argument| match argument {
-        CheckedTerm::Binding { name, value } if name.as_ref() == field => match value.as_ref() {
-            CheckedTerm::Reference { target } => Some(target),
-            _ => None,
-        },
+        CheckedTerm::Binding { name, value, .. } if name.as_ref() == field => {
+            match value.as_ref() {
+                CheckedTerm::Reference { target } => Some(target),
+                _ => None,
+            }
+        }
         _ => None,
     })
 }

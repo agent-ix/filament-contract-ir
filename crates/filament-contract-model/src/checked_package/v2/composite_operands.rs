@@ -684,7 +684,9 @@ fn bound(
     let term = members
         .iter()
         .find_map(|member| match member {
-            CheckedTerm::Binding { name: found, value } if found.as_ref() == name => Some(value),
+            CheckedTerm::Binding {
+                name: found, value, ..
+            } if found.as_ref() == name => Some(value),
             _ => None,
         })
         .ok_or_else(malformed)?;
@@ -957,7 +959,7 @@ fn next_edge(
     let (target, name, optional_presence) = match frame.kind {
         K::CompositeType(CompositeTypeForm::Record) => {
             let member = members.and_then(|m| m.get(index)).ok_or_else(malformed)?;
-            let CheckedTerm::Binding { name, value } = member else {
+            let CheckedTerm::Binding { name, value, .. } = member else {
                 return Err(malformed());
             };
             let name = meter.text(name.as_ref())?;
@@ -1180,7 +1182,7 @@ fn closed_narrow(
     let mut endpoints = Vec::with_capacity(2);
     for (term, expected) in members.iter().zip(["min", "max"]) {
         meter.charge(1)?;
-        let CheckedTerm::Binding { name, value } = term else {
+        let CheckedTerm::Binding { name, value, .. } = term else {
             return Err(range_error());
         };
         meter.charge(1)?;

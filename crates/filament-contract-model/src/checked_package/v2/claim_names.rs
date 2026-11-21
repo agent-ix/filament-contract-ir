@@ -366,7 +366,7 @@ pub(super) fn body_wrappers(
         let target = members
             .iter()
             .filter_map(|member| match member {
-                CheckedTerm::Binding { name, value } if name.as_ref() == "body" => {
+                CheckedTerm::Binding { name, value, .. } if name.as_ref() == "body" => {
                     typed_admitted_reference(value)
                 }
                 _ => None,

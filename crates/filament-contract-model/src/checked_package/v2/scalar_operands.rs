@@ -406,12 +406,12 @@ fn type_range<Body: ScalarBody>(
     };
     let endpoint = |name: &str| {
         let text = members.iter().find_map(|member| match member {
-            CheckedTerm::Binding { name: found, value } if found.as_ref() == name => {
-                match value.as_ref() {
-                    CheckedTerm::Literal { value, .. } => value.as_str(),
-                    _ => None,
-                }
-            }
+            CheckedTerm::Binding {
+                name: found, value, ..
+            } if found.as_ref() == name => match value.as_ref() {
+                CheckedTerm::Literal { value, .. } => value.as_str(),
+                _ => None,
+            },
             _ => None,
         });
         text.ok_or(Error::MissingRange)?

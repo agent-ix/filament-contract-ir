@@ -634,6 +634,7 @@ mod tests {
         };
         let maximum = CheckedTerm::Binding {
             name: "max".into(),
+            binder: None,
             value: Box::new(CheckedTerm::Literal {
                 type_id: integer,
                 value_kind: LiteralKind::Integer,
@@ -683,6 +684,7 @@ mod tests {
         };
         let binding = |name: &str, value| CheckedTerm::Binding {
             name: name.into(),
+            binder: None,
             value: Box::new(value),
         };
         let aggregate = |members| CheckedTerm::Aggregate { members };

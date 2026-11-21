@@ -1597,7 +1597,7 @@ fn monitor_plan_event_position_is_the_exact_final_integer_field() {
     let CheckedTerm::Aggregate { members } = body else {
         panic!("State record")
     };
-    let CheckedTerm::Binding { name, value } = members.last().unwrap() else {
+    let CheckedTerm::Binding { name, value, .. } = members.last().unwrap() else {
         panic!("final field")
     };
     assert_eq!(name.as_ref(), "event_position");

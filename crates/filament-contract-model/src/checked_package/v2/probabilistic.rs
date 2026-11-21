@@ -294,6 +294,7 @@ fn bind<'a, const N: usize>(
             Some(TermView::Binding {
                 name: actual,
                 value,
+                ..
             }) if actual == name => {
                 bound[index] = (value, member_at.key("value"));
             }

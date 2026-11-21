@@ -544,7 +544,7 @@ fn source_union_row_matches(package: &CheckedPackageV2, row: &SelectedSourceUnio
                     .iter()
                     .zip(&row.members)
                     .all(|(admitted, supplied)| {
-                        let CheckedTerm::Binding { name, value } = admitted else {
+                        let CheckedTerm::Binding { name, value, .. } = admitted else {
                             return false;
                         };
                     name.as_ref() == supplied.member.identifier()
@@ -762,7 +762,7 @@ fn source_record_row_matches(package: &CheckedPackageV2, row: &SelectedSourceRec
                     .filter(|member| member.type_node.is_some()),
             )
             .all(|(binding, supplied)| {
-                let CheckedTerm::Binding { name, value } = binding else {
+                let CheckedTerm::Binding { name, value, .. } = binding else {
                     return false;
                 };
                 if supplied.original_member_identity.is_empty()
@@ -774,7 +774,7 @@ fn source_record_row_matches(package: &CheckedPackageV2, row: &SelectedSourceRec
                 let (optional, target) = match value.as_ref() {
                     CheckedTerm::Reference { target } => (false, target),
                     CheckedTerm::Aggregate { members } => {
-                        let [CheckedTerm::Binding { name, value }] = members.as_slice() else {
+                        let [CheckedTerm::Binding { name, value, .. }] = members.as_slice() else {
                             return false;
                         };
                         if name.internal_kind() != super::TermBindingName::Optional {

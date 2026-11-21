@@ -88,6 +88,7 @@ fn map_keeps_both_ordered_type_operands() {
         let CheckedTerm::Binding {
             name: actual,
             value,
+            ..
         } = &members[ordinal]
         else {
             panic!("binding");

@@ -230,7 +230,7 @@ fn function_body<'a>(
     let mut clause = None;
     for member in members {
         budget.charge(node)?;
-        let CheckedTerm::Binding { name, value } = member else {
+        let CheckedTerm::Binding { name, value, .. } = member else {
             return Err(budget.error(CheckedCallableReadErrorCode::MalformedBody, node));
         };
         match name.kind() {
@@ -724,6 +724,7 @@ mod tests {
             .body = CheckedTerm::Aggregate {
             members: vec![CheckedTerm::Binding {
                 name: "body".into(),
+                binder: None,
                 value: Box::new(CheckedTerm::Reference {
                     target: node_id('9'),
                 }),
@@ -747,6 +748,7 @@ mod tests {
         let malformed = |target| CheckedTerm::Aggregate {
             members: vec![CheckedTerm::Binding {
                 name: "body".into(),
+                binder: None,
                 value: Box::new(CheckedTerm::Reference { target }),
             }],
         };
@@ -797,6 +799,7 @@ mod tests {
             members: vec![
                 CheckedTerm::Binding {
                     name: "parameters".into(),
+                    binder: None,
                     value: Box::new(CheckedTerm::Aggregate {
                         members: vec![CheckedTerm::Reference {
                             target: node_id('2'),
@@ -805,6 +808,7 @@ mod tests {
                 },
                 CheckedTerm::Binding {
                     name: "body".into(),
+                    binder: None,
                     value: Box::new(CheckedTerm::Reference {
                         target: node_id('3'),
                     }),

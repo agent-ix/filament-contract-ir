@@ -162,7 +162,7 @@ pub(super) fn validate<Body: EmptyAggregateBody>(
         let mut bindings: Vec<(&str, &CheckedNodeId)> =
             stage_storage::vec(meter, &site(position, at), clauses.len())?;
         for clause in clauses {
-            let CheckedTerm::Binding { name, value } = clause else {
+            let CheckedTerm::Binding { name, value, .. } = clause else {
                 return Err(fail(meter, position, Refusal::new(Code::MalformedWire, at)));
             };
             let CheckedTerm::Reference { target } = value.as_ref() else {
@@ -305,7 +305,7 @@ pub(super) fn validate<Body: EmptyAggregateBody>(
 
 pub(super) fn integer_range_bounds(term: &CheckedTerm) -> Option<(&str, &str)> {
     fn bound<'a>(term: &'a CheckedTerm, expected: &str) -> Option<&'a str> {
-        let CheckedTerm::Binding { name, value } = term else {
+        let CheckedTerm::Binding { name, value, .. } = term else {
             return None;
         };
         if name.as_ref() != expected {
@@ -634,6 +634,7 @@ mod tests {
                 node_kind: "open-kind".into(),
                 clauses: vec![CheckedTerm::Binding {
                     name: "subject".into(),
+                    binder: None,
                     value: Box::new(CheckedTerm::Reference {
                         target: node_id('1'),
                     }),
@@ -728,6 +729,7 @@ mod tests {
         fn range(&mut self) {
             let bound = |name: &str, text: &str| CheckedTerm::Binding {
                 name: name.into(),
+                binder: None,
                 value: Box::new(CheckedTerm::Literal {
                     type_id: node_id('0'),
                     value_kind: super::super::LiteralKind::Integer,

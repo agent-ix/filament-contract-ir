@@ -535,11 +535,9 @@ fn hyper_nodes<'t>(
         if let Some(Some(CheckedTerm::Aggregate { members })) = terms.get(position) {
             let bound = |name: &str| {
                 members.iter().find_map(|member| match member {
-                    CheckedTerm::Binding { name: found, value }
-                        if AsRef::<str>::as_ref(found) == name =>
-                    {
-                        Some(value.as_ref())
-                    }
+                    CheckedTerm::Binding {
+                        name: found, value, ..
+                    } if AsRef::<str>::as_ref(found) == name => Some(value.as_ref()),
                     _ => None,
                 })
             };
@@ -560,7 +558,7 @@ fn hyper_nodes<'t>(
                         continue;
                     };
                     let variable = members.iter().find_map(|member| match member {
-                        CheckedTerm::Binding { name, value }
+                        CheckedTerm::Binding { name, value, .. }
                             if AsRef::<str>::as_ref(name) == "variable" =>
                         {
                             match value.as_ref() {

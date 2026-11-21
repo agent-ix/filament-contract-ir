@@ -920,7 +920,7 @@ fn function_body_root(term: &CheckedTerm) -> Option<CheckedNodeId> {
         return None;
     };
     members.iter().find_map(|member| {
-        let CheckedTerm::Binding { name, value } = member else {
+        let CheckedTerm::Binding { name, value, .. } = member else {
             return None;
         };
         if !matches!(name.kind(), super::CheckedBindingNameKind::Body) {
@@ -1159,7 +1159,7 @@ fn member_value(term: &CheckedTerm) -> Option<&CheckedTerm> {
 }
 
 fn named_value<'a>(term: &'a CheckedTerm, expected: &str) -> Option<&'a CheckedTerm> {
-    let CheckedTerm::Binding { name, value } = term else {
+    let CheckedTerm::Binding { name, value, .. } = term else {
         return None;
     };
     matches!(name.kind(), super::CheckedBindingNameKind::Other(actual) if actual == expected)

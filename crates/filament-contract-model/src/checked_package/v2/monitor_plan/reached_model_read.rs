@@ -823,6 +823,7 @@ pub(in crate::checked_package::v2) fn genuine_bytes_under_current_rules(
 ) -> Vec<u8> {
     let mut package: serde_json::Value =
         serde_json::from_slice(committed).expect("committed genuine package");
+    fixture_support::link_let_binders(&mut package);
     fixture_support::rebuild_body_locations(&mut package);
     fixture_support::align_model_declarations(&mut package);
     fixture_support::canonical(&package)
@@ -2478,7 +2479,7 @@ mod tests {
                     let members = members
                         .iter()
                         .map(|term| {
-                            let CheckedTerm::Binding { name, value } = term else {
+                            let CheckedTerm::Binding { name, value, .. } = term else {
                                 panic!("record field")
                             };
                             let (presence, target) = match value.as_ref() {
@@ -2554,7 +2555,7 @@ mod tests {
                     let members = members
                         .iter()
                         .map(|term| {
-                            let CheckedTerm::Binding { name, value } = term else {
+                            let CheckedTerm::Binding { name, value, .. } = term else {
                                 panic!("union case")
                             };
                             let CheckedTerm::Aggregate { members } = value.as_ref() else {

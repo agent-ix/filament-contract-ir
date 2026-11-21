@@ -850,19 +850,26 @@ pub(super) fn validate_structural_nodes_with_keys(
             }
             continue;
         }
+        let mut binders = Vec::new();
         if let Some(expected) = match term {
-            Some(_) => application_dependencies_at(position, meter)?,
+            Some(_) => application_dependencies_split_at(position, meter, &mut binders)?,
             None => None,
         } {
             let mut listed: Vec<&CheckedNodeId> = meter.vec(expected.len())?;
             listed.extend(expected.iter());
-            if !dependency_order.matches(
-                &node.dependencies,
-                &listed,
-                index,
-                structural_keys,
-                meter,
-            )? {
+            let unbound: Vec<CheckedNodeId>;
+            let actual = if binders.is_empty() {
+                &node.dependencies
+            } else {
+                unbound = node
+                    .dependencies
+                    .iter()
+                    .filter(|id| !binders.contains(id) || expected.contains(id))
+                    .cloned()
+                    .collect();
+                &unbound
+            };
+            if !dependency_order.matches(actual, &listed, index, structural_keys, meter)? {
                 return Err(refuse(meter, Defect::Dependencies));
             }
         }
@@ -1647,7 +1654,9 @@ pub(super) fn typed_binding<'a>(
     name: &str,
 ) -> Option<&'a super::CheckedTerm> {
     match term {
-        super::CheckedTerm::Binding { name: found, value } if found.as_ref() == name => Some(value),
+        super::CheckedTerm::Binding {
+            name: found, value, ..
+        } if found.as_ref() == name => Some(value),
         _ => None,
     }
 }
@@ -2092,7 +2101,7 @@ pub(super) fn typed_union_type_body<'a>(
     };
     // Establish the closed shape without allocating partial output.
     for member in members {
-        let super::CheckedTerm::Binding { name, value } = member else {
+        let super::CheckedTerm::Binding { name, value, .. } = member else {
             return Ok(None);
         };
         if !is_identifier(name) {
@@ -2110,7 +2119,7 @@ pub(super) fn typed_union_type_body<'a>(
     }
     let mut output = meter.vec(members.len())?;
     for member in members {
-        let super::CheckedTerm::Binding { name, value } = member else {
+        let super::CheckedTerm::Binding { name, value, .. } = member else {
             unreachable!("shape checked above")
         };
         let entries = typed_aggregate(value).expect("shape checked above");
@@ -2133,7 +2142,7 @@ pub(super) fn typed_union_value_body(
     let [member] = typed_aggregate(body)? else {
         return None;
     };
-    let super::CheckedTerm::Binding { name, value } = member else {
+    let super::CheckedTerm::Binding { name, value, .. } = member else {
         return None;
     };
     if !is_identifier(name) {
@@ -2215,7 +2224,14 @@ pub(super) fn collect_application_dependencies(
                 meter.room(&mut pending, body.members.len())?;
                 pending.extend(&body.members);
             }
-            CheckedTerm::Binding { value, .. } => meter.push(&mut pending, value.as_ref())?,
+            CheckedTerm::Binding { binder, value, .. } => {
+                // FR-322 "The binder link": a `let` binding term's binder
+                // node is one of the application's dependencies.
+                if let Some(binder) = binder {
+                    meter.insert_id(join, binder)?;
+                }
+                meter.push(&mut pending, value.as_ref())?;
+            }
             // These bodies do not contribute local application dependencies.
             CheckedTerm::Literal { .. }
             | CheckedTerm::DependencyReference { .. }
@@ -2237,6 +2253,25 @@ pub(super) fn collect_application_dependencies(
 pub(super) fn application_dependencies_at(
     position: usize,
     meter: &mut WorkMeter,
+) -> Result<Option<Vec<CheckedNodeId>>, ValidationFailure> {
+    let mut binders = Vec::new();
+    let Some(mut join) = application_dependencies_split_at(position, meter, &mut binders)? else {
+        return Ok(None);
+    };
+    for binder in binders {
+        meter.insert_owned_id(&mut join, binder)?;
+    }
+    Ok(Some(join))
+}
+
+/// [`application_dependencies_at`] with each `let` binder of "The binder
+/// link" (FR-322) set apart in `binders` rather than joined: whether a
+/// binder is among the `dependencies` is the operation stage's refusal, at the
+/// `binder`, so the dependency join leaves the binder out of both sides.
+fn application_dependencies_split_at(
+    position: usize,
+    meter: &mut WorkMeter,
+    binders: &mut Vec<CheckedNodeId>,
 ) -> Result<Option<Vec<CheckedNodeId>>, ValidationFailure> {
     let Some((body, row)) = meter.body(position) else {
         return Ok(None);
@@ -2292,7 +2327,14 @@ pub(super) fn application_dependencies_at(
                 meter.room(&mut pending, members.len())?;
                 pending.extend(members);
             }
-            Some(TermView::Binding { value, .. }) => meter.push(&mut pending, value)?,
+            Some(TermView::Binding { binder, value, .. }) => {
+                if let Some(binder) = binder {
+                    if let Some(id) = meter.read_id(binder, row)?.valid() {
+                        meter.insert_owned_id(binders, id)?;
+                    }
+                }
+                meter.push(&mut pending, value)?;
+            }
             Some(TermView::Literal { .. }) | None => {}
         }
     }

@@ -263,7 +263,7 @@ fn timed_clause_admission_retains_one_anchor_occurrence_and_operation_urgency() 
         assert!(body.execution_point.is_none());
         assert!(matches!(
             &body.members[0],
-            CheckedTerm::Binding { name, value }
+            CheckedTerm::Binding { name, value, .. }
                 if name.as_ref() == "context"
                     && matches!(value.as_ref(), CheckedTerm::Reference { target } if target == &model_id)
         ));

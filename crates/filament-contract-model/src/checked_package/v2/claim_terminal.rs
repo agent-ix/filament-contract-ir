@@ -81,7 +81,7 @@ fn aggregate(term: &CheckedTerm) -> Option<&[CheckedTerm]> {
 
 fn binding_value<'a>(member: &'a CheckedTerm, expected: &str) -> Option<&'a CheckedTerm> {
     match member {
-        CheckedTerm::Binding { name, value } if name.as_ref() == expected => Some(value),
+        CheckedTerm::Binding { name, value, .. } if name.as_ref() == expected => Some(value),
         _ => None,
     }
 }
