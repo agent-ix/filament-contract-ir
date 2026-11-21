@@ -14616,7 +14616,7 @@ fn slot_let_fixture(initializer_reads_local: bool) -> (Value, usize) {
         "let",
         "filament.op.control.let",
         &boolean,
-        json!([{"term":"binding", "name":"slot_local", "value":initializer}, {"term":"reference", "target":local}]),
+        json!([{"term":"binding", "name":"slot_local", "binder":local, "value":initializer}, {"term":"reference", "target":local}]),
         Value::Null,
     );
     set_recovery_predicate(&mut package, compensation, &expression);
@@ -15141,7 +15141,7 @@ fn local_scope_is_nested_and_does_not_leak_through_a_shared_node() {
         "let",
         "filament.op.control.let",
         &boolean,
-        json!([{"term":"binding","name":"slot_inner","value":{"term":"reference","target":outer}},{"term":"reference","target":conjunction}]),
+        json!([{"term":"binding","name":"slot_inner","binder":inner,"value":{"term":"reference","target":outer}},{"term":"reference","target":conjunction}]),
         Value::Null,
     );
     package["semantic_graph"]["nodes"][first]["body"]["arguments"][1] =
@@ -15182,7 +15182,7 @@ fn same_name_let_cannot_launder_a_forward_protocol_capture() {
         "let",
         "filament.op.control.let",
         &ty,
-        json!([{"term":"binding","name":name,"value":initializer},{"term":"reference","target":binder}]),
+        json!([{"term":"binding","name":name,"binder":binder,"value":initializer},{"term":"reference","target":binder}]),
         Value::Null,
     );
     package["semantic_graph"]["nodes"][compensation]["body"]["arguments"][5]["value"]["members"]
@@ -15206,12 +15206,13 @@ fn unused_local_binding_does_not_hide_barred_initializer_model_state() {
         ["target"]
         .clone();
     let boolean = node_id(&family_key("aaaa"));
+    let shadow = clause_parameter(&mut package, "over", "9");
     let expression = slot_application(
         &mut package,
         "let",
         "filament.op.control.let",
         &boolean,
-        json!([{"term":"binding","name":"over","value":{"term":"reference","target":over}},{"term":"literal","type":boolean,"value_kind":"boolean","value":true}]),
+        json!([{"term":"binding","name":"over","binder":shadow,"value":{"term":"reference","target":over}},{"term":"literal","type":boolean,"value_kind":"boolean","value":true}]),
         Value::Null,
     );
     set_recovery_predicate(&mut package, compensation, &expression);

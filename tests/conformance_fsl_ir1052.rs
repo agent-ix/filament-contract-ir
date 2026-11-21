@@ -259,7 +259,7 @@ fn fsl_boolean_transition_readback_retains_typed_subject_inputs_and_result() {
     let bindings: Vec<_> = arguments
         .iter()
         .map(|argument| match argument {
-            CheckedTerm::Binding { name, value } => (name.as_ref(), &**value),
+            CheckedTerm::Binding { name, value, .. } => (name.as_ref(), &**value),
             other => panic!("transition argument is a typed binding: {other:?}"),
         })
         .collect();

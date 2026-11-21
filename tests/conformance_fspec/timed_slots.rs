@@ -250,7 +250,7 @@ fn every_published_guard_case_uses_the_strict_reader() {
                 "constraints",
             ] {
                 assert!(members.iter().any(|member| matches!(member,
-                    CheckedTerm::Binding { name: actual, value } if actual.as_ref() == name
+                    CheckedTerm::Binding { name: actual, value, .. } if actual.as_ref() == name
                         && matches!(value.as_ref(), CheckedTerm::Aggregate { members } if members.is_empty())
                 )), "{name}");
             }
@@ -651,6 +651,7 @@ fn the_ieee_operand_let_of_a_temporal_clause_body_is_admitted() {
     // part in a temporal clause.
     wire.as_object_mut().unwrap().remove("operation_effects");
     wire.as_object_mut().unwrap().remove("operation_bodies");
+    crate::support::checked_package::link_let_binders(&mut wire);
     let nodes = wire["semantic_graph"]["nodes"].as_array().unwrap();
     assert_eq!(nodes[12]["semantic_form"], "parameter");
     assert_eq!(

@@ -49,6 +49,9 @@ use filament_exact::{Integer, TextProfile};
 use serde::Deserialize;
 use std::rc::Rc;
 
+mod let_binders;
+use let_binders::BinderReads;
+
 /// One application node under validation, and pointers into its body.
 #[derive(Clone, Copy)]
 struct Application<'a> {
@@ -417,6 +420,7 @@ pub(super) fn validate_operations(
             return Err(failure);
         }
     }
+    let binder_reads = BinderReads::new(&graph, meter)?;
     // Select the first defect of this whole step by rebuilt structural key.
     // Comparing only defective entries keeps a valid deep chain linear in
     // its shared-key depth. An incomplete read cannot establish a first
@@ -426,6 +430,9 @@ pub(super) fn validate_operations(
         let node = &nodes[position];
         meter.at_node(position, super::graph_storage::node_form(&node.node_tag));
         let checked = (|| -> Result<(), ValidationFailure> {
+            if let Some(failure) = binder_reads.stray_defect(position, &graph, meter)? {
+                return Err(failure);
+            }
             if !matches!(
                 graph.terms.get(position).and_then(Option::as_ref),
                 Some(CheckedTerm::Application { .. })
@@ -459,6 +466,7 @@ pub(super) fn validate_operations(
                 OperationResolution {
                     catalog,
                     fast_index: Some(&flat_index),
+                    binder_reads: Some(&binder_reads),
                 },
                 meter,
                 &mut admitted_views,
@@ -1577,7 +1585,7 @@ fn sequence_function_level(
         let mut body = None;
         for member in members {
             work_at_path(meter, &application.read_node().key("node_id"), 1)?;
-            let CheckedTerm::Binding { name, value } = member else {
+            let CheckedTerm::Binding { name, value, .. } = member else {
                 continue;
             };
             match name.internal_kind() {
@@ -1675,7 +1683,7 @@ impl<'g> ClauseLeaves<'g> {
                 continue;
             };
             for member in members {
-                if let CheckedTerm::Binding { name, value } = member {
+                if let CheckedTerm::Binding { name, value, .. } = member {
                     if let (super::TermBindingName::Body, CheckedTerm::Reference { target }) =
                         (name.internal_kind(), value.as_ref())
                     {
@@ -1738,7 +1746,7 @@ impl<'g> ClauseLeaves<'g> {
         if let CheckedTerm::Aggregate { members } = activation {
             for member in members {
                 work_at_path(meter, &application.read_node().key("node_id"), 1)?;
-                if let CheckedTerm::Binding { name, value } = member {
+                if let CheckedTerm::Binding { name, value, .. } = member {
                     match name.as_ref() {
                         "trigger" => scope = scope.saturating_add(1),
                         "guard" => guard = Some(value.as_ref()),
@@ -1852,7 +1860,7 @@ fn check_sequence_bounds(
             upper.parse::<Integer>().ok()?,
         ))
     };
-    let [lower @ CheckedTerm::Reference { .. }, upper @ CheckedTerm::Reference { .. }, CheckedTerm::Binding { name, value }] =
+    let [lower @ CheckedTerm::Reference { .. }, upper @ CheckedTerm::Reference { .. }, CheckedTerm::Binding { name, value, .. }] =
         arguments.as_slice()
     else {
         return Ok(Some(refuse()));
@@ -1899,7 +1907,10 @@ fn check_sequence_bounds(
         let mut parameter_level = None;
         for member in members {
             work_at_path(meter, &application.read_node().key("node_id"), 1)?;
-            if let CheckedTerm::Binding { name: field, value } = member {
+            if let CheckedTerm::Binding {
+                name: field, value, ..
+            } = member
+            {
                 if let CheckedTerm::Literal { value, .. } = value.as_ref() {
                     match field.as_ref() {
                         "name" => parameter_name = value.as_str(),
@@ -1998,6 +2009,7 @@ fn check_sequence_bounds(
 struct OperationResolution<'a> {
     catalog: &'a OperationCatalog,
     fast_index: Option<&'a FlatWireIndex<'a>>,
+    binder_reads: Option<&'a BinderReads<'a>>,
 }
 
 /// The text of the `alias` label `member` carries, as `(package, node)`; the
@@ -2108,6 +2120,7 @@ fn operation_defect(
     let OperationResolution {
         catalog,
         fast_index,
+        binder_reads,
     } = resolution;
     let Graph {
         nodes,
@@ -2503,7 +2516,9 @@ fn operation_defect(
     if let Some(failure) = check_state_result(application, entry, graph) {
         return Ok(Some(failure));
     }
-    if let Some(failure) = check_control_result(application, &operation, graph, owners, meter)? {
+    if let Some(failure) =
+        check_control_result(application, &operation, graph, owners, binder_reads, meter)?
+    {
         return Ok(Some(failure));
     }
     if entry.member == Some(OperationMemberKind::Position) {
@@ -3869,7 +3884,7 @@ fn union_arms_hold(
         return Ok(false);
     }
     for (member, arm) in members.iter().zip(arms) {
-        let CheckedTerm::Binding { name, value } = arm else {
+        let CheckedTerm::Binding { name, value, .. } = arm else {
             return Ok(false);
         };
         if name.as_ref() != member.name {
@@ -4415,16 +4430,15 @@ fn admits_at_result(
 /// `filament.op.control.let` application's body are admitted at the
 /// application's `result_type` ([`admits_at_result`]); any other is
 /// `ill_typed`/`operator-ineligible` at the application. A term whose type
-/// node does not resolve takes no check. The `let` binder check of FR-322 is
-/// not made: the wire gives the `let` application no node id for its binder
-/// (its operand 0 is a `binding` of a name and a value term), and a binder
-/// is never found by name.
+/// node does not resolve takes no check. The `let` binder link and binder
+/// check of FR-322 are made first ([`check_let_binder`]).
 #[ix_trace_rs::string_edge]
 fn check_control_result(
     application: Application<'_>,
     operation: &OperationWire,
     graph: &Graph<'_>,
     owners: &ModelOwners<'_>,
+    binder_reads: Option<&BinderReads<'_>>,
     meter: &mut WorkMeter,
 ) -> Result<Option<ValidationFailure>, ValidationFailure> {
     let branches = match operation.identity.as_ref() {
@@ -4456,6 +4470,13 @@ fn check_control_result(
             CheckedPackageRefusalCause::OperatorIneligible,
         )
     };
+    if operation.identity.as_ref() == "filament.op.control.let" {
+        if let Some(failure) =
+            check_let_binder(application, arguments, graph, owners, binder_reads, meter)?
+        {
+            return Ok(Some(failure));
+        }
+    }
     for branch in arguments.get(branches).unwrap_or_default() {
         let Some(actual) = operand_type_node_typed(branch, nodes, kinds, index) else {
             continue;
@@ -4465,6 +4486,135 @@ fn check_control_result(
         }
     }
     Ok(None)
+}
+
+/// The `(name, level)` a `value`/`parameter` node at `position` declares.
+fn parameter_name_level<'g>(position: usize, graph: &Graph<'g>) -> Option<(&'g str, &'g str)> {
+    let Some(CheckedTerm::Aggregate { members }) =
+        graph.terms.get(position).and_then(Option::as_ref)
+    else {
+        return None;
+    };
+    let (mut name, mut level) = (None, None);
+    for member in members {
+        let CheckedTerm::Binding {
+            name: field, value, ..
+        } = member
+        else {
+            continue;
+        };
+        let CheckedTerm::Literal { value, .. } = value.as_ref() else {
+            continue;
+        };
+        match field.as_ref() {
+            "name" => name = value.as_str(),
+            "level" => level = value.as_str(),
+            _ => {}
+        }
+    }
+    Some((name?, level?))
+}
+
+/// Implements: FR-322 "The binder link" and "The `let` binder check": the
+/// binding term of a `filament.op.control.let` application carries `binder`,
+/// a `value`/`parameter` node of the binding's name that is among the
+/// application's `dependencies`; no read of the body names another node of
+/// the binder's name and level; and the binder's `semantic_type` admits the
+/// bound value's type ([`admits_at_result`]), whether or not the body reads
+/// the binder. Never matches a binder by name.
+#[ix_trace_rs::string_edge]
+fn check_let_binder(
+    application: Application<'_>,
+    arguments: &[CheckedTerm],
+    graph: &Graph<'_>,
+    owners: &ModelOwners<'_>,
+    binder_reads: Option<&BinderReads<'_>>,
+    meter: &mut WorkMeter,
+) -> Result<Option<ValidationFailure>, ValidationFailure> {
+    let Some(CheckedTerm::Binding {
+        name,
+        binder,
+        value,
+    }) = arguments.first()
+    else {
+        return Ok(None);
+    };
+    let invalid = |path, meter: &mut WorkMeter| {
+        application.refuse_read(
+            CheckedPackageRefusalCode::InvalidPackage,
+            path,
+            CheckedPackageRefusalCause::InvalidValue,
+            meter,
+        )
+    };
+    let Some(binder) = binder else {
+        return Ok(Some(invalid(
+            application
+                .read_node()
+                .key("body")
+                .key("arguments")
+                .index(0),
+            meter,
+        )));
+    };
+    let at_binder = || {
+        application
+            .read_node()
+            .key("body")
+            .key("arguments")
+            .index(0)
+            .key("binder")
+    };
+    let Some(position) = graph.index.get(binder).copied() else {
+        return Ok(Some(invalid(at_binder(), meter)));
+    };
+    work_at_path(meter, &application.read_node().key("node_id"), 1)?;
+    let mut listed = false;
+    for dependency in &application.node.dependencies {
+        work_at_path(meter, &application.read_node().key("node_id"), 1)?;
+        if graph.index.get(dependency).copied() == Some(position) {
+            listed = true;
+            break;
+        }
+    }
+    let declared = (graph.kinds.get(position)
+        == Some(&CheckedNodeKind::Value(ValueForm::Parameter)))
+    .then(|| parameter_name_level(position, graph))
+    .flatten();
+    let Some(_) = declared.filter(|(declared_name, _)| listed && *declared_name == name.as_ref())
+    else {
+        return Ok(Some(invalid(at_binder(), meter)));
+    };
+    let local_reads;
+    let reads = match binder_reads {
+        Some(reads) => reads,
+        None => {
+            local_reads = BinderReads::new(graph, meter)?;
+            &local_reads
+        }
+    };
+    if let Some(failure) = reads.wrong_read(application.position, position, graph, meter)? {
+        return Ok(Some(failure));
+    }
+    // The binder check proper.
+    let Some(bound) = operand_type_node_typed(value, graph.nodes, graph.kinds, graph.index) else {
+        return Ok(None);
+    };
+    if admits_at_result(
+        &graph.nodes[position].semantic_type,
+        Some(bound),
+        graph,
+        owners,
+        meter,
+    )? {
+        return Ok(None);
+    }
+    Ok(Some(application.refuse_read(
+        CheckedPackageRefusalCode::IllTyped,
+        application.read_node(),
+        CheckedPackageRefusalCause::OperatorIneligible,
+        meter,
+    )))
 }
 
 /// Implements: FR-347 "Result positions": the root of a `function` or `expression` node
@@ -4495,7 +4645,7 @@ fn body_root_defect(
         Some(CheckedTerm::Aggregate { members }) if tag == CheckedNodeTag::Function => members
             .iter()
             .find_map(|member| match member {
-                CheckedTerm::Binding { name, value }
+                CheckedTerm::Binding { name, value, .. }
                     if name.internal_kind() == super::TermBindingName::Body =>
                 {
                     Some(value.as_ref())
@@ -5994,7 +6144,7 @@ fn check_quantifier_slot_binder(
         // check owns the binder join only when its selector type is recoverable.
         return Ok(None);
     };
-    let Some(CheckedTerm::Binding { name, value }) = arguments.get(1) else {
+    let Some(CheckedTerm::Binding { name, value, .. }) = arguments.get(1) else {
         return Ok(Some(application.refuse(
             CheckedPackageRefusalCode::IllTyped,
             binder_at,
@@ -6015,7 +6165,10 @@ fn check_quantifier_slot_binder(
         let mut parameter_name = None;
         for member in members {
             work_at_path(meter, &application.read_node().key("node_id"), 1)?;
-            if let CheckedTerm::Binding { name: field, value } = member {
+            if let CheckedTerm::Binding {
+                name: field, value, ..
+            } = member
+            {
                 if field.internal_kind() == super::TermBindingName::Name {
                     if let CheckedTerm::Literal { value, .. } = value.as_ref() {
                         parameter_name = value.as_str();
@@ -6292,9 +6445,9 @@ fn check_field_member(
         return Ok(None);
     };
     let bound = members.iter().find_map(|entry| match entry {
-        CheckedTerm::Binding { name: found, value } if found.as_ref() == name => {
-            Some(value.as_ref())
-        }
+        CheckedTerm::Binding {
+            name: found, value, ..
+        } if found.as_ref() == name => Some(value.as_ref()),
         _ => None,
     });
     let Some(bound) = bound else {
@@ -6410,7 +6563,7 @@ fn type_pin<'t>(
         return None;
     };
     members.iter().find_map(|entry| match entry {
-        CheckedTerm::Binding { name, value } if name.as_ref() == kind.as_wire() => {
+        CheckedTerm::Binding { name, value, .. } if name.as_ref() == kind.as_wire() => {
             let CheckedTerm::Literal { value, .. } = value.as_ref() else {
                 return None;
             };
@@ -6907,11 +7060,11 @@ impl<'g, 'm, 'b> LeafWalk<'g, 'm, 'b> {
                 let members = members()?;
                 let mut edges = meter.vec(members.len()).map_err(LeafWalkEnd::Work)?;
                 for member in members {
-                    let CheckedTerm::Binding { name, value } = member else {
+                    let CheckedTerm::Binding { name, value, .. } = member else {
                         return Err(LeafWalkEnd::Unresolved);
                     };
                     let target = if let CheckedTerm::Aggregate { members } = value.as_ref() {
-                        let [CheckedTerm::Binding { name, value }] = members.as_slice() else {
+                        let [CheckedTerm::Binding { name, value, .. }] = members.as_slice() else {
                             return Err(LeafWalkEnd::Unresolved);
                         };
                         if name.internal_kind() != super::TermBindingName::Optional {
@@ -6962,7 +7115,7 @@ impl<'g, 'm, 'b> LeafWalk<'g, 'm, 'b> {
                 }
                 let mut edges = Vec::new();
                 for member in members {
-                    let CheckedTerm::Binding { name, value } = member else {
+                    let CheckedTerm::Binding { name, value, .. } = member else {
                         return Err(LeafWalkEnd::Unresolved);
                     };
                     if !super::identity::is_identifier(name) {
@@ -8952,6 +9105,7 @@ mod tests {
             super::OperationResolution {
                 catalog: operation_catalog(),
                 fast_index: None,
+                binder_reads: None,
             },
             &mut meter,
             &mut Vec::new(),
@@ -8997,6 +9151,7 @@ mod tests {
             super::OperationResolution {
                 catalog: operation_catalog(),
                 fast_index: None,
+                binder_reads: None,
             },
             &mut WorkMeter::new(1_000),
             &mut Vec::new(),
@@ -9092,6 +9247,7 @@ mod tests {
             super::OperationResolution {
                 catalog: operation_catalog(),
                 fast_index: None,
+                binder_reads: None,
             },
             &mut meter,
             &mut Vec::new(),
@@ -12977,6 +13133,7 @@ mod tests {
             super::OperationResolution {
                 catalog: operation_catalog(),
                 fast_index: None,
+                binder_reads: None,
             },
             &mut meter,
             &mut Vec::new(),

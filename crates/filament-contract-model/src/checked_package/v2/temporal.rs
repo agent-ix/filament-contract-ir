@@ -910,7 +910,7 @@ impl<'a> Walk for Placement<'_, 'a, '_> {
                     (member_term, false, member)
                 }));
             }
-            CheckedTerm::Binding { name, value } => {
+            CheckedTerm::Binding { name, value, .. } => {
                 let value_slot = if slot == Slot::HyperQuantifiers
                     && name.kind()
                         == super::typed_terms::CheckedBindingNameKind::Other("quantifiers")
@@ -1162,7 +1162,7 @@ fn temporal_fault(
 /// The value of the aggregate binding `wanted` among `members`.
 fn member_binding<'a>(members: &'a [CheckedTerm], wanted: &str) -> Option<&'a CheckedTerm> {
     members.iter().find_map(|member| match member {
-        CheckedTerm::Binding { name, value } if AsRef::<str>::as_ref(name) == wanted => {
+        CheckedTerm::Binding { name, value, .. } if AsRef::<str>::as_ref(name) == wanted => {
             Some(value.as_ref())
         }
         _ => None,
@@ -1977,7 +1977,7 @@ fn aggregate_declares_duration_window(formula: usize, terms: &[Option<CheckedTer
         return false;
     };
     members.iter().any(|member| match member {
-        CheckedTerm::Binding { name, value } if is_window_kind_binding(name) => {
+        CheckedTerm::Binding { name, value, .. } if is_window_kind_binding(name) => {
             aggregate_literal(value, LiteralKind::Text) == Some("duration")
         }
         _ => false,
@@ -2639,7 +2639,7 @@ fn check_hyper_shape(
         match term {
             // `parameters` and `body` are contextual kinds, not `Other`: the
             // shape is keyed on the raw wire name.
-            CheckedTerm::Binding { name, value } => Some((name.as_ref(), value)),
+            CheckedTerm::Binding { name, value, .. } => Some((name.as_ref(), value)),
             _ => None,
         }
     }
@@ -2924,7 +2924,7 @@ fn check_hyper_fairness(
         return Ok(());
     };
     let binding_value = |at: usize, wanted: &str| match members.get(at) {
-        Some(CheckedTerm::Binding { name, value }) if AsRef::<str>::as_ref(name) == wanted => {
+        Some(CheckedTerm::Binding { name, value, .. }) if AsRef::<str>::as_ref(name) == wanted => {
             Some(value.as_ref())
         }
         _ => None,
@@ -2982,7 +2982,7 @@ fn check_hyper_fairness(
             continue;
         };
         let alias = group_members.iter().find_map(|member| match member {
-            CheckedTerm::Binding { name, value }
+            CheckedTerm::Binding { name, value, .. }
                 if name.kind() == super::typed_terms::CheckedBindingNameKind::Other("alias") =>
             {
                 match value.as_ref() {
@@ -2998,7 +2998,7 @@ fn check_hyper_fairness(
         });
         let alias_root = alias.and_then(|alias| {
             subjects.iter().find_map(|subject| match subject {
-                CheckedTerm::Binding { name, value } if AsRef::<str>::as_ref(name) == alias => {
+                CheckedTerm::Binding { name, value, .. } if AsRef::<str>::as_ref(name) == alias => {
                     typed_reference(value)
                 }
                 _ => None,

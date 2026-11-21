@@ -40,7 +40,7 @@ pub(super) fn bound_type(value: &CheckedTerm) -> Option<&CheckedNodeId> {
     match value {
         CheckedTerm::Reference { target } => Some(target),
         CheckedTerm::Aggregate { members } => match members.as_slice() {
-            [CheckedTerm::Binding { name, value }] if name.as_ref() == "optional" => {
+            [CheckedTerm::Binding { name, value, .. }] if name.as_ref() == "optional" => {
                 match value.as_ref() {
                     CheckedTerm::Reference { target } => Some(target),
                     _ => None,
@@ -439,7 +439,7 @@ fn body_bindings(
     members
         .iter()
         .map(|member| match member {
-            CheckedTerm::Binding { name, value } => Some((
+            CheckedTerm::Binding { name, value, .. } => Some((
                 name.as_ref(),
                 bound_type(value)?,
                 matches!(value.as_ref(), CheckedTerm::Aggregate { .. }),

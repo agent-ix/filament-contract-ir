@@ -59,6 +59,7 @@ pub(super) fn binding_of<'g, G: TypeGraph + ?Sized>(
         let CheckedTerm::Binding {
             name: bound_name,
             value,
+            ..
         } = member
         else {
             return None;
@@ -105,6 +106,7 @@ fn named_target<'g>(body: &'g CheckedTerm, name: &str) -> Option<&'g CheckedNode
         CheckedTerm::Binding {
             name: bound_name,
             value,
+            ..
         } if bound_name.as_ref() == name => target(value),
         _ => None,
     })

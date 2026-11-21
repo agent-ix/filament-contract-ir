@@ -183,7 +183,7 @@ fn reference_target<'d>(
 /// The `name` and `value` of a `binding` term.
 fn binding<'d>(term: TermNode<'d>) -> Option<(&'d str, TermNode<'d>)> {
     match term.view() {
-        Some(TermView::Binding { name, value }) => Some((name, value)),
+        Some(TermView::Binding { name, value, .. }) => Some((name, value)),
         _ => None,
     }
 }
@@ -488,7 +488,7 @@ fn clause_kind(body: &CheckedTerm) -> Option<OwnerClauseKind> {
         return None;
     };
     let mut clauses = members.iter().filter_map(|member| match member {
-        CheckedTerm::Binding { name, value }
+        CheckedTerm::Binding { name, value, .. }
             if name.internal_kind() == super::TermBindingName::Clause =>
         {
             Some(value.as_ref())

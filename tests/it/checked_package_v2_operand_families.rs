@@ -1588,6 +1588,7 @@ fn genuine_integer_fold_with_both_authored_binders_is_admitted() {
         serde_json::from_slice(include_bytes!("../fixtures/fold-binders/integer-fold.json"))
             .expect("Integer fold fixture");
     add_linked_check_modes(&mut fixture);
+    crate::support::checked_package::link_let_binders(&mut fixture);
     crate::support::checked_package::rebuild_body_locations(&mut fixture);
     let bytes = canonical(&fixture);
     let mut evidence = filament_contract_model::CheckedPackageEvidence::new();
@@ -1611,14 +1612,15 @@ fn genuine_integer_fold_with_both_authored_binders_is_admitted() {
     else {
         panic!("typed fold application");
     };
-    let filament_contract_model::CheckedTerm::Binding { name, value } = &arguments[1] else {
+    let filament_contract_model::CheckedTerm::Binding { name, value, .. } = &arguments[1] else {
         panic!("accumulator binder");
     };
     assert_eq!(name.as_ref(), "acc");
     let filament_contract_model::CheckedTerm::Aggregate { members } = value.as_ref() else {
         panic!("element binder wrapper");
     };
-    let [filament_contract_model::CheckedTerm::Binding { name, value }] = members.as_slice() else {
+    let [filament_contract_model::CheckedTerm::Binding { name, value, .. }] = members.as_slice()
+    else {
         panic!("single element binder");
     };
     assert_eq!(name.as_ref(), "x");
@@ -1641,6 +1643,7 @@ fn genuine_monitor_base_fold_is_admitted_without_removing_semantics() {
         serde_json::from_slice(include_bytes!("../fixtures/fold-binders/monitor-base.json"))
             .expect("monitor-base fixture");
     add_linked_check_modes(&mut fixture);
+    crate::support::checked_package::link_let_binders(&mut fixture);
     crate::support::checked_package::rebuild_body_locations(&mut fixture);
     // The committed producer fixture predates FR-322 "Model declaration
     // occurrences".
@@ -1685,14 +1688,15 @@ fn genuine_monitor_base_fold_is_admitted_without_removing_semantics() {
         panic!("original monitor fold application");
     };
     assert_eq!(operation.identity(), Some("filament.op.collection.fold"));
-    let filament_contract_model::CheckedTerm::Binding { name, value } = &arguments[1] else {
+    let filament_contract_model::CheckedTerm::Binding { name, value, .. } = &arguments[1] else {
         panic!("monitor accumulator binder");
     };
     assert_eq!(name.as_ref(), "a");
     let filament_contract_model::CheckedTerm::Aggregate { members } = value.as_ref() else {
         panic!("monitor element wrapper");
     };
-    let [filament_contract_model::CheckedTerm::Binding { name, value }] = members.as_slice() else {
+    let [filament_contract_model::CheckedTerm::Binding { name, value, .. }] = members.as_slice()
+    else {
         panic!("monitor element binder");
     };
     assert_eq!(name.as_ref(), "x");
@@ -1992,6 +1996,7 @@ fn fold_with_body_rows() -> Value {
         serde_json::from_slice(include_bytes!("../fixtures/fold-binders/integer-fold.json"))
             .expect("Integer fold fixture");
     add_linked_check_modes(&mut fixture);
+    crate::support::checked_package::link_let_binders(&mut fixture);
     crate::support::checked_package::rebuild_body_locations(&mut fixture);
     fixture
 }

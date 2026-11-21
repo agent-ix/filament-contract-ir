@@ -175,6 +175,7 @@ fn bindings<'a>(
             Some(super::TermView::Binding {
                 name: actual,
                 value,
+                ..
             }) if actual == *name => (value, member_at.key("value")),
             _ => return Err(malformed(member_at, failure_at)),
         };
@@ -201,7 +202,7 @@ fn bindings_with_point_anchor<'a>(
     let mut expected = 0;
     for (index, member) in members.into_iter().enumerate() {
         let member_at = at.key("members").index(index);
-        let Some(super::TermView::Binding { name, value }) = member.view() else {
+        let Some(super::TermView::Binding { name, value, .. }) = member.view() else {
             return Err(malformed(member_at, failure_at));
         };
         if super::TermBindingName::from_wire(name) == super::TermBindingName::PointAnchor {
@@ -652,6 +653,7 @@ fn check_wire_shape(
                     Some(super::TermView::Binding {
                         name: "predicate",
                         value,
+                        ..
                     }) => value,
                     _ => return Err(malformed(first_at, failure_at)),
                 };
@@ -660,6 +662,7 @@ fn check_wire_shape(
                     Some(super::TermView::Binding {
                         name: "binders",
                         value,
+                        ..
                     }) => {
                         let binders_at = at.key("members").index(1).key("value");
                         if aggregate(value, &binders_at, budget, site, failure_at)?.is_empty() {
@@ -1814,7 +1817,7 @@ fn point_anchor_bindings(body: &CheckedTerm) -> impl Iterator<Item = (usize, &Ch
         .iter()
         .enumerate()
         .filter_map(|(index, member)| match member {
-            CheckedTerm::Binding { name, value }
+            CheckedTerm::Binding { name, value, .. }
                 if name.internal_kind() == super::TermBindingName::PointAnchor =>
             {
                 Some((index, value.as_ref()))
@@ -2034,10 +2037,12 @@ fn same_place_path(
                 CheckedTerm::Binding {
                     name: left_name,
                     value: left,
+                    ..
                 },
                 CheckedTerm::Binding {
                     name: right_name,
                     value: right,
+                    ..
                 },
             ) => {
                 if left_name != right_name {
@@ -2322,7 +2327,7 @@ fn term_key<'g>(
                     pending.extend(members.iter().rev().map(Visit::Term));
                     pending.push(Visit::Atom(OrderPart::Start));
                 }
-                Visit::Term(CheckedTerm::Binding { name, value }) => {
+                Visit::Term(CheckedTerm::Binding { name, value, .. }) => {
                     meter.room(&mut pending, 4)?;
                     pending.push(Visit::Atom(OrderPart::End));
                     pending.push(Visit::Term(value));
@@ -3146,7 +3151,7 @@ pub(super) fn anchor_operation_text<'a>(
 ) -> Option<&'a str> {
     let term = package.term(node)?;
     typed_members(term).iter().find_map(|member| match member {
-        CheckedTerm::Binding { name, value } if name.as_ref() == "operation" => spelling(value),
+        CheckedTerm::Binding { name, value, .. } if name.as_ref() == "operation" => spelling(value),
         _ => None,
     })
 }
@@ -5188,6 +5193,7 @@ mod tests {
                 members: vec![
                     CheckedTerm::Binding {
                         name: "label".into(),
+                        binder: None,
                         value: Box::new(CheckedTerm::Literal {
                             type_id: a.clone(),
                             value_kind: LiteralKind::Text,

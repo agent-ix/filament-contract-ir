@@ -130,14 +130,18 @@ fn members(term: &CheckedTerm) -> Option<&[CheckedTerm]> {
 
 fn binding<'a>(term: &'a CheckedTerm, name: &str) -> Option<&'a CheckedTerm> {
     match term {
-        CheckedTerm::Binding { name: found, value } if found.as_ref() == name => Some(value),
+        CheckedTerm::Binding {
+            name: found, value, ..
+        } if found.as_ref() == name => Some(value),
         _ => None,
     }
 }
 
 fn named_binding(term: &CheckedTerm) -> Option<(&str, &CheckedTerm)> {
     match term {
-        CheckedTerm::Binding { name, value } if !name.as_ref().is_empty() => Some((name, value)),
+        CheckedTerm::Binding { name, value, .. } if !name.as_ref().is_empty() => {
+            Some((name, value))
+        }
         _ => None,
     }
 }

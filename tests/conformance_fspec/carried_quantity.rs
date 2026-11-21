@@ -141,6 +141,7 @@ fn assert_rational_carrier_bounds(
         let CheckedTerm::Binding {
             name: actual,
             value,
+            ..
         } = member
         else {
             panic!("rational carrier member is not a typed binding");
@@ -1544,7 +1545,7 @@ fn carried_sum_cs01_retains_integer_decimal_and_rational_domains() {
         let CheckedTerm::Aggregate { members } = &carried.body else {
             panic!("carried bindings");
         };
-        let CheckedTerm::Binding { name, value } = &members[0] else {
+        let CheckedTerm::Binding { name, value, .. } = &members[0] else {
             panic!("unit binding");
         };
         assert_eq!(name.as_ref(), "unit");
@@ -1557,7 +1558,7 @@ fn carried_sum_cs01_retains_integer_decimal_and_rational_domains() {
             admitted.node_kind(unit),
             Some(CheckedNodeKind::ScalarType(ScalarTypeForm::Unit))
         );
-        let CheckedTerm::Binding { name, value } = &members[2] else {
+        let CheckedTerm::Binding { name, value, .. } = &members[2] else {
             panic!("carried rounding binding");
         };
         assert_eq!(name.as_ref(), "rounding");

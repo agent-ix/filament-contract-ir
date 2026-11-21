@@ -283,7 +283,7 @@ fn default_feature_consumer_reads_an_actual_admitted_monitor_plan() {
     let CheckedTerm::Aggregate { members } = package.term(view.state()).unwrap() else {
         panic!("admitted State record body")
     };
-    let CheckedTerm::Binding { name, value } = members.last().unwrap() else {
+    let CheckedTerm::Binding { name, value, .. } = members.last().unwrap() else {
         panic!("final State field")
     };
     assert_eq!(name.as_ref(), "event_position");

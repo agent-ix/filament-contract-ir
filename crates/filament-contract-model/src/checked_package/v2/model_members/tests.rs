@@ -2044,6 +2044,7 @@ fn selected_type_bounds_allocate_only_reserved_storage() {
         .into_iter()
         .map(|(name, value)| CheckedTerm::Binding {
             name: name.into(),
+            binder: None,
             value: Box::new(CheckedTerm::Literal {
                 type_id: id.clone(),
                 value_kind: LiteralKind::Integer,

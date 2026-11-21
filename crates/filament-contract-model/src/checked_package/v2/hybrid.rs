@@ -1850,6 +1850,7 @@ fn binding<'d>(
         Some(super::TermView::Binding {
             name: actual,
             value,
+            ..
         }) if actual == name => Ok(value),
         _ => Err(malformed(at, meter)),
     }

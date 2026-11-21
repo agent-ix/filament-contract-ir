@@ -232,9 +232,13 @@ impl<'d> TermNode<'d> {
                     members: self.array(TermField::Members)?,
                 })
             }
-            TermTag::Known(BodyTerm::Binding) if self.exact_members(&["term", "name", "value"]) => {
+            TermTag::Known(BodyTerm::Binding)
+                if self.exact_members(&["term", "name", "value"])
+                    || self.exact_members(&["term", "name", "value", "binder"]) =>
+            {
                 Some(TermView::Binding {
                     name: self.field(TermField::Name)?.as_str()?,
+                    binder: self.field(TermField::Binder),
                     value: self.field(TermField::Value)?,
                 })
             }
@@ -455,6 +459,7 @@ impl<'d> TermNode<'d> {
             let Some(TermView::Binding {
                 name: "execution_point",
                 value,
+                ..
             }) = point_binding.view()
             else {
                 return Ok(Err(TermConversionCause::MalformedMember {
@@ -1509,6 +1514,10 @@ fn decode_term<'d>(
         }),
         TermTag::Known(BodyTerm::Binding) => {
             let name = decode_field(context, term, TermField::Name)?;
+            let binder = match term.field(TermField::Binder) {
+                None => None,
+                Some(_) => Some(decode_field(context, term, TermField::Binder)?),
+            };
             let value = term
                 .field(TermField::Value)
                 .ok_or(TermConversionCause::MissingMember { member: "value" })?;
@@ -1522,6 +1531,7 @@ fn decode_term<'d>(
             }
             Ok(CheckedTerm::Binding {
                 name,
+                binder,
                 value: Box::new(value),
             })
         }
@@ -1641,6 +1651,7 @@ pub(in crate::checked_package) enum TermView<'d> {
     },
     Binding {
         name: &'d str,
+        binder: Option<TermNode<'d>>,
         value: TermNode<'d>,
     },
     Reference {

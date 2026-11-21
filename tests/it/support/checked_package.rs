@@ -2512,7 +2512,13 @@ fn join_targets(
                 holds_application |= join_targets(member, ids, out);
             }
         }
-        Some("binding") => holds_application |= join_targets(&term["value"], ids, out),
+        Some("binding") => {
+            // FR-322 "The binder link": a `let` binding's binder is a dependency.
+            if let Some(binder) = term.get("binder") {
+                add(out, binder, ids);
+            }
+            holds_application |= join_targets(&term["value"], ids, out);
+        }
         _ => {}
     }
     holds_application
@@ -2569,6 +2575,123 @@ fn fixture_application_key(node: &Value, nodes: &Value) -> String {
             &node["body"],
         )
     }
+}
+
+/// Gives every `filament.op.control.let` binding term of a fixture written
+/// before FSpec FR-322 "The binder link" its `binder`, then settles the
+/// package: the `value`/`parameter` node of the binding's name that the let
+/// body reads, else the only one, else the first. A producer fixture is
+/// refreshed by the producer; this stands in until it is.
+pub fn link_let_binders(package: &mut Value) {
+    if !package["semantic_graph"]["nodes"].is_array() {
+        return;
+    }
+    let mut resolved = package.clone();
+    resolve_operands(&mut resolved);
+    let nodes = resolved["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .clone();
+    let by_id: HashMap<String, usize> = nodes
+        .iter()
+        .enumerate()
+        .map(|(position, node)| (node["node_id"].to_string(), position))
+        .collect();
+    let parameter_name = |node: &Value| -> Option<String> {
+        (node["node_tag"] == "value" && node["semantic_form"] == "parameter")
+            .then(|| {
+                node["body"]["members"][0]["value"]["value"]
+                    .as_str()
+                    .map(str::to_owned)
+            })
+            .flatten()
+    };
+    let mut links: Vec<(usize, Value)> = Vec::new();
+    for (position, node) in nodes.iter().enumerate() {
+        let body = &node["body"];
+        if body["term"] != "application"
+            || body["operation"]["identity"] != "filament.op.control.let"
+            || body["arguments"][0].get("binder").is_some()
+        {
+            continue;
+        }
+        let name = body["arguments"][0]["name"].as_str().expect("let name");
+        let candidates: Vec<usize> = nodes
+            .iter()
+            .enumerate()
+            .filter(|(_, held)| parameter_name(held).as_deref() == Some(name))
+            .map(|(at, _)| at)
+            .collect();
+        // The parameters the body reads, through the expressions it reaches.
+        let mut read: Vec<usize> = Vec::new();
+        let mut pending = vec![position];
+        let mut seen = std::collections::HashSet::new();
+        while let Some(at) = pending.pop() {
+            if !seen.insert(at) {
+                continue;
+            }
+            let mut stack = vec![&nodes[at]["body"]];
+            if at == position {
+                stack = vec![&nodes[at]["body"]["arguments"][1]];
+            }
+            while let Some(term) = stack.pop() {
+                match term["term"].as_str() {
+                    Some("reference") => {
+                        if let Some(&target) = by_id.get(&term["target"].to_string()) {
+                            if candidates.contains(&target) {
+                                read.push(target);
+                            } else if matches!(
+                                nodes[target]["node_tag"].as_str(),
+                                Some("expression" | "value")
+                            ) {
+                                pending.push(target);
+                            }
+                        }
+                    }
+                    Some("application") => {
+                        stack.extend(term["arguments"].as_array().into_iter().flatten());
+                    }
+                    Some("aggregate") => {
+                        stack.extend(term["members"].as_array().into_iter().flatten());
+                    }
+                    Some("binding") => stack.push(&term["value"]),
+                    _ => {}
+                }
+            }
+        }
+        // The bound value's type, for a binder the body never reads.
+        let bound = by_id
+            .get(&body["arguments"][0]["value"]["target"].to_string())
+            .map(|&at| nodes[at]["semantic_type"].clone());
+        let typed = candidates
+            .iter()
+            .find(|&&at| Some(&nodes[at]["semantic_type"]) == bound.as_ref());
+        let chosen = read
+            .iter()
+            .find(|&&at| Some(&nodes[at]["semantic_type"]) == bound.as_ref())
+            .or(read.first())
+            .or(typed)
+            .or(candidates.first())
+            .copied();
+        links.push((
+            position,
+            nodes[chosen.expect("a binder node for the let")]["node_id"].clone(),
+        ));
+    }
+    if links.is_empty() {
+        return;
+    }
+    *package = resolved;
+    let graph = package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes");
+    for (position, binder) in links {
+        graph[position]["body"]["arguments"][0]["binder"] = binder;
+    }
+    // The links change the lets' dependencies and keys; the fixture's own
+    // source map follows the renamed keys.
+    join_application_dependencies(package);
+    refresh_identity(package);
 }
 
 /// After a test edited node bodies: re-derives each application-keyed node's

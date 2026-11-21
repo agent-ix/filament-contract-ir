@@ -1049,7 +1049,8 @@ fn validate_one<'a, V: TermSource<'a>>(
             }
         }
         BodyTerm::Binding => {
-            if wire.exact_members(&["term", "name", "value"])
+            if (wire.exact_members(&["term", "name", "value"])
+                || wire.exact_members(&["term", "name", "value", "binder"]))
                 && wire
                     .member("name")
                     .and_then(TermSource::text)
@@ -1146,6 +1147,7 @@ pub(in crate::checked_package) enum TermField {
     Arguments,
     Members,
     Name,
+    Binder,
     Package,
     Node,
     Modifies,
@@ -1184,6 +1186,7 @@ impl TermField {
             Self::Arguments => "arguments",
             Self::Members => "members",
             Self::Name => "name",
+            Self::Binder => "binder",
             Self::Package => "package",
             Self::Node => "node",
             Self::Modifies => "modifies",

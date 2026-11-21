@@ -2230,6 +2230,11 @@ pub enum CheckedTerm {
     Binding {
         /// The member name.
         name: CheckedBindingName,
+        /// The binder's `value`/`parameter` node: carried by the binding
+        /// term of a `filament.op.control.let` application (FR-322 "The
+        /// binder link"), never by any other binding.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        binder: Option<CheckedNodeId>,
         /// The member value.
         value: Box<CheckedTerm>,
     },
@@ -2718,7 +2723,8 @@ impl CheckedTerm {
                 })
             }
             TermTag::Known(BodyTerm::Binding)
-                if exact_members(object, &["term", "name", "value"])
+                if (exact_members(object, &["term", "name", "value"])
+                    || exact_members(object, &["term", "name", "value", "binder"]))
                     && wire
                         .field(TermField::Name)
                         .and_then(Value::as_str)
@@ -2878,7 +2884,13 @@ impl CheckedTerm {
                     traversal(SelectedTermTraversal::StackStorage(1))?;
                     pending.push(Pending::Children(members.iter()));
                 }
-                Self::Binding { value, .. } => {
+                Self::Binding { binder, value, .. } => {
+                    if let Some(binder) = binder {
+                        traversal(SelectedTermTraversal::Visit(SelectedTermVisit::Edge(
+                            SelectedTermEdge::Reference,
+                            binder,
+                        )))?;
+                    }
                     traversal(SelectedTermTraversal::StackStorage(1))?;
                     pending.push(Pending::Term(value));
                 }
@@ -2941,7 +2953,12 @@ impl CheckedTerm {
                 }
             }
             Self::NominalBody(body) => body.visit_reference_targets(visitor),
-            Self::Binding { value, .. } => value.visit_reference_targets(visitor),
+            Self::Binding { binder, value, .. } => {
+                if let Some(binder) = binder {
+                    visitor(binder);
+                }
+                value.visit_reference_targets(visitor);
+            }
             Self::ExtensionForm { clauses, .. } => {
                 for clause in clauses {
                     clause.visit_reference_targets(visitor);
@@ -3025,7 +3042,12 @@ impl CheckedTerm {
                 }
             }
             Self::NominalBody(body) => body.replace_node_id(old, new),
-            Self::Binding { value, .. } => value.replace_node_id(old, new),
+            Self::Binding { binder, value, .. } => {
+                if let Some(binder) = binder {
+                    replace(binder, old, new);
+                }
+                value.replace_node_id(old, new);
+            }
             Self::DependencyReference { node, .. } => replace(node, old, new),
             Self::Frame {
                 modifies,
@@ -3106,7 +3128,12 @@ impl CheckedTerm {
                     Self::Aggregate { members } => {
                         work.extend(members.iter_mut().rev().map(NodeMapWork::Term));
                     }
-                    Self::Binding { value, .. } => work.push(NodeMapWork::Term(value)),
+                    Self::Binding { binder, value, .. } => {
+                        work.push(NodeMapWork::Term(value));
+                        if let Some(binder) = binder {
+                            work.push(NodeMapWork::Id(binder));
+                        }
+                    }
                     Self::DependencyReference { node, .. } => work.push(NodeMapWork::Id(node)),
                     Self::Frame {
                         modifies,
@@ -3276,6 +3303,21 @@ impl CheckedTerm {
     pub fn binding(name: impl Into<Box<str>>, value: Self) -> Self {
         Self::Binding {
             name: name.into().into(),
+            binder: None,
+            value: Box::new(value),
+        }
+    }
+
+    /// Construct the binding term of a `let`, carrying its binder node
+    /// (FR-322 "The binder link").
+    pub fn binding_with_binder(
+        name: impl Into<Box<str>>,
+        binder: CheckedNodeId,
+        value: Self,
+    ) -> Self {
+        Self::Binding {
+            name: name.into().into(),
+            binder: Some(binder),
             value: Box::new(value),
         }
     }
@@ -3394,6 +3436,10 @@ impl CheckedTerm {
             }),
             TermTag::Known(BodyTerm::Binding) => Ok(Self::Binding {
                 name: field(wire, TermField::Name)?,
+                binder: match wire.field(TermField::Binder) {
+                    None => None,
+                    Some(_) => Some(field(wire, TermField::Binder)?),
+                },
                 value: Box::new(Self::decode_admitted(
                     wire.field(TermField::Value)
                         .ok_or(TermConversionCause::MissingMember { member: "value" })?,
@@ -3513,11 +3559,19 @@ impl Encode for CheckedTerm {
                 }
                 writer.end_array()?;
             }
-            Self::Binding { name, value } => {
+            Self::Binding {
+                name,
+                binder,
+                value,
+            } => {
                 writer.name("term")?;
                 writer.string("binding")?;
                 writer.name("name")?;
                 writer.string(name)?;
+                if let Some(binder) = binder {
+                    writer.name("binder")?;
+                    binder.encode_into(writer)?;
+                }
                 writer.name("value")?;
                 value.encode_into(writer)?;
             }

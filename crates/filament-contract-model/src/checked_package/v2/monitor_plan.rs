@@ -642,7 +642,7 @@ fn members(term: &CheckedTerm) -> Option<&[CheckedTerm]> {
 }
 fn named<'a>(term: &'a CheckedTerm, expected: &str) -> Option<&'a CheckedTerm> {
     match term {
-        CheckedTerm::Binding { name, value } if name.as_ref() == expected => Some(value),
+        CheckedTerm::Binding { name, value, .. } if name.as_ref() == expected => Some(value),
         _ => None,
     }
 }
@@ -718,7 +718,7 @@ impl<Body> Graph<'_, Body> {
         }
         let mut fields = [("", 0); N];
         for (field, member) in fields.iter_mut().zip(members) {
-            let CheckedTerm::Binding { name, value } = member else {
+            let CheckedTerm::Binding { name, value, .. } = member else {
                 return None;
             };
             *field = (name.as_ref(), self.resolve(value)?);
@@ -918,7 +918,7 @@ fn outcome<Body>(
             "Pending",
             "True",
         ]) {
-            let CheckedTerm::Binding { name, value } = case else {
+            let CheckedTerm::Binding { name, value, .. } = case else {
                 return None;
             };
             if name.as_ref() != expected {
@@ -1271,7 +1271,7 @@ pub(super) fn validate<Body>(
             return Err(site.shape(1, meter));
         }
         for (i, field) in fields.iter().enumerate() {
-            let CheckedTerm::Binding { name, value } = field else {
+            let CheckedTerm::Binding { name, value, .. } = field else {
                 return Err(site.shape(1, meter));
             };
             let ty = graph.resolve(value).ok_or_else(|| site.shape(1, meter))?;

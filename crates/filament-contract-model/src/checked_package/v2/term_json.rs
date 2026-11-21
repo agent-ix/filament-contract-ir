@@ -414,7 +414,8 @@ impl<'s> TermWalk<'_, '_, '_, 's, '_> {
                 Ok(1)
             }
             BodyTerm::Binding => {
-                if !(exact(&["term", "name", "value"])
+                if !((exact(&["term", "name", "value"])
+                    || exact(&["term", "name", "value", "binder"]))
                     && term
                         .field(TermField::Name)
                         .and_then(TermNode::as_str)
