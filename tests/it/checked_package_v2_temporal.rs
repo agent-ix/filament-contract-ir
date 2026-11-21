@@ -6042,10 +6042,35 @@ fn every_claim_names_row_of_one_hyper_node_names_one_source_unit() {
 }
 
 fn hyper_source_unit_id(name: &str, ordinal: u64) -> Value {
-    json!({"package": "test/families", "path": [name], "ordinal": ordinal})
+    let path = if ordinal == 0 {
+        json!([name])
+    } else {
+        match name {
+            "Time" => json!(["other", "Time"]),
+            "ms" => json!(["us"]),
+            "s" => json!(["other_s"]),
+            _ => panic!("unknown fixture unit"),
+        }
+    };
+    json!({"package": "test/families", "path": path, "ordinal": ordinal})
 }
 
-/// Adds separate source declarations even when the two units use the same names.
+fn settle_hyper_sources(package: &mut Value) {
+    settle(package);
+    rebuild_complete_source_map(package);
+    let sources: Vec<_> = nodes(package).iter().filter(|node| node["owner"]["kind"] == "source")
+        .map(|node| (node["node_id"].clone(), json!({"authority":node["owner"]["authority"], "identity":node["owner"]["identity"]})))
+        .collect();
+    for row in package["source_map"].as_array_mut().expect("source rows") {
+        if let Some((_, source)) = sources.iter().find(|(id, _)| row["node_id"] == *id) {
+            for region in row["regions"].as_array_mut().expect("regions") {
+                region["source"] = source.clone();
+            }
+        }
+    }
+}
+
+/// Adds source declarations with distinct package-level qualified names.
 fn add_hyper_source_units(package: &mut Value, source: &Value, ordinal: u64) {
     let dimension = hyper_source_unit_id("Time", ordinal);
     let owner = source_owner(source);
@@ -6058,7 +6083,7 @@ fn add_hyper_source_units(package: &mut Value, source: &Value, ordinal: u64) {
     dimension_node["node_id"] = dimension.clone();
     dimension_node["semantic_type"] = dimension.clone();
     dimension_node["owner"] = owner.clone();
-    dimension_node["declaration"] = json!({"qualified_name": ["Time"]});
+    dimension_node["declaration"] = json!({"qualified_name": dimension["path"]});
     dimension_node["occurrences"] = json!([{"role":"declaration","ordinal":0}]);
     push(package, dimension_node);
     for name in ["s", "ms"] {
@@ -6081,7 +6106,7 @@ fn add_hyper_source_units(package: &mut Value, source: &Value, ordinal: u64) {
             json!([dimension])
         };
         unit["owner"] = owner.clone();
-        unit["declaration"] = json!({"qualified_name": [name]});
+        unit["declaration"] = json!({"qualified_name": unit["node_id"]["path"]});
         unit["occurrences"] = json!([{"role":"declaration","ordinal":0}]);
         push(package, unit);
     }
@@ -6099,8 +6124,7 @@ fn hyper_duration_fixture() -> (Value, usize, usize, usize) {
         json!("filament.op.temporal.aggregate");
     package["semantic_graph"]["nodes"][formula]["body"]["arguments"] = json!([
         {"term":"aggregate", "members": count_members("duration", bound("0"), bound("5"), scalar("integer", "0"))}]);
-    settle(&mut package);
-    rebuild_complete_source_map(&mut package);
+    settle_hyper_sources(&mut package);
     for row in package["temporal_bindings"]
         .as_array_mut()
         .expect("clock rows")
@@ -6108,6 +6132,35 @@ fn hyper_duration_fixture() -> (Value, usize, usize, usize) {
         row["clock"]["timestamp_unit"] = json!("ms");
     }
     (package, wrapper, hyper, formula)
+}
+
+#[trace("TC-048", "FR-038-AC-599")]
+#[test]
+fn finite_hyper_timestamp_unit_resolves_in_its_claim_source() {
+    let (mut package, hyper) = finite_clock_fixture();
+    select_profile(&mut package, DURATION);
+    let source = package["lock"]["sources"][0].clone();
+    add_hyper_source_units(&mut package, &source, 0);
+    settle_hyper_sources(&mut package);
+    for row in package["temporal_bindings"].as_array_mut().expect("rows") {
+        row["clock"]["timestamp_unit"] = json!("ms");
+    }
+    admitted("finite-domain hyper source ms", &package);
+    let other = json!({"authority":"agent-ix", "identity":"hyper-other"});
+    package["lock"]["sources"]
+        .as_array_mut()
+        .expect("sources")
+        .push(other.clone());
+    for at in hyper_name_rows(&package, hyper) {
+        package["claim_names"][at]["source_unit"] = other.clone();
+    }
+    let row = hyper_rows(&package)[0];
+    refusal_at(
+        &package,
+        Code::MissingDeclaration,
+        Cause::MissingName,
+        &format!("/temporal_bindings/{row}/clock/timestamp_unit"),
+    );
 }
 
 #[trace("TC-048", "FR-038-AC-599")]
@@ -6180,28 +6233,48 @@ fn shared_hyper_wrapper_checks_every_source_and_clock_in_both_orders() {
             row["clock"]["timestamp_unit"] = json!("ms");
         }
         admitted("shared wrapper with compatible owners", &package);
+        let mut other_clock = package.clone();
+        let second_id = nodes(&package)[second]["node_id"].clone();
+        for row in other_clock["temporal_bindings"]
+            .as_array_mut()
+            .expect("rows")
+        {
+            if row["declaration"] == second_id {
+                row["clock"]["timestamp_unit"] = json!("s");
+            }
+        }
+        expect(
+            "shared wrapper's other clause has a different clock",
+            &other_clock,
+            Code::IllTyped,
+            Cause::UnitMismatch,
+            &at_node(formula, "/body/arguments/0/members/3/value"),
+        );
         let other = json!({"authority":"agent-ix", "identity":"hyper-other"});
         package["lock"]["sources"]
             .as_array_mut()
             .expect("sources")
             .push(other.clone());
         add_hyper_source_units(&mut package, &other, 1);
-        settle(&mut package);
-        rebuild_complete_source_map(&mut package);
+        settle_hyper_sources(&mut package);
         for row in package["temporal_bindings"].as_array_mut().expect("rows") {
-            row["clock"]["timestamp_unit"] = json!("ms");
+            row["clock"]["timestamp_unit"] = if row["declaration"] == second_id {
+                json!("us")
+            } else {
+                json!("ms")
+            };
         }
         for at in hyper_name_rows(&package, second) {
             package["claim_names"][at]["source_unit"] = other.clone();
         }
         expect(
-            "second owner's ms is a different unit",
+            "second owner's us is a different unit",
             &package,
             Code::IllTyped,
             Cause::UnitMismatch,
             &at_node(formula, "/body/arguments/0/members/3/value"),
         );
-        // Each clause alone admits with bounds typed by its own identically named unit.
+        // Each clause alone admits with bounds typed by its own source's unit.
         for owner in [hyper, second] {
             let mut single = package.clone();
             let removed =
@@ -6215,8 +6288,7 @@ fn shared_hyper_wrapper_checks_every_source_and_clock_in_both_orders() {
                 single["semantic_graph"]["nodes"][formula]["body"]["arguments"][0]["members"]
                     [name]["value"]["type"] = hyper_source_unit_id("ms", unit);
             }
-            settle(&mut single);
-            rebuild_complete_source_map(&mut single);
+            settle_hyper_sources(&mut single);
             let own_id = nodes(&package)[owner]["node_id"].clone();
             for row in single["claim_names"].as_array_mut().expect("names") {
                 if row["declaration"] == own_id && unit == 1 {
@@ -6224,9 +6296,9 @@ fn shared_hyper_wrapper_checks_every_source_and_clock_in_both_orders() {
                 }
             }
             for row in single["temporal_bindings"].as_array_mut().expect("rows") {
-                row["clock"]["timestamp_unit"] = json!("ms");
+                row["clock"]["timestamp_unit"] = if unit == 0 { json!("ms") } else { json!("us") };
             }
-            admitted("each clause's own ms fits", &single);
+            admitted("each clause's own source unit fits", &single);
         }
     }
 }
