@@ -422,6 +422,21 @@ impl NominalBody {
         }
     }
 
+    /// Borrow a dimension equivalence's two authored operands, in authored order, and its
+    /// exact root ratio. Local operands name the importing graph; package operands name a
+    /// directly selected dependency. Other nominal body forms have no equivalence view.
+    pub fn dimension_equivalence_details(
+        &self,
+    ) -> Option<(&[CheckedDimensionOperand; 2], &CheckedRational)> {
+        match &self.kind {
+            NominalBodyKind::DimensionEquivalence {
+                dimension_node_ids,
+                root_scale,
+            } => Some((dimension_node_ids, root_scale)),
+            _ => None,
+        }
+    }
+
     /// Construct a source enum body, retaining declared case order and refusing
     /// an empty, duplicate or nonidentifier member.
     pub fn try_enum(
