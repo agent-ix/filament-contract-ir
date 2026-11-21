@@ -507,7 +507,15 @@ mod tests {
     #[trace("TC-491", "FR-038-AC-597")]
     fn empty_location_rows_build_no_join_indexes_or_work() {
         let mut meter = WorkMeter::new(0);
-        let nodes: &[CheckedSemanticNodeV2] = &[];
+        let node: CheckedSemanticNodeV2 = serde_json::from_value(json!({
+            "node_id":{"package":"example","path":["leaf"],"ordinal":0},
+            "schema_version":"filament.checked-semantic-graph/v2",
+            "node_tag":"value","semantic_form":"literal",
+            "semantic_type":{"package":"example","path":["leaf"],"ordinal":0},
+            "dependencies":[],"occurrences":[{"role":"expression","ordinal":0}],
+            "body":{"term":"aggregate","members":[]}
+        })).unwrap();
+        let nodes = std::slice::from_ref(&node);
         let (gap, index) = validate_rows::<_, CheckedProtocolSemanticLocation>(
             "protocol_locations", "example", nodes, &[], &[], &[], &[], &mut meter,
         ).unwrap();

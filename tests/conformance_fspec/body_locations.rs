@@ -106,6 +106,8 @@ fn every_published_body_location_vector_runs_through_the_strict_reader() {
             "BL-01",
             "BL-02",
             "BL-03",
+            "BL-04",
+            "BL-05",
             "BL-R1",
             "BL-R2",
             "BL-R3",
@@ -115,7 +117,8 @@ fn every_published_body_location_vector_runs_through_the_strict_reader() {
             "BL-R7-no-occurrence-1",
             "BL-R8-bl03-without-occurrence-1-row",
             "BL-R9-up-beyond-previous-path",
-            "BL-R10-up-not-least"
+            "BL-R10-up-not-least",
+            "BL-R11-composite-up-not-least"
         ]
     );
 }
