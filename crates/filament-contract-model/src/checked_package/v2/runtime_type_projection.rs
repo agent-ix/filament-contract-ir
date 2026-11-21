@@ -364,6 +364,8 @@ impl SelectedTypeDeclarationsError {
             | NativeJoinLocusSource::PreparationSelection(_)
             | NativeJoinLocusSource::PreparationOutput(_)
             | NativeJoinLocusSource::MonitorAuthority
+            | NativeJoinLocusSource::ModelTupleRow(_)
+            | NativeJoinLocusSource::ModelUnionRow(_)
             | NativeJoinLocusSource::PackageRead(..) => None,
             NativeJoinLocusSource::GraphNode(index) => package
                 .resolved_graph()

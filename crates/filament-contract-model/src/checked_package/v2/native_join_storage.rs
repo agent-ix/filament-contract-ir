@@ -601,13 +601,15 @@ mod map_copy_tests {
     }
 }
 
-/// One staged model-union row: its node, texts, keys, cases and payloads.
+/// One staged model-union row: its node, texts, the shared type handle and settled
+/// key (one handle unit each), cases (each with its shared member declaration
+/// handle) and payloads.
 pub(super) fn model_union(row: &super::exact_projection::SelectedModelUnionRow) -> u128 {
     use super::exact_projection::SelectedModelUnionPayload as Payload;
-    let mut units = add(6, node(&row.structural_node));
+    let mut units = add(8, node(&row.structural_node));
     units = add(units, text(&row.selected_document));
     for case in &row.cases {
-        units = add(units, 6);
+        units = add(units, 7);
         units = add(units, text(&case.name));
         units = add(units, text(case.original_case.package()));
         units = add(units, text(case.original_case.node()));

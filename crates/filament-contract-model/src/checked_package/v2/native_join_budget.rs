@@ -45,6 +45,10 @@ pub enum NativeJoinLocusSource {
     IdentityDeclaration(usize),
     /// Index into the runtime caller's tuple rows.
     TupleRow(usize),
+    /// Row `i` of the model-tuple sidecar channel, by its original sidecar index.
+    ModelTupleRow(usize),
+    /// Row `i` of the model-union sidecar channel, by its original sidecar index.
+    ModelUnionRow(usize),
     /// Index into the runtime caller's source-unit rows.
     SourceUnitRow(usize),
     /// Row `i` of an external adapter's channel being converted into an IR-owned row.
