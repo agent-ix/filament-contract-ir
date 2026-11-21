@@ -199,15 +199,24 @@ fn selected_population_is_bound_to_the_emitted_node_and_source_occurrence() {
                 other => panic!("exact FSL population selection must be finite: {other:?}"),
             };
             assert_eq!(selected.package_name.as_ref(), package.name());
-            assert_eq!(selected.binding, node.node_id);
             assert_eq!(selected.minimum, 0);
+            // The source map names the node by its document-held ID, not the slot form
+            // `graph()` shows.
+            let held = package
+                .graph()
+                .nodes
+                .iter()
+                .position(|candidate| candidate.node_id == node.node_id)
+                .and_then(|position| package.document_held_id(position))
+                .expect("document-held population ID");
+            assert_eq!(selected.binding, *held);
             assert_eq!(
                 selected.provenance,
                 package
                     .source_map()
                     .iter()
                     .find(|entry| {
-                        entry.node_id == node.node_id
+                        entry.node_id == *held
                             && entry.role == CheckedOccurrenceRole::Type
                             && entry.ordinal == selected.occurrence.ordinal
                     })
@@ -481,5 +490,65 @@ fn selected_population_tracks_authoritative_variants_and_retargeted_package() {
         assert_eq!(original.maximum, after_retarget.maximum);
         assert_eq!(original.object_type, after_retarget.object_type);
         assert_eq!(original.provenance, after_retarget.provenance);
+    }
+}
+
+/// Trace: FR-053-AC-1, FR-053-AC-2, FR-322-AC-13.
+/// A producer-emitted population holds its bound as operand slots in the graph while the
+/// source map names the same node by document indices. The graph-shown ID the selector
+/// carries and the document-held ID both reach the one source-map entry.
+#[test]
+fn selected_population_reads_source_for_node_held_operand_spelling() {
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/population-slot-spelling");
+    let domain = fs::read(dir.join("spine-model.semantic-ir.json")).expect("domain evidence");
+    let package = read_package(&dir.join("population-0.json"), &domain);
+    let nodes = population_nodes(&package);
+    assert_eq!(nodes.len(), 1);
+    let node = nodes[0];
+    let position = package
+        .graph()
+        .nodes
+        .iter()
+        .position(|candidate| candidate.node_id == node.node_id)
+        .expect("population graph position");
+    let held = package
+        .document_held_id(position)
+        .expect("document-held population ID")
+        .clone();
+    assert_ne!(
+        held, node.node_id,
+        "graph and source map spell the node differently"
+    );
+    let entries: Vec<_> = package
+        .source_map()
+        .iter()
+        .filter(|entry| entry.node_id == held && entry.role == CheckedOccurrenceRole::Type)
+        .collect();
+    assert_eq!(
+        entries.len(),
+        1,
+        "one source-map entry under the held spelling"
+    );
+    assert!(package
+        .source_map()
+        .iter()
+        .all(|entry| entry.node_id != node.node_id));
+
+    for binding in [node.node_id.clone(), held] {
+        let mut selector = selector(&package, node);
+        selector.binding = binding;
+        let selected = match select_population(Source::Admitted {
+            package: &package,
+            selector,
+        }) {
+            Outcome::Finite(selected) => selected,
+            other => panic!("population must be finite: {other:?}"),
+        };
+        assert_eq!(
+            selected.binding, entries[0].node_id,
+            "binding is the document-held ID, as before"
+        );
+        assert_eq!(selected.maximum.as_str(), "0");
+        assert_eq!(selected.provenance, entries[0].regions);
     }
 }
