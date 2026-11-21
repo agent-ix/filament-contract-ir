@@ -48,3 +48,17 @@ The code (model_union.rs:193-207, `at_closure_node`) and budget_case_b02 (model_
 ## Disposition round 1 verdict
 
 **CONDITIONAL.** FND-001 and FND-002 (medium) are fixed. Two new low wording findings (FND-003 and FND-004) are in the new FR-358 paragraph. No medium or high finding remains open.
+
+## Dispositions (round 2)
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-003 | fixed | Disposition pass 2, head ef59880c3f9d5cd2370faa3f1cc82a81500a6a79 (fix ef59880c3). The FR-358 closure paragraph (lines 213-229) now names: work `model_union_closure_node` per node entered (model_union.rs:346-348) and `model_union_closure_edge` per edge (:382-383); storage `model_union_closure` for the start node (:398-399) and each node entered (:349-355); member-type resolution for a variant case or tuple position under `model_union_closure_type` (:424, 445; record and object fields use stored member types and resolve nothing). All of these are located at GraphNode. The verbatim after_excerpt is in the round-2 dispositions comment. |
+| FND-004 | fixed | Disposition pass 2, head ef59880c3. FR-830 is now quoted unqualified and verbatim (FSpec FR-830 lines 290-293): "names the channel, the sidecar row index and the form of the charge" and "which native locus source carries it is the budget owner's choice and is not preselected here". The paragraph says FR-830 states no closure exception and records the GraphNode choice and its no-sidecar-row reason as "a decision of this budget, not a rule stated by FSpec FR-830". The PR body quotes the same text. |
+
+## Disposition round 2 verdict
+
+**PASS.** FND-001 to FND-004 are all fixed, and the pass adds no new finding.
+- The normative SHALL (GraphNode) is unchanged in meaning, and so are the common-pass and row-join loci.
+- The engine reports no EARS warning on the changed paragraph. The only FR-358 grammar warnings are at line 249, a statement that predates this PR.
+- No production code changed.
