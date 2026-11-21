@@ -578,10 +578,9 @@ fn local_equivalence_view_borrows_exact_operands_and_ratio() {
     for operand in operands {
         assert!(resolves_to_dimension(&admitted, operand));
     }
-    // Every other nominal form, and a non-nominal node, has no equivalence view.
-    for index in [0, 1, 2] {
-        assert!(equivalence_view(&admitted, index).is_none(), "node {index}");
-    }
+    let reread = reread_local(&admitted, &[]);
+    let (reread_operands, reread_ratio) = equivalence_view(&reread, 3).expect("reread view");
+    assert_eq!((reread_operands, reread_ratio), (operands, ratio));
 }
 
 /// A package operand keeps its authored form and resolves in the selected
@@ -628,16 +627,13 @@ fn package_equivalence_view_resolves_in_selected_dependency() {
         &CheckedDimensionOperand::Package(other)
     ));
 
-    // The view is the same data the canonical writer emits.
-    let retained = serde_json::to_value(operands).expect("operands serialize");
-    assert_eq!(
-        retained,
-        wire["semantic_graph"]["nodes"][3]["body"]["dimension_node_ids"]
-    );
+    // The canonical writer output, read back with the same dependency, yields the same view.
+    let reread = reread_local(&admitted, &[(name.as_str(), &dependency)]);
+    assert_eq!(equivalence_view(&reread, 3), Some((operands, ratio)));
 }
 
-/// A wrong-kind operand never reaches the view: the reader refuses it, and an
-/// operand resolving to a unit is not a dimension to the resolution route.
+/// A wrong-kind operand never reaches the view: the reader refuses an operand naming
+/// the boolean empty-aggregate node, and the equivalence node is not itself a dimension.
 #[trace("TC-048", "TC-058", "FR-038-AC-601")]
 #[test]
 fn wrong_kind_operand_refuses_and_is_not_a_dimension() {
@@ -655,4 +651,74 @@ fn wrong_kind_operand_refuses_and_is_not_a_dimension() {
     // The equivalence node itself is a scalar type but not a dimension.
     let own = node_id_of(&package()["semantic_graph"]["nodes"][3]["node_id"]);
     assert!(!is_dimension(&admitted, &own));
+}
+
+/// Write an admitted package through the canonical writer and read it back, with the
+/// same selected dependencies.
+fn reread_local(
+    admitted: &CheckedPackageV2,
+    dependencies: &[(&str, &CheckedPackageV2)],
+) -> CheckedPackageV2 {
+    let encoded = encode_checked_package_v2(
+        admitted.name(),
+        admitted.lock(),
+        admitted.graph(),
+        CheckedPackageSourceCorrespondenceRef {
+            source_map: admitted.source_map(),
+            refinement_step_rows: admitted.refinement_step_rows(),
+        },
+        filament_contract_model::CheckedPackageSidecarsRef {
+            temporal_clause_names: admitted.temporal_clause_names(),
+            claim_names: admitted.claim_names(),
+            operation_effects: None,
+            operation_bodies: None,
+            checked_term_data: admitted.checked_term_data(),
+            temporal_bindings: admitted.temporal_bindings(),
+            schedulability_claims: None,
+        },
+        admitted.capability_report(),
+        admitted.diagnostics(),
+        quire_canonical::Limits::new(u64::MAX),
+    )
+    .expect("canonical writer encodes the admitted package");
+    let encoded: Value = serde_json::from_slice(&encoded).expect("canonical package JSON");
+    match read_with_dependencies(&encoded, dependencies) {
+        CheckedPackageV2ReadResult::Admitted(package) => *package,
+        other => panic!("written package must read back: {other:?}"),
+    }
+}
+
+/// Dimension, unit and enum bodies of an admitted package each reach the accessor
+/// and return no equivalence view.
+#[trace("TC-048", "TC-058", "FR-038-AC-601")]
+#[test]
+fn other_nominal_forms_have_no_equivalence_view() {
+    let wire = crate::support::checked_package::v2_nominal();
+    let CheckedPackageV2ReadResult::Admitted(admitted) = read(&wire) else {
+        panic!("nominal fixture must admit");
+    };
+    let mut seen = std::collections::BTreeSet::new();
+    for (authored, node) in wire["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("authored nodes")
+        .iter()
+        .zip(&admitted.graph().nodes)
+    {
+        if let CheckedTerm::NominalBody(body) = &node.body {
+            assert!(body.dimension_equivalence_details().is_none());
+            seen.insert(authored["body"]["term"].as_str().expect("term").to_owned());
+        }
+    }
+    assert_eq!(
+        seen,
+        ["dimension", "enum", "unit"]
+            .map(str::to_owned)
+            .into_iter()
+            .collect()
+    );
+    // The accessor does answer for an equivalence body, so the none above is not vacuous.
+    let CheckedPackageV2ReadResult::Admitted(equivalence) = read(&package()) else {
+        panic!("equivalence package must admit");
+    };
+    assert!(equivalence_view(&equivalence, 3).is_some());
 }

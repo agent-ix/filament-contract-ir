@@ -125,6 +125,18 @@ or constructing an unchecked enum body through the accessor. The accessor
 introduces no separately exported root item and does not alter the exact
 inventory or the root-crate boundary.
 
+## Dimension-equivalence borrowed view boundary (FR-038-AC-601)
+
+The accessor `dimension_equivalence_details` of `NominalBody` is a shared
+borrowed view. Its compile-fail doctests, in the documentation of that method,
+reject assigning an element of the returned operand pair, assigning a field of
+the returned ratio, and converting the returned view into a `NominalBody`.
+The raw-variant, mutable-field and unchecked-conversion probes of the nominal
+body public boundary (FR-038-AC-374) already forbid constructing an equivalence
+body except through `try_dimension_equivalence`. The accessor adds no root
+export, so the exact public inventory of FR-019-AC-5 is unchanged apart from its
+nominal-body row.
+
 ## Compensation temporal binding borrowed public read (FR-019-AC-22)
 
 Implemented. Compile a default-feature external consumer
