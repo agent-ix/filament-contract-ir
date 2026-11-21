@@ -10,7 +10,7 @@ use super::{CheckedNodeId, CheckedOccurrenceRole, WorkMeter};
 use crate::checked_package::common::ValidationFailure;
 use crate::checked_package::shared::{CheckedSourceMapEntry, CheckedSourceRegion};
 
-type Key<'a> = (&'a CheckedNodeId, &'a CheckedOccurrenceRole, u64);
+pub(super) type Key<'a> = (&'a CheckedNodeId, &'a CheckedOccurrenceRole, u64);
 
 /// The source-map entries of a package by (node, role, ordinal), ascending.
 pub(super) struct SourceEntries<'a> {
@@ -78,5 +78,46 @@ impl<'a> SourceEntries<'a> {
             }
         }
         Ok(true)
+    }
+
+    /// Whether the occurrence's `source_map` entry holds exactly the one region
+    /// `region`. An occurrence with no entry, or an entry with no region, is
+    /// left to the package-wide source-map check, which refuses it. Each region
+    /// compared costs one validation visit at `site`.
+    pub(super) fn is_exactly(
+        &self,
+        region: &CheckedSourceRegion,
+        id: &CheckedNodeId,
+        role: &CheckedOccurrenceRole,
+        ordinal: u64,
+        site: &Site<'_>,
+        meter: &mut WorkMeter,
+    ) -> Result<bool, ValidationFailure> {
+        let Some(entry) = self.entry(id, role, ordinal) else {
+            return Ok(true);
+        };
+        if entry.regions.is_empty() {
+            return Ok(true);
+        }
+        for held in &entry.regions {
+            stage_storage::work(meter, site, 1)?;
+            if held != region {
+                return Ok(false);
+            }
+        }
+        Ok(entry.regions.len() == 1)
+    }
+
+    /// The `source_map` entries of node `id`, by role then ordinal: each key's
+    /// position in the package's entry array.
+    pub(super) fn of_node(&self, id: &CheckedNodeId) -> &[(Key<'a>, usize)] {
+        let start = self.keys.partition_point(|((held, _, _), _)| *held < id);
+        let end = start + self.keys[start..].partition_point(|((held, _, _), _)| *held == id);
+        &self.keys[start..end]
+    }
+
+    /// The entry at `position` of the package's `source_map` array.
+    pub(super) fn at(&self, position: usize) -> &'a CheckedSourceMapEntry {
+        &self.entries[position]
     }
 }

@@ -10,8 +10,8 @@ use super::stage_storage::{self, Path, Refusal, Site};
 use super::temporal_clause_names::TemporalClauseName;
 use super::{
     identity::is_identifier, structural::typed_admitted_reference, CheckedNodeId, CheckedNodeKind,
-    CheckedOccurrence, CheckedOccurrenceRole, CheckedTerm, ClaimForm, RawSemanticNodeV2,
-    RelationForm, StateForm, TemporalForm, WorkMeter,
+    CheckedOccurrence, CheckedOccurrenceRole, CheckedTerm, ClaimForm, CorrespondenceForm,
+    RawSemanticNodeV2, RelationForm, StateForm, TemporalForm, WorkMeter,
 };
 use crate::checked_package::common::ValidationFailure;
 use crate::checked_package::shared::{
@@ -75,6 +75,7 @@ fn is_claim_bearing(kind: CheckedNodeKind) -> bool {
         kind,
         CheckedNodeKind::State(StateForm::StateClause)
             | CheckedNodeKind::Relation(RelationForm::Refinement)
+            | CheckedNodeKind::Correspondence(CorrespondenceForm::ComponentComposition)
             | CheckedNodeKind::Claim(
                 ClaimForm::VerificationClaim
                     | ClaimForm::AnalysisClaim
@@ -208,14 +209,43 @@ pub(super) fn validate(
                 meter,
             ));
         }
-        if !sources.covers(
-            &row.declaration_region,
-            &row.declaration,
-            &row.occurrence.role,
-            row.occurrence.ordinal,
-            &site(row_index, at.key("declaration_region")),
-            meter,
-        )? {
+        // FSpec FR-322 "Composition declaration names": a composition is
+        // named by its one `declaration` occurrence at ordinal 0, whose single
+        // region is the whole declaration, so the row's region equals it.
+        let composition = kinds[position]
+            == CheckedNodeKind::Correspondence(CorrespondenceForm::ComponentComposition);
+        if composition
+            && (row.occurrence.role != CheckedOccurrenceRole::Declaration
+                || row.occurrence.ordinal != 0)
+        {
+            return Err(invalid(
+                at.key("occurrence"),
+                &row.declaration,
+                row_index,
+                meter,
+            ));
+        }
+        let region_site = site(row_index, at.key("declaration_region"));
+        let region_agrees = if composition {
+            sources.is_exactly(
+                &row.declaration_region,
+                &row.declaration,
+                &row.occurrence.role,
+                row.occurrence.ordinal,
+                &region_site,
+                meter,
+            )?
+        } else {
+            sources.covers(
+                &row.declaration_region,
+                &row.declaration,
+                &row.occurrence.role,
+                row.occurrence.ordinal,
+                &region_site,
+                meter,
+            )?
+        };
+        if !region_agrees {
             return Err(invalid(
                 at.key("declaration_region"),
                 &row.declaration,
@@ -230,6 +260,23 @@ pub(super) fn validate(
                 row_index,
                 meter,
             ));
+        }
+        if composition {
+            // The row repeats the node's declared path, which is also the
+            // path of its structural identity.
+            let declared = nodes[position]
+                .declaration
+                .as_ref()
+                .map(|declaration| declaration.qualified_name.as_slice());
+            stage_storage::work(meter, &site(row_index, at.key("qualified_name")), 1)?;
+            if declared != Some(row.qualified_name.as_slice()) {
+                return Err(invalid(
+                    at.key("qualified_name"),
+                    &row.declaration,
+                    row_index,
+                    meter,
+                ));
+            }
         }
         if kinds[position] == CheckedNodeKind::Relation(RelationForm::Refinement) {
             // A body the typed decode refused is reported by the refinement

@@ -10,7 +10,8 @@ relationships:
 
 ## Description
 
-Verify FR-038-AC-531 through FR-038-AC-540: the strict V2 reader admits the
+Verify FR-038-AC-531 through FR-038-AC-540 and FR-038-AC-602 through
+FR-038-AC-605: the strict V2 reader admits the
 `correspondence`/`implementation_guarantee` and `correspondence`/
 `component_composition` bodies of FSpec FR-490 and FR-491 as typed terms and
 refuses every other shape, identity, order, target and member in reader order.
@@ -32,6 +33,11 @@ subject and malformed structural keys. Name a dependency clause by its own
 operand through a dependency position in the composition's operand row, and
 refuse an unsupplied package, a position past the dependency's last node, a
 position written as a path segment and a local index in a foreign id.
+Give the composition its declared name, its name row and one literal authored
+region per member (the guarantees authored in reverse canonical order), read it
+back after reversing the source map and after a write, then mutate its
+coordinates one at a time and combine a coordinate defect with each earlier and
+later defect to fix the reader order.
 
 ## Expected Results
 
