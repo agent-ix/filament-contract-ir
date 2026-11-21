@@ -122,7 +122,7 @@ filament-contract-model = { version = "=0.1.2", path = "crates/filament-contract
 # filament-exact and filament-semantic-value are interim `main` revisions (QSL-2498), the
 # revisions FSL pins, until their next tags: one filament-exact source in Cargo.lock.
 quire-canonical = { version = "0.3", git = "https://github.com/agent-ix/quire-canonical", tag = "v0.3.1" }
-filament-exact = { version = "0.3", git = "https://github.com/agent-ix/filament-exact", rev = "b26a8e4c592503fccdc4a0e3d2cce23dd8487616" }
+filament-exact = { version = "0.3", git = "https://github.com/agent-ix/filament-exact", rev = "a58474cc105a86f3307a11def3fc001e2459679f" }
 filament-verification-contracts = { version = "0.2", git = "https://github.com/agent-ix/filament-verification-contracts", rev = "cd0c8ef67e5d4263ce12773831cedd771246e5e5" }
 jsonschema = { version = "=0.17.1", default-features = false, features = ["draft202012"] }
 sha2 = "=0.10.9"
