@@ -628,6 +628,10 @@ pub(super) fn validate<B>(
     let mut seen: Vec<(usize, u64, usize)> = meter.vec(rows.len())?;
     let mut previous: Option<(super::graph_storage::ResolvedKey<'_>, u64, usize)> = None;
     let mut resolved = meter.vec(rows.len())?;
+    let mut clause_unit: Option<(
+        usize,
+        &Option<crate::checked_package::shared::CheckedSourceRef>,
+    )> = None;
     for (row_index, row) in rows.iter().enumerate() {
         let at = || row_path(row_index);
         let Some(&position) = index.get(&row.declaration) else {
@@ -681,7 +685,15 @@ pub(super) fn validate<B>(
         let is_clause = kinds[position] == CheckedNodeKind::Temporal(TemporalForm::TemporalClause);
         match (&row.source_unit, is_clause) {
             (Some(unit), true) => {
-                if !lock.sources.contains(unit) {
+                let mut locked = false;
+                for source in &lock.sources {
+                    binding_work(meter, at().key("source_unit"))?;
+                    if source == unit {
+                        locked = true;
+                        break;
+                    }
+                }
+                if !locked {
                     return Err(binding_refusal(
                         meter,
                         at().key("source_unit"),
@@ -692,6 +704,18 @@ pub(super) fn validate<B>(
             }
             (None, false) => {}
             _ => return Err(invalid(meter, at(), &row.declaration)),
+        }
+        // A clause is declared in one unit: every row of one clause node names
+        // the unit its first row names.
+        if is_clause {
+            match clause_unit {
+                Some((first, unit)) if first == position => {
+                    if unit != &row.source_unit {
+                        return Err(invalid(meter, at(), &row.declaration));
+                    }
+                }
+                _ => clause_unit = Some((position, &row.source_unit)),
+            }
         }
         // A hyperproperty row names one of the node's quantified traces, and
         // no other row names a trace.

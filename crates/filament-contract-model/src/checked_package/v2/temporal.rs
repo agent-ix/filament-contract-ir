@@ -672,7 +672,11 @@ pub(super) fn validate_temporal(
                         (*declaration).cmp(&graph.nodes[position].node_id)
                     })
                     .ok()
-                    .and_then(|at| clock_units[at].1),
+                    .map(|at| clock_units[at].1)
+                    .unwrap_or(ClauseClock {
+                        unit: None,
+                        source: None,
+                    }),
                 meter,
                 &mut scratch,
                 &mut stamps,
@@ -1332,7 +1336,7 @@ fn check_clause(
     position: usize,
     graph: &StepGraph<'_, '_>,
     terms: &[Option<CheckedTerm>],
-    clock_unit: Option<&str>,
+    clock: ClauseClock<'_>,
     meter: &mut WorkMeter,
     scratch: &mut ClauseScratch,
     stamps: &mut Stamps,
@@ -1597,12 +1601,17 @@ fn check_clause(
     {
         validate_source_clock_unit(context, position, &node.node_id, graph, terms, meter)?;
     }
-    let source_owner = source_owner_for_clause(&node.node_id, context.bindings);
+    let source_owner = clock.source.filter(|_| !aggregates.is_empty()).map(|unit| {
+        super::CheckedNodeOwner::Source {
+            authority: unit.authority.clone(),
+            identity: unit.identity.clone(),
+        }
+    });
     for formula in aggregates {
         check_aggregate(
             formula,
             profile,
-            clock_unit,
+            clock.unit,
             source_owner.as_ref(),
             graph,
             terms,
@@ -1832,15 +1841,25 @@ fn aggregate_presence(kind: AggregateKind, name: &str) -> (bool, bool) {
     }
 }
 
-/// One scan of the occurrence rows records a clock unit only if every row
-/// for a clause names the same timestamp unit. A mixed clock has no single
-/// duration encoding and its aggregate bounds must refuse.
+/// The clock of one clause as its occurrence rows share it.
+#[derive(Clone, Copy)]
+struct ClauseClock<'b> {
+    /// The timestamp unit every row names.
+    unit: Option<&'b str>,
+    /// The `source_unit` of the clause's first row (FR-322 "Clause source unit").
+    source: Option<&'b super::CheckedSourceRef>,
+}
+
+/// One scan of the occurrence rows records a clock only if every row for a
+/// clause names the same timestamp unit. A mixed clock has no single duration
+/// encoding and its aggregate bounds must refuse. The rows of one clause all
+/// name one `source_unit` (checked with the rows), so the first row's stands.
 fn aggregate_clock_units<'b>(
     bindings: Option<&'b [TemporalBinding]>,
     meter: &mut WorkMeter,
-) -> Result<Vec<(&'b CheckedNodeId, Option<&'b str>)>, ValidationFailure> {
+) -> Result<Vec<(&'b CheckedNodeId, ClauseClock<'b>)>, ValidationFailure> {
     let rows = bindings.unwrap_or(&[]);
-    let mut keyed: Vec<(&CheckedNodeId, Option<&str>, usize)> = meter.vec(rows.len())?;
+    let mut keyed: Vec<(&CheckedNodeId, ClauseClock<'_>, usize)> = meter.vec(rows.len())?;
     for (at, row) in rows.iter().enumerate() {
         let unit = match &row.clock {
             ClockConfiguration::TimestampedEvent { timestamp_unit } => {
@@ -1848,7 +1867,14 @@ fn aggregate_clock_units<'b>(
             }
             _ => None,
         };
-        keyed.push((&row.declaration, unit, at));
+        keyed.push((
+            &row.declaration,
+            ClauseClock {
+                unit,
+                source: row.source_unit.as_ref(),
+            },
+            at,
+        ));
     }
     keyed.sort_unstable_by(|left, right| left.0.cmp(right.0).then(left.2.cmp(&right.2)));
     let clauses = keyed
@@ -1856,16 +1882,16 @@ fn aggregate_clock_units<'b>(
         .enumerate()
         .filter(|(at, row)| *at == 0 || keyed[*at - 1].0 != row.0)
         .count();
-    // One entry per clause, in id order: the unit its rows share, else none.
-    let mut units: Vec<(&CheckedNodeId, Option<&str>)> = meter.vec(clauses)?;
-    for (declaration, unit, _) in keyed {
+    // One entry per clause, in id order: the clock its rows share, else none.
+    let mut units: Vec<(&CheckedNodeId, ClauseClock<'_>)> = meter.vec(clauses)?;
+    for (declaration, clock, _) in keyed {
         match units.last_mut() {
             Some((last, shared)) if *last == declaration => {
-                if *shared != unit {
-                    *shared = None;
+                if shared.unit != clock.unit {
+                    shared.unit = None;
                 }
             }
-            _ => units.push((declaration, unit)),
+            _ => units.push((declaration, clock)),
         }
     }
     Ok(units)
@@ -1926,15 +1952,6 @@ fn row_source_owner(row: &TemporalBinding) -> Option<super::CheckedNodeOwner> {
             authority: unit.authority.clone(),
             identity: unit.identity.clone(),
         })
-}
-
-/// The source owner of a clause's aggregate checks: its first row's
-/// `source_unit` (each row's own unit resolves its `timestamp_unit`).
-fn source_owner_for_clause(
-    clause: &CheckedNodeId,
-    bindings: Option<&[TemporalBinding]>,
-) -> Option<super::CheckedNodeOwner> {
-    row_source_owner(bindings?.iter().find(|row| &row.declaration == clause)?)
 }
 
 fn aggregate_declares_duration_window(formula: usize, terms: &[Option<CheckedTerm>]) -> bool {

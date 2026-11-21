@@ -8207,10 +8207,14 @@ pub(super) fn compensation_clock_case(
     for row in &mut rows {
         let key = row["declaration"].as_str().expect("declaration key");
         row["declaration"] = ids[key].clone();
-        // The vector names the published unit `example`; this package locks
-        // its own source.
-        if row.get("source_unit").is_some() {
-            row["source_unit"] = package["lock"]["sources"][0].clone();
+        // The vector's clause row names the published unit `example`: lock it
+        // beside this package's own source rather than rewriting the row.
+        if let Some(unit) = row.get("source_unit").cloned() {
+            let sources = package["lock"]["sources"].as_array_mut().expect("sources");
+            if !sources.contains(&unit) {
+                sources.push(unit);
+                sources.sort_by_key(|source| source.to_string());
+            }
         }
     }
     if case["id"] == "CB-01" {
@@ -8295,15 +8299,16 @@ fn compensation_clock_rows_follow_published_cases() {
                     assert_eq!(row.clock, expected, "{id}");
                 }
                 assert_ne!(ids["k1"], ids["k2"], "{id}");
-                if id == "CB-01" {
-                    // FR-322-AC-503: a compensation row carries no `source_unit`.
+                // FR-322-AC-503: a compensation or await row carries no
+                // `source_unit`.
+                for (at, row) in package["temporal_bindings"]
+                    .as_array()
+                    .expect("rows")
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, row)| row.get("source_unit").is_none())
+                {
                     let mut extra = package.clone();
-                    let at = extra["temporal_bindings"]
-                        .as_array()
-                        .expect("rows")
-                        .iter()
-                        .position(|row| row["declaration"] == ids["k1"])
-                        .expect("k1 row");
                     extra["temporal_bindings"][at]["source_unit"] =
                         extra["lock"]["sources"][0].clone();
                     assert_eq!(
@@ -8312,9 +8317,12 @@ fn compensation_clock_rows_follow_published_cases() {
                             CheckedPackageRefusalCode::InvalidPackage,
                             &format!("/temporal_bindings/{at}"),
                             Some(CheckedPackageRefusalCause::TimedNodeReference),
-                            &ids["k1"],
-                        )
+                            &row["declaration"],
+                        ),
+                        "{id}: row {at}"
                     );
+                }
+                if id == "CB-01" {
                     let mut missing = package.clone();
                     missing
                         .as_object_mut()

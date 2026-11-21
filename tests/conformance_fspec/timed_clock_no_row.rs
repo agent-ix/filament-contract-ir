@@ -193,6 +193,9 @@ fn timed_clock_no_row_vectors_join_model_and_refuse_extra_row() {
             "occurrence": 0,
             "clock_name": name,
             "clock": clock,
+            // The published TN rows carry no `source_unit` (FSpec #777 TN-04,
+            // TN-06..TN-09 lack it): the harness names the package's own locked
+            // unit, as FR-322 "Clause source unit" requires of every clause row.
             "source_unit": package["lock"]["sources"][0].clone(),
         }]);
         fixture_support::refresh_identity_projection(&mut package);
