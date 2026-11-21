@@ -8851,44 +8851,73 @@ fn union_environment_wire(form: &PayloadForm) -> (Value, Value) {
         &reads,
     );
     if let Some(name) = form.unit {
-        let dimension = "ix://acme/orders/dimension/Time";
-        let original = orders_unit(name);
-        selected["dimensions"] =
-            json!([{"identity":dimension,"name":"Time","base":true,"terms":[]}]);
-        selected["units"] = json!([{
-            "identity":original,"name":name,"dimension":dimension,"scale":"1","offset":"0"
-        }]);
-        let dimension_id = structural_id(
-            IDENTITY,
-            vec![json!("scalar_type"), json!("dimension"), json!(dimension)],
-            0,
-        );
-        let unit_id = structural_id(
-            IDENTITY,
-            vec![json!("scalar_type"), json!("unit"), json!(original)],
-            0,
-        );
-        let nodes = wire["semantic_graph"]["nodes"].as_array_mut().unwrap();
-        for (id, semantic, owner, dependencies) in [
-            (&dimension_id, "dimension", dimension, vec![]),
-            (
-                &unit_id,
-                "unit",
-                original.as_str(),
-                vec![dimension_id.clone()],
-            ),
-        ] {
-            nodes.push(json!({
-                "node_id":id,"schema_version":"filament.checked-semantic-graph/v2",
-                "node_tag":"scalar_type","semantic_form":semantic,
-                "semantic_type":dimension_id,"dependencies":dependencies,
-                "occurrences":[{"role":"generated","ordinal":0}],
-                "owner":{"kind":"model","identity":IDENTITY,"node":owner},"body":empty()
-            }));
-        }
-        settle(&mut wire);
+        declare_model_unit(&mut selected, &mut wire, name);
     }
     (wire, selected)
+}
+
+/// Declares the model unit `name` (and its Time dimension) in `selected` and as
+/// model-owned nodes of `wire`.
+fn declare_model_unit(selected: &mut Value, wire: &mut Value, name: &str) {
+    let dimension = "ix://acme/orders/dimension/Time";
+    let original = orders_unit(name);
+    selected["dimensions"] = json!([{"identity":dimension,"name":"Time","base":true,"terms":[]}]);
+    selected["units"] = json!([{
+        "identity":original,"name":name,"dimension":dimension,"scale":"1","offset":"0"
+    }]);
+    let dimension_id = structural_id(
+        IDENTITY,
+        vec![json!("scalar_type"), json!("dimension"), json!(dimension)],
+        0,
+    );
+    let unit_id = structural_id(
+        IDENTITY,
+        vec![json!("scalar_type"), json!("unit"), json!(original)],
+        0,
+    );
+    let nodes = wire["semantic_graph"]["nodes"].as_array_mut().unwrap();
+    for (id, semantic, owner, dependencies) in [
+        (&dimension_id, "dimension", dimension, vec![]),
+        (
+            &unit_id,
+            "unit",
+            original.as_str(),
+            vec![dimension_id.clone()],
+        ),
+    ] {
+        nodes.push(json!({
+            "node_id":id,"schema_version":"filament.checked-semantic-graph/v2",
+            "node_tag":"scalar_type","semantic_form":semantic,
+            "semantic_type":dimension_id,"dependencies":dependencies,
+            "occurrences":[{"role":"generated","ordinal":0}],
+            "owner":{"kind":"model","identity":IDENTITY,"node":owner},"body":empty()
+        }));
+    }
+    settle(wire);
+}
+
+/// A bounded Rational value type (numerator -3..7, denominator 1..12), declared
+/// with `unit` when it is a carried quantity.
+fn rational_value_type(short: &str, unit: Option<String>) -> Value {
+    let mut declared = value_type(short, "rational", None);
+    let identity = orders(short);
+    declared["constraints"] = json!([
+        ("minNumerator", -3),
+        ("maxNumerator", 7),
+        ("minDenominator", 1),
+        ("maxDenominator", 12)
+    ]
+    .map(|(keyword, value)| json!({
+        "identity": format!("{identity}/constraint/{keyword}"),
+        "appliesTo": identity,
+        "diagnosticCode": format!("acme.orders.RATIO_{}", keyword.to_ascii_uppercase()),
+        "keyword": keyword,
+        "operands": {"value": value}
+    })));
+    if let Some(unit) = unit {
+        declared["unit"] = json!(unit);
+    }
+    declared
 }
 
 /// The model-owned declaration identity of the unit `name`.
@@ -9182,12 +9211,15 @@ fn a_witness_missing_only_the_union_row_is_refused_at_the_union_completeness_sta
     assert!(complete.validate_and_rebind(&package, &mut budget).is_ok());
 }
 
-/// Every non-scalar payload form the strict reader admits as a union payload
-/// (a bounded integer, a profiled text, a rational range and an option; a
-/// collection declaration is refused at intake), each through a real admitted
-/// package, its own graph node and the production union join: the retained payload carries the form's Exact type,
-/// the same type the record field of that declared type projects, and a payload
-/// naming another Exact type is refused at the payload's original type.
+/// Each payload form listed here is admitted by the strict reader as a union
+/// payload through a real document, graph and production union join: integer
+/// range, profiled text, rational range, option, Float32, Float64, Bytes,
+/// JsonObject, carried quantity (a Rational with a model unit) and Duration (the
+/// model's `s` unit). The retained payload carries the form's Exact type, the same
+/// type the record field of that declared type projects, and a witness naming a
+/// wrong type (another bound, profile, width, unit or kind) is refused at the
+/// payload's original type. A collection declaration is refused at intake;
+/// Clock, ClockReference and map payloads are outside this test.
 #[trace(
     "FR-352-AC-32",
     "FR-352-AC-34",
@@ -9278,27 +9310,7 @@ fn every_strict_admitted_non_scalar_payload_form_joins_and_each_wrong_witness_is
             )),
         ),
     ];
-    let rational_decl = |short: &str, unit: Option<String>| {
-        let mut declared = value_type(short, "rational", None);
-        let identity = orders(short);
-        declared["constraints"] = json!([
-            ("minNumerator", -3),
-            ("maxNumerator", 7),
-            ("minDenominator", 1),
-            ("maxDenominator", 12)
-        ]
-        .map(|(keyword, value)| json!({
-            "identity": format!("{identity}/constraint/{keyword}"),
-            "appliesTo": identity,
-            "diagnosticCode": format!("acme.orders.RATIO_{}", keyword.to_ascii_uppercase()),
-            "keyword": keyword,
-            "operands": {"value": value}
-        })));
-        if let Some(unit) = unit {
-            declared["unit"] = json!(unit);
-        }
-        declared
-    };
+    let rational_decl = rational_value_type;
     let domain = |numerator_max: i64| {
         RationalDomain::new(interval(-3, numerator_max), interval(1, 12))
             .expect("a rational domain")
@@ -9377,18 +9389,28 @@ fn every_strict_admitted_non_scalar_payload_form_joins_and_each_wrong_witness_is
             ValueType::Quantity(unit_exact("other")),
         ),
     ];
+    // A wrong witness of the same kind: another bound or profile, never a
+    // different kind, so a bounds or profile defect is what it can expose.
+    let text = |upper: u64, profile: &str| {
+        ValueType::Text(
+            TextType::new(
+                0,
+                upper,
+                TextProfile::from_code(profile).expect("a profile"),
+            )
+            .expect("a text type"),
+        )
+    };
     let forms = forms
         .into_iter()
         .map(|(node_form, types, type_ref, read, expected)| {
-            (
-                node_form,
-                types,
-                type_ref,
-                read,
-                None,
-                expected,
-                ValueType::Boolean,
-            )
+            let wrong = match node_form {
+                "integer_range" => ValueType::Int(interval(0, 999)),
+                "text_bounds" => text(65, "nfc"),
+                "rational_range" => ValueType::Rational(domain(8)),
+                _ => ValueType::option(ValueType::Boolean),
+            };
+            (node_form, types, type_ref, read, None, expected, wrong)
         })
         .chain(extra);
     let mut refused = 0;
@@ -9498,19 +9520,39 @@ fn every_strict_admitted_non_scalar_payload_form_joins_and_each_wrong_witness_is
             .expect("the payload-typed record field");
         assert_eq!(field.value_type(), &expected, "{node_form}: one projection");
         // Another Exact type for the same node is a wrong witness.
-        let (_, refused_join, _) = join(wrong, true);
-        let error = refused_join.expect_err("a wrong original type refuses");
-        assert_eq!(
-            error.code,
-            ExactTypeProjectionErrorCode::MismatchedIdentityWitness,
-            "{node_form}"
-        );
-        assert_eq!(error.at.as_deref(), Some(&payload_node), "{node_form}");
-        assert_eq!(
-            error.form.as_deref(),
-            Some("/model_unions/0/cases/1/payload/original_type"),
-            "{node_form}"
-        );
+        // The same kind with another bound, profile or unit is wrong too.
+        let also_wrong = match node_form {
+            "text_bounds" => vec![text(64, "nfd")],
+            "rational_range" => vec![ValueType::Rational(
+                RationalDomain::new(interval(-4, 7), interval(1, 12)).expect("a domain"),
+            )],
+            "carried_quantity" => vec![ValueType::CarriedQuantity(Arc::new(
+                CarriedQuantityType::new(
+                    unit_exact("minute"),
+                    QuantityCarrier::Rational(domain(7)),
+                ),
+            ))],
+            _ => vec![],
+        };
+        for wrong in std::iter::once(wrong).chain(also_wrong) {
+            let (_, refused_join, _) = join(wrong.clone(), true);
+            let error = refused_join.expect_err("a wrong original type refuses");
+            assert_eq!(
+                error.code,
+                ExactTypeProjectionErrorCode::MismatchedIdentityWitness,
+                "{node_form}: {wrong:?}"
+            );
+            assert_eq!(
+                error.at.as_deref(),
+                Some(&payload_node),
+                "{node_form}: {wrong:?}"
+            );
+            assert_eq!(
+                error.form.as_deref(),
+                Some("/model_unions/0/cases/1/payload/original_type"),
+                "{node_form}: {wrong:?}"
+            );
+        }
         if unit.is_some() {
             // Without the declared unit's identity row the unit type has no
             // witness, so the same correct payload is refused at the unit node.
@@ -9536,4 +9578,119 @@ fn every_strict_admitted_non_scalar_payload_form_joins_and_each_wrong_witness_is
         refused, 1,
         "only the collection form is not an admitted payload"
     );
+}
+
+/// A record whose only field is a carried quantity projects through the record
+/// field path with its declared unit's identity row, and without that row alone
+/// (the record and field rows present, no union stage involved) the same
+/// projection is refused as an unavailable witness at the unit node.
+#[trace("FR-352-AC-44")]
+#[test]
+fn a_carried_quantity_record_field_needs_the_declared_unit_identity_row() {
+    use filament_exact::{CarriedQuantityType, QuantityCarrier, RationalDomain};
+    use std::sync::Arc;
+    let interval = |lower: i64, upper: i64| {
+        filament_exact::IntegerInterval::new(Integer::from(lower), Integer::from(upper))
+            .expect("an interval")
+    };
+    let mut selected = document(vec![
+        rational_value_type("Dist", Some(public_unit("second"))),
+        typed_object(
+            "Receipt",
+            "record",
+            &[],
+            &[field("payload", &orders("Dist"))],
+        ),
+    ]);
+    selected["constructs"].as_array_mut().unwrap().push(json!({
+        "kind":{"module":IDENTITY,"name":"record"},
+        "construct":{"meaning":"filament.meaning.model.record-value-type/v1"}
+    }));
+    let read = Read {
+        owner: "Receipt",
+        field: "payload",
+        ty: Ty::CarriedRational(
+            unit_key("second"),
+            Box::new(Ty::RationalRange(-3, 7, 1, 12)),
+        ),
+    };
+    let (mut wire, _, _) = package(&selected, &[("Receipt", "record_value_type")], &[read]);
+    declare_model_unit(&mut selected, &mut wire, "second");
+    let evidence = evidence_with_document(&wire, IDENTITY, &selected);
+    let package = match read_with(&wire, &evidence, CheckedPackageReadLimits::bounded()) {
+        CheckedPackageV2ReadResult::Admitted(package) => *package,
+        other => panic!("the carried-quantity record admits: {other:?}"),
+    };
+    let node = |form: &str| {
+        package
+            .resolved_graph()
+            .nodes
+            .iter()
+            .find(|node| node.semantic_form.as_ref() == form)
+            .unwrap_or_else(|| panic!("the package holds a {form} node"))
+            .node_id
+            .clone()
+    };
+    let (record, unit) = (node("record_value_type"), node("unit"));
+    let record_key = NodeKey::new("checked", vec![PathSegment::Text("Receipt".into())], 0).unwrap();
+    let rows = |with_unit: bool| {
+        let mut declarations = vec![SelectedExactDeclarationRow::new(
+            record.clone(),
+            IDENTITY,
+            SelectedExactDeclarationForm::RecordValueType,
+            orders("Receipt"),
+            SelectedExactIdentity::Record(record_key.clone()),
+        )];
+        if with_unit {
+            declarations.push(SelectedExactDeclarationRow::new(
+                unit.clone(),
+                IDENTITY,
+                SelectedExactDeclarationForm::DeclaredUnit,
+                orders_unit("second"),
+                SelectedExactIdentity::DeclaredUnit(UnitId::declared(
+                    NodeKey::new("checked", vec![PathSegment::Text("second".into())], 0).unwrap(),
+                )),
+            ));
+        }
+        let fields = vec![SelectedExactFieldRow::new(
+            record.clone(),
+            IDENTITY,
+            orders("Receipt"),
+            format!("{}/payload", orders("Receipt")),
+            MemberId::new(MemberOwner::Node(record_key.clone()), "payload").unwrap(),
+        )];
+        SelectedExactIdentities::from_stage_rows(
+            &package,
+            declarations,
+            fields,
+            &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+        )
+        .expect("the stage rows join")
+    };
+    let project = |witness: &SelectedExactIdentities| {
+        package.project_exact_type(
+            &record,
+            witness,
+            &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+        )
+    };
+    let expected = ValueType::CarriedQuantity(Arc::new(CarriedQuantityType::new(
+        UnitId::declared(
+            NodeKey::new("checked", vec![PathSegment::Text("second".into())], 0).unwrap(),
+        ),
+        QuantityCarrier::Rational(
+            RationalDomain::new(interval(-3, 7), interval(1, 12)).expect("a domain"),
+        ),
+    )));
+    let projected = project(&rows(true)).expect("the witnessed record projects");
+    assert_eq!(
+        projected.record_view().expect("a record view").fields()[0].value_type(),
+        &expected
+    );
+    let error = project(&rows(false)).expect_err("the unit has no identity row");
+    assert_eq!(
+        error.code,
+        ExactTypeProjectionErrorCode::UnavailableIdentityWitness
+    );
+    assert_eq!(error.at.as_deref(), Some(&unit));
 }

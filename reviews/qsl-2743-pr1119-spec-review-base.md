@@ -1,0 +1,32 @@
+---
+id: SR-967175026302197768900474181941935084532
+title: "QSL-2743 PR 1119 spec-review base checklist of the new and changed IR criteria"
+type: SpecReview
+analysis: base
+scope: "agent-ix/filament-contract-ir; QSL-2743; PR 1119 head 5e7f682c7321a400fe693d649cd555095af19b5a; FR-352-AC-38..44; FR-358-AC-17; FR-358-AC-19; FR-358 statement; context FSpec FR-830 (read-only checkout FSPEC-QSL2743-model-unions)"
+review_set: subset
+relationships:
+  - { target: "ix://agent-ix/filament-contract-ir/FR-352", type: references }
+  - { target: "ix://agent-ix/filament-contract-ir/FR-358", type: references }
+---
+
+## Summary
+
+Base checklist review of the IR spec rows PR 1119 adds or changes. Ticket: QSL-2743. `quire validate --scope .` on both changed specs returned rc=0. Its only warnings sit on lines this PR does not touch (FR-352 line 631, FR-358 line 231). No hash, digest or pin was introduced. No AssuranceProfile exists under spec/.
+
+FR-358-AC-17 governing prose. FR-358's own statement has no sentence that names a locus for a reached-closure charge. Its `NativeJoinLocusSource` paragraphs list `MonitorAuthority`, `AdapterRow`, `AuthorityRow`, `PreparationOutput`, `PreparationSelection` and `PackageRead`, and never mention `GraphNode` or `ModelUnionRow`. The only nearby prose is FR-358 lines 116-117: "Charge order follows the admitted and input row order used by the join; an unrelated graph node is not visited solely to consume budget." FR-358 prose therefore supports neither the old ModelUnionRow locus nor the new GraphNode locus.
+
+The PR body attributes its sources honestly. It quotes FSpec FR-830 (lines 290-293: "The denial's compact locus names the channel, the sidecar row index and the form of the charge, the first unpaid coordinate in the native policy's compact form; which native locus source carries it is the budget owner's choice and is not preselected here."). It also quotes the FR-358 lines above, and says FR-830, not FR-358, is the permission.
+
+The code (model_union.rs:193-207, `at_closure_node`) and budget_case_b02 (model_union_witness.rs:968-1053, origins Pair x2 and Shape x2 at `GraphNode`, then a `ModelTupleRow` row-join denial) match the new GraphNode wording.
+
+## Verdict
+
+**CONDITIONAL — MERGEABLE=FALSE.** FR-352-AC-38..44 are clean against the test and code at the record-field and payload level (see SR-967175026302197768900474181941935084531 for the low adverse-strength findings). FR-358-AC-17's locus now matches the code, but two medium defects remain in the FND-008 remainder.
+
+## Findings
+
+| ID | Severity | Summary | Refs |
+| --- | --- | --- | --- |
+| FND-001 | medium | FR-358-AC-17 still states the edge set wrongly. It says the closure charges one edge per typed member of every reached union, but the reader follows and charges an edge for every variant case, tuple position, record field and object field of each visited declaration (model_union.rs:418-485). Its own bound test, budget_case_b02, asserts two edges whose origin is the tuple `Pair`. The PR rewrote this criterion to state what the reader does but kept a scope clause that neither the code nor the B02 origins it now cites match. | spec/checked_package/functional/FR-358-compose-native-identity-join-budget.md:258; crates/filament-contract-model/src/checked_package/v2/exact_projection/model_union.rs:418-485; tests/conformance_fspec/model_union_witness.rs:993-1015 |
+| FND-002 | medium | The budget owner's GraphNode choice has no FR-358 prose. FR-830 leaves the locus source to the budget owner, which is FR-358 for `NativeJoinBudget`. But FR-358's statement never records that choice or why it is made. The same FR-830 sentence the PR quotes says the denial's compact locus names the channel, the sidecar row index and the form. The changed FR-358-AC-19 exempts closure-edge charges from that coordinate, which narrows the quoted FSpec obligation with only criterion text behind it. FR-358 needs a sentence beside its `NativeJoinLocusSource` paragraphs: a reached-closure node or edge charge has no sidecar row and is located at `GraphNode` of its origin node, with form `model_union_closure_node` or `model_union_closure_edge`, as the budget owner's choice that FR-830 leaves open. If that departure from FR-830's channel and sidecar-index coordinate is not accepted, it goes to the FSpec owner. | spec/checked_package/functional/FR-358-compose-native-identity-join-budget.md:63-86, 260 |

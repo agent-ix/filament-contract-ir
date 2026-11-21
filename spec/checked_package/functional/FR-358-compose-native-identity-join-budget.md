@@ -210,6 +210,21 @@ affordable, IR SHALL return a fixed-size exhausted refusal without allocating
 an owned node, form or envelope. The first unpaid charge remains the original
 work or storage denial, including when diagnostic storage is also denied.
 
+The reached closure of the model tuple and model union join (FSpec FR-830)
+walks admitted package nodes, not sidecar rows. For each closure node it pays
+work and storage of form `model_union_closure_node`, and for each closure edge
+of form `model_union_closure_edge`, plus the closure's own storage. Because
+such a charge names no sidecar row, IR SHALL locate it at
+`NativeJoinLocusSource::GraphNode` of the admitted package node being expanded
+or whose edge is being examined. FSpec FR-830 requires the compact locus of a
+sidecar-row charge to name the channel, the original row index and the form, and
+states that which native locus source carries a denial "is the budget owner's
+choice"; this requirement is that choice for the closure charges. GraphNode is
+chosen because the graph node is the true coordinate of the work, whereas a row
+source would name a row the closure has not yet joined. Common-pass and row-join
+charges keep their sidecar-row loci, and the closure's charge amounts, order and
+atomic refusal are unchanged.
+
 The budgeted path SHALL retain FR-352's structural, selected-document,
 producer-order and opaque-identity comparisons. At sufficient limits its
 selected values and typed non-budget refusals SHALL equal the corresponding
@@ -255,7 +270,7 @@ limit or compatibility entry point is permitted.
 | FR-358-AC-14 | `NativeJoinBudget::new(work, storage)` has a zero read-storage limit; `with_read_storage_limit(bytes)` sets it; `read_storage_limit()` returns it unchanged after admitted charges, a denial and later operations. `read_storage_consumed()` and `last_success_read_storage_delta()` report the read-storage counter alone; `consumed()`, `last_success_delta()`, `work_limit()` and `storage_limit()` keep their meanings and are unchanged by read-storage charges. A read-storage denial reports its attempted amount through `first_unpaid_read_storage` and its locus through `first_unpaid_locus`, leaves `first_unpaid` `None`, and increments no counter; checked arithmetic exhaustion is a denial. `NativeJoinBudget::unlimited()` admits charges whose sum exceeds `u64::MAX` on every counter, saturating, and never records a denial. `NativeJoinChargeKind`, `NativeJoinCharge` and `NativeJoinDeniedCharge` gain no variant or field. | Test (TC-472) |
 | FR-358-AC-15 | The model tuple and model union row join charges one shared `NativeJoinBudget` in the order: handle index over every supplied and retained handle of both channels, the common pass over every row, the reached closure edges, then the row join with retention for in-scope rows. A denied charge consumes nothing. | Test |
 | FR-358-AC-16 | The measured exact cumulative work and storage of the join succeed with the same result as an ample allowance, and one unit below either resource refuses with the typed exhausted kind. | Test |
-| FR-358-AC-17 | The reached closure charges one edge per typed member of every reached union (scalars included, `Clock` none); a budget one unit below the measured edges refuses with the typed exhausted kind at the `NativeJoinLocusSource::GraphNode` locus of the admitted package node whose edge is being examined, form `model_union_closure_edge`, never at the package; each edge charge is located at its own origin node, and the first row-join charge after the edges is located at the `ModelTupleRow` or `ModelUnionRow` locus of the row being joined. | Test |
+| FR-358-AC-17 | The reached closure charges one work unit of form `model_union_closure_edge` per typed member edge it examines, across every form of the closure: each variant case payload, each tuple position, and each record or object field that has a typed member (scalar leaves included; a nullary case and a `Clock` member have none); each closure node is expanded once and each edge examined once, so a cycle terminates. A budget one unit below the measured edges refuses with the typed exhausted kind at the `NativeJoinLocusSource::GraphNode` locus of the admitted package node whose edge is being examined, form `model_union_closure_edge`, never at the package; each edge charge is located at its own origin node, and the first row-join charge after the edges is located at the `ModelTupleRow` or `ModelUnionRow` locus of the row being joined. | Test |
 | FR-358-AC-18 | A refused join publishes nothing and the receiver is unchanged; consumption already charged stays charged, a later begin does not clear it, and a zero budget refuses before any row is retained. | Test |
 | FR-358-AC-19 | An exhausted common-pass or row-join charge reports the attempted amount and a locus naming the channel, the original sidecar index and the form, so that the first unpaid charge is identifiable in both channels; a closure-edge charge walks package nodes, not sidecar rows, and is located as FR-358-AC-17 states. | Test |
 | FR-358-AC-20 | The structural node allocated for a payload form is charged before it is made, so a budget refused at that charge allocates nothing. | Test |
