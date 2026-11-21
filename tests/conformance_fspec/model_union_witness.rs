@@ -17,11 +17,11 @@ use filament_contract_model::{
     with_native_budget_observer, ExactTypeProjectionError, ModelUnionScope, NativeBudgetEvent,
     NativeBudgetResource, NativeJoinBudget, NativeJoinChargeKind, NativeJoinLocus,
     NativeJoinLocusSource, SelectedExactDeclarationForm, SelectedExactDeclarationRow,
-    SelectedExactIdentities, SelectedExactIdentity, SelectedModelUnionCaseRow,
-    SelectedModelUnionPayload, SelectedModelUnionRow, SelectedSourceTupleRow,
-    SelectedSourceUnionRow, SelectedTupleDeclarationRow, SelectedTuplePositionRow,
-    SelectedModelEnumDeclarationRow, SelectedModelEnumMemberRow, SelectedModelEnumRows,
-    SelectedModelEnumShapeCaseRow, SelectedModelEnumShapeRow, SelectedUnionMemberRow,
+    SelectedExactIdentities, SelectedExactIdentity, SelectedModelEnumDeclarationRow,
+    SelectedModelEnumMemberRow, SelectedModelEnumRows, SelectedModelEnumShapeCaseRow,
+    SelectedModelEnumShapeRow, SelectedModelUnionCaseRow, SelectedModelUnionPayload,
+    SelectedModelUnionRow, SelectedSourceTupleRow, SelectedSourceUnionRow,
+    SelectedTupleDeclarationRow, SelectedTuplePositionRow, SelectedUnionMemberRow,
 };
 use filament_exact::{
     EffectiveId, NodeKey, OriginalDeclarationKey, PathSegment, UnionMember, UnitId, ValueType,
@@ -596,7 +596,7 @@ fn leaf(node: &CheckedNodeId) -> String {
 
 /// Every published positive: admitted, the exact retained sets, the closure
 /// edge count, and every retained row equal to its input.
-#[trace("FR-352-AC-31", "FR-352-AC-35", "FR-358-AC-17")]
+#[trace("FR-352-AC-31", "FR-352-AC-35", "FR-358-AC-17", "FR-069-AC-11")]
 #[test]
 fn published_positive_vectors_admit_with_exact_retained_sets_and_closure_edges() {
     let vectors = vectors();
@@ -1438,7 +1438,6 @@ fn any_admitted_non_clock_payload_is_joined_and_each_wrong_witness_is_refused() 
     }
 }
 
-
 // ---------------------------------------------------------------------------
 // The public runtime surface: `SelectedTypeDeclarations::unions()` and the
 // reached monitor closure, over real model-union rows.
@@ -1542,4 +1541,149 @@ fn runtime_selected_types_declare_each_joined_union_by_its_type_handle() {
             row.type_handle
         );
     }
+}
+
+/// Intake: a union payload naming an object type that no selected-package
+/// declaration provides is refused by the strict read; the same union with the
+/// selected-package object is admitted by every published positive vector.
+#[trace("FR-069-AC-12")]
+#[test]
+fn a_union_payload_naming_an_object_outside_the_selected_package_is_refused_at_intake() {
+    let vectors = vectors();
+    let case = resolve(&vectors, "MUW-06-reached-through-object-fields");
+    let fixtures = fixtures_dir();
+    let proposal = proposal_dir_of(&fixtures);
+    let pair = &vectors["fixtures"][&case.fixtures];
+    let package = read_json(&proposal.join(pair["package"].as_str().unwrap())).unwrap();
+    let mut document = read_json(&proposal.join(pair["document"].as_str().unwrap())).unwrap();
+    let held = document["types"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .flat_map(|ty| ty["variants"].as_array().into_iter().flatten())
+        .filter(|variant| variant["payloadType"] == "ix://acme/shapes/Holder")
+        .count();
+    assert!(held >= 1, "the published union holds an object payload");
+    let admit = |document: &Value| {
+        crate::read_and_account(
+            &fixture_support::canonical(&package),
+            CheckedPackageReadLimits::bounded(),
+            &inputs::selected_evidence(document),
+        )
+    };
+    assert!(matches!(
+        admit(&document),
+        CheckedPackageV2ReadResult::Admitted(_)
+    ));
+    for ty in document["types"].as_array_mut().unwrap() {
+        for variant in ty["variants"].as_array_mut().into_iter().flatten() {
+            if variant["payloadType"] == "ix://acme/shapes/Holder" {
+                variant["payloadType"] = "ix://elsewhere/shapes/Holder".into();
+            }
+        }
+    }
+    assert!(
+        !matches!(admit(&document), CheckedPackageV2ReadResult::Admitted(_)),
+        "an object outside the selected package is not an admitted payload"
+    );
+}
+
+/// Two published defects stacked on one sidecar: the join refuses the one of
+/// the earlier stage (identity, census, case, payload, then coverage), at its
+/// published code and locus, whichever row order the patches land in.
+#[trace("FR-352-AC-33")]
+#[test]
+fn stacked_defects_are_refused_at_the_earliest_failing_stage() {
+    let vectors = vectors();
+    // (earlier defect, later defect, applied later-first so row indices hold)
+    let pairs = [
+        (
+            "MUW-R-04-document-unselected",
+            "MUW-R-27-payload-node-wrong",
+        ),
+        ("MUW-R-11-extra-case", "MUW-R-27-payload-node-wrong"),
+        ("MUW-R-18-member-identifier", "MUW-R-30-original-type-shape"),
+        ("MUW-R-27-payload-node-wrong", "MUW-R-33-full-missing-row"),
+    ];
+    for (early, late) in pairs {
+        let (base, extra) = if late.contains("R-33") {
+            (early, late)
+        } else {
+            (late, early)
+        };
+        let mut case = resolve(&vectors, base);
+        let operations = find(&vectors, extra)["patch"].clone();
+        patch(&mut case.sidecar, &operations);
+        let prepared = prepare_case(&vectors, "stacked", case, None).expect("prepares");
+        let error = join(&prepared, &mut ample())
+            .0
+            .err()
+            .unwrap_or_else(|| panic!("{early}+{late} must refuse"));
+        let want = &find(&vectors, early)["expected"];
+        let code = want["code"].as_str().unwrap();
+        // The removal in the later defect shifts row 1 to row 0.
+        let locus = want["locus"].as_str().unwrap();
+        let shifted = locus.replacen("/model_unions/1/", "/model_unions/0/", 1);
+        let locus = if late.contains("R-33") {
+            shifted
+        } else {
+            locus.to_owned()
+        };
+        assert_eq!(
+            (error.code.as_str(), error.form.as_deref()),
+            (code, Some(locus.as_str())),
+            "{early} before {late}"
+        );
+    }
+}
+
+/// A witness holding only the reached rows of a package whose model declares
+/// more unions is not a complete witness: `validate_and_rebind` refuses it and
+/// leaves the receiver untouched. (The published fixtures supply no complete
+/// declaration environment, so the refusal here may precede the union
+/// completeness stage, which no fixture reaches in isolation.)
+#[trace("FR-352-AC-37")]
+#[test]
+fn rebinding_a_reached_only_witness_is_refused_and_never_mutates_the_receiver() {
+    let vectors = vectors();
+    let reached =
+        prepare(&vectors, "MUW-03-reached-does-not-join-unrelated-row").expect("prepares");
+    let partial = unwrap_join("MUW-03", join(&reached, &mut ample()).0);
+    let before: Vec<_> = partial.model_union_rows().cloned().collect();
+    assert!(
+        !before.is_empty(),
+        "the reached join retained its closure row"
+    );
+    partial
+        .validate_and_rebind(&reached.admitted, &mut ample())
+        .expect_err("a reached-only witness is not a complete witness");
+    assert_eq!(
+        partial.model_union_rows().cloned().collect::<Vec<_>>(),
+        before,
+        "the receiver is unchanged"
+    );
+}
+
+/// A node of the selected package that no row names refuses `UnknownNode`
+/// (published MUW-R-01); the same row naming a node of another package refuses
+/// `ForeignNode`, at the same locus.
+#[trace("FR-352-AC-34")]
+#[test]
+fn a_row_naming_another_packages_node_refuses_foreign_node() {
+    let vectors = vectors();
+    let mut case = resolve(&vectors, "MUW-01-full-environment");
+    patch(
+        &mut case.sidecar,
+        &serde_json::json!([
+            {"op": "replace", "path": "/model_unions/1/structural_node/package", "value": "elsewhere/pkg"}
+        ]),
+    );
+    let prepared = prepare_case(&vectors, "foreign", case, None).expect("prepares");
+    let error = join(&prepared, &mut ample())
+        .0
+        .expect_err("a foreign node refuses");
+    assert_eq!(
+        (error.code.as_str(), error.form.as_deref()),
+        ("foreign_node", Some("/model_unions/1/structural_node"))
+    );
 }
