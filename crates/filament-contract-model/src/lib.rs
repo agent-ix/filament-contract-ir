@@ -147,9 +147,9 @@ pub use canonical::{
 pub use certificate_member::CertificateMember;
 pub use checked_package::CheckedCallableRead;
 pub use checked_package::{
-    encode_checked_package_v2, initialize_operation_catalog, read_checked_package,
-    read_checked_package_with_budget, AdmissionBinding, BoundDirection, BoundedDomainForm,
-    CatalogReadError, CheckMode, CheckedArtifactLocator, CheckedArtifactRef,
+    encode_checked_package_v2, initialize_operation_catalog, is_slot_parameter_name,
+    read_checked_package, read_checked_package_with_budget, AdmissionBinding, BoundDirection,
+    BoundedDomainForm, CatalogReadError, CheckMode, CheckedArtifactLocator, CheckedArtifactRef,
     CheckedAuthoredCompositeDomain, CheckedBodyLocation, CheckedBodyLocationOrigin,
     CheckedBodySemanticLocation, CheckedCallable, CheckedCallableIdentity,
     CheckedCallableReadError, CheckedCallableReadErrorCode, CheckedCallableTable,

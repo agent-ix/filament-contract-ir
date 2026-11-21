@@ -2746,6 +2746,7 @@ pub fn refresh_temporal_bindings(package: &mut Value) {
                 .find(|selection| selection["role"] == "temporal_profile")
         })
         .and_then(|selection| selection["definition"]["identity"].as_str());
+    let lock_source = package["lock"]["sources"][0].clone();
     let nodes = package["semantic_graph"]["nodes"]
         .as_array()
         .expect("nodes");
@@ -2883,6 +2884,11 @@ pub fn refresh_temporal_bindings(package: &mut Value) {
                             });
                             if let Some(trace) = trace {
                                 row["trace"] = json!(trace);
+                            }
+                            // FR-322 "Clause source unit": a clause row names
+                            // the locked unit that declares it.
+                            if node["semantic_form"] == "temporal_clause" {
+                                row["source_unit"] = lock_source.clone();
                             }
                             (
                                 node["node_id"].clone(),

@@ -80,6 +80,11 @@ pub struct TemporalBinding {
     pub clock_name: Box<str>,
     /// Closed clock configuration.
     pub clock: ClockConfiguration,
+    /// For a `temporal`/`temporal_clause` node's row, the `lock.sources` entry
+    /// of the source unit that declares the clause (FR-322 "Clause source
+    /// unit"); absent on every other row.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_unit: Option<crate::checked_package::shared::CheckedSourceRef>,
     /// For a `claim`/`hyperproperty` node's row, the exact name of the quantifier
     /// Group variable whose trace the row's clock serves; absent on every other
     /// row.
@@ -105,6 +110,9 @@ impl Encode for TemporalBinding {
         super::encode::member(writer, "occurrence", &self.occurrence)?;
         super::encode::member(writer, "clock_name", self.clock_name.as_ref())?;
         super::encode::member(writer, "clock", &self.clock)?;
+        if let Some(source_unit) = &self.source_unit {
+            super::encode::member(writer, "source_unit", source_unit)?;
+        }
         if let Some(trace) = &self.trace {
             super::encode::member(writer, "trace", trace.as_ref())?;
         }
@@ -620,6 +628,11 @@ pub(super) fn validate<B>(
     let mut seen: Vec<(usize, u64, usize)> = meter.vec(rows.len())?;
     let mut previous: Option<(super::graph_storage::ResolvedKey<'_>, u64, usize)> = None;
     let mut resolved = meter.vec(rows.len())?;
+    // The first row's `source_unit` of each clause node, by node position.
+    let mut clause_units: Vec<(
+        usize,
+        &Option<crate::checked_package::shared::CheckedSourceRef>,
+    )> = meter.vec(rows.len())?;
     for (row_index, row) in rows.iter().enumerate() {
         let at = || row_path(row_index);
         let Some(&position) = index.get(&row.declaration) else {
@@ -667,6 +680,50 @@ pub(super) fn validate<B>(
         }
         if !owned {
             return Err(invalid(meter, at().key("occurrence"), &row.declaration));
+        }
+        // FR-322 "Clause source unit": a clause row names a locked source unit,
+        // and no other row names one.
+        let is_clause = kinds[position] == CheckedNodeKind::Temporal(TemporalForm::TemporalClause);
+        match (&row.source_unit, is_clause) {
+            (Some(unit), true) => {
+                let mut locked = false;
+                for source in &lock.sources {
+                    binding_work(meter, at().key("source_unit"))?;
+                    if source == unit {
+                        locked = true;
+                        break;
+                    }
+                }
+                if !locked {
+                    return Err(binding_refusal(
+                        meter,
+                        at().key("source_unit"),
+                        &row.declaration,
+                        CheckedPackageRefusalCause::InvalidValue,
+                    ));
+                }
+            }
+            (None, false) => {}
+            _ => return Err(invalid(meter, at(), &row.declaration)),
+        }
+        // A clause is declared in one unit: every row of one clause node names
+        // the unit its first row names.
+        if is_clause {
+            let mut first = None;
+            for (clause, unit) in &clause_units {
+                binding_work(meter, at())?;
+                if *clause == position {
+                    first = Some(*unit);
+                    break;
+                }
+            }
+            match first {
+                Some(unit) if unit != &row.source_unit => {
+                    return Err(invalid(meter, at(), &row.declaration));
+                }
+                Some(_) => {}
+                None => clause_units.push((position, &row.source_unit)),
+            }
         }
         // A hyperproperty row names one of the node's quantified traces, and
         // no other row names a trace.
@@ -1014,6 +1071,7 @@ mod tests {
                     sequence_authority: "source".into(),
                 },
                 trace: None,
+                source_unit: None,
             })
             .collect();
         let lock: CheckedPackageLockV2 = serde_json::from_value(json!({

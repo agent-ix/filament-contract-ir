@@ -3505,6 +3505,15 @@ fn typed_node_id_of(package: &Value, position: usize) -> CheckedNodeId {
     serde_json::from_value(nodes(package)[position]["node_id"].clone()).expect("node ID")
 }
 
+/// FR-322-AC-503: a hyperproperty row carries no `source_unit`.
+#[trace("TC-048", "FR-038-AC-590")]
+#[test]
+fn a_hyperproperty_row_naming_a_source_unit_is_refused() {
+    let (mut package, _, _) = hyper_clock_fixture(&["s", "n"]);
+    package["temporal_bindings"][0]["source_unit"] = package["lock"]["sources"][0].clone();
+    refusal_at_trace(&package, "/temporal_bindings/0");
+}
+
 #[trace("TC-483", "FR-038-AC-561")]
 #[test]
 fn tc_483_each_trace_row_holds_its_own_configuration() {
@@ -5140,4 +5149,498 @@ fn tc_486_the_wrapper_fairness_refusal_precedes_the_model_root_refusal() {
             Some(at_node(wrapper, "/body/arguments/4"))
         )
     );
+}
+
+/// The all-families fixture, or `package`, with a clause leaf made
+/// `let s = seq(0 .. 0: i) in <boolean>` (the `seq` binder `i` a
+/// `value`/`parameter` node at the shape's level).
+fn clause_leaf_seq(shape: Shape, mut package: Value) -> Value {
+    let Shape {
+        level,
+        captures,
+        trigger,
+        place,
+        wrap,
+    } = shape;
+    let nested = wrap == Wrap::Let;
+    let in_guard = place == Place::Guard;
+    let in_capture = match place {
+        Place::Capture(index) => Some(index),
+        _ => None,
+    };
+    let integer = family_key("a3a3");
+    let boolean = family_key("aaaa");
+    let text = family_key("a1a1");
+    let literal = |ty: &str, kind: &str, value: Value| json!({"term": "literal", "type": node_id(ty), "value_kind": kind, "value": value});
+    let add = |package: &mut Value, key: &str, tag: &str, form: &str, ty: &str, body: Value| {
+        let mut node = node_with_key(key, tag, form, body);
+        node["semantic_type"] = node_id(ty);
+        node["occurrences"] = json!([{"role": "expression", "ordinal": 0}]);
+        push(package, node);
+    };
+    let bound = |name: &str, value: &str| json!({"term": "binding", "name": name, "value": literal(&integer, "integer", json!(value))});
+    let parameter = |name: &str, level: u64| {
+        json!({"term": "aggregate", "members": [
+            {"term": "binding", "name": "name", "value": literal(&text, "text", json!(name))},
+            {"term": "binding", "name": "level",
+             "value": literal(&integer, "integer", json!(level.to_string()))},
+        ]})
+    };
+    let range = "bounded/integer_range/seq-range";
+    let sequence = "composite/sequence/seq-range";
+    let counted = "bounded/collection_bounds/seq-range";
+    add(
+        &mut package,
+        range,
+        "bounded_domain",
+        "integer_range",
+        &integer,
+        json!({"term": "aggregate", "members": [bound("min", "0"), bound("max", "0")]}),
+    );
+    add(
+        &mut package,
+        sequence,
+        "composite_type",
+        "sequence",
+        sequence,
+        json!({"term": "aggregate", "members": [refer(range)]}),
+    );
+    add(
+        &mut package,
+        counted,
+        "bounded_domain",
+        "collection_bounds",
+        sequence,
+        json!({"term": "aggregate", "members": [bound("min", "0"), bound("max", "1")]}),
+    );
+    for key in ["seq-lower", "seq-upper"] {
+        add(
+            &mut package,
+            key,
+            "value",
+            "literal",
+            range,
+            literal(range, "integer", json!("0")),
+        );
+    }
+    add(
+        &mut package,
+        "seq-index",
+        "value",
+        "parameter",
+        range,
+        parameter("i", level),
+    );
+    add(
+        &mut package,
+        "seq-let-binder",
+        "value",
+        "parameter",
+        counted,
+        parameter("s", 1),
+    );
+    let seq_operation = json!({"identity": "filament.op.collection.seq", "laws": [], "mode": null,
+        "member": {"kind": "type_argument", "declaration": node_id(range)}, "leaves": []});
+    add(
+        &mut package,
+        "seq-application",
+        "expression",
+        "collection",
+        counted,
+        json!({
+        "term": "application", "operator": "collection", "operation": seq_operation,
+        "result_type": node_id(counted), "arguments": [
+            refer("seq-lower"), refer("seq-upper"),
+            {"term": "binding", "name": "i", "value": refer("seq-index")}]}),
+    );
+    let let_operation = json!({"identity": "filament.op.control.let", "laws": [], "mode": null,
+        "member": null, "leaves": []});
+    if nested {
+        // `let t = <boolean> in seq(...)`: the `seq` sits in the body of a
+        // `let`, one binder inside the bound value of the outer `let`.
+        add(
+            &mut package,
+            "seq-inner",
+            "expression",
+            "let",
+            counted,
+            json!({
+            "term": "application", "operator": "let", "operation": let_operation.clone(),
+            "result_type": node_id(counted), "arguments": [
+                {"term": "binding", "name": "t", "value": refer(&family_key("dddd"))},
+                refer("seq-application")]}),
+        );
+    }
+    add(
+        &mut package,
+        "seq-let",
+        "expression",
+        "let",
+        &boolean,
+        json!({
+        "term": "application", "operator": "let", "operation": let_operation,
+        "result_type": node_id(&boolean), "arguments": [
+            {"term": "binding", "name": "s",
+             "value": refer(if wrap == Wrap::Bare { "seq-application" } else { "seq-inner" })},
+            refer(&family_key("dddd"))]}),
+    );
+    if let Wrap::Step(identity) = wrap {
+        // `fold(acc, j in set: size(seq(...)), identity: 1)`: the step is
+        // under the accumulator and the element binder.
+        let member = json!({"kind": "type_argument", "declaration": node_id(&integer)});
+        let operation = |identity: &str| {
+            json!({"identity": identity, "laws": [], "mode": null,
+                "member": member.clone(), "leaves": []})
+        };
+        add(
+            &mut package,
+            "seq-set",
+            "composite_type",
+            "set",
+            "seq-set",
+            json!({"term": "aggregate", "members": [refer(&integer)]}),
+        );
+        add(
+            &mut package,
+            "seq-size",
+            "expression",
+            "collection",
+            &integer,
+            json!({"term": "application", "operator": "collection",
+                "operation": operation("filament.op.collection.size"),
+                "result_type": node_id(&integer), "arguments": [refer("seq-application")]}),
+        );
+        let mut arguments = vec![
+            refer("seq-set"),
+            json!({"term": "binding", "name": "acc", "value": {
+                "term": "aggregate", "members": [
+                    {"term": "binding", "name": "j", "value": refer("seq-size")}]}}),
+        ];
+        if identity == "filament.op.collection.fold" {
+            arguments.push(literal(&integer, "integer", json!("1")));
+        }
+        add(
+            &mut package,
+            "seq-inner",
+            "expression",
+            "collection",
+            &integer,
+            json!({"term": "application", "operator": "collection",
+                "operation": operation(identity),
+                "result_type": node_id(&integer), "arguments": arguments}),
+        );
+    }
+    let holds = find_identity(&package, &temporal_identity("holds"));
+    if place == Place::Formula {
+        package["semantic_graph"]["nodes"][holds]["body"]["arguments"][0] = refer("seq-let");
+    }
+    if captures > 0 {
+        let at = clause(&package);
+        let members: Vec<Value> = (0..captures)
+            .map(|index| {
+                let value = if in_capture == Some(index) {
+                    refer("seq-let")
+                } else {
+                    literal(&boolean, "boolean", json!(true))
+                };
+                json!({"term": "binding", "name": format!("c{index}"), "value": value})
+            })
+            .collect();
+        package["semantic_graph"]["nodes"][at]["body"]["arguments"][3] =
+            json!({"term": "aggregate", "members": members});
+    }
+    if trigger {
+        add(
+            &mut package,
+            "seq-trigger",
+            "value",
+            "parameter",
+            &boolean,
+            parameter("t", 1),
+        );
+        let at = clause(&package);
+        package["semantic_graph"]["nodes"][at]["body"]["arguments"][2] = json!({
+            "term": "aggregate", "members": [
+                {"term": "binding", "name": "kind", "value": literal(&text, "text", json!("each"))},
+                {"term": "binding", "name": "trigger", "value": refer("seq-trigger")}]});
+        if in_guard {
+            package["semantic_graph"]["nodes"][at]["body"]["arguments"][2]["members"]
+                .as_array_mut()
+                .expect("members")
+                .push(json!({"term": "binding", "name": "guard", "value": refer("seq-let")}));
+        }
+    }
+    settle(&mut package);
+    package
+}
+
+/// Where the `let` holding the `seq` stands in the clause.
+#[derive(Clone, Copy, PartialEq)]
+enum Place {
+    /// The `holds` leaf of the clause's formula.
+    Formula,
+    /// The activation guard (needs a trigger).
+    Guard,
+    /// The initializer of this capture.
+    Capture(usize),
+}
+
+/// What stands between the outer `let` and the `seq`.
+#[derive(Clone, Copy, PartialEq)]
+enum Wrap {
+    /// Nothing: the `seq` is the bound value.
+    Bare,
+    /// The body of an inner `let`.
+    Let,
+    /// The step of a `fold` or `reduce`, as `size(seq(...))`.
+    Step(&'static str),
+}
+
+/// A clause with `captures` captures, optionally an `each` trigger, and a
+/// `seq` whose index binder carries `level`.
+#[derive(Clone, Copy)]
+struct Shape {
+    level: u64,
+    captures: usize,
+    trigger: bool,
+    place: Place,
+    wrap: Wrap,
+}
+
+impl Shape {
+    fn at(level: u64) -> Self {
+        Self {
+            level,
+            captures: 0,
+            trigger: false,
+            place: Place::Formula,
+            wrap: Wrap::Bare,
+        }
+    }
+}
+
+/// Asserts the shape admits at `level` and refuses one level either side.
+fn admits_only_at(label: &str, level: u64, shape: impl Fn(u64) -> Shape, base: impl Fn() -> Value) {
+    admitted(
+        &format!("{label}: level {level}"),
+        &clause_leaf_seq(shape(level), base()),
+    );
+    for wrong in [level.checked_sub(1), level.checked_add(1)]
+        .into_iter()
+        .flatten()
+    {
+        let package = clause_leaf_seq(shape(wrong), base());
+        let seq = find_identity(&package, "filament.op.collection.seq");
+        expect(
+            &format!("{label}: level {wrong}"),
+            &package,
+            Code::IllTyped,
+            Cause::OperatorIneligible,
+            &at_node(seq, ""),
+        );
+    }
+}
+
+/// The binder rule of FSpec FR-322 "Parameter" for a `seq` binder at a
+/// temporal clause leaf: its level is its position among the binders in
+/// scope where it is bound (the clause's `over`, `each` trigger and captures,
+/// then the binders of the leaf; the bound value of a `let` is outside its
+/// binder and its body inside). FSL FR-337 gives the clause scopes: a capture
+/// is not in the guard's scope, and capture `k` sees the captures before it.
+#[test]
+#[trace("TC-048")]
+fn tc_048_a_seq_binder_in_a_clause_leaf_resolves_its_level_from_the_binders_in_scope() {
+    let base = v2_all_families;
+    // A leaf under `over` alone: the bound value of a `let` is outside it.
+    admits_only_at("formula leaf", 1, Shape::at, base);
+    // In the body of a `let`, one binder further in.
+    admits_only_at(
+        "let body",
+        2,
+        |l| Shape {
+            wrap: Wrap::Let,
+            ..Shape::at(l)
+        },
+        base,
+    );
+    // A `fold` or `reduce` step is under its accumulator and element binders.
+    for identity in [
+        "filament.op.collection.fold",
+        "filament.op.collection.reduce",
+    ] {
+        admits_only_at(
+            identity,
+            3,
+            |l| Shape {
+                wrap: Wrap::Step(identity),
+                ..Shape::at(l)
+            },
+            base,
+        );
+    }
+    // Each capture and the trigger are one more binder in the formula's scope.
+    admits_only_at(
+        "one capture",
+        2,
+        |l| Shape {
+            captures: 1,
+            ..Shape::at(l)
+        },
+        base,
+    );
+    admits_only_at(
+        "trigger",
+        2,
+        |l| Shape {
+            trigger: true,
+            ..Shape::at(l)
+        },
+        base,
+    );
+    admits_only_at(
+        "trigger and two captures",
+        4,
+        |l| Shape {
+            trigger: true,
+            captures: 2,
+            ..Shape::at(l)
+        },
+        base,
+    );
+    // The guard is over `over` and the trigger only, whatever the captures.
+    for captures in [0, 2] {
+        admits_only_at(
+            &format!("guard, {captures} captures"),
+            2,
+            |l| Shape {
+                trigger: true,
+                captures,
+                place: Place::Guard,
+                ..Shape::at(l)
+            },
+            base,
+        );
+    }
+    // Capture k reads over, the trigger and the captures before k.
+    for (capture, trigger, level) in [(0, false, 1), (1, false, 2), (0, true, 2), (1, true, 3)] {
+        admits_only_at(
+            &format!("capture {capture} initializer, trigger {trigger}"),
+            level,
+            |l| Shape {
+                trigger,
+                captures: 2,
+                place: Place::Capture(capture),
+                ..Shape::at(l)
+            },
+            base,
+        );
+    }
+    // A function that also reads the leaf puts the binder at another level,
+    // and one binder has one level.
+    for level in [0, 1] {
+        let mut package = clause_leaf_seq(Shape::at(level), v2_all_families());
+        let mut owner = node_with_key(
+            "seq-owner",
+            "function",
+            "pure_function",
+            json!({"term": "aggregate", "members": [
+                {"term": "binding", "name": "parameters",
+                 "value": {"term": "aggregate", "members": []}},
+                {"term": "binding", "name": "body", "value": refer("seq-let")}]}),
+        );
+        owner["semantic_type"] = node_id(&family_key("aaaa"));
+        owner["occurrences"] = json!([{"role": "expression", "ordinal": 0}]);
+        push(&mut package, owner);
+        settle(&mut package);
+        let seq = find_identity(&package, "filament.op.collection.seq");
+        expect(
+            &format!("two scopes, two levels, binder at {level}"),
+            &package,
+            Code::IllTyped,
+            Cause::OperatorIneligible,
+            &at_node(seq, ""),
+        );
+    }
+    // A hyper body wrapper reads its leaves over its atom slots, a count the
+    // wire does not carry: a `seq` there is refused at every level.
+    for level in 0..4 {
+        let package = clause_leaf_seq(Shape::at(level), hyper_clock_fixture(&["s", "n"]).0);
+        let seq = find_identity(&package, "filament.op.collection.seq");
+        expect(
+            &format!("hyper wrapper, binder at {level}"),
+            &package,
+            Code::IllTyped,
+            Cause::OperatorIneligible,
+            &at_node(seq, ""),
+        );
+    }
+}
+
+/// FSpec FR-402-AC-12: the public `is_slot_parameter_name` recognizes exactly
+/// the reserved slot form, as the reader does, non-canonical escapes included.
+#[trace("TC-2082", "FR-402-AC-12")]
+#[test]
+fn is_slot_parameter_name_accepts_the_reserved_forms_and_refuses_near_misses() {
+    use filament_contract_model::is_slot_parameter_name;
+    for name in [
+        "slot_sv_sa",
+        "op_sa",
+        "rcv_sa",
+        "arg_sa_sVault_sstep_si",
+        "arg_s1_s2_s3_s4",
+        // `_` is `__`, any other byte `_x` and two uppercase hex digits.
+        "slot_sa__b_sc",
+        "slot_sa_sb__c",
+        "op_s_xC3_xA9",
+        "op_sa__",
+        "op_s_x00",
+        // Non-canonical escapes the decoder accepts are reserved too.
+        "op_s_x41",
+        "op_sx",
+        // A field may itself begin with `s` or `x`.
+        "op_ssx",
+        "slot_sx_sx",
+    ] {
+        assert!(is_slot_parameter_name(name), "{name} is a slot parameter");
+    }
+    for name in [
+        "",
+        "slot",
+        "slot_",
+        "slotted",
+        "operand",
+        "Slot_sv_sa",
+        "OP_sa",
+        // The wrong field count for the tag.
+        "slot_sv",
+        "slot_sv_sa_sb",
+        "op_sa_sb",
+        "rcv_s",
+        "arg_sa_sb_sc",
+        "arg_sa_sb_sc_sd_se",
+        // No `_s` after the tag, an empty field, a stray `_`.
+        "op_a",
+        "op_",
+        "op__sa",
+        "op_s",
+        "op_sa_s",
+        "op_sa_",
+        // A bad or non-uppercase escape, a truncated escape, bad UTF-8.
+        "op_sa_xzz",
+        "op_sa_xGG",
+        "op_sa_xZZ",
+        "op_sa_xc3",
+        "op_sa_x4",
+        "op_sa_x4a",
+        "op_s_xC3",
+        "op_s_xFF",
+        // A byte outside letters, digits and `_`.
+        "op_sa-b",
+        "op_s\u{e9}",
+        "op_sa b",
+        "op_sa_q",
+        "op_sa_X41",
+    ] {
+        assert!(!is_slot_parameter_name(name), "{name} is no slot parameter");
+    }
 }

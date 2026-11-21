@@ -1452,6 +1452,7 @@ fn check_type_argument_member_result(
     None
 }
 
+#[ix_trace_rs::string_edge]
 fn expression_scope_depth(
     root: &CheckedTerm,
     target: &CheckedNodeId,
@@ -1494,15 +1495,50 @@ fn expression_scope_depth(
                     meter.push(&mut pending, (node_term, depth))?;
                 }
             }
-            CheckedTerm::Application { arguments, .. } => {
+            CheckedTerm::Application {
+                arguments,
+                operation,
+                ..
+            } => {
+                // A `let` binds its name for its body only: the bound value
+                // is outside the binder and the arguments after it inside. A
+                // `fold` or `reduce` step sits under its accumulator and its
+                // element binder. Any other binding argument opens one binder.
+                let identity = operation.identity();
+                let is_let = identity == Some("filament.op.control.let");
+                let is_fold = matches!(
+                    identity,
+                    Some("filament.op.collection.fold" | "filament.op.collection.reduce")
+                );
+                let mut inside = 0_usize;
                 for argument in arguments {
+                    let at = |extra: usize| depth.checked_add(extra);
                     if let CheckedTerm::Binding { value, .. } = argument {
-                        let Some(next_depth) = depth.checked_add(1) else {
+                        if is_let {
+                            meter.push(&mut pending, (value, depth))?;
+                            inside = 1;
+                        } else if let (true, CheckedTerm::Aggregate { members }) =
+                            (is_fold, value.as_ref())
+                        {
+                            for member in members {
+                                let (CheckedTerm::Binding { value, .. }, Some(next)) =
+                                    (member, at(2))
+                                else {
+                                    return Ok(None);
+                                };
+                                meter.push(&mut pending, (value, next))?;
+                            }
+                        } else {
+                            let Some(next) = at(1) else {
+                                return Ok(None);
+                            };
+                            meter.push(&mut pending, (value, next))?;
+                        }
+                    } else {
+                        let Some(next) = at(inside) else {
                             return Ok(None);
                         };
-                        meter.push(&mut pending, (value, next_depth))?;
-                    } else {
-                        meter.push(&mut pending, (argument, depth))?;
+                        meter.push(&mut pending, (argument, next))?;
                     }
                 }
             }
@@ -1590,7 +1626,185 @@ fn sequence_function_level(
             }
         }
     }
+    let mut leaves: Option<ClauseLeaves<'_>> = None;
+    for (position, kind) in graph.kinds.iter().enumerate() {
+        work_at_path(meter, &application.read_node().key("node_id"), 1)?;
+        if *kind != CheckedNodeKind::Temporal(TemporalForm::TemporalClause) {
+            continue;
+        }
+        if leaves.is_none() {
+            leaves = Some(ClauseLeaves::new(graph, application, meter)?);
+        }
+        let Some(leaves) = leaves.as_mut() else {
+            continue;
+        };
+        if !leaves.levels(position, target, graph, application, meter, &mut found)? {
+            return Ok(None);
+        }
+    }
     Ok(found)
+}
+
+/// The scratch the temporal clause pass of [`sequence_function_level`] reuses
+/// across clauses, reserved once and charged to the work meter, and the nodes
+/// that are hyper body wrappers.
+struct ClauseLeaves<'g> {
+    roots: Vec<(&'g CheckedTerm, usize)>,
+    pending: Vec<&'g CheckedNodeId>,
+    /// The clause (plus one) that last visited each formula position.
+    stamp: Vec<usize>,
+    /// The `body` wrapper node of every `claim`/`hyperproperty` node.
+    wrappers: Vec<&'g CheckedNodeId>,
+}
+
+impl<'g> ClauseLeaves<'g> {
+    fn new(
+        graph: &Graph<'g>,
+        application: Application<'_>,
+        meter: &mut WorkMeter,
+    ) -> Result<Self, ValidationFailure> {
+        let mut wrappers = meter.vec(graph.nodes.len())?;
+        for (position, kind) in graph.kinds.iter().enumerate() {
+            work_at_path(meter, &application.read_node().key("node_id"), 1)?;
+            if *kind != CheckedNodeKind::Claim(ClaimForm::Hyperproperty) {
+                continue;
+            }
+            let Some(CheckedTerm::Aggregate { members }) =
+                graph.terms.get(position).and_then(Option::as_ref)
+            else {
+                continue;
+            };
+            for member in members {
+                if let CheckedTerm::Binding { name, value } = member {
+                    if let (super::TermBindingName::Body, CheckedTerm::Reference { target }) =
+                        (name.internal_kind(), value.as_ref())
+                    {
+                        meter.push(&mut wrappers, target)?;
+                    }
+                }
+            }
+        }
+        Ok(Self {
+            roots: meter.vec(graph.nodes.len())?,
+            pending: meter.vec(graph.nodes.len())?,
+            stamp: meter.filled(graph.nodes.len(), 0_usize)?,
+            wrappers,
+        })
+    }
+
+    /// The levels a `seq` binder takes at the leaves of one temporal clause
+    /// (FSpec FR-322 "Parameter": a binder's level is its position among the
+    /// binders in scope where it is bound; FSL FR-337 for the scopes of a
+    /// clause). Numbering (ruled by arch): the `over` parameter is the first
+    /// binder, an `each` trigger is one more, each capture is one more in
+    /// declaration order, and a binder inside a leaf (`let` body, quantifier
+    /// or fold binder) adds its depth. The leaves and their bases:
+    ///
+    /// - every expression a formula node of the clause names: over `over`,
+    ///   the trigger and all the captures;
+    /// - the activation `guard`: over `over` and the trigger only (a capture
+    ///   is not in the guard's scope);
+    /// - the initializer of capture `k`: over `over`, the trigger and the
+    ///   captures declared before `k`.
+    ///
+    /// A hyper body wrapper (FSpec FR-402) is read over its atom slots, a
+    /// count the wire does not carry, so a target reachable from one is
+    /// refused rather than given the single-trace base. Returns false when
+    /// two places give the target different levels, or when it is refused.
+    #[ix_trace_rs::string_edge]
+    fn levels(
+        &mut self,
+        clause: usize,
+        target: &CheckedNodeId,
+        graph: &Graph<'g>,
+        application: Application<'_>,
+        meter: &mut WorkMeter,
+        found: &mut Option<usize>,
+    ) -> Result<bool, ValidationFailure> {
+        let Some(CheckedTerm::Application { arguments, .. }) =
+            graph.terms.get(clause).and_then(Option::as_ref)
+        else {
+            return Ok(true);
+        };
+        let [CheckedTerm::Reference { .. }, _, activation, captures, _, CheckedTerm::Reference { target: formula }] =
+            arguments.as_slice()
+        else {
+            return Ok(true);
+        };
+        self.roots.clear();
+        self.pending.clear();
+        let mut scope = 1_usize;
+        let mut guard = None;
+        if let CheckedTerm::Aggregate { members } = activation {
+            for member in members {
+                work_at_path(meter, &application.read_node().key("node_id"), 1)?;
+                if let CheckedTerm::Binding { name, value } = member {
+                    match name.as_ref() {
+                        "trigger" => scope = scope.saturating_add(1),
+                        "guard" => guard = Some(value.as_ref()),
+                        _ => {}
+                    }
+                }
+            }
+        }
+        let guard_scope = scope;
+        if let CheckedTerm::Aggregate { members } = captures {
+            for member in members {
+                work_at_path(meter, &application.read_node().key("node_id"), 1)?;
+                if let CheckedTerm::Binding { value, .. } = member {
+                    meter.push(&mut self.roots, (value.as_ref(), scope))?;
+                }
+                scope = scope.saturating_add(1);
+            }
+        }
+        if let Some(guard) = guard {
+            meter.push(&mut self.roots, (guard, guard_scope))?;
+        }
+        let mark = clause.saturating_add(1);
+        meter.push(&mut self.pending, formula)?;
+        while let Some(node) = self.pending.pop() {
+            work_at_path(meter, &application.read_node().key("node_id"), 1)?;
+            let Some(position) = graph.index.get(node).copied() else {
+                continue;
+            };
+            if graph.kinds.get(position) != Some(&CheckedNodeKind::Temporal(TemporalForm::Formula))
+                || self.stamp.get(position) == Some(&mark)
+            {
+                continue;
+            }
+            if let Some(stamp) = self.stamp.get_mut(position) {
+                *stamp = mark;
+            }
+            let Some(term) = graph.terms.get(position).and_then(Option::as_ref) else {
+                continue;
+            };
+            meter.push(&mut self.roots, (term, scope))?;
+            if let CheckedTerm::Application { arguments, .. } = term {
+                for argument in arguments {
+                    if let CheckedTerm::Reference { target } = argument {
+                        meter.push(&mut self.pending, target)?;
+                    }
+                }
+            }
+        }
+        let mut wrapper = false;
+        for held in &self.wrappers {
+            work_at_path(meter, &application.read_node().key("node_id"), 1)?;
+            wrapper |= graph.index.get(held).copied() == Some(clause);
+        }
+        for &(root, root_scope) in &self.roots {
+            if let Some(depth) = expression_scope_depth(root, target, graph, application, meter)? {
+                let Some(level) = root_scope.checked_add(depth) else {
+                    return Ok(false);
+                };
+                if wrapper || found.is_some_and(|previous| previous != level) {
+                    return Ok(false);
+                }
+                *found = Some(level);
+            }
+        }
+        Ok(true)
+    }
 }
 
 #[ix_trace_rs::string_edge]

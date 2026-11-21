@@ -1856,9 +1856,31 @@ impl MemberCheck<'_> {
         }
     }
 
+    /// FR-726: whether the model-owned record, tuple or variant at `position`
+    /// is not FIFO-key-stable by what its selected model document declares.
+    /// The graph node of such a declaration has an empty body, so the walk
+    /// reads the document's tables (`DomainModel::holds_key_unstable_leaf`).
+    fn model_value_is_key_unstable(
+        &self,
+        position: usize,
+        owners: &ModelOwners<'_>,
+        meter: &mut WorkMeter,
+    ) -> Result<bool, ValidationFailure> {
+        let Some(owner) = owners.owner_by_key(&self.nodes[position].node_id) else {
+            // Unreachable: the owner join refuses a model node with no
+            // selected declaration before this step. Fail closed.
+            return Ok(true);
+        };
+        let mut budget = Budget::node(meter, self.position);
+        owner
+            .package
+            .holds_key_unstable_leaf(owner.node, &mut budget)
+    }
+
     fn equality_stable(
         &self,
         type_id: &CheckedNodeId,
+        owners: &ModelOwners<'_>,
         meter: &mut WorkMeter,
     ) -> Result<bool, ValidationFailure> {
         let mut pending = meter.vec(1)?;
@@ -1882,7 +1904,10 @@ impl MemberCheck<'_> {
                     | ScalarTypeForm::String
                     | ScalarTypeForm::Uuid
                     | ScalarTypeForm::Timestamp
+                    | ScalarTypeForm::Bytes
+                    | ScalarTypeForm::JsonObject
                     | ScalarTypeForm::Enum
+                    | ScalarTypeForm::Unit
                     | ScalarTypeForm::CompoundUnit,
                 ) => {}
                 CheckedNodeKind::CompositeType(CompositeTypeForm::Reference) => {}
@@ -1919,6 +1944,9 @@ impl MemberCheck<'_> {
                     | ModelForm::RecordValueType
                     | ModelForm::VariantType,
                 ) => {
+                    if self.model_value_is_key_unstable(position, owners, meter)? {
+                        return Ok(false);
+                    }
                     let Some(term) = self.terms[position].as_ref() else {
                         return Ok(false);
                     };
@@ -3310,6 +3338,7 @@ fn check_member(
                         )
                         | CheckedNodeKind::Model(
                             ModelForm::RecordValueType
+                                | ModelForm::TupleValueType
                                 | ModelForm::EventType
                                 | ModelForm::VariantType
                         )
@@ -3328,7 +3357,7 @@ fn check_member(
                 let key = group_value(ordering, "key").expect("validated fifo");
                 let key_type = check.term_type(key);
                 let stable = match key_type {
-                    Some(type_id) => check.equality_stable(type_id, meter)?,
+                    Some(type_id) => check.equality_stable(type_id, owners, meter)?,
                     None => false,
                 };
                 if !stable {
