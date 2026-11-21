@@ -26,7 +26,7 @@ from a model also declaring unreferenced `Node::zeta`; read the exact producer
 bytes with the selected model and require both census entries while the graph
 contains only alpha's operation anchor. `IR1236_FSL_PACKAGE` and
 `IR1236_FSL_MODEL` name these live inputs for the explicit `conformance_fsl_ir1236` target;
-that test must be run explicitly before its evidence is credited. Compile
+that test is not part of CI (`test = false`, no Makefile target); it must be run explicitly before its evidence is credited. Compile
 and execute the calls through the public model facade; run TC-058 and TC-456 for
 inventory and portable public names.
 

@@ -153,7 +153,7 @@ pub(crate) fn fixture(rows: Vec<Value>, vectors: &Value) -> Value {
         });
     wire["checked_term_data"] = json!({
         "equality_decisions": [], "protocol_locations": [], "dispatch_tables": [],
-        "probabilistic_claims": rows
+        "body_locations": [], "probabilistic_claims": rows
     });
     refresh_identity(&mut wire);
     wire
@@ -456,7 +456,7 @@ fn claim_row_coverage_and_exact_work_boundary() {
 
 #[test]
 #[trace("TC-233", "FR-038-AC-390", "FR-038-AC-392", "FR-038-AC-395")]
-fn four_array_schema_and_graph_admission_precede_sidecar_join() {
+fn five_array_schema_and_graph_admission_precede_sidecar_join() {
     let all = vectors();
     let rows = all["positive"]["probabilistic_claims"]
         .as_array()
@@ -469,6 +469,7 @@ fn four_array_schema_and_graph_admission_precede_sidecar_join() {
         "equality_decisions",
         "protocol_locations",
         "dispatch_tables",
+        "body_locations",
         "probabilistic_claims",
     ] {
         let mut missing = valid.clone();
