@@ -672,7 +672,11 @@ pub(super) fn validate_temporal(
                         (*declaration).cmp(&graph.nodes[position].node_id)
                     })
                     .ok()
-                    .and_then(|at| clock_units[at].1),
+                    .map(|at| clock_units[at].1)
+                    .unwrap_or(ClauseClock {
+                        unit: None,
+                        source: None,
+                    }),
                 meter,
                 &mut scratch,
                 &mut stamps,
@@ -1345,7 +1349,7 @@ fn check_clause(
     position: usize,
     graph: &StepGraph<'_, '_>,
     terms: &[Option<CheckedTerm>],
-    clock_unit: Option<&str>,
+    clock: ClauseClock<'_>,
     meter: &mut WorkMeter,
     scratch: &mut ClauseScratch,
     stamps: &mut Stamps,
@@ -1610,13 +1614,18 @@ fn check_clause(
     {
         validate_source_clock_unit(context, position, &node.node_id, graph, terms, meter)?;
     }
-    let source_owner = source_owner_for_clause(&node.node_id, graph);
+    let source_owner = clock.source.filter(|_| !aggregates.is_empty()).map(|unit| {
+        super::CheckedNodeOwner::Source {
+            authority: unit.authority.clone(),
+            identity: unit.identity.clone(),
+        }
+    });
     for formula in aggregates {
         check_aggregate(
             formula,
             profile,
-            clock_unit,
-            source_owner,
+            clock.unit,
+            source_owner.as_ref(),
             graph,
             terms,
             meter,
@@ -1845,15 +1854,25 @@ fn aggregate_presence(kind: AggregateKind, name: &str) -> (bool, bool) {
     }
 }
 
-/// One scan of the occurrence rows records a clock unit only if every row
-/// for a clause names the same timestamp unit. A mixed clock has no single
-/// duration encoding and its aggregate bounds must refuse.
+/// The clock of one clause as its occurrence rows share it.
+#[derive(Clone, Copy)]
+struct ClauseClock<'b> {
+    /// The timestamp unit every row names.
+    unit: Option<&'b str>,
+    /// The `source_unit` of the clause's first row (FR-322 "Clause source unit").
+    source: Option<&'b super::CheckedSourceRef>,
+}
+
+/// One scan of the occurrence rows records a clock only if every row for a
+/// clause names the same timestamp unit. A mixed clock has no single duration
+/// encoding and its aggregate bounds must refuse. The rows of one clause all
+/// name one `source_unit` (checked with the rows), so the first row's stands.
 fn aggregate_clock_units<'b>(
     bindings: Option<&'b [TemporalBinding]>,
     meter: &mut WorkMeter,
-) -> Result<Vec<(&'b CheckedNodeId, Option<&'b str>)>, ValidationFailure> {
+) -> Result<Vec<(&'b CheckedNodeId, ClauseClock<'b>)>, ValidationFailure> {
     let rows = bindings.unwrap_or(&[]);
-    let mut keyed: Vec<(&CheckedNodeId, Option<&str>, usize)> = meter.vec(rows.len())?;
+    let mut keyed: Vec<(&CheckedNodeId, ClauseClock<'_>, usize)> = meter.vec(rows.len())?;
     for (at, row) in rows.iter().enumerate() {
         let unit = match &row.clock {
             ClockConfiguration::TimestampedEvent { timestamp_unit } => {
@@ -1861,7 +1880,14 @@ fn aggregate_clock_units<'b>(
             }
             _ => None,
         };
-        keyed.push((&row.declaration, unit, at));
+        keyed.push((
+            &row.declaration,
+            ClauseClock {
+                unit,
+                source: row.source_unit.as_ref(),
+            },
+            at,
+        ));
     }
     keyed.sort_unstable_by(|left, right| left.0.cmp(right.0).then(left.2.cmp(&right.2)));
     let clauses = keyed
@@ -1869,16 +1895,16 @@ fn aggregate_clock_units<'b>(
         .enumerate()
         .filter(|(at, row)| *at == 0 || keyed[*at - 1].0 != row.0)
         .count();
-    // One entry per clause, in id order: the unit its rows share, else none.
-    let mut units: Vec<(&CheckedNodeId, Option<&str>)> = meter.vec(clauses)?;
-    for (declaration, unit, _) in keyed {
+    // One entry per clause, in id order: the clock its rows share, else none.
+    let mut units: Vec<(&CheckedNodeId, ClauseClock<'_>)> = meter.vec(clauses)?;
+    for (declaration, clock, _) in keyed {
         match units.last_mut() {
             Some((last, shared)) if *last == declaration => {
-                if *shared != unit {
-                    *shared = None;
+                if shared.unit != clock.unit {
+                    shared.unit = None;
                 }
             }
-            _ => units.push((declaration, unit)),
+            _ => units.push((declaration, clock)),
         }
     }
     Ok(units)
@@ -1929,16 +1955,16 @@ fn is_clock_unit_path(
     }
 }
 
-fn source_owner_for_clause<'a>(
-    clause: &CheckedNodeId,
-    graph: &'a StepGraph<'_, '_>,
-) -> Option<&'a super::CheckedNodeOwner> {
-    let (clause_node, _) = graph.node(clause)?;
-    let (declaring_type, _) = graph.node(&clause_node.semantic_type)?;
-    declaring_type
-        .owner
+/// The source owner a binding row names (FR-322 "Clause source unit"): the
+/// unit that declares the clause, stated by the producer and never inferred
+/// from the clause's subject.
+fn row_source_owner(row: &TemporalBinding) -> Option<super::CheckedNodeOwner> {
+    row.source_unit
         .as_ref()
-        .filter(|owner| matches!(owner, super::CheckedNodeOwner::Source { .. }))
+        .map(|unit| super::CheckedNodeOwner::Source {
+            authority: unit.authority.clone(),
+            identity: unit.identity.clone(),
+        })
 }
 
 fn aggregate_declares_duration_window(formula: usize, terms: &[Option<CheckedTerm>]) -> bool {
@@ -1976,7 +2002,6 @@ fn validate_source_clock_unit(
     terms: &[Option<CheckedTerm>],
     meter: &mut WorkMeter,
 ) -> Result<(), ValidationFailure> {
-    let source_owner = source_owner_for_clause(clause, graph);
     let Some(bindings) = context.bindings else {
         return Ok(());
     };
@@ -1988,7 +2013,8 @@ fn validate_source_clock_unit(
         let ClockConfiguration::TimestampedEvent { timestamp_unit } = &row.clock else {
             continue;
         };
-        let source_unit = source_owner.is_some_and(|source_owner| {
+        let source_owner = row_source_owner(row);
+        let source_unit = source_owner.as_ref().is_some_and(|source_owner| {
             graph.nodes.iter().any(|node| {
                 is_scalar_type_unit(&node.node_tag, &node.semantic_form)
                     && node.owner.as_ref() == Some(source_owner)
@@ -2026,7 +2052,7 @@ fn validate_source_clock_unit(
             ));
         }
         if source_unit {
-            if let Some(source_owner) = source_owner {
+            if let Some(source_owner) = source_owner.as_ref() {
                 if !super::identity::source_clock_unit_is_linear_time(
                     graph.nodes,
                     terms,

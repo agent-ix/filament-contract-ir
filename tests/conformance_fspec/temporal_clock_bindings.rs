@@ -427,7 +427,8 @@ fn selected_package(case: &Value) -> Value {
         "declaration": new_id,
         "occurrence": 0,
         "clock_name": case["clock_name"],
-        "clock": case["clock"]
+        "clock": case["clock"],
+        "source_unit": {"authority": "agent-ix", "identity": "example"}
     }]);
     package
 }
@@ -492,6 +493,74 @@ fn add_second_clause(package: &mut Value) {
             serde_json::from_value(right["declaration"].clone()).expect("id");
         left.cmp(&right)
     });
+}
+
+/// FR-322 "Clause source unit": a clause names one unit across its rows even
+/// when another clause's row sits between them, so rows [c1/A, c2/A, c1/B]
+/// refuse at row 2, the first row of c1 that differs from c1's first row.
+#[trace("TC-048", "FR-038-AC-590", "FR-778-AC-12")]
+#[test]
+fn interleaved_clause_rows_keep_the_first_source_unit_per_clause() {
+    let published = vectors();
+    let positives = published["positive"].as_array().expect("positive cases");
+    let mut package = selected_package(&positives[0]);
+    add_second_clause(&mut package);
+    let first = package["temporal_bindings"][0]["declaration"].clone();
+    let second = package["temporal_bindings"][1]["declaration"].clone();
+    // Give the first clause a second claim occurrence, read by a third row.
+    let clause_at = package["semantic_graph"]["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .position(|node| node["node_id"] == first)
+        .expect("first clause");
+    package["semantic_graph"]["nodes"][clause_at]["occurrences"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({"role": "claim", "ordinal": 1}));
+    let source_map = package["source_map"].as_array_mut().unwrap();
+    let source_at = source_map
+        .iter()
+        .position(|row| row["node_id"] == first)
+        .expect("first clause source row");
+    let mut region = source_map[source_at].clone();
+    region["ordinal"] = json!(1);
+    region["regions"][0]["start"] = json!(11);
+    region["regions"][0]["end"] = json!(12);
+    source_map.insert(source_at + 1, region);
+    let mut named = package["temporal_clause_names"][0].clone();
+    named["occurrence"] = json!(1);
+    named["name"] = json!("Clause1");
+    named["declaration_region"]["end"] = json!(13);
+    package["temporal_clause_names"]
+        .as_array_mut()
+        .unwrap()
+        .insert(1, named);
+    let unit = package["temporal_bindings"][0]["source_unit"].clone();
+    let other = json!({"authority": "agent-ix", "identity": "other"});
+    package["lock"]["sources"]
+        .as_array_mut()
+        .unwrap()
+        .push(other.clone());
+    let mut rows = vec![
+        package["temporal_bindings"][0].clone(),
+        package["temporal_bindings"][1].clone(),
+        package["temporal_bindings"][0].clone(),
+    ];
+    rows[2]["occurrence"] = json!(1);
+    rows[2]["source_unit"] = other;
+    assert_eq!(rows[1]["source_unit"], unit);
+    assert_eq!(rows[1]["declaration"], second);
+    package["temporal_bindings"] = json!(rows);
+    refused(
+        &package,
+        &json!({
+            "id": "interleaved-clause-rows",
+            "expected_code": "invalid_package",
+            "expected_cause": "timed-node-reference",
+            "locus": "/temporal_bindings/2"
+        }),
+    );
 }
 
 fn read_temporal_package(package: &Value) -> CheckedPackageV2ReadResult {
@@ -666,7 +735,14 @@ fn refused(package: &Value, case: &Value) {
 }
 
 /// Trace: FSpec FR-322-AC-294, TC-134, TC-233.
-#[trace("TC-134", "TC-233", "FR-322-AC-294")]
+#[trace(
+    "TC-134",
+    "TC-233",
+    "TC-1890",
+    "FR-322-AC-294",
+    "FR-322-AC-359",
+    "FR-778-AC-7"
+)]
 #[test]
 fn temporal_clock_binding_vectors_read_at_their_exact_loci() {
     let published = vectors();
