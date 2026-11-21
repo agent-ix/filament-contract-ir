@@ -46,3 +46,9 @@ Round 1 at c4dd58a5170bbb2fd40eb6166d71a0b7c202fc20 (fix commit c4dd58a51 on bas
 | FND-001 | fixed | round 1 at c4dd58a51: The order is now explicit: shape, aliases, subject targets, declaration order (entries left to right, then omission), remaining targets in body order, premises, body. AC-12 tests the declaration join before a wrong operation target (with an operation-only control) and a subject target before the declaration order. |
 | FND-002 | fixed | round 1 at c4dd58a51: Split into AC-6..AC-13. quoin matrix (RC=0) shows each one tagged by the test that asserts it. |
 | FND-003 | fixed | round 1 at c4dd58a51: A references edge to ix://agent-ix/filament-spec-language/FR-940 was added, and the prose names FR-940 as owning the package form. quire validate RC=0. |
+
+## Dispositions (disposition pass 2)
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-004 | fixed | round 2 at 3a912bf29: AC-13 now states the real contract: one storage request of one byte per subject, charged before allocation, and one work unit per entry, charged before the entry is read. The measured 22 and the term-count claim are gone. The new test step_relation_declaration_order_work_is_charged_per_entry compares two packages with the same terms, refused at the first unknown alias after 1 and after 2 entries, and asserts that they differ by exactly 1. It is differential, so it is independent of the generic walk. Mutant fix2-m1 (charge_at removed) is RED: 0 != 1. The storage test keeps exact and one-short plus the +1 two-byte request assertion, which killed m2 in r1 and is unchanged. Precharge and exact/one-short were not narrowed. |

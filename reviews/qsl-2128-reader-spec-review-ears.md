@@ -40,3 +40,9 @@ Round 1 at c4dd58a5170bbb2fd40eb6166d71a0b7c202fc20 (fix commit c4dd58a51 on bas
 | FND | outcome | reason |
 | --- | --- | --- |
 | FND-001 | fixed | round 1 at c4dd58a51: The three statements are now shall statements: "shall admit", "shall require ... shall retain ... shall not sort", "shall admit ... shall be absent", and "refusals shall be". |
+
+## Dispositions (disposition pass 2)
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-002 | fixed | round 2 at 3a912bf29: The clause is now "The reader shall read the binding's own shape (`P`, `P/value`) after every other body shape". It names the actor (the reader) and the order (after the other body shapes). The precedence is unchanged: the code is the same as r1, and the AC-12 pointers hold. |

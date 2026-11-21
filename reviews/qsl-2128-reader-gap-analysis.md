@@ -41,3 +41,25 @@ Round 1 at c4dd58a5170bbb2fd40eb6166d71a0b7c202fc20 (fix commit c4dd58a51 on bas
 | FND | outcome | reason |
 | --- | --- | --- |
 | FND-001 | fixed | round 1 at c4dd58a51: Fixed, with a qualification. two_root_package selects a second model root. A full swap, a single swap and a second-only swap each refuse at the exact entry value/target. Mutant m3 (per-alias equality replaced by membership) is RED. The correct join passes the declaration-order stage and is then refused later, at execution y operation target, with InvalidModelBinding/MalformedDeclaration. That is a later stage at its own pointer, not an earlier setup failure. FR-351 orders the declaration checks before the remaining targets, and AC-12 tests that order. The positive branch is therefore proven, and it is exactly what AC-10 states ("not refused there"). Full admission of a two-root package is not shown and is not claimed. AC-10 and FR-940-AC-27 do not require it, because shared-root admission is AC-6. |
+
+## New findings (disposition pass 2)
+
+Round 2 at 3a912bf29b02fe2b083250aa72915e022fb2a2fb (fix commit 3a912bf29 on merge b4ced8fcc with origin/main 7c62ecb4).
+
+| ID | Severity | Summary | Refs |
+| --- | --- | --- | --- |
+| FND-003 | low | Two test comments are stale after the rename: the two_root_package doc comment ("`W` over a second selected root ... root 1 is `W`'s") and the joined-case comment ("not over `W`'s second root") still say W, but the alias is now A. This affects comments only; behaviour and assertions are unaffected. | tests/it/checked_package_v2_frame_entries.rs:6085-6087,6166 |
+
+## Dispositions (disposition pass 2)
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-002 | fixed | round 2 at 3a912bf29: The second-root alias is now A, which sorts before V, while the first-use order is V then A. The sorted aliases are [(A,1),(V,0)], so the binary-search position differs from the subject slot. Mutant m4 (binary-search index used as the slot) is RED at the intended oracle: the "both entries swapped" case [(A,root0),(V,root1)] is accepted by the mutant and reaches the later operation target, instead of entry 0 value/target (/tmp/ir-qsl2128-fix2-m4.log). It is not a compile, unknown-alias or setup failure. Restored. The correct pairing still passes the declaration stage, as qualified in r1. The shared-root positive is unchanged. |
+
+## Dispositions (administrative round 3)
+
+This is a lead decision recorded by the reviewer, not a code fix. There was no coder round 3 and the head is unchanged at 3a912bf29b02fe2b083250aa72915e022fb2a2fb. No other finding is waived.
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-003 | accepted-no-change | Lead decision: the two strings are non-normative comments in a test fixture. The actual fixture, typed values and assertions use A correctly, and the lexical-order and per-alias-slot mutant proof is verified. The comments affect no public API, returned values, validation order, refusal, budget accounting, acceptance criterion or producer contract. The lead accepts this comment-only discrepancy within the explicit two-coder-round cap and the coordinated feature-wave cutoff. All behavioral and test-evidence findings remain fixed; the comments are not claimed corrected. |
