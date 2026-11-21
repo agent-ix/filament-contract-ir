@@ -759,7 +759,11 @@ impl SelectedExactIdentities {
                 && package.models.variant_family(id) == Some("union")
             {
                 charge_native_work(budget, id, id, "complete_model_union", 1)?;
-                require(self.model_unions.contains_key(id), id, "selected_model_union")?;
+                require(
+                    self.model_unions.contains_key(id),
+                    id,
+                    "selected_model_union",
+                )?;
             }
         }
         for id in package.node_ids_ascending() {

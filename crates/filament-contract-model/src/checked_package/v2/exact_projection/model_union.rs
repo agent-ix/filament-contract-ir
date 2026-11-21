@@ -7,9 +7,7 @@
 //! set that passes every join is admitted whether or not the producer that wrote
 //! it held the declaration.
 
-use super::super::model_members::{
-    CollectionKind as CheckedCollectionKind, DeclarationForm, MemberType,
-};
+use super::super::model_members::{node_id_bytes, DeclarationForm, MemberType, NodeAlloc};
 use super::super::native_join_storage as storage;
 use super::super::{
     CheckedNodeId, CheckedPackageV2, NativeJoinBudget, NativeJoinLocus, NativeJoinLocusSource,
@@ -20,9 +18,9 @@ use super::{
     SelectedExactIdentity, SelectedTupleDeclarationRow,
 };
 use filament_exact::{
-    CardinalityBound, CarriedQuantityType, CollectionKind, CollectionType, FloatType, IeeeWidth,
-    Integer, IntegerInterval, NodeKey, OriginalDeclarationKey, QuantityCarrier, RationalDomain,
-    TextProfile, TextType, UnionMember, UnitId, ValueType,
+    CardinalityBound, CollectionKind, CollectionType, FloatType, IeeeWidth, Integer,
+    IntegerInterval, NodeKey, OriginalDeclarationKey, RationalDomain, TextProfile, TextType,
+    UnionMember, UnitId, ValueType,
 };
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
@@ -136,6 +134,52 @@ fn absent_node(
 
 fn node_units(node: &CheckedNodeId) -> u128 {
     storage::node(node)
+}
+
+/// The model-union join's allocation hooks for the member-type id derivation:
+/// every block is paid from the shared [`NativeJoinBudget`], work and storage,
+/// before it is allocated, at the payload node it is derived for.
+struct PayloadNodeAlloc<'a> {
+    budget: &'a mut NativeJoinBudget,
+    at: &'a CheckedNodeId,
+}
+
+impl NodeAlloc for PayloadNodeAlloc<'_> {
+    type Error = ExactTypeProjectionError;
+
+    fn request(&mut self, bytes: usize, form: &'static str) -> Res<()> {
+        if bytes == 0 {
+            return Ok(());
+        }
+        let amount = u128::try_from(bytes).unwrap_or(u128::MAX);
+        charge_native_work(self.budget, self.at, self.at, form, 1)?;
+        charge_native_storage(self.budget, self.at, self.at, form, amount)
+    }
+
+    fn text(&mut self, text: &str, form: &'static str) -> Res<Box<str>> {
+        self.request(text.len(), form)?;
+        Ok(Box::from(text))
+    }
+
+    fn vec<T>(&mut self, capacity: usize, form: &'static str) -> Res<Vec<T>> {
+        self.request(capacity.saturating_mul(std::mem::size_of::<T>()), form)?;
+        Ok(Vec::with_capacity(capacity))
+    }
+
+    fn push<T>(&mut self, list: &mut Vec<T>, item: T, form: &'static str) -> Res<()> {
+        if list.len() == list.capacity() {
+            let target = list.capacity().saturating_mul(2).max(4);
+            self.request(target.saturating_mul(std::mem::size_of::<T>()), form)?;
+            list.reserve_exact(target - list.len());
+        }
+        list.push(item);
+        Ok(())
+    }
+
+    fn clone_id(&mut self, id: &CheckedNodeId, form: &'static str) -> Res<CheckedNodeId> {
+        self.request(node_id_bytes(id), form)?;
+        Ok(id.clone())
+    }
 }
 
 fn row_units(row: &SelectedModelUnionRow) -> u128 {
@@ -1384,28 +1428,17 @@ impl SelectedExactIdentities {
         Ok(())
     }
 
-    /// Charge one structural id about to be built, before it is built.
-    fn payload_id_units(package: &str, parts: &[&str], nodes: u128) -> u128 {
-        parts
-            .iter()
-            .fold(
-                storage::text_parts(&[package]).saturating_add(nodes),
-                |units, part| units.saturating_add(storage::text_parts(&[part])),
-            )
-            .saturating_add(2)
-    }
-
     /// The package node FR-322 step 4 gives a payload member type. A direct
     /// declaration node (record, tuple, variant, unit, object type) is borrowed;
-    /// every other form is built under the caller's budget, each id paid for
-    /// before it is allocated. `None` is the Clock marker, which names no node.
+    /// every other form is the one derivation of [`MemberType::node_id_in`],
+    /// every owned block of it requested from the caller's budget before it is
+    /// allocated. `None` is the Clock marker, which names no node.
     fn model_union_payload_node<'m>(
         member: &'m MemberType,
         checked_package: &str,
         at: &CheckedNodeId,
         budget: &mut NativeJoinBudget,
     ) -> Res<Option<Cow<'m, CheckedNodeId>>> {
-        use super::super::CheckedNodePathSegment as Segment;
         match member {
             MemberType::Clock => return Ok(None),
             MemberType::Record(id)
@@ -1415,255 +1448,17 @@ impl SelectedExactIdentities {
             | MemberType::Reference(id) => return Ok(Some(Cow::Borrowed(id))),
             _ => {}
         }
-        // Wrappers, outermost first.
-        let mut wrappers: Vec<&MemberType> = Vec::new();
-        let mut leaf = member;
-        loop {
-            match leaf {
-                MemberType::Option(inner) => {
-                    charge_native_storage(budget, at, at, "model_union_payload_node", 1)?;
-                    wrappers.push(leaf);
-                    leaf = inner;
-                }
-                MemberType::Collection { element, .. } => {
-                    charge_native_storage(budget, at, at, "model_union_payload_node", 1)?;
-                    wrappers.push(leaf);
-                    leaf = element;
-                }
-                _ => break,
-            }
-        }
-        let name = |text: &str| Segment::Name(text.into());
-        let digits = |value: i128| -> u128 {
-            u128::from(value.unsigned_abs().checked_ilog10().map_or(1, |d| d + 1))
-                + u128::from(value < 0)
-        };
-        let derived = |budget: &mut NativeJoinBudget,
-                       tag: &str,
-                       form: &str,
-                       extra: Vec<Segment>,
-                       nodes: u128,
-                       extra_text: u128|
-         -> Res<CheckedNodeId> {
-            let units = Self::payload_id_units(checked_package, &[tag, form], nodes)
-                .saturating_add(extra_text);
-            charge_native_work(budget, at, at, "model_union_payload_node", units)?;
-            charge_native_storage(budget, at, at, "model_union_payload_node", units)?;
-            let mut path = vec![name(tag), name(form)];
-            path.extend(extra);
-            Ok(CheckedNodeId {
-                package: checked_package.into(),
-                path,
-                ordinal: 0,
-            })
-        };
-        let integer = |budget: &mut NativeJoinBudget| {
-            derived(budget, "scalar_type", "integer", Vec::new(), 0, 0)
-        };
-        let leaf_id = match leaf {
-            MemberType::Clock => return Ok(None),
-            MemberType::ClockReference => {
-                derived(budget, "scalar_type", "clock_reference", Vec::new(), 0, 0)?
-            }
-            MemberType::Record(id)
-            | MemberType::Tuple(id)
-            | MemberType::Variant(id)
-            | MemberType::Quantity(id) => {
-                charge_native_work(budget, at, at, "model_union_payload_node", node_units(id))?;
-                charge_native_storage(budget, at, at, "model_union_payload_node", node_units(id))?;
-                id.clone()
-            }
-            MemberType::Reference(id) => {
-                charge_native_work(budget, at, at, "model_union_payload_node", node_units(id))?;
-                charge_native_storage(budget, at, at, "model_union_payload_node", node_units(id))?;
-                let target = Segment::Node(Arc::new(id.clone()));
-                derived(budget, "composite_type", "reference", vec![target], 1, 0)?
-            }
-            MemberType::IntRange(bounds) => {
-                let integer = integer(budget)?;
-                let numbers = digits(bounds.lower) + digits(bounds.upper);
-                derived(
-                    budget,
-                    "bounded_domain",
-                    "integer_range",
-                    vec![
-                        name("min"),
-                        Segment::Node(Arc::new(integer)),
-                        name(&bounds.lower.to_string()),
-                        name("max"),
-                        name(&bounds.upper.to_string()),
-                    ],
-                    1,
-                    numbers + 8,
-                )?
-            }
-            MemberType::TextBounds(bounds) => {
-                let text = derived(budget, "scalar_type", "text", Vec::new(), 0, 0)?;
-                let integer = integer(budget)?;
-                let numbers = u128::try_from(bounds.profile.len()).unwrap_or(u128::MAX)
-                    + digits(bounds.lower.into())
-                    + digits(bounds.upper.into());
-                derived(
-                    budget,
-                    "bounded_domain",
-                    "text_bounds",
-                    vec![
-                        name("min"),
-                        Segment::Node(Arc::new(integer)),
-                        name(&bounds.lower.to_string()),
-                        name("max"),
-                        name(&bounds.upper.to_string()),
-                        name("text_profile"),
-                        Segment::Node(Arc::new(text)),
-                        name(&bounds.profile),
-                    ],
-                    2,
-                    numbers + 24,
-                )?
-            }
-            MemberType::RationalRange(bounds) => {
-                let integer = integer(budget)?;
-                let numbers = digits(bounds.numerator_min)
-                    + digits(bounds.numerator_max)
-                    + digits(bounds.denominator_min)
-                    + digits(bounds.denominator_max);
-                derived(
-                    budget,
-                    "bounded_domain",
-                    "rational_range",
-                    vec![
-                        name("numerator_min"),
-                        Segment::Node(Arc::new(integer)),
-                        name(&bounds.numerator_min.to_string()),
-                        name("numerator_max"),
-                        name(&bounds.numerator_max.to_string()),
-                        name("denominator_min"),
-                        name(&bounds.denominator_min.to_string()),
-                        name("denominator_max"),
-                        name(&bounds.denominator_max.to_string()),
-                    ],
-                    1,
-                    numbers + 56,
-                )?
-            }
-            MemberType::CarriedRational(bounds, unit) => {
-                let integer = integer(budget)?;
-                let numbers = digits(bounds.numerator_min)
-                    + digits(bounds.numerator_max)
-                    + digits(bounds.denominator_min)
-                    + digits(bounds.denominator_max);
-                let carrier = derived(
-                    budget,
-                    "bounded_domain",
-                    "rational_range",
-                    vec![
-                        name("numerator_min"),
-                        Segment::Node(Arc::new(integer)),
-                        name(&bounds.numerator_min.to_string()),
-                        name("numerator_max"),
-                        name(&bounds.numerator_max.to_string()),
-                        name("denominator_min"),
-                        name(&bounds.denominator_min.to_string()),
-                        name("denominator_max"),
-                        name(&bounds.denominator_max.to_string()),
-                    ],
-                    1,
-                    numbers + 56,
-                )?;
-                charge_native_work(budget, at, at, "model_union_payload_node", node_units(unit))?;
-                charge_native_storage(
-                    budget,
-                    at,
-                    at,
-                    "model_union_payload_node",
-                    node_units(unit),
-                )?;
-                let text = derived(budget, "scalar_type", "text", Vec::new(), 0, 0)?;
-                derived(
-                    budget,
-                    "scalar_type",
-                    "carried_quantity",
-                    vec![
-                        Segment::Node(Arc::new(unit.clone())),
-                        Segment::Node(Arc::new(carrier)),
-                        name("rounding"),
-                        Segment::Node(Arc::new(text)),
-                        name("exact"),
-                    ],
-                    3,
-                    16,
-                )?
-            }
-            MemberType::Option(_) | MemberType::Collection { .. } => unreachable!("unwrapped"),
-            primitive => {
-                let form = match primitive {
-                    MemberType::Boolean => "boolean",
-                    MemberType::Integer => "integer",
-                    MemberType::Float32 => "float32",
-                    MemberType::Float64 => "float64",
-                    MemberType::String => "string",
-                    MemberType::Uuid => "uuid",
-                    MemberType::Timestamp => "timestamp",
-                    MemberType::Bytes => "bytes",
-                    _ => "json_object",
-                };
-                derived(budget, "scalar_type", form, Vec::new(), 0, 0)?
-            }
-        };
-        let mut id = leaf_id;
-        while let Some(wrapper) = wrappers.pop() {
-            id = match wrapper {
-                MemberType::Option(_) => derived(
-                    budget,
-                    "composite_type",
-                    "option",
-                    vec![Segment::Node(Arc::new(id))],
-                    1,
-                    0,
-                )?,
-                MemberType::Collection { kind, bounds, .. } => {
-                    let collection = derived(
-                        budget,
-                        "composite_type",
-                        kind.form(),
-                        vec![Segment::Node(Arc::new(id))],
-                        1,
-                        0,
-                    )?;
-                    match bounds {
-                        Some((lower, upper)) => {
-                            let integer = integer(budget)?;
-                            let numbers = digits(i128::from(*lower)) + digits(i128::from(*upper));
-                            derived(
-                                budget,
-                                "bounded_domain",
-                                "collection_bounds",
-                                vec![
-                                    name("min"),
-                                    Segment::Node(Arc::new(integer)),
-                                    name(&lower.to_string()),
-                                    name("max"),
-                                    name(&upper.to_string()),
-                                    Segment::Node(Arc::new(collection)),
-                                ],
-                                2,
-                                numbers + 16,
-                            )?
-                        }
-                        None => collection,
-                    }
-                }
-                _ => unreachable!("only unary member wrappers are stacked"),
-            };
-        }
-        Ok(Some(Cow::Owned(id)))
+        let mut alloc = PayloadNodeAlloc { budget, at };
+        Ok(member
+            .node_id_in(checked_package, &mut alloc)?
+            .map(Cow::Owned))
     }
 
-    /// The Exact type one payload's member type has: the wrappers, then the
-    /// leaf. A leaf the shared member-type projection represents is read from
-    /// it; the native keyless leaves and the bounded numeric and text leaves
-    /// FR-322 step 4 gives are built here. A leaf with no faithful Exact
-    /// representation (a clock-place reference) is `UnsupportedExactType`.
+    /// The Exact type one payload's member type has, by the one projection a
+    /// record field of that member type has: the wrappers, then the leaf, so an
+    /// identical admitted type cannot project differently as a payload and as a
+    /// field. A leaf with no faithful Exact representation (a clock-place
+    /// reference) is `UnsupportedExactType` in both.
     fn model_union_expected_type(
         &self,
         package: &CheckedPackageV2,
@@ -1672,175 +1467,16 @@ impl SelectedExactIdentities {
         locus: &str,
         budget: &mut NativeJoinBudget,
     ) -> Res<ValueType> {
-        enum Wrap {
-            Option,
-            Collection(CheckedCollectionKind, Option<(u64, u64)>),
-        }
-        let mut wrappers = Vec::new();
-        let mut leaf = member;
-        loop {
-            match leaf {
-                MemberType::Option(inner) => {
-                    charge_native_work(budget, node, node, "model_union_payload_type", 1)?;
-                    charge_native_storage(budget, node, node, "model_union_payload_type", 1)?;
-                    wrappers.push(Wrap::Option);
-                    leaf = inner;
-                }
-                MemberType::Collection {
-                    kind,
-                    element,
-                    bounds,
-                } => {
-                    charge_native_work(budget, node, node, "model_union_payload_type", 1)?;
-                    charge_native_storage(budget, node, node, "model_union_payload_type", 1)?;
-                    wrappers.push(Wrap::Collection(*kind, *bounds));
-                    leaf = element;
-                }
-                _ => break,
-            }
-        }
-        charge_native_work(budget, node, node, "model_union_payload_type", 2)?;
-        let refuse = |budget: &mut NativeJoinBudget, code| fail(budget, code, node, locus);
-        let mut value = match leaf {
-            MemberType::Float32 | MemberType::Float64 => {
-                charge_native_storage(budget, node, node, "model_union_payload_type", 3)?;
-                let width = if matches!(leaf, MemberType::Float32) {
-                    IeeeWidth::Binary32
-                } else {
-                    IeeeWidth::Binary64
-                };
-                ValueType::Float(FloatType::exact(width))
-            }
-            MemberType::Bytes => {
-                charge_native_storage(budget, node, node, "model_union_payload_type", 1)?;
-                ValueType::Bytes
-            }
-            MemberType::JsonObject => {
-                charge_native_storage(budget, node, node, "model_union_payload_type", 1)?;
-                ValueType::JsonObject
-            }
-            MemberType::RationalRange(bounds) => {
-                charge_native_storage(budget, node, node, "model_union_payload_type", 80)?;
-                let numerator = IntegerInterval::new(
-                    Integer::from(bounds.numerator_min),
-                    Integer::from(bounds.numerator_max),
-                );
-                let denominator = IntegerInterval::new(
-                    Integer::from(bounds.denominator_min),
-                    Integer::from(bounds.denominator_max),
-                );
-                let domain = numerator
-                    .ok()
-                    .zip(denominator.ok())
-                    .and_then(|(n, d)| RationalDomain::new(n, d).ok());
-                match domain {
-                    Some(domain) => ValueType::Rational(domain),
-                    None => {
-                        return Err(refuse(
-                            budget,
-                            ExactTypeProjectionErrorCode::UnsupportedExactType,
-                        ))
-                    }
-                }
-            }
-            MemberType::TextBounds(bounds) => {
-                charge_native_storage(budget, node, node, "model_union_payload_type", 8)?;
-                let text = TextProfile::from_code(&bounds.profile)
-                    .and_then(|profile| TextType::new(bounds.lower, bounds.upper, profile).ok());
-                match text {
-                    Some(text) => ValueType::Text(text),
-                    None => {
-                        return Err(refuse(
-                            budget,
-                            ExactTypeProjectionErrorCode::UnsupportedExactType,
-                        ))
-                    }
-                }
-            }
-            MemberType::CarriedRational(bounds, unit_node) => {
-                let quantity = self.model_union_leaf(
-                    package,
-                    &MemberType::Quantity(unit_node.clone()),
-                    node,
-                    locus,
-                    budget,
-                )?;
-                let ValueType::Quantity(unit) = &quantity else {
-                    return Err(refuse(
-                        budget,
-                        ExactTypeProjectionErrorCode::UnsupportedExactType,
-                    ));
-                };
-                let unit = unit.clone();
-                charge_native_storage(budget, node, node, "model_union_payload_type", 100)?;
-                let numerator = IntegerInterval::new(
-                    Integer::from(bounds.numerator_min),
-                    Integer::from(bounds.numerator_max),
-                );
-                let denominator = IntegerInterval::new(
-                    Integer::from(bounds.denominator_min),
-                    Integer::from(bounds.denominator_max),
-                );
-                let domain = numerator
-                    .ok()
-                    .zip(denominator.ok())
-                    .and_then(|(n, d)| RationalDomain::new(n, d).ok());
-                match domain {
-                    Some(domain) => ValueType::CarriedQuantity(Arc::new(CarriedQuantityType::new(
-                        unit,
-                        QuantityCarrier::Rational(domain),
-                    ))),
-                    None => {
-                        return Err(refuse(
-                            budget,
-                            ExactTypeProjectionErrorCode::UnsupportedExactType,
-                        ))
-                    }
-                }
-            }
-            leaf => self.model_union_leaf(package, leaf, node, locus, budget)?,
-        };
-        for wrapper in wrappers.into_iter().rev() {
-            value = match wrapper {
-                Wrap::Option => {
-                    charge_native_storage(budget, node, node, "model_union_payload_type", 1)?;
-                    ValueType::option(value)
-                }
-                Wrap::Collection(kind, bounds) => {
-                    let kind = match kind {
-                        CheckedCollectionKind::Sequence => CollectionKind::Sequence,
-                        CheckedCollectionKind::Set => CollectionKind::Set,
-                        CheckedCollectionKind::Bag => CollectionKind::Bag,
-                        CheckedCollectionKind::OrderedSet => CollectionKind::OrderedSet,
-                    };
-                    let Ok(bound) = bounds
-                        .map(|(lower, upper)| CardinalityBound::new(lower, upper))
-                        .transpose()
-                    else {
-                        return Err(refuse(
-                            budget,
-                            ExactTypeProjectionErrorCode::UnsupportedExactType,
-                        ));
-                    };
-                    charge_native_storage(budget, node, node, "model_union_payload_type", 1)?;
-                    ValueType::collection(CollectionType::new(kind, value, bound))
-                }
-            };
-        }
-        Ok(value)
-    }
-
-    /// One leaf through the shared member-type projection, its refusal located
-    /// at the payload node's sidecar pointer.
-    fn model_union_leaf(
-        &self,
-        package: &CheckedPackageV2,
-        leaf: &MemberType,
-        node: &CheckedNodeId,
-        locus: &str,
-        budget: &mut NativeJoinBudget,
-    ) -> Res<ValueType> {
-        super::project_record_field_type(package, self, leaf, node, budget).map_err(|mut error| {
+        super::project_wrapped_record_field_type(
+            package,
+            self,
+            node,
+            node,
+            member,
+            budget,
+            u64::MAX,
+        )
+        .map_err(|mut error| {
             if error.denied.is_none() {
                 error.form = Some(locus.into());
             }
@@ -2158,32 +1794,21 @@ mod tests {
         );
     }
 
-    /// The payload wrapper walk agrees with the record-field projector on every
-    /// wrapper over a leaf both support.
+    /// A payload's Exact type is the record field's Exact type for the same
+    /// admitted member type: every form `forms()` lists, wrappers included,
+    /// Float, Bytes, JsonObject, RationalRange, TextBounds and CarriedRational
+    /// among them, projects identically (or is refused with the same code) on
+    /// both paths, and none of those forms is refused as a field.
     #[trace("FR-352-AC-32")]
     #[test]
-    fn payload_wrappers_agree_with_the_record_field_projection() {
+    fn payload_and_record_field_project_every_admitted_type_identically() {
         let package = package();
         let here = at(&package);
         let identities = SelectedExactIdentities::empty();
-        for member in forms().into_iter().filter(|member| {
-            let mut leaf = member;
-            while let MemberType::Option(inner) | MemberType::Collection { element: inner, .. } =
-                leaf
-            {
-                leaf = inner;
-            }
-            matches!(
-                leaf,
-                MemberType::Boolean
-                    | MemberType::Integer
-                    | MemberType::String
-                    | MemberType::IntRange(_)
-            )
-        }) {
-            let payload = identities
-                .model_union_expected_type(&package, &member, &here, "/p", &mut ample())
-                .unwrap();
+        let mut projected = 0;
+        for member in forms() {
+            let payload =
+                identities.model_union_expected_type(&package, &member, &here, "/p", &mut ample());
             let field = super::super::project_wrapped_record_field_type(
                 &package,
                 &identities,
@@ -2192,9 +1817,16 @@ mod tests {
                 &member,
                 &mut ample(),
                 u64::MAX,
-            )
-            .unwrap();
-            assert_eq!(payload, field, "{member:?}");
+            );
+            match (payload, field) {
+                (Ok(payload), Ok(field)) => {
+                    assert_eq!(payload, field, "{member:?}");
+                    projected += 1;
+                }
+                (Err(payload), Err(field)) => assert_eq!(payload.code, field.code, "{member:?}"),
+                (payload, field) => panic!("{member:?}: payload {payload:?} but field {field:?}"),
+            }
         }
+        assert!(projected >= 15, "projected {projected}");
     }
 }
