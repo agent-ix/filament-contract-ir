@@ -49,7 +49,8 @@ qualified path to its row, or the typed located refusal.
 ## Behavior
 
 The member `claim_names` is absent exactly when the graph has no
-`state`/`state_clause`, `relation`/`refinement` or `claim` node; otherwise it
+`state`/`state_clause`, `relation`/`refinement`, `claim` or
+`correspondence`/`component_composition` node; otherwise it
 is a non-empty array of closed rows
 `{declaration, occurrence, name, qualified_name, declaration_region}`. `occurrence` is the exact
 `{role, ordinal}` key of one `declaration` or `claim` occurrence of the node
@@ -106,6 +107,19 @@ before the next:
    `/claim_names/{i}/qualified_name`, and the refusal names the earlier row's
    `/claim_names/{j}/qualified_name` as its package-document position, so both
    rows are named. Rows of one declaration are never duplicates of each other.
+
+A `correspondence`/`component_composition` node is claim-bearing under FSpec
+FR-322 "Composition declaration names": it has exactly one row, keyed to its
+`declaration` occurrence at ordinal 0. For such a row the reader SHALL refuse
+`invalid_package`/`invalid-value` at `/claim_names/{i}/occurrence` an
+occurrence other than that key, at `/claim_names/{i}/declaration_region` a
+`declaration_region` that is not equal to the one region of that occurrence's
+`source_map` entry (a containing or a contained interval is not equal), and at
+`/claim_names/{i}/qualified_name` a `qualified_name` other than the node's
+`declaration.qualified_name`, whose last segment is `name`. A second row of
+another declaration repeating the `qualified_name` refuses
+`ambiguous_declaration`/`ambiguous-name` as above. No other `correspondence`
+form is claim-bearing and none carries a `declaration` member.
 
 After every row has passed, a `declaration` or `claim` occurrence of a state
 clause, refinement or claim node with no row, or a missing member in a graph
@@ -191,6 +205,7 @@ canonical writer SHALL accept optional borrowed rows, emit them in the supplied 
 | FR-371-AC-9 | A name row of either table carries `declaration_region`: a region wider than the name token admits, is exposed beside the name, survives write and re-read and moves no node; a row without it refuses `malformed_wire` at the row `/{table}/{i}`, and a row with a region that is not a source region refuses `malformed_wire` at `/{table}/{i}/declaration_region`; a region under another source, or not containing the occurrence's `source_map` region, refuses `invalid-value` at that member after the occurrence join and before the repeated-key check; an occurrence with no `source_map` entry is left to the source-map check. | Test (TC-477; FSpec FR-322-AC-460, FR-322-AC-461) |
 | FR-371-AC-10 | Rows with one `declaration_region` are one declaration: a second row of one declaration on the same node, or on another (conjunction) node, repeating its `name` and `qualified_name`, admits and is no duplicate name; the lookup of its name returns the row on its own node, the node whose declaration set is strictly contained in that of the other, of least occurrence key whose role is `claim`, else its least row, never the row on the other node; the same row renamed refuses `invalid-value` at its `/claim_names/{i}/name`; a name whose two nodes have declaration sets that do not nest refuses `ambiguous_declaration`/`ambiguous-name` at its last row's `qualified_name` and names its first row's. | Test (TC-477; FSpec FR-322-AC-465) |
 | FR-371-AC-11 | A hyper clause's body wrapper has no `temporal_clause_names` row and the package admits without one; a `temporal_clause_names` row whose `declaration` is a body wrapper refuses `invalid-value` at `/temporal_clause_names/{i}/declaration`; a `claim_names` row and a `temporal_clause_names` row with one `name` refuse `ambiguous_declaration`/`ambiguous-name` at `/claim_names/{i}/name` even when their `declaration_region`s are equal. | Test (TC-477; FSpec FR-322-AC-466) |
+| FR-371-AC-12 | Consumes FSpec FR-322 "Composition declaration names" (FR-322-AC-514, FR-322-AC-515). A top-level `compose Sys` admits with `declaration.qualified_name` `["Sys"]`, `node_id.path` `["Sys"]` and one `claim_names` row, `name` `Sys`, `qualified_name` `["Sys"]`, whose `declaration_region` equals the one region of its ordinal-0 `declaration` entry; `claim_name_for_path(["Sys"])` returns it and the row survives write and re-read. Independently, a removed row with no other claim-bearing node (no `claim_names` member) refuses `invalid_package`/`invalid-value` at `/claim_names`; a `qualified_name` other than the declared path with a matching last segment, a `claim`-role row, and a `declaration_region` that is larger, or smaller, than the entry's region each refuse the same pair at that row's `/qualified_name`, `/occurrence` and `/declaration_region`; a second composition of a distinct declaration with the same `qualified_name` refuses `ambiguous_declaration`/`ambiguous-name` at the later row's `/qualified_name`. | Test (TC-477; FSpec FR-322-AC-514, FR-322-AC-515) |
 
 ## Compatibility
 

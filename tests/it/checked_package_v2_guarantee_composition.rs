@@ -18,20 +18,33 @@ use crate::checked_package_v2_temporal::{
     with_model, INFINITE, LEFT_NODE, ORDERS, ORDER_NODE, SUB_NODE,
 };
 use crate::support::checked_package::{
-    canonical, evidence_with_document, index_fixture_node_ids, reassign_node_id, settle,
-    v2_all_families, wire_form,
+    canonical, evidence_with_document, fixture_source, index_fixture_node_ids, reassign_node_id,
+    settle, source_owner, v2_all_families, wire_form,
 };
 use filament_contract_model::{
-    CheckedDependencyOperand, CheckedNodeId, CheckedNodeKind, CheckedNodePathSegment,
-    CheckedOperandEntry, CheckedPackageReadLimits, CheckedPackageRefusalCause as Cause,
-    CheckedPackageRefusalCode as Code, CheckedPackageV2, CheckedPackageV2ReadResult, CheckedTerm,
-    CorrespondenceForm,
+    encode_checked_package_v2, CheckedDependencyOperand, CheckedNodeId, CheckedNodeKind,
+    CheckedNodePathSegment, CheckedOperandEntry, CheckedPackageReadLimits,
+    CheckedPackageRefusalCause as Cause, CheckedPackageRefusalCode as Code,
+    CheckedPackageSourceCorrespondenceRef, CheckedPackageV2, CheckedPackageV2ReadResult,
+    CheckedTerm, CorrespondenceForm,
 };
 use ix_trace_rs::trace;
 use serde_json::{json, Value};
 
 const GUARANTEE: &str = "guarantee/G";
-const COMPOSITION: &str = "composition/S";
+/// The declared name of the composition node (`compose Sys`): its structural
+/// path is this name, not a derived correspondence path.
+const COMPOSITION: &str = "Sys";
+/// The body arrays whose entries are the composition's members, in the
+/// canonical concatenation order of FSpec FR-491.
+const MEMBER_ARRAYS: [&str; 6] = [
+    "components",
+    "guarantees",
+    "relies",
+    "liveness_dependencies",
+    "supplies",
+    "environment",
+];
 const PREDICATE: &str = "guarantee/predicate";
 /// The package the fixture's nodes are in, and the component package a
 /// composition imports.
@@ -331,7 +344,18 @@ fn guarantee_node(body: Value) -> Value {
 }
 
 fn composition_node(body: Value) -> Value {
-    node_of(COMPOSITION, "component_composition", body)
+    let members: usize = MEMBER_ARRAYS
+        .iter()
+        .map(|array| body[array].as_array().map_or(0, Vec::len))
+        .sum();
+    let mut node = node_of(COMPOSITION, "component_composition", body);
+    node["declaration"] = json!({"qualified_name": [COMPOSITION]});
+    node["owner"] = source_owner(&fixture_source());
+    let mut occurrences = vec![json!({"role": "declaration", "ordinal": 0})];
+    occurrences
+        .extend((0..members).map(|ordinal| json!({"role": "generated", "ordinal": ordinal})));
+    node["occurrences"] = Value::Array(occurrences);
+    node
 }
 
 /// `package` holding `node`, settled.
@@ -1473,4 +1497,795 @@ fn tc_474_a_node_own_id_refuses_a_slot_naming_a_dependency_position() {
         }
         other => panic!("a node's own id naming a dependency position must refuse, read {other:?}"),
     }
+}
+
+// FSpec FR-322 "Composition declaration names" and FR-491 "Composition member
+// occurrences": a composition declares its name, carries one name row and one
+// `generated` occurrence per body member with the member's authored region.
+
+/// The canonical member count of the composition `composed` builds.
+const MEMBERS: usize = 9;
+/// The whole declaration, and the literal authored region of each member by
+/// its canonical ordinal. The two guarantees (ordinals 2 and 3) are authored
+/// in the reverse of their canonical order.
+const DECLARATION: (u64, u64) = (1_000, 2_000);
+const AUTHORED: [(u64, u64); MEMBERS] = [
+    (1_100, 1_110),
+    (1_120, 1_130),
+    (1_500, 1_510),
+    (1_200, 1_210),
+    (1_300, 1_310),
+    (1_400, 1_410),
+    (1_600, 1_610),
+    (1_700, 1_710),
+    (1_800, 1_810),
+];
+
+fn graph_nodes(package: &Value) -> &Vec<Value> {
+    package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+}
+
+fn region_value(package: &Value, source: usize, (start, end): (u64, u64)) -> Value {
+    json!({"source": package["lock"]["sources"][source], "start": start, "end": end})
+}
+
+/// Writes literal authored regions over the composition at `position`: its
+/// declaration entry, each member entry by ordinal, and its name row.
+fn author(package: &mut Value, position: usize, declaration: (u64, u64), members: &[(u64, u64)]) {
+    let id = graph_nodes(package)[position]["node_id"].clone();
+    let whole = region_value(package, 0, declaration);
+    let regions: Vec<Value> = members
+        .iter()
+        .map(|region| region_value(package, 0, *region))
+        .collect();
+    for entry in package["source_map"].as_array_mut().expect("map") {
+        if entry["node_id"] != id {
+            continue;
+        }
+        entry["regions"] = if entry["role"] == "declaration" {
+            json!([whole])
+        } else {
+            let ordinal = entry["ordinal"].as_u64().expect("ordinal");
+            json!([regions[usize::try_from(ordinal).expect("ordinal")]])
+        };
+    }
+    for row in package["claim_names"].as_array_mut().expect("rows") {
+        if row["declaration"] == id {
+            row["declaration_region"] = whole.clone();
+        }
+    }
+}
+
+/// A valid authored composition and its node position.
+fn authored() -> (Value, usize) {
+    let (mut package, position) = composed(|_| {});
+    author(&mut package, position, DECLARATION, &AUTHORED);
+    (package, position)
+}
+
+/// The entry index of the composition's `role`/`ordinal` entry.
+fn entry_index(package: &Value, position: usize, role: &str, ordinal: u64) -> usize {
+    let id = &graph_nodes(package)[position]["node_id"];
+    package["source_map"]
+        .as_array()
+        .expect("map")
+        .iter()
+        .position(|entry| {
+            &entry["node_id"] == id && entry["role"] == role && entry["ordinal"] == ordinal
+        })
+        .expect("composition entry")
+}
+
+fn member_entry(package: &Value, position: usize, ordinal: u64) -> usize {
+    entry_index(package, position, "generated", ordinal)
+}
+
+fn claim_row(package: &Value, position: usize) -> usize {
+    let id = &graph_nodes(package)[position]["node_id"];
+    package["claim_names"]
+        .as_array()
+        .expect("rows")
+        .iter()
+        .position(|row| &row["declaration"] == id)
+        .expect("composition name row")
+}
+
+/// Asserts the refusal's code, cause and full primary pointer, and that it names no
+/// node: the package-wide checks locate no node.
+fn refused_unlocated(case: &str, package: &Value, code: Code, cause: Option<Cause>, path: &str) {
+    let refusal = match read_any(package) {
+        CheckedPackageV2ReadResult::Refused(refusal) => refusal,
+        other => panic!("{case}: expected a refusal, read {other:?}"),
+    };
+    assert_eq!(refusal.code, code, "{case}: {refusal:?}");
+    assert_eq!(refusal.cause, cause, "{case}: {refusal:?}");
+    assert_eq!(
+        refusal.loci[0].path.as_ref().map(|path| path.as_str()),
+        Some(path),
+        "{case}: {refusal:?}"
+    );
+    assert_eq!(refusal.locus, None, "{case}: {refusal:?}");
+}
+
+/// Asserts the refusal's code, cause, full primary pointer and node locus.
+fn refused_at(
+    case: &str,
+    package: &Value,
+    position: usize,
+    code: Code,
+    cause: Option<Cause>,
+    path: &str,
+) {
+    let refusal = match read_any(package) {
+        CheckedPackageV2ReadResult::Refused(refusal) => refusal,
+        other => panic!("{case}: expected a refusal, read {other:?}"),
+    };
+    assert_eq!(refusal.code, code, "{case}: {refusal:?}");
+    assert_eq!(refusal.cause, cause, "{case}: {refusal:?}");
+    assert_eq!(
+        refusal.loci[0].path.as_ref().map(|path| path.as_str()),
+        Some(path),
+        "{case}: {refusal:?}"
+    );
+    assert_eq!(
+        refusal.locus,
+        Some(typed(&graph_nodes(package)[position]["node_id"])),
+        "{case}: {refusal:?}"
+    );
+}
+
+const INVALID_VALUE: (Code, Option<Cause>) = (Code::InvalidPackage, Some(Cause::InvalidValue));
+
+/// A mutation of the authored package, the entry index it refuses at (`None`
+/// for the whole `/source_map`).
+type Coordinate = (&'static str, fn(&mut Value, usize), Option<u64>);
+
+fn rewrite_entry(
+    package: &mut Value,
+    position: usize,
+    ordinal: u64,
+    edit: impl FnOnce(&mut Value),
+) {
+    let at = member_entry(package, position, ordinal);
+    edit(&mut package["source_map"][at]);
+}
+
+#[trace("TC-474", "FR-038-AC-602")]
+#[test]
+fn a_composition_names_itself_and_keeps_authored_member_regions() {
+    let (package, position) = authored();
+    let admitted = admitted("authored composition", &package);
+    let node = &admitted.graph().nodes[position];
+    // The declared name is the node's path and its one name row.
+    assert_eq!(
+        node.declaration
+            .as_ref()
+            .map(|name| name.qualified_name.clone()),
+        Some(vec!["Sys".into()])
+    );
+    assert_eq!(
+        node.node_id.path,
+        vec![CheckedNodePathSegment::Name("Sys".into())]
+    );
+    let row = admitted
+        .claim_name_for_path(&["Sys"])
+        .expect("the composition's name row");
+    assert_eq!(&*row.name, "Sys");
+    assert_eq!(row.declaration, node.node_id);
+    assert_eq!(row.occurrence.ordinal, 0);
+    assert_eq!(
+        (row.declaration_region.start, row.declaration_region.end),
+        DECLARATION
+    );
+    assert_eq!(admitted.claim_names().expect("rows").len(), 1);
+    // The member sequence is the canonical concatenation: the two guarantees
+    // are ordinals 2 and 3, and each reads back with its own literal region.
+    let held = |ordinal: u64| {
+        admitted
+            .source_map()
+            .iter()
+            .find(|entry| {
+                entry.node_id == node.node_id
+                    && format!("{:?}", entry.role) == "Generated"
+                    && entry.ordinal == ordinal
+            })
+            .map(|entry| {
+                entry
+                    .regions
+                    .iter()
+                    .map(|region| (region.start, region.end))
+                    .collect::<Vec<_>>()
+            })
+    };
+    for (ordinal, region) in AUTHORED.iter().enumerate() {
+        assert_eq!(
+            held(ordinal as u64),
+            Some(vec![*region]),
+            "member {ordinal}"
+        );
+    }
+    // Source order is the region order, not canonical order and not array order.
+    assert!(AUTHORED[3].0 < AUTHORED[2].0);
+    // Reordering the entries changes no attribution.
+    let mut shuffled = package.clone();
+    shuffled["source_map"]
+        .as_array_mut()
+        .expect("map")
+        .reverse();
+    let reordered = admitted_ok_package("reversed source map", &shuffled);
+    assert_eq!(reordered.claim_names(), admitted.claim_names());
+    let attribution = |package: &CheckedPackageV2| {
+        let mut entries: Vec<_> = package
+            .source_map()
+            .iter()
+            .map(|entry| format!("{entry:?}"))
+            .collect();
+        entries.sort();
+        entries
+    };
+    assert_eq!(attribution(&reordered), attribution(&admitted));
+}
+
+fn admitted_ok_package(case: &str, package: &Value) -> CheckedPackageV2 {
+    admitted(case, package)
+}
+
+#[trace("TC-474", "FR-038-AC-602")]
+#[test]
+fn a_written_composition_reads_back_with_its_name_and_coordinates() {
+    let (package, _) = authored();
+    let admitted = admitted("authored composition", &package);
+    let written = encode_checked_package_v2(
+        admitted.name(),
+        admitted.lock(),
+        admitted.graph(),
+        CheckedPackageSourceCorrespondenceRef {
+            source_map: admitted.source_map(),
+            refinement_step_rows: admitted.refinement_step_rows(),
+        },
+        filament_contract_model::CheckedPackageSidecarsRef {
+            temporal_clause_names: admitted.temporal_clause_names(),
+            claim_names: admitted.claim_names(),
+            operation_effects: None,
+            operation_bodies: None,
+            checked_term_data: admitted.checked_term_data(),
+            temporal_bindings: admitted.temporal_bindings(),
+            schedulability_claims: None,
+        },
+        admitted.capability_report(),
+        admitted.diagnostics(),
+        quire_canonical::Limits::new(u64::MAX),
+    )
+    .expect("writer");
+    let dependency = match read(&base()) {
+        CheckedPackageV2ReadResult::Admitted(dependency) => *dependency,
+        other => panic!("the component package admits, read {other:?}"),
+    };
+    let mut evidence = evidence_with_document(&package, ORDERS, &orders_document());
+    evidence
+        .insert_dependency_package(DEPENDENCY, dependency)
+        .expect("dependency evidence");
+    let reread =
+        match crate::read_and_account(&written, CheckedPackageReadLimits::bounded(), &evidence) {
+            CheckedPackageV2ReadResult::Admitted(package) => *package,
+            other => panic!("the written package reads back, read {other:?}"),
+        };
+    assert_eq!(reread.graph(), admitted.graph());
+    assert_eq!(reread.claim_names(), admitted.claim_names());
+    assert_eq!(reread.source_map(), admitted.source_map());
+}
+
+#[trace("TC-474", "FR-038-AC-603")]
+#[test]
+fn another_correspondence_declaration_and_a_missing_composition_declaration_still_refuse() {
+    // A guarantee stays declaration-free.
+    let (mut package, position) = guaranteed(|_| {});
+    package["semantic_graph"]["nodes"][position]["declaration"] = json!({"qualified_name": ["G"]});
+    package["semantic_graph"]["nodes"][position]["owner"] = source_owner(&fixture_source());
+    expect(
+        "a guarantee with a declaration",
+        &package,
+        GRAPH,
+        None,
+        &at(position, "/declaration"),
+    );
+    // A composition's declaration occurrence requires its declaration.
+    let (mut package, position) = authored();
+    let node = package["semantic_graph"]["nodes"][position]
+        .as_object_mut()
+        .expect("node");
+    node.remove("declaration");
+    node.remove("owner");
+    expect(
+        "a composition without its declaration",
+        &package,
+        GRAPH,
+        None,
+        &at(position, ""),
+    );
+    // A declaration whose path is not the node's path.
+    let (mut package, position) = authored();
+    package["semantic_graph"]["nodes"][position]["declaration"] =
+        json!({"qualified_name": ["Other"]});
+    let row = claim_row(&package, position);
+    package["claim_names"][row]["name"] = json!("Other");
+    package["claim_names"][row]["qualified_name"] = json!(["Other"]);
+    expect(
+        "a declaration other than the node path",
+        &package,
+        Code::InvalidPackage,
+        Some(Cause::DeclarationNominalMismatch),
+        &at(position, "/node_id/path"),
+    );
+}
+
+#[trace("TC-477", "FR-371-AC-12")]
+#[test]
+fn a_composition_name_row_is_exact_and_unique() {
+    let (package, position) = authored();
+    admitted("positive control", &package);
+    let row = claim_row(&package, position);
+    let row_at = |tail: &str| format!("/claim_names/{row}{tail}");
+    // No row at all, and no occurrence left to name.
+    let mut missing = package.clone();
+    missing["claim_names"]
+        .as_array_mut()
+        .expect("rows")
+        .remove(row);
+    missing
+        .as_object_mut()
+        .expect("package")
+        .remove("claim_names");
+    refused_unlocated(
+        "a missing name row",
+        &missing,
+        Code::InvalidPackage,
+        Some(Cause::InvalidValue),
+        "/claim_names",
+    );
+    // A path other than the declared one whose last segment matches.
+    let mut wrong = package.clone();
+    wrong["claim_names"][row]["qualified_name"] = json!(["Scope", "Sys"]);
+    refused_at(
+        "a wrong qualified name",
+        &wrong,
+        position,
+        Code::InvalidPackage,
+        Some(Cause::InvalidValue),
+        &row_at("/qualified_name"),
+    );
+    // A region that contains the declaration, or merely lies inside it, is
+    // not the declaration's region.
+    for (case, region) in [
+        ("a larger containing region", (900, 2_100)),
+        ("a smaller contained region", (1_000, 1_999)),
+    ] {
+        let mut other = package.clone();
+        other["claim_names"][row]["declaration_region"] = region_value(&package, 0, region);
+        refused_at(
+            case,
+            &other,
+            position,
+            Code::InvalidPackage,
+            Some(Cause::InvalidValue),
+            &row_at("/declaration_region"),
+        );
+    }
+    // A row for any occurrence other than the declaration at ordinal 0.
+    let mut claim = package.clone();
+    claim["claim_names"][row]["occurrence"] = json!({"role": "claim", "ordinal": 0});
+    refused_at(
+        "a claim-role row",
+        &claim,
+        position,
+        Code::InvalidPackage,
+        Some(Cause::InvalidValue),
+        &row_at("/occurrence"),
+    );
+}
+
+#[trace("TC-477", "FR-371-AC-12")]
+#[test]
+fn two_distinct_compositions_cannot_share_a_qualified_name() {
+    let (mut package, position) = authored();
+    let mut twin = graph_nodes(&package)[position].clone();
+    twin["node_id"]["ordinal"] = json!(1);
+    twin["semantic_type"] = twin["node_id"].clone();
+    push(&mut package, twin);
+    settle(&mut package);
+    let second = graph_nodes(&package).len() - 1;
+    author(&mut package, position, DECLARATION, &AUTHORED);
+    author(
+        &mut package,
+        second,
+        (3_000, 4_000),
+        &AUTHORED.map(|(s, e)| (s + 2_100, e + 2_100)),
+    );
+    admitted_or_report("two distinct names would admit", &package, second);
+}
+
+fn admitted_or_report(case: &str, package: &Value, second: usize) {
+    let later = claim_row(package, second);
+    refused_at(
+        case,
+        package,
+        second,
+        Code::AmbiguousDeclaration,
+        Some(Cause::AmbiguousName),
+        &format!("/claim_names/{later}/qualified_name"),
+    );
+}
+
+#[trace("TC-474", "FR-038-AC-604")]
+#[test]
+fn a_member_coordinate_that_is_not_the_one_authored_region_refuses_at_its_entry() {
+    let (package, position) = authored();
+    admitted("positive control", &package);
+    let cases: [Coordinate; 8] = [
+        (
+            "an ordinal equal to the member count",
+            |package, position| {
+                let last = MEMBERS as u64 - 1;
+                let id = graph_nodes(package)[position]["node_id"].clone();
+                for occurrence in package["semantic_graph"]["nodes"][position]["occurrences"]
+                    .as_array_mut()
+                    .expect("occurrences")
+                {
+                    if occurrence["ordinal"] == last && occurrence["role"] == "generated" {
+                        occurrence["ordinal"] = json!(MEMBERS);
+                    }
+                }
+                rewrite_entry(package, position, last, |entry| {
+                    assert_eq!(entry["node_id"], id);
+                    entry["ordinal"] = json!(MEMBERS);
+                });
+            },
+            Some(MEMBERS as u64 - 1),
+        ),
+        (
+            "another locked source",
+            |package, position| {
+                let secondary = crate::support::checked_package::fixture_secondary_source();
+                package["lock"]["sources"]
+                    .as_array_mut()
+                    .expect("sources")
+                    .push(secondary.clone());
+                rewrite_entry(package, position, 4, |entry| {
+                    entry["regions"][0]["source"] = secondary;
+                });
+            },
+            Some(4),
+        ),
+        (
+            "outside the declaration",
+            |package, position| {
+                rewrite_entry(package, position, 4, |entry| {
+                    entry["regions"][0]["start"] = json!(2_100);
+                    entry["regions"][0]["end"] = json!(2_110);
+                });
+            },
+            Some(4),
+        ),
+        // The first member entry has no earlier member to overlap, so only the
+        // declaration interval itself refuses these two.
+        (
+            "equal to the declaration",
+            |package, position| {
+                rewrite_entry(package, position, 0, |entry| {
+                    entry["regions"][0]["start"] = json!(DECLARATION.0);
+                    entry["regions"][0]["end"] = json!(DECLARATION.1);
+                });
+            },
+            Some(0),
+        ),
+        (
+            "starting at the declaration start",
+            |package, position| {
+                rewrite_entry(package, position, 0, |entry| {
+                    entry["regions"][0]["start"] = json!(DECLARATION.0);
+                    entry["regions"][0]["end"] = json!(DECLARATION.0 + 10);
+                });
+            },
+            Some(0),
+        ),
+        (
+            "overlapping an earlier member",
+            |package, position| {
+                rewrite_entry(package, position, 5, |entry| {
+                    entry["regions"][0]["start"] = json!(1_305);
+                    entry["regions"][0]["end"] = json!(1_315);
+                });
+            },
+            Some(5),
+        ),
+        (
+            "two disjoint regions",
+            |package, position| {
+                rewrite_entry(package, position, 5, |entry| {
+                    let second = json!({
+                        "source": entry["regions"][0]["source"],
+                        "start": 1_900, "end": 1_910,
+                    });
+                    entry["regions"]
+                        .as_array_mut()
+                        .expect("regions")
+                        .push(second);
+                });
+            },
+            Some(5),
+        ),
+        (
+            "an expression role",
+            |package, position| {
+                package["semantic_graph"]["nodes"][position]["occurrences"][6]["role"] =
+                    json!("expression");
+                rewrite_entry(package, position, 5, |entry| {
+                    entry["role"] = json!("expression")
+                });
+            },
+            Some(5),
+        ),
+    ];
+    for (case, mutate, ordinal) in cases {
+        let mut mutated = package.clone();
+        mutate(&mut mutated, position);
+        if case == "another locked source" {
+            crate::support::checked_package::refresh_identity(&mut mutated);
+        }
+        let path = match ordinal {
+            Some(_) if case == "an ordinal equal to the member count" => {
+                format!(
+                    "/source_map/{}",
+                    member_entry(&package, position, MEMBERS as u64 - 1)
+                )
+            }
+            Some(ordinal) => format!("/source_map/{}", member_entry(&package, position, ordinal)),
+            None => format!(
+                "/source_map/{}",
+                entry_index(&package, position, "declaration", 0)
+            ),
+        };
+        refused_at(
+            case,
+            &mutated,
+            position,
+            INVALID_VALUE.0,
+            INVALID_VALUE.1,
+            &path,
+        );
+    }
+}
+
+#[trace("TC-474", "FR-038-AC-604")]
+#[test]
+fn a_missing_member_occurrence_pair_refuses_only_after_every_entry_passes() {
+    let (package, position) = authored();
+    let drop_member = |package: &mut Value, ordinal: u64| {
+        let at = member_entry(package, position, ordinal);
+        package["source_map"]
+            .as_array_mut()
+            .expect("map")
+            .remove(at);
+        let occurrences = package["semantic_graph"]["nodes"][position]["occurrences"]
+            .as_array_mut()
+            .expect("occurrences");
+        let held = occurrences
+            .iter()
+            .position(|occurrence| {
+                occurrence["role"] == "generated" && occurrence["ordinal"] == ordinal
+            })
+            .expect("member occurrence");
+        occurrences.remove(held);
+    };
+    let mut missing = package.clone();
+    drop_member(&mut missing, 4);
+    refused_at(
+        "a removed occurrence and entry",
+        &missing,
+        position,
+        INVALID_VALUE.0,
+        INVALID_VALUE.1,
+        "/source_map",
+    );
+    // An invalid entry is the first defect, wherever the missing pair is.
+    let mut both = missing.clone();
+    rewrite_entry(&mut both, position, 5, |entry| {
+        entry["regions"][0]["start"] = json!(2_100);
+        entry["regions"][0]["end"] = json!(2_110);
+    });
+    refused_at(
+        "an invalid entry before the missing pair",
+        &both,
+        position,
+        INVALID_VALUE.0,
+        INVALID_VALUE.1,
+        &format!("/source_map/{}", member_entry(&both, position, 5)),
+    );
+    // The first invalid entry in `source_map` order, not in ordinal order.
+    let mut ordered = package.clone();
+    for ordinal in [3, 6] {
+        rewrite_entry(&mut ordered, position, ordinal, |entry| {
+            entry["regions"][0]["start"] = json!(2_100);
+            entry["regions"][0]["end"] = json!(2_110);
+        });
+    }
+    let early = member_entry(&ordered, position, 6);
+    let late = member_entry(&ordered, position, 3);
+    ordered["source_map"]
+        .as_array_mut()
+        .expect("map")
+        .swap(early, late);
+    refused_at(
+        "the first invalid entry in source-map order",
+        &ordered,
+        position,
+        INVALID_VALUE.0,
+        INVALID_VALUE.1,
+        &format!(
+            "/source_map/{}",
+            member_entry(&ordered, position, 3).min(member_entry(&ordered, position, 6))
+        ),
+    );
+}
+
+#[trace("TC-474", "FR-038-AC-605")]
+#[test]
+fn generic_source_map_checks_precede_and_body_checks_follow_composition_coordinates() {
+    let (package, position) = authored();
+    // An empty interval is the generic `invalid_source_map`, ahead of any
+    // composition coordinate check, even when a coordinate defect comes
+    // earlier in the array.
+    let mut empty = package.clone();
+    rewrite_entry(&mut empty, position, 6, |entry| {
+        entry["regions"][0]["start"] = json!(1_700);
+        entry["regions"][0]["end"] = json!(1_700);
+    });
+    let at = member_entry(&empty, position, 6);
+    refused_unlocated(
+        "an empty interval",
+        &empty,
+        Code::InvalidSourceMap,
+        None,
+        &format!("/source_map/{at}/regions/0"),
+    );
+    let mut combined = empty.clone();
+    rewrite_entry(&mut combined, position, 2, |entry| {
+        entry["regions"][0]["start"] = json!(2_100);
+        entry["regions"][0]["end"] = json!(2_110);
+    });
+    let (early, late) = (
+        member_entry(&combined, position, 2),
+        member_entry(&combined, position, 6),
+    );
+    assert!(
+        early < late,
+        "the coordinate defect comes first in the array"
+    );
+    refused_unlocated(
+        "generic before coordinate",
+        &combined,
+        Code::InvalidSourceMap,
+        None,
+        &format!("/source_map/{late}/regions/0"),
+    );
+    // A repeated key is the generic refusal as well.
+    let mut repeated = package.clone();
+    let copy = repeated["source_map"][member_entry(&package, position, 4)].clone();
+    repeated["source_map"]
+        .as_array_mut()
+        .expect("map")
+        .push(copy);
+    rewrite_entry(&mut repeated, position, 2, |entry| {
+        entry["regions"][0]["start"] = json!(2_100);
+        entry["regions"][0]["end"] = json!(2_110);
+    });
+    let last = repeated["source_map"].as_array().expect("map").len() - 1;
+    refused_unlocated(
+        "a repeated key",
+        &repeated,
+        Code::InvalidSourceMap,
+        None,
+        &format!("/source_map/{last}"),
+    );
+    // Identity, dependency and canonical-order defects precede coordinates.
+    let mut order = package.clone();
+    order["semantic_graph"]["nodes"][position]["body"]["guarantees"]
+        .as_array_mut()
+        .expect("guarantees")
+        .reverse();
+    rewrite_entry(&mut order, position, 4, |entry| {
+        entry["regions"][0]["start"] = json!(2_100);
+        entry["regions"][0]["end"] = json!(2_110);
+    });
+    refused_at(
+        "an out-of-order array before coordinates",
+        &order,
+        position,
+        Code::InvalidSemanticGraph,
+        None,
+        &at_node(position, "/body/guarantees"),
+    );
+    let mut identity = package.clone();
+    identity["semantic_graph"]["nodes"][position]["dependencies"] = json!([]);
+    rewrite_entry(&mut identity, position, 4, |entry| {
+        entry["regions"][0]["start"] = json!(2_100);
+        entry["regions"][0]["end"] = json!(2_110);
+    });
+    refused_at(
+        "a dependency defect before coordinates",
+        &identity,
+        position,
+        Code::InvalidSemanticGraph,
+        None,
+        &at_node(position, ""),
+    );
+    // Coordinates precede the member static checks.
+    let mut static_check = package.clone();
+    static_check["semantic_graph"]["nodes"][position]["body"]["components"][1]["name"] =
+        json!("Consumer");
+    rewrite_entry(&mut static_check, position, 4, |entry| {
+        entry["regions"][0]["start"] = json!(2_100);
+        entry["regions"][0]["end"] = json!(2_110);
+    });
+    refused_at(
+        "a coordinate defect before a member static check",
+        &static_check,
+        position,
+        INVALID_VALUE.0,
+        INVALID_VALUE.1,
+        &format!("/source_map/{}", member_entry(&static_check, position, 4)),
+    );
+}
+
+fn at_node(position: usize, tail: &str) -> String {
+    at(position, tail)
+}
+
+#[trace("TC-477", "FR-371-AC-12")]
+#[test]
+fn composition_source_order_comes_from_declaration_regions_not_node_ids() {
+    let (mut package, sys) = authored();
+    let mut twin = graph_nodes(&package)[sys].clone();
+    twin["node_id"]["path"] = json!(["Alpha"]);
+    twin["semantic_type"] = twin["node_id"].clone();
+    twin["declaration"] = json!({"qualified_name": ["Alpha"]});
+    let alpha = push(&mut package, twin);
+    settle(&mut package);
+    // `Alpha` sorts before `Sys` by node id and follows it in the source.
+    author(&mut package, sys, DECLARATION, &AUTHORED);
+    author(
+        &mut package,
+        alpha,
+        (5_000, 6_000),
+        &AUTHORED.map(|(s, e)| (s + 4_000, e + 4_000)),
+    );
+    let admitted = admitted("two compositions", &package);
+    let rows = admitted.claim_names().expect("rows");
+    let by_node: Vec<&str> = rows.iter().map(|row| &*row.name).collect();
+    assert_eq!(
+        by_node,
+        ["Sys", "Alpha"].iter().rev().copied().collect::<Vec<_>>()
+    );
+    let mut by_source: Vec<_> = rows.iter().collect();
+    let locked = admitted.lock().sources.clone();
+    by_source.sort_by_key(|row| {
+        (
+            locked
+                .iter()
+                .position(|source| source == &row.declaration_region.source),
+            row.declaration_region.start,
+            row.declaration_region.end,
+        )
+    });
+    let names: Vec<&str> = by_source.iter().map(|row| &*row.name).collect();
+    assert_eq!(names, ["Sys", "Alpha"]);
+    assert_eq!(
+        by_source
+            .iter()
+            .map(|row| (row.declaration_region.start, row.declaration_region.end))
+            .collect::<Vec<_>>(),
+        [(1_000, 2_000), (5_000, 6_000)]
+    );
 }
