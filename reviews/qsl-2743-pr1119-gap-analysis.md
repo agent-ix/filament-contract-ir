@@ -34,3 +34,18 @@ Semantic review, held clean:
 | --- | --- | --- | --- |
 | FND-001 | low | The adverse cases for bounded Rational (FR-352-AC-42) and bounded Text (FR-352-AC-43) take the wrong original type `ValueType::Boolean`, shared from the older forms map. Those cases cannot fail for any interval, denominator or profile defect in the shared projector; only the positive equality guards the bounds the criteria name. A same-kind wrong type, such as a `RationalDomain` with another numerator bound or a `TextType` with another length or profile, would make each adverse discriminate the record-field obligation. | tests/it/checked_package_v2_model_fields.rs:9380-9392; spec/checked_package/functional/FR-352-project-admitted-exact-value-types.md:638-639 |
 | FND-002 | low | FR-352-AC-44 says an original type naming another carrier domain or unit refuses. The carried-quantity adverse varies only the domain (`domain(8)`, same `second` unit). Only the Duration `Quantity` form varies the unit, so no test refuses a carried quantity with the wrong unit. The missing-unit-row refusal (`UnavailableIdentityWitness` at the unit node) is likewise taken only in the union join, never at the record-field entry the criterion is about. | tests/it/checked_package_v2_model_fields.rs:9356-9368, 9514-9533; spec/checked_package/functional/FR-352-project-admitted-exact-value-types.md:640 |
+
+## Dispositions
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-001 | fixed | Disposition pass 1, head c9b9a2415. The wrong witnesses are now same-kind and built independently (checked_package_v2_model_fields.rs:9407-9412, 9524-9537): integer range 0..999; text upper bound 65 and profile nfd; rational numerator upper 8 and numerator lower -4; option Option(Boolean). Each is refused MismatchedIdentityWitness at the payload node, form /model_unions/0/cases/1/payload/original_type. Mutant m3 (text upper bound +1 in project_record_field_type) was killed and restored. |
+| FND-002 | fixed | Disposition pass 1, head c9b9a2415. A carried-quantity wrong-unit case was added (`unit_exact("minute")`, same domain). The new test a_carried_quantity_record_field_needs_the_declared_unit_identity_row (:9583-9696) uses record and field rows only, with no union stage. Its positive (with the DeclaredUnit row) asserts an independently built CarriedQuantity through project_exact_type(record).record_view(). Removing only the unit row then refuses UnavailableIdentityWitness at the unit node. FR-352-AC-44 states that field-path refusal. |
+
+## Disposition round 1 verdict
+
+**PASS.** Both findings are fixed and the pass adds no new finding.
+- All 7 kinds have an independent positive through the record entry.
+- Every adverse case is now kind-specific: Float32 and Float64 the other width; Bytes and JsonObject swapped; Rational two bound variants; Text a bound and a profile; carried Rational a domain and a unit; Duration a unit.
+- The carried record-field missing-unit refusal is taken on the record-field path itself.
+- Matrix: FR-352-AC-44 now has two binders.

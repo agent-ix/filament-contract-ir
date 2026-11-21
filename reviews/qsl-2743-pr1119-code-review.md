@@ -32,3 +32,13 @@ Gates: the reviewer ran one test by name at frozen head 5e7f682c7, on this workt
 | ID | Severity | Summary | Refs |
 | --- | --- | --- | --- |
 | FND-001 | low | The test's doc comment is stale. It still describes only the bounded integer, profiled text, rational range and option payload forms. The test now also covers Float32, Float64, Bytes, JsonObject, carried Rational and Duration payloads, the record-view projection and the missing-unit refusal, and it is now the sole binder of FR-352-AC-38..44. | tests/it/checked_package_v2_model_fields.rs:9185-9190 |
+
+## Dispositions
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-001 | fixed | Disposition pass 1, head c9b9a2415c0c78e2b42a16757e1869ebdf850e96 (fix commit c9b9a2415 over merge 2c228fa22 of main a03c86b3b). The doc comment at tests/it/checked_package_v2_model_fields.rs:9214-9222 now lists all ten payload forms, the wrong-witness kinds and what is outside the test. The verbatim after_excerpt is in the round-1 dispositions comment. |
+
+## Disposition round 1 verdict
+
+**PASS.** FND-001 is fixed and the pass adds no new finding. The fix commit changes no production code. The new test `a_carried_quantity_record_field_needs_the_declared_unit_identity_row` follows the repo's test conventions: a `#[trace]` binding, test-built oracles, and no `unwrap` outside setup, with an exact code and locus asserted.

@@ -211,19 +211,22 @@ an owned node, form or envelope. The first unpaid charge remains the original
 work or storage denial, including when diagnostic storage is also denied.
 
 The reached closure of the model tuple and model union join (FSpec FR-830)
-walks admitted package nodes, not sidecar rows. For each closure node it pays
-work and storage of form `model_union_closure_node`, and for each closure edge
-of form `model_union_closure_edge`, plus the closure's own storage. Because
-such a charge names no sidecar row, IR SHALL locate it at
-`NativeJoinLocusSource::GraphNode` of the admitted package node being expanded
-or whose edge is being examined. FSpec FR-830 requires the compact locus of a
-sidecar-row charge to name the channel, the original row index and the form, and
-states that which native locus source carries a denial "is the budget owner's
-choice"; this requirement is that choice for the closure charges. GraphNode is
-chosen because the graph node is the true coordinate of the work, whereas a row
-source would name a row the closure has not yet joined. Common-pass and row-join
-charges keep their sidecar-row loci, and the closure's charge amounts, order and
-atomic refusal are unchanged.
+walks admitted package nodes, not sidecar rows. Its work charges are
+`model_union_closure_node` for each closure node entered and
+`model_union_closure_edge` for each closure edge examined; its storage charges
+are `model_union_closure` for the start node and for each node entered, and
+member-type resolution made while a variant case or tuple position is read is
+charged under `model_union_closure_type`. FSpec FR-830 states that the denial's
+compact locus "names the channel, the sidecar row index and the form of the
+charge", and that "which native locus source carries it is the budget owner's
+choice and is not preselected here". A closure charge has no sidecar row to
+name. As the budget owner, this requirement therefore chooses, for every
+closure charge above, that IR SHALL locate it at `NativeJoinLocusSource::GraphNode`
+of the admitted package node being expanded or whose edge is being examined,
+because that node is the true coordinate of the work. This is a decision of this
+budget, not a rule stated by FSpec FR-830. Common-pass and row-join charges keep
+their sidecar-row loci, and the closure's charge amounts, order and atomic
+refusal are unchanged.
 
 The budgeted path SHALL retain FR-352's structural, selected-document,
 producer-order and opaque-identity comparisons. At sufficient limits its
