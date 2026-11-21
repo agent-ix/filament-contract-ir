@@ -199,9 +199,10 @@ fn at_closure_node(
     node: &CheckedNodeId,
     form: &'static str,
 ) {
-    let source = package
-        .node_position(node)
-        .map_or(NativeJoinLocusSource::Package, NativeJoinLocusSource::GraphNode);
+    let source = package.node_position(node).map_or(
+        NativeJoinLocusSource::Package,
+        NativeJoinLocusSource::GraphNode,
+    );
     at_locus(budget, source, form);
 }
 
@@ -1386,22 +1387,24 @@ impl SelectedExactIdentities {
                             &case_at("/payload"),
                         )
                     })?;
-                    if package.node(expected.as_ref()).is_none() {
+                    // The row names the node as a document does; the derived id is the
+                    // node's structural key, so both are compared as structural keys.
+                    let Some(supplied) = package.structural_key(node) else {
                         return Err(fail(
                             budget,
                             ExactTypeProjectionErrorCode::UnknownNode,
                             node,
                             &case_at("/payload/node"),
                         ));
-                    }
+                    };
                     charge_native_work(budget, id, node, "model_union_payload_node", 1)?;
-                    if node != expected.as_ref() {
-                        let code = if package.node(node).is_none() {
-                            ExactTypeProjectionErrorCode::UnknownNode
-                        } else {
-                            ExactTypeProjectionErrorCode::MismatchedIdentityWitness
-                        };
-                        return Err(fail(budget, code, node, &case_at("/payload/node")));
+                    if supplied != expected.as_ref() {
+                        return Err(fail(
+                            budget,
+                            ExactTypeProjectionErrorCode::MismatchedIdentityWitness,
+                            node,
+                            &case_at("/payload/node"),
+                        ));
                     }
                     let expected_type = self.model_union_expected_type(
                         package,
