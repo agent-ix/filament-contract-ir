@@ -3323,6 +3323,7 @@ pub(super) fn project_record_field_type(
         | MemberType::Bytes
         | MemberType::JsonObject
         | MemberType::Clock
+        | MemberType::ClockReference
         | MemberType::RationalRange(_)
         | MemberType::CarriedRational(..)
         | MemberType::TextBounds(_)

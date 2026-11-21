@@ -76,6 +76,10 @@ impl DomainModel {
                     layers += 1;
                     current = items;
                 }
+                // `Reference<Clock>` is a data leaf, never the clock itself.
+                SelectedTypeDefinition::Reference(SelectedTypeRef::Native(
+                    NativeTypeRef::Clock,
+                )) => break,
                 SelectedTypeDefinition::Reference(target) => current = target,
                 SelectedTypeDefinition::Map(_) => return None,
             }
@@ -132,6 +136,14 @@ impl DomainModel {
             }
             SelectedTypeRef::Declared(name) => name.as_ref(),
         };
+        if matches!(
+            self.collection_types.get(name),
+            Some(SelectedTypeDefinition::Reference(SelectedTypeRef::Native(
+                NativeTypeRef::Clock
+            )))
+        ) {
+            return Ok(Some(Leaf::Plain(MemberType::ClockReference)));
+        }
         if let Some(bounds) = self.value_types.get(name) {
             return Ok(bounds.as_ref().map(|bounds| match bounds {
                 ValueBounds::Integer(range) => Leaf::Plain(MemberType::IntRange(*range)),

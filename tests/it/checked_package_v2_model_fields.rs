@@ -941,6 +941,7 @@ enum Ty {
     Bytes,
     JsonObject,
     Clock,
+    ClockReference,
     Range(i128, i128),
     RationalRange(i128, i128, i128, i128),
     TextBounds(u64, u64, String),
@@ -986,6 +987,7 @@ fn ty_of(member: &CheckedMemberType) -> Ty {
         CheckedMemberType::Bytes => Ty::Bytes,
         CheckedMemberType::JsonObject => Ty::JsonObject,
         CheckedMemberType::Clock => Ty::Clock,
+        CheckedMemberType::ClockReference => Ty::ClockReference,
         CheckedMemberType::IntRange { lower, upper } => Ty::Range(*lower, *upper),
         CheckedMemberType::RationalRange {
             numerator_min,
@@ -1054,7 +1056,8 @@ fn type_nodes(ty: &Ty, nodes: &mut BTreeMap<String, Value>) -> String {
         | Ty::Timestamp
         | Ty::Bytes
         | Ty::JsonObject
-        | Ty::Clock => {
+        | Ty::Clock
+        | Ty::ClockReference => {
             let form = match ty {
                 Ty::Boolean => "boolean",
                 Ty::Integer => "integer",
@@ -1066,6 +1069,7 @@ fn type_nodes(ty: &Ty, nodes: &mut BTreeMap<String, Value>) -> String {
                 Ty::Bytes => "bytes",
                 Ty::JsonObject => "json_object",
                 Ty::Clock => "clock",
+                Ty::ClockReference => "clock_reference",
                 _ => unreachable!("matched scalar types"),
             };
             let key = format!("scalar_type/{form}");
@@ -5896,7 +5900,8 @@ fn perturbed(ty: &Ty, other: &str) -> Ty {
         | Ty::Timestamp
         | Ty::Bytes
         | Ty::JsonObject
-        | Ty::Clock => Ty::Boolean,
+        | Ty::Clock
+        | Ty::ClockReference => Ty::Boolean,
         Ty::Range(lower, upper) if upper > lower => Ty::Range(*lower, upper - 1),
         Ty::Range(lower, upper) if *lower < i128::MAX => Ty::Range(*lower, upper + 1),
         Ty::Range(lower, upper) => Ty::Range(lower - 1, *upper),
@@ -6198,6 +6203,7 @@ fn tc_227_the_public_shape_is_closed_and_takes_one_node_id() {
             CheckedMemberType::Bytes => 17,
             CheckedMemberType::JsonObject => 18,
             CheckedMemberType::Clock => 12,
+            CheckedMemberType::ClockReference => 21,
             CheckedMemberType::IntRange { .. } => 2,
             CheckedMemberType::RationalRange { .. } => 19,
             CheckedMemberType::TextBounds { .. } => 13,

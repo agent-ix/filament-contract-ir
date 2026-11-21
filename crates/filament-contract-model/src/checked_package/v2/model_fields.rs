@@ -1641,6 +1641,8 @@ pub enum CheckedMemberType {
     JsonObject,
     /// The native timed-model clock marker.
     Clock,
+    /// `Reference<Clock>`, a data value naming one clock place.
+    ClockReference,
     /// `Int[lower, upper]`.
     IntRange {
         /// The inclusive lower bound.
@@ -1735,6 +1737,7 @@ impl From<&MemberType> for CheckedMemberType {
             MemberType::Bytes => Self::Bytes,
             MemberType::JsonObject => Self::JsonObject,
             MemberType::Clock => Self::Clock,
+            MemberType::ClockReference => Self::ClockReference,
             MemberType::IntRange(range) => Self::IntRange {
                 lower: range.lower,
                 upper: range.upper,
