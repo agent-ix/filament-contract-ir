@@ -5575,3 +5575,72 @@ fn tc_048_a_seq_binder_in_a_clause_leaf_resolves_its_level_from_the_binders_in_s
         );
     }
 }
+
+/// FSpec FR-402-AC-12: the public `is_slot_parameter_name` recognizes exactly
+/// the reserved slot form, as the reader does, non-canonical escapes included.
+#[trace("TC-2082", "FR-402-AC-12")]
+#[test]
+fn is_slot_parameter_name_accepts_the_reserved_forms_and_refuses_near_misses() {
+    use filament_contract_model::is_slot_parameter_name;
+    for name in [
+        "slot_sv_sa",
+        "op_sa",
+        "rcv_sa",
+        "arg_sa_sVault_sstep_si",
+        "arg_s1_s2_s3_s4",
+        // `_` is `__`, any other byte `_x` and two uppercase hex digits.
+        "slot_sa__b_sc",
+        "slot_sa_sb__c",
+        "op_s_xC3_xA9",
+        "op_sa__",
+        "op_s_x00",
+        // Non-canonical escapes the decoder accepts are reserved too.
+        "op_s_x41",
+        "op_sx",
+        // A field may itself begin with `s` or `x`.
+        "op_ssx",
+        "slot_sx_sx",
+    ] {
+        assert!(is_slot_parameter_name(name), "{name} is a slot parameter");
+    }
+    for name in [
+        "",
+        "slot",
+        "slot_",
+        "slotted",
+        "operand",
+        "Slot_sv_sa",
+        "OP_sa",
+        // The wrong field count for the tag.
+        "slot_sv",
+        "slot_sv_sa_sb",
+        "op_sa_sb",
+        "rcv_s",
+        "arg_sa_sb_sc",
+        "arg_sa_sb_sc_sd_se",
+        // No `_s` after the tag, an empty field, a stray `_`.
+        "op_a",
+        "op_",
+        "op__sa",
+        "op_s",
+        "op_sa_s",
+        "op_sa_",
+        // A bad or non-uppercase escape, a truncated escape, bad UTF-8.
+        "op_sa_xzz",
+        "op_sa_xGG",
+        "op_sa_xZZ",
+        "op_sa_xc3",
+        "op_sa_x4",
+        "op_sa_x4a",
+        "op_s_xC3",
+        "op_s_xFF",
+        // A byte outside letters, digits and `_`.
+        "op_sa-b",
+        "op_s\u{e9}",
+        "op_sa b",
+        "op_sa_q",
+        "op_sa_X41",
+    ] {
+        assert!(!is_slot_parameter_name(name), "{name} is no slot parameter");
+    }
+}
