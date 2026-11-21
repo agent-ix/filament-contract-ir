@@ -565,6 +565,7 @@ pub(super) fn validate_step_relations(
     kinds: &[CheckedNodeKind],
     terms: &[Option<CheckedTerm>],
     index: &GraphIndex<'_>,
+    structural_keys: &[std::sync::Arc<CheckedNodeId>],
     owners: &ModelOwners<'_>,
     meter: &mut WorkMeter,
 ) -> Result<(), ValidationFailure> {
@@ -969,7 +970,17 @@ pub(super) fn validate_step_relations(
                     } else {
                         None
                     };
-                    expected.as_ref() == Some(&parameter.semantic_type)
+                    let actual = graph
+                        .index
+                        .get(&parameter.semantic_type)
+                        .and_then(|&position| structural_keys.get(position))
+                        .map(std::sync::Arc::as_ref);
+                    match (actual, expected.as_ref()) {
+                        (Some(actual), Some(expected)) => {
+                            meter.compare_ids(actual, expected)? == std::cmp::Ordering::Equal
+                        }
+                        _ => false,
+                    }
                 };
                 let declared_ok = declared.map(|(name, text)| (name, spells(text, level)))
                     == expected_name.map(|name| (name, true));

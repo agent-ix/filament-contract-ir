@@ -12,8 +12,9 @@
 use crate::support::checked_package::{
     canonical, evidence_for, evidence_with_document, family_key, family_model_document,
     fixture_source, index_fixture_node_ids, node_id as fixture_node_id, reassign_node_id,
-    rebuild_source_map, refresh_identity, select_model, settle, sha256_hex, source_owner,
-    structural_id, structural_key, typed_node_id, v2_all_families, BOOLEAN_KEY, INTEGER_KEY,
+    rebuild_source_map, refresh_identity, resolve_operands, select_model, settle, sha256_hex,
+    source_owner, structural_id, structural_key, typed_node_id, v2_all_families, BOOLEAN_KEY,
+    INTEGER_KEY,
 };
 use filament_contract_model::{
     encode_checked_package_v2, CheckedApplicationOperation, CheckedCallableIdentity,
@@ -282,13 +283,23 @@ fn tc_056_scoped_frame_shape_refusals_precede_frame_semantics() {
         let mut package = base.clone();
         package["semantic_graph"]["nodes"][frame]["body"]["modifies"][0] = entry;
         refresh_identity(&mut package);
-        expect(
-            case,
-            &package,
-            Code::InvalidSemanticGraph,
-            None,
-            &format!("/semantic_graph/nodes/{frame}/body/modifies/0"),
-            None,
+        let CheckedPackageV2ReadResult::Refused(refusal) = read_secure_det(&package) else {
+            panic!("{case}: expected a refusal");
+        };
+        assert_eq!(
+            refusal.code,
+            Code::InvalidModelBinding,
+            "{case}: {refusal:?}"
+        );
+        assert_eq!(
+            refusal.cause,
+            Some(Cause::MalformedDeclaration),
+            "{case}: {refusal:?}"
+        );
+        assert_eq!(
+            refusal.loci[0].path.as_ref().map(|path| path.as_str()),
+            Some(format!("/semantic_graph/nodes/{frame}/body/modifies/0").as_str()),
+            "{case}: {refusal:?}"
         );
     }
     for entry in [
@@ -6335,4 +6346,182 @@ fn step_relation_declaration_order_work_is_charged_per_entry() {
     let after_one_entry = work(&declaration_order_package(Some(&["Z", "V"])));
     let after_two_entries = work(&declaration_order_package(Some(&["W", "Z"])));
     assert_eq!(after_two_entries - after_one_entry, 1);
+}
+
+const SECURE_DET: &[u8] = include_bytes!("../fixtures/hp1-secure-det/package.json");
+
+/// The `test/vault` model the genuine FSL package selects: an object `Vault`
+/// with `Bit` (`Int[0, 1]`) fields `l` and `h` and an operation `step(i: Bit)`.
+fn vault_model_document() -> Value {
+    let one = json!({"lower": 1, "upper": 1, "ordered": false, "unique": true});
+    let field = |name: &str| {
+        json!({
+            "identity": format!("ix://test/vault/Vault/{name}"), "name": name,
+            "typeRef": "ix://test/vault/Bit", "presence": "required", "nullable": false,
+            "defaultKind": "none", "multiplicity": one,
+        })
+    };
+    json!({
+        "contractVersion": "2.0.0",
+        "package": {"identity": "test/vault", "version": "1"},
+        "constructs": [{
+            "kind": {"module": "test/vault", "name": "entity"},
+            "construct": {"meaning": "filament.meaning.model.object-type/v1"},
+        }, {
+            "kind": {"module": "test/vault", "name": "bit"},
+            "construct": {"meaning": "filament.meaning.model.value-type/v1"},
+        }],
+        "types": [{
+            "identity": "ix://test/vault/Bit", "displayName": "Bit",
+            "kind": {"module": "test/vault", "name": "bit"},
+            "roles": [], "extensions": [], "unknownPolicy": "reject", "scalar": "integer",
+            "constraints": [
+                {"keyword": "min", "operands": {"value": 0}},
+                {"keyword": "max", "operands": {"value": 1}},
+            ],
+        }, {
+            "identity": "ix://test/vault/Vault", "displayName": "Vault",
+            "kind": {"module": "test/vault", "name": "entity"},
+            "roles": [], "constraints": [], "extensions": [], "unknownPolicy": "reject",
+            "supertypes": [],
+            "fields": [field("l"), field("h")],
+            "operations": [{
+                "identity": "ix://test/vault/Vault/step",
+                "frame": {"modifies_receiver": ["ix://test/vault/Vault/l"]},
+                "params": [{"name": "i", "typeRef": "ix://test/vault/Bit", "multiplicity": one}],
+            }],
+        }],
+    })
+}
+
+fn read_secure_det(package: &Value) -> CheckedPackageV2ReadResult {
+    let evidence = evidence_with_document(package, "test/vault", &vault_model_document());
+    crate::read_and_account(
+        &canonical(package),
+        CheckedPackageReadLimits::bounded(),
+        &evidence,
+    )
+}
+
+fn secure_det() -> Value {
+    serde_json::from_slice(SECURE_DET).expect("genuine FSL package")
+}
+
+const PARAMETERS_AT: &str = "body/members/1/value/members";
+
+fn refusal_of(case: &str, package: &Value) -> CheckedPackageRefusal {
+    match read_secure_det(package) {
+        CheckedPackageV2ReadResult::Refused(refusal) => refusal,
+        other => panic!("{case}: expected a refusal, read {other:?}"),
+    }
+}
+
+fn refusal_path(refusal: &CheckedPackageRefusal) -> String {
+    refusal.loci[0]
+        .path
+        .as_ref()
+        .map(|path| path.as_str().to_owned())
+        .expect("refusal pointer")
+}
+
+/// The genuine package with each execution's `postconditions` listing the
+/// operation's one postcondition clause, as FR-351 requires.
+fn secure_det_with_postconditions() -> Value {
+    let mut package = secure_det();
+    resolve_operands(&mut package);
+    let clause = nodes(&package)
+        .iter()
+        .find(|node| node["semantic_form"] == "state_clause")
+        .expect("postcondition clause")["node_id"]
+        .clone();
+    let at = position(&package, "claim", "step_relation");
+    let relation = &mut package["semantic_graph"]["nodes"][at];
+    for execution in relation["body"]["members"][1]["value"]["members"]
+        .as_array_mut()
+        .expect("executions")
+    {
+        execution["value"]["members"][4]["value"]["members"] =
+            json!([{"term": "reference", "target": clause}]);
+    }
+    let dependencies = relation["dependencies"]
+        .as_array_mut()
+        .expect("dependencies");
+    dependencies.push(clause);
+    dependencies.sort_by(id_order);
+    package
+}
+
+/// FR-351-AC-2 over FR-322's structural-key identity rule: the execution
+/// parameter `i : Bit` of the package FSL emits for a source `hyper`
+/// relation holds an index-bearing integer-range type ID that resolves to
+/// the integer range 0..1 the model's `Bit` derives, so the parameter join
+/// admits and the refusal moves past the parameters to the postconditions.
+#[trace("FR-351-AC-2")]
+#[test]
+fn step_relation_parameter_type_joins_by_resolved_structural_key() {
+    let package = secure_det();
+    assert_eq!(canonical(&package), SECURE_DET, "the fixture is canonical");
+    let at = position(&package, "claim", "step_relation");
+    let refusal = refusal_of("genuine bytes", &package);
+    assert_eq!(refusal.code, Code::InvalidModelBinding, "{refusal:?}");
+    assert_eq!(
+        refusal.cause,
+        Some(Cause::MalformedDeclaration),
+        "{refusal:?}"
+    );
+    assert_eq!(
+        refusal_path(&refusal),
+        format!("/semantic_graph/nodes/{at}/{PARAMETERS_AT}/0/value/members/4/value"),
+        "{refusal:?}"
+    );
+    match read_secure_det(&secure_det_with_postconditions()) {
+        CheckedPackageV2ReadResult::Admitted(_) => {}
+        other => panic!("the relation with its postconditions admits, read {other:?}"),
+    }
+}
+
+/// FR-351-AC-2: the second execution's well-formed parameter, retyped to the
+/// existing Boolean or unbounded Integer node, still refuses at that
+/// execution's parameters.
+#[trace("FR-351-AC-2")]
+#[test]
+fn step_relation_parameter_of_another_resolved_type_refuses() {
+    let base = secure_det_with_postconditions();
+    let at = position(&base, "claim", "step_relation");
+    for form in ["boolean", "integer"] {
+        let wrong = nodes(&base)
+            .iter()
+            .find(|node| node["node_tag"] == "scalar_type" && node["semantic_form"] == form)
+            .expect("scalar type")["node_id"]
+            .clone();
+        let mut package = base.clone();
+        let retyped = package["semantic_graph"]["nodes"]
+            .as_array_mut()
+            .expect("nodes")
+            .iter_mut()
+            .filter(|node| {
+                node["semantic_form"] == "parameter"
+                    && node["body"]["members"][0]["value"]["value"] == "i"
+                    && node["body"]["members"][1]["value"]["value"] == "3"
+            })
+            .map(|node| node["semantic_type"] = wrong.clone())
+            .count();
+        assert_eq!(retyped, 1, "{form}");
+        let refusal = refusal_of(form, &package);
+        assert_eq!(
+            refusal.code,
+            Code::InvalidModelBinding,
+            "{form}: {refusal:?}"
+        );
+        assert_eq!(
+            refusal.cause,
+            Some(Cause::MalformedDeclaration),
+            "{form}: {refusal:?}"
+        );
+        assert_eq!(
+            refusal_path(&refusal),
+            format!("/semantic_graph/nodes/{at}/{PARAMETERS_AT}/1/value/members/2/value"),
+            "{form}: {refusal:?}"
+        );
+    }
 }
