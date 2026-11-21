@@ -1205,13 +1205,23 @@ impl ClauseScratch {
     }
 }
 
-/// Whether a `value`/`parameter` name is the encoding of a slot parameter
-/// (FSpec FR-402 "Slot parameters"): a tag `slot`, `op`, `rcv` or `arg`, then
-/// `_s` and one field for each of its 2, 1, 1 or 4 fields, a field being
-/// letters, digits, `__` and `_x` with two uppercase hexadecimal digits, the
-/// escaped bytes forming non-empty UTF-8.
+/// Whether `name` is the reserved encoding of a slot parameter, a
+/// `value`/`parameter` name FSpec FR-402 "Slot parameters" (FR-402-AC-9)
+/// reserves for a `behaviours` clause's per-trace state and step labels.
+///
+/// The form is a tag, then `_s` and one field for each of the tag's fields:
+/// `slot` takes 2 (`slot_s<p>_s<t>`), `op` and `rcv` take 1 (`op_s<t>`,
+/// `rcv_s<t>`) and `arg` takes 4 (`arg_s<t>_s<T>_s<n>_s<p>`). A field is the
+/// non-empty `esc` of a source name: each ASCII letter or digit stands for
+/// itself, `_` is written `__`, and every other byte is `_x` followed by two
+/// uppercase hexadecimal digits, the escaped bytes forming valid UTF-8.
+/// `slot_sv_sa`, `op_sa` and `arg_sa_sVault_sstep_si` are slot parameters;
+/// `slot_sv`, `op_sa_sb`, `op_sa_x4a` and `slotted` are not.
+///
+/// A source identifier in this form collides with a producer-written slot
+/// parameter, so a checker refuses one by this rule, the reader's own.
 #[ix_trace_rs::string_edge]
-fn is_slot_parameter_name(name: &str) -> bool {
+pub fn is_slot_parameter_name(name: &str) -> bool {
     let Some((tag, rest)) = name.split_once('_') else {
         return false;
     };

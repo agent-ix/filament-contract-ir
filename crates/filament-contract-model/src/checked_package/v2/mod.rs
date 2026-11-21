@@ -296,6 +296,7 @@ pub use step_relation::{
     CheckedStepExecution, CheckedStepRelationBody, CheckedStepRelationCapability,
     CheckedStepRelationObligationIdentity,
 };
+pub use temporal::is_slot_parameter_name;
 pub use temporal_binding::{ClockConfiguration, ClockExactNumber, TemporalBinding};
 pub use temporal_clause_names::TemporalClauseName;
 pub use typed_terms::*;
