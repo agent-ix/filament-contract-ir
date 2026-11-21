@@ -20,7 +20,8 @@ use filament_contract_model::{
     SelectedExactIdentities, SelectedExactIdentity, SelectedModelUnionCaseRow,
     SelectedModelUnionPayload, SelectedModelUnionRow, SelectedSourceTupleRow,
     SelectedSourceUnionRow, SelectedTupleDeclarationRow, SelectedTuplePositionRow,
-    SelectedUnionMemberRow,
+    SelectedModelEnumDeclarationRow, SelectedModelEnumMemberRow, SelectedModelEnumRows,
+    SelectedModelEnumShapeCaseRow, SelectedModelEnumShapeRow, SelectedUnionMemberRow,
 };
 use filament_exact::{
     EffectiveId, NodeKey, OriginalDeclarationKey, PathSegment, UnionMember, UnitId, ValueType,
@@ -1434,5 +1435,111 @@ fn any_admitted_non_clock_payload_is_joined_and_each_wrong_witness_is_refused() 
                 "{native}"
             );
         }
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// The public runtime surface: `SelectedTypeDeclarations::unions()` and the
+// reached monitor closure, over real model-union rows.
+// ---------------------------------------------------------------------------
+
+fn color_enum_rows(
+    prepared: &Prepared,
+) -> (
+    Vec<SelectedModelEnumDeclarationRow>,
+    Vec<SelectedModelEnumMemberRow>,
+    Vec<SelectedModelEnumShapeRow>,
+) {
+    let color: CheckedNodeId = serde_json::from_value(serde_json::json!({
+        "package": "acme/shapes",
+        "path": ["model", "variant_type", "ix://acme/shapes/Color"],
+        "ordinal": 0
+    }))
+    .unwrap();
+    let red: CheckedNodeId = serde_json::from_value(serde_json::json!({
+        "package": "example",
+        "path": ["value", "enum_value", {"operand": 0}, "Red"],
+        "ordinal": 0
+    }))
+    .unwrap();
+    let color_key = NodeKey::new("fsl-enum", vec![PathSegment::Text("Color".into())], 0).unwrap();
+    let red_key = NodeKey::new("fsl-enum", vec![PathSegment::Text("Color.Red".into())], 0).unwrap();
+    let variant = filament_exact::VariantId::new(color_key.clone(), "Red").unwrap();
+    let declaration = SelectedModelEnumDeclarationRow::new(
+        color.clone(),
+        "acme/shapes",
+        "ix://acme/shapes/Color",
+        color_key.clone(),
+    );
+    let member = SelectedModelEnumMemberRow::new(
+        red.clone(),
+        color.clone(),
+        "acme/shapes",
+        "ix://acme/shapes/Color",
+        "ix://acme/shapes/variant/Color-Red",
+        "Red",
+        red_key.clone(),
+    );
+    let shape = SelectedModelEnumShapeRow {
+        structural_node: color,
+        node_key: color_key,
+        selected_document: "acme/shapes".into(),
+        original_identity: "ix://acme/shapes/Color".into(),
+        shape: filament_exact::EnumShape::new(false, [variant.clone()]),
+        cases: vec![SelectedModelEnumShapeCaseRow {
+            case: "Red".into(),
+            structural_node: red,
+            member_key: red_key,
+            member_original_identity: "ix://acme/shapes/variant/Color-Red".into(),
+            variant,
+        }],
+    };
+    (vec![declaration], vec![member], vec![shape])
+}
+
+/// The selected-type runtime reads the joined rows: every joined model union is
+/// declared once with the type handle its row names, and the same selection
+/// without the union rows is refused as an unavailable identity witness.
+#[trace("FR-352-AC-35", "FR-358-AC-17")]
+#[test]
+fn runtime_selected_types_declare_each_joined_union_by_its_type_handle() {
+    let vectors = vectors();
+    let mut case = resolve(&vectors, "MUW-01-full-environment");
+    case.document_patch = Some(serde_json::json!([
+        {"op": "remove", "path": "/types/6/variants/1"},
+        {"op": "remove", "path": "/types/0"}
+    ]));
+    let mut prepared = prepare_case(&vectors, "runtime", case, None).unwrap();
+    let (declarations, members, shapes) = color_enum_rows(&prepared);
+    prepared.identities = prepared
+        .identities
+        .clone()
+        .with_admitted_model_enum_rows(
+            &prepared.admitted,
+            SelectedModelEnumRows {
+                declarations: &declarations,
+                members: &members,
+                shapes: &shapes,
+            },
+            &mut ample(),
+        )
+        .expect("the enum rows admit");
+    let joined = unwrap_join("MUW-01", join(&prepared, &mut ample()).0);
+    let rows: Vec<_> = joined.model_union_rows().collect();
+    let declared = prepared
+        .admitted
+        .project_selected_type_declarations(&joined, &prepared.tuples, &[], &mut ample())
+        .expect("the joined rows project");
+    assert_eq!(declared.unions().len(), rows.len());
+    for row in &rows {
+        assert!(
+            declared
+                .unions()
+                .iter()
+                .any(|union| union.type_handle == row.type_handle),
+            "{:?} is declared by its own handle",
+            row.type_handle
+        );
     }
 }
