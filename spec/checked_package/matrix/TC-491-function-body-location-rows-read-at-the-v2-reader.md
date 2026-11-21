@@ -16,7 +16,7 @@ relationships:
 
 ## Description
 
-Verify FR-038-AC-581, FR-038-AC-591, FR-019-AC-29 and FR-051-AC-5 at the public V2 reader and encoder over FSpec's
+Verify FR-038-AC-581, FR-038-AC-597, FR-019-AC-29 and FR-051-AC-5 at the public V2 reader and encoder over FSpec's
 `checked-term-data-vectors.json` `body_locations` cases, read by reference
 from the `FILAMENT_SPECIFICATION_DIR` checkout: the body walk is computed
 from the admitted graph, a captured path is kept, and each defect refuses at

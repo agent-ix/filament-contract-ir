@@ -359,7 +359,7 @@ mod tests {
     /// FR-322-AC-510: the path is the previous path less its last `up`
     /// entries, then `down`; BL-01's walk order gives `[0]`, `[1]`, `[]`.
     #[test]
-    #[trace("TC-491", "FR-038-AC-591", "FR-322-AC-510")]
+    #[trace("TC-491", "FR-038-AC-597", "FR-322-AC-510")]
     fn a_row_rebuilds_its_path_from_the_previous_one() {
         let mut path = Vec::new();
         assert!(apply(&mut path, 0, &[0]));
@@ -375,7 +375,7 @@ mod tests {
     /// BL-R9: an `up` beyond the previous path's length is refused, and the
     /// first row of a walk has the empty path before it.
     #[test]
-    #[trace("TC-491", "FR-038-AC-591", "FR-322-AC-510")]
+    #[trace("TC-491", "FR-038-AC-597", "FR-322-AC-510")]
     fn an_up_beyond_the_previous_path_is_refused() {
         let mut path = vec![key(0)];
         assert!(!apply(&mut path, 2, &[1]));
@@ -388,7 +388,7 @@ mod tests {
     /// same path with a smaller `up`, so the row is not in least form; any other
     /// first entry, or `up` 0, is least.
     #[test]
-    #[trace("TC-491", "FR-038-AC-591", "FR-322-AC-510")]
+    #[trace("TC-491", "FR-038-AC-597", "FR-322-AC-510")]
     fn an_up_that_is_not_the_least_is_refused() {
         assert!(!apply(&mut vec![key(0)], 1, &[0]));
         assert!(!apply(&mut vec![key(3), key(1), key(2)], 2, &[1, 5]));
@@ -401,7 +401,7 @@ mod tests {
     /// `let`s rebuild the paths the vector names, and the metered `up` work
     /// stays linear (at most the entries the rows hold).
     #[test]
-    #[trace("TC-491", "FR-038-AC-591", "FR-322-AC-510")]
+    #[trace("TC-491", "FR-038-AC-597", "FR-322-AC-510")]
     fn deep_bodies_rebuild_in_linear_work() {
         let mut path = Vec::new();
         let mut charged = 0_u64;

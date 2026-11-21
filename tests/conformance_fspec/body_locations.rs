@@ -43,7 +43,7 @@ fn read(package: &Value) -> CheckedPackageV2ReadResult {
 }
 
 #[test]
-#[trace("TC-2090", "FR-322-AC-490", "FR-038-AC-581", "FR-038-AC-591")]
+#[trace("TC-2090", "FR-322-AC-490", "FR-038-AC-581", "FR-038-AC-597")]
 fn every_published_body_location_vector_runs_through_the_strict_reader() {
     let cases = vectors();
     let mut seen = Vec::new();
@@ -141,7 +141,7 @@ fn a_carrier_without_body_locations_is_malformed_wire() {
 /// path}` form, and one with `up` and no `down`, are `malformed_wire`; so is
 /// one with `down` and no `up` and an `up` past the safe integer range.
 #[test]
-#[trace("TC-491", "FR-038-AC-591", "FR-322-AC-510")]
+#[trace("TC-491", "FR-038-AC-597", "FR-322-AC-510")]
 fn the_earlier_whole_path_form_and_a_partial_relative_form_are_malformed_wire() {
     let cases = vectors();
     let mut seen = 0;
