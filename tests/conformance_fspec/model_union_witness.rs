@@ -14,14 +14,19 @@
 
 use super::*;
 use filament_contract_model::{
-    ModelUnionScope, NativeJoinBudget, SelectedExactDeclarationForm, SelectedExactDeclarationRow,
+    with_native_budget_observer, ExactTypeProjectionError, ModelUnionScope, NativeBudgetEvent,
+    NativeBudgetResource, NativeJoinBudget, NativeJoinChargeKind, NativeJoinLocus,
+    NativeJoinLocusSource, SelectedExactDeclarationForm, SelectedExactDeclarationRow,
     SelectedExactIdentities, SelectedExactIdentity, SelectedModelUnionCaseRow,
-    SelectedModelUnionPayload, SelectedModelUnionRow, SelectedTupleDeclarationRow,
+    SelectedModelUnionPayload, SelectedModelUnionRow, SelectedSourceTupleRow,
+    SelectedSourceUnionRow, SelectedTupleDeclarationRow, SelectedTuplePositionRow,
+    SelectedUnionMemberRow,
 };
 use filament_exact::{
     EffectiveId, NodeKey, OriginalDeclarationKey, PathSegment, UnionMember, UnitId, ValueType,
 };
 use ix_trace_rs::trace;
+use std::cell::RefCell;
 
 #[path = "../it/support/fspec_tuple_inputs.rs"]
 mod inputs;
@@ -240,6 +245,8 @@ fn resolve(vectors: &Value, id: &str) -> Case {
             sidecar: serde_json::json!({
                 "model_tuples": row["model_tuples"],
                 "model_unions": row["model_unions"],
+                "source_unions": row["source_unions"],
+                "source_tuples": row["source_tuples"],
             }),
             witnesses: row["witnesses"].clone(),
             scope: row["scope"].clone(),
@@ -262,23 +269,121 @@ fn resolve(vectors: &Value, id: &str) -> Case {
     case
 }
 
-/// The outcome of one vector: `admitted`, or the refusal code.
-fn run(vectors: &Value, id: &str, limits: Option<(u64, u64)>) -> String {
-    run_measured(vectors, id, limits).0
+// ---------------------------------------------------------------------------
+// Source-row adapters (fixture C): typed `SelectedSourceUnionRow` and
+// `SelectedSourceTupleRow` built from the vectors' `source_unions` and
+// `source_tuples`, joined by the production source joins before the model join.
+// ---------------------------------------------------------------------------
+
+fn source_union_row(value: &Value) -> SelectedSourceUnionRow {
+    let settled = key(&value["settled_key"]);
+    let members = value["members"]
+        .as_array()
+        .expect("source members")
+        .iter()
+        .map(|member| {
+            SelectedUnionMemberRow::new(
+                UnionMember::from_admitted(
+                    key(&member["declaration"]),
+                    member["identifier"].as_str().expect("identifier"),
+                )
+                .expect("a sealed member"),
+                member["payload_nodes"]
+                    .as_array()
+                    .expect("payload nodes")
+                    .iter()
+                    .map(node_id)
+                    .collect(),
+                member["payload"]
+                    .as_array()
+                    .expect("payload")
+                    .iter()
+                    .map(original_type)
+                    .collect(),
+            )
+        })
+        .collect();
+    SelectedSourceUnionRow::new(
+        node_id(&value["structural_node"]),
+        value["source_authority"].as_str().expect("authority"),
+        value["source_identity"].as_str().expect("identity"),
+        value["qualified_declaration"]
+            .as_array()
+            .expect("qualified")
+            .iter()
+            .map(|segment| segment.as_str().expect("segment").into())
+            .collect(),
+        key(&value["type_handle"]),
+        settled,
+        members,
+    )
 }
 
-/// The outcome and the budget's consumed `(work, storage)` after the call.
-fn run_measured(vectors: &Value, id: &str, limits: Option<(u64, u64)>) -> (String, (u64, u64)) {
-    let (outcome, _, consumed) = run_located(vectors, id, limits);
-    (outcome, consumed)
+fn source_tuple_row(value: &Value) -> SelectedSourceTupleRow {
+    SelectedSourceTupleRow {
+        structural_node: node_id(&value["structural_node"]),
+        source_authority: value["source_authority"]
+            .as_str()
+            .expect("authority")
+            .into(),
+        source_identity: value["source_identity"].as_str().expect("identity").into(),
+        qualified_declaration: value["qualified_declaration"]
+            .as_array()
+            .expect("qualified")
+            .iter()
+            .map(|segment| segment.as_str().expect("segment").into())
+            .collect(),
+        type_handle: key(&value["type_handle"]),
+        positions: value["positions"]
+            .as_array()
+            .expect("positions")
+            .iter()
+            .map(|position| SelectedTuplePositionRow {
+                ordinal: position["ordinal"].as_u64().expect("ordinal"),
+                type_node: Some(node_id(&position["type_node"])),
+                value_type: Some(original_type(&position["value_type"])),
+                member_type: None,
+                collections: Vec::new(),
+            })
+            .collect(),
+    }
 }
 
-/// The outcome, the refusal locus (the error form) and the consumed counters.
-fn run_located(
-    vectors: &Value,
-    id: &str,
-    limits: Option<(u64, u64)>,
-) -> (String, Option<String>, (u64, u64)) {
+// ---------------------------------------------------------------------------
+// The production join, observed.
+// ---------------------------------------------------------------------------
+
+thread_local! {
+    static LOG: RefCell<Vec<NativeBudgetEvent>> = const { RefCell::new(Vec::new()) };
+}
+
+fn record(event: NativeBudgetEvent) {
+    LOG.with(|log| log.borrow_mut().push(event));
+}
+
+/// Run `body` with the production charge observer and return its charge log.
+fn observed<T>(body: impl FnOnce() -> T) -> (T, Vec<NativeBudgetEvent>) {
+    LOG.with(|log| log.borrow_mut().clear());
+    let result = with_native_budget_observer(record, body);
+    (
+        result,
+        LOG.with(|log| std::mem::take(&mut *log.borrow_mut())),
+    )
+}
+
+/// One vector's strict-read package, staged identities and sidecar rows.
+struct Prepared {
+    admitted: CheckedPackageV2,
+    identities: SelectedExactIdentities,
+    tuples: Vec<SelectedTupleDeclarationRow>,
+    unions: Vec<SelectedModelUnionRow>,
+    request: Option<CheckedNodeId>,
+}
+
+/// A refusal before the model join (the staged declaration rows).
+type Staged = (String, Option<String>);
+
+fn prepare(vectors: &Value, id: &str) -> Result<Prepared, Staged> {
     let case = resolve(vectors, id);
     let fixtures = fixtures_dir();
     let proposal = proposal_dir_of(&fixtures);
@@ -300,34 +405,52 @@ fn run_located(
         CheckedPackageV2ReadResult::Admitted(package) => package,
         other => panic!("{id}: the strict read must admit the input: {other:?}"),
     };
-    let mut budget = limits.map_or_else(
-        || NativeJoinBudget::new(u64::MAX, u64::MAX),
-        |(work, storage)| NativeJoinBudget::new(work, storage),
-    );
+    let mut stage = NativeJoinBudget::new(u64::MAX, u64::MAX);
     let declarations: Vec<_> = case.witnesses["declarations"]
         .as_array()
         .into_iter()
         .flatten()
         .map(declaration_row)
         .collect();
-    let identities =
-        match SelectedExactIdentities::from_stage_rows(&admitted, declarations, [], &mut budget) {
-            Ok(identities) => identities,
-            Err(error) => {
-                return (
+    let mut identities =
+        SelectedExactIdentities::from_stage_rows(&admitted, declarations, [], &mut stage).map_err(
+            |error| {
+                (
                     error.code.as_str().into(),
                     error.form.as_deref().map(str::to_owned),
-                    (0, 0),
-                );
-            }
-        };
-    let tuples: Vec<_> = case.sidecar["model_tuples"]
+                )
+            },
+        )?;
+    // The production source joins carry the typed fixture-C source rows.
+    let source_unions: Vec<_> = case.sidecar["source_unions"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(source_union_row)
+        .collect();
+    if !source_unions.is_empty() {
+        identities = identities
+            .with_source_union_rows(&admitted, source_unions, &mut stage)
+            .unwrap_or_else(|error| panic!("{id}: the source union row joins: {error:?}"));
+    }
+    let source_tuples: Vec<_> = case.sidecar["source_tuples"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(source_tuple_row)
+        .collect();
+    if !source_tuples.is_empty() {
+        identities = identities
+            .with_source_tuple_rows(&admitted, source_tuples, &mut stage)
+            .unwrap_or_else(|error| panic!("{id}: the source tuple row joins: {error:?}"));
+    }
+    let tuples = case.sidecar["model_tuples"]
         .as_array()
         .into_iter()
         .flatten()
         .map(tuple_row)
         .collect();
-    let unions: Vec<_> = case.sidecar["model_unions"]
+    let unions = case.sidecar["model_unions"]
         .as_array()
         .into_iter()
         .flatten()
@@ -336,37 +459,35 @@ fn run_located(
     let request = case.scope["request"]
         .as_object()
         .map(|_| node_id(&case.scope["request"]));
-    let scope = match &request {
+    Ok(Prepared {
+        admitted: *admitted,
+        identities,
+        tuples,
+        unions,
+        request,
+    })
+}
+
+type JoinResult = Result<SelectedExactIdentities, ExactTypeProjectionError>;
+
+/// The production model join of one prepared vector on the caller's budget.
+fn join(
+    prepared: &Prepared,
+    budget: &mut NativeJoinBudget,
+) -> (JoinResult, Vec<NativeBudgetEvent>) {
+    let scope = match &prepared.request {
         Some(request) => ModelUnionScope::Reached(request),
         None => ModelUnionScope::Full,
     };
-    let outcome =
-        match identities.with_model_union_rows(&admitted, &tuples, &unions, scope, &mut budget) {
-            Ok(joined) => {
-                // Every joined union row is returned unchanged.
-                for row in joined.model_union_rows() {
-                    assert!(
-                        unions.contains(row),
-                        "{id}: a returned row differs from its input"
-                    );
-                }
-                ("admitted".into(), None)
-            }
-            Err(error) => (
-                error.code.as_str().into(),
-                error.form.as_deref().map(str::to_owned),
-            ),
-        };
-    let (outcome, locus) = outcome;
-    let consumed = budget.consumed();
-    (
-        outcome,
-        locus,
-        (
-            consumed.work,
-            u64::try_from(consumed.storage).unwrap_or(u64::MAX),
-        ),
-    )
+    observed(|| {
+        prepared.identities.with_model_union_rows(
+            &prepared.admitted,
+            &prepared.tuples,
+            &prepared.unions,
+            scope,
+            budget,
+        )
+    })
 }
 
 fn vectors() -> Value {
@@ -374,181 +495,771 @@ fn vectors() -> Value {
         .expect("published model-union witness vectors")
 }
 
-/// Fixture C holds source rows this adapter does not build; the source-row
-/// non-substitution controls are not executed here and remain an open boundary.
-fn uses_source_rows(vectors: &Value, id: &str) -> bool {
-    find(vectors, id).to_string().contains("/source_") || resolve_fixtures(vectors, id) == "C"
+fn ample() -> NativeJoinBudget {
+    NativeJoinBudget::new(u64::MAX, u64::MAX)
 }
 
-/// Trace: FR-352-AC-31 FR-069-AC-11 FR-830-AC-1 FR-830-AC-2 FR-830-AC-3 FR-830-AC-4 FR-830-AC-5 FR-830-AC-12 FR-830-AC-13.
-/// Every published positive is admitted by the strict read and the native join.
-#[trace("FR-830-AC-1")]
+fn consumed(budget: &NativeJoinBudget) -> (u64, u64) {
+    let used = budget.consumed();
+    (used.work, u64::try_from(used.storage).expect("storage"))
+}
+
+fn unwrap_join(id: &str, result: JoinResult) -> SelectedExactIdentities {
+    result.unwrap_or_else(|error| panic!("{id}: expected admission, got {error:?}"))
+}
+
+fn admitted_events(
+    events: &[NativeBudgetEvent],
+    resource: NativeBudgetResource,
+) -> Vec<&NativeBudgetEvent> {
+    events
+        .iter()
+        .filter(|event| event.resource == resource && event.admitted)
+        .collect()
+}
+
+fn total(events: &[NativeBudgetEvent], resource: NativeBudgetResource) -> u64 {
+    admitted_events(events, resource)
+        .iter()
+        .map(|event| u64::try_from(event.amount).expect("amount"))
+        .sum()
+}
+
+fn form_of(event: &NativeBudgetEvent) -> &'static str {
+    event.locus.expect("a join charge has a locus").form
+}
+
+fn source_of(event: &NativeBudgetEvent) -> NativeJoinLocusSource {
+    event.locus.expect("a join charge has a locus").source
+}
+
+fn retained_unions(joined: &SelectedExactIdentities) -> Vec<CheckedNodeId> {
+    joined
+        .model_union_rows()
+        .map(|row| row.structural_node.clone())
+        .collect()
+}
+
+fn retained_tuples(joined: &SelectedExactIdentities) -> Vec<CheckedNodeId> {
+    joined
+        .model_tuple_rows()
+        .map(|row| row.structural_node.clone())
+        .collect()
+}
+
+fn sorted(mut nodes: Vec<CheckedNodeId>) -> Vec<CheckedNodeId> {
+    nodes.sort();
+    nodes
+}
+
+/// The rows of a vector's sidecar that its reached closure leaves out: the
+/// published exceptions are the out-of-closure List row of MUW-03 and the
+/// out-of-closure Swap tuple of MUW-16; every other sidecar row is in scope.
+fn out_of_closure(id: &str) -> (&'static [&'static str], &'static [&'static str]) {
+    match id {
+        "MUW-03-reached-does-not-join-unrelated-row" => (&["ix://acme/shapes/List"], &[]),
+        "MUW-16-reached-does-not-join-unrelated-tuple-row" => (&[], &["ix://acme/shapes/Swap"]),
+        _ => (&[], &[]),
+    }
+}
+
+fn leaf(node: &CheckedNodeId) -> String {
+    match node.path.get(2) {
+        Some(filament_contract_model::CheckedNodePathSegment::Name(name)) => name.to_string(),
+        other => panic!("a model node names its declaration: {other:?}"),
+    }
+}
+
+/// Every published positive: admitted, the exact retained sets, the closure
+/// edge count, and every retained row equal to its input.
+#[trace("FR-352-AC-31", "FR-352-AC-35", "FR-358-AC-17")]
 #[test]
-fn published_positive_vectors_are_admitted_with_their_rows_returned() {
+fn published_positive_vectors_admit_with_exact_retained_sets_and_closure_edges() {
     let vectors = vectors();
-    let mut run_count = 0;
+    let mut ran = 0;
+    let mut edge_mismatches: Vec<String> = Vec::new();
     for row in vectors["positive"].as_array().expect("positives") {
         let id = row["id"].as_str().expect("id");
-        if uses_source_rows(&vectors, id) {
-            continue;
+        let prepared = prepare(&vectors, id).unwrap_or_else(|staged| panic!("{id}: {staged:?}"));
+        let mut budget = ample();
+        let (result, events) = join(&prepared, &mut budget);
+        let joined = unwrap_join(id, result);
+        let (skip_unions, skip_tuples) = out_of_closure(id);
+        let want_unions: Vec<_> = prepared
+            .unions
+            .iter()
+            .filter(|union| !skip_unions.contains(&leaf(&union.structural_node).as_str()))
+            .map(|union| union.structural_node.clone())
+            .collect();
+        let want_tuples: Vec<_> = prepared
+            .tuples
+            .iter()
+            .filter(|tuple| !skip_tuples.contains(&leaf(&tuple.structural_node).as_str()))
+            .map(|tuple| tuple.structural_node.clone())
+            .collect();
+        assert_eq!(
+            sorted(retained_unions(&joined)),
+            sorted(want_unions),
+            "{id}: union set"
+        );
+        assert_eq!(
+            sorted(retained_tuples(&joined)),
+            sorted(want_tuples),
+            "{id}: tuple set"
+        );
+        assert!(
+            !retained_unions(&joined).is_empty(),
+            "{id}: a positive retains union rows, never nothing"
+        );
+        for retained in joined.model_union_rows() {
+            let input = prepared
+                .unions
+                .iter()
+                .find(|union| union.structural_node == retained.structural_node)
+                .expect("a retained row was supplied");
+            assert_eq!(retained, input, "{id}: rows are returned unchanged");
         }
-        assert_eq!(run(&vectors, id, None), "admitted", "{id}");
-        run_count += 1;
+        for retained in joined.model_tuple_rows() {
+            assert!(
+                prepared.tuples.contains(retained),
+                "{id}: tuple rows unchanged"
+            );
+        }
+        if let Some(edges) = row["closure_edges"].as_u64() {
+            let walked = events
+                .iter()
+                .filter(|event| {
+                    event.admitted
+                        && event.resource == NativeBudgetResource::Work
+                        && form_of(event) == "model_union_closure_edge"
+                })
+                .count();
+            if walked as u64 != edges {
+                edge_mismatches.push(format!("{id}: walked {walked}, published {edges}"));
+            }
+            assert!(row["scope"]["mode"] == "reached", "{id}");
+        } else {
+            assert!(
+                events
+                    .iter()
+                    .all(|event| form_of(event) != "model_union_closure_edge"),
+                "{id}: a full scope walks no closure"
+            );
+        }
+        // The charge log is the budget's consumption, charge for charge.
+        assert_eq!(
+            (
+                total(&events, NativeBudgetResource::Work),
+                total(&events, NativeBudgetResource::LogicalStorage)
+            ),
+            consumed(&budget),
+            "{id}: the observed charges are the consumption"
+        );
+        ran += 1;
     }
-    assert!(run_count >= 17, "ran {run_count} positives");
+    assert!(edge_mismatches.is_empty(), "{edge_mismatches:#?}");
+    assert_eq!(ran, vectors["positive"].as_array().unwrap().len());
+    assert_eq!(
+        ran, 20,
+        "MUW-01 to MUW-20, fixture-C source controls included"
+    );
 }
 
-/// Trace: FR-352-AC-31 FR-830-AC-7 FR-830-AC-8 FR-830-AC-9 FR-830-AC-10 FR-830-AC-13 FR-830-AC-14 FR-830-AC-15.
-/// Every published reader refusal keeps its code.
-#[trace("FR-830-AC-9")]
+/// The source rows of fixture C stay the source join's: the model join returns
+/// the same source rows untouched and retains no source row as a model row.
+#[trace("FR-352-AC-36")]
 #[test]
-fn published_reader_refusals_keep_their_codes() {
+fn source_rows_stay_beside_model_rows_and_are_never_read_as_model_rows() {
     let vectors = vectors();
-    let mut run_count = 0;
+    let prepared = prepare(&vectors, "MUW-19-source-union-row-beside-model-rows").unwrap();
+    let (result, _) = join(&prepared, &mut ample());
+    let joined = unwrap_join("MUW-19", result);
+    assert_eq!(
+        joined.source_union_rows().count(),
+        1,
+        "the source union row stays"
+    );
+    assert_eq!(
+        retained_unions(&joined),
+        vec![prepared.unions[0].structural_node.clone()],
+        "only the model row of Link is retained"
+    );
+    let prepared = prepare(&vectors, "MUW-20-source-tuple-row-beside-model-rows").unwrap();
+    let (result, _) = join(&prepared, &mut ample());
+    let joined = unwrap_join("MUW-20", result);
+    assert_eq!(
+        joined.source_tuple_rows().count(),
+        1,
+        "the source tuple row stays"
+    );
+    assert_eq!(
+        retained_tuples(&joined).len(),
+        1,
+        "the model tuple Pair row only"
+    );
+    assert_eq!(leaf(&retained_tuples(&joined)[0]), "ix://acme/shapes/Pair");
+}
+
+/// Every published reader refusal that the production join reads (the closed
+/// format, parser and depth cases belong to the FSL identity-file parser) keeps
+/// its code AND its compact locus, and a coverage vector keeps its node.
+#[trace("FR-352-AC-31", "FR-352-AC-34", "FR-358-AC-19")]
+#[test]
+fn published_reader_refusals_keep_their_codes_loci_and_nodes() {
+    let vectors = vectors();
+    let rows = vectors["reader_refusals"].as_array().expect("refusals");
+    let mut ran = 0;
+    let mut malformed = 0;
     let mut mismatches = Vec::new();
-    for row in vectors["reader_refusals"].as_array().expect("refusals") {
+    for row in rows {
         let id = row["id"].as_str().expect("id");
-        if uses_source_rows(&vectors, id) {
-            continue;
-        }
         let expected = row["expected"]["code"].as_str().expect("code");
         if expected == "malformed" {
-            // The closed-format codec is the FSL identity-file parser's.
+            malformed += 1;
             continue;
         }
-        let (actual, locus, _) = run_located(&vectors, id, None);
-        let want = row["expected"]["locus"].as_str().unwrap_or("");
-        // A tuple-channel refusal keeps the existing tuple stage form; the
-        // model-tuple row pointers are reported as a boundary, not asserted.
-        let tuple_stage = id.contains("-TR-");
-        if actual != expected || (!tuple_stage && locus.as_deref().unwrap_or("") != want) {
+        let want = row["expected"]["locus"].as_str().expect("locus");
+        let (code, locus, at) = match prepare(&vectors, id) {
+            Err((code, locus)) => (code, locus.unwrap_or_default(), None),
+            Ok(prepared) => match join(&prepared, &mut ample()).0 {
+                Ok(_) => ("admitted".to_owned(), String::new(), None),
+                Err(error) => (
+                    error.code.as_str().to_owned(),
+                    error.form.as_deref().unwrap_or_default().to_owned(),
+                    error.at.map(|node| *node),
+                ),
+            },
+        };
+        let want_node = row["expected"]
+            .get("node")
+            .filter(|node| !node.is_null())
+            .map(node_id);
+        if code != expected || locus != want || (want_node.is_some() && at != want_node) {
             mismatches.push(format!(
-                "{id}: expected {expected} at {want}, got {actual} at {locus:?}"
+                "{id}: expected {expected} at {want} node {want_node:?}, got {code} at {locus} node {at:?}"
             ));
         }
-        run_count += 1;
+        ran += 1;
     }
     assert!(
         mismatches.is_empty(),
-        "{} of {run_count}: {mismatches:#?}",
+        "{} of {ran}: {mismatches:#?}",
         mismatches.len()
     );
-    assert!(run_count >= 40, "ran {run_count} refusals");
+    assert_eq!(
+        ran + malformed,
+        rows.len(),
+        "every refusal is executed or is a parser case"
+    );
+    assert_eq!(rows.len(), 75, "the published refusal count");
+    assert!(
+        malformed <= 4,
+        "only the closed-format cases are excluded: {malformed}"
+    );
+    assert!(ran >= 71, "ran {ran} refusals with code, locus and node");
 }
 
-/// The fixture pair a vector (or its base) names, without applying patches.
-fn resolve_fixtures(vectors: &Value, id: &str) -> String {
-    let row = find(vectors, id);
-    match row["base"].as_str() {
-        Some(base) => resolve_fixtures(vectors, base),
-        None => row["fixtures"].as_str().expect("fixtures").into(),
+// ---------------------------------------------------------------------------
+// FR-830 budget cases B-01 to B-08 on the production shared budgets.
+// ---------------------------------------------------------------------------
+
+/// A probe run on a fresh join budget with these limits.
+struct Probe {
+    result: JoinResult,
+    events: Vec<NativeBudgetEvent>,
+    consumed: (u64, u64),
+    denied: Option<(NativeJoinChargeKind, u128)>,
+    locus: Option<NativeJoinLocus>,
+}
+
+fn probe(prepared: &Prepared, work: u64, storage: u64) -> Probe {
+    let mut budget = NativeJoinBudget::new(work, storage);
+    let (result, events) = join(prepared, &mut budget);
+    Probe {
+        result,
+        events,
+        consumed: consumed(&budget),
+        denied: budget.first_unpaid().map(|d| (d.kind, d.amount)),
+        locus: budget.first_unpaid_locus(),
     }
 }
 
-/// Trace: FR-830-AC-11 FR-358-AC-15.
-/// On the shared budget the measured baseline admits; one unit less of either
-/// counter exhausts that counter, and the zero limits exhaust at once.
-#[trace("FR-830-AC-11")]
-#[test]
-fn the_measured_baseline_admits_and_one_unit_less_exhausts_each_counter() {
-    let vectors = vectors();
-    for id in [
-        "MUW-01-full-environment",
-        "MUW-02-reached-from-shape",
-        "MUW-15-full-environment-complete",
-    ] {
-        let (outcome, (work, storage)) = run_measured(&vectors, id, None);
-        assert_eq!(outcome, "admitted", "{id}");
-        assert!(work > 0 && storage > 0, "{id}: the join is measured");
-        assert_eq!(
-            run(&vectors, id, Some((work, storage))),
-            "admitted",
-            "{id}: baseline"
-        );
-        assert_eq!(
-            run(&vectors, id, Some((work - 1, storage))),
-            "exhausted_work",
-            "{id}: one unit less work"
-        );
-        assert_eq!(
-            run(&vectors, id, Some((work, storage - 1))),
-            "exhausted_storage",
-            "{id}: one unit less storage"
-        );
-        assert_eq!(
-            run(&vectors, id, Some((0, u64::MAX))),
-            "exhausted_work",
-            "{id}: zero work"
-        );
-        assert_eq!(
-            run(&vectors, id, Some((u64::MAX, 0))),
-            "exhausted_storage",
-            "{id}: zero storage"
-        );
+fn admitted_work_and_storage(events: &[NativeBudgetEvent], upto: usize) -> (u64, u64) {
+    (
+        cumulative(events, upto, NativeBudgetResource::Work),
+        cumulative(events, upto, NativeBudgetResource::LogicalStorage),
+    )
+}
+
+fn cumulative(events: &[NativeBudgetEvent], upto: usize, resource: NativeBudgetResource) -> u64 {
+    total(&events[..upto], resource)
+}
+
+/// The index of the last admitted charge of `resource` with a positive amount
+/// that satisfies `pick`: only a positive charge can exhaust a limit.
+fn last_positive(
+    events: &[NativeBudgetEvent],
+    resource: NativeBudgetResource,
+    pick: impl Fn(&NativeBudgetEvent) -> bool,
+) -> Option<usize> {
+    events.iter().rposition(|event| {
+        event.admitted && event.resource == resource && event.amount > 0 && pick(event)
+    })
+}
+
+/// The index of the first admitted positive charge of `resource` at or after `from`.
+fn first_positive(
+    events: &[NativeBudgetEvent],
+    resource: NativeBudgetResource,
+    from: usize,
+) -> Option<usize> {
+    (from..events.len())
+        .find(|&at| events[at].admitted && events[at].resource == resource && events[at].amount > 0)
+}
+
+fn kind_of(resource: NativeBudgetResource) -> NativeJoinChargeKind {
+    match resource {
+        NativeBudgetResource::Work => NativeJoinChargeKind::Work,
+        _ => NativeJoinChargeKind::Storage,
     }
 }
 
-/// Trace: FR-352-AC-31 FR-830-AC-1 FR-830-AC-10.
-/// The joined union is projected as the composite its own `type_handle` names,
-/// never as an enum; without the row the projection is unavailable.
-#[trace("FR-830-AC-1")]
-#[test]
-fn a_joined_model_union_projects_to_its_type_handle_and_never_to_an_enum() {
-    let vectors = vectors();
-    let id = "MUW-01-full-environment";
-    let case = resolve(&vectors, id);
-    let proposal = proposal_dir_of(&fixtures_dir());
-    let pair = &vectors["fixtures"][&case.fixtures];
-    let package = read_json(&proposal.join(pair["package"].as_str().unwrap())).unwrap();
-    let document = read_json(&proposal.join(pair["document"].as_str().unwrap())).unwrap();
-    let admitted = match crate::read_and_account(
-        &fixture_support::canonical(&package),
-        CheckedPackageReadLimits::bounded(),
-        &inputs::selected_evidence(&document),
-    ) {
-        CheckedPackageV2ReadResult::Admitted(package) => package,
-        other => panic!("strict read: {other:?}"),
-    };
-    let tuples: Vec<_> = case.sidecar["model_tuples"]
+fn limits_for(resource: NativeBudgetResource, value: u64) -> (u64, u64) {
+    match resource {
+        NativeBudgetResource::Work => (value, u64::MAX),
+        _ => (u64::MAX, value),
+    }
+}
+
+/// Assert a probe exhausted at baseline charge `events[at]`: the full
+/// attempted amount and the channel, row index and form of that charge are
+/// reported, every earlier charge stays consumed, the denied one consumed
+/// nothing, and no rows are returned.
+fn assert_denied_at(probe: &Probe, base: &[NativeBudgetEvent], at: usize, what: &str) {
+    let event = base[at];
+    let error = probe.result.as_ref().expect_err(what);
+    let kind = kind_of(event.resource);
+    assert_eq!(
+        error.code.as_str(),
+        match kind {
+            NativeJoinChargeKind::Work => "exhausted_work",
+            NativeJoinChargeKind::Storage => "exhausted_storage",
+        },
+        "{what}"
+    );
+    assert_eq!(
+        probe.denied,
+        Some((kind, event.amount)),
+        "{what}: the full attempted amount"
+    );
+    assert_eq!(
+        probe.locus, event.locus,
+        "{what}: channel, sidecar index and form"
+    );
+    // The charge log is the baseline's up to the denied charge, which is not
+    // admitted and consumed nothing: the denied resource's consumption before
+    // it is exactly the earlier charges (a refusal diagnostic is charged after).
+    let before = admitted_work_and_storage(base, at);
+    assert_eq!(
+        probe.events[..at],
+        base[..at],
+        "{what}: the earlier charges are the baseline's"
+    );
+    let denied = probe.events[at];
+    assert!(!denied.admitted, "{what}");
+    assert_eq!(
+        (denied.amount, denied.locus),
+        (event.amount, event.locus),
+        "{what}"
+    );
+    assert_eq!(
+        denied.consumed_before,
+        match event.resource {
+            NativeBudgetResource::Work => before.0,
+            _ => before.1,
+        },
+        "{what}: the denied charge consumed nothing"
+    );
+}
+
+fn budget_case<'a>(vectors: &'a Value, id: &str) -> &'a Value {
+    vectors["budget_cases"]
         .as_array()
-        .unwrap()
+        .expect("budget cases")
         .iter()
-        .map(tuple_row)
-        .collect();
-    let unions: Vec<_> = case.sidecar["model_unions"]
+        .find(|case| case["id"] == id)
+        .unwrap_or_else(|| panic!("{id}: no such budget case"))
+}
+
+#[trace("FR-358-AC-15", "FR-358-AC-18")]
+#[test]
+fn budget_case_b01_full_baseline_denies_the_last_charge_of_each_counter() {
+    let vectors = vectors();
+    let case = budget_case(&vectors, "MUW-B-01-full-baseline");
+    let prepared = prepare(&vectors, case["base"].as_str().unwrap()).unwrap();
+    let base = probe(&prepared, u64::MAX, u64::MAX);
+    let baseline = unwrap_join("B-01", base.result.clone());
+    let (w, s) = base.consumed;
+    assert!(w > 0 && s > 0);
+    let again = probe(&prepared, w, s);
+    assert_eq!(
+        again.consumed,
+        (w, s),
+        "the same delta at the baseline limits"
+    );
+    assert_eq!(
+        retained_unions(&unwrap_join("B-01", again.result)),
+        retained_unions(&baseline)
+    );
+    use NativeBudgetResource::{LogicalStorage, Work};
+    let last_work = last_positive(&base.events, Work, |_| true).unwrap();
+    let last_storage = last_positive(&base.events, LogicalStorage, |_| true).unwrap();
+    assert_denied_at(&probe(&prepared, w - 1, s), &base.events, last_work, "W-1");
+    assert_denied_at(
+        &probe(&prepared, w, s - 1),
+        &base.events,
+        last_storage,
+        "S-1",
+    );
+    for (resource, at) in [
+        (Work, first_positive(&base.events, Work, 0).unwrap()),
+        (
+            LogicalStorage,
+            first_positive(&base.events, LogicalStorage, 0).unwrap(),
+        ),
+    ] {
+        let (lw, ls) = limits_for(resource, 0);
+        let zero = probe(&prepared, lw, ls);
+        assert_denied_at(&zero, &base.events, at, "zero limit");
+        assert_eq!(
+            zero.result.as_ref().unwrap_err().configured_bound,
+            Some(0),
+            "the configured bound reported is 0"
+        );
+    }
+}
+
+#[trace("FR-358-AC-17", "FR-358-AC-18")]
+#[test]
+fn budget_case_b02_reached_closure_edge_boundary_denies_edge_then_first_row_join() {
+    use NativeBudgetResource::{LogicalStorage, Work};
+    let vectors = vectors();
+    let case = budget_case(&vectors, "MUW-B-02-reached-baseline");
+    let prepared = prepare(&vectors, case["base"].as_str().unwrap()).unwrap();
+    let base = probe(&prepared, u64::MAX, u64::MAX);
+    unwrap_join("B-02", base.result.clone());
+    let (w, _) = base.consumed;
+    let common = |event: &NativeBudgetEvent| {
+        matches!(form_of(event), "model_tuples_row" | "model_unions_row")
+    };
+    let edge = |event: &NativeBudgetEvent| form_of(event) == "model_union_closure_edge";
+    let wp_at = last_positive(&base.events, Work, common).unwrap();
+    let ec_at = last_positive(&base.events, Work, edge).unwrap();
+    let wp = cumulative(&base.events, wp_at + 1, Work);
+    let ec = cumulative(&base.events, ec_at + 1, Work);
+    assert!(wp <= ec, "Wp {wp} <= Ec {ec}");
+    let last_work = last_positive(&base.events, Work, |_| true).unwrap();
+    assert_denied_at(
+        &probe(&prepared, w - 1, u64::MAX),
+        &base.events,
+        last_work,
+        "W-1",
+    );
+    // Ec-1: the denied charge is the last closure edge, before any row joins.
+    let denied = probe(&prepared, ec - 1, u64::MAX);
+    assert_denied_at(&denied, &base.events, ec_at, "Ec-1");
+    assert!(
+        denied.events.iter().all(|event| !matches!(
+            form_of(event),
+            "model_tuple_row" | "model_union_row" | "model_union_retain"
+        )),
+        "Ec-1: no row has been joined"
+    );
+    // Ec: every edge is paid and stays consumed; the first row-join charge is denied.
+    let next = first_positive(&base.events, Work, ec_at + 1).expect("a row-join charge follows");
+    assert_eq!(form_of(&base.events[next]), "model_tuple_row");
+    let denied = probe(&prepared, ec, u64::MAX);
+    assert_denied_at(&denied, &base.events, next, "Ec");
+    assert_eq!(denied.consumed.0, ec);
+    let NativeJoinLocusSource::ModelTupleRow(row) = source_of(&base.events[next]) else {
+        panic!("the first row-join charge names a model tuple row");
+    };
+    assert_eq!(
+        leaf(&prepared.tuples[row].structural_node),
+        "ix://acme/shapes/Pair",
+        "the denied locus names a row of the closure"
+    );
+    let _ = LogicalStorage;
+}
+
+#[trace("FR-358-AC-16", "FR-358-AC-15")]
+#[test]
+fn budget_case_b03_cumulative_consumption_across_two_joins_on_one_budget() {
+    use NativeBudgetResource::Work;
+    let vectors = vectors();
+    let case = budget_case(&vectors, "MUW-B-03-cumulative-shared-budget");
+    let first = prepare(&vectors, case["base"].as_str().unwrap()).unwrap();
+    let second = prepare(&vectors, case["then"].as_str().unwrap()).unwrap();
+    let one = probe(&first, u64::MAX, u64::MAX).consumed;
+    let two_run = probe(&second, u64::MAX, u64::MAX);
+    let two = two_run.consumed;
+    let mut budget = ample();
+    unwrap_join("first", join(&first, &mut budget).0);
+    assert_eq!(consumed(&budget), one);
+    let (result, _) = join(&second, &mut budget);
+    unwrap_join("second", result);
+    assert_eq!(
+        consumed(&budget),
+        (one.0 + two.0, one.1 + two.1),
+        "the second join's delta is its own baseline and nothing is restored"
+    );
+    // Prior consumption counts against the same limit: one unit short of the sum.
+    let mut short = NativeJoinBudget::new(one.0 + two.0 - 1, u64::MAX);
+    unwrap_join("first", join(&first, &mut short).0);
+    let (result, events) = join(&second, &mut short);
+    let error = result.expect_err("the second join exhausts the shared work limit");
+    assert_eq!(error.code.as_str(), "exhausted_work");
+    let last = last_positive(&two_run.events, Work, |_| true).unwrap();
+    assert_eq!(
+        short.first_unpaid().map(|d| d.amount),
+        Some(two_run.events[last].amount)
+    );
+    assert_eq!(short.first_unpaid_locus(), two_run.events[last].locus);
+    assert_eq!(
+        consumed(&short).0,
+        one.0 + admitted_work_and_storage(&two_run.events, last).0,
+        "the first join's consumption and the second's admitted charges stay"
+    );
+    assert!(events.iter().any(|event| !event.admitted));
+}
+
+#[trace("FR-358-AC-18")]
+#[test]
+fn budget_case_b04_union_refusal_keeps_every_admitted_charge() {
+    let vectors = vectors();
+    refusal_keeps_charges(&vectors, "MUW-B-04-refusal-keeps-charges");
+}
+
+/// B-04 and B-07 share one patched sidecar: the rank of case 0 of union 1.
+fn refusal_keeps_charges(vectors: &Value, id: &str) {
+    let case = budget_case(vectors, id);
+    let mut resolved = resolve(vectors, case["base"].as_str().unwrap());
+    patch(&mut resolved.sidecar, &case["patch"]);
+    let mut prepared = prepare(vectors, case["base"].as_str().unwrap()).unwrap();
+    prepared.unions = resolved.sidecar["model_unions"]
         .as_array()
         .unwrap()
         .iter()
         .map(union_row)
         .collect();
-    let mut budget = NativeJoinBudget::new(u64::MAX, u64::MAX);
-    let empty = SelectedExactIdentities::empty();
-    let joined = empty
-        .with_model_union_rows(
-            &admitted,
-            &tuples,
-            &unions,
-            ModelUnionScope::Full,
-            &mut budget,
+    prepared.tuples = resolved.sidecar["model_tuples"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(tuple_row)
+        .collect();
+    let baseline = probe(
+        &prepare(vectors, case["base"].as_str().unwrap()).unwrap(),
+        u64::MAX,
+        u64::MAX,
+    );
+    let run = probe(&prepared, u64::MAX, u64::MAX);
+    let error = run.result.as_ref().expect_err("the patched row refuses");
+    assert_eq!(error.code.as_str(), "mismatched_identity_witness");
+    assert_eq!(error.form.as_deref(), Some("/model_unions/1/cases/0/rank"));
+    assert_eq!(
+        run.consumed,
+        (
+            total(&run.events, NativeBudgetResource::Work),
+            total(&run.events, NativeBudgetResource::LogicalStorage)
+        ),
+        "{id}: every admitted charge stays consumed"
+    );
+    assert!(
+        run.consumed.0 > 0 && run.consumed.0 < baseline.consumed.0,
+        "{id}: no success delta"
+    );
+    // The tuple rows were joined and charged before the union refusal.
+    assert!(
+        run.events
+            .iter()
+            .any(|event| form_of(event) == "model_tuple_row" && event.admitted),
+        "{id}: the model_tuples charges are kept"
+    );
+    assert!(
+        run.result.is_err(),
+        "{id}: no rows of either channel are returned"
+    );
+}
+
+#[trace("FR-358-AC-18", "FR-358-AC-19")]
+#[test]
+fn budget_case_b05_the_channel_split_of_work_and_storage_on_one_budget() {
+    use NativeBudgetResource::{LogicalStorage, Work};
+    let vectors = vectors();
+    let case = budget_case(&vectors, "MUW-B-05-two-channels-one-budget");
+    let prepared = prepare(&vectors, case["base"].as_str().unwrap()).unwrap();
+    let base = probe(&prepared, u64::MAX, u64::MAX);
+    unwrap_join("B-05", base.result.clone());
+    let tuple_row = |event: &NativeBudgetEvent| {
+        matches!(source_of(event), NativeJoinLocusSource::ModelTupleRow(_))
+    };
+    for resource in [Work, LogicalStorage] {
+        let last_at = last_positive(&base.events, resource, tuple_row).expect("tuple-row charges");
+        let amount_total = cumulative(&base.events, last_at + 1, resource);
+        let (lw, ls) = limits_for(resource, amount_total - 1);
+        let below = probe(&prepared, lw, ls);
+        assert_denied_at(&below, &base.events, last_at, "Wt-1 / St-1");
+        assert!(
+            matches!(
+                below.locus.expect("a locus").source,
+                NativeJoinLocusSource::ModelTupleRow(_)
+            ),
+            "{resource:?}: the denied charge is inside /model_tuples: {:?}",
+            below.locus
+        );
+        let next = first_positive(&base.events, resource, last_at + 1).expect("a union charge");
+        let (lw, ls) = limits_for(resource, amount_total);
+        let at = probe(&prepared, lw, ls);
+        assert_denied_at(&at, &base.events, next, "Wt / St");
+        assert!(
+            matches!(
+                at.locus.expect("a locus").source,
+                NativeJoinLocusSource::ModelUnionRow(_)
+            ),
+            "{resource:?}: the denied charge names /model_unions: {:?}",
+            at.locus
+        );
+        let used = match resource {
+            Work => at.consumed.0,
+            _ => at.consumed.1,
+        };
+        assert_eq!(used, amount_total, "every tuple charge stays consumed");
+    }
+}
+
+#[trace("FR-358-AC-18", "FR-358-AC-19")]
+#[test]
+fn budget_cases_b06_and_b07_refusals_keep_the_charges_of_both_channels() {
+    let vectors = vectors();
+    let b06 = budget_case(&vectors, "MUW-B-06-tuple-refusal-keeps-charges");
+    let base = b06["base"].as_str().unwrap();
+    let mut resolved = resolve(&vectors, base);
+    patch(&mut resolved.sidecar, &b06["patch"]);
+    let mut prepared = prepare(&vectors, base).unwrap();
+    prepared.tuples = resolved.sidecar["model_tuples"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(tuple_row)
+        .collect();
+    let run = probe(&prepared, u64::MAX, u64::MAX);
+    let error = run.result.as_ref().expect_err("tuple 3 refuses");
+    assert_eq!(error.code.as_str(), "mismatched_identity_witness");
+    assert_eq!(
+        error.form.as_deref(),
+        Some("/model_tuples/3/original_identity")
+    );
+    assert_eq!(
+        run.consumed,
+        (
+            total(&run.events, NativeBudgetResource::Work),
+            total(&run.events, NativeBudgetResource::LogicalStorage)
         )
-        .expect("the published full environment joins");
-    for row in &unions {
-        let projection = admitted
-            .project_exact_type(&row.structural_node, &joined, &mut budget)
-            .expect("a joined union projects");
-        assert_eq!(
-            projection.value_type(),
-            &ValueType::Composite(row.type_handle.clone()),
-            "{:?}",
-            row.structural_node
+    );
+    let forms: Vec<_> = run.events.iter().map(form_of).collect();
+    assert!(
+        forms.contains(&"model_union_handle"),
+        "the preflight is charged"
+    );
+    assert!(
+        forms.contains(&"model_tuple_row"),
+        "the tuple rows before the refusal"
+    );
+    for stage in [
+        "model_union_retain",
+        "model_union_row",
+        "model_union_prior_copy",
+        "model_unions_seen",
+        "model_union_census",
+        "model_union_case",
+        "model_union_coverage",
+    ] {
+        assert!(
+            !forms.contains(&stage),
+            "no model_unions row is charged: {stage}"
         );
     }
-    let shape = &unions[1].structural_node;
-    let refused = admitted
-        .project_exact_type(shape, &empty, &mut budget)
-        .expect_err("no row, no projection");
-    assert_eq!(refused.code.as_str(), "unavailable_identity_witness");
-    // Joining the rows to an empty selection leaves the original untouched.
-    assert_eq!(empty.model_union_rows().count(), 0);
-    assert_eq!(joined.model_union_rows().count(), unions.len());
+    assert!(
+        run.events
+            .iter()
+            .filter(|event| form_of(event) == "model_tuple_row")
+            .all(|event| matches!(source_of(event), NativeJoinLocusSource::ModelTupleRow(k) if k <= 3)),
+        "tuple rows stop at the refused index"
+    );
+    // B-07: a union refusal keeps the tuple charges and the union charges before it.
+    refusal_keeps_charges(&vectors, "MUW-B-07-union-refusal-keeps-tuple-charges");
+}
+
+#[trace("FR-358-AC-16", "FR-358-AC-17")]
+#[test]
+fn budget_case_b08_unreached_row_costs_only_common_index_work() {
+    let vectors = vectors();
+    let case = budget_case(
+        &vectors,
+        "MUW-B-08-reached-charges-common-work-only-outside-the-closure",
+    );
+    let wide = prepare(&vectors, case["base"].as_str().unwrap()).unwrap();
+    let narrow = prepare(&vectors, case["compare"].as_str().unwrap()).unwrap();
+    let wide_run = probe(&wide, u64::MAX, u64::MAX);
+    let narrow_run = probe(&narrow, u64::MAX, u64::MAX);
+    let wide_joined = unwrap_join("MUW-03", wide_run.result.clone());
+    let narrow_joined = unwrap_join("MUW-02", narrow_run.result.clone());
+    assert_eq!(
+        retained_unions(&wide_joined),
+        retained_unions(&narrow_joined),
+        "the same rows"
+    );
+    assert_eq!(
+        retained_tuples(&wide_joined),
+        retained_tuples(&narrow_joined)
+    );
+    // The out-of-closure List row is the first union row of MUW-03.
+    let list = wide
+        .unions
+        .iter()
+        .position(|union| leaf(&union.structural_node) == "ix://acme/shapes/List")
+        .expect("List is supplied");
+    let is_list =
+        |event: &NativeBudgetEvent| source_of(event) == NativeJoinLocusSource::ModelUnionRow(list);
+    let (extra, shared): (Vec<NativeBudgetEvent>, Vec<NativeBudgetEvent>) = wide_run
+        .events
+        .iter()
+        .copied()
+        .partition(|event| is_list(event));
+    assert!(!extra.is_empty(), "the unreached row is not free");
+    for event in &extra {
+        assert!(
+            matches!(form_of(event), "model_union_handle" | "model_unions_row"),
+            "an unreached row carries only common forms, not {}",
+            form_of(event)
+        );
+    }
+    assert!(
+        extra
+            .iter()
+            .any(|event| form_of(event) == "model_unions_row"),
+        "the common pass reads and charges the row"
+    );
+    let key =
+        |event: &NativeBudgetEvent| (event.resource, form_of(event), event.amount, event.admitted);
+    let shared: Vec<_> = shared.iter().map(key).collect();
+    let narrow_log: Vec<_> = narrow_run.events.iter().map(key).collect();
+    assert_eq!(
+        shared, narrow_log,
+        "retention, closure and join charges are MUW-02's"
+    );
+    assert!(
+        wide_run.consumed.0 > narrow_run.consumed.0 && wide_run.consumed.1 >= narrow_run.consumed.1
+    );
 }

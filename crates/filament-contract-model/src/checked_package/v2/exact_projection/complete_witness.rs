@@ -623,6 +623,21 @@ impl SelectedExactIdentities {
                 budget,
             )?;
         }
+        // Model-union rows: every retained row is re-validated against the
+        // package and these identities (node, owner document, census, case
+        // checks, payload correspondence) through the same validator the join
+        // uses, so no row survives validation that the join would refuse.
+        for (index, (id, row)) in self.model_unions.iter().enumerate() {
+            check_row_key(id, &row.structural_node, budget)?;
+            charge_native_work(
+                budget,
+                id,
+                id,
+                "recheck_model_union",
+                storage::model_union(row),
+            )?;
+            self.validate_union_row(package, index, row, |_| Ok(()), budget)?;
+        }
         if !self.source_collections.is_empty() {
             let mut scratch = self.validation_scratch(at, budget)?;
             charge_native_storage(budget, at, at, "collection_validation_map", 2)?;
@@ -735,6 +750,16 @@ impl SelectedExactIdentities {
                     id,
                     "selected_model_tuple",
                 )?;
+            }
+        }
+        // Every union-family node of the selected documents has its row.
+        for (id, declaration) in package.models.selected_declarations() {
+            charge_native_work(budget, id, id, "complete_union_candidate", 1)?;
+            if declaration.form == DeclarationForm::VariantType
+                && package.models.variant_family(id) == Some("union")
+            {
+                charge_native_work(budget, id, id, "complete_model_union", 1)?;
+                require(self.model_unions.contains_key(id), id, "selected_model_union")?;
             }
         }
         for id in package.node_ids_ascending() {

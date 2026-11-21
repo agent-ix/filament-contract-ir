@@ -241,9 +241,65 @@ impl SelectedExactIdentities {
         ExactTypeProjectionError::compact_native(budget, denied.kind, denied.amount)
     }
 
-    /// Follow one member type's edge during the closure walk: one work unit for
-    /// the member, one for its edge, and the storage of a newly visited node is
-    /// paid before the node is recorded. Targets are borrowed from the package.
+    /// The members a visited declaration scans: its cases, tuple positions or
+    /// effective fields, plus the node itself.
+    fn model_union_scan_units(package: &CheckedPackageV2, id: &CheckedNodeId) -> u128 {
+        let Some(entry) = package.models.selected_declaration_entry(id) else {
+            return 1;
+        };
+        let Some(model) = package.models.selected_models().get(entry.selection) else {
+            return 1;
+        };
+        let members = match entry.form {
+            DeclarationForm::VariantType => model
+                .variant_types
+                .get(&entry.node)
+                .map_or(0, |cases| cases.len()),
+            DeclarationForm::TupleValueType => model
+                .tuple_types
+                .get(&entry.node)
+                .map_or(0, |positions| positions.len()),
+            DeclarationForm::RecordValueType => package
+                .models
+                .selected_record_fields(id)
+                .map_or(0, |(_, fields)| fields.len()),
+            DeclarationForm::ObjectType => package
+                .models
+                .selected_object_fields(id)
+                .map_or(0, |(_, fields)| fields.len()),
+            _ => 0,
+        };
+        1u128.saturating_add(u128::try_from(members).unwrap_or(u128::MAX))
+    }
+
+    /// Enter one newly visited declaration: its whole scan (node, cases,
+    /// positions or fields) is paid as work and its set entry and stack slot as
+    /// storage before either is made. The node is borrowed from the package.
+    fn model_union_enter<'p>(
+        package: &CheckedPackageV2,
+        target: &'p CheckedNodeId,
+        start: &CheckedNodeId,
+        visited: &mut BTreeSet<&'p CheckedNodeId>,
+        pending: &mut Vec<&'p CheckedNodeId>,
+        budget: &mut NativeJoinBudget,
+    ) -> Res<()> {
+        let units = Self::model_union_scan_units(package, target);
+        charge_native_work(budget, start, target, "model_union_closure_node", units)?;
+        charge_native_storage(
+            budget,
+            start,
+            target,
+            "model_union_closure",
+            units.saturating_add(3),
+        )?;
+        visited.insert(target);
+        pending.push(target);
+        Ok(())
+    }
+
+    /// Follow one typed member's edge. One edge per typed member is paid (a
+    /// scalar leaf's edge ends at its type node); only a declaration or
+    /// reference target is entered, and the edge is the last charge of its step.
     fn model_union_follow<'p>(
         package: &'p CheckedPackageV2,
         member: &MemberType,
@@ -253,22 +309,16 @@ impl SelectedExactIdentities {
         pending: &mut Vec<&'p CheckedNodeId>,
         budget: &mut NativeJoinBudget,
     ) -> Res<()> {
-        charge_native_work(budget, start, at, "model_union_closure_member", 1)?;
-        let Some(target) = member_target(member) else {
-            return Ok(());
-        };
-        charge_native_work(budget, start, target, "model_union_closure_edge", 1)?;
-        let Some(node) = package.node(target) else {
-            return Ok(());
-        };
-        let target = &node.node_id;
-        if visited.contains(target) {
+        // A Clock payload names no node: it has no edge.
+        if matches!(member, MemberType::Clock) {
             return Ok(());
         }
-        charge_native_storage(budget, start, target, "model_union_closure", 3)?;
-        visited.insert(target);
-        pending.push(target);
-        Ok(())
+        if let Some(node) = member_target(member).and_then(|target| package.node(target)) {
+            if !visited.contains(&node.node_id) {
+                Self::model_union_enter(package, &node.node_id, start, visited, pending, budget)?;
+            }
+        }
+        charge_native_work(budget, start, at, "model_union_closure_edge", 1)
     }
 
     /// The closure of `start`: case payloads, tuple positions and record or
@@ -291,10 +341,15 @@ impl SelectedExactIdentities {
         charge_native_storage(budget, start, start, "model_union_closure", 5)?;
         let mut visited = BTreeSet::new();
         let mut pending = Vec::new();
-        visited.insert(&start_node.node_id);
-        pending.push(&start_node.node_id);
+        Self::model_union_enter(
+            package,
+            &start_node.node_id,
+            start,
+            &mut visited,
+            &mut pending,
+            budget,
+        )?;
         while let Some(id) = pending.pop() {
-            charge_native_work(budget, start, id, "model_union_closure_node", 1)?;
             let Some(entry) = package.models.selected_declaration_entry(id) else {
                 continue;
             };
@@ -306,15 +361,13 @@ impl SelectedExactIdentities {
                     if let Some(cases) = model.variant_types.get(&entry.node) {
                         for case in cases.values() {
                             let Some(payload) = &case.payload else {
-                                charge_native_work(
-                                    budget,
-                                    start,
-                                    id,
-                                    "model_union_closure_member",
-                                    1,
-                                )?;
                                 continue;
                             };
+                            at_locus(
+                                budget,
+                                NativeJoinLocusSource::Package,
+                                "model_union_closure_type",
+                            );
                             let member = model
                                 .element_type_runtime(payload, budget)
                                 .map_err(|_| Self::runtime_denied(budget))?;
@@ -335,6 +388,11 @@ impl SelectedExactIdentities {
                 DeclarationForm::TupleValueType => {
                     if let Some(positions) = model.tuple_types.get(&entry.node) {
                         for position in positions {
+                            at_locus(
+                                budget,
+                                NativeJoinLocusSource::Package,
+                                "model_union_closure_type",
+                            );
                             let member = model
                                 .element_type_runtime(position, budget)
                                 .map_err(|_| Self::runtime_denied(budget))?;
@@ -864,14 +922,13 @@ impl SelectedExactIdentities {
         first: &CheckedNodeId,
         budget: &mut NativeJoinBudget,
     ) -> Res<()> {
-        let mut wanted = false;
-        for row in union_rows {
-            wanted |= scope.contains(&row.structural_node);
-        }
-        if wanted && Arc::strong_count(&self.model_unions) > 1 {
+        let first_row = union_rows
+            .iter()
+            .position(|row| scope.contains(&row.structural_node));
+        if let (Some(k), true) = (first_row, Arc::strong_count(&self.model_unions) > 1) {
             at_locus(
                 budget,
-                NativeJoinLocusSource::Package,
+                NativeJoinLocusSource::ModelUnionRow(k),
                 "model_union_prior_copy",
             );
             charge_native_work(
@@ -1789,6 +1846,11 @@ impl SelectedExactIdentities {
             }
             error
         })
+    }
+
+    /// The model-tuple rows this selection retains, keyed by structural node.
+    pub fn model_tuple_rows(&self) -> impl Iterator<Item = &SelectedTupleDeclarationRow> {
+        self.admitted_tuples.values().map(Arc::as_ref)
     }
 
     /// The validated model-union rows, keyed by the full structural node.
