@@ -1961,7 +1961,7 @@ impl CheckedPackageV2 {
     /// index, or a node ID as `graph()` shows it, operand slots included, when
     /// exactly one node has those bytes. Equal bytes name different nodes
     /// when their rows differ, so such an ID names none.
-    pub(in crate::checked_package) fn position_of(&self, id: &CheckedNodeId) -> Option<usize> {
+    fn position_of(&self, id: &CheckedNodeId) -> Option<usize> {
         if node_index::holds_slot(id) {
             let view = self.slot_view();
             let nodes = &view.graph.nodes;

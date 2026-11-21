@@ -209,7 +209,7 @@ fn selected_population_is_bound_to_the_emitted_node_and_source_occurrence() {
                 .position(|candidate| candidate.node_id == node.node_id)
                 .and_then(|position| package.document_held_id(position))
                 .expect("document-held population ID");
-            assert_eq!(selected.binding, *held);
+            assert_eq!(selected.binding, node.node_id);
             assert_eq!(
                 selected.provenance,
                 package
@@ -536,7 +536,7 @@ fn selected_population_reads_source_for_node_held_operand_spelling() {
 
     for binding in [node.node_id.clone(), held] {
         let mut selector = selector(&package, node);
-        selector.binding = binding;
+        selector.binding = binding.clone();
         let selected = match select_population(Source::Admitted {
             package: &package,
             selector,
@@ -545,8 +545,8 @@ fn selected_population_reads_source_for_node_held_operand_spelling() {
             other => panic!("population must be finite: {other:?}"),
         };
         assert_eq!(
-            selected.binding, entries[0].node_id,
-            "binding is the document-held ID, as before"
+            selected.binding, binding,
+            "the result names the node by the spelling the caller passed"
         );
         assert_eq!(selected.maximum.as_str(), "0");
         assert_eq!(selected.provenance, entries[0].regions);

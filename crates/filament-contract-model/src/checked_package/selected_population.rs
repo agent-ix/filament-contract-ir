@@ -356,18 +356,11 @@ fn select_admitted(
     {
         return CheckedSelectedPopulationOutcome::MissingOccurrence(selector);
     }
-    // The source map names a node by its document-held ID; a slot-form binding that `node`
-    // accepted names the same graph position.
-    let Some(held) = package
-        .position_of(&selector.binding)
-        .and_then(|position| package.document_held_id(position))
-    else {
-        return CheckedSelectedPopulationOutcome::StaleBinding(selector);
-    };
     let Some(source) = selected_source(
         package.source_map(),
         &package.source_index,
-        held,
+        // `node` is the wire node, so its ID is the document-held spelling the source map uses.
+        &node.node_id,
         selector.occurrence.ordinal,
     ) else {
         return CheckedSelectedPopulationOutcome::MissingOccurrence(selector);
@@ -393,7 +386,7 @@ fn select_admitted(
     match maximum {
         Some(maximum) => CheckedSelectedPopulationOutcome::Finite(CheckedSelectedPopulation {
             package_name: package.name().into(),
-            binding: node.node_id.clone(),
+            binding: selector.binding.clone(),
             occurrence: selector.occurrence,
             object_type,
             minimum: 0,
@@ -403,7 +396,7 @@ fn select_admitted(
         None => CheckedSelectedPopulationOutcome::AdmittedUnbounded(
             CheckedAdmittedUnboundedPopulation {
                 package_name: package.name().into(),
-                binding: node.node_id.clone(),
+                binding: selector.binding.clone(),
                 occurrence: selector.occurrence,
                 object_type,
                 provenance: source.regions.clone(),
