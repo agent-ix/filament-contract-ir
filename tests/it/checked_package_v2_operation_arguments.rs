@@ -2784,6 +2784,32 @@ fn tc_492_binder_scope_stops_at_functions_and_excludes_the_bound_value() {
         .admits("function boundary and bound value scope");
 }
 
+#[trace("TC-492", "FR-038-AC-595")]
+#[test]
+fn tc_492_a_shared_body_is_checked_against_each_linked_binder() {
+    let mut case = let_container_case("tuple_value", false);
+    let nodes = case.package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes");
+    let mut second = nodes[case.node].clone();
+    second["node_id"] = node_id("application/expression/let/second");
+    second["body"]["arguments"][0]["binder"] = node_id("value/parameter/y-other");
+    nodes.push(second);
+    case.node = nodes
+        .iter()
+        .position(|node| node["semantic_form"] == "tuple_value")
+        .expect("shared tuple");
+    // Both lets share precisely the same body node. The first link is valid;
+    // memoizing that body must not hide its wrong identity for the second.
+    settle(&mut case.package);
+    case.refuses(
+        "shared body with a different linked binder",
+        Code::InvalidPackage,
+        Cause::InvalidValue,
+        "/body/members/0",
+    );
+}
+
 fn nested_linked_lets(count: usize) -> Case {
     let mut scene = ledger_scene();
     let integer = scene.ty(&Ty::Integer);
