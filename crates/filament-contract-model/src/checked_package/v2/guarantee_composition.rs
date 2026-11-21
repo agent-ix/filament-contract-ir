@@ -385,9 +385,6 @@ fn malformed(at: Path<'static>, locus: &CheckedNodeId, meter: &mut WorkMeter) ->
     model_refusal(ModelRefusal::malformed(), at, locus, meter)
 }
 
-/// The guarantee step. See the module documentation for the order.
-///
-/// Implements: FR-038 "Implementation guarantee and component composition bodies".
 /// The package's `source_map`, as a composition's coordinate check reads it: the
 /// indexed entries and the package-wide check that must refuse first.
 pub(super) struct CompositionSources<'a, 'g> {
@@ -395,6 +392,9 @@ pub(super) struct CompositionSources<'a, 'g> {
     pub(super) generic: &'g dyn Fn(&mut WorkMeter) -> Result<(), ValidationFailure>,
 }
 
+/// The guarantee step. See the module documentation for the order.
+///
+/// Implements: FR-038 "Implementation guarantee and component composition bodies".
 pub(super) fn validate<Body: super::model_members::EmptyAggregateBody>(
     nodes: &[CheckedSemanticNodeV2<Body>],
     kinds: &[CheckedNodeKind],
@@ -1443,6 +1443,80 @@ mod document_storage_tests {
                 Err(ValidationFailure::Budget(_))
             ));
             assert_eq!(run(0).1, 0);
+        }
+    }
+
+    #[trace("TC-474", "FR-038-AC-612")]
+    #[test]
+    fn the_generic_source_map_pass_runs_once_however_many_compositions_follow() {
+        let composition = |digit: char| json!({"node_id":node_id(digit),"schema_version":"filament.checked-semantic-graph/v2","node_tag":"correspondence","semantic_form":"component_composition","semantic_type":node_id(digit),"dependencies":[],"occurrences":[{"role":"declaration","ordinal":0}],"body":{"term":"component_composition","rule":"interface","components":[],"guarantees":[],"relies":[],"liveness_dependencies":[],"supplies":[],"environment":[]}});
+        let region =
+            json!({"source":{"authority":"agent-ix","identity":"example"},"start":0,"end":10});
+        for count in [1_usize, 2, 3] {
+            let digits = ['a', 'b', 'c'];
+            let nodes: Vec<CheckedSemanticNodeV2<CheckedJson>> = digits[..count]
+                .iter()
+                .map(|digit| serde_json::from_value(composition(*digit)).unwrap())
+                .collect();
+            let source_map: Vec<super::super::CheckedSourceMapEntry> = serde_json::from_value(
+                json!(digits[..count].iter().map(|digit| json!({"node_id":node_id(*digit),"role":"declaration","ordinal":0,"regions":[region.clone()]})).collect::<Vec<_>>()),
+            )
+            .unwrap();
+            let kinds =
+                vec![
+                    CheckedNodeKind::Correspondence(CorrespondenceForm::ComponentComposition);
+                    count
+                ];
+            let index = nodes
+                .iter()
+                .enumerate()
+                .map(|(p, n)| (&n.node_id, p))
+                .collect::<super::super::graph_storage::GraphIndex<'_>>();
+            let handles: Vec<_> = nodes.iter().map(|node| node.body.clone()).collect();
+            let rows = vec![vec![]; count];
+            let owners = ModelOwners::default();
+            let dependencies = SuppliedDependencies::default();
+            let mut index_budget =
+                NativeJoinBudget::new(u64::MAX, 0).with_read_storage_limit(u64::MAX);
+            let entries = super::super::declaration_region::SourceEntries::build(
+                &source_map,
+                true,
+                &stage_storage::Site::new(
+                    PackageReadStage::Graph,
+                    0,
+                    "name_sources",
+                    stage_storage::Path::root(),
+                ),
+                &mut WorkMeter::over(&mut index_budget),
+            )
+            .unwrap();
+            let mut budget = NativeJoinBudget::new(u64::MAX, 0).with_read_storage_limit(u64::MAX);
+            let mut meter = WorkMeter::over(&mut budget);
+            meter.attach_bodies(&handles, &rows);
+            let calls = std::cell::Cell::new(0_u32);
+            let generic = |_: &mut WorkMeter| {
+                calls.set(calls.get() + 1);
+                Ok(())
+            };
+            validate(
+                &nodes,
+                &kinds,
+                &vec![None; count],
+                &index,
+                &owners,
+                &dependencies,
+                &CompositionSources {
+                    entries: &entries,
+                    generic: &generic,
+                },
+                &mut meter,
+            )
+            .unwrap();
+            assert_eq!(
+                calls.get(),
+                1,
+                "{count} compositions run the generic pass once"
+            );
         }
     }
 }

@@ -2255,6 +2255,9 @@ struct ValidatedGraph<'w> {
     terms: Vec<CheckedTerm>,
     declarations: DeclarationIndex,
     lowering_facts: Vec<lower::LoweringNodeFacts>,
+    /// Whether the graph stage already ran the package-wide source-map check
+    /// to success, so the package stage does not pay for it again.
+    source_map_checked: bool,
 }
 
 fn validate(
@@ -2287,6 +2290,7 @@ fn validate(
         terms,
         declarations,
         lowering_facts,
+        source_map_checked,
     } = validate_graph(
         catalog,
         wire,
@@ -2298,16 +2302,18 @@ fn validate(
         evidence,
         &structural_keys,
     )?;
-    validate_source_map_entries(
-        wire.semantic_graph
-            .nodes
-            .iter()
-            .map(|node| (&node.node_id, node.occurrences.as_slice())),
-        &wire.source_map,
-        &wire.lock.sources,
-        limits,
-        &mut meter,
-    )?;
+    if !source_map_checked {
+        validate_source_map_entries(
+            wire.semantic_graph
+                .nodes
+                .iter()
+                .map(|node| (&node.node_id, node.occurrences.as_slice())),
+            &wire.source_map,
+            &wire.lock.sources,
+            limits,
+            &mut meter,
+        )?;
+    }
     identity::validate_equivalence_occurrences(wire, &kinds, &mut meter)?;
     extension::validate_source_regions(wire, &kinds, &mut meter)?;
     validate_capabilities(wire, evidence, &mut meter)?;
@@ -2731,7 +2737,9 @@ fn validate_recursion_group_paths(
 
 /// Enforces the schema's `DeclarationTagRules` and `DeclarationOccurrenceRule`
 /// (FR-208): `declaration` is forbidden on `expression`, `relation`, `state`,
-/// `temporal` and `correspondence` nodes and on `value`/`enum_value` nodes;
+/// `temporal` and `correspondence` nodes (a `component_composition` node is the
+/// one `correspondence` exception, FSpec FR-322 "Composition declaration
+/// names") and on `value`/`enum_value` nodes;
 /// for every other family it is present exactly when the node carries a
 /// `declaration`-role occurrence. A `relation`/`population` node that carries a
 /// `SourceOwner` is a source-declared population reference and may carry one.
@@ -4316,7 +4324,14 @@ fn validate_graph<'w>(
         },
         meter,
     )?;
-    if kinds.contains(&CheckedNodeKind::Temporal(TemporalForm::MonitorPlan)) {
+    // The package-wide source-map check is a pure function of the graph and
+    // the map: the first phase that needs it pays for it and the later phases
+    // (and the final package stage) read this recorded success.
+    let source_map_checked = std::cell::Cell::new(false);
+    let generic_source_map = |meter: &mut WorkMeter| {
+        if source_map_checked.get() {
+            return Ok(());
+        }
         validate_source_map_entries(
             graph
                 .nodes
@@ -4327,6 +4342,11 @@ fn validate_graph<'w>(
             limits,
             meter,
         )?;
+        source_map_checked.set(true);
+        Ok(())
+    };
+    if kinds.contains(&CheckedNodeKind::Temporal(TemporalForm::MonitorPlan)) {
+        generic_source_map(meter)?;
     }
     let early_operation_views =
         if kinds.contains(&CheckedNodeKind::Temporal(TemporalForm::MonitorPlan)) {
@@ -4357,18 +4377,6 @@ fn validate_graph<'w>(
         meter,
     )?;
     abstraction::validate_abstraction(&graph.nodes, &kinds, &index, &owners, meter)?;
-    let generic_source_map = |meter: &mut WorkMeter| {
-        validate_source_map_entries(
-            graph
-                .nodes
-                .iter()
-                .map(|node| (&node.node_id, node.occurrences.as_slice())),
-            &wire.source_map,
-            &wire.lock.sources,
-            limits,
-            meter,
-        )
-    };
     guarantee_composition::validate(
         &graph.nodes,
         &kinds,
@@ -4397,16 +4405,7 @@ fn validate_graph<'w>(
         // FR-375 orders all source-map defects before the refinement meaning
         // step; the ordinary package-wide check below remains the sole check
         // for graphs without a refinement.
-        let source_check = validate_source_map_entries(
-            graph
-                .nodes
-                .iter()
-                .map(|node| (&node.node_id, node.occurrences.as_slice())),
-            &wire.source_map,
-            &wire.lock.sources,
-            limits,
-            meter,
-        );
+        let source_check = generic_source_map(meter);
         if let Err(failure) = source_check {
             if let ValidationFailure::Refused(refusal) = &failure {
                 if refusal.code == CheckedPackageRefusalCode::InvalidSourceMap {
@@ -4748,6 +4747,7 @@ fn validate_graph<'w>(
         terms: admitted_terms,
         declarations,
         lowering_facts,
+        source_map_checked: source_map_checked.get(),
     })
 }
 

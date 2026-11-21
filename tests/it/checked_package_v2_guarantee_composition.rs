@@ -1779,7 +1779,7 @@ fn a_written_composition_reads_back_with_its_name_and_coordinates() {
 
 #[trace("TC-474", "FR-038-AC-603")]
 #[test]
-fn another_correspondence_declaration_and_a_missing_composition_declaration_still_refuse() {
+fn an_implementation_guarantee_declaration_stays_refused() {
     // A guarantee stays declaration-free.
     let (mut package, position) = guaranteed(|_| {});
     package["semantic_graph"]["nodes"][position]["declaration"] = json!({"qualified_name": ["G"]});
@@ -1791,8 +1791,14 @@ fn another_correspondence_declaration_and_a_missing_composition_declaration_stil
         None,
         &at(position, "/declaration"),
     );
-    // A composition's declaration occurrence requires its declaration.
-    let (mut package, position) = authored();
+}
+
+#[trace("TC-474", "FR-038-AC-606")]
+#[test]
+fn a_composition_with_a_declaration_occurrence_requires_its_declaration() {
+    let (package, position) = authored();
+    admitted("positive control", &package);
+    let mut package = package;
     let node = package["semantic_graph"]["nodes"][position]
         .as_object_mut()
         .expect("node");
@@ -1805,8 +1811,13 @@ fn another_correspondence_declaration_and_a_missing_composition_declaration_stil
         None,
         &at(position, ""),
     );
-    // A declaration whose path is not the node's path.
-    let (mut package, position) = authored();
+}
+
+#[trace("TC-474", "FR-038-AC-607")]
+#[test]
+fn a_composition_declaration_other_than_its_node_path_refuses_as_nominal() {
+    let (package, position) = authored();
+    let mut package = package;
     package["semantic_graph"]["nodes"][position]["declaration"] =
         json!({"qualified_name": ["Other"]});
     let row = claim_row(&package, position);
@@ -1903,10 +1914,31 @@ fn two_distinct_compositions_cannot_share_a_qualified_name() {
         (3_000, 4_000),
         &AUTHORED.map(|(s, e)| (s + 2_100, e + 2_100)),
     );
-    admitted_or_report("two distinct names would admit", &package, second);
+    refused_as_ambiguous("two compositions of one declared name", &package, second);
+    // The same two compositions under distinct names admit.
+    let mut distinct = package.clone();
+    distinct["semantic_graph"]["nodes"][second]["node_id"]["path"] = json!(["Alpha"]);
+    distinct["semantic_graph"]["nodes"][second]["semantic_type"] =
+        distinct["semantic_graph"]["nodes"][second]["node_id"].clone();
+    distinct["semantic_graph"]["nodes"][second]["declaration"] =
+        json!({"qualified_name": ["Alpha"]});
+    settle(&mut distinct);
+    let alpha = graph_nodes(&distinct)
+        .iter()
+        .position(|node| node["node_id"]["path"] == json!(["Alpha"]))
+        .expect("renamed composition");
+    author(
+        &mut distinct,
+        alpha,
+        (3_000, 4_000),
+        &AUTHORED.map(|(s, e)| (s + 2_100, e + 2_100)),
+    );
+    let admitted = admitted("two compositions of distinct names", &distinct);
+    assert_eq!(admitted.claim_names().expect("rows").len(), 2);
 }
 
-fn admitted_or_report(case: &str, package: &Value, second: usize) {
+/// Asserts the later of two compositions' name rows refuses as ambiguous.
+fn refused_as_ambiguous(case: &str, package: &Value, second: usize) {
     let later = claim_row(package, second);
     refused_at(
         case,
@@ -1923,7 +1955,7 @@ fn admitted_or_report(case: &str, package: &Value, second: usize) {
 fn a_member_coordinate_that_is_not_the_one_authored_region_refuses_at_its_entry() {
     let (package, position) = authored();
     admitted("positive control", &package);
-    let cases: [Coordinate; 8] = [
+    let cases: [Coordinate; 7] = [
         (
             "an ordinal equal to the member count",
             |package, position| {
@@ -1969,23 +2001,13 @@ fn a_member_coordinate_that_is_not_the_one_authored_region_refuses_at_its_entry(
             Some(4),
         ),
         // The first member entry has no earlier member to overlap, so only the
-        // declaration interval itself refuses these two.
+        // declaration interval itself refuses this one.
         (
             "equal to the declaration",
             |package, position| {
                 rewrite_entry(package, position, 0, |entry| {
                     entry["regions"][0]["start"] = json!(DECLARATION.0);
                     entry["regions"][0]["end"] = json!(DECLARATION.1);
-                });
-            },
-            Some(0),
-        ),
-        (
-            "starting at the declaration start",
-            |package, position| {
-                rewrite_entry(package, position, 0, |entry| {
-                    entry["regions"][0]["start"] = json!(DECLARATION.0);
-                    entry["regions"][0]["end"] = json!(DECLARATION.0 + 10);
                 });
             },
             Some(0),
@@ -2058,7 +2080,7 @@ fn a_member_coordinate_that_is_not_the_one_authored_region_refuses_at_its_entry(
     }
 }
 
-#[trace("TC-474", "FR-038-AC-604")]
+#[trace("TC-474", "FR-038-AC-613")]
 #[test]
 fn a_missing_member_occurrence_pair_refuses_only_after_every_entry_passes() {
     let (package, position) = authored();
@@ -2189,6 +2211,60 @@ fn generic_source_map_checks_precede_and_body_checks_follow_composition_coordina
         None,
         &format!("/source_map/{last}"),
     );
+    // Totality defects are generic as well, and each beats a coordinate defect
+    // that comes earlier in the array: an entry naming an unknown node, an
+    // entry naming a node that holds no such occurrence, and an occurrence
+    // left without an entry.
+    let defect = |package: &mut Value| {
+        rewrite_entry(package, position, 2, |entry| {
+            entry["regions"][0]["start"] = json!(2_100);
+            entry["regions"][0]["end"] = json!(2_110);
+        });
+    };
+    let other = (0..graph_nodes(&package).len())
+        .find(|other| *other != position)
+        .expect("another node");
+    let mut unknown = package.clone();
+    defect(&mut unknown);
+    let late = member_entry(&unknown, position, 7);
+    assert!(member_entry(&unknown, position, 2) < late);
+    unknown["source_map"][late]["node_id"]["path"] = json!(["Nowhere"]);
+    refused_unlocated(
+        "an entry naming an unknown node",
+        &unknown,
+        Code::InvalidSourceMap,
+        None,
+        &format!("/source_map/{late}"),
+    );
+    let mut foreign = package.clone();
+    defect(&mut foreign);
+    foreign["source_map"][late]["node_id"] = graph_nodes(&package)[other]["node_id"].clone();
+    refused_unlocated(
+        "an entry naming another node's missing occurrence",
+        &foreign,
+        Code::InvalidSourceMap,
+        None,
+        &format!("/source_map/{late}"),
+    );
+    let mut total = package.clone();
+    defect(&mut total);
+    total["source_map"]
+        .as_array_mut()
+        .expect("map")
+        .remove(late);
+    refused_unlocated(
+        "an occurrence without an entry",
+        &total,
+        Code::InvalidSourceMap,
+        None,
+        "/source_map",
+    );
+}
+
+#[trace("TC-474", "FR-038-AC-610")]
+#[test]
+fn identity_dependency_and_order_checks_precede_coordinates_and_member_checks_follow() {
+    let (package, position) = authored();
     // Identity, dependency and canonical-order defects precede coordinates.
     let mut order = package.clone();
     order["semantic_graph"]["nodes"][position]["body"]["guarantees"]
@@ -2243,9 +2319,9 @@ fn at_node(position: usize, tail: &str) -> String {
     at(position, tail)
 }
 
-#[trace("TC-477", "FR-371-AC-12")]
+#[trace("TC-477", "FR-371-AC-15")]
 #[test]
-fn composition_source_order_comes_from_declaration_regions_not_node_ids() {
+fn the_reader_returns_each_compositions_literal_region_whatever_the_entry_order() {
     let (mut package, sys) = authored();
     let mut twin = graph_nodes(&package)[sys].clone();
     twin["node_id"]["path"] = json!(["Alpha"]);
@@ -2253,7 +2329,6 @@ fn composition_source_order_comes_from_declaration_regions_not_node_ids() {
     twin["declaration"] = json!({"qualified_name": ["Alpha"]});
     let alpha = push(&mut package, twin);
     settle(&mut package);
-    // `Alpha` sorts before `Sys` by node id and follows it in the source.
     author(&mut package, sys, DECLARATION, &AUTHORED);
     author(
         &mut package,
@@ -2261,31 +2336,148 @@ fn composition_source_order_comes_from_declaration_regions_not_node_ids() {
         (5_000, 6_000),
         &AUTHORED.map(|(s, e)| (s + 4_000, e + 4_000)),
     );
-    let admitted = admitted("two compositions", &package);
-    let rows = admitted.claim_names().expect("rows");
-    let by_node: Vec<&str> = rows.iter().map(|row| &*row.name).collect();
-    assert_eq!(
-        by_node,
-        ["Sys", "Alpha"].iter().rev().copied().collect::<Vec<_>>()
+    // The reader returns each name's declaration region as authored. It does
+    // not select or order source units: a consumer owns that, from these
+    // regions, so the oracle is the literal region of each canonical path.
+    let regions = |package: &CheckedPackageV2| {
+        ["Sys", "Alpha"].map(|name| {
+            let row = package.claim_name_for_path(&[name]).expect("name row");
+            (row.declaration_region.start, row.declaration_region.end)
+        })
+    };
+    let forward = admitted("two compositions", &package);
+    assert_eq!(regions(&forward), [(1_000, 2_000), (5_000, 6_000)]);
+    let mut reversed = package.clone();
+    reversed["source_map"]
+        .as_array_mut()
+        .expect("map")
+        .reverse();
+    let backward = admitted("reversed entries", &reversed);
+    assert_eq!(regions(&backward), [(1_000, 2_000), (5_000, 6_000)]);
+    // Rows keep canonical node-id order, not the order of the source regions.
+    let names: Vec<&str> = forward
+        .claim_names()
+        .expect("rows")
+        .iter()
+        .map(|row| &*row.name)
+        .collect();
+    assert_eq!(names, ["Alpha", "Sys"]);
+}
+
+/// The composition's `claim` occurrence and entry at `region`, and a name row
+/// for it that repeats the row of the `declaration` occurrence.
+fn with_claim_row(package: &mut Value, position: usize, region: (u64, u64)) -> usize {
+    let id = graph_nodes(package)[position]["node_id"].clone();
+    package["semantic_graph"]["nodes"][position]["occurrences"]
+        .as_array_mut()
+        .expect("occurrences")
+        .push(json!({"role": "claim", "ordinal": 0}));
+    let entry = json!({"node_id": id, "role": "claim", "ordinal": 0,
+        "regions": [region_value(package, 0, region)]});
+    package["source_map"]
+        .as_array_mut()
+        .expect("map")
+        .push(entry);
+    let mut row = package["claim_names"][claim_row(package, position)].clone();
+    row["occurrence"] = json!({"role": "claim", "ordinal": 0});
+    row["declaration_region"] = region_value(package, 0, region);
+    let rows = package["claim_names"].as_array_mut().expect("rows");
+    rows.push(row);
+    rows.len() - 1
+}
+
+#[trace("TC-477", "FR-371-AC-13")]
+#[test]
+fn a_name_row_for_a_composition_claim_occurrence_is_ineligible() {
+    let (package, position) = authored();
+    // A row naming the held `claim` occurrence, with a region equal to its
+    // entry and the declared name, is refused for the occurrence alone.
+    let mut named = package.clone();
+    let row = with_claim_row(&mut named, position, (1_900, 1_950));
+    refused_at(
+        "a row for the composition's claim occurrence",
+        &named,
+        position,
+        Code::InvalidPackage,
+        Some(Cause::InvalidValue),
+        &format!("/claim_names/{row}/occurrence"),
     );
-    let mut by_source: Vec<_> = rows.iter().collect();
-    let locked = admitted.lock().sources.clone();
-    by_source.sort_by_key(|row| {
-        (
-            locked
-                .iter()
-                .position(|source| source == &row.declaration_region.source),
-            row.declaration_region.start,
-            row.declaration_region.end,
-        )
+}
+
+#[trace("TC-477", "FR-371-AC-14")]
+#[test]
+fn a_name_row_for_another_correspondence_form_keeps_its_ineligibility() {
+    let (package, guarantee) = guaranteed(|_| {});
+    // Without a row for the guarantee the package admits.
+    admitted("no row for the guarantee", &package);
+    let mut named = package.clone();
+    let row = json!({
+        "name": "G",
+        "qualified_name": ["G"],
+        "declaration": graph_nodes(&named)[guarantee]["node_id"].clone(),
+        "occurrence": {"role": "declaration", "ordinal": 0},
+        "declaration_region": region_value(&named, 0, (1_000, 2_000)),
     });
-    let names: Vec<&str> = by_source.iter().map(|row| &*row.name).collect();
-    assert_eq!(names, ["Sys", "Alpha"]);
-    assert_eq!(
-        by_source
-            .iter()
-            .map(|row| (row.declaration_region.start, row.declaration_region.end))
-            .collect::<Vec<_>>(),
-        [(1_000, 2_000), (5_000, 6_000)]
+    named["claim_names"] = json!([row]);
+    refused_at(
+        "a row for an implementation guarantee",
+        &named,
+        guarantee,
+        Code::InvalidPackage,
+        Some(Cause::InvalidValue),
+        "/claim_names/0/declaration",
+    );
+}
+
+/// Refuses member 0 rewritten to `region`, at its own entry.
+fn shared_boundary(case: &str, package: &Value, position: usize, region: (u64, u64)) {
+    let mut mutated = package.clone();
+    rewrite_entry(&mut mutated, position, 0, |entry| {
+        entry["regions"][0]["start"] = json!(region.0);
+        entry["regions"][0]["end"] = json!(region.1);
+    });
+    refused_at(
+        case,
+        &mutated,
+        position,
+        INVALID_VALUE.0,
+        INVALID_VALUE.1,
+        &format!("/source_map/{}", member_entry(package, position, 0)),
+    );
+}
+
+#[trace("TC-474", "FR-038-AC-608")]
+#[test]
+fn a_member_starting_at_the_declaration_start_refuses_at_its_entry() {
+    let (package, position) = authored();
+    let mut inside = package.clone();
+    rewrite_entry(&mut inside, position, 0, |entry| {
+        entry["regions"][0]["start"] = json!(DECLARATION.0 + 1);
+        entry["regions"][0]["end"] = json!(DECLARATION.0 + 11);
+    });
+    admitted("one unit inside the start", &inside);
+    shared_boundary(
+        "starting at the declaration start",
+        &package,
+        position,
+        (DECLARATION.0, DECLARATION.0 + 10),
+    );
+}
+
+#[trace("TC-474", "FR-038-AC-609")]
+#[test]
+fn a_member_ending_at_the_declaration_end_refuses_at_its_entry() {
+    let (package, position) = authored();
+    let mut inside = package.clone();
+    rewrite_entry(&mut inside, position, 0, |entry| {
+        entry["regions"][0]["start"] = json!(DECLARATION.1 - 11);
+        entry["regions"][0]["end"] = json!(DECLARATION.1 - 1);
+    });
+    admitted("one unit inside the end", &inside);
+    shared_boundary(
+        "ending at the declaration end",
+        &package,
+        position,
+        (DECLARATION.1 - 10, DECLARATION.1),
     );
 }
