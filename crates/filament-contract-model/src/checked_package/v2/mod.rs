@@ -4175,6 +4175,7 @@ fn validate_graph<'w>(
         &kinds,
         &terms,
         &name_sources,
+        &wire.lock,
         &index,
         structural_keys,
         meter,
@@ -4303,6 +4304,7 @@ fn validate_graph<'w>(
             lock: &wire.lock,
             diagnostics: &wire.diagnostics.entries,
             bindings: wire.temporal_bindings.as_deref(),
+            claim_names: wire.claim_names.as_deref(),
         },
         meter,
     )?;

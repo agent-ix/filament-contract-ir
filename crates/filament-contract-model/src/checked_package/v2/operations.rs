@@ -1663,6 +1663,7 @@ struct ClauseLeaves<'g> {
     stamp: Vec<usize>,
     /// The `body` wrapper node of every `claim`/`hyperproperty` node.
     wrappers: Vec<&'g CheckedNodeId>,
+    reach: super::graph_storage::Stamps,
 }
 
 impl<'g> ClauseLeaves<'g> {
@@ -1697,7 +1698,40 @@ impl<'g> ClauseLeaves<'g> {
             pending: meter.vec(graph.nodes.len())?,
             stamp: meter.filled(graph.nodes.len(), 0_usize)?,
             wrappers,
+            reach: super::graph_storage::Stamps::new(graph.nodes.len(), meter)?,
         })
+    }
+
+    /// The number of distinct slot names the wrapper formula at `formula`
+    /// reads: the `n` of its slot scope.
+    fn slot_count(
+        &mut self,
+        formula: &CheckedNodeId,
+        graph: &Graph<'g>,
+        meter: &mut WorkMeter,
+    ) -> Result<usize, ValidationFailure> {
+        let Some(start) = graph.index.get(formula).copied() else {
+            return Ok(0);
+        };
+        let scope = super::temporal::wrapper_slot_scope(
+            start,
+            graph.nodes,
+            graph.kinds,
+            graph.index,
+            graph.terms,
+            &mut self.reach,
+            meter,
+        )?;
+        let mut count = 0;
+        let mut previous: Option<&str> = None;
+        for slot in scope {
+            let name = super::temporal::slot_name(graph.kinds.get(slot), graph.terms.get(slot));
+            if name != previous {
+                count += 1;
+            }
+            previous = name;
+        }
+        Ok(count)
     }
 
     /// The levels a `seq` binder takes at the leaves of one temporal clause
@@ -1715,10 +1749,11 @@ impl<'g> ClauseLeaves<'g> {
     /// - the initializer of capture `k`: over `over`, the trigger and the
     ///   captures declared before `k`.
     ///
-    /// A hyper body wrapper (FSpec FR-402) is read over its atom slots, a
-    /// count the wire does not carry, so a target reachable from one is
-    /// refused rather than given the single-trace base. Returns false when
-    /// two places give the target different levels, or when it is refused.
+    /// A hyper body wrapper (FSpec FR-402 "Wrapper slot scope") has no `over`
+    /// parameter, trigger or captures: its binders in scope are the `n` slot
+    /// parameters its formula reads, so a binder in a leaf of it starts at
+    /// level `n`. Returns false when two places give the target different
+    /// levels.
     #[ix_trace_rs::string_edge]
     fn levels(
         &mut self,
@@ -1800,12 +1835,30 @@ impl<'g> ClauseLeaves<'g> {
             work_at_path(meter, &application.read_node().key("node_id"), 1)?;
             wrapper |= graph.index.get(held).copied() == Some(clause);
         }
-        for &(root, root_scope) in &self.roots {
+        let mut slots: Option<usize> = None;
+        for index in 0..self.roots.len() {
+            let (root, root_scope) = self.roots[index];
             if let Some(depth) = expression_scope_depth(root, target, graph, application, meter)? {
                 let Some(level) = root_scope.checked_add(depth) else {
                     return Ok(false);
                 };
-                if wrapper || found.is_some_and(|previous| previous != level) {
+                let level = if wrapper {
+                    let slots = match slots {
+                        Some(slots) => slots,
+                        None => {
+                            let counted = self.slot_count(formula, graph, meter)?;
+                            slots = Some(counted);
+                            counted
+                        }
+                    };
+                    let Some(level) = slots.checked_add(depth) else {
+                        return Ok(false);
+                    };
+                    level
+                } else {
+                    level
+                };
+                if found.is_some_and(|previous| previous != level) {
                     return Ok(false);
                 }
                 *found = Some(level);
