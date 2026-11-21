@@ -1205,18 +1205,21 @@ impl ClauseScratch {
     }
 }
 
-/// Whether `name` is the reserved encoding of a slot parameter, a
-/// `value`/`parameter` name FSpec FR-402 "Slot parameters" (FR-402-AC-9)
-/// reserves for a `behaviours` clause's per-trace state and step labels.
+/// Whether `name` is in the reserved slot form, a `value`/`parameter` name
+/// FSpec FR-402 "Reserved slot names" (FR-402-AC-12) reserves for a
+/// `behaviours` clause's per-trace state and step labels.
 ///
 /// The form is a tag, then `_s` and one field for each of the tag's fields:
 /// `slot` takes 2 (`slot_s<p>_s<t>`), `op` and `rcv` take 1 (`op_s<t>`,
-/// `rcv_s<t>`) and `arg` takes 4 (`arg_s<t>_s<T>_s<n>_s<p>`). A field is the
-/// non-empty `esc` of a source name: each ASCII letter or digit stands for
-/// itself, `_` is written `__`, and every other byte is `_x` followed by two
-/// uppercase hexadecimal digits, the escaped bytes forming valid UTF-8.
-/// `slot_sv_sa`, `op_sa` and `arg_sa_sVault_sstep_si` are slot parameters;
-/// `slot_sv`, `op_sa_sb`, `op_sa_x4a` and `slotted` are not.
+/// `rcv_s<t>`) and `arg` takes 4 (`arg_s<t>_s<T>_s<n>_s<p>`). A field is one
+/// or more units: an ASCII letter or digit, `__`, or `_x` and two uppercase
+/// hexadecimal digits, the bytes the units decode to forming valid UTF-8.
+///
+/// This decides the decoder's accepted set, which is wider than the names the
+/// encoder writes: a non-canonical escape such as `op_s_x41` (the field `A`)
+/// is reserved too. `slot_sv_sa`, `op_sa`, `arg_sa_sVault_sstep_si` and
+/// `op_s_x41` are in the form; `slot_sv`, `op_sa_sb`, `op_sa_x4a` and
+/// `slotted` are not.
 ///
 /// A source identifier in this form collides with a producer-written slot
 /// parameter, so a checker refuses one by this rule, the reader's own.

@@ -5567,9 +5567,9 @@ fn tc_048_a_seq_binder_in_a_clause_leaf_resolves_its_level_from_the_binders_in_s
     }
 }
 
-/// FSpec FR-402-AC-9: the public `is_slot_parameter_name` recognizes exactly
-/// the reserved slot-parameter encoding, as the reader does.
-#[trace("TC-486", "FR-038-AC-563")]
+/// FSpec FR-402-AC-12: the public `is_slot_parameter_name` recognizes exactly
+/// the reserved slot form, as the reader does, non-canonical escapes included.
+#[trace("TC-2082", "FR-402-AC-12")]
 #[test]
 fn is_slot_parameter_name_accepts_the_reserved_forms_and_refuses_near_misses() {
     use filament_contract_model::is_slot_parameter_name;
@@ -5585,6 +5585,9 @@ fn is_slot_parameter_name_accepts_the_reserved_forms_and_refuses_near_misses() {
         "op_s_xC3_xA9",
         "op_sa__",
         "op_s_x00",
+        // Non-canonical escapes the decoder accepts are reserved too.
+        "op_s_x41",
+        "op_sx",
         // A field may itself begin with `s` or `x`.
         "op_ssx",
         "slot_sx_sx",
