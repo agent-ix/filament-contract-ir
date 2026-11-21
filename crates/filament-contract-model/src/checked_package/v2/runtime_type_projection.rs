@@ -1141,6 +1141,34 @@ impl CheckedPackageV2 {
             let mut enums = Vec::new();
             for row in identities.model_enum_rows() {
                 ctx.charge_structural_id(&row.structural_node, "selected_enum_output")?;
+                ctx.charge_work(
+                    &row.structural_node,
+                    "selected_enum_output",
+                    row.selected_document.len(),
+                )?;
+                ctx.charge_work(
+                    &row.structural_node,
+                    "selected_enum_output",
+                    row.original_identity.len(),
+                )?;
+                for case in &row.cases {
+                    ctx.charge_structural_id(&case.structural_node, "selected_enum_case_output")?;
+                    ctx.charge_work(
+                        &case.structural_node,
+                        "selected_enum_case_output",
+                        case.case.len(),
+                    )?;
+                    ctx.charge_work(
+                        &case.structural_node,
+                        "selected_enum_case_output",
+                        case.member_original_identity.len(),
+                    )?;
+                    ctx.charge_work(
+                        &case.structural_node,
+                        "selected_enum_case_output",
+                        case.variant.case().len(),
+                    )?;
+                }
                 ctx.charge_storage(native_join_storage::model_enum_shape(row).saturating_add(1))?;
                 enums.push(row.clone());
             }

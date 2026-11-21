@@ -1359,27 +1359,13 @@ impl SelectedExactIdentities {
         rows: super::SelectedModelEnumRows<'_>,
         budget: &mut NativeJoinBudget,
     ) -> Result<Self, ExactTypeProjectionError> {
-        self.with_model_enum_rows_for_nodes(
-            package,
-            rows,
-            package.models.selected_declarations().map(|(id, _)| id),
-            budget,
-        )
-    }
-
-    pub(super) fn with_model_enum_rows_for_nodes<'a>(
-        self,
-        package: &CheckedPackageV2,
-        rows: super::SelectedModelEnumRows<'_>,
-        required: impl IntoIterator<Item = &'a CheckedNodeId>,
-        budget: &mut NativeJoinBudget,
-    ) -> Result<Self, ExactTypeProjectionError> {
         let before = budget.begin();
         let previous_locus = budget.active_locus();
         let result = (|| {
             if let Some(first) = package.resolved_graph().nodes.first() {
                 self.check_binding(package, budget, &first.node_id)?;
             }
+            let required = package.models.selected_declarations().map(|(id, _)| id);
             let shapes =
                 super::model_enum_witness::join_shapes_runtime(package, rows, required, budget)
                     .map_err(|error| match error {
