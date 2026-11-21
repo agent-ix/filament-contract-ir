@@ -2611,9 +2611,7 @@ fn tc_492_a_read_of_another_same_named_binder_is_refused() {
     );
 }
 
-#[trace("TC-492", "FR-038-AC-595")]
-#[test]
-fn tc_492_a_binder_on_another_binding_is_refused() {
+fn stray_binder_case() -> Case {
     let mut case = ic_14_let();
     let node = case.node;
     let binder =
@@ -2629,7 +2627,13 @@ fn tc_492_a_binder_on_another_binding_is_refused() {
         .expect("g");
     function["body"]["members"][0]["binder"] = binder;
     case.node = position;
-    case.refuses(
+    case
+}
+
+#[trace("TC-492", "FR-038-AC-595")]
+#[test]
+fn tc_492_a_binder_on_another_binding_is_refused() {
+    stray_binder_case().refuses(
         "binder on a function body binding",
         Code::InvalidPackage,
         Cause::InvalidValue,
@@ -2870,9 +2874,23 @@ fn tc_492_linked_let_read_storage_is_accounted_at_exact_and_one_short() {
         NativeJoinBudget,
     };
     initialize_operation_catalog().expect("operation catalog");
+    let mut missing = ic_14_let();
+    edit_let(&mut missing, |node| {
+        let binder = node["body"]["arguments"][0]
+            .as_object_mut()
+            .expect("binding")
+            .remove("binder")
+            .expect("linked binder");
+        node["dependencies"]
+            .as_array_mut()
+            .expect("dependencies")
+            .retain(|id| *id != binder);
+    });
     for (label, case, admitted) in [
         ("linked", let_container_case("tuple_value", false), true),
         ("shared nested body", nested_linked_lets(128), true),
+        ("missing link diagnostic", missing, false),
+        ("stray link diagnostic", stray_binder_case(), false),
         (
             "wrong linked read",
             let_container_case("tuple_value", true),
