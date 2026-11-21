@@ -184,8 +184,8 @@ pub use identity::*;
 pub use lower::*;
 pub use model_enum_witness::{
     SelectedModelEnumDeclarationRow, SelectedModelEnumError, SelectedModelEnumErrorCode,
-    SelectedModelEnumMemberRow, SelectedModelEnumShapeCaseRow, SelectedModelEnumShapeRow,
-    SelectedModelEnums,
+    SelectedModelEnumMemberRow, SelectedModelEnumRows, SelectedModelEnumShapeCaseRow,
+    SelectedModelEnumShapeRow, SelectedModelEnums,
 };
 pub use model_fields::{
     CheckedCollectionKind, CheckedMemberType, CheckedModelField, CheckedModelFieldsError,

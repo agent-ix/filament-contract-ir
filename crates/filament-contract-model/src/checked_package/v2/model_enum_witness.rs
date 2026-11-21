@@ -100,6 +100,17 @@ pub struct SelectedModelEnumShapeCaseRow {
     pub variant: VariantId,
 }
 
+/// Producer evidence for a complete selected model enum acquisition.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct SelectedModelEnumRows<'a> {
+    /// Declaration identities issued by the selecting stage.
+    pub declarations: &'a [SelectedModelEnumDeclarationRow],
+    /// Member identities issued by that same stage.
+    pub members: &'a [SelectedModelEnumMemberRow],
+    /// Complete canonical shapes and their final admitted case nodes.
+    pub shapes: &'a [SelectedModelEnumShapeRow],
+}
+
 impl SelectedModelEnumMemberRow {
     /// Carry the checking stage's complete enum member claim.
     pub fn new(
@@ -277,31 +288,6 @@ impl<'a> SelectedModelEnums<'a> {
         .map_err(RuntimeEnumError::legacy)
     }
 
-    pub(super) fn from_stage_rows_runtime(
-        package: &'a CheckedPackageV2,
-        declarations: impl IntoIterator<Item = SelectedModelEnumDeclarationRow>,
-        members: impl IntoIterator<Item = SelectedModelEnumMemberRow>,
-        budget: &mut NativeJoinBudget,
-    ) -> Result<Self, RuntimeEnumError> {
-        let previous_locus = budget.active_locus();
-        budget.set_active_locus(Some(NativeJoinLocus {
-            source: NativeJoinLocusSource::Package,
-            form: "model_enum_join_storage",
-        }));
-        let result = Self::from_stage_rows_inner(
-            package,
-            declarations,
-            members,
-            &mut EnumMeter {
-                native: Some(budget),
-                consumed: 0,
-                limit: u64::MAX,
-            },
-        );
-        budget.set_active_locus(previous_locus);
-        result
-    }
-
     fn from_stage_rows_inner(
         package: &'a CheckedPackageV2,
         declarations: impl IntoIterator<Item = SelectedModelEnumDeclarationRow>,
@@ -345,7 +331,7 @@ impl<'a> SelectedModelEnums<'a> {
                 ));
             };
             if form != DeclarationForm::VariantType
-                || package.models.variant_family(node) != Some("enum")
+                || is_enum_runtime(package, node, meter)? != Some(true)
             {
                 return Err(meter.refusal(
                     SelectedModelEnumErrorCode::WrongForm,
@@ -572,26 +558,6 @@ impl<'a> SelectedModelEnums<'a> {
         )
         .map_err(RuntimeEnumError::legacy)
     }
-    pub(super) fn read_shape_runtime(
-        &self,
-        package: &CheckedPackageV2,
-        row: &SelectedModelEnumShapeRow,
-        budget: &mut NativeJoinBudget,
-    ) -> Result<u64, RuntimeEnumError> {
-        let previous_locus = budget.active_locus();
-        let result = self.read_shape_inner(
-            package,
-            row,
-            &mut EnumMeter {
-                native: Some(budget),
-                consumed: 0,
-                limit: u64::MAX,
-            },
-        );
-        budget.set_active_locus(previous_locus);
-        result
-    }
-
     fn read_shape_inner(
         &self,
         package: &CheckedPackageV2,
@@ -623,21 +589,63 @@ impl<'a> SelectedModelEnums<'a> {
                 meter.consumed,
             ));
         }
+        let selected = package
+            .models
+            .selected_declaration_entry(node)
+            .and_then(|entry| {
+                package
+                    .models
+                    .selected_models()
+                    .get(entry.selection)
+                    .and_then(|model| model.variant_types.get(&entry.node))
+            });
+        let Some(declared_cases) = selected else {
+            return Err(meter.refusal(
+                SelectedModelEnumErrorCode::UnavailableWitness,
+                node,
+                meter.consumed,
+            ));
+        };
+        meter.charge(node)?;
+        if declared_cases.len() != row.cases.len() {
+            return Err(meter.refusal(
+                SelectedModelEnumErrorCode::MismatchedWitness,
+                node,
+                meter.consumed,
+            ));
+        }
         meter.storage(1)?;
         let mut cases = BTreeSet::new();
-        for (index, (case, variant)) in row.cases.iter().zip(row.shape.variants()).enumerate() {
+        for (index, ((case, variant), canonical_name)) in row
+            .cases
+            .iter()
+            .zip(row.shape.variants())
+            .zip(declared_cases.keys())
+            .enumerate()
+        {
             meter.row(index, "model_enum_shape_case");
             meter.charge(&case.structural_node)?;
             meter.text(&case.member_original_identity)?;
             meter.text(case.variant.case())?;
             let member = self.read_member_inner(package, &case.structural_node, meter)?;
             meter.text(&case.case)?;
+            meter.text(canonical_name)?;
+            let canonical_position = if row.shape.is_ordered() {
+                declared_cases
+                    .get(&case.case)
+                    .is_some_and(|declared| declared.position == index)
+            } else {
+                &case.case == canonical_name
+            };
             meter.storage(1)?;
-            if member.declaration_node != *node
+            if !canonical_position
+                || member.declaration_node != *node
                 || member.case != case.case
                 || member.member_key != case.member_key
                 || member.member_original_identity != case.member_original_identity
                 || &case.variant != variant
+                || variant.owner() != &row.node_key
+                || variant.case() != case.case.as_ref()
                 || !cases.insert(&case.case)
             {
                 return Err(meter.refusal(
@@ -681,6 +689,119 @@ impl<'a> SelectedModelEnums<'a> {
         }
         Ok(())
     }
+}
+
+pub(super) fn join_shapes_runtime<'a>(
+    package: &CheckedPackageV2,
+    rows: SelectedModelEnumRows<'_>,
+    required: impl IntoIterator<Item = &'a CheckedNodeId>,
+    budget: &mut NativeJoinBudget,
+) -> Result<Vec<SelectedModelEnumShapeRow>, RuntimeEnumError> {
+    let mut meter = EnumMeter {
+        native: Some(budget),
+        consumed: 0,
+        limit: u64::MAX,
+    };
+    meter.storage(3)?;
+    let mut declarations = Vec::new();
+    for (index, row) in rows.declarations.iter().enumerate() {
+        meter.row(index, "model_enum_declaration_copy");
+        meter.inspect(&row.structural_node)?;
+        meter.text(&row.selected_document)?;
+        meter.text(&row.original_identity)?;
+        meter.storage(storage::model_enum_declaration(row).saturating_add(1))?;
+        declarations.push(row.clone());
+    }
+    let mut members = Vec::new();
+    for (index, row) in rows.members.iter().enumerate() {
+        meter.row(index, "model_enum_member_copy");
+        meter.inspect(&row.structural_node)?;
+        meter.inspect(&row.declaration_node)?;
+        meter.text(&row.selected_document)?;
+        meter.text(&row.enum_original_identity)?;
+        meter.text(&row.member_original_identity)?;
+        meter.text(&row.case)?;
+        meter.storage(storage::model_enum_member(row).saturating_add(1))?;
+        members.push(row.clone());
+    }
+    let enums =
+        SelectedModelEnums::from_stage_rows_inner(package, declarations, members, &mut meter)?;
+    let mut selected = Vec::new();
+    for (index, row) in rows.shapes.iter().enumerate() {
+        meter.row(index, "model_enum_shape_join");
+        meter.charge(&row.structural_node)?;
+        for previous in &selected {
+            let previous: &SelectedModelEnumShapeRow = previous;
+            meter.charge(&previous.structural_node)?;
+            if previous.structural_node == row.structural_node || previous.node_key == row.node_key
+            {
+                return Err(meter.refusal(
+                    SelectedModelEnumErrorCode::ConflictingWitness,
+                    &row.structural_node,
+                    meter.consumed,
+                ));
+            }
+        }
+        enums.read_shape_inner(package, row, &mut meter)?;
+        meter.inspect(&row.structural_node)?;
+        meter.text(&row.selected_document)?;
+        meter.text(&row.original_identity)?;
+        for case in &row.cases {
+            meter.inspect(&case.structural_node)?;
+            meter.text(&case.case)?;
+            meter.text(&case.member_original_identity)?;
+            meter.text(case.variant.case())?;
+        }
+        meter.storage(storage::model_enum_shape(row).saturating_add(1))?;
+        selected.push(row.clone());
+    }
+    for (index, id) in required.into_iter().enumerate() {
+        meter.row(index, "model_enum_required_shape");
+        meter.charge(id)?;
+        if is_enum_runtime(package, id, &mut meter)? != Some(true) {
+            continue;
+        }
+        let mut found = false;
+        for row in &selected {
+            meter.charge(&row.structural_node)?;
+            found |= &row.structural_node == id;
+        }
+        if !found {
+            return Err(meter.refusal(
+                SelectedModelEnumErrorCode::UnavailableWitness,
+                id,
+                meter.consumed,
+            ));
+        }
+    }
+    Ok(selected)
+}
+
+fn is_enum_runtime(
+    package: &CheckedPackageV2,
+    node: &CheckedNodeId,
+    meter: &mut EnumMeter<'_>,
+) -> Result<Option<bool>, RuntimeEnumError> {
+    let Some(entry) = package.models.selected_declaration_entry(node) else {
+        return Ok(None);
+    };
+    if entry.form != DeclarationForm::VariantType {
+        return Ok(None);
+    }
+    let Some(cases) = package
+        .models
+        .selected_models()
+        .get(entry.selection)
+        .and_then(|model| model.variant_types.get(&entry.node))
+    else {
+        return Ok(None);
+    };
+    let mut is_enum = true;
+    for case in cases.values() {
+        meter.charge(node)?;
+        is_enum &= case.payload.is_none();
+    }
+    Ok(Some(is_enum))
 }
 
 fn refusal(
