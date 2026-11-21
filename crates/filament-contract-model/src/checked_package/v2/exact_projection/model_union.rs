@@ -1887,3 +1887,314 @@ impl SelectedExactIdentities {
         )
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::super::super::model_members::{
+        CollectionKind as Kind, IntegerBounds, MemberType, RationalBounds, TextBounds,
+    };
+    use super::super::super::{
+        CheckedPackageReadLimits, CheckedPackageV2, CheckedPackageV2ReadResult,
+    };
+    use super::*;
+    use crate::CheckedPackageEvidence;
+    use ix_trace_rs::trace;
+
+    const CHECKED: &[u8] =
+        include_bytes!("../../../../../../tests/fixtures/model-enum-projection/checked.json");
+    const DOMAIN: &[u8] =
+        include_bytes!("../../../../../../tests/fixtures/model-enum-projection/domain.json");
+
+    fn package() -> Box<CheckedPackageV2> {
+        let mut evidence = CheckedPackageEvidence::new();
+        evidence
+            .insert_domain_package_document("example/config-version", DOMAIN)
+            .unwrap();
+        evidence.support_feature("filament.value.complete/v1");
+        match CheckedPackageV2::read(
+            &crate::checked_package::v2::monitor_plan::genuine_bytes_under_current_rules(CHECKED),
+            CheckedPackageReadLimits {
+                bytes: 67_108_864,
+                nodes: 1_000_000,
+                edges: 10_000_000,
+                occurrences: 10_000_000,
+                diagnostics: 10_000,
+                work: 1_000_000_000,
+            },
+            &evidence,
+        ) {
+            CheckedPackageV2ReadResult::Admitted(package) => package,
+            other => panic!("the genuine package must admit: {other:?}"),
+        }
+    }
+
+    fn at(package: &CheckedPackageV2) -> CheckedNodeId {
+        package.resolved_graph().nodes[0].node_id.clone()
+    }
+
+    fn ample() -> NativeJoinBudget {
+        NativeJoinBudget::new(u64::MAX, u64::MAX)
+    }
+
+    fn forms() -> Vec<MemberType> {
+        let rational = RationalBounds {
+            numerator_min: -3,
+            numerator_max: 5,
+            denominator_min: 1,
+            denominator_max: 9,
+        };
+        let unit: CheckedNodeId = serde_json::from_value(serde_json::json!({
+            "package": "example", "path": ["scalar_type", "unit"], "ordinal": 0
+        }))
+        .unwrap();
+        let wrapped = |member: MemberType| MemberType::Option(Box::new(member));
+        let bag = |member: MemberType, bounds| MemberType::Collection {
+            kind: Kind::Bag,
+            element: Box::new(member),
+            bounds,
+        };
+        vec![
+            MemberType::Boolean,
+            MemberType::Integer,
+            MemberType::Float32,
+            MemberType::Float64,
+            MemberType::String,
+            MemberType::Uuid,
+            MemberType::Timestamp,
+            MemberType::Bytes,
+            MemberType::JsonObject,
+            MemberType::ClockReference,
+            MemberType::IntRange(IntegerBounds {
+                lower: -4,
+                upper: 12,
+            }),
+            MemberType::RationalRange(rational),
+            MemberType::TextBounds(TextBounds {
+                lower: 1,
+                upper: 8,
+                profile: "nfc".into(),
+            }),
+            MemberType::CarriedRational(rational, unit),
+            wrapped(MemberType::Integer),
+            wrapped(MemberType::Float64),
+            bag(MemberType::String, None),
+            bag(MemberType::Bytes, Some((1, 4))),
+            wrapped(bag(
+                MemberType::IntRange(IntegerBounds { lower: 0, upper: 3 }),
+                Some((0, 2)),
+            )),
+            MemberType::Collection {
+                kind: Kind::OrderedSet,
+                element: Box::new(wrapped(MemberType::JsonObject)),
+                bounds: None,
+            },
+        ]
+    }
+
+    /// The native node builder derives exactly the structural ids the member
+    /// types own, for every payload form but the Clock marker.
+    #[trace("FR-352-AC-32")]
+    #[test]
+    fn payload_nodes_are_the_structural_ids_the_member_types_own() {
+        let package = package();
+        let here = at(&package);
+        for member in forms() {
+            let built = SelectedExactIdentities::model_union_payload_node(
+                &member,
+                "example",
+                &here,
+                &mut ample(),
+            )
+            .expect("an ample budget pays");
+            assert_eq!(
+                built.map(Cow::into_owned),
+                member.node_id("example"),
+                "{member:?}"
+            );
+        }
+        assert_eq!(
+            SelectedExactIdentities::model_union_payload_node(
+                &MemberType::Clock,
+                "example",
+                &here,
+                &mut ample()
+            )
+            .unwrap(),
+            None,
+            "the Clock marker names no node"
+        );
+        let direct = MemberType::Record(here.clone());
+        assert_eq!(
+            SelectedExactIdentities::model_union_payload_node(
+                &direct,
+                "example",
+                &here,
+                &mut ample()
+            )
+            .unwrap(),
+            Some(Cow::Borrowed(&here)),
+            "a declaration payload is its own node, borrowed"
+        );
+    }
+
+    /// Each id is paid for before it is built: a zero allowance builds nothing.
+    #[trace("FR-358-AC-20")]
+    #[test]
+    fn payload_node_allocations_are_charged_before_they_are_made() {
+        let package = package();
+        let here = at(&package);
+        let member = MemberType::Option(Box::new(MemberType::Integer));
+        for (work, storage, code) in [
+            (0, u64::MAX, "exhausted_work"),
+            (u64::MAX, 0, "exhausted_storage"),
+        ] {
+            let mut budget = NativeJoinBudget::new(work, storage);
+            let error = SelectedExactIdentities::model_union_payload_node(
+                &member,
+                "example",
+                &here,
+                &mut budget,
+            )
+            .expect_err("the first charge is denied");
+            assert_eq!(error.code.as_str(), code);
+            // The denied charge consumed nothing of its own resource (a refusal
+            // diagnostic is prepaid afterwards, on the other counter).
+            let used = if work == 0 {
+                budget.consumed().work
+            } else {
+                u64::try_from(budget.consumed().storage).unwrap()
+            };
+            assert_eq!(used, 0, "a denied charge consumes nothing");
+        }
+    }
+
+    fn expected(member: &MemberType) -> Result<ValueType, ExactTypeProjectionError> {
+        let package = package();
+        let here = at(&package);
+        SelectedExactIdentities::empty().model_union_expected_type(
+            &package,
+            member,
+            &here,
+            "/model_unions/0/cases/0/payload/node",
+            &mut ample(),
+        )
+    }
+
+    /// Every admitted non-Clock payload form has its Exact value type; the
+    /// native leaves are built here and the rest are read from the shared
+    /// member-type projection.
+    #[trace("FR-352-AC-32")]
+    #[test]
+    fn every_admitted_non_clock_payload_form_has_its_exact_value_type() {
+        let rational = RationalBounds {
+            numerator_min: -3,
+            numerator_max: 5,
+            denominator_min: 1,
+            denominator_max: 9,
+        };
+        assert_eq!(
+            expected(&MemberType::Float32).unwrap(),
+            ValueType::Float(FloatType::exact(IeeeWidth::Binary32))
+        );
+        assert_eq!(
+            expected(&MemberType::Float64).unwrap(),
+            ValueType::Float(FloatType::exact(IeeeWidth::Binary64))
+        );
+        assert_eq!(expected(&MemberType::Bytes).unwrap(), ValueType::Bytes);
+        assert_eq!(
+            expected(&MemberType::JsonObject).unwrap(),
+            ValueType::JsonObject
+        );
+        let domain = RationalDomain::new(
+            IntegerInterval::new(Integer::from(-3i64), Integer::from(5i64)).unwrap(),
+            IntegerInterval::new(Integer::from(1i64), Integer::from(9i64)).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            expected(&MemberType::RationalRange(rational)).unwrap(),
+            ValueType::Rational(domain)
+        );
+        assert_eq!(
+            expected(&MemberType::TextBounds(TextBounds {
+                lower: 1,
+                upper: 8,
+                profile: "nfc".into()
+            }))
+            .unwrap(),
+            ValueType::Text(TextType::new(1, 8, TextProfile::Nfc).unwrap())
+        );
+        for refused in [
+            MemberType::TextBounds(TextBounds {
+                lower: 1,
+                upper: 8,
+                profile: "not-a-profile".into(),
+            }),
+            MemberType::ClockReference,
+        ] {
+            let error = expected(&refused).expect_err("no faithful Exact type");
+            assert_eq!(error.code.as_str(), "unsupported_exact_type", "{refused:?}");
+            assert_eq!(
+                error.form.as_deref(),
+                Some("/model_unions/0/cases/0/payload/node")
+            );
+        }
+        // Wrapped payloads: Option and Collection around any leaf.
+        assert_eq!(
+            expected(&MemberType::Option(Box::new(MemberType::Bytes))).unwrap(),
+            ValueType::option(ValueType::Bytes)
+        );
+        assert_eq!(
+            expected(&MemberType::Collection {
+                kind: Kind::Set,
+                element: Box::new(MemberType::Float64),
+                bounds: Some((1, 3)),
+            })
+            .unwrap(),
+            ValueType::collection(CollectionType::new(
+                CollectionKind::Set,
+                ValueType::Float(FloatType::exact(IeeeWidth::Binary64)),
+                Some(CardinalityBound::new(1, 3).unwrap())
+            ))
+        );
+    }
+
+    /// The payload wrapper walk agrees with the record-field projector on every
+    /// wrapper over a leaf both support.
+    #[trace("FR-352-AC-32")]
+    #[test]
+    fn payload_wrappers_agree_with_the_record_field_projection() {
+        let package = package();
+        let here = at(&package);
+        let identities = SelectedExactIdentities::empty();
+        for member in forms().into_iter().filter(|member| {
+            let mut leaf = member;
+            while let MemberType::Option(inner) | MemberType::Collection { element: inner, .. } =
+                leaf
+            {
+                leaf = inner;
+            }
+            matches!(
+                leaf,
+                MemberType::Boolean
+                    | MemberType::Integer
+                    | MemberType::String
+                    | MemberType::IntRange(_)
+            )
+        }) {
+            let payload = identities
+                .model_union_expected_type(&package, &member, &here, "/p", &mut ample())
+                .unwrap();
+            let field = super::super::project_wrapped_record_field_type(
+                &package,
+                &identities,
+                &here,
+                &here,
+                &member,
+                &mut ample(),
+                u64::MAX,
+            )
+            .unwrap();
+            assert_eq!(payload, field, "{member:?}");
+        }
+    }
+}
