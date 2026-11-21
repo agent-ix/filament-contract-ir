@@ -249,7 +249,7 @@ impl SelectedExactIdentities {
         Self::finish_source_join(result, budget, before)
     }
 
-    fn check_handle(
+    pub(super) fn check_handle(
         &self,
         key: &NodeKey,
         at: &CheckedNodeId,
@@ -299,6 +299,12 @@ impl SelectedExactIdentities {
         for row in self.source_enums.values() {
             compare(&row.declaration.structural_node, &row.declaration.node_key)?;
         }
+        for row in self.model_enum_shapes.values() {
+            compare(&row.structural_node, &row.node_key)?;
+            for case in &row.cases {
+                compare(&case.structural_node, &case.member_key)?;
+            }
+        }
         Ok(())
     }
 
@@ -309,6 +315,38 @@ impl SelectedExactIdentities {
         at: &CheckedNodeId,
         budget: &mut NativeJoinBudget,
     ) -> Result<(), ExactTypeProjectionError> {
+        for row in self.model_enum_shapes.values() {
+            charge_native_work(
+                budget,
+                at,
+                &row.structural_node,
+                "source_model_enum_handle_owner",
+                1,
+            )?;
+            if &row.node_key == key {
+                return Err(binding_error(
+                    at,
+                    ExactTypeProjectionErrorCode::ConflictingIdentityWitness,
+                    budget,
+                ));
+            }
+            for case in &row.cases {
+                charge_native_work(
+                    budget,
+                    at,
+                    &case.structural_node,
+                    "source_model_enum_handle_owner",
+                    1,
+                )?;
+                if &case.member_key == key {
+                    return Err(binding_error(
+                        at,
+                        ExactTypeProjectionErrorCode::ConflictingIdentityWitness,
+                        budget,
+                    ));
+                }
+            }
+        }
         for (id, row) in self.admitted_tuples.iter() {
             charge_native_work(budget, at, id, "source_admitted_handle_owner", 1)?;
             if &row.node_key == key {

@@ -896,7 +896,24 @@ impl CheckedPackageV2 {
                 }
                 if declaration.form == DeclarationForm::VariantType {
                     ctx.charge_structural_id(id, "selected_variant")?;
-                    if self.models.variant_family(id) == Some("enum") {
+                    let cases = self
+                        .models
+                        .selected_models()
+                        .get(declaration.selection)
+                        .and_then(|model| model.variant_types.get(&declaration.node))
+                        .ok_or_else(|| {
+                            ctx.error(
+                                ExactTypeProjectionErrorCode::UnresolvedSelectedDeclaration,
+                                id,
+                                "selected_variant",
+                            )
+                        })?;
+                    let mut is_enum = true;
+                    for case in cases.values() {
+                        ctx.charge(id, "selected_variant_case")?;
+                        is_enum &= case.payload.is_none();
+                    }
+                    if is_enum {
                         let mut found = false;
                         for row in identities.model_enum_rows() {
                             ctx.charge(&row.structural_node, "selected_variant")?;

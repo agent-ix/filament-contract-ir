@@ -488,6 +488,64 @@ fn model_enum_runtime_rejects_missing_conflicting_foreign_and_incomplete_witness
         ExactTypeProjectionErrorCode::UnavailableIdentityWitness
     );
     assert_eq!(error.at.as_deref(), Some(&shape.structural_node));
+    for (declaration_rows, member_rows, expected) in [
+        (
+            &declarations[..0],
+            &members[..],
+            ExactTypeProjectionErrorCode::UnavailableIdentityWitness,
+        ),
+        (
+            &declarations[..],
+            &members[..0],
+            ExactTypeProjectionErrorCode::UnavailableIdentityWitness,
+        ),
+    ] {
+        let error = runtime_identities(&package, &mut budget)
+            .with_admitted_model_enum_rows(
+                &package,
+                SelectedModelEnumRows {
+                    declarations: declaration_rows,
+                    members: member_rows,
+                    shapes: std::slice::from_ref(&shape),
+                },
+                &mut budget,
+            )
+            .unwrap_err();
+        assert_eq!(error.code, expected);
+        assert_eq!(budget.last_success_delta(), None);
+    }
+    let rows = SelectedModelEnumRows {
+        declarations: &declarations,
+        members: &members,
+        shapes: std::slice::from_ref(&shape),
+    };
+    let joined = runtime_identities(&package, &mut budget)
+        .with_admitted_model_enum_rows(&package, rows, &mut budget)
+        .unwrap();
+    assert_eq!(
+        joined
+            .clone()
+            .with_admitted_model_enum_rows(&package, rows, &mut budget)
+            .unwrap(),
+        joined
+    );
+    let mut changed_shape = shape.clone();
+    changed_shape.shape = EnumShape::new(true, shape.shape.variants().cloned());
+    let error = joined
+        .with_admitted_model_enum_rows(
+            &package,
+            SelectedModelEnumRows {
+                shapes: std::slice::from_ref(&changed_shape),
+                ..rows
+            },
+            &mut budget,
+        )
+        .unwrap_err();
+    assert_eq!(
+        error.code,
+        ExactTypeProjectionErrorCode::ConflictingIdentityWitness
+    );
+    assert_eq!(budget.last_success_delta(), None);
 }
 
 #[trace("FR-354-AC-1", "FR-354-AC-2", "FR-354-AC-6", "FR-352-AC-30")]

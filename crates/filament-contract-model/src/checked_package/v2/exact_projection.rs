@@ -1478,30 +1478,9 @@ impl SelectedExactIdentities {
                     ));
                 }
             }
-            for declaration in self.declarations.values() {
-                charge_native_work(
-                    budget,
-                    node,
-                    &declaration.structural_node,
-                    "model_enum_key",
-                    1,
-                )?;
-                let key = match &declaration.exact_identity {
-                    SelectedExactIdentity::Record(key)
-                    | SelectedExactIdentity::Union(key)
-                    | SelectedExactIdentity::DeclaredUnit(UnitId::Declared(key)) => Some(key),
-                    SelectedExactIdentity::Object(_)
-                    | SelectedExactIdentity::DeclaredUnit(UnitId::Compound(_)) => None,
-                };
-                if key == Some(&row.node_key) {
-                    return Err(exact_diagnostic(
-                        budget,
-                        ExactTypeProjectionErrorCode::ConflictingIdentityWitness,
-                        node,
-                        Some(&declaration.structural_node),
-                        ExactDiagnosticForm::Literal("model_enum_key"),
-                    ));
-                }
+            self.check_handle(&row.node_key, node, Some(node), budget)?;
+            for case in &row.cases {
+                self.check_handle(&case.member_key, node, Some(&case.structural_node), budget)?;
             }
             charge_native_storage(
                 budget,
