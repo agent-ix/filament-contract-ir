@@ -50,6 +50,14 @@ Held clean (examined, no finding): atomic tuple-first join and single copy-on-wr
 
 Gates: no cargo was run by this reviewer (host thermal rule; no aggregate, workspace or clippy gates). Coder receipts read, not re-executed: /tmp/ir2743-t4.log (conformance_fspec model_union_witness, 4 passed) and /tmp/ir2743-t5.log (exact_projection, 16 passed). t4 is timestamped 06:51 and head 31a74a3 was committed 06:55, so the receipt may predate the final commit by one edit.
 
+## New findings (disposition pass 2)
+
+| ID | Severity | Summary | Refs |
+| --- | --- | --- | --- |
+| FND-019 | high | Two implementations of one rule (introduced in 758a2cc4d/1be399aa5). model_union_payload_node re-implements MemberType::node_id (the FR-322 step 4 structural-id derivation) form for form, so that it can charge before allocating. payload_nodes_are_the_structural_ids_the_member_types_own is a drift detector over that copy. model_union_expected_type re-implements the leaf and Option/Collection wrapper projection beside project_record_field_type, and the two now disagree: a Float32/Float64, Bytes, JsonObject, RationalRange, TextBounds or CarriedRational payload projects to an Exact type, while the same member type as a record field refuses UnsupportedExactType (exact_projection.rs:3448-3463). A fix to either derivation must be made twice. | crates/filament-contract-model/src/checked_package/v2/exact_projection/model_union.rs:1402-1660, 1667-1831; tests 1998-2038, 2165-2199 |
+| FND-020 | medium | Closure-edge charges never carry the row locus FR-358-AC-17 states. model_union_closure sets the active locus to NativeJoinLocusSource::Package with form model_union_closure or model_union_closure_type, and model_union_follow charges each edge under that locus, so an Ec-1 denial names Package, not the ModelUnionRow being closed or the edge (FR-830 B-02: its locus names that edge). budget_case_b02 only compares the denial with the baseline event's own locus, so it cannot fail on this. | crates/filament-contract-model/src/checked_package/v2/exact_projection/model_union.rs:333-337, 366-370, 391-395, 321 |
+| FND-021 | low | The test name and doc overclaim: 'every field form' covers only a direct and an optional record field. There is no object-type field, tuple position or collection field, so the name hides the gap recorded in FND-006. | crates/filament-contract-model/src/checked_package/v2/monitor_plan/reached_model_read.rs:4374-4377 |
+
 ## Dispositions
 
 | FND | outcome | reason |
@@ -57,6 +65,27 @@ Gates: no cargo was run by this reviewer (host thermal rule; no aggregate, works
 | FND-001 | still-open | Partial fix at 31a74a3: member/identifier vs member/declaration, the /model_unions/{k}/cases/{j} payload prefix and the R-01 structural_node pointer are corrected, and the refusal test now compares error.form with expected.locus. Still missing: every -TR- vector is exempted from the locus check, so tuple refusals keep the tuple-stage form selected_identity (TR-01..07) and TR-08 is unasserted; coverage vectors' expected.node is not compared with error.at. |
 | FND-008 | fixed | Fixed at 31a74a3; after_excerpt in the round-1 tracker comment. |
 | FND-012 | still-open | Partial fix at 31a74a3: the three rows now carry the Implemented (QSL-2743) status prefix. Still unchanged: FR-352-AC-31 still says a foreign selection refuses UnknownNode beside FR-352-AC-30's ForeignNode, and FR-358-AC-15 still says the common pass is charged before allocation although the preflight handle index is allocated first. |
+| FND-001 | fixed | Round 2 (head 16a686c). Fixed; the verbatim after_excerpt is in the round-2 data block below and in the round-2 tracker comment. |
+| FND-002 | fixed | Round 2 (head 16a686c). Fixed; the verbatim after_excerpt is in the round-2 data block below and in the round-2 tracker comment. |
+| FND-003 | fixed | Round 2 (head 16a686c). Fixed; the verbatim after_excerpt is in the round-2 data block below and in the round-2 tracker comment. |
+| FND-004 | fixed | Round 2 (head 16a686c). Fixed; the verbatim after_excerpt is in the round-2 data block below and in the round-2 tracker comment. |
+| FND-005 | still-open | Round 2 (head 16a686c). 758a2cc4d/1be399aa5/dc266979e implement node derivation and Exact types for Option, Collection, IntRange, RationalRange, TextBounds and CarriedRational, and ClockReference refusing unsupported_exact_type is contract-backed (filament-exact b26a8e4 ValueType has no clock-reference variant; FR-830 step 6: no faithful Exact representation is unsupported_exact_type). Still missing: no strict-admitted end-to-end join for any non-scalar admitted payload. any_admitted_non_clock_payload_is_joined_and_each_wrong_witness_is_refused covers seven scalars only; Option, IntRange, RationalRange, TextBounds, CarriedRational, Duration (Quantity of the duration unit) and enum-family payloads are reached only by unit calls on SelectedExactIdentities::empty(), and CarriedRational and enum payloads, which need unit or enum-shape witnesses, have no expected-type assertion. IR already strict-admits a Rational-range variant payload (TK-36, tests/conformance_fspec/model_tuple_union.rs:360), and the harness's document_patch can add such cases, so the read-only FSpec worktree is no blocker. |
+| FND-006 | still-open | Round 2 (head 16a686c). Fixed in part: runtime SelectedTypeDeclarations::unions() over real rows (runtime_selected_types_declare_each_joined_union_by_its_type_handle) and the reached monitor read with a real union row, direct and optional record fields, exact and one-below budget and the no-row refusal (reached_model_read.rs:4377). Still missing: no test projects an object-type field or a tuple position whose type is a model union. The object-field case was removed from the monitor fixture, and FR-352-AC-35 was narrowed to record fields instead of the obligation being evidenced. |
+| FND-007 | fixed | Round 2 (head 16a686c). Fixed; the verbatim after_excerpt is in the round-2 data block below and in the round-2 tracker comment. |
+| FND-009 | fixed | Round 2 (head 16a686c). Fixed; the verbatim after_excerpt is in the round-2 data block below and in the round-2 tracker comment. |
+| FND-010 | still-open | Round 2 (head 16a686c). Code changed (complete_witness.rs:626-640 re-validates every retained union row through validate_union_row; :755-764 requires a row per union-family node), but nothing evidences it. The only test, rebinding_a_reached_only_witness_is_refused_and_never_mutates_the_receiver, rebinds the MUW-03 witness, which holds only the Pair tuple row of fixture A's four (Cell, Nest, Pair, Swap). validate_completeness requires tuple rows at complete_witness.rs:751 before it reaches the union requirement at :762, so that refusal is selected_model_tuple and the union-completeness stage is never reached. There is no positive full rebind, no isolated missing-union rebind and no content re-validation refusal. FR-352-AC-37 was narrowed to the refusal half. |
+| FND-011 | fixed | Round 2 (head 16a686c). Fixed; the verbatim after_excerpt is in the round-2 data block below and in the round-2 tracker comment. |
+| FND-012 | fixed | Round 2 (head 16a686c). Fixed; the verbatim after_excerpt is in the round-2 data block below and in the round-2 tracker comment. |
+| FND-013 | fixed | Round 2 (head 16a686c). Fixed; the verbatim after_excerpt is in the round-2 data block below and in the round-2 tracker comment. |
+| FND-014 | fixed | Round 2 (head 16a686c). Fixed; the verbatim after_excerpt is in the round-2 data block below and in the round-2 tracker comment. |
+| FND-015 | fixed | Round 2 (head 16a686c). Fixed; the verbatim after_excerpt is in the round-2 data block below and in the round-2 tracker comment. |
+| FND-016 | fixed | Round 2 (head 16a686c). Fixed; the verbatim after_excerpt is in the round-2 data block below and in the round-2 tracker comment. |
+| FND-017 | fixed | Round 2 (head 16a686c). Fixed; the verbatim after_excerpt is in the round-2 data block below and in the round-2 tracker comment. |
+| FND-018 | fixed | Round 2 (head 16a686c). Fixed; the verbatim after_excerpt is in the round-2 data block below and in the round-2 tracker comment. |
+
+## Disposition round 2 verdict
+
+**FAIL — MERGEABLE=FALSE.** Round 2 (head 16a686c): 14 of the 17 open findings are fixed. Still open: FND-005 (no strict-admitted end-to-end join for non-scalar admitted payloads), FND-006 (no object-field or tuple-position union projection), FND-010 (validate_and_rebind union stage and positive rebind unevidenced). New: FND-019 high (duplicated id derivation and projection, already divergent from record fields), FND-020 medium (closure-edge locus is Package, not the row FR-358-AC-17 names), FND-021 low. The tc_058 public_interface failure fails identically on origin/main 743b5e5f1, so it is not attributed to this PR.
 
 ## Machine-readable data
 
@@ -445,5 +474,150 @@ Gates: no cargo was run by this reviewer (host thermal rule; no aggregate, works
     }
   ],
   "bindings": []
+}
+```
+
+## Disposition round 2 data
+
+```yaml
+{
+  "round": 2,
+  "head": "16a686c7641e9b07841c130d28ad26ebf1a198a1",
+  "dispositions": [
+    {
+      "fnd": "FND-001",
+      "outcome": "fixed",
+      "after_excerpt": "        let want = row[\"expected\"][\"locus\"].as_str().expect(\"locus\");\n        let (code, locus, at) = match prepare(&vectors, id) {\n            Err((code, locus)) => (code, locus.unwrap_or_default(), None),\n            Ok(prepared) => match join(&prepared, &mut ample()).0 {\n                Ok(_) => (\"admitted\".to_owned(), String::new(), None),\n                Err(error) => (\n                    error.code.as_str().to_owned(),\n                    error.form.as_deref().unwrap_or_default().to_owned(),\n                    error.at.map(|node| *node),\n                ),\n            },\n        };"
+    },
+    {
+      "fnd": "FND-002",
+      "outcome": "fixed",
+      "after_excerpt": "    // Ec-1: the denied charge is the last closure edge, before any row joins.\n    let denied = probe(&prepared, ec - 1, u64::MAX);\n    assert_denied_at(&denied, &base.events, ec_at, \"Ec-1\");\n    assert!(\n        denied.events.iter().all(|event| !matches!(\n            form_of(event),\n            \"model_tuple_row\" | \"model_union_row\" | \"model_union_retain\"\n        )),\n        \"Ec-1: no row has been joined\"\n    );"
+    },
+    {
+      "fnd": "FND-003",
+      "outcome": "fixed",
+      "after_excerpt": "        assert_eq!(\n            sorted(retained_unions(&joined)),\n            sorted(want_unions),\n            \"{id}: union set\"\n        );\n        assert_eq!(\n            sorted(retained_tuples(&joined)),\n            sorted(want_tuples),\n            \"{id}: tuple set\"\n        );\n        assert!(\n            !retained_unions(&joined).is_empty(),\n            \"{id}: a positive retains union rows, never nothing\"\n        );"
+    },
+    {
+      "fnd": "FND-004",
+      "outcome": "fixed",
+      "after_excerpt": "        for (k, row) in tuple_rows.iter().enumerate() {\n            at_locus(\n                budget,\n                NativeJoinLocusSource::ModelTupleRow(k),\n                \"model_tuple_handle\",\n            );\n            let owner = Owner::Row(Channel::Tuple, k);\n            let node = &row.structural_node;\n            index.add(\n                first,\n                node,\n                &row.node_key,\n                owner,\n                \"model_tuple_handle\",\n                budget,\n            )?;\n        }"
+    },
+    {
+      "fnd": "FND-005",
+      "outcome": "still-open",
+      "reason": "758a2cc4d/1be399aa5/dc266979e implement node derivation and Exact types for Option, Collection, IntRange, RationalRange, TextBounds and CarriedRational, and ClockReference refusing unsupported_exact_type is contract-backed (filament-exact b26a8e4 ValueType has no clock-reference variant; FR-830 step 6: no faithful Exact representation is unsupported_exact_type). Still missing: no strict-admitted end-to-end join for any non-scalar admitted payload. any_admitted_non_clock_payload_is_joined_and_each_wrong_witness_is_refused covers seven scalars only; Option, IntRange, RationalRange, TextBounds, CarriedRational, Duration (Quantity of the duration unit) and enum-family payloads are reached only by unit calls on SelectedExactIdentities::empty(), and CarriedRational and enum payloads, which need unit or enum-shape witnesses, have no expected-type assertion. IR already strict-admits a Rational-range variant payload (TK-36, tests/conformance_fspec/model_tuple_union.rs:360), and the harness's document_patch can add such cases, so the read-only FSpec worktree is no blocker."
+    },
+    {
+      "fnd": "FND-006",
+      "outcome": "still-open",
+      "reason": "Fixed in part: runtime SelectedTypeDeclarations::unions() over real rows (runtime_selected_types_declare_each_joined_union_by_its_type_handle) and the reached monitor read with a real union row, direct and optional record fields, exact and one-below budget and the no-row refusal (reached_model_read.rs:4377). Still missing: no test projects an object-type field or a tuple position whose type is a model union. The object-field case was removed from the monitor fixture, and FR-352-AC-35 was narrowed to record fields instead of the obligation being evidenced."
+    },
+    {
+      "fnd": "FND-007",
+      "outcome": "fixed",
+      "after_excerpt": "        for (k, row) in union_rows.iter().enumerate() {\n            at_locus(\n                budget,\n                NativeJoinLocusSource::ModelUnionRow(k),\n                \"model_union_handle\",\n            );\n            let owner = Owner::Row(Channel::Union, k);\n            let node = &row.structural_node;\n            index.add(first, node, &row.type_handle, owner, form, budget)?;\n            if row.settled_key != row.type_handle {\n                index.add(first, node, &row.settled_key, owner, form, budget)?;\n            }\n        }"
+    },
+    {
+      "fnd": "FND-009",
+      "outcome": "fixed",
+      "after_excerpt": "        // The one clone of the identities this join returns, paid once.\n        charge_native_storage(\n            budget,\n            first,\n            first,\n            \"selected_identity_handles\",\n            storage::selected_clone(),\n        )?;"
+    },
+    {
+      "fnd": "FND-010",
+      "outcome": "still-open",
+      "reason": "Code changed (complete_witness.rs:626-640 re-validates every retained union row through validate_union_row; :755-764 requires a row per union-family node), but nothing evidences it. The only test, rebinding_a_reached_only_witness_is_refused_and_never_mutates_the_receiver, rebinds the MUW-03 witness, which holds only the Pair tuple row of fixture A's four (Cell, Nest, Pair, Swap). validate_completeness requires tuple rows at complete_witness.rs:751 before it reaches the union requirement at :762, so that refusal is selected_model_tuple and the union-completeness stage is never reached. There is no positive full rebind, no isolated missing-union rebind and no content re-validation refusal. FR-352-AC-37 was narrowed to the refusal half."
+    },
+    {
+      "fnd": "FND-011",
+      "outcome": "fixed",
+      "after_excerpt": "fn absent_node(\n    package: &CheckedPackageV2,\n    budget: &mut NativeJoinBudget,\n    node: &CheckedNodeId,\n    pointer: &str,\n) -> ExactTypeProjectionError {\n    let code = if node.package == package.wire.name\n        || package.models.selected_model(&node.package).is_some()\n    {\n        ExactTypeProjectionErrorCode::UnknownNode\n    } else {\n        ExactTypeProjectionErrorCode::ForeignNode\n    };\n    fail(budget, code, node, pointer)\n}"
+    },
+    {
+      "fnd": "FND-012",
+      "outcome": "fixed",
+      "after_excerpt": "The model tuple and model union row join charges one shared `NativeJoinBudget` in the order: handle index over every supplied and retained handle of both channels, the common pass over every row, the reached closure edges, then the row join with retention for in-scope rows. A denied charge consumes nothing."
+    },
+    {
+      "fnd": "FND-013",
+      "outcome": "fixed",
+      "after_excerpt": "        let units = Self::model_union_scan_units(package, target);\n        charge_native_work(budget, start, target, \"model_union_closure_node\", units)?;\n        charge_native_storage(\n            budget,\n            start,\n            target,\n            \"model_union_closure\",\n            units.saturating_add(3),\n        )?;\n        visited.insert(target);\n        pending.push(target);\n        Ok(())"
+    },
+    {
+      "fnd": "FND-014",
+      "outcome": "fixed",
+      "after_excerpt": "            charge_native_storage(\n                budget,\n                id,\n                id,\n                \"model_union_row\",\n                row_units(row)\n                    .saturating_add(storage::node(id))\n                    .saturating_add(2),\n            )?;\n            Arc::make_mut(&mut self.model_unions).insert(id.clone(), Arc::new(row.clone()));"
+    },
+    {
+      "fnd": "FND-015",
+      "outcome": "fixed",
+      "after_excerpt": "                    let cases = package\n                        .models\n                        .selected_models()\n                        .get(entry.selection)\n                        .and_then(|model| model.variant_types.get(&entry.node))\n                        .map_or(0, |cases| cases.len());\n                    charge_native_work(\n                        budget,\n                        first,\n                        id,\n                        \"model_union_coverage_family\",\n                        u128::try_from(cases).unwrap_or(u128::MAX),\n                    )?;"
+    },
+    {
+      "fnd": "FND-016",
+      "outcome": "fixed",
+      "after_excerpt": "fn source_rows_stay_beside_model_rows_and_are_never_read_as_model_rows() {\n    let vectors = vectors();\n    let prepared = prepare(&vectors, \"MUW-19-source-union-row-beside-model-rows\").unwrap();\n    let (result, _) = join(&prepared, &mut ample());\n    let joined = unwrap_join(\"MUW-19\", result);\n    assert_eq!(\n        joined.source_union_rows().count(),\n        1,\n        \"the source union row stays\"\n    );\n    assert_eq!(\n        retained_unions(&joined),\n        vec![prepared.unions[0].structural_node.clone()],\n        \"only the model row of Link is retained\"\n    );"
+    },
+    {
+      "fnd": "FND-017",
+      "outcome": "fixed",
+      "after_excerpt": "        let want_node = row[\"expected\"]\n            .get(\"node\")\n            .filter(|node| !node.is_null())\n            .map(node_id);\n        if code != expected || locus != want || (want_node.is_some() && at != want_node) {\n            mismatches.push(format!(\n                \"{id}: expected {expected} at {want} node {want_node:?}, got {code} at {locus} node {at:?}\"\n            ));\n        }"
+    },
+    {
+      "fnd": "FND-018",
+      "outcome": "fixed",
+      "after_excerpt": "QSL-2743 adds the model-union row join (with_model_union_rows, model_tuple_rows, model_union_rows, model_union_row, SelectedTypeDeclarations::unions), the NativeJoinLocusSource variants ModelTupleRow and ModelUnionRow, and the required ReachedProducerRows/SelectedMonitorClosureRows field model_unions (breaking for literal constructors; pass an empty slice for a selection without model unions)"
+    }
+  ],
+  "new_findings": [
+    {
+      "fnd": "FND-019",
+      "severity": "high",
+      "confidence": "high",
+      "method": "code-review",
+      "check": "code-bug",
+      "artifact_id": "crates/filament-contract-model/src/checked_package/v2/exact_projection/model_union.rs::model_union_payload_node",
+      "related_ids": [
+        "FR-352-AC-32",
+        "FR-352-AC-35"
+      ],
+      "path": "crates/filament-contract-model/src/checked_package/v2/exact_projection/model_union.rs",
+      "lines": "1402-1660, 1667-1831; tests 1998-2038, 2165-2199",
+      "excerpt": "        let leaf_id = match leaf {\n            MemberType::Clock => return Ok(None),\n            MemberType::ClockReference => {\n                derived(budget, \"scalar_type\", \"clock_reference\", Vec::new(), 0, 0)?\n            }\n            MemberType::Record(id)\n            | MemberType::Tuple(id)\n            | MemberType::Variant(id)\n            | MemberType::Quantity(id) => {\n                charge_native_work(budget, at, at, \"model_union_payload_node\", node_units(id))?;\n                charge_native_storage(budget, at, at, \"model_union_payload_node\", node_units(id))?;",
+      "finding": "Two implementations of one rule (introduced in 758a2cc4d/1be399aa5). model_union_payload_node re-implements MemberType::node_id (the FR-322 step 4 structural-id derivation) form for form, so that it can charge before allocating. payload_nodes_are_the_structural_ids_the_member_types_own is a drift detector over that copy. model_union_expected_type re-implements the leaf and Option/Collection wrapper projection beside project_record_field_type, and the two now disagree: a Float32/Float64, Bytes, JsonObject, RationalRange, TextBounds or CarriedRational payload projects to an Exact type, while the same member type as a record field refuses UnsupportedExactType (exact_projection.rs:3448-3463). A fix to either derivation must be made twice."
+    },
+    {
+      "fnd": "FND-020",
+      "severity": "medium",
+      "confidence": "high",
+      "method": "code-review",
+      "check": "soundness",
+      "artifact_id": "FR-358-AC-17",
+      "related_ids": [
+        "FR-830-AC-11",
+        "FR-358-AC-19"
+      ],
+      "path": "crates/filament-contract-model/src/checked_package/v2/exact_projection/model_union.rs",
+      "lines": "333-337, 366-370, 391-395, 321",
+      "excerpt": "The reached closure charges one edge per typed member of every reached union (scalars included, `Clock` none); a budget one unit below the measured edges refuses at the `ModelUnionRow` locus of the row being closed.",
+      "finding": "Closure-edge charges never carry the row locus FR-358-AC-17 states. model_union_closure sets the active locus to NativeJoinLocusSource::Package with form model_union_closure or model_union_closure_type, and model_union_follow charges each edge under that locus, so an Ec-1 denial names Package, not the ModelUnionRow being closed or the edge (FR-830 B-02: its locus names that edge). budget_case_b02 only compares the denial with the baseline event's own locus, so it cannot fail on this."
+    },
+    {
+      "fnd": "FND-021",
+      "severity": "low",
+      "confidence": "high",
+      "method": "code-review",
+      "check": "other",
+      "artifact_id": "crates/filament-contract-model/src/checked_package/v2/monitor_plan/reached_model_read.rs::reached_read_joins_model_union_rows_and_projects_every_field_form",
+      "related_ids": [
+        "FR-352-AC-35"
+      ],
+      "path": "crates/filament-contract-model/src/checked_package/v2/monitor_plan/reached_model_read.rs",
+      "lines": "4374-4377",
+      "excerpt": "    /// as the composite its own `type_handle` names.\n    #[trace(\"FR-352-AC-35\", \"FR-358-AC-17\")]\n    #[test]\n    fn reached_read_joins_model_union_rows_and_projects_every_field_form() {",
+      "finding": "The test name and doc overclaim: 'every field form' covers only a direct and an optional record field. There is no object-type field, tuple position or collection field, so the name hides the gap recorded in FND-006."
+    }
+  ]
 }
 ```

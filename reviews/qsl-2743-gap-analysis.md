@@ -33,6 +33,26 @@ Planless gap analysis of the obligations PR 1117 changes (FR-352-AC-31, FR-358-A
 
 Reconciliation: quire matrix (quire 0.36.2, engine 0.50.2), no run evidence read. quoin matrix was not run because no evidence store is fed for this branch. Changed criteria: FR-352-AC-31 tagged (3 binders, model_union_witness.rs:387, 405, 496), FR-358-AC-15 untagged, FR-069-AC-11 untagged. quire coverage: 4 untracked symbols in model_union_witness.rs (FR-830-AC-1 x2, FR-830-AC-9, FR-830-AC-11). The scope is the changed obligations and their closure, not the whole repository; the pre-existing untagged FR-019-AC-27 is context only. Semantic review: not run as a separate fan-out; intent-to-test-to-code checks for these criteria are in the code-review SR. Plan completion: not assessed
 
+## New findings (disposition pass 2)
+
+| ID | Severity | Summary | Refs |
+| --- | --- | --- | --- |
+| FND-006 | low | Wrong bindings: runtime_selected_types_declare_each_joined_union_by_its_type_handle (model_union_witness.rs:1505) and reached_read_joins_model_union_rows_and_projects_every_field_form (reached_model_read.rs:4377) carry #[trace("FR-358-AC-17")] but assert no closure-edge count or edge-boundary locus. The reached read passes a caller-walked closure (Extent::Set), so the join charges no closure edges in it. Only the published-positive test (601) and budget_case_b02 (968) evidence AC-17. | spec/checked_package/functional/FR-358-compose-native-identity-join-budget.md:258; tests/conformance_fspec/model_union_witness.rs:1503-1505; crates/filament-contract-model/src/checked_package/v2/monitor_plan/reached_model_read.rs:4376 |
+
+## Dispositions
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-001 | fixed | Round 2 (head 16a686c). Fixed; the verbatim after_excerpt is in the round-2 data block below and in the round-2 tracker comment. |
+| FND-002 | fixed | Round 2 (head 16a686c). Fixed; the verbatim after_excerpt is in the round-2 data block below and in the round-2 tracker comment. |
+| FND-003 | fixed | Round 2 (head 16a686c). Fixed; the verbatim after_excerpt is in the round-2 data block below and in the round-2 tracker comment. |
+| FND-004 | still-open | Round 2 (head 16a686c). Fixed in part: retained sets, receiver-unchanged on refusal, ForeignNode and UnknownNode are now evidenced (model_union_witness.rs:601, 1647, 1672). Still missing: the object-field projection of an admitted union that the original FR-352-AC-31 required has no test. The new FR-352-AC-35 drops it ('a record field and an optional record field') rather than evidencing it (quire matrix 0.36.2 rerun at 16a686c). |
+| FND-005 | fixed | Round 2 (head 16a686c). Fixed; the verbatim after_excerpt is in the round-2 data block below and in the round-2 tracker comment. |
+
+## Disposition round 2 verdict
+
+**CONDITIONAL — MERGEABLE=FALSE.** Round 2 (head 16a686c): quire matrix 0.36.2 shows FR-352-AC-31..37, FR-358-AC-15..20 and FR-069-AC-11/12 all tagged, and no FR-830 tag remains untracked. FND-004 is still open (object-field projection evidence was removed with the criterion). New: FND-006 low (wrong FR-358-AC-17 bindings).
+
 ## Machine-readable data
 
 ```yaml
@@ -156,5 +176,58 @@ Reconciliation: quire matrix (quire 0.36.2, engine 0.50.2), no run evidence read
     }
   ],
   "bindings": []
+}
+```
+
+## Disposition round 2 data
+
+```yaml
+{
+  "round": 2,
+  "head": "16a686c7641e9b07841c130d28ad26ebf1a198a1",
+  "dispositions": [
+    {
+      "fnd": "FND-001",
+      "outcome": "fixed",
+      "after_excerpt": "#[trace(\"FR-352-AC-31\", \"FR-352-AC-35\", \"FR-358-AC-17\", \"FR-069-AC-11\")]\n#[test]\nfn published_positive_vectors_admit_with_exact_retained_sets_and_closure_edges() {"
+    },
+    {
+      "fnd": "FND-002",
+      "outcome": "fixed",
+      "after_excerpt": "#[trace(\"FR-358-AC-15\", \"FR-358-AC-18\")]\n#[test]\nfn budget_case_b01_full_baseline_denies_the_last_charge_of_each_counter() {"
+    },
+    {
+      "fnd": "FND-003",
+      "outcome": "fixed",
+      "after_excerpt": "#[trace(\"FR-352-AC-31\", \"FR-352-AC-35\", \"FR-358-AC-17\", \"FR-069-AC-11\")]\n#[test]\nfn published_positive_vectors_admit_with_exact_retained_sets_and_closure_edges() {"
+    },
+    {
+      "fnd": "FND-004",
+      "outcome": "still-open",
+      "reason": "Fixed in part: retained sets, receiver-unchanged on refusal, ForeignNode and UnknownNode are now evidenced (model_union_witness.rs:601, 1647, 1672). Still missing: the object-field projection of an admitted union that the original FR-352-AC-31 required has no test. The new FR-352-AC-35 drops it ('a record field and an optional record field') rather than evidencing it (quire matrix 0.36.2 rerun at 16a686c)."
+    },
+    {
+      "fnd": "FND-005",
+      "outcome": "fixed",
+      "after_excerpt": "A full scope refuses an uncovered union with `IncompleteIdentityWitness` at `/model_unions`, and a reached scope with `UnavailableIdentityWitness`. Direct projection, a record field and an optional record field of a joined union return `ValueType::Composite(type_handle)` and never an enum; the runtime selected-type declarations declare each joined union once, by that handle."
+    }
+  ],
+  "new_findings": [
+    {
+      "fnd": "FND-006",
+      "severity": "low",
+      "confidence": "high",
+      "method": "gap-analysis",
+      "check": "trace",
+      "artifact_id": "FR-358-AC-17",
+      "related_ids": [
+        "FR-352-AC-35"
+      ],
+      "path": "spec/checked_package/functional/FR-358-compose-native-identity-join-budget.md",
+      "lines": "258; tests/conformance_fspec/model_union_witness.rs:1503-1505; crates/filament-contract-model/src/checked_package/v2/monitor_plan/reached_model_read.rs:4376",
+      "excerpt": "The reached closure charges one edge per typed member of every reached union (scalars included, `Clock` none); a budget one unit below the measured edges refuses at the `ModelUnionRow` locus of the row being closed.",
+      "finding": "Wrong bindings: runtime_selected_types_declare_each_joined_union_by_its_type_handle (model_union_witness.rs:1505) and reached_read_joins_model_union_rows_and_projects_every_field_form (reached_model_read.rs:4377) carry #[trace(\"FR-358-AC-17\")] but assert no closure-edge count or edge-boundary locus. The reached read passes a caller-walked closure (Extent::Set), so the join charges no closure edges in it. Only the published-positive test (601) and budget_case_b02 (968) evidence AC-17."
+    }
+  ]
 }
 ```

@@ -3507,7 +3507,7 @@ mod tests {
                 .iter_mut()
                 .find(|ty| ty["identity"] == "ix://test/families/Receipt")
                 .unwrap();
-            receipt["fields"][0]["typeRef"] = serde_json::json!("ix://filament/native/Float32");
+            receipt["fields"][0]["typeRef"] = serde_json::json!("ix://filament/native/Clock");
         });
         let (decl, fields, units) = producer_rows(&package);
         let record = selected_node(&package, "ix://test/families/Receipt");

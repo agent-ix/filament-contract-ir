@@ -26,6 +26,17 @@ Integrity analysis (completeness, consistency, atomicity) of the changed IR rows
 | FND-001 | medium | FR-352-AC-31 is not atomic: it bundles row retention, tuple-first ordering, census and per-case checks, payload side-input joins, full and reached coverage codes, direct, record-field and object-field projection, foreign and missing refusals and receiver immutability. One tag claims all of them, which is how the untested clauses (record/object field, receiver, foreign) passed as covered. | spec/checked_package/functional/FR-352-project-admitted-exact-value-types.md:627 |
 | FND-002 | low | FR-358-AC-15 bundles three separately failing obligations (charge order of common pass, clone and prior copy; exact and one-below limits with no partial publish; zero budget before retention) in one criterion. | spec/checked_package/functional/FR-358-compose-native-identity-join-budget.md:256 |
 
+## Dispositions
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-001 | fixed | Round 2 (head 16a686c). Fixed; the verbatim after_excerpt is in the round-2 data block below and in the round-2 tracker comment. |
+| FND-002 | fixed | Round 2 (head 16a686c). Fixed; the verbatim after_excerpt is in the round-2 data block below and in the round-2 tracker comment. |
+
+## Disposition round 2 verdict
+
+**PASS for this artifact.** Round 2 (head 16a686c): both compound criteria are split into atomic rows (FR-352-AC-31..37, FR-358-AC-15..20). No new integrity finding; the narrowing defect is recorded in the base SR. The PR overall stays MERGEABLE=FALSE.
+
 ## Machine-readable data
 
 ```yaml
@@ -86,5 +97,27 @@ Integrity analysis (completeness, consistency, atomicity) of the changed IR rows
     }
   ],
   "bindings": []
+}
+```
+
+## Disposition round 2 data
+
+```yaml
+{
+  "round": 2,
+  "head": "16a686c7641e9b07841c130d28ad26ebf1a198a1",
+  "dispositions": [
+    {
+      "fnd": "FND-001",
+      "outcome": "fixed",
+      "after_excerpt": "The join admits in this order and refuses at the first failing stage: tuple row identity, union row identity, case census, per-case checks, payload original type against the witness table, then coverage."
+    },
+    {
+      "fnd": "FND-002",
+      "outcome": "fixed",
+      "after_excerpt": "The measured exact cumulative work and storage of the join succeed with the same result as an ample allowance, and one unit below either resource refuses with the typed exhausted kind."
+    }
+  ],
+  "new_findings": []
 }
 ```
