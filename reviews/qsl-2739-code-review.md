@@ -71,3 +71,18 @@ Disposition pass 1 covers fix commit 009c94728 at head 009c9472805e4a80d4851ccf0
 | FND-007 | fixed | The overlap check no longer depends on the declaration. Only the inside test is gated by `declaration.is_some_and(..)`. The AC-613 unit test covers an absent anchor: an overlap refuses at `/source_map/1` and disjoint members refuse at `/source_map`. |
 | FND-008 | fixed | The doc comment and Implements tag are back on `fn validate`. `CompositionSources` keeps its own doc. |
 | FND-009 | fixed | The `validate_declaration` doc now names `component_composition` as the one correspondence exception. |
+| FND-010 | fixed | Round 2 (ab57a9781, head 4d56f523a, no production change) adds two `charge_events` tests. They run the public `CheckedPackageV2::read` under `with_native_budget_observer`, recording admitted ReadStorage requests at `PackageRead(SourceMap, _)` form `source_map`. Only source_map.rs charges at that stage. The oracle is computed from the package alone: occurrences×3 words, entries×4, locked sources×1, and regions×4 per entry, which match the `Key`, `(Key, usize)`, `&CheckedSourceRef` and range tables. It must equal exactly one pass. Deleting the `source_map_checked` short-circuit (mod.rs:4332) fails the composition-plus-refinement test (40 requests vs 20, /tmp/qsl2739-mMOD1.log). Deleting the final skip (mod.rs:2305) fails both tests (/tmp/qsl2739-mMOD2.log). The sources were restored, and both tests pass on the head (2/2, rc=0). |
+
+## New findings (disposition pass 2)
+
+| ID | Severity | Summary | Refs |
+| --- | --- | --- | --- |
+| FND-011 | low | The doc comment of the new test helper `hosted()` says it returns "the package, its evidence and the number of `source_map` entries", but it returns `(Value, CheckedPackageEvidence)` only, so the doc describes a return value the code does not produce. | tests/it/checked_package_v2_guarantee_composition.rs:2504 |
+
+## Dispositions (round 3, administrative)
+
+Round 3 is an administrative lead decision, not a coder fix round. No code, test, spec or comment changed: the head is still 4d56f523a76a173bbb0482600e7281b5abf40152, clean. FND-011 was not corrected: the `hosted()` doc comment at tests/it/checked_package_v2_guarantee_composition.rs:2504-2505 still claims a third return value. The original FND-011 row above stands unedited.
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-011 | accepted-no-change | Lead decision, recorded verbatim: this is a non-normative comment on a test-only helper; its Rust return type explicitly and correctly states the two actual values, and callers/tests already use that two-tuple correctly. It affects no public API, production path, returned data, budget accounting, refusal or acceptance criterion. All behavioural and test-evidence findings are fixed and independently verified. The lead accepts this documentation-only discrepancy to close within the explicit two-coder-round cap and the arch closure order. |
