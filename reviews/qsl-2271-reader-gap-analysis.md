@@ -56,3 +56,9 @@ Round 1 is checked at frozen head 6df4aaf2c86160772eb39f8c9d736f2b8a3998b7: fix 
 | FND-001 | fixed | Fixed in c091064ca; after_excerpt in the round-1 dispositions comment. |
 | FND-002 | fixed | Fixed in c091064ca; after_excerpt in the round-1 dispositions comment. |
 | FND-003 | fixed | Fixed in c091064ca; after_excerpt in the round-1 dispositions comment. |
+
+Round 2 is checked at frozen head 60911d43afd91c971767d2abd4b3c9cd860b5e58: fix 60911d43a on merge-base origin/main 7e4f54095. The absent-member legacy test retained_dependency_and_package_allocations_are_denied_before_admission asserts that the result box is the last request, with exact and one-short denials. It now carries FR-378-AC-4, and quire matrix lists it as an AC-4 binder.
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-004 | fixed | Fixed in 60911d43a; after_excerpt in the round-2 dispositions comment. |
