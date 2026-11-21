@@ -231,3 +231,26 @@ bindings:
     ac_id: FR-354-AC-8
     trace: correct
 ```
+
+## Dispositions
+
+Round 1. Current repository gap verdict remains FAIL; baseline FND-001 is accepted without change for this PR only. This is not a repository assurance PASS.
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-001 | accepted-no-change | Explicit dispatching lead authorization for this scoped enum-only reader partial: 115 untagged criteria and one ignored-only criterion are preexisting repository assurance debt outside this PR. No engine-backed repository PASS is claimed. Global remediation or new tickets are not required by this bounded review. QSL-2743 remains open for producer integration, actual bare/source value parity, unused enum emission and the model-union carrier. |
+
+Evidence: supplied fix-round RED log reports the two new tests failing on the old implementation (permutation admitted; three enum field clones charged work 0/storage 3 versus independently expected 48/54). Final logs report six model_enum_runtime tests and one reached_enum_shape budget test passing. The reviewer inspected implementation and tests, checked diff whitespace and confirmed committed original SR files were byte-identical to the original scratch artifacts. No Cargo/build gate or source edit was run.
+
+```yaml
+dispositions:
+  - fnd: FND-001
+    outcome: accepted-no-change
+    reason: "Explicit dispatching lead authorization for this scoped enum-only
+      reader partial: 115 untagged criteria and one ignored-only criterion are
+      preexisting repository assurance debt outside this PR. No engine-backed
+      repository PASS is claimed. Global remediation or new tickets are not
+      required by this bounded review. QSL-2743 remains open for producer
+      integration, actual bare/source value parity, unused enum emission and the
+      model-union carrier."
+```

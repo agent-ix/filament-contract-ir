@@ -232,3 +232,49 @@ bindings:
     ac_id: FR-354-AC-8
     trace: correct
 ```
+
+## Dispositions
+
+Round 1. Current scoped reader verdict: CLEAR. Both original high findings are fixed; no new finding arose from inspecting the fix and adjacent copy/order paths.
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-001 | fixed | Shared authentication now compares unordered cases with retained sorted names and ordered cases with retained authored positions. Both-channel permutations refuse atomically; legitimate unordered lexicographic and ordered authored-reverse controls pass. |
+| FND-002 | fixed | Shared copy_enum_value_type precharges every copied variant/case byte for field and direct model/source reads. Full projection also preflights nested ValueType copies before declared-fields and record-view clones. Independent three-copy expectations are work 48/storage 54; exact succeeds and either one-short refuses. |
+
+Evidence: supplied fix-round RED log reports the two new tests failing on the old implementation (permutation admitted; three enum field clones charged work 0/storage 3 versus independently expected 48/54). Final logs report six model_enum_runtime tests and one reached_enum_shape budget test passing. The reviewer inspected implementation and tests, checked diff whitespace and confirmed committed original SR files were byte-identical to the original scratch artifacts. No Cargo/build gate or source edit was run.
+
+```yaml
+dispositions:
+  - fnd: FND-001
+    outcome: fixed
+    after_excerpt: |2-
+                  let canonical_position = if row.shape.is_ordered() {
+                      declared_cases
+                          .get(&case.case)
+                          .is_some_and(|declared| declared.position == index)
+                  } else {
+                      &case.case == canonical_name
+                  };
+    reason: Shared authentication now compares unordered cases with retained sorted
+      names and ordered cases with retained authored positions. Both-channel
+      permutations refuse atomically; legitimate unordered lexicographic and
+      ordered authored-reverse controls pass.
+  - fnd: FND-002
+    outcome: fixed
+    after_excerpt: |2-
+          storage::preflight_enum_shape(shape, budget, at)?;
+          charge_native_storage(
+              budget,
+              requested,
+              at,
+              form,
+              storage::enum_shape(shape).saturating_add(1),
+          )?;
+          Ok(ValueType::Enum(shape.clone()))
+    reason: Shared copy_enum_value_type precharges every copied variant/case byte
+      for field and direct model/source reads. Full projection also preflights
+      nested ValueType copies before declared-fields and record-view clones.
+      Independent three-copy expectations are work 48/storage 54; exact succeeds
+      and either one-short refuses.
+```
