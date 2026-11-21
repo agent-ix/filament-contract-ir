@@ -73,6 +73,16 @@ fn original_type(value: &Value) -> ValueType {
         "boolean" => ValueType::Boolean,
         "integer" => ValueType::Integer,
         "string" => ValueType::String,
+        "uuid" => ValueType::Uuid,
+        "timestamp" => ValueType::Timestamp,
+        "bytes" => ValueType::Bytes,
+        "json_object" => ValueType::JsonObject,
+        "float" => ValueType::Float(filament_exact::FloatType::exact(
+            match value["width"].as_u64() {
+                Some(32) => filament_exact::IeeeWidth::Binary32,
+                _ => filament_exact::IeeeWidth::Binary64,
+            },
+        )),
         "composite" => ValueType::Composite(key(&value["node"])),
         "quantity" => ValueType::Quantity(match value["unit"]["kind"].as_str() {
             Some("compound") => UnitId::Compound(
@@ -384,12 +394,25 @@ struct Prepared {
 type Staged = (String, Option<String>);
 
 fn prepare(vectors: &Value, id: &str) -> Result<Prepared, Staged> {
-    let case = resolve(vectors, id);
+    prepare_case(vectors, id, resolve(vectors, id), None)
+}
+
+/// `prepare` over an already resolved case, optionally with RFC 6902 operations
+/// applied to the checked package before the strict read.
+fn prepare_case(
+    vectors: &Value,
+    id: &str,
+    case: Case,
+    package_patch: Option<&Value>,
+) -> Result<Prepared, Staged> {
     let fixtures = fixtures_dir();
     let proposal = proposal_dir_of(&fixtures);
     let pair = &vectors["fixtures"][&case.fixtures];
-    let package = read_json(&proposal.join(pair["package"].as_str().expect("package")))
+    let mut package = read_json(&proposal.join(pair["package"].as_str().expect("package")))
         .expect("published package");
+    if let Some(operations) = package_patch {
+        patch(&mut package, operations);
+    }
     let mut document_value =
         read_json(&proposal.join(pair["document"].as_str().expect("document")))
             .expect("published document");
@@ -1262,4 +1285,154 @@ fn budget_case_b08_unreached_row_costs_only_common_index_work() {
     assert!(
         wide_run.consumed.0 > narrow_run.consumed.0 && wide_run.consumed.1 >= narrow_run.consumed.1
     );
+}
+
+// ---------------------------------------------------------------------------
+// FR-830 payload forms over strict admitted inputs: any admitted non-Clock
+// payload type, each backed by a real package node and document variant.
+// ---------------------------------------------------------------------------
+
+/// Add scalar node `form` to the strict-read package, with its source map entry.
+fn scalar_node_ops(form: &str) -> Value {
+    let node_id =
+        serde_json::json!({"ordinal": 0, "package": "example", "path": ["scalar_type", form]});
+    serde_json::json!([
+        {"op": "add", "path": "/semantic_graph/nodes/0", "value": {
+            "body": {"members": [], "term": "aggregate"},
+            "dependencies": [],
+            "node_id": node_id,
+            "node_tag": "scalar_type",
+            "occurrences": [{"ordinal": 0, "role": "type"}],
+            "schema_version": "filament.checked-semantic-graph/v2",
+            "semantic_form": form,
+            "semantic_type": node_id,
+        }},
+        {"op": "add", "path": "/source_map/0", "value": {
+            "node_id": node_id, "ordinal": 0, "role": "type",
+            "regions": [{"end": 1092, "source": {"authority": "agent-ix", "identity": "example"}, "start": 1088}],
+        }},
+    ])
+}
+
+/// MUW-07's Link with a Tick case whose payload is native type `native`
+/// (document spelling), node `form` and Exact original type `original`.
+fn link_with_payload(
+    vectors: &Value,
+    native: &str,
+    form: &str,
+    original: Value,
+    node_form: &str,
+) -> Result<Prepared, Staged> {
+    let mut case = resolve(vectors, "MUW-07-clock-payload");
+    let mut document_patch = case
+        .document_patch
+        .take()
+        .expect("MUW-07 patches the document");
+    document_patch[0]["value"]["payloadType"] = format!("ix://filament/native/{native}").into();
+    case.document_patch = Some(document_patch);
+    let cases = case.sidecar["model_unions"][0]["cases"]
+        .as_array_mut()
+        .expect("cases");
+    let mut tick = cases.pop().expect("a case");
+    if tick["name"] != "Tick" {
+        cases.push(tick.clone());
+        tick = cases[0].clone();
+    }
+    let node =
+        serde_json::json!({"package": "example", "path": ["scalar_type", form], "ordinal": 0});
+    let mut tick = tick;
+    tick["payload"] = serde_json::json!({"kind": "data", "node": node, "original_type": original});
+    case.sidecar["model_unions"][0]["cases"]
+        .as_array_mut()
+        .expect("cases")
+        .push(tick);
+    let ops = scalar_node_ops(node_form);
+    prepare_case(vectors, "link-with-payload", case, Some(&ops))
+}
+
+#[trace("FR-352-AC-32", "FR-352-AC-34")]
+#[test]
+fn any_admitted_non_clock_payload_is_joined_and_each_wrong_witness_is_refused() {
+    let vectors = vectors();
+    for (native, form, original) in [
+        (
+            "Float32",
+            "float32",
+            serde_json::json!({"kind": "float", "width": 32}),
+        ),
+        (
+            "Float64",
+            "float64",
+            serde_json::json!({"kind": "float", "width": 64}),
+        ),
+        ("Bytes", "bytes", serde_json::json!({"kind": "bytes"})),
+        (
+            "JsonObject",
+            "json_object",
+            serde_json::json!({"kind": "json_object"}),
+        ),
+        ("String", "string", serde_json::json!({"kind": "string"})),
+        ("UUID", "uuid", serde_json::json!({"kind": "uuid"})),
+        (
+            "Timestamp",
+            "timestamp",
+            serde_json::json!({"kind": "timestamp"}),
+        ),
+    ] {
+        let prepared = link_with_payload(&vectors, native, form, original.clone(), form)
+            .unwrap_or_else(|staged| panic!("{native}: {staged:?}"));
+        let (result, _) = join(&prepared, &mut ample());
+        let joined = unwrap_join(native, result);
+        let row = joined
+            .model_union_rows()
+            .next()
+            .expect("the Link row is retained");
+        let SelectedModelUnionPayload::Data { original_type, .. } = &row.cases[2].payload else {
+            panic!("{native}: the Tick payload is data");
+        };
+        assert_eq!(original_type, &self::original_type(&original), "{native}");
+        // The same payload with another form's Exact type is refused at the payload.
+        let wrong = if form == "bytes" {
+            "json_object"
+        } else {
+            "bytes"
+        };
+        let wrong_original = serde_json::json!({"kind": wrong});
+        let prepared = link_with_payload(&vectors, native, form, wrong_original, form).unwrap();
+        let (result, _) = join(&prepared, &mut ample());
+        let error = result.expect_err("a wrong original type refuses");
+        assert_eq!(
+            error.code.as_str(),
+            "mismatched_identity_witness",
+            "{native}"
+        );
+        assert_eq!(
+            error.form.as_deref(),
+            Some("/model_unions/0/cases/2/payload/original_type"),
+            "{native}"
+        );
+        // A payload node the package does not hold is unknown at the payload node.
+        let ops = serde_json::json!([]);
+        let mut case = resolve(&vectors, "MUW-07-clock-payload");
+        let mut document_patch = case.document_patch.take().unwrap();
+        document_patch[0]["value"]["payloadType"] = format!("ix://filament/native/{native}").into();
+        case.document_patch = Some(document_patch);
+        let tick = &mut case.sidecar["model_unions"][0]["cases"][2];
+        tick["payload"] = serde_json::json!({
+            "kind": "data",
+            "node": {"package": "example", "path": ["scalar_type", form], "ordinal": 0},
+            "original_type": original,
+        });
+        let prepared = prepare_case(&vectors, "absent-payload-node", case, Some(&ops)).unwrap();
+        {
+            let (result, _) = join(&prepared, &mut ample());
+            let error = result.expect_err("an absent payload node refuses");
+            assert_eq!(error.code.as_str(), "unknown_node", "{native}");
+            assert_eq!(
+                error.form.as_deref(),
+                Some("/model_unions/0/cases/2/payload/node"),
+                "{native}"
+            );
+        }
+    }
 }
