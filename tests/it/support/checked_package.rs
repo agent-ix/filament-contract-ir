@@ -2214,7 +2214,7 @@ pub fn fixture_source() -> Value {
 /// a node's occurrences cite is outside the identity preimage; a single
 /// locked source could never distinguish that from citing the same source
 /// again.
-fn fixture_secondary_source() -> Value {
+pub fn fixture_secondary_source() -> Value {
     source_ref(
         FIXTURE_SOURCE_AUTHORITY,
         "filament.fixture.source.secondary/v1",
@@ -3233,7 +3233,8 @@ pub fn refresh_claim_names(package: &mut Value) {
         let form = node["semantic_form"].as_str().unwrap_or_default();
         if !(tag == "claim"
             || (tag == "state" && form == "state_clause")
-            || (tag == "relation" && form == "refinement"))
+            || (tag == "relation" && form == "refinement")
+            || (tag == "correspondence" && form == "component_composition"))
         {
             continue;
         }
@@ -3261,6 +3262,17 @@ pub fn refresh_claim_names(package: &mut Value) {
                 "qualified_name": [scope, name],
                 "declaration_region": region,
             });
+            // FR-322 "Composition declaration names": a composition row
+            // repeats the node's declared path.
+            if form == "component_composition" {
+                let path = node["declaration"]["qualified_name"].clone();
+                row["name"] = path
+                    .as_array()
+                    .and_then(|path| path.last())
+                    .cloned()
+                    .expect("declared name");
+                row["qualified_name"] = path;
+            }
             // FR-322 "Hyper clause source unit": a hyper row names the unit
             // that declares the clause; the fixtures' units are the lock's.
             if tag == "claim" && form == "hyperproperty" {
@@ -3308,22 +3320,51 @@ fn source_map_for(nodes: &[Value], source: &Value) -> Value {
     let entries = nodes
         .iter()
         .enumerate()
-        .map(|(position, node)| {
+        .flat_map(|(position, node)| {
+            if node["semantic_form"] == "component_composition" {
+                return composition_entries(position, node, source);
+            }
             let occurrence = &node["occurrences"][0];
             let region = if is_model_declaration(node) {
                 root_position(&node["owner"]["identity"]).unwrap_or(position)
             } else {
                 position
             };
-            json!({
+            vec![json!({
                 "node_id": node["node_id"],
                 "role": occurrence["role"],
                 "ordinal": occurrence["ordinal"],
                 "regions": [{"source": source, "start": region, "end": region + 1}],
-            })
+            })]
         })
         .collect::<Vec<_>>();
     Value::Array(entries)
+}
+
+/// A composition node's entries: its whole declaration, then one region per
+/// occurrence inside it, in occurrence order. Tests that need other regions
+/// write their own literals after `settle`.
+fn composition_entries(position: usize, node: &Value, source: &Value) -> Vec<Value> {
+    let base = 10_000 * (position as u64 + 1);
+    node["occurrences"]
+        .as_array()
+        .expect("occurrences")
+        .iter()
+        .map(|occurrence| {
+            let (start, end) = if occurrence["role"] == "declaration" {
+                (base, base + 5_000)
+            } else {
+                let slot = base + 100 * (occurrence["ordinal"].as_u64().expect("ordinal") + 1);
+                (slot, slot + 50)
+            };
+            json!({
+                "node_id": node["node_id"],
+                "role": occurrence["role"],
+                "ordinal": occurrence["ordinal"],
+                "regions": [{"source": source, "start": start, "end": end}],
+            })
+        })
+        .collect()
 }
 
 /// The base lock/diagnostics/capability skeleton [`nominal_package`] overlays

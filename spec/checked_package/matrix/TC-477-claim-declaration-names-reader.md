@@ -63,6 +63,7 @@ from the shared V2 fixture. No FSpec vector is copied into this repository.
 13. Read a hyper clause with no row for its body wrapper, give the wrapper a
     `temporal_clause_names` row, and collide a hyper clause name with a temporal
     clause name over equal regions (FR-371-AC-11).
+14. Name a top-level composition and read its row, then break the row's name, region and occurrence one at a time (FR-371-AC-12); name the composition's `claim` occurrence (FR-371-AC-13) and an `implementation_guarantee` (FR-371-AC-14); read two compositions in both source-map orders and compare the literal regions (FR-371-AC-15).
 
 ## Expected Results
 

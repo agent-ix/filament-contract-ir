@@ -391,11 +391,14 @@ impl StructuralForm {
             ) => None,
             K::Correspondence(
                 CorrespondenceForm::AbstractionRelation
-                | CorrespondenceForm::ImplementationGuarantee
-                | CorrespondenceForm::ComponentComposition,
+                | CorrespondenceForm::ImplementationGuarantee,
             ) => Some(Self::AbstractionRelation),
+            // FSpec FR-491: a composition carries a `declaration` occurrence and
+            // generated member occurrences; the guarantee step checks its roles
+            // and coordinates, so no structural role is fixed here.
             K::Correspondence(
-                CorrespondenceForm::SourceLocus
+                CorrespondenceForm::ComponentComposition
+                | CorrespondenceForm::SourceLocus
                 | CorrespondenceForm::ModelCorrespondence
                 | CorrespondenceForm::BindingRole
                 | CorrespondenceForm::ProfileCorrespondence,
