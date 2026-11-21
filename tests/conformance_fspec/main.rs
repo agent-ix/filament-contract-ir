@@ -86,6 +86,7 @@ use checked_package_v2_map_type as map_type;
 mod claim_names;
 mod model_root;
 mod model_tuple_union;
+mod model_union_witness;
 mod monitor_plan;
 #[path = "../it/support/monitor_plan.rs"]
 mod monitor_plan_fixtures;

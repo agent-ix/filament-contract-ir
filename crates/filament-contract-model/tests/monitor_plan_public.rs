@@ -67,6 +67,7 @@ fn plan<'a>(package: &CheckedPackageV2, plan: CheckedMonitorPlanRef<'a>) {
         model_enum_declarations: &[],
         model_enum_members: &[],
         model_enum_shapes: &[],
+        model_unions: &[],
         source_records: &[],
         source_tuples: &[],
         source_unions: &[],

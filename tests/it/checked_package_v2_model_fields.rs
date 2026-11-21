@@ -597,7 +597,7 @@ fn nested_collection_of_nominal_record_keeps_target_identity_and_refuses_missing
             "Bad",
             "record",
             &[],
-            &[field("float", "ix://filament/native/Float32").many((0, None, false, true))],
+            &[field("float", "ix://filament/native/Clock").many((0, None, false, true))],
         ),
     ]);
     selected["constructs"].as_array_mut().unwrap().push(json!({
@@ -1411,6 +1411,7 @@ fn package(
                 | "record_value_type"
                 | "event_type"
                 | "tuple_value_type"
+                | "variant_type"
                 | "process"
                 | "state_machine"
                 | "persistence_interface"
@@ -1852,7 +1853,7 @@ fn selected_facts_join_only_explicit_model_field_and_charge_full_emission_rows()
         &[
             field("total", "ix://filament/native/Integer"),
             field("note", "ix://filament/native/String").optional(),
-            field("raw", "ix://filament/native/Float32"),
+            field("raw", "ix://filament/native/Clock"),
         ],
     )]);
     selected["constructs"].as_array_mut().unwrap().push(json!({
@@ -4048,7 +4049,7 @@ fn admitted_record_with_unsupported_field_refuses_without_view() {
         "Unsupported",
         "record",
         &[],
-        &[field("value", "ix://filament/native/Float32")],
+        &[field("value", "ix://filament/native/Clock")],
     )]);
     selected["constructs"]
         .as_array_mut()
@@ -4090,7 +4091,7 @@ fn admitted_record_with_unsupported_field_refuses_without_view() {
             &witnesses,
             &mut filament_contract_model::NativeJoinBudget::new(100, u64::MAX),
         )
-        .expect_err("Float32 mode is not represented by this field projection");
+        .expect_err("a Clock field is not represented by this field projection");
     assert_eq!(
         refusal.code,
         ExactTypeProjectionErrorCode::UnsupportedExactType
@@ -4105,7 +4106,7 @@ fn admitted_native_record_late_unsupported_field_respects_exact_work_boundary() 
     const COMPLETE_WORK: u64 = 6;
     const BEFORE_SECOND_FIELD: u64 = 5;
     for (name, second_type) in [
-        ("LateUnsupported", "ix://filament/native/Float32"),
+        ("LateUnsupported", "ix://filament/native/Clock"),
         ("CompleteInteger", "ix://filament/native/Integer"),
     ] {
         let mut selected = document(vec![typed_object(
@@ -8758,4 +8759,552 @@ fn runtime_two_tuple_indices_activate_the_first_row_after_witness_join() {
     assert_eq!(error.at, None);
     assert_eq!(error.form, None);
     assert_eq!(before_declaration.consumed().work, work);
+}
+
+// --- a selected model union reached through every field form ----------------------
+
+/// A selected package declaring the union `Choice { Num(Integer), Nothing }`,
+/// a record field, an object field and a tuple position typed by it, plus the
+/// Integer read the union's payload node needs in the graph.
+/// The payload of the union case `Num`: its type reference, the document types it
+/// needs, and (when it is not the Integer scalar) the record field and read that
+/// put its nodes in the graph.
+struct PayloadForm {
+    types: Vec<Value>,
+    type_ref: String,
+    read: Option<Ty>,
+}
+
+impl PayloadForm {
+    fn integer() -> Self {
+        Self {
+            types: Vec::new(),
+            type_ref: "ix://filament/native/Integer".into(),
+            read: None,
+        }
+    }
+}
+
+fn integer_node() -> CheckedNodeId {
+    serde_json::from_value(node_id("scalar_type/integer")).expect("Integer node")
+}
+
+fn union_environment_wire(form: &PayloadForm) -> (Value, Value) {
+    let tuple = orders("Pair");
+    let choice = orders("Choice");
+    let mut receipt_fields = vec![
+        field("total", "ix://filament/native/Integer"),
+        field("choice", &choice),
+    ];
+    if form.read.is_some() {
+        receipt_fields.push(field("payload", &form.type_ref));
+    }
+    let mut selected = document(vec![
+        json!({"identity":choice,"displayName":"Choice",
+        "kind":{"module":IDENTITY,"name":"variant"},
+        "variants":[
+            {"identity":format!("{choice}/variant/Num"),"name":"Num","payloadType":form.type_ref},
+            {"identity":format!("{choice}/variant/Nothing"),"name":"Nothing"}
+        ]}),
+        typed_object("Receipt", "record", &[], &receipt_fields),
+        object("Node", &[], &[field("held", &choice)]),
+        json!({"identity":tuple,"displayName":"Pair", "kind":{"module":IDENTITY,"name":"tuple"},
+            "positions":[{"identity":format!("{tuple}/p0"),"typeRef":choice}]}),
+    ]);
+    selected["types"]
+        .as_array_mut()
+        .unwrap()
+        .extend(form.types.iter().cloned());
+    for (name, meaning) in [
+        ("record", "filament.meaning.model.record-value-type/v1"),
+        ("tuple", "filament.meaning.model.tuple-value-type/v1"),
+        ("variant", "filament.meaning.model.variant-type/v1"),
+    ] {
+        selected["constructs"].as_array_mut().unwrap().push(json!({
+            "kind":{"module":IDENTITY,"name":name},"construct":{"meaning":meaning}
+        }));
+    }
+    let mut reads = vec![Read {
+        owner: "Receipt",
+        field: "total",
+        ty: Ty::Integer,
+    }];
+    if let Some(ty) = &form.read {
+        reads.push(Read {
+            owner: "Receipt",
+            field: "payload",
+            ty: ty.clone(),
+        });
+    }
+    let (wire, _, _) = package(
+        &selected,
+        &[
+            ("Choice", "variant_type"),
+            ("Receipt", "record_value_type"),
+            ("Node", OBJECT),
+            ("Pair", "tuple_value_type"),
+        ],
+        &reads,
+    );
+    (wire, selected)
+}
+
+fn read_union_environment(form: &PayloadForm) -> CheckedPackageV2ReadResult {
+    let (wire, selected) = union_environment_wire(form);
+    let evidence = evidence_with_document(&wire, IDENTITY, &selected);
+    read_with(&wire, &evidence, CheckedPackageReadLimits::bounded())
+}
+
+fn admit_union_environment(form: &PayloadForm) -> CheckedPackageV2 {
+    match read_union_environment(form) {
+        CheckedPackageV2ReadResult::Admitted(package) => *package,
+        other => panic!("the union environment admits: {other:?}"),
+    }
+}
+
+struct UnionEnvironmentRows {
+    declarations: Vec<SelectedExactDeclarationRow>,
+    fields: Vec<SelectedExactFieldRow>,
+    tuples: Vec<SelectedTupleDeclarationRow>,
+    unions: Vec<filament_contract_model::SelectedModelUnionRow>,
+    handle: NodeKey,
+}
+
+fn union_environment_rows(
+    package: &CheckedPackageV2,
+    payload_node: CheckedNodeId,
+    num_original: ValueType,
+    extra_field: bool,
+) -> UnionEnvironmentRows {
+    use filament_contract_model::{
+        SelectedModelUnionCaseRow, SelectedModelUnionPayload, SelectedModelUnionRow,
+    };
+    let id = |original: &str| {
+        package
+            .resolved_graph()
+            .nodes
+            .iter()
+            .find(|node| matches!(&node.owner, Some(filament_contract_model::CheckedNodeOwner::Model { identity, node }) if identity.as_ref() == IDENTITY && node.as_ref() == original))
+            .expect("a selected declaration")
+            .node_id
+            .clone()
+    };
+    let key = |name: &str| {
+        NodeKey::new("complete-stage", vec![PathSegment::Text(name.into())], 0).unwrap()
+    };
+    let record_id = id(&orders("Receipt"));
+    let declarations = vec![
+        SelectedExactDeclarationRow::new(
+            record_id.clone(),
+            IDENTITY,
+            SelectedExactDeclarationForm::RecordValueType,
+            orders("Receipt"),
+            SelectedExactIdentity::Record(key("Receipt")),
+        ),
+        SelectedExactDeclarationRow::new(
+            id(&orders("Node")),
+            IDENTITY,
+            SelectedExactDeclarationForm::ObjectType,
+            orders("Node"),
+            SelectedExactIdentity::Object(EffectiveId::new(
+                None,
+                OriginalDeclarationKey::new(IDENTITY, orders("Node")),
+            )),
+        ),
+    ];
+    let names: &[&str] = if extra_field {
+        &["total", "choice", "payload"]
+    } else {
+        &["total", "choice"]
+    };
+    let fields = names
+        .iter()
+        .copied()
+        .map(|name| {
+            SelectedExactFieldRow::new(
+                record_id.clone(),
+                IDENTITY,
+                orders("Receipt"),
+                format!("{}/{name}", orders("Receipt")),
+                MemberId::new(MemberOwner::Node(key("Receipt")), name).unwrap(),
+            )
+        })
+        .collect();
+    let tuples = vec![SelectedTupleDeclarationRow::new(
+        id(&orders("Pair")),
+        IDENTITY,
+        orders("Pair"),
+        key("Pair"),
+    )];
+    let choice = orders("Choice");
+    let settled = key("Choice");
+    let handle = NodeKey::new(
+        "complete-stage",
+        vec![PathSegment::Text("Choice-handle".into())],
+        0,
+    )
+    .unwrap();
+    let member = |name: &str| {
+        filament_exact::UnionMember::from_admitted(settled.clone(), name).expect("a sealed member")
+    };
+    let unions = vec![SelectedModelUnionRow {
+        structural_node: id(&choice),
+        selected_document: IDENTITY.into(),
+        type_handle: handle.clone(),
+        settled_key: settled.clone(),
+        cases: vec![
+            SelectedModelUnionCaseRow {
+                rank: 0,
+                position: 1,
+                name: "Nothing".into(),
+                original_case: OriginalDeclarationKey::new(
+                    IDENTITY,
+                    format!("{choice}/variant/Nothing"),
+                ),
+                member: member("Nothing"),
+                payload: SelectedModelUnionPayload::None,
+            },
+            SelectedModelUnionCaseRow {
+                rank: 1,
+                position: 0,
+                name: "Num".into(),
+                original_case: OriginalDeclarationKey::new(
+                    IDENTITY,
+                    format!("{choice}/variant/Num"),
+                ),
+                member: member("Num"),
+                payload: SelectedModelUnionPayload::Data {
+                    node: payload_node,
+                    original_type: num_original,
+                },
+            },
+        ],
+    }];
+    UnionEnvironmentRows {
+        declarations,
+        fields,
+        tuples,
+        unions,
+        handle,
+    }
+}
+
+fn union_witness_before_union_rows(
+    package: &CheckedPackageV2,
+    rows: &UnionEnvironmentRows,
+    budget: &mut filament_contract_model::NativeJoinBudget,
+) -> SelectedExactIdentities {
+    SelectedExactIdentities::from_stage_rows(
+        package,
+        rows.declarations.clone(),
+        rows.fields.clone(),
+        budget,
+    )
+    .expect("declaration and field rows join")
+    .with_admitted_type_rows(package, &rows.tuples, &[], budget)
+    .expect("the tuple row joins")
+}
+
+/// A model union typed record field, object field and tuple position project
+/// to the union's type handle through the full join, and the complete witness
+/// of that environment rebinds.
+#[trace("FR-352-AC-35", "FR-352-AC-37")]
+#[test]
+fn a_model_union_in_a_record_field_an_object_field_and_a_tuple_position_projects_its_handle() {
+    use filament_contract_model::ModelUnionScope;
+    let package = admit_union_environment(&PayloadForm::integer());
+    let rows = union_environment_rows(&package, integer_node(), ValueType::Integer, false);
+    let mut budget = filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX);
+    let witness = union_witness_before_union_rows(&package, &rows, &mut budget)
+        .with_model_union_rows(
+            &package,
+            &rows.tuples,
+            &rows.unions,
+            ModelUnionScope::Full,
+            &mut budget,
+        )
+        .expect("the union row joins in the complete environment");
+    let handle = ValueType::Composite(rows.handle.clone());
+    let view = package
+        .project_selected_type_declarations(&witness, &rows.tuples, &[], &mut budget)
+        .expect("the complete environment projects");
+    assert_eq!(view.unions().len(), 1);
+    assert_eq!(view.unions()[0].type_handle, rows.handle);
+    // The record field.
+    let record_fields = view.records()[0].view().fields();
+    let choice = record_fields
+        .iter()
+        .find(|field| field.name() == "choice")
+        .expect("the record's union field");
+    assert_eq!(choice.value_type(), &handle);
+    let total = record_fields
+        .iter()
+        .find(|field| field.name() == "total")
+        .expect("the record's Integer field");
+    assert_eq!(total.value_type(), &ValueType::Integer);
+    // The object field retains its admitted field identity and presence.
+    let object = view
+        .objects()
+        .iter()
+        .find(|object| object.original_identity() == orders("Node"))
+        .expect("the selected object");
+    let held = object
+        .fields()
+        .iter()
+        .find(|field| field.name() == "held")
+        .expect("the object's union field");
+    assert_eq!(held.original_identity(), format!("{}/held", orders("Node")));
+    assert_eq!(held.value_type(), &handle);
+    assert_eq!(held.presence(), Presence::Required);
+    // The tuple position, by its author order.
+    let pair = view
+        .tuples()
+        .iter()
+        .find(|tuple| tuple.original_identity() == orders("Pair"))
+        .expect("the selected tuple");
+    assert_eq!(pair.positions(), [handle.clone()]);
+    // Without the union row none of the three can be projected.
+    let missing = package
+        .project_selected_type_declarations(
+            &union_witness_before_union_rows(&package, &rows, &mut budget),
+            &rows.tuples,
+            &[],
+            &mut budget,
+        )
+        .expect_err("a union-typed field needs the union row");
+    assert_eq!(
+        missing.code,
+        ExactTypeProjectionErrorCode::UnavailableIdentityWitness
+    );
+    // Positive full rebind of the complete witness: nothing is missing.
+    let rebound = witness
+        .validate_and_rebind(&package, &mut budget)
+        .expect("the complete witness rebinds");
+    assert_eq!(rebound.model_union_rows().count(), 1);
+    assert_eq!(rebound.model_tuple_rows().count(), 1);
+    assert_eq!(rebound, witness);
+}
+
+/// Every other family complete, only the union row missing: the rebind refuses
+/// at the union completeness stage, at the union's own node, and leaves the
+/// receiver as it was; the same environment with the union row rebinds.
+#[trace("FR-352-AC-37")]
+#[test]
+fn a_witness_missing_only_the_union_row_is_refused_at_the_union_completeness_stage() {
+    use filament_contract_model::ModelUnionScope;
+    let package = admit_union_environment(&PayloadForm::integer());
+    let rows = union_environment_rows(&package, integer_node(), ValueType::Integer, false);
+    let mut budget = filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX);
+    let without_union = union_witness_before_union_rows(&package, &rows, &mut budget);
+    let before = without_union.clone();
+    let refusal = without_union
+        .validate_and_rebind(&package, &mut budget)
+        .expect_err("a witness without the union row is incomplete");
+    let choice: CheckedNodeId =
+        serde_json::from_value(node_id(&declaration_key("Choice", "variant_type")))
+            .expect("the union node");
+    assert_eq!(
+        refusal.code,
+        ExactTypeProjectionErrorCode::IncompleteIdentityWitness
+    );
+    assert_eq!(refusal.at.as_deref(), Some(&choice));
+    assert_eq!(refusal.requested.as_deref(), Some(&choice));
+    assert_eq!(refusal.form.as_deref(), Some("selected_model_union"));
+    assert_eq!(without_union, before, "the receiver is unchanged");
+    assert_eq!(without_union.model_union_rows().count(), 0);
+    // The same stage with the union row joined is complete.
+    let complete = without_union
+        .with_model_union_rows(
+            &package,
+            &rows.tuples,
+            &rows.unions,
+            ModelUnionScope::Full,
+            &mut budget,
+        )
+        .expect("the union row joins");
+    assert!(complete.validate_and_rebind(&package, &mut budget).is_ok());
+}
+
+/// Every non-scalar payload form the strict reader admits as a union payload
+/// (a bounded integer, a profiled text, a rational range and an option; a
+/// collection declaration is refused at intake), each through a real admitted
+/// package, its own graph node and the production union join: the retained payload carries the form's Exact type,
+/// the same type the record field of that declared type projects, and a payload
+/// naming another Exact type is refused at the payload's original type.
+#[trace("FR-352-AC-32", "FR-352-AC-34")]
+#[test]
+fn every_strict_admitted_non_scalar_payload_form_joins_and_each_wrong_witness_is_refused() {
+    use filament_contract_model::{ModelUnionScope, SelectedModelUnionPayload};
+    use filament_exact::{IntegerInterval, RationalDomain, TextProfile, TextType};
+    let interval = |lower: i64, upper: i64| {
+        IntegerInterval::new(Integer::from(lower), Integer::from(upper)).expect("an interval")
+    };
+    let mut code = value_type("Code", "string", None);
+    code["constraints"] = json!([
+        {"keyword":"minLength", "operands":{"value":0}},
+        {"keyword":"maxLength", "operands":{"value":64}},
+        {"keyword":"format", "operands":{"name":"text-profile:nfc"}}
+    ]);
+    let mut ratio = value_type("Ratio", "rational", None);
+    let ratio_identity = orders("Ratio");
+    ratio["constraints"] = json!([
+        ("minNumerator", -3),
+        ("maxNumerator", 7),
+        ("minDenominator", 1),
+        ("maxDenominator", 12)
+    ]
+    .map(|(keyword, value)| json!({
+        "identity": format!("{ratio_identity}/constraint/{keyword}"),
+        "appliesTo": ratio_identity,
+        "diagnosticCode": format!("acme.orders.RATIO_{}", keyword.to_ascii_uppercase()),
+        "keyword": keyword,
+        "operands": {"value": value}
+    })));
+    let integer = "ix://filament/native/Integer";
+    let forms = [
+        (
+            "integer_range",
+            vec![thousand_type()],
+            orders("Thousand"),
+            Ty::Range(0, 1000),
+            ValueType::Int(interval(0, 1000)),
+        ),
+        (
+            "text_bounds",
+            vec![code],
+            orders("Code"),
+            Ty::TextBounds(0, 64, "nfc".into()),
+            ValueType::Text(
+                TextType::new(0, 64, TextProfile::from_code("nfc").expect("a profile"))
+                    .expect("a text type"),
+            ),
+        ),
+        (
+            "rational_range",
+            vec![ratio],
+            orders("Ratio"),
+            Ty::RationalRange(-3, 7, 1, 12),
+            ValueType::Rational(
+                RationalDomain::new(interval(-3, 7), interval(1, 12)).expect("a rational domain"),
+            ),
+        ),
+        (
+            "option",
+            vec![json!({"identity": orders("Opt"), "kind": "option", "inner": integer})],
+            orders("Opt"),
+            Ty::Option(Box::new(Ty::Integer)),
+            ValueType::option(ValueType::Integer),
+        ),
+        (
+            "sequence",
+            vec![json!({"identity": orders("Seq"), "kind": "sequence", "items": integer})],
+            orders("Seq"),
+            Ty::Collection(Kind::Sequence, Box::new(Ty::Integer), None),
+            ValueType::collection(CollectionType::new(
+                CollectionKind::Sequence,
+                ValueType::Integer,
+                None,
+            )),
+        ),
+    ];
+    let mut refused = 0;
+    for (node_form, types, type_ref, read, expected) in forms {
+        let form = PayloadForm {
+            types,
+            type_ref,
+            read: Some(read),
+        };
+        let package = match read_union_environment(&form) {
+            CheckedPackageV2ReadResult::Admitted(package) => *package,
+            CheckedPackageV2ReadResult::Refused(refusal) => {
+                // A collection declaration is not an admitted union payload.
+                assert_eq!(node_form, "sequence");
+                assert_eq!(
+                    refusal.code,
+                    CheckedPackageRefusalCode::UnsupportedConstruct
+                );
+                assert_eq!(
+                    refusal.cause,
+                    Some(CheckedPackageRefusalCause::DeclarationForm)
+                );
+                assert_eq!(
+                    refusal
+                        .document_pointer
+                        .as_ref()
+                        .map(|pointer| pointer.as_str()),
+                    Some("/types/0/variants/0/payloadType")
+                );
+                refused += 1;
+                continue;
+            }
+            other => panic!("{node_form}: {other:?}"),
+        };
+        let position = package
+            .resolved_graph()
+            .nodes
+            .iter()
+            .position(|node| node.semantic_form.as_ref() == node_form)
+            .unwrap_or_else(|| panic!("{node_form}: the package holds the payload node"));
+        let payload_node = package
+            .document_held_id(position)
+            .expect("the node's document-held id")
+            .clone();
+        let join = |original: ValueType| {
+            let rows = union_environment_rows(&package, payload_node.clone(), original, true);
+            let mut budget = filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX);
+            let result = union_witness_before_union_rows(&package, &rows, &mut budget)
+                .with_model_union_rows(
+                    &package,
+                    &rows.tuples,
+                    &rows.unions,
+                    ModelUnionScope::Full,
+                    &mut budget,
+                );
+            (rows, result, budget)
+        };
+        let (rows, joined, mut budget) = join(expected.clone());
+        let witness = joined.unwrap_or_else(|error| panic!("{node_form}: {error:?}"));
+        let row = witness.model_union_rows().next().expect("the union row");
+        let SelectedModelUnionPayload::Data {
+            node,
+            original_type,
+        } = &row.cases[1].payload
+        else {
+            panic!("{node_form}: Num carries data");
+        };
+        assert_eq!(
+            (node, original_type),
+            (&payload_node, &expected),
+            "{node_form}"
+        );
+        // The record field of the same declared type projects the same Exact type.
+        let view = package
+            .project_selected_type_declarations(&witness, &rows.tuples, &[], &mut budget)
+            .unwrap_or_else(|error| panic!("{node_form}: {error:?}"));
+        let field = view.records()[0]
+            .view()
+            .fields()
+            .iter()
+            .find(|field| field.name() == "payload")
+            .expect("the payload-typed record field");
+        assert_eq!(field.value_type(), &expected, "{node_form}: one projection");
+        // Another Exact type for the same node is a wrong witness.
+        let (_, wrong, _) = join(ValueType::Boolean);
+        let error = wrong.expect_err("a wrong original type refuses");
+        assert_eq!(
+            error.code,
+            ExactTypeProjectionErrorCode::MismatchedIdentityWitness,
+            "{node_form}"
+        );
+        assert_eq!(error.at.as_deref(), Some(&payload_node), "{node_form}");
+        assert_eq!(
+            error.form.as_deref(),
+            Some("/model_unions/0/cases/1/payload/original_type"),
+            "{node_form}"
+        );
+    }
+    assert_eq!(
+        refused, 1,
+        "only the collection form is not an admitted payload"
+    );
 }

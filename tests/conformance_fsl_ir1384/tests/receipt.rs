@@ -7,16 +7,6 @@
 
 use std::{env, fs, path::PathBuf};
 
-use ix_trace_rs::trace;
-use fsl_analyze::monitor_root::{
-    emit_plan_root, AdmittedPlanAuthority, PlanAuthoritySelection, PlanAuthorityValidationCaps,
-    PlanRoot, PlanRootRequest,
-};
-use fsl_foundation::SourceIdentity;
-use fsl_replay::spine::SpineLimits;
-use fsl_replay::{MonitorTarget, TimingObligationSettings};
-use fsl_semantics::check::TimeSourceKind;
-use fsl_semantics::library::LibraryName;
 use filament_contract_model::{
     read_checked_package, CheckedMonitorClock, CheckedNodeId, CheckedOccurrence,
     CheckedOccurrenceRole, CheckedPackageDispatchResult, CheckedPackageReadLimits,
@@ -28,6 +18,16 @@ use filament_contract_model::{
 };
 use filament_exact::{Cancel, Integer, Rational};
 use filament_observation::authority::{self, clock, progress, SubjectSelection};
+use fsl_analyze::monitor_root::{
+    emit_plan_root, AdmittedPlanAuthority, PlanAuthoritySelection, PlanAuthorityValidationCaps,
+    PlanRoot, PlanRootRequest,
+};
+use fsl_foundation::SourceIdentity;
+use fsl_replay::spine::SpineLimits;
+use fsl_replay::{MonitorTarget, TimingObligationSettings};
+use fsl_semantics::check::TimeSourceKind;
+use fsl_semantics::library::LibraryName;
+use ix_trace_rs::trace;
 use serde_json::{json, Value};
 
 #[path = "support/observation.rs"]
@@ -281,6 +281,7 @@ fn project<'a>(
                 model_enum_declarations: emission.selected_model_enum_declaration_rows(),
                 model_enum_members: emission.selected_model_enum_member_rows(),
                 model_enum_shapes: shapes,
+                model_unions: &[],
                 source_records: identities.source_records(),
                 source_tuples: emission.selected_source_tuple_rows(),
                 source_unions: identities.source_unions(),

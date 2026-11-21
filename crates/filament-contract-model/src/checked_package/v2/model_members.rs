@@ -903,26 +903,77 @@ pub(super) enum MemberType {
     },
 }
 
+/// The allocation hooks of the one structural-id derivation of a member type
+/// ([`MemberType::node_id_in`]): every owned path, text, wrapper and shared-node
+/// block is requested through these before it is allocated, so the reader's
+/// work meter and the model-union join's [`NativeJoinBudget`] pay for the same
+/// derivation instead of two copies of it.
+pub(super) trait NodeAlloc {
+    type Error;
+    fn text(&mut self, text: &str, form: &'static str) -> Result<Box<str>, Self::Error>;
+    fn vec<T>(&mut self, capacity: usize, form: &'static str) -> Result<Vec<T>, Self::Error>;
+    fn request(&mut self, bytes: usize, form: &'static str) -> Result<(), Self::Error>;
+    fn push<T>(
+        &mut self,
+        list: &mut Vec<T>,
+        item: T,
+        form: &'static str,
+    ) -> Result<(), Self::Error>;
+    fn clone_id(
+        &mut self,
+        id: &CheckedNodeId,
+        form: &'static str,
+    ) -> Result<CheckedNodeId, Self::Error>;
+}
+
+impl NodeAlloc for Budget<'_, '_> {
+    type Error = ValidationFailure;
+    fn text(&mut self, text: &str, form: &'static str) -> Result<Box<str>, Self::Error> {
+        Budget::text(self, text, form)
+    }
+    fn vec<T>(&mut self, capacity: usize, form: &'static str) -> Result<Vec<T>, Self::Error> {
+        Budget::vec(self, capacity, form)
+    }
+    fn request(&mut self, bytes: usize, form: &'static str) -> Result<(), Self::Error> {
+        Budget::request(self, bytes, form)
+    }
+    fn push<T>(
+        &mut self,
+        list: &mut Vec<T>,
+        item: T,
+        form: &'static str,
+    ) -> Result<(), Self::Error> {
+        Budget::push(self, list, item, form)
+    }
+    fn clone_id(
+        &mut self,
+        id: &CheckedNodeId,
+        form: &'static str,
+    ) -> Result<CheckedNodeId, Self::Error> {
+        Budget::clone_id(self, id, form)
+    }
+}
+
 impl MemberType {
     /// Builds the selected member type's structural identity, reserving every
     /// owned path, text, wrapper and shared-node block before construction.
-    pub(super) fn node_id_in(
+    pub(super) fn node_id_in<A: NodeAlloc>(
         &self,
         package: &str,
-        budget: &mut Budget<'_, '_>,
-    ) -> Result<Option<CheckedNodeId>, ValidationFailure> {
+        budget: &mut A,
+    ) -> Result<Option<CheckedNodeId>, A::Error> {
         use CheckedNodePathSegment as S;
-        fn name(value: &str, b: &mut Budget<'_, '_>) -> Result<S, ValidationFailure> {
+        fn name<A: NodeAlloc>(value: &str, b: &mut A) -> Result<S, A::Error> {
             Ok(S::Name(b.text(value, "member_type")?))
         }
-        fn node(id: CheckedNodeId, b: &mut Budget<'_, '_>) -> Result<S, ValidationFailure> {
+        fn node<A: NodeAlloc>(id: CheckedNodeId, b: &mut A) -> Result<S, A::Error> {
             b.request(
                 super::budgeted_read::arc_bytes::<CheckedNodeId>(),
                 "member_type",
             )?;
             Ok(S::Node(std::sync::Arc::new(id)))
         }
-        fn number(value: i128, b: &mut Budget<'_, '_>) -> Result<S, ValidationFailure> {
+        fn number<A: NodeAlloc>(value: i128, b: &mut A) -> Result<S, A::Error> {
             let mut digits = [0_u8; 40];
             let mut at = digits.len();
             let mut magnitude = value.unsigned_abs();
@@ -943,13 +994,13 @@ impl MemberType {
                 b,
             )
         }
-        fn derived<const N: usize>(
+        fn derived<A: NodeAlloc, const N: usize>(
             package: &str,
             tag: &str,
             form: &str,
             extra: [S; N],
-            b: &mut Budget<'_, '_>,
-        ) -> Result<CheckedNodeId, ValidationFailure> {
+            b: &mut A,
+        ) -> Result<CheckedNodeId, A::Error> {
             let mut path = b.vec(N + 2, "member_type")?;
             path.push(name(tag, b)?);
             path.push(name(form, b)?);
@@ -960,14 +1011,14 @@ impl MemberType {
                 ordinal: 0,
             })
         }
-        fn bounded<const N: usize>(
+        fn bounded<A: NodeAlloc, const N: usize>(
             package: &str,
             form: &str,
             lower: i128,
             upper: i128,
             tail: [S; N],
-            b: &mut Budget<'_, '_>,
-        ) -> Result<CheckedNodeId, ValidationFailure> {
+            b: &mut A,
+        ) -> Result<CheckedNodeId, A::Error> {
             let integer = derived(package, "scalar_type", "integer", [], b)?;
             let mut path = b.vec(7 + N, "member_type")?;
             path.push(name("bounded_domain", b)?);
@@ -984,11 +1035,11 @@ impl MemberType {
                 ordinal: 0,
             })
         }
-        fn rational(
+        fn rational<A: NodeAlloc>(
             package: &str,
             bounds: RationalBounds,
-            b: &mut Budget<'_, '_>,
-        ) -> Result<CheckedNodeId, ValidationFailure> {
+            b: &mut A,
+        ) -> Result<CheckedNodeId, A::Error> {
             let integer = derived(package, "scalar_type", "integer", [], b)?;
             let extra = [
                 name("numerator_min", b)?,
@@ -5623,6 +5674,7 @@ pub(super) fn read_semantic_ir(
                             SelectedTypeRef::Declared(name) => {
                                 model.value_types.get(name).is_some_and(Option::is_some)
                                     || scope.records.contains(name.as_ref())
+                                    || scope.object_types.contains(name.as_ref())
                                     || model.tuple_types.contains_key(name)
                                     || model.variant_types.contains_key(name)
                                     || scope.option_types.contains(name.as_ref())
