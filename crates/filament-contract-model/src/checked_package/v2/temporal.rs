@@ -721,29 +721,33 @@ pub(super) fn validate_temporal(
             == Some(&CheckedNodeKind::Temporal(TemporalForm::TemporalClause))
         {
             let id = &graph.nodes[position].node_id;
-            check_clause(
-                &context,
-                position,
-                &graph,
-                terms,
-                wrapper_clocks
-                    .iter()
-                    .find(|(wrapper, _)| *wrapper == id)
-                    .map(|(_, clock)| *clock)
-                    .or_else(|| {
-                        clock_units
-                            .binary_search_by(|(declaration, _)| (*declaration).cmp(id))
-                            .ok()
-                            .map(|at| clock_units[at].1)
-                    })
+            let mut clocks = wrapper_clocks
+                .iter()
+                .filter(|(wrapper, _)| *wrapper == id)
+                .map(|(_, clock)| *clock)
+                .peekable();
+            let own_clock = clocks.peek().is_none().then(|| {
+                clock_units
+                    .binary_search_by(|(declaration, _)| (*declaration).cmp(id))
+                    .ok()
+                    .map(|at| clock_units[at].1)
                     .unwrap_or(ClauseClock {
                         unit: None,
                         source: None,
-                    }),
-                meter,
-                &mut scratch,
-                &mut stamps,
-            )?;
+                    })
+            });
+            for clock in clocks.chain(own_clock) {
+                check_clause(
+                    &context,
+                    position,
+                    &graph,
+                    terms,
+                    clock,
+                    meter,
+                    &mut scratch,
+                    &mut stamps,
+                )?;
+            }
         }
     }
     // A formula node no clause reaches is no clause's to fit, but its
@@ -3121,7 +3125,7 @@ fn check_hyper_shape(
                 .is_some()
             });
             let first = scope.first().map(|&slot| &graph.nodes[slot].node_id);
-            if over_slot && first != Some(over) {
+            if (first.is_some() || over_slot) && first != Some(over) {
                 return Err(ValidationFailure::refused_at(
                     CheckedPackageRefusalCode::InvalidModelBinding,
                     node_pointer(wrapper_at)
