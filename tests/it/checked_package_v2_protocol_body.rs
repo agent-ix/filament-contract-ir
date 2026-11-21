@@ -8207,6 +8207,15 @@ pub(super) fn compensation_clock_case(
     for row in &mut rows {
         let key = row["declaration"].as_str().expect("declaration key");
         row["declaration"] = ids[key].clone();
+        // The vector's clause row names the published unit `example`: lock it
+        // beside this package's own source rather than rewriting the row.
+        if let Some(unit) = row.get("source_unit").cloned() {
+            let sources = package["lock"]["sources"].as_array_mut().expect("sources");
+            if !sources.contains(&unit) {
+                sources.push(unit);
+                sources.sort_by_key(|source| source.to_string());
+            }
+        }
     }
     if case["id"] == "CB-01" {
         rows.sort_by(|left, right| {
@@ -8234,7 +8243,8 @@ pub(super) fn compensation_clock_case(
     "FR-038-AC-414",
     "FR-038-AC-415",
     "FR-038-AC-416",
-    "FR-019-AC-22"
+    "FR-019-AC-22",
+    "FR-322-AC-503"
 )]
 #[test]
 fn compensation_clock_rows_follow_published_cases() {
@@ -8289,6 +8299,30 @@ fn compensation_clock_rows_follow_published_cases() {
                     assert_eq!(row.clock, expected, "{id}");
                 }
                 assert_ne!(ids["k1"], ids["k2"], "{id}");
+                // FR-322-AC-503: a compensation row carries no `source_unit`
+                // (the await row is covered by
+                // `await_clock_row_is_admitted_and_round_trips`).
+                for (at, row) in package["temporal_bindings"]
+                    .as_array()
+                    .expect("rows")
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, row)| row.get("source_unit").is_none())
+                {
+                    let mut extra = package.clone();
+                    extra["temporal_bindings"][at]["source_unit"] =
+                        extra["lock"]["sources"][0].clone();
+                    assert_eq!(
+                        read(&extra),
+                        refusal_at_id(
+                            CheckedPackageRefusalCode::InvalidPackage,
+                            &format!("/temporal_bindings/{at}"),
+                            Some(CheckedPackageRefusalCause::TimedNodeReference),
+                            &row["declaration"],
+                        ),
+                        "{id}: row {at}"
+                    );
+                }
                 if id == "CB-01" {
                     let mut missing = package.clone();
                     missing
@@ -8366,7 +8400,7 @@ fn compensation_clock_rows_follow_published_cases() {
     }
 }
 
-#[trace("TC-048", "FR-038-AC-414", "FR-038-AC-415")]
+#[trace("TC-048", "FR-038-AC-414", "FR-038-AC-415", "FR-322-AC-503")]
 #[test]
 fn await_clock_row_is_admitted_and_round_trips() {
     let (mut package, _) = protocol_holder_case("await");
@@ -8465,6 +8499,21 @@ fn await_clock_row_is_admitted_and_round_trips() {
             CheckedPackageRefusalCode::InvalidPackage,
             &format!("/temporal_bindings/{}", row_index + 1),
             Some(CheckedPackageRefusalCause::ConflictingDefinition),
+            &declaration,
+        )
+    );
+
+    // FR-322-AC-503: an await row carries no `source_unit`.
+    let mut sourced = package.clone();
+    let row_index = await_row_index(&sourced);
+    sourced["temporal_bindings"][row_index]["source_unit"] = sourced["lock"]["sources"][0].clone();
+    refresh_identity_projection(&mut sourced);
+    assert_eq!(
+        read(&sourced),
+        refusal_at_id(
+            CheckedPackageRefusalCode::InvalidPackage,
+            &format!("/temporal_bindings/{row_index}"),
+            Some(CheckedPackageRefusalCause::TimedNodeReference),
             &declaration,
         )
     );

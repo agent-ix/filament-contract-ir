@@ -3505,6 +3505,15 @@ fn typed_node_id_of(package: &Value, position: usize) -> CheckedNodeId {
     serde_json::from_value(nodes(package)[position]["node_id"].clone()).expect("node ID")
 }
 
+/// FR-322-AC-503: a hyperproperty row carries no `source_unit`.
+#[trace("TC-048", "FR-038-AC-590")]
+#[test]
+fn a_hyperproperty_row_naming_a_source_unit_is_refused() {
+    let (mut package, _, _) = hyper_clock_fixture(&["s", "n"]);
+    package["temporal_bindings"][0]["source_unit"] = package["lock"]["sources"][0].clone();
+    refusal_at_trace(&package, "/temporal_bindings/0");
+}
+
 #[trace("TC-483", "FR-038-AC-561")]
 #[test]
 fn tc_483_each_trace_row_holds_its_own_configuration() {

@@ -3961,6 +3961,10 @@
         "sequence_authority": "fixture-events"
       },
       "clock_name": "clause",
+      "source_unit": {
+        "authority": "agent-ix",
+        "identity": "filament.fixture.source/v1"
+      },
       "declaration": {
         "ordinal": 0,
         "package": "test/families",
