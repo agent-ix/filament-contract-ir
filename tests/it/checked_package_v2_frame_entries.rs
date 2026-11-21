@@ -5842,8 +5842,8 @@ fn declared_order(package: &CheckedPackageV2) -> Option<Vec<(String, CheckedNode
         })
 }
 
-/// Trace: FR-351-AC-6
-#[trace("FR-351-AC-6")]
+/// Trace: FR-351-AC-8
+#[trace("FR-351-AC-8")]
 #[test]
 fn step_relation_declaration_order_is_optional_and_legacy_four_binding_admits() {
     let legacy = step_relation_package();
@@ -5881,8 +5881,8 @@ fn step_relation_declaration_order_is_optional_and_legacy_four_binding_admits() 
     );
 }
 
-/// Trace: FR-351-AC-6
-#[trace("FR-351-AC-6")]
+/// Trace: FR-351-AC-6, FR-351-AC-7
+#[trace("FR-351-AC-6", "FR-351-AC-7")]
 #[test]
 fn step_relation_declaration_order_preserves_supplied_order_over_one_root_and_roundtrips() {
     let package = declaration_order_package(Some(&["W", "V"]));
@@ -5940,8 +5940,8 @@ fn step_relation_declaration_order_preserves_supplied_order_over_one_root_and_ro
     }
 }
 
-/// Trace: FR-351-AC-7
-#[trace("FR-351-AC-7")]
+/// Trace: FR-351-AC-9, FR-351-AC-11
+#[trace("FR-351-AC-9", "FR-351-AC-11")]
 #[test]
 fn step_relation_declaration_order_refuses_each_defect_at_its_pointer() {
     admitted_relation(&declaration_order_package(Some(&["W", "V"])));
@@ -6081,3 +6081,255 @@ fn step_relation_first_use_subject_controls_survive_the_declaration_order() {
         None,
     );
 }
+
+/// Two aliases over two distinct model roots, `V` over the relation's own
+/// root and `W` over a second selected root, carrying `declared` as
+/// `(alias, root)` pairs where root 0 is `V`'s and root 1 is `W`'s.
+fn two_root_package(declared: &[(&str, usize)]) -> (Value, [Value; 2]) {
+    let mut base = step_relation_package();
+    select_model(&mut base, "test/other");
+    let second = json!({"package": "test/other", "path": ["model", "model_root"], "ordinal": 0});
+    let first = nodes(&base)
+        .iter()
+        .find(|node| node["semantic_form"] == "model_root" && node["node_id"] != second)
+        .expect("relation root")["node_id"]
+        .clone();
+    let roots = [first, second];
+    let package = rekey_step_relation(base, |node| {
+        let members = node["body"]["members"].as_array_mut().expect("body");
+        members[0]["value"]["members"]
+            .as_array_mut()
+            .expect("subjects")
+            .push(binding(
+                "W",
+                json!({"term": "reference", "target": roots[1].clone()}),
+            ));
+        members[1]["value"]["members"][1]["value"]["members"][0]["value"]["value"] = json!("W");
+        let invariant = members[2]["value"]["members"][0]["value"].clone();
+        members[2]["value"]["members"]
+            .as_array_mut()
+            .expect("invariants")
+            .push(binding("W", invariant));
+        let entries = declared
+            .iter()
+            .map(|&(alias, root)| {
+                binding(
+                    alias,
+                    json!({"term": "reference", "target": roots[root].clone()}),
+                )
+            })
+            .collect::<Vec<_>>();
+        members.push(binding(
+            "subject_declaration_order",
+            json!({"term": "aggregate", "members": entries}),
+        ));
+    });
+    (package, roots)
+}
+
+/// Trace: FR-351-AC-10
+#[trace("FR-351-AC-10")]
+#[test]
+fn step_relation_declaration_order_joins_each_alias_to_its_own_distinct_root() {
+    let (swapped, roots) = two_root_package(&[("W", 0), ("V", 1)]);
+    assert_ne!(roots[0], roots[1], "two distinct selected model roots");
+    let at = position(&swapped, "claim", "step_relation");
+    let pointer = format!("/semantic_graph/nodes/{at}/body/members/4/value/members");
+    // Each target is a legitimate selected subject root, but the wrong alias's.
+    expect(
+        "both entries swapped",
+        &swapped,
+        Code::InvalidSemanticGraph,
+        None,
+        &format!("{pointer}/0/value/target"),
+        None,
+    );
+    let (one_swapped, _) = two_root_package(&[("V", 1), ("W", 1)]);
+    expect(
+        "first alias joined to the other root",
+        &one_swapped,
+        Code::InvalidSemanticGraph,
+        None,
+        &format!("{pointer}/0/value/target"),
+        None,
+    );
+    let (second_only, _) = two_root_package(&[("V", 0), ("W", 0)]);
+    expect(
+        "second alias joined to the other root",
+        &second_only,
+        Code::InvalidSemanticGraph,
+        None,
+        &format!("{pointer}/1/value/target"),
+        None,
+    );
+    // The correct join passes the order check; the relation then stops at
+    // the execution `y` whose operation anchor is not over `W`'s second root.
+    let (joined, _) = two_root_package(&[("W", 1), ("V", 0)]);
+    expect(
+        "correct join reaches the later operation join",
+        &joined,
+        Code::InvalidModelBinding,
+        Some(Cause::MalformedDeclaration),
+        &format!("/semantic_graph/nodes/{at}/body/members/1/value/members/1/value/members/1/value/target"),
+        None,
+    );
+}
+
+/// Trace: FR-351-AC-12
+#[trace("FR-351-AC-12")]
+#[test]
+fn step_relation_declaration_order_has_one_stated_position_among_the_body_checks() {
+    let object = nodes(&step_relation_package())
+        .iter()
+        .find(|node| node["node_tag"] == "model" && node["semantic_form"] == "object_type")
+        .expect("object")["node_id"]
+        .clone();
+    let anchor = nodes(&step_relation_package())
+        .iter()
+        .find(|node| node["node_tag"] == "state" && node["semantic_form"] == "operation_anchor")
+        .expect("anchor")["node_id"]
+        .clone();
+    let wrong_operation = |node: &mut Value| {
+        node["body"]["members"][1]["value"]["members"][1]["value"]["members"][1]["value"]
+            ["target"] = object.clone();
+    };
+    let at = |package: &Value| position(package, "claim", "step_relation");
+    let prefix = |package: &Value| format!("/semantic_graph/nodes/{}/body/members", at(package));
+    // The operation defect alone is reported at the operation target.
+    let operation_only = rekey_step_relation(
+        declaration_order_package(Some(&["W", "V"])),
+        wrong_operation,
+    );
+    expect(
+        "operation defect alone",
+        &operation_only,
+        Code::InvalidModelBinding,
+        Some(Cause::MalformedDeclaration),
+        &format!(
+            "{}/1/value/members/1/value/members/1/value/target",
+            prefix(&operation_only)
+        ),
+        None,
+    );
+    // Added to a declaration-order join defect, the order check comes first.
+    let both = rekey_step_relation(declaration_order_package(Some(&["W", "V"])), |node| {
+        wrong_operation(node);
+        node["body"]["members"][4]["value"]["members"][0]["value"] =
+            json!({"term": "reference", "target": anchor.clone()});
+    });
+    expect(
+        "order join before operation target",
+        &both,
+        Code::InvalidSemanticGraph,
+        None,
+        &format!("{}/4/value/members/0/value/target", prefix(&both)),
+        None,
+    );
+    // A wrong subject target is reported before any declaration-order defect.
+    let subject = rekey_step_relation(declaration_order_package(Some(&["W", "V"])), |node| {
+        node["body"]["members"][0]["value"]["members"][0]["value"] =
+            json!({"term": "reference", "target": anchor.clone()});
+    });
+    expect(
+        "subject target before order",
+        &subject,
+        Code::InvalidModelBinding,
+        Some(Cause::MalformedDeclaration),
+        &format!("{}/0/value/members/0/value/target", prefix(&subject)),
+        None,
+    );
+    // The body's own layout keeps priority over the declaration binding's shape.
+    let layout = rekey_step_relation(declaration_order_package(Some(&["W", "V"])), |node| {
+        node["body"]["members"][0]["value"] = text("subjects");
+        node["body"]["members"][4]["value"] = text("order");
+    });
+    expect(
+        "subjects shape before declaration shape",
+        &layout,
+        Code::InvalidSemanticGraph,
+        None,
+        &format!("{}/0/value", prefix(&layout)),
+        None,
+    );
+    let declaration_only =
+        rekey_step_relation(declaration_order_package(Some(&["W", "V"])), |node| {
+            node["body"]["members"][4]["value"] = text("order");
+        });
+    expect(
+        "declaration shape alone",
+        &declaration_only,
+        Code::InvalidSemanticGraph,
+        None,
+        &format!("{}/4/value", prefix(&declaration_only)),
+        None,
+    );
+}
+
+/// Trace: FR-351-AC-13
+#[trace("FR-351-AC-13")]
+#[test]
+fn step_relation_declaration_order_storage_and_work_are_charged_at_the_relation() {
+    use crate::checked_package_v2_graph_read_storage::{
+        assert_exact_and_one_short, stage_requests,
+    };
+    let with = declaration_order_package(Some(&["W", "V"]));
+    let without = declaration_order_package(None);
+    let relation = position(&with, "claim", "step_relation");
+    assert_eq!(relation, position(&without, "claim", "step_relation"));
+    let requests_of = |package: &Value| {
+        let evidence = step_relation_evidence(package);
+        let bytes = canonical(package);
+        let read = move |budget: &mut filament_contract_model::NativeJoinBudget| {
+            crate::fspec_read_proof::read_budget_and_account(
+                &bytes,
+                CheckedPackageReadLimits::bounded(),
+                &evidence,
+                budget,
+            )
+        };
+        let requests = stage_requests(&read, filament_contract_model::PackageReadStage::Graph);
+        let at_relation = requests
+            .iter()
+            .filter(|request| request.index == relation && request.form == "claim")
+            .map(|request| request.amount)
+            .collect::<Vec<_>>();
+        assert_exact_and_one_short(&read, &requests);
+        at_relation
+    };
+    let (declared, legacy) = (requests_of(&with), requests_of(&without));
+    // Two subjects: the coverage flags are one extra two-byte request.
+    let twos = |amounts: &[u128]| amounts.iter().filter(|&&amount| amount == 2).count();
+    assert_eq!(
+        twos(&declared),
+        twos(&legacy) + 1,
+        "{declared:?} {legacy:?}"
+    );
+    // Each entry is one unit of work at the relation.
+    let work = |package: &Value| {
+        let evidence = step_relation_evidence(package);
+        let mut budget = filament_contract_model::NativeJoinBudget::new(u64::MAX, 0)
+            .with_read_storage_limit(u64::MAX);
+        let result = crate::fspec_read_proof::read_budget_and_account(
+            &canonical(package),
+            CheckedPackageReadLimits::bounded(),
+            &evidence,
+            &mut budget,
+        );
+        assert!(matches!(
+            result,
+            filament_contract_model::CheckedPackageV2BudgetedReadResult::Admitted(_)
+        ));
+        budget.consumed().work
+    };
+    assert_eq!(
+        work(&with) - work(&without),
+        EXPECTED_WORK_DELTA,
+        "{} {}",
+        work(&with),
+        work(&without)
+    );
+}
+
+/// Measured on the two-alias fixture: 2 units are the per-entry charges at the
+/// relation, the rest the retained fifth binding's own term walk.
+const EXPECTED_WORK_DELTA: u64 = 22;

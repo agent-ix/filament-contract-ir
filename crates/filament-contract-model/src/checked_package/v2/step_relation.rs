@@ -305,19 +305,6 @@ fn view<'a>(
         Ok(found) => found,
         Err(path) => return Ok(Err(path)),
     };
-    let declaration_at = at.key("members").index(REQUIRED_MEMBERS);
-    let declaration = match entries.get(REQUIRED_MEMBERS) {
-        None => None,
-        Some(entry) => {
-            let Some(value) = binding(entry, DECLARATION_ORDER) else {
-                return Ok(Err(declaration_at));
-            };
-            let Some(group) = members(value) else {
-                return Ok(Err(declaration_at.key("value")));
-            };
-            Some(group)
-        }
-    };
     let subject_at = at.key("members").index(0).key("value");
     let execution_at = at.key("members").index(1).key("value");
     let invariant_at = at.key("members").index(2).key("value");
@@ -423,6 +410,21 @@ fn view<'a>(
     }
     let Some(body) = reference(body) else {
         return Ok(Err(body_at));
+    };
+    // The optional fifth binding's shape is read last, so every earlier
+    // layout and value-shape defect keeps its existing priority.
+    let declaration_at = at.key("members").index(REQUIRED_MEMBERS);
+    let declaration = match entries.get(REQUIRED_MEMBERS) {
+        None => None,
+        Some(entry) => {
+            let Some(value) = binding(entry, DECLARATION_ORDER) else {
+                return Ok(Err(declaration_at));
+            };
+            let Some(group) = members(value) else {
+                return Ok(Err(declaration_at.key("value")));
+            };
+            Some(group)
+        }
     };
     Ok(Ok(StepView {
         subjects: selected,

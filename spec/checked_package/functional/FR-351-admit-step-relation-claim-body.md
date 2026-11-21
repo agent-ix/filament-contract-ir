@@ -13,6 +13,8 @@ relationships:
     type: depends_on
   - target: ix://agent-ix/filament-contract-ir/FR-349
     type: depends_on
+  - target: ix://agent-ix/filament-spec-language/FR-940
+    type: references
   - target: ix://agent-ix/filament-specification/FR-477
     type: references
   - target: ix://agent-ix/filament-specification/FR-322
@@ -68,23 +70,27 @@ The node's `semantic_type` shall name the Boolean scalar type; its
 `declaration` shall be the declared relation name; its required source owner
 shall be retained; and it shall have one declaration and one claim occurrence.
 
-The optional `subject_declaration_order` is a Group of bindings `(alias, reference to
-model root)` in source model declaration order, using the `subjects` entry
-production. It shall be an exact permutation of `subjects` by alias and model
-root reference: every subject alias occurs once, none is unknown, duplicate or
-missing, and each reference equals that alias's `subjects` reference. Distinct
-aliases may reference one model root. The reader shall retain the supplied
-sequence without sorting or inferring it from first execution use. A body
-without it remains admitted, and the reader exposes the sequence through a
-borrowed `(alias, root)` view that is absent for such a body. Its refusals are
-`invalid_semantic_graph` with no cause at `P = /semantic_graph/nodes/N/body/members/4`:
-a wrong final binding or name at `P`; a non-Group value at `P/value`; a
-malformed entry at `P/value/members/K`; a duplicate or unknown alias at that
-entry's `name`; a wrong alias/root join or reference at that entry's
-`value/target`; and, only after every supplied entry is checked in sequence, a
-missing alias at `P/value/members/LEN`, `LEN` being the supplied entry count.
-This is an explicit narrow extension of the current four-binding profile, not
-a seven-binding migration.
+The reader shall admit an optional fifth binding `subject_declaration_order`: a
+Group of bindings `(alias, reference to model root)` in source model
+declaration order, using the `subjects` entry production. When the binding is
+present, the reader shall require it to be an exact permutation of `subjects`
+by alias and model root reference: every subject alias occurs once, none is
+unknown, duplicate or missing, and each reference equals that alias's
+`subjects` reference. Distinct aliases may reference one model root. The
+reader shall retain the supplied sequence and shall not sort it or infer it
+from first execution use. The reader shall admit a body without the binding,
+and for such a body its borrowed `(alias, root)` view shall be absent. Its
+refusals shall be `invalid_semantic_graph` with no cause at
+`P = /semantic_graph/nodes/N/body/members/4`: a wrong final binding or name at
+`P`; a non-Group value at `P/value`; a malformed entry at `P/value/members/K`;
+a duplicate or unknown alias at that entry's `name`; a wrong alias/root join or
+reference at that entry's `value/target`; and, only after every supplied entry
+is checked in sequence, a missing alias at `P/value/members/LEN`, `LEN` being
+the supplied entry count. A sixth body binding shall refuse at `members/5`. The
+binding's own shape (`P`, `P/value`) is read after every other body shape, so a
+defect in the first four bindings keeps its existing pointer. This is an
+explicit narrow extension of the current four-binding profile, not a
+seven-binding migration; filament-spec-language FR-940 owns the package form.
 
 The reader shall require every alias to name a subject and every subject to be
 named by an execution. It shall require each subject target to be a model node,
@@ -114,8 +120,9 @@ The reader shall apply FR-322's graph, reference, dependency, owner, source-map 
 The step-relation body step shall run after the terminal step and before the
 protocol step, in FR-322 body-step order. It shall visit `claim`/
 `step_relation` nodes by ascending structural node id. Within one node the reader
-shall check shape, aliases, targets in body order, premises, then Boolean body,
-reporting the first failure. Shape errors refuse `invalid_semantic_graph` at
+shall check shape, aliases, subject targets, the declaration order (each supplied
+entry left to right, then omission), the remaining targets in body order,
+premises, then Boolean body, reporting the first failure. Shape errors refuse `invalid_semantic_graph` at
 the first binding breaking layout. An alias with no subject refuses
 `missing_declaration`/`missing-name` at its alias binding; an unused subject
 refuses `invalid_semantic_graph` at that subject binding. Wrong target kinds,
@@ -134,8 +141,14 @@ their precedence; a malformed or duplicate structural id or wrong dependency lis
 | FR-351-AC-3 | PLANNED/UNRUN (IR-1141). Adding a Vault invariant, changing step precondition or swapping x and y changes the complete step-relation body; whitespace and comment changes leave that body unchanged. Writing an admitted typed package and reading its canonical bytes preserves body, typed form and structural id; canonical output from the external FSL producer admits. | Test |
 | FR-351-AC-4 | A missing execution `implementation` binding refuses `invalid_semantic_graph`; an unknown alias refuses `missing_declaration`/`missing-name`; an operation target naming an object type and an implementation relation lacking the operation's frame each refuse `invalid_model_binding`/`malformed-declaration`; omitted precondition or invariant references refuse the same at their aggregate; an integer-typed body expression refuses `ill_typed`/`non-boolean-root`, each at FR-477's locus and first applicable reader step. | Test |
 | FR-351-AC-5 | Replacing `y`'s `self` and `i` parameter references with `x`'s nodes, while updating the exact dependencies, refuses `invalid_model_binding`/`malformed-declaration` at `y`'s `parameters`; a simultaneous earlier-stage defect wins before this semantic refusal. | Test |
-| FR-351-AC-6 | A relation with two aliases `A`, `B` over one model root and first-use subjects `[A, B]` carries `subject_declaration_order` `[B, A]`. The reader admits it, `step_relation_subject_declaration_order` returns `[B, A]` with each alias's root, and writing then reading preserves it. A package without the member admits unchanged and the view is `None`. The existing `step_relation_body` output is the same with or without the member. | Test |
-| FR-351-AC-7 | Each of a wrong final binding name, a non-Group value, a malformed entry, a duplicate alias, an unknown alias, a non-reference value, a reference to another subject's root and an omitted alias refuses the whole package with `invalid_semantic_graph`, no cause, at the pointer FR-351 names; with two defects, the first supplied entry is reported before a missing alias. | Test |
+| FR-351-AC-6 | A relation with two aliases `A`, `B` over one model root, first-use subjects `[A, B]` and `subject_declaration_order` `[B, A]` admits, and the reader's borrowed view returns `[B, A]` with each alias's root while `step_relation_body` still lists subjects `[A, B]`. | Test |
+| FR-351-AC-7 | Writing the AC-6 package and reading its canonical bytes preserves the declaration order `[B, A]`. | Test |
+| FR-351-AC-8 | A package whose body has only the four legacy bindings admits, its declaration-order view is absent, and its `step_relation_body` equals that of the same relation with the fifth binding present. | Test |
+| FR-351-AC-9 | A wrong final binding name refuses `invalid_semantic_graph`, no cause, at `P`; a non-Group value at `P/value`; a malformed entry at `P/value/members/K`; a duplicate or unknown alias at that entry's `name`; a non-reference value at that entry's `value/target`; a sixth binding at `members/5`. | Test |
+| FR-351-AC-10 | With two subjects over two distinct model roots, an entry whose reference is the other subject's already-selected root refuses `invalid_semantic_graph`, no cause, at that entry's `value/target`, while the correctly joined order is not refused there. | Test |
+| FR-351-AC-11 | An omitted alias refuses at `P/value/members/LEN`, and a defect in a supplied entry is reported at its own pointer before an omission; of two defective entries the first supplied is reported. | Test |
+| FR-351-AC-12 | A declaration-order join defect refuses at its entry pointer before a wrong operation target, while a wrong subject target refuses at the subject's pointer before a declaration-order defect; a non-aggregate `subjects` value together with a non-Group declaration value refuses at `/body/members/0/value`. | Test |
+| FR-351-AC-13 | The declaration-order check's heap request and per-entry work are charged to the read budget at the relation node: the exact allowance is admitted and one unit short is denied at the request, and the work of the package with the binding exceeds that of the same package without it by the literal count of its entries plus the binding's own terms. | Test |
 
 ## Dependencies
 
