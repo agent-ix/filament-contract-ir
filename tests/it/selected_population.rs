@@ -90,12 +90,13 @@ fn duplicate_max_population_body_is_refused_by_the_reader() {
     let nodes = package["semantic_graph"]["nodes"]
         .as_array_mut()
         .expect("semantic graph nodes");
-    let population = nodes
-        .iter_mut()
-        .find(|node| {
+    let position = nodes
+        .iter()
+        .position(|node| {
             node["node_tag"] == "bounded_domain" && node["semantic_form"] == "model_population"
         })
         .expect("FSL emitted population node");
+    let population = &mut nodes[position];
     let maximum = population["body"]["members"]
         .as_array()
         .expect("population members")
@@ -109,10 +110,10 @@ fn duplicate_max_population_body_is_refused_by_the_reader() {
         .push(maximum);
 
     refresh_identity_projection(&mut package);
-    // FR-322 derives a population node's id from its body (`max` once, with the
-    // maximum's text), so a body binding `max` twice has no derivable identity:
-    // the strict reader refuses it at the node id and never admits it, which is
-    // why the projection has no admitted-but-not-population case to select.
+    // The FR-322 derived-shape check (a population body is `max` alone, "member
+    // beside max", FR-322-AC-74; structural.rs derived-shape arm) refuses a body
+    // binding `max` twice at the node id, so the strict reader never admits it
+    // and the projection has no admitted-but-not-population case to select.
     let CheckedPackageV2ReadResult::Refused(refusal) = read_rekeyed(&package, &domain) else {
         panic!("a population body binding max twice must be refused by the reader")
     };
@@ -121,13 +122,13 @@ fn duplicate_max_population_body_is_refused_by_the_reader() {
         refusal.cause,
         Some(CheckedPackageRefusalCause::InvalidDerivedShape)
     );
-    assert!(
+    assert_eq!(
         refusal.loci[0]
             .path
             .as_ref()
             .expect("refusal path")
-            .as_str()
-            .ends_with("/node_id"),
+            .as_str(),
+        format!("/semantic_graph/nodes/{position}/node_id"),
         "{refusal:?}"
     );
 }
