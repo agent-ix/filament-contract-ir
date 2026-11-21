@@ -2290,7 +2290,7 @@ fn located_refusal(document: &Value) -> (ModelRefusal, String) {
     }
 }
 
-#[trace("TC-2048", "FR-154-AC-51", "TC-048", "FR-038-AC-598")]
+#[trace("TC-2048", "FR-154-AC-51", "TC-048", "FR-038-AC-600")]
 #[test]
 fn native_target_values_validate_constraint_keywords() {
     const VALUE: &str = "ix://acme/orders/Bound";
@@ -2360,7 +2360,7 @@ fn native_target_values_validate_constraint_keywords() {
     }
 }
 
-#[trace("TC-2048", "FR-154-AC-51", "TC-048", "FR-038-AC-598")]
+#[trace("TC-2048", "FR-154-AC-51", "TC-048", "FR-038-AC-600")]
 #[test]
 fn native_target_object_kind_preserves_reference_and_fields() {
     let mut gadget = object_type(
@@ -2390,7 +2390,7 @@ fn native_target_object_kind_preserves_reference_and_fields() {
     assert_eq!(model.field_type(n), Some(MemberType::Integer));
 }
 
-#[trace("TC-2048", "FR-154-AC-51", "TC-048", "FR-038-AC-598")]
+#[trace("TC-2048", "FR-154-AC-51", "TC-048", "FR-038-AC-600")]
 #[test]
 fn native_target_numeric_and_undeclared_kinds_refuse() {
     for kind in [
@@ -2413,7 +2413,7 @@ fn native_target_numeric_and_undeclared_kinds_refuse() {
 /// native refuses at `TypeDefinition.target`, a second binding by `scalar` at
 /// `TypeDefinition.scalar`, and an option over a reference type is admitted
 /// (FR-154 "Option value types": `inner` may name a reference type).
-#[trace("TC-2048", "FR-154-AC-51", "TC-048", "FR-038-AC-598")]
+#[trace("TC-2048", "FR-154-AC-51", "TC-048", "FR-038-AC-600")]
 #[test]
 fn tc_234_bound_value_type_refusals_and_option_over_a_reference() {
     const CLOCK: &str = "ix://filament/native/Clock";

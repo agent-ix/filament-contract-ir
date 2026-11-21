@@ -5,7 +5,7 @@ type: TC
 relationships:
   - target: ix://agent-ix/filament-contract-ir/FR-038-AC-591
     type: verifies
-  - target: ix://agent-ix/filament-contract-ir/FR-038-AC-598
+  - target: ix://agent-ix/filament-contract-ir/FR-038-AC-600
     type: verifies
   - target: ix://agent-ix/filament-specification/TC-2048
     type: references
@@ -792,7 +792,7 @@ refuses `invalid_package`/`invalid-derived-shape` at the reference node's
 existing reference body-shape and graph/owner checks independent. These
 reader controls are PLANNED/UNRUN.
 
-## Clock references and target-bound natives (FR-038-AC-591, FR-038-AC-598)
+## Clock references and target-bound natives (FR-038-AC-591, FR-038-AC-600)
 
 1. Select an object with Clock fields and data fields typed by a reference
    targeting Clock directly, through an alias, and through a value type bound
