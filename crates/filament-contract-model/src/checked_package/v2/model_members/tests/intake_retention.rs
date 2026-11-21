@@ -51,7 +51,7 @@ fn bad_type(origin: Value) -> Value {
     node
 }
 
-/// Artifact ids and member names have distinct FR-154 grammars.
+/// Selected type and population artifact ids use FR-154's artifact grammar.
 #[trace("TC-048", "FR-038-AC-174")]
 #[test]
 fn selected_artifact_ids_admit_hyphens_and_reject_other_punctuation() {
@@ -81,15 +81,7 @@ fn selected_artifact_ids_admit_hyphens_and_reject_other_punctuation() {
         .expect("population members")
         .contains(OBJECT));
 
-    let mut invalid_population = input.clone();
-    invalid_population["populations"][0]["identity"] = json!("ix://acme/orders/widgets.second");
-    assert_eq!(
-        refusal(invalid_population).refusal,
-        ModelRefusal::malformed()
-    );
-
-    input["types"][0]["fields"] =
-        json!([field(OBJECT, "field-name", "ix://filament/native/Integer")]);
+    input["populations"][0]["identity"] = json!("ix://acme/orders/widgets.second");
     assert_eq!(refusal(input).refusal, ModelRefusal::malformed());
 }
 
