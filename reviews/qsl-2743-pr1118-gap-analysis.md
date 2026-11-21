@@ -33,3 +33,11 @@ This is a planless gap analysis of the obligations PR 1118 exercises, checked ag
 - **Stubs and coverage inflation:** no stubs. The fixture is real producer output, byte-equal to the arch evidence in /home/peter/pop2711.
 - **Semantic review:** not run as a fanned-out pass. The checks for intent, test and code were done inline for the touched criteria only.
 - Plan completion: not assessed
+
+## Dispositions
+
+Round 1 was checked at frozen head 688d827b9e5c795d917d634cdbfb861fbb63280f (fix 688d827b9 on top of merge d08d6af30 with origin/main e979980ad). Reviewer rerun: selected_population_public 3 passed, rc=0.
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-001 | fixed | Fixed at 688d827b9. The FR-053-AC-1 binder asserts `selected.binding == node.node_id` again for the graph-spelled selector (selected_population_public.rs:212), and its provenance oracle still finds the one source entry under the document-held ID. The regression asserts that the result equals the input binding for both spellings (547-550). Remaining limit: the unbounded branch is covered only with a document-held selector, by tc_048_population_maximum_is_canonical_or_explicitly_unbounded. That branch is the same `selector.binding.clone()` code, so I record no finding. |

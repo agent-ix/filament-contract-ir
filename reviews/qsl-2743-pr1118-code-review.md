@@ -48,3 +48,15 @@ CI:
 
 - Rust Checks / Lint (fsl-string-edge, 5 occurrences in model_members.rs:858,4807, operations.rs:4563-4564 and protocol_locations.rs:102) fails at b7dcf666. The same 5 occurrences fail on merged PR 1116's head 4c61cb05 (run 44904729249). None of these files is in this diff, so this is a pre-existing baseline failure.
 - origin/main has since advanced to e979980ad (PR 1117). git merge-tree reports a clean textual merge. The merged tree was not built.
+
+## Dispositions
+
+Round 1 was checked at frozen head 688d827b9e5c795d917d634cdbfb861fbb63280f. That head is fix commit 688d827b9 on top of merge commit d08d6af30, which merged origin/main e979980ad (PR 1117). d08d6af30 is identical to the automatic `git merge-tree` result. Reviewer reruns at this head:
+
+- selected_population_public: 3 passed, rc=0 (r1-population.log).
+- it, filtered to the two equality tests plus `reaches_population`: 20 passed, rc=0, including tc_048_population_maximum_is_canonical_or_explicitly_unbounded (r1-it.log).
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-001 | fixed | Fixed at 688d827b9. selected_population.rs:389 and :399 now return `binding: selector.binding.clone()` in Finite and in AdmittedUnbounded. The original test asserts `selected.binding == node.node_id` again (selected_population_public.rs:212). The regression passes both spellings and asserts the result binding equals the exact input (selected_population_public.rs:547-550). The `reaches_population` oracles, which use document-held selectors, are unchanged and pass. |
+| FND-002 | fixed | Fixed at 688d827b9. The source lookup uses `&node.node_id` (selected_population.rs:359-364). The second position_of call and the unreachable StaleBinding arm are gone, and `position_of` is private again. v2/mod.rs is identical to origin/main. |
