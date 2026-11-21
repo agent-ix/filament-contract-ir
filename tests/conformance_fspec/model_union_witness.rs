@@ -1723,3 +1723,210 @@ fn a_row_naming_another_packages_node_refuses_foreign_node() {
         ("foreign_node", Some("/model_unions/1/structural_node"))
     );
 }
+
+// ---------------------------------------------------------------------------
+// Quantity, object reference and composite payloads of the published mixed
+// vector, and an enum-family payload, with their real witnesses.
+// ---------------------------------------------------------------------------
+
+fn case_payload<'a>(
+    joined: &'a SelectedExactIdentities,
+    union: &str,
+    case: &str,
+) -> &'a SelectedModelUnionPayload {
+    let row = joined
+        .model_union_rows()
+        .find(|row| {
+            matches!(row.structural_node.path.last(),
+                Some(filament_contract_model::CheckedNodePathSegment::Name(name)) if name.ends_with(union))
+        })
+        .unwrap_or_else(|| panic!("{union}: a joined row"));
+    &row.cases
+        .iter()
+        .find(|candidate| candidate.name.as_ref() == case)
+        .unwrap_or_else(|| panic!("{case}: a case"))
+        .payload
+}
+
+/// MUW-11: the unit-typed, object-typed and record, tuple and union payloads
+/// each project the Exact type their witness names; a wrong unit, a wrong
+/// object identity and a wrong composite key are each refused at the payload.
+#[trace("FR-352-AC-32", "FR-352-AC-34")]
+#[test]
+fn quantity_object_and_composite_payloads_join_with_their_witnesses() {
+    let vectors = vectors();
+    let prepared = prepare(&vectors, "MUW-11-all-payload-forms").expect("prepares");
+    let joined = unwrap_join("MUW-11", join(&prepared, &mut ample()).0);
+    let key = |path: serde_json::Value| {
+        key(&serde_json::json!({
+            "package": "acme/shapes", "path": path, "ordinal": 0
+        }))
+    };
+    let original = |union: &str, case: &str| match case_payload(&joined, union, case) {
+        SelectedModelUnionPayload::Data { original_type, .. } => original_type.clone(),
+        other => panic!("{case}: data expected, found {other:?}"),
+    };
+    assert_eq!(
+        original("Mix", "Span"),
+        ValueType::Quantity(UnitId::Declared(key(serde_json::json!([
+            "scalar_type",
+            "unit",
+            "ix://acme/shapes/unit/ms"
+        ]))))
+    );
+    assert_eq!(
+        original("Mix", "Held"),
+        ValueType::Reference(EffectiveId::new(
+            None,
+            OriginalDeclarationKey::new("acme/shapes", "ix://acme/shapes/Holder")
+        ))
+    );
+    for (case, path) in [
+        (
+            "Wrap",
+            ["model", "record_value_type", "ix://acme/shapes/Wrapper"],
+        ),
+        (
+            "Pairing",
+            ["model", "tuple_value_type", "ix://acme/shapes/Pair"],
+        ),
+        ("Next", ["model", "variant_type", "ix://acme/shapes/Link"]),
+    ] {
+        assert_eq!(
+            original("Mix", case),
+            ValueType::Composite(key(serde_json::json!(path))),
+            "{case}"
+        );
+    }
+    // Wrong witnesses: the Exact type changes, the node stays.
+    let cases = |name: &str| -> usize {
+        prepared.unions[1]
+            .cases
+            .iter()
+            .position(|case| case.name.as_ref() == name)
+            .expect("a Mix case")
+    };
+    for (case, wrong) in [
+        (
+            "Span",
+            ValueType::Quantity(UnitId::Declared(key(serde_json::json!([
+                "scalar_type",
+                "unit",
+                "ix://acme/shapes/unit/other"
+            ])))),
+        ),
+        (
+            "Held",
+            ValueType::Reference(EffectiveId::new(
+                None,
+                OriginalDeclarationKey::new("acme/shapes", "ix://acme/shapes/Other"),
+            )),
+        ),
+        (
+            "Wrap",
+            ValueType::Composite(key(serde_json::json!([
+                "model",
+                "record_value_type",
+                "ix://acme/shapes/Node"
+            ]))),
+        ),
+    ] {
+        let mut tampered = prepare(&vectors, "MUW-11-all-payload-forms").expect("prepares");
+        let index = cases(case);
+        let model_unions_index = 1;
+        let SelectedModelUnionPayload::Data { original_type, .. } =
+            &mut tampered.unions[model_unions_index].cases[index].payload
+        else {
+            panic!("{case}: data");
+        };
+        *original_type = wrong;
+        let error = join(&tampered, &mut ample())
+            .0
+            .expect_err("a wrong witness refuses");
+        assert_eq!(
+            (error.code.as_str(), error.form.as_deref()),
+            (
+                "mismatched_identity_witness",
+                Some(format!("/model_unions/1/cases/{index}/payload/original_type").as_str())
+            ),
+            "{case}"
+        );
+    }
+}
+
+/// An enum-family payload (an all-nullary declaration named by a case) joins
+/// with the real enum shape its enum rows carry; another Exact type is refused
+/// at the payload, and without the enum rows the shape is unavailable.
+#[trace("FR-352-AC-32", "FR-352-AC-34")]
+#[test]
+fn an_enum_family_payload_joins_with_its_enum_shape_witness() {
+    let vectors = vectors();
+    let color = serde_json::json!({
+        "package": "acme/shapes",
+        "path": ["model", "variant_type", "ix://acme/shapes/Color"],
+        "ordinal": 0
+    });
+    // Mix.Bool names the enum-family declaration Color (Red only).
+    let build = |with_enum_rows: bool, original: Option<ValueType>| {
+        let mut case = resolve(&vectors, "MUW-11-all-payload-forms");
+        case.document_patch = Some(serde_json::json!([
+            {"op": "remove", "path": "/types/6/variants/1"},
+            {"op": "replace", "path": "/types/12/variants/7/payloadType",
+                "value": "ix://acme/shapes/Color"}
+        ]));
+        let mut prepared = prepare_case(&vectors, "enum-payload", case, None).expect("prepares");
+        let (declarations, members, shapes) = color_enum_rows(&prepared);
+        let shape = ValueType::Enum(shapes[0].shape.clone());
+        if with_enum_rows {
+            prepared.identities = prepared
+                .identities
+                .clone()
+                .with_admitted_model_enum_rows(
+                    &prepared.admitted,
+                    SelectedModelEnumRows {
+                        declarations: &declarations,
+                        members: &members,
+                        shapes: &shapes,
+                    },
+                    &mut ample(),
+                )
+                .expect("the enum rows admit");
+        }
+        let flag = prepared.unions[1]
+            .cases
+            .iter()
+            .position(|candidate| candidate.name.as_ref() == "Bool")
+            .expect("Mix.Bool");
+        prepared.unions[1].cases[flag].payload = SelectedModelUnionPayload::Data {
+            node: node_id(&color),
+            original_type: original.unwrap_or_else(|| shape.clone()),
+        };
+        (prepared, flag, shape)
+    };
+    let (prepared, flag, expected) = build(true, None);
+    let joined = unwrap_join("enum-payload", join(&prepared, &mut ample()).0);
+    let SelectedModelUnionPayload::Data { original_type, .. } =
+        case_payload(&joined, "Mix", "Bool")
+    else {
+        panic!("Bool carries data");
+    };
+    assert_eq!(original_type, &expected);
+    // Another Exact type for the same enum node is refused at the payload.
+    let (wrong, _, _) = build(true, Some(ValueType::Boolean));
+    let error = join(&wrong, &mut ample())
+        .0
+        .expect_err("a wrong enum witness refuses");
+    assert_eq!(
+        (error.code.as_str(), error.form.as_deref()),
+        (
+            "mismatched_identity_witness",
+            Some(format!("/model_unions/1/cases/{flag}/payload/original_type").as_str())
+        )
+    );
+    // Without the enum rows the shape is not available.
+    let (bare, _, _) = build(false, None);
+    let error = join(&bare, &mut ample())
+        .0
+        .expect_err("the enum shape is unavailable without its rows");
+    assert_eq!(error.code.as_str(), "unavailable_identity_witness");
+}
