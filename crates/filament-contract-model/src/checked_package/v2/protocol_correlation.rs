@@ -33,8 +33,6 @@ use quire_canonical::{Encode, Error, Sink, Writer};
 use serde::de::{Deserializer, Error as _};
 use serde::{Deserialize, Serialize};
 
-const MAX_SAFE: u64 = 9_007_199_254_740_991;
-
 /// The six control operators that carry `related` records (FR-466; `recommend`
 /// is the FR-822 control).
 const ELIGIBLE: [&str; 6] = ["send", "receive", "attempt", "effect", "event", "recommend"];
@@ -68,11 +66,11 @@ pub struct ProtocolCorrelationRow {
 }
 
 fn safe_integer<'de, D: Deserializer<'de>>(deserializer: D) -> Result<u64, D::Error> {
-    let value = u64::deserialize(deserializer)?;
-    if value > MAX_SAFE {
+    let number = u64::deserialize(deserializer)?;
+    if number > 9_007_199_254_740_991 {
         return Err(D::Error::custom("integer above 9007199254740991"));
     }
-    Ok(value)
+    Ok(number)
 }
 
 fn identifier<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Box<str>, D::Error> {

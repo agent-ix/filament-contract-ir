@@ -40,3 +40,19 @@ Planless gap analysis of the obligations PR 1121 adds. Ticket: QSL-2271. I compu
 - **AC-4 exact storage:** the CO-B11 reinterpretation is recorded as code-review FND-001 (SR-...550) and spec-review/base FND-002, not here.
 - **Stubs:** none. No retained scratch probes, debug exports or test-support branches in production code.
 - Plan completion: not assessed
+
+## New findings (disposition pass 1)
+
+| ID | Severity | Summary | Refs |
+| --- | --- | --- | --- |
+| FND-004 | low | AC-4's new clause 'A package without the member keeps the result box as the read's last storage request' has no FR-378-tagged binder. The AC-4 binder never checks the storage request order of a member-less read. The behavior is exercised only by the legacy checked_package_v2_stage_read_storage test, which is tagged to other criteria. | spec/checked_package/functional/FR-378-read-protocol-correlation-provenance-of-a-checked-package.md:155 |
+
+## Dispositions
+
+Round 1 is checked at frozen head 6df4aaf2c86160772eb39f8c9d736f2b8a3998b7: fix c091064ca, then merge of origin/main 7e4f54095. Arch ruling /tmp/ir-qsl2271-cob11-ruling.txt chose option A: the generic result box is reserved before the last carrier step. Reviewer rerun: name-filtered protocol_correlation::correlation_ conformance (see report).
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-001 | fixed | Fixed in c091064ca; after_excerpt in the round-1 dispositions comment. |
+| FND-002 | fixed | Fixed in c091064ca; after_excerpt in the round-1 dispositions comment. |
+| FND-003 | fixed | Fixed in c091064ca; after_excerpt in the round-1 dispositions comment. |

@@ -28,3 +28,11 @@ Dependency review of the new FR-378 relationship edges. Ticket: QSL-2271. The ed
 - The FR-038 depends_on edge is correct: the V2 reader, writer and refusal machinery.
 - The FR-831 and FR-322 references are correct.
 - The StR-001 trace is consistent with sibling checked_package FRs.
+
+## Dispositions
+
+Round 1 is checked at frozen head 6df4aaf2c86160772eb39f8c9d736f2b8a3998b7: fix c091064ca, then merge of origin/main 7e4f54095. Arch ruling /tmp/ir-qsl2271-cob11-ruling.txt chose option A: the generic result box is reserved before the last carrier step. Reviewer rerun: name-filtered protocol_correlation::correlation_ conformance (see report).
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-001 | fixed | Fixed in c091064ca; after_excerpt in the round-1 dispositions comment. |

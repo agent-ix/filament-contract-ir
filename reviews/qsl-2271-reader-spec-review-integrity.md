@@ -29,3 +29,11 @@ Integrity review of FR-378 and TC-493 for completeness, consistency and atomicit
 - TC-493 scope and procedure agree with AC-1 to AC-5.
 - The tests.md rows are consistent with the TC.
 - The inconsistent coverage wording is recorded once, in spec-review/base FND-001.
+
+## Dispositions
+
+Round 1 is checked at frozen head 6df4aaf2c86160772eb39f8c9d736f2b8a3998b7: fix c091064ca, then merge of origin/main 7e4f54095. Arch ruling /tmp/ir-qsl2271-cob11-ruling.txt chose option A: the generic result box is reserved before the last carrier step. Reviewer rerun: name-filtered protocol_correlation::correlation_ conformance (see report).
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-001 | fixed | Fixed in c091064ca; after_excerpt in the round-1 dispositions comment. |

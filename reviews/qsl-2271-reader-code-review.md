@@ -48,3 +48,20 @@ GitHub CI "Rust Checks" (run 44935869806) fails at its first step, Format. Clipp
 - No hashes, pins, new dependencies, shims or vendored FSpec files were added.
 - Mutant proof: the coder's logs (/tmp/ir-q2271/mut-*.log) show oldreader 8 FAIL, badjoin 1 FAIL, lostrows 8 FAIL and prevtext 1 FAIL. The oldreader mutant fails at the carrier intake: schema test at :390, refusal test at :224, positives at :128. Not rerun by me.
 - Remaining limits: producer/consumer parity with FSL is not claimed.
+
+## New findings (disposition pass 1)
+
+| ID | Severity | Summary | Refs |
+| --- | --- | --- | --- |
+| FND-005 | medium | CI Rust Checks now fails at Lint (run 44939885887). fsl-string-edge reports 7 unmarked occurrences at this head and 6 at origin/main 7e4f54095. The added one is protocol_correlation.rs:72 in safe_integer (branch-gating), so the PR worsens the known string-edge baseline, and clippy and tests again did not run on CI. | crates/filament-contract-model/src/checked_package/v2/protocol_correlation.rs:70-76 |
+
+## Dispositions
+
+Round 1 is checked at frozen head 6df4aaf2c86160772eb39f8c9d736f2b8a3998b7: fix c091064ca, then merge of origin/main 7e4f54095. Arch ruling /tmp/ir-qsl2271-cob11-ruling.txt chose option A: the generic result box is reserved before the last carrier step. Reviewer rerun: name-filtered protocol_correlation::correlation_ conformance (see report).
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-001 | fixed | Fixed in c091064ca; after_excerpt in the round-1 dispositions comment. |
+| FND-002 | fixed | Fixed in c091064ca; after_excerpt in the round-1 dispositions comment. |
+| FND-003 | fixed | Fixed in c091064ca; after_excerpt in the round-1 dispositions comment. |
+| FND-004 | rejected | FR-831 step 5 requests the view only after the last row and charges only its read_storage block G. The native group record must hold the borrowed whole source_map entry. So the entry position cannot be held before G is paid without an uncharged allocation, and the one contract-compatible construction is to look it up again per group against the same immutable retained source index. That lookup reads only the group's first-row control text, which FR-831 B already prices ('the source_map lookup read this row's control text'). The arm join 3 makes unreachable is a typed refusal rather than a panic, as the no-panic library style requires. It is not a defect. |
