@@ -5623,6 +5623,7 @@ pub(super) fn read_semantic_ir(
                             SelectedTypeRef::Declared(name) => {
                                 model.value_types.get(name).is_some_and(Option::is_some)
                                     || scope.records.contains(name.as_ref())
+                                    || scope.object_types.contains(name.as_ref())
                                     || model.tuple_types.contains_key(name)
                                     || model.variant_types.contains_key(name)
                                     || scope.option_types.contains(name.as_ref())
