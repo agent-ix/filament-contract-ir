@@ -111,6 +111,27 @@ impl CheckedSemanticNodeV2 {
         Some(requested)
     }
 
+    /// The subjects' `(alias, model_root)` pairs in source model declaration
+    /// order, borrowed from the optional fifth `subject_declaration_order`
+    /// binding. `None` for any other node, a body that does not parse, a
+    /// legacy four-binding body, or a present binding with a malformed entry.
+    /// The sequence is the supplied one; it is never sorted or inferred.
+    #[ix_trace_rs::string_edge]
+    pub fn step_relation_subject_declaration_order(
+        &self,
+    ) -> Option<impl ExactSizeIterator<Item = (&str, &CheckedNodeId)> + '_> {
+        if self.node_tag.as_ref() != "claim" || self.semantic_form.as_ref() != "step_relation" {
+            return None;
+        }
+        let mut unmetered = WorkMeter::new(u64::MAX);
+        let parsed = view(&self.body, node_path(0).key("body"), &mut unmetered).ok()?;
+        let entries = parsed.ok()?.declaration?;
+        entries
+            .iter()
+            .all(|entry| declared(entry).is_some())
+            .then(|| DeclarationOrder(entries.iter()))
+    }
+
     /// Parse this node's step-relation body into its closed typed production.
     /// Reader admission additionally checks the referenced graph joins.
     #[ix_trace_rs::string_edge]
@@ -183,12 +204,55 @@ fn ordered<'a, const N: usize>(
     if entries.len() != N {
         return Err(at.key("members").index(entries.len().min(N)));
     }
+    ordered_prefix(term, entries, names, at)
+}
+
+/// The values of the first `N` entries, each the binding its name requires.
+// The refusal position is a stack path; boxing it would be a heap request.
+#[allow(clippy::result_large_err)]
+fn ordered_prefix<'a, const N: usize>(
+    term: &'a CheckedTerm,
+    entries: &'a [CheckedTerm],
+    names: [&str; N],
+    at: Path<'static>,
+) -> Result<[&'a CheckedTerm; N], Path<'static>> {
     let mut ordered = [term; N];
     for (i, ((entry, name), slot)) in entries.iter().zip(names).zip(&mut ordered).enumerate() {
         *slot = binding(entry, name).ok_or_else(|| at.key("members").index(i))?;
     }
     Ok(ordered)
 }
+
+/// The optional final binding of a step-relation body.
+const DECLARATION_ORDER: &str = "subject_declaration_order";
+
+/// The current closed body's required binding count; the optional
+/// `subject_declaration_order` binding follows them.
+const REQUIRED_MEMBERS: usize = 4;
+
+/// One declaration-order entry as its alias and root reference.
+fn declared(entry: &CheckedTerm) -> Option<(&str, &CheckedNodeId)> {
+    let (alias, value) = named_binding(entry)?;
+    Some((alias, reference(value)?))
+}
+
+/// The declaration-order entries in source order, each already shaped as an
+/// alias bound to a reference.
+struct DeclarationOrder<'a>(std::slice::Iter<'a, CheckedTerm>);
+
+impl<'a> Iterator for DeclarationOrder<'a> {
+    type Item = (&'a str, &'a CheckedNodeId);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.0.next().and_then(declared)
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.0.size_hint()
+    }
+}
+
+impl ExactSizeIterator for DeclarationOrder<'_> {}
 
 /// One execution variable, borrowed from the body term.
 struct ExecutionView<'a> {
@@ -208,6 +272,8 @@ struct StepView<'a> {
     executions: Vec<ExecutionView<'a>>,
     invariants: Vec<(&'a str, &'a [CheckedTerm])>,
     body: &'a CheckedNodeId,
+    /// The optional fifth binding's Group entries, unvalidated beyond the Group.
+    declaration: Option<&'a [CheckedTerm]>,
 }
 
 /// Reads the closed body shape, charging the three tables it builds. The
@@ -217,7 +283,24 @@ fn view<'a>(
     at: Path<'static>,
     meter: &mut WorkMeter,
 ) -> Result<Result<StepView<'a>, Path<'static>>, ValidationFailure> {
-    let ordered_members = ordered(term, ["subjects", "executions", "invariants", "body"], at);
+    let Some(entries) = members(term) else {
+        return Ok(Err(at));
+    };
+    let len = entries.len();
+    if !(REQUIRED_MEMBERS..=REQUIRED_MEMBERS + 1).contains(&len) {
+        let first_bad = if len < REQUIRED_MEMBERS {
+            len
+        } else {
+            REQUIRED_MEMBERS + 1
+        };
+        return Ok(Err(at.key("members").index(first_bad)));
+    }
+    let ordered_members = ordered_prefix(
+        term,
+        entries,
+        ["subjects", "executions", "invariants", "body"],
+        at,
+    );
     let [subjects, executions, invariants, body] = match ordered_members {
         Ok(found) => found,
         Err(path) => return Ok(Err(path)),
@@ -328,11 +411,27 @@ fn view<'a>(
     let Some(body) = reference(body) else {
         return Ok(Err(body_at));
     };
+    // The optional fifth binding's shape is read last, so every earlier
+    // layout and value-shape defect keeps its existing priority.
+    let declaration_at = at.key("members").index(REQUIRED_MEMBERS);
+    let declaration = match entries.get(REQUIRED_MEMBERS) {
+        None => None,
+        Some(entry) => {
+            let Some(value) = binding(entry, DECLARATION_ORDER) else {
+                return Ok(Err(declaration_at));
+            };
+            let Some(group) = members(value) else {
+                return Ok(Err(declaration_at.key("value")));
+            };
+            Some(group)
+        }
+    };
     Ok(Ok(StepView {
         subjects: selected,
         executions: variables,
         invariants: invariant_sets,
         body,
+        declaration,
     }))
 }
 
@@ -626,6 +725,68 @@ pub(super) fn validate_step_relations(
                 ));
             };
             subject_models.push((alias, model));
+        }
+        if let Some(entries) = body.declaration {
+            // Supplied entries are checked in sequence, first offender wins;
+            // omission is only known after all of them.
+            let declaration_at = at
+                .key("members")
+                .index(REQUIRED_MEMBERS)
+                .key("value")
+                .key("members");
+            let mut covered = meter.filled(body.subjects.len(), false)?;
+            for (i, entry) in entries.iter().enumerate() {
+                let entry_at = declaration_at.index(i);
+                charge_at(meter, entry_at)?;
+                let Some((alias, value)) = named_binding(entry) else {
+                    return Err(refuse(
+                        meter,
+                        Code::InvalidSemanticGraph,
+                        None,
+                        entry_at,
+                        &node.node_id,
+                    ));
+                };
+                let slot = aliases
+                    .binary_search_by(|(found, _)| (*found).cmp(alias))
+                    .ok()
+                    .and_then(|at| aliases.get(at))
+                    .map(|&(_, slot)| slot)
+                    .filter(|&slot| covered.get(slot) == Some(&false));
+                let Some(slot) = slot else {
+                    return Err(refuse(
+                        meter,
+                        Code::InvalidSemanticGraph,
+                        None,
+                        entry_at.key("name"),
+                        &node.node_id,
+                    ));
+                };
+                if let Some(flag) = covered.get_mut(slot) {
+                    *flag = true;
+                }
+                let joined = reference(value)
+                    .zip(body.subjects.get(slot))
+                    .is_some_and(|(target, &(_, expected))| target == expected);
+                if !joined {
+                    return Err(refuse(
+                        meter,
+                        Code::InvalidSemanticGraph,
+                        None,
+                        entry_at.key("value").key("target"),
+                        &node.node_id,
+                    ));
+                }
+            }
+            if entries.len() != body.subjects.len() {
+                return Err(refuse(
+                    meter,
+                    Code::InvalidSemanticGraph,
+                    None,
+                    declaration_at.index(entries.len()),
+                    &node.node_id,
+                ));
+            }
         }
         subject_models.sort_unstable_by(|left, right| left.0.cmp(right.0));
         let model_of = |alias: &str| {
