@@ -77,9 +77,6 @@ impl DomainModel {
                     current = items;
                 }
                 // `Reference<Clock>` is a data leaf, never the clock itself.
-                SelectedTypeDefinition::Reference(SelectedTypeRef::Native(
-                    NativeTypeRef::Clock,
-                )) => break,
                 SelectedTypeDefinition::Reference(target) => current = target,
                 SelectedTypeDefinition::Map(_) => return None,
             }

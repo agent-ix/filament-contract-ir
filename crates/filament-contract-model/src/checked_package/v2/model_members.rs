@@ -838,15 +838,24 @@ impl CollectionKind {
 /// value type bound to a native by `target`, which is that native under its
 /// own name exactly as an alias is (FSpec FR-154 "Value types bound to a
 /// native by `target`").
-fn names_a_native(row: View<'_>) -> bool {
-    match row.get("kind") {
-        Some(kind) if kind.as_str() == Some("alias") => true,
-        Some(kind) if kind.as_str().is_none() => row
+fn names_a_native(row: View<'_>, meanings: &SortedMap<(&str, &str), &str>) -> bool {
+    let Some(kind) = row.get("kind") else {
+        return false;
+    };
+    if kind.as_str() == Some("alias") {
+        return true;
+    }
+    let meaning = kind
+        .get("module")
+        .and_then(View::as_str)
+        .zip(kind.get("name").and_then(View::as_str))
+        .and_then(|key| meanings.get(&key).copied())
+        .and_then(meaning::Kind::from_wire);
+    meaning == Some(meaning::Kind::ValueType)
+        && row
             .get("target")
             .and_then(View::as_str)
-            .is_some_and(|target| target.starts_with(NATIVE_PREFIX)),
-        _ => false,
-    }
+            .is_some_and(|target| target.starts_with(NATIVE_PREFIX))
 }
 
 /// A member type FR-322 step 4 derives.
@@ -1069,7 +1078,6 @@ impl MemberType {
                     Self::Timestamp => "timestamp",
                     Self::Bytes => "bytes",
                     Self::JsonObject => "json_object",
-                    Self::ClockReference => "clock_reference",
                     _ => return Ok(None),
                 };
                 derived(package, "scalar_type", form, [], budget)?
@@ -4773,7 +4781,7 @@ pub(super) fn read_semantic_ir(
     let declared_types = list(document, "types")?;
     let alias_count = declared_types
         .iter()
-        .filter(|declared| names_a_native(*declared))
+        .filter(|declared| names_a_native(*declared, &meanings))
         .count();
     let mut aliases: SortedMap<Box<str>, Box<str>> =
         SortedMap::with_capacity(budget, alias_count, F)?;
@@ -4788,7 +4796,7 @@ pub(super) fn read_semantic_ir(
         let Some(node) = row.get("identity").and_then(View::as_str) else {
             return Err(SelectionRefusal::located(ModelRefusal::malformed(), row, budget)?.into());
         };
-        if names_a_native(row) {
+        if names_a_native(row, &meanings) {
             if row.get("kind").and_then(View::as_str) != Some("alias") {
                 // A value type bound to a native by `target`: an unknown
                 // native, or a second binding by `scalar`, is malformed.
