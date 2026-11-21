@@ -834,6 +834,21 @@ impl CollectionKind {
     }
 }
 
+/// Whether a type definition is a name for another type: an `alias`, or a
+/// value type bound to a native by `target`, which is that native under its
+/// own name exactly as an alias is (FSpec FR-154 "Value types bound to a
+/// native by `target`").
+fn names_a_native(row: View<'_>) -> bool {
+    match row.get("kind") {
+        Some(kind) if kind.as_str() == Some("alias") => true,
+        Some(kind) if kind.as_str().is_none() => row
+            .get("target")
+            .and_then(View::as_str)
+            .is_some_and(|target| target.starts_with(NATIVE_PREFIX)),
+        _ => false,
+    }
+}
+
 /// A member type FR-322 step 4 derives.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) enum MemberType {
@@ -848,6 +863,9 @@ pub(super) enum MemberType {
     JsonObject,
     /// The timed-model clock marker used by checked clock-place paths.
     Clock,
+    /// `Reference<Clock>`, a data value naming one clock place (FSpec FR-154
+    /// "Clock reference types").
+    ClockReference,
     /// `Int[lo, hi]`.
     IntRange(IntegerBounds),
     /// `Rational[n1, n2; d1, d2]`.
@@ -993,6 +1011,7 @@ impl MemberType {
         }
         let mut id = match current {
             Self::Clock => return Ok(None),
+            Self::ClockReference => derived(package, "scalar_type", "clock_reference", [], budget)?,
             Self::Record(id) | Self::Tuple(id) | Self::Variant(id) | Self::Quantity(id) => {
                 budget.clone_id(id, "member_type")?
             }
@@ -1050,6 +1069,7 @@ impl MemberType {
                     Self::Timestamp => "timestamp",
                     Self::Bytes => "bytes",
                     Self::JsonObject => "json_object",
+                    Self::ClockReference => "clock_reference",
                     _ => return Ok(None),
                 };
                 derived(package, "scalar_type", form, [], budget)?
@@ -1189,6 +1209,7 @@ impl MemberType {
                         Self::Timestamp => "timestamp",
                         Self::Bytes => "bytes",
                         Self::JsonObject => "json_object",
+                        Self::ClockReference => "clock_reference",
                         _ => return None,
                     };
                     ids.push(derived_id(package, "scalar_type", form, Vec::new()));
@@ -2247,6 +2268,7 @@ impl DomainModel {
         let mut current = type_ref;
         let mut seen: Vec<&str> = Vec::new();
         let mut layers = Vec::new();
+        let mut clock_reference = false;
         while let SelectedTypeRef::Declared(name) = current {
             runtime_work(&mut budget, 1)?;
             let Some(definition) = self.collection_types.get(name) else {
@@ -2267,13 +2289,26 @@ impl DomainModel {
                     layers.push(SelectedValueLayer::Option);
                     current = inner;
                 }
+                // A reference type over `Clock` is a data member of type
+                // `Reference<Clock>`, never the clock itself.
+                SelectedTypeDefinition::Reference(SelectedTypeRef::Native(
+                    NativeTypeRef::Clock,
+                )) => {
+                    clock_reference = true;
+                    break;
+                }
                 SelectedTypeDefinition::Reference(target) => {
                     current = target;
                 }
                 SelectedTypeDefinition::Map(_) => return Ok(None),
             }
         }
-        let Some(mut element) = self.element_type_leaf_runtime(current, &mut budget)? else {
+        let leaf = if clock_reference {
+            Some(MemberType::ClockReference)
+        } else {
+            self.element_type_leaf_runtime(current, &mut budget)?
+        };
+        let Some(mut element) = leaf else {
             return Ok(None);
         };
         for layer in layers.into_iter().rev() {
@@ -4738,7 +4773,7 @@ pub(super) fn read_semantic_ir(
     let declared_types = list(document, "types")?;
     let alias_count = declared_types
         .iter()
-        .filter(|declared| declared.get("kind").and_then(View::as_str) == Some("alias"))
+        .filter(|declared| names_a_native(*declared))
         .count();
     let mut aliases: SortedMap<Box<str>, Box<str>> =
         SortedMap::with_capacity(budget, alias_count, F)?;
@@ -4753,7 +4788,7 @@ pub(super) fn read_semantic_ir(
         let Some(node) = row.get("identity").and_then(View::as_str) else {
             return Err(SelectionRefusal::located(ModelRefusal::malformed(), row, budget)?.into());
         };
-        if row.get("kind").and_then(View::as_str) == Some("alias") {
+        if names_a_native(row) {
             budget.charge(node_size(row))?;
             let target = text(row, "target")?;
             let key = budget.text(node, F)?;

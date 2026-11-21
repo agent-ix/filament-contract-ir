@@ -260,6 +260,7 @@ impl<'a> Bounded<'a> {
             | MemberType::Bytes
             | MemberType::JsonObject
             | MemberType::Clock
+            | MemberType::ClockReference
             | MemberType::Reference(_)
             | MemberType::Record(_)
             | MemberType::Tuple(_)

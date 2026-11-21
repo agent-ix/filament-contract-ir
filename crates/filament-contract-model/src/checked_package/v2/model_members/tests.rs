@@ -2141,3 +2141,108 @@ fn selected_clock_rendering_and_duration_lookup_reserve_owned_storage() {
         assert!(run(charged - 1).0.is_err(), "one short: {case}");
     }
 }
+
+/// FR-154 "Clock reference types": a field typed by a `reference` type whose
+/// `target` is `Clock`, an alias of it or a value type bound to it is a data
+/// member of type `Reference<Clock>`, not a clock member.
+#[trace("TC-234", "FR-154-AC-53", "TC-048", "FR-038-AC-591")]
+#[test]
+fn tc_234_a_reference_to_clock_is_a_data_member() {
+    const CLOCK: &str = "ix://filament/native/Clock";
+    let clock_ref = |identity: &str, target: &str| json!({"identity": identity, "kind": "reference", "target": target});
+    let alias = json!({"identity": "ix://acme/orders/CA", "kind": "alias", "target": CLOCK});
+    let bound = json!({
+        "identity": "ix://acme/orders/CV", "displayName": "CV",
+        "kind": {"module": "acme/orders", "name": "digit"}, "roles": [], "extensions": [],
+        "unknownPolicy": "reject", "target": CLOCK, "constraints": [],
+    });
+    let mut optional = field(WIDGET, "o", "ix://acme/orders/ClockRef");
+    optional["presence"] = json!("optional");
+    let mut many = field(WIDGET, "m", "ix://acme/orders/ClockRef");
+    many["multiplicity"] = json!({"lower": 0, "upper": 3, "ordered": true, "unique": false});
+    let mut types = vec![
+        object_type(
+            WIDGET,
+            &[],
+            vec![
+                field(WIDGET, "x", CLOCK),
+                field(WIDGET, "r", "ix://acme/orders/ClockRef"),
+                field(WIDGET, "a", "ix://acme/orders/AliasRef"),
+                field(WIDGET, "v", "ix://acme/orders/BoundRef"),
+                optional,
+                many,
+            ],
+        ),
+        clock_ref("ix://acme/orders/ClockRef", CLOCK),
+        clock_ref("ix://acme/orders/AliasRef", "ix://acme/orders/CA"),
+        clock_ref("ix://acme/orders/BoundRef", "ix://acme/orders/CV"),
+        alias,
+        bound,
+    ];
+    let model = read(&document(types.clone())).expect("admitted");
+    let type_of = |name: &str| {
+        let Resolved::Field(field) =
+            resolve(&model, WIDGET, MemberKind::Field, name).expect("field resolves")
+        else {
+            panic!("expected a field");
+        };
+        model.field_type(field)
+    };
+    let one = Some(MemberType::ClockReference);
+    assert_eq!(type_of("x"), Some(MemberType::Clock));
+    for name in ["r", "a", "v"] {
+        assert_eq!(type_of(name), one, "{name}");
+    }
+    assert_eq!(
+        type_of("o"),
+        Some(MemberType::Option(Box::new(MemberType::ClockReference)))
+    );
+    assert_eq!(
+        type_of("m"),
+        Some(MemberType::Collection {
+            kind: CollectionKind::Sequence,
+            element: Box::new(MemberType::ClockReference),
+            bounds: Some((0, 3)),
+        })
+    );
+    // The charged derivation the lock stage runs agrees with the plain one.
+    for name in ["x", "r", "a", "v", "o", "m"] {
+        let Resolved::Field(field) =
+            resolve(&model, WIDGET, MemberKind::Field, name).expect("field resolves")
+        else {
+            panic!("expected a field");
+        };
+        let mut meter = WorkMeter::new(u64::MAX);
+        let charged = model
+            .field_type_charged(field, &mut Budget::new(&mut meter, 0, BYTES), "member_type")
+            .expect("no limit is reached");
+        assert_eq!(charged, model.field_type(field), "{name}");
+    }
+    let mut meter = WorkMeter::new(u64::MAX);
+    let id = MemberType::ClockReference
+        .node_id_in(
+            &model.checked_package,
+            &mut Budget::new(&mut meter, 0, BYTES),
+        )
+        .expect("no limit is reached");
+    assert!(id.is_some(), "the one clock_reference scalar node");
+
+    // The native set holds no clock-reference name.
+    let mut wrong = types.clone();
+    wrong[0]["fields"][1]["typeRef"] = json!("ix://filament/native/ClockReference");
+    assert_eq!(
+        read(&document(wrong)).map(|_| ()),
+        Err(ModelRefusal::malformed())
+    );
+    // A reference type is never a map key.
+    types.push(json!({
+        "identity": "ix://acme/orders/KeyedByRef", "kind": "map",
+        "keys": "ix://acme/orders/ClockRef", "values": "ix://filament/native/Integer",
+        "bound": {"lower": 0},
+    }));
+    let refused = read(&document(types)).map(|_| ()).expect_err("refused");
+    assert_eq!(
+        refused,
+        ModelRefusal::new(Code::IllTyped, Cause::OperatorIneligible)
+    );
+}
