@@ -693,7 +693,9 @@ fn selected_fact<'a>(
         if row.checked_application != *application || row.occurrence != application_row.occurrence {
             continue;
         }
-        if row.structural_node.package != package.wire.name {
+        // Locality is membership in this package's held graph, not the node id's package
+        // name: a held selected-model node keeps its original owning package name.
+        let Some(structural) = package.node(&row.structural_node) else {
             return Err(read_error(
                 work,
                 AdmittedEqualityReadErrorCode::ForeignEqualityWitness,
@@ -701,12 +703,10 @@ fn selected_fact<'a>(
                 &row.structural_node,
                 0,
             ));
-        }
+        };
         if row.application != application_row.node_key
             || row.source_map_entry != application_row.source_map_entry
-            || package
-                .node(&row.structural_node)
-                .is_none_or(|node| node.owner != row.owner)
+            || structural.owner != row.owner
         {
             return Err(read_error(
                 work,
