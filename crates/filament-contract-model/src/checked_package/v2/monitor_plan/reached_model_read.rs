@@ -29,6 +29,7 @@ pub(super) struct ReachedProducerRows<'a> {
     pub(super) enum_declarations: &'a [SelectedModelEnumDeclarationRow],
     pub(super) enum_members: &'a [SelectedModelEnumMemberRow],
     pub(super) enum_shapes: &'a [SelectedModelEnumShapeRow],
+    pub(super) model_unions: &'a [crate::SelectedModelUnionRow],
 }
 
 #[derive(Debug)]
@@ -700,6 +701,12 @@ impl CheckedMonitorPlanRef<'_> {
                 .map_err(|error| enum_error(error, work))?;
             let identities = identities
                 .with_model_enum_shapes(&selected_enums, budget)
+                .map_err(|error| ReachedModelError::Exact {
+                    prior_work: work,
+                    error,
+                })?;
+            let identities = identities
+                .with_model_union_rows_over(self.package, rows.tuples, rows.model_unions, &reached, budget)
                 .map_err(|error| ReachedModelError::Exact {
                     prior_work: work,
                     error,
@@ -1418,6 +1425,7 @@ mod tests {
             model_enum_declarations: &[],
             model_enum_members: &[],
             model_enum_shapes: &[],
+            model_unions: &[],
             source_records: &source_records,
             source_tuples: &source_tuples,
             source_unions: &source_unions,
@@ -1555,6 +1563,7 @@ mod tests {
                 model_enum_declarations: &[],
                 model_enum_members: &[],
                 model_enum_shapes: &[],
+                model_unions: &[],
                 source_records: &self.records,
                 source_tuples: &self.tuples,
                 source_unions: &self.unions,
@@ -2255,6 +2264,7 @@ mod tests {
                     enum_declarations: &[],
                     enum_members: &[],
                     enum_shapes: &[],
+                    model_unions: &[],
                 },
                 &mut NativeJoinBudget::new(limit, u64::MAX),
             )
@@ -2641,6 +2651,7 @@ mod tests {
             model_enum_declarations: &[],
             model_enum_members: &[],
             model_enum_shapes: &[],
+            model_unions: &[],
             source_records: &source_records,
             source_tuples: &source_tuples,
             source_unions: &source_unions,
@@ -2717,6 +2728,7 @@ mod tests {
                 enum_declarations: &[],
                 enum_members: &[],
                 enum_shapes: &[],
+                model_unions: &[],
             },
             &mut model_budget,
         )
@@ -2822,6 +2834,7 @@ mod tests {
                     model_enum_declarations: &[],
                     model_enum_members: &[],
                     model_enum_shapes: &[],
+                    model_unions: &[],
                     source_records: &source_records,
                     source_tuples: &source_tuples,
                     source_unions: &source_unions,
@@ -2911,6 +2924,7 @@ mod tests {
                 model_enum_declarations: &[],
                 model_enum_members: &[],
                 model_enum_shapes: &[],
+                model_unions: &[],
                 source_records: records,
                 source_tuples: &source_tuples,
                 source_unions: &source_unions,
@@ -2933,6 +2947,7 @@ mod tests {
                 model_enum_declarations: &[],
                 model_enum_members: &[],
                 model_enum_shapes: &[],
+                model_unions: &[],
                 source_records: &source_records,
                 source_tuples: &source_tuples,
                 source_unions: &source_unions,
@@ -3001,6 +3016,7 @@ mod tests {
             model_enum_declarations: &[],
             model_enum_members: &[],
             model_enum_shapes: &[],
+            model_unions: &[],
             source_records: &missing,
             source_tuples: &source_tuples,
             source_unions: &source_unions,
@@ -3083,6 +3099,7 @@ mod tests {
                     model_enum_declarations: &[],
                     model_enum_members: &[],
                     model_enum_shapes: &[],
+                    model_unions: &[],
                     source_records: &unrepresentable_records,
                     source_tuples: &unrepresentable_tuples,
                     source_unions: &unrepresentable_unions,
@@ -3526,6 +3543,7 @@ mod tests {
                     enum_declarations: &[],
                     enum_members: &[],
                     enum_shapes: &[],
+                    model_unions: &[],
                 },
                 budget,
             )
@@ -3650,6 +3668,7 @@ mod tests {
                     enum_declarations: &enum_declarations,
                     enum_members: &enum_members,
                     enum_shapes: &enum_shapes,
+                    model_unions: &[],
                 },
                 budget,
             )
@@ -3782,6 +3801,7 @@ mod tests {
                         enum_declarations: &[],
                         enum_members: &[],
                         enum_shapes: &[],
+                        model_unions: &[],
                     },
                     budget,
                 )
@@ -3956,6 +3976,7 @@ mod tests {
                     model_enum_declarations: &[],
                     model_enum_members: &[],
                     model_enum_shapes: &[],
+                    model_unions: &[],
                     source_records: &self.records,
                     source_tuples: &self.tuples,
                     source_unions: &self.unions,

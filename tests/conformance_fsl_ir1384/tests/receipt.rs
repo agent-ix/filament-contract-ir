@@ -281,6 +281,7 @@ fn project<'a>(
                 model_enum_declarations: emission.selected_model_enum_declaration_rows(),
                 model_enum_members: emission.selected_model_enum_member_rows(),
                 model_enum_shapes: shapes,
+                model_unions: &[],
                 source_records: identities.source_records(),
                 source_tuples: emission.selected_source_tuple_rows(),
                 source_unions: identities.source_unions(),

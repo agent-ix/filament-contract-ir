@@ -372,7 +372,11 @@ impl SelectedExactIdentities {
         };
         let first = first.clone();
         let before = budget.begin();
-        let result = self.join_model_unions(package, tuple_rows, union_rows, scope, &first, budget);
+        let extent = match scope {
+            ModelUnionScope::Full => Extent::Full,
+            ModelUnionScope::Reached(requested) => Extent::Requested(requested),
+        };
+        let result = self.join_model_unions(package, tuple_rows, union_rows, extent, &first, budget);
         match &result {
             Ok(_) => budget.finish(before),
             Err(_) => budget.abort(),
@@ -388,7 +392,7 @@ impl SelectedExactIdentities {
         package: &CheckedPackageV2,
         tuple_rows: &[SelectedTupleDeclarationRow],
         union_rows: &[SelectedModelUnionRow],
-        scope: ModelUnionScope<'_>,
+        extent: Extent<'_>,
         first: &CheckedNodeId,
         budget: &mut NativeJoinBudget,
     ) -> Result<Self, ExactTypeProjectionError> {
@@ -419,13 +423,16 @@ impl SelectedExactIdentities {
             let id = &row.structural_node;
             charge_native_work(budget, id, id, "model_unions_row", row_units(row))?;
         }
-        let closure = match scope {
-            ModelUnionScope::Full => None,
-            ModelUnionScope::Reached(requested) => {
-                Some(Self::model_union_closure(package, requested, budget)?)
+        let computed;
+        let closure: Option<&BTreeSet<CheckedNodeId>> = match extent {
+            Extent::Full => None,
+            Extent::Requested(requested) => {
+                computed = Self::model_union_closure(package, requested, budget)?;
+                Some(&computed)
             }
+            Extent::Set(set) => Some(set),
         };
-        let in_scope = |id: &CheckedNodeId| closure.as_ref().is_none_or(|set| set.contains(id));
+        let in_scope = |id: &CheckedNodeId| closure.is_none_or(|set| set.contains(id));
         // Tuples first, through the existing typed tuple join.
         let mut joined_tuples = Vec::new();
         for row in tuple_rows.iter().filter(|row| in_scope(&row.structural_node)) {
@@ -763,8 +770,8 @@ impl SelectedExactIdentities {
             if present {
                 continue;
             }
-            match scope {
-                ModelUnionScope::Full => {
+            match extent {
+                Extent::Full => {
                     return Err(fail(
                         budget,
                         ExactTypeProjectionErrorCode::IncompleteIdentityWitness,
@@ -776,7 +783,7 @@ impl SelectedExactIdentities {
                         },
                     ));
                 }
-                ModelUnionScope::Reached(_) if in_scope(id) => {
+                Extent::Requested(_) | Extent::Set(_) if in_scope(id) => {
                     return Err(fail(
                         budget,
                         ExactTypeProjectionErrorCode::UnavailableIdentityWitness,
@@ -788,7 +795,7 @@ impl SelectedExactIdentities {
                         },
                     ));
                 }
-                ModelUnionScope::Reached(_) => {}
+                Extent::Requested(_) | Extent::Set(_) => {}
             }
         }
         // Publish whole.
@@ -928,5 +935,47 @@ impl SelectedExactIdentities {
     /// The model-union row of one `variant_type` node, borrowed.
     pub fn model_union_row(&self, node: &CheckedNodeId) -> Option<&SelectedModelUnionRow> {
         self.model_unions.get(node).map(Arc::as_ref)
+    }
+}
+
+/// The internal extent of one join: the public scope, or a closure the caller
+/// already walked under the same budget.
+#[derive(Clone, Copy)]
+pub(in crate::checked_package::v2) enum Extent<'a> {
+    Full,
+    Requested(&'a CheckedNodeId),
+    Set(&'a BTreeSet<CheckedNodeId>),
+}
+
+impl SelectedExactIdentities {
+    /// The same join over a closure the caller already walked and paid for.
+    pub(in crate::checked_package::v2) fn with_model_union_rows_over(
+        &self,
+        package: &CheckedPackageV2,
+        tuple_rows: &[SelectedTupleDeclarationRow],
+        union_rows: &[SelectedModelUnionRow],
+        closure: &BTreeSet<CheckedNodeId>,
+        budget: &mut NativeJoinBudget,
+    ) -> Result<Self, ExactTypeProjectionError> {
+        let Some(first) = closure.iter().next().cloned() else {
+            return Ok(self.clone());
+        };
+        let before = budget.begin();
+        let result = self.join_model_unions(
+            package,
+            tuple_rows,
+            union_rows,
+            Extent::Set(closure),
+            &first,
+            budget,
+        );
+        match &result {
+            Ok(_) => budget.finish(before),
+            Err(_) => budget.abort(),
+        }
+        result.map_err(|mut error| {
+            error.work = budget.consumed().work;
+            error
+        })
     }
 }
