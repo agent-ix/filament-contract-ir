@@ -223,15 +223,17 @@ impl CheckedPackageV2 {
     ) -> CheckedPackageV2BudgetedReadResult {
         match Self::admit_bytes(catalog, bytes, limits, evidence, budget) {
             Ok(package) => {
+                // The result's box is the read's last storage request, except
+                // for a package that carries `protocol_correlation_occurrences`:
+                // FSpec FR-831 states that member's storage limits over a budget
+                // that already holds the result, so its step reserves the box
+                // first and it is not charged again here.
                 let boxed_package = {
-                    let site =
-                        super::read_charge::Site::new(PackageReadStage::Retained, 0, "result");
-                    let bytes = std::alloc::Layout::new::<CheckedPackageV2>()
-                        .pad_to_align()
-                        .size();
-                    if let Err(stop) = super::read_charge::charge(budget, site, bytes as u128) {
-                        budget.abort();
-                        return budgeted_outcome(stop, budget);
+                    if package.wire.protocol_correlation_occurrences.is_none() {
+                        if let Err(stop) = Self::charge_result_box(budget) {
+                            budget.abort();
+                            return budgeted_outcome(stop, budget);
+                        }
                     }
                     Box::new(package)
                 };
@@ -243,6 +245,17 @@ impl CheckedPackageV2 {
                 budgeted_outcome(stop, budget)
             }
         }
+    }
+
+    /// Charges the box the strict read returns the package in.
+    pub(super) fn charge_result_box(
+        budget: &mut NativeJoinBudget,
+    ) -> Result<(), ValidationFailure> {
+        let site = super::read_charge::Site::new(PackageReadStage::Retained, 0, "result");
+        let bytes = std::alloc::Layout::new::<CheckedPackageV2>()
+            .pad_to_align()
+            .size();
+        super::read_charge::charge(budget, site, bytes as u128)
     }
 
     /// Reads one canonical V2 value without exposing a partial package.

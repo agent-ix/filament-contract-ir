@@ -21,12 +21,16 @@ typed read. Scope: FR-378-AC-1 to FR-378-AC-5.
 
 1. Read each of FSpec TC-2113's positive packages through the public reader
    and compare the typed read with the published table; give one group's
-   entry a second region and read it.
+   entry a second region and read it; read the root without a member over a
+   dependency with one.
 2. Read each reader refusal and each schema decision and compare code, cause
    and pointer.
 3. Read a control with a nonempty `related` argument with and without the
-   member.
-4. Read each budget vector at its least admitting limit and one unit less.
+   member; ask the clause read and `group` for an absent, foreign and ineligible
+   control and an unnamed occurrence ordinal.
+4. Read each budget vector on the public strict read at its published limit,
+   the baseline plus the offset with `G` from the published group count, and
+   assert the published decision with no growth of the limit.
 5. Write rows through the writer as `None`, `Some(&[])` and an unsorted,
    repeated list, and read the output back; read each invariance pair.
 

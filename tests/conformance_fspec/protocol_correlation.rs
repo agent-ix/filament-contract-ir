@@ -151,13 +151,23 @@ fn read_case(
     package: &Value,
     budget: &mut NativeJoinBudget,
 ) -> CheckedPackageV2BudgetedReadResult {
+    read_case_over(vectors, package, None, budget)
+}
+
+/// [`read_case`] with the selected dependency carrying `member`.
+fn read_case_over(
+    vectors: &Value,
+    package: &Value,
+    member: Option<&Value>,
+    budget: &mut NativeJoinBudget,
+) -> CheckedPackageV2BudgetedReadResult {
     let mut evidence = evidence(package);
     if package["lock"]["dependency_selections"]
         .as_array()
         .is_some_and(|rows| rows.iter().any(|row| row["identity"] == "acme/flow"))
     {
         evidence
-            .insert_dependency_package("acme/flow", dependency(vectors, None))
+            .insert_dependency_package("acme/flow", dependency(vectors, member))
             .expect("dependency evidence");
     }
     read_with_evidence(package, &evidence, budget)
@@ -577,12 +587,13 @@ fn reached_member(
 ) -> bool {
     denial(result, locus).is_none_or(|denial| {
         denial.stage == PackageReadStage::Retained
-            && (denial.charge.starts_with("protocol_correlation") || denial.charge == "result")
+            && denial.charge.starts_with("protocol_correlation")
     })
 }
 
-/// The consumption of `resource` immediately before the member's step, on this
-/// input: the least limit at which the read gets as far as the step. A smaller
+/// The consumption of `resource` immediately before the member's step (the
+/// result box already reserved), on this input: the least limit at which the read
+/// gets as far as the step. A smaller
 /// limit is denied by an earlier stage of the strict read.
 fn baseline(vectors: &Value, package: &Value, resource: PackageReadResource) -> u64 {
     let reaches = |limit: u64| {
@@ -610,21 +621,46 @@ fn baseline(vectors: &Value, package: &Value, resource: PackageReadResource) -> 
     }
 }
 
-/// `G`: the size of the typed-view block, as the reader first denies it when
-/// the limit leaves it nothing to spend.
-fn view_bytes(vectors: &Value, package: &Value, storage_baseline: u64) -> u64 {
-    let (result, locus) = budgeted(vectors, package, u64::MAX, storage_baseline, 0);
-    let shown = format!("{:?}", locus);
-    let kind = match &result {
-        CheckedPackageV2BudgetedReadResult::Admitted(_) => "admitted".to_owned(),
-        other => format!("{other:?}").chars().take(300).collect(),
-    };
-    let denial = denial(result, locus).unwrap_or_else(|| {
-        panic!("the view block is denied at the baseline {storage_baseline}: {kind} {shown}")
-    });
-    assert_eq!(denial.resource, PackageReadResource::ReadStorage);
-    assert_eq!(denial.charge, "protocol_correlation_view");
-    u64::try_from(denial.amount).expect("view block size")
+/// `G` as the contract defines it: the number of distinct `(control,
+/// occurrence)` groups times the size of the native group record. The group
+/// count is the published `typed-view block of N group records`, checked
+/// against the distinct keys of the case's own rows and against the groups
+/// the typed read returns; the record is the span of its rows (two `usize`)
+/// and the position of its whole `source_map` entry (one `usize`). Nothing here
+/// is taken from a denial of the reader under test.
+fn view_block(vectors: &Value, package: &Value, cases: &[Value]) -> u64 {
+    let published = cases
+        .iter()
+        .find_map(|case| {
+            case["expect"]["first_unpaid"]["charge"]
+                .as_str()?
+                .strip_prefix("typed-view block of ")?
+                .strip_suffix(" group records")?
+                .parse::<u64>()
+                .ok()
+        })
+        .expect("the published group count");
+    assert_eq!(published, 6, "the published vectors price six groups");
+    let mut keys: Vec<(String, u64)> = package[MEMBER]
+        .as_array()
+        .expect("the member")
+        .iter()
+        .map(|row| {
+            (
+                row["control"].to_string(),
+                row["occurrence"]["ordinal"].as_u64().expect("ordinal"),
+            )
+        })
+        .collect();
+    keys.dedup();
+    assert_eq!(keys.len() as u64, published, "distinct groups of the rows");
+    let read = typed_read(&admitted_case(vectors, package));
+    assert_eq!(
+        read["groups"].as_array().map(|groups| groups.len() as u64),
+        Some(published),
+        "the typed read returns the published groups"
+    );
+    published * 3 * std::mem::size_of::<usize>() as u64
 }
 
 fn offset(text: &Value, g: u64) -> u64 {
@@ -672,7 +708,7 @@ fn correlation_budget_vectors_admit_exactly_and_deny_the_first_unpaid_charge() {
         // the same budget only moves where the limit lies.
         let base = baseline(&vectors, &package, resource);
         let g = match resource {
-            PackageReadResource::ReadStorage => view_bytes(&vectors, &package, base),
+            PackageReadResource::ReadStorage => view_block(&vectors, &package, &cases),
             PackageReadResource::Work => 0,
         };
         let limit = base + offset(&case["limit_over_baseline"], g);
@@ -685,46 +721,13 @@ fn correlation_budget_vectors_admit_exactly_and_deny_the_first_unpaid_charge() {
         let expect = &case["expect"];
         match expect["decision"].as_str().expect("decision") {
             "admit" => {
-                // The vectors state the limits of the member's step. The strict
-                // read charges the boxed result after it, which a storage limit
-                // that is exact for the step leaves unpaid: the step itself
-                // admits when nothing it charged was denied, and the read
-                // completes with the result's own bytes added.
-                let package = match result {
-                    CheckedPackageV2BudgetedReadResult::Admitted(package) => package,
-                    other => {
-                        let denial = denial(other, locus).unwrap_or_else(|| {
-                            panic!(
-                                "{id}: expected admission at base + {}",
-                                case["limit_over_baseline"]
-                            )
-                        });
-                        assert_eq!(
-                            (denial.stage, denial.charge, resource),
-                            (
-                                PackageReadStage::Retained,
-                                "result",
-                                PackageReadResource::ReadStorage
-                            ),
-                            "{id}: only the result's box follows the step"
-                        );
-                        assert_eq!(denial.resource, PackageReadResource::ReadStorage, "{id}");
-                        let grown = limit + u64::try_from(denial.amount).expect("result size");
-                        match budgeted(
-                            &vectors,
-                            &case_package(&vectors, case),
-                            u64::MAX,
-                            grown,
-                            prior,
-                        )
-                        .0
-                        {
-                            CheckedPackageV2BudgetedReadResult::Admitted(package) => package,
-                            other => {
-                                panic!("{id}: the step admitted, the read does not: {other:?}")
-                            }
-                        }
-                    }
+                // The published decision is on the public strict read, with no
+                // growth of the limit: CO-B11 admits at exactly B_storage + G + 7.
+                let CheckedPackageV2BudgetedReadResult::Admitted(package) = result else {
+                    panic!(
+                        "{id}: expected admission at base + {}: {result:?}",
+                        case["limit_over_baseline"]
+                    );
                 };
                 if let Some(read) = expect.get("read") {
                     assert_eq!(typed_read(&package), *read, "{id}");
@@ -855,4 +858,116 @@ fn correlation_group_carries_every_region_of_its_source_map_entry() {
             .map(Vec::len),
         Some(2)
     );
+}
+
+/// Trace: FR-378-AC-1
+/// Provenance: FSpec FR-831-AC-9
+#[trace("FR-378-AC-1")]
+#[test]
+fn correlation_root_without_member_reads_the_dependency_member_from_the_dependency() {
+    let vectors = vectors();
+    let own = case(&vectors, "positive", "CO-P10-dependency-own-table");
+    let rows = own["edit"][0]["value"].clone();
+    assert!(rows.as_array().is_some_and(|rows| !rows.is_empty()));
+    let root = case_package(
+        &vectors,
+        case(
+            &vectors,
+            "positive",
+            "CO-P11-root-without-member-over-dependency",
+        ),
+    );
+    assert!(root.get(MEMBER).is_none(), "the root carries no member");
+    let CheckedPackageV2BudgetedReadResult::Admitted(root_read) = read_case_over(
+        &vectors,
+        &root,
+        Some(&rows),
+        &mut NativeJoinBudget::unlimited(),
+    ) else {
+        panic!("the root admits over a dependency with a member");
+    };
+    assert_eq!(
+        typed_read(&root_read),
+        json!({"outcome": UnavailableCorrelationProvenance::NAME}),
+        "the root has no member and inherits none"
+    );
+    let dependency = root_read.direct_dependencies().next().expect("dependency");
+    let read = typed_read(dependency);
+    assert_eq!(
+        read,
+        expected_read(&own["expect"]),
+        "the dependency's own table"
+    );
+    // The group's whole entry is the dependency's own, not the root's.
+    let group = &read["groups"][0];
+    assert_eq!(
+        group["source_map_entry"]["node_id"], group["control"],
+        "the entry belongs to the dependency's control"
+    );
+}
+
+/// Trace: FR-378-AC-3
+/// Provenance: FSpec FR-831-AC-1
+#[trace("FR-378-AC-3")]
+#[test]
+fn correlation_clause_read_answers_only_for_eligible_controls_of_the_package() {
+    let vectors = vectors();
+    let complete = case_package(&vectors, case(&vectors, "positive", "CO-P04-every-form"));
+    let package = admitted(&complete);
+    let id = |value: &Value| -> CheckedNodeId {
+        serde_json::from_value(value.clone()).expect("node id")
+    };
+    // A node the package does not hold, a foreign package's node, and the
+    // controls whose operators FR-831 does not make eligible.
+    for name in [
+        "CO-R01-absent-control",
+        "CO-R02-foreign-package-control",
+        "CO-R04-role-control",
+        "CO-R05-check-control",
+        "CO-R06-commit-control",
+        "CO-R07-sequence-control",
+    ] {
+        let refused = case(&vectors, "reader_refusals", name);
+        let control = id(&refused["edit"][0]["value"][0]["control"]);
+        assert_eq!(
+            package.protocol_correlation_clauses(&control).err(),
+            Some(ProtocolCorrelationReadError::NotAnEligibleControl),
+            "{name}"
+        );
+        assert_eq!(
+            ProtocolCorrelationReadError::NotAnEligibleControl.to_string(),
+            "not_an_eligible_control"
+        );
+        let ProtocolCorrelationProvenance::Complete(table) =
+            package.protocol_correlation_provenance()
+        else {
+            panic!("the package carries the member");
+        };
+        assert!(table.group(&control, 0).is_none(), "{name}: no group");
+    }
+    // An eligible control answers with its clauses in source order, and the
+    // group is found by control and occurrence ordinal.
+    let advised = id(&json!({
+        "package": "example",
+        "path": ["Example", "OrderFlow", "run", "Main", "Advised"],
+        "ordinal": 0
+    }));
+    let clauses = package
+        .protocol_correlation_clauses(&advised)
+        .expect("an eligible control");
+    assert_eq!(
+        clauses.iter().map(|row| &*row.alias).collect::<Vec<_>>(),
+        ["notice", "holder"]
+    );
+    let ProtocolCorrelationProvenance::Complete(table) = package.protocol_correlation_provenance()
+    else {
+        panic!("complete");
+    };
+    assert_eq!(table.len(), 6);
+    assert!(!table.is_empty());
+    assert_eq!(
+        table.group(&advised, 0).map(|group| group.clauses().len()),
+        Some(2)
+    );
+    assert!(table.group(&advised, 1).is_none(), "no second occurrence");
 }

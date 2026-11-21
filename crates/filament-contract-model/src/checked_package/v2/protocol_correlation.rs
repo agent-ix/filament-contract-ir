@@ -151,25 +151,12 @@ pub(super) struct Group {
     source_entry: usize,
 }
 
-/// What an admitted package keeps of the member: the validated groups, and the
-/// control positions the coverage pass walks.
+/// What an admitted package keeps of the member: the validated groups.
 #[derive(Clone, Debug, Default)]
 pub(super) struct Retained {
     /// `None` when the package carries no member; `Some`, possibly empty, when
     /// it does.
     pub(super) groups: Option<Box<[Group]>>,
-    /// The `protocol`/`control` node positions in ascending node-id order, held
-    /// only when the member is present.
-    controls: Vec<usize>,
-}
-
-impl Retained {
-    pub(super) fn new(controls: Vec<usize>) -> Self {
-        Self {
-            groups: None,
-            controls,
-        }
-    }
 }
 
 /// One control occurrence of the table: its clauses in source order and the
@@ -397,35 +384,6 @@ fn site(index: usize, form: &'static str, at: Path<'static>) -> Site<'static> {
     Site::new(PackageReadStage::Retained, index, form, at)
 }
 
-/// The positions of the package's `protocol`/`control` nodes in ascending
-/// structural node-id order.
-///
-/// Built during retention, and only for a package that carries the member, so
-/// that the coverage pass walks controls without an unmetered scan of every
-/// node. The block is charged to the read's budget before it is requested, with
-/// the other retained position tables, and is part of the baseline the step's
-/// own charges are measured over.
-pub(super) fn control_positions(
-    kinds: &[CheckedNodeKind],
-    nodes: &[CheckedSemanticNodeV2],
-    budget: &mut NativeJoinBudget,
-) -> Result<Vec<usize>, ValidationFailure> {
-    let is_control =
-        |kind: &CheckedNodeKind| *kind == CheckedNodeKind::Protocol(ProtocolForm::Control);
-    let count = kinds.iter().filter(|kind| is_control(kind)).count();
-    let site =
-        super::read_charge::Site::new(PackageReadStage::Retained, 0, "protocol_control_positions");
-    let mut positions: Vec<usize> = super::read_charge::with_capacity(budget, site, count)?;
-    positions.extend(
-        kinds
-            .iter()
-            .enumerate()
-            .filter_map(|(position, kind)| is_control(kind).then_some(position)),
-    );
-    positions.sort_unstable_by(|left, right| nodes[*left].node_id.cmp(&nodes[*right].node_id));
-    Ok(positions)
-}
-
 fn invalid(
     meter: &mut WorkMeter<'_>,
     site: &Site<'_>,
@@ -584,8 +542,12 @@ pub(super) fn admit(
                 continue;
             }
         }
-        // The lookup of the group's first row: its control text was paid by
-        // that row's own charge.
+        // The lookup of the group's first row. Its full key passed join 3 of
+        // the row pass against this same retained, immutable index, so the
+        // lookup finds the entry again; the binary search reads that row's
+        // control text, which the row's own `B` already paid, and allocates
+        // nothing. The refusal below is the typed answer of a lookup that
+        // cannot disagree with the row pass.
         let source_entry = package
             .source_position(
                 &row.control,
@@ -630,7 +592,12 @@ fn coverage(
 ) -> Result<(), ValidationFailure> {
     let nodes = &package.wire.semantic_graph.nodes;
     let mut next = 0_usize;
-    for &position in package.correlation.controls.iter() {
+    // The walk is over the node index the strict read already paid for, in
+    // its ascending node-id order; no scan, index or sort of its own.
+    for position in package.node_positions_ascending() {
+        if package.kinds[position] != CheckedNodeKind::Protocol(ProtocolForm::Control) {
+            continue;
+        }
         let node = &nodes[position];
         let site = site(position, "protocol_correlation_scan", member_path());
         let bn = reference_bytes(&node.node_id);

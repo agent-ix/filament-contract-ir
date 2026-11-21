@@ -82,6 +82,11 @@ impl PositionIndex {
         )
     }
 
+    /// The positions of the nodes in ascending node-id order.
+    pub(in crate::checked_package) fn node_positions(&self) -> impl Iterator<Item = usize> + '_ {
+        self.0.iter().copied()
+    }
+
     /// The identities of `nodes` in ascending order.
     pub(in crate::checked_package) fn node_ids<'n, Body>(
         &'n self,

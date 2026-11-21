@@ -271,12 +271,12 @@ pub use checked_package::{
     RequirementExtent, RequirementGuard, RequirementItemRow, ValueValidityRecord,
 };
 
+pub use checked_package::CheckedFieldReadForm;
 pub use checked_package::{
     encode_checked_package_v2_with_protocol_correlation_occurrences, ProtocolCorrelationGroup,
     ProtocolCorrelationProvenance, ProtocolCorrelationReadError, ProtocolCorrelationRow,
     ProtocolCorrelationTable, UnavailableCorrelationProvenance,
 };
-pub use checked_package::CheckedFieldReadForm;
 pub use checked_package::{
     AdmittedEqualityReadError, AdmittedEqualityReadErrorCode, EqualityDimensionRole,
     EqualityFactWitness, EqualityOperandTypeRole, EqualityUnitRole, EqualityWitnessKind,

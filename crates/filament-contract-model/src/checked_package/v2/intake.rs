@@ -402,9 +402,8 @@ fn classify_wire_fault(
                 "temporal_clause_names"
                 | "claim_names"
                 | "protocol_correlation_occurrences"
-                | "schedulability_claims"
-            ), Step::Index(_), ..] =>
-            {
+                | "schedulability_claims",
+            ), Step::Index(_), ..] => {
                 code = MalformedWire;
                 length = 2;
             }

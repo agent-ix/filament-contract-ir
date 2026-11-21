@@ -249,10 +249,6 @@ pub use timed_model::{
 };
 mod exact_projection;
 pub use claim_names::ClaimNameRow;
-pub use protocol_correlation::{
-    ProtocolCorrelationGroup, ProtocolCorrelationProvenance, ProtocolCorrelationReadError,
-    ProtocolCorrelationRow, ProtocolCorrelationTable, UnavailableCorrelationProvenance,
-};
 pub use exact_projection::{
     ExactTypeProjection, ExactTypeProjectionError, ExactTypeProjectionErrorCode, ModelUnionScope,
     SelectedEnumDeclarationRow, SelectedEnumMemberRow, SelectedExactDeclarationForm,
@@ -276,6 +272,10 @@ pub use operation_witness::{
 pub use parameter_declaration::{CheckedParameterDeclaration, CheckedParameterDeclarationError};
 pub use protocol_body::{
     CheckedProtocolActivation, CheckedProtocolActivationRow, CheckedProtocolBoundary,
+};
+pub use protocol_correlation::{
+    ProtocolCorrelationGroup, ProtocolCorrelationProvenance, ProtocolCorrelationReadError,
+    ProtocolCorrelationRow, ProtocolCorrelationTable, UnavailableCorrelationProvenance,
 };
 pub use reaches_population::CheckedReachesPopulationError;
 pub use refinement::*;
@@ -1853,11 +1853,6 @@ impl CheckedPackageV2 {
             diagnostics,
         };
         let node_index = retained_index::node_index(&wire, budget)?;
-        let protocol_controls = if wire.protocol_correlation_occurrences.is_some() {
-            protocol_correlation::control_positions(&kinds, &wire.semantic_graph.nodes, budget)?
-        } else {
-            Vec::new()
-        };
         let source_index = super::selected_population::source_index(&wire.source_map, budget)?;
         let terminal_rows = claim_terminal::retain_rows(
             &wire.semantic_graph.nodes,
@@ -1913,9 +1908,15 @@ impl CheckedPackageV2 {
             direct_dependencies,
             closure_index,
             catalog,
-            correlation: protocol_correlation::Retained::new(protocol_controls),
+            correlation: protocol_correlation::Retained::default(),
         };
         let mut package = package.retain_admission(budget)?;
+        if package.wire.protocol_correlation_occurrences.is_some() {
+            // FR-831 states the step's storage limits over a budget that
+            // already holds the result's box (the read's last request for any
+            // other package, made by the caller after this step).
+            Self::charge_result_box(budget)?;
+        }
         package.correlation.groups = protocol_correlation::admit(&package, budget)?;
         Ok(package)
     }
@@ -1986,6 +1987,13 @@ impl CheckedPackageV2 {
     /// The graph position of `id` by the retained node index.
     fn node_position(&self, id: &CheckedNodeId) -> Option<usize> {
         self.node_index.node(&self.wire.semantic_graph.nodes, id)
+    }
+
+    /// The graph positions of the nodes in ascending node-id order.
+    pub(in crate::checked_package) fn node_positions_ascending(
+        &self,
+    ) -> impl Iterator<Item = usize> + '_ {
+        self.node_index.node_positions()
     }
 
     /// The graph's node identities in ascending order.
