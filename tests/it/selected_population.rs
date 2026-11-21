@@ -1,14 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Agent-IX
 
-use crate::support::checked_package::refresh_identity;
+use crate::support::checked_package::refresh_identity_projection;
 use filament_contract_model::{
-    selected_population::{
-        select_population, CheckedSelectedPopulationOutcome as Outcome,
-        CheckedSelectedPopulationSelector as Selector, CheckedSelectedPopulationSource as Source,
-    },
-    CheckedOccurrenceRole, CheckedPackageEvidence, CheckedPackageReadLimits, CheckedPackageV2,
-    CheckedPackageV2ReadResult,
+    CheckedPackageEvidence, CheckedPackageReadLimits, CheckedPackageRefusalCause,
+    CheckedPackageRefusalCode, CheckedPackageV2, CheckedPackageV2ReadResult,
 };
 use ix_trace_rs::trace;
 use serde_json::Value;
@@ -56,7 +52,7 @@ fn fsl_fixture() -> Scratch {
     Scratch(scratch_path)
 }
 
-fn admitted(package: &Value, domain: &Value) -> CheckedPackageV2 {
+fn read_rekeyed(package: &Value, domain: &Value) -> CheckedPackageV2ReadResult {
     let domain_bytes = quire_canonical::to_vec(domain, quire_canonical::Limits::new(1 << 30))
         .expect("FSL domain package is canonicalizable");
     let mut evidence = CheckedPackageEvidence::new();
@@ -74,15 +70,12 @@ fn admitted(package: &Value, domain: &Value) -> CheckedPackageV2 {
     evidence.support_feature("filament.value.complete/v1");
     let bytes = quire_canonical::to_vec(package, quire_canonical::Limits::new(1 << 30))
         .expect("FSL package is canonicalizable");
-    match CheckedPackageV2::read(&bytes, CheckedPackageReadLimits::bounded(), &evidence) {
-        CheckedPackageV2ReadResult::Admitted(package) => *package,
-        other => panic!("rekeyed duplicate-max package must admit: {other:?}"),
-    }
+    CheckedPackageV2::read(&bytes, CheckedPackageReadLimits::bounded(), &evidence)
 }
 
 #[trace("FR-053-AC-3", "TC-453")]
 #[test]
-fn duplicate_max_on_reader_admitted_population_is_not_population() {
+fn duplicate_max_population_body_is_refused_by_the_reader() {
     let scratch = fsl_fixture();
     let domain: Value = serde_json::from_slice(
         &fs::read(scratch.0.join("emitted/spine-model.semantic-ir.json"))
@@ -115,33 +108,26 @@ fn duplicate_max_on_reader_admitted_population_is_not_population() {
         .expect("population members")
         .push(maximum);
 
-    refresh_identity(&mut package);
-    let package = admitted(&package, &domain);
-    let node = package
-        .graph()
-        .nodes
-        .iter()
-        .find(|node| {
-            node.node_tag.as_ref() == "bounded_domain"
-                && node.semantic_form.as_ref() == "model_population"
-        })
-        .expect("rekeyed package retained its population");
-    let occurrence = node
-        .occurrences
-        .iter()
-        .find(|occurrence| occurrence.role == CheckedOccurrenceRole::Type)
-        .expect("population Type occurrence")
-        .clone();
-    let result = select_population(Source::Admitted {
-        package: &package,
-        selector: Selector {
-            package_name: package.name().into(),
-            binding: node.node_id.clone(),
-            occurrence,
-        },
-    });
+    refresh_identity_projection(&mut package);
+    // FR-322 derives a population node's id from its body (`max` once, with the
+    // maximum's text), so a body binding `max` twice has no derivable identity:
+    // the strict reader refuses it at the node id and never admits it, which is
+    // why the projection has no admitted-but-not-population case to select.
+    let CheckedPackageV2ReadResult::Refused(refusal) = read_rekeyed(&package, &domain) else {
+        panic!("a population body binding max twice must be refused by the reader")
+    };
+    assert_eq!(refusal.code, CheckedPackageRefusalCode::InvalidPackage);
+    assert_eq!(
+        refusal.cause,
+        Some(CheckedPackageRefusalCause::InvalidDerivedShape)
+    );
     assert!(
-        matches!(result, Outcome::NotPopulation(_)),
-        "duplicate maximum must refuse projection without an extent: {result:?}"
+        refusal.loci[0]
+            .path
+            .as_ref()
+            .expect("refusal path")
+            .as_str()
+            .ends_with("/node_id"),
+        "{refusal:?}"
     );
 }
