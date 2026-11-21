@@ -269,12 +269,18 @@ fn other_object_node() -> Value {
     })
 }
 
-/// One `any` terminal, under a fixed node id, on the `model_root` node of the
-/// selected model `identity`.
-fn terminal_on_selected_root(identity: &str) -> Value {
+/// A package selecting both `IDENTITIES`, holding one `any` terminal under a
+/// fixed node id that binds the `model_root` node of `bound`. Packages built
+/// for different `bound` values differ only in that reference and the
+/// dependency derived from it.
+const IDENTITIES: [&str; 2] = ["test/families", "test/families-other"];
+
+fn terminal_on_selected_root(bound: &str) -> Value {
     let mut package = families();
-    select_model(&mut package, identity);
-    let root = json!({"package": identity, "path": ["model", "model_root"], "ordinal": 0});
+    for identity in IDENTITIES {
+        select_model(&mut package, identity);
+    }
+    let root = json!({"package": bound, "path": ["model", "model_root"], "ordinal": 0});
     let mut terminal_node = terminal("any", empty(), empty(), empty(), &[]);
     terminal_node["body"]["members"][0]["value"] = json!({"term": "reference", "target": root});
     terminal_node["dependencies"] = json!([root]);
@@ -1384,10 +1390,10 @@ fn terminal_identity_and_several_terminals_per_model() {
     assert_eq!(one_row(&repeated).len(), 3);
 
     // Two packages that differ only in which selected `model_root` the terminal
-    // binds both admit with distinct complete bodies, keep the one assigned
+    // binds, with both models selected in each, both admit with distinct complete bodies, keep the one assigned
     // terminal node id, and round-trip through the writer.
-    let first_root = terminal_on_selected_root("test/families");
-    let second_root = terminal_on_selected_root("test/families-other");
+    let first_root = terminal_on_selected_root(IDENTITIES[0]);
+    let second_root = terminal_on_selected_root(IDENTITIES[1]);
     let terminal_of = |package: &Value| {
         package["semantic_graph"]["nodes"]
             .as_array()
@@ -1401,9 +1407,22 @@ fn terminal_identity_and_several_terminals_per_model() {
     assert_eq!(first_terminal["node_id"], second_terminal["node_id"]);
     assert_ne!(first_terminal["body"], second_terminal["body"]);
     assert_ne!(encoded(&first_root), encoded(&second_root));
-    for package in [&first_root, &second_root] {
+    let node_ids = |package: &Value| -> Vec<Value> {
+        package["semantic_graph"]["nodes"]
+            .as_array()
+            .expect("nodes")
+            .iter()
+            .map(|node| node["node_id"].clone())
+            .collect()
+    };
+    assert_eq!(node_ids(&first_root), node_ids(&second_root));
+    for (package, bound) in [(&first_root, IDENTITIES[0]), (&second_root, IDENTITIES[1])] {
         let read = admitted_with_population(package);
+        let root = crate::support::checked_package::structural_fixture_id(
+            &json!({"package": bound, "path": ["model", "model_root"], "ordinal": 0}),
+        );
         assert_eq!(read.terminal_rows().len(), 1);
+        assert_eq!(read.terminal_rows()[0].model, root);
         assert_eq!(
             reread_written_with_population(package).terminal_rows(),
             read.terminal_rows()

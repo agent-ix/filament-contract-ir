@@ -30,3 +30,11 @@ The implementation meets FR-476 step 4 and AC-4 for both the no-`self` and the `
 | ID | Severity | Summary | Refs |
 | --- | --- | --- | --- |
 | FND-001 | low | After the migration, the `terminal_with_self` parameter `target_model` names the `self` Reference target object type, not the terminal's model (the model is now always the `model_root`). The local `other_model` passed to it in the mistyped-`self` case is also an object type. The names now say the opposite of what the values are. | tests/it/checked_package_v2_claim_terminal.rs:192, tests/it/checked_package_v2_claim_terminal.rs:1486-1487 |
+
+## Dispositions
+
+Round 1, at d13bcfcb (fix commit d13bcfcbbf681af884a9efb0f01ebdd9c3fdda39, verified against the committed diff). Coder focused run `/tmp/qsl2718-fix1-run.log`: 22 passed, 0 failed, no warnings. Its `it` binary (04:07:41) postdates the last test edit (04:07:32), and the production code is unchanged since the reviewer's own run at f4c8c2b5.
+
+| FND | Outcome | Reason |
+| --- | --- | --- |
+| FND-001 | fixed | `terminal_with_self(object_type_key: &str, ...)`. The mistyped-`self` local is now `other_object`, so both names say what the values are |

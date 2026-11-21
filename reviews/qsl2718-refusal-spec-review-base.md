@@ -27,3 +27,11 @@ The edits are correct against the oracle and the PR's code meets them. FND-001 i
 | ID | Severity | Summary | Refs |
 | --- | --- | --- | --- |
 | FND-001 | low | FR-060 Behavior still says "`model` references the selected model node", which is less exact than the edited refusal sentence and than FSpec FR-476 ("the selection's `model`/`model_root` node"). The appositive "a `model`/`object_type` node included" also reads awkwardly. The binding sentence could name the `model_root` node directly, so the refusal clause would need no appositive. | spec/checked_package/functional/FR-060-admit-model-terminal-declarations.md:45-46, spec/checked_package/functional/FR-060-admit-model-terminal-declarations.md:72-74 |
+
+## Dispositions
+
+Round 1, at d13bcfcb. `quire validate --scope .` on FR-060: exit 0.
+
+| FND | Outcome | Reason |
+| --- | --- | --- |
+| FND-001 | fixed | FR-060 Behavior now reads "`model` references the selection's `model`/`model_root` node", and the refusal clause is "A `model` target that is not the `model`/`model_root` node refuses `invalid_model_binding`/`malformed-declaration` at the target", with no appositive |

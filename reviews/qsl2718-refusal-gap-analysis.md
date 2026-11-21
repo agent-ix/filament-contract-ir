@@ -27,3 +27,11 @@ The ticket's acceptance, the `object_type` refusal on both paths with the root a
 | ID | Severity | Summary | Refs |
 | --- | --- | --- | --- |
 | FND-001 | low | The PR deleted the `first_model`/`second_model` block in `terminal_identity_and_several_terminals_per_model`. That block was the only realization of TC-061's model identity control: two complete packages that differ only in the terminal's `model` reference, both admitted, with distinct bodies. It now admits an invalid `object_type` target, so deleting it was right, but no replacement moves the control to two distinct selected `model_root` nodes. `terminal_rows_order_a_prefix_model_before_its_extension` admits two such terminals in one package, but it does not compare two packages and does not check read/write/read for each. | tests/it/checked_package_v2_claim_terminal.rs:1224-1367, spec/checked_package/matrix/TC-061-model-terminal-reader-writer.md:34-40 |
+
+## Dispositions
+
+Round 1, at d13bcfcb. The fix adds `terminal_on_selected_root` and a two-package block at the end of `terminal_identity_and_several_terminals_per_model`.
+
+| FND | Outcome | Reason |
+| --- | --- | --- |
+| FND-001 | still-open | The restored control does not yet hold the one variable fixed. `terminal_on_selected_root("test/families")` selects only `test/families`, but `terminal_on_selected_root("test/families-other")` also adds a second `model_root` node and selection. The two packages therefore differ in their selected models as well as in the terminal's `model` reference, against TC-061 ("retain both nodes and selections in each compared package"). So `assert_ne!(encoded(..))` holds from the extra node alone, and `assert_ne!` on the bodies compares hand-built inputs. The per-package check asserts only `terminal_rows().len() == 1`, not that the row's `model` is the bound root. Still missing: select both identities in both packages, and assert that each admitted row's `model` equals its own root key |
