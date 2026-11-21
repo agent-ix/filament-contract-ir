@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Agent-IX
 //! FR-038-AC-595: shared, scope-delimited parameter-read summaries for let links.
 //!
 //! A summary is a persistent sparse tree over the graph's distinct parameter
@@ -10,7 +11,10 @@
 //! only for a refused read, after the diagnostic reservation.
 
 use super::super::stage_storage::{self, Path, Refusal, Site};
-use super::*;
+use super::{
+    parameter_name_level, work_at_path, Application, CheckedNodeKind, CheckedPackageRefusalCause,
+    CheckedPackageRefusalCode, CheckedTerm, Graph, ValidationFailure, ValueForm, WorkMeter,
+};
 use crate::checked_package::common::{Step, Trail};
 use std::ops::Range;
 
