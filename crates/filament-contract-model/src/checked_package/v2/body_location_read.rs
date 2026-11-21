@@ -92,7 +92,8 @@ impl CheckedPackageV2 {
         };
         cursor.charge(1)?;
         let position = self
-            .position_of(function)
+            .node_index
+            .node(&self.wire.semantic_graph.nodes, function)
             .ok_or(CheckedBodyLocationReadError::MissingFunction)?;
         if function.package != self.wire.name
             || !matches!(self.kinds.get(position), Some(CheckedNodeKind::Function(_)))
@@ -111,7 +112,8 @@ impl CheckedPackageV2 {
         };
         cursor.charge(1)?;
         let start = self
-            .position_of(start)
+            .node_index
+            .node(&self.wire.semantic_graph.nodes, start)
             .ok_or(CheckedBodyLocationReadError::MissingFunction)?;
         cursor.charge_count(self.wire.semantic_graph.nodes.len())?;
         cursor.visits = vec![0; self.wire.semantic_graph.nodes.len()];
@@ -125,7 +127,8 @@ impl CheckedPackageV2 {
             if owner == function {
                 cursor.charge(1)?;
                 let application = self
-                    .position_of(&row.application)
+                    .node_index
+                    .node(&self.wire.semantic_graph.nodes, &row.application)
                     .ok_or(CheckedBodyLocationReadError::MissingRow)?;
                 cursor.slots.push((application, row_index));
             }
@@ -275,7 +278,11 @@ impl<'a> CheckedBodyLocations<'a> {
                     CheckedTerm::Reference { target } => {
                         self.charge(1)?;
                         if target.package == self.package.wire.name {
-                            if let Some(position) = self.package.position_of(target) {
+                            if let Some(position) = self
+                                .package
+                                .node_index
+                                .node(&self.package.wire.semantic_graph.nodes, target)
+                            {
                                 if matches!(
                                     self.package.kinds.get(position),
                                     Some(CheckedNodeKind::Expression(_))

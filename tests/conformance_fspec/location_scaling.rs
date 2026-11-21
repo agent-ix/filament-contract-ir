@@ -158,27 +158,45 @@ fn assert_lazy_paths(package: &CheckedPackageV2, count: usize, lets: bool) {
     let rows = &package.checked_term_data().unwrap().body_locations;
     let CheckedBodyLocationOrigin::FunctionBody { function, .. } = &rows[0].location.origin;
     let bound = u64::try_from(count).unwrap() * 100 + 10_000;
-    let mut cursor = package.body_locations(function, bound).unwrap();
-    let mut seen = 0;
-    while let Some(location) = cursor.next_location().unwrap() {
-        assert_eq!(location.path.len(), seen + usize::from(lets));
-        if [0, count / 2, count - 1].contains(&seen) {
-            if lets {
-                assert!(location.path[..seen]
-                    .iter()
-                    .all(|entry| *entry == CheckedKeyOrdinal::Safe(1)));
-                assert_eq!(location.path.last(), Some(&CheckedKeyOrdinal::Safe(0)));
-            } else {
-                assert!(location
-                    .path
-                    .iter()
-                    .all(|entry| *entry == CheckedKeyOrdinal::Safe(0)));
-            }
-        }
-        seen += 1;
+    // Cancel a partial read before measuring the independent full traversal.
+    {
+        let mut cancelled = package.body_locations(function, bound).unwrap();
+        assert!(cancelled.next_location().unwrap().is_some());
     }
-    assert_eq!(seen, count);
-    let exact = cursor.work_consumed();
+    let mut exact = 0;
+    let allocations = allocation_counter::measure(|| {
+        let mut cursor = package.body_locations(function, bound).unwrap();
+        let mut seen = 0;
+        while let Some(location) = cursor.next_location().unwrap() {
+            assert_eq!(location.path.len(), seen + usize::from(lets));
+            if [0, count / 2, count - 1].contains(&seen) {
+                if lets {
+                    assert!(location.path[..seen]
+                        .iter()
+                        .all(|entry| *entry == CheckedKeyOrdinal::Safe(1)));
+                    assert_eq!(location.path.last(), Some(&CheckedKeyOrdinal::Safe(0)));
+                } else {
+                    assert!(location
+                        .path
+                        .iter()
+                        .all(|entry| *entry == CheckedKeyOrdinal::Safe(0)));
+                }
+            }
+            seen += 1;
+        }
+        assert_eq!(seen, count);
+        exact = cursor.work_consumed();
+    });
+    let storage_bound =
+        u64::try_from(package.resolved_graph().nodes.len() + rows.len()).unwrap() * 512 + 65_536;
+    assert!(
+        allocations.bytes_max <= storage_bound,
+        "lazy cursor storage is linear: {allocations:?}, bound {storage_bound}"
+    );
+    assert_eq!(
+        allocations.bytes_current, 0,
+        "cursor storage is released on drop"
+    );
     assert!(
         exact <= bound,
         "lazy reconstruction stays linear: {exact}/{bound}"
