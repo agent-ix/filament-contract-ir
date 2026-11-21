@@ -612,17 +612,6 @@ fn clause_details_fit(arguments: &[CheckedTerm]) -> bool {
     clause_activation_fits(activation) && captures_fit && scheduling_fit
 }
 
-fn reference_set_is_ordered(term: &CheckedTerm) -> bool {
-    members(term).is_some_and(|items| {
-        items.windows(2).all(|pair| match pair {
-            [CheckedTerm::Reference { target: left }, CheckedTerm::Reference { target: right }] => {
-                left < right
-            }
-            _ => false,
-        })
-    })
-}
-
 /// The canonical bytes of `term` within `bytes`, in a block of exactly their
 /// length charged before it is requested; `None` when the term has no
 /// canonical encoding within the bound. The length is counted by encoding
@@ -1142,18 +1131,16 @@ fn set_positions(form: ProtocolForm, operator: &str) -> std::ops::Range<usize> {
     }
 }
 
-/// The graph a reference set is ordered in: the wire ids a set holds are
-/// graph indices, and a node's operand slots are numbered by first
-/// appearance in its own bytes, so a producer cannot know the wire-id order
-/// when it builds the set. The reader therefore compares the resolved graph
-/// rank of each target, as it does for a node's `dependencies`.
+/// Resolves reference-set targets to structural keys. Canonical order is
+/// strictly ascending node-id order of those keys, independent of graph
+/// array position and node-local operand-slot numbering.
 pub(super) struct SetGraph<'a, 'g> {
     pub(super) index: &'a GraphIndex<'g>,
     pub(super) structural_keys: &'a [std::sync::Arc<CheckedNodeId>],
 }
 
 /// Whether every reference set of the layout lists its targets in strictly
-/// ascending resolved graph rank (so a repeated target, or a set that is not
+/// ascending structural node-id order (so a repeated target, or a set that is not
 /// all references, is not ordered). A missing set is not ordered.
 fn reference_sets_are_ranked(
     form: ProtocolForm,
@@ -1399,7 +1386,8 @@ fn enum_value_defect(
 /// `selected_profile` is the lock's selected `protocol_profile` definition.
 ///
 /// This has no graph context; target forms, binder scope and membership are
-/// checked by the protocol reader step.
+/// checked by the protocol reader step. Reference-set order also requires
+/// resolved structural keys and is checked only at that graph-aware boundary.
 #[allow(dead_code)] // The reader will call the two ordered phases separately.
 pub(super) fn validate_protocol_body(
     form: ProtocolForm,
@@ -1410,11 +1398,6 @@ pub(super) fn validate_protocol_body(
 ) -> Result<(), ProtocolBodyDefect> {
     let (operator, arguments) = validate_envelope(form, body, semantic_type, selected_profile)?;
     validate_layout(form, operator, arguments)?;
-    if set_positions(form, operator).any(|position| {
-        argument(arguments, position).is_none_or(|set| !reference_set_is_ordered(set))
-    }) {
-        return Err(ProtocolBodyDefect::NoncanonicalSet);
-    }
     // This view is not on the read path: its own unmetered meter.
     let mut meter = WorkMeter::new(u64::MAX);
     match validate_related_order(form, operator, arguments, bytes, &mut meter) {
@@ -8245,7 +8228,7 @@ mod tests {
     /// FSpec TC-946 C1-C6 and K3 separate ordered captures from canonical sets.
     #[trace("TC-048")]
     #[test]
-    fn protocol_clause_checks_capture_records_scheduling_and_set_order() {
+    fn protocol_clause_checks_capture_records_scheduling_and_set_shape() {
         let mut clause = body(ProtocolForm::ProtocolClause, "protocol");
         let check = |body: &Value| {
             validate_protocol_body(
@@ -8280,7 +8263,9 @@ mod tests {
             .as_array_mut()
             .expect("roles set")
             .swap(0, 1);
-        assert_eq!(check(&clause), Err(ProtocolBodyDefect::NoncanonicalSet));
+        // This graph-free view checks shape; the public reader tests the
+        // resolved reference-set order at its graph-aware boundary.
+        assert_eq!(check(&clause), Ok(()));
     }
 
     /// FSpec TC-947 fixes the nested declaration alternatives and their enums.

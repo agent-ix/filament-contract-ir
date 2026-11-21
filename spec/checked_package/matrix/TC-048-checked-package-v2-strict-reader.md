@@ -3151,9 +3151,14 @@ published no vector file for them.
   `malformed_wire` and a repeated `related` record refuses
   `invalid_semantic_graph` at the node; a decision that reads a `recommend`
   binder refuses `wrong_snapshot` with reason `ineligible-kind`.
-- Reference sets by graph rank (AC-596): the `contracts` set of an `attempt`
-  with three entries in resolved-rank order admits; a set out of rank order, and
-  a repeated target, refuse `invalid_semantic_graph` at the node.
+- Reference sets by resolved structural node-id order (AC-596): the three-contract
+  `attempt` admits in the original and reversed graph. Operand-bearing `choice`
+  and `repeat` visible sets admit when structural-key order disagrees with wire
+  operand-slot order, including after graph reversal. Swapped or repeated visible
+  targets refuse `invalid_semantic_graph` at the control. A clause with repeated
+  requirements and a valid fairness target refuses at the clause in the protocol
+  pass; adding an absent fairness branch instead refuses the earlier temporal
+  `missing_declaration`/`missing-name` at that branch.
 - Send performer (AC-568): with a channel from one role to another, observe-only
   on the `to` role admits the `send` and on the `from` role refuses it.
 - Seq binder level at a temporal clause leaf (FSpec FR-322 "Parameter";
