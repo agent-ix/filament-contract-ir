@@ -1503,7 +1503,7 @@ fn assert_self_refused(result: CheckedPackageV2ReadResult) {
 
 /// FR-476 "Several terminal nodes on one model node": a terminal bound to the
 /// model root reads `self` from the selection's one population object.
-#[trace("TC-961", "FR-060-AC-2")]
+#[trace("TC-961", "FR-060-AC-8")]
 #[test]
 fn model_root_terminal_with_self_takes_the_one_population_object() {
     let package = model_root_terminal_with_self();
@@ -1527,6 +1527,68 @@ fn model_root_terminal_with_self_takes_the_one_population_object() {
     assert_self_refused(read_with_population(&model_root_terminal_with_self_typed(
         &other_object_key(),
     )));
+}
+
+/// FR-366: one object covered by two populations leaves `self` ambiguous, so
+/// the model-root arm counts (population, object) pairs, not distinct objects.
+#[trace("TC-961", "FR-060-AC-2")]
+#[test]
+fn model_root_terminal_with_self_refuses_one_object_in_two_populations() {
+    let package = model_root_terminal_with_self();
+    let mut document = population_document();
+    let mut again = document["populations"][0].clone();
+    again["identity"] = json!("ix://test/families/AccountsAgain");
+    again["displayName"] = json!("AccountsAgain");
+    document["populations"]
+        .as_array_mut()
+        .expect("populations")
+        .push(again);
+    assert_self_refused(read_with_document(&package, &document));
+}
+
+/// FSpec TC-961 MT-18 / FR-476-AC-6: a `self`-reading `when` node and an `any`
+/// node on one `model_root` are both admitted, as ordinals 0 and 1.
+#[trace("TC-961", "FR-060-AC-8")]
+#[test]
+fn model_root_terminals_when_self_and_any_share_one_root() {
+    let mut package = model_root_terminal_with_self();
+    let root = json!({"package": "test/families", "path": ["model", "model_root"], "ordinal": 0});
+    let mut any = terminal("any", empty(), empty(), empty(), &[]);
+    any["body"]["members"][0]["value"] = json!({"term": "reference", "target": root});
+    any["dependencies"] = json!([root]);
+    any["node_id"] = node_id("fixture/claim-terminal/temporal/terminal/any/model-root");
+    package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .push(any);
+    settle(&mut package);
+    let admitted = admitted_with_population(&package);
+    let rows = admitted.terminal_rows();
+    assert_eq!(rows.len(), 2);
+    let model = typed::<CheckedNodeId>(&root);
+    assert!(rows.iter().all(|row| row.model == model));
+    assert_eq!(
+        rows.iter().map(|row| row.ordinal).collect::<Vec<_>>(),
+        [0, 1]
+    );
+    assert_eq!(
+        rows.iter()
+            .filter(|row| matches!(
+                row.declaration,
+                TerminalDeclaration::When {
+                    parameter: Some(_),
+                    ..
+                }
+            ))
+            .count(),
+        1
+    );
+    assert_eq!(
+        rows.iter()
+            .filter(|row| matches!(row.declaration, TerminalDeclaration::Any))
+            .count(),
+        1
+    );
 }
 
 /// FR-476: a model root with no population object gives `self` no object.
