@@ -424,3 +424,62 @@ fn the_measured_baseline_admits_and_one_unit_less_exhausts_each_counter() {
         );
     }
 }
+
+/// Trace: FR-830-AC-1 FR-830-AC-10.
+/// The joined union is projected as the composite its own `type_handle` names,
+/// never as an enum; without the row the projection is unavailable.
+#[trace("FR-830-AC-1")]
+#[test]
+fn a_joined_model_union_projects_to_its_type_handle_and_never_to_an_enum() {
+    let vectors = vectors();
+    let id = "MUW-01-full-environment";
+    let case = resolve(&vectors, id);
+    let proposal = proposal_dir_of(&fixtures_dir());
+    let pair = &vectors["fixtures"][&case.fixtures];
+    let package = read_json(&proposal.join(pair["package"].as_str().unwrap())).unwrap();
+    let document = read_json(&proposal.join(pair["document"].as_str().unwrap())).unwrap();
+    let admitted = match crate::read_and_account(
+        &fixture_support::canonical(&package),
+        CheckedPackageReadLimits::bounded(),
+        &inputs::selected_evidence(&document),
+    ) {
+        CheckedPackageV2ReadResult::Admitted(package) => package,
+        other => panic!("strict read: {other:?}"),
+    };
+    let tuples: Vec<_> = case.sidecar["model_tuples"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(tuple_row)
+        .collect();
+    let unions: Vec<_> = case.sidecar["model_unions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(union_row)
+        .collect();
+    let mut budget = NativeJoinBudget::new(u64::MAX, u64::MAX);
+    let empty = SelectedExactIdentities::empty();
+    let joined = empty
+        .with_model_union_rows(&admitted, &tuples, &unions, ModelUnionScope::Full, &mut budget)
+        .expect("the published full environment joins");
+    for row in &unions {
+        let projection = admitted
+            .project_exact_type(&row.structural_node, &joined, &mut budget)
+            .expect("a joined union projects");
+        assert_eq!(
+            projection.value_type(),
+            &ValueType::Composite(row.type_handle.clone()),
+            "{:?}",
+            row.structural_node
+        );
+    }
+    let shape = &unions[1].structural_node;
+    let refused = admitted
+        .project_exact_type(shape, &empty, &mut budget)
+        .expect_err("no row, no projection");
+    assert_eq!(refused.code.as_str(), "unavailable_identity_witness");
+    // Joining the rows to an empty selection leaves the original untouched.
+    assert_eq!(empty.model_union_rows().count(), 0);
+    assert_eq!(joined.model_union_rows().count(), unions.len());
+}
