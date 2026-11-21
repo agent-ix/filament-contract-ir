@@ -43,7 +43,7 @@ fn read(package: &Value) -> CheckedPackageV2ReadResult {
 }
 
 #[test]
-#[trace("TC-491", "FR-038-AC-597", "FR-322-AC-510")]
+#[trace("TC-491", "FR-038-AC-597", "FR-322-AC-510", "FR-322-AC-513")]
 fn shared_record_parents_preserve_two_visits_of_one_application_occurrence() {
     let cases = vectors();
     let case = cases["positive"]
@@ -120,7 +120,13 @@ fn shared_record_parents_preserve_two_visits_of_one_application_occurrence() {
 }
 
 #[test]
-#[trace("TC-2090", "FR-322-AC-490", "FR-038-AC-581", "FR-038-AC-597")]
+#[trace(
+    "TC-2090",
+    "FR-322-AC-490",
+    "FR-322-AC-513",
+    "FR-038-AC-581",
+    "FR-038-AC-597"
+)]
 fn every_published_body_location_vector_runs_through_the_strict_reader() {
     let cases = vectors();
     let mut seen = Vec::new();
@@ -135,6 +141,28 @@ fn every_published_body_location_vector_runs_through_the_strict_reader() {
         let held = admitted.checked_term_data().expect("the sidecar is kept");
         let held = serde_json::to_value(&held.body_locations).unwrap();
         assert_eq!(held, case["rows"], "{id}");
+        if matches!(id, "BL-04" | "BL-05") {
+            let rows = &admitted.checked_term_data().unwrap().body_locations;
+            let filament_contract_model::CheckedBodyLocationOrigin::FunctionBody {
+                function, ..
+            } = &rows[0].location.origin;
+            let mut cursor = admitted.body_locations(function, 10_000).unwrap();
+            for visit in 0..18 {
+                let location = cursor
+                    .next_location()
+                    .unwrap()
+                    .expect("each composite component has nine terms");
+                let component = visit / 9;
+                let mut expected =
+                    vec![filament_contract_model::CheckedKeyOrdinal::Safe(component)];
+                if visit % 9 < 2 {
+                    expected.push(filament_contract_model::CheckedKeyOrdinal::Safe(visit % 9));
+                }
+                assert_eq!(location.path, expected, "{id} visit {visit}");
+                assert_eq!(location.row.term_ordinal, component, "{id} visit rank");
+            }
+            assert!(cursor.next_location().unwrap().is_none());
+        }
         seen.push(id.to_owned());
     }
     for case in cases["reader_refusals"].as_array().unwrap() {
