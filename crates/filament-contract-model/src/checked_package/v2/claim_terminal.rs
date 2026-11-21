@@ -6,6 +6,7 @@
 
 use super::frame::StepGraph;
 use super::graph_storage::GraphIndex;
+use super::model_members::DeclarationForm;
 use super::native_join_budget::{NativeJoinBudget, PackageReadStage};
 use super::structural::{reference_type_target_ref, typed_parameter_binding};
 use super::{
@@ -129,6 +130,13 @@ fn boolean_type(node: &CheckedSemanticNodeV2, graph: &StepGraph<'_, '_>) -> bool
         .is_some_and(|(_, kind)| kind == CheckedNodeKind::ScalarType(ScalarTypeForm::Boolean))
 }
 
+/// The object type node a terminal's `self` is bound to, `None` when the
+/// binding names no single object.
+///
+/// A `model_root` binding (FR-476 "Several terminal nodes on one model node")
+/// takes the object from the selection's one population object; an
+/// `object_type` binding names its own object, which must appear in exactly
+/// one population.
 fn self_object_key(
     graph: &StepGraph<'_, '_>,
     model: &CheckedNodeId,
@@ -138,43 +146,70 @@ fn self_object_key(
     let Some((model_node, kind)) = graph.node(model) else {
         return Ok(None);
     };
-    if kind != CheckedNodeKind::Model(ModelForm::ObjectType) {
-        return Ok(None);
-    }
-    let Some(CheckedNodeOwner::Model {
-        identity,
-        node: declaration,
-    }) = &model_node.owner
-    else {
-        return Ok(None);
-    };
-    let Ok(owner) = graph.owners.recover(model_node) else {
-        return Ok(None);
-    };
-    if owner.package.identity.as_ref() != identity.as_ref()
-        || !owner
-            .package
-            .object_types
-            .contains_key(declaration.as_ref())
-    {
-        return Ok(None);
-    }
-    // Count this model's declaration in every population. Other selected
-    // models in the same package do not make this model's `self` ambiguous.
-    let mut count = 0;
-    for members in owner.package.population_members.values() {
-        meter.charge(1, || binding_path(position, 2))?;
-        for object in members {
-            meter.charge(1, || binding_path(position, 2))?;
-            if object.as_ref() == declaration.as_ref() {
-                count += 1;
+    match (kind, &model_node.owner) {
+        (
+            CheckedNodeKind::Model(ModelForm::ModelRoot),
+            Some(CheckedNodeOwner::ModelRoot { identity }),
+        ) => {
+            let Some(package) = graph.owners.model(identity) else {
+                return Ok(None);
+            };
+            let mut only: Option<&str> = None;
+            let mut count = 0;
+            for members in package.population_members.values() {
+                meter.charge(1, || binding_path(position, 2))?;
+                for object in members {
+                    meter.charge(1, || binding_path(position, 2))?;
+                    count += 1;
+                    only = Some(object.as_ref());
+                }
             }
+            let Some(object) = only.filter(|_| count == 1) else {
+                return Ok(None);
+            };
+            if !package.object_types.contains_key(object) {
+                return Ok(None);
+            }
+            Ok(graph
+                .owners
+                .declaration_id(identity, object, DeclarationForm::ObjectType)
+                .cloned())
         }
+        (
+            CheckedNodeKind::Model(ModelForm::ObjectType),
+            Some(CheckedNodeOwner::Model {
+                identity,
+                node: declaration,
+            }),
+        ) => {
+            let Ok(owner) = graph.owners.recover(model_node) else {
+                return Ok(None);
+            };
+            if owner.package.identity.as_ref() != identity.as_ref()
+                || !owner
+                    .package
+                    .object_types
+                    .contains_key(declaration.as_ref())
+            {
+                return Ok(None);
+            }
+            // Count this model's declaration in every population. Other
+            // selected models in the same package do not make this model's
+            // `self` ambiguous.
+            let mut count = 0;
+            for members in owner.package.population_members.values() {
+                meter.charge(1, || binding_path(position, 2))?;
+                for object in members {
+                    meter.charge(1, || binding_path(position, 2))?;
+                    if object.as_ref() == declaration.as_ref() {
+                        count += 1;
+                    }
+                }
+            }
+            Ok((count == 1).then(|| model.clone()))
+        }
+        _ => Ok(None),
     }
-    if count != 1 {
-        return Ok(None);
-    }
-    Ok(Some(model.clone()))
 }
 
 fn self_reads<'g>(
