@@ -35,3 +35,9 @@ Round 1, at d13bcfcb. The fix adds `terminal_on_selected_root` and a two-package
 | FND | Outcome | Reason |
 | --- | --- | --- |
 | FND-001 | still-open | The restored control does not yet hold the one variable fixed. `terminal_on_selected_root("test/families")` selects only `test/families`, but `terminal_on_selected_root("test/families-other")` also adds a second `model_root` node and selection. The two packages therefore differ in their selected models as well as in the terminal's `model` reference, against TC-061 ("retain both nodes and selections in each compared package"). So `assert_ne!(encoded(..))` holds from the extra node alone, and `assert_ne!` on the bodies compares hand-built inputs. The per-package check asserts only `terminal_rows().len() == 1`, not that the row's `model` is the bound root. Still missing: select both identities in both packages, and assert that each admitted row's `model` equals its own root key |
+
+Round 2, at 45edfdb8 (fix commit 45edfdb8118b708230cbebaed478b6d2be977bb9, verified against the committed diff). Coder focused run `/tmp/qsl2718-fix2-run.log`: 22 passed, 0 failed, no warnings. Its `it` binary (04:15:52) postdates the last test edit (04:10:50).
+
+| FND | Outcome | Reason |
+| --- | --- | --- |
+| FND-001 | fixed | `terminal_on_selected_root(bound)` selects both `IDENTITIES` in each package, so the packages differ only in the terminal's `model_root` reference and its derived dependency. The test asserts equal node-id lists, an equal terminal node id, distinct bodies and encodings, admission of both, `terminal_rows()[0].model` equal to each package's own bound root key, and equal rows after the writer round trip |

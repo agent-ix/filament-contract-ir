@@ -38,3 +38,20 @@ Round 1, at d13bcfcb (fix commit d13bcfcbbf681af884a9efb0f01ebdd9c3fdda39, verif
 | FND | Outcome | Reason |
 | --- | --- | --- |
 | FND-001 | fixed | `terminal_with_self(object_type_key: &str, ...)`. The mistyped-`self` local is now `other_object`, so both names say what the values are |
+
+
+Round 3, at 45edfdb8 (no new commit). This records the lead's decision; it is not a fix round. The user capped this PR at two fix rounds, and that cap overrides the skill's default of fixing every low finding.
+
+| FND | Outcome | Reason |
+| --- | --- | --- |
+| FND-002 | accepted-no-change | Lead decision under the user's two-fix-round cap. The finding affects only where a comment sits in private integration-test source. It has no runtime behavior, public API, assertion or test-oracle effect. All original behavior, spec and coverage findings are fixed, and a third coding round would break the cap. |
+| FND-003 | accepted-no-change | Lead decision under the user's two-fix-round cap. The finding affects only how a comment wraps in private integration-test source. It has no runtime behavior, public API, assertion or test-oracle effect. All original behavior, spec and coverage findings are fixed, and a third coding round would break the cap. |
+
+## New findings (disposition pass 2)
+
+These were found while checking fix commit 45edfdb8, which the round-2 fix for gap-analysis FND-001 introduced. Both are low layout nits with no behavioural effect. Under the brief's two-round limit, the lead decides whether they are fixed or accepted.
+
+| ID | Severity | Summary | Refs |
+| --- | --- | --- | --- |
+| FND-002 | low | The doc comment that describes `terminal_on_selected_root` ("A package selecting both `IDENTITIES`, holding one `any` terminal ... that binds the `model_root` node of `bound`") sits on `const IDENTITIES`, so rustdoc attaches it to the const and the function has none. | tests/it/checked_package_v2_claim_terminal.rs:272-278 |
+| FND-003 | low | The reflowed comment line in `terminal_identity_and_several_terminals_per_model` is 112 characters, over the repo's 100-character style. rustfmt does not wrap comments, so `fmt-check` does not catch it. | tests/it/checked_package_v2_claim_terminal.rs:1393 |
