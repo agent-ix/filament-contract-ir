@@ -15732,6 +15732,82 @@ fn recommend_contracts_and_related_refuse_a_noncanonical_set() {
     );
 }
 
+/// `package_with_admitted_attempt` with its `contracts` set listing the
+/// operation's precondition and two postconditions (the shape of the SB
+/// two-location read-modify-write attempt: three contracts), with the node
+/// ids of the set in the order `order` names them.
+fn attempt_with_three_contracts(order: [usize; 3]) -> (Value, usize, Vec<Value>) {
+    let (mut package, root, _) = package_with_admitted_attempt();
+    let nodes = package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes");
+    let precondition = nodes
+        .iter()
+        .find(|node| {
+            node["semantic_form"] == "state_clause"
+                && node["body"]["operation"]["member"]["clause"] == "precondition"
+        })
+        .expect("precondition")
+        .clone();
+    let mut ids = vec![precondition["node_id"].clone()];
+    for name in ["post-a", "post-b"] {
+        let mut postcondition = precondition.clone();
+        postcondition["body"]["operation"]["member"]["clause"] = json!("postcondition");
+        let segments = postcondition["node_id"]["path"]
+            .as_array_mut()
+            .expect("path");
+        let last = segments.len() - 1;
+        let renamed = format!("{}-{name}", segments[last].as_str().unwrap_or("clause"));
+        segments[last] = json!(renamed);
+        ids.push(postcondition["node_id"].clone());
+        nodes.push(postcondition);
+    }
+    ids.sort_by_key(|id| id.to_string());
+    let members: Vec<Value> = order
+        .iter()
+        .map(|&at| json!({"term": "reference", "target": ids[at]}))
+        .collect();
+    package["semantic_graph"]["nodes"][root]["body"]["arguments"][3]["value"]["members"] =
+        json!(members);
+    settle(&mut package);
+    (package, root, ids)
+}
+
+/// FR-038-AC-596: a reference set is ordered by the resolved graph rank of its
+/// targets, so the three-contract attempt of the SB two-location
+/// read-modify-write admits; a set out of rank order and a repeated target
+/// still refuse `invalid_semantic_graph` at the node.
+#[trace("TC-048", "FR-038-AC-596")]
+#[test]
+fn reference_sets_compare_by_resolved_graph_rank() {
+    let (package, root, _) = attempt_with_three_contracts([0, 1, 2]);
+    assert!(
+        matches!(read(&package), CheckedPackageV2ReadResult::Admitted(_)),
+        "{:?}",
+        read(&package)
+    );
+    for (what, order) in [
+        ("a set out of rank order", [0, 2, 1]),
+        ("a reversed set", [2, 1, 0]),
+        ("a repeated target", [0, 1, 1]),
+        ("a repeated first target", [0, 0, 1]),
+    ] {
+        let (package, root, _) = attempt_with_three_contracts(order);
+        let key = package["semantic_graph"]["nodes"][root]["node_id"].clone();
+        assert_eq!(
+            read(&package),
+            refusal_at_id(
+                CheckedPackageRefusalCode::InvalidSemanticGraph,
+                &format!("/semantic_graph/nodes/{root}"),
+                None,
+                &key,
+            ),
+            "{what}"
+        );
+    }
+    let _ = root;
+}
+
 #[trace("FR-038-AC-567")]
 #[test]
 fn control_boundary_admits_after_the_layout_and_refuses_unknown_text() {

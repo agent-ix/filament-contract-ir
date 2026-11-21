@@ -121,6 +121,8 @@ relationships:
     type: verifies
   - target: ix://agent-ix/filament-contract-ir/FR-038-AC-585
     type: verifies
+  - target: ix://agent-ix/filament-contract-ir/FR-038-AC-596
+    type: verifies
   - target: ix://agent-ix/filament-specification/TC-187
     type: references
 ---
@@ -3149,6 +3151,9 @@ published no vector file for them.
   `malformed_wire` and a repeated `related` record refuses
   `invalid_semantic_graph` at the node; a decision that reads a `recommend`
   binder refuses `wrong_snapshot` with reason `ineligible-kind`.
+- Reference sets by graph rank (AC-596): the `contracts` set of an `attempt`
+  with three entries in resolved-rank order admits; a set out of rank order, and
+  a repeated target, refuse `invalid_semantic_graph` at the node.
 - Send performer (AC-568): with a channel from one role to another, observe-only
   on the `to` role admits the `send` and on the `from` role refuses it.
 - Seq binder level at a temporal clause leaf (FSpec FR-322 "Parameter";

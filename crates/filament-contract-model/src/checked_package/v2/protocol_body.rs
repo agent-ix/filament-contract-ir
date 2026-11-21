@@ -1127,23 +1127,60 @@ fn validate_layout(
     if !local_details_fit(form, operator, arguments) {
         return Err(D::MalformedLayout);
     }
-    if form == ProtocolForm::ProtocolClause
-        && (3..=8).any(|position| {
-            argument(arguments, position).is_none_or(|set| !reference_set_is_ordered(set))
-        })
-        || form == ProtocolForm::Control
-            && matches!(operator, "choice" | "repeat")
-            && argument(arguments, 1).is_none_or(|set| !reference_set_is_ordered(set))
-        || form == ProtocolForm::Control
-            && operator == "attempt"
-            && argument(arguments, 3).is_none_or(|set| !reference_set_is_ordered(set))
-        || form == ProtocolForm::Control
-            && operator == "recommend"
-            && argument(arguments, 2).is_none_or(|set| !reference_set_is_ordered(set))
-    {
-        return Err(D::NoncanonicalSet);
-    }
     Ok(())
+}
+
+/// The argument positions of `operator`'s reference sets (empty when it has
+/// none).
+fn set_positions(form: ProtocolForm, operator: &str) -> std::ops::Range<usize> {
+    match (form, operator) {
+        (ProtocolForm::ProtocolClause, _) => 3..9,
+        (ProtocolForm::Control, "choice" | "repeat") => 1..2,
+        (ProtocolForm::Control, "attempt") => 3..4,
+        (ProtocolForm::Control, "recommend") => 2..3,
+        _ => 0..0,
+    }
+}
+
+/// The graph a reference set is ordered in: the wire ids a set holds are
+/// graph indices, and a node's operand slots are numbered by first
+/// appearance in its own bytes, so a producer cannot know the wire-id order
+/// when it builds the set. The reader therefore compares the resolved graph
+/// rank of each target, as it does for a node's `dependencies`.
+pub(super) struct SetGraph<'a, 'g> {
+    pub(super) index: &'a GraphIndex<'g>,
+    pub(super) structural_keys: &'a [std::sync::Arc<CheckedNodeId>],
+}
+
+/// Whether every reference set of the layout lists its targets in strictly
+/// ascending resolved graph rank (so a repeated target, or a set that is not
+/// all references, is not ordered). A missing set is not ordered.
+fn reference_sets_are_ranked(
+    form: ProtocolForm,
+    operator: &str,
+    arguments: &[CheckedTerm],
+    graph: &SetGraph<'_, '_>,
+    meter: &mut WorkMeter,
+) -> Result<bool, ValidationFailure> {
+    for position in set_positions(form, operator) {
+        let Some(items) = argument(arguments, position).and_then(members) else {
+            return Ok(false);
+        };
+        let mut previous: Option<super::graph_storage::ResolvedKey<'_>> = None;
+        for item in items {
+            let CheckedTerm::Reference { target } = item else {
+                return Ok(false);
+            };
+            let key = graph.index.resolved(target, graph.structural_keys);
+            if let Some(held) = &previous {
+                if held.order(&key, meter)? != std::cmp::Ordering::Less {
+                    return Ok(false);
+                }
+            }
+            previous = Some(key);
+        }
+    }
+    Ok(true)
 }
 
 #[string_edge]
@@ -1373,6 +1410,11 @@ pub(super) fn validate_protocol_body(
 ) -> Result<(), ProtocolBodyDefect> {
     let (operator, arguments) = validate_envelope(form, body, semantic_type, selected_profile)?;
     validate_layout(form, operator, arguments)?;
+    if set_positions(form, operator).any(|position| {
+        argument(arguments, position).is_none_or(|set| !reference_set_is_ordered(set))
+    }) {
+        return Err(ProtocolBodyDefect::NoncanonicalSet);
+    }
     // This view is not on the read path: its own unmetered meter.
     let mut meter = WorkMeter::new(u64::MAX);
     match validate_related_order(form, operator, arguments, bytes, &mut meter) {
@@ -6835,6 +6877,7 @@ pub(super) struct ProtocolPass<'a> {
     pub(super) catalog: &'a super::operation_catalog::OperationCatalog,
     pub(super) lock: &'a CheckedPackageLockV2,
     pub(super) bytes: u64,
+    pub(super) structural_keys: &'a [std::sync::Arc<CheckedNodeId>],
 }
 
 pub(super) fn validate_protocol_nodes(
@@ -6850,7 +6893,12 @@ pub(super) fn validate_protocol_nodes(
         catalog,
         lock,
         bytes,
+        structural_keys,
     } = pass;
+    let set_graph = SetGraph {
+        index,
+        structural_keys,
+    };
     let selected_profile = lock
         .profile_selections
         .iter()
@@ -7016,6 +7064,14 @@ pub(super) fn validate_protocol_nodes(
                 position,
                 super::graph_storage::node_form(&nodes[position].node_tag),
             );
+            if !reference_sets_are_ranked(form, operator, arguments, &set_graph, meter)? {
+                return Err(body_defect(
+                    meter,
+                    position,
+                    &nodes[position],
+                    ProtocolBodyDefect::NoncanonicalSet,
+                ));
+            }
             if let Some(defect) = validate_related_order(form, operator, arguments, bytes, meter)? {
                 return Err(body_defect(meter, position, &nodes[position], defect));
             }
@@ -7101,6 +7157,20 @@ pub(super) fn validate_protocol_nodes(
         };
         validate_layout(ProtocolForm::ProtocolClause, operator, arguments)
             .map_err(|defect| body_defect(meter, position, &nodes[position], defect))?;
+        if !reference_sets_are_ranked(
+            ProtocolForm::ProtocolClause,
+            operator,
+            arguments,
+            &set_graph,
+            meter,
+        )? {
+            return Err(body_defect(
+                meter,
+                position,
+                &nodes[position],
+                ProtocolBodyDefect::NoncanonicalSet,
+            ));
+        }
         let check = MemberCheck {
             catalog,
             position,

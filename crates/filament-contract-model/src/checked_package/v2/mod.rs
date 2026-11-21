@@ -4489,6 +4489,7 @@ fn validate_graph<'w>(
             catalog,
             lock: &wire.lock,
             bytes: limits.bytes,
+            structural_keys,
         },
         &owners,
         meter,
