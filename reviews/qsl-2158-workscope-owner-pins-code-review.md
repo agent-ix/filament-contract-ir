@@ -9,7 +9,7 @@ review_set: subset
 
 ## Summary
 
-Ticket QSL-2158, PR1124. Independent native Codex review of frozen head c1fd822190d7d362b781814195657d2a99fc8299 against 96554ea506a19b16ff9863ad3d30066578bc609c. The three changed files substitute only the accepted exact and semantic-value revisions in production/dev declarations and matching lock sources.
+Ticket QSL-2158, PR1124. Independent native Codex review of frozen head c1fd822190d7d362b781814195657d2a99fc8299 against 96554ea506a19b16ff9863ad3d30066578bc609c. The three changed files substitute only the accepted exact and semantic-value revisions in production/dev declarations and matching lock sources. AGENTS.md, CLAUDE.md, CONTRIBUTING.md, Makefile, Cargo lints, deny.toml, rustfmt.toml and clippy.toml were read as context. No applicable AssuranceProfile was found under spec/.
 
 ## Verdict
 
@@ -69,7 +69,7 @@ A Python 3.13 TOML parse plus complete byte comparison verifies all three files 
 
 Lead-supplied actual Titan results at the frozen head: model library checked_package::v2::exact_projection::tests:: selected 7, passed 7, failed 0, ignored 0. Root integration exact_projection_limits:: with existing --features conformance-cli selected 7, passed 7, failed 0, ignored 0. The --locked --all-targets check naming filament-contract-model and filament-contract-ir with that feature exited 0, with zero runtime tests. These are supplied service executions, not reviewer-local runs.
 
-The ORIGINAL default-feature root integration compile and all-target check both failed E0432 at tests/it/source_obligation_filament.rs:22:21, importing crate::support::corpus. Inspection of unchanged base source confirms tests/it/main.rs unconditionally declares source_obligation_filament while tests/it/support/mod.rs gates corpus on conformance-cli. This is preserved as an existing red, not reported green or repaired by this PR. The successful feature-enabled filtered command does not run the external conformance corpus. The lead has requested arch disposition of using that existing feature configuration for the final gate; this artifact does not grant that disposition.
+The ORIGINAL default-feature root integration compile and all-target check both failed E0432 at tests/it/source_obligation_filament.rs:22:21, importing crate::support::corpus. Inspection of unchanged base source confirms tests/it/main.rs unconditionally declares source_obligation_filament while tests/it/support/mod.rs gates corpus on conformance-cli. This is preserved as an existing red, not reported green or repaired by this PR. The successful feature-enabled filtered command does not run the external conformance corpus. Makefile:63–64 already defines the repository lint gate with --workspace --all-targets --features conformance-cli, and Makefile:83–84 defines its test gate with the same feature configuration. The feature-enabled request therefore matches the documented repository test configuration; it is not a source change or newly invented bypass. The lead has still requested arch disposition for the mandatory final merge check; this artifact does not grant that disposition.
 
 No local Cargo, broad runtime suite, clippy, cargo-deny, Kani, measurements, external conformance or FSL consumer gate was run. The mandatory final rebased head check remains the lead's responsibility after artifact custody. Model and root focused passes do not prove complete WorkScope forwarding in FSL.
 
