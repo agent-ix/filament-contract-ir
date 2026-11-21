@@ -5580,18 +5580,33 @@ fn tc_048_a_seq_binder_in_a_clause_leaf_resolves_its_level_from_the_binders_in_s
             &at_node(seq, ""),
         );
     }
-    // A hyper body wrapper reads its leaves over its atom slots, a count the
-    // wire does not carry: a `seq` there is refused at every level.
-    for level in 0..4 {
-        let package = clause_leaf_seq(Shape::at(level), hyper_clock_fixture(&["s", "n"]).0);
-        let seq = find_identity(&package, "filament.op.collection.seq");
-        expect(
-            &format!("hyper wrapper, binder at {level}"),
-            &package,
-            Code::IllTyped,
-            Cause::OperatorIneligible,
-            &at_node(seq, ""),
-        );
+    // A hyper body wrapper reads its leaves over its slot scope (FSpec FR-402
+    // "Wrapper slot scope"): a `seq` binder there takes level `n` for the `n`
+    // slots its formula reads, and is refused at every other level.
+    let fixtures: [(u64, fn() -> Value); 3] = [
+        (0, || hyper_clock_fixture(&["s", "n"]).0),
+        (1, || slot_wrapper_fixture_with(&[(SLOT_A, "0")], true).0),
+        (2, || {
+            slot_wrapper_fixture_with(&[(SLOT_A, "0"), (SLOT_B, "1")], true).0
+        }),
+    ];
+    for (slots, build) in fixtures {
+        for level in 0..4 {
+            let package = clause_leaf_seq(Shape::at(level), build());
+            let case = format!("hyper wrapper, {slots} slots, binder at {level}");
+            if level == slots {
+                admitted(&case, &package);
+            } else {
+                let seq = find_identity(&package, "filament.op.collection.seq");
+                expect(
+                    &case,
+                    &package,
+                    Code::IllTyped,
+                    Cause::OperatorIneligible,
+                    &at_node(seq, ""),
+                );
+            }
+        }
     }
 }
 
@@ -5662,4 +5677,244 @@ fn is_slot_parameter_name_accepts_the_reserved_forms_and_refuses_near_misses() {
     ] {
         assert!(!is_slot_parameter_name(name), "{name} is no slot parameter");
     }
+}
+
+// ---------------------------------------------------------------------------
+// FR-402-AC-14 / FR-402-AC-15 (TC-346 HI-19, HI-20): the wrapper slot scope
+// ---------------------------------------------------------------------------
+
+/// The two-trace hyper clock fixture whose body wrapper reads the slot
+/// parameters `slots` (`name`, `level`), the first as its `over`: the
+/// wrapper's position, the hyperproperty's and each slot's.
+fn slot_wrapper_fixture(slots: &[(&str, &str)]) -> (Value, usize, usize, Vec<usize>) {
+    slot_wrapper_fixture_with(slots, false)
+}
+
+/// As [`slot_wrapper_fixture`]; with `spare` the clause's own `holds` leaf
+/// reads no slot and stays in the formula for a test to rewrite, each slot
+/// read by a leaf of its own.
+fn slot_wrapper_fixture_with(
+    slots: &[(&str, &str)],
+    spare: bool,
+) -> (Value, usize, usize, Vec<usize>) {
+    let (mut package, wrapper, hyper) = hyper_clock_fixture(&["a", "b"]);
+    let template = find_form(&package, "value", "parameter");
+    let holds = find_identity(&package, &temporal_identity("holds"));
+    let eventually = find_identity(&package, &temporal_identity("eventually"));
+    let mut positions = Vec::new();
+    let mut leaves = Vec::new();
+    for (at, (name, level)) in slots.iter().enumerate() {
+        let mut slot = nodes(&package)[template].clone();
+        slot["node_id"] = node_id(&fresh());
+        slot["body"]["members"][0]["value"]["value"] = json!(name);
+        slot["body"]["members"][1]["value"]["value"] = json!(level);
+        let position = push(&mut package, slot);
+        positions.push(position);
+        let reading = if at == 0 && !spare {
+            holds
+        } else {
+            let mut node = nodes(&package)[holds].clone();
+            node["node_id"] = node_id(&fresh());
+            push(&mut package, node)
+        };
+        package["semantic_graph"]["nodes"][reading]["body"]["arguments"][0] =
+            refer(&node_label(&package, position));
+        leaves.push(reading);
+    }
+    let mut tree = node_label(&package, if spare { holds } else { leaves[0] });
+    for leaf in if spare { &leaves[..] } else { &leaves[1..] } {
+        let leaf_key = node_label(&package, *leaf);
+        let both = push(
+            &mut package,
+            formula("and", Value::Null, vec![refer(&tree), refer(&leaf_key)]),
+        );
+        tree = node_label(&package, both);
+    }
+    package["semantic_graph"]["nodes"][eventually]["body"]["arguments"][0] = refer(&tree);
+    package["semantic_graph"]["nodes"][wrapper]["body"]["arguments"][0] =
+        refer(&node_label(&package, positions[0]));
+    settle(&mut package);
+    (package, wrapper, hyper, positions)
+}
+
+const SLOT_A: &str = "slot_sv_sa";
+const SLOT_B: &str = "slot_sv_sb";
+
+#[trace("TC-048", "FR-038-AC-598")]
+#[test]
+fn hi_19_reversed_prefixes_share_one_wrapper_with_the_slot_scope() {
+    let (mut package, wrapper, fwd, slots) = slot_wrapper_fixture(&[(SLOT_A, "0"), (SLOT_B, "1")]);
+    let clause_key = node_label(&package, wrapper);
+    let rev = push(
+        &mut package,
+        hyperproperty(
+            "hyperproperty",
+            vec![trace_group("b"), trace_group("a")],
+            vec![],
+            vec![],
+            refer(&clause_key),
+        ),
+    );
+    claim_occurrence(&mut package, rev);
+    settle(&mut package);
+    let admitted = admitted("Fwd and Rev over one wrapper", &package);
+    let bodies = |position: usize| nodes(&package)[position]["body"]["members"][6]["value"].clone();
+    assert_eq!(bodies(fwd)["target"], bodies(rev)["target"]);
+    assert_eq!(slots.len(), 2);
+    assert_eq!(admitted.temporal_bindings().expect("rows").len(), 4);
+}
+
+#[trace("TC-048", "FR-038-AC-598")]
+#[test]
+fn hi_20_a_wrapper_slot_off_its_scope_position_is_refused() {
+    // (a) the two levels swapped, at the first slot in scope order.
+    let (package, _, _, slots) = slot_wrapper_fixture(&[(SLOT_A, "1"), (SLOT_B, "0")]);
+    expect_at(
+        "levels swapped",
+        &package,
+        Code::InvalidSemanticGraph,
+        None,
+        &at_node(slots[0], "/body/members/1"),
+    );
+    // (c) a second node of one name.
+    let (package, _, _, slots) =
+        slot_wrapper_fixture(&[(SLOT_A, "0"), (SLOT_B, "1"), (SLOT_B, "2")]);
+    expect_at(
+        "a second slot_sv_sb",
+        &package,
+        Code::InvalidSemanticGraph,
+        None,
+        &at_node(slots[2], "/body/members/1"),
+    );
+    // The scope's levels right: admitted.
+    let (package, ..) = slot_wrapper_fixture(&[(SLOT_A, "0"), (SLOT_B, "1")]);
+    admitted("levels right", &package);
+}
+
+#[trace("TC-048", "FR-038-AC-598")]
+#[test]
+fn hi_20_over_on_a_later_slot_refuses_at_the_wrapper_argument() {
+    let (mut package, wrapper, _, slots) = slot_wrapper_fixture(&[(SLOT_A, "0"), (SLOT_B, "1")]);
+    package["semantic_graph"]["nodes"][wrapper]["body"]["arguments"][0] =
+        refer(&node_label(&package, slots[1]));
+    settle(&mut package);
+    expect_at(
+        "over on slot_sv_sb",
+        &package,
+        Code::InvalidModelBinding,
+        Some(Cause::MalformedDeclaration),
+        &at_node(wrapper, "/body/arguments/0"),
+    );
+}
+
+// ---------------------------------------------------------------------------
+// FR-322-AC-511: the hyper clause source unit on the claim_names row
+// ---------------------------------------------------------------------------
+
+fn expect_at(case: &str, package: &Value, code: Code, cause: Option<Cause>, path: &str) {
+    let (outcome, _) = refusal_of(case, package);
+    assert_eq!(outcome, (code, cause, Some(path.to_owned())), "{case}");
+}
+
+fn hyper_name_rows(package: &Value, hyper: usize) -> Vec<usize> {
+    package["claim_names"]
+        .as_array()
+        .expect("claim_names")
+        .iter()
+        .enumerate()
+        .filter(|(_, row)| row["declaration"] == nodes(package)[hyper]["node_id"])
+        .map(|(at, _)| at)
+        .collect()
+}
+
+#[trace("TC-048", "FR-038-AC-599")]
+#[test]
+fn a_hyper_claim_names_row_carries_its_locked_source_unit() {
+    let (package, _, hyper) = hyper_clock_fixture(&["a", "b"]);
+    let rows = hyper_name_rows(&package, hyper);
+    assert_eq!(rows.len(), 1);
+    assert_eq!(
+        package["claim_names"][rows[0]]["source_unit"],
+        package["lock"]["sources"][0]
+    );
+    admitted("a hyper row with its unit", &package);
+    // The temporal_bindings rows carry none.
+    assert!(package["temporal_bindings"]
+        .as_array()
+        .expect("rows")
+        .iter()
+        .all(|row| row.get("source_unit").is_none()));
+
+    // Missing.
+    let mut missing = package.clone();
+    missing["claim_names"][rows[0]]
+        .as_object_mut()
+        .expect("row")
+        .remove("source_unit");
+    expect_at(
+        "no source_unit",
+        &missing,
+        Code::InvalidPackage,
+        Some(Cause::TimedNodeReference),
+        &format!("/claim_names/{}", rows[0]),
+    );
+    // Foreign: not a lock source.
+    let mut foreign = package.clone();
+    foreign["claim_names"][rows[0]]["source_unit"] =
+        json!({"authority": "agent-ix", "identity": "other"});
+    expect_at(
+        "a foreign unit",
+        &foreign,
+        Code::InvalidPackage,
+        Some(Cause::InvalidValue),
+        &format!("/claim_names/{}/source_unit", rows[0]),
+    );
+    // On a row of another declaration.
+    let other = package["claim_names"]
+        .as_array()
+        .expect("rows")
+        .iter()
+        .position(|row| row["declaration"] != nodes(&package)[hyper]["node_id"]);
+    if let Some(other) = other {
+        let mut stated = package.clone();
+        stated["claim_names"][other]["source_unit"] = package["lock"]["sources"][0].clone();
+        expect_at(
+            "a unit on a state clause row",
+            &stated,
+            Code::InvalidPackage,
+            Some(Cause::TimedNodeReference),
+            &format!("/claim_names/{other}"),
+        );
+    }
+    // On a temporal_bindings row.
+    let mut on_trace = package.clone();
+    on_trace["temporal_bindings"][0]["source_unit"] = package["lock"]["sources"][0].clone();
+    refusal_at_trace(&on_trace, "/temporal_bindings/0");
+}
+
+#[trace("TC-048", "FR-038-AC-599")]
+#[test]
+fn every_claim_names_row_of_one_hyper_node_names_one_source_unit() {
+    let (mut package, _, hyper) = hyper_clock_fixture(&["a", "b"]);
+    package["semantic_graph"]["nodes"][hyper]["occurrences"] =
+        json!([{"role": "claim", "ordinal": 0}, {"role": "claim", "ordinal": 1}]);
+    settle(&mut package);
+    rebuild_complete_source_map(&mut package);
+    refresh_claim_names(&mut package);
+    let rows = hyper_name_rows(&package, hyper);
+    assert_eq!(rows.len(), 2);
+    admitted("two rows, one unit", &package);
+    let second = json!({"authority": "agent-ix", "identity": "second-unit"});
+    package["lock"]["sources"]
+        .as_array_mut()
+        .expect("sources")
+        .push(second.clone());
+    package["claim_names"][rows[1]]["source_unit"] = second;
+    expect_at(
+        "a differing unit on the second row",
+        &package,
+        Code::InvalidPackage,
+        Some(Cause::TimedNodeReference),
+        &format!("/claim_names/{}", rows[1]),
+    );
 }

@@ -3251,18 +3251,19 @@ pub fn refresh_claim_names(package: &mut Value) {
                 region["start"].as_u64().unwrap_or(0),
                 region["end"].as_u64().unwrap_or(0)
             );
-            rows.push((
-                ids[index].clone(),
-                role.to_owned(),
-                ordinal,
-                json!({
-                    "declaration": ids[index],
-                    "occurrence": {"role": role, "ordinal": ordinal},
-                    "name": name,
-                    "qualified_name": [scope, name],
-                    "declaration_region": region,
-                }),
-            ));
+            let mut row = json!({
+                "declaration": ids[index],
+                "occurrence": {"role": role, "ordinal": ordinal},
+                "name": name,
+                "qualified_name": [scope, name],
+                "declaration_region": region,
+            });
+            // FR-322 "Hyper clause source unit": a hyper row names the unit
+            // that declares the clause; the fixtures' units are the lock's.
+            if tag == "claim" && form == "hyperproperty" {
+                row["source_unit"] = package["lock"]["sources"][0].clone();
+            }
+            rows.push((ids[index].clone(), role.to_owned(), ordinal, row));
         }
     }
     if rows.is_empty() {

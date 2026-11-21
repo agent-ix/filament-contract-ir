@@ -1845,3 +1845,17 @@ fn published_refinement_body_name_vectors_replay() {
         );
     }
 }
+
+#[trace("TC-048", "FR-038-AC-599")]
+#[test]
+fn a_state_clause_row_naming_a_source_unit_is_refused() {
+    let mut package = state_package();
+    package["claim_names"][0]["source_unit"] = package["lock"]["sources"][0].clone();
+    let refusal = assert_refusal(
+        read_state(&package),
+        Code::InvalidPackage,
+        Some(Cause::TimedNodeReference),
+        "/claim_names/0",
+    );
+    assert_row_locus(&refusal, &package, 0);
+}

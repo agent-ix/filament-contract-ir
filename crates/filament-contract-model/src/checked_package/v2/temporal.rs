@@ -630,6 +630,7 @@ pub(super) struct TemporalContext<'a> {
     pub(super) lock: &'a CheckedPackageLockV2,
     pub(super) diagnostics: &'a [CheckedDiagnosticV2],
     pub(super) bindings: Option<&'a [TemporalBinding]>,
+    pub(super) claim_names: Option<&'a [super::ClaimNameRow]>,
 }
 
 /// The temporal step. See the module documentation for the order.
@@ -658,21 +659,83 @@ pub(super) fn validate_temporal(
     let clock_units = aggregate_clock_units(context.bindings, meter)?;
     let mut stamps = Stamps::new(nodes.len(), meter)?;
     let mut scratch = ClauseScratch::build(&graph, terms, nodes.len(), meter)?;
+    // FR-322 "Hyper clause source unit": each hyper clause's units resolve in
+    // the unit its `claim_names` row states, after those rows pass (the
+    // `claim_names` step ran earlier), and a body wrapper reads the clock of
+    // the clause that references it.
+    let mut wrapper_clocks: Vec<(&CheckedNodeId, ClauseClock<'_>)> = meter.vec(0)?;
+    for &position in index.values() {
+        if graph.kinds.get(position)
+            != Some(&CheckedNodeKind::Claim(super::ClaimForm::Hyperproperty))
+        {
+            continue;
+        }
+        let hyper = &graph.nodes[position].node_id;
+        let Some(source) = context
+            .claim_names
+            .into_iter()
+            .flatten()
+            .find(|row| &row.declaration == hyper)
+            .and_then(|row| row.source_unit.as_ref())
+        else {
+            continue;
+        };
+        validate_source_clock_unit(
+            &context,
+            position,
+            hyper,
+            &graph,
+            terms,
+            Some(source),
+            meter,
+        )?;
+        let unit = clock_units
+            .binary_search_by(|(declaration, _)| (*declaration).cmp(hyper))
+            .ok()
+            .and_then(|at| clock_units[at].1.unit);
+        let wrapper = match terms.get(position).and_then(Option::as_ref) {
+            Some(CheckedTerm::Aggregate { members }) => member_binding(members, "body")
+                .and_then(typed_reference)
+                .filter(|target| {
+                    graph.node(target).is_some_and(|(_, kind)| {
+                        kind == CheckedNodeKind::Temporal(TemporalForm::TemporalClause)
+                    })
+                }),
+            _ => None,
+        };
+        if let Some(wrapper) = wrapper {
+            meter.push(
+                &mut wrapper_clocks,
+                (
+                    wrapper,
+                    ClauseClock {
+                        unit,
+                        source: Some(source),
+                    },
+                ),
+            )?;
+        }
+    }
     for &position in index.values() {
         if graph.kinds.get(position)
             == Some(&CheckedNodeKind::Temporal(TemporalForm::TemporalClause))
         {
+            let id = &graph.nodes[position].node_id;
             check_clause(
                 &context,
                 position,
                 &graph,
                 terms,
-                clock_units
-                    .binary_search_by(|(declaration, _)| {
-                        (*declaration).cmp(&graph.nodes[position].node_id)
+                wrapper_clocks
+                    .iter()
+                    .find(|(wrapper, _)| *wrapper == id)
+                    .map(|(_, clock)| *clock)
+                    .or_else(|| {
+                        clock_units
+                            .binary_search_by(|(declaration, _)| (*declaration).cmp(id))
+                            .ok()
+                            .map(|at| clock_units[at].1)
                     })
-                    .ok()
-                    .map(|at| clock_units[at].1)
                     .unwrap_or(ClauseClock {
                         unit: None,
                         source: None,
@@ -1292,6 +1355,92 @@ pub fn is_slot_parameter_name(name: &str) -> bool {
     }
 }
 
+/// The `name` and `level` of a `value`/`parameter` node whose name is in the
+/// reserved slot form with tag `slot` (FSpec FR-402 "Wrapper slot scope"); the
+/// level is `None` when the node's `level` binding is not a non-negative
+/// integer.
+#[ix_trace_rs::string_edge]
+fn slot_parameter_of<'a>(
+    kind: Option<&CheckedNodeKind>,
+    term: Option<&'a CheckedTerm>,
+) -> Option<(&'a str, Option<usize>)> {
+    if kind != Some(&CheckedNodeKind::Value(ValueForm::Parameter)) {
+        return None;
+    }
+    let Some(CheckedTerm::Aggregate { members }) = term else {
+        return None;
+    };
+    let name = member_binding(members, "name")
+        .and_then(|name| aggregate_literal(name, LiteralKind::Text))?;
+    if !name.starts_with("slot_") || !is_slot_parameter_name(name) {
+        return None;
+    }
+    let level = member_binding(members, "level")
+        .and_then(|level| aggregate_literal(level, LiteralKind::Integer))
+        .and_then(|text| text.parse().ok());
+    Some((name, level))
+}
+
+/// The slot-form name of a `value`/`parameter` node, if it has one.
+pub(super) fn slot_name<'a>(
+    kind: Option<&CheckedNodeKind>,
+    term: Option<&'a Option<CheckedTerm>>,
+) -> Option<&'a str> {
+    slot_parameter_of(kind, term.and_then(Option::as_ref)).map(|(name, _)| name)
+}
+
+/// The slot scope of the body wrapper whose formula argument is at `formula`
+/// (FSpec FR-402 "Wrapper slot scope"): the positions of the slot parameter
+/// nodes the formula reaches through `dependencies`, in ascending byte order
+/// of `name`, then level, then node id. Two nodes of one name are both listed
+/// here; step 3.5 of the reader refuses the second.
+#[ix_trace_rs::string_edge]
+pub(super) fn wrapper_slot_scope<B>(
+    formula: usize,
+    nodes: &[super::CheckedSemanticNodeV2<B>],
+    kinds: &[CheckedNodeKind],
+    index: &GraphIndex<'_>,
+    terms: &[Option<CheckedTerm>],
+    stamps: &mut Stamps,
+    meter: &mut WorkMeter,
+) -> Result<Vec<usize>, ValidationFailure> {
+    stamps.next();
+    let mut pending = meter.vec(1)?;
+    let mut slots: Vec<(&str, Option<usize>, usize)> = meter.vec(1)?;
+    stamps.insert(formula);
+    meter.push(&mut pending, formula)?;
+    while let Some(position) = pending.pop() {
+        if let Some((name, level)) = slot_parameter_of(
+            kinds.get(position),
+            terms.get(position).and_then(Option::as_ref),
+        ) {
+            meter.push(&mut slots, (name, level, position))?;
+        }
+        let Some(node) = nodes.get(position) else {
+            continue;
+        };
+        meter.room(&mut pending, node.dependencies.len())?;
+        for dependency in &node.dependencies {
+            if let Some(&next) = index.get(dependency) {
+                if stamps.insert(next) {
+                    pending.push(next);
+                }
+            }
+        }
+    }
+    slots.sort_unstable_by(|left, right| {
+        left.0
+            .cmp(right.0)
+            .then(left.1.cmp(&right.1))
+            .then_with(|| nodes[left.2].node_id.cmp(&nodes[right.2].node_id))
+    });
+    let mut scope = meter.vec(slots.len())?;
+    for (_, _, position) in slots {
+        scope.push(position);
+    }
+    Ok(scope)
+}
+
 /// Whether the formula `reference` reaches, through `dependencies`, a slot
 /// parameter. Every node and edge is visited once across all calls: a node
 /// reached without finding one is recorded as clean, and a find ends the read.
@@ -1612,7 +1761,7 @@ fn check_clause(
             .iter()
             .any(|&formula| aggregate_declares_duration_window(formula, terms))
     {
-        validate_source_clock_unit(context, position, &node.node_id, graph, terms, meter)?;
+        validate_source_clock_unit(context, position, &node.node_id, graph, terms, None, meter)?;
     }
     let source_owner = clock.source.filter(|_| !aggregates.is_empty()).map(|unit| {
         super::CheckedNodeOwner::Source {
@@ -2000,6 +2149,7 @@ fn validate_source_clock_unit(
     clause: &CheckedNodeId,
     graph: &StepGraph<'_, '_>,
     terms: &[Option<CheckedTerm>],
+    stated: Option<&super::CheckedSourceRef>,
     meter: &mut WorkMeter,
 ) -> Result<(), ValidationFailure> {
     let Some(bindings) = context.bindings else {
@@ -2013,7 +2163,13 @@ fn validate_source_clock_unit(
         let ClockConfiguration::TimestampedEvent { timestamp_unit } = &row.clock else {
             continue;
         };
-        let source_owner = row_source_owner(row);
+        let source_owner = match stated {
+            Some(unit) => Some(super::CheckedNodeOwner::Source {
+                authority: unit.authority.clone(),
+                identity: unit.identity.clone(),
+            }),
+            None => row_source_owner(row),
+        };
         let source_unit = source_owner.as_ref().is_some_and(|source_owner| {
             graph.nodes.iter().any(|node| {
                 is_scalar_type_unit(&node.node_tag, &node.semantic_form)
@@ -2589,6 +2745,7 @@ pub(super) fn validate_hyperproperties(
         index,
         owners,
     };
+    let mut stamps = Stamps::new(nodes.len(), meter)?;
     for &position in index.values() {
         if graph.kinds.get(position)
             == Some(&CheckedNodeKind::Claim(super::ClaimForm::Hyperproperty))
@@ -2599,7 +2756,7 @@ pub(super) fn validate_hyperproperties(
                     node_pointer(position).key("body"),
                 )
             })?;
-            check_hyper_shape(position, &graph, &decoded, meter)?;
+            check_hyper_shape(position, &graph, &decoded, terms, &mut stamps, meter)?;
             check_hyper_fairness(position, &graph, &decoded, terms, meter)?;
         }
     }
@@ -2611,6 +2768,8 @@ fn check_hyper_shape(
     position: usize,
     graph: &StepGraph<'_, '_>,
     body: &CheckedTerm,
+    terms: &[Option<CheckedTerm>],
+    stamps: &mut Stamps,
     meter: &mut WorkMeter,
 ) -> Result<(), ValidationFailure> {
     const NAMES: [&str; 7] = [
@@ -2894,6 +3053,75 @@ fn check_hyper_shape(
                 .node(over)
                 .is_some_and(|(_, kind)| kind == CheckedNodeKind::Model(ModelForm::ModelRoot));
             if over_root && first_subject != Some(over) {
+                return Err(ValidationFailure::refused_at(
+                    CheckedPackageRefusalCode::InvalidModelBinding,
+                    node_pointer(wrapper_at)
+                        .key("body")
+                        .key("arguments")
+                        .index(0),
+                    Some(CheckedPackageRefusalCause::MalformedDeclaration),
+                    over.clone(),
+                ));
+            }
+        }
+        // Step 3.5: the wrapper's slot scope has one node per name, each at
+        // the level of its position, and `over` is its first slot.
+        let formula = wrapper_arguments
+            .get(5)
+            .and_then(typed_reference)
+            .and_then(|target| graph.index.get(target).copied());
+        let scope = match formula {
+            Some(formula) => wrapper_slot_scope(
+                formula,
+                graph.nodes,
+                graph.kinds,
+                graph.index,
+                terms,
+                stamps,
+                meter,
+            )?,
+            None => Vec::new(),
+        };
+        let level_defect = |slot: usize| {
+            ValidationFailure::refused_at(
+                CheckedPackageRefusalCode::InvalidSemanticGraph,
+                node_pointer(slot).key("body").key("members").index(1),
+                None,
+                graph.nodes[slot].node_id.clone(),
+            )
+        };
+        let name_of = |slot: usize| {
+            slot_parameter_of(
+                graph.kinds.get(slot),
+                terms.get(slot).and_then(Option::as_ref),
+            )
+            .map(|(name, _)| name)
+        };
+        for (at, &slot) in scope.iter().enumerate() {
+            if at > 0 && name_of(scope[at - 1]) == name_of(slot) {
+                return Err(level_defect(slot));
+            }
+        }
+        for (at, &slot) in scope.iter().enumerate() {
+            let level = slot_parameter_of(
+                graph.kinds.get(slot),
+                terms.get(slot).and_then(Option::as_ref),
+            )
+            .and_then(|(_, level)| level);
+            if level != Some(at) {
+                return Err(level_defect(slot));
+            }
+        }
+        if let Some(over) = wrapper_arguments.first().and_then(typed_reference) {
+            let over_slot = graph.index.get(over).copied().is_some_and(|slot| {
+                slot_parameter_of(
+                    graph.kinds.get(slot),
+                    terms.get(slot).and_then(Option::as_ref),
+                )
+                .is_some()
+            });
+            let first = scope.first().map(|&slot| &graph.nodes[slot].node_id);
+            if over_slot && first != Some(over) {
                 return Err(ValidationFailure::refused_at(
                     CheckedPackageRefusalCode::InvalidModelBinding,
                     node_pointer(wrapper_at)
@@ -3517,6 +3745,7 @@ mod tests {
                 lock: &package_lock,
                 diagnostics: &[],
                 bindings: None,
+                claim_names: None,
             },
             &mut WorkMeter::new(1_000),
         )

@@ -35,6 +35,11 @@ pub struct ClaimNameRow {
     /// The whole source declaration that introduced the occurrence, under the
     /// source of the occurrence's `source_map` region and containing it.
     pub declaration_region: crate::checked_package::shared::CheckedSourceRegion,
+    /// For a `claim`/`hyperproperty` node's row, the `lock.sources` entry of
+    /// the source unit that declares the hyper clause (FR-322 "Hyper clause
+    /// source unit"); absent on every other row.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_unit: Option<CheckedSourceRef>,
 }
 
 impl Encode for ClaimNameRow {
@@ -50,6 +55,9 @@ impl Encode for ClaimNameRow {
         }
         writer.end_array()?;
         super::encode::member(writer, "declaration_region", &self.declaration_region)?;
+        if let Some(source_unit) = &self.source_unit {
+            super::encode::member(writer, "source_unit", source_unit)?;
+        }
         writer.end_object()
     }
 }
@@ -134,6 +142,7 @@ pub(super) fn validate(
     kinds: &[CheckedNodeKind],
     terms: &[Option<CheckedTerm>],
     sources: &SourceEntries<'_>,
+    lock: &super::CheckedPackageLockV2,
     index: &GraphIndex<'_>,
     structural_keys: &[std::sync::Arc<CheckedNodeId>],
     meter: &mut WorkMeter,
@@ -229,6 +238,64 @@ pub(super) fn validate(
                 if name != &row.name {
                     return Err(invalid(at.key("name"), &row.declaration, row_index, meter));
                 }
+            }
+        }
+        // FR-322 "Hyper clause source unit": a hyper row names a locked source
+        // unit, no other row names one, and every row of one node names the
+        // same unit. These run after the occurrence join and before the
+        // repeated-key check.
+        let hyper = kinds[position] == CheckedNodeKind::Claim(ClaimForm::Hyperproperty);
+        match (&row.source_unit, hyper) {
+            (Some(unit), true) => {
+                let mut locked = false;
+                for source in &lock.sources {
+                    stage_storage::work(meter, &site(row_index, at.key("source_unit")), 1)?;
+                    if source == unit {
+                        locked = true;
+                        break;
+                    }
+                }
+                if !locked {
+                    return Err(invalid(
+                        at.key("source_unit"),
+                        &row.declaration,
+                        row_index,
+                        meter,
+                    ));
+                }
+            }
+            (None, false) => {}
+            _ => {
+                return Err(refuse_row(
+                    Code::InvalidPackage,
+                    Cause::TimedNodeReference,
+                    at,
+                    &row.declaration,
+                    row_index,
+                    meter,
+                ))
+            }
+        }
+        if hyper {
+            // Rows of one node are adjacent in the node's order, so the node's
+            // first row is the last earlier row of the node.
+            let mut first = None;
+            for earlier in (0..row_index).rev() {
+                stage_storage::work(meter, &site(row_index, at), 1)?;
+                if all[earlier].declaration != row.declaration {
+                    break;
+                }
+                first = Some(&all[earlier].source_unit);
+            }
+            if first.is_some_and(|unit| unit != &row.source_unit) {
+                return Err(refuse_row(
+                    Code::InvalidPackage,
+                    Cause::TimedNodeReference,
+                    at,
+                    &row.declaration,
+                    row_index,
+                    meter,
+                ));
             }
         }
         let key = (&row.declaration, &row.occurrence);
