@@ -422,6 +422,45 @@ impl NominalBody {
         }
     }
 
+    /// Borrow a dimension equivalence's two authored operands, in authored order, and its
+    /// exact root ratio. Local operands name the importing graph; package operands name a
+    /// directly selected dependency. Other nominal body forms have no equivalence view.
+    ///
+    /// The view is shared: neither operands nor ratio can be mutated through it.
+    /// ```compile_fail
+    /// use filament_contract_model::{CheckedDimensionOperand, NominalBody};
+    /// fn mutate(body: &NominalBody, other: CheckedDimensionOperand) {
+    ///     let (operands, _) = body.dimension_equivalence_details().unwrap();
+    ///     operands[0] = other;
+    /// }
+    /// ```
+    /// ```compile_fail
+    /// use filament_contract_model::NominalBody;
+    /// fn mutate(body: &NominalBody) {
+    ///     let (_, ratio) = body.dimension_equivalence_details().unwrap();
+    ///     ratio.numerator = "2".into();
+    /// }
+    /// ```
+    /// The borrowed view cannot become an unchecked body.
+    /// ```compile_fail
+    /// use filament_contract_model::NominalBody;
+    /// fn convert(body: &NominalBody) {
+    ///     let view = body.dimension_equivalence_details().unwrap();
+    ///     let _: NominalBody = view.into();
+    /// }
+    /// ```
+    pub fn dimension_equivalence_details(
+        &self,
+    ) -> Option<(&[CheckedDimensionOperand; 2], &CheckedRational)> {
+        match &self.kind {
+            NominalBodyKind::DimensionEquivalence {
+                dimension_node_ids,
+                root_scale,
+            } => Some((dimension_node_ids, root_scale)),
+            _ => None,
+        }
+    }
+
     /// Construct a source enum body, retaining declared case order and refusing
     /// an empty, duplicate or nonidentifier member.
     pub fn try_enum(

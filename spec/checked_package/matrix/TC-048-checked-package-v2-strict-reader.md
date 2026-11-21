@@ -2788,6 +2788,17 @@ an admitted model-owned empty aggregate has no nominal enum body. Keep the
 existing malformed-body and wrong-owner reader refusals as adverse controls:
 neither exposes an admitted node from which to read enum details.
 
+## Admitted dimension-equivalence operand view (FR-038-AC-601)
+
+Read admitted dimension-equivalence nodes through the public V2 node lookup
+and typed `CheckedTerm::NominalBody`. Assert the borrowed view returns the
+exact two authored operands and ratio for an all-local pair and for a
+local plus selected-package pair, resolves each operand to a dimension through
+the importing package or its direct dependency, returns none for dimension,
+unit and enum bodies, and that a wrong-kind or unselected operand still
+refuses at read time so no node exists to view. The view round-trips through
+the canonical writer.
+
 ## Authenticated schedulability claim carrier (FR-038-AC-396 through FR-038-AC-400)
 
 Implemented. Read FSpec's

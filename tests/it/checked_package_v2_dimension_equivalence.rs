@@ -9,9 +9,10 @@ use crate::support::checked_package::{
     read_with_dependencies, refresh_identity, v2_all_families,
 };
 use filament_contract_model::{
-    encode_checked_package_v2, CheckedPackageReadLimits, CheckedPackageRefusalCause as Cause,
+    encode_checked_package_v2, CheckedDimensionOperand, CheckedNodeId, CheckedNodeKind,
+    CheckedPackageReadLimits, CheckedPackageRefusalCause as Cause,
     CheckedPackageRefusalCode as Code, CheckedPackageSourceCorrespondenceRef, CheckedPackageV2,
-    CheckedPackageV2ReadResult,
+    CheckedPackageV2ReadResult, CheckedRational, CheckedTerm, ScalarTypeForm,
 };
 use ix_trace_rs::trace;
 use serde_json::{json, Value};
@@ -512,4 +513,212 @@ fn imported_nominal_records_are_charged_at_the_imported_node() {
         "the imported records are charged at their nodes: {requests:?}"
     );
     assert_exact_and_one_short(&read, &requests);
+}
+
+fn node_id_of(value: &Value) -> CheckedNodeId {
+    serde_json::from_value(value.clone()).expect("wire node id")
+}
+
+fn is_dimension(package: &CheckedPackageV2, id: &CheckedNodeId) -> bool {
+    matches!(
+        package.node_kind(id),
+        Some(CheckedNodeKind::ScalarType(ScalarTypeForm::Dimension))
+    ) && matches!(
+        package.term(id),
+        Some(CheckedTerm::NominalBody(body)) if body.dimension_base().is_some()
+    )
+}
+
+/// Resolve an authored operand to a dimension through public package reads only: a
+/// local operand in the importing package, a package operand in the exact selected
+/// dependency named by the reference.
+fn resolves_to_dimension(importer: &CheckedPackageV2, operand: &CheckedDimensionOperand) -> bool {
+    match operand {
+        CheckedDimensionOperand::Local(id) => is_dimension(importer, id),
+        CheckedDimensionOperand::Package(reference) => importer
+            .direct_dependencies()
+            .filter(|dependency| dependency.name() == &*reference.package)
+            .any(|dependency| is_dimension(dependency, reference.node.node_id())),
+    }
+}
+
+fn equivalence_view(
+    package: &CheckedPackageV2,
+    index: usize,
+) -> Option<(&[CheckedDimensionOperand; 2], &CheckedRational)> {
+    let CheckedTerm::NominalBody(body) = &package.graph().nodes[index].body else {
+        return None;
+    };
+    body.dimension_equivalence_details()
+}
+
+/// The borrowed view returns the exact two local operands and the exact ratio.
+#[trace("TC-048", "TC-058", "FR-038-AC-601")]
+#[test]
+fn local_equivalence_view_borrows_exact_operands_and_ratio() {
+    let mut wire = package();
+    wire["semantic_graph"]["nodes"][3]["body"]["root_scale"] =
+        json!({"numerator":"3","denominator":"2"});
+    refresh_identity(&mut wire);
+    let CheckedPackageV2ReadResult::Admitted(admitted) = read(&wire) else {
+        panic!("local equivalence with a reduced ratio must admit");
+    };
+    let (operands, ratio) = equivalence_view(&admitted, 3).expect("equivalence view");
+    let alpha = node_id_of(&wire["semantic_graph"]["nodes"][1]["node_id"]);
+    let beta = node_id_of(&wire["semantic_graph"]["nodes"][2]["node_id"]);
+    assert_eq!(
+        operands,
+        &[
+            CheckedDimensionOperand::Local(alpha),
+            CheckedDimensionOperand::Local(beta)
+        ]
+    );
+    assert_eq!(&*ratio.numerator, "3");
+    assert_eq!(&*ratio.denominator, "2");
+    for operand in operands {
+        assert!(resolves_to_dimension(&admitted, operand));
+    }
+    let reread = reread_local(&admitted, &[]);
+    let (reread_operands, reread_ratio) = equivalence_view(&reread, 3).expect("reread view");
+    assert_eq!((reread_operands, reread_ratio), (operands, ratio));
+}
+
+/// A package operand keeps its authored form and resolves in the selected
+/// dependency, not in the importing graph.
+#[trace("TC-048", "TC-058", "FR-038-AC-601")]
+#[test]
+fn package_equivalence_view_resolves_in_selected_dependency() {
+    let (wire, name, dependency) = mixed_package();
+    let CheckedPackageV2ReadResult::Admitted(admitted) =
+        read_with_dependencies(&wire, &[(name.as_str(), &dependency)])
+    else {
+        panic!("directly selected foreign dimension must admit");
+    };
+    let (operands, ratio) = equivalence_view(&admitted, 3).expect("equivalence view");
+    assert_eq!((&*ratio.numerator, &*ratio.denominator), ("1", "1"));
+    let [CheckedDimensionOperand::Package(foreign), CheckedDimensionOperand::Local(local)] =
+        operands
+    else {
+        panic!("authored order is package then local: {operands:?}");
+    };
+    assert_eq!(&*foreign.package, name.as_str());
+    assert_eq!(
+        foreign.node.node_id(),
+        &node_id_of(&wire["semantic_graph"]["nodes"][3]["body"]["dimension_node_ids"][0]["node"])
+    );
+    assert_eq!(
+        local,
+        &node_id_of(&wire["semantic_graph"]["nodes"][1]["node_id"])
+    );
+    for operand in operands {
+        assert!(resolves_to_dimension(&admitted, operand));
+    }
+    assert!(is_dimension(
+        admitted.direct_dependencies().next().expect("dependency"),
+        foreign.node.node_id()
+    ));
+    // The foreign node is not minted into the importing graph, and the
+    // reference naming a different package resolves nowhere.
+    assert!(admitted.term(foreign.node.node_id()).is_none());
+    let mut other = foreign.clone();
+    other.package = "another/package".into();
+    assert!(!resolves_to_dimension(
+        &admitted,
+        &CheckedDimensionOperand::Package(other)
+    ));
+
+    // The canonical writer output, read back with the same dependency, yields the same view.
+    let reread = reread_local(&admitted, &[(name.as_str(), &dependency)]);
+    assert_eq!(equivalence_view(&reread, 3), Some((operands, ratio)));
+}
+
+/// A wrong-kind operand never reaches the view: the reader refuses an operand naming
+/// the boolean empty-aggregate node, and the equivalence node is not itself a dimension.
+#[trace("TC-048", "TC-058", "FR-038-AC-601")]
+#[test]
+fn wrong_kind_operand_refuses_and_is_not_a_dimension() {
+    let mut wire = package();
+    wire["semantic_graph"]["nodes"][3]["body"]["dimension_node_ids"][0] =
+        wire["semantic_graph"]["nodes"][0]["node_id"].clone();
+    let CheckedPackageV2ReadResult::Refused(refusal) = read(&wire) else {
+        panic!("a non-dimension operand must refuse");
+    };
+    assert_eq!(refusal.code, Code::InvalidSemanticGraph, "{refusal:?}");
+
+    let CheckedPackageV2ReadResult::Admitted(admitted) = read(&package()) else {
+        panic!("equivalence package must admit");
+    };
+    // The equivalence node itself is a scalar type but not a dimension.
+    let own = node_id_of(&package()["semantic_graph"]["nodes"][3]["node_id"]);
+    assert!(!is_dimension(&admitted, &own));
+}
+
+/// Write an admitted package through the canonical writer and read it back, with the
+/// same selected dependencies.
+fn reread_local(
+    admitted: &CheckedPackageV2,
+    dependencies: &[(&str, &CheckedPackageV2)],
+) -> CheckedPackageV2 {
+    let encoded = encode_checked_package_v2(
+        admitted.name(),
+        admitted.lock(),
+        admitted.graph(),
+        CheckedPackageSourceCorrespondenceRef {
+            source_map: admitted.source_map(),
+            refinement_step_rows: admitted.refinement_step_rows(),
+        },
+        filament_contract_model::CheckedPackageSidecarsRef {
+            temporal_clause_names: admitted.temporal_clause_names(),
+            claim_names: admitted.claim_names(),
+            operation_effects: None,
+            operation_bodies: None,
+            checked_term_data: admitted.checked_term_data(),
+            temporal_bindings: admitted.temporal_bindings(),
+            schedulability_claims: None,
+        },
+        admitted.capability_report(),
+        admitted.diagnostics(),
+        quire_canonical::Limits::new(u64::MAX),
+    )
+    .expect("canonical writer encodes the admitted package");
+    let encoded: Value = serde_json::from_slice(&encoded).expect("canonical package JSON");
+    match read_with_dependencies(&encoded, dependencies) {
+        CheckedPackageV2ReadResult::Admitted(package) => *package,
+        other => panic!("written package must read back: {other:?}"),
+    }
+}
+
+/// Dimension, unit and enum bodies of an admitted package each reach the accessor
+/// and return no equivalence view.
+#[trace("TC-048", "TC-058", "FR-038-AC-601")]
+#[test]
+fn other_nominal_forms_have_no_equivalence_view() {
+    let wire = crate::support::checked_package::v2_nominal();
+    let CheckedPackageV2ReadResult::Admitted(admitted) = read(&wire) else {
+        panic!("nominal fixture must admit");
+    };
+    let mut seen = std::collections::BTreeSet::new();
+    for (authored, node) in wire["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("authored nodes")
+        .iter()
+        .zip(&admitted.graph().nodes)
+    {
+        if let CheckedTerm::NominalBody(body) = &node.body {
+            assert!(body.dimension_equivalence_details().is_none());
+            seen.insert(authored["body"]["term"].as_str().expect("term").to_owned());
+        }
+    }
+    assert_eq!(
+        seen,
+        ["dimension", "enum", "unit"]
+            .map(str::to_owned)
+            .into_iter()
+            .collect()
+    );
+    // The accessor does answer for an equivalence body, so the none above is not vacuous.
+    let CheckedPackageV2ReadResult::Admitted(equivalence) = read(&package()) else {
+        panic!("equivalence package must admit");
+    };
+    assert!(equivalence_view(&equivalence, 3).is_some());
 }
