@@ -772,15 +772,14 @@ pub(super) fn validate(
         }
         previous = Some(key);
     }
-    if records
+    let named_record_positions: BTreeSet<usize> = named_records
         .iter()
-        .any(|record| !named_records.iter().any(|(_, named, _)| named == record))
+        .map(|(_, record_position, _)| *record_position)
+        .collect();
+    if let Some(&position) = records
+        .iter()
+        .find(|record| !named_record_positions.contains(record))
     {
-        let position = records
-            .iter()
-            .copied()
-            .find(|record| !named_records.iter().any(|(_, named, _)| named == record))
-            .unwrap_or_default();
         return Err(refuse(
             0,
             super::stage_storage::Path::root()
