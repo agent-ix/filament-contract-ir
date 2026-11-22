@@ -299,36 +299,56 @@ fn boolean_value_guard_package(path_condition: &Value) -> Value {
         let nodes = package["semantic_graph"]["nodes"]
             .as_array_mut()
             .expect("graph nodes");
-        let integer_parameter = nodes
+        let integer_position = nodes
             .iter()
-            .find(|node| node["node_id"] == node_id("value/parameter/n/0"))
-            .expect("integer parameter")
-            .clone();
+            .position(|node| node["node_id"] == node_id("value/parameter/n/0"))
+            .expect("integer parameter");
+        nodes[integer_position]["body"]["members"][0]["value"]["value"] = json!("x");
+        let integer_parameter = nodes[integer_position].clone();
         let boolean_parameter_id = node_id("value/parameter/p/0");
+        let integer = integer_parameter["semantic_type"].clone();
         let mut boolean_parameter = integer_parameter;
         boolean_parameter["node_id"] = boolean_parameter_id.clone();
         boolean_parameter["semantic_type"] = boolean.clone();
         boolean_parameter["body"]["members"][0]["value"]["value"] = json!("p");
         nodes.push(boolean_parameter);
 
-        let root = nodes
-            .iter_mut()
-            .find(|node| node["node_id"] == node_id("expression/boolean_and"))
-            .expect("Boolean body root");
-        root["body"]["arguments"][1] = json!({"term":"reference","target":boolean_parameter_id});
-        root["dependencies"] = json!([
-            node_id("expression/integer_ge"),
+        let application_id = node_id("expression/integer_add");
+        let conditional_id = node_id("expression/boolean_guard_if");
+        let mut conditional_dependencies = vec![
             boolean_parameter_id.clone(),
-            boolean.clone()
-        ]);
+            application_id.clone(),
+            integer.clone(),
+        ];
+        conditional_dependencies.sort_by_key(structural_fixture_id);
+        nodes.push(json!({
+            "node_id":conditional_id,
+            "schema_version":"filament.checked-semantic-graph/v2",
+            "node_tag":"expression",
+            "semantic_form":"conditional",
+            "semantic_type":integer,
+            "dependencies":conditional_dependencies,
+            "occurrences":[{"role":"expression","ordinal":0}],
+            "body":{"term":"application","operator":"conditional",
+                "operation":{"identity":"filament.op.control.if","laws":[],"mode":null,"member":null,"leaves":[]},
+                "result_type":integer,
+                "arguments":[
+                    {"term":"reference","target":boolean_parameter_id},
+                    {"term":"reference","target":application_id},
+                    {"term":"reference","target":application_id}
+                ]}
+        }));
         let owner = nodes
             .iter_mut()
             .find(|node| node["node_tag"] == "function")
             .expect("function owner");
+        owner["semantic_type"] = integer;
         owner["dependencies"] = json!([
+            node_id("value/parameter/n/0"),
             boolean_parameter_id.clone(),
-            node_id("expression/boolean_and")
+            conditional_id
         ]);
+        owner["body"]["members"][1]["value"]["target"] = conditional_id;
         owner["body"]["members"][0]["value"]["members"]
             .as_array_mut()
             .expect("owner parameters")
@@ -410,22 +430,11 @@ fn boolean_value_guard_package(path_condition: &Value) -> Value {
             .sort_by_key(|root| structural_fixture_id(&root["target"]));
         sync_body_dependencies(record);
     }
-    for node in nodes.iter_mut().filter(|node| {
-        node["node_id"] == node_id("expression/boolean_and") || node["node_tag"] == "function"
-    }) {
+    for node in nodes
+        .iter_mut()
+        .filter(|node| node["node_tag"] == "function")
+    {
         sync_body_dependencies(node);
-    }
-    for node in nodes.iter_mut().filter(|node| {
-        node["node_id"] == node_id("expression/boolean_and") || node["node_tag"] == "function"
-    }) {
-        node["dependencies"]
-            .as_array_mut()
-            .expect("dependencies")
-            .push(boolean.clone());
-        node["dependencies"]
-            .as_array_mut()
-            .expect("dependencies")
-            .sort_by_key(structural_fixture_id);
     }
     settle(&mut package);
     rebuild_body_locations(&mut package);
@@ -453,20 +462,20 @@ fn boolean_literal_guard_package(path_condition: &Value) -> Value {
         });
         nodes.push(literal);
         let literal_position = nodes.len() - 1;
-        let root_position = nodes
+        let conditional_position = nodes
             .iter()
-            .position(|node| node["node_id"] == node_id("expression/boolean_and"))
-            .expect("Boolean body root");
-        nodes[root_position]["body"]["arguments"][1] =
+            .position(|node| node["node_id"] == node_id("expression/boolean_guard_if"))
+            .expect("conditional body root");
+        nodes[conditional_position]["body"]["arguments"][0] =
             json!({"term":"reference","target":literal_id});
-        sync_body_dependencies(&mut nodes[root_position]);
-        nodes[root_position]["dependencies"]
+        sync_body_dependencies(&mut nodes[conditional_position]);
+        nodes[conditional_position]["dependencies"]
             .as_array_mut()
-            .expect("root dependencies")
-            .push(boolean.clone());
-        nodes[root_position]["dependencies"]
+            .expect("conditional dependencies")
+            .push(node_id("scalar_type/integer"));
+        nodes[conditional_position]["dependencies"]
             .as_array_mut()
-            .expect("root dependencies")
+            .expect("conditional dependencies")
             .sort_by_key(structural_fixture_id);
 
         let record_rows = nodes
