@@ -15,7 +15,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: agent-ix/filament-specification
-          ref: main
+          ref: 01f8dd31b8cc540418a4858543aed7231a1ed1ee
           path: filament-specification
 
       - name: Install Rust toolchain

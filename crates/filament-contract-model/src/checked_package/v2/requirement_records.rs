@@ -512,7 +512,15 @@ pub(super) fn validate(
                 .key("members")
                 .index(guard_index);
             let valid = index.get(&guard.guard).is_some_and(|&guard_position| {
-                matches!(kinds[guard_position], CheckedNodeKind::Expression(_))
+                let guard_kind = kinds.get(guard_position);
+                let allowed_form = matches!(
+                    guard_kind,
+                    Some(
+                        CheckedNodeKind::Expression(_)
+                            | CheckedNodeKind::Value(ValueForm::Literal | ValueForm::Parameter)
+                    )
+                );
+                allowed_form
                     && owner_reach
                         .get(reach_index)
                         .is_some_and(|(_, reached)| reached.contains(&guard.guard))
