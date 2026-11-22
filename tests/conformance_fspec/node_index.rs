@@ -1285,7 +1285,7 @@ fn published_extension_and_hybrid_dependencies_follow_resolved_key_order() {
             .iter()
             .map(|id| {
                 admitted
-                    .resolve_node_held(position, id)
+                    .resolve_node_held(position, &id)
                     .expect("local dependency key")
             })
             .collect::<Vec<_>>();

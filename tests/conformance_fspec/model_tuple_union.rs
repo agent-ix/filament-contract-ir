@@ -1639,7 +1639,7 @@ fn published_tuples_retain_named_identity_and_ordered_selected_positions() {
         let identity = format!("ix://acme/shapes/{name}");
         let (index, id) = tuple_node(&package, &identity);
         let node = &admitted.graph().node(index).expect("graph position exists");
-        assert_eq!(node.node_id, id, "{name}: structural id");
+        assert_eq!(*node.node_id, id, "{name}: structural id");
         assert_eq!(node.node_id.package.as_ref(), "acme/shapes");
         assert_eq!(
             serde_json::to_value(&node.node_id.path).expect("path"),
@@ -1854,7 +1854,7 @@ fn published_tuple_union_typed_writer_round_trips() {
     for name in ["Pair", "Swap", "Nest", "Cell"] {
         let identity = format!("ix://acme/shapes/{name}");
         let (_, id) = tuple_node(&package, &identity);
-        assert!(reread.graph().nodes().any(|node| node.node_id() == id));
+        assert!(reread.graph().nodes().any(|node| *node.node_id() == id));
         for position in 0..tuple_positions(&document, &identity).len() {
             assert_eq!(
                 reread.model_tuple_position_type(&id, position),
@@ -1865,7 +1865,7 @@ fn published_tuple_union_typed_writer_round_trips() {
     for name in ["Shape", "Color", "List"] {
         let identity = format!("ix://acme/shapes/{name}");
         let (_, id) = variant_node(&package, &identity);
-        assert!(reread.graph().nodes().any(|node| node.node_id() == id));
+        assert!(reread.graph().nodes().any(|node| *node.node_id() == id));
         let original = admitted.model_variant_body(&id).expect("original variant");
         let roundtrip = reread.model_variant_body(&id).expect("roundtrip variant");
         assert_eq!(roundtrip.selected_document(), original.selected_document());
