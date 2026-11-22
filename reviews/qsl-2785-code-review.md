@@ -38,3 +38,11 @@ FND-001: `term_view.rs` and `node_index.rs` already convert holder-row operand s
 FND-002: FR-376-AC-3 requires a one-visit-short read to return `incomplete` at `/requirement_items/1`. The revised assertions accept `path: None` and any consumption below the full count, so this required behavior can regress while the test remains green.
 
 FND-003: `value_record_references_resolve_through_the_actual_holder_row` checks the new record-reference mapping but has no `#[trace]` annotation for its owning criterion.
+
+## Dispositions
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-001 | fixed | Slot conversion now delegates to the shared `node_index::resolve_id_operand_slots` helper, which also uses the shared `resolve_operand_segment` path used by `term_view`. |
+| FND-002 | fixed | The boundary test isolates the requirement-record step and asserts the one-short result path is `/requirement_items/1`. |
+| FND-003 | fixed | The unit test now carries `#[trace("TC-488", "FR-376-AC-1")]`. |
