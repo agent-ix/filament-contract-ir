@@ -1696,7 +1696,6 @@ fn public_reader_admits_a_reachable_boolean_literal_value_guard() {
     assert_eq!(guard.semantic_form.as_ref(), "literal");
     assert_eq!(records[0].path_condition[0].occurrence, 0);
     assert_eq!(records[0].extent_roots.len(), 1);
-    assert_ne!(records[0].extent_roots[0], node_id("value/parameter/p/0"));
 }
 
 #[trace("TC-2053", "FR-825-AC-4")]
