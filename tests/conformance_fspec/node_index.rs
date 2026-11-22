@@ -55,7 +55,7 @@ fn published_operand_vectors_refuse_in_the_fr322_check_order() {
         let actual = if id == "NI-40" {
             let evidence = super::fspec_inputs::evidence_for_node_index_ni40(
                 &package,
-                &fixtures.join(DOMAIN_DOCUMENT),
+                &proposal_dir_of(&fixtures).join(DOMAIN_DOCUMENT),
                 &fixtures,
             )
             .expect("NI-40 evidence with unlocked supplied package");
