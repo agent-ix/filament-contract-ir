@@ -293,6 +293,15 @@ pub fn canonical(value: &Value) -> Vec<u8> {
     serde_json::to_vec(value).expect("canonical test JSON")
 }
 
+/// [`canonical`] for a package the caller is done with: the wire form is made in
+/// place, without a second copy of the package.
+pub fn canonical_owned(mut value: Value) -> Vec<u8> {
+    if value["contract_version"] == "filament.checked-package/v2" {
+        wire_operands(&mut value);
+    }
+    serde_json::to_vec(&value).expect("canonical test JSON")
+}
+
 /// `package` written as the V2 wire: see [`wire_operands`].
 pub fn wire_form(package: &Value) -> Value {
     let mut wire = package.clone();
@@ -2364,16 +2373,18 @@ pub fn generate_model_declaration_occurrences(package: &mut Value) {
 /// occurrences, after a test changed a node's occurrences.
 pub fn rebuild_source_map(package: &mut Value) {
     generate_model_declaration_occurrences(package);
-    let nodes = package["semantic_graph"]["nodes"]
-        .as_array()
-        .expect("nodes")
-        .clone();
     let source = package["lock"]["sources"]
         .as_array()
         .and_then(|sources| sources.first())
         .expect("locked fixture source")
         .clone();
-    package["source_map"] = source_map_for(&nodes, &source);
+    let source_map = source_map_for(
+        package["semantic_graph"]["nodes"]
+            .as_array()
+            .expect("nodes"),
+        &source,
+    );
+    package["source_map"] = source_map;
     rebuild_body_locations(package);
 }
 
@@ -2733,8 +2744,16 @@ pub fn rebuild_body_locations(package: &mut Value) {
         return;
     }
     // Rows name nodes in resolved index form, whatever form the nodes are in.
-    let mut resolved = package.clone();
-    resolve_operands(&mut resolved);
+    // A package already in index form is read in place, not copied.
+    let resolved_copy;
+    let resolved: &Value = if package["semantic_graph"].get("operand_rows").is_some() {
+        let mut copy = package.clone();
+        resolve_operands(&mut copy);
+        resolved_copy = copy;
+        &resolved_copy
+    } else {
+        &*package
+    };
     let Some(nodes) = resolved["semantic_graph"]["nodes"].as_array() else {
         return;
     };
@@ -3109,6 +3128,8 @@ pub fn refresh_temporal_bindings(package: &mut Value) {
         package["temporal_clause_names"] =
             Value::Array(names.into_iter().map(|(_, _, row)| row).collect());
     }
+    // `refresh_claim_names` builds its own id list: do not hold two at once.
+    drop(ids);
     refresh_claim_names(package);
 }
 
@@ -3149,47 +3170,65 @@ pub fn occurrence_region(package: &Value, node_id: &Value, role: &str, ordinal: 
 /// Gives every name row that lacks one the `declaration_region` of its
 /// occurrence, for published packages that predate the member.
 pub fn fill_declaration_regions(package: &mut Value) {
-    // The source map is keyed by resolved ids and a slot-form package spells
-    // its ids otherwise.
-    let mut resolved = package.clone();
-    resolve_operands(&mut resolved);
+    // The name tables are worked on apart from the package, so the package can
+    // be read in place rather than copied.
+    let mut tables: Vec<(&str, Value)> = Vec::new();
     for table in ["temporal_clause_names", "claim_names"] {
-        let Some(count) = package[table].as_array().map(Vec::len) else {
-            continue;
-        };
-        for index in 0..count {
-            let row = &package[table][index];
-            if row.get("declaration_region").is_some() {
-                continue;
-            }
-            let (role, ordinal) = if table == "claim_names" {
-                (
-                    row["occurrence"]["role"]
-                        .as_str()
-                        .unwrap_or("claim")
-                        .to_owned(),
-                    row["occurrence"]["ordinal"].as_u64().unwrap_or(0),
-                )
-            } else {
-                ("claim".to_owned(), row["occurrence"].as_u64().unwrap_or(0))
-            };
-            let declaration = row["declaration"].clone();
-            let mut region = occurrence_region(&resolved, &declaration, &role, ordinal);
-            if table == "claim_names" {
-                // Rows that share a region are one declaration and carry one name
-                // (FR-322 "Rows of one declaration"): a fixture that gives two
-                // differently named rows one name span widens the later
-                // declaration so the two stay two declarations.
-                let name = package[table][index]["qualified_name"].clone();
-                while (0..index).any(|earlier| {
-                    package[table][earlier]["declaration_region"] == region
-                        && package[table][earlier]["qualified_name"] != name
-                }) {
-                    region["end"] = json!(region["end"].as_u64().unwrap_or(0) + 1);
-                }
-            }
-            package[table][index]["declaration_region"] = region;
+        if package[table].is_array() {
+            tables.push((table, package[table].take()));
         }
+    }
+    {
+        // The source map is keyed by resolved ids and a slot-form package spells
+        // its ids otherwise; a package already in index form is read as it is.
+        let resolved_copy;
+        let resolved: &Value = if package["semantic_graph"].get("operand_rows").is_some() {
+            let mut copy = package.clone();
+            resolve_operands(&mut copy);
+            resolved_copy = copy;
+            &resolved_copy
+        } else {
+            &*package
+        };
+        for (table, rows) in &mut tables {
+            let count = rows.as_array().map_or(0, Vec::len);
+            for index in 0..count {
+                let row = &rows[index];
+                if row.get("declaration_region").is_some() {
+                    continue;
+                }
+                let (role, ordinal) = if *table == "claim_names" {
+                    (
+                        row["occurrence"]["role"]
+                            .as_str()
+                            .unwrap_or("claim")
+                            .to_owned(),
+                        row["occurrence"]["ordinal"].as_u64().unwrap_or(0),
+                    )
+                } else {
+                    ("claim".to_owned(), row["occurrence"].as_u64().unwrap_or(0))
+                };
+                let declaration = row["declaration"].clone();
+                let mut region = occurrence_region(resolved, &declaration, &role, ordinal);
+                if *table == "claim_names" {
+                    // Rows that share a region are one declaration and carry one name
+                    // (FR-322 "Rows of one declaration"): a fixture that gives two
+                    // differently named rows one name span widens the later
+                    // declaration so the two stay two declarations.
+                    let name = rows[index]["qualified_name"].clone();
+                    while (0..index).any(|earlier| {
+                        rows[earlier]["declaration_region"] == region
+                            && rows[earlier]["qualified_name"] != name
+                    }) {
+                        region["end"] = json!(region["end"].as_u64().unwrap_or(0) + 1);
+                    }
+                }
+                rows[index]["declaration_region"] = region;
+            }
+        }
+    }
+    for (table, rows) in tables {
+        package[table] = rows;
     }
 }
 
@@ -3219,8 +3258,16 @@ pub fn refresh_claim_names(package: &mut Value) {
         .expect("nodes");
     // Rows sort by the resolved structural identity, whatever form the
     // package spells its operand slots in.
-    let mut resolved = package.clone();
-    resolve_operands(&mut resolved);
+    // A package already in index form is read in place, not copied.
+    let resolved_copy;
+    let resolved: &Value = if package["semantic_graph"].get("operand_rows").is_some() {
+        let mut copy = package.clone();
+        resolve_operands(&mut copy);
+        resolved_copy = copy;
+        &resolved_copy
+    } else {
+        &*package
+    };
     let ids = resolved["semantic_graph"]["nodes"]
         .as_array()
         .expect("nodes")
@@ -3249,7 +3296,7 @@ pub fn refresh_claim_names(package: &mut Value) {
                 .map_or_else(|| format!("Claim{index}"), str::to_owned);
             // One declaration is told by its region, and its rows share one
             // path: the scope is a function of the region.
-            let region = occurrence_region(&resolved, &ids[index], role, ordinal);
+            let region = occurrence_region(resolved, &ids[index], role, ordinal);
             let scope = format!(
                 "Scope{index}r{}_{}",
                 region["start"].as_u64().unwrap_or(0),

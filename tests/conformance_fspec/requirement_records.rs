@@ -5,8 +5,9 @@
 
 use crate::checked_package_v2_parameters::parameters_package;
 use crate::fixture_support::{
-    canonical, evidence_for, index_fixture_node_ids, node_id, rebuild_body_locations,
-    rebuild_complete_source_map, rebuild_source_map, settle, structural_fixture_id,
+    canonical, canonical_owned, evidence_for, index_fixture_node_ids, node_id,
+    rebuild_body_locations, rebuild_complete_source_map, rebuild_source_map, settle,
+    structural_fixture_id,
 };
 use filament_contract_model::{
     encode_checked_package_v2_with_requirement_items, CheckedPackageReadLimits,
@@ -32,7 +33,6 @@ fn read_large_with_work_bound(
     work_limit: u64,
 ) -> (CheckedPackageV2BudgetedReadResult, u64, std::time::Duration) {
     index_fixture_node_ids(&mut package);
-    let bytes = canonical(&package);
     let evidence = evidence_for(&package);
     let nodes = u64::try_from(
         package["semantic_graph"]["nodes"]
@@ -41,7 +41,7 @@ fn read_large_with_work_bound(
             .len(),
     )
     .expect("node count fits u64");
-    drop(package);
+    let bytes = canonical_owned(package);
     let limits = CheckedPackageReadLimits {
         bytes: u64::try_from(bytes.len()).expect("byte count fits u64") + 1024,
         nodes: nodes + 16,
