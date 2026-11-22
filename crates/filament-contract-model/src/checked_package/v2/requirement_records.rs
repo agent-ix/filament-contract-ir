@@ -511,23 +511,91 @@ pub(super) fn validate(
                 .key("value")
                 .key("members")
                 .index(guard_index);
-            let valid = index.get(&guard.guard).is_some_and(|&guard_position| {
-                matches!(kinds[guard_position], CheckedNodeKind::Expression(_))
-                    && owner_reach
-                        .get(reach_index)
-                        .is_some_and(|(_, reached)| reached.contains(&guard.guard))
-                    && kinds.get(
-                        index
-                            .get(&nodes[guard_position].semantic_type)
-                            .copied()
-                            .unwrap_or(usize::MAX),
-                    ) == Some(&CheckedNodeKind::ScalarType(ScalarTypeForm::Boolean))
-                    && nodes[guard_position].occurrences.iter().any(|occurrence| {
+            let valid_form_and_type = index.get(&guard.guard).is_some_and(|&guard_position| {
+                let guard_kind = kinds.get(guard_position);
+                let allowed_form = matches!(
+                    guard_kind,
+                    Some(
+                        CheckedNodeKind::Expression(_)
+                            | CheckedNodeKind::Value(ValueForm::Literal | ValueForm::Parameter)
+                    )
+                );
+                if !allowed_form {
+                    return false;
+                }
+                let boolean_type = kinds.get(
+                    index
+                        .get(&nodes[guard_position].semantic_type)
+                        .copied()
+                        .unwrap_or(usize::MAX),
+                ) == Some(&CheckedNodeKind::ScalarType(ScalarTypeForm::Boolean));
+                boolean_type
+            });
+            if !valid_form_and_type {
+                return Err(refuse(
+                    position,
+                    at,
+                    Cause::InvalidValue,
+                    Some(&node.node_id),
+                    meter,
+                ));
+            }
+            let reached = owner_reach
+                .get(reach_index)
+                .is_some_and(|(_, reached)| reached.contains(&guard.guard));
+            if !reached {
+                return Err(refuse(
+                    position,
+                    at,
+                    Cause::InvalidValue,
+                    Some(&node.node_id),
+                    meter,
+                ));
+            }
+            let occurrence_valid = terms
+                .get(position)
+                .and_then(|term| binding(term, 5))
+                .and_then(|term| match term {
+                    CheckedTerm::Aggregate { members } => members.get(guard_index),
+                    _ => None,
+                })
+                .and_then(|guard_term| match guard_term {
+                    CheckedTerm::Aggregate { members } => {
+                        named_value(members.get(1)?, "occurrence").and_then(integer)
+                    }
+                    _ => None,
+                })
+                .is_some_and(|occurrence| occurrence == guard.occurrence)
+                && index.get(&guard.guard).is_some_and(|&guard_position| {
+                    nodes[guard_position].occurrences.iter().any(|occurrence| {
                         occurrence.role == CheckedOccurrenceRole::Expression
                             && occurrence.ordinal == guard.occurrence
                     })
-            });
-            if !valid {
+                });
+            if !occurrence_valid {
+                return Err(refuse(
+                    position,
+                    at,
+                    Cause::InvalidValue,
+                    Some(&node.node_id),
+                    meter,
+                ));
+            }
+            let holds_valid = terms
+                .get(position)
+                .and_then(|term| binding(term, 5))
+                .and_then(|term| match term {
+                    CheckedTerm::Aggregate { members } => members.get(guard_index),
+                    _ => None,
+                })
+                .and_then(|guard_term| match guard_term {
+                    CheckedTerm::Aggregate { members } => {
+                        named_value(members.get(2)?, "holds").and_then(boolean)
+                    }
+                    _ => None,
+                })
+                .is_some();
+            if !holds_valid {
                 return Err(refuse(
                     position,
                     at,
@@ -835,12 +903,6 @@ fn record_body_failure_path<'a>(term: &CheckedTerm, node_at: Path<'a>) -> Path<'
                 || named_value(&members[0], "guard")
                     .and_then(reference)
                     .is_none()
-                || named_value(&members[1], "occurrence")
-                    .and_then(integer)
-                    .is_none()
-                || named_value(&members[2], "holds")
-                    .and_then(boolean)
-                    .is_none()
         }) {
             return member_path(5)
                 .key("value")
@@ -986,9 +1048,9 @@ fn occurrence_role_wire(role: &CheckedOccurrenceRole) -> &'static str {
 /// One admitted path-condition guard for a value-validity record.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RequirementGuard {
-    /// Boolean expression node of the guard.
+    /// Boolean expression or literal/parameter value node used as the guard.
     pub guard: CheckedNodeId,
-    /// Guard expression occurrence ordinal.
+    /// Expression occurrence of the guard read as this condition.
     pub occurrence: u64,
     /// Outcome required for this path.
     pub holds: bool,
@@ -1128,8 +1190,8 @@ fn read_record(node: CheckedNodeId, term: &CheckedTerm) -> Option<ValueValidityR
         };
         path_condition.push(RequirementGuard {
             guard: reference(named_value(members.first()?, "guard")?)?,
-            occurrence: integer(named_value(members.get(1)?, "occurrence")?)?,
-            holds: boolean(named_value(members.get(2)?, "holds")?)?,
+            occurrence: integer(named_value(members.get(1)?, "occurrence")?).unwrap_or_default(),
+            holds: boolean(named_value(members.get(2)?, "holds")?).unwrap_or_default(),
         });
     }
     Some(ValueValidityRecord {
