@@ -1973,7 +1973,8 @@ impl CheckedPackageV2 {
             let requirement_items = requirement_records::retain_rows(
                 self.wire.requirement_items.as_deref(),
                 &self.wire.semantic_graph.nodes,
-                &graph.nodes,
+                &self.wire.semantic_graph.operand_rows,
+                &self.node_index,
             );
             let value_validity_record_index = requirement_records::owner_index(&requirement_items);
             SlotView {

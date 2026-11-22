@@ -355,20 +355,14 @@ impl<'d> TermNode<'d> {
                     CheckedNodePathSegment::Name(name.into())
                 }
                 Some(SegmentForm::Node(index)) => CheckedNodePathSegment::Index(index),
-                Some(SegmentForm::Operand(slot)) => match usize::try_from(slot)
-                    .ok()
-                    .and_then(|slot| row.get(slot))
-                {
-                    Some(CheckedOperandEntry::Node(index)) => CheckedNodePathSegment::Index(*index),
-                    Some(CheckedOperandEntry::Dependency(operand)) => {
-                        sink.reserve(operand.package.len() as u128, site)?;
-                        CheckedNodePathSegment::Dependency {
-                            package: operand.package.clone(),
-                            node: operand.node,
-                        }
-                    }
-                    None => CheckedNodePathSegment::Operand(slot),
-                },
+                Some(SegmentForm::Operand(slot)) => {
+                    let segment = CheckedNodePathSegment::Operand(slot);
+                    super::node_index::resolve_operand_segment(&segment, row, |package| {
+                        sink.reserve(package.len() as u128, site)?;
+                        Ok::<_, Denied>(package.into())
+                    })?
+                    .unwrap_or(segment)
+                }
                 Some(SegmentForm::Dependency(package, node)) => {
                     sink.reserve(package.len() as u128, site)?;
                     CheckedNodePathSegment::Dependency {
