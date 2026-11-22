@@ -416,6 +416,84 @@ fn source_enum_exact_projection_requires_complete_canonical_rows() {
     }
 }
 
+#[trace("FR-354-AC-6", "FR-360-AC-4")]
+#[test]
+fn source_enum_runtime_type_projection_requires_authenticated_row() {
+    let package = minimal_enum_fixture(false);
+    let row = source_enum_row(&package, false);
+    let enum_id = row.declaration.structural_node.clone();
+    let identities = SelectedExactIdentities::empty()
+        .with_source_enum_rows(
+            &package,
+            [row],
+            &mut filament_contract_model::NativeJoinBudget::new(1000, u64::MAX),
+        )
+        .expect("complete source enum identity row");
+
+    let mut measured_budget = filament_contract_model::NativeJoinBudget::new(1000, u64::MAX);
+    let view = package
+        .project_selected_type_declarations(&identities, &[], &[], &mut measured_budget)
+        .expect("runtime projection admits an authenticated source enum");
+    let measured = measured_budget
+        .last_success_delta()
+        .expect("runtime projection records its budget delta");
+    assert!(measured.work > 0);
+    assert!(measured.storage > 0);
+
+    let mut exact_budget =
+        filament_contract_model::NativeJoinBudget::new(measured.work, measured.storage);
+    assert_eq!(
+        package.clone().project_selected_type_declarations(
+            &identities,
+            &[],
+            &[],
+            &mut exact_budget,
+        ),
+        Ok(view)
+    );
+    assert_eq!(exact_budget.last_success_delta(), Some(measured));
+
+    let mut short_work =
+        filament_contract_model::NativeJoinBudget::new(measured.work - 1, measured.storage);
+    assert_eq!(
+        package
+            .clone()
+            .project_selected_type_declarations(&identities, &[], &[], &mut short_work)
+            .expect_err("one less work unit refuses before a complete view")
+            .code,
+        ExactTypeProjectionErrorCode::ExhaustedWork
+    );
+    assert_eq!(short_work.last_success_delta(), None);
+
+    let mut short_storage =
+        filament_contract_model::NativeJoinBudget::new(measured.work, measured.storage - 1);
+    assert_eq!(
+        package
+            .clone()
+            .project_selected_type_declarations(&identities, &[], &[], &mut short_storage)
+            .expect_err("one less storage unit refuses before a complete view")
+            .code,
+        ExactTypeProjectionErrorCode::ExhaustedStorage
+    );
+    assert_eq!(short_storage.last_success_delta(), None);
+
+    let mut missing_row_budget = filament_contract_model::NativeJoinBudget::new(1000, u64::MAX);
+    let refusal = package
+        .project_selected_type_declarations(
+            &SelectedExactIdentities::empty(),
+            &[],
+            &[],
+            &mut missing_row_budget,
+        )
+        .expect_err("a source enum without its identity row is unavailable");
+    assert_eq!(
+        refusal.code,
+        ExactTypeProjectionErrorCode::UnavailableIdentityWitness
+    );
+    assert_eq!(refusal.at.as_deref(), Some(&enum_id));
+    assert_eq!(missing_row_budget.last_success_delta(), None);
+}
+
 /// Trace: FR-352-AC-19.
 #[trace("FR-352-AC-19")]
 #[test]

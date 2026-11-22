@@ -863,6 +863,21 @@ impl CheckedPackageV2 {
                     ctx.storage_node(&node.node_id)?;
                     ctx.charge_storage(1)?;
                     selected_model_units.push((index, node.node_id.clone()));
+                } else if *kind == CheckedNodeKind::ScalarType(ScalarTypeForm::Enum)
+                    && matches!(node.owner, Some(CheckedNodeOwner::Source { .. }))
+                {
+                    let projection = ctx
+                        .exact_read(|budget| {
+                            self.project_exact_type(&node.node_id, identities, budget)
+                        })
+                        .map_err(|error| ctx.exact_error(error))?;
+                    if projection.source_enum_view().is_none() {
+                        return Err(ctx.error(
+                            ExactTypeProjectionErrorCode::UnavailableIdentityWitness,
+                            &node.node_id,
+                            "selected_source_enum",
+                        ));
+                    }
                 } else if matches!(
                     kind,
                     CheckedNodeKind::ScalarType(
