@@ -134,6 +134,9 @@ pub(super) fn apply_published_timed_patch(package: &mut Value, patch: &Value) {
             let index = member.parse::<usize>().expect("published array index");
             *items.get_mut(index).expect("published replacement") = patch["value"].clone();
         }
+        ("remove", Value::Object(map)) => {
+            map.remove(member).expect("published removal member");
+        }
         ("add", Value::Array(items)) if member == "-" => items.push(patch["value"].clone()),
         ("add", Value::Array(items)) => {
             let index = member.parse::<usize>().expect("published insertion index");
@@ -393,6 +396,7 @@ fn timed_clause_published_vectors_match_reader() {
     let fixture = read_json(&fixtures.join("positive-timed-clause-nodes.json"))
         .expect("published clause fixture");
     let document = proposal.join("domain-package-acme-timed-clauses.json");
+    let selected_document = read_json(&document).expect("published selected clause document");
     for (ordinal, case) in cases.iter().enumerate() {
         let id = case["id"].as_str().expect("clause case id");
         assert_eq!(id, format!("CL-{:02}", ordinal + 1));
@@ -407,8 +411,24 @@ fn timed_clause_published_vectors_match_reader() {
                 apply_published_timed_patch(&mut candidate, patch);
             }
         }
-        let actual = read_package_with_document(&candidate, id, &document)
-            .expect("selected clause package read");
+        let document_override = case["document_patch"].as_array().map(|patches| {
+            let mut candidate_document = selected_document.clone();
+            for patch in patches {
+                apply_published_timed_patch(&mut candidate_document, patch);
+            }
+            serde_json::to_vec(&candidate_document).expect("patched selected document JSON")
+        });
+        let read_case = |package: &Value| {
+            read_package_with_document_override(
+                package,
+                id,
+                &document,
+                true,
+                CheckedPackageReadLimits::bounded(),
+                document_override.as_deref(),
+            )
+        };
+        let actual = read_case(&candidate).expect("selected clause package read");
         match (case["expected"].as_str(), actual) {
             (Some("admitted"), CheckedPackageV2ReadResult::Admitted(package)) => {
                 let encoded: Value = serde_json::from_slice(&encode_package(&package))
@@ -428,7 +448,7 @@ fn timed_clause_published_vectors_match_reader() {
                         .expect("CL-65 family guard part members");
                     part_members.remove(2);
                     let CheckedPackageV2ReadResult::Refused(refusal) =
-                        read_package_with_document(&missing_quantifier, id, &document)
+                        read_case(&missing_quantifier)
                             .expect("missing family quantifier package read")
                     else {
                         panic!("CL-65 family part without quantifier must refuse")
@@ -464,8 +484,7 @@ fn timed_clause_published_vectors_match_reader() {
                         .pointer_mut(binder_members)
                         .expect("published quantified binders") = json!([]);
                     let CheckedPackageV2ReadResult::Refused(refusal) =
-                        read_package_with_document(&empty_binders, id, &document)
-                            .expect("empty binder package read")
+                        read_case(&empty_binders).expect("empty binder package read")
                     else {
                         panic!("{id}: explicit empty binders must refuse")
                     };
