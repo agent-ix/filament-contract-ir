@@ -27,6 +27,35 @@ fn read(value: &Value) -> CheckedPackageV2ReadResult {
     )
 }
 
+fn read_large_with_work_bound(
+    mut package: Value,
+    work_limit: u64,
+) -> (CheckedPackageV2BudgetedReadResult, u64, std::time::Duration) {
+    index_fixture_node_ids(&mut package);
+    let bytes = canonical(&package);
+    let evidence = evidence_for(&package);
+    let nodes = u64::try_from(
+        package["semantic_graph"]["nodes"]
+            .as_array()
+            .expect("nodes")
+            .len(),
+    )
+    .expect("node count fits u64");
+    drop(package);
+    let limits = CheckedPackageReadLimits {
+        bytes: u64::try_from(bytes.len()).expect("byte count fits u64") + 1024,
+        nodes: nodes + 16,
+        edges: nodes * 16,
+        occurrences: nodes * 4,
+        diagnostics: 1,
+        work: work_limit,
+    };
+    let mut budget = NativeJoinBudget::new(work_limit, u64::MAX).with_read_storage_limit(u64::MAX);
+    let started = std::time::Instant::now();
+    let result = CheckedPackageV2::read_with_budget(&bytes, limits, &evidence, &mut budget);
+    (result, budget.consumed().work, started.elapsed())
+}
+
 fn function_claim(package: &Value) -> Value {
     package["semantic_graph"]["nodes"]
         .as_array()
@@ -70,6 +99,20 @@ fn sync_body_dependencies(node: &mut Value) {
     dependencies.sort_by_key(structural_fixture_id);
     dependencies.dedup();
     node["dependencies"] = json!(dependencies);
+}
+
+fn sort_graph_ids(ids: &mut Vec<Value>) {
+    ids.sort_by(|left, right| {
+        let left_package = left["package"].as_str().expect("dependency package");
+        let right_package = right["package"].as_str().expect("dependency package");
+        let left_root = left["path"][0].as_str().expect("dependency path root");
+        let right_root = right["path"][0].as_str().expect("dependency path root");
+        left_package
+            .cmp(right_package)
+            .then_with(|| left_root.cmp(right_root))
+            .then_with(|| structural_fixture_id(left).cmp(&structural_fixture_id(right)))
+    });
+    ids.dedup();
 }
 
 fn value_validity_package(reverse_graph: bool) -> Value {
@@ -441,6 +484,216 @@ fn boolean_value_guard_package(path_condition: &Value) -> Value {
     rebuild_body_locations(&mut package);
     rebuild_complete_source_map(&mut package);
     package
+}
+
+fn large_requirement_record_package(record_count: usize) -> Value {
+    let proposal = super::proposal_dir_of(&super::fixtures_dir());
+    let vectors = super::read_json(&proposal.join("requirement-record-vectors.json"))
+        .expect("published FR-825 vectors");
+    let path_condition = &vectors["positive"][0]["path_condition"];
+    let mut package = boolean_value_guard_package(path_condition);
+    let record_template = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("graph nodes")
+        .iter()
+        .find(|node| {
+            node["semantic_form"] == "value_validity"
+                && node["body"]["members"][2]["value"]["value"] == 0
+        })
+        .expect("true-branch record template")
+        .clone();
+    let original_application_id = record_template["body"]["members"][1]["value"]["target"].clone();
+    package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("graph nodes")
+        .retain(|node| node["semantic_form"] != "value_validity");
+    package["requirement_items"] = json!([]);
+    let package_name = package["name"].clone();
+
+    let nodes = package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("graph nodes");
+    let owner_position = nodes
+        .iter()
+        .position(|node| node["node_tag"] == "function")
+        .expect("function owner");
+    let conditional_position = nodes
+        .iter()
+        .position(|node| node["semantic_form"] == "conditional")
+        .expect("conditional body root");
+    let mut previous_position = nodes
+        .iter()
+        .position(|node| node["node_id"] == original_application_id)
+        .expect("initial application");
+    let mut previous_id = original_application_id.clone();
+    let integer_parameter_position = nodes
+        .iter()
+        .position(|node| {
+            node["semantic_form"] == "parameter"
+                && node["body"]["members"][0]["value"]["value"] == "x"
+        })
+        .expect("integer parameter");
+    assert_eq!(
+        original_application_id["path"],
+        json!(["expression/integer_add"])
+    );
+    assert!("expression" < "expression/integer_add");
+    let boolean_parameter_position = nodes
+        .iter()
+        .position(|node| {
+            node["semantic_form"] == "parameter"
+                && node["body"]["members"][0]["value"]["value"] == "p"
+        })
+        .expect("Boolean parameter");
+    let bound_id = record_template["body"]["members"][3]["value"]["target"].clone();
+    let bound_position = nodes
+        .iter()
+        .position(|node| node["node_id"] == bound_id)
+        .expect("record result bound");
+    let extent_root_positions = record_template["body"]["members"][6]["value"]["members"]
+        .as_array()
+        .expect("extent roots")
+        .iter()
+        .map(|root| {
+            nodes
+                .iter()
+                .position(|node| node["node_id"] == root["target"])
+                .expect("extent root node")
+        })
+        .collect::<Vec<_>>();
+    let application_template = nodes[previous_position].clone();
+    nodes[previous_position]["occurrences"] = json!([{"role":"expression","ordinal":0}]);
+
+    let mut application_positions = Vec::with_capacity(record_count);
+    let mut application_ids = Vec::with_capacity(record_count);
+    for generated_index in 0..record_count {
+        let application_position = nodes.len();
+        let application_id = json!({
+            "package":package_name,
+            "path":["expression","binary",format!("{generated_index:020}")],
+            "ordinal":0
+        });
+        let mut application = application_template.clone();
+        application["node_id"] = application_id.clone();
+        application["occurrences"] = json!([{"role":"expression","ordinal":0}]);
+        application["body"]["arguments"][0] = json!({"term":"reference","target":previous_id});
+        let mut dependencies = vec![previous_id];
+        sort_graph_ids(&mut dependencies);
+        application["dependencies"] = Value::Array(dependencies);
+        nodes.push(application);
+        application_positions.push(application_position);
+        application_ids.push(application_id.clone());
+        previous_position = application_position;
+        previous_id = application_id;
+    }
+
+    let final_application_id = application_ids
+        .last()
+        .expect("at least one generated application")
+        .clone();
+    {
+        let conditional = &mut nodes[conditional_position];
+        conditional["body"]["arguments"][1] =
+            json!({"term":"reference","target":final_application_id});
+        conditional["body"]["arguments"][2] =
+            json!({"term":"reference","target":final_application_id});
+        for dependency in conditional["dependencies"]
+            .as_array_mut()
+            .expect("conditional dependencies")
+        {
+            if *dependency == original_application_id {
+                *dependency = final_application_id.clone();
+            }
+        }
+        sort_graph_ids(
+            conditional["dependencies"]
+                .as_array_mut()
+                .expect("conditional dependencies"),
+        );
+    }
+
+    let guard_occurrence = record_template["body"]["members"][5]["value"]["members"][0]["members"]
+        [1]["value"]["value"]
+        .as_u64()
+        .expect("guard occurrence");
+    let guard_holds = record_template["body"]["members"][5]["value"]["members"][0]["members"][2]
+        ["value"]["value"]
+        .as_bool()
+        .expect("guard outcome");
+    let mut requirement_rows = Vec::with_capacity(record_count);
+    for (generated_index, (&application_position, application_id)) in application_positions
+        .iter()
+        .zip(&application_ids)
+        .enumerate()
+    {
+        let record_id = json!({
+            "package":package_name,
+            "path":[
+                "claim", "value_validity", {"node":owner_position}, {"node":application_position}, "0",
+                "bound", {"node":bound_position}, "conversion", "guards",
+                {"node":boolean_parameter_position}, guard_occurrence.to_string(), guard_holds.to_string(),
+                "roots",
+                {"node":extent_root_positions[0]}, {"node":extent_root_positions[1]}, "objects"
+            ],
+            "ordinal":0
+        });
+        let mut record = record_template.clone();
+        record["node_id"] = record_id.clone();
+        record["occurrences"] = json!([{"role":"generated","ordinal":generated_index}]);
+        record["body"]["members"][1]["value"]["target"] = application_id.clone();
+        for dependency in record["dependencies"]
+            .as_array_mut()
+            .expect("record dependencies")
+        {
+            if *dependency == original_application_id {
+                *dependency = application_id.clone();
+            }
+        }
+        sort_graph_ids(
+            record["dependencies"]
+                .as_array_mut()
+                .expect("record dependencies"),
+        );
+        nodes.push(record);
+        requirement_rows.push(json!({
+            "claim":{"node":application_id,"occurrence":{"role":"expression","ordinal":0}},
+            "kind":"value-validity",
+            "extent":{"classification":"bounded"},
+            "record":record_id
+        }));
+    }
+    // Fixed-width numeric path segments make generated claim keys increase in
+    // structural order. The generated path's first segment, "expression",
+    // sorts before the seed's single "expression/integer_add" segment, so
+    // appending rows in generation order is canonical.
+    package["requirement_items"] = Value::Array(requirement_rows);
+    super::fixture_support::rebuild_source_map(&mut package);
+    package
+}
+
+#[trace("TC-488", "FR-376-AC-3")]
+#[ignore = "large reader performance lane; run explicitly on Titan"]
+#[test]
+fn tc_488_a_hundred_thousand_requirement_records_admit_within_fifteen_minutes() {
+    const RECORDS: usize = 100_000;
+    const WORK_PER_RECORD: u64 = 256;
+    const READ_TIME_LIMIT: std::time::Duration = std::time::Duration::from_secs(15 * 60);
+
+    let package = large_requirement_record_package(RECORDS);
+    let work_limit = u64::try_from(RECORDS).expect("record count fits u64") * WORK_PER_RECORD;
+    let (result, work, elapsed) = read_large_with_work_bound(package, work_limit);
+    let CheckedPackageV2BudgetedReadResult::Admitted(admitted) = result else {
+        panic!("100,000 reached requirement records admit within the bounded read: {result:?}");
+    };
+    assert_eq!(admitted.requirement_items().len(), RECORDS);
+    assert!(
+        work <= work_limit,
+        "reader work {work} exceeded {work_limit}"
+    );
+    assert!(
+        elapsed < READ_TIME_LIMIT,
+        "100,000 requirement records took {elapsed:?}, limit {READ_TIME_LIMIT:?}"
+    );
 }
 
 fn boolean_literal_guard_package(path_condition: &Value) -> Value {
