@@ -292,7 +292,7 @@ fn value_validity_package(reverse_graph: bool) -> Value {
     package
 }
 
-fn boolean_value_guard_package() -> Value {
+fn boolean_value_guard_package(path_condition: &Value) -> Value {
     let mut package = value_validity_package(false);
     let boolean = node_id("scalar_type/boolean");
     let (boolean_parameter_position, record_rows) = {
@@ -355,11 +355,21 @@ fn boolean_value_guard_package() -> Value {
         (boolean_parameter_position, record_rows)
     };
     for &(record_position, application_occurrence) in &record_rows {
+        let vector = path_condition
+            .as_array()
+            .expect("published path conditions")
+            .iter()
+            .find(|row| row["application_occurrence"].as_u64() == Some(application_occurrence))
+            .expect("path-condition vector for application occurrence");
+        let guard_read_occurrence = vector["guard_read_occurrence"]
+            .as_u64()
+            .expect("guard read occurrence");
         rekey_requirement_record(
             &mut package,
             record_position,
             boolean_parameter_position,
-            application_occurrence == 0,
+            guard_read_occurrence,
+            vector["holds"].as_bool().expect("required guard outcome"),
         );
     }
     let boolean_parameter_id = node_id("value/parameter/p/0");
@@ -373,11 +383,20 @@ fn boolean_value_guard_package() -> Value {
         let application_occurrence = record["body"]["members"][2]["value"]["value"]
             .as_u64()
             .expect("application occurrence");
-        let holds = application_occurrence == 0;
+        let vector = path_condition
+            .as_array()
+            .expect("published path conditions")
+            .iter()
+            .find(|row| row["application_occurrence"].as_u64() == Some(application_occurrence))
+            .expect("path-condition vector for application occurrence");
+        let guard_read_occurrence = vector["guard_read_occurrence"]
+            .as_u64()
+            .expect("guard read occurrence");
+        let holds = vector["holds"].as_bool().expect("required guard outcome");
         record["body"]["members"][5]["value"]["members"] = json!([{
             "term":"aggregate","members":[
                 {"term":"binding","name":"guard","value":{"term":"reference","target":boolean_parameter_id.clone()}},
-                {"term":"binding","name":"occurrence","value":{"term":"literal","type":node_id("scalar_type/integer"),"value_kind":"integer","value":0}},
+                {"term":"binding","name":"occurrence","value":{"term":"literal","type":node_id("scalar_type/integer"),"value_kind":"integer","value":guard_read_occurrence}},
                 {"term":"binding","name":"holds","value":{"term":"literal","type":boolean,"value_kind":"boolean","value":holds}}
             ]
         }]);
@@ -417,6 +436,7 @@ fn rekey_requirement_record(
     package: &mut Value,
     record_position: usize,
     guard_position: usize,
+    guard_read_occurrence: u64,
     holds: bool,
 ) {
     let (old_id, new_id) = {
@@ -439,7 +459,7 @@ fn rekey_requirement_record(
             guards + 1..roots,
             [
                 json!({"node":guard_position}),
-                json!("0"),
+                json!(guard_read_occurrence.to_string()),
                 json!(holds.to_string()),
             ],
         );
@@ -1351,6 +1371,16 @@ fn published_requirement_record_vectors_admit_boolean_value_guards_and_refuse_in
         .expect("RRV-01");
     assert_eq!(positive["expected"]["admitted"], true);
     assert_eq!(positive["expected"]["record_count"], 2);
+    let path_condition = positive["path_condition"]
+        .as_array()
+        .expect("RRV-01 path conditions");
+    assert_eq!(path_condition.len(), 2);
+    assert_eq!(path_condition[0]["application_occurrence"], 0);
+    assert_eq!(path_condition[1]["application_occurrence"], 1);
+    assert_eq!(path_condition[0]["guard_read_occurrence"], 0);
+    assert_eq!(path_condition[1]["guard_read_occurrence"], 0);
+    assert_eq!(path_condition[0]["holds"], true);
+    assert_eq!(path_condition[1]["holds"], false);
     let refusal_vector = vectors["reader_refusals"]
         .as_array()
         .expect("requirement-record refusal vectors")
@@ -1363,8 +1393,19 @@ fn published_requirement_record_vectors_admit_boolean_value_guards_and_refuse_in
         refusal_vector["expected"]["pointer"],
         "body/members/5/value/members/0"
     );
+    let mutation = &refusal_vector["mutation"];
+    assert_eq!(mutation["application_occurrence"], 0);
+    assert_eq!(mutation["replace_guard"], "p");
+    assert_eq!(mutation["with"]["name"], "x");
+    assert_eq!(mutation["with"]["role"], "value/parameter");
+    assert_eq!(mutation["with"]["semantic_type"], "scalar_type/integer");
+    assert_eq!(mutation["guard_read_occurrence"]["node"], "x");
+    assert_eq!(
+        mutation["guard_read_occurrence"]["source_occurrence"],
+        "its read in x + 1"
+    );
 
-    let package = boolean_value_guard_package();
+    let package = boolean_value_guard_package(&positive["path_condition"]);
     let CheckedPackageV2ReadResult::Admitted(admitted) = read(&package) else {
         panic!("RRV-01: Boolean parameter is admitted as a guard and extent root")
     };
@@ -1380,15 +1421,32 @@ fn published_requirement_record_vectors_admit_boolean_value_guards_and_refuse_in
         records[0].path_condition[0].guard,
         records[1].path_condition[0].guard
     );
-    assert_eq!(records[0].path_condition[0].occurrence, 0);
-    assert_eq!(records[1].path_condition[0].occurrence, 0);
-    assert!(records[0].path_condition[0].holds);
-    assert!(!records[1].path_condition[0].holds);
+    assert!(records.iter().all(|record| record
+        .extent_roots
+        .contains(&record.path_condition[0].guard)));
+    for (record, vector) in records.iter().zip(path_condition) {
+        assert_eq!(
+            record.occurrence,
+            vector["application_occurrence"].as_u64().unwrap()
+        );
+        assert_eq!(
+            record.path_condition[0].occurrence,
+            vector["guard_read_occurrence"].as_u64().unwrap()
+        );
+        assert_eq!(
+            record.path_condition[0].holds,
+            vector["holds"].as_bool().unwrap()
+        );
+    }
     assert!(records.iter().all(|record| record.extent_roots.len() == 2));
 
     let mut adverse = package;
-    let integer_parameter = node_id("value/parameter/n/0");
-    let (record_position, integer_parameter_position, holds) = {
+    let mutation = &refusal_vector["mutation"];
+    let integer_parameter = match mutation["with"]["name"].as_str() {
+        Some("x") => node_id("value/parameter/n/0"),
+        other => panic!("RRV-02 integer parameter name is unsupported: {other:?}"),
+    };
+    let (record_position, integer_parameter_position, holds, guard_read_occurrence) = {
         let nodes = adverse["semantic_graph"]["nodes"]
             .as_array_mut()
             .expect("nodes");
@@ -1396,26 +1454,42 @@ fn published_requirement_record_vectors_admit_boolean_value_guards_and_refuse_in
             .iter()
             .position(|node| {
                 node["semantic_form"] == "value_validity"
-                    && node["body"]["members"][2]["value"]["value"] == 0
+                    && node["body"]["members"][2]["value"]["value"]
+                        == mutation["application_occurrence"]
             })
             .expect("first occurrence record");
         let integer_parameter_position = nodes
             .iter()
             .position(|node| node["node_id"] == integer_parameter)
             .expect("integer parameter position");
+        assert_eq!(
+            nodes[integer_parameter_position]["semantic_form"],
+            "parameter"
+        );
+        assert_eq!(
+            nodes[integer_parameter_position]["semantic_type"],
+            node_id("scalar_type/integer")
+        );
         nodes[record_position]["body"]["members"][5]["value"]["members"][0]["members"][0]
             ["value"] = json!({"term":"reference","target":integer_parameter});
         sync_body_dependencies(&mut nodes[record_position]);
-        let holds = nodes[record_position]["body"]["members"][5]["value"]["members"][0]["members"]
-            [2]["value"]["value"]
+        let holds = path_condition[0]["holds"]
             .as_bool()
-            .expect("guard holds value");
-        (record_position, integer_parameter_position, holds)
+            .expect("RRV-01 outcome for RRV-02 base occurrence");
+        (
+            record_position,
+            integer_parameter_position,
+            holds,
+            path_condition[0]["guard_read_occurrence"]
+                .as_u64()
+                .expect("RRV-02 guard read occurrence"),
+        )
     };
     rekey_requirement_record(
         &mut adverse,
         record_position,
         integer_parameter_position,
+        guard_read_occurrence,
         holds,
     );
     settle(&mut adverse);

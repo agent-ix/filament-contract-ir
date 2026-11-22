@@ -520,16 +520,17 @@ pub(super) fn validate(
                             | CheckedNodeKind::Value(ValueForm::Literal | ValueForm::Parameter)
                     )
                 );
+                let boolean_type = kinds.get(
+                    index
+                        .get(&nodes[guard_position].semantic_type)
+                        .copied()
+                        .unwrap_or(usize::MAX),
+                ) == Some(&CheckedNodeKind::ScalarType(ScalarTypeForm::Boolean));
                 allowed_form
+                    && boolean_type
                     && owner_reach
                         .get(reach_index)
                         .is_some_and(|(_, reached)| reached.contains(&guard.guard))
-                    && kinds.get(
-                        index
-                            .get(&nodes[guard_position].semantic_type)
-                            .copied()
-                            .unwrap_or(usize::MAX),
-                    ) == Some(&CheckedNodeKind::ScalarType(ScalarTypeForm::Boolean))
                     && nodes[guard_position].occurrences.iter().any(|occurrence| {
                         occurrence.role == CheckedOccurrenceRole::Expression
                             && occurrence.ordinal == guard.occurrence
