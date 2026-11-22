@@ -31,9 +31,14 @@ fn certificate_properties(
         "oneOf",
         "anyOf",
         "allOf",
+        "if",
+        "then",
+        "else",
+        "not",
         "type",
         "const",
         "enum",
+        "required",
     ]
     .iter()
     .any(|keyword| object.contains_key(*keyword))
@@ -76,6 +81,11 @@ fn certificate_properties(
             {
                 certificate_properties(branch, definitions, names)?;
             }
+        }
+    }
+    for conditional in ["if", "then", "else", "not"] {
+        if let Some(schema) = object.get(conditional) {
+            certificate_properties(schema, definitions, names)?;
         }
     }
     Ok(())
@@ -177,5 +187,24 @@ fn certificate_property_refuses_dangling_local_definition() {
     assert!(
         error.contains("#/$defs/DoesNotExist"),
         "unexpected error: {error}"
+    );
+}
+
+#[trace("FR-070-AC-2")]
+#[test]
+fn certificate_property_walks_conditional_schemas() {
+    let schema = serde_json::json!({
+        "allOf": [{
+            "if": {"properties": {"transition": {"type": "null"}}, "required": ["transition"]},
+            "then": {"not": {"properties": {"part": {"type": "integer"}}, "required": ["part"]}}
+        }]
+    });
+    let definitions = serde_json::Map::new();
+    let mut names = BTreeSet::new();
+    certificate_properties(&schema, &definitions, &mut names)
+        .expect("conditional certificate schemas are supported");
+    assert_eq!(
+        names,
+        BTreeSet::from(["part".to_owned(), "transition".to_owned()])
     );
 }

@@ -69,10 +69,12 @@ certificate_members! {
     Form => "form",
     Gain => "gain",
     History => "history",
+    Horizon => "horizon",
     Lower => "lower",
     Mode => "mode",
     Node => "node",
     Numerator => "numerator",
+    Part => "part",
     Post => "post",
     Rank => "rank",
     Reset => "reset",
@@ -117,6 +119,19 @@ mod tests {
                 "{name} is spelled once"
             );
             assert!(name.chars().all(|c| c.is_ascii_lowercase() || c == '_'));
+        }
+    }
+
+    /// FR-070-AC-1: horizon and part use their exact schema spellings.
+    #[trace("FR-070-AC-1")]
+    #[test]
+    fn horizon_and_part_have_schema_spellings() {
+        for (member, spelling) in [
+            (CertificateMember::Horizon, "horizon"),
+            (CertificateMember::Part, "part"),
+        ] {
+            assert!(CertificateMember::ALL.contains(&member));
+            assert_eq!(member.as_str(), spelling);
         }
     }
 }
