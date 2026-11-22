@@ -863,6 +863,22 @@ impl CheckedPackageV2 {
                     ctx.storage_node(&node.node_id)?;
                     ctx.charge_storage(1)?;
                     selected_model_units.push((index, node.node_id.clone()));
+                } else if *kind == CheckedNodeKind::ScalarType(ScalarTypeForm::Enum)
+                    && matches!(node.owner, Some(CheckedNodeOwner::Source { .. }))
+                {
+                    ctx.charge_structural_id(&node.node_id, "selected_source_enum")?;
+                    let mut found = false;
+                    for row in identities.source_enum_rows() {
+                        ctx.charge(&row.declaration.structural_node, "selected_source_enum")?;
+                        found |= row.declaration.structural_node == node.node_id;
+                    }
+                    if !found {
+                        return Err(ctx.error(
+                            ExactTypeProjectionErrorCode::UnavailableIdentityWitness,
+                            &node.node_id,
+                            "selected_source_enum",
+                        ));
+                    }
                 } else if matches!(
                     kind,
                     CheckedNodeKind::ScalarType(
