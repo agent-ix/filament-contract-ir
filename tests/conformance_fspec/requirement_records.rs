@@ -629,6 +629,7 @@ fn rekey_requirement_record(
             if let Some(roots) = record["body"]["members"][6]["value"]["members"].as_array_mut() {
                 roots.retain(|root| root["target"] != *root_id);
             }
+            sync_body_dependencies(record);
         }
         (old_id, record["node_id"].clone())
     };
@@ -1687,8 +1688,9 @@ fn public_reader_admits_a_reachable_boolean_literal_value_guard() {
         .expect("graph nodes")
         .iter()
         .any(|node| node["node_id"] == node_id("value/parameter/p/0")));
-    let CheckedPackageV2ReadResult::Admitted(admitted) = read(&package) else {
-        panic!("FR-825 item 6 admits a reachable Boolean literal guard")
+    let admitted = match read(&package) {
+        CheckedPackageV2ReadResult::Admitted(admitted) => admitted,
+        result => panic!("FR-825 item 6 admits a reachable Boolean literal guard: {result:?}"),
     };
     let records = admitted
         .requirement_items()
