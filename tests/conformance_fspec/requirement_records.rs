@@ -637,6 +637,7 @@ fn large_requirement_record_package(record_count: usize) -> Value {
         });
         let mut record = record_template.clone();
         record["node_id"] = record_id.clone();
+        record["occurrences"] = json!([{"role":"generated","ordinal":0}]);
         record["body"]["members"][1]["value"]["target"] = application_id.clone();
         for dependency in record["dependencies"]
             .as_array_mut()
