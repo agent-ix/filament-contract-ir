@@ -292,6 +292,94 @@ fn value_validity_package(reverse_graph: bool) -> Value {
     package
 }
 
+fn boolean_value_guard_package() -> Value {
+    let mut package = value_validity_package(false);
+    let boolean = node_id("scalar_type/boolean");
+    let nodes = package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("graph nodes");
+    let integer_parameter = nodes
+        .iter()
+        .find(|node| node["node_id"] == node_id("value/parameter/n/0"))
+        .expect("integer parameter")
+        .clone();
+    let boolean_parameter_id = node_id("value/parameter/p/0");
+    let mut boolean_parameter = integer_parameter;
+    boolean_parameter["node_id"] = boolean_parameter_id.clone();
+    boolean_parameter["semantic_type"] = boolean.clone();
+    boolean_parameter["body"]["members"][0]["value"]["value"] = json!("p");
+    nodes.push(boolean_parameter);
+
+    let root = nodes
+        .iter_mut()
+        .find(|node| node["node_id"] == node_id("expression/boolean_and"))
+        .expect("Boolean body root");
+    root["body"]["arguments"][1] = json!({"term":"reference","target":boolean_parameter_id});
+    root["dependencies"] = json!([
+        node_id("expression/integer_ge"),
+        boolean_parameter_id.clone(),
+        boolean.clone()
+    ]);
+    let owner = nodes
+        .iter_mut()
+        .find(|node| node["node_tag"] == "function")
+        .expect("function owner");
+    owner["dependencies"] = json!([
+        boolean_parameter_id.clone(),
+        node_id("expression/boolean_and")
+    ]);
+    owner["body"]["members"][0]["value"]["members"]
+        .as_array_mut()
+        .expect("owner parameters")
+        .push(json!({"term":"reference","target":boolean_parameter_id.clone()}));
+
+    for record in nodes
+        .iter_mut()
+        .filter(|node| node["semantic_form"] == "value_validity")
+    {
+        let application_occurrence = record["body"]["members"][2]["value"]["value"]
+            .as_u64()
+            .expect("application occurrence");
+        let holds = application_occurrence == 0;
+        record["body"]["members"][5]["value"]["members"] = json!([{
+            "term":"aggregate","members":[
+                {"term":"binding","name":"guard","value":{"term":"reference","target":boolean_parameter_id.clone()}},
+                {"term":"binding","name":"occurrence","value":{"term":"literal","type":node_id("scalar_type/integer"),"value_kind":"integer","value":0}},
+                {"term":"binding","name":"holds","value":{"term":"literal","type":boolean,"value_kind":"boolean","value":holds}}
+            ]
+        }]);
+        record["body"]["members"][6]["value"]["members"] = json!([
+            {"term":"reference","target":node_id("value/parameter/n/0")},
+            {"term":"reference","target":boolean_parameter_id.clone()}
+        ]);
+        record["body"]["members"][6]["value"]["members"]
+            .as_array_mut()
+            .expect("extent roots")
+            .sort_by_key(|root| structural_fixture_id(&root["target"]));
+        sync_body_dependencies(record);
+    }
+    for node in nodes.iter_mut().filter(|node| {
+        node["node_id"] == node_id("expression/boolean_and") || node["node_tag"] == "function"
+    }) {
+        sync_body_dependencies(node);
+    }
+    for node in nodes.iter_mut().filter(|node| {
+        node["node_id"] == node_id("expression/boolean_and") || node["node_tag"] == "function"
+    }) {
+        node["dependencies"]
+            .as_array_mut()
+            .expect("dependencies")
+            .push(boolean.clone());
+        node["dependencies"]
+            .as_array_mut()
+            .expect("dependencies")
+            .sort_by_key(structural_fixture_id);
+    }
+    settle(&mut package);
+    rebuild_complete_source_map(&mut package);
+    package
+}
+
 #[trace("TC-488", "FR-376-AC-1")]
 #[test]
 fn public_reader_admits_typed_requirement_rows_in_package_order() {
@@ -1171,6 +1259,81 @@ fn requirement_record_refusal_precedes_reversed_probabilistic_claim_rows() {
         CheckedPackageRefusalCode::InvalidPackage,
         Some(CheckedPackageRefusalCause::InvalidSemanticGraph),
         "/requirement_items/1",
+    );
+}
+
+#[trace("TC-2053", "FR-825-AC-6", "FR-825-AC-7")]
+#[test]
+fn published_requirement_record_vectors_admit_boolean_value_guards_and_refuse_integer_guards() {
+    let proposal = super::proposal_dir_of(&super::fixtures_dir());
+    let vectors = super::read_json(&proposal.join("requirement-record-vectors.json"))
+        .expect("published FR-825 vectors");
+    let positive = vectors["positive"]
+        .as_array()
+        .expect("positive requirement-record vectors")
+        .iter()
+        .find(|vector| vector["id"] == "RRV-01-bare-boolean-parameter-guard")
+        .expect("RRV-01");
+    assert_eq!(positive["expected"]["admitted"], true);
+    assert_eq!(positive["expected"]["record_count"], 2);
+    let refusal_vector = vectors["reader_refusals"]
+        .as_array()
+        .expect("requirement-record refusal vectors")
+        .iter()
+        .find(|vector| vector["id"] == "RRV-02-non-boolean-value-guard")
+        .expect("RRV-02");
+    assert_eq!(refusal_vector["expected"]["code"], "invalid_package");
+    assert_eq!(refusal_vector["expected"]["cause"], "invalid-value");
+    assert_eq!(
+        refusal_vector["expected"]["pointer"],
+        "body/members/5/value/members/0"
+    );
+
+    let package = boolean_value_guard_package();
+    let CheckedPackageV2ReadResult::Admitted(admitted) = read(&package) else {
+        panic!("RRV-01: Boolean parameter is admitted as a guard and extent root")
+    };
+    assert_eq!(admitted.requirement_items().len(), 2);
+    let records = admitted
+        .requirement_items()
+        .iter()
+        .map(|row| row.record.as_ref().expect("value-validity record"))
+        .collect::<Vec<_>>();
+    assert_eq!(records[0].path_condition.len(), 1);
+    assert_eq!(records[1].path_condition.len(), 1);
+    assert_eq!(
+        records[0].path_condition[0].guard,
+        records[1].path_condition[0].guard
+    );
+    assert_eq!(records[0].path_condition[0].occurrence, 0);
+    assert_eq!(records[1].path_condition[0].occurrence, 0);
+    assert!(records[0].path_condition[0].holds);
+    assert!(!records[1].path_condition[0].holds);
+    assert!(records.iter().all(|record| record.extent_roots.len() == 2));
+
+    let mut adverse = package;
+    let nodes = adverse["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes");
+    let record_position = nodes
+        .iter()
+        .position(|node| {
+            node["semantic_form"] == "value_validity"
+                && node["body"]["members"][2]["value"]["value"] == 0
+        })
+        .expect("first occurrence record");
+    let integer_parameter = node_id("value/parameter/n/0");
+    nodes[record_position]["body"]["members"][5]["value"]["members"][0]["members"][0]["value"] =
+        json!({"term":"reference","target":integer_parameter});
+    sync_body_dependencies(&mut nodes[record_position]);
+    settle(&mut adverse);
+    rebuild_complete_source_map(&mut adverse);
+    let pointer = format!("/semantic_graph/nodes/{record_position}/body/members/5/value/members/0");
+    assert_refusal(
+        &adverse,
+        CheckedPackageRefusalCode::InvalidPackage,
+        Some(CheckedPackageRefusalCause::InvalidValue),
+        &pointer,
     );
 }
 
