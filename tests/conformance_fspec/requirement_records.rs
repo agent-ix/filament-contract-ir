@@ -508,6 +508,7 @@ fn large_requirement_record_package(record_count: usize) -> Value {
         .expect("graph nodes")
         .retain(|node| node["semantic_form"] != "value_validity");
     package["requirement_items"] = json!([]);
+    let package_name = package["name"].clone();
 
     let nodes = package["semantic_graph"]["nodes"]
         .as_array_mut()
@@ -562,7 +563,6 @@ fn large_requirement_record_package(record_count: usize) -> Value {
     let integer_type_id = application_template["semantic_type"].clone();
     nodes[previous_position]["occurrences"] = json!([{"role":"expression","ordinal":0}]);
 
-    let package_name = package["name"].clone();
     let mut application_positions = Vec::with_capacity(record_count);
     let mut application_ids = Vec::with_capacity(record_count);
     for generated_index in 0..record_count {
