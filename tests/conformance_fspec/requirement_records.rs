@@ -5,8 +5,8 @@
 
 use crate::checked_package_v2_parameters::parameters_package;
 use crate::fixture_support::{
-    canonical, evidence_for, index_fixture_node_ids, node_id, rebuild_complete_source_map,
-    rebuild_source_map, settle, structural_fixture_id,
+    canonical, evidence_for, index_fixture_node_ids, node_id, rebuild_body_locations,
+    rebuild_complete_source_map, rebuild_source_map, settle, structural_fixture_id,
 };
 use filament_contract_model::{
     encode_checked_package_v2_with_requirement_items, CheckedPackageReadLimits,
@@ -428,6 +428,7 @@ fn boolean_value_guard_package(path_condition: &Value) -> Value {
             .sort_by_key(structural_fixture_id);
     }
     settle(&mut package);
+    rebuild_body_locations(&mut package);
     rebuild_complete_source_map(&mut package);
     package
 }
@@ -1487,8 +1488,11 @@ fn published_requirement_record_vectors_admit_boolean_value_guards_and_refuse_in
     );
 
     let package = boolean_value_guard_package(&positive["path_condition"]);
-    let CheckedPackageV2ReadResult::Admitted(admitted) = read(&package) else {
-        panic!("RRV-01: Boolean parameter is admitted as a guard and extent root")
+    let admitted = match read(&package) {
+        CheckedPackageV2ReadResult::Admitted(admitted) => admitted,
+        result => {
+            panic!("RRV-01: Boolean parameter is admitted as a guard and extent root: {result:?}")
+        }
     };
     assert_eq!(admitted.requirement_items().len(), 2);
     let records = admitted
