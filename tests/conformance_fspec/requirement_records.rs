@@ -390,6 +390,7 @@ fn boolean_value_guard_package(path_condition: &Value) -> Value {
             boolean_parameter_position,
             guard_read_occurrence,
             vector["holds"].as_bool().expect("required guard outcome"),
+            None,
         );
     }
     let boolean_parameter_id = node_id("value/parameter/p/0");
@@ -510,6 +511,38 @@ fn boolean_literal_guard_package(path_condition: &Value) -> Value {
         .iter()
         .find(|row| row["application_occurrence"].as_u64() == Some(0))
         .expect("true-branch path-condition vector");
+    let parameter_position = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("graph nodes")
+        .iter()
+        .position(|node| node["node_id"] == node_id("value/parameter/p/0"))
+        .expect("Boolean parameter position");
+    let parameter_id = package["semantic_graph"]["nodes"][parameter_position]["node_id"].clone();
+    let owner_position = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("graph nodes")
+        .iter()
+        .position(|node| node["node_tag"] == "function")
+        .expect("function owner");
+    package["semantic_graph"]["nodes"][owner_position]["body"]["members"][0]["value"]["members"]
+        .as_array_mut()
+        .expect("owner parameters")
+        .retain(|parameter| parameter["target"] != parameter_id);
+    sync_body_dependencies(&mut package["semantic_graph"]["nodes"][owner_position]);
+    package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("graph nodes")
+        .remove(parameter_position);
+    package["source_map"]
+        .as_array_mut()
+        .expect("source map")
+        .retain(|row| row["node_id"] != parameter_id);
+    let literal_position = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("graph nodes")
+        .iter()
+        .position(|node| node["node_id"] == literal_id)
+        .expect("Boolean literal position after parameter removal");
     let record_position = package["semantic_graph"]["nodes"]
         .as_array()
         .expect("graph nodes")
@@ -518,27 +551,11 @@ fn boolean_literal_guard_package(path_condition: &Value) -> Value {
             node["semantic_form"] == "value_validity"
                 && node["body"]["members"][2]["value"]["value"] == 0
         })
-        .expect("true-branch value-validity record");
-    let literal_position = package["semantic_graph"]["nodes"]
-        .as_array()
-        .expect("graph nodes")
-        .iter()
-        .position(|node| node["node_id"] == literal_id)
-        .expect("Boolean literal position");
-    let parameter_position = package["semantic_graph"]["nodes"]
-        .as_array()
-        .expect("graph nodes")
-        .iter()
-        .position(|node| node["node_id"] == node_id("value/parameter/p/0"))
-        .expect("Boolean parameter position");
+        .expect("true-branch value-validity record after parameter removal");
     {
         let record = &mut package["semantic_graph"]["nodes"][record_position];
         record["body"]["members"][5]["value"]["members"][0]["members"][0]["value"] =
             json!({"term":"reference","target":literal_id});
-        let roots = record["body"]["members"][6]["value"]["members"]
-            .as_array_mut()
-            .expect("extent roots");
-        roots.retain(|root| root["target"] != node_id("value/parameter/p/0"));
         sync_body_dependencies(record);
     }
     let guard_read_occurrence = vector["guard_read_occurrence"]
@@ -551,46 +568,12 @@ fn boolean_literal_guard_package(path_condition: &Value) -> Value {
         literal_position,
         guard_read_occurrence,
         holds,
+        Some((parameter_position, parameter_id)),
     );
-    remove_record_extent_root(&mut package, record_position, parameter_position);
     settle(&mut package);
     rebuild_body_locations(&mut package);
     rebuild_complete_source_map(&mut package);
     package
-}
-
-fn remove_record_extent_root(package: &mut Value, record_position: usize, root_position: usize) {
-    let root_id = package["semantic_graph"]["nodes"][root_position]["node_id"].clone();
-    let index_root = json!({"node":root_position});
-    let (old_id, new_id) = {
-        let record = &mut package["semantic_graph"]["nodes"][record_position];
-        let old_id = record["node_id"].clone();
-        let path = record["node_id"]["path"]
-            .as_array_mut()
-            .expect("record structural path");
-        let roots = path
-            .iter()
-            .position(|segment| segment == "roots")
-            .expect("roots path segment");
-        let root = path
-            .iter()
-            .enumerate()
-            .skip(roots + 1)
-            .find_map(|(index, segment)| {
-                (segment == &index_root || segment == &root_id).then_some(index)
-            })
-            .expect("Boolean parameter identity root");
-        path.remove(root);
-        (old_id, record["node_id"].clone())
-    };
-    for row in package["requirement_items"]
-        .as_array_mut()
-        .expect("requirement rows")
-    {
-        if row["record"] == old_id {
-            row["record"] = new_id.clone();
-        }
-    }
 }
 
 fn rekey_requirement_record(
@@ -599,31 +582,54 @@ fn rekey_requirement_record(
     guard_position: usize,
     guard_read_occurrence: u64,
     holds: bool,
+    extent_root_to_remove: Option<(usize, Value)>,
 ) {
     let (old_id, new_id) = {
         let record = &mut package["semantic_graph"]["nodes"][record_position];
         let old_id = record["node_id"].clone();
-        let path = record["node_id"]["path"]
-            .as_array_mut()
-            .expect("record structural path");
-        let guards = path
-            .iter()
-            .position(|segment| segment == "guards")
-            .expect("guard path segment");
-        let roots = path
-            .iter()
-            .enumerate()
-            .skip(guards + 1)
-            .find_map(|(index, segment)| (segment == "roots").then_some(index))
-            .expect("roots path segment");
-        path.splice(
-            guards + 1..roots,
-            [
-                json!({"node":guard_position}),
-                json!(guard_read_occurrence.to_string()),
-                json!(holds.to_string()),
-            ],
-        );
+        {
+            let path = record["node_id"]["path"]
+                .as_array_mut()
+                .expect("record structural path");
+            let guards = path
+                .iter()
+                .position(|segment| segment == "guards")
+                .expect("guard path segment");
+            let roots = path
+                .iter()
+                .enumerate()
+                .skip(guards + 1)
+                .find_map(|(index, segment)| (segment == "roots").then_some(index))
+                .expect("roots path segment");
+            path.splice(
+                guards + 1..roots,
+                [
+                    json!({"node":guard_position}),
+                    json!(guard_read_occurrence.to_string()),
+                    json!(holds.to_string()),
+                ],
+            );
+            if let Some((root_position, root_id)) = &extent_root_to_remove {
+                let index_root = json!({"node":root_position});
+                if let Some(roots) = path.iter().position(|segment| segment == "roots") {
+                    if let Some(root) =
+                        path.iter()
+                            .enumerate()
+                            .skip(roots + 1)
+                            .find_map(|(index, segment)| {
+                                (segment == &index_root || segment == root_id).then_some(index)
+                            })
+                    {
+                        path.remove(root);
+                    }
+                }
+            }
+        }
+        if let Some((_, root_id)) = &extent_root_to_remove {
+            if let Some(roots) = record["body"]["members"][6]["value"]["members"].as_array_mut() {
+                roots.retain(|root| root["target"] != *root_id);
+            }
+        }
         (old_id, record["node_id"].clone())
     };
     for row in package["requirement_items"]
@@ -1655,6 +1661,7 @@ fn published_requirement_record_vectors_admit_boolean_value_guards_and_refuse_in
         integer_parameter_position,
         guard_read_occurrence,
         holds,
+        None,
     );
     settle(&mut adverse);
     rebuild_complete_source_map(&mut adverse);
@@ -1675,6 +1682,11 @@ fn public_reader_admits_a_reachable_boolean_literal_value_guard() {
         .expect("published FR-825 vectors");
     let path_condition = &vectors["positive"][0]["path_condition"];
     let package = boolean_literal_guard_package(path_condition);
+    assert!(!package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("graph nodes")
+        .iter()
+        .any(|node| node["node_id"] == node_id("value/parameter/p/0")));
     let CheckedPackageV2ReadResult::Admitted(admitted) = read(&package) else {
         panic!("FR-825 item 6 admits a reachable Boolean literal guard")
     };
@@ -1698,6 +1710,14 @@ fn public_reader_admits_a_reachable_boolean_literal_value_guard() {
     assert_eq!(guard.semantic_form.as_ref(), "literal");
     assert_eq!(records[0].path_condition[0].occurrence, 0);
     assert_eq!(records[0].extent_roots.len(), 1);
+    let extent_root = admitted
+        .resolved_graph()
+        .nodes
+        .iter()
+        .find(|node| &node.node_id == &records[0].extent_roots[0])
+        .expect("x parameter extent root");
+    assert_eq!(extent_root.node_tag.as_ref(), "value");
+    assert_eq!(extent_root.semantic_form.as_ref(), "parameter");
 }
 
 #[trace("TC-2053", "FR-825-AC-4")]
@@ -1737,7 +1757,14 @@ fn guard_validation_precedes_malformed_holds_and_holds_remains_rejected_afterwar
     wrong_type["semantic_graph"]["nodes"][wrong_record]["body"]["members"][5]["value"]["members"]
         [0]["members"][0]["value"] = json!({"term":"reference","target":integer_parameter});
     malformed_holds(&mut wrong_type, wrong_record);
-    rekey_requirement_record(&mut wrong_type, wrong_record, integer_position, 0, true);
+    rekey_requirement_record(
+        &mut wrong_type,
+        wrong_record,
+        integer_position,
+        0,
+        true,
+        None,
+    );
     settle(&mut wrong_type);
     rebuild_complete_source_map(&mut wrong_type);
     let guard_pointer =
@@ -1766,6 +1793,7 @@ fn guard_validation_precedes_malformed_holds_and_holds_remains_rejected_afterwar
         expression_guard_position,
         99,
         true,
+        None,
     );
     settle(&mut bad_occurrence);
     rebuild_complete_source_map(&mut bad_occurrence);
