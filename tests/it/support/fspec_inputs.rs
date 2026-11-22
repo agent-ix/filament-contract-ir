@@ -231,6 +231,48 @@ pub(crate) fn evidence_for_published(
     Ok(evidence)
 }
 
+/// Supplies the published predicate package under NI-40's unlocked identity.
+/// The wire lock still selects only `test/predicates`, so the vector proves
+/// that evidence reachability cannot substitute for direct selection.
+pub(crate) fn evidence_for_node_index_ni40(
+    package: &Value,
+    domain_document: &Path,
+    fixtures_dir: &Path,
+) -> Result<CheckedPackageEvidence, String> {
+    let mut evidence = evidence_for_published(
+        package,
+        "NI-40 node-index vector",
+        domain_document,
+        true,
+        None,
+        fixtures_dir,
+    )?;
+    let mut dependency = read_json(&fixtures_dir.join("positive-dependency-library.json"))?;
+    supply_positive_function_check_mode(&mut dependency);
+    let dependency_evidence = evidence_for_published(
+        &dependency,
+        "NI-40 dependency package",
+        domain_document,
+        true,
+        None,
+        fixtures_dir,
+    )?;
+    let dependency_result = crate::read_and_account(
+        &fixture_support::canonical(&dependency),
+        CheckedPackageReadLimits::bounded(),
+        &dependency_evidence,
+    );
+    let CheckedPackageV2ReadResult::Admitted(dependency) = dependency_result else {
+        return Err(format!(
+            "NI-40 dependency package did not admit: {dependency_result:?}"
+        ));
+    };
+    evidence
+        .insert_dependency_package("other/lib", std::sync::Arc::from(dependency))
+        .map_err(|error| format!("NI-40 dependency evidence insertion failed: {error}"))?;
+    Ok(evidence)
+}
+
 pub(crate) const POSITIVE_ALL: [&str; 19] = [
     "positive-all-families.json",
     "positive-clause-operations.json",

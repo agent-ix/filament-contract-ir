@@ -466,6 +466,8 @@ struct SegmentSite<'d> {
     slot: bool,
     /// The node whose members hold this segment; `None` in a document-held id.
     holder: Option<usize>,
+    /// The segment belongs to this node's own `node_id`, not a body reference.
+    node_id: bool,
     /// Inside a foreign `{package, node}` key, which names a dependency's
     /// graph of this many nodes and takes no part in the placement check.
     foreign_graph: Option<usize>,
@@ -474,6 +476,7 @@ struct SegmentSite<'d> {
 /// One entry of an operand row.
 struct RowSite<'d> {
     id: NodeRef<'d>,
+    holder: usize,
     entry: RowEntry<'d>,
 }
 
@@ -490,8 +493,9 @@ enum Scope {
     Graph,
     Nodes,
     Node(usize),
+    NodeId(usize),
     Rows,
-    Row,
+    Row(usize),
     Other,
 }
 
@@ -506,10 +510,13 @@ impl Walk {
     /// The graph node index the walk's charges are made at.
     fn index(self) -> usize {
         match self.scope {
-            Scope::Node(holder) => holder,
-            Scope::Root | Scope::Graph | Scope::Nodes | Scope::Rows | Scope::Row | Scope::Other => {
-                0
-            }
+            Scope::Node(holder) | Scope::NodeId(holder) => holder,
+            Scope::Root
+            | Scope::Graph
+            | Scope::Nodes
+            | Scope::Rows
+            | Scope::Row(_)
+            | Scope::Other => 0,
         }
     }
 }
@@ -1195,7 +1202,7 @@ impl<'d> Collector<'d, '_, '_> {
             return Err(malformed_at(self.document, path, self.budget));
         };
         let holder = match walk.scope {
-            Scope::Node(holder) => Some(holder),
+            Scope::Node(holder) | Scope::NodeId(holder) => Some(holder),
             _ => None,
         };
         for segment in segments {
@@ -1229,6 +1236,7 @@ impl<'d> Collector<'d, '_, '_> {
                     value,
                     slot: name == "operand",
                     holder,
+                    node_id: matches!(walk.scope, Scope::NodeId(_)),
                     foreign_graph: walk.foreign_graph,
                 },
             )?;
@@ -1272,7 +1280,9 @@ fn collect_sites<'d>(
                     (Scope::Root, "semantic_graph") => Scope::Graph,
                     (Scope::Graph, "nodes") => Scope::Nodes,
                     (Scope::Graph, "operand_rows") => Scope::Rows,
+                    (Scope::Node(holder), "node_id") => Scope::NodeId(holder),
                     (Scope::Node(holder), _) => Scope::Node(holder),
+                    (Scope::NodeId(holder), _) => Scope::NodeId(holder),
                     _ => Scope::Other,
                 };
                 if let (Some(nodes), "node") = (*external, name) {
@@ -1285,7 +1295,8 @@ fn collect_sites<'d>(
                 let mut child_walk = walk;
                 child_walk.scope = match walk.scope {
                     Scope::Nodes => Scope::Node(*position),
-                    Scope::Rows => Scope::Row,
+                    Scope::NodeId(holder) => Scope::NodeId(holder),
+                    Scope::Rows => Scope::Row(*position),
                     Scope::Node(holder) => Scope::Node(holder),
                     _ => Scope::Other,
                 };
@@ -1297,7 +1308,7 @@ fn collect_sites<'d>(
             stack.pop();
             continue;
         };
-        if let (Scope::Row, true) = (walk.scope, in_items) {
+        if let (Scope::Row(holder), true) = (walk.scope, in_items) {
             let entry = if let Some(value) = as_u64(child) {
                 RowEntry::Node(value)
             } else {
@@ -1317,7 +1328,11 @@ fn collect_sites<'d>(
                 collector.budget,
                 site(0),
                 &mut collector.row_sites,
-                RowSite { id: child, entry },
+                RowSite {
+                    id: child,
+                    holder,
+                    entry,
+                },
             )?;
             continue;
         }
@@ -1363,10 +1378,18 @@ pub(super) fn check(
     }
     let (sites, row_sites) = collect_sites(document, node_count, evidence, budget)?;
     // 2. Placement. A foreign key's segments name its dependency's graph.
-    if let Some(site) = sites
-        .iter()
-        .find(|site| site.foreign_graph.is_none() && site.slot != site.holder.is_some())
-    {
+    if let Some(site) = sites.iter().find(|site| {
+        let invalid_scope = site.foreign_graph.is_none() && site.slot != site.holder.is_some();
+        let node_id_names_dependency_position = site.node_id
+            && site.slot
+            && site.holder.is_some_and(|holder| {
+                usize::try_from(site.value)
+                    .ok()
+                    .and_then(|position| rows[holder].get(position))
+                    .is_some_and(|entry| matches!(entry, CheckedOperandEntry::Dependency(_)))
+            });
+        invalid_scope || node_id_names_dependency_position
+    }) {
         return Err(malformed_at(document, site.id, budget));
     }
     // 3. Range.
@@ -1386,12 +1409,25 @@ pub(super) fn check(
     let bad_entry = row_sites.iter().find_map(|site| {
         let (value, limit) = match site.entry {
             RowEntry::Node(value) => (value, node_count),
-            RowEntry::Dependency { package, node } => (
-                node,
-                evidence
-                    .dependency_package(package)
-                    .map_or(0, |package| package.resolved_graph().nodes.len()),
-            ),
+            RowEntry::Dependency { package, node } => {
+                let holder = &wire.semantic_graph.nodes[site.holder];
+                let composition = holder.node_tag.as_ref() == "correspondence"
+                    && holder.semantic_form.as_ref() == "component_composition";
+                let directly_selected = wire
+                    .lock
+                    .dependency_selections
+                    .iter()
+                    .any(|selection| selection.identity.as_ref() == package);
+                if !composition || !directly_selected {
+                    return Some(site.id);
+                }
+                (
+                    node,
+                    evidence
+                        .dependency_package(package)
+                        .map_or(0, |package| package.resolved_graph().nodes.len()),
+                )
+            }
         };
         usize::try_from(value)
             .ok()
