@@ -560,6 +560,8 @@ fn boolean_literal_guard_package(path_condition: &Value) -> Value {
 }
 
 fn remove_record_extent_root(package: &mut Value, record_position: usize, root_position: usize) {
+    let root_id = package["semantic_graph"]["nodes"][root_position]["node_id"].clone();
+    let index_root = json!({"node":root_position});
     let (old_id, new_id) = {
         let record = &mut package["semantic_graph"]["nodes"][record_position];
         let old_id = record["node_id"].clone();
@@ -575,7 +577,7 @@ fn remove_record_extent_root(package: &mut Value, record_position: usize, root_p
             .enumerate()
             .skip(roots + 1)
             .find_map(|(index, segment)| {
-                (segment == &json!({"node":root_position})).then_some(index)
+                (segment == &index_root || segment == &root_id).then_some(index)
             })
             .expect("Boolean parameter identity root");
         path.remove(root);
