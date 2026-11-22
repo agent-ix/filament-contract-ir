@@ -1503,6 +1503,99 @@ fn published_requirement_record_vectors_admit_boolean_value_guards_and_refuse_in
     );
 }
 
+#[trace("TC-2053", "FR-825-AC-4")]
+#[test]
+fn guard_validation_precedes_malformed_holds_and_holds_remains_rejected_afterward() {
+    let malformed_holds = |package: &mut Value, record_position: usize| {
+        package["semantic_graph"]["nodes"][record_position]["body"]["members"][5]["value"]
+            ["members"][0]["members"][2]["value"] = json!({
+            "term":"literal",
+            "type":node_id("scalar_type/text"),
+            "value_kind":"text",
+            "value":"not a boolean"
+        });
+        sync_body_dependencies(&mut package["semantic_graph"]["nodes"][record_position]);
+    };
+    let record_position = |package: &Value| {
+        package["semantic_graph"]["nodes"]
+            .as_array()
+            .expect("nodes")
+            .iter()
+            .position(|node| {
+                node["semantic_form"] == "value_validity"
+                    && node["body"]["members"][2]["value"]["value"] == 1
+            })
+            .expect("second value-validity record")
+    };
+
+    let mut wrong_type = value_validity_package(false);
+    let wrong_record = record_position(&wrong_type);
+    let integer_parameter = node_id("value/parameter/n/0");
+    let integer_position = wrong_type["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .position(|node| node["node_id"] == integer_parameter)
+        .expect("integer parameter");
+    wrong_type["semantic_graph"]["nodes"][wrong_record]["body"]["members"][5]["value"]["members"]
+        [0]["members"][0]["value"] = json!({"term":"reference","target":integer_parameter});
+    malformed_holds(&mut wrong_type, wrong_record);
+    rekey_requirement_record(&mut wrong_type, wrong_record, integer_position, 0, true);
+    settle(&mut wrong_type);
+    rebuild_complete_source_map(&mut wrong_type);
+    let guard_pointer =
+        format!("/semantic_graph/nodes/{wrong_record}/body/members/5/value/members/0");
+    assert_refusal(
+        &wrong_type,
+        CheckedPackageRefusalCode::InvalidPackage,
+        Some(CheckedPackageRefusalCause::InvalidValue),
+        &guard_pointer,
+    );
+
+    let mut bad_occurrence = value_validity_package(false);
+    let bad_occurrence_record = record_position(&bad_occurrence);
+    let expression_guard_position = bad_occurrence["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .position(|node| node["node_id"] == node_id("expression/integer_ge"))
+        .expect("expression guard");
+    bad_occurrence["semantic_graph"]["nodes"][bad_occurrence_record]["body"]["members"][5]
+        ["value"]["members"][0]["members"][1]["value"]["value"] = json!(99);
+    malformed_holds(&mut bad_occurrence, bad_occurrence_record);
+    rekey_requirement_record(
+        &mut bad_occurrence,
+        bad_occurrence_record,
+        expression_guard_position,
+        99,
+        true,
+    );
+    settle(&mut bad_occurrence);
+    rebuild_complete_source_map(&mut bad_occurrence);
+    let occurrence_pointer =
+        format!("/semantic_graph/nodes/{bad_occurrence_record}/body/members/5/value/members/0");
+    assert_refusal(
+        &bad_occurrence,
+        CheckedPackageRefusalCode::InvalidPackage,
+        Some(CheckedPackageRefusalCause::InvalidValue),
+        &occurrence_pointer,
+    );
+
+    let mut malformed_holds_only = value_validity_package(false);
+    let holds_record = record_position(&malformed_holds_only);
+    malformed_holds(&mut malformed_holds_only, holds_record);
+    settle(&mut malformed_holds_only);
+    rebuild_complete_source_map(&mut malformed_holds_only);
+    let holds_pointer =
+        format!("/semantic_graph/nodes/{holds_record}/body/members/5/value/members/0");
+    assert_refusal(
+        &malformed_holds_only,
+        CheckedPackageRefusalCode::InvalidPackage,
+        Some(CheckedPackageRefusalCause::InvalidValue),
+        &holds_pointer,
+    );
+}
+
 fn assert_refusal(
     package: &Value,
     code: CheckedPackageRefusalCode,
