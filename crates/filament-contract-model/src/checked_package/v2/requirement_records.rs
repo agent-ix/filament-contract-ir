@@ -1050,7 +1050,7 @@ fn occurrence_role_wire(role: &CheckedOccurrenceRole) -> &'static str {
 pub struct RequirementGuard {
     /// Boolean expression or literal/parameter value node used as the guard.
     pub guard: CheckedNodeId,
-    /// Guard expression occurrence ordinal.
+    /// Expression occurrence of the guard read as this condition.
     pub occurrence: u64,
     /// Outcome required for this path.
     pub holds: bool,

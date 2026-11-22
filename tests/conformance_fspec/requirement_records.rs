@@ -432,6 +432,87 @@ fn boolean_value_guard_package(path_condition: &Value) -> Value {
     package
 }
 
+fn boolean_literal_guard_package(path_condition: &Value) -> Value {
+    let mut package = boolean_value_guard_package(path_condition);
+    let boolean = node_id("scalar_type/boolean");
+    let literal_id = node_id("value/literal/boolean_guard");
+    let (literal_position, record_rows) = {
+        let nodes = package["semantic_graph"]["nodes"]
+            .as_array_mut()
+            .expect("graph nodes");
+        let literal = json!({
+            "node_id":literal_id,
+            "schema_version":"filament.checked-semantic-graph/v2",
+            "node_tag":"value",
+            "semantic_form":"literal",
+            "semantic_type":boolean,
+            "dependencies":[],
+            "occurrences":[{"role":"expression","ordinal":0}],
+            "body":{"term":"literal","type":boolean,"value_kind":"boolean","value":true}
+        });
+        nodes.push(literal);
+        let literal_position = nodes.len() - 1;
+        let root_position = nodes
+            .iter()
+            .position(|node| node["node_id"] == node_id("expression/boolean_and"))
+            .expect("Boolean body root");
+        nodes[root_position]["body"]["arguments"][1] =
+            json!({"term":"reference","target":literal_id});
+        sync_body_dependencies(&mut nodes[root_position]);
+        nodes[root_position]["dependencies"]
+            .as_array_mut()
+            .expect("root dependencies")
+            .push(boolean.clone());
+        nodes[root_position]["dependencies"]
+            .as_array_mut()
+            .expect("root dependencies")
+            .sort_by_key(structural_fixture_id);
+
+        let record_rows = nodes
+            .iter()
+            .enumerate()
+            .filter_map(|(position, node)| {
+                (node["semantic_form"] == "value_validity").then(|| {
+                    (
+                        position,
+                        node["body"]["members"][2]["value"]["value"]
+                            .as_u64()
+                            .expect("application occurrence"),
+                    )
+                })
+            })
+            .collect::<Vec<_>>();
+        (literal_position, record_rows)
+    };
+    for &(record_position, application_occurrence) in &record_rows {
+        let vector = path_condition
+            .as_array()
+            .expect("published path conditions")
+            .iter()
+            .find(|row| row["application_occurrence"].as_u64() == Some(application_occurrence))
+            .expect("path-condition vector for application occurrence");
+        let guard_read_occurrence = vector["guard_read_occurrence"]
+            .as_u64()
+            .expect("guard read occurrence");
+        {
+            let record = &mut package["semantic_graph"]["nodes"][record_position];
+            record["body"]["members"][5]["value"]["members"][0]["members"][0]["value"] =
+                json!({"term":"reference","target":literal_id});
+            sync_body_dependencies(record);
+        }
+        rekey_requirement_record(
+            &mut package,
+            record_position,
+            literal_position,
+            guard_read_occurrence,
+            vector["holds"].as_bool().expect("required guard outcome"),
+        );
+    }
+    settle(&mut package);
+    rebuild_complete_source_map(&mut package);
+    package
+}
+
 fn rekey_requirement_record(
     package: &mut Value,
     record_position: usize,
@@ -1501,6 +1582,40 @@ fn published_requirement_record_vectors_admit_boolean_value_guards_and_refuse_in
         Some(CheckedPackageRefusalCause::InvalidValue),
         &pointer,
     );
+}
+
+#[trace("TC-2053", "FR-825-AC-6")]
+#[test]
+fn public_reader_admits_a_reachable_boolean_literal_value_guard() {
+    let proposal = super::proposal_dir_of(&super::fixtures_dir());
+    let vectors = super::read_json(&proposal.join("requirement-record-vectors.json"))
+        .expect("published FR-825 vectors");
+    let path_condition = &vectors["positive"][0]["path_condition"];
+    let package = boolean_literal_guard_package(path_condition);
+    let CheckedPackageV2ReadResult::Admitted(admitted) = read(&package) else {
+        panic!("FR-825 item 6 admits a reachable Boolean literal guard")
+    };
+    let records = admitted
+        .requirement_items()
+        .iter()
+        .map(|row| row.record.as_ref().expect("value-validity record"))
+        .collect::<Vec<_>>();
+    assert_eq!(records.len(), 2);
+    let guard_id = &records[0].path_condition[0].guard;
+    assert!(records
+        .iter()
+        .all(|record| &record.path_condition[0].guard == guard_id));
+    let guard = admitted
+        .resolved_graph()
+        .nodes
+        .iter()
+        .find(|node| &node.node_id == guard_id)
+        .expect("retained Boolean literal guard node");
+    assert_eq!(guard.node_tag.as_ref(), "value");
+    assert_eq!(guard.semantic_form.as_ref(), "literal");
+    assert!(records
+        .iter()
+        .all(|record| record.path_condition[0].occurrence == 0));
 }
 
 #[trace("TC-2053", "FR-825-AC-4")]
