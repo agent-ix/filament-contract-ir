@@ -533,9 +533,11 @@ fn large_requirement_record_package(record_count: usize) -> Value {
                 && node["body"]["members"][0]["value"]["value"] == "x"
         })
         .expect("integer parameter");
-    assert_eq!(original_application_id["path"][0], "expression");
-    assert_eq!(original_application_id["path"][1], "integer_add");
-    assert!("binary" < "integer_add");
+    assert_eq!(
+        original_application_id["path"],
+        json!(["expression/integer_add"])
+    );
+    assert!("expression" < "expression/integer_add");
     let boolean_parameter_position = nodes
         .iter()
         .position(|node| {
@@ -659,8 +661,9 @@ fn large_requirement_record_package(record_count: usize) -> Value {
         }));
     }
     // Fixed-width numeric path segments make generated claim keys increase in
-    // structural order. The binary path also sorts before the seed's
-    // integer_add path, so appending rows in generation order is canonical.
+    // structural order. The generated path's first segment, "expression",
+    // sorts before the seed's single "expression/integer_add" segment, so
+    // appending rows in generation order is canonical.
     package["requirement_items"] = Value::Array(requirement_rows);
     super::fixture_support::rebuild_source_map(&mut package);
     package
