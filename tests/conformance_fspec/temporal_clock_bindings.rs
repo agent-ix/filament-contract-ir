@@ -189,7 +189,7 @@ fn published_temporal_occurrence_vectors_bind_exact_read_and_write() {
                 let encoded = encode_checked_package_v2(
                     admitted.name(),
                     admitted.lock(),
-                    admitted.graph(),
+                    &admitted.graph().to_owned_wire(),
                     CheckedPackageSourceCorrespondenceRef {
                         source_map: admitted.source_map(),
                         refinement_step_rows: admitted.refinement_step_rows(),
@@ -306,7 +306,7 @@ fn published_temporal_clause_names_admit_and_refuse_at_exact_loci() {
                 let encoded = encode_checked_package_v2(
                     admitted.name(),
                     admitted.lock(),
-                    admitted.graph(),
+                    &admitted.graph().to_owned_wire(),
                     CheckedPackageSourceCorrespondenceRef {
                         source_map: admitted.source_map(),
                         refinement_step_rows: admitted.refinement_step_rows(),
@@ -907,7 +907,7 @@ fn temporal_clock_writer_retains_a_configured_clause_row() {
     let encoded = encode_checked_package_v2(
         read.name(),
         read.lock(),
-        read.graph(),
+        &read.graph().to_owned_wire(),
         CheckedPackageSourceCorrespondenceRef {
             source_map: read.source_map(),
             refinement_step_rows: read.refinement_step_rows(),

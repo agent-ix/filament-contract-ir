@@ -656,7 +656,7 @@ mod tests {
             timed_model_roots: Vec::new(),
             node_index: std::sync::Arc::new(retained_node_index(&wire)),
             structural_keys: Vec::new(),
-            slot_graph: Default::default(),
+            slot_view: Default::default(),
             source_index: std::sync::Arc::new(retained_source_index(&wire)),
             lowering_facts: Vec::new(),
             wire: std::sync::Arc::new(wire),
@@ -668,7 +668,6 @@ mod tests {
             closure_index: Default::default(),
             catalog: crate::checked_package::v2::operation_catalog::owned_operation_catalog(),
             admission_binding: Default::default(),
-            body_documents: Vec::new(),
         }
         .retain_original_admission()
     }

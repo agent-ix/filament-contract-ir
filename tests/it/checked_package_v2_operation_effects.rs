@@ -224,7 +224,7 @@ fn admitted_effect_rows_round_trip_through_typed_writer() {
     let encoded = encode_checked_package_v2(
         wire["name"].as_str().expect("package name"),
         admitted.lock(),
-        admitted.graph(),
+        &admitted.graph().to_owned_wire(),
         CheckedPackageSourceCorrespondenceRef {
             source_map: admitted.source_map(),
             refinement_step_rows: admitted.refinement_step_rows(),

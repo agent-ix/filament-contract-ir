@@ -135,7 +135,7 @@ fn operand_slots_rebuild_structural_keys_through_the_rows() {
         .expect("published dependency-call fixture");
     let package = admitted_wire(&wire);
     assert_eq!(
-        package.graph().operand_rows,
+        package.graph().operand_rows(),
         vec![
             vec![],
             vec![],
@@ -152,8 +152,25 @@ fn operand_slots_rebuild_structural_keys_through_the_rows() {
         );
     };
     assert_eq!(operand.as_ref(), integer);
+    let node_view = package.graph().node(2).expect("graph position exists");
+    let wire_node = node_view.to_owned_wire();
+    assert_eq!(node_view.node_id.as_ref(), &wire_node.node_id);
+    assert_eq!(node_view.semantic_type.as_ref(), &wire_node.semantic_type);
+    assert_eq!(node_view.dependencies, wire_node.dependencies);
+    let plain_node = package.graph().node(0).expect("graph position exists");
+    assert!(matches!(plain_node.node_id, std::borrow::Cow::Borrowed(_)));
+    assert!(matches!(
+        plain_node.semantic_type,
+        std::borrow::Cow::Borrowed(_)
+    ));
+    assert!(plain_node.dependencies.is_empty());
     assert_eq!(
-        package.graph().nodes[2].node_id.path[3],
+        package
+            .graph()
+            .node(2)
+            .expect("graph position exists")
+            .node_id()
+            .path[3],
         CheckedNodePathSegment::Operand(0),
         "the graph keeps the slot the wire holds"
     );
@@ -163,7 +180,15 @@ fn operand_slots_rebuild_structural_keys_through_the_rows() {
         "a request names the operand by its graph index"
     );
     // Node 3 names the same bounded domain through its own row.
-    let body = serde_json::to_value(&package.graph().nodes[3].body).expect("body");
+    let body = serde_json::to_value(
+        &package
+            .graph()
+            .node(3)
+            .expect("graph position exists")
+            .to_owned_wire()
+            .body,
+    )
+    .expect("body");
     let type_id = node_id_of(&body["arguments"][1]["type"]);
     assert_eq!(type_id.path[3], CheckedNodePathSegment::Operand(0));
     assert_eq!(
@@ -195,7 +220,11 @@ fn replace_node_id_replaces_slot_form_ids_as_written() {
     let wire = read_json_wire(&fixtures.join("positive-dependency-call.json"))
         .expect("published dependency-call fixture");
     let package = admitted_wire(&wire);
-    let mut node = package.graph().nodes[3].clone();
+    let mut node = package
+        .graph()
+        .node(3)
+        .expect("graph position exists")
+        .to_owned_wire();
     let body = serde_json::to_value(&node.body).expect("body");
     let old = node_id_of(&body["arguments"][1]["type"]);
     let mut new = old.clone();
@@ -208,8 +237,15 @@ fn replace_node_id_replaces_slot_form_ids_as_written() {
         json!({"operand": 0})
     );
     assert_eq!(
-        serde_json::to_value(&package.graph().nodes[3].body).expect("body")["arguments"][1]["type"]
-            ["ordinal"],
+        serde_json::to_value(
+            &package
+                .graph()
+                .node(3)
+                .expect("graph position exists")
+                .to_owned_wire()
+                .body
+        )
+        .expect("body")["arguments"][1]["type"]["ordinal"],
         0,
         "the admitted package is not changed"
     );
@@ -236,7 +272,7 @@ fn unrelated_nodes_leave_other_nodes_bytes_and_keys_unchanged() {
     assert!(reverse_graph_indexes(&mut reversed, 4) > 0);
     let after = admitted_wire(&reversed);
     assert_eq!(
-        after.graph().operand_rows,
+        after.graph().operand_rows(),
         vec![
             vec![CheckedOperandEntry::Node(3)],
             vec![CheckedOperandEntry::Node(3)],
@@ -246,8 +282,20 @@ fn unrelated_nodes_leave_other_nodes_bytes_and_keys_unchanged() {
     );
     for position in 0..4 {
         assert_eq!(
-            serde_json::to_value(&original.graph().nodes[position]).expect("node"),
-            serde_json::to_value(&after.graph().nodes[3 - position]).expect("node"),
+            serde_json::to_value(
+                &original
+                    .graph()
+                    .node(position)
+                    .expect("graph position exists")
+            )
+            .expect("node"),
+            serde_json::to_value(
+                &after
+                    .graph()
+                    .node(3 - position)
+                    .expect("graph position exists")
+            )
+            .expect("node"),
             "node {position} keeps its bytes"
         );
         assert_eq!(
@@ -1228,7 +1276,11 @@ fn published_extension_and_hybrid_dependencies_follow_resolved_key_order() {
         "hybrid_mode"
     );
     for (position, label) in [(position, "Audit"), (hybrid_position, "hybrid mode")] {
-        let dependencies = &admitted.graph().nodes[position].dependencies;
+        let dependencies = &admitted
+            .graph()
+            .node(position)
+            .expect("graph position exists")
+            .dependencies;
         let resolved = dependencies
             .iter()
             .map(|id| {
@@ -1313,7 +1365,7 @@ fn permutation_rebuilds_the_same_structural_keys_and_stale_operands_do_not() {
     else {
         panic!("published importer must admit");
     };
-    let count = original.graph().nodes.len();
+    let count = original.graph().node_count();
     assert_eq!(count, 4, "published graph cardinality");
     let mut permuted_wire = original_wire.clone();
     permuted_wire["semantic_graph"]["nodes"]
@@ -1333,8 +1385,16 @@ fn permutation_rebuilds_the_same_structural_keys_and_stale_operands_do_not() {
             "node {original_position}: permutation preserves resolved key"
         );
         assert_eq!(
-            original.graph().nodes[original_position].node_tag,
-            permuted.graph().nodes[permuted_position].node_tag,
+            original
+                .graph()
+                .node(original_position)
+                .expect("graph position exists")
+                .node_tag,
+            permuted
+                .graph()
+                .node(permuted_position)
+                .expect("graph position exists")
+                .node_tag,
             "node {original_position}: permutation preserves referenced kind"
         );
     }
@@ -1624,7 +1684,7 @@ fn long_index_chain_admits_on_a_small_stack_with_shared_keys() {
             let CheckedPackageV2ReadResult::Admitted(admitted) = reading else {
                 panic!("NI-13 must admit: {reading:?}");
             };
-            assert_eq!(admitted.graph().nodes.len(), APPLICATIONS + 1);
+            assert_eq!(admitted.graph().node_count(), APPLICATIONS + 1);
             for index in 1..=APPLICATIONS {
                 let current = admitted.structural_key_at(index).expect("chain key");
                 let prior = admitted

@@ -1128,7 +1128,7 @@ fn canonical_writer_readback_preserves_typed_requirement_rows() {
     let bytes = encode_checked_package_v2_with_requirement_items(
         admitted.name(),
         admitted.lock(),
-        admitted.graph(),
+        &admitted.graph().to_owned_wire(),
         CheckedPackageSourceCorrespondenceRef {
             source_map: admitted.source_map(),
             refinement_step_rows: admitted.refinement_step_rows(),

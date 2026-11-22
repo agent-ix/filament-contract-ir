@@ -1234,8 +1234,7 @@ fn recursive_group_round_trips_with_original_node_keys() {
     };
     let source_group = admitted
         .graph()
-        .nodes
-        .iter()
+        .nodes()
         .filter(|node| node.recursion_group.is_some())
         .map(|node| node.node_id.clone())
         .collect::<Vec<_>>();
@@ -1269,8 +1268,7 @@ fn recursive_group_round_trips_with_original_node_keys() {
     for node in &decoded.wire().semantic_graph.nodes {
         let position = admitted
             .graph()
-            .nodes
-            .iter()
+            .nodes()
             .position(|source| source.node_id == node.node_id)
             .expect("represented source node");
         let kind = admitted.node_kinds()[position];
@@ -1359,8 +1357,7 @@ fn reached_view_visits_an_admitted_recursion_group_once() {
     );
     let nodes = admitted
         .graph()
-        .nodes
-        .iter()
+        .nodes()
         .map(|node| (&node.node_id, node))
         .collect::<BTreeMap<_, _>>();
     let mut independent = BTreeSet::new();
@@ -1414,8 +1411,7 @@ fn reached_view_visits_an_admitted_recursion_group_once() {
         .collect::<BTreeSet<_>>();
     let admitted_group = admitted
         .graph()
-        .nodes
-        .iter()
+        .nodes()
         .filter(|node| node.recursion_group.is_some())
         .map(|node| node.node_id.clone())
         .collect::<BTreeSet<_>>();

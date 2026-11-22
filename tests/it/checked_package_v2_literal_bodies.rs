@@ -59,7 +59,10 @@ fn typed_literal_with_empty_dependencies_preserves_its_body_and_type() {
     let CheckedPackageV2ReadResult::Admitted(package) = read(&value) else {
         panic!("valid literal package must admit");
     };
-    let node = &package.graph().nodes[position];
+    let node = &package
+        .graph()
+        .node(position)
+        .expect("graph position exists");
     assert!(node.dependencies.is_empty());
     assert_eq!(
         node.semantic_type,

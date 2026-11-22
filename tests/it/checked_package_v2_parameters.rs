@@ -381,14 +381,13 @@ fn tc_048_a_function_with_parameters_reads_and_lowers() {
     };
     let forms = admitted
         .graph()
-        .nodes
-        .iter()
+        .nodes()
         .map(|node| (node.node_tag.as_ref(), node.semantic_form.as_ref()))
         .collect::<Vec<_>>();
     assert!(forms.contains(&("value", "parameter")));
     assert!(forms.contains(&("scalar_type", "compound_unit")));
 
-    let every_node = (0..admitted.graph().nodes.len())
+    let every_node = (0..admitted.graph().node_count())
         .map(|position| {
             admitted
                 .document_held_id(position)

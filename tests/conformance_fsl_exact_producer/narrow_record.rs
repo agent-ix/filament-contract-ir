@@ -2,14 +2,14 @@
 // Copyright (C) 2026 Agent-IX
 
 //! Fresh producer control for the closed narrow-field projection exception.
-use fsl_foundation::SourceIdentity;
-use fsl_replay::{
-    compile_package_with_execution_points, spine::DependencyInput, ReplayLimits, StageLimits,
-};
 use filament_contract_model::{
     CheckedCompositeOperandDomain, CheckedOccurrence, CheckedPackageEvidence,
     CheckedPackageReadLimits, CheckedPackageV2, CheckedPackageV2ReadResult,
     CheckedScalarOperandChild,
+};
+use fsl_foundation::SourceIdentity;
+use fsl_replay::{
+    compile_package_with_execution_points, spine::DependencyInput, ReplayLimits, StageLimits,
 };
 use serde_json::Value;
 
@@ -47,8 +47,7 @@ fn main() {
         };
         let application = package
             .graph()
-            .nodes
-            .iter()
+            .nodes()
             .find(|node| {
                 serde_json::to_value(&node.body)
                     .unwrap()
@@ -76,8 +75,7 @@ fn main() {
             };
             let node = package
                 .graph()
-                .nodes
-                .iter()
+                .nodes()
                 .find(|node| node.node_id == child)
                 .unwrap();
             assert_eq!(node.semantic_form.as_ref(), "record_value");
@@ -86,8 +84,7 @@ fn main() {
             let target = &body["members"][0]["value"]["target"];
             let narrow = package
                 .graph()
-                .nodes
-                .iter()
+                .nodes()
                 .find(|node| serde_json::to_value(&node.node_id).unwrap() == *target)
                 .unwrap();
             let body = serde_json::to_value(&narrow.body).unwrap();
@@ -102,8 +99,7 @@ fn main() {
             );
             let range = package
                 .graph()
-                .nodes
-                .iter()
+                .nodes()
                 .find(|node| node.node_id == narrow.semantic_type)
                 .expect("authentic bounded result");
             assert_eq!(range.semantic_form.as_ref(), "integer_range");
@@ -114,8 +110,7 @@ fn main() {
             assert_eq!(range_body["members"][1]["value"]["value"], "9");
             let literal = package
                 .graph()
-                .nodes
-                .iter()
+                .nodes()
                 .find(|node| {
                     serde_json::to_value(&node.node_id).unwrap() == body["arguments"][0]["target"]
                 })

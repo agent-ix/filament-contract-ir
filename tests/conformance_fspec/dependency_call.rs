@@ -114,8 +114,7 @@ fn published_dependency_call_lowers_and_reads_back_with_selected_callee() {
         serde_json::from_value(call["node_id"].clone()).expect("call identity");
     let request_position = importer
         .graph()
-        .nodes
-        .iter()
+        .nodes()
         .position(|node| node.node_id == request)
         .expect("published call position");
     let source_key = filament_contract_model::ContractSourceKeyV1::from_structural(

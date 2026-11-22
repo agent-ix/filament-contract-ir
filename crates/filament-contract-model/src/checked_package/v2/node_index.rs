@@ -1041,7 +1041,8 @@ fn rebuild_keys_with_failure<'a>(
         for segment in &source.path {
             path.push(match segment {
                 CheckedNodePathSegment::Name(name) => {
-                    CheckedNodePathSegment::Name(read_charge::boxed_str(budget, at, name)?)
+                    read_charge::charge(budget, at, name.len() as u128)?;
+                    CheckedNodePathSegment::Name(Arc::clone(name))
                 }
                 CheckedNodePathSegment::Node(key) => CheckedNodePathSegment::Node(Arc::clone(key)),
                 CheckedNodePathSegment::Index(_)
@@ -1056,7 +1057,8 @@ fn rebuild_keys_with_failure<'a>(
                 }
             });
         }
-        let package = read_charge::boxed_str(budget, at, &source.package)?;
+        read_charge::charge(budget, at, source.package.len() as u128)?;
+        let package = Arc::clone(&source.package);
         keys[node] = Some(read_charge::new_arc(
             budget,
             at,
@@ -1525,7 +1527,8 @@ pub(super) fn resolve_slots(
         let row_site = Site::new(PackageReadStage::WireChecks, position, "owner_schema");
         let mut to_index = |id: &mut super::CheckedNodeId| {
             resolve_id_operand_slots(id, row, |package| {
-                read_charge::boxed_str(budget, row_site, package)
+                read_charge::charge(budget, row_site, package.len() as u128)?;
+                Ok(crate::checked_package::shared::intern_checked_package_string(package))
             })
         };
         to_index(&mut node.node_id)?;
@@ -1550,7 +1553,7 @@ pub(super) fn resolve_slots(
 pub(super) fn resolve_id_operand_slots<E>(
     id: &mut super::CheckedNodeId,
     row: &[CheckedOperandEntry],
-    mut dependency_package: impl FnMut(&str) -> Result<Box<str>, E>,
+    mut dependency_package: impl FnMut(&str) -> Result<Arc<str>, E>,
 ) -> Result<(), E> {
     for segment in &mut id.path {
         if let Some(resolved) = resolve_operand_segment(segment, row, &mut dependency_package)? {
@@ -1565,7 +1568,7 @@ pub(super) fn resolve_id_operand_slots<E>(
 pub(super) fn resolve_operand_segment<E>(
     segment: &CheckedNodePathSegment,
     row: &[CheckedOperandEntry],
-    mut dependency_package: impl FnMut(&str) -> Result<Box<str>, E>,
+    mut dependency_package: impl FnMut(&str) -> Result<Arc<str>, E>,
 ) -> Result<Option<CheckedNodePathSegment>, E> {
     let CheckedNodePathSegment::Operand(slot) = segment else {
         return Ok(None);
@@ -1675,25 +1678,27 @@ pub(super) fn holds_slot(id: &super::CheckedNodeId) -> bool {
         .any(|segment| matches!(segment, CheckedNodePathSegment::Operand(_)))
 }
 
-/// The wire form of a resolved graph: each node-held id written with the
-/// operand slots its node's row names its operands by.
-pub(super) fn slot_graph(graph: &super::CheckedSemanticGraphV2) -> super::CheckedSemanticGraphV2 {
-    let mut out = graph.clone();
-    for (node, row) in out.nodes.iter_mut().zip(&graph.operand_rows) {
-        node.map_node_ids(|id| {
-            let held = id.path.iter().any(|segment| {
-                matches!(
-                    segment,
-                    CheckedNodePathSegment::Index(_) | CheckedNodePathSegment::Dependency { .. }
-                )
-            });
-            held.then(|| {
-                let mut restored = id.clone();
-                restore_slots(&mut restored, row);
-                restored
-            })
+/// The wire form of one resolved node: each node-held ID is written with the
+/// operand slot its row names. Callers should project only nodes they own or
+/// serialize, rather than clone the complete graph.
+pub(super) fn slot_node(
+    node: &super::CheckedSemanticNodeV2,
+    row: &[super::CheckedOperandEntry],
+) -> super::CheckedSemanticNodeV2 {
+    let mut out = node.clone();
+    out.map_node_ids(|id| {
+        let held = id.path.iter().any(|segment| {
+            matches!(
+                segment,
+                CheckedNodePathSegment::Index(_) | CheckedNodePathSegment::Dependency { .. }
+            )
         });
-    }
+        held.then(|| {
+            let mut restored = id.clone();
+            restore_slots(&mut restored, row);
+            restored
+        })
+    });
     out
 }
 

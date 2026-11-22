@@ -1147,7 +1147,9 @@ pub(super) fn retain_rows(
 fn resolve_holder_id(id: CheckedNodeId, row: &[CheckedOperandEntry]) -> CheckedNodeId {
     let mut resolved = id;
     let result = super::node_index::resolve_id_operand_slots(&mut resolved, row, |package| {
-        Ok::<_, std::convert::Infallible>(package.into())
+        Ok::<_, std::convert::Infallible>(
+            crate::checked_package::shared::intern_checked_package_string(package),
+        )
     });
     match result {
         Ok(()) => resolved,

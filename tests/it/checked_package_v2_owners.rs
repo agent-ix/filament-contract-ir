@@ -144,7 +144,13 @@ fn selected_source_tuple_requires_complete_ordered_position_rows() {
     let CheckedPackageV2ReadResult::Admitted(package) = read(&wire) else {
         panic!("source tuple fixture admits")
     };
-    let structural_node = package.graph().nodes.last().unwrap().node_id.clone();
+    let structural_node = package
+        .graph()
+        .nodes()
+        .last()
+        .unwrap()
+        .node_id()
+        .into_owned();
     let source = &package.lock().sources[0];
     let key = NodeKey::new(
         "fsl-tuple-stage",
@@ -373,15 +379,14 @@ fn selected_source_record_requires_complete_ordered_producer_rows() {
     };
     let record = package
         .graph()
-        .nodes
+        .nodes()
         .last()
         .expect("record")
         .node_id
         .clone();
     assert!(package
         .graph()
-        .nodes
-        .iter()
+        .nodes()
         .any(|node| node.semantic_form.as_ref() == "enum"));
     let source = &package.lock().sources[0];
     let key = NodeKey::new(
@@ -398,8 +403,7 @@ fn selected_source_record_requires_complete_ordered_producer_rows() {
     .map(|(name, form, value_type)| {
         let type_node = package
             .graph()
-            .nodes
-            .iter()
+            .nodes()
             .find(|node| node.semantic_form.as_ref() == form)
             .expect("field type")
             .node_id
@@ -2665,8 +2669,7 @@ fn native_source_family_fixture_with_authority(
     let named = |form: &str| {
         package
             .graph()
-            .nodes
-            .iter()
+            .nodes()
             .find(|node| node.semantic_form.as_ref() == form)
             .expect("named node")
             .node_id
@@ -2833,8 +2836,7 @@ fn native_source_family_fixture_with_authority(
     let units: Vec<_> = if include_model {
         package
             .graph()
-            .nodes
-            .iter()
+            .nodes()
             .filter(|node| node.semantic_form.as_ref() == "unit")
             .map(|node| {
                 let filament_contract_model::CheckedNodeOwner::Source {

@@ -268,7 +268,7 @@ fn encode(package: &CheckedPackageV2, limit: u64) -> Result<Vec<u8>, Error> {
     encode_checked_package_v2(
         package.name(),
         package.lock(),
-        package.graph(),
+        &package.graph().to_owned_wire(),
         CheckedPackageSourceCorrespondenceRef {
             source_map: package.source_map(),
             refinement_step_rows: package.refinement_step_rows(),
@@ -297,9 +297,10 @@ fn structural_id_and_complete_body_survive_reading() {
     let expected = json!({"package":"test/families","path":["builtin/boolean"],"ordinal":0});
     let nodes = wire["semantic_graph"]["nodes"].as_array().expect("nodes");
     assert_eq!(package.name(), "test/families");
-    assert_eq!(package.graph().nodes.len(), 1);
+    assert_eq!(package.graph().node_count(), 1);
     assert_eq!(nodes[0]["node_id"], expected);
-    let retained = serde_json::to_value(&package.graph().nodes[0]).expect("retained node");
+    let retained = serde_json::to_value(&package.graph().node(0).expect("graph position exists"))
+        .expect("retained node");
     assert_eq!(retained["node_id"], expected);
     assert_eq!(retained["body"], nodes[0]["body"]);
     assert_eq!(retained["owner"], nodes[0]["owner"]);
@@ -404,7 +405,7 @@ fn canonical_envelope_bytes_follow_semantic_and_source_edits() {
     let source_bytes = encode(&source_package, u64::MAX).expect("source bytes");
     assert_ne!(source_bytes, expected);
     assert_ne!(source_bytes, semantic_bytes);
-    assert_eq!(source_package.graph().nodes, original.graph().nodes);
+    assert_eq!(source_package.graph(), original.graph());
 }
 
 /// The typed node and complete envelope both admit at their exact canonical
@@ -413,7 +414,7 @@ fn canonical_envelope_bytes_follow_semantic_and_source_edits() {
 #[test]
 fn typed_node_and_envelope_encoding_have_exact_byte_limits() {
     let package = admit(&local_package());
-    let node = &package.graph().nodes[0];
+    let node = &package.graph().node(0).expect("graph position exists");
     let node_bytes = quire_canonical::to_vec(node, Limits::new(u64::MAX)).expect("node bytes");
     assert_eq!(
         quire_canonical::to_vec(node, Limits::new(node_bytes.len() as u64))

@@ -148,8 +148,7 @@ fn admit_selected_variant(case: &Path, bytes: &[u8]) -> CheckedPackageV2 {
 fn version_unchanged(package: &CheckedPackageV2) -> CheckedClauseComparison {
     let postconditions: Vec<_> = package
         .graph()
-        .nodes
-        .iter()
+        .nodes()
         .filter(|node| {
             node.node_tag.as_ref() == "state" && node.semantic_form.as_ref() == "state_clause"
         })
@@ -327,8 +326,7 @@ fn tc_445_fresh_fsl_config_version_has_shared_field_with_post_and_pre_observatio
             assert_eq!(field.as_ref(), "versionNumber");
             assert!(package
                 .graph()
-                .nodes
-                .iter()
+                .nodes()
                 .any(|node| &node.node_id == declaration));
             (project, *observation)
         }
@@ -395,8 +393,7 @@ fn tc_445_fresh_fsl_config_version_has_shared_field_with_post_and_pre_observatio
     ] {
         let projections: Vec<_> = contextual_package
             .graph()
-            .nodes
-            .iter()
+            .nodes()
             .filter(|node| {
                 node.node_tag.as_ref() == "state" && node.semantic_form.as_ref() == "state_clause"
             })
@@ -448,7 +445,7 @@ fn tc_445_fresh_fsl_config_version_has_shared_field_with_post_and_pre_observatio
                 projection.operands[1].identity
             );
         };
-        assert!(contextual_package.graph().nodes.iter().any(|node| {
+        assert!(contextual_package.graph().nodes().any(|node| {
             &node.node_id == literal_id
                 && node.node_tag.as_ref() == "value"
                 && node.semantic_form.as_ref() == "literal"
@@ -506,8 +503,7 @@ fn tc_445_fresh_fsl_config_version_has_shared_field_with_post_and_pre_observatio
     };
     let repeated_clause = repeated_package
         .graph()
-        .nodes
-        .iter()
+        .nodes()
         .find(|node| {
             node.node_tag.as_ref() == "state"
                 && node.semantic_form.as_ref() == "state_clause"
@@ -574,8 +570,7 @@ fn tc_445_fresh_fsl_config_version_has_shared_field_with_post_and_pre_observatio
     let unbounded_package = admit_selected_variant(&case, &unbounded_bytes);
     let refusals: Vec<_> = unbounded_package
         .graph()
-        .nodes
-        .iter()
+        .nodes()
         .filter(|node| {
             node.node_tag.as_ref() == "state" && node.semantic_form.as_ref() == "state_clause"
         })

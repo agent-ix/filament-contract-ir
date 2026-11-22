@@ -790,11 +790,11 @@ pub(super) fn declaration_id_in(
     let mut path = budget.vec(3, "member_type")?;
     for text in [form.tag(), form.form(), node] {
         path.push(CheckedNodePathSegment::Name(
-            budget.text(text, "member_type")?,
+            budget.shared_text(text, "member_type")?,
         ));
     }
     Ok(CheckedNodeId {
-        package: budget.text(identity, "member_type")?,
+        package: budget.shared_text(identity, "member_type")?,
         path,
         ordinal: 0,
     })
@@ -904,13 +904,13 @@ pub(super) enum MemberType {
 }
 
 /// The allocation hooks of the one structural-id derivation of a member type
-/// ([`MemberType::node_id_in`]): every owned path, text, wrapper and shared-node
+/// ([`MemberType::node_id_in`]): every owned path, shared text, wrapper and shared-node
 /// block is requested through these before it is allocated, so the reader's
 /// work meter and the model-union join's [`NativeJoinBudget`] pay for the same
 /// derivation instead of two copies of it.
 pub(super) trait NodeAlloc {
     type Error;
-    fn text(&mut self, text: &str, form: &'static str) -> Result<Box<str>, Self::Error>;
+    fn text(&mut self, text: &str, form: &'static str) -> Result<std::sync::Arc<str>, Self::Error>;
     fn vec<T>(&mut self, capacity: usize, form: &'static str) -> Result<Vec<T>, Self::Error>;
     fn request(&mut self, bytes: usize, form: &'static str) -> Result<(), Self::Error>;
     fn push<T>(
@@ -928,8 +928,8 @@ pub(super) trait NodeAlloc {
 
 impl NodeAlloc for Budget<'_, '_> {
     type Error = ValidationFailure;
-    fn text(&mut self, text: &str, form: &'static str) -> Result<Box<str>, Self::Error> {
-        Budget::text(self, text, form)
+    fn text(&mut self, text: &str, form: &'static str) -> Result<std::sync::Arc<str>, Self::Error> {
+        Budget::shared_text(self, text, form)
     }
     fn vec<T>(&mut self, capacity: usize, form: &'static str) -> Result<Vec<T>, Self::Error> {
         Budget::vec(self, capacity, form)
@@ -1778,6 +1778,16 @@ impl<'w, 'b> Budget<'w, 'b> {
     ) -> Result<Box<str>, ValidationFailure> {
         self.request(text.len(), form)?;
         Ok(Box::from(text))
+    }
+
+    /// A shared copy of `text`, requested first and interned for this package read.
+    pub(super) fn shared_text(
+        &mut self,
+        text: &str,
+        form: &'static str,
+    ) -> Result<std::sync::Arc<str>, ValidationFailure> {
+        self.request(text.len(), form)?;
+        Ok(crate::checked_package::shared::intern_checked_package_string(text))
     }
 }
 

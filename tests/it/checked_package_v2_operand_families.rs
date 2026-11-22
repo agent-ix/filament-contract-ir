@@ -498,22 +498,38 @@ fn native_scalar_comparisons_keep_distinct_types_and_operands() {
             let CheckedPackageV2ReadResult::Admitted(admitted) = read(&package) else {
                 panic!("native {kind}.{verb} refused: {:?}", read(&package));
             };
-            let nodes = &admitted.graph().nodes;
-            assert_ne!(nodes[at - 2].node_id, nodes[at - 1].node_id);
+            let graph = admitted.graph();
+            assert_ne!(
+                graph.node(at - 2).expect("graph position exists").node_id(),
+                graph.node(at - 1).expect("graph position exists").node_id()
+            );
             assert_eq!(
-                serde_json::to_value(&nodes[at].body).expect("typed body")["arguments"][0]
-                    ["target"],
+                serde_json::to_value(
+                    &graph
+                        .node(at)
+                        .expect("graph position exists")
+                        .to_owned_wire()
+                        .body
+                )
+                .expect("typed body")["arguments"][0]["target"],
                 node_id(&left)
             );
             assert_eq!(
-                serde_json::to_value(&nodes[at].body).expect("typed body")["arguments"][1]
-                    ["target"],
+                serde_json::to_value(
+                    &graph
+                        .node(at)
+                        .expect("graph position exists")
+                        .to_owned_wire()
+                        .body
+                )
+                .expect("typed body")["arguments"][1]["target"],
                 node_id(&right)
             );
             for key in [
                 node_id(&left),
                 node_id(&right),
-                serde_json::to_value(&nodes[at].node_id).expect("application id"),
+                serde_json::to_value(&graph.node(at).expect("graph position exists").node_id())
+                    .expect("application id"),
             ] {
                 assert!(admitted.source_map().iter().any(|entry| {
                     serde_json::to_value(&entry.node_id).expect("source-map id") == key
@@ -521,11 +537,25 @@ fn native_scalar_comparisons_keep_distinct_types_and_operands() {
                 }));
             }
             assert_eq!(
-                serde_json::to_value(&nodes[at - 2].body).expect("typed body")["value"],
+                serde_json::to_value(
+                    &graph
+                        .node(at - 2)
+                        .expect("graph position exists")
+                        .to_owned_wire()
+                        .body
+                )
+                .expect("typed body")["value"],
                 equal
             );
             assert_eq!(
-                serde_json::to_value(&nodes[at - 1].body).expect("typed body")["value"],
+                serde_json::to_value(
+                    &graph
+                        .node(at - 1)
+                        .expect("graph position exists")
+                        .to_owned_wire()
+                        .body
+                )
+                .expect("typed body")["value"],
                 unequal
             );
             let mut equal_package = package.clone();
@@ -538,10 +568,24 @@ fn native_scalar_comparisons_keep_distinct_types_and_operands() {
                 );
             };
             assert_eq!(
-                serde_json::to_value(&equal_read.graph().nodes[at].body).expect("typed body")
-                    ["arguments"][0]["target"],
-                serde_json::to_value(&equal_read.graph().nodes[at].body).expect("typed body")
-                    ["arguments"][1]["target"]
+                serde_json::to_value(
+                    &equal_read
+                        .graph()
+                        .node(at)
+                        .expect("graph position exists")
+                        .to_owned_wire()
+                        .body
+                )
+                .expect("typed body")["arguments"][0]["target"],
+                serde_json::to_value(
+                    &equal_read
+                        .graph()
+                        .node(at)
+                        .expect("graph position exists")
+                        .to_owned_wire()
+                        .body
+                )
+                .expect("typed body")["arguments"][1]["target"]
             );
             assert_eq!(
                 admitted.node_kinds()[at - 2],
@@ -657,7 +701,15 @@ fn native_literal_payloads_are_canonical_after_type_validation() {
             node_id(&key)
         );
         assert_eq!(
-            serde_json::to_value(&admitted.graph().nodes[at].body).expect("typed body")["value"],
+            serde_json::to_value(
+                &admitted
+                    .graph()
+                    .node(at)
+                    .expect("graph position exists")
+                    .to_owned_wire()
+                    .body
+            )
+            .expect("typed body")["value"],
             good[0]
         );
         for value in good.iter().skip(1) {
@@ -1600,8 +1652,7 @@ fn genuine_integer_fold_with_both_authored_binders_is_admitted() {
     };
     let fold = package
         .graph()
-        .nodes
-        .iter()
+        .nodes()
         .find(|node| node.semantic_form.as_ref() == "collection")
         .expect("emitted fold node");
     let Some(filament_contract_model::CheckedTerm::Application {
@@ -1671,7 +1722,7 @@ fn genuine_monitor_base_fold_is_admitted_without_removing_semantics() {
         other => panic!("complete genuine monitor-base fold must admit: {other:?}"),
     };
     assert_eq!(
-        package.graph().nodes.len(),
+        package.graph().node_count(),
         1114,
         "retain the full emitted graph"
     );

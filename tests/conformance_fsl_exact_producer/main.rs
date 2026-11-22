@@ -545,7 +545,10 @@ fn verify_literal_bodies(bytes: &[u8]) {
             node["node_id"] == serde_json::to_value(&exponent_id).expect("exponent id")
         })
         .expect("exponent node");
-    let exponent = &package.graph().nodes[exponent_position];
+    let exponent = &package
+        .graph()
+        .node(exponent_position)
+        .expect("graph position exists");
     assert_eq!(exponent.node_id, exponent_id);
     assert_eq!(exponent.node_tag.as_ref(), "value");
     assert_eq!(exponent.semantic_form.as_ref(), "literal");
@@ -563,8 +566,7 @@ fn verify_literal_bodies(bytes: &[u8]) {
     assert_eq!(*type_id, exponent.semantic_type);
     let integer = package
         .graph()
-        .nodes
-        .iter()
+        .nodes()
         .find(|node| node.node_id == *type_id)
         .expect("Integer type");
     assert_eq!(integer.semantic_form.as_ref(), "integer");

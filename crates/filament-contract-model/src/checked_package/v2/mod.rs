@@ -339,8 +339,9 @@ use super::shared::{
     CheckedArtifactRef, CheckedCapability, CheckedNodeId, CheckedNodePathSegment,
     CheckedNodeTableDebug, CheckedOccurrence, CheckedOccurrenceRole, CheckedOperandEntry,
     CheckedPackageIncomplete, CheckedPackageLimit, CheckedPackageReadLimits, CheckedPackageRefusal,
-    CheckedPackageRefusalCause, CheckedPackageRefusalCode, CheckedSelection, CheckedSourceMapEntry,
-    CheckedSourceRef, CheckedSourceRegion, ForeignNodeKey, JsonPointer,
+    CheckedPackageRefusalCause, CheckedPackageRefusalCode, CheckedPackageStringInterner,
+    CheckedSelection, CheckedSourceMapEntry, CheckedSourceRef, CheckedSourceRegion, ForeignNodeKey,
+    JsonPointer,
 };
 use super::terms::TermSource;
 use lock_tables::{
@@ -356,6 +357,7 @@ use quire_canonical::FixedShape;
 use serde::{Deserialize, Deserializer, Serialize};
 #[cfg(test)]
 use serde_json::Value;
+use std::borrow::Cow;
 use std::sync::Arc;
 
 // Explicit null is a value; an absent member must remain a schema refusal.
@@ -503,11 +505,11 @@ pub struct CheckedSemanticNodeV2<Body = CheckedTerm> {
     /// Stable checked node identity.
     pub node_id: CheckedNodeId,
     /// Must be `filament.checked-semantic-graph/v2`.
-    pub schema_version: Box<str>,
+    pub schema_version: Arc<str>,
     /// Closed semantic family (see [`CheckedNodeTag`]).
-    pub node_tag: Box<str>,
+    pub node_tag: Arc<str>,
     /// Closed semantic form for the family.
-    pub semantic_form: Box<str>,
+    pub semantic_form: Arc<str>,
     /// Checked semantic type identity.
     pub semantic_type: CheckedNodeId,
     /// Identity-based dependencies.
@@ -518,7 +520,7 @@ pub struct CheckedSemanticNodeV2<Body = CheckedTerm> {
     pub occurrences: Vec<CheckedOccurrence>,
     /// Explicit recursion group when present.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub recursion_group: Option<Box<str>>,
+    pub recursion_group: Option<Arc<str>>,
     /// Declared qualified name; present exactly per `DeclarationOccurrenceRule`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub declaration: Option<CheckedDeclaration>,
@@ -636,11 +638,11 @@ pub struct CheckedNodeProjectionV2<Body = CheckedTerm> {
     /// Stable node identity.
     pub node_id: CheckedNodeId,
     /// Graph schema version.
-    pub schema_version: Box<str>,
+    pub schema_version: Arc<str>,
     /// Closed node family tag.
-    pub node_tag: Box<str>,
+    pub node_tag: Arc<str>,
     /// Closed form within its node family.
-    pub semantic_form: Box<str>,
+    pub semantic_form: Arc<str>,
     /// Checked semantic type identity.
     pub semantic_type: CheckedNodeId,
     /// Identity-based dependencies.
@@ -648,7 +650,7 @@ pub struct CheckedNodeProjectionV2<Body = CheckedTerm> {
     pub dependencies: Vec<CheckedNodeId>,
     /// Explicit recursion group when present.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub recursion_group: Option<Box<str>>,
+    pub recursion_group: Option<Arc<str>>,
     /// Declared qualified name when present.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub declaration: Option<CheckedDeclaration>,
@@ -759,6 +761,269 @@ pub struct CheckedSemanticGraphV2<Body = CheckedTerm> {
     #[serde(deserialize_with = "document_de::exact_rows")]
     pub operand_rows: Vec<Vec<CheckedOperandEntry>>,
 }
+
+/// A borrowed view of the package graph in its operand-slot wire form.
+///
+/// It does not retain a second graph. Identities are projected on demand,
+/// and serialization projects one node at a time.
+pub struct CheckedSemanticGraphView<'a> {
+    graph: &'a CheckedSemanticGraphV2,
+}
+
+/// A borrowed dependency list projected through one node's operand row.
+#[derive(Clone, Copy)]
+pub struct CheckedNodeDependenciesView<'a> {
+    identities: &'a [CheckedNodeId],
+    row: &'a [CheckedOperandEntry],
+}
+
+impl<'a> CheckedNodeDependenciesView<'a> {
+    /// The number of dependencies.
+    pub fn len(&self) -> usize {
+        self.identities.len()
+    }
+
+    /// Whether the node has no dependencies.
+    pub fn is_empty(&self) -> bool {
+        self.identities.is_empty()
+    }
+
+    /// Iterate over dependencies in operand-slot wire form.
+    pub fn iter(&self) -> impl ExactSizeIterator<Item = Cow<'_, CheckedNodeId>> + '_ {
+        self.identities
+            .iter()
+            .map(|identity| wire_identity(identity, self.row))
+    }
+
+    /// The first dependency in operand-slot wire form, if present.
+    pub fn first(&self) -> Option<Cow<'_, CheckedNodeId>> {
+        self.identities
+            .first()
+            .map(|identity| wire_identity(identity, self.row))
+    }
+
+    /// Whether the wire-form dependency list contains `identity`.
+    pub fn contains(&self, identity: &CheckedNodeId) -> bool {
+        self.iter()
+            .any(|dependency| dependency.as_ref() == identity)
+    }
+
+    /// Materialize this dependency list in operand-slot wire form.
+    pub fn to_owned_wire(&self) -> Vec<CheckedNodeId> {
+        self.iter().map(Cow::into_owned).collect()
+    }
+}
+
+impl std::fmt::Debug for CheckedNodeDependenciesView<'_> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.debug_list().entries(self.iter()).finish()
+    }
+}
+
+impl PartialEq<Vec<CheckedNodeId>> for CheckedNodeDependenciesView<'_> {
+    fn eq(&self, other: &Vec<CheckedNodeId>) -> bool {
+        self.iter().eq(other.iter().map(Cow::Borrowed))
+    }
+}
+
+impl Serialize for CheckedNodeDependenciesView<'_> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.collect_seq(self.iter())
+    }
+}
+
+/// One borrowed graph node paired with its operand row.
+#[derive(Clone)]
+pub struct CheckedSemanticNodeView<'a> {
+    /// The node identity in operand-slot wire form.
+    pub node_id: Cow<'a, CheckedNodeId>,
+    /// The semantic type identity in operand-slot wire form.
+    pub semantic_type: Cow<'a, CheckedNodeId>,
+    /// The dependencies in operand-slot wire form.
+    pub dependencies: CheckedNodeDependenciesView<'a>,
+    node: &'a CheckedSemanticNodeV2,
+    row: &'a [CheckedOperandEntry],
+}
+
+impl<'a> CheckedSemanticNodeView<'a> {
+    fn new(node: &'a CheckedSemanticNodeV2, row: &'a [CheckedOperandEntry]) -> Self {
+        Self {
+            node_id: wire_identity(&node.node_id, row),
+            semantic_type: wire_identity(&node.semantic_type, row),
+            dependencies: CheckedNodeDependenciesView {
+                identities: &node.dependencies,
+                row,
+            },
+            node,
+            row,
+        }
+    }
+
+    /// The node identity in operand-slot wire form.
+    pub fn node_id(&self) -> Cow<'_, CheckedNodeId> {
+        Cow::Borrowed(self.node_id.as_ref())
+    }
+
+    /// The semantic type identity in operand-slot wire form.
+    pub fn semantic_type(&self) -> Cow<'_, CheckedNodeId> {
+        Cow::Borrowed(self.semantic_type.as_ref())
+    }
+
+    /// The dependencies in operand-slot wire form.
+    pub fn dependencies(&self) -> impl ExactSizeIterator<Item = Cow<'_, CheckedNodeId>> + '_ {
+        self.dependencies.iter()
+    }
+
+    /// The resolved typed node, for semantic inspection without a wire copy.
+    pub fn resolved_node(&self) -> &CheckedSemanticNodeV2 {
+        self.node
+    }
+
+    /// Materialize only this node in operand-slot wire form.
+    pub fn to_owned_wire(&self) -> CheckedSemanticNodeV2 {
+        node_index::slot_node(self.node, self.row)
+    }
+}
+
+impl std::ops::Deref for CheckedSemanticNodeView<'_> {
+    type Target = CheckedSemanticNodeV2;
+
+    fn deref(&self) -> &Self::Target {
+        self.node
+    }
+}
+
+impl std::fmt::Debug for CheckedSemanticNodeView<'_> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Debug::fmt(&self.to_owned_wire(), formatter)
+    }
+}
+
+impl PartialEq for CheckedSemanticNodeView<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        self.to_owned_wire() == other.to_owned_wire()
+    }
+}
+
+impl Eq for CheckedSemanticNodeView<'_> {}
+
+impl<'a> CheckedSemanticGraphView<'a> {
+    /// The graph schema version.
+    pub fn graph_version(&self) -> &str {
+        &self.graph.graph_version
+    }
+
+    /// The graph nodes in graph order.
+    pub fn nodes(&self) -> impl ExactSizeIterator<Item = CheckedSemanticNodeView<'a>> + '_ {
+        self.graph
+            .nodes
+            .iter()
+            .zip(&self.graph.operand_rows)
+            .map(|(node, row)| CheckedSemanticNodeView::new(node, row))
+    }
+
+    /// A graph node by its graph position.
+    pub fn node(&self, position: usize) -> Option<CheckedSemanticNodeView<'a>> {
+        self.graph
+            .nodes
+            .get(position)
+            .zip(self.graph.operand_rows.get(position))
+            .map(|(node, row)| CheckedSemanticNodeView::new(node, row))
+    }
+
+    /// The number of graph nodes.
+    pub fn node_count(&self) -> usize {
+        self.graph.nodes.len()
+    }
+
+    /// The operand rows in graph order.
+    pub fn operand_rows(&self) -> &[Vec<CheckedOperandEntry>] {
+        &self.graph.operand_rows
+    }
+
+    /// Materialize the full operand-slot graph for a caller that requires an
+    /// owned `CheckedSemanticGraphV2`.
+    pub fn to_owned_wire(&self) -> CheckedSemanticGraphV2 {
+        CheckedSemanticGraphV2 {
+            graph_version: self.graph.graph_version.clone(),
+            nodes: self.nodes().map(|node| node.to_owned_wire()).collect(),
+            operand_rows: self.graph.operand_rows.clone(),
+        }
+    }
+}
+
+fn wire_identity<'a>(
+    identity: &'a CheckedNodeId,
+    row: &[CheckedOperandEntry],
+) -> Cow<'a, CheckedNodeId> {
+    if identity.path.iter().any(|segment| {
+        matches!(
+            segment,
+            CheckedNodePathSegment::Index(_) | CheckedNodePathSegment::Dependency { .. }
+        )
+    }) {
+        let mut wire = identity.clone();
+        node_index::restore_slots(&mut wire, row);
+        Cow::Owned(wire)
+    } else {
+        Cow::Borrowed(identity)
+    }
+}
+
+impl Serialize for CheckedSemanticNodeView<'_> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.to_owned_wire().serialize(serializer)
+    }
+}
+
+impl Serialize for CheckedSemanticGraphView<'_> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeStruct;
+        let mut graph = serializer.serialize_struct("CheckedSemanticGraphV2", 3)?;
+        graph.serialize_field("graph_version", &self.graph.graph_version)?;
+        graph.serialize_field("nodes", &GraphNodesSerialize(self))?;
+        graph.serialize_field("operand_rows", &self.graph.operand_rows)?;
+        graph.end()
+    }
+}
+
+struct GraphNodesSerialize<'a, 'g>(&'a CheckedSemanticGraphView<'g>);
+
+impl Serialize for GraphNodesSerialize<'_, '_> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeSeq;
+        let mut nodes = serializer.serialize_seq(Some(self.0.node_count()))?;
+        for node in self.0.nodes() {
+            nodes.serialize_element(&node)?;
+        }
+        nodes.end()
+    }
+}
+
+impl std::fmt::Debug for CheckedSemanticGraphView<'_> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("CheckedSemanticGraphView")
+            .field("graph_version", &self.graph.graph_version)
+            .field("node_count", &self.graph.nodes.len())
+            .field("operand_rows", &self.graph.operand_rows)
+            .finish()
+    }
+}
+
+impl PartialEq for CheckedSemanticGraphView<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        self.graph.graph_version == other.graph.graph_version
+            && self.graph.operand_rows == other.graph.operand_rows
+            && self.node_count() == other.node_count()
+            && self
+                .nodes()
+                .zip(other.nodes())
+                .all(|(left, right)| left.to_owned_wire() == right.to_owned_wire())
+    }
+}
+
+impl Eq for CheckedSemanticGraphView<'_> {}
 
 type RawSemanticGraphV2 = CheckedSemanticGraphV2<CheckedJson>;
 
@@ -1197,7 +1462,6 @@ pub enum CheckedPackageV2ReadResult {
 /// The graph in its wire form and the positions of the nodes whose own ID
 /// holds an operand slot, by those bytes.
 struct SlotView {
-    graph: CheckedSemanticGraphV2,
     /// The positions of the slot-holding nodes, sorted by node ID bytes and
     /// then position.
     positions: Vec<usize>,
@@ -1215,8 +1479,6 @@ pub struct CheckedPackageV2 {
     /// Private admission capability; clones preserve it, independent reads do not.
     admission_binding: Option<AdmissionBinding>,
     wire: Arc<CheckedPackageWireV2>,
-    /// Original body views, moved from the charged intake table for imported joins.
-    body_documents: Vec<CheckedJson>,
     kinds: Arc<Vec<CheckedNodeKind>>,
     schedulability_claim_index: Vec<(usize, usize)>,
     monitor_plan_index: Vec<monitor_plan::Plan>,
@@ -1229,9 +1491,8 @@ pub struct CheckedPackageV2 {
     terminal_rows: Arc<Vec<TerminalRow>>,
     /// The admitted probabilistic claim nodes in structural node-key order.
     probabilistic_claims: Arc<Vec<CheckedProbabilisticClaimNode>>,
-    /// The graph in its wire form, node-held operands as operand slots,
-    /// built on first use from the resolved graph in `wire`.
-    slot_graph: Arc<std::sync::OnceLock<SlotView>>,
+    /// Admission-derived ordered row indexes and node positions.
+    slot_view: Arc<std::sync::OnceLock<SlotView>>,
     /// Admission-derived position of each exact source occurrence.
     pub(in crate::checked_package) source_index: Arc<PositionIndex>,
     /// Body terms and resolved lowering edges, retained from graph admission.
@@ -1702,6 +1963,7 @@ impl CheckedPackageV2 {
         evidence: &CheckedPackageEvidence,
         budget: &mut NativeJoinBudget,
     ) -> Result<Self, ValidationFailure> {
+        let _string_interner = CheckedPackageStringInterner::scope();
         // The document the shared reader built is the grammar and canonical
         // proof of the bytes; the typed decode below still reads the bytes.
         let document = budgeted_read::read_envelope(bytes, limits, budget)?;
@@ -1765,6 +2027,18 @@ impl CheckedPackageV2 {
         // slot is read through its row once here.
         node_index::resolve_slots(&mut wire, &bodies, budget)?;
         validate_owner_schema(&wire, &bodies, budget)?;
+        let mut validated = validate(
+            &catalog, &wire, &bodies, &document, limits, evidence, budget,
+        )?;
+        for term in &mut validated.terms {
+            term.detach_json_payloads();
+        }
+        for entry in &mut wire.diagnostics.entries {
+            for detail in &mut entry.details {
+                detail.detach_from_source();
+            }
+        }
+        drop(_string_interner);
         let ValidatedPackage {
             kinds,
             schedulability_claim_index,
@@ -1774,9 +2048,7 @@ impl CheckedPackageV2 {
             selected_documents,
             lowering_facts,
             structural_keys,
-        } = validate(
-            &catalog, &wire, &bodies, &document, limits, evidence, budget,
-        )?;
+        } = validated;
         let site = |form| read_charge::Site::new(PackageReadStage::Retained, 0, form);
         let selections = &wire.lock.dependency_selections;
         let mut direct_dependencies: Vec<Arc<CheckedPackageV2>> =
@@ -1853,6 +2125,12 @@ impl CheckedPackageV2 {
             capability_report,
             diagnostics,
         };
+        // The admitted graph now contains compact subtree handles for every
+        // retained JSON payload. Root bodies served validators only and the
+        // package source document can be released before retained indexes and
+        // the final Arc-backed package are built.
+        drop(bodies);
+        drop(document);
         let node_index = retained_index::node_index(&wire, budget)?;
         let source_index = super::selected_population::source_index(&wire.source_map, budget)?;
         let terminal_rows = claim_terminal::retain_rows(
@@ -1887,10 +2165,9 @@ impl CheckedPackageV2 {
         let node_index = read_charge::new_arc(budget, package, node_index)?;
         let source_index = read_charge::new_arc(budget, package, source_index)?;
         let selected_documents = read_charge::new_arc(budget, package, selected_documents)?;
-        let slot_graph = read_charge::new_arc(budget, package, std::sync::OnceLock::new())?;
+        let slot_view = read_charge::new_arc(budget, package, std::sync::OnceLock::new())?;
         let package = Self {
             admission_binding: None,
-            body_documents: bodies,
             wire,
             kinds,
             schedulability_claim_index,
@@ -1900,7 +2177,7 @@ impl CheckedPackageV2 {
             structural_keys,
             terminal_rows,
             probabilistic_claims,
-            slot_graph,
+            slot_view,
             source_index,
             lowering_facts,
             bytes: limits.bytes,
@@ -1950,24 +2227,37 @@ impl CheckedPackageV2 {
         self.direct_dependencies.iter().map(std::sync::Arc::as_ref)
     }
 
-    /// The complete closed checked graph as the wire holds it: each
-    /// node-held operand is an operand slot read through the node's row of
-    /// `operand_rows`, each document-held one an index segment.
-    pub fn graph(&self) -> &CheckedSemanticGraphV2 {
-        &self.slot_view().graph
+    /// The complete checked graph in operand-slot wire form, borrowed from
+    /// the admitted graph. The returned view does not clone node bodies;
+    /// callers that need an owned graph can call
+    /// [`CheckedSemanticGraphView::to_owned_wire`], and callers that need
+    /// resolved identities can use [`Self::resolved_graph`]. Use
+    /// [`CheckedSemanticGraphView::nodes`] and [`CheckedSemanticGraphView::node`]
+    /// to inspect its borrowed node views.
+    pub fn graph(&self) -> CheckedSemanticGraphView<'_> {
+        CheckedSemanticGraphView {
+            graph: &self.wire.semantic_graph,
+        }
     }
 
     fn slot_view(&self) -> &SlotView {
-        self.slot_graph.get_or_init(|| {
-            let graph = node_index::slot_graph(&self.wire.semantic_graph);
+        self.slot_view.get_or_init(|| {
+            let graph = &self.wire.semantic_graph;
             let nodes = &graph.nodes;
             let mut positions: Vec<usize> = (0..nodes.len())
-                .filter(|&position| node_index::holds_slot(&nodes[position].node_id))
+                .filter(|&position| {
+                    node_index::holds_slot(&wire_identity(
+                        &nodes[position].node_id,
+                        &graph.operand_rows[position],
+                    ))
+                })
                 .collect();
             positions.sort_unstable_by(|left, right| {
-                nodes[*left]
-                    .node_id
-                    .cmp(&nodes[*right].node_id)
+                wire_identity(&nodes[*left].node_id, &graph.operand_rows[*left])
+                    .cmp(&wire_identity(
+                        &nodes[*right].node_id,
+                        &graph.operand_rows[*right],
+                    ))
                     .then(left.cmp(right))
             });
             let requirement_items = requirement_records::retain_rows(
@@ -1978,7 +2268,6 @@ impl CheckedPackageV2 {
             );
             let value_validity_record_index = requirement_records::owner_index(&requirement_items);
             SlotView {
-                graph,
                 positions,
                 requirement_items,
                 value_validity_record_index,
@@ -2032,19 +2321,27 @@ impl CheckedPackageV2 {
     fn position_of(&self, id: &CheckedNodeId) -> Option<usize> {
         if node_index::holds_slot(id) {
             let view = self.slot_view();
-            let nodes = &view.graph.nodes;
-            let first = view
-                .positions
-                .partition_point(|&position| nodes[position].node_id < *id);
-            let found = view
-                .positions
-                .get(first)
-                .filter(|&&position| nodes[position].node_id == *id)?;
+            let graph = &self.wire.semantic_graph;
+            let first = view.positions.partition_point(|&position| {
+                wire_identity(
+                    &graph.nodes[position].node_id,
+                    &graph.operand_rows[position],
+                )
+                .as_ref()
+                    < id
+            });
+            let found = view.positions.get(first).filter(|&&position| {
+                wire_identity(
+                    &graph.nodes[position].node_id,
+                    &graph.operand_rows[position],
+                )
+                .as_ref()
+                    == id
+            })?;
             // Equal bytes in two nodes name none: the rows tell them apart.
-            let unique = view
-                .positions
-                .get(first + 1)
-                .is_none_or(|&next| nodes[next].node_id != *id);
+            let unique = view.positions.get(first + 1).is_none_or(|&next| {
+                wire_identity(&graph.nodes[next].node_id, &graph.operand_rows[next]).as_ref() != id
+            });
             return unique.then_some(*found);
         }
         if id
@@ -3860,20 +4157,17 @@ fn validate_graph<'w>(
                             .nodes
                             .get(selected_position)
                             .zip(selected_graph.operand_rows.get(selected_position))
-                            .zip(selected_package.body_documents.get(selected_position))
                         {
-                            Some(((selected_node, selected_row), selected_body)) => {
-                                imported_node_matches(
-                                    node,
-                                    selected_node,
-                                    TermNode::of(selected_body),
-                                    structural_keys,
-                                    &selected_package.structural_keys,
-                                    &wire.semantic_graph.operand_rows[position],
-                                    selected_row,
-                                    meter,
-                                )?
-                            }
+                            Some((selected_node, selected_row)) => imported_node_matches(
+                                node,
+                                selected_node,
+                                TermNode::of(&selected_node.body),
+                                structural_keys,
+                                &selected_package.structural_keys,
+                                &wire.semantic_graph.operand_rows[position],
+                                selected_row,
+                                meter,
+                            )?,
                             None => false,
                         }
                     }
@@ -5961,7 +6255,7 @@ mod tests {
                     timed_model_roots: Vec::new(),
                     node_index: std::sync::Arc::new(Default::default()),
                     structural_keys: keys,
-                    slot_graph: Default::default(),
+                    slot_view: Default::default(),
                     source_index: std::sync::Arc::new(Default::default()),
                     lowering_facts: Vec::new(),
                     wire: std::sync::Arc::new(wire),
@@ -5974,7 +6268,6 @@ mod tests {
                     catalog: crate::checked_package::v2::operation_catalog::owned_operation_catalog(
                     ),
                     admission_binding: Default::default(),
-                    body_documents: Vec::new(),
                 }
                 .retain_original_admission();
                 let package_debug = format!("{package:?}");

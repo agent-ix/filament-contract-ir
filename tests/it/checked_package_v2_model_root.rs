@@ -32,8 +32,7 @@ fn selected_model_package_names_follow_admitted_identity_order() {
     let selected = admitted(&package);
     let graph_order: Vec<_> = selected
         .graph()
-        .nodes
-        .iter()
+        .nodes()
         .filter_map(|node| match &node.owner {
             Some(CheckedNodeOwner::ModelRoot { identity }) => Some(identity.as_ref()),
             _ => None,
@@ -124,13 +123,12 @@ fn selected_root_roundtrips_through_public_typed_writer_and_reader() {
     assert_eq!(
         first
             .graph()
-            .nodes
-            .iter()
+            .nodes()
             .filter(|node| node.semantic_form.as_ref() == "model_root")
             .count(),
         2
     );
-    let node = &first.graph().nodes[root];
+    let node = &first.graph().node(root).expect("graph position exists");
     assert_eq!(
         first.node_kinds()[root],
         filament_contract_model::CheckedNodeKind::Model(ModelForm::ModelRoot)
@@ -149,11 +147,11 @@ fn selected_root_roundtrips_through_public_typed_writer_and_reader() {
     let projection = CheckedNodeProjectionV2::from(node);
     assert_eq!(projection.owner, node.owner);
 
-    let graph = first.graph();
+    let graph = first.graph().to_owned_wire();
     let bytes = encode_checked_package_v2(
         first.name(),
         first.lock(),
-        graph,
+        &graph,
         CheckedPackageSourceCorrespondenceRef {
             source_map: first.source_map(),
             refinement_step_rows: first.refinement_step_rows(),
@@ -180,7 +178,10 @@ fn selected_root_roundtrips_through_public_typed_writer_and_reader() {
         CheckedPackageV2ReadResult::Admitted(package) => package,
         other => panic!("typed roundtrip refused: {other:?}"),
     };
-    assert_eq!(second.graph().nodes[root], *node);
+    assert_eq!(
+        second.graph().node(root).expect("graph position exists"),
+        *node
+    );
     assert_eq!(second.name(), first.name());
     assert_eq!(
         second.source_map()[root_source_position(&package)],
@@ -204,8 +205,7 @@ fn one_declaration_selection_has_one_root() {
     assert_eq!(
         admitted
             .graph()
-            .nodes
-            .iter()
+            .nodes()
             .filter(|node| node.semantic_form.as_ref() == "model_root")
             .count(),
         1
@@ -245,8 +245,7 @@ fn adding_another_object_type_does_not_add_another_model_root() {
         assert_eq!(
             admitted
                 .graph()
-                .nodes
-                .iter()
+                .nodes()
                 .filter(|node| node.semantic_form.as_ref() == "model_root")
                 .count(),
             1,
@@ -264,8 +263,7 @@ fn no_model_selection_has_no_root() {
     let admitted = admitted(&package);
     assert!(admitted
         .graph()
-        .nodes
-        .iter()
+        .nodes()
         .all(|node| node.semantic_form.as_ref() != "model_root"));
 }
 
@@ -486,8 +484,16 @@ fn root_only_package_keeps_the_root_key_when_its_source_alias_changes() {
     select_model(&mut package, "zz/root-only");
     refresh_identity(&mut package);
     let first = admitted(&package);
-    assert_eq!(first.graph().nodes.len(), 1);
-    assert_eq!(first.graph().nodes[0].semantic_form.as_ref(), "model_root");
+    assert_eq!(first.graph().node_count(), 1);
+    assert_eq!(
+        first
+            .graph()
+            .node(0)
+            .expect("graph position exists")
+            .semantic_form
+            .as_ref(),
+        "model_root"
+    );
 
     let mut renamed = package;
     renamed["lock"]["sources"][0]["identity"] = json!("test/renamed-source");

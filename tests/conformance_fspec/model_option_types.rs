@@ -99,8 +99,7 @@ fn published_option_field_types_match_canonical_domains() {
     let fields = admitted.model_object_fields(&holder).unwrap();
     let unit = admitted
         .graph()
-        .nodes
-        .iter()
+        .nodes()
         .find(|node| {
             node.declaration.as_ref().is_some_and(|declaration| {
                 declaration

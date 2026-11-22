@@ -11,6 +11,7 @@
 //! document nodes against their typed serialization one at a time, including
 //! structural node identities.
 
+use super::checked_json::RootBodyHandle;
 use super::NativeJoinBudget;
 use super::TermNode;
 use super::{
@@ -161,16 +162,16 @@ impl<'de> Deserialize<'de> for WireNodeId {
 #[serde(deny_unknown_fields)]
 struct BorrowedNode {
     node_id: WireNodeId,
-    schema_version: Box<str>,
-    node_tag: Box<str>,
-    semantic_form: Box<str>,
+    schema_version: Arc<str>,
+    node_tag: Arc<str>,
+    semantic_form: Arc<str>,
     semantic_type: WireNodeId,
     #[serde(deserialize_with = "super::document_de::exact_vec")]
     dependencies: Vec<WireNodeId>,
     #[serde(deserialize_with = "super::document_de::exact_vec")]
     occurrences: Vec<CheckedOccurrence>,
     #[serde(default)]
-    recursion_group: Option<Box<str>>,
+    recursion_group: Option<Arc<str>>,
     #[serde(default, deserialize_with = "present_nullable")]
     declaration: Option<Option<CheckedDeclaration>>,
     #[serde(default)]
@@ -179,7 +180,7 @@ struct BorrowedNode {
     owner_model: Option<WireNodeId>,
     #[serde(default)]
     check_mode: Option<super::CheckMode>,
-    body: CheckedJson,
+    body: RootBodyHandle,
 }
 
 // The outer option records member presence; the inner option records JSON null.
@@ -262,8 +263,8 @@ pub(super) fn decode_borrowed_wire(
                 node_pointer(position),
             ));
         }
-        bodies.push(node.body.clone());
-        let body = node.body;
+        let body = node.body.into_checked_json();
+        bodies.push(body.clone());
         if !position_member_shape(TermNode::of(&body)) {
             return Err(ValidationFailure::refused(
                 CheckedPackageRefusalCode::MalformedWire,

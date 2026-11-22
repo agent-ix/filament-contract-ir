@@ -94,9 +94,10 @@ fn fspec_k2_role_rename_changes_declared_and_operand_ids() {
     let CheckedPackageV2ReadResult::Admitted(before) = read_authored(&package) else {
         panic!("K2 Fulfillment base must admit");
     };
+    let before_graph = before.graph().to_owned_wire();
     let before_derived_key = super::node_index::fixture_structural_key(
-        &before.graph().nodes,
-        &before.graph().operand_rows,
+        &before_graph.nodes,
+        &before_graph.operand_rows,
         derived,
     );
     package["semantic_graph"]["nodes"][role]["declaration"]["qualified_name"][3] =
@@ -105,12 +106,13 @@ fn fspec_k2_role_rename_changes_declared_and_operand_ids() {
     let CheckedPackageV2ReadResult::Admitted(admitted) = read_authored(&package) else {
         panic!("K2 Shipping rename must admit");
     };
+    let admitted_graph = admitted.graph().to_owned_wire();
     let after_role = package["semantic_graph"]["nodes"][role]["node_id"].clone();
     let after_derived = package["semantic_graph"]["nodes"][derived]["node_id"].clone();
     assert_ne!(before_role, after_role);
     let after_derived_key = super::node_index::fixture_structural_key(
-        &admitted.graph().nodes,
-        &admitted.graph().operand_rows,
+        &admitted_graph.nodes,
+        &admitted_graph.operand_rows,
         derived,
     );
     assert_ne!(before_derived_key, after_derived_key);
@@ -340,7 +342,12 @@ fn fspec_k10_acyclic_protocol_member_admits_a_lone_group_label() {
         panic!("K10 acyclic protocol with a lone group label must admit");
     };
     assert_eq!(
-        admitted.graph().nodes[position].recursion_group.as_deref(),
+        admitted
+            .graph()
+            .node(position)
+            .expect("graph position exists")
+            .recursion_group
+            .as_deref(),
         Some("lone-group")
     );
     assert_eq!(

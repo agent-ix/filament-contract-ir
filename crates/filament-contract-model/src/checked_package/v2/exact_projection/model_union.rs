@@ -122,7 +122,7 @@ fn absent_node(
     node: &CheckedNodeId,
     pointer: &str,
 ) -> ExactTypeProjectionError {
-    let code = if node.package == package.wire.name
+    let code = if node.package.as_ref() == package.wire.name.as_ref()
         || package.models.selected_model(&node.package).is_some()
     {
         ExactTypeProjectionErrorCode::UnknownNode

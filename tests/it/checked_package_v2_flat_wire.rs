@@ -344,7 +344,10 @@ fn deepest_admitted_typed_term_obeys_the_exact_byte_limit_on_a_small_stack() {
             CheckedPackageV2ReadResult::Admitted(package) => package,
             other => panic!("exact bytes must admit: {other:?}"),
         };
-        let node = &admitted.graph().nodes[position];
+        let node = &admitted
+            .graph()
+            .node(position)
+            .expect("graph position exists");
         assert!(matches!(
             admitted.term(&node.node_id),
             Some(CheckedTerm::Aggregate { .. })
@@ -625,7 +628,7 @@ fn tc_048_a_hundred_thousand_node_chain_is_admitted_and_lowered_on_a_small_stack
             panic!("the chain admits, read {read:?}");
         };
         drop(bytes);
-        assert_eq!(package.graph().nodes.len(), total);
+        assert_eq!(package.graph().node_count(), total);
         let profile = CompleteLoweringProfileV2 {
             reference: filament_contract_model::LoweringProfileRef {
                 authority: "filament".into(),

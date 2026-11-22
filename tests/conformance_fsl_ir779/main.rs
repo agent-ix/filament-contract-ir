@@ -196,8 +196,7 @@ fn tc_450_fsl_rr13_items_map_their_checked_path_conditions_into_admitted_ir() {
             let application = item_occurrence(item, "application");
             checked
                 .graph()
-                .nodes
-                .iter()
+                .nodes()
                 .any(|node| node.node_id == application.node_id)
         })
         .collect::<Vec<_>>();
@@ -218,8 +217,7 @@ fn tc_450_fsl_rr13_items_map_their_checked_path_conditions_into_admitted_ir() {
         guard_polarities.push((guard_occurrence.clone(), holds));
         let application_node = checked
             .graph()
-            .nodes
-            .iter()
+            .nodes()
             .find(|node| node.node_id == application.node_id)
             .expect("FSL item application is represented");
         assert_eq!(

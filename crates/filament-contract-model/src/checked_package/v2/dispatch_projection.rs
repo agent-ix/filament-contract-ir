@@ -503,7 +503,7 @@ fn validate_probabilistic_claims<Body>(
             return Err(invalid(meter, row_index, row.key("declaration")));
         };
         let node = &nodes[position];
-        if claim.declaration.package != wire.name
+        if claim.declaration.package.as_ref() != wire.name.as_ref()
             || kinds.get(position) != Some(&CheckedNodeKind::Claim(ClaimForm::ProbabilisticClaim))
         {
             return Err(invalid(meter, row_index, row.key("declaration")));
@@ -591,7 +591,7 @@ impl CheckedPackageV2 {
         occurrence: &CheckedOccurrence,
         work_limit: u64,
     ) -> Result<CheckedDispatchView<'_>, CheckedDispatchReadError> {
-        if application.package != self.wire.name {
+        if application.package.as_ref() != self.wire.name.as_ref() {
             return Err(CheckedDispatchReadError::ForeignApplication);
         }
         let Some(position) = self.node_position(application) else {

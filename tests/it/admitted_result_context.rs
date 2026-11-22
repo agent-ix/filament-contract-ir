@@ -243,8 +243,7 @@ pub(crate) fn sources_for<'a>(
 pub(crate) fn by_operation(package: &CheckedPackageV2, identity: &str) -> ContractOccurrenceKeyV1 {
     let node = package
         .graph()
-        .nodes
-        .iter()
+        .nodes()
         .find(|node| {
             body_at(&node.body, "/operation/identity")
                 .as_ref()
@@ -462,8 +461,7 @@ fn tc_447_none_and_invalid_occurrences_have_distinct_typed_outcomes() {
 
     let parameter = input
         .graph()
-        .nodes
-        .iter()
+        .nodes()
         .find(|node| {
             node.node_tag.as_ref() == "value"
                 && node.semantic_form.as_ref() == "parameter"
@@ -614,8 +612,7 @@ fn tc_447_represented_wrong_conversion_shapes_refuse_without_a_bound() {
     let input = admit(&wire);
     let add = input
         .graph()
-        .nodes
-        .iter()
+        .nodes()
         .find(|node| {
             body_at(&node.body, "/operation/identity") == Some(json!("filament.op.integer.add"))
                 && body_at(&node.body, "/arguments/1/value") == Some(json!("1"))
@@ -623,8 +620,7 @@ fn tc_447_represented_wrong_conversion_shapes_refuse_without_a_bound() {
         .expect("original add");
     let other_add = input
         .graph()
-        .nodes
-        .iter()
+        .nodes()
         .find(|node| {
             body_at(&node.body, "/operation/identity") == Some(json!("filament.op.integer.add"))
                 && body_at(&node.body, "/arguments/1/value") == Some(json!("2"))
@@ -632,8 +628,7 @@ fn tc_447_represented_wrong_conversion_shapes_refuse_without_a_bound() {
         .expect("other add");
     let other_narrow = input
         .graph()
-        .nodes
-        .iter()
+        .nodes()
         .find(|node| {
             body_at(&node.body, "/operation/identity") == Some(json!("filament.op.numeric.narrow"))
                 && body_at(&node.body, "/arguments/0/target")
@@ -642,8 +637,7 @@ fn tc_447_represented_wrong_conversion_shapes_refuse_without_a_bound() {
         .expect("direct narrow of another expression");
     let wrong_operation = input
         .graph()
-        .nodes
-        .iter()
+        .nodes()
         .find(|node| {
             body_at(&node.body, "/operation/identity") == Some(json!("filament.op.numeric.convert"))
         })
@@ -826,8 +820,7 @@ fn tc_447_direct_bounded_expression_keeps_own_result_until_its_narrow_is_selecte
     let input = admit(&wire);
     let expression = input
         .graph()
-        .nodes
-        .iter()
+        .nodes()
         .find(|node| {
             node.node_tag.as_ref() == "expression"
                 && node.semantic_form.as_ref() == "binary"
@@ -838,8 +831,7 @@ fn tc_447_direct_bounded_expression_keeps_own_result_until_its_narrow_is_selecte
         .expect("own-bounded expression");
     let narrow = input
         .graph()
-        .nodes
-        .iter()
+        .nodes()
         .find(|node| {
             body_at(&node.body, "/operation/identity") == Some(json!("filament.op.numeric.narrow"))
                 && body_at(&node.body, "/arguments/0/target")
@@ -964,8 +956,7 @@ fn tc_447_shared_expression_uses_each_supplied_occurrence_and_direct_narrow() {
     let add = by_operation(&input, "filament.op.integer.add");
     let narrows = input
         .graph()
-        .nodes
-        .iter()
+        .nodes()
         .filter(|node| {
             body_at(&node.body, "/operation/identity")
                 .as_ref()

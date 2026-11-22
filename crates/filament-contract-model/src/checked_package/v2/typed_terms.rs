@@ -257,6 +257,15 @@ fn projected_members_equal(left: MemberProjection<'_>, right: MemberProjection<'
 }
 
 impl CheckedApplicationOperationRecord {
+    pub(super) fn detach_json_payloads(&mut self) {
+        if let Some(member) = &mut self.member {
+            member.detach_from_source();
+        }
+        if let Some(malformed) = &mut self.malformed {
+            malformed.detach_from_source();
+        }
+    }
+
     fn projected_member(&self) -> Option<MemberProjection<'_>> {
         self.member.as_ref().map(|member| MemberProjection {
             node: member.node(),
@@ -1539,6 +1548,10 @@ fn decode_optional_decimal_integer<'de, D: Deserializer<'de>>(
 }
 
 impl CheckedApplicationOperation {
+    pub(super) fn detach_json_payloads(&mut self) {
+        self.record.detach_json_payloads();
+    }
+
     /// Construct the catalogued state-clause operation without a JSON payload.
     pub fn state_clause(clause: StateClauseKind, execution_point: Option<ExecutionPoint>) -> Self {
         #[derive(Serialize)]
@@ -2677,6 +2690,35 @@ pub(super) enum SelectedTermTraversal<'a> {
 }
 
 impl CheckedTerm {
+    pub(super) fn detach_json_payloads(&mut self) {
+        let mut pending = vec![self];
+        while let Some(term) = pending.pop() {
+            match term {
+                Self::Literal { value, .. } => value.detach_from_source(),
+                Self::Application {
+                    operation,
+                    arguments,
+                    ..
+                } => {
+                    operation.detach_json_payloads();
+                    pending.extend(arguments);
+                }
+                Self::Aggregate { members } => pending.extend(members),
+                Self::Binding { value, .. } => pending.push(value),
+                Self::ExtensionForm { clauses, .. } => pending.extend(clauses),
+                Self::Reference { .. }
+                | Self::DependencyReference { .. }
+                | Self::Frame { .. }
+                | Self::AbstractionRelation { .. }
+                | Self::ImplementationGuarantee { .. }
+                | Self::ComponentComposition { .. }
+                | Self::Refinement { .. }
+                | Self::NominalBody(_)
+                | Self::OperationAnchorBody(_) => {}
+            }
+        }
+    }
+
     /// Read a scalar literal without inspecting its JSON wire payload.
     /// Returns `None` for another term or a directly decoded malformed literal.
     pub fn literal_read(&self) -> Option<CheckedLiteralRead<'_>> {

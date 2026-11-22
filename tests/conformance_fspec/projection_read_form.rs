@@ -46,7 +46,7 @@ fn fill_model_read_forms(value: &mut Value) {
 }
 
 fn first_projection_read_form(package: &CheckedPackageV2) -> Option<CheckedFieldReadForm> {
-    package.graph().nodes.iter().find_map(|node| {
+    package.graph().nodes().find_map(|node| {
         let CheckedTerm::Application { operation, .. } = &node.body else {
             return None;
         };
@@ -144,7 +144,7 @@ fn published_model_field_read_forms_survive_admission_and_round_trip() {
                 let encoded = encode_checked_package_v2(
                     package.name(),
                     package.lock(),
-                    package.graph(),
+                    &package.graph().to_owned_wire(),
                     CheckedPackageSourceCorrespondenceRef {
                         source_map: package.source_map(),
                         refinement_step_rows: package.refinement_step_rows(),

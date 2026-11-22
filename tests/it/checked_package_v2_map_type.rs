@@ -109,7 +109,15 @@ fn map_keeps_both_ordered_type_operands() {
             )
         );
     }
-    assert_eq!(admitted.graph().nodes[position].dependencies.len(), 2);
+    assert_eq!(
+        admitted
+            .graph()
+            .node(position)
+            .expect("graph position exists")
+            .dependencies
+            .len(),
+        2
+    );
     let projection = admitted
         .project_exact_type(
             &id,
@@ -280,7 +288,15 @@ fn collection_bounds_remain_a_separate_node() {
         short.first_unpaid().unwrap().kind,
         filament_contract_model::NativeJoinChargeKind::Storage
     );
-    assert_eq!(admitted.graph().nodes[map_position].dependencies.len(), 2);
+    assert_eq!(
+        admitted
+            .graph()
+            .node(map_position)
+            .expect("graph position exists")
+            .dependencies
+            .len(),
+        2
+    );
     let CheckedTerm::Aggregate { members } = admitted
         .term(
             &serde_json::from_value(
@@ -828,7 +844,10 @@ fn nested_and_bounded_source_maps_preserve_all_value_rows_and_bounds() {
             );
             assert_eq!(short.last_success_delta(), None);
             assert!(
-                package.graph().nodes.iter().any(|node| &node.node_id == at),
+                package
+                    .graph()
+                    .nodes()
+                    .any(|node| node.node_id().as_ref() == at),
                 "the independently selected key/value node is admitted"
             );
             observed = true;

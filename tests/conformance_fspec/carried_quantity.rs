@@ -1738,8 +1738,7 @@ fn carried_sum_fixture_parameters_and_domains_admit_without_an_operation() {
         assert_eq!(
             admitted
                 .graph()
-                .nodes
-                .iter()
+                .nodes()
                 .filter(|node| node.semantic_form.as_ref() == "parameter")
                 .count(),
             2

@@ -418,7 +418,12 @@ fn published_temporal_aggregate_arguments_match_strict_reader() {
                 operation,
                 arguments,
                 ..
-            } = &admitted.graph().nodes[position].body
+            } = &admitted
+                .graph()
+                .node(position)
+                .expect("graph position exists")
+                .to_owned_wire()
+                .body
             else {
                 panic!("{case_id}: temporal formula body");
             };
@@ -596,7 +601,15 @@ fn duration_bounds_match_every_occurrence_clock_unit() {
         panic!("both claim occurrences using ms must admit");
     };
     assert_eq!(
-        serde_json::to_value(&admitted.graph().nodes[formula].body).expect("typed formula"),
+        serde_json::to_value(
+            &admitted
+                .graph()
+                .node(formula)
+                .expect("graph position exists")
+                .to_owned_wire()
+                .body
+        )
+        .expect("typed formula"),
         package["semantic_graph"]["nodes"][formula]["body"]
     );
 

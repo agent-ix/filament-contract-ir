@@ -483,8 +483,7 @@ fn tc_048_the_union_nodes_and_the_case_over_them_admit() {
     let reader = admitted("the Shape package", &package);
     let kinds: Vec<(&str, &str)> = reader
         .graph()
-        .nodes
-        .iter()
+        .nodes()
         .map(|node| (node.node_tag.as_ref(), node.semantic_form.as_ref()))
         .collect();
     for form in [

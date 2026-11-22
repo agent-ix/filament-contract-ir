@@ -61,7 +61,7 @@ fn published_single_body_packages_round_trip_through_the_writer() {
         let bytes = encode_checked_package_v2(
             read.name(),
             read.lock(),
-            read.graph(),
+            &read.graph().to_owned_wire(),
             filament_contract_model::CheckedPackageSourceCorrespondenceRef {
                 source_map: read.source_map(),
                 refinement_step_rows: read.refinement_step_rows(),

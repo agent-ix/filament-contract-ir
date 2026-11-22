@@ -421,7 +421,7 @@ fn selected_process_persistence_state_and_record_keep_owner_and_reference_identi
         let id: filament_contract_model::CheckedNodeId =
             serde_json::from_value(node["node_id"].clone()).expect("id");
         assert!(
-            admitted.graph().nodes.iter().any(|node| node.node_id == id),
+            admitted.graph().nodes().any(|node| node.node_id() == id),
             "{form} must retain its selected key"
         );
     }
@@ -471,11 +471,11 @@ fn selected_process_persistence_state_and_record_keep_owner_and_reference_identi
         let id: filament_contract_model::CheckedNodeId =
             serde_json::from_value(node["node_id"].clone()).expect("id");
         assert!(
-            again.graph().nodes.iter().any(|node| node.node_id == id),
+            again.graph().nodes().any(|node| node.node_id() == id),
             "{form}: first reread identity"
         );
         assert!(
-            third.graph().nodes.iter().any(|node| node.node_id == id),
+            third.graph().nodes().any(|node| node.node_id() == id),
             "{form}: second reread identity"
         );
     }
@@ -6811,7 +6811,7 @@ fn refinement_occurrences_follow_proof_eligibility_and_step_count() {
         };
         let owner = &admitted.resolved_graph().nodes[position];
         assert_eq!(
-            admitted.graph().nodes.len(),
+            admitted.graph().node_count(),
             package["semantic_graph"]["nodes"]
                 .as_array()
                 .expect("nodes")
@@ -7845,8 +7845,7 @@ fn refinement_catalog_joins_owned_finish_without_a_step_row() {
     );
     let round_trip_clause = round_trip
         .graph()
-        .nodes
-        .iter()
+        .nodes()
         .find(|node| node.semantic_form.as_ref() == "protocol_clause")
         .expect("admitted clause");
     assert_eq!(
@@ -7859,8 +7858,7 @@ fn refinement_catalog_joins_owned_finish_without_a_step_row() {
     );
     let round_trip_refinement = round_trip
         .graph()
-        .nodes
-        .iter()
+        .nodes()
         .find(|node| node.semantic_form.as_ref() == "refinement")
         .expect("admitted refinement");
     assert_eq!(

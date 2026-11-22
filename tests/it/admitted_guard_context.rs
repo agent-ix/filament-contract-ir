@@ -239,8 +239,7 @@ fn node_with_operation<'a>(
 ) -> &'a filament_contract_model::CheckedSemanticNodeV2 {
     package
         .graph()
-        .nodes
-        .iter()
+        .nodes()
         .find(|node| {
             body_at(&node.body, "/operation/identity")
                 .as_ref()
@@ -255,8 +254,7 @@ fn reference_guard_node(
 ) -> &filament_contract_model::CheckedSemanticNodeV2 {
     package
         .graph()
-        .nodes
-        .iter()
+        .nodes()
         .find(|node| {
             node.node_tag.as_ref() == "expression"
                 && node.semantic_form.as_ref() == "reference"
@@ -542,8 +540,7 @@ fn tc_450_guard_context_refuses_first_bad_occurrence_without_a_prefix() {
     let integer_guard = node_with_operation(&source, "filament.op.integer.add");
     let non_expression = source
         .graph()
-        .nodes
-        .iter()
+        .nodes()
         .find(|node| node.node_id == typed_key(&family_key("aaaa")))
         .expect("Boolean scalar node");
     let app_id = app.node_id.clone();
@@ -697,8 +694,7 @@ fn tc_450_unrepresented_guard_key_cannot_gain_authority_from_its_body_position()
     let app = node_with_operation(&source, "filament.op.boolean.and");
     let represented_parameter = source
         .graph()
-        .nodes
-        .iter()
+        .nodes()
         .find(|node| node.node_id == typed_key(&family_key("a4a4")))
         .expect("parameter in the application's ordinary forward closure");
     let app_id = app.node_id.clone();

@@ -341,7 +341,7 @@ impl<'d> TermNode<'d> {
         }
         let valid = !package.is_empty() && path.len() != 0 && ordinal <= MAXIMUM;
         sink.reserve(package.len() as u128, site)?;
-        let package: Box<str> = package.into();
+        let package = crate::checked_package::shared::intern_checked_package_string(package);
         sink.reserve(
             (path.len() as u128)
                 .saturating_mul(std::mem::size_of::<CheckedNodePathSegment>() as u128),
@@ -352,21 +352,27 @@ impl<'d> TermNode<'d> {
             segments.push(match segment.segment_form() {
                 Some(SegmentForm::Name(name)) => {
                     sink.reserve(name.len() as u128, site)?;
-                    CheckedNodePathSegment::Name(name.into())
+                    CheckedNodePathSegment::Name(
+                        crate::checked_package::shared::intern_checked_package_string(name),
+                    )
                 }
                 Some(SegmentForm::Node(index)) => CheckedNodePathSegment::Index(index),
                 Some(SegmentForm::Operand(slot)) => {
                     let segment = CheckedNodePathSegment::Operand(slot);
                     super::node_index::resolve_operand_segment(&segment, row, |package| {
                         sink.reserve(package.len() as u128, site)?;
-                        Ok::<_, Denied>(package.into())
+                        Ok::<_, Denied>(
+                            crate::checked_package::shared::intern_checked_package_string(package),
+                        )
                     })?
                     .unwrap_or(segment)
                 }
                 Some(SegmentForm::Dependency(package, node)) => {
                     sink.reserve(package.len() as u128, site)?;
                     CheckedNodePathSegment::Dependency {
-                        package: package.into(),
+                        package: crate::checked_package::shared::intern_checked_package_string(
+                            package,
+                        ),
                         node,
                     }
                 }

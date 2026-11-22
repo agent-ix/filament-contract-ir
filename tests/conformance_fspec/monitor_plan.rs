@@ -834,8 +834,7 @@ fn monitor_plan_exact_reads_allow_unbounded_capacities_and_opaque_status() {
             plan.state(),
             package
                 .graph()
-                .nodes
-                .iter()
+                .nodes()
                 .find(|n| n.semantic_form.as_ref() == "integer")
                 .map(|n| &n.node_id)
                 .unwrap()

@@ -262,8 +262,9 @@ fn full_in_repo_family_inventory_admits_and_retains_authored_ids() {
         let published = package["semantic_graph"]["nodes"]
             .as_array()
             .expect("fixture nodes");
-        assert_eq!(admitted.graph().nodes.len(), published.len(), "{label}");
-        for (position, (node, wire)) in admitted.graph().nodes.iter().zip(published).enumerate() {
+        assert_eq!(admitted.graph().node_count(), published.len(), "{label}");
+        for (position, (node, wire)) in admitted.graph().nodes().zip(published).enumerate() {
+            let node = node.to_owned_wire();
             assert_eq!(
                 serde_json::to_value(&node.node_id).expect("node id"),
                 wire["node_id"],
@@ -458,8 +459,15 @@ fn integer_range_extreme_bound_text_is_retained_without_rounding() {
         let CheckedPackageV2ReadResult::Admitted(admitted) = read(&package) else {
             panic!("canonical decimal endpoints {min}..{max} must admit");
         };
-        let retained = serde_json::to_value(&admitted.graph().nodes[position].body)
-            .expect("typed body serialization");
+        let retained = serde_json::to_value(
+            &admitted
+                .graph()
+                .node(position)
+                .expect("graph position exists")
+                .to_owned_wire()
+                .body,
+        )
+        .expect("typed body serialization");
         assert_eq!(retained["members"][0]["value"]["value"], min);
         assert_eq!(retained["members"][1]["value"]["value"], max);
     }
@@ -509,12 +517,26 @@ fn declared_record_field_joins_the_exact_integer_range_members() {
                 read(&package)
             );
         };
-        let retained_range =
-            serde_json::to_value(&admitted.graph().nodes[range].body).expect("range body");
+        let retained_range = serde_json::to_value(
+            &admitted
+                .graph()
+                .node(range)
+                .expect("graph position exists")
+                .to_owned_wire()
+                .body,
+        )
+        .expect("range body");
         assert_eq!(retained_range["members"][0]["value"]["value"], min);
         assert_eq!(retained_range["members"][1]["value"]["value"], max);
-        let retained_record = serde_json::to_value(&admitted.graph().nodes[record_position].body)
-            .expect("record body");
+        let retained_record = serde_json::to_value(
+            &admitted
+                .graph()
+                .node(record_position)
+                .expect("graph position exists")
+                .to_owned_wire()
+                .body,
+        )
+        .expect("record body");
         assert_eq!(
             retained_record["members"][0]["value"]["target"],
             package["semantic_graph"]["nodes"][range]["node_id"]
@@ -642,8 +664,12 @@ fn selected_model_field_range_joins_exact_body_members() {
         let CheckedPackageV2ReadResult::Admitted(admitted) = result else {
             panic!("selected field {min}..{max} must admit: {result:?}");
         };
-        let CheckedTerm::Application { operation, .. } =
-            &admitted.graph().nodes[query_position].body
+        let CheckedTerm::Application { operation, .. } = &admitted
+            .graph()
+            .node(query_position)
+            .expect("graph position exists")
+            .to_owned_wire()
+            .body
         else {
             panic!("selected field read must be an application");
         };
@@ -701,7 +727,10 @@ fn structural_identity_is_retained_without_body_derivation() {
             .expect("graph node")
             .clone()
     );
-    assert_ne!(first_read.graph().nodes[0], changed_read.graph().nodes[0]);
+    assert_ne!(
+        first_read.graph().node(0).expect("graph position exists"),
+        changed_read.graph().node(0).expect("graph position exists")
+    );
     assert_eq!(
         serde_json::to_value(
             changed_read
@@ -761,8 +790,18 @@ fn a_distinct_path_is_a_distinct_node_even_with_equal_bodies() {
         admitted.document_held_id(1).expect("graph node").clone()
     );
     assert_eq!(
-        admitted.graph().nodes[0].body,
-        admitted.graph().nodes[1].body
+        admitted
+            .graph()
+            .node(0)
+            .expect("graph position exists")
+            .to_owned_wire()
+            .body,
+        admitted
+            .graph()
+            .node(1)
+            .expect("graph position exists")
+            .to_owned_wire()
+            .body
     );
 }
 
@@ -1351,7 +1390,10 @@ fn structural_group_members_retain_exact_paths_and_references() {
     let CheckedPackageV2ReadResult::Admitted(self_read) = read(&self_group) else {
         panic!("producer-chosen self-group path must admit");
     };
-    let retained_self = &self_read.graph().nodes[self_position];
+    let retained_self = &self_read
+        .graph()
+        .node(self_position)
+        .expect("graph position exists");
     assert_eq!(
         serde_json::to_value(&retained_self.node_id).expect("typed self id"),
         *self_id
@@ -1402,7 +1444,15 @@ fn structural_group_members_retain_exact_paths_and_references() {
             *expected_id
         );
         assert_eq!(
-            serde_json::to_value(&original.graph().nodes[position].body).expect("typed body"),
+            serde_json::to_value(
+                &original
+                    .graph()
+                    .node(position)
+                    .expect("graph position exists")
+                    .to_owned_wire()
+                    .body
+            )
+            .expect("typed body"),
             nodes[position]["body"]
         );
     }
@@ -1414,14 +1464,20 @@ fn structural_group_members_retain_exact_paths_and_references() {
     let CheckedPackageV2ReadResult::Admitted(changed) = read(&permuted) else {
         panic!("List permutation must admit");
     };
-    assert_ne!(original.graph().nodes, changed.graph().nodes);
+    assert_ne!(original.graph(), changed.graph());
     assert_eq!(
-        original.graph().nodes[option],
-        changed.graph().nodes[record]
+        original
+            .graph()
+            .node(option)
+            .expect("graph position exists"),
+        changed.graph().node(record).expect("graph position exists")
     );
     assert_eq!(
-        original.graph().nodes[record],
-        changed.graph().nodes[option]
+        original
+            .graph()
+            .node(record)
+            .expect("graph position exists"),
+        changed.graph().node(option).expect("graph position exists")
     );
 
     let (tree, off_cycle) = off_cycle_tree_group();
@@ -1434,7 +1490,10 @@ fn structural_group_members_retain_exact_paths_and_references() {
     let CheckedPackageV2ReadResult::Admitted(tree_read) = read(&tree) else {
         panic!("off-cycle member under shared label must admit");
     };
-    let retained_off_cycle = &tree_read.graph().nodes[off_cycle];
+    let retained_off_cycle = &tree_read
+        .graph()
+        .node(off_cycle)
+        .expect("graph position exists");
     assert_eq!(
         serde_json::to_value(&retained_off_cycle.node_id).expect("typed off-cycle id"),
         off_cycle_node["node_id"]
@@ -1959,7 +2018,10 @@ fn text_bounds_preserves_its_text_base_and_own_bounds() {
     let CheckedPackageV2ReadResult::Admitted(admitted) = read(&package) else {
         panic!("text bounds must admit: {:?}", read(&package));
     };
-    let node = &admitted.graph().nodes[position];
+    let node = &admitted
+        .graph()
+        .node(position)
+        .expect("graph position exists");
     assert_eq!(
         serde_json::to_value(&node.semantic_type).expect("type"),
         text_id

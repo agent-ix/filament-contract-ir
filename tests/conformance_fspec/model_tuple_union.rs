@@ -336,8 +336,7 @@ fn published_variant_bodies_and_first_payload_transition_are_retained() {
     );
     let non_variant = admitted
         .graph()
-        .nodes
-        .iter()
+        .nodes()
         .find(|candidate| candidate.semantic_form.as_ref() == "model_root")
         .expect("published model root");
     assert!(admitted.model_variant_body(&non_variant.node_id).is_none());
@@ -1216,7 +1215,7 @@ fn selected_rational_minimum_reaches_public_tuple_member_type() {
         "the public selected-model member type keeps i64::MIN"
     );
     assert!(
-        (0..admitted.graph().nodes.len())
+        (0..admitted.graph().node_count())
             .any(|position| admitted.document_held_id(position) == Some(&range_id)),
         "the exact range has an admitted structural node"
     );
@@ -1639,7 +1638,7 @@ fn published_tuples_retain_named_identity_and_ordered_selected_positions() {
     for name in names {
         let identity = format!("ix://acme/shapes/{name}");
         let (index, id) = tuple_node(&package, &identity);
-        let node = &admitted.graph().nodes[index];
+        let node = &admitted.graph().node(index).expect("graph position exists");
         assert_eq!(node.node_id, id, "{name}: structural id");
         assert_eq!(node.node_id.package.as_ref(), "acme/shapes");
         assert_eq!(
@@ -1795,7 +1794,14 @@ fn published_tuples_retain_named_identity_and_ordered_selected_positions() {
         "alias must not replace the declared qualified name"
     );
     assert_eq!(
-        serde_json::to_value(&aliased.graph().nodes[swap_node_index].owner).expect("owner"),
+        serde_json::to_value(
+            &aliased
+                .graph()
+                .node(swap_node_index)
+                .expect("graph position exists")
+                .owner
+        )
+        .expect("owner"),
         json!({"kind":"model", "identity":"acme/shapes", "node":swap}),
         "alias must not replace the admitted owner declaration"
     );
@@ -1817,7 +1823,7 @@ fn published_tuple_union_typed_writer_round_trips() {
     let encoded = encode_checked_package_v2(
         admitted.name(),
         admitted.lock(),
-        admitted.graph(),
+        &admitted.graph().to_owned_wire(),
         CheckedPackageSourceCorrespondenceRef {
             source_map: admitted.source_map(),
             refinement_step_rows: admitted.refinement_step_rows(),
@@ -1848,7 +1854,7 @@ fn published_tuple_union_typed_writer_round_trips() {
     for name in ["Pair", "Swap", "Nest", "Cell"] {
         let identity = format!("ix://acme/shapes/{name}");
         let (_, id) = tuple_node(&package, &identity);
-        assert!(reread.graph().nodes.iter().any(|node| node.node_id == id));
+        assert!(reread.graph().nodes().any(|node| node.node_id() == id));
         for position in 0..tuple_positions(&document, &identity).len() {
             assert_eq!(
                 reread.model_tuple_position_type(&id, position),
@@ -1859,7 +1865,7 @@ fn published_tuple_union_typed_writer_round_trips() {
     for name in ["Shape", "Color", "List"] {
         let identity = format!("ix://acme/shapes/{name}");
         let (_, id) = variant_node(&package, &identity);
-        assert!(reread.graph().nodes.iter().any(|node| node.node_id == id));
+        assert!(reread.graph().nodes().any(|node| node.node_id() == id));
         let original = admitted.model_variant_body(&id).expect("original variant");
         let roundtrip = reread.model_variant_body(&id).expect("roundtrip variant");
         assert_eq!(roundtrip.selected_document(), original.selected_document());

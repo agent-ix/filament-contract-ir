@@ -143,7 +143,8 @@ fn selected_dimension_operand_admits_and_retains_package_form() {
     else {
         panic!("directly selected foreign dimension must admit");
     };
-    let retained = serde_json::to_value(&admitted.graph().nodes[3]).expect("retained node");
+    let retained = serde_json::to_value(&admitted.graph().node(3).expect("graph position exists"))
+        .expect("retained node");
     assert_eq!(
         retained["body"]["dimension_node_ids"],
         wire["semantic_graph"]["nodes"][3]["body"]["dimension_node_ids"]
@@ -155,7 +156,7 @@ fn selected_dimension_operand_admits_and_retains_package_form() {
     let encoded = encode_checked_package_v2(
         admitted.name(),
         admitted.lock(),
-        admitted.graph(),
+        &admitted.graph().to_owned_wire(),
         CheckedPackageSourceCorrespondenceRef {
             source_map: admitted.source_map(),
             refinement_step_rows: admitted.refinement_step_rows(),
@@ -292,7 +293,8 @@ fn typed_equivalence_retains_complete_structural_node() {
     let CheckedPackageV2ReadResult::Admitted(admitted) = read(&wire) else {
         panic!("well-formed equivalence package must admit");
     };
-    let retained = serde_json::to_value(&admitted.graph().nodes[3]).expect("retained node");
+    let retained = serde_json::to_value(&admitted.graph().node(3).expect("graph position exists"))
+        .expect("retained node");
     let expected = &crate::support::checked_package::wire_form(&wire)["semantic_graph"]["nodes"][3];
     assert_eq!(&retained, expected);
     assert_eq!(
@@ -546,7 +548,13 @@ fn equivalence_view(
     package: &CheckedPackageV2,
     index: usize,
 ) -> Option<(&[CheckedDimensionOperand; 2], &CheckedRational)> {
-    let CheckedTerm::NominalBody(body) = &package.graph().nodes[index].body else {
+    let CheckedTerm::NominalBody(body) = &package
+        .graph()
+        .node(index)
+        .expect("graph position exists")
+        .to_owned_wire()
+        .body
+    else {
         return None;
     };
     body.dimension_equivalence_details()
@@ -662,7 +670,7 @@ fn reread_local(
     let encoded = encode_checked_package_v2(
         admitted.name(),
         admitted.lock(),
-        admitted.graph(),
+        &admitted.graph().to_owned_wire(),
         CheckedPackageSourceCorrespondenceRef {
             source_map: admitted.source_map(),
             refinement_step_rows: admitted.refinement_step_rows(),
@@ -702,7 +710,7 @@ fn other_nominal_forms_have_no_equivalence_view() {
         .as_array()
         .expect("authored nodes")
         .iter()
-        .zip(&admitted.graph().nodes)
+        .zip(admitted.graph().nodes())
     {
         if let CheckedTerm::NominalBody(body) = &node.body {
             assert!(body.dimension_equivalence_details().is_none());

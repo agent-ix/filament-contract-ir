@@ -259,8 +259,7 @@ fn tc_458_invalid_occurrence_refuses_without_mutating_admitted_views() {
     );
     let parameter = checked
         .graph()
-        .nodes
-        .iter()
+        .nodes()
         .find(|node| {
             node.node_tag.as_ref() == "value" && node.semantic_form.as_ref() == "parameter"
         })

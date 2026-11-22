@@ -2981,7 +2981,7 @@ fn selected_declaration_error(
 ) -> ExactTypeProjectionError {
     let code = if package.node(node).is_some() {
         ExactTypeProjectionErrorCode::UnresolvedSelectedDeclaration
-    } else if node.package == package.wire.name {
+    } else if node.package.as_ref() == package.wire.name.as_ref() {
         ExactTypeProjectionErrorCode::UnknownNode
     } else {
         ExactTypeProjectionErrorCode::ForeignNode
@@ -2995,7 +2995,7 @@ fn selected_declaration_error_budgeted(
     requested: &CheckedNodeId,
     work: &mut impl WorkMeter,
 ) -> ExactTypeProjectionError {
-    let code = if node.package == package.wire.name {
+    let code = if node.package.as_ref() == package.wire.name.as_ref() {
         ExactTypeProjectionErrorCode::UnknownNode
     } else {
         ExactTypeProjectionErrorCode::ForeignNode
@@ -4024,7 +4024,7 @@ impl CheckedPackageV2 {
         let work = budget;
         charge_work(requested, requested, "node", work, work_limit)?;
         let (position, node) = self.node_with_position(requested).ok_or_else(|| {
-            let code = if requested.package == self.wire.name {
+            let code = if requested.package.as_ref() == self.wire.name.as_ref() {
                 ExactTypeProjectionErrorCode::UnknownNode
             } else {
                 ExactTypeProjectionErrorCode::ForeignNode
@@ -4637,8 +4637,7 @@ mod tests {
         let requested: CheckedNodeId = serde_json::from_value(id("boolean")).unwrap();
         let position = package
             .graph()
-            .nodes
-            .iter()
+            .nodes()
             .position(|node| node.node_id == requested)
             .unwrap();
         for caller in [
@@ -4863,7 +4862,7 @@ mod tests {
             timed_model_roots: Vec::new(),
             node_index: std::sync::Arc::new(super::super::retained_node_index(&wire)),
             structural_keys: Vec::new(),
-            slot_graph: Default::default(),
+            slot_view: Default::default(),
             source_index: std::sync::Arc::new(super::super::retained_source_index(&wire)),
             lowering_facts: Vec::new(),
             wire: std::sync::Arc::new(wire),
@@ -4875,7 +4874,6 @@ mod tests {
             closure_index: Default::default(),
             catalog: crate::checked_package::v2::operation_catalog::owned_operation_catalog(),
             admission_binding: Default::default(),
-            body_documents: Vec::new(),
         }
         .retain_original_admission()
     }

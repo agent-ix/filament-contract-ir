@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! `CheckedJson`: an owned handle to one value of a shared
-//! `quire_canonical::Document`.
+//! `CheckedJson`: an owned handle to one value of a
+//! `quire_canonical::Document`, detached to its own subtree bytes after
+//! package admission.
 //!
 //! The strict read builds every handle from the one package document it
 //! retains, so a literal's value and a diagnostic's details are not copied
@@ -20,9 +21,12 @@ use std::sync::Arc;
 /// The name under which the read's document deserializer hands out a handle
 /// instead of a copied value.
 pub(super) const CHECKED_JSON_TOKEN: &str = "$quire::CheckedJson";
+pub(super) const ROOT_BODY_TOKEN: &str = "$quire::RootBodyHandle";
 
 thread_local! {
     static OFFERED: std::cell::RefCell<Option<CheckedJson>> =
+        const { std::cell::RefCell::new(None) };
+    static OFFERED_BODY: std::cell::RefCell<Option<RootBodyHandle>> =
         const { std::cell::RefCell::new(None) };
 }
 
@@ -52,26 +56,156 @@ impl fmt::Display for CheckedJsonError {
 
 impl std::error::Error for CheckedJsonError {}
 
-/// A cheap-to-clone handle to one JSON value of a shared document.
+/// A cheap-to-clone handle to one JSON value.
 ///
 /// Two handles are equal when their values have equal canonical encodings,
-/// whatever document or node they name.
+/// whatever document or node they name. Admission-time handles borrow the
+/// package document; retained handles are detached to subtree bytes and parse
+/// a small document only when an accessor needs one.
 #[derive(Clone)]
 pub struct CheckedJson {
-    document: Arc<Document>,
+    storage: Arc<JsonStorage>,
     node: NodeId,
+}
+
+enum JsonStorage {
+    Shared(Arc<Document>),
+    Compact {
+        bytes: Arc<[u8]>,
+        document: std::sync::OnceLock<Arc<Document>>,
+    },
+}
+
+fn lexical_subtree_bytes(root: NodeRef<'_>) -> Vec<u8> {
+    enum Task<'a> {
+        Value(NodeRef<'a>),
+        Name(&'a str),
+        Raw(&'static [u8]),
+    }
+
+    let mut bytes = Vec::new();
+    let mut pending = vec![Task::Value(root)];
+    while let Some(task) = pending.pop() {
+        match task {
+            Task::Raw(raw) => bytes.extend_from_slice(raw),
+            Task::Name(name) => serde_json::to_writer(&mut bytes, name)
+                .expect("writing a string into a byte vector succeeds"),
+            Task::Value(node) => match node.node() {
+                Node::Null => bytes.extend_from_slice(b"null"),
+                Node::Bool(false) => bytes.extend_from_slice(b"false"),
+                Node::Bool(true) => bytes.extend_from_slice(b"true"),
+                Node::Number(number) => bytes.extend_from_slice(number.text().as_bytes()),
+                Node::String(text) => serde_json::to_writer(&mut bytes, text)
+                    .expect("writing a string into a byte vector succeeds"),
+                Node::Array(items) => {
+                    let items: Vec<_> = items.collect();
+                    bytes.push(b'[');
+                    pending.push(Task::Raw(b"]"));
+                    for index in (0..items.len()).rev() {
+                        pending.push(Task::Value(items[index]));
+                        if index > 0 {
+                            pending.push(Task::Raw(b","));
+                        }
+                    }
+                }
+                Node::Object(members) => {
+                    let members: Vec<_> = members.collect();
+                    bytes.push(b'{');
+                    pending.push(Task::Raw(b"}"));
+                    for index in (0..members.len()).rev() {
+                        let (name, value) = members[index];
+                        pending.push(Task::Value(value));
+                        pending.push(Task::Raw(b":"));
+                        pending.push(Task::Name(name));
+                        if index > 0 {
+                            pending.push(Task::Raw(b","));
+                        }
+                    }
+                }
+            },
+        }
+    }
+    bytes
+}
+
+/// An outer semantic-node body retained only while admission validators read
+/// directly from the package document.
+pub(super) struct RootBodyHandle(CheckedJson);
+
+impl RootBodyHandle {
+    pub(super) fn into_checked_json(self) -> CheckedJson {
+        self.0
+    }
+
+    fn offer(handle: Self) {
+        OFFERED_BODY.with(|slot| *slot.borrow_mut() = Some(handle));
+    }
+}
+
+impl<'de> Deserialize<'de> for RootBodyHandle {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct Body;
+        impl<'de> serde::de::Visitor<'de> for Body {
+            type Value = RootBodyHandle;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.write_str("a root semantic-node body handle")
+            }
+
+            fn visit_unit<E: serde::de::Error>(self) -> Result<Self::Value, E> {
+                OFFERED_BODY
+                    .with(|slot| slot.borrow_mut().take())
+                    .ok_or_else(|| E::custom("no root body handle was offered"))
+            }
+        }
+        deserializer.deserialize_newtype_struct(ROOT_BODY_TOKEN, Body)
+    }
 }
 
 impl CheckedJson {
     /// The document this handle names a value of.
     pub(in crate::checked_package) fn document(&self) -> &Arc<Document> {
-        &self.document
+        match self.storage.as_ref() {
+            JsonStorage::Shared(document) => document,
+            JsonStorage::Compact { bytes, document } => document.get_or_init(|| {
+                Arc::new(
+                    quire_canonical::read(bytes, u64::MAX)
+                        .expect("a retained JSON subtree was read from a valid document"),
+                )
+            }),
+        }
     }
 
-    /// The handle for `node` of `document`. Used by the read, which builds
-    /// each handle from the package document it retains.
+    /// A shared-document handle, used by the read while validators still need
+    /// to borrow the package document.
     pub(in crate::checked_package) fn new(document: Arc<Document>, node: NodeId) -> Self {
-        Self { document, node }
+        Self {
+            storage: Arc::new(JsonStorage::Shared(document)),
+            node,
+        }
+    }
+
+    pub(super) fn detach_from_source(&mut self) {
+        let JsonStorage::Shared(document) = self.storage.as_ref() else {
+            return;
+        };
+        let root_id = document.root().id();
+        let bytes: Arc<[u8]> =
+            lexical_subtree_bytes(document.node(self.node).unwrap_or_else(|| document.root()))
+                .into();
+        self.node = root_id;
+        self.storage = Arc::new(JsonStorage::Compact {
+            bytes,
+            document: std::sync::OnceLock::new(),
+        });
+    }
+
+    pub(super) fn root_body(document: Arc<Document>, node: NodeId) -> RootBodyHandle {
+        RootBodyHandle(Self::new(document, node))
+    }
+
+    pub(super) fn offer_root_body(handle: RootBodyHandle) {
+        RootBodyHandle::offer(handle);
     }
 
     /// A handle for a scalar literal payload, read as written: a number the
@@ -143,9 +277,12 @@ impl CheckedJson {
     pub fn node(&self) -> NodeRef<'_> {
         // The id was produced by this document; the fallback keeps a handle
         // total without a panic path.
-        self.document
-            .node(self.node)
-            .unwrap_or_else(|| self.document.root())
+        match self.storage.as_ref() {
+            JsonStorage::Shared(document) => {
+                document.node(self.node).unwrap_or_else(|| document.root())
+            }
+            JsonStorage::Compact { .. } => self.document().root(),
+        }
     }
 
     /// The string the value is, borrowed from the document.
@@ -670,9 +807,12 @@ mod tests {
             ordinal: 0,
         };
         let term = CheckedTerm::literal_integer(type_id, 9_007_199_254_740_993);
-        let CheckedTerm::Literal { value, .. } = term else {
+        let CheckedTerm::Literal { mut value, .. } = term else {
             panic!("an integer constructor produces a literal");
         };
+        assert_eq!(value.number_text(), Some("9007199254740993"));
+        assert_eq!(value.as_u64(), Some(9_007_199_254_740_993));
+        value.detach_from_source();
         assert_eq!(value.number_text(), Some("9007199254740993"));
         assert_eq!(value.as_u64(), Some(9_007_199_254_740_993));
         assert!(matches!(

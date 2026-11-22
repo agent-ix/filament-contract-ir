@@ -5512,7 +5512,8 @@ fn tc_946_predicate_join_function_cycle_uses_the_full_protocol_component() {
             read(&package)
         );
     };
-    assert_exact_protocol_cycle_group(admitted.graph().nodes.as_slice(), &positions);
+    let admitted_graph = admitted.graph().to_owned_wire();
+    assert_exact_protocol_cycle_group(&admitted_graph.nodes, &positions);
 }
 
 #[trace("FR-038-AC-241", "FR-046-AC-3", "FR-048-AC-3", "TC-946")]
@@ -5522,16 +5523,27 @@ fn tc_946_mixed_protocol_carrier_and_function_cycle_admits() {
     let CheckedPackageV2ReadResult::Admitted(admitted) = read(&package) else {
         panic!("the mixed protocol cycle admits: {:?}", read(&package));
     };
-    assert_exact_protocol_cycle_group(admitted.graph().nodes.as_slice(), &positions);
+    let admitted_graph = admitted.graph().to_owned_wire();
+    assert_exact_protocol_cycle_group(&admitted_graph.nodes, &positions);
     let nodes = package["semantic_graph"]["nodes"]
         .as_array()
         .expect("mixed cycle nodes");
     assert!(positions.iter().any(|&at| matches!(
-        admitted.graph().nodes[at].body,
+        admitted
+            .graph()
+            .node(at)
+            .expect("graph position exists")
+            .to_owned_wire()
+            .body,
         CheckedTerm::Application { .. }
     )));
     assert!(positions.iter().any(|&at| !matches!(
-        admitted.graph().nodes[at].body,
+        admitted
+            .graph()
+            .node(at)
+            .expect("graph position exists")
+            .to_owned_wire()
+            .body,
         CheckedTerm::Application { .. }
     )));
     let mut declared = 0;
@@ -5569,9 +5581,18 @@ fn tc_946_mixed_protocol_carrier_and_function_cycle_admits() {
     let CheckedPackageV2ReadResult::Admitted(reordered) = read(&permuted) else {
         panic!("permuted mixed cycle must admit");
     };
-    assert_ne!(admitted.graph().nodes, reordered.graph().nodes);
-    assert_eq!(admitted.graph().nodes[first], reordered.graph().nodes[last]);
-    assert_eq!(admitted.graph().nodes[last], reordered.graph().nodes[first]);
+    assert_ne!(admitted.graph(), reordered.graph());
+    assert_eq!(
+        admitted.graph().node(first).expect("graph position exists"),
+        reordered.graph().node(last).expect("graph position exists")
+    );
+    assert_eq!(
+        admitted.graph().node(last).expect("graph position exists"),
+        reordered
+            .graph()
+            .node(first)
+            .expect("graph position exists")
+    );
 }
 
 fn assert_exact_protocol_cycle_group(
@@ -6974,7 +6995,15 @@ fn declared_role_source_occurrences_leave_structural_identity_stable() {
         CheckedPackageV2ReadResult::Admitted(admitted) => admitted,
         other => panic!("second declared role source must admit: {other:?}"),
     };
-    assert_eq!(admitted.graph().nodes[position].occurrences.len(), 2);
+    assert_eq!(
+        admitted
+            .graph()
+            .node(position)
+            .expect("graph position exists")
+            .occurrences
+            .len(),
+        2
+    );
     assert_eq!(
         admitted
             .source_map()
@@ -10100,7 +10129,7 @@ fn protocol_queue_admits_zero_and_positive_literal_capacity_and_round_trips() {
         let encoded = filament_contract_model::encode_checked_package_v2(
             admitted.name(),
             admitted.lock(),
-            admitted.graph(),
+            &admitted.graph().to_owned_wire(),
             filament_contract_model::CheckedPackageSourceCorrespondenceRef {
                 source_map: admitted.source_map(),
                 refinement_step_rows: admitted.refinement_step_rows(),
@@ -14055,7 +14084,13 @@ fn typed_protocol_fairness_preserves_each_selected_target() {
         "compensation_template",
     ] {
         let (package, fair, admitted) = admitted_protocol_fairness_case(kind);
-        let CheckedTerm::Application { operation, .. } = &admitted.graph().nodes[fair].body else {
+        let CheckedTerm::Application { operation, .. } = &admitted
+            .graph()
+            .node(fair)
+            .expect("graph position exists")
+            .to_owned_wire()
+            .body
+        else {
             panic!("fairness application")
         };
         let Some(filament_contract_model::CheckedOperationMember::Fairness { target, .. }) =
@@ -14102,7 +14137,13 @@ fn external_temporal_compensation_fairness_uses_the_templates_owner() {
         CheckedPackageV2ReadResult::Admitted(package) => package,
         other => panic!("external compensation fairness must admit: {other:?}"),
     };
-    let CheckedTerm::Application { operation, .. } = &admitted.graph().nodes[fair].body else {
+    let CheckedTerm::Application { operation, .. } = &admitted
+        .graph()
+        .node(fair)
+        .expect("graph position exists")
+        .to_owned_wire()
+        .body
+    else {
         panic!("fairness application must be retained");
     };
     let Some(filament_contract_model::CheckedOperationMember::Fairness { target, .. }) =
@@ -15342,7 +15383,7 @@ fn port_member_borrowed_read_and_typed_writer_preserve_the_exact_pair() {
     let encoded = filament_contract_model::encode_checked_package_v2(
         admitted.name(),
         admitted.lock(),
-        admitted.graph(),
+        &admitted.graph().to_owned_wire(),
         filament_contract_model::CheckedPackageSourceCorrespondenceRef {
             source_map: admitted.source_map(),
             refinement_step_rows: admitted.refinement_step_rows(),
@@ -15474,7 +15515,7 @@ fn observe_only_role_boundary_admits_and_round_trips_after_the_member() {
         let encoded = filament_contract_model::encode_checked_package_v2(
             admitted.name(),
             admitted.lock(),
-            admitted.graph(),
+            &admitted.graph().to_owned_wire(),
             filament_contract_model::CheckedPackageSourceCorrespondenceRef {
                 source_map: admitted.source_map(),
                 refinement_step_rows: admitted.refinement_step_rows(),
@@ -15922,7 +15963,12 @@ fn reference_sets_operand_keys_admit_despite_wire_slot_order() {
         let CheckedPackageV2ReadResult::Admitted(admitted) = read(&package) else {
             panic!("{operator}: {:?}", read(&package));
         };
-        let CheckedTerm::Application { arguments, .. } = &admitted.graph().nodes[holder].body
+        let CheckedTerm::Application { arguments, .. } = &admitted
+            .graph()
+            .node(holder)
+            .expect("graph position exists")
+            .to_owned_wire()
+            .body
         else {
             panic!("control application")
         };
@@ -16048,7 +16094,7 @@ fn control_boundary_admits_after_the_layout_and_refuses_unknown_text() {
     let encoded = filament_contract_model::encode_checked_package_v2(
         admitted.name(),
         admitted.lock(),
-        admitted.graph(),
+        &admitted.graph().to_owned_wire(),
         filament_contract_model::CheckedPackageSourceCorrespondenceRef {
             source_map: admitted.source_map(),
             refinement_step_rows: admitted.refinement_step_rows(),

@@ -349,8 +349,7 @@ fn reached_view_retains_selected_dependency_pair_at_package_boundary() {
     );
     assert!(!admitted
         .graph()
-        .nodes
-        .iter()
+        .nodes()
         .any(|entry| entry.node_id == view.selected_references[0].node));
     assert!(!view
         .nodes
@@ -461,7 +460,10 @@ fn tc_048_a_dependency_callee_is_admitted_and_never_a_dependency() {
     // The callee is in the node body, carried verbatim, and lists no
     // dependency.
     let position = call_position(&package);
-    let call = &admitted.graph().nodes[position];
+    let call = &admitted
+        .graph()
+        .node(position)
+        .expect("graph position exists");
     assert_eq!(
         serde_json::to_value(&call.body).expect("typed body")["arguments"][0]["term"],
         json!("dependency_reference")

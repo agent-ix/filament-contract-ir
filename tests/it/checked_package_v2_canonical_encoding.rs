@@ -140,7 +140,7 @@ fn graph_of(package: &Value) -> CheckedSemanticGraphV2 {
         CheckedPackageReadLimits::bounded(),
         &evidence_for(package),
     ) {
-        CheckedPackageV2ReadResult::Admitted(admitted) => admitted.graph().clone(),
+        CheckedPackageV2ReadResult::Admitted(admitted) => admitted.graph().to_owned_wire(),
         other => panic!("fixture must admit before its typed graph can be encoded: {other:?}"),
     }
 }
