@@ -241,6 +241,41 @@ fn site(index: usize, at: Path<'_>) -> Site<'_> {
     Site::new(PackageReadStage::Graph, index, "requirement_items", at)
 }
 
+fn first_unnamed_position(
+    records: &[usize],
+    named_positions: &[usize],
+    on_comparison: &mut impl FnMut(),
+) -> Option<usize> {
+    for &record in records {
+        let mut lower = 0;
+        let mut upper = named_positions.len();
+        let mut found = false;
+        while lower < upper {
+            let middle = lower + (upper - lower) / 2;
+            on_comparison();
+            match named_positions[middle].cmp(&record) {
+                std::cmp::Ordering::Less => lower = middle + 1,
+                std::cmp::Ordering::Greater => upper = middle,
+                std::cmp::Ordering::Equal => {
+                    found = true;
+                    break;
+                }
+            }
+        }
+        if found {
+            continue;
+        }
+        if lower < named_positions.len() {
+            on_comparison();
+            if named_positions[lower] == record {
+                continue;
+            }
+        }
+        return Some(record);
+    }
+    None
+}
+
 fn refuse(
     index: usize,
     at: Path<'_>,
@@ -772,15 +807,13 @@ pub(super) fn validate(
         }
         previous = Some(key);
     }
-    if records
+    let mut named_record_positions: Vec<usize> = named_records
         .iter()
-        .any(|record| !named_records.iter().any(|(_, named, _)| named == record))
-    {
-        let position = records
-            .iter()
-            .copied()
-            .find(|record| !named_records.iter().any(|(_, named, _)| named == record))
-            .unwrap_or_default();
+        .map(|(_, record_position, _)| *record_position)
+        .collect();
+    named_record_positions.sort_unstable();
+    named_record_positions.dedup();
+    if let Some(position) = first_unnamed_position(&records, &named_record_positions, &mut || {}) {
         return Err(refuse(
             0,
             super::stage_storage::Path::root()
@@ -1261,14 +1294,63 @@ fn references(term: &CheckedTerm) -> Option<Vec<CheckedNodeId>> {
 #[cfg(test)]
 mod tests {
     use super::{
-        CapabilityKind, DomainKey, DomainKind, RequirementExtent, RequirementExtentWire,
-        RequirementGuard, RequirementItemRow, RequirementItemWireRow, ValueValidityRecord,
+        first_unnamed_position, CapabilityKind, DomainKey, DomainKind, RequirementExtent,
+        RequirementExtentWire, RequirementGuard, RequirementItemRow, RequirementItemWireRow,
+        ValueValidityRecord,
     };
     use crate::checked_package::shared::{
         CheckedNodeId, CheckedNodePathSegment, CheckedOperandEntry,
     };
     use ix_trace_rs::trace;
     use serde_json::json;
+
+    #[trace("TC-488", "FR-376-AC-3")]
+    #[test]
+    fn named_record_completeness_uses_logarithmic_membership_work() {
+        const RECORDS: usize = 100_000;
+        let records = (0..RECORDS).collect::<Vec<_>>();
+        let named = records.clone();
+        let mut comparisons = 0;
+        let found = first_unnamed_position(&records, &named, &mut || comparisons += 1);
+        assert_eq!(found, None);
+        assert!(comparisons >= RECORDS);
+        let comparisons_per_lookup = usize::BITS as usize - RECORDS.leading_zeros() as usize + 1;
+        assert!(
+            comparisons <= RECORDS * comparisons_per_lookup,
+            "named-record membership used {comparisons} comparisons for {RECORDS} rows"
+        );
+
+        let first_missing = RECORDS / 2;
+        let named_without_one = (0..RECORDS)
+            .filter(|position| *position != first_missing)
+            .collect::<Vec<_>>();
+        let mut missing_comparisons = 0;
+        assert_eq!(
+            first_unnamed_position(&records, &named_without_one, &mut || {
+                missing_comparisons += 1
+            }),
+            Some(first_missing)
+        );
+        assert!(missing_comparisons > 0);
+        assert!(
+            missing_comparisons <= RECORDS * comparisons_per_lookup,
+            "first missing record lookup used {missing_comparisons} comparisons"
+        );
+
+        const LEGACY_RECORDS: usize = 4_096;
+        let mut legacy_comparisons = 0;
+        for record in 0..LEGACY_RECORDS {
+            for named in 0..LEGACY_RECORDS {
+                legacy_comparisons += 1;
+                if named == record {
+                    break;
+                }
+            }
+        }
+        let legacy_logarithmic_bound =
+            LEGACY_RECORDS * (usize::BITS as usize - LEGACY_RECORDS.leading_zeros() as usize + 1);
+        assert!(legacy_comparisons > legacy_logarithmic_bound);
+    }
 
     #[trace("TC-488", "FR-376-AC-1")]
     #[test]
