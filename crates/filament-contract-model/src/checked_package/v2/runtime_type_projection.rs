@@ -866,13 +866,12 @@ impl CheckedPackageV2 {
                 } else if *kind == CheckedNodeKind::ScalarType(ScalarTypeForm::Enum)
                     && matches!(node.owner, Some(CheckedNodeOwner::Source { .. }))
                 {
-                    ctx.charge_structural_id(&node.node_id, "selected_source_enum")?;
-                    let mut found = false;
-                    for row in identities.source_enum_rows() {
-                        ctx.charge(&row.declaration.structural_node, "selected_source_enum")?;
-                        found |= row.declaration.structural_node == node.node_id;
-                    }
-                    if !found {
+                    let projection = ctx
+                        .exact_read(|budget| {
+                            self.project_exact_type(&node.node_id, identities, budget)
+                        })
+                        .map_err(|error| ctx.exact_error(error))?;
+                    if projection.source_enum_view().is_none() {
                         return Err(ctx.error(
                             ExactTypeProjectionErrorCode::UnavailableIdentityWitness,
                             &node.node_id,
