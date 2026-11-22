@@ -16,6 +16,7 @@ use crate::checked_package::shared::{
 };
 use quire_canonical::{Encode, Error, FixedShape, Sink, Writer};
 use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, BTreeSet};
 
 /// One capability requested at a claim occurrence.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize, FixedShape)]
@@ -270,7 +271,7 @@ pub(super) fn validate(
         })
         .collect();
     records.sort_unstable_by(|left, right| structural_keys[*left].cmp(&structural_keys[*right]));
-    let mut owner_reach: Vec<(CheckedNodeId, Vec<CheckedNodeId>)> = Vec::new();
+    let mut owner_reach: BTreeMap<usize, BTreeSet<usize>> = BTreeMap::new();
     for &position in &records {
         let node = &nodes[position];
         let node_at = Path::root()
@@ -373,21 +374,12 @@ pub(super) fn validate(
                 meter,
             ));
         };
-        let reach_index = if let Some((reach_index, _)) = owner_reach
-            .iter()
-            .enumerate()
-            .find(|(_, (owner, _))| owner == &record.owner)
-        {
-            reach_index
-        } else {
+        if !owner_reach.contains_key(&owner_position) {
             let reached = owner_body_reach(owner_position, nodes, terms, index, position, meter)?;
-            owner_reach.push((record.owner.clone(), reached));
-            owner_reach.len() - 1
-        };
-        if !owner_reach
-            .get(reach_index)
-            .is_some_and(|(_, reached)| reached.contains(&record.application))
-        {
+            owner_reach.insert(owner_position, reached);
+        }
+        let reached = owner_reach.get(&owner_position);
+        if !reached.is_some_and(|reached| reached.contains(&application_position)) {
             return Err(refuse(
                 position,
                 application_at,
@@ -511,7 +503,8 @@ pub(super) fn validate(
                 .key("value")
                 .key("members")
                 .index(guard_index);
-            let valid_form_and_type = index.get(&guard.guard).is_some_and(|&guard_position| {
+            let guard_position = index.get(&guard.guard).copied();
+            let valid_form_and_type = guard_position.is_some_and(|guard_position| {
                 let guard_kind = kinds.get(guard_position);
                 let allowed_form = matches!(
                     guard_kind,
@@ -540,10 +533,9 @@ pub(super) fn validate(
                     meter,
                 ));
             }
-            let reached = owner_reach
-                .get(reach_index)
-                .is_some_and(|(_, reached)| reached.contains(&guard.guard));
-            if !reached {
+            if !reached.is_some_and(|reached| {
+                guard_position.is_some_and(|guard_position| reached.contains(&guard_position))
+            }) {
                 return Err(refuse(
                     position,
                     at,
@@ -937,7 +929,7 @@ fn owner_body_reach(
     index: &GraphIndex<'_>,
     record_position: usize,
     meter: &mut WorkMeter,
-) -> Result<Vec<CheckedNodeId>, ValidationFailure> {
+) -> Result<BTreeSet<usize>, ValidationFailure> {
     let root_id = terms
         .get(owner_position)
         .and_then(function_body_root)
@@ -957,20 +949,20 @@ fn owner_body_reach(
             )
         })?;
     let mut pending = vec![root_id];
-    let mut reached = Vec::new();
+    let mut reached = BTreeSet::new();
     while let Some(id) = pending.pop() {
-        if reached.contains(&id) {
-            continue;
-        }
         let Some(&position) = index.get(&id) else {
             continue;
         };
+        if reached.contains(&position) {
+            continue;
+        }
         let at = Path::root()
             .key("semantic_graph")
             .key("nodes")
             .index(position);
         stage_storage::work(meter, &site(position, at), 1)?;
-        reached.push(id);
+        reached.insert(position);
         if let Some(term) = terms.get(position) {
             term.visit_reference_targets(&mut |target| pending.push(target.clone()));
         }
