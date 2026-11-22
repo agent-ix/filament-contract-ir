@@ -49,3 +49,11 @@ The matrix marks FR-028-AC-4 `tagged-by-ignored-test`; its only binder is `tests
 ### FND-003
 
 Quire coverage reports 315 test symbols with trace ids that name no declared criterion. The first sampled symbol is `crates/filament-contract-model/src/checked_package/v2/body_locations.rs::tests::a_row_rebuilds_its_path_from_the_previous_one` tagged `FR-322-AC-510` at line 371.
+
+## Dispositions
+
+| FND | Outcome | Reason |
+| --- | --- | --- |
+| FND-001 | deferred | The untagged criteria are pre-existing repository-wide matrix gaps unrelated to the requirement-record index in PR #1133. |
+| FND-002 | deferred | FR-028-AC-4's ignored-only test is outside the requirement-record change and no related test was modified in PR #1133. |
+| FND-003 | deferred | The untracked trace symbols are pre-existing and outside the changed requirement-record source/test files. |

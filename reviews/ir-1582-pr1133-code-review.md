@@ -50,3 +50,10 @@ The 100,000-record test asserts admission, a 25.6-million WorkMeter cap, and a 1
 ### FND-002
 
 The changed PR does not alter dependencies. The security gate fails on `url` 2.5.8 via dev-only `jsonschema`; this is pre-existing and outside the PR diff.
+
+## Dispositions
+
+| FND | Outcome | Reason |
+| --- | --- | --- |
+| FND-001 | fixed | The changed test exercises `first_unnamed_position` on 100,000 entries and bounds each production helper comparison through its callback; a linear-scan implementation that reports its comparisons exceeds the bound. |
+| FND-002 | deferred | The advisory remains in unchanged Cargo.lock through dev-only jsonschema; dependency remediation is outside PR #1133. |
