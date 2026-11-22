@@ -366,6 +366,7 @@ fn timed_equal_region_rational_order_charges_before_big_integer_work() {
 
 /// Trace: FR-038-AC-357, FR-038-AC-358, FR-038-AC-359, FR-038-AC-360, FR-038-AC-361, FR-038-AC-362, FR-038-AC-385, FR-038-AC-386, FSpec-FR-322-AC-484, TC-048, FSpec-TC-2063.
 /// Provenance: IR-1109, IR-1234 and QSL-2769; FSpec CL-25 through CL-66.
+#[trace("FSpec-FR-322-AC-484", "FSpec-TC-2063")]
 #[test]
 fn timed_clause_published_vectors_match_reader() {
     let fixtures = fixtures_dir();
