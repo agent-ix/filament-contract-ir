@@ -630,8 +630,8 @@ fn public_reader_admits_at_the_exact_work_budget_and_reports_the_last_row_one_sh
     };
     assert_eq!(step_consumed, requirement_step);
     assert_ne!(
-        step_incomplete.path.flatten(),
-        Some(JsonPointer::parse("/requirement_items/1"))
+        step_incomplete.path,
+        JsonPointer::parse("/requirement_items/1")
     );
 
     let (short, short_consumed) = run(&package, requirement_step - 1);
