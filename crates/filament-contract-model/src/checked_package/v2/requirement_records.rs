@@ -9,9 +9,11 @@ use super::{
     PackageReadStage, RawSemanticNodeV2, ScalarTypeForm, ValueForm, WorkMeter,
 };
 use crate::checked_package::common::ValidationFailure;
+use crate::checked_package::shared::CheckedOperandEntry;
 use crate::checked_package::shared::{CheckedNodeId, CheckedOccurrence};
 use crate::checked_package::shared::{
-    CheckedOccurrenceRole, CheckedPackageRefusalCause as Cause, CheckedPackageRefusalCode as Code,
+    CheckedNodePathSegment, CheckedOccurrenceRole, CheckedPackageRefusalCause as Cause,
+    CheckedPackageRefusalCode as Code,
 };
 use quire_canonical::{Encode, Error, FixedShape, Sink, Writer};
 use serde::{Deserialize, Serialize};
@@ -1018,22 +1020,24 @@ pub struct ValueValidityRecord {
 
 pub(super) fn retain_rows(
     rows: Option<&[RequirementItemWireRow]>,
-    wire_nodes: &[CheckedSemanticNodeV2],
     nodes: &[CheckedSemanticNodeV2],
+    operand_rows: &[Vec<CheckedOperandEntry>],
+    node_positions: &super::retained_index::PositionIndex,
 ) -> Vec<RequirementItemRow> {
+    // These sidecar keys are document-held IDs, not node-held slots. Preserve
+    // them directly; only references inside a record body need the record
+    // node's authoritative operand row to reach the document-held space.
     rows.map_or_else(Vec::new, |rows| {
         rows.iter()
             .map(|row| {
                 let record = row.record.as_ref().and_then(|id| {
-                    let position = wire_nodes.iter().position(|node| &node.node_id == id)?;
-                    read_record(
-                        nodes.get(position)?.node_id.clone(),
-                        &nodes.get(position)?.body,
-                    )
+                    let position = node_positions.node(nodes, id)?;
+                    let holder_row = operand_rows.get(position)?;
+                    read_record(nodes.get(position)?.node_id.clone(), &nodes[position].body)
+                        .map(|record| resolve_record(record, holder_row))
                 });
                 RequirementItemRow {
-                    claim: resolved_graph_id(&row.claim.node, wire_nodes, nodes)
-                        .unwrap_or_else(|| row.claim.node.clone()),
+                    claim: row.claim.node.clone(),
                     occurrence: row.claim.occurrence.clone(),
                     kind: row.kind,
                     extent: match &row.extent {
@@ -1042,12 +1046,7 @@ pub(super) fn retain_rows(
                             RequirementExtent::Unbounded(
                                 domains
                                     .iter()
-                                    .map(|domain| {
-                                        (
-                                            remap_domain_key(&domain.domain, wire_nodes, nodes),
-                                            domain.kind,
-                                        )
-                                    })
+                                    .map(|domain| (domain.domain.clone(), domain.kind))
                                     .collect(),
                             )
                         }
@@ -1059,34 +1058,46 @@ pub(super) fn retain_rows(
     })
 }
 
-fn resolved_graph_id(
-    id: &CheckedNodeId,
-    wire_nodes: &[CheckedSemanticNodeV2],
-    nodes: &[CheckedSemanticNodeV2],
-) -> Option<CheckedNodeId> {
-    let position = wire_nodes.iter().position(|node| &node.node_id == id)?;
-    Some(nodes.get(position)?.node_id.clone())
+fn resolve_holder_id(id: CheckedNodeId, row: &[CheckedOperandEntry]) -> CheckedNodeId {
+    let mut resolved = id;
+    for segment in &mut resolved.path {
+        let CheckedNodePathSegment::Operand(slot) = segment else {
+            continue;
+        };
+        let Some(entry) = usize::try_from(*slot).ok().and_then(|slot| row.get(slot)) else {
+            continue;
+        };
+        *segment = match entry {
+            CheckedOperandEntry::Node(index) => CheckedNodePathSegment::Index(*index),
+            CheckedOperandEntry::Dependency(operand) => CheckedNodePathSegment::Dependency {
+                package: operand.package.clone(),
+                node: operand.node,
+            },
+        };
+    }
+    resolved
 }
 
-fn remap_domain_key(
-    key: &DomainKey,
-    wire_nodes: &[CheckedSemanticNodeV2],
-    nodes: &[CheckedSemanticNodeV2],
-) -> DomainKey {
-    match key {
-        DomainKey::Node { node, path } => DomainKey::Node {
-            node: resolved_graph_id(node, wire_nodes, nodes).unwrap_or_else(|| node.clone()),
-            path: path.clone(),
-        },
-        DomainKey::Population {
-            member_type,
-            ordinal,
-        } => DomainKey::Population {
-            member_type: resolved_graph_id(member_type, wire_nodes, nodes)
-                .unwrap_or_else(|| member_type.clone()),
-            ordinal: *ordinal,
-        },
+fn resolve_record(
+    mut record: ValueValidityRecord,
+    holder_row: &[CheckedOperandEntry],
+) -> ValueValidityRecord {
+    record.owner = resolve_holder_id(record.owner, holder_row);
+    record.application = resolve_holder_id(record.application, holder_row);
+    record.result_bound = resolve_holder_id(record.result_bound, holder_row);
+    record.conversion = record
+        .conversion
+        .map(|(id, occurrence)| (resolve_holder_id(id, holder_row), occurrence));
+    for guard in &mut record.path_condition {
+        guard.guard = resolve_holder_id(guard.guard.clone(), holder_row);
     }
+    for root in &mut record.extent_roots {
+        *root = resolve_holder_id(root.clone(), holder_row);
+    }
+    for object in &mut record.objects {
+        *object = resolve_holder_id(object.clone(), holder_row);
+    }
+    record
 }
 
 pub(super) fn owner_index(rows: &[RequirementItemRow]) -> Vec<(CheckedNodeId, Vec<usize>)> {
@@ -1207,10 +1218,56 @@ fn references(term: &CheckedTerm) -> Option<Vec<CheckedNodeId>> {
 mod tests {
     use super::{
         CapabilityKind, DomainKey, DomainKind, RequirementExtent, RequirementExtentWire,
-        RequirementItemRow, RequirementItemWireRow,
+        RequirementGuard, RequirementItemRow, RequirementItemWireRow, ValueValidityRecord,
+    };
+    use crate::checked_package::shared::{
+        CheckedNodeId, CheckedNodePathSegment, CheckedOperandEntry,
     };
     use ix_trace_rs::trace;
     use serde_json::json;
+
+    #[test]
+    fn value_record_references_resolve_through_the_actual_holder_row() {
+        let slot_id = |slot| {
+            serde_json::from_value::<CheckedNodeId>(json!({
+                "package":"pkg", "path":[{"operand":slot}], "ordinal":0
+            }))
+            .expect("slot reference")
+        };
+        let record = ValueValidityRecord {
+            node: serde_json::from_value(json!({
+                "package":"pkg", "path":["record"], "ordinal":0
+            }))
+            .expect("record ID"),
+            owner: slot_id(0),
+            application: slot_id(1),
+            occurrence: 3,
+            result_bound: slot_id(0),
+            conversion: Some((slot_id(1), 7)),
+            path_condition: vec![RequirementGuard {
+                guard: slot_id(1),
+                occurrence: 2,
+                holds: true,
+            }],
+            extent_roots: vec![slot_id(0)],
+            objects: vec![slot_id(1)],
+        };
+        let holder_row = [CheckedOperandEntry::Node(11), CheckedOperandEntry::Node(4)];
+        let resolved = super::resolve_record(record, &holder_row);
+        let index_id = |index| CheckedNodeId {
+            package: "pkg".into(),
+            path: vec![CheckedNodePathSegment::Index(index)],
+            ordinal: 0,
+        };
+
+        assert_eq!(resolved.owner, index_id(11));
+        assert_eq!(resolved.application, index_id(4));
+        assert_eq!(resolved.result_bound, index_id(11));
+        assert_eq!(resolved.conversion, Some((index_id(4), 7)));
+        assert_eq!(resolved.path_condition[0].guard, index_id(4));
+        assert_eq!(resolved.extent_roots, vec![index_id(11)]);
+        assert_eq!(resolved.objects, vec![index_id(4)]);
+    }
 
     #[trace("TC-2053", "FR-825-AC-5")]
     #[test]

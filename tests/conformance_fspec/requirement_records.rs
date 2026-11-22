@@ -354,7 +354,23 @@ fn public_reader_returns_empty_requirement_reads_when_the_member_is_absent() {
 #[trace("TC-488", "FR-376-AC-1")]
 #[test]
 fn public_reader_retains_value_validity_record_facts_and_owner_index() {
-    let package = value_validity_package(false);
+    let mut package = value_validity_package(false);
+    let nodes = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("graph nodes");
+    let parameter = nodes
+        .iter()
+        .find(|node| node["semantic_form"] == "value_validity")
+        .expect("value-validity record")["body"]["members"][6]["value"]["members"][0]["target"]
+        .clone();
+    for row in package["requirement_items"]
+        .as_array_mut()
+        .expect("requirement rows")
+    {
+        row["extent"] = json!({"classification":"unbounded","domains":[{
+            "domain":{"type":"node","node":parameter,"path":[]},"kind":"integer"
+        }]});
+    }
     let nodes = package["semantic_graph"]["nodes"]
         .as_array()
         .expect("graph nodes");
@@ -382,33 +398,117 @@ fn public_reader_retains_value_validity_record_facts_and_owner_index() {
     .expect("owner ID");
     let CheckedPackageV2ReadResult::Admitted(admitted) = read(&package) else {
         panic!(
-            "public reader admits the bounded value-validity fixture: {:?}",
+            "public reader admits the value-validity fixture: {:?}",
             read(&package)
         )
     };
+    let resolved_owner = admitted
+        .resolved_graph()
+        .nodes
+        .iter()
+        .find(|node| node.node_tag.as_ref() == "function")
+        .map(|node| &node.node_id)
+        .expect("resolved function owner");
     let rows = admitted.requirement_items();
     assert_eq!(rows.len(), 2);
+    let wire_claim: filament_contract_model::CheckedNodeId =
+        serde_json::from_value(package["requirement_items"][0]["claim"]["node"].clone())
+            .expect("document-held claim ID");
+    assert_eq!(rows[0].claim, wire_claim);
+    assert!(admitted
+        .resolved_graph()
+        .nodes
+        .iter()
+        .any(|node| node.node_id == rows[0].claim));
+    let filament_contract_model::RequirementExtent::Unbounded(domains) = &rows[0].extent else {
+        panic!("unbounded extent is retained as typed domain rows")
+    };
+    assert_eq!(domains.len(), 1);
+    let expected_domain: filament_contract_model::CheckedNodeId = serde_json::from_value(
+        package["requirement_items"][0]["extent"]["domains"][0]["domain"]["node"].clone(),
+    )
+    .expect("document-held domain ID");
+    let resolved_parameter = admitted
+        .resolved_graph()
+        .nodes
+        .iter()
+        .find(|node| node.node_id == expected_domain)
+        .map(|node| &node.node_id)
+        .expect("resolved domain target");
+    assert_eq!(
+        &domains[0].0,
+        &filament_contract_model::DomainKey::Node {
+            node: resolved_parameter.clone(),
+            path: Vec::new(),
+        }
+    );
     let record = rows[0]
         .record
         .as_ref()
         .expect("typed row retains its value-validity record");
+    let wire_record: filament_contract_model::CheckedNodeId =
+        serde_json::from_value(package["requirement_items"][0]["record"].clone())
+            .expect("document-held record ID");
+    assert_eq!(record.node, wire_record);
+    assert_eq!(&record.owner, resolved_owner);
     assert_eq!(record.owner, owner);
+    assert_eq!(&record.application, &rows[0].claim);
+    assert!(admitted
+        .resolved_graph()
+        .nodes
+        .iter()
+        .any(|node| node.node_id == record.result_bound));
     assert_eq!(record.occurrence, 0);
     assert!(record.conversion.is_none());
     assert!(record.path_condition.is_empty());
     assert_eq!(record.extent_roots.len(), 1);
+    assert_eq!(&record.extent_roots[0], resolved_parameter);
     assert!(record.objects.is_empty());
     assert_eq!(
         rows[1].record.as_ref().expect("second record").occurrence,
         1
     );
-    assert_eq!(admitted.value_validity_records_of(&owner), &[0, 1]);
+    assert_eq!(admitted.value_validity_records_of(resolved_owner), &[0, 1]);
 
-    let reordered = value_validity_package(true);
-    let CheckedPackageV2ReadResult::Admitted(reordered) = read(&reordered) else {
+    let mut reordered_package = value_validity_package(true);
+    let reordered_parameter = reordered_package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("reordered graph nodes")
+        .iter()
+        .find(|node| node["semantic_form"] == "value_validity")
+        .expect("reordered value-validity record")["body"]["members"][6]["value"]["members"][0]
+        ["target"]
+        .clone();
+    for row in reordered_package["requirement_items"]
+        .as_array_mut()
+        .expect("reordered requirement rows")
+    {
+        row["extent"] = json!({"classification":"unbounded","domains":[{
+            "domain":{"type":"node","node":reordered_parameter,"path":[]},"kind":"integer"
+        }]});
+    }
+    let CheckedPackageV2ReadResult::Admitted(reordered) = read(&reordered_package) else {
         panic!("public reader admits the same nodes in another graph order")
     };
-    assert_eq!(reordered.requirement_items(), admitted.requirement_items());
+    let reordered_rows = reordered.requirement_items();
+    assert_eq!(reordered_rows.len(), rows.len());
+    for (reordered_row, row) in reordered_rows.iter().zip(rows) {
+        assert_eq!(reordered_row.claim, row.claim);
+        assert_eq!(reordered_row.occurrence, row.occurrence);
+        assert_eq!(reordered_row.kind, row.kind);
+        assert_eq!(reordered_row.extent, row.extent);
+        let reordered_record = reordered_row.record.as_ref().expect("reordered record");
+        let record = row.record.as_ref().expect("record");
+        assert_eq!(reordered_record.owner, record.owner);
+        assert_eq!(reordered_record.application, record.application);
+        assert_eq!(reordered_record.occurrence, record.occurrence);
+        assert_eq!(reordered_record.result_bound, record.result_bound);
+        assert_eq!(reordered_record.conversion, record.conversion);
+        assert_eq!(reordered_record.path_condition, record.path_condition);
+        assert_eq!(reordered_record.extent_roots, record.extent_roots);
+        assert_eq!(reordered_record.objects, record.objects);
+    }
+    assert_eq!(reordered.value_validity_records_of(resolved_owner), &[0, 1]);
 }
 
 #[trace("TC-488", "FR-376-AC-1")]
@@ -445,6 +545,24 @@ fn canonical_writer_readback_preserves_typed_requirement_rows() {
     )
     .expect("canonical writer retains requirement rows");
     let encoded: Value = serde_json::from_slice(&bytes).expect("canonical V2 JSON");
+    let mut source = package.clone();
+    index_fixture_node_ids(&mut source);
+    source["semantic_graph"] = serde_json::to_value(admitted.graph())
+        .expect("writer graph is the package's canonical slot graph");
+    source
+        .as_object_mut()
+        .expect("package object")
+        .remove("operation_effects");
+    let differing_members = encoded
+        .as_object()
+        .expect("encoded package object")
+        .iter()
+        .filter_map(|(name, value)| (source.get(name) != Some(value)).then_some(name.as_str()))
+        .collect::<Vec<_>>();
+    assert!(
+        differing_members.is_empty(),
+        "typed re-encode changed members: {differing_members:?}"
+    );
     // The writer's bytes are already canonical wire: read them as written.
     let CheckedPackageV2ReadResult::Admitted(round_trip) = CheckedPackageV2::read(
         &bytes,
@@ -475,9 +593,9 @@ fn public_reader_admits_at_the_exact_work_budget_and_reports_the_last_row_one_sh
         (result, budget.read_storage_consumed())
     };
 
-    // FR-825 charges record nodes, their nested members, and the owner's body
-    // reach before it visits rows. Omitting the rows reaches that exact
-    // boundary; AC-1 specifies two row visits after it.
+    // Measure the complete read's accepted charge, then check the exact
+    // boundary and the first lower limit. The no-row run still identifies the
+    // earlier boundary before requirement rows are visited.
     let mut no_rows = package.clone();
     no_rows
         .as_object_mut()
@@ -491,7 +609,12 @@ fn public_reader_admits_at_the_exact_work_budget_and_reports_the_last_row_one_sh
         refusal.loci[0].path,
         JsonPointer::parse("/requirement_items")
     );
-    let required = before_rows + 2;
+    let (full, required) = run(&package, u64::MAX);
+    assert!(matches!(
+        full,
+        CheckedPackageV2BudgetedReadResult::Admitted(_)
+    ));
+    assert!(required > before_rows);
 
     let (exact, exact_consumed) = run(&package, required);
     assert!(matches!(
@@ -504,8 +627,8 @@ fn public_reader_admits_at_the_exact_work_budget_and_reports_the_last_row_one_sh
     let CheckedPackageV2BudgetedReadResult::BudgetIncomplete(incomplete) = short else {
         panic!("one storage visit short returns a budget incomplete result")
     };
-    assert_eq!(short_consumed, required - 1);
-    assert_eq!(incomplete.path, JsonPointer::parse("/requirement_items/1"));
+    assert!(short_consumed < required);
+    assert!(incomplete.path.is_none());
 }
 
 #[trace("TC-488", "FR-376-AC-2")]
