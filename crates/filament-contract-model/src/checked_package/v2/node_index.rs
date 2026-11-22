@@ -7,16 +7,16 @@
 //! stage is charged to the read's budget before it is made
 //! (FR-038 "Budget-charged strict read", stage `NodeIndex`).
 
+use super::TermNode;
 use super::native_join_budget::{NativeJoinBudget, PackageReadStage};
 use super::read_charge::{self, Site};
-use super::TermNode;
 use super::{CheckedNodePathSegment, RawCheckedPackageWireV2, ValidationFailure};
 use crate::checked_package::common::Step;
 use crate::checked_package::evidence::CheckedPackageEvidence;
 use crate::checked_package::shared::CheckedOperandEntry;
 use crate::checked_package::shared::{
-    push_index, push_key, CheckedPackageRefusal, CheckedPackageRefusalCode,
-    CheckedPackageRefusalLocation, JsonPointer,
+    CheckedPackageRefusal, CheckedPackageRefusalCode, CheckedPackageRefusalLocation, JsonPointer,
+    push_index, push_key,
 };
 use quire_canonical::{Document, Items, Members, Node, NodeRef};
 use std::sync::Arc;
@@ -474,6 +474,7 @@ struct SegmentSite<'d> {
 /// One entry of an operand row.
 struct RowSite<'d> {
     id: NodeRef<'d>,
+    holder: usize,
     entry: RowEntry<'d>,
 }
 
@@ -491,7 +492,7 @@ enum Scope {
     Nodes,
     Node(usize),
     Rows,
-    Row,
+    Row(usize),
     Other,
 }
 
@@ -507,9 +508,12 @@ impl Walk {
     fn index(self) -> usize {
         match self.scope {
             Scope::Node(holder) => holder,
-            Scope::Root | Scope::Graph | Scope::Nodes | Scope::Rows | Scope::Row | Scope::Other => {
-                0
-            }
+            Scope::Root
+            | Scope::Graph
+            | Scope::Nodes
+            | Scope::Rows
+            | Scope::Row(_)
+            | Scope::Other => 0,
         }
     }
 }
@@ -1285,7 +1289,7 @@ fn collect_sites<'d>(
                 let mut child_walk = walk;
                 child_walk.scope = match walk.scope {
                     Scope::Nodes => Scope::Node(*position),
-                    Scope::Rows => Scope::Row,
+                    Scope::Rows => Scope::Row(*position),
                     Scope::Node(holder) => Scope::Node(holder),
                     _ => Scope::Other,
                 };
@@ -1297,7 +1301,7 @@ fn collect_sites<'d>(
             stack.pop();
             continue;
         };
-        if let (Scope::Row, true) = (walk.scope, in_items) {
+        if let (Scope::Row(holder), true) = (walk.scope, in_items) {
             let entry = if let Some(value) = as_u64(child) {
                 RowEntry::Node(value)
             } else {
@@ -1317,7 +1321,11 @@ fn collect_sites<'d>(
                 collector.budget,
                 site(0),
                 &mut collector.row_sites,
-                RowSite { id: child, entry },
+                RowSite {
+                    id: child,
+                    holder,
+                    entry,
+                },
             )?;
             continue;
         }
@@ -1386,12 +1394,25 @@ pub(super) fn check(
     let bad_entry = row_sites.iter().find_map(|site| {
         let (value, limit) = match site.entry {
             RowEntry::Node(value) => (value, node_count),
-            RowEntry::Dependency { package, node } => (
-                node,
-                evidence
-                    .dependency_package(package)
-                    .map_or(0, |package| package.resolved_graph().nodes.len()),
-            ),
+            RowEntry::Dependency { package, node } => {
+                let holder = &wire.semantic_graph.nodes[site.holder];
+                let composition = holder.node_tag.as_ref() == "correspondence"
+                    && holder.semantic_form.as_ref() == "component_composition";
+                let directly_selected = wire
+                    .lock
+                    .dependency_selections
+                    .iter()
+                    .any(|selection| selection.identity.as_ref() == package);
+                if !composition || !directly_selected {
+                    return Some(site.id);
+                }
+                (
+                    node,
+                    evidence
+                        .dependency_package(package)
+                        .map_or(0, |package| package.resolved_graph().nodes.len()),
+                )
+            }
         };
         usize::try_from(value)
             .ok()
@@ -1685,7 +1706,7 @@ pub(super) fn restore_slots(id: &mut super::CheckedNodeId, row: &[CheckedOperand
 
 #[cfg(test)]
 mod tests {
-    use super::{contains_inline_node_path, malformed_at, StructuralOrder};
+    use super::{StructuralOrder, contains_inline_node_path, malformed_at};
     use crate::checked_package::v2::native_join_budget::{
         NativeJoinBudget, NativeJoinLocus, NativeJoinLocusSource, PackageReadStage,
     };

@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Agent-IX
 
-//! FSpec NI-01..NI-24 operand-row and operand-slot vectors through the production V2 reader.
+//! FSpec NI-01..NI-40 operand-row and operand-slot vectors through the production V2 reader.
 
 use super::fixture_support;
 use super::{
-    cause_word, code_word, fixtures_dir, proposal_dir_of, read_json, read_json_wire, read_package,
-    read_package_with_document_and_extensions_at_limit, DOMAIN_DOCUMENT,
+    DOMAIN_DOCUMENT, cause_word, code_word, fixtures_dir, proposal_dir_of, read_json,
+    read_json_wire, read_package, read_package_with_document_and_extensions_at_limit,
 };
 use filament_contract_model::{
     CheckedNodeId, CheckedNodeKind, CheckedNodePathSegment, CheckedNodeTag, CheckedOperandEntry,
@@ -15,7 +15,7 @@ use filament_contract_model::{
     ContractPackageReadResult, ContractPackageWireV1, ExpressionForm, LoweringProfileRef,
 };
 use ix_trace_rs::trace;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
@@ -39,8 +39,8 @@ fn published_operand_vectors_refuse_in_the_fr322_check_order() {
     let rows = vectors["cases"].as_array().expect("published cases");
     assert_eq!(
         rows.len(),
-        22,
-        "NI-01..NI-12 and NI-15..NI-24 are a closed published set"
+        32,
+        "NI-01..NI-12, NI-15..NI-24, and NI-30..NI-36/NI-38..NI-40 are a closed published set"
     );
     let base = read_json_wire(&fixtures.join("positive-dependency-call.json"))
         .expect("published dependency-call fixture");
@@ -52,7 +52,21 @@ fn published_operand_vectors_refuse_in_the_fr322_check_order() {
         for patch in row["patch"].as_array().expect("published patches") {
             apply_patch(&mut package, patch);
         }
-        let actual = read_package(&package).expect("production read");
+        let actual = if id == "NI-40" {
+            let evidence = super::fspec_inputs::evidence_for_node_index_ni40(
+                &package,
+                &fixtures.join(DOMAIN_DOCUMENT),
+                &fixtures,
+            )
+            .expect("NI-40 evidence with unlocked supplied package");
+            crate::read_and_account(
+                &fixture_support::canonical(&package),
+                CheckedPackageReadLimits::bounded(),
+                &evidence,
+            )
+        } else {
+            read_package(&package).expect("production read")
+        };
         let expected = row["expected"].as_str().expect("vector expectation");
         if expected.starts_with("passes_") {
             // The operand checks (and, for NI-22, the duplicate check) pass:
@@ -84,7 +98,7 @@ fn published_operand_vectors_refuse_in_the_fr322_check_order() {
             "{id}: locus"
         );
     }
-    for index in (1..=12).chain(15..=24) {
+    for index in (1..=12).chain(15..=24).chain(30..=36).chain(38..=40) {
         assert!(
             seen.contains(format!("NI-{index:02}").as_str()),
             "missing NI-{index:02}"
