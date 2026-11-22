@@ -39,3 +39,11 @@ Reviewed PR #1128 at `5a6922bc3dc8a058705c9056adb73acc33b082d3` against FR-070 a
 - Duplication, vendoring, and integrity: no copied schema, new dependency, pin, or unrelated production behavior was added.
 - Titan evidence at this head: both `--no-run` targets passed; `model_certificate_members_match_fspec_schema`, `certificate_property_walks_conditional_schemas`, `horizon_and_part_have_schema_spellings`, and `members_appear_once_with_distinct_plain_spellings` each ran once and passed; `cargo check --locked --workspace` passed. Logs: `/tmp/titan-ir1577-5a6922-logs/` on Titan.
 - No applicable AssuranceProfile was found under `spec/`.
+
+## Dispositions
+
+Round 1. Checked fix commit `f96f9ecbce536af40464bf67b1688f49d4a0686d`. The test now places `part` under `then` → `not` → `properties` and asserts it is returned with `transition`, so removing conditional recursion makes the assertion fail. Titan ran the exact named test once and it passed.
+
+| FND | Outcome | Reason |
+| --- | --- | --- |
+| FND-001 | fixed | The updated test asserts that nested `part` is collected from the `then`/`not` schema path. |
