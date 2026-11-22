@@ -676,7 +676,14 @@ fn check_wire_shape(
                                 ..
                             }) => {
                                 let quantifier_at = at.key("members").index(2).key("value");
-                                word(value, &["each", "some"], &quantifier_at, failure_at)?;
+                                if let Err(failure) =
+                                    word(value, &["each", "some"], &quantifier_at, failure_at)
+                                {
+                                    return Err(match failure {
+                                        WireFailure::Malformed => malformed(at, failure_at),
+                                        other => other,
+                                    });
+                                }
                                 3
                             }
                             _ => 2,
