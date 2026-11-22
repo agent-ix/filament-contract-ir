@@ -593,9 +593,9 @@ fn public_reader_admits_at_the_exact_work_budget_and_reports_the_last_row_one_sh
         (result, budget.consumed().work)
     };
 
-    // Measure the complete read's accepted work, then check the exact
-    // boundary and the first lower limit. The no-row run still identifies the
-    // earlier boundary before requirement rows are visited.
+    // Measure the complete read's accepted work and the prefix before the
+    // requirement rows. The no-row run identifies the boundary immediately
+    // before those two row visits.
     let mut no_rows = package.clone();
     no_rows
         .as_object_mut()
@@ -623,11 +623,22 @@ fn public_reader_admits_at_the_exact_work_budget_and_reports_the_last_row_one_sh
     ));
     assert_eq!(exact_consumed, required);
 
-    let (short, short_consumed) = run(&package, required - 1);
-    let CheckedPackageV2BudgetedReadResult::BudgetIncomplete(incomplete) = short else {
-        panic!("one work visit short returns a budget incomplete result")
+    let requirement_step = before_rows + 2;
+    let (step_exact, step_consumed) = run(&package, requirement_step);
+    let CheckedPackageV2BudgetedReadResult::BudgetIncomplete(step_incomplete) = step_exact else {
+        panic!("the exact requirement-step budget stops in a later read stage")
     };
-    assert!(short_consumed < required);
+    assert_eq!(step_consumed, requirement_step);
+    assert_ne!(
+        step_incomplete.path,
+        Some(JsonPointer::parse("/requirement_items/1"))
+    );
+
+    let (short, short_consumed) = run(&package, requirement_step - 1);
+    let CheckedPackageV2BudgetedReadResult::BudgetIncomplete(incomplete) = short else {
+        panic!("one work visit short of the requirement step returns incomplete")
+    };
+    assert!(short_consumed < requirement_step);
     assert_eq!(incomplete.path, JsonPointer::parse("/requirement_items/1"));
 }
 
