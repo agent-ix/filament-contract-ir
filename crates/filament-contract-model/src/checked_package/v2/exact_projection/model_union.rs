@@ -156,9 +156,9 @@ impl NodeAlloc for PayloadNodeAlloc<'_> {
         charge_native_storage(self.budget, self.at, self.at, form, amount)
     }
 
-    fn text(&mut self, text: &str, form: &'static str) -> Res<Box<str>> {
+    fn text(&mut self, text: &str, form: &'static str) -> Res<std::sync::Arc<str>> {
         self.request(text.len(), form)?;
-        Ok(Box::from(text))
+        Ok(crate::checked_package::shared::intern_checked_package_string(text))
     }
 
     fn vec<T>(&mut self, capacity: usize, form: &'static str) -> Res<Vec<T>> {

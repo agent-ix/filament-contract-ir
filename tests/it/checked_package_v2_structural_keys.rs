@@ -1393,7 +1393,8 @@ fn structural_group_members_retain_exact_paths_and_references() {
     let retained_self = &self_read
         .graph()
         .node(self_position)
-        .expect("graph position exists");
+        .expect("graph position exists")
+        .to_owned_wire();
     assert_eq!(
         serde_json::to_value(&retained_self.node_id).expect("typed self id"),
         *self_id
@@ -1493,7 +1494,8 @@ fn structural_group_members_retain_exact_paths_and_references() {
     let retained_off_cycle = &tree_read
         .graph()
         .node(off_cycle)
-        .expect("graph position exists");
+        .expect("graph position exists")
+        .to_owned_wire();
     assert_eq!(
         serde_json::to_value(&retained_off_cycle.node_id).expect("typed off-cycle id"),
         off_cycle_node["node_id"]
@@ -2021,7 +2023,8 @@ fn text_bounds_preserves_its_text_base_and_own_bounds() {
     let node = &admitted
         .graph()
         .node(position)
-        .expect("graph position exists");
+        .expect("graph position exists")
+        .to_owned_wire();
     assert_eq!(
         serde_json::to_value(&node.semantic_type).expect("type"),
         text_id

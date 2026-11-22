@@ -636,7 +636,8 @@ fn tc_225_the_minimal_abstraction_relation_body_admits_with_its_structural_id() 
     let node = &package
         .graph()
         .node(position)
-        .expect("graph position exists");
+        .expect("graph position exists")
+        .to_owned_wire();
     assert_eq!(node.node_id, typed_node_id(&relation_key(0)));
     assert_eq!(node.semantic_type, node.node_id);
     assert_eq!(

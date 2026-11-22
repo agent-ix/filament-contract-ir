@@ -421,7 +421,7 @@ fn selected_process_persistence_state_and_record_keep_owner_and_reference_identi
         let id: filament_contract_model::CheckedNodeId =
             serde_json::from_value(node["node_id"].clone()).expect("id");
         assert!(
-            admitted.graph().nodes().any(|node| node.node_id() == id),
+            admitted.graph().nodes().any(|node| *node.node_id() == id),
             "{form} must retain its selected key"
         );
     }
@@ -471,11 +471,11 @@ fn selected_process_persistence_state_and_record_keep_owner_and_reference_identi
         let id: filament_contract_model::CheckedNodeId =
             serde_json::from_value(node["node_id"].clone()).expect("id");
         assert!(
-            again.graph().nodes().any(|node| node.node_id() == id),
+            again.graph().nodes().any(|node| *node.node_id() == id),
             "{form}: first reread identity"
         );
         assert!(
-            third.graph().nodes().any(|node| node.node_id() == id),
+            third.graph().nodes().any(|node| *node.node_id() == id),
             "{form}: second reread identity"
         );
     }

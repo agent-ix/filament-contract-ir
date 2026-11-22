@@ -952,7 +952,7 @@ fn tc_048_public_operation_views_follow_admitted_values() {
     let operation = admitted
         .graph()
         .nodes()
-        .find_map(|node| match &node.body {
+        .find_map(|node| match &node.resolved_node().body {
             CheckedTerm::Application { operation, .. }
                 if operation.identity() == Some("filament.op.record.project") =>
             {
@@ -1010,7 +1010,7 @@ fn tc_048_public_operation_views_follow_admitted_values() {
         let operation = admitted
             .graph()
             .nodes()
-            .find_map(|node| match &node.body {
+            .find_map(|node| match &node.resolved_node().body {
                 CheckedTerm::Application { operation, .. }
                     if operation.identity() == Some(identity) =>
                 {
@@ -1053,7 +1053,7 @@ fn tc_048_public_operation_views_follow_admitted_values() {
     let operation = admitted
         .graph()
         .nodes()
-        .find_map(|node| match &node.body {
+        .find_map(|node| match &node.resolved_node().body {
             CheckedTerm::Application { operation, .. }
                 if operation.identity() == Some("filament.op.tuple.project") =>
             {
@@ -1081,7 +1081,7 @@ fn tc_048_public_operation_views_follow_admitted_values() {
     let operation = admitted
         .graph()
         .nodes()
-        .find_map(|node| match &node.body {
+        .find_map(|node| match &node.resolved_node().body {
             CheckedTerm::Application { operation, .. }
                 if operation.identity() == Some("filament.op.quantity.convert") =>
             {
@@ -1121,7 +1121,7 @@ fn tc_048_public_operation_views_follow_admitted_values() {
     let operation = admitted
         .graph()
         .nodes()
-        .find_map(|node| match &node.body {
+        .find_map(|node| match &node.resolved_node().body {
             CheckedTerm::Application { operation, .. }
                 if operation.identity() == Some("filament.op.integer.add") =>
             {

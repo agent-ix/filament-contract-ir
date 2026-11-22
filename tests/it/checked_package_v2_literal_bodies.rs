@@ -62,7 +62,8 @@ fn typed_literal_with_empty_dependencies_preserves_its_body_and_type() {
     let node = &package
         .graph()
         .node(position)
-        .expect("graph position exists");
+        .expect("graph position exists")
+        .to_owned_wire();
     assert!(node.dependencies.is_empty());
     assert_eq!(
         node.semantic_type,

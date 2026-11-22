@@ -125,6 +125,7 @@ fn admitted_frame_body(value: &Value) -> Value {
                 .find(|node| {
                     node.node_tag.as_ref() == "state" && node.semantic_form.as_ref() == "frame"
                 })
+                .map(|node| node.to_owned_wire())
                 .expect("admitted frame")
                 .body,
         )
@@ -2280,7 +2281,8 @@ fn tc_056_public_state_clause_kind_tracks_reader_admission() {
         let node = &admitted
             .graph()
             .node(package.clause(name))
-            .expect("graph position exists");
+            .expect("graph position exists")
+            .to_owned_wire();
         let CheckedTerm::Application { operation, .. } = &node.body else {
             panic!("{name} clause is an application");
         };
@@ -2292,7 +2294,7 @@ fn tc_056_public_state_clause_kind_tracks_reader_admission() {
     let plain = admitted
         .graph()
         .nodes()
-        .find_map(|node| match &node.body {
+        .find_map(|node| match &node.resolved_node().body {
             CheckedTerm::Application { operation, .. }
                 if operation.identity() != Some("filament.op.state.clause") =>
             {
@@ -3955,7 +3957,8 @@ fn tc_445_source_declared_operation_input_has_no_selected_model_range() {
     let node = admitted
         .graph()
         .nodes()
-        .find(|node| node.node_id == clause)
+        .find(|node| *node.node_id == clause)
+        .map(|node| node.to_owned_wire())
         .expect("admitted clause");
     let claim = node.occurrences.first().expect("authentic claim");
     let refusal = admitted
@@ -4098,7 +4101,8 @@ fn tc_462_clause_point_applicability_admits_all_eight_pairs() {
         let clause = &admitted
             .graph()
             .node(position)
-            .expect("graph position exists");
+            .expect("graph position exists")
+            .to_owned_wire();
         let claim = clause.occurrences.first().expect("clause claim");
         assert_eq!(
             admitted.clause_execution_point(&clause.node_id, (&clause.node_id, claim)),
@@ -4283,8 +4287,8 @@ fn tc_462_public_accessor_refuses_in_closed_precedence_order() {
     let other_claim = admitted
         .graph()
         .nodes()
-        .find(|node| node.node_id == unpointed)
-        .and_then(|node| node.occurrences.first())
+        .find(|node| *node.node_id == unpointed)
+        .and_then(|node| node.resolved_node().occurrences.first())
         .expect("other clause claim")
         .clone();
     assert_eq!(
@@ -4395,7 +4399,8 @@ fn tc_462_multiple_claims_of_one_node_share_the_admitted_point() {
     let clause = &admitted
         .graph()
         .node(position)
-        .expect("graph position exists");
+        .expect("graph position exists")
+        .to_owned_wire();
     assert_eq!(clause.occurrences.len(), 2);
     for claim in &clause.occurrences {
         assert_eq!(
@@ -4472,7 +4477,8 @@ fn tc_462_point_change_rekeys_node_and_package_without_losing_accessor_value() {
             let clause = &admitted
                 .graph()
                 .node(position)
-                .expect("graph position exists");
+                .expect("graph position exists")
+                .to_owned_wire();
             let claim = clause.occurrences.first().expect("claim");
             assert_eq!(
                 admitted.clause_execution_point(&clause.node_id, (&clause.node_id, claim)),
@@ -4790,6 +4796,7 @@ fn step_relation_reader_retains_two_executions_and_roundtrips() {
         .graph()
         .nodes()
         .find(|node| node.semantic_form.as_ref() == "step_relation")
+        .map(|node| node.to_owned_wire())
         .expect("relation");
     let body = relation.step_relation_body().expect("typed relation");
     assert_eq!(body.subjects.len(), 1);
@@ -4821,7 +4828,8 @@ fn step_relation_reader_retains_two_executions_and_roundtrips() {
     let expression = admitted
         .graph()
         .nodes()
-        .find(|node| node.node_id == body.body)
+        .find(|node| *node.node_id == body.body)
+        .map(|node| node.to_owned_wire())
         .expect("Boolean relation expression");
     let CheckedTerm::Application {
         operation,
@@ -4839,7 +4847,8 @@ fn step_relation_reader_retains_two_executions_and_roundtrips() {
         let pre = admitted
             .graph()
             .nodes()
-            .find(|node| node.node_id == *pre_id)
+            .find(|node| *node.node_id == *pre_id)
+            .map(|node| node.to_owned_wire())
             .expect("pre read");
         let CheckedTerm::Application {
             operation,
@@ -4856,7 +4865,8 @@ fn step_relation_reader_retains_two_executions_and_roundtrips() {
         let field = admitted
             .graph()
             .nodes()
-            .find(|node| node.node_id == *field_id)
+            .find(|node| *node.node_id == *field_id)
+            .map(|node| node.to_owned_wire())
             .expect("field read");
         let CheckedTerm::Application {
             operation,
@@ -4888,7 +4898,8 @@ fn step_relation_reader_retains_two_executions_and_roundtrips() {
         let deref = admitted
             .graph()
             .nodes()
-            .find(|node| node.node_id == *deref_id)
+            .find(|node| *node.node_id == *deref_id)
+            .map(|node| node.to_owned_wire())
             .expect("deref");
         let CheckedTerm::Application {
             operation,
@@ -4950,6 +4961,7 @@ fn step_relation_reader_retains_two_executions_and_roundtrips() {
                 .graph()
                 .nodes()
                 .find(|node| node.semantic_form.as_ref() == "step_relation")
+                .map(|node| node.to_owned_wire())
                 .expect("relation");
             assert_eq!(again.step_relation_body(), Some(body));
             assert_eq!(again.node_id, relation.node_id);
@@ -5065,11 +5077,13 @@ fn step_relation_source_correspondence_does_not_change_semantic_identity() {
         .graph()
         .nodes()
         .find(|node| node.semantic_form.as_ref() == "step_relation")
+        .map(|node| node.to_owned_wire())
         .expect("original relation");
     let moved_relation = moved
         .graph()
         .nodes()
         .find(|node| node.semantic_form.as_ref() == "step_relation")
+        .map(|node| node.to_owned_wire())
         .expect("moved relation");
     assert_eq!(original_relation.node_id, moved_relation.node_id);
     assert_eq!(
@@ -5331,6 +5345,7 @@ fn step_relation_bound_implementation_requests_code_claim_and_checks_frame() {
         .graph()
         .nodes()
         .find(|node| node.semantic_form.as_ref() == "step_relation")
+        .map(|node| node.to_owned_wire())
         .expect("relation");
     let body = relation_node.step_relation_body().expect("typed body");
     assert!(body.requests_code_claim());
@@ -5513,8 +5528,8 @@ fn selected_operation_member_rows_join_only_admitted_model_anchors() {
         .graph()
         .node(source_anchor_position)
         .expect("graph position exists")
-        .node_id
-        .clone();
+        .node_id()
+        .into_owned();
     assert_eq!(
         selected
             .read(&source_package, &source_anchor)
@@ -5657,7 +5672,10 @@ fn model_operation_callable_joins_selected_body_and_frame() {
     let other_anchor_id = admitted
         .graph()
         .nodes()
-        .find(|node| node.semantic_form.as_ref() == "operation_anchor" && node.node_id != anchor_id)
+        .find(|node| {
+            node.semantic_form.as_ref() == "operation_anchor" && *node.node_id != anchor_id
+        })
+        .map(|node| node.to_owned_wire())
         .expect("second execution point")
         .node_id
         .clone();
@@ -5923,6 +5941,7 @@ fn declared_order(package: &CheckedPackageV2) -> Option<Vec<(String, CheckedNode
         .graph()
         .nodes()
         .find(|node| node.semantic_form.as_ref() == "step_relation")
+        .map(|node| node.to_owned_wire())
         .expect("relation");
     relation
         .step_relation_subject_declaration_order()

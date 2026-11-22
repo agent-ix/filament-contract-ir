@@ -4638,7 +4638,7 @@ mod tests {
         let position = package
             .graph()
             .nodes()
-            .position(|node| node.node_id == requested)
+            .position(|node| *node.node_id == requested)
             .unwrap();
         for caller in [
             None,

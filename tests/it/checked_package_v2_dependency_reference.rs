@@ -350,7 +350,7 @@ fn reached_view_retains_selected_dependency_pair_at_package_boundary() {
     assert!(!admitted
         .graph()
         .nodes()
-        .any(|entry| entry.node_id == view.selected_references[0].node));
+        .any(|entry| *entry.node_id == view.selected_references[0].node));
     assert!(!view
         .nodes
         .iter()
@@ -463,7 +463,8 @@ fn tc_048_a_dependency_callee_is_admitted_and_never_a_dependency() {
     let call = &admitted
         .graph()
         .node(position)
-        .expect("graph position exists");
+        .expect("graph position exists")
+        .to_owned_wire();
     assert_eq!(
         serde_json::to_value(&call.body).expect("typed body")["arguments"][0]["term"],
         json!("dependency_reference")

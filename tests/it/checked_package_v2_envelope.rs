@@ -125,11 +125,12 @@ fn typed_writer_round_trips_protocol_clause_owner_model() {
         .find(|node| {
             node.node_tag.as_ref() == "protocol" && node.semantic_form.as_ref() == "protocol_clause"
         })
+        .map(|node| node.to_owned_wire())
         .expect("protocol clause");
     let owner = clause.owner_model.as_ref().expect("exact owner edge");
     assert!(clause.dependencies.contains(owner));
     assert_eq!(
-        CheckedNodeProjectionV2::from(clause).owner_model.as_ref(),
+        CheckedNodeProjectionV2::from(&clause).owner_model.as_ref(),
         Some(owner)
     );
 
@@ -156,7 +157,8 @@ fn typed_writer_round_trips_protocol_clause_owner_model() {
         second
             .graph()
             .nodes()
-            .find(|node| node.node_id == clause.node_id)
+            .find(|node| *node.node_id == clause.node_id)
+            .map(|node| node.to_owned_wire())
             .expect("clause")
             .node_id,
         clause.node_id

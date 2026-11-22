@@ -382,8 +382,8 @@ fn selected_source_record_requires_complete_ordered_producer_rows() {
         .nodes()
         .last()
         .expect("record")
-        .node_id
-        .clone();
+        .node_id()
+        .into_owned();
     assert!(package
         .graph()
         .nodes()
@@ -405,6 +405,7 @@ fn selected_source_record_requires_complete_ordered_producer_rows() {
             .graph()
             .nodes()
             .find(|node| node.semantic_form.as_ref() == form)
+            .map(|node| node.to_owned_wire())
             .expect("field type")
             .node_id
             .clone();
@@ -2671,6 +2672,7 @@ fn native_source_family_fixture_with_authority(
             .graph()
             .nodes()
             .find(|node| node.semantic_form.as_ref() == form)
+            .map(|node| node.to_owned_wire())
             .expect("named node")
             .node_id
             .clone()
@@ -2847,7 +2849,7 @@ fn native_source_family_fixture_with_authority(
                     panic!("source unit");
                 };
                 filament_contract_model::SelectedSourceUnitRow::new(
-                    node.node_id.clone(),
+                    node.node_id().into_owned(),
                     authority.clone(),
                     identity.clone(),
                     node.declaration.as_ref().unwrap().qualified_name.clone(),

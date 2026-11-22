@@ -484,7 +484,12 @@ fn tc_048_the_union_nodes_and_the_case_over_them_admit() {
     let kinds: Vec<(&str, &str)> = reader
         .graph()
         .nodes()
-        .map(|node| (node.node_tag.as_ref(), node.semantic_form.as_ref()))
+        .map(|node| {
+            (
+                node.resolved_node().node_tag.as_ref(),
+                node.resolved_node().semantic_form.as_ref(),
+            )
+        })
         .collect();
     for form in [
         ("composite_type", "union"),

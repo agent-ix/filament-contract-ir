@@ -236,7 +236,7 @@ fn public_literal_and_binding_reads_preserve_exact_values() {
     let mut saw_boolean = false;
     for node in admitted.graph().nodes() {
         if let Some(literal) = node.body.literal_read() {
-            assert_eq!(literal.type_id, &node.semantic_type);
+            assert_eq!(literal.type_id, &*node.semantic_type);
             if let CheckedLiteralValue::Boolean(true) = literal.value {
                 saw_boolean = true;
             }
@@ -497,7 +497,7 @@ fn admitted_controls_expose_missing_catalog_constraint_productions() {
         let operation = package
             .graph()
             .nodes()
-            .find_map(|node| match &node.body {
+            .find_map(|node| match &node.resolved_node().body {
                 CheckedTerm::Application { operation, .. }
                     if operation.identity() == Some(identity) =>
                 {
@@ -584,7 +584,7 @@ fn admitted_controls_expose_element_and_fairness_members() {
     let operation = package
         .graph()
         .nodes()
-        .find_map(|node| match &node.body {
+        .find_map(|node| match &node.resolved_node().body {
             CheckedTerm::Application { operation, .. }
                 if operation.identity() == Some("filament.op.collection.index") =>
             {
@@ -607,7 +607,7 @@ fn admitted_controls_expose_element_and_fairness_members() {
     let operation = package
         .graph()
         .nodes()
-        .find_map(|node| match &node.body {
+        .find_map(|node| match &node.resolved_node().body {
             CheckedTerm::Application { operation, .. }
                 if operation.identity() == Some("filament.op.temporal.fair") =>
             {

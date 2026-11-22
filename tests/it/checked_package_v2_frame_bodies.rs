@@ -105,7 +105,8 @@ fn admitted_frame_body_is_typed_without_changing_the_wire() {
     let node = &package
         .graph()
         .node(position)
-        .expect("graph position exists");
+        .expect("graph position exists")
+        .to_owned_wire();
     let Some(CheckedTerm::Frame {
         modifies,
         creates,

@@ -704,7 +704,8 @@ fn repeated_protocol_references_retain_one_carrier_and_stable_canonical_identiti
         let node = &admitted
             .graph()
             .node(position)
-            .expect("graph position exists");
+            .expect("graph position exists")
+            .to_owned_wire();
         assert_eq!(
             serde_json::to_value(&node.node_id).expect("node id"),
             expected_key

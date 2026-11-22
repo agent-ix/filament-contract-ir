@@ -1173,7 +1173,8 @@ fn state_graph_identity_and_shared_occurrences() {
                 .graph()
                 .node(base_node_index())
                 .expect("graph position exists")
-                .node_id
+                .node_id()
+                .into_owned()
         );
         assert_eq!(read.name(), admitted(&possible).name());
         assert_eq!(written.source_map(), read.source_map());
@@ -1201,7 +1202,7 @@ fn state_graph_identity_and_shared_occurrences() {
         admitted
             .source_map()
             .iter()
-            .filter(|entry| entry.node_id == claim.node_id)
+            .filter(|entry| entry.node_id == *claim.node_id)
             .count(),
         2
     );
@@ -1306,7 +1307,8 @@ fn terminal_identity_and_several_terminals_per_model() {
                 .graph()
                 .node(base_node_index())
                 .expect("graph position exists")
-                .node_id
+                .node_id()
+                .into_owned()
         );
         assert_eq!(read.name(), admitted(&any).name());
         assert_eq!(written.source_map(), read.source_map());

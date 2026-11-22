@@ -552,7 +552,7 @@ fn equivalence_view(
         .graph()
         .node(index)
         .expect("graph position exists")
-        .to_owned_wire()
+        .resolved_node()
         .body
     else {
         return None;

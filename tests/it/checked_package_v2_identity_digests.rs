@@ -414,7 +414,11 @@ fn canonical_envelope_bytes_follow_semantic_and_source_edits() {
 #[test]
 fn typed_node_and_envelope_encoding_have_exact_byte_limits() {
     let package = admit(&local_package());
-    let node = &package.graph().node(0).expect("graph position exists");
+    let node = &package
+        .graph()
+        .node(0)
+        .expect("graph position exists")
+        .to_owned_wire();
     let node_bytes = quire_canonical::to_vec(node, Limits::new(u64::MAX)).expect("node bytes");
     assert_eq!(
         quire_canonical::to_vec(node, Limits::new(node_bytes.len() as u64))

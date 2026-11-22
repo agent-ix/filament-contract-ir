@@ -875,7 +875,7 @@ impl<'a> CheckedSemanticNodeView<'a> {
     }
 
     /// The resolved typed node, for semantic inspection without a wire copy.
-    pub fn resolved_node(&self) -> &CheckedSemanticNodeV2 {
+    pub fn resolved_node(&self) -> &'a CheckedSemanticNodeV2 {
         self.node
     }
 
@@ -3852,7 +3852,7 @@ fn validate_declaration_names(
         let Some(declaration) = &node.declaration else {
             continue;
         };
-        let path_matches=node.node_id.path.len()==declaration.qualified_name.len() && node.node_id.path.iter().zip(&declaration.qualified_name).all(|(part,name)|matches!(part,CheckedNodePathSegment::Name(value) if value==name));
+        let path_matches=node.node_id.path.len()==declaration.qualified_name.len() && node.node_id.path.iter().zip(&declaration.qualified_name).all(|(part,name)|matches!(part,CheckedNodePathSegment::Name(value) if **value==**name));
         if !path_matches {
             return Err(declaration_name_failure(
                 meter,
@@ -4158,16 +4158,23 @@ fn validate_graph<'w>(
                             .get(selected_position)
                             .zip(selected_graph.operand_rows.get(selected_position))
                         {
-                            Some((selected_node, selected_row)) => imported_node_matches(
-                                node,
-                                selected_node,
-                                TermNode::of(&selected_node.body),
-                                structural_keys,
-                                &selected_package.structural_keys,
-                                &wire.semantic_graph.operand_rows[position],
-                                selected_row,
-                                meter,
-                            )?,
+                            Some((selected_node, selected_row)) => {
+                                // Retained bodies are typed terms; the structural
+                                // comparison reads the canonical document form.
+                                match CheckedJson::from_serializable(&selected_node.body) {
+                                    Ok(selected_body) => imported_node_matches(
+                                        node,
+                                        selected_node,
+                                        TermNode::of(&selected_body),
+                                        structural_keys,
+                                        &selected_package.structural_keys,
+                                        &wire.semantic_graph.operand_rows[position],
+                                        selected_row,
+                                        meter,
+                                    )?,
+                                    Err(_) => false,
+                                }
+                            }
                             None => false,
                         }
                     }

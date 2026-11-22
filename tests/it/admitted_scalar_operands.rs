@@ -263,6 +263,7 @@ fn tc_458_invalid_occurrence_refuses_without_mutating_admitted_views() {
         .find(|node| {
             node.node_tag.as_ref() == "value" && node.semantic_form.as_ref() == "parameter"
         })
+        .map(|node| node.to_owned_wire())
         .expect("fixture parameter");
     let parameter_key = ContractOccurrenceKeyV1 {
         node_id: parameter.node_id.clone(),

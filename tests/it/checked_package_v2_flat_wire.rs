@@ -347,7 +347,8 @@ fn deepest_admitted_typed_term_obeys_the_exact_byte_limit_on_a_small_stack() {
         let node = &admitted
             .graph()
             .node(position)
-            .expect("graph position exists");
+            .expect("graph position exists")
+            .to_owned_wire();
         assert!(matches!(
             admitted.term(&node.node_id),
             Some(CheckedTerm::Aggregate { .. })

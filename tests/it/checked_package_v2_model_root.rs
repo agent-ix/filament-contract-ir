@@ -33,7 +33,7 @@ fn selected_model_package_names_follow_admitted_identity_order() {
     let graph_order: Vec<_> = selected
         .graph()
         .nodes()
-        .filter_map(|node| match &node.owner {
+        .filter_map(|node| match &node.resolved_node().owner {
             Some(CheckedNodeOwner::ModelRoot { identity }) => Some(identity.as_ref()),
             _ => None,
         })
@@ -128,7 +128,11 @@ fn selected_root_roundtrips_through_public_typed_writer_and_reader() {
             .count(),
         2
     );
-    let node = &first.graph().node(root).expect("graph position exists");
+    let node = &first
+        .graph()
+        .node(root)
+        .expect("graph position exists")
+        .to_owned_wire();
     assert_eq!(
         first.node_kinds()[root],
         filament_contract_model::CheckedNodeKind::Model(ModelForm::ModelRoot)
@@ -179,7 +183,11 @@ fn selected_root_roundtrips_through_public_typed_writer_and_reader() {
         other => panic!("typed roundtrip refused: {other:?}"),
     };
     assert_eq!(
-        second.graph().node(root).expect("graph position exists"),
+        second
+            .graph()
+            .node(root)
+            .expect("graph position exists")
+            .to_owned_wire(),
         *node
     );
     assert_eq!(second.name(), first.name());

@@ -130,6 +130,7 @@ fn v1_package_carries_function_check_mode_and_refuses_an_invalid_value() {
         .graph()
         .nodes()
         .find(|node| matches!(&node.body, CheckedTerm::Application { .. }))
+        .map(|node| node.to_owned_wire())
         .expect("operation node")
         .node_id
         .clone();
@@ -170,7 +171,8 @@ fn mixed_source_literal_keeps_its_type_and_empty_dependencies_through_v1() {
     let literal = source
         .graph()
         .nodes()
-        .find(|node| node.node_id == id("dddd"))
+        .find(|node| *node.node_id == id("dddd"))
+        .map(|node| node.to_owned_wire())
         .expect("source literal");
     assert!(literal.dependencies.is_empty());
     assert_eq!(literal.semantic_type, id("aaaa"));
@@ -199,6 +201,7 @@ fn v1_operation_views_require_authenticated_source() {
         .graph()
         .nodes()
         .find(|node| matches!(&node.body, CheckedTerm::Application { .. }))
+        .map(|node| node.to_owned_wire())
         .expect("operation node")
         .node_id
         .clone();
@@ -369,6 +372,7 @@ fn v1_handoff_keeps_operation_views_after_source_node_reordering() {
         .graph()
         .nodes()
         .find(|node| matches!(&node.body, CheckedTerm::Application { .. }))
+        .map(|node| node.to_owned_wire())
         .expect("source operation")
         .node_id
         .clone();
@@ -401,6 +405,7 @@ fn v1_source_handoff_is_atomic_and_preserves_plain_refusal_precedence() {
         .graph()
         .nodes()
         .find(|node| matches!(&node.body, CheckedTerm::Application { .. }))
+        .map(|node| node.to_owned_wire())
         .expect("operation node")
         .node_id
         .clone();
@@ -519,6 +524,7 @@ fn v1_source_handoff_is_atomic_and_preserves_plain_refusal_precedence() {
         .graph()
         .nodes()
         .find(|node| matches!(&node.body, CheckedTerm::Reference { .. }))
+        .map(|node| node.to_owned_wire())
         .expect("changed reference node")
         .node_id
         .clone();
@@ -584,7 +590,7 @@ fn lowered_package_retains_typed_terms_by_admitted_node_key() {
         assert!(source
             .graph()
             .nodes()
-            .any(|node| node.node_id == unrepresented));
+            .any(|node| *node.node_id == unrepresented));
         assert_eq!(producer.term(&unrepresented), None);
         assert_eq!(reader.term(&unrepresented), None);
         assert_eq!(producer.node(&unrepresented), None);
@@ -1467,7 +1473,7 @@ fn independent_closure(
     let by_key = admitted
         .graph()
         .nodes()
-        .map(|node| (&node.node_id, node))
+        .map(|node| (node.node_id().into_owned(), node.to_owned_wire()))
         .collect::<BTreeMap<_, _>>();
     let mut reached = BTreeSet::new();
     let mut pending = VecDeque::from([root.clone()]);
@@ -1511,6 +1517,7 @@ fn reached_view_uses_all_three_edges_and_preserves_sources_and_wire() {
         .find(|node| {
             node.node_tag.as_ref() == "expression" && node.semantic_form.as_ref() == "reference"
         })
+        .map(|node| node.to_owned_wire())
         .expect("root")
         .node_id
         .clone();
@@ -1537,7 +1544,8 @@ fn reached_view_uses_all_three_edges_and_preserves_sources_and_wire() {
         let original = admitted
             .graph()
             .nodes()
-            .find(|node| node.node_id == entry.node.node_id)
+            .find(|node| *node.node_id == entry.node.node_id)
+            .map(|node| node.to_owned_wire())
             .expect("source node");
         assert_eq!(
             serde_json::to_value(entry.node).expect("contract node"),
@@ -1582,6 +1590,7 @@ fn reached_view_exposes_empty_subsets_and_absent_keys() {
         .graph()
         .nodes()
         .find(|node| node.node_tag.as_ref() == "value" && node.semantic_form.as_ref() == "literal")
+        .map(|node| node.to_owned_wire())
         .expect("literal")
         .node_id
         .clone();
@@ -1675,7 +1684,7 @@ fn retained_typed_views_match_source_and_strict_reader_without_changing_wire() {
         let source_position = admitted
             .graph()
             .nodes()
-            .position(|source| source.node_id == node.node_id)
+            .position(|source| *source.node_id == node.node_id)
             .expect("source node");
         let expected = admitted.node_kinds()[source_position];
         assert_eq!(producer.node_kind(&node.node_id), Some(expected));
@@ -1746,7 +1755,7 @@ fn unsupported_source_kind_tracks_requested_root_across_mixed_accounting() {
             .nodes()
             .zip(source.node_kinds())
             .find(|(_, candidate)| **candidate == kind)
-            .map(|(node, _)| node.node_id.clone())
+            .map(|(node, _)| node.node_id().into_owned())
             .expect("admitted kind")
     };
     let clause = by_kind(CheckedNodeKind::Temporal(TemporalForm::TemporalClause));
@@ -1757,7 +1766,7 @@ fn unsupported_source_kind_tracks_requested_root_across_mixed_accounting() {
         .nodes()
         .zip(source.node_kinds())
         .find(|(_, kind)| kind.tag() == CheckedNodeTag::Value)
-        .map(|(node, _)| node.node_id.clone())
+        .map(|(node, _)| node.node_id().into_owned())
         .expect("healthy value");
     let requests = [
         clause.clone(),
@@ -2524,21 +2533,21 @@ fn selected_dependencies_are_bound_by_library_identity_before_graph_checks() {
         .semantic_graph
         .nodes
         .iter()
-        .map(|node| &node.node_id)
+        .map(|node| node.node_id.clone())
         .collect::<BTreeSet<_>>();
     let local_source = admit(&mixed_fixture());
     let local_keys = local_source
         .graph()
         .nodes()
-        .map(|node| &node.node_id)
+        .map(|node| node.node_id().into_owned())
         .collect::<BTreeSet<_>>();
     let external_only_key = dependency
         .graph()
         .nodes()
-        .map(|node| &node.node_id)
+        .map(|node| node.node_id().into_owned())
         .find(|key| !represented_keys.contains(key) && local_keys.contains(key))
         .expect("an identically keyed local node cannot satisfy a selected dependency");
-    assert_eq!(package.node_kind(external_only_key), None);
+    assert_eq!(package.node_kind(&external_only_key), None);
     let ContractPackageReadResult::Refused(missing) = read(&bytes) else {
         panic!("selection requires input");
     };

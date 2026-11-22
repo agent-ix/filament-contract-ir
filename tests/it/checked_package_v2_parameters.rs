@@ -382,7 +382,12 @@ fn tc_048_a_function_with_parameters_reads_and_lowers() {
     let forms = admitted
         .graph()
         .nodes()
-        .map(|node| (node.node_tag.as_ref(), node.semantic_form.as_ref()))
+        .map(|node| {
+            (
+                node.resolved_node().node_tag.as_ref(),
+                node.resolved_node().semantic_form.as_ref(),
+            )
+        })
         .collect::<Vec<_>>();
     assert!(forms.contains(&("value", "parameter")));
     assert!(forms.contains(&("scalar_type", "compound_unit")));

@@ -173,16 +173,21 @@ fn the_node_projection_copies_and_writes_check_mode() {
     ] {
         let read = admitted(package);
         let graph = read.graph();
-        let projection =
-            CheckedNodeProjectionV2::from(&graph.node(position).expect("graph position exists"));
+        let projection = CheckedNodeProjectionV2::from(
+            &graph
+                .node(position)
+                .expect("graph position exists")
+                .to_owned_wire(),
+        );
         assert_eq!(projection.check_mode, Some(mode));
         let emitted = projected(&projection);
         assert_eq!(emitted["check_mode"], name);
         let other = graph
             .nodes()
             .find(|node| node.node_tag.as_ref() != "function")
+            .map(|node| node.to_owned_wire())
             .expect("a non-function node");
-        let other = CheckedNodeProjectionV2::from(other);
+        let other = CheckedNodeProjectionV2::from(&other);
         assert_eq!(other.check_mode, None);
         assert!(projected(&other).get("check_mode").is_none());
     }

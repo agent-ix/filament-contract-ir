@@ -352,7 +352,10 @@ fn with_effects(mut package: Value, rows: Value) -> Value {
 fn a_package_without_a_source_object_reads_and_re_encodes_stably() {
     let package = v2_all_families();
     let admitted_package = admitted(&package);
-    assert!(!admitted_package.graph().nodes().any(is_source_node));
+    assert!(!admitted_package
+        .graph()
+        .nodes()
+        .any(|node| is_source_node(&node)));
     let evidence = evidence_of(&indexed(&package));
     let name = package["name"].as_str().expect("name").to_owned();
     let encode = |package: &CheckedPackageV2| {
@@ -397,6 +400,7 @@ fn source_object_with_one_field_and_one_operation_admits_as_a_source_node() {
         .graph()
         .nodes()
         .find(|node| is_source_node(node))
+        .map(|node| node.to_owned_wire())
         .expect("the source-declared type");
     assert!(matches!(
         &node.owner,
@@ -458,6 +462,7 @@ fn protocol_clause_and_role_over_a_source_type_admit() {
         .graph()
         .nodes()
         .find(|node| node.semantic_form.as_ref() == "protocol_clause")
+        .map(|node| node.to_owned_wire())
         .expect("clause");
     assert_eq!(clause.owner_model.as_ref(), Some(&id("qualified:Order")));
 
@@ -1020,7 +1025,8 @@ fn all_instances_and_lookup_over_a_source_population_admit() {
         let application = read_package
             .graph()
             .nodes()
-            .find(|node| node.node_id == id(label))
+            .find(|node| *node.node_id == id(label))
+            .map(|node| node.to_owned_wire())
             .expect("application");
         assert!(
             application.dependencies.contains(&id("qualified:Orders")),
@@ -2453,6 +2459,7 @@ fn anchor_of(package: &CheckedPackageV2) -> CheckedNodeId {
         .graph()
         .nodes()
         .find(|node| node.semantic_form.as_ref() == "operation_anchor")
+        .map(|node| node.to_owned_wire())
         .expect("an operation anchor")
         .node_id
         .clone()

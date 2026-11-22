@@ -638,7 +638,7 @@ pub(super) enum ValueBounds {
 pub(super) struct DomainModel {
     pub(super) identity: Box<str>,
     /// The package containing the anonymous member type nodes read here.
-    pub(super) checked_package: Box<str>,
+    pub(super) checked_package: std::sync::Arc<str>,
     /// Node position of this package's `model_root`.
     pub(super) root: usize,
     /// The reader's byte limit for declarations selected from this model.
@@ -5027,7 +5027,7 @@ pub(super) fn read_semantic_ir(
     let population_rows = list(document, "populations")?;
     let mut model = DomainModel {
         identity: budget.text(identity, F)?,
-        checked_package: budget.text(checked_package, F)?,
+        checked_package: budget.shared_text(checked_package, F)?,
         root: budget.root,
         bytes: budget.bytes,
         object_types: SortedMap::with_capacity(budget, counts.objects, F)?,

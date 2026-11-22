@@ -928,7 +928,8 @@ fn hundred_thousand_node_position_remap_preserves_admitted_references() {
         let node = &rewritten
             .graph()
             .node(base_count + position)
-            .expect("graph position exists");
+            .expect("graph position exists")
+            .to_owned_wire();
         assert_eq!(node.dependencies.len(), 1);
         assert_eq!(node.dependencies.first().as_deref(), Some(previous));
         assert!(matches!(&node.body, CheckedTerm::Reference { target } if target == previous));

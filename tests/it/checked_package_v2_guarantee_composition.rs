@@ -451,7 +451,8 @@ fn tc_474_an_implementation_guarantee_node_admits_with_its_typed_term() {
     let node = &admitted
         .graph()
         .node(position)
-        .expect("graph position exists");
+        .expect("graph position exists")
+        .to_owned_wire();
     let Some(CheckedTerm::ImplementationGuarantee {
         initial,
         progress,
@@ -501,7 +502,8 @@ fn tc_474_a_component_composition_node_admits_with_its_typed_term() {
     let node = &admitted
         .graph()
         .node(position)
-        .expect("graph position exists");
+        .expect("graph position exists")
+        .to_owned_wire();
     let Some(CheckedTerm::ComponentComposition {
         rule,
         components,
@@ -1233,7 +1235,8 @@ fn guarantee_without_progress_or_environment_retains_its_complete_typed_body() {
     let node = &admitted
         .graph()
         .node(position)
-        .expect("graph position exists");
+        .expect("graph position exists")
+        .to_owned_wire();
     let term = admitted.term(&node.node_id).expect("retained guarantee");
     let CheckedTerm::ImplementationGuarantee {
         progress,
@@ -1266,7 +1269,8 @@ fn every_composition_rule_retains_its_rule_and_distinct_premise_lists() {
         let node = &admitted
             .graph()
             .node(position)
-            .expect("graph position exists");
+            .expect("graph position exists")
+            .to_owned_wire();
         let term = admitted.term(&node.node_id).expect("retained composition");
         let CheckedTerm::ComponentComposition {
             rule,
@@ -1672,7 +1676,8 @@ fn a_composition_names_itself_and_keeps_authored_member_regions() {
     let node = &admitted
         .graph()
         .node(position)
-        .expect("graph position exists");
+        .expect("graph position exists")
+        .to_owned_wire();
     // The declared name is the node's path and its one name row.
     assert_eq!(
         node.declaration

@@ -250,6 +250,7 @@ pub(crate) fn by_operation(package: &CheckedPackageV2, identity: &str) -> Contra
                 .and_then(Value::as_str)
                 == Some(identity)
         })
+        .map(|node| node.to_owned_wire())
         .expect("named operation");
     ContractOccurrenceKeyV1 {
         node_id: node.node_id.clone(),
@@ -470,6 +471,7 @@ fn tc_447_none_and_invalid_occurrences_have_distinct_typed_outcomes() {
                     .and_then(Value::as_str)
                     == Some("a")
         })
+        .map(|node| node.to_owned_wire())
         .expect("authored parameter");
     let parameter_occurrence = ContractOccurrenceKeyV1 {
         node_id: parameter.node_id.clone(),
@@ -617,6 +619,7 @@ fn tc_447_represented_wrong_conversion_shapes_refuse_without_a_bound() {
             body_at(&node.body, "/operation/identity") == Some(json!("filament.op.integer.add"))
                 && body_at(&node.body, "/arguments/1/value") == Some(json!("1"))
         })
+        .map(|node| node.to_owned_wire())
         .expect("original add");
     let other_add = input
         .graph()
@@ -625,6 +628,7 @@ fn tc_447_represented_wrong_conversion_shapes_refuse_without_a_bound() {
             body_at(&node.body, "/operation/identity") == Some(json!("filament.op.integer.add"))
                 && body_at(&node.body, "/arguments/1/value") == Some(json!("2"))
         })
+        .map(|node| node.to_owned_wire())
         .expect("other add");
     let other_narrow = input
         .graph()
@@ -634,6 +638,7 @@ fn tc_447_represented_wrong_conversion_shapes_refuse_without_a_bound() {
                 && body_at(&node.body, "/arguments/0/target")
                     == Some(serde_json::to_value(&other_add.node_id).expect("typed key"))
         })
+        .map(|node| node.to_owned_wire())
         .expect("direct narrow of another expression");
     let wrong_operation = input
         .graph()
@@ -641,6 +646,7 @@ fn tc_447_represented_wrong_conversion_shapes_refuse_without_a_bound() {
         .find(|node| {
             body_at(&node.body, "/operation/identity") == Some(json!("filament.op.numeric.convert"))
         })
+        .map(|node| node.to_owned_wire())
         .expect("represented wrong operation");
     let occurrence =
         |node: &filament_contract_model::CheckedSemanticNodeV2| ContractOccurrenceKeyV1 {
@@ -648,7 +654,7 @@ fn tc_447_represented_wrong_conversion_shapes_refuse_without_a_bound() {
             role: CheckedOccurrenceRole::Expression,
             ordinal: 0,
         };
-    let requested = occurrence(add);
+    let requested = occurrence(&add);
     let emitted = package(
         &input,
         &[
@@ -659,13 +665,13 @@ fn tc_447_represented_wrong_conversion_shapes_refuse_without_a_bound() {
         ],
     );
     for (selected, reason) in [
-        (occurrence(other_add), "wrong form: binary, not conversion"),
+        (occurrence(&other_add), "wrong form: binary, not conversion"),
         (
-            occurrence(wrong_operation),
+            occurrence(&wrong_operation),
             "wrong operation: numeric.convert",
         ),
         (
-            occurrence(other_narrow),
+            occurrence(&other_narrow),
             "wrong direct argument: another expression",
         ),
     ] {
@@ -828,6 +834,7 @@ fn tc_447_direct_bounded_expression_keeps_own_result_until_its_narrow_is_selecte
                     == serde_json::from_value(node_id(&input_bound)).expect("bound id")
                 && body_at(&node.body, "/arguments/0/target") == Some(node_id(&parameter_key))
         })
+        .map(|node| node.to_owned_wire())
         .expect("own-bounded expression");
     let narrow = input
         .graph()
@@ -837,6 +844,7 @@ fn tc_447_direct_bounded_expression_keeps_own_result_until_its_narrow_is_selecte
                 && body_at(&node.body, "/arguments/0/target")
                     == Some(serde_json::to_value(&expression.node_id).expect("typed key"))
         })
+        .map(|node| node.to_owned_wire())
         .expect("direct narrow over own-bounded expression");
     let application = ContractOccurrenceKeyV1 {
         node_id: expression.node_id.clone(),
