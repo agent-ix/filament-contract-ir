@@ -583,17 +583,17 @@ fn public_reader_admits_at_the_exact_work_budget_and_reports_the_last_row_one_sh
         index_fixture_node_ids(&mut wire);
         let bytes = canonical(&wire);
         let evidence = evidence_for(&wire);
-        let mut budget = NativeJoinBudget::new(u64::MAX, u64::MAX).with_read_storage_limit(limit);
+        let mut budget = NativeJoinBudget::new(limit, u64::MAX).with_read_storage_limit(u64::MAX);
         let result = CheckedPackageV2::read_with_budget(
             &bytes,
             CheckedPackageReadLimits::bounded(),
             &evidence,
             &mut budget,
         );
-        (result, budget.read_storage_consumed())
+        (result, budget.consumed().work)
     };
 
-    // Measure the complete read's accepted charge, then check the exact
+    // Measure the complete read's accepted work, then check the exact
     // boundary and the first lower limit. The no-row run still identifies the
     // earlier boundary before requirement rows are visited.
     let mut no_rows = package.clone();
@@ -625,10 +625,10 @@ fn public_reader_admits_at_the_exact_work_budget_and_reports_the_last_row_one_sh
 
     let (short, short_consumed) = run(&package, required - 1);
     let CheckedPackageV2BudgetedReadResult::BudgetIncomplete(incomplete) = short else {
-        panic!("one storage visit short returns a budget incomplete result")
+        panic!("one work visit short returns a budget incomplete result")
     };
     assert!(short_consumed < required);
-    assert!(incomplete.path.is_none());
+    assert_eq!(incomplete.path, JsonPointer::parse("/requirement_items/1"));
 }
 
 #[trace("TC-488", "FR-376-AC-2")]

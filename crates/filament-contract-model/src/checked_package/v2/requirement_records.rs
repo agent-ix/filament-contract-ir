@@ -12,8 +12,7 @@ use crate::checked_package::common::ValidationFailure;
 use crate::checked_package::shared::CheckedOperandEntry;
 use crate::checked_package::shared::{CheckedNodeId, CheckedOccurrence};
 use crate::checked_package::shared::{
-    CheckedNodePathSegment, CheckedOccurrenceRole, CheckedPackageRefusalCause as Cause,
-    CheckedPackageRefusalCode as Code,
+    CheckedOccurrenceRole, CheckedPackageRefusalCause as Cause, CheckedPackageRefusalCode as Code,
 };
 use quire_canonical::{Encode, Error, FixedShape, Sink, Writer};
 use serde::{Deserialize, Serialize};
@@ -1060,22 +1059,13 @@ pub(super) fn retain_rows(
 
 fn resolve_holder_id(id: CheckedNodeId, row: &[CheckedOperandEntry]) -> CheckedNodeId {
     let mut resolved = id;
-    for segment in &mut resolved.path {
-        let CheckedNodePathSegment::Operand(slot) = segment else {
-            continue;
-        };
-        let Some(entry) = usize::try_from(*slot).ok().and_then(|slot| row.get(slot)) else {
-            continue;
-        };
-        *segment = match entry {
-            CheckedOperandEntry::Node(index) => CheckedNodePathSegment::Index(*index),
-            CheckedOperandEntry::Dependency(operand) => CheckedNodePathSegment::Dependency {
-                package: operand.package.clone(),
-                node: operand.node,
-            },
-        };
+    let result = super::node_index::resolve_id_operand_slots(&mut resolved, row, |package| {
+        Ok::<_, std::convert::Infallible>(package.into())
+    });
+    match result {
+        Ok(()) => resolved,
+        Err(never) => match never {},
     }
-    resolved
 }
 
 fn resolve_record(
@@ -1226,6 +1216,7 @@ mod tests {
     use ix_trace_rs::trace;
     use serde_json::json;
 
+    #[trace("TC-488", "FR-376-AC-1")]
     #[test]
     fn value_record_references_resolve_through_the_actual_holder_row() {
         let slot_id = |slot| {

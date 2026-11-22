@@ -1487,30 +1487,10 @@ pub(super) fn resolve_slots(
     for (position, ((node, row), body)) in graph.nodes.iter_mut().zip(rows).zip(bodies).enumerate()
     {
         let row_site = Site::new(PackageReadStage::WireChecks, position, "owner_schema");
-        let mut to_index = |id: &mut super::CheckedNodeId| -> Result<(), ValidationFailure> {
-            for segment in &mut id.path {
-                if let CheckedNodePathSegment::Operand(slot) = segment {
-                    if let Some(entry) = usize::try_from(*slot).ok().and_then(|slot| row.get(slot))
-                    {
-                        *segment = match entry {
-                            CheckedOperandEntry::Node(entry) => {
-                                CheckedNodePathSegment::Index(*entry)
-                            }
-                            CheckedOperandEntry::Dependency(operand) => {
-                                CheckedNodePathSegment::Dependency {
-                                    package: read_charge::boxed_str(
-                                        budget,
-                                        row_site,
-                                        &operand.package,
-                                    )?,
-                                    node: operand.node,
-                                }
-                            }
-                        };
-                    }
-                }
-            }
-            Ok(())
+        let mut to_index = |id: &mut super::CheckedNodeId| {
+            resolve_id_operand_slots(id, row, |package| {
+                read_charge::boxed_str(budget, row_site, package)
+            })
         };
         to_index(&mut node.node_id)?;
         to_index(&mut node.semantic_type)?;
@@ -1527,6 +1507,44 @@ pub(super) fn resolve_slots(
         resolve_document_body(TermNode::of(body), budget, site)?;
     }
     Ok(())
+}
+
+/// Rewrites operand-slot path segments through the holder's row. The caller
+/// supplies the dependency-package clone operation so it can charge first.
+pub(super) fn resolve_id_operand_slots<E>(
+    id: &mut super::CheckedNodeId,
+    row: &[CheckedOperandEntry],
+    mut dependency_package: impl FnMut(&str) -> Result<Box<str>, E>,
+) -> Result<(), E> {
+    for segment in &mut id.path {
+        if let Some(resolved) = resolve_operand_segment(segment, row, &mut dependency_package)? {
+            *segment = resolved;
+        }
+    }
+    Ok(())
+}
+
+/// Resolves one operand-slot segment through its holder row, if the row names
+/// that slot. An unnamed slot remains unresolved for the caller to retain.
+pub(super) fn resolve_operand_segment<E>(
+    segment: &CheckedNodePathSegment,
+    row: &[CheckedOperandEntry],
+    mut dependency_package: impl FnMut(&str) -> Result<Box<str>, E>,
+) -> Result<Option<CheckedNodePathSegment>, E> {
+    let CheckedNodePathSegment::Operand(slot) = segment else {
+        return Ok(None);
+    };
+    let Some(entry) = usize::try_from(*slot).ok().and_then(|slot| row.get(slot)) else {
+        return Ok(None);
+    };
+    let resolved = match entry {
+        CheckedOperandEntry::Node(index) => CheckedNodePathSegment::Index(*index),
+        CheckedOperandEntry::Dependency(operand) => CheckedNodePathSegment::Dependency {
+            package: dependency_package(&operand.package)?,
+            node: operand.node,
+        },
+    };
+    Ok(Some(resolved))
 }
 
 fn resolve_document_body(
