@@ -4457,7 +4457,15 @@ fn validate_graph<'w>(
         meter,
     )?;
     claim_terminal::validate_terminal(&graph.nodes, &kinds, &terms, &index, &owners, meter)?;
-    step_relation::validate_step_relations(&graph.nodes, &kinds, &terms, &index, &owners, meter)?;
+    step_relation::validate_step_relations(
+        &graph.nodes,
+        &kinds,
+        &terms,
+        &index,
+        structural_keys,
+        &owners,
+        meter,
+    )?;
     validate_hyperproperties(&graph.nodes, &kinds, &index, &owners, &terms, meter)?;
     refinement::validate_step_rows(
         &graph.nodes,
