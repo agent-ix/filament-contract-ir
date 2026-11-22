@@ -562,7 +562,6 @@ fn large_requirement_record_package(record_count: usize) -> Value {
         })
         .collect::<Vec<_>>();
     let application_template = nodes[previous_position].clone();
-    let integer_type_id = application_template["semantic_type"].clone();
     nodes[previous_position]["occurrences"] = json!([{"role":"expression","ordinal":0}]);
 
     let mut application_positions = Vec::with_capacity(record_count);
@@ -578,7 +577,7 @@ fn large_requirement_record_package(record_count: usize) -> Value {
         application["node_id"] = application_id.clone();
         application["occurrences"] = json!([{"role":"expression","ordinal":0}]);
         application["body"]["arguments"][0] = json!({"term":"reference","target":previous_id});
-        let mut dependencies = vec![previous_id, integer_type_id.clone()];
+        let mut dependencies = vec![previous_id];
         sort_graph_ids(&mut dependencies);
         application["dependencies"] = Value::Array(dependencies);
         nodes.push(application);
