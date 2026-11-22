@@ -669,7 +669,25 @@ fn check_wire_shape(
                             return Err(malformed(binders_at.key("members"), failure_at));
                         }
                         references(value, &binders_at, budget, site, failure_at)?;
-                        2
+                        match members.get(2).and_then(|member| member.view()) {
+                            Some(super::TermView::Binding {
+                                name: "quantifier",
+                                value,
+                                ..
+                            }) => {
+                                let quantifier_at = at.key("members").index(2).key("value");
+                                if let Err(failure) =
+                                    word(value, &["each", "some"], &quantifier_at, failure_at)
+                                {
+                                    return Err(match failure {
+                                        WireFailure::Malformed => malformed(at, failure_at),
+                                        other => other,
+                                    });
+                                }
+                                3
+                            }
+                            _ => 2,
+                        }
                     }
                     _ => 1,
                 };
@@ -2095,6 +2113,22 @@ fn is_quantified_binders(term: Option<&CheckedTerm>) -> bool {
 }
 
 #[ix_trace_rs::string_edge]
+fn is_guard_part_quantifier(term: Option<&CheckedTerm>) -> bool {
+    matches!(term, Some(CheckedTerm::Binding { name, .. }) if name.as_ref() == "quantifier")
+}
+
+fn guard_part_constraint_start(part: &CheckedTerm) -> usize {
+    if !is_quantified_binders(typed_members(part).get(1)) {
+        return 1;
+    }
+    if is_guard_part_quantifier(typed_members(part).get(2)) {
+        3
+    } else {
+        2
+    }
+}
+
+#[ix_trace_rs::string_edge]
 fn extend_place_slots<'a>(
     slots: &mut Vec<&'a CheckedNodeId>,
     constraint: &'a CheckedTerm,
@@ -2110,6 +2144,73 @@ fn extend_place_slots<'a>(
         slots.extend(more);
     }
     Ok(())
+}
+
+fn guard_part_binds_unbounded_slot(
+    graph: &Graph<'_>,
+    position: usize,
+    part: &CheckedTerm,
+    part_at: Path,
+    meter: &mut WorkMeter,
+) -> Result<bool, ValidationFailure> {
+    let members = typed_members(part);
+    if !is_quantified_binders(members.get(1)) {
+        return Ok(false);
+    }
+    let binders = bound(part, 1).map(typed_members).unwrap_or_default();
+    let constraint_start = guard_part_constraint_start(part);
+    for (constraint_index, constraint) in members.iter().enumerate().skip(constraint_start) {
+        let constraint_at = part_at.key("members").index(constraint_index).key("target");
+        let constraint_position =
+            graph.target(meter, position, Some(constraint), constraint_at, |kind| {
+                kind == CheckedNodeKind::TimedModel(TimedModelForm::Constraint)
+            })?;
+        let constraint_body = graph.body(meter, constraint_position)?;
+        if bound(constraint_body, 0).and_then(spelling) != Some("place") {
+            continue;
+        }
+        let place_position = graph.target(
+            meter,
+            position,
+            bound(constraint_body, 1),
+            constraint_at,
+            |kind| kind == CheckedNodeKind::TimedModel(TimedModelForm::Place),
+        )?;
+        let place_body = graph.body(meter, place_position)?;
+        let steps = bound(place_body, 1).map(typed_members).unwrap_or_default();
+        let rows = bound(place_body, 2).map(typed_members).unwrap_or_default();
+        let slots = bound(constraint_body, 3)
+            .map(typed_members)
+            .unwrap_or_default();
+        let mut slot_index = 0;
+        for (step_index, _) in steps.iter().enumerate() {
+            work(meter, part_at, 1)?;
+            if !steps
+                .get(step_index + 1)
+                .is_some_and(|next| path_step_kind(next) == Some(PathStepKind::Slot))
+            {
+                continue;
+            }
+            let row = rows.get(step_index);
+            let slot = slots.get(slot_index).and_then(typed_target);
+            slot_index += 1;
+            if row.and_then(|row| text_member(row, 6)) != Some("unbounded") {
+                continue;
+            }
+            let Some(slot) = slot else {
+                continue;
+            };
+            for binder in binders {
+                work(meter, part_at, 1)?;
+                if let Some(target) = typed_target(binder) {
+                    if meter.compare_ids(target, slot)?.is_eq() {
+                        return Ok(true);
+                    }
+                }
+            }
+        }
+    }
+    Ok(false)
 }
 
 fn check_quantified_binders(
@@ -2943,11 +3044,7 @@ fn check_timed_reference_order(
             .enumerate()
         {
             let at = binding_at(position, 1).key("members").index(part_index);
-            let first_constraint = if is_quantified_binders(typed_members(part).get(1)) {
-                2
-            } else {
-                1
-            };
+            let first_constraint = guard_part_constraint_start(part);
             if let Some(members) = typed_members(part).get(first_constraint..) {
                 check_reference_order(
                     graph,
@@ -3861,11 +3958,7 @@ pub(super) fn validate_models<'a>(
                         bound(part, 0),
                         at.key("members").index(0).key("value").key("target"),
                     )?;
-                    let first_constraint = if is_quantified_binders(typed_members(part).get(1)) {
-                        2
-                    } else {
-                        1
-                    };
+                    let first_constraint = guard_part_constraint_start(part);
                     let mut slots = Vec::new();
 
                     for (constraint_index, constraint) in typed_members(part)
@@ -3895,7 +3988,7 @@ pub(super) fn validate_models<'a>(
                             ));
                         }
                     }
-                    if first_constraint == 2 {
+                    if first_constraint >= 2 {
                         check_quantified_binders(
                             &graph,
                             position,
@@ -3904,6 +3997,20 @@ pub(super) fn validate_models<'a>(
                             &slots,
                             meter,
                         )?;
+                    }
+                    let family =
+                        guard_part_binds_unbounded_slot(&graph, position, part, at, meter)?;
+                    let has_quantifier = is_guard_part_quantifier(typed_members(part).get(2));
+                    if family && !has_quantifier {
+                        return Err(graph.issue(meter, position, Cause::TimedNodeReference, at));
+                    }
+                    if !family && has_quantifier {
+                        return Err(graph.issue(
+                            meter,
+                            position,
+                            Cause::TimedNodeReference,
+                            at.key("members").index(2).key("value"),
+                        ));
                     }
                 }
             }
@@ -4016,11 +4123,7 @@ pub(super) fn validate_models<'a>(
                 .iter()
                 .enumerate()
             {
-                let first_constraint = if is_quantified_binders(typed_members(part).get(1)) {
-                    2
-                } else {
-                    1
-                };
+                let first_constraint = guard_part_constraint_start(part);
                 for (constraint_index, member) in typed_members(part)
                     .iter()
                     .enumerate()
