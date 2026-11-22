@@ -196,12 +196,15 @@ fn certificate_property_walks_conditional_schemas() {
     let schema = serde_json::json!({
         "allOf": [{
             "if": {"properties": {"transition": {"type": "null"}}, "required": ["transition"]},
-            "then": {"not": {"required": ["part"]}}
+            "then": {"not": {"properties": {"part": {"type": "integer"}}, "required": ["part"]}}
         }]
     });
     let definitions = serde_json::Map::new();
     let mut names = BTreeSet::new();
     certificate_properties(&schema, &definitions, &mut names)
         .expect("conditional certificate schemas are supported");
-    assert_eq!(names, BTreeSet::from(["transition".to_owned()]));
+    assert_eq!(
+        names,
+        BTreeSet::from(["part".to_owned(), "transition".to_owned()])
+    );
 }
