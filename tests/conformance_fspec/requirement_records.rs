@@ -295,44 +295,77 @@ fn value_validity_package(reverse_graph: bool) -> Value {
 fn boolean_value_guard_package() -> Value {
     let mut package = value_validity_package(false);
     let boolean = node_id("scalar_type/boolean");
+    let (boolean_parameter_position, record_rows) = {
+        let nodes = package["semantic_graph"]["nodes"]
+            .as_array_mut()
+            .expect("graph nodes");
+        let integer_parameter = nodes
+            .iter()
+            .find(|node| node["node_id"] == node_id("value/parameter/n/0"))
+            .expect("integer parameter")
+            .clone();
+        let boolean_parameter_id = node_id("value/parameter/p/0");
+        let mut boolean_parameter = integer_parameter;
+        boolean_parameter["node_id"] = boolean_parameter_id.clone();
+        boolean_parameter["semantic_type"] = boolean.clone();
+        boolean_parameter["body"]["members"][0]["value"]["value"] = json!("p");
+        nodes.push(boolean_parameter);
+
+        let root = nodes
+            .iter_mut()
+            .find(|node| node["node_id"] == node_id("expression/boolean_and"))
+            .expect("Boolean body root");
+        root["body"]["arguments"][1] = json!({"term":"reference","target":boolean_parameter_id});
+        root["dependencies"] = json!([
+            node_id("expression/integer_ge"),
+            boolean_parameter_id.clone(),
+            boolean.clone()
+        ]);
+        let owner = nodes
+            .iter_mut()
+            .find(|node| node["node_tag"] == "function")
+            .expect("function owner");
+        owner["dependencies"] = json!([
+            boolean_parameter_id.clone(),
+            node_id("expression/boolean_and")
+        ]);
+        owner["body"]["members"][0]["value"]["members"]
+            .as_array_mut()
+            .expect("owner parameters")
+            .push(json!({"term":"reference","target":boolean_parameter_id.clone()}));
+
+        let boolean_parameter_position = nodes
+            .iter()
+            .position(|node| node["node_id"] == boolean_parameter_id)
+            .expect("Boolean parameter position");
+        let record_rows = nodes
+            .iter()
+            .enumerate()
+            .filter_map(|(position, node)| {
+                (node["semantic_form"] == "value_validity").then(|| {
+                    (
+                        position,
+                        node["body"]["members"][2]["value"]["value"]
+                            .as_u64()
+                            .expect("application occurrence"),
+                    )
+                })
+            })
+            .collect::<Vec<_>>();
+        (boolean_parameter_position, record_rows)
+    };
+    for &(record_position, application_occurrence) in &record_rows {
+        rekey_requirement_record(
+            &mut package,
+            record_position,
+            boolean_parameter_position,
+            application_occurrence == 0,
+        );
+    }
+    let boolean_parameter_id = node_id("value/parameter/p/0");
     let nodes = package["semantic_graph"]["nodes"]
         .as_array_mut()
         .expect("graph nodes");
-    let integer_parameter = nodes
-        .iter()
-        .find(|node| node["node_id"] == node_id("value/parameter/n/0"))
-        .expect("integer parameter")
-        .clone();
-    let boolean_parameter_id = node_id("value/parameter/p/0");
-    let mut boolean_parameter = integer_parameter;
-    boolean_parameter["node_id"] = boolean_parameter_id.clone();
-    boolean_parameter["semantic_type"] = boolean.clone();
-    boolean_parameter["body"]["members"][0]["value"]["value"] = json!("p");
-    nodes.push(boolean_parameter);
-
-    let root = nodes
-        .iter_mut()
-        .find(|node| node["node_id"] == node_id("expression/boolean_and"))
-        .expect("Boolean body root");
-    root["body"]["arguments"][1] = json!({"term":"reference","target":boolean_parameter_id});
-    root["dependencies"] = json!([
-        node_id("expression/integer_ge"),
-        boolean_parameter_id.clone(),
-        boolean.clone()
-    ]);
-    let owner = nodes
-        .iter_mut()
-        .find(|node| node["node_tag"] == "function")
-        .expect("function owner");
-    owner["dependencies"] = json!([
-        boolean_parameter_id.clone(),
-        node_id("expression/boolean_and")
-    ]);
-    owner["body"]["members"][0]["value"]["members"]
-        .as_array_mut()
-        .expect("owner parameters")
-        .push(json!({"term":"reference","target":boolean_parameter_id.clone()}));
-
     for record in nodes
         .iter_mut()
         .filter(|node| node["semantic_form"] == "value_validity")
@@ -378,6 +411,48 @@ fn boolean_value_guard_package() -> Value {
     settle(&mut package);
     rebuild_complete_source_map(&mut package);
     package
+}
+
+fn rekey_requirement_record(
+    package: &mut Value,
+    record_position: usize,
+    guard_position: usize,
+    holds: bool,
+) {
+    let (old_id, new_id) = {
+        let record = &mut package["semantic_graph"]["nodes"][record_position];
+        let old_id = record["node_id"].clone();
+        let path = record["node_id"]["path"]
+            .as_array_mut()
+            .expect("record structural path");
+        let guards = path
+            .iter()
+            .position(|segment| segment == "guards")
+            .expect("guard path segment");
+        let roots = path
+            .iter()
+            .enumerate()
+            .skip(guards + 1)
+            .find_map(|(index, segment)| (segment == "roots").then_some(index))
+            .expect("roots path segment");
+        path.splice(
+            guards + 1..roots,
+            [
+                json!({"node":guard_position}),
+                json!("0"),
+                json!(holds.to_string()),
+            ],
+        );
+        (old_id, record["node_id"].clone())
+    };
+    for row in package["requirement_items"]
+        .as_array_mut()
+        .expect("requirement rows")
+    {
+        if row["record"] == old_id {
+            row["record"] = new_id.clone();
+        }
+    }
 }
 
 #[trace("TC-488", "FR-376-AC-1")]
@@ -1312,20 +1387,37 @@ fn published_requirement_record_vectors_admit_boolean_value_guards_and_refuse_in
     assert!(records.iter().all(|record| record.extent_roots.len() == 2));
 
     let mut adverse = package;
-    let nodes = adverse["semantic_graph"]["nodes"]
-        .as_array_mut()
-        .expect("nodes");
-    let record_position = nodes
-        .iter()
-        .position(|node| {
-            node["semantic_form"] == "value_validity"
-                && node["body"]["members"][2]["value"]["value"] == 0
-        })
-        .expect("first occurrence record");
     let integer_parameter = node_id("value/parameter/n/0");
-    nodes[record_position]["body"]["members"][5]["value"]["members"][0]["members"][0]["value"] =
-        json!({"term":"reference","target":integer_parameter});
-    sync_body_dependencies(&mut nodes[record_position]);
+    let (record_position, integer_parameter_position, holds) = {
+        let nodes = adverse["semantic_graph"]["nodes"]
+            .as_array_mut()
+            .expect("nodes");
+        let record_position = nodes
+            .iter()
+            .position(|node| {
+                node["semantic_form"] == "value_validity"
+                    && node["body"]["members"][2]["value"]["value"] == 0
+            })
+            .expect("first occurrence record");
+        let integer_parameter_position = nodes
+            .iter()
+            .position(|node| node["node_id"] == integer_parameter)
+            .expect("integer parameter position");
+        nodes[record_position]["body"]["members"][5]["value"]["members"][0]["members"][0]
+            ["value"] = json!({"term":"reference","target":integer_parameter});
+        sync_body_dependencies(&mut nodes[record_position]);
+        let holds = nodes[record_position]["body"]["members"][5]["value"]["members"][0]["members"]
+            [2]["value"]["value"]
+            .as_bool()
+            .expect("guard holds value");
+        (record_position, integer_parameter_position, holds)
+    };
+    rekey_requirement_record(
+        &mut adverse,
+        record_position,
+        integer_parameter_position,
+        holds,
+    );
     settle(&mut adverse);
     rebuild_complete_source_map(&mut adverse);
     let pointer = format!("/semantic_graph/nodes/{record_position}/body/members/5/value/members/0");

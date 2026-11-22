@@ -994,7 +994,7 @@ fn occurrence_role_wire(role: &CheckedOccurrenceRole) -> &'static str {
 /// One admitted path-condition guard for a value-validity record.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RequirementGuard {
-    /// Boolean expression node of the guard.
+    /// Boolean expression or literal/parameter value node used as the guard.
     pub guard: CheckedNodeId,
     /// Guard expression occurrence ordinal.
     pub occurrence: u64,
