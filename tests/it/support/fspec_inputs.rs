@@ -12,7 +12,7 @@ use filament_contract_model::{
     CheckedPackageV2ReadResult,
 };
 use fixture_support::retention_definition;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::collections::BTreeMap;
 use std::path::Path;
 
@@ -512,10 +512,9 @@ pub(crate) fn apply_dependency_call_patch(package: &mut Value, patch: &Value) {
             items[member.parse::<usize>().expect("array index")] = patch["value"].clone();
         }
         ("add", Value::Object(map)) => {
-            assert!(
-                map.insert(member.to_owned(), patch["value"].clone())
-                    .is_none()
-            );
+            assert!(map
+                .insert(member.to_owned(), patch["value"].clone())
+                .is_none());
         }
         (operation, _) => panic!("unsupported published patch {operation}: {path}"),
     }

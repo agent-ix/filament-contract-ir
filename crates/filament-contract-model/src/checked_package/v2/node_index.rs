@@ -7,16 +7,16 @@
 //! stage is charged to the read's budget before it is made
 //! (FR-038 "Budget-charged strict read", stage `NodeIndex`).
 
-use super::TermNode;
 use super::native_join_budget::{NativeJoinBudget, PackageReadStage};
 use super::read_charge::{self, Site};
+use super::TermNode;
 use super::{CheckedNodePathSegment, RawCheckedPackageWireV2, ValidationFailure};
 use crate::checked_package::common::Step;
 use crate::checked_package::evidence::CheckedPackageEvidence;
 use crate::checked_package::shared::CheckedOperandEntry;
 use crate::checked_package::shared::{
-    CheckedPackageRefusal, CheckedPackageRefusalCode, CheckedPackageRefusalLocation, JsonPointer,
-    push_index, push_key,
+    push_index, push_key, CheckedPackageRefusal, CheckedPackageRefusalCode,
+    CheckedPackageRefusalLocation, JsonPointer,
 };
 use quire_canonical::{Document, Items, Members, Node, NodeRef};
 use std::sync::Arc;
@@ -1721,7 +1721,7 @@ pub(super) fn restore_slots(id: &mut super::CheckedNodeId, row: &[CheckedOperand
 
 #[cfg(test)]
 mod tests {
-    use super::{StructuralOrder, contains_inline_node_path, malformed_at};
+    use super::{contains_inline_node_path, malformed_at, StructuralOrder};
     use crate::checked_package::v2::native_join_budget::{
         NativeJoinBudget, NativeJoinLocus, NativeJoinLocusSource, PackageReadStage,
     };

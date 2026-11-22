@@ -5,8 +5,8 @@
 
 use super::fixture_support;
 use super::{
-    DOMAIN_DOCUMENT, cause_word, code_word, fixtures_dir, proposal_dir_of, read_json,
-    read_json_wire, read_package, read_package_with_document_and_extensions_at_limit,
+    cause_word, code_word, fixtures_dir, proposal_dir_of, read_json, read_json_wire, read_package,
+    read_package_with_document_and_extensions_at_limit, DOMAIN_DOCUMENT,
 };
 use filament_contract_model::{
     CheckedNodeId, CheckedNodeKind, CheckedNodePathSegment, CheckedNodeTag, CheckedOperandEntry,
@@ -15,7 +15,7 @@ use filament_contract_model::{
     ContractPackageReadResult, ContractPackageWireV1, ExpressionForm, LoweringProfileRef,
 };
 use ix_trace_rs::trace;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
