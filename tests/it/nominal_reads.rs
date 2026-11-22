@@ -490,7 +490,7 @@ fn source_enum_runtime_type_projection_requires_authenticated_row() {
         refusal.code,
         ExactTypeProjectionErrorCode::UnavailableIdentityWitness
     );
-    assert_eq!(refusal.at.as_ref(), Some(&enum_id));
+    assert_eq!(refusal.at.as_deref(), Some(&enum_id));
     assert_eq!(missing_row_budget.last_success_delta(), None);
 }
 
