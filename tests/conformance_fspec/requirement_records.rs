@@ -621,8 +621,10 @@ fn large_requirement_record_package(record_count: usize) -> Value {
         .as_bool()
         .expect("guard outcome");
     let mut requirement_rows = Vec::with_capacity(record_count);
-    for (&application_position, application_id) in
-        application_positions.iter().zip(&application_ids)
+    for (generated_index, (&application_position, application_id)) in application_positions
+        .iter()
+        .zip(&application_ids)
+        .enumerate()
     {
         let record_id = json!({
             "package":package_name,
@@ -637,7 +639,7 @@ fn large_requirement_record_package(record_count: usize) -> Value {
         });
         let mut record = record_template.clone();
         record["node_id"] = record_id.clone();
-        record["occurrences"] = json!([{"role":"generated","ordinal":0}]);
+        record["occurrences"] = json!([{"role":"generated","ordinal":generated_index}]);
         record["body"]["members"][1]["value"]["target"] = application_id.clone();
         for dependency in record["dependencies"]
             .as_array_mut()
