@@ -1313,6 +1313,7 @@ mod tests {
         let mut comparisons = 0;
         let found = first_unnamed_position(&records, &named, &mut || comparisons += 1);
         assert_eq!(found, None);
+        assert!(comparisons >= RECORDS);
         let comparisons_per_lookup = usize::BITS as usize - RECORDS.leading_zeros() as usize + 1;
         assert!(
             comparisons <= RECORDS * comparisons_per_lookup,
@@ -1330,6 +1331,7 @@ mod tests {
             }),
             Some(first_missing)
         );
+        assert!(missing_comparisons > 0);
         assert!(
             missing_comparisons <= RECORDS * comparisons_per_lookup,
             "first missing record lookup used {missing_comparisons} comparisons"
