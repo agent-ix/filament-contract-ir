@@ -35,3 +35,13 @@ This planless audit checked the repository's computed matrix and coverage data, 
 - Coverage diagnostics: 308 untracked symbols and 2,049 diagnostics; these are repository-wide existing scan results. Example reasons include `trace-id-outside-marker`, `uncatalogued-verification-method`, and `section-matches-nothing`.
 - Reverse-gap/stub check: IR-1579's dependency-row constraints are owned by the local operand-row requirements and FSpec FR-322-AC-521; the 32-vector test exercises the reader and checks exact refusals. No `todo!`, `unimplemented!`, `TODO`, `FIXME`, or `XXX` markers were found under `src/` or `crates/`. The full public API surface was not manually traced; the source search counted 1,567 public declaration matches across 170 files. Test-stub inspection was limited to the changed test and support helper.
 - Semantic review: skipped (not requested).
+
+## Dispositions
+
+Round 1. Compared the matrix and coverage results at the reviewed branch with `origin/main` at `0e41bcda99c0a3317055f9989d60ff0eb4529bc6`. Both sides report 1,207 tagged, 115 untagged, 1 ignored-only, 26 method-without-symbol, 8 retired; 308 untracked symbols; and 2,049 diagnostics. FR-038-AC-521, AC-539 and AC-540 are tagged by TC-048/TC-474 on `origin/main` as well. No IR-1579 change introduces these repository-wide findings.
+
+| FND | Outcome | Reason |
+| --- | --- | --- |
+| FND-001 | deferred | All 115 untagged criteria are present with the same status on `origin/main`; the three IR-1579 criteria remain tagged and the change adds no untagged obligation. This is separate repository-level matrix remediation for the Contract IR spec/evidence owners (`terra:IR:codex`); no single follow-up ticket for this broad set was found. IR-1580 only covers FR-070 verification metadata. |
+| FND-002 | deferred | All 308 untracked symbols and 2,049 diagnostics are present with the same counts on `origin/main`; the IR-1579 trace binding is not among the untracked symbols. Route repository-wide stale-tag reconciliation to the Contract IR spec/evidence owners (`terra:IR:codex`) as separate tracked work; no single follow-up ticket for the full set was found. |
+| FND-003 | deferred | The 1,567 public declaration matches across 170 Rust files predate IR-1579; this finding records that the review's reverse-gap pass was intentionally limited to the assigned change. A full repository surface audit is separate work for the Contract IR spec/evidence owners (`terra:IR:codex`), not an implementation change in PR #1130. |
