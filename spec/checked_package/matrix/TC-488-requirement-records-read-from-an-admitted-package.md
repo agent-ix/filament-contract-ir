@@ -13,7 +13,7 @@ relationships:
 
 Verify [FR-376](../functional/FR-376-admit-the-requirement-records-of-a-checked-package.md):
 the reader admits FSpec FR-825's `requirement_items` rows and
-`claim`/`value_validity` nodes, refuses each defect with FR-825's code, cause
+`claim`/`value_validity` and `claim`/`operation_contract` nodes, refuses each defect with FR-825's code, cause
 and pointer in FR-322's check order, and exposes the records through
 `requirement_items()` and `value_validity_records_of()` in package order.
 Scope: FR-376-AC-1 to FR-376-AC-4.
@@ -41,6 +41,18 @@ Scope: FR-376-AC-1 to FR-376-AC-4.
 4. Read a package with 1,000 value-validity records and 1,000 shared guard
    frames under a 1,000-deep body; measure retained requirement-record
    storage and the reader's storage charges.
+5. Read FR-825-AC-3's package containing the operation-contract row; inspect
+   the typed `OperationContract` variant and compare its result bound,
+   invariant marker, operation anchor, model-object refs and ordered
+   population records (member type, ordinal and maximum) with the source
+   record. Round-trip the writer and reorder graph nodes, then verify equal
+   typed rows and node identities.
+6. Apply FR-825-AC-10's operation-record mutations separately, including a
+   wrong form, missing/orphan record, operation mismatch, population and
+   maximum mismatch, identity-path mismatch, and row-extent mismatch. Also
+   combine a malformed row shape with a malformed record body and verify
+   strict-wire row-shape precedence; combine a valid row shape with semantic
+   row-join mismatch and verify the operation-record-node error precedes it.
 
 ## Expected Results
 
@@ -56,3 +68,7 @@ Scope: FR-376-AC-1 to FR-376-AC-4.
   uncharged item; each owner body is traversed once for its records.
 - Step 4: retained storage and reader charges scale with frame rows plus
   records; no record holds a depth-sized guard vector.
+- Step 5: the typed record equals FR-825's source record, writer output and
+  graph-order permutation retain equal rows and identities.
+- Step 6: every refusal uses the first defect's exact code, cause and pointer;
+  no partial package is admitted.

@@ -18,8 +18,9 @@ relationships:
 ## Description
 
 When a V2 checked package carries `requirement_items` rows or
-`claim`/`value_validity` nodes, the Contract IR reader SHALL admit exactly
-FSpec FR-825's rows, node body and joins, or refuse the whole package at the
+`claim`/`value_validity` or `claim`/`operation_contract` nodes, the Contract
+IR reader SHALL admit exactly FSpec FR-825's rows, node bodies and joins, or
+refuse the whole package at the
 first defect in FR-825's reader order. The canonical writer SHALL retain the
 admitted rows and nodes unchanged. An admitted package SHALL expose the
 records through one typed read, so a consumer that holds only the package
@@ -44,7 +45,7 @@ package.
 
 ## Behavior
 
-The reader SHALL add `value_validity` to the closed `claim` form vocabulary
+The reader SHALL add `value_validity` and `operation_contract` to the closed `claim` form vocabulary
 and `requirement_items` to the closed top-level members, while continuing to
 refuse every unknown `claim` form as `invalid_semantic_graph` at
 `/semantic_graph/nodes/{n}/semantic_form` and every unknown top-level member
@@ -57,22 +58,26 @@ step, and the `checked_term_data` step after it (FSpec FR-322 "Check
 order"). In this crate that step SHALL run in `v2/mod.rs` after
 `probabilistic_join::validate` and before `checked_term_data` validation.
 Within the step it SHALL validate FSpec FR-825's `path_condition_frames`
-table first; then its `claim`/`value_validity` nodes in ascending structural
-node-id order; then its `requirement_items` rows in array order; then record
+table first; then its `claim`/`value_validity` and
+`claim`/`operation_contract` nodes in ascending structural node-id order;
+then its `requirement_items` rows in array order; then record
 coverage and generated ordinals. It SHALL refuse the first failure with
 exactly the code, cause and pointer FR-825 gives. One owner-body walk from its
 body root (not its measure) SHALL derive all scalar-operation path conditions
-for that owner, validate each frame's parent and required branch polarity,
-and compare every record's terminal frame id with the independently derived
-chain for the record's application occurrence. A mismatch is refused; the
-reader SHALL NOT trust the emitter's table without this comparison. The reader
-SHALL charge the caller's reader budget before each FR-825 validation item.
+for each owner, validate each frame's parent and required branch polarity,
+and compare each value-validity record's terminal frame id with the
+independently derived chain for its application occurrence. Operation-contract records have no owner
+or path condition and SHALL NOT be assigned frames. A mismatch is refused; the
+reader SHALL NOT trust the emitter's table without this comparison. The
+reader SHALL charge the caller's reader budget before each FR-825 validation
+item.
 When the budget is exhausted, the reader SHALL return `incomplete` at the
 first uncharged member, with no partial package.
 
-The reader SHALL compare the record node's identity terminal frame id with
-its body binding and SHALL derive/validate the path-condition chain as FR-825
-requires. It SHALL NOT recompute an extent, re-derive an owner, or refuse a
+The reader SHALL compare a value-validity node's identity terminal frame id
+with its body binding and SHALL derive/validate the path-condition chain as
+FR-825 requires. It SHALL validate operation-contract node identity and joins
+as FR-825 requires. It SHALL NOT recompute an extent, re-derive an owner, or refuse a
 package because it lacks a record the producer's checker might have written.
 
 ### Public requirement rows
@@ -89,7 +94,24 @@ pub struct RequirementItemRow {
     pub occurrence: Occurrence,        // its role and ordinal
     pub kind: CapabilityKind,          // FSpec FR-290 kind
     pub extent: RequirementExtent,     // Bounded | Unbounded(Vec<(DomainKey, DomainKind)>)
-    pub record: Option<ValueValidityRecord>,
+    pub record: Option<RequirementRecord>,
+}
+pub enum RequirementRecord {
+    ValueValidity(ValueValidityRecord),
+    OperationContract(OperationContractRecord),
+}
+pub struct OperationContractRecord {
+    pub node: CheckedNodeId,
+    pub result_bound: CheckedNodeId, // Boolean type node
+    pub invariant: bool,
+    pub operation: Option<CheckedNodeId>, // operation anchor
+    pub model_objects: Vec<CheckedNodeId>,
+    pub populations: Vec<OperationPopulation>,
+}
+pub struct OperationPopulation {
+    pub member_type: CheckedNodeId,
+    pub ordinal: u64,
+    pub maximum: Option<u64>,
 }
 pub struct ValueValidityRecord {
     pub node: CheckedNodeId,           // the claim/value_validity node
@@ -129,10 +151,12 @@ admitted package.
   nodes in different graph orders return equal rows.
 - Every id SHALL be in the resolved-graph form the admitted package exposes,
   and ids compare by structural key (FSpec FR-322 "Rebuilding the key").
-- `record` is `Some` exactly for a `value-validity` row; every field is read
-  from the admitted node's body in FR-825's binding order, `conversion`
-  `None` for the empty aggregate, and `path_condition_frame` is `None` for its
-  empty aggregate or the sole terminal frame id otherwise.
+- `record` is `Some` exactly for `value-validity` and `operation-contract`
+  rows, with the matching enum variant. Value-validity fields are read from
+  FR-825's binding order. Operation-contract fields are read from its five
+  bindings; its row supplies the exact extent. `path_condition_frame` is
+  `None` for an unguarded value-validity record; operation-contract records
+  have no path condition.
 - `value_validity_records_of` returns the empty slice for a function that
   owns no record and for a node that is not a function. A package with no
   `requirement_items` returns the empty slice from both reads.
@@ -151,8 +175,8 @@ equal rows, frames and path-condition views in equal order.
 
 | ID | Criteria | Verification |
 | --- | --- | --- |
-| FR-376-AC-1 | The reader admits TC-2053's packages of FR-825-AC-1 to AC-3. For AC-1, `requirement_items()` returns two rows keyed at the `+` node's expression occurrences 0 and 1, both `value-validity` and bounded; their records retain `f`, their separate bounds and conversions, roots `[x]` and no objects. The first record has no terminal frame; the second has the terminal id of the `g(x + 1)` guard frame, whose view yields that guard with holds true. `path_condition_frames()` returns the shared table and `path_condition(record)` returns a borrowed outermost-first view. `value_validity_records_of(f)` returns `[0, 1]` and the read for `g` is empty. The writer round trip and a package with graph nodes in another order yield equal rows, frames and views. AC-3's non-value-validity rows have no record; an empty package returns empty rows, frames and owner indices. | Test (TC-488) |
-| FR-376-AC-2 | Each refusing mutation of FSpec FR-825-AC-4 and FR-825-AC-5, and each refusing package of FR-322-AC-473 (the two check-order packages and the `claim_names` row naming a `value_validity` node), refuses with FR-825's or FR-322's exact code, cause and pointer, observed separately through the public reader, and none admits a partial package; the admitted cases of those ACs are FR-376-AC-1's and FR-376-AC-3's; an unknown `claim` form still refuses at `semantic_form`. | Test (TC-488) |
+| FR-376-AC-1 | The reader admits TC-2053's packages of FR-825-AC-1 to AC-3. For AC-1, `requirement_items()` returns two `value-validity` rows keyed at the `+` node's expression occurrences 0 and 1; their records retain `f`, their separate bounds and conversions, roots `[x]` and no objects. The first record has no terminal frame; the second has the terminal id of the `g(x + 1)` guard frame, whose view yields that guard with holds true. `path_condition_frames()` returns the shared table and `path_condition(record)` returns a borrowed outermost-first view. `value_validity_records_of(f)` returns `[0, 1]` and the read for `g` is empty. AC-3's operation-contract row returns the `OperationContract` variant with the Boolean bound, invariant marker, operation, model-object references and populations equal to the source record; the temporal row has no record. The writer round trip and a package with graph nodes in another order yield equal rows, frames and views. An empty package returns empty rows, frames and owner indices. | Test (TC-488) |
+| FR-376-AC-2 | Each refusing mutation of FSpec FR-825-AC-4, AC-5 and AC-10, and each refusing package of FR-322-AC-473 (the two check-order packages and the `claim_names` row naming a record node), refuses with FR-825's or FR-322's exact code, cause and pointer, observed separately through the public reader, and none admits a partial package; an unknown `claim` form still refuses at `semantic_form`. | Test (TC-488) |
 | FR-376-AC-3 | The requirement-record step runs after `probabilistic_join::validate` and before `checked_term_data` validation: a package with a probabilistic defect and a record defect refuses at the probabilistic defect, and one with a record defect and a reversed probabilistic row refuses at the record defect. The reader charges each frame, record and owner-body node once; a budget one validation visit short returns `incomplete` at the first uncharged item and no partial package. An owner with multiple records is walked once. | Test (TC-488) |
 | FR-376-AC-4 | Admit a package with 1,000 value-validity records under a 1,000-deep nested guard body and 1,000 shared condition frames. The retained requirement-record, frame and view storage is at most 1,000 record entries plus 1,000 frame entries and O(1) indexes per entry (linear in records plus unique guards); the measured reader storage charge for those records is linear in the frame and record counts, and no record retains a 1,000-element guard vector. | Test, Analysis (TC-488) |
 
@@ -166,5 +190,6 @@ equal rows, frames and path-condition views in equal order.
 
 ## Status
 
-Planned. The current reader refuses `claim`/`value_validity` at its closed
-form gate and `requirement_items` as an unknown top-level member.
+Planned. The current reader refuses `claim`/`value_validity` and
+`claim`/`operation_contract` at its closed form gate and `requirement_items`
+as an unknown top-level member.
