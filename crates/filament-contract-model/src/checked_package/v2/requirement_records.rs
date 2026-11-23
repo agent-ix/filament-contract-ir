@@ -11,7 +11,7 @@ use super::{
 use crate::checked_package::common::ValidationFailure;
 use crate::checked_package::shared::{CheckedNodeId, CheckedOccurrence};
 use crate::checked_package::shared::{
-    CheckedNodePathSegment, CheckedOperandEntry, CheckedSourceMapEntry,
+    CheckedNodePathSegment, CheckedOperandEntry, CheckedSourceMapEntry, CheckedSourceRef,
 };
 use crate::checked_package::shared::{
     CheckedOccurrenceRole, CheckedPackageRefusalCause as Cause, CheckedPackageRefusalCode as Code,
@@ -646,8 +646,7 @@ pub(super) fn validate(
             kinds[position] == CheckedNodeKind::Claim(super::ClaimForm::OperationContract)
         })
         .collect();
-    let mut owner_paths: BTreeMap<usize, BTreeMap<(usize, u64), Option<PathConditionFrameId>>> =
-        BTreeMap::new();
+    let mut owner_paths: Option<BTreeMap<usize, OwnerPaths>> = None;
     let mut seen_frame_ids = BTreeSet::new();
     let mut used_frames =
         meter.vec(path_condition_frames.map_or(0, <[PathConditionFrameWire]>::len))?;
@@ -795,22 +794,30 @@ pub(super) fn validate(
                 meter,
             ));
         }
-        if !owner_paths.contains_key(&owner_position) {
-            let derived = derive_owner_path_conditions(
-                owner_position,
+        if owner_paths.is_none() {
+            owner_paths = Some(derive_package_path_conditions(
                 nodes,
+                kinds,
                 terms,
                 index,
                 &frame_index,
+                source_map,
                 position,
                 &mut seen_frame_ids,
                 meter,
-            )?;
-            owner_paths.insert(owner_position, derived);
+            )?);
         }
-        let expected_path = owner_paths
-            .get(&owner_position)
-            .and_then(|paths| paths.get(&(application_position, record.occurrence)));
+        let Some(owner_paths) = owner_paths.as_ref().and_then(|paths| paths.get(&owner_position))
+        else {
+            return Err(refuse(
+                position,
+                node_at.key("body").key("members").index(1),
+                Cause::InvalidValue,
+                nodes.get(position).map(|node| &node.node_id),
+                meter,
+            ));
+        };
+        let expected_path = owner_paths.get(&(application_position, record.occurrence));
         if expected_path != Some(&record.path_condition_frame) {
             return Err(refuse(
                 position,
@@ -2008,35 +2015,152 @@ fn path_condition_frame_index(
     Ok(entries)
 }
 
-fn derive_owner_path_conditions(
-    owner_position: usize,
+type OwnerPaths = BTreeMap<(usize, u64), Option<PathConditionFrameId>>;
+
+/// The terminal a branch carries when its frame is absent from the table: the
+/// emitter prunes a frame no record cites (FR-825), so a branch with no
+/// scalar-operation record has none. No record can cite this id.
+const PRUNED_FRAME: PathConditionFrameId = PathConditionFrameId(usize::MAX);
+
+/// The frame ids one owner's walk reached, in first-visit order.
+#[derive(Default)]
+struct OwnerFrames {
+    seen: BTreeSet<usize>,
+    order: Vec<usize>,
+}
+
+/// Derive the path condition of every scalar-operation occurrence in the
+/// package. Expression occurrences are numbered package-wide (FR-825): the
+/// owners are walked in declaration order, one count of visits per node
+/// carried across them, each owner's body before its measure.
+fn derive_package_path_conditions(
+    nodes: &[RawSemanticNodeV2],
+    kinds: &[CheckedNodeKind],
+    terms: &[CheckedTerm],
+    index: &GraphIndex<'_>,
+    frame_index: &[PathConditionFrameIndexEntry],
+    source_map: &[CheckedSourceMapEntry],
+    record_position: usize,
+    seen_frame_ids: &mut BTreeSet<usize>,
+    meter: &mut WorkMeter,
+) -> Result<BTreeMap<usize, OwnerPaths>, ValidationFailure> {
+    let at = Path::root().key("semantic_graph").key("nodes");
+    let owner_count = (0..nodes.len())
+        .filter(|&position| {
+            matches!(kinds[position], CheckedNodeKind::Function(_))
+                && terms.get(position).and_then(function_body_root).is_some()
+        })
+        .count();
+    let numbering_site = Site::new(
+        PackageReadStage::Graph,
+        record_position,
+        "requirement_items",
+        at,
+    );
+    let mut declared = stage_storage::vec::<Option<(&CheckedSourceRef, u64)>>(
+        meter,
+        &numbering_site,
+        nodes.len(),
+    )?;
+    declared.resize(nodes.len(), None);
+    for entry in source_map {
+        stage_storage::work(meter, &numbering_site, 1)?;
+        if entry.role != CheckedOccurrenceRole::Declaration {
+            continue;
+        }
+        let (Some(&position), Some(region)) = (index.get(&entry.node_id), entry.regions.first())
+        else {
+            continue;
+        };
+        let start = (&region.source, region.start);
+        if declared[position].is_none_or(|known| start < known) {
+            declared[position] = Some(start);
+        }
+    }
+    let mut owners = stage_storage::vec::<(Option<(&CheckedSourceRef, u64)>, usize)>(
+        meter,
+        &numbering_site,
+        owner_count,
+    )?;
+    for position in 0..nodes.len() {
+        if matches!(kinds[position], CheckedNodeKind::Function(_))
+            && terms.get(position).and_then(function_body_root).is_some()
+        {
+            owners.push((declared[position], position));
+        }
+    }
+    owners.sort_unstable();
+    let mut visit_counts = BTreeMap::<usize, usize>::new();
+    let mut paths = BTreeMap::new();
+    let mut frame_orders = BTreeMap::new();
+    for &(_, owner_position) in &owners {
+        let Some(root) = terms.get(owner_position).and_then(function_body_root) else {
+            continue;
+        };
+        let mut derived = OwnerPaths::new();
+        let mut frames = OwnerFrames::default();
+        walk_owner_expression(
+            root,
+            true,
+            nodes,
+            terms,
+            index,
+            frame_index,
+            record_position,
+            &mut visit_counts,
+            &mut derived,
+            &mut frames,
+            meter,
+        )?;
+        if let Some(measure) = function_measure_root(&terms[owner_position]) {
+            walk_owner_expression(
+                measure,
+                false,
+                nodes,
+                terms,
+                index,
+                frame_index,
+                record_position,
+                &mut visit_counts,
+                &mut derived,
+                &mut frames,
+                meter,
+            )?;
+        }
+        paths.insert(owner_position, derived);
+        frame_orders.insert(owner_position, frames.order);
+    }
+    // The table's canonical order is owner structural key ascending, then
+    // first visit; it is checked apart from the numbering order above.
+    for frame_id in frame_orders.values().flatten().copied() {
+        if seen_frame_ids.insert(frame_id) && frame_id + 1 != seen_frame_ids.len() {
+            return Err(refuse(
+                record_position,
+                Path::root().key("path_condition_frames"),
+                Cause::InvalidValue,
+                None,
+                meter,
+            ));
+        }
+    }
+    Ok(paths)
+}
+
+fn walk_owner_expression(
+    root: CheckedNodeId,
+    derive: bool,
     nodes: &[RawSemanticNodeV2],
     terms: &[CheckedTerm],
     index: &GraphIndex<'_>,
     frame_index: &[PathConditionFrameIndexEntry],
     record_position: usize,
-    seen_frame_ids: &mut BTreeSet<usize>,
+    visit_counts: &mut BTreeMap<usize, usize>,
+    derived: &mut OwnerPaths,
+    frames: &mut OwnerFrames,
     meter: &mut WorkMeter,
-) -> Result<BTreeMap<(usize, u64), Option<PathConditionFrameId>>, ValidationFailure> {
-    let Some(root) = terms.get(owner_position).and_then(function_body_root) else {
-        return Err(refuse(
-            record_position,
-            Path::root()
-                .key("semantic_graph")
-                .key("nodes")
-                .index(record_position)
-                .key("body")
-                .key("members")
-                .index(1),
-            Cause::InvalidValue,
-            nodes.get(record_position).map(|node| &node.node_id),
-            meter,
-        ));
-    };
+) -> Result<(), ValidationFailure> {
     let mut pending = vec![OwnerWalkTask::Node(root, None)];
-    let mut visit_counts = BTreeMap::<usize, usize>::new();
     let mut charged_nodes = BTreeSet::new();
-    let mut derived = BTreeMap::new();
     while let Some(task) = pending.pop() {
         match task {
             OwnerWalkTask::Node(id, terminal) => {
@@ -2061,8 +2185,8 @@ fn derive_owner_path_conditions(
                 let Some(term) = terms.get(position) else {
                     continue;
                 };
-                if let (Some(ordinal), Some(CheckedTerm::Application { operation, .. })) =
-                    (occurrence, Some(term))
+                if let (true, Some(ordinal), CheckedTerm::Application { operation, .. }) =
+                    (derive, occurrence, term)
                 {
                     if operation.identity().is_some_and(is_scalar_operation) {
                         derived.insert((position, ordinal), terminal);
@@ -2080,7 +2204,8 @@ fn derive_owner_path_conditions(
                     ..
                 } => {
                     let identity = operation.identity();
-                    if identity == Some("filament.op.control.if") && arguments.len() == 3 {
+                    if derive && identity == Some("filament.op.control.if") && arguments.len() == 3
+                    {
                         let guard = reference(&arguments[0]);
                         let Some((guard, occurrence)) = guard.and_then(|guard| {
                             let position = index.get(&guard)?;
@@ -2109,7 +2234,7 @@ fn derive_owner_path_conditions(
                                     index,
                                     frame_index,
                                     record_position,
-                                    seen_frame_ids,
+                                    frames,
                                     meter,
                                 )?;
                                 pending.push(OwnerWalkTask::Term(&arguments[1], then_frame));
@@ -2123,7 +2248,7 @@ fn derive_owner_path_conditions(
                                     index,
                                     frame_index,
                                     record_position,
-                                    seen_frame_ids,
+                                    frames,
                                     meter,
                                 )?;
                                 pending.push(OwnerWalkTask::Term(&arguments[2], else_frame));
@@ -2137,7 +2262,7 @@ fn derive_owner_path_conditions(
                                     index,
                                     frame_index,
                                     record_position,
-                                    seen_frame_ids,
+                                    frames,
                                     meter,
                                 )?;
                                 let else_frame = derived_frame_id(
@@ -2148,7 +2273,7 @@ fn derive_owner_path_conditions(
                                     index,
                                     frame_index,
                                     record_position,
-                                    seen_frame_ids,
+                                    frames,
                                     meter,
                                 )?;
                                 pending.push(OwnerWalkTask::Term(&arguments[2], else_frame));
@@ -2156,14 +2281,16 @@ fn derive_owner_path_conditions(
                             }
                         }
                         pending.push(OwnerWalkTask::Term(&arguments[0], terminal));
-                    } else if matches!(
-                        identity,
-                        Some(
-                            "filament.op.boolean.and"
-                                | "filament.op.boolean.or"
-                                | "filament.op.boolean.implies"
+                    } else if derive
+                        && matches!(
+                            identity,
+                            Some(
+                                "filament.op.boolean.and"
+                                    | "filament.op.boolean.or"
+                                    | "filament.op.boolean.implies"
+                            )
                         )
-                    ) && arguments.len() == 2
+                        && arguments.len() == 2
                     {
                         let holds = identity != Some("filament.op.boolean.or");
                         let guard = reference(&arguments[0]);
@@ -2197,7 +2324,7 @@ fn derive_owner_path_conditions(
                                 index,
                                 frame_index,
                                 record_position,
-                                seen_frame_ids,
+                                frames,
                                 meter,
                             )?
                         } else {
@@ -2225,7 +2352,7 @@ fn derive_owner_path_conditions(
             },
         }
     }
-    Ok(derived)
+    Ok(())
 }
 
 fn guard_literal_value(
@@ -2257,9 +2384,12 @@ fn derived_frame_id(
     index: &GraphIndex<'_>,
     frame_index: &[PathConditionFrameIndexEntry],
     record_position: usize,
-    seen_frame_ids: &mut BTreeSet<usize>,
+    frames: &mut OwnerFrames,
     meter: &mut WorkMeter,
 ) -> Result<Option<PathConditionFrameId>, ValidationFailure> {
+    if parent == Some(PRUNED_FRAME) {
+        return Ok(parent);
+    }
     let parent_index = parent.map(|parent| parent.0);
     let guard_position = index.get_charged(guard, meter)?.ok_or_else(|| {
         refuse(
@@ -2272,23 +2402,14 @@ fn derived_frame_id(
     })?;
     let key = (parent_index, guard_position, occurrence, holds);
     let Ok(found) = frame_index.binary_search_by_key(&key, |entry| entry.0) else {
-        return Err(refuse(
-            record_position,
-            Path::root().key("path_condition_frames"),
-            Cause::InvalidValue,
-            None,
-            meter,
-        ));
+        // FR-825: every table row occurs in a record's chain, so a branch with
+        // no scalar-operation record has no row. A record inside such a
+        // branch cites a different terminal and is refused at its own binding.
+        return Ok(Some(PRUNED_FRAME));
     };
     let frame_id = frame_index[found].1;
-    if seen_frame_ids.insert(frame_id) && frame_id + 1 != seen_frame_ids.len() {
-        return Err(refuse(
-            record_position,
-            Path::root().key("path_condition_frames"),
-            Cause::InvalidValue,
-            None,
-            meter,
-        ));
+    if frames.seen.insert(frame_id) {
+        frames.order.push(frame_id);
     }
     Ok(Some(PathConditionFrameId(frame_id)))
 }
@@ -2386,6 +2507,29 @@ fn function_body_root(term: &CheckedTerm) -> Option<CheckedNodeId> {
             return None;
         };
         if !matches!(name.kind(), super::CheckedBindingNameKind::Body) {
+            return None;
+        }
+        match value.as_ref() {
+            CheckedTerm::Reference { target } => Some(target.clone()),
+            _ => None,
+        }
+    })
+}
+
+/// The termination measure's root, which the path-condition walk excludes but
+/// whose reads still take expression occurrences.
+fn function_measure_root(term: &CheckedTerm) -> Option<CheckedNodeId> {
+    let CheckedTerm::Aggregate { members, .. } = term else {
+        return None;
+    };
+    members.iter().find_map(|member| {
+        let CheckedTerm::Binding { name, value, .. } = member else {
+            return None;
+        };
+        if !matches!(
+            name.kind(),
+            super::CheckedBindingNameKind::Other("decreases" | "measure")
+        ) {
             return None;
         }
         match value.as_ref() {
