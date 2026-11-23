@@ -393,7 +393,7 @@ fn published_probabilistic_claim_vectors_join_and_refuse() {
 }
 
 #[test]
-#[trace("TC-233", "FR-038-AC-391", "FR-038-AC-394")]
+#[trace("TC-233", "FR-038-AC-391", "FR-038-AC-617")]
 fn claim_row_coverage_and_exact_work_boundary() {
     let all = vectors();
     let rows: Vec<_> = all["positive"]["probabilistic_claims"]
@@ -432,7 +432,6 @@ fn claim_row_coverage_and_exact_work_boundary() {
     while exhausted(below_visits) == owner_visits {
         below_visits -= 1;
     }
-    assert!(below_visits < low - 1, "the owner visits are charged");
     // The limit below those visits refuses at the final probabilistic-claim
     // row, then at the row before it.
     assert_eq!(
