@@ -814,7 +814,7 @@ pub(super) fn validate(
         }
     }
     let Some(rows) = rows else {
-        if let Some(&position) = records.first() {
+        if let Some(&position) = records.first().or_else(|| operation_records.first()) {
             let at = root();
             return Err(refuse(
                 0,
