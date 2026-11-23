@@ -620,6 +620,10 @@ fn canonical_verdict(
         Err(Error::Limit(limit)) if limit.kind == LimitKind::CanonicalBytes => {
             CanonicalVerdict::Noncanonical
         }
+        // The in-order writer met a member name that does not sort after the
+        // one before it: the input's member order (which the reader keeps) is
+        // not canonical, so its sorted encoding differs from the input.
+        Err(Error::MemberOrder { .. }) => CanonicalVerdict::Noncanonical,
         // FR-038: a document `quire-canonical` refuses to encode refuses
         // `noncanonical_wire`. These are values with no RFC 8785 spelling.
         Err(
@@ -629,8 +633,9 @@ fn canonical_verdict(
             | Error::NonFiniteNumber(_),
         ) => CanonicalVerdict::Noncanonical,
         Err(Error::Internal { .. }) if found.is_some() => CanonicalVerdict::Noncanonical,
-        // FR-038's other encoder refusals of the document: the fixed object
-        // buffer bound, and the encoder's own faults (the comparing sink
+        // FR-038's other encoder refusals of the document, none of which the
+        // in-order writer reaches on a read document: the object buffer bound
+        // (it buffers nothing), and the encoder's own faults (the comparing sink
         // never fails; the reader already refused duplicate names; the
         // walk emits balanced events and no serde values). None of them is a
         // resource of the caller's budget or of the allocator.
@@ -849,7 +854,11 @@ pub(in crate::checked_package) fn read_envelope(
     };
     let found = std::cell::Cell::new(None);
     let mut reservation = RecordingReservation::new(budget);
-    let encoded = quire_canonical::encode_with_reservation(
+    // The in-order writer streams each canonical byte to the comparing sink
+    // as it is produced: it holds no copy of the document's text, and refuses
+    // a member out of canonical order instead of sorting it. A refusal leaves
+    // a compared prefix in the sink, which no outcome reads.
+    let encoded = quire_canonical::encode_in_order_with_reservation(
         &mut sink,
         &PackageDocument {
             document: &document,
@@ -1030,6 +1039,8 @@ mod canonical_verdict_tests {
         );
         for refused in [
             limit(LimitKind::CanonicalBytes),
+            Error::MemberOrder { depth: 0 },
+            Error::MemberOrder { depth: 3 },
             Error::IntegerMagnitudeAboveMaximum(1 << 60),
             Error::UnsignedIntegerMagnitudeAboveMaximum(1 << 60),
             Error::WideIntegerMagnitudeAboveMaximum(String::from("1")),
@@ -1098,6 +1109,35 @@ mod canonical_verdict_tests {
             );
             assert_eq!(found.get(), expected, "{bytes:?}");
         }
+    }
+
+    /// Members out of canonical order, at the top level or nested, refuse
+    /// `noncanonical_wire` with no pointer at the canonical stage; the same
+    /// members in order pass the comparison.
+    #[trace("TC-472", "FR-038-AC-509")]
+    #[test]
+    fn members_out_of_order_refuse_noncanonical_wire() {
+        let limits = CheckedPackageReadLimits::bounded();
+        for bytes in [
+            br#"{"b":1,"a":2}"#.as_slice(),
+            br#"{"a":{"d":[{"z":null,"y":null}]},"b":1}"#.as_slice(),
+        ] {
+            let mut budget = NativeJoinBudget::new(u64::MAX, 0).with_read_storage_limit(u64::MAX);
+            let refused = read_envelope(bytes, limits, &mut budget).expect_err("refused");
+            assert!(
+                matches!(&refused, EnvelopeStop::Failure(ValidationFailure::Refused(refusal))
+                    if refusal.code == CheckedPackageRefusalCode::NoncanonicalWire
+                        && refusal.primary_path().is_none()),
+                "{bytes:?}: {refused:?}"
+            );
+        }
+        let mut budget = NativeJoinBudget::new(u64::MAX, 0).with_read_storage_limit(u64::MAX);
+        assert!(read_envelope(
+            br#"{"a":{"d":[{"y":null,"z":null}]},"b":1}"#,
+            limits,
+            &mut budget
+        )
+        .is_ok());
     }
 
     /// The block a reservation admitted last is the one the host refused, and

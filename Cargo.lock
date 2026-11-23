@@ -300,7 +300,7 @@ dependencies = [
  "ix-cli-kit",
  "ix-trace-rs",
  "jsonschema 0.17.1",
- "quire-canonical",
+ "quire-canonical 0.3.2",
  "quire-rs",
  "serde",
  "serde_json",
@@ -323,7 +323,7 @@ dependencies = [
  "num-bigint",
  "num-integer",
  "num-traits",
- "quire-canonical",
+ "quire-canonical 0.3.2",
  "serde",
  "serde_json",
  "serde_path_to_error",
@@ -358,7 +358,7 @@ version = "0.1.5"
 source = "git+https://github.com/agent-ix/filament-semantic-value?rev=31d807ccb8ffd5a88beb0b1a570b80acb099f5e9#31d807ccb8ffd5a88beb0b1a570b80acb099f5e9"
 dependencies = [
  "filament-exact",
- "quire-canonical",
+ "quire-canonical 0.3.1",
  "thiserror",
 ]
 
@@ -368,7 +368,7 @@ version = "0.2.1"
 source = "git+https://github.com/agent-ix/filament-verification-contracts?rev=cd0c8ef67e5d4263ce12773831cedd771246e5e5#cd0c8ef67e5d4263ce12773831cedd771246e5e5"
 dependencies = [
  "jsonschema 0.55.1",
- "quire-canonical",
+ "quire-canonical 0.3.1",
  "regress",
  "schemars",
  "serde",
@@ -1140,7 +1140,20 @@ name = "quire-canonical"
 version = "0.3.1"
 source = "git+https://github.com/agent-ix/quire-canonical?tag=v0.3.1#2204c5c3fc0ca13dd655400d94e923edd2e8416c"
 dependencies = [
- "quire-canonical-derive",
+ "quire-canonical-derive 0.3.0 (git+https://github.com/agent-ix/quire-canonical?tag=v0.3.1)",
+ "ryu-js",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror",
+]
+
+[[package]]
+name = "quire-canonical"
+version = "0.3.2"
+source = "git+https://github.com/agent-ix/quire-canonical?tag=v0.3.2#f00840e4add08100e3491e8bc5bcb7d60a9e9ca2"
+dependencies = [
+ "quire-canonical-derive 0.3.0 (git+https://github.com/agent-ix/quire-canonical?tag=v0.3.2)",
  "ryu-js",
  "serde",
  "serde_json",
@@ -1152,6 +1165,16 @@ dependencies = [
 name = "quire-canonical-derive"
 version = "0.3.0"
 source = "git+https://github.com/agent-ix/quire-canonical?tag=v0.3.1#2204c5c3fc0ca13dd655400d94e923edd2e8416c"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 3.0.9",
+]
+
+[[package]]
+name = "quire-canonical-derive"
+version = "0.3.0"
+source = "git+https://github.com/agent-ix/quire-canonical?tag=v0.3.2#f00840e4add08100e3491e8bc5bcb7d60a9e9ca2"
 dependencies = [
  "proc-macro2",
  "quote",
