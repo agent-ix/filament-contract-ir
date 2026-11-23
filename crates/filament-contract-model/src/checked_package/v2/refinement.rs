@@ -2484,13 +2484,22 @@ fn validate_rows(
         )?;
         graph.local_kind(meter, &row.type_id, at.key("type"), locus)?;
         if let CheckedTerm::Reference { target } = &row.initial {
-            graph.require_local_kind(
-                meter,
-                target,
-                K::Value(super::ValueForm::Literal),
-                at.key("initial").key("target"),
-                locus,
-            )?;
+            // FR-375: a `history-literal` is a literal or, for `Some`/`none`
+            // over an option type, an option value.
+            let target_at = at.key("initial").key("target");
+            let actual = graph.local_kind(meter, target, target_at, locus)?;
+            if !matches!(
+                actual,
+                K::Value(super::ValueForm::Literal | super::ValueForm::OptionValue)
+            ) {
+                return Err(refuse_at(
+                    meter,
+                    CheckedPackageRefusalCode::InvalidModelBinding,
+                    Some(CheckedPackageRefusalCause::MalformedDeclaration),
+                    target_at,
+                    locus,
+                ));
+            }
         }
         for (update_index, update) in row.updates.iter().enumerate() {
             let update_at = at.key("updates").index(update_index);
