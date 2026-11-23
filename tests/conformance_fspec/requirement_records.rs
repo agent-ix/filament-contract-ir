@@ -526,6 +526,13 @@ fn large_requirement_record_package(record_count: usize) -> Value {
         .retain(|node| node["semantic_form"] != "value_validity");
     package["requirement_items"] = json!([]);
     let package_name = package["name"].clone();
+    let false_frame_id = package["path_condition_frames"]
+        .as_array()
+        .expect("path-condition frames")
+        .iter()
+        .position(|frame| frame["holds"] == false)
+        .and_then(|position| u64::try_from(position).ok())
+        .expect("false-branch frame id");
 
     let nodes = package["semantic_graph"]["nodes"]
         .as_array_mut()
@@ -619,13 +626,6 @@ fn large_requirement_record_package(record_count: usize) -> Value {
         &binding_value(&record_template, "path_condition")["members"][0]["value"];
     let terminal_frame_id = canonical_nonnegative_integer(terminal_frame_value)
         .expect("terminal frame id is a canonical nonnegative integer");
-    let false_frame_id = package["path_condition_frames"]
-        .as_array()
-        .expect("path-condition frames")
-        .iter()
-        .position(|frame| frame["holds"] == false)
-        .and_then(|position| u64::try_from(position).ok())
-        .expect("false-branch frame id");
     let mut requirement_rows = Vec::with_capacity(record_count);
     for (generated_index, (&application_position, application_id)) in application_positions
         .iter()
