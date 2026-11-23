@@ -645,7 +645,7 @@ mod tests {
         assert_eq!(terms, 4097);
         assert_eq!(edges, 1);
         // The visit is iterative; dismantle the artificial term iteratively too.
-        while let CheckedTerm::Aggregate { mut members } = term {
+        while let CheckedTerm::Aggregate { mut members, .. } = term {
             term = members.pop().unwrap();
         }
     }

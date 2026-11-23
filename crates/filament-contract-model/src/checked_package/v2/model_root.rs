@@ -63,7 +63,7 @@ pub(super) fn validate_shape<Body>(
             ));
         }
         if !matches!(terms.get(position).and_then(Option::as_ref),
-            Some(CheckedTerm::Aggregate { members }) if members.is_empty())
+            Some(CheckedTerm::Aggregate { members, .. }) if members.is_empty())
         {
             return Err(refuse(
                 meter,
@@ -128,6 +128,7 @@ mod tests {
         let node = root();
         let terms = [Some(CheckedTerm::Aggregate {
             members: Vec::new(),
+            temporal_profile: None,
         })];
         let mut budget = NativeJoinBudget::new(u64::MAX, 0).with_read_storage_limit(0);
         let mut result = None;
@@ -154,6 +155,7 @@ mod tests {
         node.recursion_group = Some("later-fault".into());
         let terms = [Some(CheckedTerm::Aggregate {
             members: Vec::new(),
+            temporal_profile: None,
         })];
         let run = |limit| {
             let mut budget = NativeJoinBudget::new(u64::MAX, 0).with_read_storage_limit(limit);

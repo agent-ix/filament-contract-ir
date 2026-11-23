@@ -878,7 +878,7 @@ fn clock_reference_place_and_equalities_admit_through_public_package_reader() {
         .iter()
         .find(|node| node.semantic_form.as_ref() == "tuple_value")
         .expect("one-element clock-reference tuple value");
-    let CheckedTerm::Aggregate { members } = &tuple_value.body else {
+    let CheckedTerm::Aggregate { members, .. } = &tuple_value.body else {
         panic!("tuple value is an aggregate");
     };
     assert_eq!(members.len(), 1);

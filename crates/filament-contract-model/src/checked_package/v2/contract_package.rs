@@ -1391,8 +1391,12 @@ fn restore_operation_views(
             }
         }
         (
-            CheckedTerm::Aggregate { members: source },
-            CheckedTerm::Aggregate { members: projected },
+            CheckedTerm::Aggregate {
+                members: source, ..
+            },
+            CheckedTerm::Aggregate {
+                members: projected, ..
+            },
         )
         | (
             CheckedTerm::ExtensionForm {

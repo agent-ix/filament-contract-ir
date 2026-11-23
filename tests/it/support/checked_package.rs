@@ -2933,7 +2933,12 @@ pub fn refresh_temporal_bindings(package: &mut Value) {
                 // text; a finite-domain node the lock's selection and the
                 // domain binder `t`.
                 if node["body"]["members"][0]["value"]["term"] == "reference" {
-                    (selected_profile?, "t")
+                    (
+                        node["body"]["temporal_profile"]["identity"]
+                            .as_str()
+                            .or(selected_profile)?,
+                        "t",
+                    )
                 } else {
                     let wrapper = nodes.iter().find(|wrapper| {
                         wrapper["node_id"] == node["body"]["members"][6]["value"]["target"]

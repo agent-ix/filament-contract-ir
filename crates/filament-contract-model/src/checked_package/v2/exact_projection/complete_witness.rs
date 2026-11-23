@@ -1198,7 +1198,7 @@ fn term_uses_type(
                 charge_native_storage(budget, at, at, "collection_use_stack", 1)?;
                 pending.push(value);
             }
-            CheckedTerm::Aggregate { members }
+            CheckedTerm::Aggregate { members, .. }
             | CheckedTerm::Application {
                 arguments: members, ..
             } => {

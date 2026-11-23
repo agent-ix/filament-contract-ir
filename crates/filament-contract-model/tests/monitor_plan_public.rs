@@ -249,7 +249,7 @@ fn default_feature_consumer_reads_an_actual_admitted_monitor_plan() {
             .callable(selected.work()),
         Ok(selected.clone())
     );
-    let CheckedTerm::Aggregate { members } = view.on_gap().body() else {
+    let CheckedTerm::Aggregate { members, .. } = view.on_gap().body() else {
         panic!("ordinary optional-measure function")
     };
     let CheckedTerm::Binding { value, .. } = &members[0] else {
@@ -281,7 +281,7 @@ fn default_feature_consumer_reads_an_actual_admitted_monitor_plan() {
     };
     assert_eq!(name.as_ref(), "measure");
     assert_eq!(view.init().result_type(), view.state());
-    let CheckedTerm::Aggregate { members } = package.term(view.state()).unwrap() else {
+    let CheckedTerm::Aggregate { members, .. } = package.term(view.state()).unwrap() else {
         panic!("admitted State record body")
     };
     let CheckedTerm::Binding { name, value, .. } = members.last().unwrap() else {

@@ -132,7 +132,7 @@ impl<'g> BinderReads<'g> {
                         index.push_term(child, owner, Some(at), Edge::Argument(i), meter)?;
                     }
                 }
-                CheckedTerm::Aggregate { members } => {
+                CheckedTerm::Aggregate { members, .. } => {
                     for (i, child) in members.iter().enumerate() {
                         index.push_term(child, owner, Some(at), Edge::Member(i), meter)?;
                     }

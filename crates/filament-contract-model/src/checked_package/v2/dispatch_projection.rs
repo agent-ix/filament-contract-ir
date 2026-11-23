@@ -675,6 +675,7 @@ mod metadata_tests {
         let models = RetainedModels::default();
         let terms = [CheckedTerm::Aggregate {
             members: Vec::new(),
+            temporal_profile: None,
         }];
         let run = |data: &CheckedTermDataV2, limit| {
             let mut budget = NativeJoinBudget::new(u64::MAX, 0).with_read_storage_limit(limit);

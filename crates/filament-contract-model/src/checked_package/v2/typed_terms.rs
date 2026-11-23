@@ -2225,6 +2225,11 @@ pub enum CheckedTerm {
     Aggregate {
         /// Typed members in source order.
         members: Vec<CheckedTerm>,
+        /// The profile definition a finite-domain hyperproperty body names; carried
+        /// only by a hyperproperty node's own body aggregate (FR-322 "Hyper clause
+        /// rows"), absent everywhere else.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        temporal_profile: Option<CheckedArtifactRef>,
     },
     /// A named aggregate member.
     Binding {
@@ -2880,7 +2885,7 @@ impl CheckedTerm {
                     traversal(SelectedTermTraversal::StackStorage(1))?;
                     pending.push(Pending::Children(arguments.iter()));
                 }
-                Self::Aggregate { members } => {
+                Self::Aggregate { members, .. } => {
                     traversal(SelectedTermTraversal::StackStorage(1))?;
                     pending.push(Pending::Children(members.iter()));
                 }
@@ -2942,7 +2947,7 @@ impl CheckedTerm {
                     argument.visit_reference_targets(visitor);
                 }
             }
-            Self::Aggregate { members } => {
+            Self::Aggregate { members, .. } => {
                 for member in members {
                     member.visit_reference_targets(visitor);
                 }
@@ -3031,7 +3036,7 @@ impl CheckedTerm {
                     argument.replace_node_id(old, new);
                 }
             }
-            Self::Aggregate { members } => {
+            Self::Aggregate { members, .. } => {
                 for member in members {
                     member.replace_node_id(old, new);
                 }
@@ -3125,7 +3130,7 @@ impl CheckedTerm {
                         work.push(NodeMapWork::Id(result_type));
                         work.push(NodeMapWork::Operation(operation));
                     }
-                    Self::Aggregate { members } => {
+                    Self::Aggregate { members, .. } => {
                         work.extend(members.iter_mut().rev().map(NodeMapWork::Term));
                     }
                     Self::Binding { binder, value, .. } => {
@@ -3296,7 +3301,10 @@ impl CheckedTerm {
 
     /// Construct an ordered checked aggregate body.
     pub fn aggregate(members: Vec<Self>) -> Self {
-        Self::Aggregate { members }
+        Self::Aggregate {
+            members,
+            temporal_profile: None,
+        }
     }
 
     /// Construct one named aggregate member.
@@ -3433,6 +3441,10 @@ impl CheckedTerm {
             }),
             TermTag::Known(BodyTerm::Aggregate) => Ok(Self::Aggregate {
                 members: children(wire, TermField::Members)?,
+                temporal_profile: match wire.field(TermField::TemporalProfile) {
+                    None => None,
+                    Some(_) => Some(field(wire, TermField::TemporalProfile)?),
+                },
             }),
             TermTag::Known(BodyTerm::Binding) => Ok(Self::Binding {
                 name: field(wire, TermField::Name)?,
@@ -3549,7 +3561,10 @@ impl Encode for CheckedTerm {
                 }
                 writer.end_array()?;
             }
-            Self::Aggregate { members } => {
+            Self::Aggregate {
+                members,
+                temporal_profile,
+            } => {
                 writer.name("term")?;
                 writer.string("aggregate")?;
                 writer.name("members")?;
@@ -3558,6 +3573,10 @@ impl Encode for CheckedTerm {
                     member.encode_into(writer)?;
                 }
                 writer.end_array()?;
+                if let Some(profile) = temporal_profile {
+                    writer.name("temporal_profile")?;
+                    profile.encode_into(writer)?;
+                }
             }
             Self::Binding {
                 name,
@@ -4623,7 +4642,7 @@ mod tests {
             };
             assert_eq!(actual, expected);
             if let CheckedTerm::Application { arguments, .. } = &term {
-                let [CheckedTerm::Aggregate { members }] = arguments.as_slice() else {
+                let [CheckedTerm::Aggregate { members, .. }] = arguments.as_slice() else {
                     panic!("application argument must be a typed aggregate");
                 };
                 assert!(matches!(members[0], CheckedTerm::Binding { .. }));

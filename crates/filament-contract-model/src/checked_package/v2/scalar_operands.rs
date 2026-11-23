@@ -401,7 +401,7 @@ fn type_range<Body: ScalarBody>(
         node,
         retained_terms.and_then(|terms| terms.get(position).and_then(Option::as_ref)),
     )?;
-    let CheckedTerm::Aggregate { members } = term.as_ref() else {
+    let CheckedTerm::Aggregate { members, .. } = term.as_ref() else {
         return Err(Error::MissingRange);
     };
     let endpoint = |name: &str| {
@@ -635,6 +635,7 @@ mod tests {
             .nodes[1]
             .body = CheckedTerm::Aggregate {
             members: Vec::new(),
+            temporal_profile: None,
         };
         assert_eq!(
             package.scalar_application_operands(&application, &occurrence),
@@ -872,10 +873,11 @@ mod tests {
                         .nodes[1]
                         .body = CheckedTerm::Aggregate {
                         members: Vec::new(),
+                        temporal_profile: None,
                     };
                 }
                 CheckedScalarOperandError::RangeOutOfI128 => {
-                    let CheckedTerm::Aggregate { members } =
+                    let CheckedTerm::Aggregate { members, .. } =
                         &mut std::sync::Arc::make_mut(&mut package.wire)
                             .semantic_graph
                             .nodes[1]
@@ -933,6 +935,7 @@ mod tests {
             };
             arguments[1] = CheckedTerm::Aggregate {
                 members: Vec::new(),
+                temporal_profile: None,
             };
             assert_eq!(
                 package.scalar_application_operands(&application, &occurrence),

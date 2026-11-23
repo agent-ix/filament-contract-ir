@@ -1614,7 +1614,7 @@ impl RetainedModels {
 }
 
 fn empty_declaration_term(term: &CheckedTerm) -> bool {
-    matches!(term, CheckedTerm::Aggregate { members } if members.is_empty())
+    matches!(term, CheckedTerm::Aggregate { members, .. } if members.is_empty())
 }
 
 /// A field's member type, as FR-322 step 4 derives it from the selected

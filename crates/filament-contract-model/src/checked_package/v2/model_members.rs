@@ -63,7 +63,7 @@ pub(super) trait EmptyAggregateBody {
 
 impl EmptyAggregateBody for CheckedTerm {
     fn is_empty_aggregate(&self) -> bool {
-        matches!(self, Self::Aggregate { members } if members.is_empty())
+        matches!(self, Self::Aggregate { members, .. } if members.is_empty())
     }
 }
 

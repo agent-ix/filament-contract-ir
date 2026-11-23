@@ -101,7 +101,7 @@ enum HybridTemporalOperation {
 
 fn term_members(term: &CheckedTerm) -> &[CheckedTerm] {
     match term {
-        CheckedTerm::Aggregate { members } => members,
+        CheckedTerm::Aggregate { members, .. } => members,
         _ => &[],
     }
 }
@@ -2395,7 +2395,7 @@ mod budget_tests {
         assert_eq!(allocated, budget.read_storage_consumed());
     }
     fn set_modes(f: &mut Fixture, modes: &[usize]) {
-        let CheckedTerm::Aggregate { members } = f.terms[7].as_mut().unwrap() else {
+        let CheckedTerm::Aggregate { members, .. } = f.terms[7].as_mut().unwrap() else {
             unreachable!()
         };
         let CheckedTerm::Binding { value, .. } = &mut members[1] else {
@@ -2405,16 +2405,16 @@ mod budget_tests {
         f.nodes[7].body = CheckedJson::from_serializable(f.terms[7].as_ref().unwrap()).unwrap();
     }
     fn set_class(f: &mut Fixture, name: &str) {
-        let CheckedTerm::Aggregate { members } = f.terms[7].as_mut().unwrap() else {
+        let CheckedTerm::Aggregate { members, .. } = f.terms[7].as_mut().unwrap() else {
             unreachable!()
         };
         let CheckedTerm::Binding { value, .. } = &mut members[0] else {
             unreachable!()
         };
-        let CheckedTerm::Aggregate { members } = value.as_mut() else {
+        let CheckedTerm::Aggregate { members, .. } = value.as_mut() else {
             unreachable!()
         };
-        let CheckedTerm::Aggregate { members } = &mut members[0] else {
+        let CheckedTerm::Aggregate { members, .. } = &mut members[0] else {
             unreachable!()
         };
         let CheckedTerm::Binding { value, .. } = &mut members[1] else {

@@ -3137,7 +3137,7 @@ fn resolve_reference_declaration<'a>(
         };
         match kind {
             CheckedNodeKind::CompositeType(CompositeTypeForm::Reference) => {
-                let Some(CheckedTerm::Aggregate { members }) =
+                let Some(CheckedTerm::Aggregate { members, .. }) =
                     graph.terms.get(position).and_then(Option::as_ref)
                 else {
                     return Ok(None);
@@ -3824,7 +3824,7 @@ fn protocol_memory_models(
             if operation.member_operator() != Some("parallel") {
                 continue;
             }
-            let Some(CheckedTerm::Aggregate { members }) =
+            let Some(CheckedTerm::Aggregate { members, .. }) =
                 super::protocol_body::binding_value(arguments, "memory")
             else {
                 return Err(refuse_unlocated(
@@ -4164,7 +4164,7 @@ fn protocol_member_classes(
             }
         }
         CatalogOperator::Role => {
-            let Some(replication @ CheckedTerm::Aggregate { members }) =
+            let Some(replication @ CheckedTerm::Aggregate { members, .. }) =
                 super::protocol_body::binding_value(arguments, "replication")
             else {
                 return Ok(None);

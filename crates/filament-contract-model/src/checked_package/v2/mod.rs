@@ -3192,6 +3192,15 @@ fn validate_body<'a, V: TermSource<'a>>(
             identity::NominalBodyKind::Enum { members, .. } => members.len() as u64,
         });
     }
+    // Only a hyperproperty's body aggregate carries a `temporal_profile`.
+    if kind != CheckedNodeKind::Claim(ClaimForm::Hyperproperty)
+        && body.member("temporal_profile").is_some()
+    {
+        return Err(refuse(
+            CheckedPackageRefusalCode::MalformedWire,
+            at.pointer(),
+        ));
+    }
     if kind == CheckedNodeKind::Protocol(ProtocolForm::ProtocolReference)
         && !(body.exact_members(&["term", "target"]) && body.kind() == Some(BodyTerm::Reference))
     {

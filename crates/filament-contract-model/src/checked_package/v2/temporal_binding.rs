@@ -394,6 +394,16 @@ pub(super) fn profile_law(
     let Some(definition) = law.get("definition") else {
         return Ok(None);
     };
+    definition_ref(definition, position, meter)
+}
+
+/// The exact `{authority, identity}` texts of `definition`, charged before
+/// they are copied; `None` when it is not that shape.
+fn definition_ref(
+    definition: TermNode<'_>,
+    position: usize,
+    meter: &mut WorkMeter,
+) -> Result<Option<super::CheckedArtifactRef>, ValidationFailure> {
     let (Some(authority), Some(identity)) = (
         definition.get("authority").and_then(TermNode::as_str),
         definition.get("identity").and_then(TermNode::as_str),
@@ -444,6 +454,50 @@ fn selected_profile(lock: &CheckedPackageLockV2) -> Option<TemporalProfile> {
         .iter()
         .find(|selection| selection.role == CheckedSelectionRole::TemporalProfile)?;
     clock_configured(TemporalProfile::from_wire(&selection.definition.identity)?)
+}
+
+/// The clock-configured profile a finite-domain hyperproperty names in its
+/// body's `temporal_profile` member. The member must be present and equal
+/// exactly one temporal-role lock selection; otherwise the node refuses
+/// `operation-law-unselected` at the member. `Ok(None)` is a selected
+/// definition that configures no clock.
+fn finite_profile(
+    position: usize,
+    terms: &[Option<super::CheckedTerm>],
+    lock: &CheckedPackageLockV2,
+    declaration: &CheckedNodeId,
+    meter: &mut WorkMeter,
+) -> Result<Option<TemporalProfile>, ValidationFailure> {
+    let at = || {
+        super::stage_storage::Path::root()
+            .key("semantic_graph")
+            .key("nodes")
+            .index(position)
+            .key("body")
+            .key("temporal_profile")
+    };
+    let named = match terms.get(position) {
+        Some(Some(super::CheckedTerm::Aggregate {
+            temporal_profile, ..
+        })) => temporal_profile.as_ref(),
+        _ => None,
+    };
+    let mut matches = 0_usize;
+    if let Some(named) = named {
+        for selection in &lock.profile_selections {
+            binding_work(meter, at())?;
+            if selection.role == CheckedSelectionRole::TemporalProfile
+                && selection.definition == *named
+            {
+                matches += 1;
+            }
+        }
+    }
+    let (Some(named), 1) = (named, matches) else {
+        let cause = CheckedPackageRefusalCause::OperationLawUnselected;
+        return Err(binding_refusal(meter, at(), declaration, cause));
+    };
+    Ok(TemporalProfile::from_wire(&named.identity).and_then(clock_configured))
 }
 
 /// The text of argument `argument` of the clause at `position`, a literal
@@ -532,7 +586,7 @@ fn hyper_nodes<'t>(
         let mut variables = meter.vec(0)?;
         let mut finite = false;
         let mut wrapper = None;
-        if let Some(Some(CheckedTerm::Aggregate { members })) = terms.get(position) {
+        if let Some(Some(CheckedTerm::Aggregate { members, .. })) = terms.get(position) {
             let bound = |name: &str| {
                 members.iter().find_map(|member| match member {
                     CheckedTerm::Binding {
@@ -552,9 +606,12 @@ fn hyper_nodes<'t>(
                         kinds[*target] == CheckedNodeKind::Temporal(TemporalForm::TemporalClause)
                     });
             }
-            if let Some(CheckedTerm::Aggregate { members: groups }) = bound("quantifiers") {
+            if let Some(CheckedTerm::Aggregate {
+                members: groups, ..
+            }) = bound("quantifiers")
+            {
                 for group in groups {
-                    let CheckedTerm::Aggregate { members } = group else {
+                    let CheckedTerm::Aggregate { members, .. } = group else {
                         continue;
                     };
                     let variable = members.iter().find_map(|member| match member {
@@ -606,6 +663,43 @@ pub(super) fn validate<B>(
     validate_shape(rows, meter)?;
     let compensation_profile = selected_profile(lock);
     let hypers = hyper_nodes(kinds, terms, index, meter)?;
+    for hyper in hypers.iter().filter(|hyper| !hyper.finite) {
+        // A behaviours-domain hyperproperty keeps its law on its wrapper.
+        if matches!(
+            terms.get(hyper.position),
+            Some(Some(super::CheckedTerm::Aggregate {
+                temporal_profile: Some(_),
+                ..
+            }))
+        ) {
+            let at = super::stage_storage::Path::root()
+                .key("semantic_graph")
+                .key("nodes")
+                .index(hyper.position)
+                .key("body")
+                .key("temporal_profile");
+            let cause = CheckedPackageRefusalCause::InvalidValue;
+            return Err(binding_refusal(
+                meter,
+                at,
+                &nodes[hyper.position].node_id,
+                cause,
+            ));
+        }
+    }
+    // A finite-domain hyperproperty joins its body profile to the lock before any
+    // row is read.
+    let mut finite_profiles: Vec<(usize, Option<TemporalProfile>)> = meter.vec(hypers.len())?;
+    for hyper in hypers.iter().filter(|hyper| hyper.finite) {
+        let profile = finite_profile(
+            hyper.position,
+            terms,
+            lock,
+            &nodes[hyper.position].node_id,
+            meter,
+        )?;
+        meter.push(&mut finite_profiles, (hyper.position, profile))?;
+    }
     // `hypers` ascends by graph position, so a node is found by bisection; the
     // wrappers are listed once and sorted.
     let hyper_of = |position: usize| {
@@ -843,6 +937,10 @@ pub(super) fn validate<B>(
         let at = || row_path(row_index);
         let hyper = hyper_of(position);
         if hyper.is_some_and(|hyper| hyper.finite) {
+            let profile = finite_profiles
+                .binary_search_by_key(&position, |(at, _)| *at)
+                .ok()
+                .and_then(|at| finite_profiles[at].1);
             // The rows of one occurrence share one clock role.
             if row_index > 0
                 && rows[row_index - 1].declaration == row.declaration
@@ -851,7 +949,7 @@ pub(super) fn validate<B>(
             {
                 return Err(invalid(meter, at().key("clock_name"), &row.declaration));
             }
-            if !clock_matches(compensation_profile, &row.clock) {
+            if !clock_matches(profile, &row.clock) {
                 return Err(invalid(
                     meter,
                     at().key("clock").key("kind"),

@@ -573,7 +573,7 @@ fn fspec_positive_fixtures_expose_complete_public_typed_reads() {
                     leaves += read.leaves.len();
                     pending.extend(arguments);
                 }
-                CheckedTerm::Aggregate { members } => pending.extend(members),
+                CheckedTerm::Aggregate { members, .. } => pending.extend(members),
                 CheckedTerm::Binding { value, .. } => pending.push(value),
                 _ => {}
             }
@@ -655,7 +655,7 @@ fn assert_fspec_term_record(term: &CheckedTerm, wire: &Value, catalog: &Value) {
                 assert_fspec_term_record(argument, expected, catalog);
             }
         }
-        CheckedTerm::Aggregate { members } => {
+        CheckedTerm::Aggregate { members, .. } => {
             let wire_members = wire["members"].as_array().expect("ordered members");
             assert_eq!(members.len(), wire_members.len());
             for (member, expected) in members.iter().zip(wire_members) {

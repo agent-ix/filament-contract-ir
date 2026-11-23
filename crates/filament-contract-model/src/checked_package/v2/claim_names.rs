@@ -474,7 +474,7 @@ pub(super) fn body_wrappers(
         if *kind != hyper {
             continue;
         }
-        let Some(CheckedTerm::Aggregate { members }) = terms[position].as_ref() else {
+        let Some(CheckedTerm::Aggregate { members, .. }) = terms[position].as_ref() else {
             continue;
         };
         let target = members

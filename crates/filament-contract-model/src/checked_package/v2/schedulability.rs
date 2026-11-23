@@ -108,7 +108,7 @@ pub struct CheckedSchedulabilityTaskRef<'a> {
 
 fn members(term: &CheckedTerm) -> Option<&[CheckedTerm]> {
     match term {
-        CheckedTerm::Aggregate { members } => Some(members),
+        CheckedTerm::Aggregate { members, .. } => Some(members),
         _ => None,
     }
 }
@@ -970,7 +970,7 @@ fn validate_literal_values(
             }
         }
         let next = match term {
-            CheckedTerm::Aggregate { members } => {
+            CheckedTerm::Aggregate { members, .. } => {
                 members.get(*child).map(|member| (member, Some(*child)))
             }
             CheckedTerm::Binding { value, .. } if *child == 0 => Some((value.as_ref(), None)),
@@ -1235,6 +1235,7 @@ mod tests {
         terms.push(integer(json!(null)));
         terms.push(CheckedTerm::Aggregate {
             members: Vec::new(),
+            temporal_profile: None,
         });
         let run = |limit: u64| {
             let mut budget = NativeJoinBudget::new(u64::MAX, 0).with_read_storage_limit(limit);
@@ -1298,6 +1299,7 @@ mod tests {
         for _ in 0..40 {
             term = CheckedTerm::Aggregate {
                 members: vec![term],
+                temporal_profile: None,
             };
         }
         let run = |limit| {
@@ -1369,10 +1371,12 @@ mod tests {
         };
         let mut body = CheckedTerm::Aggregate {
             members: vec![literal("01"), literal("-0")],
+            temporal_profile: None,
         };
         for _ in 0..40 {
             body = CheckedTerm::Aggregate {
                 members: vec![body],
+                temporal_profile: None,
             };
         }
         let expected = format!("/body{}/members/0/value", "/members/0".repeat(40));

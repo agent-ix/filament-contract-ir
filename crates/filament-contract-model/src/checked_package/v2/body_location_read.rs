@@ -300,7 +300,7 @@ impl<'a> CheckedBodyLocations<'a> {
                         self.reserve_pending(arguments.len())?;
                         self.pending.extend(arguments.iter().rev().map(Task::Term));
                     }
-                    CheckedTerm::Aggregate { members } => {
+                    CheckedTerm::Aggregate { members, .. } => {
                         self.charge_count(members.len())?;
                         self.reserve_pending(members.len())?;
                         self.pending.extend(members.iter().rev().map(Task::Term));

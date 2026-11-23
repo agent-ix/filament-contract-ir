@@ -14707,11 +14707,15 @@ fn recovery_case_arm_binder_is_local_to_its_arm_body() {
     else {
         panic!("admitted case arms");
     };
-    let CheckedTerm::Aggregate { members: circle } = circle.as_ref() else {
+    let CheckedTerm::Aggregate {
+        members: circle, ..
+    } = circle.as_ref()
+    else {
         panic!("Circle arm");
     };
-    let [CheckedTerm::Aggregate { members: binders }, CheckedTerm::Reference { target: body }] =
-        circle.as_slice()
+    let [CheckedTerm::Aggregate {
+        members: binders, ..
+    }, CheckedTerm::Reference { target: body }] = circle.as_slice()
     else {
         panic!("Circle binder and body");
     };
@@ -14722,7 +14726,7 @@ fn recovery_case_arm_binder_is_local_to_its_arm_body() {
         }]
     );
     assert_eq!(body, &binder_id);
-    let CheckedTerm::Aggregate { members: empty } = empty.as_ref() else {
+    let CheckedTerm::Aggregate { members: empty, .. } = empty.as_ref() else {
         panic!("Empty arm");
     };
     assert!(matches!(&empty[1], CheckedTerm::Literal { value, .. } if value.as_str() == Some("0")));
@@ -15929,7 +15933,7 @@ fn reference_sets_operand_keys_admit_despite_wire_slot_order() {
         let CheckedTerm::Binding { value, .. } = &arguments[1] else {
             panic!("visible binding")
         };
-        let CheckedTerm::Aggregate { members } = value.as_ref() else {
+        let CheckedTerm::Aggregate { members, .. } = value.as_ref() else {
             panic!("visible set")
         };
         let [CheckedTerm::Reference { target: first }, CheckedTerm::Reference { target: second }] =

@@ -678,7 +678,7 @@ fn bound(
     meter: &mut Meter,
 ) -> Result<CheckedCanonicalIntegerBound> {
     let malformed = || type_error(ordinal, Some(node.node_id.clone()));
-    let Some(CheckedTerm::Aggregate { members }) = graph.term(node) else {
+    let Some(CheckedTerm::Aggregate { members, .. }) = graph.term(node) else {
         return Err(malformed());
     };
     let term = members
@@ -963,7 +963,7 @@ fn next_edge(
                 return Err(malformed());
             };
             let name = meter.text(name.as_ref())?;
-            if let CheckedTerm::Aggregate { members } = value.as_ref() {
+            if let CheckedTerm::Aggregate { members, .. } = value.as_ref() {
                 let [optional] = members.as_slice() else {
                     return Err(malformed());
                 };
@@ -1173,7 +1173,7 @@ fn closed_narrow(
     if graph.kind(integer) != Some(CheckedNodeKind::ScalarType(ScalarTypeForm::Integer)) {
         return Err(range_error());
     }
-    let Some(CheckedTerm::Aggregate { members }) = graph.term(range) else {
+    let Some(CheckedTerm::Aggregate { members, .. }) = graph.term(range) else {
         return Err(range_error());
     };
     if members.len() != 2 {
@@ -1346,7 +1346,7 @@ fn closed_literal(
                         meter.charge(1)?;
                         stack.push(Step::Node(target.clone()));
                     }
-                    CheckedTerm::Aggregate { members } => {
+                    CheckedTerm::Aggregate { members, .. } => {
                         stack.push(Step::Members(members.iter(), owner));
                     }
                     CheckedTerm::Binding { value, .. } => {
@@ -4182,7 +4182,10 @@ pub(in crate::checked_package::v2) mod tests {
     #[test]
     fn defensive_target_failures_never_salvage_or_fabricate_a_child_identity() {
         let mut p = package();
-        application_arguments(&mut p)[0] = CheckedTerm::Aggregate { members: vec![] };
+        application_arguments(&mut p)[0] = CheckedTerm::Aggregate {
+            members: vec![],
+            temporal_profile: None,
+        };
         assert_eq!(read(&p), Err(Error::MalformedChild { ordinal: 0 }));
         let mut p = package();
         application_arguments(&mut p)[0] = CheckedTerm::Reference { target: id('9') };

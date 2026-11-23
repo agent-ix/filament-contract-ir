@@ -376,7 +376,7 @@ fn select_admitted(
         return CheckedSelectedPopulationOutcome::NotPopulation(selector);
     };
     let maximum = population_maximum(body);
-    let unbounded = matches!(body, CheckedTerm::Aggregate { members } if members.is_empty());
+    let unbounded = matches!(body, CheckedTerm::Aggregate { members, .. } if members.is_empty());
     if maximum.is_none() && !unbounded {
         return CheckedSelectedPopulationOutcome::NotPopulation(selector);
     }
@@ -483,7 +483,7 @@ pub(super) fn least_type_occurrence<Body>(
 
 /// The inclusive maximum of a population node's admitted `max` binding.
 pub(super) fn population_maximum(body: &CheckedTerm) -> Option<CheckedPopulationMaximum> {
-    let CheckedTerm::Aggregate { members } = body else {
+    let CheckedTerm::Aggregate { members, .. } = body else {
         return None;
     };
     let mut maximum_members = members.iter().filter(
@@ -513,7 +513,7 @@ pub(super) fn population_object_type_typed<'a, Body>(
     term: impl Fn(&CheckedNodeId) -> Option<&'a CheckedTerm>,
 ) -> Option<CheckedNodeId> {
     let first_reference = |id: &CheckedNodeId| {
-        let CheckedTerm::Aggregate { members } = term(id)? else {
+        let CheckedTerm::Aggregate { members, .. } = term(id)? else {
             return None;
         };
         let CheckedTerm::Reference { target } = members.first()? else {
@@ -603,11 +603,13 @@ mod tests {
             members: vec![CheckedTerm::Reference {
                 target: reference.clone(),
             }],
+            temporal_profile: None,
         };
         let reference_term = CheckedTerm::Aggregate {
             members: vec![CheckedTerm::Reference {
                 target: object.clone(),
             }],
+            temporal_profile: None,
         };
         assert_eq!(
             population_object_type_typed(&population, |node| {
@@ -644,6 +646,7 @@ mod tests {
         };
         let aggregate = CheckedTerm::Aggregate {
             members: vec![maximum.clone()],
+            temporal_profile: None,
         };
         assert_eq!(
             population_maximum(&aggregate)
@@ -653,6 +656,7 @@ mod tests {
         );
         let duplicate = CheckedTerm::Aggregate {
             members: vec![maximum.clone(), maximum],
+            temporal_profile: None,
         };
         assert_eq!(population_maximum(&duplicate), None);
     }
@@ -688,7 +692,10 @@ mod tests {
             binder: None,
             value: Box::new(value),
         };
-        let aggregate = |members| CheckedTerm::Aggregate { members };
+        let aggregate = |members| CheckedTerm::Aggregate {
+            members,
+            temporal_profile: None,
+        };
         assert_eq!(
             population_maximum(&aggregate(vec![binding(
                 "max",

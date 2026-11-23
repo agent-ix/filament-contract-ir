@@ -351,7 +351,7 @@ fn admitted_nominal_enum_details_borrow_authored_order_and_members() {
     };
     assert!(matches!(
         &model.graph().nodes[0].body,
-        CheckedTerm::Aggregate { members } if members.is_empty()
+        CheckedTerm::Aggregate { members, .. } if members.is_empty()
     ));
 }
 

@@ -401,7 +401,7 @@ fn layout(form: ProtocolForm, operator: &str) -> Option<&'static [Binding]> {
 }
 
 fn members(value: &CheckedTerm) -> Option<&[CheckedTerm]> {
-    let CheckedTerm::Aggregate { members } = value else {
+    let CheckedTerm::Aggregate { members, .. } = value else {
         return None;
     };
     Some(members)
@@ -2279,7 +2279,7 @@ fn collect_type_children<'a>(
             meter.push(pending, target)?;
             Ok(true)
         }
-        CheckedTerm::Aggregate { members } => {
+        CheckedTerm::Aggregate { members, .. } => {
             for member in members {
                 if !collect_type_children(member, pending, meter)? {
                     return Ok(false);
@@ -2317,7 +2317,7 @@ fn check_member_targets(
         CheckedTerm::Binding { value, .. } => {
             check_member_targets(check, meter, value, &path.key("value"))?
         }
-        CheckedTerm::Aggregate { members } => {
+        CheckedTerm::Aggregate { members, .. } => {
             for (position, member) in members.iter().enumerate() {
                 check_member_targets(check, meter, member, &path.key("members").index(position))?;
             }
@@ -4856,13 +4856,14 @@ impl<'a, 'b> ProtocolScope<'a, 'b> {
                                             valid = false;
                                             break;
                                         };
-                                        let CheckedTerm::Aggregate { members } = value.as_ref()
+                                        let CheckedTerm::Aggregate { members, .. } = value.as_ref()
                                         else {
                                             valid = false;
                                             break;
                                         };
-                                        let [CheckedTerm::Aggregate { members: binders }, body] =
-                                            members.as_slice()
+                                        let [CheckedTerm::Aggregate {
+                                            members: binders, ..
+                                        }, body] = members.as_slice()
                                         else {
                                             valid = false;
                                             break;
@@ -4960,7 +4961,7 @@ impl<'a, 'b> ProtocolScope<'a, 'b> {
                             }
                         }
                     }
-                    CheckedTerm::Aggregate { members } => {
+                    CheckedTerm::Aggregate { members, .. } => {
                         meter.room(&mut pending, members.len())?;
                         pending.extend(members.iter().rev().map(|term| SlotWalk::Term(term, scope)))
                     }

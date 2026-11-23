@@ -97,7 +97,7 @@ fn node_pointer(position: usize) -> JsonPointer {
 
 fn members(term: &CheckedTerm) -> &[CheckedTerm] {
     match term {
-        CheckedTerm::Aggregate { members } => members,
+        CheckedTerm::Aggregate { members, .. } => members,
         CheckedTerm::OperationAnchorBody(body) => &body.members,
         _ => &[],
     }

@@ -930,3 +930,201 @@ fn temporal_clock_writer_retains_a_configured_clause_row() {
     assert_eq!(written["temporal_bindings"], source["temporal_bindings"]);
     admitted(&written, case, 1);
 }
+
+/// The published finite-hyper cases are applied to a base package an FSL
+/// emitter wrote, which is not part of the specification. The explicit
+/// live-producer input `TCB_FINITE_HYPER_PACKAGE` names its bytes; the vector
+/// file's `finite_hyper_profile_fixture` says how they are captured.
+const FINITE_HYPER_PACKAGE: &str = "TCB_FINITE_HYPER_PACKAGE";
+
+/// Published cases whose base package no emitter can write yet: TCB-19 needs a
+/// behaviours-domain hyperproperty, whose source does not parse (QSL-2887). The
+/// reader tests the same refusal on an in-repo behaviours-domain hyperproperty,
+/// `a_behaviours_hyper_body_carries_no_profile_member_and_other_nodes_may_not`.
+const UNGENERATED: &[(&str, &str)] = &[("TCB-19-behaviours-hyper-carries-profile", "QSL-2887")];
+
+fn unique_node(package: &Value, tag: &str, form: &str) -> usize {
+    let found: Vec<usize> = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .enumerate()
+        .filter(|(_, node)| node["node_tag"] == tag && node["semantic_form"] == form)
+        .map(|(at, _)| at)
+        .collect();
+    assert_eq!(found.len(), 1, "one {tag}/{form} node");
+    found[0]
+}
+
+fn selected_node(package: &Value, selector: &str) -> usize {
+    match selector {
+        "unique-claim-hyperproperty-node" | "unique-hyperproperty-node" => {
+            unique_node(package, "claim", "hyperproperty")
+        }
+        "unique-temporal-clause-node" => unique_node(package, "temporal", "temporal_clause"),
+        other => panic!("unknown node selector {other}"),
+    }
+}
+
+/// A mutation's value: a `profile_definitions` key's definition, or its
+/// verbatim `literal`.
+fn mutation_value(mutation: &Value, definitions: &Value) -> Value {
+    match (mutation["value"].as_str(), mutation.get("literal")) {
+        (Some(key), None) => definitions[key]["definition"].clone(),
+        (None, Some(literal)) => literal.clone(),
+        other => panic!("a mutation names one value or literal: {other:?}"),
+    }
+}
+
+fn apply_finite_hyper_mutation(package: &mut Value, mutation: &Value, definitions: &Value) {
+    let op = mutation["op"].as_str().expect("op");
+    match op {
+        "set-body-temporal-profile" | "set-body-member" => {
+            let at = selected_node(package, mutation["where"].as_str().expect("where"));
+            let member = mutation["member"].as_str().unwrap_or("temporal_profile");
+            package["semantic_graph"]["nodes"][at]["body"][member] =
+                mutation_value(mutation, definitions);
+        }
+        "remove-body-temporal-profile" => {
+            let at = selected_node(package, mutation["where"].as_str().expect("where"));
+            package["semantic_graph"]["nodes"][at]["body"]
+                .as_object_mut()
+                .expect("body")
+                .remove("temporal_profile");
+        }
+        "set-lock-profile-selections" => {
+            package["lock"]["profile_selections"] = Value::Array(
+                mutation["value"]
+                    .as_array()
+                    .expect("selections")
+                    .iter()
+                    .map(|name| definitions[name.as_str().expect("selection key")].clone())
+                    .collect(),
+            );
+        }
+        "set-temporal-binding-clock" => {
+            let at = selected_node(
+                package,
+                mutation["where"]["declaration"]
+                    .as_str()
+                    .expect("declaration"),
+            );
+            let declaration = package["semantic_graph"]["nodes"][at]["node_id"].clone();
+            let row = package["temporal_bindings"]
+                .as_array_mut()
+                .expect("rows")
+                .iter_mut()
+                .find(|row| {
+                    row["declaration"] == declaration
+                        && row["occurrence"] == mutation["where"]["occurrence"]
+                        && row["trace"] == mutation["where"]["trace"]
+                })
+                .expect("the selected row");
+            row["clock"] = mutation["value"].clone();
+        }
+        other => panic!("unknown finite hyper mutation {other}"),
+    }
+}
+
+fn finite_hyper_read(package: &Value) -> CheckedPackageV2ReadResult {
+    let mut evidence = filament_contract_model::CheckedPackageEvidence::new();
+    for feature in package["lock"]["required_features"]
+        .as_array()
+        .expect("required features")
+    {
+        evidence.support_feature(feature.as_str().expect("feature"));
+    }
+    let bytes = fixture_support::canonical(package);
+    CheckedPackageV2::read(&bytes, CheckedPackageReadLimits::bounded(), &evidence)
+}
+
+#[trace("TC-2028", "FR-322-AC-464")]
+#[test]
+#[ignore = "needs TCB_FINITE_HYPER_PACKAGE; run by make conformance-fspec-finite-hyper"]
+fn finite_hyper_profile_vectors_drive_the_reader() {
+    let published = vectors();
+    let definitions = &published["finite_hyper_profile_fixture"]["profile_definitions"];
+    let base = read_json(Path::new(
+        &std::env::var_os(FINITE_HYPER_PACKAGE)
+            .unwrap_or_else(|| panic!("{FINITE_HYPER_PACKAGE} names the captured FSL package")),
+    ))
+    .expect("captured finite hyper package");
+    let cases = published["finite_hyper_profile_cases"]
+        .as_array()
+        .expect("finite hyper cases");
+    assert_eq!(cases.len(), 11, "TCB-14 to TCB-24");
+    let mut driven = 0;
+    for case in cases {
+        let id = case["id"].as_str().expect("id");
+        if UNGENERATED.iter().any(|(named, _)| *named == id) {
+            continue;
+        }
+        driven += 1;
+        let fixture = case["fixture"].as_str().expect("fixture");
+        let (mut package, read) = match fixture {
+            "finite_hyper_profile_fixture" => (base.clone(), finite_hyper_read as fn(&Value) -> _),
+            "positive_temporal_clause_fixture" => {
+                let path = published[fixture]["fixture"]
+                    .as_str()
+                    .expect("fixture file");
+                (
+                    read_json(&proposal_dir_of(&fixtures_dir()).join(path))
+                        .expect("published clause package"),
+                    read_temporal_package as fn(&Value) -> _,
+                )
+            }
+            other => panic!("{id}: unknown fixture {other}"),
+        };
+        for mutation in case["mutations"].as_array().expect("mutations") {
+            apply_finite_hyper_mutation(&mut package, mutation, definitions);
+        }
+        let result = read(&package);
+        if case["expected"] == "admitted" {
+            let CheckedPackageV2ReadResult::Admitted(admitted) = result else {
+                panic!("{id} must be admitted: {result:?}");
+            };
+            let rows = admitted.temporal_bindings().expect("rows");
+            assert_eq!(rows.len(), 2, "{id}");
+            for (row, trace) in rows.iter().zip(["a", "b"]) {
+                assert_eq!(row.trace.as_deref(), Some(trace), "{id}");
+                assert_eq!(&*row.clock_name, "t", "{id}");
+                assert_eq!(
+                    row.clock,
+                    ClockConfiguration::EventPosition {
+                        sequence_authority: "test-hyper-events".into()
+                    },
+                    "{id}"
+                );
+            }
+            continue;
+        }
+        let CheckedPackageV2ReadResult::Refused(refusal) = result else {
+            panic!("{id} must be refused");
+        };
+        assert_eq!(code_word(refusal.code), case["code"], "{id}");
+        assert_eq!(
+            refusal.cause.map(cause_word),
+            case["cause"].as_str(),
+            "{id}"
+        );
+        let mut locus = case["locus"].as_str().expect("locus").to_owned();
+        for (placeholder, selector) in [
+            ("{hyperproperty-index}", "unique-hyperproperty-node"),
+            ("{temporal-clause-index}", "unique-temporal-clause-node"),
+        ] {
+            if locus.contains(placeholder) {
+                locus = locus.replace(placeholder, &selected_node(&package, selector).to_string());
+            }
+        }
+        assert_eq!(
+            refusal.loci[0]
+                .path
+                .as_ref()
+                .expect("refusal path")
+                .to_string(),
+            locus,
+            "{id}"
+        );
+    }
+    assert_eq!(driven, cases.len() - UNGENERATED.len());
+}

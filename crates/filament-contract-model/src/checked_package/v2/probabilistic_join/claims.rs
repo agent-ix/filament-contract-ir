@@ -408,7 +408,10 @@ impl<'j, 'a> Check<'j, 'a> {
         let join = self.join;
         let position = self.position;
         let set_at = binding_at(position, at);
-        let Some(CheckedTerm::Aggregate { members: listed }) = bound(body, at) else {
+        let Some(CheckedTerm::Aggregate {
+            members: listed, ..
+        }) = bound(body, at)
+        else {
             return Err(invalid(meter, position, set_at));
         };
         let expected = self.index.group(class, subject, name);
@@ -748,7 +751,7 @@ where
                 at: at.key("target"),
                 slot: Slot::Parameter,
             }),
-            CheckedTerm::Aggregate { members } if members.is_empty() => {}
+            CheckedTerm::Aggregate { members, .. } if members.is_empty() => {}
             _ => return Err(self.bad(at)),
         }
         // 8. `activation`.
@@ -773,8 +776,8 @@ where
         let value = bound(body, 8).expect("nine bindings");
         let at = binding_at(position, 8);
         match value {
-            CheckedTerm::Aggregate { members } if members.is_empty() => {}
-            CheckedTerm::Aggregate { members: parts } => {
+            CheckedTerm::Aggregate { members, .. } if members.is_empty() => {}
+            CheckedTerm::Aggregate { members: parts, .. } => {
                 for (row, (name, role)) in [
                     ("alpha", Range::Open01),
                     ("beta", Range::Open01),
@@ -807,7 +810,7 @@ where
         term: &'a CheckedTerm,
         at: Path<'static>,
     ) -> Step<(&'a [CheckedTerm], &'a str)> {
-        let CheckedTerm::Aggregate { members: parts } = term else {
+        let CheckedTerm::Aggregate { members: parts, .. } = term else {
             return Err(self.bad(at));
         };
         let Some(first) = parts.first() else {
@@ -918,7 +921,7 @@ where
         expect: Expect<'a>,
         range: Range,
     ) -> Step<&'a CheckedTerm> {
-        let CheckedTerm::Aggregate { members: parts } = term else {
+        let CheckedTerm::Aggregate { members: parts, .. } = term else {
             return Err(self.bad(at));
         };
         let (direction, direction_at) = self.slot(parts, 0, "direction", at)?;
