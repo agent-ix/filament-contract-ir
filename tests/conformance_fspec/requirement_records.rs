@@ -2378,13 +2378,14 @@ fn omitting_the_first_owners_record_does_not_renumber_a_shared_occurrence() {
         nodes.retain(|node| node["semantic_form"] != "value_validity");
     }
     package["requirement_items"] = json!([]);
+    package["path_condition_frames"] = json!([]);
+
+    let second_record = push_record(&mut package, &second_owner, &application, 1, None, 0);
+    finish_second_owner(&mut package, &[(second_record, 1)], &[]);
     package
         .as_object_mut()
         .expect("package object")
         .remove("path_condition_frames");
-
-    let second_record = push_record(&mut package, &second_owner, &application, 1, None, 0);
-    finish_second_owner(&mut package, &[(second_record, 1)], &[]);
 
     let CheckedPackageV2ReadResult::Admitted(admitted) = read(&package) else {
         panic!(
