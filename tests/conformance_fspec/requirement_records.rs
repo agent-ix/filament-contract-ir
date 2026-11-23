@@ -31,7 +31,12 @@ fn read(value: &Value) -> CheckedPackageV2ReadResult {
 fn read_large_with_work_bound(
     mut package: Value,
     work_limit: u64,
-) -> (CheckedPackageV2BudgetedReadResult, u64, std::time::Duration) {
+) -> (
+    CheckedPackageV2BudgetedReadResult,
+    u64,
+    u64,
+    std::time::Duration,
+) {
     index_fixture_node_ids(&mut package);
     let bytes = canonical(&package);
     let evidence = evidence_for(&package);
@@ -54,7 +59,12 @@ fn read_large_with_work_bound(
     let mut budget = NativeJoinBudget::new(work_limit, u64::MAX).with_read_storage_limit(u64::MAX);
     let started = std::time::Instant::now();
     let result = CheckedPackageV2::read_with_budget(&bytes, limits, &evidence, &mut budget);
-    (result, budget.consumed().work, started.elapsed())
+    (
+        result,
+        budget.consumed().work,
+        budget.read_storage_consumed(),
+        started.elapsed(),
+    )
 }
 
 fn function_claim(package: &Value) -> Value {
@@ -723,6 +733,229 @@ fn large_requirement_record_package(record_count: usize) -> Value {
     package
 }
 
+fn large_shared_frame_requirement_record_package(record_count: usize) -> Value {
+    assert!(
+        record_count >= 1,
+        "the package has a scalar-operation record"
+    );
+    let wrapper_count = record_count - 1;
+    let mut package = large_requirement_record_package(record_count);
+    let boolean_parameter = node_id("value/parameter/p/0");
+    let integer_type = node_id("scalar_type/integer");
+    let package_name = package["name"].clone();
+    let false_record_position = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("graph nodes")
+        .iter()
+        .position(|node| {
+            node["semantic_form"] == "value_validity"
+                && binding_value(node, "occurrence")["value"] == 1
+        })
+        .expect("false-branch value-validity record");
+    let false_record_id =
+        package["semantic_graph"]["nodes"][false_record_position]["node_id"].clone();
+    {
+        let record = &mut package["semantic_graph"]["nodes"][false_record_position];
+        binding_value_mut(record, "occurrence")["value"] = json!(0);
+        binding_value_mut(record, "path_condition")["members"][0]["value"] = json!(0);
+        let path = record["node_id"]["path"]
+            .as_array_mut()
+            .expect("record identity path");
+        let bound = path
+            .iter()
+            .position(|segment| segment == "bound")
+            .expect("result-bound path segment");
+        path[bound - 1] = json!("0");
+        let path_condition = path
+            .iter()
+            .position(|segment| segment == "path_condition")
+            .expect("path-condition identity segment");
+        path[path_condition + 1] = json!("0");
+    }
+    let true_record_id =
+        package["semantic_graph"]["nodes"][false_record_position]["node_id"].clone();
+    package["requirement_items"]
+        .as_array_mut()
+        .expect("requirement items")
+        .iter_mut()
+        .find(|item| item["record"] == false_record_id)
+        .expect("false-branch requirement row")["claim"]["occurrence"]["ordinal"] = json!(0);
+    let requirement = package["requirement_items"]
+        .as_array_mut()
+        .expect("requirement items")
+        .iter_mut()
+        .find(|item| item["record"] == false_record_id)
+        .expect("false-branch requirement row");
+    requirement["record"] = true_record_id;
+    package["path_condition_frames"]
+        .as_array_mut()
+        .expect("path-condition frames")
+        .truncate(1);
+    let inner_root = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("graph nodes")
+        .iter()
+        .find(|node| node["node_tag"] == "function")
+        .map(|owner| binding_value(owner, "body")["target"].clone())
+        .expect("function owner body root");
+    let mut wrapped_root = inner_root.clone();
+    {
+        let nodes = package["semantic_graph"]["nodes"]
+            .as_array_mut()
+            .expect("graph nodes");
+        let boolean_position = nodes
+            .iter()
+            .position(|node| node["node_id"] == boolean_parameter)
+            .expect("Boolean parameter");
+        nodes[boolean_position]["occurrences"] = Value::Array(
+            (0..=wrapper_count)
+                .map(|ordinal| json!({"role":"expression","ordinal":ordinal}))
+                .collect(),
+        );
+
+        for ordinal in (0..wrapper_count).rev() {
+            let wrapper_id = json!({
+                "package":package_name,
+                "path":["expression", "conditional", format!("bounded-storage-{ordinal:04}")],
+                "ordinal":0
+            });
+            let mut dependencies = vec![
+                boolean_parameter.clone(),
+                wrapped_root.clone(),
+                integer_type.clone(),
+            ];
+            dependencies.sort_by_key(structural_fixture_id);
+            dependencies.dedup();
+            nodes.push(json!({
+                "node_id":wrapper_id,
+                "schema_version":"filament.checked-semantic-graph/v2",
+                "node_tag":"expression",
+                "semantic_form":"conditional",
+                "semantic_type":integer_type,
+                "dependencies":dependencies,
+                "occurrences":[{"role":"expression","ordinal":0}],
+                "body":{"term":"application","operator":"conditional",
+                    "operation":{"identity":"filament.op.control.if","laws":[],"mode":null,"member":null,"leaves":[]},
+                    "result_type":integer_type,
+                    "arguments":[
+                        {"term":"reference","target":boolean_parameter},
+                        {"term":"reference","target":wrapped_root},
+                        {"term":"literal","type":integer_type,"value_kind":"integer","value":"0"}
+                    ]}
+            }));
+            wrapped_root = wrapper_id;
+        }
+        let owner = nodes
+            .iter_mut()
+            .find(|node| node["node_tag"] == "function")
+            .expect("function owner");
+        owner["body"]["members"][1]["value"]["target"] = wrapped_root.clone();
+        sync_body_dependencies(owner);
+    }
+
+    let mut frames = Vec::with_capacity(record_count);
+    for ordinal in 0..wrapper_count {
+        frames.push(json!({
+            "parent":if ordinal == 0 { Value::Null } else { json!(ordinal - 1) },
+            "guard":{"node":boolean_parameter,"occurrence":{"role":"expression","ordinal":ordinal}},
+            "holds":true
+        }));
+    }
+    let terminal_parent = if wrapper_count == 0 {
+        Value::Null
+    } else {
+        json!(wrapper_count - 1)
+    };
+    let mut inner_frames = package["path_condition_frames"]
+        .as_array()
+        .expect("inner frame table")
+        .clone();
+    for frame in &mut inner_frames {
+        frame["parent"] = terminal_parent.clone();
+        frame["guard"]["occurrence"]["ordinal"] = json!(wrapper_count);
+    }
+    frames.extend(inner_frames);
+    package["path_condition_frames"] = Value::Array(frames);
+
+    let mut remapped_record_ids = Vec::new();
+    for record in package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("graph nodes")
+        .iter_mut()
+        .filter(|node| node["semantic_form"] == "value_validity")
+    {
+        let old_id = record["node_id"].clone();
+        let old_frame = binding_value(record, "path_condition")["members"][0]["value"]
+            .as_u64()
+            .expect("old terminal frame id");
+        let frame_id = wrapper_count + usize::try_from(old_frame).expect("frame id fits");
+        let frame_id = u64::try_from(frame_id).expect("new terminal id fits");
+        binding_value_mut(record, "path_condition")["members"][0]["value"] = json!(frame_id);
+        let path = record["node_id"]["path"]
+            .as_array_mut()
+            .expect("record identity path");
+        let path_condition = path
+            .iter()
+            .position(|segment| segment == "path_condition")
+            .expect("path-condition identity segment");
+        path[path_condition + 1] = json!(frame_id.to_string());
+        remapped_record_ids.push((old_id, record["node_id"].clone()));
+    }
+    for item in package["requirement_items"]
+        .as_array_mut()
+        .expect("requirement items")
+    {
+        let old_id = item["record"].clone();
+        item["record"] = remapped_record_ids
+            .iter()
+            .find_map(|(old, new)| (old == &old_id).then(|| new.clone()))
+            .expect("record identity was remapped");
+    }
+    package["checked_term_data"]["body_locations"] = json!([]);
+    settle(&mut package);
+    rebuild_body_locations(&mut package);
+    rebuild_complete_source_map(&mut package);
+    package
+}
+
+#[trace("TC-488", "FR-376-AC-4")]
+#[test]
+fn tc_488_a_thousand_requirement_records_share_a_thousand_guard_frames_with_linear_storage() {
+    const WORK_PER_RECORD: u64 = 256;
+    let read_and_measure = |record_count: usize| {
+        let package = large_shared_frame_requirement_record_package(record_count);
+        let work_limit = u64::try_from(record_count).expect("record count fits") * WORK_PER_RECORD;
+        let (result, work, storage, _) = read_large_with_work_bound(package, work_limit);
+        let CheckedPackageV2BudgetedReadResult::Admitted(admitted) = result else {
+            panic!("{record_count} records and shared frames admit: {result:?}");
+        };
+        let records = admitted
+            .requirement_items()
+            .iter()
+            .map(value_validity_record)
+            .collect::<Vec<_>>();
+        assert_eq!(records.len(), record_count);
+        assert_eq!(admitted.path_condition_frames().len(), record_count);
+        assert_eq!(
+            admitted.path_condition(records[0]).iter().count(),
+            record_count
+        );
+        assert!(
+            work <= work_limit,
+            "reader work {work} exceeded {work_limit}"
+        );
+        storage
+    };
+
+    let half_storage = read_and_measure(500);
+    let full_storage = read_and_measure(1_000);
+    let linear_bound = half_storage.saturating_mul(2).saturating_add(4_096);
+    assert!(
+        full_storage <= linear_bound,
+        "1,000 record/frame storage charge {full_storage} exceeded linear bound {linear_bound} from 500 entries"
+    );
+}
+
 #[trace("TC-488", "FR-376-AC-3")]
 #[ignore = "large reader performance lane; run explicitly on Titan"]
 #[test]
@@ -733,7 +966,7 @@ fn tc_488_a_hundred_thousand_requirement_records_admit_within_fifteen_minutes() 
 
     let package = large_requirement_record_package(RECORDS);
     let work_limit = u64::try_from(RECORDS).expect("record count fits u64") * WORK_PER_RECORD;
-    let (result, work, elapsed) = read_large_with_work_bound(package, work_limit);
+    let (result, work, _, elapsed) = read_large_with_work_bound(package, work_limit);
     let CheckedPackageV2BudgetedReadResult::Admitted(admitted) = result else {
         panic!("100,000 reached requirement records admit within the bounded read: {result:?}");
     };

@@ -646,8 +646,7 @@ pub(super) fn validate(
             kinds[position] == CheckedNodeKind::Claim(super::ClaimForm::OperationContract)
         })
         .collect();
-    let mut owner_paths: Option<BTreeMap<usize, OwnerPaths>> = None;
-    let mut seen_frame_ids = BTreeSet::new();
+    let mut owner_paths: Option<Vec<DerivedPath>> = None;
     let mut used_frames =
         meter.vec(path_condition_frames.map_or(0, <[PathConditionFrameWire]>::len))?;
     used_frames.resize(
@@ -803,14 +802,19 @@ pub(super) fn validate(
                 &frame_index,
                 source_map,
                 position,
-                &mut seen_frame_ids,
                 meter,
             )?);
         }
-        let Some(owner_paths) = owner_paths
-            .as_ref()
-            .and_then(|paths| paths.get(&owner_position))
-        else {
+        let expected_path = owner_paths.as_ref().and_then(|paths| {
+            paths
+                .binary_search_by_key(
+                    &(owner_position, application_position, record.occurrence),
+                    |path| (path.owner, path.application, path.occurrence),
+                )
+                .ok()
+                .map(|path| paths[path].terminal)
+        });
+        if expected_path.is_none() {
             return Err(refuse(
                 position,
                 node_at.key("body").key("members").index(1),
@@ -818,9 +822,8 @@ pub(super) fn validate(
                 nodes.get(position).map(|node| &node.node_id),
                 meter,
             ));
-        };
-        let expected_path = owner_paths.get(&(application_position, record.occurrence));
-        if expected_path != Some(&record.path_condition_frame) {
+        }
+        if expected_path != Some(record.path_condition_frame) {
             return Err(refuse(
                 position,
                 node_at.key("body").key("members").index(5),
@@ -1973,7 +1976,7 @@ fn read_operation_contract_join(
 }
 
 enum OwnerWalkTask<'a> {
-    Node(CheckedNodeId, Option<PathConditionFrameId>),
+    Node(usize, Option<PathConditionFrameId>),
     Term(&'a CheckedTerm, Option<PathConditionFrameId>),
 }
 
@@ -2017,19 +2020,18 @@ fn path_condition_frame_index(
     Ok(entries)
 }
 
-type OwnerPaths = BTreeMap<(usize, u64), Option<PathConditionFrameId>>;
+#[derive(Clone, Copy)]
+struct DerivedPath {
+    owner: usize,
+    application: usize,
+    occurrence: u64,
+    terminal: Option<PathConditionFrameId>,
+}
 
 /// The terminal a branch carries when its frame is absent from the table: the
 /// emitter prunes a frame no record cites (FR-825), so a branch with no
 /// scalar-operation record has none. No record can cite this id.
 const PRUNED_FRAME: PathConditionFrameId = PathConditionFrameId(usize::MAX);
-
-/// The frame ids one owner's walk reached, in first-visit order.
-#[derive(Default)]
-struct OwnerFrames {
-    seen: BTreeSet<usize>,
-    order: Vec<usize>,
-}
 
 /// Derive the path condition of every scalar-operation occurrence in the
 /// package. Expression occurrences are numbered package-wide (FR-825): the
@@ -2043,9 +2045,8 @@ fn derive_package_path_conditions(
     frame_index: &[PathConditionFrameIndexEntry],
     source_map: &[CheckedSourceMapEntry],
     record_position: usize,
-    seen_frame_ids: &mut BTreeSet<usize>,
     meter: &mut WorkMeter,
-) -> Result<BTreeMap<usize, OwnerPaths>, ValidationFailure> {
+) -> Result<Vec<DerivedPath>, ValidationFailure> {
     let at = Path::root().key("semantic_graph").key("nodes");
     let owner_count = (0..nodes.len())
         .filter(|&position| {
@@ -2098,17 +2099,47 @@ fn derive_package_path_conditions(
                 .then_with(|| nodes[*left_owner].node_id.cmp(&nodes[*right_owner].node_id))
         },
     );
-    let mut visit_counts = BTreeMap::<usize, usize>::new();
-    let mut paths = BTreeMap::new();
-    let mut frame_orders = BTreeMap::new();
+    let scalar_occurrence_count = terms
+        .iter()
+        .enumerate()
+        .filter_map(|(position, term)| {
+            matches!(term, CheckedTerm::Application { operation, .. }
+                if operation.identity().is_some_and(is_scalar_operation))
+            .then(|| {
+                nodes[position]
+                    .occurrences
+                    .iter()
+                    .filter(|occurrence| occurrence.role == CheckedOccurrenceRole::Expression)
+                    .count()
+            })
+        })
+        .fold(0_usize, usize::saturating_add);
+    // These flat tables are sized from admitted input counts before traversal;
+    // no path, frame-order, or occurrence index grows with an uncharged map.
+    let mut paths =
+        stage_storage::vec::<DerivedPath>(meter, &numbering_site, scalar_occurrence_count)?;
+    let mut visit_counts = stage_storage::vec::<usize>(meter, &numbering_site, nodes.len())?;
+    visit_counts.resize(nodes.len(), 0);
+    let mut charged_owner = stage_storage::vec::<usize>(meter, &numbering_site, nodes.len())?;
+    charged_owner.resize(nodes.len(), usize::MAX);
+    let mut frame_seen = stage_storage::vec::<u8>(meter, &numbering_site, frame_index.len())?;
+    frame_seen.resize(frame_index.len(), 0);
+    let mut owner_frame_order =
+        stage_storage::vec::<usize>(meter, &numbering_site, frame_index.len())?;
+    let mut frame_orders =
+        stage_storage::vec::<(usize, usize, usize)>(meter, &numbering_site, frame_index.len())?;
+    let mut pending = stage_storage::vec::<OwnerWalkTask<'_>>(meter, &numbering_site, 1)?;
     for &(_, owner_position) in &owners {
         let Some(root) = terms.get(owner_position).and_then(function_body_root) else {
             continue;
         };
-        let mut derived = OwnerPaths::new();
-        let mut frames = OwnerFrames::default();
+        let Some(&root_position) = index.get(root) else {
+            continue;
+        };
+        owner_frame_order.clear();
         walk_owner_expression(
-            root,
+            root_position,
+            owner_position,
             true,
             nodes,
             terms,
@@ -2116,32 +2147,54 @@ fn derive_package_path_conditions(
             frame_index,
             record_position,
             &mut visit_counts,
-            &mut derived,
-            &mut frames,
+            &mut charged_owner,
+            &mut paths,
+            &mut frame_seen,
+            &mut owner_frame_order,
+            &mut pending,
+            &numbering_site,
             meter,
         )?;
         if let Some(measure) = function_measure_root(&terms[owner_position]) {
-            walk_owner_expression(
-                measure,
-                false,
-                nodes,
-                terms,
-                index,
-                frame_index,
-                record_position,
-                &mut visit_counts,
-                &mut derived,
-                &mut frames,
-                meter,
-            )?;
+            if let Some(&measure_position) = index.get(measure) {
+                walk_owner_expression(
+                    measure_position,
+                    owner_position,
+                    false,
+                    nodes,
+                    terms,
+                    index,
+                    frame_index,
+                    record_position,
+                    &mut visit_counts,
+                    &mut charged_owner,
+                    &mut paths,
+                    &mut frame_seen,
+                    &mut owner_frame_order,
+                    &mut pending,
+                    &numbering_site,
+                    meter,
+                )?;
+            }
         }
-        paths.insert(owner_position, derived);
-        frame_orders.insert(owner_position, frames.order);
+        frame_orders.extend(
+            owner_frame_order
+                .iter()
+                .copied()
+                .enumerate()
+                .map(|(order, frame_id)| (owner_position, order, frame_id)),
+        );
     }
     // The table's canonical order is owner structural key ascending, then
     // first visit; it is checked apart from the numbering order above.
-    for frame_id in frame_orders.values().flatten().copied() {
-        if seen_frame_ids.insert(frame_id) && frame_id + 1 != seen_frame_ids.len() {
+    frame_orders.sort_unstable_by(|left, right| {
+        nodes[left.0]
+            .node_id
+            .cmp(&nodes[right.0].node_id)
+            .then_with(|| left.1.cmp(&right.1))
+    });
+    for (expected, (_, _, frame_id)) in frame_orders.iter().enumerate() {
+        if *frame_id != expected {
             return Err(refuse(
                 record_position,
                 Path::root().key("path_condition_frames"),
@@ -2151,31 +2204,47 @@ fn derive_package_path_conditions(
             ));
         }
     }
+    if frame_seen.contains(&0) {
+        return Err(refuse(
+            record_position,
+            Path::root().key("path_condition_frames"),
+            Cause::InvalidValue,
+            None,
+            meter,
+        ));
+    }
+    paths.sort_unstable_by_key(|path| (path.owner, path.application, path.occurrence));
     Ok(paths)
 }
 
 fn walk_owner_expression(
-    root: CheckedNodeId,
+    root: usize,
+    owner: usize,
     derive: bool,
     nodes: &[RawSemanticNodeV2],
     terms: &[CheckedTerm],
     index: &GraphIndex<'_>,
     frame_index: &[PathConditionFrameIndexEntry],
     record_position: usize,
-    visit_counts: &mut BTreeMap<usize, usize>,
-    derived: &mut OwnerPaths,
-    frames: &mut OwnerFrames,
+    visit_counts: &mut [usize],
+    charged_owner: &mut [usize],
+    paths: &mut Vec<DerivedPath>,
+    frame_seen: &mut [u8],
+    frame_order: &mut Vec<usize>,
+    pending: &mut Vec<OwnerWalkTask<'_>>,
+    walk_site: &Site<'_>,
     meter: &mut WorkMeter,
 ) -> Result<(), ValidationFailure> {
-    let mut pending = vec![OwnerWalkTask::Node(root, None)];
-    let mut charged_nodes = BTreeSet::new();
+    // Reuse one charged stack across bodies; charge each capacity increase
+    // before asking the allocator for it.
+    pending.clear();
+    push_owner_task(pending, OwnerWalkTask::Node(root, None), meter, walk_site)?;
     while let Some(task) = pending.pop() {
         match task {
-            OwnerWalkTask::Node(id, terminal) => {
-                let Some(&position) = index.get(&id) else {
+            OwnerWalkTask::Node(position, terminal) => {
+                let Some(visit) = visit_counts.get_mut(position) else {
                     continue;
                 };
-                let visit = visit_counts.entry(position).or_default();
                 let occurrence = nodes[position]
                     .occurrences
                     .iter()
@@ -2183,7 +2252,8 @@ fn walk_owner_expression(
                     .nth(*visit)
                     .map(|occurrence| occurrence.ordinal);
                 *visit = visit.saturating_add(1);
-                if charged_nodes.insert(position) {
+                if charged_owner[position] != owner {
+                    charged_owner[position] = owner;
                     let at = Path::root()
                         .key("semantic_graph")
                         .key("nodes")
@@ -2197,14 +2267,31 @@ fn walk_owner_expression(
                     (derive, occurrence, term)
                 {
                     if operation.identity().is_some_and(is_scalar_operation) {
-                        derived.insert((position, ordinal), terminal);
+                        paths.push(DerivedPath {
+                            owner,
+                            application: position,
+                            occurrence: ordinal,
+                            terminal,
+                        });
                     }
                 }
-                pending.push(OwnerWalkTask::Term(term, terminal));
+                push_owner_task(
+                    pending,
+                    OwnerWalkTask::Term(term, terminal),
+                    meter,
+                    walk_site,
+                )?;
             }
             OwnerWalkTask::Term(term, terminal) => match term {
                 CheckedTerm::Reference { target } => {
-                    pending.push(OwnerWalkTask::Node(target.clone(), terminal));
+                    if let Some(&position) = index.get(target) {
+                        push_owner_task(
+                            pending,
+                            OwnerWalkTask::Node(position, terminal),
+                            meter,
+                            walk_site,
+                        )?;
+                    }
                 }
                 CheckedTerm::Application {
                     operation,
@@ -2228,7 +2315,12 @@ fn walk_owner_expression(
                             Some((guard, ordinal))
                         }) else {
                             for argument in arguments.iter().rev() {
-                                pending.push(OwnerWalkTask::Term(argument, terminal));
+                                push_owner_task(
+                                    pending,
+                                    OwnerWalkTask::Term(argument, terminal),
+                                    meter,
+                                    walk_site,
+                                )?;
                             }
                             continue;
                         };
@@ -2242,10 +2334,16 @@ fn walk_owner_expression(
                                     index,
                                     frame_index,
                                     record_position,
-                                    frames,
+                                    frame_seen,
+                                    frame_order,
                                     meter,
                                 )?;
-                                pending.push(OwnerWalkTask::Term(&arguments[1], then_frame));
+                                push_owner_task(
+                                    pending,
+                                    OwnerWalkTask::Term(&arguments[1], then_frame),
+                                    meter,
+                                    walk_site,
+                                )?;
                             }
                             Some(false) => {
                                 let else_frame = derived_frame_id(
@@ -2256,10 +2354,16 @@ fn walk_owner_expression(
                                     index,
                                     frame_index,
                                     record_position,
-                                    frames,
+                                    frame_seen,
+                                    frame_order,
                                     meter,
                                 )?;
-                                pending.push(OwnerWalkTask::Term(&arguments[2], else_frame));
+                                push_owner_task(
+                                    pending,
+                                    OwnerWalkTask::Term(&arguments[2], else_frame),
+                                    meter,
+                                    walk_site,
+                                )?;
                             }
                             None => {
                                 let then_frame = derived_frame_id(
@@ -2270,7 +2374,8 @@ fn walk_owner_expression(
                                     index,
                                     frame_index,
                                     record_position,
-                                    frames,
+                                    frame_seen,
+                                    frame_order,
                                     meter,
                                 )?;
                                 let else_frame = derived_frame_id(
@@ -2281,14 +2386,30 @@ fn walk_owner_expression(
                                     index,
                                     frame_index,
                                     record_position,
-                                    frames,
+                                    frame_seen,
+                                    frame_order,
                                     meter,
                                 )?;
-                                pending.push(OwnerWalkTask::Term(&arguments[2], else_frame));
-                                pending.push(OwnerWalkTask::Term(&arguments[1], then_frame));
+                                push_owner_task(
+                                    pending,
+                                    OwnerWalkTask::Term(&arguments[2], else_frame),
+                                    meter,
+                                    walk_site,
+                                )?;
+                                push_owner_task(
+                                    pending,
+                                    OwnerWalkTask::Term(&arguments[1], then_frame),
+                                    meter,
+                                    walk_site,
+                                )?;
                             }
                         }
-                        pending.push(OwnerWalkTask::Term(&arguments[0], terminal));
+                        push_owner_task(
+                            pending,
+                            OwnerWalkTask::Term(&arguments[0], terminal),
+                            meter,
+                            walk_site,
+                        )?;
                     } else if derive
                         && matches!(
                             identity,
@@ -2332,34 +2453,85 @@ fn walk_owner_expression(
                                 index,
                                 frame_index,
                                 record_position,
-                                frames,
+                                frame_seen,
+                                frame_order,
                                 meter,
                             )?
                         } else {
                             terminal
                         };
                         if !right_is_short_circuited {
-                            pending.push(OwnerWalkTask::Term(&arguments[1], right_terminal));
+                            push_owner_task(
+                                pending,
+                                OwnerWalkTask::Term(&arguments[1], right_terminal),
+                                meter,
+                                walk_site,
+                            )?;
                         }
-                        pending.push(OwnerWalkTask::Term(&arguments[0], terminal));
+                        push_owner_task(
+                            pending,
+                            OwnerWalkTask::Term(&arguments[0], terminal),
+                            meter,
+                            walk_site,
+                        )?;
                     } else {
                         for argument in arguments.iter().rev() {
-                            pending.push(OwnerWalkTask::Term(argument, terminal));
+                            push_owner_task(
+                                pending,
+                                OwnerWalkTask::Term(argument, terminal),
+                                meter,
+                                walk_site,
+                            )?;
                         }
                     }
                 }
                 CheckedTerm::Aggregate { members, .. } => {
                     for member in members.iter().rev() {
-                        pending.push(OwnerWalkTask::Term(member, terminal));
+                        push_owner_task(
+                            pending,
+                            OwnerWalkTask::Term(member, terminal),
+                            meter,
+                            walk_site,
+                        )?;
                     }
                 }
                 CheckedTerm::Binding { value, .. } => {
-                    pending.push(OwnerWalkTask::Term(value, terminal));
+                    push_owner_task(
+                        pending,
+                        OwnerWalkTask::Term(value, terminal),
+                        meter,
+                        walk_site,
+                    )?;
                 }
                 _ => {}
             },
         }
     }
+    Ok(())
+}
+
+fn push_owner_task(
+    pending: &mut Vec<OwnerWalkTask<'_>>,
+    task: OwnerWalkTask<'_>,
+    meter: &mut WorkMeter,
+    site: &Site<'_>,
+) -> Result<(), ValidationFailure> {
+    if pending.len() == pending.capacity() {
+        let capacity = pending
+            .len()
+            .saturating_add(1)
+            .max(pending.capacity().saturating_mul(2))
+            .max(4);
+        stage_storage::reserve_items::<OwnerWalkTask<'_>>(meter, site, capacity)?;
+        pending
+            .try_reserve_exact(capacity.saturating_sub(pending.len()))
+            .map_err(|_| {
+                stage_storage::unavailable(
+                    capacity.saturating_mul(std::mem::size_of::<OwnerWalkTask<'_>>()),
+                )
+            })?;
+    }
+    pending.push(task);
     Ok(())
 }
 
@@ -2392,7 +2564,8 @@ fn derived_frame_id(
     index: &GraphIndex<'_>,
     frame_index: &[PathConditionFrameIndexEntry],
     record_position: usize,
-    frames: &mut OwnerFrames,
+    frame_seen: &mut [u8],
+    frame_order: &mut Vec<usize>,
     meter: &mut WorkMeter,
 ) -> Result<Option<PathConditionFrameId>, ValidationFailure> {
     if parent == Some(PRUNED_FRAME) {
@@ -2416,8 +2589,11 @@ fn derived_frame_id(
         return Ok(Some(PRUNED_FRAME));
     };
     let frame_id = frame_index[found].1;
-    if frames.seen.insert(frame_id) {
-        frames.order.push(frame_id);
+    if let Some(seen) = frame_seen.get_mut(frame_id) {
+        if *seen == 0 {
+            *seen = 1;
+            frame_order.push(frame_id);
+        }
     }
     Ok(Some(PathConditionFrameId(frame_id)))
 }
@@ -2506,7 +2682,7 @@ fn record_body_failure_path<'a>(term: &CheckedTerm, node_at: Path<'a>) -> Path<'
     member_path(0)
 }
 
-fn function_body_root(term: &CheckedTerm) -> Option<CheckedNodeId> {
+fn function_body_root(term: &CheckedTerm) -> Option<&CheckedNodeId> {
     let CheckedTerm::Aggregate { members, .. } = term else {
         return None;
     };
@@ -2518,7 +2694,7 @@ fn function_body_root(term: &CheckedTerm) -> Option<CheckedNodeId> {
             return None;
         }
         match value.as_ref() {
-            CheckedTerm::Reference { target } => Some(target.clone()),
+            CheckedTerm::Reference { target } => Some(target),
             _ => None,
         }
     })
@@ -2526,7 +2702,7 @@ fn function_body_root(term: &CheckedTerm) -> Option<CheckedNodeId> {
 
 /// The termination measure's root, which the path-condition walk excludes but
 /// whose reads still take expression occurrences.
-fn function_measure_root(term: &CheckedTerm) -> Option<CheckedNodeId> {
+fn function_measure_root(term: &CheckedTerm) -> Option<&CheckedNodeId> {
     let CheckedTerm::Aggregate { members, .. } = term else {
         return None;
     };
@@ -2541,7 +2717,7 @@ fn function_measure_root(term: &CheckedTerm) -> Option<CheckedNodeId> {
             return None;
         }
         match value.as_ref() {
-            CheckedTerm::Reference { target } => Some(target.clone()),
+            CheckedTerm::Reference { target } => Some(target),
             _ => None,
         }
     })
