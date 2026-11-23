@@ -18,7 +18,7 @@ use crate::checked_package::shared::{
 };
 use quire_canonical::{Encode, Error, FixedShape, Sink, Writer};
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 /// One capability requested at a claim occurrence.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize, FixedShape)]
@@ -2310,7 +2310,7 @@ fn walk_owner_expression(
                                 .filter(|occurrence| {
                                     occurrence.role == CheckedOccurrenceRole::Expression
                                 })
-                                .nth(*visit_counts.get(position).unwrap_or(&0))?
+                                .nth(*visit_counts.get(*position).unwrap_or(&0))?
                                 .ordinal;
                             Some((guard, ordinal))
                         }) else {
@@ -2431,7 +2431,7 @@ fn walk_owner_expression(
                                 .filter(|occurrence| {
                                     occurrence.role == CheckedOccurrenceRole::Expression
                                 })
-                                .nth(*visit_counts.get(position).unwrap_or(&0))?
+                                .nth(*visit_counts.get(*position).unwrap_or(&0))?
                                 .ordinal;
                             Some((guard, occurrence))
                         });
@@ -2510,9 +2510,9 @@ fn walk_owner_expression(
     Ok(())
 }
 
-fn push_owner_task(
-    pending: &mut Vec<OwnerWalkTask<'_>>,
-    task: OwnerWalkTask<'_>,
+fn push_owner_task<'a>(
+    pending: &mut Vec<OwnerWalkTask<'a>>,
+    task: OwnerWalkTask<'a>,
     meter: &mut WorkMeter,
     site: &Site<'_>,
 ) -> Result<(), ValidationFailure> {
