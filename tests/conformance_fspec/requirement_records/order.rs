@@ -82,7 +82,7 @@ fn chain_records_admit_and_their_order_defects_refuse_at_the_first_defect() {
         nodes[first]["occurrences"][0]["ordinal"] =
             nodes[second]["occurrences"][0]["ordinal"].clone();
         nodes[second]["occurrences"][0]["ordinal"] = first_ordinal;
-        crate::fixture_support::rebuild_source_map(&mut exchanged);
+        crate::fixture_support::rebuild_complete_source_map(&mut exchanged);
         assert_refusal(
             &exchanged,
             CheckedPackageRefusalCode::InvalidPackage,
