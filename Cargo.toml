@@ -89,6 +89,12 @@ name = "ir575_reader_memory"
 path = "tests/ir575_reader_memory.rs"
 test = false
 
+# IR-1584: reader memory multiples (charged, live peak, retained) under a
+# counting allocator; its by-stage lane needs test-support.
+[[test]]
+name = "ir1584_reader_memory"
+path = "tests/ir1584_reader_memory.rs"
+
 # TC-019: CI invokes capture once per supported OS and compares the three
 # resulting artifacts in a named job outside the ordinary local test lane.
 [[test]]

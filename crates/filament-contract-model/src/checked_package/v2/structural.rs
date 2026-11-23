@@ -2284,8 +2284,16 @@ fn application_dependencies_split_at(
     let mut pending: Vec<TermNode<'_>> = meter.vec(1)?;
     pending.push(body);
     let mut contains_application = false;
+    // The join is returned only for a body that holds an application. Until
+    // one is seen, a reference's target is kept as its borrowed term and its
+    // owned id is read only once the join is known to be needed, so a body
+    // without an application allocates no owned ids it would drop.
+    let mut deferred: Vec<TermNode<'_>> = Vec::new();
     while let Some(term) = pending.pop() {
         match term.view() {
+            Some(TermView::Reference { target }) if !contains_application => {
+                meter.push(&mut deferred, target)?;
+            }
             Some(TermView::Reference { target }) => {
                 if let Some(id) = meter.read_id(target, row)?.valid() {
                     meter.insert_owned_id(&mut join, id)?;
@@ -2296,7 +2304,14 @@ fn application_dependencies_split_at(
                 arguments,
                 ..
             }) => {
-                contains_application = true;
+                if !contains_application {
+                    contains_application = true;
+                    for target in deferred.drain(..) {
+                        if let Some(id) = meter.read_id(target, row)?.valid() {
+                            meter.insert_owned_id(&mut join, id)?;
+                        }
+                    }
+                }
                 meter.room(&mut pending, arguments.len())?;
                 pending.extend(arguments);
                 let member = operation.get("member");
