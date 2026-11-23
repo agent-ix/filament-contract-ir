@@ -1768,18 +1768,17 @@ mod tests {
             .unwrap(),
             ValueType::Text(TextType::new(1, 8, TextProfile::Nfc).unwrap())
         );
-        for refused in [MemberType::TextBounds(TextBounds {
+        let refused = MemberType::TextBounds(TextBounds {
             lower: 1,
             upper: 8,
             profile: "not-a-profile".into(),
-        })] {
-            let error = expected(&refused).expect_err("no faithful Exact type");
-            assert_eq!(error.code.as_str(), "unsupported_exact_type", "{refused:?}");
-            assert_eq!(
-                error.form.as_deref(),
-                Some("/model_unions/0/cases/0/payload/node")
-            );
-        }
+        });
+        let error = expected(&refused).expect_err("no faithful Exact type");
+        assert_eq!(error.code.as_str(), "unsupported_exact_type", "{refused:?}");
+        assert_eq!(
+            error.form.as_deref(),
+            Some("/model_unions/0/cases/0/payload/node")
+        );
         assert_eq!(
             expected(&MemberType::ClockReference).unwrap(),
             ValueType::ClockReference

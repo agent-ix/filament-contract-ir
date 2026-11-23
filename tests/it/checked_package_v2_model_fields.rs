@@ -3168,7 +3168,7 @@ fn selected_tuple_positions_require_matching_unique_stage_rows() {
     use filament_contract_model::{NativeJoinLocus, NativeJoinLocusSource};
     assert_eq!(
         tight.denied_locus,
-        Some(filament_contract_model::NativeJoinLocus {
+        Some(NativeJoinLocus {
             source: NativeJoinLocusSource::TupleRow(0),
             form: "selected_tuple_row"
         })
@@ -3185,7 +3185,7 @@ fn selected_tuple_positions_require_matching_unique_stage_rows() {
         .unwrap_err();
     assert_eq!(
         second_row.denied_locus,
-        Some(filament_contract_model::NativeJoinLocus {
+        Some(NativeJoinLocus {
             source: NativeJoinLocusSource::TupleRow(1),
             form: "selected_tuple_row"
         })
@@ -3207,7 +3207,7 @@ fn selected_tuple_positions_require_matching_unique_stage_rows() {
         .unwrap_err();
     assert_eq!(
         zero.denied_locus,
-        Some(filament_contract_model::NativeJoinLocus {
+        Some(NativeJoinLocus {
             source: NativeJoinLocusSource::Package,
             form: "runtime_projection"
         })
@@ -3227,7 +3227,7 @@ fn selected_tuple_positions_require_matching_unique_stage_rows() {
         .unwrap_err();
     assert_eq!(
         zero.denied_locus,
-        Some(filament_contract_model::NativeJoinLocus {
+        Some(NativeJoinLocus {
             source: NativeJoinLocusSource::GraphNode(0),
             form: "graph_node"
         })
@@ -8722,7 +8722,7 @@ fn runtime_two_tuple_indices_activate_the_first_row_after_witness_join() {
             .project_selected_type_declarations(&identities, &rows, &[], &mut short)
             .unwrap_err();
         if error.denied_locus
-            == Some(filament_contract_model::NativeJoinLocus {
+            == Some(NativeJoinLocus {
                 source: NativeJoinLocusSource::TupleRow(0),
                 form: "selected_tuple_index",
             })
@@ -8750,7 +8750,7 @@ fn runtime_two_tuple_indices_activate_the_first_row_after_witness_join() {
         .unwrap_err();
     assert_eq!(
         error.denied_locus,
-        Some(filament_contract_model::NativeJoinLocus {
+        Some(NativeJoinLocus {
             source: NativeJoinLocusSource::SelectedDeclaration(0),
             form: "selected_declaration_index"
         })

@@ -29,3 +29,16 @@ The logic is correct and idiomatic. There is no panic path and no new allocation
 | ID | Severity | Summary | Refs |
 | --- | --- | --- | --- |
 | FND-001 | low | `cargo fmt --all --check` fails. rustfmt joins `MemberType::Clock \| MemberType::Option(_)` and `\| MemberType::Collection { .. } => {` onto one line. The fmt lint goes red until `cargo fmt` runs. | crates/filament-contract-model/src/checked_package/v2/exact_projection.rs:3502-3503 |
+
+## New findings (disposition pass 1)
+
+| ID | Severity | Summary | Refs |
+| --- | --- | --- | --- |
+| FND-002 | low | The fix commit acc267fb rewrote `NativeJoinLocus {` to `filament_contract_model::NativeJoinLocus {` in two unrelated tests but kept the local `use filament_contract_model::{NativeJoinLocus, ...}` lines. The build now warns `unused import: NativeJoinLocus` at both places, and `make lint` (clippy `--all-targets --features conformance-cli -D warnings`) fails. Revert the churn, or drop `NativeJoinLocus` from both `use` lines. | tests/it/checked_package_v2_model_fields.rs:3168; tests/it/checked_package_v2_model_fields.rs:8679 |
+
+## Dispositions
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-001 | fixed | At acc267fb the arm reads `MemberType::Clock \| MemberType::Option(_) \| MemberType::Collection { .. } => {` on one line, and `cargo fmt --all --check` exits 0. |
+| FND-002 | still-open | Added in this round. The fix commit introduced two unused `NativeJoinLocus` imports (tests/it/checked_package_v2_model_fields.rs:3168 and 8679), which fail clippy -D warnings. Not yet fixed. |
