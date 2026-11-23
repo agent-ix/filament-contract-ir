@@ -4,6 +4,7 @@
 //!
 //! Implements: FR-038 "Budget-charged strict read", FR-358.
 
+use super::checked_json::NoncanonicalValue;
 use super::native_join_budget::{NativeJoinBudget, NativeJoinLocus, NativeJoinLocusSource};
 use super::{
     CatalogReadError, CheckedPackageEvidence, CheckedPackageV2, CheckedPackageV2ReadResult,
@@ -541,8 +542,11 @@ impl quire_canonical::Sink for ComparingSink<'_> {
 
 /// The package document as the canonical writer encodes it, with the
 /// encoder's refusal of an integer past 2^53 (see [`super::checked_json`]).
+/// `found` records a value the encoding refused for having no canonical
+/// spelling.
 struct PackageDocument<'d> {
     document: &'d Document,
+    found: &'d std::cell::Cell<Option<NoncanonicalValue>>,
 }
 
 impl quire_canonical::Encode for PackageDocument<'_> {
@@ -550,8 +554,91 @@ impl quire_canonical::Encode for PackageDocument<'_> {
         &self,
         writer: &mut quire_canonical::Writer<'_, S>,
     ) -> Result<(), quire_canonical::Error> {
-        super::checked_json::encode_node(self.document.root(), writer)
+        let mut found = None;
+        let encoded =
+            super::checked_json::encode_node_noting(self.document.root(), writer, &mut found);
+        self.found.set(found);
+        encoded
     }
+}
+
+/// What the canonical comparison decided about the package bytes.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum CanonicalVerdict {
+    /// The bytes are their own canonical encoding.
+    Canonical,
+    /// The bytes are not the canonical encoding of the value read, or the
+    /// value has none: `noncanonical_wire`.
+    Noncanonical,
+    /// The budget denied a growth of the writer: the typed budget stop.
+    Denied,
+    /// The allocator refused a growth the budget had admitted: the typed
+    /// read-storage stop for the refused request, never a refusal of the
+    /// package.
+    AllocationFailed { requested: usize },
+}
+
+/// Decides the comparison from the encoder's result, the value the encoding
+/// recorded as having no canonical spelling, and whether the comparing sink
+/// received exactly the input. A resource failure of the encoder is never a
+/// statement about the package's bytes.
+fn canonical_verdict(
+    encoded: Result<u64, quire_canonical::Error>,
+    found: Option<NoncanonicalValue>,
+    sink_matched: bool,
+) -> CanonicalVerdict {
+    use quire_canonical::{Error, LimitKind};
+    match encoded {
+        Ok(_) if sink_matched => CanonicalVerdict::Canonical,
+        // A byte differs, or the canonical text is shorter or longer.
+        Ok(_) => CanonicalVerdict::Noncanonical,
+        Err(Error::ReservationDenied { .. }) => CanonicalVerdict::Denied,
+        Err(Error::Allocation { requested }) => CanonicalVerdict::AllocationFailed { requested },
+        // The input is within the byte limit, so canonical text past it is
+        // longer than the input.
+        Err(Error::Limit(limit)) if limit.kind == LimitKind::CanonicalBytes => {
+            CanonicalVerdict::Noncanonical
+        }
+        // FR-038: a document `quire-canonical` refuses to encode refuses
+        // `noncanonical_wire`. These are values with no RFC 8785 spelling.
+        Err(
+            Error::IntegerMagnitudeAboveMaximum(_)
+            | Error::UnsignedIntegerMagnitudeAboveMaximum(_)
+            | Error::WideIntegerMagnitudeAboveMaximum(_)
+            | Error::NonFiniteNumber(_),
+        ) => CanonicalVerdict::Noncanonical,
+        Err(Error::Internal { .. }) if found.is_some() => CanonicalVerdict::Noncanonical,
+        // FR-038's other encoder refusals of the document: the fixed object
+        // buffer bound, and the encoder's own faults (the comparing sink
+        // never fails; the reader already refused duplicate names; the
+        // walk emits balanced events and no serde values). None of them is a
+        // resource of the caller's budget or of the allocator.
+        Err(
+            Error::Limit(_)
+            | Error::DuplicateMemberName { .. }
+            | Error::NonStringMemberName { .. }
+            | Error::SerdeJsonPrivateToken(_)
+            | Error::Sink(_)
+            | Error::Protocol(_)
+            | Error::Internal { .. }
+            | Error::Serialize(_),
+        ) => CanonicalVerdict::Noncanonical,
+        // `quire_canonical::Error` is `#[non_exhaustive]`; every variant of
+        // the pinned version is matched above, so this arm is reached only by
+        // a variant a later version adds, which must be classified here when
+        // the dependency moves.
+        Err(_) => CanonicalVerdict::Noncanonical,
+    }
+}
+
+/// The typed read-storage stop for a growth the allocator refused after the
+/// budget admitted it.
+fn allocation_stop(requested: usize) -> ValidationFailure {
+    ValidationFailure::Budget(BudgetStop {
+        resource: PackageReadResource::ReadStorage,
+        amount: requested as u128,
+        path: None,
+    })
 }
 
 /// Reads the package bytes with the shared reader and requires them to be
@@ -613,6 +700,18 @@ pub(in crate::checked_package) fn read_envelope(
             ));
         }
         Err(ReadError::ReservationDenied { .. }) => return Err(denial(budget)),
+        Err(ReadError::Allocation { requested }) => return Err(allocation_stop(requested)),
+        Err(ReadError::Malformed { .. } | ReadError::NumberOutOfRange { .. }) => {
+            return Err(prepaid_bytes_refusal(
+                budget,
+                PackageReadStage::Envelope,
+                CheckedPackageRefusalCode::MalformedWire,
+            ));
+        }
+        // `ReadError` is `#[non_exhaustive]`; every variant of the pinned
+        // version is matched above, so this arm is reached only by a variant a
+        // later version adds, which must be classified here when the
+        // dependency moves.
         Err(_) => {
             return Err(prepaid_bytes_refusal(
                 budget,
@@ -632,21 +731,25 @@ pub(in crate::checked_package) fn read_envelope(
         at: 0,
         agrees: true,
     };
+    let found = std::cell::Cell::new(None);
     let encoded = quire_canonical::encode_with_reservation(
         &mut sink,
         &PackageDocument {
             document: &document,
+            found: &found,
         },
         quire_canonical::Limits::new(limits.bytes),
         &mut ReadStorageReservation(budget),
     );
-    match encoded {
-        Err(quire_canonical::Error::ReservationDenied { .. }) => Err(denial(budget)),
-        Ok(_) if sink.agrees && sink.at == bytes.len() => {
+    let sink_matched = sink.agrees && sink.at == bytes.len();
+    match canonical_verdict(encoded, found.get(), sink_matched) {
+        CanonicalVerdict::Canonical => {
             budget.set_active_locus(None);
             Ok(document)
         }
-        _ => Err(prepaid_bytes_refusal(
+        CanonicalVerdict::Denied => Err(denial(budget)),
+        CanonicalVerdict::AllocationFailed { requested } => Err(allocation_stop(requested)),
+        CanonicalVerdict::Noncanonical => Err(prepaid_bytes_refusal(
             budget,
             PackageReadStage::Canonical,
             CheckedPackageRefusalCode::NoncanonicalWire,
@@ -751,6 +854,148 @@ fn prepaid_bytes_refusal(
         ),
         code,
     )
+}
+
+#[cfg(test)]
+mod canonical_verdict_tests {
+    use super::*;
+    use quire_canonical::{Error, LimitExceeded, LimitKind, ProtocolViolation};
+
+    fn limit(kind: LimitKind) -> Error {
+        Error::Limit(LimitExceeded {
+            kind,
+            bound: 10,
+            required: 11,
+        })
+    }
+
+    /// IR-1590: a resource failure of the re-encode is the typed stop it is,
+    /// whatever the sink saw; only a refusal of the document is
+    /// `noncanonical_wire`.
+    #[trace("TC-472", "FR-038-AC-511")]
+    #[test]
+    fn encoder_resource_failures_are_typed_stops_never_noncanonical_wire() {
+        for matched in [true, false] {
+            for found in [None, Some(NoncanonicalValue::WholeNumberPastMaximum)] {
+                assert_eq!(
+                    canonical_verdict(
+                        Err(Error::ReservationDenied { requested: 64 }),
+                        found,
+                        matched
+                    ),
+                    CanonicalVerdict::Denied
+                );
+                assert_eq!(
+                    canonical_verdict(Err(Error::Allocation { requested: 64 }), found, matched),
+                    CanonicalVerdict::AllocationFailed { requested: 64 }
+                );
+            }
+        }
+    }
+
+    #[trace("TC-472", "FR-038-AC-511")]
+    #[test]
+    fn only_a_mismatch_or_a_refused_value_is_noncanonical() {
+        assert_eq!(
+            canonical_verdict(Ok(4), None, true),
+            CanonicalVerdict::Canonical
+        );
+        assert_eq!(
+            canonical_verdict(Ok(4), None, false),
+            CanonicalVerdict::Noncanonical
+        );
+        for refused in [
+            limit(LimitKind::CanonicalBytes),
+            Error::IntegerMagnitudeAboveMaximum(1 << 60),
+            Error::UnsignedIntegerMagnitudeAboveMaximum(1 << 60),
+            Error::WideIntegerMagnitudeAboveMaximum(String::from("1")),
+            Error::NonFiniteNumber(f64::INFINITY),
+        ] {
+            assert_eq!(
+                canonical_verdict(Err(refused), None, false),
+                CanonicalVerdict::Noncanonical
+            );
+        }
+        for found in [
+            NoncanonicalValue::WholeNumberPastMaximum,
+            NoncanonicalValue::SerdeJsonNumberToken,
+        ] {
+            assert_eq!(
+                canonical_verdict(
+                    Err(Error::Internal { invariant: "value" }),
+                    Some(found),
+                    false
+                ),
+                CanonicalVerdict::Noncanonical
+            );
+        }
+        for fault in [
+            limit(LimitKind::ObjectBytes),
+            Error::Protocol(ProtocolViolation::Incomplete),
+            Error::Internal { invariant: "fault" },
+        ] {
+            assert_eq!(
+                canonical_verdict(Err(fault), None, false),
+                CanonicalVerdict::Noncanonical
+            );
+        }
+    }
+
+    /// A whole number past 2^53 in exponent form is recorded as the value the
+    /// encoding refused, so the read can tell it from an encoder fault.
+    #[trace("TC-472", "FR-038-AC-511")]
+    #[test]
+    fn the_encoding_records_the_value_it_refused() {
+        for (bytes, expected) in [
+            (
+                b"[1e16]".as_slice(),
+                Some(NoncanonicalValue::WholeNumberPastMaximum),
+            ),
+            (
+                br#"{"$serde_json::private::Number":"1"}"#.as_slice(),
+                Some(NoncanonicalValue::SerdeJsonNumberToken),
+            ),
+            (br#"{"a":1}"#.as_slice(), None),
+        ] {
+            let document = quire_canonical::read(bytes, 64).expect("read");
+            let found = std::cell::Cell::new(None);
+            let mut sink = ComparingSink {
+                original: bytes,
+                at: 0,
+                agrees: true,
+            };
+            let _ = quire_canonical::encode(
+                &mut sink,
+                &PackageDocument {
+                    document: &document,
+                    found: &found,
+                },
+                quire_canonical::Limits::new(64),
+            );
+            assert_eq!(found.get(), expected, "{bytes:?}");
+        }
+    }
+
+    /// The allocator's refusal of an admitted growth ends the read as a
+    /// read-storage `BudgetIncomplete` for the refused request.
+    #[trace("TC-472", "FR-038-AC-511")]
+    #[test]
+    fn an_allocation_failure_is_a_read_storage_budget_stop() {
+        let mut budget = NativeJoinBudget::new(u64::MAX, 0).with_read_storage_limit(1_000);
+        assert!(budget.charge_read_storage(100));
+        let outcome = budgeted_outcome(allocation_stop(4_096), &mut budget);
+        let CheckedPackageV2BudgetedReadResult::BudgetIncomplete(stop) = outcome else {
+            panic!("typed stop: {outcome:?}");
+        };
+        assert_eq!(
+            stop.denied,
+            PackageReadDeniedCharge {
+                resource: PackageReadResource::ReadStorage,
+                amount: 4_096,
+            }
+        );
+        assert_eq!((stop.limit, stop.consumed, stop.path), (1_000, 4_196, None));
+    }
 }
 
 #[cfg(test)]

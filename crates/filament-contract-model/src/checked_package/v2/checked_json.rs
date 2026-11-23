@@ -241,16 +241,38 @@ impl Encode for CheckedJson {
 
 const SERDE_JSON_NUMBER_TOKEN: &str = "$serde_json::private::Number";
 
+/// A document value with no canonical spelling, recorded by
+/// [`encode_node_noting`] before it refuses the encoding with
+/// [`CanonicalError::Internal`], so the strict read tells this refusal of the
+/// document apart from a fault of the encoder by type, not by message text.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum NoncanonicalValue {
+    /// A whole number past 2^53 in a non-integer spelling, such as `1e16`.
+    WholeNumberPastMaximum,
+    /// An object whose first member is serde_json's private number token.
+    SerdeJsonNumberToken,
+}
+
 /// Writes one document value from an explicit heap stack, kept on the
 /// writer's reservation. An integer past 2^53 is the encoder's refusal, as it
 /// is for a `serde_json` number: the document holds the number's text, so a
 /// double would otherwise silently round it.
-// The one string comparison is a closed-vocabulary guard on a serde_json
-// private member name, not an open key.
-#[ix_trace_rs::string_edge]
 pub(super) fn encode_node<S: Sink + ?Sized>(
     root: NodeRef<'_>,
     writer: &mut Writer<'_, S>,
+) -> Result<(), CanonicalError> {
+    encode_node_noting(root, writer, &mut None)
+}
+
+/// [`encode_node`], recording in `found` the value without a canonical
+/// spelling that a [`CanonicalError::Internal`] refusal is about.
+// The one string comparison is a closed-vocabulary guard on a serde_json
+// private member name, not an open key.
+#[ix_trace_rs::string_edge]
+pub(super) fn encode_node_noting<S: Sink + ?Sized>(
+    root: NodeRef<'_>,
+    writer: &mut Writer<'_, S>,
+    found: &mut Option<NoncanonicalValue>,
 ) -> Result<(), CanonicalError> {
     const MAXIMUM_INTEGER: u128 = 1 << 53;
     enum Task<'d> {
@@ -275,6 +297,7 @@ pub(super) fn encode_node<S: Sink + ?Sized>(
                     Err(_) => {
                         let float = number.value();
                         if float.fract() == 0.0 && float.abs() > MAXIMUM_INTEGER as f64 {
+                            *found = Some(NoncanonicalValue::WholeNumberPastMaximum);
                             return Err(CanonicalError::Internal {
                                 invariant: "an integer past 2^53 is not canonical",
                             });
@@ -300,6 +323,7 @@ pub(super) fn encode_node<S: Sink + ?Sized>(
                         .peek()
                         .is_some_and(|(name, _)| *name == SERDE_JSON_NUMBER_TOKEN)
                     {
+                        *found = Some(NoncanonicalValue::SerdeJsonNumberToken);
                         return Err(CanonicalError::Internal {
                             invariant: "serde_json's number token is not canonical",
                         });
