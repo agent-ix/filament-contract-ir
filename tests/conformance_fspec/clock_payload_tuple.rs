@@ -2230,3 +2230,112 @@ fn set_of_clock_bearing_tuples_is_a_clock_collection_bound_to_the_field() {
         format!("/semantic_graph/nodes/{position}/body/members/2/value/members/0")
     );
 }
+
+/// A package holding the real `field clocks` + `slot` place of FSpec FR-772 and
+/// a `filament.op.option.slots` application over it whose result is the
+/// collection bounds `[0, maximum]` over `Set<Integer>`.
+fn slot_domain_wire(maximum: u64) -> (Value, Value, PathBuf) {
+    let (mut wire, document, proposal, _, _, owner, _, _) = clock_reference_wire();
+    let place = add_place(&mut wire, &clock_reference_slot_domain_place(), 9212);
+    let integer_type_id = integer_type();
+    let set_type_id = fixture_support::structural_id(
+        "example",
+        vec![json!("composite_type"), json!("set"), json!("integer")],
+        0,
+    );
+    let bounded_id = fixture_support::structural_id(
+        "example",
+        vec![
+            json!("bounded_domain"),
+            json!("collection_bounds"),
+            json!(format!("fr772-set-0-{maximum}")),
+        ],
+        0,
+    );
+    let mut set_dependencies = vec![integer_type_id.clone()];
+    sort_ids(&mut set_dependencies);
+    push_node(
+        &mut wire,
+        json!({
+            "body":aggregate(vec![json!({"term":"reference","target":integer_type_id})]),
+            "dependencies":set_dependencies,
+            "node_id":set_type_id,
+            "node_tag":"composite_type",
+            "occurrences":[{"ordinal":0,"role":"type"}],
+            "schema_version":"filament.checked-semantic-graph/v2",
+            "semantic_form":"set",
+            "semantic_type":set_type_id,
+        }),
+        9210,
+    );
+    let bound = |name: &str, value: u64| {
+        bind(
+            name,
+            json!({"term":"literal","type":integer_type_id,"value_kind":"integer","value":value.to_string()}),
+        )
+    };
+    push_node(
+        &mut wire,
+        json!({
+            "body":aggregate(vec![bound("min", 0), bound("max", maximum)]),
+            "dependencies":[set_type_id],
+            "node_id":bounded_id,
+            "node_tag":"bounded_domain",
+            "occurrences":[{"ordinal":0,"role":"type"}],
+            "schema_version":"filament.checked-semantic-graph/v2",
+            "semantic_form":"collection_bounds",
+            "semantic_type":set_type_id,
+        }),
+        9213,
+    );
+    let mut dependencies = vec![place.clone(), owner.clone()];
+    sort_ids(&mut dependencies);
+    push_node(
+        &mut wire,
+        json!({
+            "body":{
+                "term":"application",
+                "operator":"slots",
+                "operation":{"identity":"filament.op.option.slots","laws":[],"leaves":[],"member":null,"mode":null},
+                "result_type":bounded_id,
+                "arguments":[
+                    {"term":"reference","target":place},
+                    {"term":"reference","target":owner}
+                ]
+            },
+            "dependencies":dependencies,
+            "node_id":{"ordinal":0,"package":"example","path":["expression","presence_read","fr772-slot-domain"]},
+            "node_tag":"expression",
+            "occurrences":[{"ordinal":0,"role":"expression"}],
+            "schema_version":"filament.checked-semantic-graph/v2",
+            "semantic_form":"presence_read",
+            "semantic_type":bounded_id,
+        }),
+        9211,
+    );
+    fixture_support::refresh_identity(&mut wire);
+    (wire, document, proposal)
+}
+
+/// FR-772-AC-1 end to end: a real `field clocks` + `slot` place passes the row
+/// join, and the slot-domain application over it admits with the declared
+/// maximum as its result bound and refuses any other maximum.
+#[trace("FR-038-AC-614", "FR-772-AC-1", "FR-772-AC-2", "TC-048")]
+#[test]
+fn slot_domain_over_a_field_and_slot_place_admits_its_declared_maximum_only() {
+    let (wire, document, proposal) = slot_domain_wire(2);
+    let result = read(&wire, &document, &proposal, "slot domain [0, 2]");
+    assert!(
+        matches!(result, CheckedPackageV2ReadResult::Admitted(_)),
+        "the declared maximum 2 admits: {result:?}"
+    );
+    let (wire, document, proposal) = slot_domain_wire(3);
+    assert_clock_reference_refusal(
+        &wire,
+        &document,
+        &proposal,
+        "slot domain [0, 3]",
+        Cause::OperatorIneligible,
+        "/body/result_type",
+    );
+}
