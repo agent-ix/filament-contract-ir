@@ -2141,6 +2141,57 @@ mod tests {
         assert!(unknown_domain.is_err());
     }
 
+    #[trace("TC-488", "FR-376-AC-1")]
+    #[test]
+    fn tc_488_reads_operation_contract_record_facts() {
+        let id = json!({"package":"pkg", "path":["node"], "ordinal":0});
+        let body = serde_json::from_value(json!({
+            "term":"aggregate",
+            "members":[
+                {"term":"binding", "name":"claim", "value":{"term":"reference", "target":id}},
+                {"term":"binding", "name":"occurrence", "value":{"term":"aggregate", "members":[
+                    {"term":"binding", "name":"role", "value":{"term":"literal", "type":id, "value_kind":"string", "value":"claim"}},
+                    {"term":"binding", "name":"ordinal", "value":{"term":"literal", "type":id, "value_kind":"integer", "value":2}}
+                ]}},
+                {"term":"binding", "name":"result_bound", "value":{"term":"reference", "target":id}},
+                {"term":"binding", "name":"invariant", "value":{"term":"literal", "type":id, "value_kind":"boolean", "value":true}},
+                {"term":"binding", "name":"operation", "value":{"term":"aggregate", "members":[]}},
+                {"term":"binding", "name":"model_objects", "value":{"term":"aggregate", "members":[
+                    {"term":"reference", "target":id}
+                ]}},
+                {"term":"binding", "name":"populations", "value":{"term":"aggregate", "members":[
+                    {"term":"aggregate", "members":[
+                        {"term":"binding", "name":"member_type", "value":{"term":"reference", "target":id}},
+                        {"term":"binding", "name":"ordinal", "value":{"term":"literal", "type":id, "value_kind":"integer", "value":3}},
+                        {"term":"binding", "name":"maximum", "value":{"term":"literal", "type":id, "value_kind":"integer", "value":8}}
+                    ]}
+                ]}}
+            ]
+        })).expect("typed operation-contract body");
+        let record_id = serde_json::from_value(json!({
+            "package":"pkg", "path":["record"], "ordinal":0
+        }))
+        .expect("record node id");
+        let record = super::read_operation_contract_record(record_id.clone(), &body)
+            .expect("operation-contract record facts");
+
+        assert_eq!(record.node, record_id);
+        assert_eq!(
+            record.result_bound,
+            super::reference(&id_term(&id)).unwrap()
+        );
+        assert!(record.invariant);
+        assert_eq!(record.operation, None);
+        assert_eq!(record.model_objects.len(), 1);
+        assert_eq!(record.populations.len(), 1);
+        assert_eq!(record.populations[0].ordinal, 3);
+        assert_eq!(record.populations[0].maximum, Some(8));
+    }
+
+    fn id_term(value: &serde_json::Value) -> super::CheckedTerm {
+        serde_json::from_value(json!({"term":"reference", "target":value})).expect("reference term")
+    }
+
     #[trace("TC-2053", "FR-825-AC-1")]
     #[test]
     fn bounded_requirement_row_encodes_the_exact_wire_shape() {
