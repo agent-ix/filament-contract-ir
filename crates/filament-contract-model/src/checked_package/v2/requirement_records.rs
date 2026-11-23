@@ -276,6 +276,159 @@ fn first_unnamed_position(
     None
 }
 
+/// The order of the structural keys at graph positions `left` and `right`.
+///
+/// The reader's graph index ranks every structural key once, in one pass that
+/// enters each operand key before the keys nesting it (hash-consing: a key's
+/// entry is compared through its operands' entries, never by walking a shared
+/// operand chain). A rank is the key's position in `CheckedNodeId::cmp`
+/// order, and equal keys share one entry and so one rank. Two ranked keys
+/// therefore compare by their ranks exactly as `CheckedNodeId::cmp` compares
+/// them, in O(1) where that comparison walks a chain of `k` nested
+/// applications in O(k). An unranked graph compares through the meter, which
+/// charges the frame list a nested comparison asks for.
+fn key_order(
+    index: &GraphIndex<'_>,
+    structural_keys: &[std::sync::Arc<CheckedNodeId>],
+    left: usize,
+    right: usize,
+    meter: &mut WorkMeter,
+) -> Result<std::cmp::Ordering, ValidationFailure> {
+    index
+        .resolved_at(left, structural_keys)
+        .order(&index.resolved_at(right, structural_keys), meter)
+}
+
+/// Sorts `items` by a fallible `compare` with a bottom-up merge sort,
+/// returning the first refusal as soon as `compare` returns it. The scratch
+/// block is charged to the meter before it is made. A comparator that
+/// refuses never feeds a sort inconsistent answers, so the sort cannot
+/// panic on a non-total order.
+///
+/// `compare` must be a strict total order (no two distinct items compare
+/// equal). Every correct sort then yields the one ascending permutation, so
+/// this sort's result is the one any other sort by the same order yields.
+fn sort_charged(
+    items: &mut Vec<usize>,
+    meter: &mut WorkMeter,
+    mut compare: impl FnMut(
+        usize,
+        usize,
+        &mut WorkMeter,
+    ) -> Result<std::cmp::Ordering, ValidationFailure>,
+) -> Result<(), ValidationFailure> {
+    let len = items.len();
+    if len < 2 {
+        return Ok(());
+    }
+    let mut scratch: Vec<usize> = meter.vec(len)?;
+    scratch.resize(len, 0);
+    let mut width = 1;
+    while width < len {
+        let mut start = 0;
+        while start < len {
+            let middle = start.saturating_add(width).min(len);
+            let end = start.saturating_add(width.saturating_mul(2)).min(len);
+            let (mut left, mut right) = (start, middle);
+            for slot in &mut scratch[start..end] {
+                let take_right = right < end
+                    && (left == middle || compare(items[right], items[left], meter)?.is_lt());
+                if take_right {
+                    *slot = items[right];
+                    right += 1;
+                } else {
+                    *slot = items[left];
+                    left += 1;
+                }
+            }
+            start = end;
+        }
+        std::mem::swap(items, &mut scratch);
+        width = width.saturating_mul(2);
+    }
+    Ok(())
+}
+
+/// Sorts graph positions into ascending structural-key order, a key tie
+/// (which a valid graph cannot hold: see below) broken by position.
+///
+/// Every key comparison answers as `CheckedNodeId::cmp` on the two keys does
+/// (see [`key_order`]), with O(1) work on a ranked graph. Distinct graph
+/// positions hold distinct structural keys: the graph stage refused a
+/// repeated node id before this step runs, and a structural key replaces
+/// each index segment of the id by its target's key, which keeps distinct
+/// ids distinct by induction over the acyclic graph. So the position
+/// tie-break never decides, the order is strict and total, and the result is
+/// the permutation the retired `sort_unstable_by(CheckedNodeId::cmp)` gave.
+fn sort_by_structural_key(
+    positions: &mut Vec<usize>,
+    index: &GraphIndex<'_>,
+    structural_keys: &[std::sync::Arc<CheckedNodeId>],
+    meter: &mut WorkMeter,
+) -> Result<(), ValidationFailure> {
+    sort_charged(positions, meter, |left, right, meter| {
+        Ok(key_order(index, structural_keys, left, right, meter)?.then(left.cmp(&right)))
+    })
+}
+
+/// The order in which named records are checked for dense per-owner
+/// ordinals: by owner key, then row index, then record key, as indices into
+/// `named_records`. Row indices are distinct, so the order is strict and
+/// total and the record-key step never decides.
+fn named_record_order(
+    named_records: &[(usize, usize, CheckedNodeId)],
+    index: &GraphIndex<'_>,
+    structural_keys: &[std::sync::Arc<CheckedNodeId>],
+    meter: &mut WorkMeter,
+) -> Result<Vec<usize>, ValidationFailure> {
+    let mut order: Vec<usize> = meter.vec(named_records.len())?;
+    order.extend(0..named_records.len());
+    sort_charged(&mut order, meter, |left, right, meter| {
+        let (left_row, left, left_owner) = &named_records[left];
+        let (right_row, right, right_owner) = &named_records[right];
+        let left_owner_position = index.get(left_owner).copied().unwrap_or(usize::MAX);
+        let right_owner_position = index.get(right_owner).copied().unwrap_or(usize::MAX);
+        let order = key_order(
+            index,
+            structural_keys,
+            left_owner_position,
+            right_owner_position,
+            meter,
+        )?
+        .then_with(|| left_row.cmp(right_row));
+        if order.is_ne() {
+            return Ok(order);
+        }
+        key_order(index, structural_keys, *left, *right, meter)
+    })?;
+    Ok(order)
+}
+
+/// A requirement row's package-order key: the claim's structural key, then
+/// its occurrence role, occurrence ordinal and capability, as wire spellings.
+type RowKey<'a> = (
+    super::graph_storage::ResolvedKey<'a>,
+    &'static str,
+    u64,
+    &'static str,
+);
+
+/// The lexicographic order of two row keys, the claim key compared as
+/// [`key_order`] compares it.
+fn row_key_order(
+    left: &RowKey<'_>,
+    right: &RowKey<'_>,
+    meter: &mut WorkMeter,
+) -> Result<std::cmp::Ordering, ValidationFailure> {
+    Ok(left
+        .0
+        .order(&right.0, meter)?
+        .then_with(|| (left.1, left.2, left.3).cmp(&(right.1, right.2, right.3))))
+}
+
+#[cfg(test)]
+mod order_tests;
+
 fn refuse(
     index: usize,
     at: Path<'_>,
@@ -305,7 +458,7 @@ pub(super) fn validate(
             (*kind == CheckedNodeKind::Claim(super::ClaimForm::ValueValidity)).then_some(position)
         })
         .collect();
-    records.sort_unstable_by(|left, right| structural_keys[*left].cmp(&structural_keys[*right]));
+    sort_by_structural_key(&mut records, index, structural_keys, meter)?;
     let mut owner_reach: BTreeMap<usize, BTreeSet<usize>> = BTreeMap::new();
     for &position in &records {
         let node = &nodes[position];
@@ -653,7 +806,7 @@ pub(super) fn validate(
             Refusal::new(Code::MalformedWire, root()),
         ));
     }
-    let mut previous: Option<(&CheckedNodeId, &'static str, u64, &'static str)> = None;
+    let mut previous: Option<RowKey<'_>> = None;
     let mut named_records: Vec<(usize, usize, CheckedNodeId)> = Vec::new();
     for (row_index, row) in rows.iter().enumerate() {
         let at = root().index(row_index);
@@ -788,17 +941,18 @@ pub(super) fn validate(
                 meter,
             ));
         }
-        let key = (
-            structural_keys[claim_position].as_ref(),
+        let key: RowKey<'_> = (
+            index.resolved_at(claim_position, structural_keys),
             occurrence_role_wire(&row.claim.occurrence.role),
             row.claim.occurrence.ordinal,
             capability_wire(row.kind),
         );
-        if previous.is_some_and(|prior| prior >= key) {
-            let duplicate = previous.is_some_and(|prior| {
-                prior.0 == key.0 && prior.1 == key.1 && prior.2 == key.2 && prior.3 == key.3
-            });
-            let cause = if duplicate {
+        let order = match &previous {
+            Some(prior) => Some(row_key_order(prior, &key, meter)?),
+            None => None,
+        };
+        if let Some(order) = order.filter(|order| order.is_ge()) {
+            let cause = if order.is_eq() {
                 Cause::ConflictingDefinition
             } else {
                 Cause::InvalidSemanticGraph
@@ -826,20 +980,13 @@ pub(super) fn validate(
             meter,
         ));
     }
-    named_records.sort_unstable_by(
-        |(left_row, left, left_owner), (right_row, right, right_owner)| {
-            let left_owner_position = index.get(left_owner).copied().unwrap_or(usize::MAX);
-            let right_owner_position = index.get(right_owner).copied().unwrap_or(usize::MAX);
-            structural_keys[left_owner_position]
-                .cmp(&structural_keys[right_owner_position])
-                .then_with(|| left_row.cmp(right_row))
-                .then_with(|| structural_keys[*left].cmp(&structural_keys[*right]))
-        },
-    );
+    let order = named_record_order(&named_records, index, structural_keys, meter)?;
     let mut previous_owner: Option<CheckedNodeId> = None;
     let mut owner_ordinal = 0_u64;
-    for (_, record_position, owner) in named_records {
-        if previous_owner.as_ref() != Some(&owner) {
+    for at in order {
+        let (_, record_position, owner) = &named_records[at];
+        let record_position = *record_position;
+        if previous_owner.as_ref() != Some(owner) {
             previous_owner = Some(owner.clone());
             owner_ordinal = 0;
         }
@@ -1178,14 +1325,20 @@ fn resolve_record(
 }
 
 pub(super) fn owner_index(rows: &[RequirementItemRow]) -> Vec<(CheckedNodeId, Vec<usize>)> {
+    // One stable sort by owner keeps each owner's rows in row order, then one
+    // pass groups equal owners: O(n log n) where inserting each new owner
+    // into a sorted vector shifted every later owner.
+    let mut owned: Vec<(&CheckedNodeId, usize)> = rows
+        .iter()
+        .enumerate()
+        .filter_map(|(row_index, row)| Some((&row.record.as_ref()?.owner, row_index)))
+        .collect();
+    owned.sort_by_key(|&(owner, _)| owner);
     let mut index: Vec<(CheckedNodeId, Vec<usize>)> = Vec::new();
-    for (row_index, row) in rows.iter().enumerate() {
-        let Some(record) = &row.record else {
-            continue;
-        };
-        match index.binary_search_by(|(owner, _)| owner.cmp(&record.owner)) {
-            Ok(slot) => index[slot].1.push(row_index),
-            Err(slot) => index.insert(slot, (record.owner.clone(), vec![row_index])),
+    for (owner, row_index) in owned {
+        match index.last_mut() {
+            Some((last, owner_rows)) if *last == *owner => owner_rows.push(row_index),
+            _ => index.push((owner.clone(), vec![row_index])),
         }
     }
     index
