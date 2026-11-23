@@ -393,7 +393,7 @@ fn published_probabilistic_claim_vectors_join_and_refuse() {
 }
 
 #[test]
-#[trace("TC-233", "FR-038-AC-391", "FR-038-AC-394")]
+#[trace("TC-233", "FR-038-AC-391", "FR-038-AC-617")]
 fn claim_row_coverage_and_exact_work_boundary() {
     let all = vectors();
     let rows: Vec<_> = all["positive"]["probabilistic_claims"]
@@ -416,14 +416,31 @@ fn claim_row_coverage_and_exact_work_boundary() {
             other => panic!("expected admission or work exhaustion: {other:?}"),
         }
     }
-    let CheckedPackageV2ReadResult::Incomplete(incomplete) = read_at(&wire, low - 1) else {
-        panic!("one below exact work limit must be incomplete")
+    let exhausted = |limit: u64| {
+        let CheckedPackageV2ReadResult::Incomplete(incomplete) = read_at(&wire, limit) else {
+            panic!("below the exact work limit must be incomplete")
+        };
+        assert_eq!(incomplete.limit_kind, CheckedPackageLimit::Work);
+        assert_eq!(incomplete.consumed, limit + 1);
+        incomplete.path.expect("charged site").as_str().to_owned()
     };
-    assert_eq!(incomplete.limit_kind, CheckedPackageLimit::Work);
-    assert_eq!(incomplete.consumed, low);
+    // The selected model's owner visits are charged after the sidecar, so the
+    // last charges of the exact read sit at the selected model root.
+    let owner_visits = "/semantic_graph/nodes/24/owner";
+    assert_eq!(exhausted(low - 1), owner_visits);
+    let mut below_visits = low - 1;
+    while exhausted(below_visits) == owner_visits {
+        below_visits -= 1;
+    }
+    // The limit below those visits refuses at the final probabilistic-claim
+    // row, then at the row before it.
     assert_eq!(
-        incomplete.path.expect("charged row").as_str(),
+        exhausted(below_visits),
         "/checked_term_data/probabilistic_claims/1"
+    );
+    assert_eq!(
+        exhausted(below_visits - 1),
+        "/checked_term_data/probabilistic_claims/0"
     );
     let mut missing = wire.clone();
     missing["checked_term_data"]["probabilistic_claims"]
