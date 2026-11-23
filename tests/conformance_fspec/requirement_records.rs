@@ -585,10 +585,15 @@ fn large_requirement_record_package(record_count: usize) -> Value {
         );
     }
 
-    let terminal_frame_id = canonical_nonnegative_integer(
-        &record_template["body"]["members"][5]["value"]["members"][0]["value"]["value"],
-    )
-    .expect("terminal frame id is a canonical nonnegative integer");
+    let path_condition_binding = record_template["body"]["members"]
+        .as_array()
+        .expect("record body bindings")
+        .iter()
+        .find(|binding| binding["name"] == "path_condition")
+        .expect("path_condition binding");
+    let terminal_frame_value = &path_condition_binding["value"]["members"][0]["value"]["value"];
+    let terminal_frame_id = canonical_nonnegative_integer(terminal_frame_value)
+        .unwrap_or_else(|| panic!("invalid terminal frame id: {terminal_frame_value:?}"));
     let mut requirement_rows = Vec::with_capacity(record_count);
     for (generated_index, (&application_position, application_id)) in application_positions
         .iter()
