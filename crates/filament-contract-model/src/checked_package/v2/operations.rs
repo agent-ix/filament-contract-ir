@@ -5917,7 +5917,7 @@ fn check_place_slot_domain(
     let Some(path_steps) = operation_bound(place_body, 1).map(operation_typed_members) else {
         return Ok(false);
     };
-    let Some((last_step_index, last_step)) = path_steps.iter().enumerate().next_back() else {
+    let Some(last_step) = path_steps.last() else {
         return Err(refuse(meter, arguments_at.index(0)));
     };
     if operation_spelling(operation_bound(last_step, 0)) != Some("slot") {
@@ -5946,13 +5946,7 @@ fn check_place_slot_domain(
             CheckedTerm::Application { result_type, .. } => Some(result_type),
             _ => None,
         });
-    if !slot_domain_result_matches(
-        result_type,
-        last_selector,
-        place_body,
-        last_step_index,
-        graph,
-    ) {
+    if !slot_domain_result_matches(result_type, last_selector, last_step, graph) {
         return Err(refuse(
             meter,
             application.read_node().key("body").key("result_type"),
@@ -6006,8 +6000,7 @@ fn check_place_slot_domain(
 fn slot_domain_result_matches(
     result_type: Option<&CheckedNodeId>,
     selector: &CheckedNodeId,
-    place_body: &CheckedTerm,
-    last_step_index: usize,
+    last_step: &CheckedTerm,
     graph: &Graph<'_>,
 ) -> bool {
     let Some(result_type) = result_type else {
@@ -6068,26 +6061,20 @@ fn slot_domain_result_matches(
     if minimum.parse::<u64>().ok() != Some(0) {
         return false;
     }
-    place_step_maximum(place_body, last_step_index)
-        .and_then(|expected| expected.parse::<u64>().ok())
+    // The terminal slot step spells the collection's declared maximum; the
+    // row join requires it to equal the maximum on the row before the slot.
+    slot_step_maximum(last_step)
         .is_some_and(|expected| maximum.parse::<u64>().ok() == Some(expected))
 }
 
-fn place_step_maximum(place_body: &CheckedTerm, step_index: usize) -> Option<&str> {
-    let row = operation_bound(place_body, 2).and_then(|rows| {
-        operation_typed_members(rows).iter().find(|row| {
-            operation_typed_members(row).iter().find_map(|member| {
-                super::structural::typed_binding(member, "path_step").and_then(|term| match term {
-                    CheckedTerm::Literal { value, .. } => value.as_u64(),
-                    _ => None,
-                })
-            }) == u64::try_from(step_index).ok()
-        })
-    })?;
-    operation_typed_members(row)
-        .iter()
-        .find_map(|member| super::structural::typed_binding(member, "maximum"))
-        .and_then(|term| operation_spelling(Some(term)))
+/// The maximum a slot step spells as an integer literal, or as a decimal text.
+fn slot_step_maximum(step: &CheckedTerm) -> Option<u64> {
+    match operation_bound(step, 4)? {
+        CheckedTerm::Literal { value, .. } => value
+            .as_u64()
+            .or_else(|| value.as_str().and_then(|text| text.parse().ok())),
+        _ => None,
+    }
 }
 
 fn operation_bound(term: &CheckedTerm, index: usize) -> Option<&CheckedTerm> {
@@ -14493,7 +14480,7 @@ mod tests {
             .is_some_and(|path| path.to_string().ends_with("/semantic_form")));
     }
 
-    #[trace("TC-1862", "FR-772-AC-1", "FR-772-AC-2")]
+    #[trace("TC-1862", "FR-772-AC-1", "FR-772-AC-2", "FR-038-AC-616", "TC-048")]
     #[test]
     fn fr772_option_slots_checks_place_owner_and_bounded_domain() {
         fn read_slot_domain(maximum: &str) -> Result<bool, ValidationFailure> {
@@ -14504,33 +14491,55 @@ mod tests {
             let text_id = node_id('9');
             let text_literal = |value: &str| json!({"term":"literal", "type":text_id, "value_kind":"text", "value":value});
             let integer_literal = |value: u64| json!({"term":"literal", "type":integer_id, "value_kind":"integer", "value":value});
+            let slot_step = json!({
+                "term":"aggregate", "members":[
+                    {"term":"binding", "name":"kind", "value":text_literal("slot")},
+                    {"term":"binding", "name":"collection", "value":text_literal("sequence")},
+                    {"term":"binding", "name":"selector", "value":{"term":"reference", "target":integer_id}},
+                    {"term":"binding", "name":"minimum", "value":integer_literal(0)},
+                    {"term":"binding", "name":"maximum", "value":integer_literal(2)}
+                ]
+            });
+            let row = |step: u64,
+                       identity: &str,
+                       member_type: &str,
+                       collection: &str,
+                       minimum: &str,
+                       maximum: &str| {
+                json!({
+                    "term":"aggregate", "members":[
+                        {"term":"binding", "name":"path_step", "value":integer_literal(step)},
+                        {"term":"binding", "name":"declaring_type", "value":text_literal("Order")},
+                        {"term":"binding", "name":"member_identity", "value":text_literal(identity)},
+                        {"term":"binding", "name":"member_type", "value":text_literal(member_type)},
+                        {"term":"binding", "name":"collection_kind", "value":text_literal(collection)},
+                        {"term":"binding", "name":"minimum", "value":text_literal(minimum)},
+                        {"term":"binding", "name":"maximum", "value":text_literal(maximum)}
+                    ]
+                })
+            };
+            // A `field q` + `slot` place carries the collection bounds on the
+            // field row and spells `none`, `""`, `""` on the slot row.
+            let field_step = json!({
+                "term":"aggregate", "members":[
+                    {"term":"binding", "name":"kind", "value":text_literal("field")},
+                    {"term":"binding", "name":"name", "value":text_literal("q")}
+                ]
+            });
+            let path_steps = vec![field_step, slot_step];
+            let resolved_rows = vec![
+                row(0, "Order/q", "Sequence<Clock>", "sequence", "0", "2"),
+                row(1, "Sequence<Clock>[slot]", "Clock", "none", "", ""),
+            ];
             let place_body = json!({
                 "term":"aggregate",
                 "members":[
                     {"term":"binding", "name":"model", "value":{"term":"reference", "target":model_id}},
                     {"term":"binding", "name":"path", "value":{
-                        "term":"aggregate", "members":[{
-                            "term":"aggregate", "members":[
-                                {"term":"binding", "name":"kind", "value":text_literal("slot")},
-                                {"term":"binding", "name":"collection", "value":text_literal("sequence")},
-                                {"term":"binding", "name":"selector", "value":{"term":"reference", "target":integer_id}},
-                                {"term":"binding", "name":"minimum", "value":integer_literal(0)},
-                                {"term":"binding", "name":"maximum", "value":integer_literal(2)}
-                            ]
-                        }]
+                        "term":"aggregate", "members":path_steps
                     }},
                     {"term":"binding", "name":"resolved_path", "value":{
-                        "term":"aggregate", "members":[{
-                            "term":"aggregate", "members":[
-                                {"term":"binding", "name":"path_step", "value":integer_literal(0)},
-                                {"term":"binding", "name":"declaring_type", "value":text_literal("Order")},
-                                {"term":"binding", "name":"member_identity", "value":text_literal("Order[q]")},
-                                {"term":"binding", "name":"member_type", "value":text_literal("Sequence<Clock>")},
-                                {"term":"binding", "name":"collection_kind", "value":text_literal("sequence")},
-                                {"term":"binding", "name":"minimum", "value":text_literal("0")},
-                                {"term":"binding", "name":"maximum", "value":text_literal("2")}
-                            ]
-                        }]
+                        "term":"aggregate", "members":resolved_rows
                     }}
                 ]
             });
