@@ -12,7 +12,8 @@ use filament_contract_model::{
     encode_checked_package_v2_with_requirement_items, CheckedPackageReadLimits,
     CheckedPackageRefusalCause, CheckedPackageRefusalCode, CheckedPackageSidecarsRef,
     CheckedPackageSourceCorrespondenceRef, CheckedPackageV2, CheckedPackageV2BudgetedReadResult,
-    CheckedPackageV2ReadResult, JsonPointer, NativeJoinBudget,
+    CheckedPackageV2ReadResult, JsonPointer, NativeJoinBudget, RequirementItemRow,
+    RequirementRecord, ValueValidityRecord,
 };
 use ix_trace_rs::trace;
 use serde_json::{json, Value};
@@ -77,6 +78,16 @@ fn row(claim: &Value, kind: &str) -> Value {
         "kind": kind,
         "extent": {"classification": "bounded"},
     })
+}
+
+fn value_validity_record(row: &RequirementItemRow) -> &ValueValidityRecord {
+    match row.record.as_ref() {
+        Some(RequirementRecord::ValueValidity(record)) => record,
+        Some(RequirementRecord::OperationContract(_)) => {
+            panic!("expected a value-validity requirement record")
+        }
+        None => panic!("requirement row has no record"),
+    }
 }
 
 fn sync_body_dependencies(node: &mut Value) {
@@ -1027,10 +1038,7 @@ fn public_reader_retains_value_validity_record_facts_and_owner_index() {
             path: Vec::new(),
         }
     );
-    let record = rows[0]
-        .record
-        .as_ref()
-        .expect("typed row retains its value-validity record");
+    let record = value_validity_record(&rows[0]);
     let wire_record: filament_contract_model::CheckedNodeId =
         serde_json::from_value(package["requirement_items"][0]["record"].clone())
             .expect("document-held record ID");
@@ -1049,10 +1057,7 @@ fn public_reader_retains_value_validity_record_facts_and_owner_index() {
     assert_eq!(record.extent_roots.len(), 1);
     assert_eq!(&record.extent_roots[0], resolved_parameter);
     assert!(record.objects.is_empty());
-    assert_eq!(
-        rows[1].record.as_ref().expect("second record").occurrence,
-        1
-    );
+    assert_eq!(value_validity_record(&rows[1]).occurrence, 1);
     assert_eq!(admitted.value_validity_records_of(resolved_owner), &[0, 1]);
 
     let mut reordered_package = value_validity_package(true);
@@ -1082,8 +1087,8 @@ fn public_reader_retains_value_validity_record_facts_and_owner_index() {
         assert_eq!(reordered_row.occurrence, row.occurrence);
         assert_eq!(reordered_row.kind, row.kind);
         assert_eq!(reordered_row.extent, row.extent);
-        let reordered_record = reordered_row.record.as_ref().expect("reordered record");
-        let record = row.record.as_ref().expect("record");
+        let reordered_record = value_validity_record(reordered_row);
+        let record = value_validity_record(row);
         assert_eq!(reordered_record.owner, record.owner);
         assert_eq!(reordered_record.application, record.application);
         assert_eq!(reordered_record.occurrence, record.occurrence);
@@ -1789,7 +1794,7 @@ fn published_requirement_record_vectors_admit_shared_frames_and_refuse_non_boole
     let records = admitted
         .requirement_items()
         .iter()
-        .map(|row| row.record.as_ref().expect("value-validity record"))
+        .map(value_validity_record)
         .collect::<Vec<_>>();
     assert_eq!(records.len(), 2);
     assert_eq!(
@@ -1837,7 +1842,7 @@ fn public_reader_admits_a_reachable_boolean_literal_value_guard() {
     let records = admitted
         .requirement_items()
         .iter()
-        .map(|row| row.record.as_ref().expect("value-validity record"))
+        .map(value_validity_record)
         .collect::<Vec<_>>();
     assert_eq!(records.len(), 1);
     let guards = admitted
