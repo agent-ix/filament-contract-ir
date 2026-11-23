@@ -3747,6 +3747,59 @@ fn history_initial_literal_and_local_literal_reference_roundtrip() {
     );
 }
 
+/// A history row whose `initial` is a local reference to a fresh value node of
+/// `semantic_form`, with `body`.
+fn history_initial_reference_package(
+    semantic_form: &str,
+    body: Value,
+) -> (Value, CheckedPackageEvidence, usize) {
+    let (mut package, evidence, position, _, type_id, _) = ac5_history_package();
+    let node = json!({
+        "node_id":node_id("refinement/history-initial-reference"),
+        "schema_version":"filament.checked-semantic-graph/v2", "node_tag":"value",
+        "semantic_form":semantic_form, "semantic_type":type_id,
+        "dependencies":[], "occurrences":[{"role":"generated","ordinal":0}],
+        "body":body
+    });
+    let target = node["node_id"].clone();
+    package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .push(node);
+    rebuild_source_map(&mut package);
+    let row = &mut package["semantic_graph"]["nodes"][position];
+    row["body"]["histories"][0]["initial"] = json!({"term":"reference","target":target});
+    let dependencies = row["dependencies"].as_array_mut().expect("dependencies");
+    dependencies.push(target);
+    dependencies.sort_by(node_id_order);
+    settle_refinement(&mut package, position);
+    (package, evidence, position)
+}
+
+#[trace("TC-062", "FR-061-AC-5")]
+#[test]
+fn history_initial_admits_an_option_value_reference_and_refuses_other_value_forms() {
+    let (package, evidence, _) =
+        history_initial_reference_package("option_value", json!({"term":"aggregate","members":[]}));
+    assert!(
+        matches!(
+            read(&package, &evidence),
+            CheckedPackageV2ReadResult::Admitted(_)
+        ),
+        "an option-value history initial: {:?}",
+        read(&package, &evidence)
+    );
+
+    let (package, evidence, position) =
+        history_initial_reference_package("record_value", json!({"term":"aggregate","members":[]}));
+    assert_step_refusal(
+        read(&package, &evidence),
+        CheckedPackageRefusalCode::InvalidModelBinding,
+        Some(CheckedPackageRefusalCause::MalformedDeclaration),
+        &format!("/semantic_graph/nodes/{position}/body/histories/0/initial/target"),
+    );
+}
+
 #[trace("TC-062", "FR-061-AC-5")]
 #[test]
 fn history_and_fairness_reject_closed_shape_and_canonical_order_defects() {

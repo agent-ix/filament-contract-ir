@@ -2063,6 +2063,341 @@ fn path_frame_reader_rejects_bad_links_or_record_bindings() {
     );
 }
 
+/// `value_validity_package` with its else branch changed to a bare literal, so
+/// that branch holds no scalar operation: the emitter prunes its frame
+/// (FR-825), leaving the then frame as the table's only row and one record.
+fn else_without_scalar_operation_package() -> Value {
+    let mut package = value_validity_package(false);
+    let integer = node_id("scalar_type/integer");
+    let nodes = package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("graph nodes");
+    let conditional = nodes
+        .iter()
+        .position(|node| node["node_id"] == node_id("expression/conditional"))
+        .expect("conditional body root");
+    nodes[conditional]["body"]["arguments"][2] =
+        json!({"term":"literal","type":integer,"value_kind":"integer","value":"0"});
+    let application = nodes
+        .iter()
+        .position(|node| node["node_id"] == node_id("expression/integer_add"))
+        .expect("application");
+    nodes[application]["occurrences"] = json!([{"role":"expression","ordinal":0}]);
+    let discarded = nodes
+        .iter()
+        .position(|node| {
+            node["semantic_form"] == "value_validity"
+                && binding_value(node, "occurrence")["value"] == 1
+        })
+        .expect("else-branch record");
+    let discarded_id = nodes.remove(discarded)["node_id"].clone();
+    package["requirement_items"]
+        .as_array_mut()
+        .expect("requirement rows")
+        .retain(|row| row["record"] != discarded_id);
+    package["path_condition_frames"]
+        .as_array_mut()
+        .expect("frame table")
+        .truncate(1);
+    settle(&mut package);
+    rebuild_complete_source_map(&mut package);
+    package
+}
+
+/// One value-validity record of `owner` at `application`'s `occurrence`, cited
+/// at `frame`, the `generated_ordinal`th record of its owner.
+fn push_record(
+    package: &mut Value,
+    owner: &Value,
+    application: &Value,
+    occurrence: u64,
+    frame: Option<u64>,
+    generated_ordinal: u64,
+) -> Value {
+    let package_name = package["name"].clone();
+    let nodes = package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("graph nodes");
+    let position = |id: &Value| {
+        nodes
+            .iter()
+            .position(|node| node["node_id"] == *id)
+            .expect("fixture node")
+    };
+    let owner_position = position(owner);
+    let application_position = position(application);
+    let bound = node_id("scalar_type/integer");
+    let bound_position = position(&bound);
+    let parameter = node_id("value/parameter/n/0");
+    let parameter_position = position(&parameter);
+    let mut path = json!([
+        "claim", "value_validity", {"node":owner_position}, {"node":application_position},
+        occurrence.to_string(), "bound", {"node":bound_position}, "conversion"
+    ]);
+    let path_condition = match frame {
+        Some(frame) => {
+            path.as_array_mut()
+                .expect("record path")
+                .extend([json!("path_condition"), json!(frame.to_string())]);
+            json!([{"term":"literal","type":bound,"value_kind":"integer","value":frame}])
+        }
+        None => json!([]),
+    };
+    path.as_array_mut()
+        .expect("record path")
+        .extend([json!("roots"), json!({"node":parameter_position}), json!("objects")]);
+    let record_id = json!({"package":package_name,"path":path,"ordinal":0});
+    let mut dependencies = vec![
+        owner.clone(),
+        parameter.clone(),
+        application.clone(),
+        bound.clone(),
+    ];
+    if frame.is_some() {
+        dependencies.push(node_id("expression/integer_ge"));
+    }
+    dependencies.sort_by_key(structural_fixture_id);
+    dependencies.dedup();
+    let binding = |name: &str, value: Value| json!({"term":"binding","name":name,"value":value});
+    nodes.push(json!({
+        "node_id":record_id,
+        "schema_version":"filament.checked-semantic-graph/v2",
+        "node_tag":"claim", "semantic_form":"value_validity", "semantic_type":node_id("scalar_type/boolean"),
+        "dependencies":dependencies,
+        "occurrences":[{"role":"generated","ordinal":generated_ordinal}],
+        "body":{"term":"aggregate","members":[
+            binding("owner",json!({"term":"reference","target":owner})),
+            binding("application",json!({"term":"reference","target":application})),
+            binding("occurrence",json!({"term":"literal","type":bound,"value_kind":"integer","value":occurrence})),
+            binding("result_bound",json!({"term":"reference","target":bound})),
+            binding("conversion",json!({"term":"aggregate","members":[]})),
+            binding("path_condition",json!({"term":"aggregate","members":path_condition})),
+            binding("extent_roots",json!({"term":"aggregate","members":[{"term":"reference","target":parameter}]})),
+            binding("objects",json!({"term":"aggregate","members":[]})),
+        ]}
+    }));
+    record_id
+}
+
+/// `value_validity_package` plus a second function `h` declared after it whose
+/// body is the node `shared`, so the nodes `h` reads take expression
+/// occurrences after the ones `both`'s body took (FR-825 package-wide
+/// numbering). Returns the package, `h`'s node id and the shared node's count
+/// of occurrences before `h`.
+fn second_owner_package(shared: &str, extra_occurrences: u64) -> (Value, Value) {
+    let mut package = value_validity_package(false);
+    let nodes = package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("graph nodes");
+    let root = node_id(shared);
+    let mut owner = nodes
+        .iter()
+        .find(|node| node["node_tag"] == "function")
+        .expect("function owner")
+        .clone();
+    owner["node_id"] = node_id("qualified:h");
+    owner["declaration"] = json!({"qualified_name":["h"]});
+    owner["dependencies"] = json!([root]);
+    owner["body"] = json!({"term":"aggregate","members":[
+        {"term":"binding","name":"parameters","value":{"term":"aggregate","members":[]}},
+        {"term":"binding","name":"body","value":{"term":"reference","target":root}}
+    ]});
+    let owner_id = owner["node_id"].clone();
+    nodes.push(owner);
+    for key in ["expression/conditional", "expression/integer_ge", "expression/integer_add"] {
+        let node = nodes
+            .iter_mut()
+            .find(|node| node["node_id"] == node_id(key))
+            .expect("shared node");
+        let occurrences = node["occurrences"].as_array_mut().expect("occurrences");
+        let used = u64::try_from(occurrences.len()).expect("count");
+        let added = match key {
+            "expression/integer_add" => extra_occurrences,
+            _ if shared == "expression/conditional" => 1,
+            _ => 0,
+        };
+        for ordinal in used..used + added {
+            occurrences.push(json!({"role":"expression","ordinal":ordinal}));
+        }
+    }
+    (package, owner_id)
+}
+
+fn finish_second_owner(package: &mut Value, new_records: &[(Value, u64)], frames: &[Value]) {
+    settle(package);
+    rebuild_complete_source_map(package);
+    let application = node_id("expression/integer_add");
+    let items = package["requirement_items"]
+        .as_array_mut()
+        .expect("requirement rows");
+    for (record, occurrence) in new_records {
+        items.push(json!({"claim":{"node":application,"occurrence":{"role":"expression","ordinal":occurrence}},
+            "kind":"value-validity","extent":{"classification":"bounded"},"record":record}));
+    }
+    package["path_condition_frames"]
+        .as_array_mut()
+        .expect("frame table")
+        .extend(frames.iter().cloned());
+}
+
+#[trace("TC-2053", "FR-825-AC-6")]
+#[test]
+fn reader_admits_an_if_branch_that_holds_no_scalar_operation() {
+    let package = else_without_scalar_operation_package();
+    let CheckedPackageV2ReadResult::Admitted(admitted) = read(&package) else {
+        panic!("an else branch with no scalar operation: {:?}", read(&package));
+    };
+    let records = admitted
+        .requirement_items()
+        .iter()
+        .map(value_validity_record)
+        .collect::<Vec<_>>();
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0].occurrence, 0);
+    assert_eq!(
+        records[0].path_condition_frame.map(|frame| frame.0),
+        Some(0)
+    );
+    let chain = admitted.path_condition(records[0]).iter().collect::<Vec<_>>();
+    assert_eq!(chain.len(), 1);
+    assert!(chain[0].holds);
+    assert_eq!(admitted.path_condition_frames().len(), 1);
+}
+
+#[trace("TC-2053", "FR-825-AC-8", "FR-825-AC-9")]
+#[test]
+fn reader_refuses_a_record_in_an_if_branch_whose_frame_is_absent() {
+    // The else branch still applies `add`, so a record at occurrence 1 needs
+    // the else frame; without the row a record that names none disagrees with
+    // the derived chain at its own `path_condition` binding.
+    let mut package = value_validity_package(false);
+    package["path_condition_frames"]
+        .as_array_mut()
+        .expect("frame table")
+        .truncate(1);
+    let nodes = package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("graph nodes");
+    let record = nodes
+        .iter()
+        .position(|node| {
+            node["semantic_form"] == "value_validity"
+                && binding_value(node, "occurrence")["value"] == 1
+        })
+        .expect("else-branch record");
+    binding_value_mut(&mut nodes[record], "path_condition")["members"] = json!([]);
+    let pointer = format!("/semantic_graph/nodes/{record}/body/members/5");
+    assert_refusal(
+        &package,
+        CheckedPackageRefusalCode::InvalidPackage,
+        Some(CheckedPackageRefusalCause::InvalidValue),
+        &pointer,
+    );
+}
+
+#[trace("TC-2053", "FR-825-AC-6", "FR-825-AC-9")]
+#[test]
+fn record_occurrence_of_a_node_shared_by_two_owners_is_numbered_package_wide() {
+    // `both` reads `add` twice (occurrences 0, 1); `h` is declared after it
+    // and reads the same node, which is occurrence 2.
+    let (mut package, owner) = second_owner_package("expression/integer_add", 1);
+    let application = node_id("expression/integer_add");
+    let second = push_record(&mut package, &owner, &application, 2, None, 0);
+    finish_second_owner(&mut package, &[(second, 2)], &[]);
+    let CheckedPackageV2ReadResult::Admitted(admitted) = read(&package) else {
+        panic!("a node shared by two owners: {:?}", read(&package));
+    };
+    let records = admitted
+        .requirement_items()
+        .iter()
+        .map(value_validity_record)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        records
+            .iter()
+            .map(|record| (record.occurrence, record.path_condition_frame.map(|f| f.0)))
+            .collect::<Vec<_>>(),
+        vec![(0, Some(0)), (1, Some(1)), (2, None)]
+    );
+
+    // The second owner's read is occurrence 2, never 0: a record that names
+    // occurrence 0 for `h` is a record `both` already owns.
+    let mut local_numbering = package;
+    let nodes = local_numbering["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("graph nodes");
+    let record = nodes
+        .iter()
+        .position(|node| {
+            node["semantic_form"] == "value_validity"
+                && node["body"]["members"][0]["value"]["target"] == owner
+        })
+        .expect("record of the second owner");
+    binding_value_mut(&mut nodes[record], "occurrence")["value"] = json!(1);
+    let pointer = format!("/semantic_graph/nodes/{record}/body/members/5");
+    assert_refusal(
+        &local_numbering,
+        CheckedPackageRefusalCode::InvalidPackage,
+        Some(CheckedPackageRefusalCause::InvalidValue),
+        &pointer,
+    );
+}
+
+#[trace("TC-2053", "FR-825-AC-6", "FR-825-AC-9")]
+#[test]
+fn guard_occurrence_of_a_node_shared_by_two_owners_is_numbered_package_wide() {
+    // `h`'s body is the conditional `both` already reads: its guard is read a
+    // second time (occurrence 1) and `add` twice more (occurrences 2, 3).
+    let (mut package, owner) = second_owner_package("expression/conditional", 2);
+    let application = node_id("expression/integer_add");
+    let then_record = push_record(&mut package, &owner, &application, 2, Some(2), 0);
+    let else_record = push_record(&mut package, &owner, &application, 3, Some(3), 1);
+    let guard = node_id("expression/integer_ge");
+    let frame = |holds: bool| {
+        json!({"parent":null,"guard":{"node":guard,"occurrence":{"role":"expression","ordinal":1}},
+            "holds":holds})
+    };
+    finish_second_owner(
+        &mut package,
+        &[(then_record, 2), (else_record, 3)],
+        &[frame(true), frame(false)],
+    );
+    let CheckedPackageV2ReadResult::Admitted(admitted) = read(&package) else {
+        panic!("a guard shared by two owners: {:?}", read(&package));
+    };
+    let frames = admitted.path_condition_frames();
+    assert_eq!(frames.len(), 4);
+    assert_eq!(
+        frames
+            .iter()
+            .map(|frame| (frame.occurrence, frame.holds))
+            .collect::<Vec<_>>(),
+        vec![(0, true), (0, false), (1, true), (1, false)]
+    );
+
+    // A record of `h` that cites the other branch's frame disagrees with the
+    // chain derived for it.
+    let mut swapped = package;
+    let nodes = swapped["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("graph nodes");
+    let record = nodes
+        .iter()
+        .position(|node| {
+            node["semantic_form"] == "value_validity"
+                && binding_value(node, "occurrence")["value"] == 2
+        })
+        .expect("then-branch record of the second owner");
+    binding_value_mut(&mut nodes[record], "path_condition")["members"][0]["value"] = json!(3);
+    let pointer = format!("/semantic_graph/nodes/{record}/body/members/5");
+    assert_refusal(
+        &swapped,
+        CheckedPackageRefusalCode::InvalidPackage,
+        Some(CheckedPackageRefusalCause::InvalidValue),
+        &pointer,
+    );
+}
+
 fn assert_refusal(
     package: &Value,
     code: CheckedPackageRefusalCode,
