@@ -103,7 +103,11 @@ conformance-fspec-compile:
 .PHONY: conformance-fspec-finite-hyper
 conformance-fspec-finite-hyper:
 	@test -n "$(TCB_FINITE_HYPER_PACKAGE)" || { echo 'TCB_FINITE_HYPER_PACKAGE is required: the captured FSL finite hyperproperty package (see finite_hyper_profile_fixture)' >&2; exit 1; }
-	TCB_FINITE_HYPER_PACKAGE="$(TCB_FINITE_HYPER_PACKAGE)" $(CARGO) test $(LOCKED) --test conformance_fspec finite_hyper_profile_vectors -- --ignored
+	@output=$$(TCB_FINITE_HYPER_PACKAGE="$(TCB_FINITE_HYPER_PACKAGE)" $(CARGO) test $(LOCKED) --features conformance-cli,filament-contract-model/test-support --test conformance_fspec finite_hyper_profile_vectors -- --ignored 2>&1); \
+	status=$$?; printf '%s\n' "$$output"; \
+	[ "$$status" -eq 0 ] || exit "$$status"; \
+	passed=$$(printf '%s\n' "$$output" | grep -c '^test result: ok\. 1 passed; 0 failed; 0 ignored; 0 measured;' || true); \
+	[ "$$passed" -eq 1 ] || { echo 'the finite hyper vector driver did not run exactly once' >&2; exit 1; }
 
 .PHONY: conformance-fspec
 conformance-fspec:
