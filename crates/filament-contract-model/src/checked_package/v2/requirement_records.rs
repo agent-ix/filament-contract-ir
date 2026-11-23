@@ -807,7 +807,9 @@ pub(super) fn validate(
                 meter,
             )?);
         }
-        let Some(owner_paths) = owner_paths.as_ref().and_then(|paths| paths.get(&owner_position))
+        let Some(owner_paths) = owner_paths
+            .as_ref()
+            .and_then(|paths| paths.get(&owner_position))
         else {
             return Err(refuse(
                 position,
@@ -2057,7 +2059,7 @@ fn derive_package_path_conditions(
         "requirement_items",
         at,
     );
-    let mut declared = stage_storage::vec::<Option<(&CheckedSourceRef, u64)>>(
+    let mut declared = stage_storage::vec::<Option<(&CheckedSourceRef, u64, u64)>>(
         meter,
         &numbering_site,
         nodes.len(),
@@ -2072,12 +2074,12 @@ fn derive_package_path_conditions(
         else {
             continue;
         };
-        let start = (&region.source, region.start);
+        let start = (&region.source, region.start, region.end);
         if declared[position].is_none_or(|known| start < known) {
             declared[position] = Some(start);
         }
     }
-    let mut owners = stage_storage::vec::<(Option<(&CheckedSourceRef, u64)>, usize)>(
+    let mut owners = stage_storage::vec::<(Option<(&CheckedSourceRef, u64, u64)>, usize)>(
         meter,
         &numbering_site,
         owner_count,
@@ -2089,7 +2091,13 @@ fn derive_package_path_conditions(
             owners.push((declared[position], position));
         }
     }
-    owners.sort_unstable();
+    owners.sort_unstable_by(
+        |(left_position, left_owner), (right_position, right_owner)| {
+            left_position
+                .cmp(right_position)
+                .then_with(|| nodes[*left_owner].node_id.cmp(&nodes[*right_owner].node_id))
+        },
+    );
     let mut visit_counts = BTreeMap::<usize, usize>::new();
     let mut paths = BTreeMap::new();
     let mut frame_orders = BTreeMap::new();

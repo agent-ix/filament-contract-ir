@@ -1925,10 +1925,12 @@ fn public_reader_admits_a_reachable_boolean_literal_value_guard() {
         .iter()
         .collect::<Vec<_>>();
     let guard_id = guards[0].guard;
-    assert!(records.iter().all(|record| admitted
-        .path_condition(record)
-        .iter()
-        .all(|guard| guard.guard == guard_id)));
+    assert!(records.iter().all(|record| {
+        admitted
+            .path_condition(record)
+            .iter()
+            .all(|guard| guard.guard == guard_id)
+    }));
     let guard = admitted
         .resolved_graph()
         .nodes
@@ -2143,9 +2145,11 @@ fn push_record(
         }
         None => json!([]),
     };
-    path.as_array_mut()
-        .expect("record path")
-        .extend([json!("roots"), json!({"node":parameter_position}), json!("objects")]);
+    path.as_array_mut().expect("record path").extend([
+        json!("roots"),
+        json!({"node":parameter_position}),
+        json!("objects"),
+    ]);
     let record_id = json!({"package":package_name,"path":path,"ordinal":0});
     let mut dependencies = vec![
         owner.clone(),
@@ -2204,7 +2208,11 @@ fn second_owner_package(shared: &str, extra_occurrences: u64) -> (Value, Value) 
     ]});
     let owner_id = owner["node_id"].clone();
     nodes.push(owner);
-    for key in ["expression/conditional", "expression/integer_ge", "expression/integer_add"] {
+    for key in [
+        "expression/conditional",
+        "expression/integer_ge",
+        "expression/integer_add",
+    ] {
         let node = nodes
             .iter_mut()
             .find(|node| node["node_id"] == node_id(key))
@@ -2245,7 +2253,10 @@ fn finish_second_owner(package: &mut Value, new_records: &[(Value, u64)], frames
 fn reader_admits_an_if_branch_that_holds_no_scalar_operation() {
     let package = else_without_scalar_operation_package();
     let CheckedPackageV2ReadResult::Admitted(admitted) = read(&package) else {
-        panic!("an else branch with no scalar operation: {:?}", read(&package));
+        panic!(
+            "an else branch with no scalar operation: {:?}",
+            read(&package)
+        );
     };
     let records = admitted
         .requirement_items()
@@ -2258,7 +2269,10 @@ fn reader_admits_an_if_branch_that_holds_no_scalar_operation() {
         records[0].path_condition_frame.map(|frame| frame.0),
         Some(0)
     );
-    let chain = admitted.path_condition(records[0]).iter().collect::<Vec<_>>();
+    let chain = admitted
+        .path_condition(records[0])
+        .iter()
+        .collect::<Vec<_>>();
     assert_eq!(chain.len(), 1);
     assert!(chain[0].holds);
     assert_eq!(admitted.path_condition_frames().len(), 1);
@@ -2341,6 +2355,50 @@ fn record_occurrence_of_a_node_shared_by_two_owners_is_numbered_package_wide() {
         Some(CheckedPackageRefusalCause::InvalidValue),
         &pointer,
     );
+}
+
+#[trace("TC-2053", "FR-825-AC-11", "FR-322-AC-522")]
+#[test]
+fn omitting_the_first_owners_record_does_not_renumber_a_shared_occurrence() {
+    let (mut package, second_owner) = second_owner_package("expression/integer_add", 0);
+    let application = node_id("expression/integer_add");
+    {
+        let nodes = package["semantic_graph"]["nodes"]
+            .as_array_mut()
+            .expect("graph nodes");
+        let first_owner = nodes
+            .iter_mut()
+            .find(|node| node["node_tag"] == "function")
+            .expect("first owner");
+        first_owner["body"]["members"][1]["value"] = json!({
+            "term":"reference",
+            "target":application.clone(),
+        });
+        sync_body_dependencies(first_owner);
+        nodes.retain(|node| node["semantic_form"] != "value_validity");
+    }
+    package["requirement_items"] = json!([]);
+    package
+        .as_object_mut()
+        .expect("package object")
+        .remove("path_condition_frames");
+
+    let second_record = push_record(&mut package, &second_owner, &application, 1, None, 0);
+    finish_second_owner(&mut package, &[(second_record, 1)], &[]);
+
+    let CheckedPackageV2ReadResult::Admitted(admitted) = read(&package) else {
+        panic!(
+            "the second owner's occurrence remains package-wide: {:?}",
+            read(&package)
+        );
+    };
+    let records = admitted
+        .requirement_items()
+        .iter()
+        .map(value_validity_record)
+        .collect::<Vec<_>>();
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0].occurrence, 1);
 }
 
 #[trace("TC-2053", "FR-825-AC-6", "FR-825-AC-9")]
