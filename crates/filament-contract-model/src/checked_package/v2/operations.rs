@@ -6068,7 +6068,9 @@ fn slot_domain_result_matches(
     if minimum.parse::<u64>().ok() != Some(0) {
         return false;
     }
-    place_step_maximum(place_body, last_step_index)
+    // The collection bounds sit on the row of the step before the slot; the
+    // slot's own row spells `none`, `""`, `""` (timed_model's row join).
+    place_step_maximum(place_body, last_step_index.saturating_sub(1))
         .and_then(|expected| expected.parse::<u64>().ok())
         .is_some_and(|expected| maximum.parse::<u64>().ok() == Some(expected))
 }
@@ -14496,7 +14498,7 @@ mod tests {
     #[trace("TC-1862", "FR-772-AC-1", "FR-772-AC-2")]
     #[test]
     fn fr772_option_slots_checks_place_owner_and_bounded_domain() {
-        fn read_slot_domain(maximum: &str) -> Result<bool, ValidationFailure> {
+        fn read_slot_domain(maximum: &str, field_step: bool) -> Result<bool, ValidationFailure> {
             let model_id = node_id('3');
             let integer_id = node_id('6');
             let set_id = node_id('7');
@@ -14504,33 +14506,57 @@ mod tests {
             let text_id = node_id('9');
             let text_literal = |value: &str| json!({"term":"literal", "type":text_id, "value_kind":"text", "value":value});
             let integer_literal = |value: u64| json!({"term":"literal", "type":integer_id, "value_kind":"integer", "value":value});
+            let slot_step = json!({
+                "term":"aggregate", "members":[
+                    {"term":"binding", "name":"kind", "value":text_literal("slot")},
+                    {"term":"binding", "name":"collection", "value":text_literal("sequence")},
+                    {"term":"binding", "name":"selector", "value":{"term":"reference", "target":integer_id}},
+                    {"term":"binding", "name":"minimum", "value":integer_literal(0)},
+                    {"term":"binding", "name":"maximum", "value":integer_literal(2)}
+                ]
+            });
+            let row = |step: u64, identity: &str, member_type: &str, collection: &str, minimum: &str, maximum: &str| json!({
+                "term":"aggregate", "members":[
+                    {"term":"binding", "name":"path_step", "value":integer_literal(step)},
+                    {"term":"binding", "name":"declaring_type", "value":text_literal("Order")},
+                    {"term":"binding", "name":"member_identity", "value":text_literal(identity)},
+                    {"term":"binding", "name":"member_type", "value":text_literal(member_type)},
+                    {"term":"binding", "name":"collection_kind", "value":text_literal(collection)},
+                    {"term":"binding", "name":"minimum", "value":text_literal(minimum)},
+                    {"term":"binding", "name":"maximum", "value":text_literal(maximum)}
+                ]
+            });
+            // A `field q` + `slot` place carries the collection bounds on the
+            // field row and spells `none`, `""`, `""` on the slot row.
+            let (path_steps, resolved_rows) = if field_step {
+                let field_step = json!({
+                    "term":"aggregate", "members":[
+                        {"term":"binding", "name":"kind", "value":text_literal("field")},
+                        {"term":"binding", "name":"name", "value":text_literal("q")}
+                    ]
+                });
+                (
+                    vec![field_step, slot_step],
+                    vec![
+                        row(0, "Order/q", "Sequence<Clock>", "sequence", "0", "2"),
+                        row(1, "Sequence<Clock>[slot]", "Clock", "none", "", ""),
+                    ],
+                )
+            } else {
+                (
+                    vec![slot_step],
+                    vec![row(0, "Order[q]", "Sequence<Clock>", "sequence", "0", "2")],
+                )
+            };
             let place_body = json!({
                 "term":"aggregate",
                 "members":[
                     {"term":"binding", "name":"model", "value":{"term":"reference", "target":model_id}},
                     {"term":"binding", "name":"path", "value":{
-                        "term":"aggregate", "members":[{
-                            "term":"aggregate", "members":[
-                                {"term":"binding", "name":"kind", "value":text_literal("slot")},
-                                {"term":"binding", "name":"collection", "value":text_literal("sequence")},
-                                {"term":"binding", "name":"selector", "value":{"term":"reference", "target":integer_id}},
-                                {"term":"binding", "name":"minimum", "value":integer_literal(0)},
-                                {"term":"binding", "name":"maximum", "value":integer_literal(2)}
-                            ]
-                        }]
+                        "term":"aggregate", "members":path_steps
                     }},
                     {"term":"binding", "name":"resolved_path", "value":{
-                        "term":"aggregate", "members":[{
-                            "term":"aggregate", "members":[
-                                {"term":"binding", "name":"path_step", "value":integer_literal(0)},
-                                {"term":"binding", "name":"declaring_type", "value":text_literal("Order")},
-                                {"term":"binding", "name":"member_identity", "value":text_literal("Order[q]")},
-                                {"term":"binding", "name":"member_type", "value":text_literal("Sequence<Clock>")},
-                                {"term":"binding", "name":"collection_kind", "value":text_literal("sequence")},
-                                {"term":"binding", "name":"minimum", "value":text_literal("0")},
-                                {"term":"binding", "name":"maximum", "value":text_literal("2")}
-                            ]
-                        }]
+                        "term":"aggregate", "members":resolved_rows
                     }}
                 ]
             });
@@ -14634,15 +14660,18 @@ mod tests {
             result
         }
 
-        assert_eq!(read_slot_domain("2"), Ok(true));
-        let Err(ValidationFailure::Refused(refusal)) = read_slot_domain("3") else {
-            panic!("a mismatched collection bound must refuse");
-        };
-        assert_eq!(refusal.code, CheckedPackageRefusalCode::IllTyped);
-        assert_eq!(
-            refusal.cause,
-            Some(CheckedPackageRefusalCause::OperatorIneligible)
-        );
+        for field_step in [false, true] {
+            assert_eq!(read_slot_domain("2", field_step), Ok(true), "{field_step}");
+            let Err(ValidationFailure::Refused(refusal)) = read_slot_domain("3", field_step)
+            else {
+                panic!("a mismatched collection bound must refuse: {field_step}");
+            };
+            assert_eq!(refusal.code, CheckedPackageRefusalCode::IllTyped);
+            assert_eq!(
+                refusal.cause,
+                Some(CheckedPackageRefusalCause::OperatorIneligible)
+            );
+        }
     }
 
     fn clock_reference_graph(
