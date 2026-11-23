@@ -992,25 +992,6 @@ fn apply_finite_hyper_mutation(package: &mut Value, mutation: &Value, definition
                 .expect("body")
                 .remove("temporal_profile");
         }
-        "set-hyperproperty-domain-behaviours" => {
-            let at = unique_node(package, "claim", "hyperproperty");
-            let text = package["semantic_graph"]["nodes"]
-                [unique_node(package, "scalar_type", "text")]["node_id"]
-                .clone();
-            let members = package["semantic_graph"]["nodes"][at]["body"]["members"]
-                .as_array_mut()
-                .expect("members");
-            let domain = members
-                .iter_mut()
-                .find(|member| member["name"] == "domain")
-                .expect("domain member");
-            domain["value"] = json!({
-                "term": "literal",
-                "type": text,
-                "value_kind": "text",
-                "value": "behaviours",
-            });
-        }
         "set-lock-profile-selections" => {
             package["lock"]["profile_selections"] = Value::Array(
                 mutation["value"]
@@ -1059,6 +1040,7 @@ fn finite_hyper_read(package: &Value) -> CheckedPackageV2ReadResult {
 
 #[trace("TC-2028", "FR-322-AC-464")]
 #[test]
+#[ignore = "needs TCB_FINITE_HYPER_PACKAGE; run by make conformance-fspec-finite-hyper"]
 fn finite_hyper_profile_vectors_drive_the_reader() {
     let published = vectors();
     let definitions = &published["finite_hyper_profile_fixture"]["profile_definitions"];

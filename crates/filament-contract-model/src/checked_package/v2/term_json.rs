@@ -404,9 +404,7 @@ impl<'s> TermWalk<'_, '_, '_, 's, '_> {
                 Ok(result_type.saturating_add(1))
             }
             BodyTerm::Aggregate => {
-                if !(exact(&["term", "members"])
-                    || (is_body_root && exact(&["term", "members", "temporal_profile"])))
-                {
+                if !exact(&["term", "members"]) {
                     return Err(self.invalid(None));
                 }
                 let Some(elements) = term.array(TermField::Members) else {

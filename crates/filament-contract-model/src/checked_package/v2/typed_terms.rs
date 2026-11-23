@@ -3561,7 +3561,10 @@ impl Encode for CheckedTerm {
                 }
                 writer.end_array()?;
             }
-            Self::Aggregate { members, .. } => {
+            Self::Aggregate {
+                members,
+                temporal_profile,
+            } => {
                 writer.name("term")?;
                 writer.string("aggregate")?;
                 writer.name("members")?;
@@ -3570,6 +3573,10 @@ impl Encode for CheckedTerm {
                     member.encode_into(writer)?;
                 }
                 writer.end_array()?;
+                if let Some(profile) = temporal_profile {
+                    writer.name("temporal_profile")?;
+                    profile.encode_into(writer)?;
+                }
             }
             Self::Binding {
                 name,

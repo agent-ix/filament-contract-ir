@@ -100,6 +100,11 @@ test:
 conformance-fspec-compile:
 	$(CARGO) test $(LOCKED) --workspace --features conformance-cli --no-run --test conformance_fspec --test monitor_plan_public --test temporal_binding_public --test it
 
+.PHONY: conformance-fspec-finite-hyper
+conformance-fspec-finite-hyper:
+	@test -n "$(TCB_FINITE_HYPER_PACKAGE)" || { echo 'TCB_FINITE_HYPER_PACKAGE is required: the captured FSL finite hyperproperty package (see finite_hyper_profile_fixture)' >&2; exit 1; }
+	TCB_FINITE_HYPER_PACKAGE="$(TCB_FINITE_HYPER_PACKAGE)" $(CARGO) test $(LOCKED) --test conformance_fspec finite_hyper_profile_vectors -- --ignored
+
 .PHONY: conformance-fspec
 conformance-fspec:
 	$(CARGO) test $(LOCKED) --workspace --lib ir1083_

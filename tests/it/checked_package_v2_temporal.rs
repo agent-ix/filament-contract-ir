@@ -3676,6 +3676,46 @@ fn tcb_14_a_finite_hyper_body_profile_is_the_one_its_rows_are_checked_against() 
 
 #[trace("TC-2028", "FR-322-AC-464")]
 #[test]
+fn a_finite_hyper_body_profile_survives_write_then_read() {
+    let (package, at) = finite_clock_fixture();
+    let admitted = admitted("a finite hyperproperty", &package);
+    let encoded = filament_contract_model::encode_checked_package_v2(
+        admitted.name(),
+        admitted.lock(),
+        admitted.graph(),
+        filament_contract_model::CheckedPackageSourceCorrespondenceRef {
+            source_map: admitted.source_map(),
+            refinement_step_rows: admitted.refinement_step_rows(),
+        },
+        filament_contract_model::CheckedPackageSidecarsRef {
+            temporal_clause_names: admitted.temporal_clause_names(),
+            claim_names: admitted.claim_names(),
+            operation_effects: None,
+            operation_bodies: None,
+            checked_term_data: admitted.checked_term_data(),
+            temporal_bindings: admitted.temporal_bindings(),
+            schedulability_claims: None,
+        },
+        admitted.capability_report(),
+        admitted.diagnostics(),
+        quire_canonical::Limits::new(u64::MAX),
+    )
+    .expect("encode admitted package");
+    let written: Value = serde_json::from_slice(&encoded).expect("written package");
+    assert_eq!(
+        written["semantic_graph"]["nodes"][at]["body"]["temporal_profile"],
+        json!({"authority": "agent-ix", "identity": BOUNDED})
+    );
+    assert_eq!(
+        encoded,
+        canonical(&package),
+        "the written bytes are the admitted canonical bytes"
+    );
+    self::admitted("the written package", &written);
+}
+
+#[trace("TC-2028", "FR-322-AC-464")]
+#[test]
 fn tcb_15_a_finite_hyper_body_profile_no_lock_row_selects_is_refused() {
     let (mut package, at) = finite_clock_fixture();
     // The body names the fixed-sample profile, which no lock row selects; the

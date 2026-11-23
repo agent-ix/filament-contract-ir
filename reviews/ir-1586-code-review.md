@@ -36,3 +36,29 @@ The finite branch is correct and joins the body definition to exactly one tempor
 | FND-003 | low | term_json.rs widening is dead: its only caller (validate_diagnostics) passes `is_body_root: false` | crates/filament-contract-model/src/checked_package/v2/term_json.rs:407-409 |
 | FND-004 | low | TCB-14 compares the admitted first hyper row's clock with `package["temporal_bindings"][0]`, which is not necessarily that hyper row, and asserts the input package's kind rather than the reader's | tests/it/checked_package_v2_temporal.rs:3660-3667 |
 | FND-005 | low | conformance test only asserts the published vector file's ids/codes/loci equal literals; it exercises no reader code and passes with the source change reverted | tests/conformance_fspec/temporal_clock_bindings.rs:939-990 |
+
+## New findings (disposition pass 1)
+
+| ID | Severity | Summary | Refs |
+| --- | --- | --- | --- |
+| FND-006 | high | `impl Encode for CheckedTerm` writes an aggregate as `term` and `members` only (`Self::Aggregate { members, .. }`), so the typed `temporal_profile` is dropped. The public `encode_checked_package_v2` writes bodies through this Encode, so writing back an admitted finite-hyper package emits a body with no member, which the reader then refuses (`operation-law-unselected`, TCB-17). The new round-trip test covers serde only, not the canonical writer. | crates/filament-contract-model/src/checked_package/v2/typed_terms.rs:3564-3573 |
+| FND-007 | medium | `finite_hyper_profile_vectors_drive_the_reader` panics whenever `TCB_FINITE_HYPER_PACKAGE` is unset, and it lives in the shared `conformance_fspec` binary. `make conformance-fspec` runs `cargo test --test conformance_fspec` without that variable, so the target always fails. The cited precedent, IR1236_FSL_PACKAGE, has its own `test = false` binary (`conformance_fsl_ir1236`), so it never breaks a shared run. Move the driver to its own binary, or `#[ignore]` it with a named Makefile line that sets the variable. | tests/conformance_fspec/temporal_clock_bindings.rs:1062-1069 |
+| FND-008 | low | The driver keeps a `set-hyperproperty-domain-behaviours` mutation arm that no published case uses. Spec PR 815 at b87c2a87 removed that op, so the arm is dead test code. | tests/conformance_fspec/temporal_clock_bindings.rs:995-1013 |
+
+## Dispositions
+
+Round 1, against 8fc3d38b (fix delta e7b81bbb..8fc3d38b). Spec reference: filament-specification PR 815 head b87c2a87, checked out read-only in a temporary worktree. Runs on titan:
+- `it -- checked_package_v2_temporal checked_package_v2_typed_terms hyper finite`: 127 passed.
+- `conformance_fspec -- temporal_clock_bindings` with `TCB_FINITE_HYPER_PACKAGE=/tmp/tcb-finite-hyper.json`: 7 passed. The driver ran TCB-14..18 and TCB-20..24 against the reader.
+
+Branch tree: `git ls-tree -r HEAD` has no `$HOME`, `.cache`, `target` or `.rlib` paths. The 72-file delta is the typed member, `..` pattern updates for the public enum change, tests, and the two SR files.
+
+TCB-19 skip (`UNGENERATED`, QSL-2887): acceptable. QSL-2887 is Backlog and records that the FR-402-AC-11 object-free hyper source fails to parse, so the base package for TCB-19 cannot be produced yet. The skip names its ticket, which is also its expiry. The same refusal is asserted in-repo by `a_behaviours_hyper_body_carries_no_profile_member_and_other_nodes_may_not`. No gate is weakened.
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-001 | fixed | - |
+| FND-002 | fixed | - |
+| FND-003 | still-open: the term_json.rs widening is unchanged and still dead (only caller passes is_body_root false) | |
+| FND-004 | fixed | - |
+| FND-005 | fixed | - |
