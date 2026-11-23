@@ -62,6 +62,18 @@ fn armed() -> bool {
     ARMED.try_with(Cell::get).unwrap_or(false)
 }
 
+thread_local! {
+    /// Set to refuse this thread's next allocation or reallocation, as a host
+    /// out of memory would; cleared by the refusal.
+    static REFUSE_NEXT: Cell<bool> = const { Cell::new(false) };
+}
+
+fn refuse_this_allocation() -> bool {
+    REFUSE_NEXT
+        .try_with(|refuse| refuse.replace(false))
+        .unwrap_or(false)
+}
+
 fn note_own_request(bytes: usize) {
     let _ = OWN_REQUESTS.try_with(|own| {
         if let Some(total) = own.get() {
@@ -118,6 +130,9 @@ fn note_release(bytes: usize) {
 // upholds the `GlobalAlloc` contract; the counters only observe sizes.
 unsafe impl GlobalAlloc for Counting {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        if refuse_this_allocation() {
+            return std::ptr::null_mut();
+        }
         // SAFETY: the caller's layout contract is forwarded unchanged.
         let block = unsafe { System.alloc(layout) };
         if !block.is_null() {
@@ -142,6 +157,10 @@ unsafe impl GlobalAlloc for Counting {
     }
 
     unsafe fn realloc(&self, block: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
+        if refuse_this_allocation() {
+            // A refused reallocation leaves the original block untouched.
+            return std::ptr::null_mut();
+        }
         // SAFETY: `block` was allocated by `System` with `layout`.
         let moved = unsafe { System.realloc(block, layout, new_size) };
         if !moved.is_null() {
@@ -399,6 +418,122 @@ mod by_stage {
                         ratio(peak, bytes),
                     );
                 }
+            }
+        }
+    }
+
+    thread_local! {
+        /// The read-package locus whose charges are counted, the charge to
+        /// fail at (1-based), the charges seen and the read storage admitted,
+        /// and the amount of the charge whose block the host refuses.
+        static FAIL_AT: Cell<Option<(PackageReadStage, &'static str, usize)>> =
+            const { Cell::new(None) };
+        static SEEN: Cell<usize> = const { Cell::new(0) };
+        static ADMITTED: Cell<u64> = const { Cell::new(0) };
+        static REFUSED_BLOCK: Cell<Option<u64>> = const { Cell::new(None) };
+    }
+
+    /// The observer for the injected failure: allocates nothing. At the
+    /// chosen charge it arms the allocator to refuse the block that charge
+    /// paid for, which the shared reader and writer allocate next.
+    fn fail_at_charge(event: NativeBudgetEvent) {
+        if event.resource != NativeBudgetResource::ReadStorage || !event.admitted {
+            return;
+        }
+        let amount = u64::try_from(event.amount).unwrap_or(u64::MAX);
+        ADMITTED.set(ADMITTED.get().saturating_add(amount));
+        let Some((stage, form, at)) = FAIL_AT.get() else {
+            return;
+        };
+        let Some(locus) = event.locus else {
+            return;
+        };
+        if locus.source != NativeJoinLocusSource::PackageRead(stage, 0) || locus.form != form {
+            return;
+        }
+        let seen = SEEN.get() + 1;
+        SEEN.set(seen);
+        if seen == at {
+            FAIL_AT.set(None);
+            REFUSED_BLOCK.set(Some(amount));
+            REFUSE_NEXT.set(true);
+        }
+    }
+
+    /// When the host refuses a block that
+    /// the shared reader (envelope) or the in-order canonical writer
+    /// (canonical) had charged, both entries return `HostAllocationFailed`
+    /// with that stage, its package locus, the refused block as charged, and
+    /// `consumed` equal to exactly the read storage admitted, never a refusal,
+    /// an `incomplete` or a budget stop.
+    #[trace("TC-472", "FR-038-AC-614", "FR-038-AC-615")]
+    #[test]
+    fn an_injected_host_allocation_failure_is_the_host_outcome_at_its_stage() {
+        use filament_contract_model::{
+            CheckedPackageHostAllocationFailed, CheckedPackageV2ReadResult, NativeJoinLocus,
+        };
+        let _one = MEASURING
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let base = v2_all_families();
+        let evidence = evidence_for(&base);
+        let nodes = 200
+            + base["semantic_graph"]["nodes"]
+                .as_array()
+                .expect("nodes")
+                .len();
+        drop(base);
+        let (bytes, _) = v2_reference_chain(200);
+        let limits = generous_limits(nodes, bytes.len());
+        for (stage, form) in [
+            (PackageReadStage::Envelope, "package_bytes"),
+            (PackageReadStage::Canonical, "canonical_bytes"),
+        ] {
+            for at in [1, 3] {
+                let arm = || {
+                    FAIL_AT.set(Some((stage, form, at)));
+                    SEEN.set(0);
+                    ADMITTED.set(0);
+                    REFUSED_BLOCK.set(None);
+                };
+                arm();
+                let mut budget =
+                    NativeJoinBudget::new(limits.work, u64::MAX).with_read_storage_limit(u64::MAX);
+                let budgeted = with_native_budget_observer(fail_at_charge, || {
+                    CheckedPackageV2::read_with_budget(&bytes, limits, &evidence, &mut budget)
+                });
+                let requested = REFUSED_BLOCK.get().expect("the chosen charge was made");
+                let expected = CheckedPackageHostAllocationFailed {
+                    stage,
+                    locus: NativeJoinLocus {
+                        source: NativeJoinLocusSource::PackageRead(stage, 0),
+                        form,
+                    },
+                    requested,
+                    consumed: ADMITTED.get(),
+                };
+                assert_eq!(budget.read_storage_consumed(), ADMITTED.get());
+                assert_eq!(
+                    budgeted,
+                    CheckedPackageV2BudgetedReadResult::HostAllocationFailed(expected),
+                    "{form} charge {at}"
+                );
+                arm();
+                let plain = with_native_budget_observer(fail_at_charge, || {
+                    CheckedPackageV2::read(&bytes, limits, &evidence)
+                });
+                let requested = REFUSED_BLOCK.get().expect("the chosen charge was made");
+                assert_eq!(
+                    plain,
+                    CheckedPackageV2ReadResult::HostAllocationFailed(
+                        CheckedPackageHostAllocationFailed {
+                            requested,
+                            consumed: ADMITTED.get(),
+                            ..expected
+                        }
+                    ),
+                    "plain {form} charge {at}"
+                );
             }
         }
     }

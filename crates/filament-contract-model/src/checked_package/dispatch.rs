@@ -21,6 +21,8 @@ pub enum CheckedPackageDispatchResult {
     Incomplete(CheckedPackageIncomplete),
     /// The reader's operation catalog is unreadable; no input was judged.
     CatalogUnavailable(super::v2::CatalogReadError),
+    /// The host refused an allocation the read needed; no input was judged.
+    HostAllocationFailed(super::v2::CheckedPackageHostAllocationFailed),
 }
 
 /// Reads `contract_version` from borrowed source bytes after strict syntax and
@@ -46,6 +48,9 @@ pub fn read_checked_package(
         }
         CheckedPackageV2ReadResult::CatalogUnavailable(error) => {
             CheckedPackageDispatchResult::CatalogUnavailable(error)
+        }
+        CheckedPackageV2ReadResult::HostAllocationFailed(failure) => {
+            CheckedPackageDispatchResult::HostAllocationFailed(failure)
         }
     }
 }
@@ -76,6 +81,9 @@ pub fn read_checked_package_with_budget(
         }
         CheckedPackageV2BudgetedReadResult::CatalogUnavailable(error) => {
             CheckedPackageBudgetedDispatchResult::CatalogUnavailable(error)
+        }
+        CheckedPackageV2BudgetedReadResult::HostAllocationFailed(failure) => {
+            CheckedPackageBudgetedDispatchResult::HostAllocationFailed(failure)
         }
     }
 }

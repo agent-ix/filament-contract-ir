@@ -6327,6 +6327,27 @@ is checked before any request, so an input over it returns `Incomplete`
 with `Bytes`, which owns no heap, at any read-storage limit including zero. No
 outcome exposes a partial package.
 
+**Host allocation failure.** The budget admits a charge before the read asks
+the allocator for the block, so the host can still refuse a block the budget
+paid for. When the shared reader (envelope stage) or the canonical writer
+(canonical stage) reports that refusal, the read SHALL stop and return
+`HostAllocationFailed` (`CheckedPackageHostAllocationFailed`) from both the
+budgeted and the unbudgeted entries, and from both dispatch entries. The outcome
+holds:
+- `stage`: the stage whose allocation failed;
+- `locus`: `PackageRead(stage, 0)` with that stage's form (`"package_bytes"`
+  or `"canonical_bytes"`);
+- `requested`: the bytes of the refused block, as the budget charged them;
+- `consumed`: exactly the read storage the budget admitted, that block
+  included, with nothing added for the failure.
+
+The outcome says nothing about the package and nothing about the budget. It is
+not a refusal and never `malformed_wire` or `noncanonical_wire`. It is not a
+structural `incomplete`, and it is never converted to a
+`CheckedPackageIncomplete` or any `CheckedPackageLimit`. It is not
+`BudgetIncomplete` or `exhausted`, because a larger budget would not change it.
+The read builds no diagnostic for it and makes no further request.
+
 **Identical results.** For every input, every budget whose limits are at least
 the read's measured work and read-storage requirement SHALL return the same
 outcome as an unlimited budget: an equal admitted package and equal lowering,
@@ -6460,6 +6481,8 @@ the minimum the read uses.
 | FR-038-AC-611 | The coordinate check indexes member entries listed in descending region order with charged tables: its read storage equals the entry-position table, the candidate table and the rank table, one unit short of that storage refuses as a budget refusal, its work is bounded by one unit per entry plus a logarithmic number of steps per member and one unit short of that work refuses, and an overlap among the descending entries refuses at the first overlapping entry. | Test (TC-474) |
 | FR-038-AC-612 | The package-wide source-map check requests its tables once in one read: a package holding a composition, and a package holding a composition beside a refinement, each request exactly one occurrence-key table, one entry table, one locked-source table and one region table per entry, with the sizes the package fixes, whatever phases need the check and however many compositions follow. | Test (TC-474) |
 | FR-038-AC-613 | A composition with a removed member occurrence and entry refuses `invalid_package`/`invalid-value` at `/source_map` only after every entry passes, an invalid entry anywhere refuses at its own `/source_map/{i}` first, and where the declaration entry is absent two overlapping member entries still refuse at the later entry while disjoint members refuse at `/source_map`. | Test (TC-474; FSpec FR-491-AC-8) |
+| FR-038-AC-614 | Envelope stage. When the host refuses a block the shared reader charged while reading the package bytes (the first or a later `"package_bytes"` charge), `read_with_budget` and `read` each return `HostAllocationFailed` with `stage` `Envelope`, `locus` `PackageRead(Envelope, 0)`/`"package_bytes"`, `requested` the refused block's charged bytes and `consumed` equal to the read storage the budget admitted (nothing added). It is never a refusal (the reader's allocation failure is not `malformed_wire`), a structural `incomplete`, `BudgetIncomplete` or `exhausted`, and no request follows it. | Test (TC-472) |
+| FR-038-AC-615 | Canonical stage. When the host refuses a block the canonical writer charged while encoding the package document into the comparing sink (the first or a later `"canonical_bytes"` charge), `read_with_budget` and `read` each return `HostAllocationFailed` with `stage` `Canonical`, `locus` `PackageRead(Canonical, 0)`/`"canonical_bytes"`, `requested` the refused block's charged bytes and `consumed` equal to the read storage the budget admitted (nothing added). It is never `noncanonical_wire` or another refusal, a structural `incomplete`, `BudgetIncomplete` or `exhausted`, and no request follows it. | Test (TC-472) |
 | FR-038-AC-387 | The public reader admits FSpec `XP-01` and `XP-10`, with each local dimension operand as a local `NodeRef` and each foreign dimension operand as a closed `PackageNodeRef {package, node}` of a directly selected dependency. It resolves the foreign declared dimension in that dependency's admitted package, preserves the authored operand form in the typed nominal body and writer, compares the two resolved structural node ids for distinctness and ascending order, and retains only local operands in the equivalence node's `dependencies`. No foreign dimension node is minted into the importing graph. | Test (TC-280) |
 | FR-038-AC-388 | For FSpec `XP-11`, `XP-12` and `XP-15`, a package operand naming only a closure dependency, no selected dependency or the importing package refuses `missing_declaration`/`missing-selection` at `/semantic_graph/nodes/{i}/body/dimension_node_ids/{k}/package`. `XP-13` names no node in its directly selected dependency and refuses `missing_declaration`/`missing-name` at the corresponding `/node`. The reader checks these operands in listed order before pair rules; neither package display names nor an imported graph node substitute for the selected dependency lookup. | Test (TC-280) |
 | FR-038-AC-389 | FSpec `XP-14` supplies a self-minted foreign-package `NodeRef` and refuses `invalid_semantic_graph` at `/semantic_graph/nodes/{i}/body/dimension_node_ids/{k}`. A local operand naming no graph node, or a local or package operand resolving to a node other than `scalar_type`/`dimension`, refuses the same code at that operand before pair validation; `XP-05` names a unit node and refuses there at its wrong-kind operand. FSpec `XP-02` through `XP-04` and `XP-06` through `XP-09` keep their published `invalid_semantic_graph` pair outcomes after operand resolution; a valid mixed-package equivalence still admits. Reversed or duplicate resolved structural dimensions refuse `invalid_semantic_graph` at the later equivalence node in structural node-id order. | Test (TC-280) |

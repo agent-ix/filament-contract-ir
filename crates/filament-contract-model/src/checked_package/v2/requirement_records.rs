@@ -611,10 +611,8 @@ pub(super) fn validate(
         })
         .collect();
     sort_by_structural_key(&mut records, index, structural_keys, meter)?;
-    let mut owner_paths: BTreeMap<
-        usize,
-        BTreeMap<(usize, u64), Option<PathConditionFrameId>>,
-    > = BTreeMap::new();
+    let mut owner_paths: BTreeMap<usize, BTreeMap<(usize, u64), Option<PathConditionFrameId>>> =
+        BTreeMap::new();
     let mut seen_frame_ids = BTreeSet::new();
     let mut used_frames =
         meter.vec(path_condition_frames.map_or(0, <[PathConditionFrameWire]>::len))?;
@@ -1299,9 +1297,7 @@ fn path_condition_frame_index(
             })?;
         entries.push((
             (
-                frame
-                    .parent
-                    .and_then(|parent| usize::try_from(parent).ok()),
+                frame.parent.and_then(|parent| usize::try_from(parent).ok()),
                 guard_position,
                 frame.guard.occurrence.ordinal,
                 frame.holds,

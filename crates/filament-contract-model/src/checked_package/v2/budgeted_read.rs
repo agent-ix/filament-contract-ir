@@ -95,6 +95,9 @@ pub enum CheckedPackageV2BudgetedReadResult {
     Exhausted(CheckedPackageReadExhausted),
     /// The reader's operation catalog is unreadable; no input was judged.
     CatalogUnavailable(CatalogReadError),
+    /// The host refused an allocation the budget had admitted; the input
+    /// was not judged.
+    HostAllocationFailed(CheckedPackageHostAllocationFailed),
 }
 
 /// The closed result of dispatching bytes through the budgeted read.
@@ -113,6 +116,9 @@ pub enum CheckedPackageBudgetedDispatchResult {
     Exhausted(CheckedPackageReadExhausted),
     /// The reader's operation catalog is unreadable; no input was judged.
     CatalogUnavailable(CatalogReadError),
+    /// The host refused an allocation the budget had admitted; the input
+    /// was not judged.
+    HostAllocationFailed(CheckedPackageHostAllocationFailed),
 }
 
 /// A budget denial inside the read, before its outcome is built.
@@ -222,7 +228,20 @@ impl CheckedPackageV2 {
         work_before: super::NativeJoinCharge,
         storage_before: u64,
     ) -> CheckedPackageV2BudgetedReadResult {
-        match Self::admit_bytes(catalog, bytes, limits, evidence, budget) {
+        let document = match read_envelope(bytes, limits, budget) {
+            Ok(document) => document,
+            Err(EnvelopeStop::Failure(stop)) => {
+                budget.abort();
+                return budgeted_outcome(stop, budget);
+            }
+            // The host's failure is the outcome as it is: no diagnostic is
+            // built and nothing more is charged.
+            Err(EnvelopeStop::HostAllocation(failure)) => {
+                budget.abort();
+                return CheckedPackageV2BudgetedReadResult::HostAllocationFailed(failure);
+            }
+        };
+        match Self::admit_document(catalog, document, limits, evidence, budget) {
             Ok(package) => {
                 // The result's box is the read's last storage request, except
                 // for a package that carries `protocol_correlation_occurrences`:
@@ -325,6 +344,9 @@ impl CheckedPackageV2 {
                     consumed: budget.consumed().work,
                     path: None,
                 })
+            }
+            CheckedPackageV2BudgetedReadResult::HostAllocationFailed(failure) => {
+                CheckedPackageV2ReadResult::HostAllocationFailed(failure)
             }
         }
     }
@@ -572,10 +594,9 @@ enum CanonicalVerdict {
     Noncanonical,
     /// The budget denied a growth of the writer: the typed budget stop.
     Denied,
-    /// The allocator refused a growth the budget had admitted: the typed
-    /// read-storage stop for the refused request, never a refusal of the
-    /// package.
-    AllocationFailed { requested: usize },
+    /// The allocator refused a block the budget had admitted: the host's
+    /// failure, never a refusal of the package or a budget stop.
+    AllocationFailed,
 }
 
 /// Decides the comparison from the encoder's result, the value the encoding
@@ -593,7 +614,7 @@ fn canonical_verdict(
         // A byte differs, or the canonical text is shorter or longer.
         Ok(_) => CanonicalVerdict::Noncanonical,
         Err(Error::ReservationDenied { .. }) => CanonicalVerdict::Denied,
-        Err(Error::Allocation { requested }) => CanonicalVerdict::AllocationFailed { requested },
+        Err(Error::Allocation { .. }) => CanonicalVerdict::AllocationFailed,
         // The input is within the byte limit, so canonical text past it is
         // longer than the input.
         Err(Error::Limit(limit)) if limit.kind == LimitKind::CanonicalBytes => {
@@ -633,13 +654,78 @@ fn canonical_verdict(
     }
 }
 
-/// The typed read-storage stop for a growth the allocator refused after the
-/// budget admitted it.
-fn allocation_stop(requested: usize) -> ValidationFailure {
-    ValidationFailure::Budget(BudgetStop {
-        resource: PackageReadResource::ReadStorage,
-        amount: requested as u128,
-        path: None,
+/// A read the host could not finish: the allocator refused a block that the
+/// read's budget had already admitted and charged. It says nothing about the
+/// package. It is not a refusal, not a structural `incomplete` and not a
+/// budget stop, so a larger budget would not change it.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct CheckedPackageHostAllocationFailed {
+    /// The read stage whose allocation failed.
+    pub stage: PackageReadStage,
+    /// Where the failed block was charged.
+    pub locus: NativeJoinLocus,
+    /// The bytes of the block the allocator could not provide, as the budget
+    /// charged them.
+    pub requested: u64,
+    /// The read storage charged when the allocation failed, that block
+    /// included; nothing is added for the failure.
+    pub consumed: u64,
+}
+
+/// How reading and comparing the package bytes can stop: a failure the read
+/// turns into its outcome, or the host's allocation failure.
+#[derive(Debug)]
+pub(in crate::checked_package) enum EnvelopeStop {
+    Failure(ValidationFailure),
+    HostAllocation(CheckedPackageHostAllocationFailed),
+}
+
+impl From<ValidationFailure> for EnvelopeStop {
+    fn from(failure: ValidationFailure) -> Self {
+        Self::Failure(failure)
+    }
+}
+
+/// [`ReadStorageReservation`], remembering the last block it admitted. The
+/// shared reader and writer charge a block and then allocate it at once, so
+/// when the allocation fails that block is the one the host refused.
+struct RecordingReservation<'b> {
+    budget: &'b mut NativeJoinBudget,
+    last_admitted: usize,
+}
+
+impl<'b> RecordingReservation<'b> {
+    fn new(budget: &'b mut NativeJoinBudget) -> Self {
+        Self {
+            budget,
+            last_admitted: 0,
+        }
+    }
+}
+
+impl Reservation for RecordingReservation<'_> {
+    fn reserve(&mut self, bytes: usize) -> Result<(), ReservationDenied> {
+        ReadStorageReservation(&mut *self.budget).reserve(bytes)?;
+        self.last_admitted = bytes;
+        Ok(())
+    }
+}
+
+/// The host's refusal of the block `admitted` at `stage`'s package locus.
+fn host_allocation_failed(
+    stage: PackageReadStage,
+    form: &'static str,
+    admitted: usize,
+    budget: &NativeJoinBudget,
+) -> EnvelopeStop {
+    EnvelopeStop::HostAllocation(CheckedPackageHostAllocationFailed {
+        stage,
+        locus: NativeJoinLocus {
+            source: NativeJoinLocusSource::PackageRead(stage, 0),
+            form,
+        },
+        requested: u64::try_from(admitted).unwrap_or(u64::MAX),
+        consumed: budget.read_storage_consumed(),
     })
 }
 
@@ -677,9 +763,10 @@ fn envelope_failure(
     error: ReadError,
     limits: CheckedPackageReadLimits,
     length: usize,
+    admitted: usize,
     budget: &mut NativeJoinBudget,
-) -> ValidationFailure {
-    match error {
+) -> EnvelopeStop {
+    let failure = match error {
         ReadError::Limit(_) => refuse_bytes_exceeded(limits.bytes, length),
         ReadError::DuplicateName { pointer, .. } => {
             let mut meter = super::WorkMeter::over(budget);
@@ -696,9 +783,16 @@ fn envelope_failure(
             )
         }
         ReadError::ReservationDenied { .. } => denial(budget),
-        // The allocator refused a growth the budget had admitted: a property
-        // of the host, never of the package (IR-1590).
-        ReadError::Allocation { requested } => allocation_stop(requested),
+        // The allocator refused a block the budget had admitted: a property
+        // of the host, never of the package or of the budget.
+        ReadError::Allocation { .. } => {
+            return host_allocation_failed(
+                PackageReadStage::Envelope,
+                "package_bytes",
+                admitted,
+                budget,
+            );
+        }
         ReadError::Malformed { .. } | ReadError::NumberOutOfRange { .. } => prepaid_bytes_refusal(
             budget,
             PackageReadStage::Envelope,
@@ -714,30 +808,38 @@ fn envelope_failure(
             PackageReadStage::Envelope,
             CheckedPackageRefusalCode::MalformedWire,
         ),
-    }
+    };
+    EnvelopeStop::Failure(failure)
 }
 
 pub(in crate::checked_package) fn read_envelope(
     bytes: &[u8],
     limits: CheckedPackageReadLimits,
     budget: &mut NativeJoinBudget,
-) -> Result<Document, ValidationFailure> {
+) -> Result<Document, EnvelopeStop> {
     if exceeds(bytes.len(), limits.bytes) {
-        return Err(refuse_bytes_exceeded(limits.bytes, bytes.len()));
+        return Err(refuse_bytes_exceeded(limits.bytes, bytes.len()).into());
     }
     at_stage(budget, PackageReadStage::Envelope, "package_bytes");
-    let document = match quire_canonical::read_with_reservation(
-        bytes,
-        limits.bytes,
-        &mut ReadStorageReservation(budget),
-    ) {
+    let mut reservation = RecordingReservation::new(budget);
+    let read = quire_canonical::read_with_reservation(bytes, limits.bytes, &mut reservation);
+    let admitted = reservation.last_admitted;
+    let document = match read {
         Ok(document) => document,
-        Err(error) => return Err(envelope_failure(error, limits, bytes.len(), budget)),
+        Err(error) => {
+            return Err(envelope_failure(
+                error,
+                limits,
+                bytes.len(),
+                admitted,
+                budget,
+            ))
+        }
     };
     // The reservation-backed reader has already checked syntax and duplicate
     // members. Walk its arena with fixed stack storage to locate the cap value.
     if let Some(failure) = nesting_cap_refusal(&document, budget) {
-        return Err(failure);
+        return Err(failure.into());
     }
     at_stage(budget, PackageReadStage::Canonical, "canonical_bytes");
     let mut sink = ComparingSink {
@@ -746,6 +848,7 @@ pub(in crate::checked_package) fn read_envelope(
         agrees: true,
     };
     let found = std::cell::Cell::new(None);
+    let mut reservation = RecordingReservation::new(budget);
     let encoded = quire_canonical::encode_with_reservation(
         &mut sink,
         &PackageDocument {
@@ -753,21 +856,28 @@ pub(in crate::checked_package) fn read_envelope(
             found: &found,
         },
         quire_canonical::Limits::new(limits.bytes),
-        &mut ReadStorageReservation(budget),
+        &mut reservation,
     );
+    let admitted = reservation.last_admitted;
     let sink_matched = sink.agrees && sink.at == bytes.len();
     match canonical_verdict(encoded, found.get(), sink_matched) {
         CanonicalVerdict::Canonical => {
             budget.set_active_locus(None);
             Ok(document)
         }
-        CanonicalVerdict::Denied => Err(denial(budget)),
-        CanonicalVerdict::AllocationFailed { requested } => Err(allocation_stop(requested)),
+        CanonicalVerdict::Denied => Err(denial(budget).into()),
+        CanonicalVerdict::AllocationFailed => Err(host_allocation_failed(
+            PackageReadStage::Canonical,
+            "canonical_bytes",
+            admitted,
+            budget,
+        )),
         CanonicalVerdict::Noncanonical => Err(prepaid_bytes_refusal(
             budget,
             PackageReadStage::Canonical,
             CheckedPackageRefusalCode::NoncanonicalWire,
-        )),
+        )
+        .into()),
     }
 }
 
@@ -901,7 +1011,7 @@ mod canonical_verdict_tests {
                 );
                 assert_eq!(
                     canonical_verdict(Err(Error::Allocation { requested: 64 }), found, matched),
-                    CanonicalVerdict::AllocationFailed { requested: 64 }
+                    CanonicalVerdict::AllocationFailed
                 );
             }
         }
@@ -990,56 +1100,58 @@ mod canonical_verdict_tests {
         }
     }
 
-    /// The allocator's refusal of an admitted growth ends the read as a
-    /// read-storage `BudgetIncomplete` for the refused request.
-    #[trace("TC-472", "FR-038-AC-511")]
+    /// The block a reservation admitted last is the one the host refused, and
+    /// it is charged exactly once.
+    #[trace("TC-472", "FR-038-AC-614")]
     #[test]
-    fn an_allocation_failure_is_a_read_storage_budget_stop() {
+    fn the_recording_reservation_charges_once_and_keeps_the_last_block() {
         let mut budget = NativeJoinBudget::new(u64::MAX, 0).with_read_storage_limit(1_000);
-        assert!(budget.charge_read_storage(100));
-        let outcome = budgeted_outcome(allocation_stop(4_096), &mut budget);
-        let CheckedPackageV2BudgetedReadResult::BudgetIncomplete(stop) = outcome else {
-            panic!("typed stop: {outcome:?}");
-        };
-        assert_eq!(
-            stop.denied,
-            PackageReadDeniedCharge {
-                resource: PackageReadResource::ReadStorage,
-                amount: 4_096,
-            }
-        );
-        assert_eq!((stop.limit, stop.consumed, stop.path), (1_000, 4_196, None));
+        let mut reservation = RecordingReservation::new(&mut budget);
+        assert!(reservation.reserve(100).is_ok());
+        assert!(reservation.reserve(300).is_ok());
+        assert!(reservation.reserve(700).is_err());
+        assert_eq!(reservation.last_admitted, 300);
+        assert_eq!(budget.read_storage_consumed(), 400);
     }
 
-    /// IR-1590 changes this outcome: the shared reader's allocation failure
-    /// was `malformed_wire`; it is now the typed read-storage stop, and the
-    /// byte-stream faults still refuse `malformed_wire`.
-    #[trace("TC-472", "FR-038-AC-511")]
+    /// The shared reader's allocation failure (it was
+    /// `malformed_wire`) is the host's failure at the envelope locus, with
+    /// the refused block and exactly the storage charged; the byte-stream
+    /// faults still refuse `malformed_wire`.
+    #[trace("TC-472", "FR-038-AC-614")]
     #[test]
-    fn an_envelope_allocation_failure_is_a_budget_stop_not_malformed_wire() {
+    fn an_envelope_allocation_failure_is_the_host_outcome() {
         let limits = CheckedPackageReadLimits::bounded();
         let mut budget = NativeJoinBudget::new(u64::MAX, 0).with_read_storage_limit(u64::MAX);
+        at_stage(&mut budget, PackageReadStage::Envelope, "package_bytes");
+        assert!(budget.charge_read_storage(96));
+        assert!(budget.charge_read_storage(512));
         let stop = envelope_failure(
-            ReadError::Allocation { requested: 512 },
+            ReadError::Allocation { requested: 256 },
             limits,
             16,
+            512,
             &mut budget,
         );
-        assert_eq!(stop, allocation_stop(512));
-        let outcome = budgeted_outcome(stop, &mut budget);
-        assert!(
-            matches!(
-                &outcome,
-                CheckedPackageV2BudgetedReadResult::BudgetIncomplete(stop)
-                    if stop.denied.resource == PackageReadResource::ReadStorage
-                        && stop.denied.amount == 512
-            ),
-            "{outcome:?}"
+        let EnvelopeStop::HostAllocation(failure) = stop else {
+            panic!("host outcome: {stop:?}");
+        };
+        assert_eq!(
+            failure,
+            CheckedPackageHostAllocationFailed {
+                stage: PackageReadStage::Envelope,
+                locus: NativeJoinLocus {
+                    source: NativeJoinLocusSource::PackageRead(PackageReadStage::Envelope, 0),
+                    form: "package_bytes",
+                },
+                requested: 512,
+                consumed: 608,
+            }
         );
         let malformed = quire_canonical::read(b"{", 16).expect_err("malformed");
-        let refused = envelope_failure(malformed, limits, 1, &mut budget);
+        let refused = envelope_failure(malformed, limits, 1, 0, &mut budget);
         assert!(
-            matches!(&refused, ValidationFailure::Refused(refusal)
+            matches!(&refused, EnvelopeStop::Failure(ValidationFailure::Refused(refusal))
                 if refusal.code == CheckedPackageRefusalCode::MalformedWire),
             "{refused:?}"
         );

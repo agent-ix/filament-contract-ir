@@ -11,8 +11,8 @@ mod budgeted_read;
 pub(in crate::checked_package) use budgeted_read::BudgetStop;
 pub use budgeted_read::{
     CheckedPackageBudgetIncomplete, CheckedPackageBudgetedDispatchResult,
-    CheckedPackagePendingOutcome, CheckedPackageReadExhausted, CheckedPackageV2BudgetedReadResult,
-    PackageReadDeniedCharge, PackageReadResource,
+    CheckedPackageHostAllocationFailed, CheckedPackagePendingOutcome, CheckedPackageReadExhausted,
+    CheckedPackageV2BudgetedReadResult, PackageReadDeniedCharge, PackageReadResource,
 };
 mod callable;
 mod checked_json;
@@ -1231,6 +1231,9 @@ pub enum CheckedPackageV2ReadResult {
     /// checked: a skew between the reader and its catalog dependency, not a
     /// verdict on the input.
     CatalogUnavailable(CatalogReadError),
+    /// The host refused an allocation the read needed; the input was not
+    /// judged, and a larger limit would not change it.
+    HostAllocationFailed(CheckedPackageHostAllocationFailed),
 }
 
 /// The graph in its wire form and the positions of the nodes whose own ID
@@ -1735,16 +1738,15 @@ impl CheckedPackageV2 {
             .map(|node| (position, node))
     }
 
-    fn admit_bytes(
+    /// Admits the package from the document `budgeted_read::read_envelope`
+    /// built: the grammar and canonical proof of the package bytes.
+    fn admit_document(
         catalog: operation_catalog::CatalogRef,
-        bytes: &[u8],
+        document: quire_canonical::Document,
         limits: CheckedPackageReadLimits,
         evidence: &CheckedPackageEvidence,
         budget: &mut NativeJoinBudget,
     ) -> Result<Self, ValidationFailure> {
-        // The document the shared reader built is the grammar and canonical
-        // proof of the bytes; the typed decode below still reads the bytes.
-        let document = budgeted_read::read_envelope(bytes, limits, budget)?;
         let document = budgeted_read::share_document(document, budget)?;
         let package = TermNode::from_ref(document.root());
         let version_path = stage_storage::Path::root().key("contract_version");

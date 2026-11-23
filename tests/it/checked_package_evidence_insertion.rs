@@ -34,6 +34,9 @@ fn read(package: &Value, evidence: &CheckedPackageEvidence) -> CheckedPackageV2R
         CheckedPackageV2ReadResult::CatalogUnavailable(error) => {
             CheckedPackageDispatchResult::CatalogUnavailable(error.clone())
         }
+        CheckedPackageV2ReadResult::HostAllocationFailed(failure) => {
+            CheckedPackageDispatchResult::HostAllocationFailed(*failure)
+        }
     };
     assert_eq!(dispatched, expected);
     direct
