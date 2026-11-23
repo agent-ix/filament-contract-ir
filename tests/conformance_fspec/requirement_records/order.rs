@@ -36,8 +36,9 @@ fn record_position(package: &Value, row: usize) -> usize {
 #[test]
 fn chain_records_admit_and_their_order_defects_refuse_at_the_first_defect() {
     let package = large_requirement_record_package(RECORDS);
-    let CheckedPackageV2ReadResult::Admitted(admitted) = read(&package) else {
-        panic!("the chain package admits");
+    let admitted = match read(&package) {
+        CheckedPackageV2ReadResult::Admitted(admitted) => admitted,
+        other => panic!("the chain package admits: {other:?}"),
     };
     assert_eq!(admitted.requirement_items().len(), RECORDS);
 
@@ -81,7 +82,7 @@ fn chain_records_admit_and_their_order_defects_refuse_at_the_first_defect() {
         nodes[first]["occurrences"][0]["ordinal"] =
             nodes[second]["occurrences"][0]["ordinal"].clone();
         nodes[second]["occurrences"][0]["ordinal"] = first_ordinal;
-        crate::fixture_support::rebuild_source_map(&mut exchanged);
+        crate::fixture_support::rebuild_complete_source_map(&mut exchanged);
         assert_refusal(
             &exchanged,
             CheckedPackageRefusalCode::InvalidPackage,

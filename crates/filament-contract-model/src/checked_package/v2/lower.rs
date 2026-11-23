@@ -1079,7 +1079,8 @@ fn requires_bound(kind: CheckedNodeKind) -> bool {
             | ClaimForm::StepRelation
             | ClaimForm::Schedulability
             | ClaimForm::ProbabilisticClaim
-            | ClaimForm::ValueValidity,
+            | ClaimForm::ValueValidity
+            | ClaimForm::OperationContract,
         ) => false,
         K::Correspondence(
             CorrespondenceForm::SourceLocus

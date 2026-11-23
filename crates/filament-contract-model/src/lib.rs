@@ -269,8 +269,9 @@ pub use checked_package::{
 pub use checked_package::{
     encode_checked_package_v2_with_path_condition_frames,
     encode_checked_package_v2_with_requirement_items, CapabilityKind, DomainKey, DomainKind,
-    PathConditionFrame, PathConditionFrameId, PathConditionIter, PathConditionView,
-    RequirementExtent, RequirementGuard, RequirementItemRow, ValueValidityRecord,
+    OperationContractRecord, OperationPopulation, PathConditionFrame, PathConditionFrameId,
+    PathConditionIter, PathConditionView, RequirementExtent, RequirementGuard, RequirementItemRow,
+    RequirementRecord, ValueValidityRecord,
 };
 
 pub use checked_package::CheckedFieldReadForm;
