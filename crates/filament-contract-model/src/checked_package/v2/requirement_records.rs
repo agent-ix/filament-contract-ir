@@ -181,7 +181,7 @@ pub struct RequirementItemRow {
     pub kind: CapabilityKind,
     /// The request's extent classification.
     pub extent: RequirementExtent,
-    /// Value-validity record, when this row carries one.
+    /// Value-validity or operation-contract record, when this row carries one.
     pub record: Option<RequirementRecord>,
 }
 
@@ -857,7 +857,6 @@ pub(super) fn validate(
     let mut previous: Option<RowKey<'_>> = None;
     let mut named_records: Vec<(usize, usize, CheckedNodeId)> = Vec::new();
     let mut named_operation_records = Vec::new();
-    let mut operation_ordinal = 0_u64;
     for (row_index, row) in rows.iter().enumerate() {
         let at = root().index(row_index);
         stage_storage::work(meter, &site(row_index, at), 1)?;
@@ -1086,21 +1085,6 @@ pub(super) fn validate(
                     meter,
                 ));
             }
-            if nodes[record_position].occurrences[0].ordinal != operation_ordinal {
-                let node_at = Path::root()
-                    .key("semantic_graph")
-                    .key("nodes")
-                    .index(record_position)
-                    .key("occurrences");
-                return Err(refuse(
-                    record_position,
-                    node_at,
-                    Cause::InvalidValue,
-                    Some(record_id),
-                    meter,
-                ));
-            }
-            operation_ordinal = operation_ordinal.saturating_add(1);
             named_operation_records.push(record_position);
         } else if row.record.is_some() {
             return Err(refuse(
@@ -1135,7 +1119,7 @@ pub(super) fn validate(
         .iter()
         .map(|(_, record_position, _)| *record_position)
         .collect();
-    named_record_positions.extend(named_operation_records);
+    named_record_positions.extend(named_operation_records.iter().copied());
     named_record_positions.sort_unstable();
     named_record_positions.dedup();
     if let Some(position) = first_unnamed_position(&records, &named_record_positions, &mut || {}) {
@@ -1150,6 +1134,23 @@ pub(super) fn validate(
             Some(&nodes[position].node_id),
             meter,
         ));
+    }
+    for (expected, &record_position) in named_operation_records.iter().enumerate() {
+        let expected = u64::try_from(expected).unwrap_or(u64::MAX);
+        if nodes[record_position].occurrences[0].ordinal != expected {
+            let node_at = Path::root()
+                .key("semantic_graph")
+                .key("nodes")
+                .index(record_position)
+                .key("occurrences");
+            return Err(refuse(
+                record_position,
+                node_at,
+                Cause::InvalidValue,
+                Some(&nodes[record_position].node_id),
+                meter,
+            ));
+        }
     }
     let order = named_record_order(&named_records, index, structural_keys, meter)?;
     let mut previous_owner: Option<CheckedNodeId> = None;

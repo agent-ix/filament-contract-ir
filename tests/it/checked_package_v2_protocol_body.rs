@@ -7993,6 +7993,41 @@ fn operation_contract_admission_requires_record_and_claim_source_regions_to_matc
     );
 }
 
+#[trace("TC-488", "FR-376-AC-2")]
+#[test]
+fn later_malformed_requirement_row_precedes_operation_record_ordinal_check() {
+    let (mut package, record_position) = package_with_operation_contract_record();
+    package["semantic_graph"]["nodes"][record_position]["occurrences"][0]["ordinal"] = json!(1);
+    let record_id = package["requirement_items"][0]["record"].clone();
+    let record_source = package["source_map"]
+        .as_array_mut()
+        .expect("source map")
+        .iter_mut()
+        .find(|entry| entry["node_id"] == record_id && entry["role"] == "generated")
+        .expect("record source entry");
+    record_source["ordinal"] = json!(1);
+    let mut later_malformed = package["requirement_items"][0].clone();
+    later_malformed["kind"] = json!("value-validity");
+    later_malformed
+        .as_object_mut()
+        .expect("requirement row")
+        .remove("record");
+    package["requirement_items"]
+        .as_array_mut()
+        .expect("requirement rows")
+        .push(later_malformed);
+
+    let result = read(&package);
+    let CheckedPackageV2ReadResult::Refused(refusal) = result else {
+        panic!("later malformed row must be refused before ordinal mismatch: {result:?}");
+    };
+    assert_eq!(refusal.code, CheckedPackageRefusalCode::InvalidPackage);
+    assert_eq!(
+        refusal.loci[0].path.as_ref().map(|path| path.as_str()),
+        Some("/requirement_items/1")
+    );
+}
+
 /// Trace: FR-038-AC-288
 #[trace("TC-048")]
 #[test]
