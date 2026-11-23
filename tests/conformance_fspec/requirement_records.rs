@@ -9,7 +9,7 @@ use crate::fixture_support::{
     rebuild_complete_source_map, rebuild_source_map, settle, structural_fixture_id,
 };
 use filament_contract_model::{
-    encode_checked_package_v2_with_requirement_items, CheckedPackageReadLimits,
+    encode_checked_package_v2_with_path_condition_frames, CheckedPackageReadLimits,
     CheckedPackageRefusalCause, CheckedPackageRefusalCode, CheckedPackageSidecarsRef,
     CheckedPackageSourceCorrespondenceRef, CheckedPackageV2, CheckedPackageV2BudgetedReadResult,
     CheckedPackageV2ReadResult, JsonPointer, NativeJoinBudget, RequirementItemRow,
@@ -508,13 +508,6 @@ fn large_requirement_record_package(record_count: usize) -> Value {
         json!(["expression/integer_add"])
     );
     assert!("expression" < "expression/integer_add");
-    let boolean_parameter_position = nodes
-        .iter()
-        .position(|node| {
-            node["semantic_form"] == "parameter"
-                && node["body"]["members"][0]["value"]["value"] == "p"
-        })
-        .expect("Boolean parameter");
     let bound_id = record_template["body"]["members"][3]["value"]["target"].clone();
     let bound_position = nodes
         .iter()
@@ -581,14 +574,10 @@ fn large_requirement_record_package(record_count: usize) -> Value {
         );
     }
 
-    let guard_occurrence = record_template["body"]["members"][5]["value"]["members"][0]["members"]
-        [1]["value"]["value"]
+    let terminal_frame_id = record_template["body"]["members"][5]["value"]["members"][0]["value"]
+        ["value"]
         .as_u64()
-        .expect("guard occurrence");
-    let guard_holds = record_template["body"]["members"][5]["value"]["members"][0]["members"][2]
-        ["value"]["value"]
-        .as_bool()
-        .expect("guard outcome");
+        .expect("terminal frame id");
     let mut requirement_rows = Vec::with_capacity(record_count);
     for (generated_index, (&application_position, application_id)) in application_positions
         .iter()
@@ -599,8 +588,8 @@ fn large_requirement_record_package(record_count: usize) -> Value {
             "package":package_name,
             "path":[
                 "claim", "value_validity", {"node":owner_position}, {"node":application_position}, "0",
-                "bound", {"node":bound_position}, "conversion", "guards",
-                {"node":boolean_parameter_position}, guard_occurrence.to_string(), guard_holds.to_string(),
+                "bound", {"node":bound_position}, "conversion", "path_condition",
+                terminal_frame_id.to_string(),
                 "roots",
                 {"node":extent_root_positions[0]}, {"node":extent_root_positions[1]}, "objects"
             ],
@@ -893,10 +882,8 @@ fn rekey_requirement_record(
 fn public_reader_admits_typed_requirement_rows_in_package_order() {
     let mut package = parameters_package();
     let claim = function_claim(&package);
-    package["requirement_items"] = json!([
-        row(&claim, "finite-replay"),
-        row(&claim, "operation-contract"),
-    ]);
+    package["requirement_items"] =
+        json!([row(&claim, "finite-replay"), row(&claim, "monitorability"),]);
 
     let CheckedPackageV2ReadResult::Admitted(admitted) = read(&package) else {
         panic!("public V2 reader admits ordered requirement rows")
@@ -909,7 +896,7 @@ fn public_reader_admits_typed_requirement_rows_in_package_order() {
     );
     assert_eq!(
         rows[1].kind,
-        filament_contract_model::CapabilityKind::OperationContract
+        filament_contract_model::CapabilityKind::Monitorability
     );
     assert_eq!(rows[0].claim, rows[1].claim);
     assert_eq!(rows[0].occurrence, rows[1].occurrence);
@@ -1114,7 +1101,7 @@ fn canonical_writer_readback_preserves_typed_requirement_rows() {
             read(&package)
         )
     };
-    let bytes = encode_checked_package_v2_with_requirement_items(
+    let bytes = encode_checked_package_v2_with_path_condition_frames(
         admitted.name(),
         admitted.lock(),
         admitted.graph(),
@@ -1132,6 +1119,8 @@ fn canonical_writer_readback_preserves_typed_requirement_rows() {
             operation_bodies: None,
         },
         Some(admitted.requirement_items()),
+        None,
+        Some(admitted.path_condition_frames()),
         admitted.capability_report(),
         admitted.diagnostics(),
         quire_canonical::Limits::new(1 << 24),
@@ -1240,10 +1229,8 @@ fn public_reader_admits_at_the_exact_work_budget_and_reports_the_last_row_one_sh
 fn public_reader_refuses_out_of_order_rows_without_admitting_a_partial_package() {
     let mut package = parameters_package();
     let claim = function_claim(&package);
-    package["requirement_items"] = json!([
-        row(&claim, "operation-contract"),
-        row(&claim, "finite-replay"),
-    ]);
+    package["requirement_items"] =
+        json!([row(&claim, "monitorability"), row(&claim, "finite-replay"),]);
 
     let CheckedPackageV2ReadResult::Refused(refusal) = read(&package) else {
         panic!("public V2 reader refuses rows outside package order")
@@ -1705,10 +1692,8 @@ fn add_out_of_order_requirement_rows(package: &mut Value) {
                 .map(|occurrence| json!({"node":node["node_id"],"occurrence":occurrence}))
         })
         .expect("an occurrence key");
-    package["requirement_items"] = json!([
-        row(&claim, "operation-contract"),
-        row(&claim, "finite-replay"),
-    ]);
+    package["requirement_items"] =
+        json!([row(&claim, "monitorability"), row(&claim, "finite-replay"),]);
 }
 
 #[trace("TC-488", "FR-376-AC-3")]
