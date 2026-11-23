@@ -2415,6 +2415,8 @@ fn validate(
         &terms,
         &graph_index,
         &structural_keys,
+        &wire.semantic_graph.operand_rows,
+        &wire.source_map,
         evidence,
         &mut meter,
     )?;

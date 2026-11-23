@@ -9,8 +9,8 @@ use crate::support::checked_package::{
     evidence_with_document, family_key, family_model_document, fixture_source, node_id,
     owned_structural_node, protocol_named_node, protocol_role_node, reassign_node_id,
     rebuild_source_map, refresh_identity, refresh_identity_projection, refusal, refusal_at_id,
-    rename_node, select_model, selected_interface_model_node, settle, source_owner, structural_id,
-    structural_key, v2_all_families, COMPLETE_VALUE_FEATURE,
+    rename_node, select_model, selected_interface_model_node, settle, source_owner,
+    structural_fixture_id, structural_id, structural_key, v2_all_families, COMPLETE_VALUE_FEATURE,
 };
 use filament_contract_model::{
     CheckedNodeId, CheckedPackageEvidence, CheckedPackageLimit, CheckedPackageReadLimits,
@@ -7755,6 +7755,242 @@ fn package_with_admitted_attempt() -> (Value, usize, Value) {
         json!([{"term": "reference", "target": precondition}]);
     settle(&mut package);
     (package, root, anchor)
+}
+
+fn package_with_operation_contract_record() -> (Value, usize) {
+    let (mut package, claim_position) =
+        crate::checked_package_v2_frame_entries::state_operand_fixture();
+    let claim = package["semantic_graph"]["nodes"][claim_position].clone();
+    let claim_id = claim["node_id"].clone();
+    let occurrence = claim["occurrences"][0].clone();
+    let result_bound = claim["semantic_type"].clone();
+    let scalar_type = |form: &str| {
+        package["semantic_graph"]["nodes"]
+            .as_array()
+            .expect("graph nodes")
+            .iter()
+            .find(|node| node["node_tag"] == "scalar_type" && node["semantic_form"] == form)
+            .expect("scalar type")
+            .get("node_id")
+            .expect("type id")
+            .clone()
+    };
+    let integer_type = scalar_type("integer");
+    let string_type_id = node_id("fixture/operation-contract-string");
+    let mut string_type_node = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("graph nodes")
+        .iter()
+        .find(|node| node["node_tag"] == "scalar_type" && node["semantic_form"] == "text")
+        .expect("text scalar type")
+        .clone();
+    string_type_node["node_id"] = string_type_id.clone();
+    string_type_node["semantic_type"] = string_type_id.clone();
+    string_type_node["semantic_form"] = json!("string");
+    package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("graph nodes")
+        .push(string_type_node);
+    let occurrence_ordinal = occurrence["ordinal"]
+        .as_u64()
+        .expect("claim occurrence ordinal");
+    let binding = |name: &str, value: Value| json!({"term":"binding", "name":name, "value":value});
+    let literal = |ty: &Value, kind: &str, value: Value| json!({"term":"literal", "type":ty, "value_kind":kind, "value":value});
+    let body = json!({"term":"aggregate", "members":[
+        binding("claim", json!({"term":"reference", "target":claim_id})),
+        binding("occurrence", json!({"term":"aggregate", "members":[
+            binding("role", literal(&string_type_id, "string", occurrence["role"].clone())),
+            binding("ordinal", literal(&integer_type, "integer", json!(occurrence_ordinal)))
+        ]})),
+        binding("result_bound", json!({"term":"reference", "target":result_bound})),
+        binding("invariant", literal(&result_bound, "boolean", json!(true))),
+        binding("operation", json!({"term":"aggregate", "members":[]})),
+        binding("model_objects", json!({"term":"aggregate", "members":[]})),
+        binding("populations", json!({"term":"aggregate", "members":[]}))
+    ]});
+    let mut dependencies = vec![
+        claim_id.clone(),
+        result_bound.clone(),
+        string_type_id,
+        integer_type,
+    ];
+    dependencies.sort_by_key(structural_fixture_id);
+    let graph_position = |target: &Value| {
+        package["semantic_graph"]["nodes"]
+            .as_array()
+            .expect("graph nodes")
+            .iter()
+            .position(|node| node["node_id"] == *target)
+            .expect("record dependency position")
+    };
+    let path = json!([
+        "claim", "operation_contract", {"node":graph_position(&claim_id)},
+        occurrence["role"], occurrence_ordinal.to_string(), "bound",
+        {"node":graph_position(&result_bound)}, "invariant", "true", "operation", "none",
+        "objects", "0", "populations", "0", "extent", "bounded"
+    ]);
+    let record_id = structural_id(
+        package["name"].as_str().expect("package name"),
+        path.as_array().expect("identity path").clone(),
+        0,
+    );
+    package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("graph nodes")
+        .push(json!({
+            "node_id":record_id, "schema_version":"filament.checked-semantic-graph/v2",
+            "node_tag":"claim", "semantic_form":"operation_contract",
+            "semantic_type":result_bound, "dependencies":dependencies, "occurrences":[
+                {"role":"generated", "ordinal":0}
+            ], "body":body
+        }));
+    settle(&mut package);
+    let record_position = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("graph nodes")
+        .iter()
+        .position(|node| node["semantic_form"] == "operation_contract")
+        .expect("operation-contract record");
+    let claim = package["semantic_graph"]["nodes"][claim_position].clone();
+    let claim_source_id = claim["node_id"].clone();
+    let claim_occurrence = claim["occurrences"][0].clone();
+    let record_reference = document_held_record_id(&package, record_position);
+    let raw_record_id = package["semantic_graph"]["nodes"][record_position]["node_id"].clone();
+    for entry in package["source_map"].as_array_mut().expect("source map") {
+        if entry["role"] == "generated" && entry["node_id"] == raw_record_id {
+            entry["node_id"] = record_reference.clone();
+        }
+    }
+    let claim_regions = package["source_map"]
+        .as_array()
+        .expect("source map")
+        .iter()
+        .find(|entry| {
+            entry["node_id"] == claim_source_id
+                && entry["role"] == claim_occurrence["role"]
+                && entry["ordinal"] == claim_occurrence["ordinal"]
+        })
+        .expect("claim source entry")["regions"]
+        .clone();
+    let record_source = package["source_map"]
+        .as_array_mut()
+        .expect("source map")
+        .iter_mut()
+        .find(|entry| entry["node_id"] == record_reference && entry["role"] == "generated")
+        .expect("record source entry");
+    record_source["regions"] = claim_regions;
+    package["requirement_items"] = json!([{
+        "claim":{"node":claim["node_id"], "occurrence":occurrence},
+        "kind":"operation-contract", "extent":{"classification":"bounded"},
+        "record":record_reference
+    }]);
+    assert!(
+        matches!(read(&package), CheckedPackageV2ReadResult::Admitted(_)),
+        "operation-contract fixture must admit before mutation: {:?}",
+        read(&package)
+    );
+    (package, record_position)
+}
+
+fn document_held_record_id(package: &Value, record_position: usize) -> Value {
+    let node = &package["semantic_graph"]["nodes"][record_position];
+    let mut id = node["node_id"].clone();
+    let path = id["path"].as_array_mut().expect("node identity path");
+    for segment in path {
+        let Some(slot) = segment["operand"].as_u64() else {
+            continue;
+        };
+        let dependency = &node["dependencies"][usize::try_from(slot).expect("operand slot")];
+        let position = package["semantic_graph"]["nodes"]
+            .as_array()
+            .expect("graph nodes")
+            .iter()
+            .position(|candidate| candidate["node_id"] == *dependency)
+            .expect("dependency position");
+        *segment = json!({"node":position});
+    }
+    id
+}
+
+#[trace("TC-488", "FR-376-AC-2")]
+#[test]
+fn operation_contract_admission_requires_canonical_identity_path() {
+    let (mut package, record_position) = package_with_operation_contract_record();
+    package["semantic_graph"]["nodes"][record_position]["node_id"]["path"][0] =
+        json!("noncanonical");
+    settle(&mut package);
+    let record_reference = document_held_record_id(&package, record_position);
+    package["requirement_items"][0]["record"] = record_reference.clone();
+    let raw_record_id = package["semantic_graph"]["nodes"][record_position]["node_id"].clone();
+    for entry in package["source_map"].as_array_mut().expect("source map") {
+        if entry["role"] == "generated" && entry["node_id"] == raw_record_id {
+            entry["node_id"] = record_reference.clone();
+        }
+    }
+    let result = read(&package);
+    let CheckedPackageV2ReadResult::Refused(refusal) = result else {
+        panic!("operation-contract identity path mismatch must be refused: {result:?}");
+    };
+    assert_eq!(refusal.code, CheckedPackageRefusalCode::InvalidPackage);
+    let expected_path = format!("/semantic_graph/nodes/{record_position}/node_id/path");
+    assert_eq!(
+        refusal.loci[0].path.as_ref().map(|path| path.as_str()),
+        Some(expected_path.as_str())
+    );
+}
+
+#[trace("TC-488", "FR-376-AC-2")]
+#[test]
+fn operation_contract_admission_requires_row_extent_in_identity_path() {
+    let (mut package, _) = package_with_operation_contract_record();
+    let bound = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("graph nodes")
+        .iter()
+        .find(|node| node["semantic_form"] == "operation_contract")
+        .expect("record node")["semantic_type"]
+        .clone();
+    package["requirement_items"][0]["extent"] = json!({
+        "classification":"unbounded",
+        "domains":[{"domain":{"type":"node", "node":bound, "path":[]}, "kind":"integer"}]
+    });
+    let result = read(&package);
+    let CheckedPackageV2ReadResult::Refused(refusal) = result else {
+        panic!("operation-contract extent/path mismatch must be refused: {result:?}");
+    };
+    assert_eq!(refusal.code, CheckedPackageRefusalCode::InvalidPackage);
+    assert_eq!(
+        refusal.loci[0].path.as_ref().map(|path| path.as_str()),
+        Some("/requirement_items/0/extent")
+    );
+}
+
+#[trace("TC-488", "FR-376-AC-2")]
+#[test]
+fn operation_contract_admission_requires_record_and_claim_source_regions_to_match() {
+    let (mut package, record_position) = package_with_operation_contract_record();
+    let record_id = package["requirement_items"][0]["record"].clone();
+    let source_map = package["source_map"].as_array_mut().expect("source map");
+    let record_source = source_map
+        .iter_mut()
+        .find(|entry| entry["node_id"] == record_id && entry["role"] == "generated")
+        .expect("record source entry");
+    let region = &mut record_source["regions"][0];
+    let start = region["start"].as_u64().expect("region start");
+    region["start"] = json!(start + 1);
+    let end = region["end"].as_u64().expect("region end");
+    region["end"] = json!(end + 1);
+
+    let result = read(&package);
+    let CheckedPackageV2ReadResult::Refused(refusal) = result else {
+        panic!("operation-contract source-region mismatch must be refused: {result:?}");
+    };
+    assert_eq!(refusal.code, CheckedPackageRefusalCode::InvalidPackage);
+    let expected_path = format!("/semantic_graph/nodes/{record_position}/occurrences");
+    assert_eq!(
+        refusal.loci[0].path.as_ref().map(|path| path.as_str()),
+        Some(expected_path.as_str())
+    );
 }
 
 /// Trace: FR-038-AC-288
