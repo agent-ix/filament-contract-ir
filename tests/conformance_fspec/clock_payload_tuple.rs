@@ -2320,7 +2320,7 @@ fn slot_domain_wire(maximum: u64) -> (Value, Value, PathBuf) {
 /// FR-772-AC-1 end to end: a real `field clocks` + `slot` place passes the row
 /// join, and the slot-domain application over it admits with the declared
 /// maximum as its result bound and refuses any other maximum.
-#[trace("FR-038-AC-614", "FR-772-AC-1", "FR-772-AC-2", "TC-048")]
+#[trace("FR-038-AC-616", "FR-772-AC-1", "FR-772-AC-2", "TC-048")]
 #[test]
 fn slot_domain_over_a_field_and_slot_place_admits_its_declared_maximum_only() {
     let (wire, document, proposal) = slot_domain_wire(2);

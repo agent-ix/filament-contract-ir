@@ -14480,7 +14480,7 @@ mod tests {
             .is_some_and(|path| path.to_string().ends_with("/semantic_form")));
     }
 
-    #[trace("TC-1862", "FR-772-AC-1", "FR-772-AC-2", "FR-038-AC-614", "TC-048")]
+    #[trace("TC-1862", "FR-772-AC-1", "FR-772-AC-2", "FR-038-AC-616", "TC-048")]
     #[test]
     fn fr772_option_slots_checks_place_owner_and_bounded_domain() {
         fn read_slot_domain(maximum: &str) -> Result<bool, ValidationFailure> {
