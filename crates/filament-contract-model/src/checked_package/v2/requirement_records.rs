@@ -3546,6 +3546,178 @@ mod tests {
         assert_eq!(visits[1], 1, "the recursive node is entered once");
     }
 
+    /// FR-825: a node shared by two parents and no cycle is walked in full each
+    /// time it is reached and charged once for the owner: the recursion guard
+    /// marks only the nodes on the current path, not every node seen.
+    #[trace("TC-2053", "FR-825-AC-5")]
+    #[test]
+    fn shared_node_without_a_cycle_is_walked_in_full_each_time() {
+        use super::super::stage_storage::{Path, Site};
+        use super::{walk_owner_expression, OwnerWalkTask};
+        use crate::checked_package::shared::{CheckedOccurrence, CheckedOccurrenceRole};
+        use crate::checked_package::v2::{
+            CheckedJson, GraphIndex, NativeJoinBudget, PackageReadStage, RawSemanticNodeV2,
+            WorkMeter,
+        };
+
+        let id = |name: &str| -> CheckedNodeId {
+            serde_json::from_value(json!({"package":"pkg", "path":[name], "ordinal":0}))
+                .expect("node id")
+        };
+        let reference = |name: &str| json!({"term":"reference", "target":id(name)});
+        let call = |arguments: Vec<serde_json::Value>| {
+            serde_json::from_value::<super::CheckedTerm>(json!({
+                "term":"application", "operator":"call",
+                "operation":{"identity":"filament.op.test.call", "laws":[], "mode":null,
+                    "member":null, "leaves":[]},
+                "result_type":id("t"),
+                "arguments":arguments
+            }))
+            .expect("application")
+        };
+        // root -> (shared, shared); shared -> leaf. The diamond has no cycle.
+        let names = ["root", "shared", "leaf"];
+        let terms = vec![
+            call(vec![reference("shared"), reference("shared")]),
+            call(vec![reference("leaf")]),
+            serde_json::from_value(json!({"term":"aggregate", "members":[]})).expect("leaf"),
+        ];
+        let expression = |count: u64| -> Vec<CheckedOccurrence> {
+            (0..count)
+                .map(|ordinal| CheckedOccurrence {
+                    role: CheckedOccurrenceRole::Expression,
+                    ordinal,
+                })
+                .collect()
+        };
+        let nodes: Vec<RawSemanticNodeV2> = names
+            .iter()
+            .zip(&terms)
+            .zip([expression(1), expression(2), expression(2)])
+            .map(|((name, term), occurrences)| RawSemanticNodeV2 {
+                node_id: id(name),
+                schema_version: "filament.checked-semantic-graph/v2".into(),
+                node_tag: "expression".into(),
+                semantic_form: "x".into(),
+                semantic_type: id("t"),
+                dependencies: Vec::new(),
+                occurrences,
+                recursion_group: None,
+                declaration: None,
+                owner: None,
+                owner_model: None,
+                check_mode: None,
+                body: CheckedJson::from_serializable(term).expect("body json"),
+            })
+            .collect();
+        let ids: Vec<CheckedNodeId> = names.iter().map(|name| id(name)).collect();
+        let index: GraphIndex<'_> = ids
+            .iter()
+            .enumerate()
+            .map(|(position, id)| (id, position))
+            .collect();
+        let mut budget =
+            NativeJoinBudget::new(1_000_000, 1_000_000).with_read_storage_limit(1 << 16);
+        let mut visits = vec![0_usize; 3];
+        {
+            let mut meter = WorkMeter::over(&mut budget);
+            let at = Path::root();
+            let site = Site::new(PackageReadStage::Graph, 0, "requirement_items", at);
+            let mut charged = vec![usize::MAX; 3];
+            let mut active = vec![0_u8; 3];
+            let mut pending: Vec<OwnerWalkTask<'_>> = Vec::new();
+            walk_owner_expression(
+                0,
+                0,
+                true,
+                &nodes,
+                &terms,
+                &index,
+                &[],
+                0,
+                &mut visits,
+                &mut charged,
+                &mut active,
+                &mut Vec::new(),
+                &mut Vec::new(),
+                &mut Vec::new(),
+                &mut pending,
+                &site,
+                &mut meter,
+            )
+            .expect("the diamond walk ends");
+            assert!(
+                active.iter().all(|inside| *inside == 0),
+                "every node is left"
+            );
+        }
+        assert_eq!(
+            visits,
+            [1, 2, 2],
+            "the shared node and its leaf are walked twice"
+        );
+        assert_eq!(
+            budget.consumed().work,
+            3,
+            "one work unit per node for the owner, as before the guard"
+        );
+    }
+
+    /// FSpec FR-825: only a population's `maximum` is an empty aggregate when
+    /// absent. The flat wire admits an empty aggregate at any leaf position of
+    /// an operation-contract body, so the record read is what refuses one at
+    /// `member_type` or `ordinal` (the caller refuses `invalid-value` at the
+    /// node's `body`), while an empty `maximum` reads as no maximum.
+    #[trace("TC-2053", "FR-825-AC-3")]
+    #[test]
+    fn operation_contract_population_empty_aggregate_is_read_only_as_maximum() {
+        let id = json!({"package":"pkg", "path":["node"], "ordinal":0});
+        let empty = json!({"term":"aggregate", "members":[]});
+        let reference = json!({"term":"reference", "target":id});
+        let integer = json!({"term":"literal", "type":id, "value_kind":"integer", "value":3});
+        let read = |member_type: &serde_json::Value,
+                    ordinal: &serde_json::Value,
+                    maximum: &serde_json::Value| {
+            let body = serde_json::from_value(json!({
+                "term":"aggregate",
+                "members":[
+                    {"term":"binding", "name":"claim", "value":reference},
+                    {"term":"binding", "name":"occurrence", "value":{"term":"aggregate", "members":[
+                        {"term":"binding", "name":"role", "value":{"term":"literal", "type":id, "value_kind":"string", "value":"claim"}},
+                        {"term":"binding", "name":"ordinal", "value":integer}
+                    ]}},
+                    {"term":"binding", "name":"result_bound", "value":reference},
+                    {"term":"binding", "name":"invariant", "value":{"term":"literal", "type":id, "value_kind":"boolean", "value":true}},
+                    {"term":"binding", "name":"operation", "value":empty},
+                    {"term":"binding", "name":"model_objects", "value":{"term":"aggregate", "members":[]}},
+                    {"term":"binding", "name":"populations", "value":{"term":"aggregate", "members":[
+                        {"term":"aggregate", "members":[
+                            {"term":"binding", "name":"member_type", "value":member_type},
+                            {"term":"binding", "name":"ordinal", "value":ordinal},
+                            {"term":"binding", "name":"maximum", "value":maximum}
+                        ]}
+                    ]}}
+                ]
+            }))
+            .expect("typed operation-contract body");
+            let node = serde_json::from_value(json!({
+                "package":"pkg", "path":["record"], "ordinal":0
+            }))
+            .expect("record node id");
+            super::read_operation_contract_record(node, &body)
+        };
+        let admitted = read(&reference, &integer, &empty).expect("an empty maximum is no maximum");
+        assert_eq!(admitted.populations[0].maximum, None);
+        assert!(
+            read(&empty, &integer, &integer).is_none(),
+            "empty member_type refuses"
+        );
+        assert!(
+            read(&reference, &empty, &integer).is_none(),
+            "empty ordinal refuses"
+        );
+    }
+
     fn id_term(value: &serde_json::Value) -> super::CheckedTerm {
         serde_json::from_value(json!({"term":"reference", "target":value})).expect("reference term")
     }
