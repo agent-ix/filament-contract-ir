@@ -817,7 +817,7 @@ pub(super) fn validate(
         if expected_path.is_none() {
             return Err(refuse(
                 position,
-                node_at.key("body").key("members").index(1),
+                node_at.key("body").key("members").index(5),
                 Cause::InvalidValue,
                 nodes.get(position).map(|node| &node.node_id),
                 meter,
