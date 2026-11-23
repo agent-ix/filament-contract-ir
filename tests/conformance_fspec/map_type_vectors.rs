@@ -230,7 +230,8 @@ fn owner_map_type_vectors_match_public_reader() {
                             .expect("alias id");
                     let expected: CheckedNodeId =
                         serde_json::from_value(expected.clone()).expect("alias target id");
-                    let Some(CheckedTerm::Aggregate { members }) = admitted.term(&alias_id) else {
+                    let Some(CheckedTerm::Aggregate { members, .. }) = admitted.term(&alias_id)
+                    else {
                         panic!("retained alias body");
                     };
                     assert!(matches!(members.as_slice(),

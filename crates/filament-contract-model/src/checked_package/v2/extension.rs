@@ -316,7 +316,7 @@ pub(super) fn integer_range_bounds(term: &CheckedTerm) -> Option<(&str, &str)> {
         };
         value.as_str()
     }
-    let CheckedTerm::Aggregate { members } = term else {
+    let CheckedTerm::Aggregate { members, .. } = term else {
         return None;
     };
     let [lo, hi] = members.as_slice() else {
@@ -660,7 +660,10 @@ mod tests {
                     CheckedNodeKind::Extension(ExtensionForm::ExtensionForm),
                 ],
                 terms: vec![
-                    Some(CheckedTerm::Aggregate { members: vec![] }),
+                    Some(CheckedTerm::Aggregate {
+                        members: vec![],
+                        temporal_profile: None,
+                    }),
                     None,
                     Some(extension),
                 ],
@@ -738,6 +741,7 @@ mod tests {
             };
             self.terms[0] = Some(CheckedTerm::Aggregate {
                 members: vec![bound("min", "1"), bound("max", "3650")],
+                temporal_profile: None,
             });
         }
 

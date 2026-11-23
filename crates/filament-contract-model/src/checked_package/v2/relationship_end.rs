@@ -524,6 +524,7 @@ pub(super) mod tests {
                             members: vec![CheckedTerm::Reference {
                                 target: ids[&'1'].clone(),
                             }],
+                            temporal_profile: None,
                         };
                 }),
             ),

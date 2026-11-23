@@ -222,9 +222,11 @@ fn v1_operation_views_require_authenticated_source() {
     assert_eq!(
         CheckedTerm::Aggregate {
             members: vec![plain_term.clone()],
+            temporal_profile: None,
         },
         CheckedTerm::Aggregate {
             members: vec![producer_term.clone()],
+            temporal_profile: None,
         }
     );
     assert_eq!(

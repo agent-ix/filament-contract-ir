@@ -880,7 +880,7 @@ fn component_clause_model<'a>(
     };
     let parameter = package.node(target)?;
     let mut subject = package.node(&parameter.semantic_type)?;
-    if let CheckedTerm::Aggregate { members } = &subject.body {
+    if let CheckedTerm::Aggregate { members, .. } = &subject.body {
         if let [CheckedTerm::Reference { target }] = members.as_slice() {
             subject = package.node(target)?;
         }

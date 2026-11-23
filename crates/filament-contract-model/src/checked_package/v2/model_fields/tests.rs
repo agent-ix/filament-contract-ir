@@ -274,6 +274,7 @@ fn exact_reference_uses_the_selected_object_row() {
         members: vec![super::super::CheckedTerm::Reference {
             target: object.clone(),
         }],
+        temporal_profile: None,
     };
     std::sync::Arc::make_mut(&mut fixture.package.wire)
         .semantic_graph
@@ -1398,7 +1399,7 @@ fn tc_227_the_accessor_does_not_read_a_node_body_it_was_not_passed() {
             .nodes
             .get_mut(position)
             .expect("the bounded domain node");
-        if let super::super::CheckedTerm::Aggregate { members } = &mut node.body {
+        if let super::super::CheckedTerm::Aggregate { members, .. } = &mut node.body {
             if let super::super::CheckedTerm::Binding { value, .. } = &mut members[1] {
                 if let super::super::CheckedTerm::Literal { value, .. } = value.as_mut() {
                     *value = crate::checked_package::CheckedJson::scalar(&json!(upper));

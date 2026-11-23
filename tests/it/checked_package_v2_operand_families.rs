@@ -1616,7 +1616,7 @@ fn genuine_integer_fold_with_both_authored_binders_is_admitted() {
         panic!("accumulator binder");
     };
     assert_eq!(name.as_ref(), "acc");
-    let filament_contract_model::CheckedTerm::Aggregate { members } = value.as_ref() else {
+    let filament_contract_model::CheckedTerm::Aggregate { members, .. } = value.as_ref() else {
         panic!("element binder wrapper");
     };
     let [filament_contract_model::CheckedTerm::Binding { name, value, .. }] = members.as_slice()
@@ -1692,7 +1692,7 @@ fn genuine_monitor_base_fold_is_admitted_without_removing_semantics() {
         panic!("monitor accumulator binder");
     };
     assert_eq!(name.as_ref(), "a");
-    let filament_contract_model::CheckedTerm::Aggregate { members } = value.as_ref() else {
+    let filament_contract_model::CheckedTerm::Aggregate { members, .. } = value.as_ref() else {
         panic!("monitor element wrapper");
     };
     let [filament_contract_model::CheckedTerm::Binding { name, value, .. }] = members.as_slice()

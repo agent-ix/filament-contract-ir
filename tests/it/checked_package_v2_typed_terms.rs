@@ -4,7 +4,7 @@ use crate::support::checked_package::{
     canonical, evidence_for, positive_operation_identities, v2_all_families,
 };
 use filament_contract_model::{
-    encode_checked_package_v2, CheckedApplicationOperation, CheckedBindingName,
+    encode_checked_package_v2, CheckedApplicationOperation, CheckedArtifactRef, CheckedBindingName,
     CheckedBindingNameKind, CheckedFairnessGranularity, CheckedFairnessKind, CheckedLiteralValue,
     CheckedOperationMember, CheckedOperationViewError, CheckedPackageReadLimits,
     CheckedPackageSourceCorrespondenceRef, CheckedPackageV2ReadResult, CheckedTerm, ExecutionPoint,
@@ -161,7 +161,7 @@ fn admitted_v2_bodies_are_closed_typed_terms() {
             node.node_id
         );
         match term {
-            CheckedTerm::Aggregate { members } => {
+            CheckedTerm::Aggregate { members, .. } => {
                 saw_aggregate = true;
                 saw_nested_binding |= members.iter().any(|member| {
                     matches!(member, CheckedTerm::Binding { value, .. }
@@ -662,4 +662,45 @@ fn admitted_controls_expose_element_and_fairness_members() {
         member_kinds, covered,
         "all closed member productions have admitted controls"
     );
+}
+
+#[trace("TC-2028", "FR-322-AC-464")]
+#[test]
+fn an_aggregate_temporal_profile_round_trips_and_an_absent_one_stays_absent() {
+    let profile = json!({
+        "authority": "agent-ix",
+        "identity": "filament.temporal.event-position.false-extension/v1"
+    });
+    let with = json!({"term": "aggregate", "members": [], "temporal_profile": profile});
+    let term: CheckedTerm = serde_json::from_value(with.clone()).expect("aggregate with profile");
+    assert_eq!(
+        term,
+        CheckedTerm::Aggregate {
+            members: vec![],
+            temporal_profile: Some(CheckedArtifactRef {
+                authority: "agent-ix".into(),
+                identity: "filament.temporal.event-position.false-extension/v1".into(),
+            }),
+        }
+    );
+    assert_eq!(serde_json::to_value(&term).expect("serialize"), with);
+
+    let bare = json!({"term": "aggregate", "members": []});
+    let term: CheckedTerm = serde_json::from_value(bare.clone()).expect("bare aggregate");
+    assert_eq!(
+        term,
+        CheckedTerm::Aggregate {
+            members: vec![],
+            temporal_profile: None,
+        }
+    );
+    assert_eq!(serde_json::to_value(&term).expect("serialize"), bare);
+
+    for refused in [
+        json!({"term": "aggregate", "members": [], "extra": 1}),
+        json!({"term": "aggregate", "members": [], "temporal_profile": "text"}),
+        json!({"term": "aggregate", "members": [], "temporal_profile": {"authority": "a"}}),
+    ] {
+        assert!(serde_json::from_value::<CheckedTerm>(refused).is_err());
+    }
 }

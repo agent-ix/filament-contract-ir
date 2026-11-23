@@ -280,7 +280,7 @@ fn fsl_boolean_transition_readback_retains_typed_subject_inputs_and_result() {
         .expect("admitted operation view")
         .expect("subject field projection");
     assert_eq!(field_name, "on", "Switch transition subject");
-    let CheckedTerm::Aggregate { members } = bindings[2].1 else {
+    let CheckedTerm::Aggregate { members, .. } = bindings[2].1 else {
         panic!("ordered transition inputs are a typed aggregate");
     };
     let [input] = members.as_slice() else {

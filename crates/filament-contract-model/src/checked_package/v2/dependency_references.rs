@@ -537,7 +537,7 @@ impl<'a> DependencyReferences<'a> {
                         )?;
                     }
                 }
-                CheckedTerm::Aggregate { members } => {
+                CheckedTerm::Aggregate { members, .. } => {
                     push_members(&mut budget, &mut steps, &mut pending, step, members, form)?;
                 }
                 CheckedTerm::OperationAnchorBody(body) => {
@@ -840,7 +840,7 @@ fn signature_closure(
     let mut pending: Vec<&CheckedNodeId> = Vec::new();
     budget.push(&mut pending, &function.semantic_type, form)?;
     let members = match &function.body {
-        CheckedTerm::Aggregate { members } => Some(members.as_slice()),
+        CheckedTerm::Aggregate { members, .. } => Some(members.as_slice()),
         _ => None,
     };
     let parameters = members.and_then(|members| match members.first()? {
@@ -852,7 +852,10 @@ fn signature_closure(
         _ => None,
     });
     if let Some(parameters) = parameters {
-        let CheckedTerm::Aggregate { members: entries } = parameters else {
+        let CheckedTerm::Aggregate {
+            members: entries, ..
+        } = parameters
+        else {
             return Ok(Closure {
                 independent: false,
                 work,
@@ -926,7 +929,7 @@ pub(super) fn selected_reference_targets(body: &CheckedTerm) -> Vec<(Box<str>, C
                 selected.push((package.clone(), node.clone()));
             }
             CheckedTerm::Application { arguments, .. } => pending.extend(arguments.iter().rev()),
-            CheckedTerm::Aggregate { members } => pending.extend(members.iter().rev()),
+            CheckedTerm::Aggregate { members, .. } => pending.extend(members.iter().rev()),
             CheckedTerm::OperationAnchorBody(body) => pending.extend(body.members.iter().rev()),
             CheckedTerm::Binding { value, .. } => pending.push(value),
             CheckedTerm::Literal { .. }
@@ -1215,8 +1218,10 @@ mod tests {
             members: (0..9)
                 .map(|at| CheckedTerm::Aggregate {
                     members: (0..=at).map(|_| leaf()).collect(),
+                    temporal_profile: None,
                 })
                 .collect(),
+            temporal_profile: None,
         };
         let supplied = SuppliedDependencies::default();
         let denial = pointer_bytes(|| node_pointer(5).key("body"));

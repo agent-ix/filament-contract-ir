@@ -1504,7 +1504,7 @@ impl<'a> BodyInput<'a> {
                         .and_then(TermNode::items)
                         .is_some_and(|members| members.len() == 0)
             }),
-            Self::Typed(super::CheckedTerm::Aggregate { members }) => members.is_empty(),
+            Self::Typed(super::CheckedTerm::Aggregate { members, .. }) => members.is_empty(),
             Self::Typed(_) => false,
         }
     }

@@ -858,7 +858,7 @@ use std::cmp::Ordering;
 
 fn typed_members(term: &CheckedTerm) -> &[CheckedTerm] {
     match term {
-        CheckedTerm::Aggregate { members } => members,
+        CheckedTerm::Aggregate { members, .. } => members,
         CheckedTerm::OperationAnchorBody(body) => &body.members,
         _ => &[],
     }
@@ -2042,8 +2042,8 @@ fn same_place_path(
         work(meter, at, 1)?;
         match (left, right) {
             (
-                CheckedTerm::Aggregate { members: left },
-                CheckedTerm::Aggregate { members: right },
+                CheckedTerm::Aggregate { members: left, .. },
+                CheckedTerm::Aggregate { members: right, .. },
             ) => {
                 if left.len() != right.len() {
                     return Ok(false);
@@ -2422,7 +2422,7 @@ fn term_key<'g>(
                     pending.push(Visit::Atom(OrderPart::Word(Word::Owned(word))));
                     pending.push(Visit::Atom(OrderPart::Start));
                 }
-                Visit::Term(CheckedTerm::Aggregate { members }) => {
+                Visit::Term(CheckedTerm::Aggregate { members, .. }) => {
                     meter.room(&mut pending, members.len() + 2)?;
                     pending.push(Visit::Atom(OrderPart::End));
                     pending.extend(members.iter().rev().map(Visit::Term));
@@ -5309,6 +5309,7 @@ mod tests {
                         value: crate::CheckedJson::from_serializable(&json!(7)).unwrap(),
                     },
                 ],
+                temporal_profile: None,
             }),
         ];
         let graph = Graph {

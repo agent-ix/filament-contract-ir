@@ -1594,7 +1594,7 @@ fn monitor_plan_event_position_is_the_exact_final_integer_field() {
     let package = admitted(&wire);
     let plan = package.monitor_plans().next().unwrap();
     let body = package.term(plan.state()).unwrap();
-    let CheckedTerm::Aggregate { members } = body else {
+    let CheckedTerm::Aggregate { members, .. } = body else {
         panic!("State record")
     };
     let CheckedTerm::Binding { name, value, .. } = members.last().unwrap() else {

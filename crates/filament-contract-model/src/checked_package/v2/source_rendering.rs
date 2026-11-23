@@ -24,7 +24,7 @@ pub(super) trait TypeGraph {
 
 fn members(term: &CheckedTerm) -> &[CheckedTerm] {
     match term {
-        CheckedTerm::Aggregate { members } => members,
+        CheckedTerm::Aggregate { members, .. } => members,
         _ => &[],
     }
 }
@@ -69,7 +69,7 @@ pub(super) fn binding_of<'g, G: TypeGraph + ?Sized>(
         }
         match value.as_ref() {
             CheckedTerm::Reference { target } => Some((false, target)),
-            CheckedTerm::Aggregate { members } => match members.as_slice() {
+            CheckedTerm::Aggregate { members, .. } => match members.as_slice() {
                 [CheckedTerm::Binding { value, .. }] => target(value).map(|target| (true, target)),
                 _ => None,
             },

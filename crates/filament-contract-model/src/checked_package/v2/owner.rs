@@ -484,7 +484,7 @@ impl OwnerClauseKind {
 }
 
 fn clause_kind(body: &CheckedTerm) -> Option<OwnerClauseKind> {
-    let CheckedTerm::Aggregate { members } = body else {
+    let CheckedTerm::Aggregate { members, .. } = body else {
         return None;
     };
     let mut clauses = members.iter().filter_map(|member| match member {
@@ -785,7 +785,7 @@ pub(super) fn validate_owner_joins(
                     || node.declaration.is_some()
                     || node.recursion_group.is_some()
                     || !terms.get(position).and_then(Option::as_ref).is_some_and(
-                        |term| matches!(term, CheckedTerm::Aggregate { members } if members.is_empty()),
+                        |term| matches!(term, CheckedTerm::Aggregate { members, .. } if members.is_empty()),
                     ))
                 {
                     return Err(owner_failure(meter,position,node_path(position).key("node_id"),CheckedPackageRefusalCode::InvalidPackage,Some(CheckedPackageRefusalCause::InvalidDerivedShape),Some(&node.node_id)));
@@ -951,7 +951,10 @@ mod anonymous_lookup_tests {
         owned["owner"] = json!({"kind":"model", "identity":"acme/orders", "node":WIDGET});
         let input = wire(vec![owned]);
         let kinds = [CheckedNodeKind::Model(super::super::ModelForm::ObjectType)];
-        let terms = [Some(CheckedTerm::Aggregate { members: vec![] })];
+        let terms = [Some(CheckedTerm::Aggregate {
+            members: vec![],
+            temporal_profile: None,
+        })];
         let models = [gadget, widget];
         assert!(validate_owner_joins(
             &input,

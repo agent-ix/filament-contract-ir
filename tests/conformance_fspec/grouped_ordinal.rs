@@ -358,7 +358,7 @@ fn grouped_member_and_outside_application_references_retain_exact_targets() {
             .expect("graph node")
             .clone()
     );
-    let Some(filament_contract_model::CheckedTerm::Aggregate { members }) = admitted.term(
+    let Some(filament_contract_model::CheckedTerm::Aggregate { members, .. }) = admitted.term(
         &admitted
             .document_held_id(option)
             .expect("graph node")

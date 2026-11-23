@@ -1508,6 +1508,10 @@ fn decode_term<'d>(
         }),
         TermTag::Known(BodyTerm::Aggregate) => Ok(CheckedTerm::Aggregate {
             members: decode_children(context, document, term, TermField::Members)?,
+            temporal_profile: match term.field(TermField::TemporalProfile) {
+                None => None,
+                Some(_) => Some(decode_field(context, term, TermField::TemporalProfile)?),
+            },
         }),
         TermTag::Known(BodyTerm::Binding) => {
             let name = decode_field(context, term, TermField::Name)?;

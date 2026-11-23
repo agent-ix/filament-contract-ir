@@ -347,7 +347,7 @@ fn control_facts(kind: &CheckedNodeKind, body: &CheckedTerm) -> Option<ControlFa
         return None;
     }
     let related = match binding_value(arguments, "related")? {
-        CheckedTerm::Aggregate { members } => members.len(),
+        CheckedTerm::Aggregate { members, .. } => members.len(),
         _ => return None,
     };
     Some(ControlFacts { related })

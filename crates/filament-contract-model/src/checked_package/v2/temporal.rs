@@ -694,7 +694,7 @@ pub(super) fn validate_temporal(
             .ok()
             .and_then(|at| clock_units[at].1.unit);
         let wrapper = match terms.get(position).and_then(Option::as_ref) {
-            Some(CheckedTerm::Aggregate { members }) => member_binding(members, "body")
+            Some(CheckedTerm::Aggregate { members, .. }) => member_binding(members, "body")
                 .and_then(typed_reference)
                 .filter(|target| {
                     graph.node(target).is_some_and(|(_, kind)| {
@@ -954,7 +954,7 @@ impl<'a> Walk for Placement<'_, 'a, '_> {
                     (argument, false, slot)
                 }));
             }
-            CheckedTerm::Aggregate { members } => {
+            CheckedTerm::Aggregate { members, .. } => {
                 let hyper_root =
                     is_root && self.kind == CheckedNodeKind::Claim(super::ClaimForm::Hyperproperty);
                 let claim_root = is_root
@@ -1257,7 +1257,7 @@ impl ClauseScratch {
         let mut wrapper = meter.filled(graph.nodes.len(), false)?;
         let clean = meter.filled(graph.nodes.len(), false)?;
         for (position, _) in graph.each(CheckedNodeKind::Claim(super::ClaimForm::Hyperproperty)) {
-            if let Some(CheckedTerm::Aggregate { members }) =
+            if let Some(CheckedTerm::Aggregate { members, .. }) =
                 terms.get(position).and_then(Option::as_ref)
             {
                 if let Some(at) = member_binding(members, "body")
@@ -1371,7 +1371,7 @@ fn slot_parameter_of<'a>(
     if kind != Some(&CheckedNodeKind::Value(ValueForm::Parameter)) {
         return None;
     }
-    let Some(CheckedTerm::Aggregate { members }) = term else {
+    let Some(CheckedTerm::Aggregate { members, .. }) = term else {
         return None;
     };
     let name = member_binding(members, "name")
@@ -1470,7 +1470,7 @@ fn formula_reads_slot_parameter(
     while let Some(position) = pending.pop() {
         if graph.kinds.get(position) == Some(&CheckedNodeKind::Value(ValueForm::Parameter)) {
             let named = match terms.get(position).and_then(Option::as_ref) {
-                Some(CheckedTerm::Aggregate { members }) => member_binding(members, "name")
+                Some(CheckedTerm::Aggregate { members, .. }) => member_binding(members, "name")
                     .and_then(|name| aggregate_literal(name, LiteralKind::Text)),
                 _ => None,
             };
@@ -1624,7 +1624,7 @@ fn check_clause(
     let fairness: &[CheckedTerm] = arguments
         .get(4)
         .and_then(|term| match term {
-            CheckedTerm::Aggregate { members } => Some(members.as_slice()),
+            CheckedTerm::Aggregate { members, .. } => Some(members.as_slice()),
             _ => None,
         })
         .unwrap_or(&[]);
@@ -2126,7 +2126,7 @@ fn aggregate_declares_duration_window(formula: usize, terms: &[Option<CheckedTer
     else {
         return false;
     };
-    let Some(CheckedTerm::Aggregate { members }) = arguments.first() else {
+    let Some(CheckedTerm::Aggregate { members, .. }) = arguments.first() else {
         return false;
     };
     members.iter().any(|member| match member {
@@ -2278,7 +2278,7 @@ fn check_aggregate(
     else {
         return Ok(());
     };
-    let Some(CheckedTerm::Aggregate { members }) = arguments.first() else {
+    let Some(CheckedTerm::Aggregate { members, .. }) = arguments.first() else {
         return Ok(());
     };
 
@@ -2795,7 +2795,7 @@ fn check_hyper_shape(
             node.node_id.clone(),
         )
     };
-    let CheckedTerm::Aggregate { members } = body else {
+    let CheckedTerm::Aggregate { members, .. } = body else {
         return Err(graph_defect(at_body()));
     };
     fn binding(term: &CheckedTerm) -> Option<(&str, &CheckedTerm)> {
@@ -2842,24 +2842,33 @@ fn check_hyper_shape(
     }
     let Some(CheckedTerm::Aggregate {
         members: parameters,
+        ..
     }) = value_of(2)
     else {
         return Err(graph_defect(at_value(2)));
     };
-    let Some(CheckedTerm::Aggregate { members: subjects }) = value_of(1) else {
+    let Some(CheckedTerm::Aggregate {
+        members: subjects, ..
+    }) = value_of(1)
+    else {
         return Err(graph_defect(at_value(1)));
     };
     let Some(CheckedTerm::Aggregate {
         members: quantifiers,
+        ..
     }) = value_of(3)
     else {
         return Err(graph_defect(at_value(3)));
     };
-    let Some(CheckedTerm::Aggregate { members: matched }) = value_of(4) else {
+    let Some(CheckedTerm::Aggregate {
+        members: matched, ..
+    }) = value_of(4)
+    else {
         return Err(graph_defect(at_value(4)));
     };
     let Some(CheckedTerm::Aggregate {
         members: align_skip,
+        ..
     }) = value_of(5)
     else {
         return Err(graph_defect(at_value(5)));
@@ -2881,6 +2890,7 @@ fn check_hyper_shape(
         let at_group = || at_value(3).key("members").index(group_at);
         let CheckedTerm::Aggregate {
             members: group_members,
+            ..
         } = group
         else {
             return Err(graph_defect(at_group()));
@@ -3031,7 +3041,7 @@ fn check_hyper_shape(
             _ => &[],
         };
         let fairness_nonempty = match wrapper_arguments.get(4) {
-            Some(CheckedTerm::Aggregate { members }) => !members.is_empty(),
+            Some(CheckedTerm::Aggregate { members, .. }) => !members.is_empty(),
             _ => false,
         };
         let wrapper_at = wrapper_position.unwrap_or(position);
@@ -3152,7 +3162,7 @@ fn check_hyper_fairness(
     terms: &[Option<CheckedTerm>],
     meter: &mut WorkMeter,
 ) -> Result<(), ValidationFailure> {
-    let CheckedTerm::Aggregate { members } = body else {
+    let CheckedTerm::Aggregate { members, .. } = body else {
         return Ok(());
     };
     let binding_value = |at: usize, wanted: &str| match members.get(at) {
@@ -3163,11 +3173,11 @@ fn check_hyper_fairness(
     };
     let (Some(quantifiers), Some(subjects)) = (
         binding_value(3, "quantifiers").and_then(|term| match term {
-            CheckedTerm::Aggregate { members } => Some(members.as_slice()),
+            CheckedTerm::Aggregate { members, .. } => Some(members.as_slice()),
             _ => None,
         }),
         binding_value(1, "subjects").and_then(|term| match term {
-            CheckedTerm::Aggregate { members } => Some(members.as_slice()),
+            CheckedTerm::Aggregate { members, .. } => Some(members.as_slice()),
             _ => None,
         }),
     ) else {
@@ -3209,6 +3219,7 @@ fn check_hyper_fairness(
     for (group_at, group) in quantifiers.iter().enumerate() {
         let CheckedTerm::Aggregate {
             members: group_members,
+            ..
         } = group
         else {
             continue;

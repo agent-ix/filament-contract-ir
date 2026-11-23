@@ -463,6 +463,7 @@ fn selected_profile(lock: &CheckedPackageLockV2) -> Option<TemporalProfile> {
 /// definition that configures no clock.
 fn finite_profile(
     position: usize,
+    terms: &[Option<super::CheckedTerm>],
     lock: &CheckedPackageLockV2,
     declaration: &CheckedNodeId,
     meter: &mut WorkMeter,
@@ -475,16 +476,14 @@ fn finite_profile(
             .key("body")
             .key("temporal_profile")
     };
-    let member = meter
-        .body(position)
-        .and_then(|(body, _)| body.get("temporal_profile"))
-        .filter(|definition| definition.exact_members(&["authority", "identity"]));
-    let named = match member {
-        Some(definition) => definition_ref(definition, position, meter)?,
-        None => None,
+    let named = match terms.get(position) {
+        Some(Some(super::CheckedTerm::Aggregate {
+            temporal_profile, ..
+        })) => temporal_profile.as_ref(),
+        _ => None,
     };
     let mut matches = 0_usize;
-    if let Some(named) = &named {
+    if let Some(named) = named {
         for selection in &lock.profile_selections {
             binding_work(meter, at())?;
             if selection.role == CheckedSelectionRole::TemporalProfile
@@ -587,7 +586,7 @@ fn hyper_nodes<'t>(
         let mut variables = meter.vec(0)?;
         let mut finite = false;
         let mut wrapper = None;
-        if let Some(Some(CheckedTerm::Aggregate { members })) = terms.get(position) {
+        if let Some(Some(CheckedTerm::Aggregate { members, .. })) = terms.get(position) {
             let bound = |name: &str| {
                 members.iter().find_map(|member| match member {
                     CheckedTerm::Binding {
@@ -607,9 +606,12 @@ fn hyper_nodes<'t>(
                         kinds[*target] == CheckedNodeKind::Temporal(TemporalForm::TemporalClause)
                     });
             }
-            if let Some(CheckedTerm::Aggregate { members: groups }) = bound("quantifiers") {
+            if let Some(CheckedTerm::Aggregate {
+                members: groups, ..
+            }) = bound("quantifiers")
+            {
                 for group in groups {
-                    let CheckedTerm::Aggregate { members } = group else {
+                    let CheckedTerm::Aggregate { members, .. } = group else {
                         continue;
                     };
                     let variable = members.iter().find_map(|member| match member {
@@ -663,10 +665,13 @@ pub(super) fn validate<B>(
     let hypers = hyper_nodes(kinds, terms, index, meter)?;
     for hyper in hypers.iter().filter(|hyper| !hyper.finite) {
         // A behaviours-domain hyperproperty keeps its law on its wrapper.
-        if meter
-            .body(hyper.position)
-            .is_some_and(|(body, _)| body.get("temporal_profile").is_some())
-        {
+        if matches!(
+            terms.get(hyper.position),
+            Some(Some(super::CheckedTerm::Aggregate {
+                temporal_profile: Some(_),
+                ..
+            }))
+        ) {
             let at = super::stage_storage::Path::root()
                 .key("semantic_graph")
                 .key("nodes")
@@ -681,6 +686,19 @@ pub(super) fn validate<B>(
                 cause,
             ));
         }
+    }
+    // A finite-domain hyperproperty joins its body profile to the lock before any
+    // row is read.
+    let mut finite_profiles: Vec<(usize, Option<TemporalProfile>)> = meter.vec(hypers.len())?;
+    for hyper in hypers.iter().filter(|hyper| hyper.finite) {
+        let profile = finite_profile(
+            hyper.position,
+            terms,
+            lock,
+            &nodes[hyper.position].node_id,
+            meter,
+        )?;
+        meter.push(&mut finite_profiles, (hyper.position, profile))?;
     }
     // `hypers` ascends by graph position, so a node is found by bisection; the
     // wrappers are listed once and sorted.
@@ -919,7 +937,10 @@ pub(super) fn validate<B>(
         let at = || row_path(row_index);
         let hyper = hyper_of(position);
         if hyper.is_some_and(|hyper| hyper.finite) {
-            let profile = finite_profile(position, lock, &row.declaration, meter)?;
+            let profile = finite_profiles
+                .binary_search_by_key(&position, |(at, _)| *at)
+                .ok()
+                .and_then(|at| finite_profiles[at].1);
             // The rows of one occurrence share one clock role.
             if row_index > 0
                 && rows[row_index - 1].declaration == row.declaration

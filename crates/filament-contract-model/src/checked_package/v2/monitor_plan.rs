@@ -636,7 +636,7 @@ impl<'a> CheckedMonitorBufferRef<'a> {
 
 fn members(term: &CheckedTerm) -> Option<&[CheckedTerm]> {
     match term {
-        CheckedTerm::Aggregate { members } => Some(members),
+        CheckedTerm::Aggregate { members, .. } => Some(members),
         _ => None,
     }
 }
@@ -1386,6 +1386,7 @@ mod admission_storage_tests {
         let kinds = [CheckedNodeKind::Temporal(TemporalForm::MonitorPlan)];
         let terms = [Some(CheckedTerm::Aggregate {
             members: Vec::new(),
+            temporal_profile: None,
         })];
         let index = nodes
             .iter()

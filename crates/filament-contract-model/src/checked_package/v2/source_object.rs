@@ -39,7 +39,7 @@ pub(super) fn is_source_population<Body>(
 pub(super) fn bound_type(value: &CheckedTerm) -> Option<&CheckedNodeId> {
     match value {
         CheckedTerm::Reference { target } => Some(target),
-        CheckedTerm::Aggregate { members } => match members.as_slice() {
+        CheckedTerm::Aggregate { members, .. } => match members.as_slice() {
             [CheckedTerm::Binding { name, value, .. }] if name.as_ref() == "optional" => {
                 match value.as_ref() {
                     CheckedTerm::Reference { target } => Some(target),
@@ -433,7 +433,7 @@ fn body_bindings(
     package: &super::CheckedPackageV2,
     position: usize,
 ) -> Option<Vec<(&str, &CheckedNodeId, bool)>> {
-    let CheckedTerm::Aggregate { members } = package.term_at(position)? else {
+    let CheckedTerm::Aggregate { members, .. } = package.term_at(position)? else {
         return None;
     };
     members

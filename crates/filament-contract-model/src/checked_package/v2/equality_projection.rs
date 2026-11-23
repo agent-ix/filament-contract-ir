@@ -131,7 +131,7 @@ pub(super) fn text_bounds(term: &CheckedTerm) -> Option<(&str, &str, &str)> {
         };
         value.as_str()
     }
-    let CheckedTerm::Aggregate { members } = term else {
+    let CheckedTerm::Aggregate { members, .. } = term else {
         return None;
     };
     let [min, max, profile] = members.as_slice() else {

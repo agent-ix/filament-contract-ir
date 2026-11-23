@@ -339,7 +339,7 @@ pub(super) fn validate(
             ));
         }
         for member in [5, 6, 7] {
-            if let Some(CheckedTerm::Aggregate { members }) =
+            if let Some(CheckedTerm::Aggregate { members, .. }) =
                 terms.get(position).and_then(|term| binding(term, member))
             {
                 for entry in 0..members.len() {
@@ -583,11 +583,11 @@ pub(super) fn validate(
                 .get(position)
                 .and_then(|term| binding(term, 5))
                 .and_then(|term| match term {
-                    CheckedTerm::Aggregate { members } => members.get(guard_index),
+                    CheckedTerm::Aggregate { members, .. } => members.get(guard_index),
                     _ => None,
                 })
                 .and_then(|guard_term| match guard_term {
-                    CheckedTerm::Aggregate { members } => {
+                    CheckedTerm::Aggregate { members, .. } => {
                         named_value(members.get(1)?, "occurrence").and_then(integer)
                     }
                     _ => None,
@@ -612,11 +612,11 @@ pub(super) fn validate(
                 .get(position)
                 .and_then(|term| binding(term, 5))
                 .and_then(|term| match term {
-                    CheckedTerm::Aggregate { members } => members.get(guard_index),
+                    CheckedTerm::Aggregate { members, .. } => members.get(guard_index),
                     _ => None,
                 })
                 .and_then(|guard_term| match guard_term {
-                    CheckedTerm::Aggregate { members } => {
+                    CheckedTerm::Aggregate { members, .. } => {
                         named_value(members.get(2)?, "holds").and_then(boolean)
                     }
                     _ => None,
@@ -872,7 +872,7 @@ fn is_type_kind(kind: CheckedNodeKind) -> bool {
 }
 
 fn record_binding_shape(term: &CheckedTerm) -> bool {
-    let CheckedTerm::Aggregate { members } = term else {
+    let CheckedTerm::Aggregate { members, .. } = term else {
         return false;
     };
     const NAMES: [&str; 8] = [
@@ -902,8 +902,8 @@ fn record_body_failure_path<'a>(term: &CheckedTerm, node_at: Path<'a>) -> Path<'
         (
             4,
             binding(term, 4).is_some_and(|conversion| match conversion {
-                CheckedTerm::Aggregate { members } if members.is_empty() => true,
-                CheckedTerm::Aggregate { members } if members.len() == 2 => {
+                CheckedTerm::Aggregate { members, .. } if members.is_empty() => true,
+                CheckedTerm::Aggregate { members, .. } if members.len() == 2 => {
                     named_value(&members[0], "narrow")
                         .and_then(reference)
                         .is_some()
@@ -919,9 +919,9 @@ fn record_body_failure_path<'a>(term: &CheckedTerm, node_at: Path<'a>) -> Path<'
             return member_path(member);
         }
     }
-    if let Some(CheckedTerm::Aggregate { members }) = binding(term, 5) {
+    if let Some(CheckedTerm::Aggregate { members, .. }) = binding(term, 5) {
         if let Some(guard_index) = members.iter().position(|guard| {
-            let CheckedTerm::Aggregate { members } = guard else {
+            let CheckedTerm::Aggregate { members, .. } = guard else {
                 return true;
             };
             members.len() != 3
@@ -938,7 +938,7 @@ fn record_body_failure_path<'a>(term: &CheckedTerm, node_at: Path<'a>) -> Path<'
         return member_path(5);
     }
     for member in [6, 7] {
-        if let Some(CheckedTerm::Aggregate { members }) = binding(term, member) {
+        if let Some(CheckedTerm::Aggregate { members, .. }) = binding(term, member) {
             if let Some(entry_index) = members
                 .iter()
                 .position(|entry| reference(member_value(entry).unwrap_or(entry)).is_none())
@@ -1004,7 +1004,7 @@ fn owner_body_reach(
 }
 
 fn function_body_root(term: &CheckedTerm) -> Option<CheckedNodeId> {
-    let CheckedTerm::Aggregate { members } = term else {
+    let CheckedTerm::Aggregate { members, .. } = term else {
         return None;
     };
     members.iter().find_map(|member| {
@@ -1198,19 +1198,22 @@ fn read_record(node: CheckedNodeId, term: &CheckedTerm) -> Option<ValueValidityR
     let result_bound = reference(binding(term, 3)?)?;
     let conversion_term = binding(term, 4)?;
     let conversion = match conversion_term {
-        CheckedTerm::Aggregate { members } if members.is_empty() => None,
-        CheckedTerm::Aggregate { members } if members.len() == 2 => Some((
+        CheckedTerm::Aggregate { members, .. } if members.is_empty() => None,
+        CheckedTerm::Aggregate { members, .. } if members.len() == 2 => Some((
             reference(named_value(&members[0], "narrow")?)?,
             integer(named_value(&members[1], "occurrence")?)?,
         )),
         _ => return None,
     };
-    let CheckedTerm::Aggregate { members: guards } = binding(term, 5)? else {
+    let CheckedTerm::Aggregate {
+        members: guards, ..
+    } = binding(term, 5)?
+    else {
         return None;
     };
     let mut path_condition = Vec::with_capacity(guards.len());
     for guard in guards {
-        let CheckedTerm::Aggregate { members } = guard else {
+        let CheckedTerm::Aggregate { members, .. } = guard else {
             return None;
         };
         path_condition.push(RequirementGuard {
@@ -1233,7 +1236,7 @@ fn read_record(node: CheckedNodeId, term: &CheckedTerm) -> Option<ValueValidityR
 }
 
 fn binding(term: &CheckedTerm, index: usize) -> Option<&CheckedTerm> {
-    let CheckedTerm::Aggregate { members } = term else {
+    let CheckedTerm::Aggregate { members, .. } = term else {
         return None;
     };
     member_value(members.get(index)?)
@@ -1285,7 +1288,7 @@ fn boolean(term: &CheckedTerm) -> Option<bool> {
 }
 
 fn references(term: &CheckedTerm) -> Option<Vec<CheckedNodeId>> {
-    let CheckedTerm::Aggregate { members } = term else {
+    let CheckedTerm::Aggregate { members, .. } = term else {
         return None;
     };
     members.iter().map(reference).collect()

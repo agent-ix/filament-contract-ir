@@ -80,7 +80,7 @@ fn map_keeps_both_ordered_type_operands() {
         admitted.node_kind(&id),
         Some(CheckedNodeKind::CompositeType(CompositeTypeForm::Map))
     );
-    let Some(CheckedTerm::Aggregate { members }) = admitted.term(&id) else {
+    let Some(CheckedTerm::Aggregate { members, .. }) = admitted.term(&id) else {
         panic!("map body");
     };
     assert_eq!(members.len(), 2);
@@ -281,7 +281,7 @@ fn collection_bounds_remain_a_separate_node() {
         filament_contract_model::NativeJoinChargeKind::Storage
     );
     assert_eq!(admitted.graph().nodes[map_position].dependencies.len(), 2);
-    let CheckedTerm::Aggregate { members } = admitted
+    let CheckedTerm::Aggregate { members, .. } = admitted
         .term(
             &serde_json::from_value(
                 package["semantic_graph"]["nodes"][map_position]["node_id"].clone(),
@@ -465,7 +465,7 @@ fn source_map_row(
     id: &CheckedNodeId,
     value: filament_exact::ValueType,
 ) -> filament_contract_model::SelectedSourceCollectionRow {
-    let CheckedTerm::Aggregate { members } = package.term(id).expect("map term") else {
+    let CheckedTerm::Aggregate { members, .. } = package.term(id).expect("map term") else {
         panic!("map operands");
     };
     let target = |ordinal: usize| {

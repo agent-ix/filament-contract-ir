@@ -43,7 +43,7 @@ pub(super) fn bound(term: &CheckedTerm, index: usize) -> Option<&CheckedTerm> {
 
 pub(super) fn members(term: &CheckedTerm) -> &[CheckedTerm] {
     match term {
-        CheckedTerm::Aggregate { members } => members,
+        CheckedTerm::Aggregate { members, .. } => members,
         _ => &[],
     }
 }

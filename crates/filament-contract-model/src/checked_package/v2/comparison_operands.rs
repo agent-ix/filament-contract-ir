@@ -1232,7 +1232,7 @@ mod tests {
         else {
             panic!("clause");
         };
-        let CheckedTerm::Aggregate { members } = &mut arguments[0] else {
+        let CheckedTerm::Aggregate { members, .. } = &mut arguments[0] else {
             panic!("parameters");
         };
         members.push(CheckedTerm::Reference {

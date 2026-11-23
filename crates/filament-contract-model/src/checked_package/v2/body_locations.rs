@@ -51,7 +51,7 @@ struct Walk {
 /// The `body` binding of a function node: `Some(target)` when the aggregate
 /// body has one, where `target` is the node it references, if it references one.
 pub(super) fn body_binding(term: &CheckedTerm) -> Option<Option<&CheckedNodeId>> {
-    let CheckedTerm::Aggregate { members } = term else {
+    let CheckedTerm::Aggregate { members, .. } = term else {
         return None;
     };
     members.iter().find_map(|member| match member {
@@ -110,7 +110,7 @@ impl<Body> Graph<'_, '_, Body> {
                     }
                 }
                 CheckedTerm::Application { arguments, .. } => stack.extend(arguments.iter().rev()),
-                CheckedTerm::Aggregate { members } => stack.extend(members.iter().rev()),
+                CheckedTerm::Aggregate { members, .. } => stack.extend(members.iter().rev()),
                 CheckedTerm::Binding { value, .. } => stack.push(value),
                 _ => {}
             }

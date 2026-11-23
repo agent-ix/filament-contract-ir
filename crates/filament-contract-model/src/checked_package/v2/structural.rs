@@ -728,7 +728,7 @@ pub(super) fn validate_structural_nodes_with_keys(
                         super::CheckedTerm::Reference { target } => {
                             meter.push(&mut targets, target)?;
                         }
-                        super::CheckedTerm::Aggregate { members } => {
+                        super::CheckedTerm::Aggregate { members, .. } => {
                             meter.room(&mut pending, members.len())?;
                             pending.extend(members);
                         }
@@ -1648,7 +1648,7 @@ fn parameter_defect(
 
 pub(super) fn typed_aggregate(term: &super::CheckedTerm) -> Option<&[super::CheckedTerm]> {
     match term {
-        super::CheckedTerm::Aggregate { members } => Some(members),
+        super::CheckedTerm::Aggregate { members, .. } => Some(members),
         _ => None,
     }
 }
@@ -2063,7 +2063,7 @@ pub(super) fn typed_clause_body(body: &super::CheckedTerm) -> Option<ClauseBody<
 /// A `composite_type`/`reference` type node's target, borrowed from its typed
 /// body: exactly `aggregate{[reference(target)]}`.
 pub(super) fn reference_type_target_ref(term: &super::CheckedTerm) -> Option<&CheckedNodeId> {
-    let super::CheckedTerm::Aggregate { members } = term else {
+    let super::CheckedTerm::Aggregate { members, .. } = term else {
         return None;
     };
     let [one] = members.as_slice() else {
@@ -2075,7 +2075,7 @@ pub(super) fn reference_type_target_ref(term: &super::CheckedTerm) -> Option<&Ch
 pub(super) fn reference_type_target_typed(
     node: &super::CheckedSemanticNodeV2,
 ) -> Option<CheckedNodeId> {
-    let super::CheckedTerm::Aggregate { members } = &node.body else {
+    let super::CheckedTerm::Aggregate { members, .. } = &node.body else {
         return None;
     };
     let [super::CheckedTerm::Reference { target }] = members.as_slice() else {
@@ -2220,7 +2220,7 @@ pub(super) fn collect_application_dependencies(
                     }
                 }
             }
-            CheckedTerm::Aggregate { members } => {
+            CheckedTerm::Aggregate { members, .. } => {
                 meter.room(&mut pending, members.len())?;
                 pending.extend(members);
             }
@@ -2678,13 +2678,13 @@ mod tests {
             };
         }
         assert!(target.is_well_formed());
-        let super::super::CheckedTerm::Aggregate { members } = &mut body else {
+        let super::super::CheckedTerm::Aggregate { members, .. } = &mut body else {
             unreachable!()
         };
         let super::super::CheckedTerm::Binding { value, .. } = &mut members[0] else {
             unreachable!()
         };
-        let super::super::CheckedTerm::Aggregate { members } = value.as_mut() else {
+        let super::super::CheckedTerm::Aggregate { members, .. } = value.as_mut() else {
             unreachable!()
         };
         members[0] = super::super::CheckedTerm::Reference { target };

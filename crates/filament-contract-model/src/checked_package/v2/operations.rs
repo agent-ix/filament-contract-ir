@@ -793,7 +793,7 @@ fn literal_defect<'t>(
                     )?;
                 }
             }
-            CheckedTerm::Aggregate { members } => {
+            CheckedTerm::Aggregate { members, .. } => {
                 for (index, term) in members.iter().enumerate().rev() {
                     child(
                         meter,
@@ -1525,7 +1525,7 @@ fn expression_scope_depth(
                         if is_let {
                             meter.push(&mut pending, (value, depth))?;
                             inside = 1;
-                        } else if let (true, CheckedTerm::Aggregate { members }) =
+                        } else if let (true, CheckedTerm::Aggregate { members, .. }) =
                             (is_fold, value.as_ref())
                         {
                             for member in members {
@@ -1550,7 +1550,7 @@ fn expression_scope_depth(
                     }
                 }
             }
-            CheckedTerm::Aggregate { members } => {
+            CheckedTerm::Aggregate { members, .. } => {
                 for member in members {
                     meter.push(&mut pending, (member, depth))?;
                 }
@@ -1576,7 +1576,7 @@ fn sequence_function_level(
         if !matches!(kind, CheckedNodeKind::Function(_)) {
             continue;
         }
-        let Some(CheckedTerm::Aggregate { members }) =
+        let Some(CheckedTerm::Aggregate { members, .. }) =
             graph.terms.get(position).and_then(Option::as_ref)
         else {
             continue;
@@ -1590,7 +1590,7 @@ fn sequence_function_level(
             };
             match name.internal_kind() {
                 super::TermBindingName::Parameters => {
-                    if let CheckedTerm::Aggregate { members } = value.as_ref() {
+                    if let CheckedTerm::Aggregate { members, .. } = value.as_ref() {
                         parameter_count = Some(members.len());
                     }
                 }
@@ -1678,7 +1678,7 @@ impl<'g> ClauseLeaves<'g> {
             if *kind != CheckedNodeKind::Claim(ClaimForm::Hyperproperty) {
                 continue;
             }
-            let Some(CheckedTerm::Aggregate { members }) =
+            let Some(CheckedTerm::Aggregate { members, .. }) =
                 graph.terms.get(position).and_then(Option::as_ref)
             else {
                 continue;
@@ -1778,7 +1778,7 @@ impl<'g> ClauseLeaves<'g> {
         self.pending.clear();
         let mut scope = 1_usize;
         let mut guard = None;
-        if let CheckedTerm::Aggregate { members } = activation {
+        if let CheckedTerm::Aggregate { members, .. } = activation {
             for member in members {
                 work_at_path(meter, &application.read_node().key("node_id"), 1)?;
                 if let CheckedTerm::Binding { name, value, .. } = member {
@@ -1791,7 +1791,7 @@ impl<'g> ClauseLeaves<'g> {
             }
         }
         let guard_scope = scope;
-        if let CheckedTerm::Aggregate { members } = captures {
+        if let CheckedTerm::Aggregate { members, .. } = captures {
             for member in members {
                 work_at_path(meter, &application.read_node().key("node_id"), 1)?;
                 if let CheckedTerm::Binding { value, .. } = member {
@@ -1951,7 +1951,7 @@ fn check_sequence_bounds(
         if *kind != CheckedNodeKind::Value(ValueForm::Parameter) {
             continue;
         }
-        let Some(CheckedTerm::Aggregate { members }) =
+        let Some(CheckedTerm::Aggregate { members, .. }) =
             graph.terms.get(position).and_then(Option::as_ref)
         else {
             continue;
@@ -2036,7 +2036,7 @@ fn check_sequence_bounds(
     {
         return Ok(Some(refuse()));
     }
-    let Some(CheckedTerm::Aggregate { members }) =
+    let Some(CheckedTerm::Aggregate { members, .. }) =
         graph.terms.get(sequence_position).and_then(Option::as_ref)
     else {
         return Ok(Some(refuse()));
@@ -3740,7 +3740,7 @@ fn binder_bound<'a>(
     let value = match (operation.identity.as_ref(), value.as_ref()) {
         (
             "filament.op.collection.fold" | "filament.op.collection.reduce",
-            CheckedTerm::Aggregate { members },
+            CheckedTerm::Aggregate { members, .. },
         ) => {
             // The accumulator contains exactly one element binder. Its step,
             // rather than the aggregate wrapper, determines the bound type.
@@ -3943,21 +3943,24 @@ fn union_arms_hold(
         if name.as_ref() != member.name {
             return Ok(false);
         }
-        let CheckedTerm::Aggregate { members: parts } = value.as_ref() else {
+        let CheckedTerm::Aggregate { members: parts, .. } = value.as_ref() else {
             return Ok(false);
         };
         let [binders, body] = parts.as_slice() else {
             return Ok(false);
         };
         let mut binders_hold = match binders {
-            CheckedTerm::Aggregate { members: binders } => {
-                Some(binders.as_slice()).filter(|binders| binders.len() == member.payload.len())
-            }
+            CheckedTerm::Aggregate {
+                members: binders, ..
+            } => Some(binders.as_slice()).filter(|binders| binders.len() == member.payload.len()),
             _ => None,
         }
         .is_some();
         if binders_hold {
-            if let CheckedTerm::Aggregate { members: binders } = binders {
+            if let CheckedTerm::Aggregate {
+                members: binders, ..
+            } = binders
+            {
                 for (binder, payload) in binders.iter().zip(&member.payload) {
                     if !binder_matches_payload(binder, payload, graph, meter)? {
                         binders_hold = false;
@@ -4543,7 +4546,7 @@ fn check_control_result(
 
 /// The `(name, level)` a `value`/`parameter` node at `position` declares.
 fn parameter_name_level<'g>(position: usize, graph: &Graph<'g>) -> Option<(&'g str, &'g str)> {
-    let Some(CheckedTerm::Aggregate { members }) =
+    let Some(CheckedTerm::Aggregate { members, .. }) =
         graph.terms.get(position).and_then(Option::as_ref)
     else {
         return None;
@@ -4695,7 +4698,7 @@ fn body_root_defect(
     }
     let root_type = match graph.terms.get(position).and_then(Option::as_ref) {
         Some(CheckedTerm::Application { result_type, .. }) => Some(result_type),
-        Some(CheckedTerm::Aggregate { members }) if tag == CheckedNodeTag::Function => members
+        Some(CheckedTerm::Aggregate { members, .. }) if tag == CheckedNodeTag::Function => members
             .iter()
             .find_map(|member| match member {
                 CheckedTerm::Binding { name, value, .. }
@@ -4757,7 +4760,8 @@ fn check_function_call(
     if kinds[callee].tag() != CheckedNodeTag::Function {
         return Ok(None);
     }
-    let Some(CheckedTerm::Aggregate { members }) = graph.terms.get(callee).and_then(Option::as_ref)
+    let Some(CheckedTerm::Aggregate { members, .. }) =
+        graph.terms.get(callee).and_then(Option::as_ref)
     else {
         return Ok(None);
     };
@@ -4776,7 +4780,7 @@ fn check_function_call(
         })
         .flatten()
         .and_then(|term| match term {
-            CheckedTerm::Aggregate { members } => Some(members.as_slice()),
+            CheckedTerm::Aggregate { members, .. } => Some(members.as_slice()),
             _ => None,
         });
     let parameter_type = |entry: &CheckedTerm| -> Option<&CheckedNodeId> {
@@ -5328,7 +5332,7 @@ fn check_linked_population(
                 && least_type_occurrence(node).is_some()
                 && term_of(&node.node_id).is_some_and(|term| {
                     population_maximum(term).is_some()
-                        || matches!(term, CheckedTerm::Aggregate { members } if members.is_empty())
+                        || matches!(term, CheckedTerm::Aggregate { members, .. } if members.is_empty())
                 })
         })
         .map(|(node, _)| node);
@@ -5358,7 +5362,7 @@ fn reference_target<'g>(
     if *graph.kinds.get(position)? != CheckedNodeKind::CompositeType(CompositeTypeForm::Reference) {
         return None;
     }
-    let CheckedTerm::Aggregate { members } = graph.terms.get(position)?.as_ref()? else {
+    let CheckedTerm::Aggregate { members, .. } = graph.terms.get(position)?.as_ref()? else {
         return None;
     };
     let [CheckedTerm::Reference { target }] = members.as_slice() else {
@@ -6028,7 +6032,7 @@ fn slot_domain_result_matches(
     {
         return false;
     }
-    let Some(CheckedTerm::Aggregate { members }) =
+    let Some(CheckedTerm::Aggregate { members, .. }) =
         graph.terms.get(set_position).and_then(Option::as_ref)
     else {
         return false;
@@ -6042,7 +6046,7 @@ fn slot_domain_result_matches(
     if !bounded {
         return true;
     }
-    let Some(CheckedTerm::Aggregate { members }) =
+    let Some(CheckedTerm::Aggregate { members, .. }) =
         graph.terms.get(result_position).and_then(Option::as_ref)
     else {
         return false;
@@ -6093,7 +6097,7 @@ fn operation_bound(term: &CheckedTerm, index: usize) -> Option<&CheckedTerm> {
 
 fn operation_typed_members(term: &CheckedTerm) -> &[CheckedTerm] {
     match term {
-        CheckedTerm::Aggregate { members } => members,
+        CheckedTerm::Aggregate { members, .. } => members,
         _ => &[],
     }
 }
@@ -6210,7 +6214,7 @@ fn check_quantifier_slot_binder(
         if *kind != CheckedNodeKind::Value(ValueForm::Parameter) {
             continue;
         }
-        let Some(CheckedTerm::Aggregate { members }) =
+        let Some(CheckedTerm::Aggregate { members, .. }) =
             graph.terms.get(position).and_then(Option::as_ref)
         else {
             continue;
@@ -6494,7 +6498,7 @@ fn check_field_member(
             CheckedPackageRefusalCause::OperatorIneligible,
         )));
     };
-    let Some(Some(CheckedTerm::Aggregate { members })) = graph.terms.get(position) else {
+    let Some(Some(CheckedTerm::Aggregate { members, .. })) = graph.terms.get(position) else {
         return Ok(None);
     };
     let bound = members.iter().find_map(|entry| match entry {
@@ -6612,7 +6616,7 @@ fn type_pin<'t>(
     terms: &'t [Option<CheckedTerm>],
     index: &GraphIndex<'_>,
 ) -> Option<&'t str> {
-    let CheckedTerm::Aggregate { members } = terms.get(*index.get(type_id)?)?.as_ref()? else {
+    let CheckedTerm::Aggregate { members, .. } = terms.get(*index.get(type_id)?)?.as_ref()? else {
         return None;
     };
     members.iter().find_map(|entry| match entry {
@@ -6731,7 +6735,7 @@ fn inner_type(
         .get(position)
         .and_then(Option::as_ref)
         .and_then(|term| match term {
-            CheckedTerm::Aggregate { members } => members.first(),
+            CheckedTerm::Aggregate { members, .. } => members.first(),
             _ => None,
         })
         .and_then(referenced_type)
@@ -7102,7 +7106,7 @@ impl<'g, 'm, 'b> LeafWalk<'g, 'm, 'b> {
     ) -> Result<(Anchor, RawEdges), LeafWalkEnd> {
         let terms = self.terms;
         let members = || match terms.get(position).and_then(Option::as_ref) {
-            Some(CheckedTerm::Aggregate { members }) => Ok(members.as_slice()),
+            Some(CheckedTerm::Aggregate { members, .. }) => Ok(members.as_slice()),
             _ => Err(LeafWalkEnd::Unresolved),
         };
         let meter = &mut self.meter;
@@ -7116,7 +7120,7 @@ impl<'g, 'm, 'b> LeafWalk<'g, 'm, 'b> {
                     let CheckedTerm::Binding { name, value, .. } = member else {
                         return Err(LeafWalkEnd::Unresolved);
                     };
-                    let target = if let CheckedTerm::Aggregate { members } = value.as_ref() {
+                    let target = if let CheckedTerm::Aggregate { members, .. } = value.as_ref() {
                         let [CheckedTerm::Binding { name, value, .. }] = members.as_slice() else {
                             return Err(LeafWalkEnd::Unresolved);
                         };
@@ -7174,7 +7178,10 @@ impl<'g, 'm, 'b> LeafWalk<'g, 'm, 'b> {
                     if !super::identity::is_identifier(name) {
                         return Err(LeafWalkEnd::Unresolved);
                     }
-                    let CheckedTerm::Aggregate { members: payload } = value.as_ref() else {
+                    let CheckedTerm::Aggregate {
+                        members: payload, ..
+                    } = value.as_ref()
+                    else {
                         return Err(LeafWalkEnd::Unresolved);
                     };
                     for (at, member) in payload.iter().enumerate() {

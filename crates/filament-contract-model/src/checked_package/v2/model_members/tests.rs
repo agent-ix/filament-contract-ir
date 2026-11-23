@@ -2063,7 +2063,13 @@ fn selected_type_bounds_allocate_only_reserved_storage() {
             }),
         })
         .collect();
-    let terms = [Some(CheckedTerm::Aggregate { members }), None];
+    let terms = [
+        Some(CheckedTerm::Aggregate {
+            members,
+            temporal_profile: None,
+        }),
+        None,
+    ];
     let mut keys = vec![std::sync::Arc::new(id)];
     let CheckedNodePathSegment::Node(integer) = &keys[0].path[3] else {
         panic!("integer operand");

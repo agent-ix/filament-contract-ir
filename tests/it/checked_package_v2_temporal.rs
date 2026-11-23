@@ -3657,14 +3657,21 @@ fn tcb_14_a_finite_hyper_body_profile_is_the_one_its_rows_are_checked_against() 
         assert_eq!(row.trace.as_deref(), Some(trace));
         assert_eq!(&*row.clock_name, "t");
     }
-    assert_eq!(
-        serde_json::to_value(&rows[0].clock).expect("clock"),
-        package["temporal_bindings"][0]["clock"]
-    );
-    assert_eq!(
-        package["temporal_bindings"][0]["clock"]["kind"],
-        "event_position"
-    );
+    let Some(filament_contract_model::CheckedTerm::Aggregate {
+        temporal_profile: Some(profile),
+        ..
+    }) = admitted.term(&hyper_id)
+    else {
+        panic!("the admitted body carries its typed temporal_profile");
+    };
+    assert_eq!(&*profile.authority, "agent-ix");
+    assert_eq!(&*profile.identity, BOUNDED);
+    for row in &rows {
+        assert_eq!(
+            serde_json::to_value(&row.clock).expect("clock"),
+            json!({"kind": "event_position", "sequence_authority": "fixture-events"})
+        );
+    }
 }
 
 #[trace("TC-2028", "FR-322-AC-464")]
@@ -3741,15 +3748,112 @@ fn a_behaviours_hyper_body_carries_no_profile_member_and_other_nodes_may_not() {
         Cause::InvalidValue,
         &body_profile_path(hyper),
     );
-    let mut other = package;
-    let clause_at = clause(&other);
-    other["semantic_graph"]["nodes"][clause_at]["body"]["temporal_profile"] = member;
+    // The guard names the body, whatever shape the node's body has.
+    let malformed_wire = |case: &str, package: &Value, at: usize| {
+        assert_eq!(
+            refusal_of(case, package).0,
+            (Code::MalformedWire, None, Some(at_node(at, "/body")))
+        );
+    };
+    let mut application = package.clone();
+    let clause_at = clause(&application);
+    application["semantic_graph"]["nodes"][clause_at]["body"]["temporal_profile"] = member.clone();
+    malformed_wire("a profile member on a clause", &application, clause_at);
+    let mut aggregate = package;
+    let record = nodes(&aggregate)
+        .iter()
+        .position(|node| {
+            node["semantic_form"] != "hyperproperty" && node["body"]["term"] == "aggregate"
+        })
+        .expect("an aggregate-bodied node");
     assert_eq!(
-        refusal_of("a profile member on a clause", &other).0,
+        aggregate["semantic_graph"]["nodes"][record]["body"]["term"],
+        "aggregate"
+    );
+    aggregate["semantic_graph"]["nodes"][record]["body"]["temporal_profile"] = member;
+    malformed_wire(
+        "a profile member on an aggregate-bodied node",
+        &aggregate,
+        record,
+    );
+}
+
+#[trace("TC-2028", "FR-322-AC-464")]
+#[test]
+fn a_malformed_finite_hyper_body_profile_is_malformed_wire_at_the_member() {
+    let (package, at) = finite_clock_fixture();
+    let member = body_profile_path(at);
+    for (case, literal, path) in [
         (
-            Code::InvalidSemanticGraph,
+            "a non-object",
+            json!("filament.temporal.event-position.false-extension/v1"),
+            member.clone(),
+        ),
+        (
+            "an extra field",
+            json!({"authority": "agent-ix", "identity": BOUNDED, "extra": "x"}),
+            member.clone(),
+        ),
+        (
+            "an empty authority",
+            json!({"authority": "", "identity": BOUNDED}),
+            format!("{member}/authority"),
+        ),
+        (
+            "an empty identity",
+            json!({"authority": "agent-ix", "identity": ""}),
+            format!("{member}/identity"),
+        ),
+        (
+            "a missing identity",
+            json!({"authority": "agent-ix"}),
+            member.clone(),
+        ),
+    ] {
+        let mut malformed = package.clone();
+        malformed["semantic_graph"]["nodes"][at]["body"]["temporal_profile"] = literal;
+        assert_eq!(
+            refusal_of(case, &malformed).0,
+            (Code::MalformedWire, None, Some(path)),
+            "{case}"
+        );
+    }
+}
+
+#[trace("TC-2028", "FR-322-AC-464")]
+#[test]
+fn finite_hyper_member_checks_report_shape_then_the_lock_join_then_rows() {
+    let (package, at) = finite_clock_fixture();
+    let row = hyper_rows(&package)[0];
+    let bad_kind = json!({
+        "kind": "fixed_sample",
+        "epoch": {"kind": "integer", "decimal": "0"},
+        "period": {"kind": "integer", "decimal": "1"},
+        "unit": "tick",
+    });
+    // A malformed member is reported before a row defect.
+    let mut malformed = package.clone();
+    malformed["semantic_graph"]["nodes"][at]["body"]["temporal_profile"]["authority"] = json!("");
+    malformed["temporal_bindings"][row]["clock"] = bad_kind.clone();
+    assert_eq!(
+        refusal_of("malformed member and bad row", &malformed).0,
+        (
+            Code::MalformedWire,
             None,
-            Some(at_node(clause_at, "/body"))
+            Some(format!("{}/authority", body_profile_path(at)))
+        )
+    );
+    // An unselected member is reported before a row defect.
+    let mut unselected = package;
+    unselected["semantic_graph"]["nodes"][at]["body"]["temporal_profile"]["identity"] =
+        json!("filament.temporal.fixed-sample.false-extension/v1");
+    unselected["temporal_bindings"][row]["clock"] = bad_kind;
+    assert_eq!(
+        refusal_of("unselected member and bad row", &unselected).0,
+        (
+            Code::InvalidPackage,
+            Some(Cause::OperationLawUnselected),
+            Some(body_profile_path(at))
         )
     );
 }

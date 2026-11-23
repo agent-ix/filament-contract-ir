@@ -222,7 +222,7 @@ fn function_body<'a>(
     budget: &mut Budget,
     body_root_policy: BodyRootPolicy,
 ) -> Result<ParsedFunction<'a>, CheckedCallableReadError> {
-    let Some(CheckedTerm::Aggregate { members }) = package.term(node) else {
+    let Some(CheckedTerm::Aggregate { members, .. }) = package.term(node) else {
         return Err(budget.error(CheckedCallableReadErrorCode::MalformedBody, node));
     };
     let mut parameters = None;
@@ -235,7 +235,7 @@ fn function_body<'a>(
         };
         match name.kind() {
             CheckedBindingNameKind::Parameters => {
-                let CheckedTerm::Aggregate { members } = value.as_ref() else {
+                let CheckedTerm::Aggregate { members, .. } = value.as_ref() else {
                     return Err(budget.error(CheckedCallableReadErrorCode::MalformedBody, node));
                 };
                 let mut ordered = Vec::new();
@@ -711,7 +711,10 @@ mod tests {
         std::sync::Arc::make_mut(&mut package.wire)
             .semantic_graph
             .nodes[3]
-            .body = CheckedTerm::Aggregate { members: vec![] };
+            .body = CheckedTerm::Aggregate {
+            members: vec![],
+            temporal_profile: None,
+        };
         let selected = SelectedOperationMembers::from_stage_rows(&package, [], 0).unwrap();
         assert!(package
             .callable_table(&selected, 100)
@@ -730,6 +733,7 @@ mod tests {
                     target: node_id('9'),
                 }),
             }],
+            temporal_profile: None,
         };
         let selected = SelectedOperationMembers::from_stage_rows(&package, [], 0).unwrap();
         assert_eq!(
@@ -752,6 +756,7 @@ mod tests {
                 binder: None,
                 value: Box::new(CheckedTerm::Reference { target }),
             }],
+            temporal_profile: None,
         };
         std::sync::Arc::make_mut(&mut package.wire)
             .semantic_graph
@@ -805,6 +810,7 @@ mod tests {
                         members: vec![CheckedTerm::Reference {
                             target: node_id('2'),
                         }],
+                        temporal_profile: None,
                     }),
                 },
                 CheckedTerm::Binding {
@@ -815,6 +821,7 @@ mod tests {
                     }),
                 },
             ],
+            temporal_profile: None,
         };
         assert_eq!(
             package

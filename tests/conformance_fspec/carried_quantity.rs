@@ -127,7 +127,7 @@ fn assert_rational_carrier_bounds(
         *kind,
         filament_contract_model::CheckedNodeKind::BoundedDomain(BoundedDomainForm::RationalRange)
     );
-    let CheckedTerm::Aggregate { members } = &carrier.body else {
+    let CheckedTerm::Aggregate { members, .. } = &carrier.body else {
         panic!("rational carrier body is not a typed aggregate");
     };
     let names = [
@@ -558,7 +558,7 @@ fn published_bounded_quantity_shape_and_bounds_policy() {
                 })
                 .expect("admitted bounded node")
                 .0;
-            let CheckedTerm::Aggregate { members } = &bounded.body else {
+            let CheckedTerm::Aggregate { members, .. } = &bounded.body else {
                 panic!("{id}: bounded body is not aggregate");
             };
             assert_eq!(members.len(), 3);
@@ -691,7 +691,7 @@ fn admitted_bounded_quantity_is_a_map_scalar_key() {
         .zip(admitted.node_kinds())
         .find(|(_, kind)| **kind == CheckedNodeKind::CompositeType(CompositeTypeForm::Map))
         .expect("admitted Map");
-    let Some(CheckedTerm::Aggregate { members }) = admitted.term(&map.node_id) else {
+    let Some(CheckedTerm::Aggregate { members, .. }) = admitted.term(&map.node_id) else {
         panic!("retained Map body");
     };
     let CheckedTerm::Binding { value, .. } = &members[0] else {
@@ -1542,7 +1542,7 @@ fn carried_sum_cs01_retains_integer_decimal_and_rational_domains() {
             .expect("type argument");
         assert_eq!(member, &carried.node_id);
         assert_eq!(member, result_type);
-        let CheckedTerm::Aggregate { members } = &carried.body else {
+        let CheckedTerm::Aggregate { members, .. } = &carried.body else {
             panic!("carried bindings");
         };
         let CheckedTerm::Binding { name, value, .. } = &members[0] else {
@@ -1586,7 +1586,7 @@ fn carried_sum_cs01_retains_integer_decimal_and_rational_domains() {
             admitted.node_kind(&carrier.node_id),
             Some(CheckedNodeKind::BoundedDomain(carrier_form))
         );
-        let CheckedTerm::Aggregate { members } = &carrier.body else {
+        let CheckedTerm::Aggregate { members, .. } = &carrier.body else {
             panic!("carrier bounds");
         };
         let actual = members

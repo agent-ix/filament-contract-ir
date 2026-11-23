@@ -159,7 +159,7 @@ fn timed_clause_admission_retains_one_anchor_occurrence_and_operation_urgency() 
     }
 
     fn member<'a>(body: &'a CheckedTerm, name: &str) -> &'a CheckedTerm {
-        let CheckedTerm::Aggregate { members } = body else {
+        let CheckedTerm::Aggregate { members, .. } = body else {
             panic!("retained timed body must be an aggregate")
         };
         let Some(CheckedTerm::Binding { value, .. }) = members.iter().find(|term| {
@@ -220,7 +220,7 @@ fn timed_clause_admission_retains_one_anchor_occurrence_and_operation_urgency() 
         .iter()
         .filter(|node| node.semantic_form.as_ref() == "clock_place")
     {
-        let CheckedTerm::Aggregate { members } = &place.body else {
+        let CheckedTerm::Aggregate { members, .. } = &place.body else {
             panic!("admitted clock place must retain an aggregate body")
         };
         assert_eq!(
@@ -281,7 +281,7 @@ fn timed_clause_admission_retains_one_anchor_occurrence_and_operation_urgency() 
         .expect("retained operation urgency");
     assert_eq!(urgency.semantic_form.as_ref(), "urgency");
     let urgency_body = package.term(&urgency_id).expect("retained urgency body");
-    let CheckedTerm::Aggregate { members } = urgency_body else {
+    let CheckedTerm::Aggregate { members, .. } = urgency_body else {
         panic!("operation urgency must retain its aggregate body")
     };
     assert_eq!(members.len(), 3, "operation urgency is model plus name");

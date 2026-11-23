@@ -3197,7 +3197,7 @@ fn validate_body<'a, V: TermSource<'a>>(
         && body.member("temporal_profile").is_some()
     {
         return Err(refuse(
-            CheckedPackageRefusalCode::InvalidSemanticGraph,
+            CheckedPackageRefusalCode::MalformedWire,
             at.pointer(),
         ));
     }

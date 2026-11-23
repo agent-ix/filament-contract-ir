@@ -238,7 +238,7 @@ fn every_published_guard_case_uses_the_strict_reader() {
                         && node.semantic_form.as_ref() == "timed_model"
                 })
                 .expect("admitted timed root");
-            let CheckedTerm::Aggregate { members } = &root.body else {
+            let CheckedTerm::Aggregate { members, .. } = &root.body else {
                 panic!("typed root aggregate");
             };
             for name in [
@@ -251,7 +251,7 @@ fn every_published_guard_case_uses_the_strict_reader() {
             ] {
                 assert!(members.iter().any(|member| matches!(member,
                     CheckedTerm::Binding { name: actual, value, .. } if actual.as_ref() == name
-                        && matches!(value.as_ref(), CheckedTerm::Aggregate { members } if members.is_empty())
+                        && matches!(value.as_ref(), CheckedTerm::Aggregate { members, .. } if members.is_empty())
                 )), "{name}");
             }
             println!("{id}: admitted with all six empty timed aggregates");
@@ -360,7 +360,7 @@ fn admitted_presence_retains_boolean_owner_slot_and_resolved_path_facts() {
     for name in ["v", "q"] {
         let place = &vectors["presence"]["places"][name];
         let position = usize::try_from(place["package_node"].as_u64().unwrap()).unwrap();
-        let CheckedTerm::Aggregate { members } = &package.resolved_graph().nodes[position].body
+        let CheckedTerm::Aggregate { members, .. } = &package.resolved_graph().nodes[position].body
         else {
             panic!("place body")
         };
@@ -368,7 +368,7 @@ fn admitted_presence_retains_boolean_owner_slot_and_resolved_path_facts() {
         let CheckedTerm::Binding { value, .. } = &members[2] else {
             panic!("resolved_path")
         };
-        let CheckedTerm::Aggregate { members: rows } = value.as_ref() else {
+        let CheckedTerm::Aggregate { members: rows, .. } = value.as_ref() else {
             panic!("resolved rows")
         };
         assert_eq!(rows.len(), if name == "v" { 1 } else { 2 });

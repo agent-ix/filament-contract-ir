@@ -1042,9 +1042,12 @@ fn validate_one<'a, V: TermSource<'a>>(
             Ok(result_type_work.saturating_add(arguments))
         }
         BodyTerm::Aggregate => {
-            if wire.exact_members(&["term", "members"])
-                || (is_body_root && wire.exact_members(&["term", "members", "temporal_profile"]))
-            {
+            let profile =
+                is_body_root && wire.exact_members(&["term", "members", "temporal_profile"]);
+            if profile {
+                check_temporal_profile(wire, at, ids)?;
+            }
+            if wire.exact_members(&["term", "members"]) || profile {
                 require_array(wire, "members", at, ids)
             } else {
                 Err(invalid(at))
@@ -1115,6 +1118,33 @@ fn term_refusal(
     super::v2::read_charge::refuse_at(&mut **sink, ids.1, code, at)
 }
 
+/// A body aggregate's `temporal_profile` is exactly a definition reference:
+/// an object of two non-empty texts, `authority` and `identity`. A defect is
+/// `malformed_wire` at the member, or at the text that is empty or not text.
+fn check_temporal_profile<'a, V: TermSource<'a>>(
+    wire: V,
+    at: &Trail<'_>,
+    ids: IdRead<'_, '_, '_>,
+) -> Result<(), ValidationFailure> {
+    let refuse = |position: &Trail<'_>| {
+        term_refusal(CheckedPackageRefusalCode::MalformedWire, position, ids)
+    };
+    let member = at.key("temporal_profile");
+    let Some(profile) = wire.member("temporal_profile") else {
+        return Err(refuse(&member));
+    };
+    if !profile.is_object() || !profile.exact_members(&["authority", "identity"]) {
+        return Err(refuse(&member));
+    }
+    for text in ["authority", "identity"] {
+        let named = profile.member(text).and_then(TermSource::text);
+        if !named.is_some_and(is_nonempty) {
+            return Err(refuse(&member.key(text)));
+        }
+    }
+    Ok(())
+}
+
 /// Reads `value` as a node ID, charging the shared sink.
 fn read_node_id<'a, V: TermSource<'a>>(
     value: V,
@@ -1148,6 +1178,7 @@ pub(in crate::checked_package) enum TermField {
     ResultType,
     Arguments,
     Members,
+    TemporalProfile,
     Name,
     Binder,
     Package,
@@ -1187,6 +1218,7 @@ impl TermField {
             Self::ResultType => "result_type",
             Self::Arguments => "arguments",
             Self::Members => "members",
+            Self::TemporalProfile => "temporal_profile",
             Self::Name => "name",
             Self::Binder => "binder",
             Self::Package => "package",

@@ -778,7 +778,7 @@ fn source_record_row_matches(package: &CheckedPackageV2, row: &SelectedSourceRec
                 }
                 let (optional, target) = match value.as_ref() {
                     CheckedTerm::Reference { target } => (false, target),
-                    CheckedTerm::Aggregate { members } => {
+                    CheckedTerm::Aggregate { members, .. } => {
                         let [CheckedTerm::Binding { name, value, .. }] = members.as_slice() else {
                             return false;
                         };
@@ -4268,7 +4268,7 @@ impl CheckedPackageV2 {
                 }
             }
             CheckedNodeKind::CompositeType(CompositeTypeForm::Reference) => {
-                let CheckedTerm::Aggregate { members } = &type_node.body else {
+                let CheckedTerm::Aggregate { members, .. } = &type_node.body else {
                     return Err(refuse!(
                         ExactTypeProjectionErrorCode::UnresolvedSelectedDeclaration
                     ));

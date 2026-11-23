@@ -2416,7 +2416,7 @@ mod tests {
         let mut unions = Vec::new();
         let mut collections = Vec::new();
         for node in &package.resolved_graph().nodes {
-            let Some(CheckedTerm::Aggregate { members }) = package.term(&node.node_id) else {
+            let Some(CheckedTerm::Aggregate { members, .. }) = package.term(&node.node_id) else {
                 continue;
             };
             let qualified = node
@@ -2438,7 +2438,7 @@ mod tests {
                                 CheckedTerm::Reference { target } => {
                                     (Presence::Required, target.clone())
                                 }
-                                CheckedTerm::Aggregate { members } => {
+                                CheckedTerm::Aggregate { members, .. } => {
                                     let [CheckedTerm::Binding { value, .. }] = members.as_slice()
                                     else {
                                         panic!("optional field")
@@ -2510,7 +2510,7 @@ mod tests {
                             let CheckedTerm::Binding { name, value, .. } = term else {
                                 panic!("union case")
                             };
-                            let CheckedTerm::Aggregate { members } = value.as_ref() else {
+                            let CheckedTerm::Aggregate { members, .. } = value.as_ref() else {
                                 panic!("union payload")
                             };
                             let payload_nodes = members

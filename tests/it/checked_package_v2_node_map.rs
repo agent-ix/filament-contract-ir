@@ -143,7 +143,7 @@ fn public_node_and_term_mapping_visits_original_slots_once_in_order() {
     assert_eq!(node.semantic_type, c);
     assert_eq!(node.dependencies[0], node.node_id);
     assert_eq!(node.owner_model.as_ref(), Some(&node.node_id));
-    let CheckedTerm::Aggregate { members } = &node.body else {
+    let CheckedTerm::Aggregate { members, .. } = &node.body else {
         panic!("aggregate body changed form");
     };
     assert!(matches!(&members[0], CheckedTerm::Reference { target } if target == &node.node_id));
@@ -171,7 +171,7 @@ fn public_node_and_term_mapping_visits_original_slots_once_in_order() {
         Some(replacement)
     });
     assert_eq!(next, 3);
-    let CheckedTerm::Aggregate { members } = independent else {
+    let CheckedTerm::Aggregate { members, .. } = independent else {
         panic!("aggregate changed form");
     };
     assert!(matches!(&members[0], CheckedTerm::Reference { target } if target.ordinal == 1));

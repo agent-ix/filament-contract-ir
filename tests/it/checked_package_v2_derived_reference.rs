@@ -137,7 +137,7 @@ fn derived_reference_target_joins_eligible_declaration_kinds() {
             reference,
             "{tag}/{form}"
         );
-        let Some(CheckedTerm::Aggregate { members }) = admitted.term(&id) else {
+        let Some(CheckedTerm::Aggregate { members, .. }) = admitted.term(&id) else {
             panic!("{tag}/{form}: typed aggregate reference body is required");
         };
         let [CheckedTerm::Reference { target }] = members.as_slice() else {
@@ -204,7 +204,7 @@ fn derived_reference_target_joins_eligible_declaration_kinds() {
     let id: CheckedNodeId = serde_json::from_value(reference).expect("reference identity");
     assert!(matches!(
         admitted.term(&id),
-        Some(CheckedTerm::Aggregate { members }) if matches!(
+        Some(CheckedTerm::Aggregate { members, .. }) if matches!(
             members.as_slice(), [CheckedTerm::Reference { target: actual }] if
                 serde_json::to_value(actual).expect("target") == target
         )
