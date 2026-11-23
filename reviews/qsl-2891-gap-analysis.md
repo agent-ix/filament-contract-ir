@@ -29,3 +29,10 @@ Ticket: QSL-2891. This audit is scoped to the PR #1146 diff. `quire matrix --sco
 - Stubs: none in the diff.
 - Semantic review: skipped (not requested).
 - Plan completion: not assessed
+
+## Dispositions
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-001 | fixed | FR-038-AC-614 added (with its TC-048 matrix row): result `Set<D>` or `collection_bounds` `[0, N]` with `N` the terminal slot step's maximum, joined equal to the row before the slot (AC-552); `field q`, `slot(sequence, 0, 2)` admits `[0, 2]` and `[0, 3]` refuses `ill_typed`/`operator-ineligible` at `/body/result_type`. Consistent with FSpec FR-772 and FR-038-AC-552. The FSpec FR-772-AC-2 negative is upstream in agent-ix/filament-specification and not part of this repo. |
+| FND-002 | fixed | `slot_domain_over_a_field_and_slot_place_admits_its_declared_maximum_only` (tests/conformance_fspec/clock_payload_tuple.rs) reads a real `field clocks` + `slot(set, 0, 2)` package through the strict reader: `[0, 2]` admits, `[0, 3]` refuses at `/body/result_type`. It passes at head and fails on the pre-fix code (`[0, 2]` refused), verified on titan. |
