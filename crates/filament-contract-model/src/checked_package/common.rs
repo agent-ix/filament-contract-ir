@@ -1042,7 +1042,9 @@ fn validate_one<'a, V: TermSource<'a>>(
             Ok(result_type_work.saturating_add(arguments))
         }
         BodyTerm::Aggregate => {
-            if wire.exact_members(&["term", "members"]) {
+            if wire.exact_members(&["term", "members"])
+                || (is_body_root && wire.exact_members(&["term", "members", "temporal_profile"]))
+            {
                 require_array(wire, "members", at, ids)
             } else {
                 Err(invalid(at))

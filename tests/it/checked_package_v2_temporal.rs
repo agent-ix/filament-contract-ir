@@ -359,6 +359,15 @@ pub(super) fn select_profile(package: &mut Value, identity: &str) {
         {
             node["body"]["arguments"][1]["value"] = json!("fixture-clock");
         }
+        // A finite-domain hyperproperty names its profile in its own body.
+        if node["node_tag"] == "claim" && node["semantic_form"] == "hyperproperty" {
+            if let Some(member) = node
+                .get_mut("body")
+                .and_then(|body| body.get_mut("temporal_profile"))
+            {
+                member["identity"] = json!(identity);
+            }
+        }
         // `get_mut`, not indexing: indexing a body without an `operation`
         // would insert one.
         let laws = node
@@ -3602,6 +3611,149 @@ fn tc_483_a_finite_domain_row_is_refused_at_its_own_defect() {
     refusal_at_trace(&kind, &format!("/temporal_bindings/{}/clock/kind", rows[0]));
 }
 
+/// Replace the lock's temporal-role selections with `identities`, in order,
+/// where the first stood.
+fn select_temporal_profiles(package: &mut Value, identities: &[&str]) {
+    let selections = package["lock"]["profile_selections"]
+        .as_array_mut()
+        .expect("selections");
+    let first = selections
+        .iter()
+        .position(|selection| selection["role"] == "temporal_profile")
+        .expect("a temporal selection");
+    selections.retain(|selection| selection["role"] != "temporal_profile");
+    for (offset, identity) in identities.iter().enumerate() {
+        selections.insert(
+            first + offset,
+            json!({"role": "temporal_profile",
+                   "definition": {"authority": "agent-ix", "identity": identity}}),
+        );
+    }
+}
+
+fn body_profile_path(at: usize) -> String {
+    at_node(at, "/body/temporal_profile")
+}
+
+#[trace("TC-2028", "FR-322-AC-464")]
+#[test]
+fn tcb_14_a_finite_hyper_body_profile_is_the_one_its_rows_are_checked_against() {
+    let (mut package, at) = finite_clock_fixture();
+    select_temporal_profiles(&mut package, &[INFINITE, BOUNDED]);
+    package["semantic_graph"]["nodes"][at]["body"]["temporal_profile"]["identity"] = json!(BOUNDED);
+    settle(&mut package);
+    let admitted = admitted("lock [T, D] with body D", &package);
+    let rows: Vec<_> = admitted
+        .temporal_bindings()
+        .expect("rows")
+        .iter()
+        .filter(|row| row.trace.is_some())
+        .collect();
+    assert_eq!(rows.len(), 2);
+    let hyper_id = typed_node_id_of(&package, at);
+    for (row, trace) in rows.iter().zip(["a", "b"]) {
+        assert_eq!(row.declaration, hyper_id);
+        assert_eq!(row.occurrence, 0);
+        assert_eq!(row.trace.as_deref(), Some(trace));
+        assert_eq!(&*row.clock_name, "t");
+    }
+    assert_eq!(
+        serde_json::to_value(&rows[0].clock).expect("clock"),
+        package["temporal_bindings"][0]["clock"]
+    );
+    assert_eq!(
+        package["temporal_bindings"][0]["clock"]["kind"],
+        "event_position"
+    );
+}
+
+#[trace("TC-2028", "FR-322-AC-464")]
+#[test]
+fn tcb_15_a_finite_hyper_body_profile_no_lock_row_selects_is_refused() {
+    let (mut package, at) = finite_clock_fixture();
+    // The body names the fixed-sample profile, which no lock row selects; the
+    // fixture's clause keeps its own selected profile.
+    select_temporal_profiles(&mut package, &[INFINITE, BOUNDED]);
+    package["semantic_graph"]["nodes"][at]["body"]["temporal_profile"]["identity"] =
+        json!("filament.temporal.fixed-sample.false-extension/v1");
+    settle(&mut package);
+    refusal_at(
+        &package,
+        Code::InvalidPackage,
+        Cause::OperationLawUnselected,
+        &body_profile_path(at),
+    );
+}
+
+#[trace("TC-2028", "FR-322-AC-464")]
+#[test]
+fn tcb_16_a_finite_hyper_row_kind_is_refused_against_the_body_profile() {
+    let (mut package, _) = finite_clock_fixture();
+    select_temporal_profiles(&mut package, &[INFINITE, BOUNDED]);
+    settle(&mut package);
+    let row = hyper_rows(&package)[0];
+    package["temporal_bindings"][row]["clock"] = json!({
+        "kind": "fixed_sample",
+        "epoch": {"kind": "integer", "decimal": "0"},
+        "period": {"kind": "rational", "numerator": "1", "denominator": "10"},
+        "unit": "milliseconds",
+    });
+    refusal_at_trace(&package, &format!("/temporal_bindings/{row}/clock/kind"));
+}
+
+#[trace("TC-2028", "FR-322-AC-464")]
+#[test]
+fn a_finite_hyper_body_profile_must_be_present_and_selected_exactly_once() {
+    let (package, at) = finite_clock_fixture();
+    let mut absent = package.clone();
+    absent["semantic_graph"]["nodes"][at]["body"]
+        .as_object_mut()
+        .expect("body")
+        .remove("temporal_profile");
+    settle(&mut absent);
+    refusal_at(
+        &absent,
+        Code::InvalidPackage,
+        Cause::OperationLawUnselected,
+        &body_profile_path(at),
+    );
+    let mut twice = package;
+    select_temporal_profiles(&mut twice, &[BOUNDED, BOUNDED]);
+    settle(&mut twice);
+    refusal_at(
+        &twice,
+        Code::InvalidPackage,
+        Cause::OperationLawUnselected,
+        &body_profile_path(at),
+    );
+}
+
+#[trace("TC-2028", "FR-322-AC-464")]
+#[test]
+fn a_behaviours_hyper_body_carries_no_profile_member_and_other_nodes_may_not() {
+    let (package, _, hyper) = hyper_clock_fixture(&["s", "n"]);
+    let member = json!({"authority": "agent-ix", "identity": BOUNDED});
+    let mut behaviours = package.clone();
+    behaviours["semantic_graph"]["nodes"][hyper]["body"]["temporal_profile"] = member.clone();
+    refusal_at(
+        &behaviours,
+        Code::InvalidPackage,
+        Cause::InvalidValue,
+        &body_profile_path(hyper),
+    );
+    let mut other = package;
+    let clause_at = clause(&other);
+    other["semantic_graph"]["nodes"][clause_at]["body"]["temporal_profile"] = member;
+    assert_eq!(
+        refusal_of("a profile member on a clause", &other).0,
+        (
+            Code::InvalidSemanticGraph,
+            None,
+            Some(at_node(clause_at, "/body"))
+        )
+    );
+}
+
 #[trace("TC-483", "FR-038-AC-561")]
 #[test]
 fn tc_483_finite_domain_occurrences_may_carry_different_clock_roles() {
@@ -4538,6 +4690,12 @@ fn finite_hyper(edit: impl FnOnce(&mut Value)) -> (Value, usize) {
     );
     node["body"]["members"][0]["value"] = refer(&finite_domain);
     node["body"]["members"][1]["value"]["members"] = json!([]);
+    node["body"]["temporal_profile"] = package["lock"]["profile_selections"]
+        .as_array()
+        .expect("selections")
+        .iter()
+        .find(|selection| selection["role"] == "temporal_profile")
+        .map_or(Value::Null, |selection| selection["definition"].clone());
     let mut dependencies = [node_id(&finite_domain), node_id(&body_target)];
     dependencies.sort_by_key(|dependency| {
         serde_json::from_value::<CheckedNodeId>(dependency.clone()).expect("dependency ID")

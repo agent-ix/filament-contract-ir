@@ -930,3 +930,61 @@ fn temporal_clock_writer_retains_a_configured_clause_row() {
     assert_eq!(written["temporal_bindings"], source["temporal_bindings"]);
     admitted(&written, case, 1);
 }
+
+/// The published finite-hyper cases name the refusals the reader decides: the
+/// body `temporal_profile` joined to the lock, then each row's kind. Their
+/// packages come from the emitter, so the reader tests in
+/// `tests/it/checked_package_v2_temporal.rs` apply the same mutations to an
+/// in-repo finite hyperproperty.
+#[trace("TC-2028", "FR-322-AC-464")]
+#[test]
+fn finite_hyper_profile_vectors_publish_the_body_profile_join() {
+    let published = vectors();
+    let cases = published["finite_hyper_profile_cases"]
+        .as_array()
+        .expect("finite hyper cases");
+    let text = |case: &Value, member: &str| case[member].as_str().map(str::to_owned);
+    let summary: Vec<_> = cases
+        .iter()
+        .map(|case| {
+            (
+                text(case, "id").expect("id"),
+                text(case, "expected").expect("expected"),
+                text(case, "code"),
+                text(case, "cause"),
+                text(case, "locus"),
+            )
+        })
+        .collect();
+    let refused = |id: &str, cause: &str, locus: &str| {
+        (
+            id.to_owned(),
+            "refused".to_owned(),
+            Some("invalid_package".to_owned()),
+            Some(cause.to_owned()),
+            Some(locus.to_owned()),
+        )
+    };
+    assert_eq!(
+        summary,
+        [
+            (
+                "TCB-14-finite-hyper-body-profile-selected".to_owned(),
+                "admitted".to_owned(),
+                None,
+                None,
+                None
+            ),
+            refused(
+                "TCB-15-finite-hyper-profile-not-selected",
+                "operation-law-unselected",
+                "/semantic_graph/nodes/{hyperproperty-index}/body/temporal_profile"
+            ),
+            refused(
+                "TCB-16-finite-hyper-row-kind-mismatch",
+                "timed-node-reference",
+                "/temporal_bindings/0/clock/kind"
+            ),
+        ]
+    );
+}
