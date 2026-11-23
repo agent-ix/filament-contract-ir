@@ -23,8 +23,9 @@ value. Scope: FR-352-AC-45 and FR-352-AC-46.
 Fixture: FSpec FR-829-AC-1's `Call` model under `time dense unit ms`, with
 the data members `r: Reference<Clock>`, `ra: Reference<A>` (`type A = Clock`),
 optional `maybe: Reference<Clock>`, `refs: Sequence<Reference<Clock>>[0, 3]`,
-`peer: Reference<Call>`, a tuple type `(Clock, Reference<Clock>)` held by a
-field `pair`, a model union `Tag` with cases `Named(Reference<Clock>)` and
+`peer: Reference<Call>`, a tuple type `(Boolean, Reference<Clock>)` held by a
+field `pair`, a tuple type `(Clock, Reference<Clock>)` held by a field
+`mixed`, a model union `Tag` with cases `Named(Reference<Clock>)` and
 `Timed(Clock)`, and the clock field `x: Clock`, compiled by FSL and admitted
 through the strict reader with its selected identity rows.
 
@@ -53,7 +54,10 @@ through the strict reader with its selected identity rows.
 - Step 2: the clone gives equal views; the exact allowance succeeds and one
   unit less refuses with typed work exhaustion, charged work and the first
   uncharged member locus.
-- Step 3: `x` returns `UnsupportedExactType` at its type node; `Timed` is
+- Step 3: `x` returns `UnsupportedExactType` at the record node (form
+  `model/record_value_type`); the tuple `mixed` refuses `UnsupportedExactType`
+  at the tuple node, form `tuple_position`, because a tuple projects whole or
+  not at all; `Timed` is
   retained as a Clock payload (FR-352-AC-32).
 - Step 4: each join refuses `MismatchedIdentityWitness` at the payload node,
   form `/model_unions/i/cases/j/payload/original_type`.

@@ -3499,8 +3499,7 @@ pub(super) fn project_record_field_type(
                 CarriedQuantityType::new(unit.clone(), QuantityCarrier::Rational(domain)),
             )));
         }
-        MemberType::Clock | MemberType::Option(_)
-        | MemberType::Collection { .. } => {
+        MemberType::Clock | MemberType::Option(_) | MemberType::Collection { .. } => {
             return Err(refuse!(
                 ExactTypeProjectionErrorCode::UnsupportedExactType,
                 Some(requested)
