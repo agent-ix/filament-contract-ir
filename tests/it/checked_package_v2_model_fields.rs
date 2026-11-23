@@ -9219,7 +9219,10 @@ fn a_witness_missing_only_the_union_row_is_refused_at_the_union_completeness_sta
 /// type the record field of that declared type projects, and a witness naming a
 /// wrong type (another bound, profile, width, unit or kind) is refused at the
 /// payload's original type. A collection declaration is refused at intake;
-/// Clock and map payloads are outside this test.
+/// A clock-place reference payload joins with no identity row and is Exact
+/// `ClockReference`; an object-reference payload is `Reference(EffectiveId)`;
+/// each refuses the other's type as its witness. Clock and map payloads are
+/// outside this test.
 #[trace(
     "FR-352-AC-32",
     "FR-352-AC-34",
@@ -9229,7 +9232,10 @@ fn a_witness_missing_only_the_union_row_is_refused_at_the_union_completeness_sta
     "FR-352-AC-41",
     "FR-352-AC-42",
     "FR-352-AC-43",
-    "FR-352-AC-44"
+    "FR-352-AC-44",
+    "FR-352-AC-45",
+    "FR-352-AC-46",
+    "TC-494"
 )]
 #[test]
 fn every_strict_admitted_non_scalar_payload_form_joins_and_each_wrong_witness_is_refused() {
@@ -9378,6 +9384,36 @@ fn every_strict_admitted_non_scalar_payload_form_joins_and_each_wrong_witness_is
                 unit_exact("second"),
                 QuantityCarrier::Rational(domain(8)),
             ))),
+        ),
+        (
+            "clock_reference",
+            vec![json!({
+                "identity": orders("ClockRef"),
+                "kind": "reference",
+                "target": format!("{NATIVE}Clock")
+            })],
+            orders("ClockRef"),
+            Ty::ClockReference,
+            None,
+            ValueType::ClockReference,
+            // An object reference is another type, never a clock-place reference.
+            ValueType::Reference(EffectiveId::new(
+                None,
+                OriginalDeclarationKey::new(IDENTITY, orders("Node")),
+            )),
+        ),
+        (
+            "object_type",
+            vec![],
+            orders("Node"),
+            Ty::Reference(declaration_key("Node", OBJECT)),
+            None,
+            ValueType::Reference(EffectiveId::new(
+                None,
+                OriginalDeclarationKey::new(IDENTITY, orders("Node")),
+            )),
+            // The clock-reference type is wrong for an object-reference payload.
+            ValueType::ClockReference,
         ),
         (
             "unit",
@@ -9826,5 +9862,72 @@ fn clock_reference_record_fields_project_to_exact_clock_reference_without_a_witn
     assert_eq!(
         project(&package.clone()).expect("the clone projects"),
         projected
+    );
+    // The measured exact work allowance succeeds; one unit less refuses with
+    // typed work exhaustion at the first uncharged locus.
+    let at = |work: u64| {
+        let mut budget = filament_contract_model::NativeJoinBudget::new(work, u64::MAX);
+        let result = package.project_exact_type(&record, &witness, &mut budget);
+        (result, budget)
+    };
+    let allowance = (1..10_000)
+        .find(|work| at(*work).0.is_ok())
+        .expect("a finite work allowance projects the record");
+    assert_eq!(at(allowance).0.expect("the allowance projects"), projected);
+    let (short, budget) = at(allowance - 1);
+    let error = short.expect_err("one unit less refuses");
+    assert_eq!(error.code, ExactTypeProjectionErrorCode::ExhaustedWork);
+    assert_eq!(error.configured_bound, Some(allowance - 1));
+    assert!(error.denied.is_some());
+    assert!(budget.first_unpaid_locus().is_some());
+}
+
+/// FR-352-AC-45 / TC-494: a tuple position typed by a `reference` type over
+/// `Clock` projects to Exact `ClockReference` with no identity row for it.
+#[trace("FR-352-AC-45", "TC-494")]
+#[test]
+fn a_clock_reference_tuple_position_projects_to_exact_clock_reference() {
+    let tuple = orders("Pair");
+    let mut selected = document(vec![
+        json!({
+            "identity": orders("ClockRef"), "kind": "reference",
+            "target": format!("{NATIVE}Clock")
+        }),
+        json!({
+            "identity": tuple, "displayName": "Pair",
+            "kind": {"module": IDENTITY, "name": "tuple"},
+            "positions": [
+                {"identity": format!("{tuple}/p0"), "typeRef": "ix://filament/native/Boolean"},
+                {"identity": format!("{tuple}/p1"), "typeRef": orders("ClockRef")}
+            ]
+        }),
+    ]);
+    selected["constructs"].as_array_mut().unwrap().push(json!({
+        "kind": {"module": IDENTITY, "name": "tuple"},
+        "construct": {"meaning": "filament.meaning.model.tuple-value-type/v1"}
+    }));
+    let admitted = admit(&selected, &[("Pair", "tuple_value_type")], &[]);
+    let tuple_node: CheckedNodeId =
+        serde_json::from_value(node_id(&declaration_key("Pair", "tuple_value_type"))).unwrap();
+    let tuple_key = NodeKey::new("tuple-stage", vec![PathSegment::Text("Pair".into())], 0).unwrap();
+    let identities = SelectedExactIdentities::from_stage_rows(
+        &admitted,
+        [],
+        [],
+        &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+    )
+    .unwrap();
+    let row = SelectedTupleDeclarationRow::new(tuple_node, IDENTITY, tuple, tuple_key);
+    let view = admitted
+        .project_selected_type_declarations(
+            &identities,
+            std::slice::from_ref(&row),
+            &[],
+            &mut filament_contract_model::NativeJoinBudget::new(10_000, u64::MAX),
+        )
+        .expect("the tuple projects with no row for the clock reference");
+    assert_eq!(
+        view.tuples()[0].positions(),
+        &[ValueType::Boolean, ValueType::ClockReference]
     );
 }

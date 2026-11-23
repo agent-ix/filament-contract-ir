@@ -4514,6 +4514,9 @@ struct Scope<'v> {
     all_types: SortedSet<&'v str>,
     /// Named option definitions, known before any member body is read.
     option_types: SortedSet<&'v str>,
+    /// Reference types over `Clock` (through aliases), known before any member
+    /// body is read: a data member of type `Reference<Clock>`.
+    clock_references: SortedSet<&'v str>,
     /// Declared value-definition forms, including yet-unread option/collection bodies.
     value_definitions: SortedSet<&'v str>,
     /// Object-identity forms accepted as declared field types.
@@ -4662,6 +4665,7 @@ impl<'v> Scope<'v> {
         Ok(Self {
             all_types: set(counts.classified - counts.refused)?,
             option_types: set(counts.options)?,
+            clock_references: set(counts.value_definitions)?,
             value_definitions: set(counts.value_definitions)?,
             objects: set(counts.objects)?,
             nominal_objects: set(counts.nominal_objects)?,
@@ -5097,8 +5101,21 @@ pub(super) fn read_semantic_ir(
         };
         scope.all_types.insert(budget, node, F)?;
         match meaning {
-            meaning::Kind::SequenceType | meaning::Kind::MapType | meaning::Kind::ReferenceType => {
+            meaning::Kind::SequenceType | meaning::Kind::MapType => {
                 scope.value_definitions.insert(budget, node, F)?;
+            }
+            meaning::Kind::ReferenceType => {
+                scope.value_definitions.insert(budget, node, F)?;
+                let target = declared_node.get("target").and_then(View::as_str);
+                if let Some(target) = target {
+                    let resolved = option_types::reference(&model, target, budget)?;
+                    if matches!(
+                        resolved,
+                        Some(SelectedTypeRef::Native(NativeTypeRef::Clock))
+                    ) {
+                        scope.clock_references.insert(budget, node, F)?;
+                    }
+                }
             }
             meaning::Kind::OptionType => {
                 scope.value_definitions.insert(budget, node, F)?;
@@ -5507,7 +5524,8 @@ pub(super) fn read_semantic_ir(
                                 && !model.tuple_types.contains_key(name)
                                 && !model.variant_types.contains_key(name)
                                 && !model.value_types.contains_key(name)
-                                && !scope.option_types.contains(name.as_ref()) =>
+                                && !scope.option_types.contains(name.as_ref())
+                                && !scope.clock_references.contains(name.as_ref()) =>
                         {
                             false
                         }
@@ -5535,6 +5553,7 @@ pub(super) fn read_semantic_ir(
                                 || model.tuple_types.contains_key(name)
                                 || model.variant_types.contains_key(name)
                                 || scope.option_types.contains(name.as_ref())
+                                || scope.clock_references.contains(name.as_ref())
                         }
                         SelectedTypeRef::Map(..) => false,
                     };
@@ -5687,6 +5706,7 @@ pub(super) fn read_semantic_ir(
                                     || model.tuple_types.contains_key(name)
                                     || model.variant_types.contains_key(name)
                                     || scope.option_types.contains(name.as_ref())
+                                    || scope.clock_references.contains(name.as_ref())
                             }
                         };
                         if !valid {
