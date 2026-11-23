@@ -1976,6 +1976,8 @@ fn read_operation_contract_join(
 }
 
 enum OwnerWalkTask<'a> {
+    /// The walk has finished the body of the node at this position.
+    Leave(usize),
     Node(usize, Option<PathConditionFrameId>),
     Term(&'a CheckedTerm, Option<PathConditionFrameId>),
 }
@@ -2122,6 +2124,10 @@ fn derive_package_path_conditions(
     visit_counts.resize(nodes.len(), 0);
     let mut charged_owner = stage_storage::vec::<usize>(meter, &numbering_site, nodes.len())?;
     charged_owner.resize(nodes.len(), usize::MAX);
+    // The nodes whose bodies a walk is inside. A reference back to one is a
+    // recursive call, which the walk does not enter again.
+    let mut active = stage_storage::vec::<u8>(meter, &numbering_site, nodes.len())?;
+    active.resize(nodes.len(), 0);
     let mut frame_seen = stage_storage::vec::<u8>(meter, &numbering_site, frame_index.len())?;
     frame_seen.resize(frame_index.len(), 0);
     let mut owner_frame_order =
@@ -2148,6 +2154,7 @@ fn derive_package_path_conditions(
             record_position,
             &mut visit_counts,
             &mut charged_owner,
+            &mut active,
             &mut paths,
             &mut frame_seen,
             &mut owner_frame_order,
@@ -2168,6 +2175,7 @@ fn derive_package_path_conditions(
                     record_position,
                     &mut visit_counts,
                     &mut charged_owner,
+                    &mut active,
                     &mut paths,
                     &mut frame_seen,
                     &mut owner_frame_order,
@@ -2228,6 +2236,7 @@ fn walk_owner_expression<'a>(
     record_position: usize,
     visit_counts: &mut [usize],
     charged_owner: &mut [usize],
+    active: &mut [u8],
     paths: &mut Vec<DerivedPath>,
     frame_seen: &mut [u8],
     frame_order: &mut Vec<usize>,
@@ -2241,7 +2250,13 @@ fn walk_owner_expression<'a>(
     push_owner_task(pending, OwnerWalkTask::Node(root, None), meter, walk_site)?;
     while let Some(task) = pending.pop() {
         match task {
+            OwnerWalkTask::Leave(position) => {
+                active[position] = 0;
+            }
             OwnerWalkTask::Node(position, terminal) => {
+                if active.get(position).is_none_or(|inside| *inside != 0) {
+                    continue;
+                }
                 let Some(visit) = visit_counts.get_mut(position) else {
                     continue;
                 };
@@ -2275,6 +2290,10 @@ fn walk_owner_expression<'a>(
                         });
                     }
                 }
+                if let Some(inside) = active.get_mut(position) {
+                    *inside = 1;
+                }
+                push_owner_task(pending, OwnerWalkTask::Leave(position), meter, walk_site)?;
                 push_owner_task(
                     pending,
                     OwnerWalkTask::Term(term, terminal),
@@ -3419,6 +3438,112 @@ mod tests {
         assert_eq!(record.populations.len(), 1);
         assert_eq!(record.populations[0].ordinal, 3);
         assert_eq!(record.populations[0].maximum, Some(8));
+    }
+
+    /// FR-825: each owner body is walked once. A reference back to a node whose
+    /// body the walk is inside is a recursive call and is not entered again, so
+    /// a recursive owner ends within a small read-storage budget instead of
+    /// growing the walk stack without end.
+    #[trace("TC-2053", "FR-825-AC-5")]
+    #[test]
+    fn recursive_owner_body_walk_terminates_within_a_small_budget() {
+        use super::super::stage_storage::{Path, Site};
+        use super::{walk_owner_expression, OwnerWalkTask};
+        use crate::checked_package::shared::{CheckedOccurrence, CheckedOccurrenceRole};
+        use crate::checked_package::v2::{
+            CheckedJson, GraphIndex, NativeJoinBudget, PackageReadStage, RawSemanticNodeV2,
+            WorkMeter,
+        };
+
+        let id = |name: &str| -> CheckedNodeId {
+            serde_json::from_value(json!({"package":"pkg", "path":[name], "ordinal":0}))
+                .expect("node id")
+        };
+        let reference = |name: &str| json!({"term":"reference", "target":id(name)});
+        let terms: Vec<super::CheckedTerm> = vec![
+            serde_json::from_value(json!({"term":"aggregate", "members":[
+                {"term":"binding", "name":"body", "value":reference("a")}
+            ]}))
+            .expect("owner body"),
+            serde_json::from_value(json!({
+                "term":"application", "operator":"conditional",
+                "operation":{"identity":"filament.op.control.if", "laws":[], "mode":null,
+                    "member":null, "leaves":[]},
+                "result_type":id("t"),
+                "arguments":[reference("g"), reference("f"), reference("g")]
+            }))
+            .expect("recursive if"),
+            serde_json::from_value(json!({"term":"aggregate", "members":[]})).expect("guard"),
+        ];
+        let names = ["f", "a", "g"];
+        let nodes: Vec<RawSemanticNodeV2> = names
+            .iter()
+            .zip(&terms)
+            .map(|(name, term)| RawSemanticNodeV2 {
+                node_id: id(name),
+                schema_version: "filament.checked-semantic-graph/v2".into(),
+                node_tag: "expression".into(),
+                semantic_form: "x".into(),
+                semantic_type: id("t"),
+                dependencies: Vec::new(),
+                occurrences: if *name == "a" {
+                    vec![CheckedOccurrence {
+                        role: CheckedOccurrenceRole::Expression,
+                        ordinal: 0,
+                    }]
+                } else {
+                    Vec::new()
+                },
+                recursion_group: None,
+                declaration: None,
+                owner: None,
+                owner_model: None,
+                check_mode: None,
+                body: CheckedJson::from_serializable(term).expect("body json"),
+            })
+            .collect();
+        let ids: Vec<CheckedNodeId> = names.iter().map(|name| id(name)).collect();
+        let index: GraphIndex<'_> = ids
+            .iter()
+            .enumerate()
+            .map(|(position, id)| (id, position))
+            .collect();
+        let mut budget =
+            NativeJoinBudget::new(1_000_000, 1_000_000).with_read_storage_limit(1 << 16);
+        let mut meter = WorkMeter::over(&mut budget);
+        let at = Path::root();
+        let site = Site::new(PackageReadStage::Graph, 0, "requirement_items", at);
+        let mut visits = vec![0_usize; 3];
+        let mut charged = vec![usize::MAX; 3];
+        let mut active = vec![0_u8; 3];
+        let mut paths = Vec::new();
+        let mut frame_seen = Vec::new();
+        let mut order = Vec::new();
+        let mut pending: Vec<OwnerWalkTask<'_>> = Vec::new();
+        let walked = walk_owner_expression(
+            1,
+            0,
+            true,
+            &nodes,
+            &terms,
+            &index,
+            &[],
+            0,
+            &mut visits,
+            &mut charged,
+            &mut active,
+            &mut paths,
+            &mut frame_seen,
+            &mut order,
+            &mut pending,
+            &site,
+            &mut meter,
+        );
+        assert!(
+            walked.is_ok(),
+            "the recursive owner body walk must end: {walked:?}"
+        );
+        assert_eq!(visits[1], 1, "the recursive node is entered once");
     }
 
     fn id_term(value: &serde_json::Value) -> super::CheckedTerm {
