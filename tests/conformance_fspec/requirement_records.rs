@@ -541,9 +541,10 @@ fn large_requirement_record_package(record_count: usize) -> Value {
         .iter()
         .position(|node| node["node_tag"] == "function")
         .expect("function owner");
+    let conditional_id = binding_value(&nodes[owner_position], "body")["target"].clone();
     let conditional_position = nodes
         .iter()
-        .position(|node| node["semantic_form"] == "conditional")
+        .position(|node| node["node_id"] == conditional_id)
         .expect("conditional body root");
     let previous_position = nodes
         .iter()
