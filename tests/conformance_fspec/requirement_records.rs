@@ -91,6 +91,28 @@ fn canonical_nonnegative_integer(value: &Value) -> Option<u64> {
     }
 }
 
+fn binding_value<'a>(node: &'a Value, name: &str) -> &'a Value {
+    node["body"]["members"]
+        .as_array()
+        .expect("record body bindings")
+        .iter()
+        .find(|binding| binding["name"] == name)
+        .unwrap_or_else(|| panic!("missing {name} binding"))
+        .get("value")
+        .expect("binding value")
+}
+
+fn binding_value_mut<'a>(node: &'a mut Value, name: &str) -> &'a mut Value {
+    node["body"]["members"]
+        .as_array_mut()
+        .expect("record body bindings")
+        .iter_mut()
+        .find(|binding| binding["name"] == name)
+        .unwrap_or_else(|| panic!("missing {name} binding"))
+        .get_mut("value")
+        .expect("binding value")
+}
+
 fn value_validity_record(row: &RequirementItemRow) -> &ValueValidityRecord {
     match row.record.as_ref() {
         Some(RequirementRecord::ValueValidity(record)) => record,
@@ -411,7 +433,7 @@ fn boolean_value_guard_package(spec: &Value) -> Value {
                 (node["semantic_form"] == "value_validity").then(|| {
                     (
                         position,
-                        node["body"]["members"][2]["value"]["value"]
+                        binding_value(node, "occurrence")["value"]
                             .as_u64()
                             .expect("application occurrence"),
                     )
@@ -452,11 +474,11 @@ fn boolean_value_guard_package(spec: &Value) -> Value {
         .iter_mut()
         .filter(|node| node["semantic_form"] == "value_validity")
     {
-        record["body"]["members"][6]["value"]["members"] = json!([
+        binding_value_mut(record, "extent_roots")["members"] = json!([
             {"term":"reference","target":node_id("value/parameter/n/0")},
             {"term":"reference","target":boolean_parameter_id.clone()}
         ]);
-        record["body"]["members"][6]["value"]["members"]
+        binding_value_mut(record, "extent_roots")["members"]
             .as_array_mut()
             .expect("extent roots")
             .sort_by_key(|root| structural_fixture_id(&root["target"]));
@@ -486,11 +508,11 @@ fn large_requirement_record_package(record_count: usize) -> Value {
         .iter()
         .find(|node| {
             node["semantic_form"] == "value_validity"
-                && node["body"]["members"][2]["value"]["value"] == 0
+                && binding_value(node, "occurrence")["value"] == 0
         })
         .expect("true-branch record template")
         .clone();
-    let original_application_id = record_template["body"]["members"][1]["value"]["target"].clone();
+    let original_application_id = binding_value(&record_template, "application")["target"].clone();
     package["semantic_graph"]["nodes"]
         .as_array_mut()
         .expect("graph nodes")
@@ -519,12 +541,12 @@ fn large_requirement_record_package(record_count: usize) -> Value {
         json!(["expression/integer_add"])
     );
     assert!("expression" < "expression/integer_add");
-    let bound_id = record_template["body"]["members"][3]["value"]["target"].clone();
+    let bound_id = binding_value(&record_template, "result_bound")["target"].clone();
     let bound_position = nodes
         .iter()
         .position(|node| node["node_id"] == bound_id)
         .expect("record result bound");
-    let extent_root_positions = record_template["body"]["members"][6]["value"]["members"]
+    let extent_root_positions = binding_value(&record_template, "extent_roots")["members"]
         .as_array()
         .expect("extent roots")
         .iter()
@@ -585,15 +607,10 @@ fn large_requirement_record_package(record_count: usize) -> Value {
         );
     }
 
-    let path_condition_binding = record_template["body"]["members"]
-        .as_array()
-        .expect("record body bindings")
-        .iter()
-        .find(|binding| binding["name"] == "path_condition")
-        .expect("path_condition binding");
-    let terminal_frame_value = &path_condition_binding["value"]["members"][0]["value"]["value"];
+    let terminal_frame_value =
+        &binding_value(&record_template, "path_condition")["members"][0]["value"]["value"];
     let terminal_frame_id = canonical_nonnegative_integer(terminal_frame_value)
-        .unwrap_or_else(|| panic!("invalid terminal frame id: {terminal_frame_value:?}"));
+        .expect("terminal frame id is a canonical nonnegative integer");
     let mut requirement_rows = Vec::with_capacity(record_count);
     for (generated_index, (&application_position, application_id)) in application_positions
         .iter()
@@ -614,7 +631,7 @@ fn large_requirement_record_package(record_count: usize) -> Value {
         let mut record = record_template.clone();
         record["node_id"] = record_id.clone();
         record["occurrences"] = json!([{"role":"generated","ordinal":generated_index}]);
-        record["body"]["members"][1]["value"]["target"] = application_id.clone();
+        binding_value_mut(&mut record, "application")["target"] = application_id.clone();
         for dependency in record["dependencies"]
             .as_array_mut()
             .expect("record dependencies")
@@ -714,7 +731,7 @@ fn boolean_literal_guard_package(spec: &Value) -> Value {
         .iter()
         .position(|node| {
             node["semantic_form"] == "value_validity"
-                && node["body"]["members"][2]["value"]["value"] == 1
+                && binding_value(node, "occurrence")["value"] == 1
         })
         .expect("false-branch value-validity record");
     let discarded_id = package["semantic_graph"]["nodes"][discarded_position]["node_id"].clone();
@@ -866,13 +883,14 @@ fn rekey_requirement_record(
             }
         }
         if let Some((_, root_id)) = &extent_root_to_remove {
-            if let Some(roots) = record["body"]["members"][6]["value"]["members"].as_array_mut() {
+            if let Some(roots) = binding_value_mut(record, "extent_roots")["members"].as_array_mut()
+            {
                 roots.retain(|root| root["target"] != *root_id);
             }
             sync_body_dependencies(record);
         }
         let frame_id = if holds { 0 } else { 1 };
-        record["body"]["members"][5]["value"]["members"] = json!([
+        binding_value_mut(record, "path_condition")["members"] = json!([
             {"term":"literal","type":node_id("scalar_type/integer"),"value_kind":"integer","value":frame_id}
         ]);
         (old_id, record["node_id"].clone())
