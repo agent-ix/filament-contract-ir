@@ -15,6 +15,10 @@ relationships:
     type: references
   - target: ix://agent-ix/filament-spec-language/FR-400
     type: references
+  - target: ix://agent-ix/filament-exact/FR-415
+    type: references
+  - target: ix://agent-ix/filament-specification/FR-829
+    type: references
 ---
 # FR-352: Project admitted checked-package types to Exact value types
 
@@ -261,7 +265,27 @@ A selected `model/object_type` SHALL contribute its witnessed
 `EffectiveId` as object-type identity for a `composite_type/reference` whose
 admitted target is that exact object type; the reference SHALL map to
 `Reference(EffectiveId)`. `model/object_type` by itself SHALL NOT be presented
-as a standalone Exact `ValueType` variant. A selected declared unit SHALL use
+as a standalone Exact `ValueType` variant.
+The package's one `scalar_type`/`clock_reference` node, which types every
+`Reference<Clock>` and `Reference<A>` for an alias `A` of `Clock` (FSpec
+FR-829 "The type node"), SHALL project to Exact `ClockReference` (Exact
+FR-415), and a member read as `MemberType::ClockReference` SHALL project to it
+wherever a data member stands: a record or object field, a tuple position and
+a model union payload. An `Option` or collection over it SHALL keep its
+wrapper, kind and bound around Exact `ClockReference`, as for any other leaf.
+The type has no opaque identity of its own (the place identity belongs to each
+value), so this projection SHALL complete without an identity witness, never
+returning `UnavailableIdentityWitness` for it. It SHALL NOT produce
+`Reference(EffectiveId)` for a clock reference, nor Exact `ClockReference` for
+an object reference. A plain `Clock` member is not data: it SHALL keep its
+existing outcomes, `UnsupportedExactType` as a projected member type and the
+retained Clock payload of a model union case (AC-32). The projection carries
+types only. It SHALL NOT accept or refuse a clock-reference value, so whether
+a place id names a place of the admitted package is decided by FSL value
+admission (FSL FR-230 `invalid_runtime_input`/`invalid-value`, FSL FR-106
+`dangling_reference`/`absent-target-in-complete-population`), never by this
+read.
+A selected declared unit SHALL use
 its witnessed `NodeKey` as Exact's declared `UnitId`; a compound unit SHALL
 project only if its authoritative compound identity and domain are available.
 
@@ -638,6 +662,8 @@ alternate FSL-side validator is introduced by this requirement.
 | FR-352-AC-42 | A strict-admitted record field typed with a bounded Rational projects through the shared record-field projection to the Exact rational domain of its declared numerator and denominator intervals; as a model union payload an original type of another type refuses `MismatchedIdentityWitness` at the payload node, form `/model_unions/i/cases/j/payload/original_type`. | Test |
 | FR-352-AC-43 | A strict-admitted record field typed with a bounded profiled Text projects through the shared record-field projection to the Exact text type of its declared length bounds and profile; as a model union payload an original type of another type refuses `MismatchedIdentityWitness` at the payload node, form `/model_unions/i/cases/j/payload/original_type`. | Test |
 | FR-352-AC-44 | A strict-admitted record field typed with a carried Rational (a bounded Rational declared with a model unit) projects through the shared record-field projection to the Exact carried quantity of the unit's witnessed declared identity and the declared rational carrier domain; the field and a model union payload of the same declared type project one type, a `Duration` payload projects to the quantity of the model's `s` unit, and an original type naming another carrier domain or unit refuses `MismatchedIdentityWitness` at the payload node, form `/model_unions/i/cases/j/payload/original_type`; a record field of that type whose unit has no declared-unit identity row refuses `UnavailableIdentityWitness` at the unit node. | Test |
+| FR-352-AC-45 | Over FSpec FR-829-AC-1's `Call` model with the data members `r: Reference<Clock>`, `ra: Reference<A>` (`type A = Clock`), `maybe: Option<Reference<Clock>>` (an optional field), `refs: Sequence<Reference<Clock>>[0, 3]`, a tuple `(Clock, Reference<Clock>)` position 1 and a model union case whose payload is `Reference<Clock>`, the shared record-field projection returns Exact `ClockReference` for `r`, `ra`, the tuple position and the union payload, `ClockReference` with `Presence::Optional` for `maybe`, and Exact `Sequence<ClockReference>[0, 3]` for `refs`; each projection completes with no identity witness row for the clock reference and never returns `UnavailableIdentityWitness` or `UnsupportedExactType` for it; no projection of a clock-reference member is `Reference(EffectiveId)`, and the object field `peer: Reference<Call>` still projects to `Reference(EffectiveId)`. A package clone gives equal views, and the exact work allowance succeeds while one unit less refuses with charged work at the first uncharged member. | Test (TC-494) |
+| FR-352-AC-46 | In the same model, a field typed `Clock` still returns `UnsupportedExactType` at that field's type node and a `Clock` model union payload is still retained as a Clock payload (AC-32); a model union payload whose original type names `Reference<Call>` for a `Reference<Clock>` payload node, or the clock-reference type for an object-reference payload node, refuses `MismatchedIdentityWitness` at the payload node, form `/model_unions/i/cases/j/payload/original_type`. The projection reads no value: a package whose model holds no place named by some snapshot reference projects the same `ClockReference` types, and the refusal of a reference to an unknown place, a removed place or a place of another declaration scope is FSL value admission's (FSL FR-230, FSL FR-106), not this read's. | Test (TC-494) |
 
 ## Dependencies
 
