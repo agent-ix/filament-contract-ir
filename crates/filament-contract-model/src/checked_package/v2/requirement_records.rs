@@ -233,6 +233,155 @@ pub(super) struct RequirementItemWireRow {
     pub record: Option<CheckedNodeId>,
 }
 
+/// A package-local index into the admitted shared path-condition frame table.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct PathConditionFrameId(pub usize);
+
+/// One admitted parent-linked path-condition frame.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PathConditionFrame {
+    /// The immediately enclosing condition frame.
+    pub parent: Option<PathConditionFrameId>,
+    /// Boolean expression or literal/parameter value node used as the guard.
+    pub guard: CheckedNodeId,
+    /// Expression occurrence of the guard read as this condition.
+    pub occurrence: u64,
+    /// Outcome required for this branch.
+    pub holds: bool,
+}
+
+/// One borrowed guard yielded by a path-condition view.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct RequirementGuard<'a> {
+    /// Boolean expression or literal/parameter value node used as the guard.
+    pub guard: &'a CheckedNodeId,
+    /// Expression occurrence of the guard read as this condition.
+    pub occurrence: u64,
+    /// Outcome required for this branch.
+    pub holds: bool,
+}
+
+/// A borrowed outermost-first view over a shared parent-linked condition chain.
+#[derive(Clone, Copy, Debug)]
+pub struct PathConditionView<'a> {
+    frames: &'a [PathConditionFrame],
+    terminal: Option<PathConditionFrameId>,
+}
+
+impl<'a> PathConditionView<'a> {
+    pub(super) fn new(
+        frames: &'a [PathConditionFrame],
+        terminal: Option<PathConditionFrameId>,
+    ) -> Self {
+        Self { frames, terminal }
+    }
+
+    /// Returns the number of guards in this chain.
+    pub fn len(self) -> usize {
+        let mut count = 0;
+        let mut current = self.terminal;
+        while let Some(id) = current {
+            let Some(frame) = self.frames.get(id.0) else {
+                return 0;
+            };
+            count += 1;
+            current = frame.parent;
+        }
+        count
+    }
+
+    /// Returns whether this path has no guards.
+    pub fn is_empty(self) -> bool {
+        self.terminal.is_none()
+    }
+
+    /// Iterates guards outermost first without allocating a per-record vector.
+    pub fn iter(self) -> PathConditionIter<'a> {
+        PathConditionIter {
+            frames: self.frames,
+            terminal: self.terminal,
+            remaining: self.len(),
+        }
+    }
+}
+
+/// The allocation-free iterator for a path-condition view.
+#[derive(Clone, Debug)]
+pub struct PathConditionIter<'a> {
+    frames: &'a [PathConditionFrame],
+    terminal: Option<PathConditionFrameId>,
+    remaining: usize,
+}
+
+impl<'a> Iterator for PathConditionIter<'a> {
+    type Item = RequirementGuard<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.remaining == 0 {
+            return None;
+        }
+        let mut current = self.terminal?;
+        for _ in 1..self.remaining {
+            current = self.frames.get(current.0)?.parent?;
+        }
+        let frame = self.frames.get(current.0)?;
+        self.remaining -= 1;
+        Some(RequirementGuard {
+            guard: &frame.guard,
+            occurrence: frame.occurrence,
+            holds: frame.holds,
+        })
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.remaining, Some(self.remaining))
+    }
+}
+
+impl ExactSizeIterator for PathConditionIter<'_> {}
+
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct PathConditionFrameWire {
+    pub parent: Option<u64>,
+    pub guard: PathConditionGuardWire,
+    pub holds: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct PathConditionGuardWire {
+    pub node: CheckedNodeId,
+    pub occurrence: CheckedOccurrence,
+}
+
+impl Encode for PathConditionFrame {
+    fn encode_into<S: Sink + ?Sized>(&self, writer: &mut Writer<'_, S>) -> Result<(), Error> {
+        writer.begin_object()?;
+        writer.name("parent")?;
+        match self.parent {
+            Some(parent) => {
+                writer.integer(i128::try_from(parent.0).map_err(|_| Error::Internal {
+                    invariant: "path-condition frame index exceeds the canonical integer range",
+                })?)?
+            }
+            None => writer.null()?,
+        }
+        writer.name("guard")?;
+        writer.begin_object()?;
+        super::encode::encoded(writer, "node", &self.guard)?;
+        writer.name("occurrence")?;
+        writer.begin_object()?;
+        writer.name("role")?;
+        writer.string("expression")?;
+        super::encode::member(writer, "ordinal", &self.occurrence)?;
+        writer.end_object()?;
+        writer.end_object()?;
+        super::encode::member(writer, "holds", &self.holds)?;
+        writer.end_object()
+    }
+}
+
 fn root() -> Path<'static> {
     Path::root().key("requirement_items")
 }
@@ -443,6 +592,7 @@ fn refuse(
 
 pub(super) fn validate(
     rows: Option<&[RequirementItemWireRow]>,
+    path_condition_frames: Option<&[PathConditionFrameWire]>,
     nodes: &[RawSemanticNodeV2],
     kinds: &[CheckedNodeKind],
     terms: &[CheckedTerm],
@@ -451,6 +601,8 @@ pub(super) fn validate(
     evidence: &super::CheckedPackageEvidence,
     meter: &mut WorkMeter,
 ) -> Result<(), ValidationFailure> {
+    validate_frames(path_condition_frames, nodes, kinds, index, meter)?;
+    let frame_index = path_condition_frame_index(path_condition_frames, meter)?;
     let mut records: Vec<usize> = kinds
         .iter()
         .enumerate()
@@ -459,7 +611,17 @@ pub(super) fn validate(
         })
         .collect();
     sort_by_structural_key(&mut records, index, structural_keys, meter)?;
-    let mut owner_reach: BTreeMap<usize, BTreeSet<usize>> = BTreeMap::new();
+    let mut owner_paths: BTreeMap<
+        usize,
+        BTreeMap<(CheckedNodeId, u64), Option<PathConditionFrameId>>,
+    > = BTreeMap::new();
+    let mut seen_frame_ids = BTreeSet::new();
+    let mut used_frames =
+        meter.vec(path_condition_frames.map_or(0, <[PathConditionFrameWire]>::len))?;
+    used_frames.resize(
+        path_condition_frames.map_or(0, <[PathConditionFrameWire]>::len),
+        false,
+    );
     for &position in &records {
         let node = &nodes[position];
         let node_at = Path::root()
@@ -562,20 +724,6 @@ pub(super) fn validate(
                 meter,
             ));
         };
-        if !owner_reach.contains_key(&owner_position) {
-            let reached = owner_body_reach(owner_position, nodes, terms, index, position, meter)?;
-            owner_reach.insert(owner_position, reached);
-        }
-        let reached = owner_reach.get(&owner_position);
-        if !reached.is_some_and(|reached| reached.contains(&application_position)) {
-            return Err(refuse(
-                position,
-                application_at,
-                Cause::InvalidValue,
-                Some(&node.node_id),
-                meter,
-            ));
-        }
         let scalar_application = matches!(
             terms.get(application_position),
             Some(CheckedTerm::Application { operation, .. })
@@ -599,6 +747,41 @@ pub(super) fn validate(
                 Cause::InvalidValue,
                 Some(&node.node_id),
                 meter,
+            ));
+        }
+        if !owner_paths.contains_key(&owner_position) {
+            let derived = derive_owner_path_conditions(
+                owner_position,
+                nodes,
+                terms,
+                index,
+                &frame_index,
+                position,
+                &mut seen_frame_ids,
+                meter,
+            )?;
+            owner_paths.insert(owner_position, derived);
+        }
+        let expected_path = owner_paths
+            .get(&owner_position)
+            .and_then(|paths| paths.get(&(record.application.clone(), record.occurrence)));
+        if expected_path != Some(&record.path_condition_frame) {
+            return Err(refuse(
+                position,
+                node_at.key("body").key("members").index(5),
+                Cause::InvalidValue,
+                Some(&node.node_id),
+                meter,
+            ));
+        }
+        if identity_path_terminal(&node.node_id)
+            != record.path_condition_frame.map(|id| id.0.to_string())
+        {
+            let at = node_at.key("node_id");
+            return Err(stage_storage::refuse(
+                meter,
+                &site(position, at),
+                Refusal::new(Code::InvalidSemanticGraph, at),
             ));
         }
         let bound_at = node_at.key("body").key("members").index(3);
@@ -683,107 +866,28 @@ pub(super) fn validate(
                 previous_id = Some(id);
             }
         }
-        for (guard_index, guard) in record.path_condition.iter().enumerate() {
-            let at = node_at
-                .key("body")
-                .key("members")
-                .index(5)
-                .key("value")
-                .key("members")
-                .index(guard_index);
-            let guard_position = index.get(&guard.guard).copied();
-            let valid_form_and_type = guard_position.is_some_and(|guard_position| {
-                let guard_kind = kinds.get(guard_position);
-                let allowed_form = matches!(
-                    guard_kind,
-                    Some(
-                        CheckedNodeKind::Expression(_)
-                            | CheckedNodeKind::Value(ValueForm::Literal | ValueForm::Parameter)
-                    )
-                );
-                if !allowed_form {
-                    return false;
-                }
-                let boolean_type = kinds.get(
-                    index
-                        .get(&nodes[guard_position].semantic_type)
-                        .copied()
-                        .unwrap_or(usize::MAX),
-                ) == Some(&CheckedNodeKind::ScalarType(ScalarTypeForm::Boolean));
-                boolean_type
-            });
-            if !valid_form_and_type {
-                return Err(refuse(
-                    position,
-                    at,
-                    Cause::InvalidValue,
-                    Some(&node.node_id),
-                    meter,
-                ));
-            }
-            if !reached.is_some_and(|reached| {
-                guard_position.is_some_and(|guard_position| reached.contains(&guard_position))
-            }) {
-                return Err(refuse(
-                    position,
-                    at,
-                    Cause::InvalidValue,
-                    Some(&node.node_id),
-                    meter,
-                ));
-            }
-            let occurrence_valid = terms
-                .get(position)
-                .and_then(|term| binding(term, 5))
-                .and_then(|term| match term {
-                    CheckedTerm::Aggregate { members, .. } => members.get(guard_index),
-                    _ => None,
-                })
-                .and_then(|guard_term| match guard_term {
-                    CheckedTerm::Aggregate { members, .. } => {
-                        named_value(members.get(1)?, "occurrence").and_then(integer)
-                    }
-                    _ => None,
-                })
-                .is_some_and(|occurrence| occurrence == guard.occurrence)
-                && index.get(&guard.guard).is_some_and(|&guard_position| {
-                    nodes[guard_position].occurrences.iter().any(|occurrence| {
-                        occurrence.role == CheckedOccurrenceRole::Expression
-                            && occurrence.ordinal == guard.occurrence
-                    })
-                });
-            if !occurrence_valid {
-                return Err(refuse(
-                    position,
-                    at,
-                    Cause::InvalidValue,
-                    Some(&node.node_id),
-                    meter,
-                ));
-            }
-            let holds_valid = terms
-                .get(position)
-                .and_then(|term| binding(term, 5))
-                .and_then(|term| match term {
-                    CheckedTerm::Aggregate { members, .. } => members.get(guard_index),
-                    _ => None,
-                })
-                .and_then(|guard_term| match guard_term {
-                    CheckedTerm::Aggregate { members, .. } => {
-                        named_value(members.get(2)?, "holds").and_then(boolean)
-                    }
-                    _ => None,
-                })
-                .is_some();
-            if !holds_valid {
-                return Err(refuse(
-                    position,
-                    at,
-                    Cause::InvalidValue,
-                    Some(&node.node_id),
-                    meter,
-                ));
-            }
+        if record.path_condition_frame.is_some_and(|frame| {
+            frame.0 >= path_condition_frames.map_or(0, <[PathConditionFrameWire]>::len)
+        }) {
+            return Err(refuse(
+                position,
+                node_at.key("body").key("members").index(5),
+                Cause::InvalidValue,
+                Some(&node.node_id),
+                meter,
+            ));
+        }
+        let mut frame_at = record.path_condition_frame;
+        while let Some(frame_id) = frame_at {
+            let Some(frame) = path_condition_frames.and_then(|frames| frames.get(frame_id.0))
+            else {
+                break;
+            };
+            used_frames[frame_id.0] = true;
+            frame_at = frame
+                .parent
+                .and_then(|parent| usize::try_from(parent).ok())
+                .map(PathConditionFrameId);
         }
     }
     let Some(rows) = rows else {
@@ -1006,6 +1110,150 @@ pub(super) fn validate(
         }
         owner_ordinal = owner_ordinal.saturating_add(1);
     }
+    if let Some((frame_index, _)) = used_frames.iter().enumerate().find(|(_, used)| !**used) {
+        let at = Path::root().key("path_condition_frames").index(frame_index);
+        return Err(stage_storage::refuse(
+            meter,
+            &Site::new(
+                PackageReadStage::Graph,
+                frame_index,
+                "path_condition_frames",
+                at,
+            ),
+            Refusal::new(Code::InvalidPackage, at).because(Cause::InvalidValue),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_frames(
+    frames: Option<&[PathConditionFrameWire]>,
+    nodes: &[RawSemanticNodeV2],
+    kinds: &[CheckedNodeKind],
+    index: &GraphIndex<'_>,
+    meter: &mut WorkMeter,
+) -> Result<(), ValidationFailure> {
+    let Some(frames) = frames else {
+        return Ok(());
+    };
+    if frames.is_empty() {
+        return Err(stage_storage::refuse(
+            meter,
+            &Site::new(
+                PackageReadStage::Graph,
+                0,
+                "path_condition_frames",
+                Path::root().key("path_condition_frames"),
+            ),
+            Refusal::new(
+                Code::InvalidPackage,
+                Path::root().key("path_condition_frames"),
+            )
+            .because(Cause::InvalidValue),
+        ));
+    }
+    let mut seen = BTreeSet::new();
+    for (frame_index, frame) in frames.iter().enumerate() {
+        let at = Path::root().key("path_condition_frames").index(frame_index);
+        stage_storage::work(
+            meter,
+            &Site::new(
+                PackageReadStage::Graph,
+                frame_index,
+                "path_condition_frames",
+                at,
+            ),
+            1,
+        )?;
+        if frame.parent.is_some_and(|parent| {
+            usize::try_from(parent).map_or(true, |parent| parent >= frame_index)
+        }) {
+            let pointer = at.key("parent");
+            return Err(stage_storage::refuse(
+                meter,
+                &Site::new(
+                    PackageReadStage::Graph,
+                    frame_index,
+                    "path_condition_frames",
+                    pointer,
+                ),
+                Refusal::new(Code::InvalidPackage, pointer).because(Cause::InvalidValue),
+            ));
+        }
+        if frame.guard.occurrence.role != CheckedOccurrenceRole::Expression {
+            return Err(stage_storage::refuse(
+                meter,
+                &Site::new(
+                    PackageReadStage::Graph,
+                    frame_index,
+                    "path_condition_frames",
+                    at,
+                ),
+                Refusal::new(Code::MalformedWire, at).because(Cause::WrongValueKind),
+            ));
+        }
+        let Some(&guard_position) = index.get(&frame.guard.node) else {
+            let pointer = at.key("guard");
+            return Err(stage_storage::refuse(
+                meter,
+                &Site::new(
+                    PackageReadStage::Graph,
+                    frame_index,
+                    "path_condition_frames",
+                    pointer,
+                ),
+                Refusal::new(Code::InvalidPackage, pointer).because(Cause::InvalidValue),
+            ));
+        };
+        let guard_kind = kinds.get(guard_position);
+        let boolean_type = index
+            .get(&nodes[guard_position].semantic_type)
+            .and_then(|position| kinds.get(*position))
+            == Some(&CheckedNodeKind::ScalarType(ScalarTypeForm::Boolean));
+        let guard_occurrence = frame.guard.occurrence.role == CheckedOccurrenceRole::Expression
+            && nodes[guard_position].occurrences.iter().any(|occurrence| {
+                occurrence.role == CheckedOccurrenceRole::Expression
+                    && occurrence.ordinal == frame.guard.occurrence.ordinal
+            });
+        if !matches!(
+            guard_kind,
+            Some(
+                CheckedNodeKind::Expression(_)
+                    | CheckedNodeKind::Value(ValueForm::Literal | ValueForm::Parameter)
+            )
+        ) || !boolean_type
+            || !guard_occurrence
+        {
+            let pointer = at.key("guard");
+            return Err(stage_storage::refuse(
+                meter,
+                &Site::new(
+                    PackageReadStage::Graph,
+                    frame_index,
+                    "path_condition_frames",
+                    pointer,
+                ),
+                Refusal::new(Code::InvalidPackage, pointer).because(Cause::InvalidValue),
+            ));
+        }
+        if !seen.insert((
+            frame.parent,
+            frame.guard.node.clone(),
+            frame.guard.occurrence.ordinal,
+            frame.holds,
+        )) {
+            return Err(stage_storage::refuse(
+                meter,
+                &Site::new(
+                    PackageReadStage::Graph,
+                    frame_index,
+                    "path_condition_frames",
+                    at,
+                ),
+                Refusal::new(Code::InvalidPackage, at).because(Cause::ConflictingDefinition),
+            ));
+        }
+    }
     Ok(())
 }
 
@@ -1016,6 +1264,309 @@ fn is_type_kind(kind: CheckedNodeKind) -> bool {
             | CheckedNodeKind::CompositeType(_)
             | CheckedNodeKind::BoundedDomain(_)
     )
+}
+
+enum OwnerWalkTask<'a> {
+    Node(CheckedNodeId, Option<PathConditionFrameId>),
+    Term(&'a CheckedTerm, Option<PathConditionFrameId>),
+}
+
+type PathConditionFrameIndexEntry<'a> =
+    ((Option<usize>, &'a CheckedNodeId, u64, bool), usize);
+
+fn path_condition_frame_index<'a>(
+    frames: Option<&'a [PathConditionFrameWire]>,
+    meter: &mut WorkMeter<'_>,
+) -> Result<Vec<PathConditionFrameIndexEntry<'a>>, ValidationFailure> {
+    let frames = frames.unwrap_or_default();
+    let at = Path::root().key("path_condition_frames");
+    let site = Site::new(PackageReadStage::Graph, 0, "path_condition_frames", at);
+    let mut entries = stage_storage::vec(meter, &site, frames.len())?;
+    for (frame_id, frame) in frames.iter().enumerate() {
+        entries.push((
+            (
+                frame
+                    .parent
+                    .and_then(|parent| usize::try_from(parent).ok()),
+                &frame.guard.node,
+                frame.guard.occurrence.ordinal,
+                frame.holds,
+            ),
+            frame_id,
+        ));
+    }
+    entries.sort_unstable_by(|left, right| left.0.cmp(&right.0));
+    Ok(entries)
+}
+
+fn derive_owner_path_conditions(
+    owner_position: usize,
+    nodes: &[RawSemanticNodeV2],
+    terms: &[CheckedTerm],
+    index: &GraphIndex<'_>,
+    frame_index: &[PathConditionFrameIndexEntry<'_>],
+    record_position: usize,
+    seen_frame_ids: &mut BTreeSet<usize>,
+    meter: &mut WorkMeter,
+) -> Result<BTreeMap<(CheckedNodeId, u64), Option<PathConditionFrameId>>, ValidationFailure> {
+    let Some(root) = terms.get(owner_position).and_then(function_body_root) else {
+        return Err(refuse(
+            record_position,
+            Path::root()
+                .key("semantic_graph")
+                .key("nodes")
+                .index(record_position)
+                .key("body")
+                .key("members")
+                .index(1),
+            Cause::InvalidValue,
+            nodes.get(record_position).map(|node| &node.node_id),
+            meter,
+        ));
+    };
+    let mut pending = vec![OwnerWalkTask::Node(root, None)];
+    let mut visit_counts = BTreeMap::<usize, usize>::new();
+    let mut charged_nodes = BTreeSet::new();
+    let mut derived = BTreeMap::new();
+    while let Some(task) = pending.pop() {
+        match task {
+            OwnerWalkTask::Node(id, terminal) => {
+                let Some(&position) = index.get(&id) else {
+                    continue;
+                };
+                let visit = visit_counts.entry(position).or_default();
+                let occurrence = nodes[position]
+                    .occurrences
+                    .iter()
+                    .filter(|occurrence| occurrence.role == CheckedOccurrenceRole::Expression)
+                    .nth(*visit)
+                    .map(|occurrence| occurrence.ordinal);
+                *visit = visit.saturating_add(1);
+                if charged_nodes.insert(position) {
+                    let at = Path::root()
+                        .key("semantic_graph")
+                        .key("nodes")
+                        .index(position);
+                    stage_storage::work(meter, &site(position, at), 1)?;
+                }
+                let Some(term) = terms.get(position) else {
+                    continue;
+                };
+                if let (Some(ordinal), Some(CheckedTerm::Application { operation, .. })) =
+                    (occurrence, Some(term))
+                {
+                    if operation.identity().is_some_and(is_scalar_operation) {
+                        derived.insert((nodes[position].node_id.clone(), ordinal), terminal);
+                    }
+                }
+                pending.push(OwnerWalkTask::Term(term, terminal));
+            }
+            OwnerWalkTask::Term(term, terminal) => match term {
+                CheckedTerm::Reference { target } => {
+                    pending.push(OwnerWalkTask::Node(target.clone(), terminal));
+                }
+                CheckedTerm::Application {
+                    operation,
+                    arguments,
+                    ..
+                } => {
+                    let identity = operation.identity();
+                    if identity == Some("filament.op.control.if") && arguments.len() == 3 {
+                        let guard = reference(&arguments[0]);
+                        let Some((guard, occurrence)) = guard.and_then(|guard| {
+                            let position = index.get(&guard)?;
+                            let ordinal = nodes[*position]
+                                .occurrences
+                                .iter()
+                                .filter(|occurrence| {
+                                    occurrence.role == CheckedOccurrenceRole::Expression
+                                })
+                                .nth(*visit_counts.get(position).unwrap_or(&0))?
+                                .ordinal;
+                            Some((guard, ordinal))
+                        }) else {
+                            for argument in arguments.iter().rev() {
+                                pending.push(OwnerWalkTask::Term(argument, terminal));
+                            }
+                            continue;
+                        };
+                        match guard_literal_value(&arguments[0], nodes, terms, index) {
+                            Some(true) => {
+                                let then_frame = derived_frame_id(
+                                    terminal,
+                                    &guard,
+                                    occurrence,
+                                    true,
+                                    frame_index,
+                                    record_position,
+                                    seen_frame_ids,
+                                    meter,
+                                )?;
+                                pending.push(OwnerWalkTask::Term(&arguments[1], then_frame));
+                            }
+                            Some(false) => {
+                                let else_frame = derived_frame_id(
+                                    terminal,
+                                    &guard,
+                                    occurrence,
+                                    false,
+                                    frame_index,
+                                    record_position,
+                                    seen_frame_ids,
+                                    meter,
+                                )?;
+                                pending.push(OwnerWalkTask::Term(&arguments[2], else_frame));
+                            }
+                            None => {
+                                let then_frame = derived_frame_id(
+                                    terminal,
+                                    &guard,
+                                    occurrence,
+                                    true,
+                                    frame_index,
+                                    record_position,
+                                    seen_frame_ids,
+                                    meter,
+                                )?;
+                                let else_frame = derived_frame_id(
+                                    terminal,
+                                    &guard,
+                                    occurrence,
+                                    false,
+                                    frame_index,
+                                    record_position,
+                                    seen_frame_ids,
+                                    meter,
+                                )?;
+                                pending.push(OwnerWalkTask::Term(&arguments[2], else_frame));
+                                pending.push(OwnerWalkTask::Term(&arguments[1], then_frame));
+                            }
+                        }
+                        pending.push(OwnerWalkTask::Term(&arguments[0], terminal));
+                    } else if matches!(
+                        identity,
+                        Some(
+                            "filament.op.boolean.and"
+                                | "filament.op.boolean.or"
+                                | "filament.op.boolean.implies"
+                        )
+                    ) && arguments.len() == 2
+                    {
+                        let holds = identity != Some("filament.op.boolean.or");
+                        let guard = reference(&arguments[0]);
+                        let right_frame = guard.and_then(|guard| {
+                            let position = index.get(&guard)?;
+                            let occurrence = nodes[*position]
+                                .occurrences
+                                .iter()
+                                .filter(|occurrence| {
+                                    occurrence.role == CheckedOccurrenceRole::Expression
+                                })
+                                .nth(*visit_counts.get(position).unwrap_or(&0))?
+                                .ordinal;
+                            Some((guard, occurrence))
+                        });
+                        let literal = guard_literal_value(&arguments[0], nodes, terms, index);
+                        let right_is_short_circuited = match identity {
+                            Some("filament.op.boolean.and") => literal == Some(false),
+                            Some("filament.op.boolean.or") => literal == Some(true),
+                            Some("filament.op.boolean.implies") => literal == Some(false),
+                            _ => false,
+                        };
+                        let right_terminal = if right_is_short_circuited {
+                            terminal
+                        } else if let Some((guard, occurrence)) = right_frame {
+                            derived_frame_id(
+                                terminal,
+                                &guard,
+                                occurrence,
+                                holds,
+                                frame_index,
+                                record_position,
+                                seen_frame_ids,
+                                meter,
+                            )?
+                        } else {
+                            terminal
+                        };
+                        if !right_is_short_circuited {
+                            pending.push(OwnerWalkTask::Term(&arguments[1], right_terminal));
+                        }
+                        pending.push(OwnerWalkTask::Term(&arguments[0], terminal));
+                    } else {
+                        for argument in arguments.iter().rev() {
+                            pending.push(OwnerWalkTask::Term(argument, terminal));
+                        }
+                    }
+                }
+                CheckedTerm::Aggregate { members } => {
+                    for member in members.iter().rev() {
+                        pending.push(OwnerWalkTask::Term(member, terminal));
+                    }
+                }
+                CheckedTerm::Binding { value, .. } => {
+                    pending.push(OwnerWalkTask::Term(value, terminal));
+                }
+                _ => {}
+            },
+        }
+    }
+    Ok(derived)
+}
+
+fn guard_literal_value(
+    term: &CheckedTerm,
+    nodes: &[RawSemanticNodeV2],
+    terms: &[CheckedTerm],
+    index: &GraphIndex<'_>,
+) -> Option<bool> {
+    let target = reference(term)?;
+    let position = *index.get(&target)?;
+    if !matches!(nodes.get(position)?.node_tag.as_ref(), "value") {
+        return None;
+    }
+    match terms.get(position)? {
+        CheckedTerm::Literal {
+            value_kind: LiteralKind::Boolean,
+            value,
+            ..
+        } => value.as_bool(),
+        _ => None,
+    }
+}
+
+fn derived_frame_id(
+    parent: Option<PathConditionFrameId>,
+    guard: &CheckedNodeId,
+    occurrence: u64,
+    holds: bool,
+    frame_index: &[PathConditionFrameIndexEntry<'_>],
+    record_position: usize,
+    seen_frame_ids: &mut BTreeSet<usize>,
+    meter: &mut WorkMeter,
+) -> Result<Option<PathConditionFrameId>, ValidationFailure> {
+    let parent_index = parent.map(|parent| parent.0);
+    let key = (parent_index, guard, occurrence, holds);
+    let Ok(found) = frame_index.binary_search_by(|entry| entry.0.cmp(&key)) else {
+        return Err(refuse(
+            record_position,
+            Path::root().key("path_condition_frames"),
+            Cause::InvalidValue,
+            None,
+            meter,
+        ));
+    };
+    let frame_id = frame_index[found].1;
+    if seen_frame_ids.insert(frame_id) && frame_id + 1 != seen_frame_ids.len() {
+        return Err(refuse(
+            record_position,
+            Path::root().key("path_condition_frames"),
+            Cause::InvalidValue,
+            None,
+            meter,
+        ));
+    }
+    Ok(Some(PathConditionFrameId(frame_id)))
 }
 
 fn record_binding_shape(term: &CheckedTerm) -> bool {
@@ -1102,54 +1653,6 @@ fn record_body_failure_path<'a>(term: &CheckedTerm, node_at: Path<'a>) -> Path<'
     member_path(0)
 }
 
-fn owner_body_reach(
-    owner_position: usize,
-    nodes: &[RawSemanticNodeV2],
-    terms: &[CheckedTerm],
-    index: &GraphIndex<'_>,
-    record_position: usize,
-    meter: &mut WorkMeter,
-) -> Result<BTreeSet<usize>, ValidationFailure> {
-    let root_id = terms
-        .get(owner_position)
-        .and_then(function_body_root)
-        .ok_or_else(|| {
-            refuse(
-                record_position,
-                Path::root()
-                    .key("semantic_graph")
-                    .key("nodes")
-                    .index(record_position)
-                    .key("body")
-                    .key("members")
-                    .index(1),
-                Cause::InvalidValue,
-                Some(&nodes[record_position].node_id),
-                meter,
-            )
-        })?;
-    let mut pending = vec![root_id];
-    let mut reached = BTreeSet::new();
-    while let Some(id) = pending.pop() {
-        let Some(&position) = index.get(&id) else {
-            continue;
-        };
-        if reached.contains(&position) {
-            continue;
-        }
-        let at = Path::root()
-            .key("semantic_graph")
-            .key("nodes")
-            .index(position);
-        stage_storage::work(meter, &site(position, at), 1)?;
-        reached.insert(position);
-        if let Some(term) = terms.get(position) {
-            term.visit_reference_targets(&mut |target| pending.push(target.clone()));
-        }
-    }
-    Ok(reached)
-}
-
 fn function_body_root(term: &CheckedTerm) -> Option<CheckedNodeId> {
     let CheckedTerm::Aggregate { members, .. } = term else {
         return None;
@@ -1217,17 +1720,6 @@ fn occurrence_role_wire(role: &CheckedOccurrenceRole) -> &'static str {
     }
 }
 
-/// One admitted path-condition guard for a value-validity record.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct RequirementGuard {
-    /// Boolean expression or literal/parameter value node used as the guard.
-    pub guard: CheckedNodeId,
-    /// Expression occurrence of the guard read as this condition.
-    pub occurrence: u64,
-    /// Outcome required for this path.
-    pub holds: bool,
-}
-
 /// The facts retained from a `claim`/`value_validity` node.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ValueValidityRecord {
@@ -1243,8 +1735,8 @@ pub struct ValueValidityRecord {
     pub result_bound: CheckedNodeId,
     /// Wrapping narrow application and its occurrence, when present.
     pub conversion: Option<(CheckedNodeId, u64)>,
-    /// Path-condition guards, outermost first.
-    pub path_condition: Vec<RequirementGuard>,
+    /// The terminal frame encoding this record's path condition, when guarded.
+    pub path_condition_frame: Option<PathConditionFrameId>,
     /// Parameter and binder value nodes read by the claim.
     pub extent_roots: Vec<CheckedNodeId>,
     /// Model object types whose members the claim reads.
@@ -1291,6 +1783,34 @@ pub(super) fn retain_rows(
     })
 }
 
+pub(super) fn retain_frames(
+    rows: Option<&[PathConditionFrameWire]>,
+    nodes: &[CheckedSemanticNodeV2],
+    operand_rows: &[Vec<CheckedOperandEntry>],
+    node_positions: &super::retained_index::PositionIndex,
+) -> Vec<PathConditionFrame> {
+    rows.map_or_else(Vec::new, |rows| {
+        rows.iter()
+            .map(|row| PathConditionFrame {
+                parent: row.parent.map(|parent| {
+                    PathConditionFrameId(
+                        usize::try_from(parent).expect("admission checked frame parent width"),
+                    )
+                }),
+                guard: node_positions
+                    .node(nodes, &row.guard.node)
+                    .and_then(|position| operand_rows.get(position))
+                    .map_or_else(
+                        || row.guard.node.clone(),
+                        |holder_row| resolve_holder_id(row.guard.node.clone(), holder_row),
+                    ),
+                occurrence: row.guard.occurrence.ordinal,
+                holds: row.holds,
+            })
+            .collect()
+    })
+}
+
 fn resolve_holder_id(id: CheckedNodeId, row: &[CheckedOperandEntry]) -> CheckedNodeId {
     let mut resolved = id;
     let result = super::node_index::resolve_id_operand_slots(&mut resolved, row, |package| {
@@ -1312,9 +1832,6 @@ fn resolve_record(
     record.conversion = record
         .conversion
         .map(|(id, occurrence)| (resolve_holder_id(id, holder_row), occurrence));
-    for guard in &mut record.path_condition {
-        guard.guard = resolve_holder_id(guard.guard.clone(), holder_row);
-    }
     for root in &mut record.extent_roots {
         *root = resolve_holder_id(root.clone(), holder_row);
     }
@@ -1358,23 +1875,16 @@ fn read_record(node: CheckedNodeId, term: &CheckedTerm) -> Option<ValueValidityR
         )),
         _ => return None,
     };
-    let CheckedTerm::Aggregate {
-        members: guards, ..
-    } = binding(term, 5)?
-    else {
+    let CheckedTerm::Aggregate { members: path } = binding(term, 5)? else {
         return None;
     };
-    let mut path_condition = Vec::with_capacity(guards.len());
-    for guard in guards {
-        let CheckedTerm::Aggregate { members, .. } = guard else {
-            return None;
-        };
-        path_condition.push(RequirementGuard {
-            guard: reference(named_value(members.first()?, "guard")?)?,
-            occurrence: integer(named_value(members.get(1)?, "occurrence")?).unwrap_or_default(),
-            holds: boolean(named_value(members.get(2)?, "holds")?).unwrap_or_default(),
-        });
-    }
+    let path_condition_frame = match path.as_slice() {
+        [] => None,
+        [terminal] => Some(PathConditionFrameId(
+            usize::try_from(integer(terminal)?).ok()?,
+        )),
+        _ => return None,
+    };
     Some(ValueValidityRecord {
         node,
         owner,
@@ -1382,10 +1892,24 @@ fn read_record(node: CheckedNodeId, term: &CheckedTerm) -> Option<ValueValidityR
         occurrence,
         result_bound,
         conversion,
-        path_condition,
+        path_condition_frame,
         extent_roots: references(binding(term, 6)?)?,
         objects: references(binding(term, 7)?)?,
     })
+}
+
+fn identity_path_terminal(node: &CheckedNodeId) -> Option<String> {
+    let mut path = node.path.iter();
+    while let Some(segment) = path.next() {
+        if matches!(segment, super::CheckedNodePathSegment::Name(name) if name.as_ref() == "path_condition")
+        {
+            return match path.next()? {
+                super::CheckedNodePathSegment::Name(value) => Some(value.to_string()),
+                _ => None,
+            };
+        }
+    }
+    None
 }
 
 fn binding(term: &CheckedTerm, index: usize) -> Option<&CheckedTerm> {
@@ -1429,17 +1953,6 @@ fn integer(term: &CheckedTerm) -> Option<u64> {
     }
 }
 
-fn boolean(term: &CheckedTerm) -> Option<bool> {
-    match term {
-        CheckedTerm::Literal {
-            value_kind: LiteralKind::Boolean,
-            value,
-            ..
-        } => value.as_bool(),
-        _ => None,
-    }
-}
-
 fn references(term: &CheckedTerm) -> Option<Vec<CheckedNodeId>> {
     let CheckedTerm::Aggregate { members, .. } = term else {
         return None;
@@ -1450,9 +1963,9 @@ fn references(term: &CheckedTerm) -> Option<Vec<CheckedNodeId>> {
 #[cfg(test)]
 mod tests {
     use super::{
-        first_unnamed_position, CapabilityKind, DomainKey, DomainKind, RequirementExtent,
-        RequirementExtentWire, RequirementGuard, RequirementItemRow, RequirementItemWireRow,
-        ValueValidityRecord,
+        first_unnamed_position, CapabilityKind, DomainKey, DomainKind, PathConditionFrame,
+        PathConditionFrameId, PathConditionView, RequirementExtent, RequirementExtentWire,
+        RequirementItemRow, RequirementItemWireRow, ValueValidityRecord,
     };
     use crate::checked_package::shared::{
         CheckedNodeId, CheckedNodePathSegment, CheckedOperandEntry,
@@ -1527,11 +2040,7 @@ mod tests {
             occurrence: 3,
             result_bound: slot_id(0),
             conversion: Some((slot_id(1), 7)),
-            path_condition: vec![RequirementGuard {
-                guard: slot_id(1),
-                occurrence: 2,
-                holds: true,
-            }],
+            path_condition_frame: Some(PathConditionFrameId(2)),
             extent_roots: vec![slot_id(0)],
             objects: vec![slot_id(1)],
         };
@@ -1547,9 +2056,43 @@ mod tests {
         assert_eq!(resolved.application, index_id(4));
         assert_eq!(resolved.result_bound, index_id(11));
         assert_eq!(resolved.conversion, Some((index_id(4), 7)));
-        assert_eq!(resolved.path_condition[0].guard, index_id(4));
+        assert_eq!(resolved.path_condition_frame, Some(PathConditionFrameId(2)));
         assert_eq!(resolved.extent_roots, vec![index_id(11)]);
         assert_eq!(resolved.objects, vec![index_id(4)]);
+    }
+
+    #[trace("TC-488", "FR-376-AC-1")]
+    #[test]
+    fn borrowed_path_view_yields_parent_chain_outermost_first() {
+        let guard = |ordinal| CheckedNodeId {
+            package: "pkg".into(),
+            path: vec![CheckedNodePathSegment::Name(format!("g{ordinal}").into())],
+            ordinal: 0,
+        };
+        let frames = [
+            PathConditionFrame {
+                parent: None,
+                guard: guard(0),
+                occurrence: 3,
+                holds: true,
+            },
+            PathConditionFrame {
+                parent: Some(PathConditionFrameId(0)),
+                guard: guard(1),
+                occurrence: 5,
+                holds: false,
+            },
+        ];
+        let view = PathConditionView::new(&frames, Some(PathConditionFrameId(1)));
+        let chain = view.iter().collect::<Vec<_>>();
+        assert_eq!(chain.len(), 2);
+        assert_eq!(chain[0].guard, &frames[0].guard);
+        assert_eq!(chain[0].occurrence, 3);
+        assert!(chain[0].holds);
+        assert_eq!(chain[1].guard, &frames[1].guard);
+        assert_eq!(chain[1].occurrence, 5);
+        assert!(!chain[1].holds);
+        assert!(PathConditionView::new(&frames, None).is_empty());
     }
 
     #[trace("TC-2053", "FR-825-AC-5")]

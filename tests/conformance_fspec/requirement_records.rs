@@ -175,54 +175,41 @@ fn value_validity_package(reverse_graph: bool) -> Value {
             "arguments":[{"term":"reference","target":node_id(parameter_key)},
                 {"term":"literal","type":integer,"value_kind":"integer","value":"0"}]}
     });
-    let mut equality_dependencies = vec![node_id(app_key), boolean.clone()];
-    equality_dependencies.sort_by_key(structural_fixture_id);
-    let equality = json!({
-        "node_id":node_id("expression/integer_eq"),
-        "schema_version":"filament.checked-semantic-graph/v2",
-        "node_tag":"expression", "semantic_form":"binary", "semantic_type":boolean,
-        "dependencies":equality_dependencies,
-        "occurrences":[{"role":"expression","ordinal":0}],
-        "body":{"term":"application","operator":"binary",
-            "operation":{"identity":"filament.op.integer.eq","laws":[],"mode":null,"member":null,"leaves":[]},
-            "result_type":boolean,
-            "arguments":[{"term":"reference","target":node_id(app_key)},
-                {"term":"literal","type":integer,"value_kind":"integer","value":"0"}]}
-    });
     let mut root_dependencies = vec![
         node_id("expression/integer_ge"),
-        node_id("expression/integer_eq"),
+        node_id(app_key),
         boolean.clone(),
+        integer.clone(),
     ];
     root_dependencies.sort_by_key(structural_fixture_id);
     let root = json!({
-        "node_id":node_id("expression/boolean_and"),
+        "node_id":node_id("expression/conditional"),
         "schema_version":"filament.checked-semantic-graph/v2",
-        "node_tag":"expression", "semantic_form":"binary", "semantic_type":boolean,
+        "node_tag":"expression", "semantic_form":"conditional", "semantic_type":integer,
         "dependencies":root_dependencies,
         "occurrences":[{"role":"expression","ordinal":0}],
-        "body":{"term":"application","operator":"binary",
-            "operation":{"identity":"filament.op.boolean.and","laws":[],"mode":null,"member":null,"leaves":[]},
-            "result_type":boolean,
+        "body":{"term":"application","operator":"conditional",
+            "operation":{"identity":"filament.op.control.if","laws":[],"mode":null,"member":null,"leaves":[]},
+            "result_type":integer,
             "arguments":[{"term":"reference","target":node_id("expression/integer_ge")},
-                {"term":"reference","target":node_id("expression/integer_eq")}]}
+                {"term":"reference","target":node_id(app_key)},
+                {"term":"reference","target":node_id(app_key)}]}
     });
     nodes.push(parameter);
     nodes.push(application);
     nodes.push(guard);
-    nodes.push(equality);
     nodes.push(root);
-    let parameter_position = nodes.len() - 5;
-    let application_position = nodes.len() - 4;
-    let guard_position = nodes.len() - 3;
-    nodes[owner_position]["semantic_type"] = boolean.clone();
-    let mut owner_dependencies = vec![node_id(parameter_key), node_id("expression/boolean_and")];
+    let parameter_position = nodes.len() - 4;
+    let application_position = nodes.len() - 3;
+    let guard_position = nodes.len() - 2;
+    nodes[owner_position]["semantic_type"] = integer.clone();
+    let mut owner_dependencies = vec![node_id(parameter_key), node_id("expression/conditional")];
     owner_dependencies.sort_by_key(structural_fixture_id);
     nodes[owner_position]["dependencies"] = json!(owner_dependencies);
     nodes[owner_position]["body"] = json!({"term":"aggregate","members":[
         {"term":"binding","name":"parameters","value":{"term":"aggregate","members":[
             {"term":"reference","target":node_id(parameter_key)}]}},
-        {"term":"binding","name":"body","value":{"term":"reference","target":node_id("expression/boolean_and")}}
+        {"term":"binding","name":"body","value":{"term":"reference","target":node_id("expression/conditional")}}
     ]});
     settle(&mut package);
 
@@ -252,29 +239,25 @@ fn value_validity_package(reverse_graph: bool) -> Value {
         .expect("bound index");
     let mut record_positions = Vec::new();
     for occurrence in 0..2 {
-        let guard_path = if occurrence == 0 {
-            Vec::new()
-        } else {
-            vec![json!({"node":guard_position}), json!("0"), json!("true")]
-        };
         let mut path = json!([
             "claim", "value_validity", {"node":owner_position}, {"node":application_position},
             occurrence.to_string(), "bound", {"node":bound_position},
-            "conversion", "guards"
+            "conversion"
         ]);
-        path.as_array_mut().expect("record path").extend(guard_path);
-        path.as_array_mut().expect("record path").extend([
-            json!("roots"),
-            json!({"node":parameter_position}),
-            json!("objects"),
-        ]);
+        path.as_array_mut()
+            .expect("record path")
+            .extend([json!("path_condition"), json!(occurrence.to_string())]);
+        path.as_array_mut()
+            .expect("record path")
+            .push(json!("roots"));
+        path.as_array_mut()
+            .expect("record path")
+            .extend([json!({"node":parameter_position}), json!("objects")]);
         let record_id = json!({"package":package_name,"path":path,"ordinal":0});
         let mut record_dependencies = dependencies.clone();
-        if occurrence == 1 {
-            record_dependencies.push(guard.clone());
-            record_dependencies.sort_by_key(structural_fixture_id);
-            record_dependencies.dedup();
-        }
+        record_dependencies.push(guard.clone());
+        record_dependencies.sort_by_key(structural_fixture_id);
+        record_dependencies.dedup();
         let record = json!({
             "node_id":record_id,
             "schema_version":"filament.checked-semantic-graph/v2",
@@ -287,15 +270,9 @@ fn value_validity_package(reverse_graph: bool) -> Value {
                 binding("occurrence",json!({"term":"literal","type":node_id("scalar_type/integer"),"value_kind":"integer","value":occurrence})),
                 binding("result_bound",json!({"term":"reference","target":bound})),
                 binding("conversion",json!({"term":"aggregate","members":[]})),
-                binding("path_condition", if occurrence == 0 {
-                    json!({"term":"aggregate","members":[]})
-                } else {
-                    json!({"term":"aggregate","members":[json!({"term":"aggregate","members":[
-                        binding("guard",json!({"term":"reference","target":guard})),
-                        binding("occurrence",json!({"term":"literal","type":node_id("scalar_type/integer"),"value_kind":"integer","value":0})),
-                        binding("holds",json!({"term":"literal","type":node_id("scalar_type/boolean"),"value_kind":"boolean","value":true}))
-                    ]})]})
-                }),
+                binding("path_condition", json!({"term":"aggregate","members":[
+                    {"term":"literal","type":node_id("scalar_type/integer"),"value_kind":"integer","value":occurrence}
+                ]})),
                 binding("extent_roots",json!({"term":"aggregate","members":[{"term":"reference","target":parameter}]})),
                 binding("objects",json!({"term":"aggregate","members":[]})),
             ]}
@@ -319,6 +296,10 @@ fn value_validity_package(reverse_graph: bool) -> Value {
         {"claim":{"node":application,"occurrence":{"role":"expression","ordinal":1}},
             "kind":"value-validity","extent":{"classification":"bounded"},"record":record_ids[1]}
     ]);
+    package["path_condition_frames"] = json!([
+        {"parent":null,"guard":{"node":guard,"occurrence":{"role":"expression","ordinal":0}},"holds":true},
+        {"parent":null,"guard":{"node":guard,"occurrence":{"role":"expression","ordinal":0}},"holds":false}
+    ]);
     let source_map = package["source_map"].as_array_mut().expect("source map");
     for (ordinal, record) in record_ids.iter().enumerate() {
         let application_region = source_map
@@ -335,7 +316,7 @@ fn value_validity_package(reverse_graph: bool) -> Value {
     package
 }
 
-fn boolean_value_guard_package(path_condition: &Value) -> Value {
+fn boolean_value_guard_package(spec: &Value) -> Value {
     let mut package = value_validity_package(false);
     let boolean = node_id("scalar_type/boolean");
     let (boolean_parameter_position, record_rows) = {
@@ -418,13 +399,18 @@ fn boolean_value_guard_package(path_condition: &Value) -> Value {
         (boolean_parameter_position, record_rows)
     };
     for &(record_position, application_occurrence) in &record_rows {
-        let vector = path_condition
+        let record_path = spec["record_path_condition"]
             .as_array()
-            .expect("published path conditions")
+            .expect("published record path conditions")
             .iter()
             .find(|row| row["application_occurrence"].as_u64() == Some(application_occurrence))
-            .expect("path-condition vector for application occurrence");
-        let guard_read_occurrence = vector["guard_read_occurrence"]
+            .expect("record path for application occurrence");
+        let frame_id = record_path["terminal_frame_id"]
+            .as_u64()
+            .expect("terminal frame id");
+        let frame =
+            &spec["path_condition_frames"][usize::try_from(frame_id).expect("frame id fits")];
+        let guard_read_occurrence = frame["guard"]["occurrence"]["ordinal"]
             .as_u64()
             .expect("guard read occurrence");
         rekey_requirement_record(
@@ -432,7 +418,7 @@ fn boolean_value_guard_package(path_condition: &Value) -> Value {
             record_position,
             boolean_parameter_position,
             guard_read_occurrence,
-            vector["holds"].as_bool().expect("required guard outcome"),
+            frame["holds"].as_bool().expect("required guard outcome"),
             None,
         );
     }
@@ -444,26 +430,6 @@ fn boolean_value_guard_package(path_condition: &Value) -> Value {
         .iter_mut()
         .filter(|node| node["semantic_form"] == "value_validity")
     {
-        let application_occurrence = record["body"]["members"][2]["value"]["value"]
-            .as_u64()
-            .expect("application occurrence");
-        let vector = path_condition
-            .as_array()
-            .expect("published path conditions")
-            .iter()
-            .find(|row| row["application_occurrence"].as_u64() == Some(application_occurrence))
-            .expect("path-condition vector for application occurrence");
-        let guard_read_occurrence = vector["guard_read_occurrence"]
-            .as_u64()
-            .expect("guard read occurrence");
-        let holds = vector["holds"].as_bool().expect("required guard outcome");
-        record["body"]["members"][5]["value"]["members"] = json!([{
-            "term":"aggregate","members":[
-                {"term":"binding","name":"guard","value":{"term":"reference","target":boolean_parameter_id.clone()}},
-                {"term":"binding","name":"occurrence","value":{"term":"literal","type":node_id("scalar_type/integer"),"value_kind":"integer","value":guard_read_occurrence}},
-                {"term":"binding","name":"holds","value":{"term":"literal","type":boolean,"value_kind":"boolean","value":holds}}
-            ]
-        }]);
         record["body"]["members"][6]["value"]["members"] = json!([
             {"term":"reference","target":node_id("value/parameter/n/0")},
             {"term":"reference","target":boolean_parameter_id.clone()}
@@ -490,8 +456,8 @@ fn large_requirement_record_package(record_count: usize) -> Value {
     let proposal = super::proposal_dir_of(&super::fixtures_dir());
     let vectors = super::read_json(&proposal.join("requirement-record-vectors.json"))
         .expect("published FR-825 vectors");
-    let path_condition = &vectors["positive"][0]["path_condition"];
-    let mut package = boolean_value_guard_package(path_condition);
+    let spec = &vectors["positive"][0];
+    let mut package = boolean_value_guard_package(spec);
     let record_template = package["semantic_graph"]["nodes"]
         .as_array()
         .expect("graph nodes")
@@ -521,18 +487,11 @@ fn large_requirement_record_package(record_count: usize) -> Value {
         .iter()
         .position(|node| node["semantic_form"] == "conditional")
         .expect("conditional body root");
-    let mut previous_position = nodes
+    let previous_position = nodes
         .iter()
         .position(|node| node["node_id"] == original_application_id)
         .expect("initial application");
     let mut previous_id = original_application_id.clone();
-    let integer_parameter_position = nodes
-        .iter()
-        .position(|node| {
-            node["semantic_form"] == "parameter"
-                && node["body"]["members"][0]["value"]["value"] == "x"
-        })
-        .expect("integer parameter");
     assert_eq!(
         original_application_id["path"],
         json!(["expression/integer_add"])
@@ -583,7 +542,6 @@ fn large_requirement_record_package(record_count: usize) -> Value {
         nodes.push(application);
         application_positions.push(application_position);
         application_ids.push(application_id.clone());
-        previous_position = application_position;
         previous_id = application_id;
     }
 
@@ -696,8 +654,8 @@ fn tc_488_a_hundred_thousand_requirement_records_admit_within_fifteen_minutes() 
     );
 }
 
-fn boolean_literal_guard_package(path_condition: &Value) -> Value {
-    let mut package = boolean_value_guard_package(path_condition);
+fn boolean_literal_guard_package(spec: &Value) -> Value {
+    let mut package = boolean_value_guard_package(spec);
     let boolean = node_id("scalar_type/boolean");
     let literal_id = node_id("value/literal/boolean_guard");
     {
@@ -715,7 +673,6 @@ fn boolean_literal_guard_package(path_condition: &Value) -> Value {
             "body":{"term":"literal","type":boolean,"value_kind":"boolean","value":true}
         });
         nodes.push(literal);
-        let literal_position = nodes.len() - 1;
         let conditional_position = nodes
             .iter()
             .position(|node| node["node_id"] == node_id("expression/boolean_guard_if"))
@@ -757,13 +714,21 @@ fn boolean_literal_guard_package(path_condition: &Value) -> Value {
         .as_array_mut()
         .expect("source map")
         .retain(|row| row["node_id"] != discarded_id);
+    package["path_condition_frames"]
+        .as_array_mut()
+        .expect("path-condition frames")
+        .truncate(1);
 
-    let vector = path_condition
+    let record_path = spec["record_path_condition"]
         .as_array()
-        .expect("published path conditions")
+        .expect("published record path conditions")
         .iter()
         .find(|row| row["application_occurrence"].as_u64() == Some(0))
-        .expect("true-branch path-condition vector");
+        .expect("true-branch record path");
+    let frame_id = record_path["terminal_frame_id"]
+        .as_u64()
+        .expect("true-branch terminal frame id");
+    let frame = &spec["path_condition_frames"][usize::try_from(frame_id).expect("frame id")];
     let parameter_position = package["semantic_graph"]["nodes"]
         .as_array()
         .expect("graph nodes")
@@ -805,16 +770,10 @@ fn boolean_literal_guard_package(path_condition: &Value) -> Value {
                 && node["body"]["members"][2]["value"]["value"] == 0
         })
         .expect("true-branch value-validity record after parameter removal");
-    {
-        let record = &mut package["semantic_graph"]["nodes"][record_position];
-        record["body"]["members"][5]["value"]["members"][0]["members"][0]["value"] =
-            json!({"term":"reference","target":literal_id});
-        sync_body_dependencies(record);
-    }
-    let guard_read_occurrence = vector["guard_read_occurrence"]
+    let guard_read_occurrence = frame["guard"]["occurrence"]["ordinal"]
         .as_u64()
         .expect("guard read occurrence");
-    let holds = vector["holds"].as_bool().expect("required guard outcome");
+    let holds = frame["holds"].as_bool().expect("required guard outcome");
     rekey_requirement_record(
         &mut package,
         record_position,
@@ -824,6 +783,18 @@ fn boolean_literal_guard_package(path_condition: &Value) -> Value {
         Some((parameter_position, parameter_id)),
     );
     settle(&mut package);
+    let final_literal_id = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("settled graph nodes")
+        .iter()
+        .find(|node| {
+            node["semantic_form"] == "literal"
+                && node["node_tag"] == "value"
+                && node["semantic_type"] == node_id("scalar_type/boolean")
+        })
+        .expect("settled Boolean literal")["node_id"]
+        .clone();
+    package["path_condition_frames"][0]["guard"]["node"] = final_literal_id;
     rebuild_body_locations(&mut package);
     rebuild_complete_source_map(&mut package);
     package
@@ -837,6 +808,7 @@ fn rekey_requirement_record(
     holds: bool,
     extent_root_to_remove: Option<(usize, Value)>,
 ) {
+    let guard = package["semantic_graph"]["nodes"][guard_position]["node_id"].clone();
     let (old_id, new_id) = {
         let record = &mut package["semantic_graph"]["nodes"][record_position];
         let old_id = record["node_id"].clone();
@@ -844,22 +816,21 @@ fn rekey_requirement_record(
             let path = record["node_id"]["path"]
                 .as_array_mut()
                 .expect("record structural path");
-            let guards = path
+            let conversion = path
                 .iter()
-                .position(|segment| segment == "guards")
-                .expect("guard path segment");
+                .position(|segment| segment == "conversion")
+                .expect("conversion path segment");
             let roots = path
                 .iter()
                 .enumerate()
-                .skip(guards + 1)
+                .skip(conversion + 1)
                 .find_map(|(index, segment)| (segment == "roots").then_some(index))
                 .expect("roots path segment");
             path.splice(
-                guards + 1..roots,
+                conversion + 1..roots,
                 [
-                    json!({"node":guard_position}),
-                    json!(guard_read_occurrence.to_string()),
-                    json!(holds.to_string()),
+                    json!("path_condition"),
+                    json!(if holds { "0" } else { "1" }),
                 ],
             );
             if let Some((root_position, root_id)) = &extent_root_to_remove {
@@ -884,8 +855,18 @@ fn rekey_requirement_record(
             }
             sync_body_dependencies(record);
         }
+        let frame_id = if holds { 0 } else { 1 };
+        record["body"]["members"][5]["value"]["members"] = json!([
+            {"term":"literal","type":node_id("scalar_type/integer"),"value_kind":"integer","value":frame_id}
+        ]);
         (old_id, record["node_id"].clone())
     };
+    let frame_id = if holds { 0 } else { 1 };
+    package["path_condition_frames"][frame_id] = json!({
+        "parent":null,
+        "guard":{"node":guard,"occurrence":{"role":"expression","ordinal":guard_read_occurrence}},
+        "holds":holds
+    });
     for row in package["requirement_items"]
         .as_array_mut()
         .expect("requirement rows")
@@ -1064,7 +1045,7 @@ fn public_reader_retains_value_validity_record_facts_and_owner_index() {
         .any(|node| node.node_id == record.result_bound));
     assert_eq!(record.occurrence, 0);
     assert!(record.conversion.is_none());
-    assert!(record.path_condition.is_empty());
+    assert_eq!(record.path_condition_frame.map(|frame| frame.0), Some(0));
     assert_eq!(record.extent_roots.len(), 1);
     assert_eq!(&record.extent_roots[0], resolved_parameter);
     assert!(record.objects.is_empty());
@@ -1108,7 +1089,10 @@ fn public_reader_retains_value_validity_record_facts_and_owner_index() {
         assert_eq!(reordered_record.occurrence, record.occurrence);
         assert_eq!(reordered_record.result_bound, record.result_bound);
         assert_eq!(reordered_record.conversion, record.conversion);
-        assert_eq!(reordered_record.path_condition, record.path_condition);
+        assert_eq!(
+            reordered_record.path_condition_frame,
+            record.path_condition_frame
+        );
         assert_eq!(reordered_record.extent_roots, record.extent_roots);
         assert_eq!(reordered_record.objects, record.objects);
     }
@@ -1780,7 +1764,7 @@ fn requirement_record_refusal_precedes_reversed_probabilistic_claim_rows() {
 
 #[trace("TC-2053", "FR-825-AC-6", "FR-825-AC-7")]
 #[test]
-fn published_requirement_record_vectors_admit_boolean_value_guards_and_refuse_integer_guards() {
+fn published_requirement_record_vectors_admit_shared_frames_and_refuse_non_boolean_guards() {
     let proposal = super::proposal_dir_of(&super::fixtures_dir());
     let vectors = super::read_json(&proposal.join("requirement-record-vectors.json"))
         .expect("published FR-825 vectors");
@@ -1790,141 +1774,46 @@ fn published_requirement_record_vectors_admit_boolean_value_guards_and_refuse_in
         .iter()
         .find(|vector| vector["id"] == "RRV-01-bare-boolean-parameter-guard")
         .expect("RRV-01");
-    assert_eq!(positive["expected"]["admitted"], true);
     assert_eq!(positive["expected"]["record_count"], 2);
-    let path_condition = positive["path_condition"]
-        .as_array()
-        .expect("RRV-01 path conditions");
-    assert_eq!(path_condition.len(), 2);
-    assert_eq!(path_condition[0]["application_occurrence"], 0);
-    assert_eq!(path_condition[1]["application_occurrence"], 1);
-    assert_eq!(path_condition[0]["guard_read_occurrence"], 0);
-    assert_eq!(path_condition[1]["guard_read_occurrence"], 0);
-    assert_eq!(path_condition[0]["holds"], true);
-    assert_eq!(path_condition[1]["holds"], false);
-    let refusal_vector = vectors["reader_refusals"]
-        .as_array()
-        .expect("requirement-record refusal vectors")
-        .iter()
-        .find(|vector| vector["id"] == "RRV-02-non-boolean-value-guard")
-        .expect("RRV-02");
-    assert_eq!(refusal_vector["expected"]["code"], "invalid_package");
-    assert_eq!(refusal_vector["expected"]["cause"], "invalid-value");
     assert_eq!(
-        refusal_vector["expected"]["pointer"],
-        "body/members/5/value/members/0"
+        positive["path_condition_frames"].as_array().unwrap().len(),
+        2
     );
-    let mutation = &refusal_vector["mutation"];
-    assert_eq!(mutation["application_occurrence"], 0);
-    assert_eq!(mutation["replace_guard"], "p");
-    assert_eq!(mutation["with"]["name"], "x");
-    assert_eq!(mutation["with"]["role"], "value/parameter");
-    assert_eq!(mutation["with"]["semantic_type"], "scalar_type/integer");
-    assert_eq!(mutation["guard_read_occurrence"]["node"], "x");
-    assert_eq!(
-        mutation["guard_read_occurrence"]["source_occurrence"],
-        "its read in x + 1"
-    );
-
-    let package = boolean_value_guard_package(&positive["path_condition"]);
-    let admitted = match read(&package) {
-        CheckedPackageV2ReadResult::Admitted(admitted) => admitted,
-        result => {
-            panic!("RRV-01: Boolean parameter is admitted as a guard and extent root: {result:?}")
-        }
+    let package = boolean_value_guard_package(positive);
+    let CheckedPackageV2ReadResult::Admitted(admitted) = read(&package) else {
+        panic!(
+            "RRV-01 admits both terminal frame ids: {:?}",
+            read(&package)
+        );
     };
-    assert_eq!(admitted.requirement_items().len(), 2);
     let records = admitted
         .requirement_items()
         .iter()
         .map(|row| row.record.as_ref().expect("value-validity record"))
         .collect::<Vec<_>>();
-    assert_eq!(records[0].path_condition.len(), 1);
-    assert_eq!(records[1].path_condition.len(), 1);
+    assert_eq!(records.len(), 2);
     assert_eq!(
-        records[0].path_condition[0].guard,
-        records[1].path_condition[0].guard
+        records[0].path_condition_frame.map(|frame| frame.0),
+        Some(0)
     );
-    assert!(records.iter().all(|record| record
-        .extent_roots
-        .contains(&record.path_condition[0].guard)));
-    for (record, vector) in records.iter().zip(path_condition) {
-        assert_eq!(
-            record.occurrence,
-            vector["application_occurrence"].as_u64().unwrap()
-        );
-        assert_eq!(
-            record.path_condition[0].occurrence,
-            vector["guard_read_occurrence"].as_u64().unwrap()
-        );
-        assert_eq!(
-            record.path_condition[0].holds,
-            vector["holds"].as_bool().unwrap()
-        );
+    assert_eq!(
+        records[1].path_condition_frame.map(|frame| frame.0),
+        Some(1)
+    );
+    for (record, expected_holds) in records.iter().zip([true, false]) {
+        let chain = admitted.path_condition(record).iter().collect::<Vec<_>>();
+        assert_eq!(chain.len(), 1);
+        assert_eq!(chain[0].holds, expected_holds);
+        assert_eq!(chain[0].guard, &admitted.path_condition_frames()[0].guard);
     }
-    assert!(records.iter().all(|record| record.extent_roots.len() == 2));
 
     let mut adverse = package;
-    let mutation = &refusal_vector["mutation"];
-    let integer_parameter = match mutation["with"]["name"].as_str() {
-        Some("x") => node_id("value/parameter/n/0"),
-        other => panic!("RRV-02 integer parameter name is unsupported: {other:?}"),
-    };
-    let (record_position, integer_parameter_position, holds, guard_read_occurrence) = {
-        let nodes = adverse["semantic_graph"]["nodes"]
-            .as_array_mut()
-            .expect("nodes");
-        let record_position = nodes
-            .iter()
-            .position(|node| {
-                node["semantic_form"] == "value_validity"
-                    && node["body"]["members"][2]["value"]["value"]
-                        == mutation["application_occurrence"]
-            })
-            .expect("first occurrence record");
-        let integer_parameter_position = nodes
-            .iter()
-            .position(|node| node["node_id"] == integer_parameter)
-            .expect("integer parameter position");
-        assert_eq!(
-            nodes[integer_parameter_position]["semantic_form"],
-            "parameter"
-        );
-        assert_eq!(
-            nodes[integer_parameter_position]["semantic_type"],
-            node_id("scalar_type/integer")
-        );
-        nodes[record_position]["body"]["members"][5]["value"]["members"][0]["members"][0]
-            ["value"] = json!({"term":"reference","target":integer_parameter});
-        sync_body_dependencies(&mut nodes[record_position]);
-        let holds = path_condition[0]["holds"]
-            .as_bool()
-            .expect("RRV-01 outcome for RRV-02 base occurrence");
-        (
-            record_position,
-            integer_parameter_position,
-            holds,
-            path_condition[0]["guard_read_occurrence"]
-                .as_u64()
-                .expect("RRV-02 guard read occurrence"),
-        )
-    };
-    rekey_requirement_record(
-        &mut adverse,
-        record_position,
-        integer_parameter_position,
-        guard_read_occurrence,
-        holds,
-        None,
-    );
-    settle(&mut adverse);
-    rebuild_complete_source_map(&mut adverse);
-    let pointer = format!("/semantic_graph/nodes/{record_position}/body/members/5/value/members/0");
+    adverse["path_condition_frames"][0]["guard"]["node"] = node_id("value/parameter/n/0");
     assert_refusal(
         &adverse,
         CheckedPackageRefusalCode::InvalidPackage,
         Some(CheckedPackageRefusalCause::InvalidValue),
-        &pointer,
+        "/path_condition_frames/0/guard",
     );
 }
 
@@ -1934,8 +1823,8 @@ fn public_reader_admits_a_reachable_boolean_literal_value_guard() {
     let proposal = super::proposal_dir_of(&super::fixtures_dir());
     let vectors = super::read_json(&proposal.join("requirement-record-vectors.json"))
         .expect("published FR-825 vectors");
-    let path_condition = &vectors["positive"][0]["path_condition"];
-    let package = boolean_literal_guard_package(path_condition);
+    let spec = &vectors["positive"][0];
+    let package = boolean_literal_guard_package(spec);
     assert!(!package["semantic_graph"]["nodes"]
         .as_array()
         .expect("graph nodes")
@@ -1951,10 +1840,15 @@ fn public_reader_admits_a_reachable_boolean_literal_value_guard() {
         .map(|row| row.record.as_ref().expect("value-validity record"))
         .collect::<Vec<_>>();
     assert_eq!(records.len(), 1);
-    let guard_id = &records[0].path_condition[0].guard;
-    assert!(records
+    let guards = admitted
+        .path_condition(records[0])
         .iter()
-        .all(|record| &record.path_condition[0].guard == guard_id));
+        .collect::<Vec<_>>();
+    let guard_id = guards[0].guard;
+    assert!(records.iter().all(|record| admitted
+        .path_condition(record)
+        .iter()
+        .all(|guard| guard.guard == guard_id)));
     let guard = admitted
         .resolved_graph()
         .nodes
@@ -1963,7 +1857,7 @@ fn public_reader_admits_a_reachable_boolean_literal_value_guard() {
         .expect("retained Boolean literal guard node");
     assert_eq!(guard.node_tag.as_ref(), "value");
     assert_eq!(guard.semantic_form.as_ref(), "literal");
-    assert_eq!(records[0].path_condition[0].occurrence, 0);
+    assert_eq!(guards[0].occurrence, 0);
     assert_eq!(records[0].extent_roots.len(), 1);
     let extent_root = admitted
         .resolved_graph()
@@ -1975,104 +1869,119 @@ fn public_reader_admits_a_reachable_boolean_literal_value_guard() {
     assert_eq!(extent_root.semantic_form.as_ref(), "parameter");
 }
 
-#[trace("TC-2053", "FR-825-AC-4")]
+#[trace("TC-2053", "FR-825-AC-8")]
 #[test]
-fn guard_validation_precedes_malformed_holds_and_holds_remains_rejected_afterward() {
-    let malformed_holds = |package: &mut Value, record_position: usize| {
-        package["semantic_graph"]["nodes"][record_position]["body"]["members"][5]["value"]
-            ["members"][0]["members"][2]["value"] = json!({
-            "term":"literal",
-            "type":node_id("scalar_type/text"),
-            "value_kind":"text",
-            "value":"not a boolean"
-        });
-        sync_body_dependencies(&mut package["semantic_graph"]["nodes"][record_position]);
-    };
-    let record_position = |package: &Value| {
-        package["semantic_graph"]["nodes"]
-            .as_array()
-            .expect("nodes")
-            .iter()
-            .position(|node| {
-                node["semantic_form"] == "value_validity"
-                    && node["body"]["members"][2]["value"]["value"] == 1
-            })
-            .expect("second value-validity record")
-    };
-
-    let mut wrong_type = value_validity_package(false);
-    let wrong_record = record_position(&wrong_type);
-    let integer_parameter = node_id("value/parameter/n/0");
-    let integer_position = wrong_type["semantic_graph"]["nodes"]
-        .as_array()
-        .expect("nodes")
-        .iter()
-        .position(|node| node["node_id"] == integer_parameter)
-        .expect("integer parameter");
-    wrong_type["semantic_graph"]["nodes"][wrong_record]["body"]["members"][5]["value"]["members"]
-        [0]["members"][0]["value"] = json!({"term":"reference","target":integer_parameter});
-    malformed_holds(&mut wrong_type, wrong_record);
-    rekey_requirement_record(
-        &mut wrong_type,
-        wrong_record,
-        integer_position,
-        0,
-        true,
+fn path_frame_wire_rejects_non_boolean_holds() {
+    let mut package = value_validity_package(false);
+    package["path_condition_frames"][0]["holds"] = json!("true");
+    assert_refusal(
+        &package,
+        CheckedPackageRefusalCode::MalformedWire,
         None,
+        "/path_condition_frames/0/holds",
     );
-    settle(&mut wrong_type);
-    rebuild_complete_source_map(&mut wrong_type);
-    let guard_pointer =
-        format!("/semantic_graph/nodes/{wrong_record}/body/members/5/value/members/0");
+}
+
+#[trace("TC-2053", "FR-825-AC-8", "FR-825-AC-9")]
+#[test]
+fn path_frame_reader_rejects_bad_links_or_record_bindings() {
+    let mut self_parent = value_validity_package(false);
+    self_parent["path_condition_frames"][0]["parent"] = json!(0);
     assert_refusal(
-        &wrong_type,
+        &self_parent,
         CheckedPackageRefusalCode::InvalidPackage,
         Some(CheckedPackageRefusalCause::InvalidValue),
-        &guard_pointer,
+        "/path_condition_frames/0/parent",
     );
 
-    let mut bad_occurrence = value_validity_package(false);
-    let bad_occurrence_record = record_position(&bad_occurrence);
-    let expression_guard_position = bad_occurrence["semantic_graph"]["nodes"]
-        .as_array()
-        .expect("nodes")
+    let mut duplicate = value_validity_package(false);
+    duplicate["path_condition_frames"][1] = duplicate["path_condition_frames"][0].clone();
+    assert_refusal(
+        &duplicate,
+        CheckedPackageRefusalCode::InvalidPackage,
+        Some(CheckedPackageRefusalCause::ConflictingDefinition),
+        "/path_condition_frames/1",
+    );
+
+    let mut orphan = value_validity_package(false);
+    let mut orphan_frame = orphan["path_condition_frames"][0].clone();
+    orphan_frame["parent"] = json!(0);
+    orphan["path_condition_frames"]
+        .as_array_mut()
+        .expect("frame table")
+        .push(orphan_frame);
+    assert_refusal(
+        &orphan,
+        CheckedPackageRefusalCode::InvalidPackage,
+        Some(CheckedPackageRefusalCause::InvalidValue),
+        "/path_condition_frames/2",
+    );
+
+    let mut body_disagrees = value_validity_package(false);
+    let nodes = body_disagrees["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("graph nodes");
+    let record_position = nodes
         .iter()
-        .position(|node| node["node_id"] == node_id("expression/integer_ge"))
-        .expect("expression guard");
-    bad_occurrence["semantic_graph"]["nodes"][bad_occurrence_record]["body"]["members"][5]
-        ["value"]["members"][0]["members"][1]["value"]["value"] = json!(99);
-    malformed_holds(&mut bad_occurrence, bad_occurrence_record);
-    rekey_requirement_record(
-        &mut bad_occurrence,
-        bad_occurrence_record,
-        expression_guard_position,
-        99,
-        true,
-        None,
+        .position(|node| {
+            node["semantic_form"] == "value_validity"
+                && node["body"]["members"][2]["value"]["value"] == 0
+        })
+        .expect("first value-validity record");
+    nodes[record_position]["body"]["members"][5]["value"]["members"][0]["value"] = json!(1);
+    let body_pointer = format!(
+        "/semantic_graph/nodes/{record_position}/body/members/5"
     );
-    settle(&mut bad_occurrence);
-    rebuild_complete_source_map(&mut bad_occurrence);
-    let occurrence_pointer =
-        format!("/semantic_graph/nodes/{bad_occurrence_record}/body/members/5/value/members/0");
     assert_refusal(
-        &bad_occurrence,
+        &body_disagrees,
         CheckedPackageRefusalCode::InvalidPackage,
         Some(CheckedPackageRefusalCause::InvalidValue),
-        &occurrence_pointer,
+        &body_pointer,
     );
 
-    let mut malformed_holds_only = value_validity_package(false);
-    let holds_record = record_position(&malformed_holds_only);
-    malformed_holds(&mut malformed_holds_only, holds_record);
-    settle(&mut malformed_holds_only);
-    rebuild_complete_source_map(&mut malformed_holds_only);
-    let holds_pointer =
-        format!("/semantic_graph/nodes/{holds_record}/body/members/5/value/members/0");
+    let mut identity_disagrees = value_validity_package(false);
+    let nodes = identity_disagrees["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("graph nodes");
+    let record_position = nodes
+        .iter()
+        .position(|node| {
+            node["semantic_form"] == "value_validity"
+                && node["body"]["members"][2]["value"]["value"] == 0
+        })
+        .expect("first value-validity record");
+    let original_record_id = nodes[record_position]["node_id"].clone();
+    let path = nodes[record_position]["node_id"]["path"]
+        .as_array_mut()
+        .expect("record identity path");
+    let frame_marker = path
+        .iter()
+        .position(|segment| segment == "path_condition")
+        .expect("path-condition identity marker");
+    path[frame_marker + 1] = json!("9");
+    let mismatched_record_id = nodes[record_position]["node_id"].clone();
+    for row in identity_disagrees["source_map"]
+        .as_array_mut()
+        .expect("source map")
+    {
+        if row["node_id"] == original_record_id {
+            row["node_id"] = mismatched_record_id.clone();
+        }
+    }
+    for item in identity_disagrees["requirement_items"]
+        .as_array_mut()
+        .expect("requirement items")
+    {
+        if item["record"] == original_record_id {
+            item["record"] = mismatched_record_id.clone();
+        }
+    }
+    let identity_pointer = format!("/semantic_graph/nodes/{record_position}/node_id");
     assert_refusal(
-        &malformed_holds_only,
-        CheckedPackageRefusalCode::InvalidPackage,
-        Some(CheckedPackageRefusalCause::InvalidValue),
-        &holds_pointer,
+        &identity_disagrees,
+        CheckedPackageRefusalCode::InvalidSemanticGraph,
+        None,
+        &identity_pointer,
     );
 }
 

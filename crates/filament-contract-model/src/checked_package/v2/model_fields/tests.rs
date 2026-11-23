@@ -1191,6 +1191,7 @@ fn build_fixture(document: &Value, declared: &[(&str, DeclarationForm)]) -> Fixt
         protocol_correlation_occurrences: None,
         schedulability_claims: None,
         requirement_items: None,
+        path_condition_frames: None,
         operation_effects: None,
         operation_bodies: None,
         contract_version: raw.contract_version,
