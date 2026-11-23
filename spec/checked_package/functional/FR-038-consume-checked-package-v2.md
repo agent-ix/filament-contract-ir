@@ -1559,7 +1559,18 @@ their complete values, rebuild a dependency closure, or return only the
 selection identities.
 
 The reader reads no source bytes or replay `byte_provision`. A missing domain
-document still refuses at its model-root owner. There is no
+document still refuses at its model-root owner. Source-map rows are retained
+package data: the reader checks their closed wire shape, source-reference join,
+occurrence-key join, ordering and other structural relations specified here,
+but it SHALL NOT claim that a region is within the authored source's byte
+length, on UTF-8 scalar boundaries, or the exact span of the named syntax,
+because the package does not carry those source bytes. The component emitting
+the package SHALL verify each region against the exact selected source and
+definition while both are available, as FSpec FR-203 requires. A package
+consumer that makes a source-level decision SHALL bind each selected
+definition to its own admitted definition before using its source map; an
+opaque reference or retained region alone does not authenticate source
+content. There is no
 `stale_dependency`, `content-mismatch`, `digest_domain_mismatch` or
 `byte-digest-mismatch` refusal in this V2 read surface.
 
