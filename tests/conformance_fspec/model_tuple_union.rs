@@ -337,7 +337,7 @@ fn published_variant_bodies_and_first_payload_transition_are_retained() {
     let non_variant = admitted
         .graph()
         .nodes()
-        .find(|candidate| candidate.semantic_form.as_ref() == "model_root")
+        .find(|candidate| candidate.semantic_form().as_ref() == "model_root")
         .expect("published model root");
     assert!(admitted.model_variant_body(&non_variant.node_id).is_none());
     let mut unselected = node.clone();
@@ -1799,7 +1799,7 @@ fn published_tuples_retain_named_identity_and_ordered_selected_positions() {
                 .graph()
                 .node(swap_node_index)
                 .expect("graph position exists")
-                .owner
+                .owner()
         )
         .expect("owner"),
         json!({"kind":"model", "identity":"acme/shapes", "node":swap}),

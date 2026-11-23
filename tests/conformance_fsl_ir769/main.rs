@@ -98,7 +98,7 @@ fn exact_operation<'a>(package: &'a CheckedPackageV2, identity: &str) -> &'a Che
         .graph()
         .nodes()
         .filter(|node| {
-            serde_json::to_value(&node.body)
+            serde_json::to_value(&node.wire_body())
                 .expect("typed FSL body")
                 .pointer("/operation/identity")
                 .and_then(Value::as_str)
@@ -225,7 +225,7 @@ fn fsl_pair(source: &CheckedPackageV2, upper: &str) -> (CheckedNodeId, CheckedNo
         .graph()
         .nodes()
         .filter(|node| {
-            let body = serde_json::to_value(&node.body).expect("typed FSL body");
+            let body = serde_json::to_value(&node.wire_body()).expect("typed FSL body");
             if body.pointer("/operation/identity").and_then(Value::as_str)
                 != Some("filament.op.numeric.narrow")
             {
@@ -233,7 +233,7 @@ fn fsl_pair(source: &CheckedPackageV2, upper: &str) -> (CheckedNodeId, CheckedNo
             }
             source.graph().nodes().any(|bound| {
                 bound.node_id == node.semantic_type
-                    && bound.node_tag.as_ref() == "bounded_domain"
+                    && bound.node_tag().as_ref() == "bounded_domain"
                     && serde_json::to_value(&bound.body)
                         .ok()
                         .and_then(|body| {
@@ -259,7 +259,7 @@ fn fsl_pair(source: &CheckedPackageV2, upper: &str) -> (CheckedNodeId, CheckedNo
         .nodes()
         .filter(|node| {
             serde_json::to_value(&node.node_id).expect("typed id") == target
-                && serde_json::to_value(&node.body)
+                && serde_json::to_value(&node.wire_body())
                     .expect("typed FSL body")
                     .pointer("/operation/identity")
                     .and_then(Value::as_str)
@@ -379,7 +379,7 @@ fn tc_447_fresh_fsl_source_admits_exact_application_and_narrow_context() {
         .graph()
         .nodes()
         .filter(|node| {
-            let body = serde_json::to_value(&node.body).expect("typed FSL body");
+            let body = serde_json::to_value(&node.wire_body()).expect("typed FSL body");
             body.pointer("/operation/identity").and_then(Value::as_str)
                 == Some("filament.op.numeric.narrow")
                 && body.pointer("/arguments/0/target")
@@ -490,9 +490,9 @@ fn tc_447_separated_fsl_siblings_keep_source_and_output_frames_distinct() {
         .graph()
         .nodes()
         .find(|node| {
-            node.node_tag.as_ref() == "function"
+            node.node_tag().as_ref() == "function"
                 && node
-                    .declaration
+                    .declaration()
                     .as_ref()
                     .and_then(|declaration| declaration.qualified_name.last())
                     .is_some_and(|name| name.as_ref() == "f1")

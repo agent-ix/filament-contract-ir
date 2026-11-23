@@ -1140,7 +1140,7 @@ fn tc_048_fspec_union_values_admit_under_their_application_keys() {
             &serde_json::from_value(node["node_id"].clone()).expect("node id")
         );
         assert_eq!(
-            serde_json::to_value(&retained.body).expect("retained body"),
+            serde_json::to_value(&retained.wire_body()).expect("retained body"),
             fixture_support::wire_form(&wire)["semantic_graph"]["nodes"][position]["body"]
         );
         assert_eq!(node["body"]["term"], "aggregate");
@@ -1443,7 +1443,7 @@ fn fspec_dimensionless_derived_is_not_a_base_root_or_term_target() {
     let (wire, admitted) =
         read_positive(&fixtures, name, &document).unwrap_or_else(|why| panic!("{why}"));
     let dimensionless = &admitted.graph().node(5).expect("graph position exists");
-    let CheckedTerm::NominalBody(body) = &dimensionless.body else {
+    let CheckedTerm::NominalBody(body) = dimensionless.resolved_body() else {
         panic!("published dimensionless declaration must retain a typed body")
     };
     assert_eq!(body.dimension_base(), Some(false));

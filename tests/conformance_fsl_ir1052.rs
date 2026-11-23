@@ -184,10 +184,10 @@ fn fsl_four_execution_points_read_back_through_public_accessor() {
     ];
     let mut observed = Vec::new();
     for clause in package.graph().nodes().filter(|node| {
-        node.node_tag.as_ref() == "state" && node.semantic_form.as_ref() == "state_clause"
+        node.node_tag().as_ref() == "state" && node.semantic_form().as_ref() == "state_clause"
     }) {
         let claim = clause
-            .occurrences
+            .occurrences()
             .iter()
             .find(|claim| claim.role == CheckedOccurrenceRole::Claim)
             .expect("producer clause claim");

@@ -1389,12 +1389,12 @@ fn permutation_rebuilds_the_same_structural_keys_and_stale_operands_do_not() {
                 .graph()
                 .node(original_position)
                 .expect("graph position exists")
-                .node_tag,
+                .node_tag(),
             permuted
                 .graph()
                 .node(permuted_position)
                 .expect("graph position exists")
-                .node_tag,
+                .node_tag(),
             "node {original_position}: permutation preserves referenced kind"
         );
     }

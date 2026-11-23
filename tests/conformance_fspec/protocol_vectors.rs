@@ -346,8 +346,8 @@ fn fspec_k10_acyclic_protocol_member_admits_a_lone_group_label() {
             .graph()
             .node(position)
             .expect("graph position exists")
-            .recursion_group
-            .as_deref(),
+            .recursion_group()
+            .map(|group| &**group),
         Some("lone-group")
     );
     assert_eq!(

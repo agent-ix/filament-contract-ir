@@ -101,7 +101,7 @@ fn published_option_field_types_match_canonical_domains() {
         .graph()
         .nodes()
         .find(|node| {
-            node.declaration.as_ref().is_some_and(|declaration| {
+            node.declaration().as_ref().is_some_and(|declaration| {
                 declaration
                     .qualified_name
                     .last()

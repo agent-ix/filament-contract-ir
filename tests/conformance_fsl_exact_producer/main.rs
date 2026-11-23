@@ -550,8 +550,8 @@ fn verify_literal_bodies(bytes: &[u8]) {
         .node(exponent_position)
         .expect("graph position exists");
     assert_eq!(exponent.node_id, exponent_id);
-    assert_eq!(exponent.node_tag.as_ref(), "value");
-    assert_eq!(exponent.semantic_form.as_ref(), "literal");
+    assert_eq!(exponent.node_tag().as_ref(), "value");
+    assert_eq!(exponent.semantic_form().as_ref(), "literal");
     assert!(exponent.dependencies.is_empty());
     let CheckedTerm::Literal {
         type_id,
@@ -569,8 +569,8 @@ fn verify_literal_bodies(bytes: &[u8]) {
         .nodes()
         .find(|node| node.node_id == *type_id)
         .expect("Integer type");
-    assert_eq!(integer.semantic_form.as_ref(), "integer");
-    assert_eq!(integer.node_tag.as_ref(), "scalar_type");
+    assert_eq!(integer.semantic_form().as_ref(), "integer");
+    assert_eq!(integer.node_tag().as_ref(), "scalar_type");
     let request = package
         .document_held_id(square_position)
         .expect("graph node")

@@ -276,18 +276,19 @@ fn xp_01_three_independent_equivalences_admit_as_one_class() {
             graph[index]["node_id"]
         );
         assert_eq!(
-            serde_json::to_value(&retained.body).expect("typed equivalence body")["root_scale"],
+            serde_json::to_value(&retained.wire_body()).expect("typed equivalence body")
+                ["root_scale"],
             case["root_scale"],
             "XP-01 scale {index}"
         );
         assert_eq!(
-            serde_json::to_value(&retained.body).expect("typed equivalence body")
+            serde_json::to_value(&retained.wire_body()).expect("typed equivalence body")
                 ["dimension_node_ids"],
             case["pair"],
             "XP-01 operands {index}"
         );
         assert_eq!(
-            retained.occurrences[0].ordinal,
+            retained.occurrences()[0].ordinal,
             u64::try_from(index).expect("vector index")
         );
     }

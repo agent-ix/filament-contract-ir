@@ -47,7 +47,7 @@ fn fill_model_read_forms(value: &mut Value) {
 
 fn first_projection_read_form(package: &CheckedPackageV2) -> Option<CheckedFieldReadForm> {
     package.graph().nodes().find_map(|node| {
-        let CheckedTerm::Application { operation, .. } = &node.body else {
+        let CheckedTerm::Application { operation, .. } = &node.wire_body() else {
             return None;
         };
         if operation.identity() != Some("filament.op.record.project") {
