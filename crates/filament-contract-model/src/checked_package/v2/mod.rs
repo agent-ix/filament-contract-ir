@@ -80,7 +80,8 @@ pub use probabilistic_read::{
 };
 mod requirement_records;
 pub use requirement_records::{
-    CapabilityKind, DomainKey, DomainKind, RequirementExtent, RequirementGuard, RequirementItemRow,
+    CapabilityKind, DomainKey, DomainKind, OperationContractRecord, OperationPopulation,
+    RequirementExtent, RequirementGuard, RequirementItemRow, RequirementRecord,
     ValueValidityRecord,
 };
 mod retained_index;
@@ -3001,7 +3002,8 @@ fn declaration_forbidden(kind: CheckedNodeKind) -> bool {
             | ClaimForm::Hyperproperty
             | ClaimForm::SynthesisRequest
             | ClaimForm::ProbabilisticClaim
-            | ClaimForm::ValueValidity,
+            | ClaimForm::ValueValidity
+            | ClaimForm::OperationContract,
         ) => false,
         // FSpec FR-491 "Checked-package node": a composition declares its
         // package-local name; no other correspondence form becomes eligible.
@@ -3446,7 +3448,8 @@ fn body_grammar(kind: CheckedNodeKind) -> BodyGrammar {
             | ClaimForm::StepRelation
             | ClaimForm::Schedulability
             | ClaimForm::ProbabilisticClaim
-            | ClaimForm::ValueValidity,
+            | ClaimForm::ValueValidity
+            | ClaimForm::OperationContract,
         ) => BodyGrammar::Term,
         K::Correspondence(CorrespondenceForm::AbstractionRelation) => {
             BodyGrammar::AbstractionRelation

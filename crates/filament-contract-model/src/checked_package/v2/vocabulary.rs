@@ -324,6 +324,7 @@ closed_vocabulary! {
         StepRelation => "step_relation",
         Schedulability => "schedulability",
         ValueValidity => "value_validity",
+        OperationContract => "operation_contract",
     }
 }
 

@@ -180,7 +180,25 @@ pub struct RequirementItemRow {
     /// The request's extent classification.
     pub extent: RequirementExtent,
     /// Value-validity record, when this row carries one.
-    pub record: Option<ValueValidityRecord>,
+    pub record: Option<RequirementRecord>,
+}
+
+/// One typed requirement record retained from an admitted package.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum RequirementRecord {
+    /// Scalar-operation definedness and range facts.
+    ValueValidity(ValueValidityRecord),
+    /// State-operation contract facts.
+    OperationContract(OperationContractRecord),
+}
+
+impl RequirementRecord {
+    fn node(&self) -> &CheckedNodeId {
+        match self {
+            Self::ValueValidity(record) => &record.node,
+            Self::OperationContract(record) => &record.node,
+        }
+    }
 }
 
 impl Encode for RequirementItemRow {
@@ -216,7 +234,7 @@ impl Encode for RequirementItemRow {
         }
         writer.end_object()?;
         if let Some(record) = &self.record {
-            super::encode::encoded(writer, "record", &record.node)?;
+            super::encode::encoded(writer, "record", record.node())?;
         }
         writer.end_object()
     }
@@ -451,6 +469,15 @@ pub(super) fn validate(
     evidence: &super::CheckedPackageEvidence,
     meter: &mut WorkMeter,
 ) -> Result<(), ValidationFailure> {
+    let operation_records = validate_operation_contract_nodes(
+        nodes,
+        kinds,
+        terms,
+        structural_keys,
+        index,
+        evidence,
+        meter,
+    )?;
     let mut records: Vec<usize> = kinds
         .iter()
         .enumerate()
@@ -808,6 +835,8 @@ pub(super) fn validate(
     }
     let mut previous: Option<RowKey<'_>> = None;
     let mut named_records: Vec<(usize, usize, CheckedNodeId)> = Vec::new();
+    let mut named_operation_records = Vec::new();
+    let mut operation_ordinal = 0_u64;
     for (row_index, row) in rows.iter().enumerate() {
         let at = root().index(row_index);
         stage_storage::work(meter, &site(row_index, at), 1)?;
@@ -932,6 +961,72 @@ pub(super) fn validate(
                 }
             }
             named_records.push((row_index, record_position, record.owner));
+        } else if row.kind == CapabilityKind::OperationContract {
+            let Some(record_id) = row.record.as_ref() else {
+                return Err(refuse(
+                    row_index,
+                    at,
+                    Cause::InvalidValue,
+                    Some(&row.claim.node),
+                    meter,
+                ));
+            };
+            let Some(&record_position) = index.get(record_id) else {
+                return Err(refuse(
+                    row_index,
+                    at.key("record"),
+                    Cause::InvalidValue,
+                    Some(record_id),
+                    meter,
+                ));
+            };
+            if kinds[record_position] != CheckedNodeKind::Claim(super::ClaimForm::OperationContract)
+            {
+                return Err(refuse(
+                    row_index,
+                    at.key("record"),
+                    Cause::InvalidValue,
+                    Some(record_id),
+                    meter,
+                ));
+            }
+            let Some((claim, occurrence)) = terms
+                .get(record_position)
+                .and_then(read_operation_contract_join)
+            else {
+                return Err(refuse(
+                    row_index,
+                    at.key("record"),
+                    Cause::InvalidValue,
+                    Some(record_id),
+                    meter,
+                ));
+            };
+            if claim != row.claim.node || occurrence != row.claim.occurrence {
+                return Err(refuse(
+                    row_index,
+                    at.key("record"),
+                    Cause::InvalidValue,
+                    Some(record_id),
+                    meter,
+                ));
+            }
+            if nodes[record_position].occurrences[0].ordinal != operation_ordinal {
+                let node_at = Path::root()
+                    .key("semantic_graph")
+                    .key("nodes")
+                    .index(record_position)
+                    .key("occurrences");
+                return Err(refuse(
+                    record_position,
+                    node_at,
+                    Cause::InvalidValue,
+                    Some(record_id),
+                    meter,
+                ));
+            }
+            operation_ordinal = operation_ordinal.saturating_add(1);
+            named_operation_records.push(record_position);
         } else if row.record.is_some() {
             return Err(refuse(
                 row_index,
@@ -980,6 +1075,24 @@ pub(super) fn validate(
             meter,
         ));
     }
+    let mut named_operation_positions = named_operation_records;
+    named_operation_positions.sort_unstable();
+    named_operation_positions.dedup();
+    if let Some(position) =
+        first_unnamed_position(&operation_records, &named_operation_positions, &mut || {})
+    {
+        return Err(refuse(
+            0,
+            Path::root()
+                .key("semantic_graph")
+                .key("nodes")
+                .index(position)
+                .key("body"),
+            Cause::InvalidValue,
+            Some(&nodes[position].node_id),
+            meter,
+        ));
+    }
     let order = named_record_order(&named_records, index, structural_keys, meter)?;
     let mut previous_owner: Option<CheckedNodeId> = None;
     let mut owner_ordinal = 0_u64;
@@ -1016,6 +1129,278 @@ fn is_type_kind(kind: CheckedNodeKind) -> bool {
             | CheckedNodeKind::CompositeType(_)
             | CheckedNodeKind::BoundedDomain(_)
     )
+}
+
+fn validate_operation_contract_nodes(
+    nodes: &[RawSemanticNodeV2],
+    kinds: &[CheckedNodeKind],
+    terms: &[CheckedTerm],
+    structural_keys: &[std::sync::Arc<CheckedNodeId>],
+    index: &GraphIndex<'_>,
+    evidence: &super::CheckedPackageEvidence,
+    meter: &mut WorkMeter,
+) -> Result<Vec<usize>, ValidationFailure> {
+    let mut records: Vec<usize> = kinds
+        .iter()
+        .enumerate()
+        .filter_map(|(position, kind)| {
+            (*kind == CheckedNodeKind::Claim(super::ClaimForm::OperationContract))
+                .then_some(position)
+        })
+        .collect();
+    records.sort_unstable_by(|left, right| structural_keys[*left].cmp(&structural_keys[*right]));
+    for &position in &records {
+        let node = &nodes[position];
+        let node_at = Path::root()
+            .key("semantic_graph")
+            .key("nodes")
+            .index(position);
+        stage_storage::work(meter, &site(position, node_at), 1)?;
+        if node.declaration.is_some()
+            || node.occurrences.len() != 1
+            || node.occurrences[0].role != CheckedOccurrenceRole::Generated
+        {
+            return Err(refuse(
+                position,
+                node_at.key("occurrences"),
+                Cause::InvalidValue,
+                Some(&node.node_id),
+                meter,
+            ));
+        }
+        if index.get(&node.semantic_type).is_none_or(|&type_position| {
+            kinds[type_position] != CheckedNodeKind::ScalarType(ScalarTypeForm::Boolean)
+        }) {
+            return Err(refuse(
+                position,
+                node_at.key("semantic_type"),
+                Cause::InvalidValue,
+                Some(&node.node_id),
+                meter,
+            ));
+        }
+        let Some(term) = terms.get(position) else {
+            return Err(refuse(
+                position,
+                node_at.key("body"),
+                Cause::InvalidValue,
+                Some(&node.node_id),
+                meter,
+            ));
+        };
+        if !operation_contract_binding_shape(term) {
+            return Err(refuse(
+                position,
+                node_at.key("body"),
+                Cause::InvalidValue,
+                Some(&node.node_id),
+                meter,
+            ));
+        }
+        let Some(record) = read_operation_contract_record(node.node_id.clone(), term) else {
+            return Err(refuse(
+                position,
+                node_at.key("body"),
+                Cause::InvalidValue,
+                Some(&node.node_id),
+                meter,
+            ));
+        };
+        let Some((claim, occurrence)) = read_operation_contract_join(term) else {
+            return Err(refuse(
+                position,
+                node_at.key("body").key("members").index(0),
+                Cause::InvalidValue,
+                Some(&node.node_id),
+                meter,
+            ));
+        };
+        let Some(&claim_position) = index.get(&claim) else {
+            return Err(refuse(
+                position,
+                node_at.key("body").key("members").index(0),
+                Cause::InvalidValue,
+                Some(&node.node_id),
+                meter,
+            ));
+        };
+        if !matches!(
+            kinds[claim_position],
+            CheckedNodeKind::State(super::StateForm::StateClause | super::StateForm::Frame)
+        ) || !nodes[claim_position]
+            .occurrences
+            .iter()
+            .any(|candidate| candidate == &occurrence)
+        {
+            return Err(refuse(
+                position,
+                node_at.key("body").key("members").index(0),
+                Cause::InvalidValue,
+                Some(&node.node_id),
+                meter,
+            ));
+        }
+        if !binding(term, 2).is_some_and(|bound| {
+            reference_is_kind(
+                bound,
+                CheckedNodeKind::ScalarType(ScalarTypeForm::Boolean),
+                kinds,
+                index,
+                evidence,
+            )
+        }) {
+            return Err(refuse(
+                position,
+                node_at.key("body").key("members").index(2),
+                Cause::InvalidValue,
+                Some(&node.node_id),
+                meter,
+            ));
+        }
+        if record.operation.is_some()
+            && !binding(term, 4).is_some_and(|operation| {
+                reference_is_kind(
+                    operation,
+                    CheckedNodeKind::State(super::StateForm::OperationAnchor),
+                    kinds,
+                    index,
+                    evidence,
+                )
+            })
+        {
+            return Err(refuse(
+                position,
+                node_at.key("body").key("members").index(4),
+                Cause::InvalidValue,
+                Some(&node.node_id),
+                meter,
+            ));
+        }
+        let mut previous_object: Option<&CheckedNodeId> = None;
+        for (object_index, object) in record.model_objects.iter().enumerate() {
+            let valid = binding(term, 5)
+                .and_then(|term| match term {
+                    CheckedTerm::Aggregate { members, .. } => members.get(object_index),
+                    _ => None,
+                })
+                .is_some_and(|object_term| {
+                    reference_is_kind(
+                        object_term,
+                        CheckedNodeKind::Model(ModelForm::ObjectType),
+                        kinds,
+                        index,
+                        evidence,
+                    )
+                });
+            if !valid || previous_object.is_some_and(|previous| previous >= object) {
+                return Err(refuse(
+                    position,
+                    node_at
+                        .key("body")
+                        .key("members")
+                        .index(5)
+                        .key("value")
+                        .key("members")
+                        .index(object_index),
+                    Cause::InvalidValue,
+                    Some(&node.node_id),
+                    meter,
+                ));
+            }
+            previous_object = Some(object);
+        }
+        let mut previous_population: Option<(&CheckedNodeId, u64)> = None;
+        for (population_index, population) in record.populations.iter().enumerate() {
+            let valid = binding(term, 6)
+                .and_then(|term| match term {
+                    CheckedTerm::Aggregate { members, .. } => members.get(population_index),
+                    _ => None,
+                })
+                .and_then(|term| match term {
+                    CheckedTerm::Aggregate { members, .. } => {
+                        named_value(members.first()?, "member_type")
+                    }
+                    _ => None,
+                })
+                .is_some_and(|member_term| {
+                    reference_is_kind(
+                        member_term,
+                        CheckedNodeKind::Model(ModelForm::ObjectType),
+                        kinds,
+                        index,
+                        evidence,
+                    )
+                });
+            let key = (&population.member_type, population.ordinal);
+            if !valid || previous_population.is_some_and(|previous| previous >= key) {
+                return Err(refuse(
+                    position,
+                    node_at
+                        .key("body")
+                        .key("members")
+                        .index(6)
+                        .key("value")
+                        .key("members")
+                        .index(population_index),
+                    Cause::InvalidValue,
+                    Some(&node.node_id),
+                    meter,
+                ));
+            }
+            previous_population = Some(key);
+        }
+    }
+    Ok(records)
+}
+
+fn operation_contract_binding_shape(term: &CheckedTerm) -> bool {
+    let CheckedTerm::Aggregate { members, .. } = term else {
+        return false;
+    };
+    const NAMES: [&str; 7] = [
+        "claim",
+        "occurrence",
+        "result_bound",
+        "invariant",
+        "operation",
+        "model_objects",
+        "populations",
+    ];
+    members.len() == NAMES.len()
+        && members.iter().zip(NAMES).all(|(member, expected)| {
+            matches!(member, CheckedTerm::Binding { name, .. }
+                if matches!(name.kind(), super::CheckedBindingNameKind::Other(actual) if actual == expected))
+        })
+}
+
+fn read_operation_contract_join(
+    term: &CheckedTerm,
+) -> Option<(CheckedNodeId, super::CheckedOccurrence)> {
+    let claim = reference(binding(term, 0)?)?;
+    let CheckedTerm::Aggregate { members, .. } = binding(term, 1)? else {
+        return None;
+    };
+    const OCCURRENCE_NAMES: [&str; 2] = ["role", "ordinal"];
+    if members.len() != OCCURRENCE_NAMES.len()
+        || !members.iter().zip(OCCURRENCE_NAMES).all(|(member, expected)| {
+            matches!(member, CheckedTerm::Binding { name, .. }
+                if matches!(name.kind(), super::CheckedBindingNameKind::Other(actual) if actual == expected))
+        })
+    {
+        return None;
+    }
+    let role = named_value(members.first()?, "role").and_then(string)?;
+    let ordinal = named_value(members.get(1)?, "ordinal").and_then(integer)?;
+    let role = match role {
+        "declaration" => CheckedOccurrenceRole::Declaration,
+        "type" => CheckedOccurrenceRole::Type,
+        "expression" => CheckedOccurrenceRole::Expression,
+        "anchor" => CheckedOccurrenceRole::Anchor,
+        "claim" => CheckedOccurrenceRole::Claim,
+        "generated" => CheckedOccurrenceRole::Generated,
+        _ => return None,
+    };
+    Some((claim, super::CheckedOccurrence { role, ordinal }))
 }
 
 fn record_binding_shape(term: &CheckedTerm) -> bool {
@@ -1251,6 +1636,34 @@ pub struct ValueValidityRecord {
     pub objects: Vec<CheckedNodeId>,
 }
 
+/// Facts retained from a `claim`/`operation_contract` node.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OperationContractRecord {
+    /// The operation-contract record node.
+    pub node: CheckedNodeId,
+    /// Boolean bound type used by the source record.
+    pub result_bound: CheckedNodeId,
+    /// Whether the record is for an invariant-clause requirement.
+    pub invariant: bool,
+    /// Associated operation anchor, when present.
+    pub operation: Option<CheckedNodeId>,
+    /// Model object types read by the source record, in structural order.
+    pub model_objects: Vec<CheckedNodeId>,
+    /// Population identities and authored bounds.
+    pub populations: Vec<OperationPopulation>,
+}
+
+/// One population in an operation-contract record.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OperationPopulation {
+    /// The population's model/object type.
+    pub member_type: CheckedNodeId,
+    /// Population declaration ordinal.
+    pub ordinal: u64,
+    /// Authored maximum, absent when the population is unbounded.
+    pub maximum: Option<u64>,
+}
+
 pub(super) fn retain_rows(
     rows: Option<&[RequirementItemWireRow]>,
     nodes: &[CheckedSemanticNodeV2],
@@ -1266,8 +1679,25 @@ pub(super) fn retain_rows(
                 let record = row.record.as_ref().and_then(|id| {
                     let position = node_positions.node(nodes, id)?;
                     let holder_row = operand_rows.get(position)?;
-                    read_record(nodes.get(position)?.node_id.clone(), &nodes[position].body)
-                        .map(|record| resolve_record(record, holder_row))
+                    match nodes.get(position)?.semantic_form.as_ref() {
+                        "value_validity" => read_record(
+                            nodes[position].node_id.clone(),
+                            &nodes[position].body,
+                        )
+                        .map(|record| {
+                            RequirementRecord::ValueValidity(resolve_record(record, holder_row))
+                        }),
+                        "operation_contract" => read_operation_contract_record(
+                            nodes[position].node_id.clone(),
+                            &nodes[position].body,
+                        )
+                        .map(|record| {
+                            RequirementRecord::OperationContract(resolve_operation_contract_record(
+                                record, holder_row,
+                            ))
+                        }),
+                        _ => None,
+                    }
                 });
                 RequirementItemRow {
                     claim: row.claim.node.clone(),
@@ -1324,6 +1754,23 @@ fn resolve_record(
     record
 }
 
+fn resolve_operation_contract_record(
+    mut record: OperationContractRecord,
+    holder_row: &[CheckedOperandEntry],
+) -> OperationContractRecord {
+    record.result_bound = resolve_holder_id(record.result_bound, holder_row);
+    record.operation = record
+        .operation
+        .map(|operation| resolve_holder_id(operation, holder_row));
+    for object in &mut record.model_objects {
+        *object = resolve_holder_id(object.clone(), holder_row);
+    }
+    for population in &mut record.populations {
+        population.member_type = resolve_holder_id(population.member_type.clone(), holder_row);
+    }
+    record
+}
+
 pub(super) fn owner_index(rows: &[RequirementItemRow]) -> Vec<(CheckedNodeId, Vec<usize>)> {
     // One stable sort by owner keeps each owner's rows in row order, then one
     // pass groups equal owners: O(n log n) where inserting each new owner
@@ -1331,7 +1778,12 @@ pub(super) fn owner_index(rows: &[RequirementItemRow]) -> Vec<(CheckedNodeId, Ve
     let mut owned: Vec<(&CheckedNodeId, usize)> = rows
         .iter()
         .enumerate()
-        .filter_map(|(row_index, row)| Some((&row.record.as_ref()?.owner, row_index)))
+        .filter_map(|(row_index, row)| {
+            let RequirementRecord::ValueValidity(record) = row.record.as_ref()? else {
+                return None;
+            };
+            Some((&record.owner, row_index))
+        })
         .collect();
     owned.sort_by_key(|&(owner, _)| owner);
     let mut index: Vec<(CheckedNodeId, Vec<usize>)> = Vec::new();
@@ -1388,6 +1840,60 @@ fn read_record(node: CheckedNodeId, term: &CheckedTerm) -> Option<ValueValidityR
     })
 }
 
+fn read_operation_contract_record(
+    node: CheckedNodeId,
+    term: &CheckedTerm,
+) -> Option<OperationContractRecord> {
+    let result_bound = reference(binding(term, 2)?)?;
+    let invariant = boolean(binding(term, 3)?)?;
+    let operation = match binding(term, 4)? {
+        CheckedTerm::Aggregate { members, .. } if members.is_empty() => None,
+        term => Some(reference(term)?),
+    };
+    let model_objects = references(binding(term, 5)?)?;
+    let CheckedTerm::Aggregate {
+        members: population_terms,
+        ..
+    } = binding(term, 6)?
+    else {
+        return None;
+    };
+    let mut populations = Vec::with_capacity(population_terms.len());
+    for population_term in population_terms {
+        let CheckedTerm::Aggregate { members, .. } = population_term else {
+            return None;
+        };
+        const POPULATION_NAMES: [&str; 3] = ["member_type", "ordinal", "maximum"];
+        if members.len() != POPULATION_NAMES.len()
+            || !members.iter().zip(POPULATION_NAMES).all(|(member, expected)| {
+                matches!(member, CheckedTerm::Binding { name, .. }
+                    if matches!(name.kind(), super::CheckedBindingNameKind::Other(actual) if actual == expected))
+            })
+        {
+            return None;
+        }
+        let member_type = reference(named_value(members.first()?, "member_type")?)?;
+        let ordinal = integer(named_value(members.get(1)?, "ordinal")?)?;
+        let maximum = match named_value(members.get(2)?, "maximum")? {
+            CheckedTerm::Aggregate { members, .. } if members.is_empty() => None,
+            term => Some(integer(term)?),
+        };
+        populations.push(OperationPopulation {
+            member_type,
+            ordinal,
+            maximum,
+        });
+    }
+    Some(OperationContractRecord {
+        node,
+        result_bound,
+        invariant,
+        operation,
+        model_objects,
+        populations,
+    })
+}
+
 fn binding(term: &CheckedTerm, index: usize) -> Option<&CheckedTerm> {
     let CheckedTerm::Aggregate { members, .. } = term else {
         return None;
@@ -1418,6 +1924,27 @@ fn reference(term: &CheckedTerm) -> Option<CheckedNodeId> {
     }
 }
 
+fn reference_is_kind(
+    term: &CheckedTerm,
+    expected: CheckedNodeKind,
+    kinds: &[CheckedNodeKind],
+    index: &GraphIndex<'_>,
+    evidence: &super::CheckedPackageEvidence,
+) -> bool {
+    match term {
+        CheckedTerm::Reference { target } => index
+            .get(target)
+            .is_some_and(|&position| kinds[position] == expected),
+        CheckedTerm::DependencyReference { package, node } => {
+            evidence
+                .dependency_package(package)
+                .and_then(|dependency| dependency.node_kind(node))
+                == Some(expected)
+        }
+        _ => false,
+    }
+}
+
 fn integer(term: &CheckedTerm) -> Option<u64> {
     match term {
         CheckedTerm::Literal {
@@ -1425,6 +1952,17 @@ fn integer(term: &CheckedTerm) -> Option<u64> {
             value,
             ..
         } => value.as_u64(),
+        _ => None,
+    }
+}
+
+fn string(term: &CheckedTerm) -> Option<&str> {
+    match term {
+        CheckedTerm::Literal {
+            value_kind: LiteralKind::String,
+            value,
+            ..
+        } => value.as_str(),
         _ => None,
     }
 }
