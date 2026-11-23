@@ -268,7 +268,8 @@ pub use checked_package::{
 
 pub use checked_package::{
     encode_checked_package_v2_with_requirement_items, CapabilityKind, DomainKey, DomainKind,
-    RequirementExtent, RequirementGuard, RequirementItemRow, ValueValidityRecord,
+    OperationContractRecord, OperationPopulation, RequirementExtent, RequirementGuard,
+    RequirementItemRow, RequirementRecord, ValueValidityRecord,
 };
 
 pub use checked_package::CheckedFieldReadForm;

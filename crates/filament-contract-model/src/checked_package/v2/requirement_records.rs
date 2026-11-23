@@ -2168,7 +2168,7 @@ mod tests {
                 ]}}
             ]
         })).expect("typed operation-contract body");
-        let record_id = serde_json::from_value(json!({
+        let record_id: CheckedNodeId = serde_json::from_value(json!({
             "package":"pkg", "path":["record"], "ordinal":0
         }))
         .expect("record node id");
