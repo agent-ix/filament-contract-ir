@@ -884,6 +884,25 @@ impl<'g> GraphIndex<'g> {
             .map(|(_, position)| position)
     }
 
+    /// The position of the node with this id, charging every key comparison.
+    pub(super) fn get_charged(
+        &self,
+        id: &CheckedNodeId,
+        meter: &mut WorkMeter,
+    ) -> Result<Option<usize>, ValidationFailure> {
+        let mut lower = 0;
+        let mut upper = self.entries.len();
+        while lower < upper {
+            let middle = lower + (upper - lower) / 2;
+            match meter.compare_ids(self.entries[middle].0, id)? {
+                Ordering::Less => lower = middle + 1,
+                Ordering::Greater => upper = middle,
+                Ordering::Equal => return Ok(Some(self.entries[middle].1)),
+            }
+        }
+        Ok(None)
+    }
+
     pub(super) fn contains_key(&self, id: &CheckedNodeId) -> bool {
         self.get(id).is_some()
     }

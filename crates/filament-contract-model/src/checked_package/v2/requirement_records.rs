@@ -602,7 +602,7 @@ pub(super) fn validate(
     meter: &mut WorkMeter,
 ) -> Result<(), ValidationFailure> {
     validate_frames(path_condition_frames, nodes, kinds, index, meter)?;
-    let frame_index = path_condition_frame_index(path_condition_frames, meter)?;
+    let frame_index = path_condition_frame_index(path_condition_frames, index, meter)?;
     let mut records: Vec<usize> = kinds
         .iter()
         .enumerate()
@@ -613,7 +613,7 @@ pub(super) fn validate(
     sort_by_structural_key(&mut records, index, structural_keys, meter)?;
     let mut owner_paths: BTreeMap<
         usize,
-        BTreeMap<(CheckedNodeId, u64), Option<PathConditionFrameId>>,
+        BTreeMap<(usize, u64), Option<PathConditionFrameId>>,
     > = BTreeMap::new();
     let mut seen_frame_ids = BTreeSet::new();
     let mut used_frames =
@@ -764,7 +764,7 @@ pub(super) fn validate(
         }
         let expected_path = owner_paths
             .get(&owner_position)
-            .and_then(|paths| paths.get(&(record.application.clone(), record.occurrence)));
+            .and_then(|paths| paths.get(&(application_position, record.occurrence)));
         if expected_path != Some(&record.path_condition_frame) {
             return Err(refuse(
                 position,
@@ -1271,31 +1271,45 @@ enum OwnerWalkTask<'a> {
     Term(&'a CheckedTerm, Option<PathConditionFrameId>),
 }
 
-type PathConditionFrameIndexEntry<'a> =
-    ((Option<usize>, &'a CheckedNodeId, u64, bool), usize);
+type PathConditionFrameIndexEntry = ((Option<usize>, usize, u64, bool), usize);
 
-fn path_condition_frame_index<'a>(
-    frames: Option<&'a [PathConditionFrameWire]>,
+fn path_condition_frame_index(
+    frames: Option<&[PathConditionFrameWire]>,
+    index: &GraphIndex<'_>,
     meter: &mut WorkMeter<'_>,
-) -> Result<Vec<PathConditionFrameIndexEntry<'a>>, ValidationFailure> {
+) -> Result<Vec<PathConditionFrameIndexEntry>, ValidationFailure> {
     let frames = frames.unwrap_or_default();
     let at = Path::root().key("path_condition_frames");
     let site = Site::new(PackageReadStage::Graph, 0, "path_condition_frames", at);
     let mut entries = stage_storage::vec(meter, &site, frames.len())?;
     for (frame_id, frame) in frames.iter().enumerate() {
+        let guard_position = index
+            .get_charged(&frame.guard.node, meter)?
+            .ok_or_else(|| {
+                refuse(
+                    frame_id,
+                    Path::root()
+                        .key("path_condition_frames")
+                        .index(frame_id)
+                        .key("guard"),
+                    Cause::InvalidValue,
+                    Some(&frame.guard.node),
+                    meter,
+                )
+            })?;
         entries.push((
             (
                 frame
                     .parent
                     .and_then(|parent| usize::try_from(parent).ok()),
-                &frame.guard.node,
+                guard_position,
                 frame.guard.occurrence.ordinal,
                 frame.holds,
             ),
             frame_id,
         ));
     }
-    entries.sort_unstable_by(|left, right| left.0.cmp(&right.0));
+    entries.sort_unstable();
     Ok(entries)
 }
 
@@ -1304,11 +1318,11 @@ fn derive_owner_path_conditions(
     nodes: &[RawSemanticNodeV2],
     terms: &[CheckedTerm],
     index: &GraphIndex<'_>,
-    frame_index: &[PathConditionFrameIndexEntry<'_>],
+    frame_index: &[PathConditionFrameIndexEntry],
     record_position: usize,
     seen_frame_ids: &mut BTreeSet<usize>,
     meter: &mut WorkMeter,
-) -> Result<BTreeMap<(CheckedNodeId, u64), Option<PathConditionFrameId>>, ValidationFailure> {
+) -> Result<BTreeMap<(usize, u64), Option<PathConditionFrameId>>, ValidationFailure> {
     let Some(root) = terms.get(owner_position).and_then(function_body_root) else {
         return Err(refuse(
             record_position,
@@ -1356,7 +1370,7 @@ fn derive_owner_path_conditions(
                     (occurrence, Some(term))
                 {
                     if operation.identity().is_some_and(is_scalar_operation) {
-                        derived.insert((nodes[position].node_id.clone(), ordinal), terminal);
+                        derived.insert((position, ordinal), terminal);
                     }
                 }
                 pending.push(OwnerWalkTask::Term(term, terminal));
@@ -1397,6 +1411,7 @@ fn derive_owner_path_conditions(
                                     &guard,
                                     occurrence,
                                     true,
+                                    index,
                                     frame_index,
                                     record_position,
                                     seen_frame_ids,
@@ -1410,6 +1425,7 @@ fn derive_owner_path_conditions(
                                     &guard,
                                     occurrence,
                                     false,
+                                    index,
                                     frame_index,
                                     record_position,
                                     seen_frame_ids,
@@ -1423,6 +1439,7 @@ fn derive_owner_path_conditions(
                                     &guard,
                                     occurrence,
                                     true,
+                                    index,
                                     frame_index,
                                     record_position,
                                     seen_frame_ids,
@@ -1433,6 +1450,7 @@ fn derive_owner_path_conditions(
                                     &guard,
                                     occurrence,
                                     false,
+                                    index,
                                     frame_index,
                                     record_position,
                                     seen_frame_ids,
@@ -1481,6 +1499,7 @@ fn derive_owner_path_conditions(
                                 &guard,
                                 occurrence,
                                 holds,
+                                index,
                                 frame_index,
                                 record_position,
                                 seen_frame_ids,
@@ -1540,14 +1559,24 @@ fn derived_frame_id(
     guard: &CheckedNodeId,
     occurrence: u64,
     holds: bool,
-    frame_index: &[PathConditionFrameIndexEntry<'_>],
+    index: &GraphIndex<'_>,
+    frame_index: &[PathConditionFrameIndexEntry],
     record_position: usize,
     seen_frame_ids: &mut BTreeSet<usize>,
     meter: &mut WorkMeter,
 ) -> Result<Option<PathConditionFrameId>, ValidationFailure> {
     let parent_index = parent.map(|parent| parent.0);
-    let key = (parent_index, guard, occurrence, holds);
-    let Ok(found) = frame_index.binary_search_by(|entry| entry.0.cmp(&key)) else {
+    let guard_position = index.get_charged(guard, meter)?.ok_or_else(|| {
+        refuse(
+            record_position,
+            Path::root().key("path_condition_frames"),
+            Cause::InvalidValue,
+            None,
+            meter,
+        )
+    })?;
+    let key = (parent_index, guard_position, occurrence, holds);
+    let Ok(found) = frame_index.binary_search_by_key(&key, |entry| entry.0) else {
         return Err(refuse(
             record_position,
             Path::root().key("path_condition_frames"),
