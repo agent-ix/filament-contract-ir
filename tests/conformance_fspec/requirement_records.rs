@@ -80,6 +80,17 @@ fn row(claim: &Value, kind: &str) -> Value {
     })
 }
 
+fn canonical_nonnegative_integer(value: &Value) -> Option<u64> {
+    match value {
+        Value::Number(number) => number.as_u64(),
+        Value::String(text) => text
+            .parse::<u64>()
+            .ok()
+            .filter(|value| value.to_string() == *text),
+        _ => None,
+    }
+}
+
 fn value_validity_record(row: &RequirementItemRow) -> &ValueValidityRecord {
     match row.record.as_ref() {
         Some(RequirementRecord::ValueValidity(record)) => record,
@@ -574,12 +585,10 @@ fn large_requirement_record_package(record_count: usize) -> Value {
         );
     }
 
-    let terminal_frame_id = record_template["body"]["members"][5]["value"]["members"][0]["value"]
-        ["value"]
-        .as_str()
-        .expect("canonical integer literal uses decimal text")
-        .parse::<u64>()
-        .expect("terminal frame id is a nonnegative integer");
+    let terminal_frame_id = canonical_nonnegative_integer(
+        &record_template["body"]["members"][5]["value"]["members"][0]["value"]["value"],
+    )
+    .expect("terminal frame id is a canonical nonnegative integer");
     let mut requirement_rows = Vec::with_capacity(record_count);
     for (generated_index, (&application_position, application_id)) in application_positions
         .iter()
