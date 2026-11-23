@@ -1516,17 +1516,12 @@ fn public_reader_refuses_record_node_mutations_at_their_rule_pointers() {
     }
 }
 
-/// FSpec FR-825-AC-4 rule 1 names a record node with a `declaration` member
-/// as `invalid_package`/`invalid-value` at `occurrences`. The reader refuses
-/// it at an earlier stage: the closed schema's `OwnerPresenceRule` (a node with
-/// `declaration` needs an owner: `malformed_wire` at the node); with an owner,
-/// `DeclarationOccurrenceRule` (`invalid_semantic_graph` at `declaration`);
-/// with a `declaration` occurrence too, the `claim_names` stage
-/// (`invalid_package` at `/claim_names/0/declaration`). No schema-valid record
-/// node reaches rule 1, so this stays red pending an FSpec ruling.
+/// FR-376/FR-322 strict-wire and owner checks precede the FR-825 record rule.
+/// The extra `declaration` member is refused as `malformed_wire` at the node,
+/// with no cause, so FR-825 does not run for this input.
 #[trace("TC-488", "FR-376-AC-2")]
 #[test]
-fn public_reader_refuses_a_record_node_with_a_declaration_member_at_occurrences() {
+fn public_reader_refuses_a_record_node_with_an_extra_declaration_member_as_malformed_wire() {
     let mut package = value_validity_package(false);
     let record_position = package["semantic_graph"]["nodes"]
         .as_array()
@@ -1540,9 +1535,9 @@ fn public_reader_refuses_a_record_node_with_a_declaration_member_at_occurrences(
         json!({"qualified_name":["bad"]});
     assert_refusal(
         &package,
-        CheckedPackageRefusalCode::InvalidPackage,
-        Some(CheckedPackageRefusalCause::InvalidValue),
-        &format!("/semantic_graph/nodes/{record_position}/occurrences"),
+        CheckedPackageRefusalCode::MalformedWire,
+        None,
+        &format!("/semantic_graph/nodes/{record_position}"),
     );
 }
 
