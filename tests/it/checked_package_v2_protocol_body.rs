@@ -16,7 +16,8 @@ use filament_contract_model::{
     CheckedNodeId, CheckedPackageEvidence, CheckedPackageLimit, CheckedPackageReadLimits,
     CheckedPackageRefusal, CheckedPackageRefusalCause, CheckedPackageRefusalCode, CheckedPackageV2,
     CheckedPackageV2ReadResult, CheckedProtocolActivation, CheckedProtocolActivationRow,
-    CheckedProtocolRefusalDetail, CheckedTerm,
+    CheckedProtocolRefusalDetail, CheckedTerm, DomainKey, DomainKind, RequirementExtent,
+    RequirementRecord,
 };
 use ix_trace_rs::trace;
 use serde_json::{json, Value};
@@ -7758,6 +7759,12 @@ fn package_with_admitted_attempt() -> (Value, usize, Value) {
 }
 
 fn package_with_operation_contract_record() -> (Value, usize) {
+    package_with_operation_contract_record_and_unbounded_population(false)
+}
+
+fn package_with_operation_contract_record_and_unbounded_population(
+    unbounded_population: bool,
+) -> (Value, usize) {
     let (mut package, claim_position) =
         crate::checked_package_v2_frame_entries::state_operand_fixture();
     let claim = package["semantic_graph"]["nodes"][claim_position].clone();
@@ -7776,6 +7783,7 @@ fn package_with_operation_contract_record() -> (Value, usize) {
             .clone()
     };
     let integer_type = scalar_type("integer");
+    let population_member_type = node_id(crate::checked_package_v2_frame_entries::object_key());
     let string_type_id = node_id("fixture/operation-contract-string");
     let mut string_type_node = package["semantic_graph"]["nodes"]
         .as_array()
@@ -7796,6 +7804,15 @@ fn package_with_operation_contract_record() -> (Value, usize) {
         .expect("claim occurrence ordinal");
     let binding = |name: &str, value: Value| json!({"term":"binding", "name":name, "value":value});
     let literal = |ty: &Value, kind: &str, value: Value| json!({"term":"literal", "type":ty, "value_kind":kind, "value":value});
+    let populations = if unbounded_population {
+        vec![json!({"term":"aggregate", "members":[
+            binding("member_type", json!({"term":"reference", "target":population_member_type.clone()})),
+            binding("ordinal", literal(&integer_type, "integer", json!(0))),
+            binding("maximum", json!({"term":"aggregate", "members":[]}))
+        ]})]
+    } else {
+        Vec::new()
+    };
     let body = json!({"term":"aggregate", "members":[
         binding("claim", json!({"term":"reference", "target":claim_id})),
         binding("occurrence", json!({"term":"aggregate", "members":[
@@ -7806,7 +7823,7 @@ fn package_with_operation_contract_record() -> (Value, usize) {
         binding("invariant", literal(&result_bound, "boolean", json!(true))),
         binding("operation", json!({"term":"aggregate", "members":[]})),
         binding("model_objects", json!({"term":"aggregate", "members":[]})),
-        binding("populations", json!({"term":"aggregate", "members":[]}))
+        binding("populations", json!({"term":"aggregate", "members":populations}))
     ]});
     let mut dependencies = vec![
         claim_id.clone(),
@@ -7814,6 +7831,9 @@ fn package_with_operation_contract_record() -> (Value, usize) {
         string_type_id,
         integer_type,
     ];
+    if unbounded_population {
+        dependencies.push(population_member_type.clone());
+    }
     dependencies.sort_by_key(structural_fixture_id);
     let graph_position = |target: &Value| {
         package["semantic_graph"]["nodes"]
@@ -7823,17 +7843,45 @@ fn package_with_operation_contract_record() -> (Value, usize) {
             .position(|node| node["node_id"] == *target)
             .expect("record dependency position")
     };
-    let path = json!([
-        "claim", "operation_contract", {"node":graph_position(&claim_id)},
-        occurrence["role"], occurrence_ordinal.to_string(), "bound",
-        {"node":graph_position(&result_bound)}, "invariant", "true", "operation", "none",
-        "objects", "0", "populations", "0", "extent", "bounded"
-    ]);
-    let record_id = structural_id(
-        package["name"].as_str().expect("package name"),
-        path.as_array().expect("identity path").clone(),
-        0,
-    );
+    let mut path = vec![
+        json!("claim"),
+        json!("operation_contract"),
+        json!({"node":graph_position(&claim_id)}),
+        occurrence["role"].clone(),
+        json!(occurrence_ordinal.to_string()),
+        json!("bound"),
+        json!({"node":graph_position(&result_bound)}),
+        json!("invariant"),
+        json!("true"),
+        json!("operation"),
+        json!("none"),
+        json!("objects"),
+        json!("0"),
+        json!("populations"),
+        json!(if unbounded_population { "1" } else { "0" }),
+    ];
+    if unbounded_population {
+        path.extend([
+            json!("population"),
+            json!({"node":graph_position(&population_member_type)}),
+            json!("0"),
+            json!("none"),
+        ]);
+    }
+    if unbounded_population {
+        path.extend([
+            json!("extent"),
+            json!("unbounded"),
+            json!("1"),
+            json!("population"),
+            json!({"node":graph_position(&population_member_type)}),
+            json!("0"),
+            json!("population"),
+        ]);
+    } else {
+        path.extend([json!("extent"), json!("bounded")]);
+    }
+    let record_id = structural_id(package["name"].as_str().expect("package name"), path, 0);
     package["semantic_graph"]["nodes"]
         .as_array_mut()
         .expect("graph nodes")
@@ -7881,7 +7929,15 @@ fn package_with_operation_contract_record() -> (Value, usize) {
     record_source["regions"] = claim_regions;
     package["requirement_items"] = json!([{
         "claim":{"node":claim["node_id"], "occurrence":occurrence},
-        "kind":"operation-contract", "extent":{"classification":"bounded"},
+        "kind":"operation-contract",
+        "extent": if unbounded_population {
+            json!({"classification":"unbounded", "domains":[{
+                "domain":{"type":"population", "member_type":population_member_type.clone(), "ordinal":0},
+                "kind":"population"
+            }]})
+        } else {
+            json!({"classification":"bounded"})
+        },
         "record":record_reference
     }]);
     assert!(
@@ -7890,6 +7946,32 @@ fn package_with_operation_contract_record() -> (Value, usize) {
         read(&package)
     );
     (package, record_position)
+}
+
+#[trace("TC-488", "FR-376-AC-2")]
+#[test]
+fn operation_contract_population_without_maximum_admits_empty_aggregate_leaf() {
+    let (package, _) = package_with_operation_contract_record_and_unbounded_population(true);
+    let CheckedPackageV2ReadResult::Admitted(admitted) = read(&package) else {
+        panic!(
+            "operation-contract population with no maximum should admit: {:?}",
+            read(&package)
+        );
+    };
+    let row = admitted
+        .requirement_items()
+        .first()
+        .expect("operation-contract requirement row");
+    assert!(matches!(
+        &row.extent,
+        RequirementExtent::Unbounded(domains)
+            if matches!(domains.as_slice(), [(DomainKey::Population { ordinal: 0, .. }, DomainKind::Population)])
+    ));
+    assert!(matches!(
+        row.record.as_ref(),
+        Some(RequirementRecord::OperationContract(record))
+            if matches!(record.populations.as_slice(), [population] if population.maximum.is_none())
+    ));
 }
 
 fn document_held_record_id(package: &Value, record_position: usize) -> Value {

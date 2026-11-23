@@ -329,7 +329,12 @@ pub(super) fn check(
                         Some(&node.node_id),
                         &mut meter.reservation(flat_site(position)),
                     )
-                } else if kind == CheckedNodeKind::Claim(super::ClaimForm::Schedulability) {
+                } else if matches!(
+                    kind,
+                    CheckedNodeKind::Claim(
+                        super::ClaimForm::Schedulability | super::ClaimForm::OperationContract
+                    )
+                ) {
                     check_term_with_empty_leaf(
                         body,
                         &at,
@@ -882,8 +887,9 @@ fn check_term<'a, V: TermSource<'a>>(
     check_term_with_empty_leaf(root, at, place, details, false, locus, reservation)
 }
 
-// FR-482 task records additionally use an empty aggregate for absent HI work
-// and priority. It is a terminal leaf here, so the ordinary flat bound remains.
+// Some closed record forms use an empty aggregate for an absent optional value
+// (FR-482 task fields and operation-contract population maxima). It is a
+// terminal leaf here, so the ordinary flat bound remains.
 fn check_term_with_empty_leaf<'a, V: TermSource<'a>>(
     root: V,
     at: &Trail<'a>,
