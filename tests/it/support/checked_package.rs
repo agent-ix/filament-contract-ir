@@ -1400,7 +1400,10 @@ impl PartialEq<ExpectedRefusal> for CheckedPackageV2ReadResult {
     fn eq(&self, expected: &ExpectedRefusal) -> bool {
         match self {
             Self::Refused(actual) => actual == expected,
-            Self::Admitted(_) | Self::Incomplete(_) | Self::CatalogUnavailable(_) => false,
+            Self::Admitted(_)
+            | Self::Incomplete(_)
+            | Self::CatalogUnavailable(_)
+            | Self::HostAllocationFailed(_) => false,
         }
     }
 }

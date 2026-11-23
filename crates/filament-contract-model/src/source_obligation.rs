@@ -747,6 +747,10 @@ pub enum SourceIrV2InventoryError {
     /// The IR V2 reader's operation catalog is unreadable; no inventory was issued.
     #[error("the IR V2 reader's operation catalog is unreadable: {0}")]
     CatalogUnavailable(crate::CatalogReadError),
+    /// The host refused an allocation the IR V2 read needed; the package was
+    /// not judged and no inventory was issued.
+    #[error("the host refused an allocation of the IR V2 read")]
+    HostAllocationFailed(crate::CheckedPackageHostAllocationFailed),
 }
 
 /// Enumerate the complete selected IR V2 graph from the owner's reader result.
@@ -769,6 +773,9 @@ pub fn source_inventory_from_ir_v2(
         }
         CheckedPackageV2ReadResult::CatalogUnavailable(error) => {
             return Err(SourceIrV2InventoryError::CatalogUnavailable(error))
+        }
+        CheckedPackageV2ReadResult::HostAllocationFailed(failure) => {
+            return Err(SourceIrV2InventoryError::HostAllocationFailed(failure))
         }
     };
     SourceInventoryOutcome::from_enumerator(IrV2InventoryEnumerator {

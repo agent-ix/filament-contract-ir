@@ -2,11 +2,12 @@
 // Copyright (C) 2026 Agent-IX
 
 //! Conformance-corpus scratch helpers shared by the TC-018 test modules.
+#![cfg_attr(not(feature = "conformance-cli"), allow(dead_code))]
 
 use std::{
     fs,
     path::{Path, PathBuf},
-    process::{Command, Output},
+    process::Output,
 };
 
 use serde_json::Value;
@@ -19,8 +20,9 @@ pub fn corpus() -> PathBuf {
     repository().join("corpus/contract-v0.1")
 }
 
+#[cfg(feature = "conformance-cli")]
 pub fn runner(arguments: &[&str]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_filament-contract-conformance"))
+    std::process::Command::new(env!("CARGO_BIN_EXE_filament-contract-conformance"))
         .args(arguments)
         .output()
         .unwrap()
@@ -30,6 +32,7 @@ pub fn schemas() -> PathBuf {
     repository().join("schemas")
 }
 
+#[cfg(feature = "conformance-cli")]
 pub fn run_with(corpus: &Path, schemas: &Path) -> Output {
     runner(&[
         "run",
@@ -40,6 +43,7 @@ pub fn run_with(corpus: &Path, schemas: &Path) -> Output {
     ])
 }
 
+#[cfg(feature = "conformance-cli")]
 pub fn run_corpus(path: &Path) -> Output {
     run_with(path, &schemas())
 }
@@ -83,6 +87,7 @@ impl Scratch {
         self.root().join("schemas")
     }
 
+    #[cfg(feature = "conformance-cli")]
     pub fn run(&self) -> Output {
         run_with(&self.0, &self.schemas())
     }

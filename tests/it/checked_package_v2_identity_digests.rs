@@ -148,6 +148,9 @@ fn derived_range_binding_name_is_validated_independently_of_its_id() {
         CheckedPackageV2ReadResult::CatalogUnavailable(error) => {
             panic!("the operation catalog is unreadable: {error}")
         }
+        CheckedPackageV2ReadResult::HostAllocationFailed(failure) => {
+            panic!("the host refused an allocation: {failure:?}")
+        }
     };
     assert_eq!(
         refusal.code,

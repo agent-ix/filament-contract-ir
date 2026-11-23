@@ -640,6 +640,40 @@ fn source_map_tables_are_charged_one_byte_short_and_admitted_at_the_exact_allowa
     );
 }
 
+/// IR-1590: a budget that runs out anywhere in the canonical re-encode, at
+/// the first byte or the last byte of any of its requests, ends the read as
+/// the typed read-storage stop at the canonical stage, never as a
+/// `noncanonical_wire` refusal of bytes that are canonical.
+#[trace("TC-472", "FR-038-AC-505")]
+#[test]
+fn canonical_re_encode_denials_are_budget_stops_never_noncanonical_wire() {
+    let read = reader(&v2_all_families());
+    let requests = stage_requests(&read, PackageReadStage::Canonical);
+    assert!(requests.len() >= 3, "the re-encode grows several times");
+    for request in &requests {
+        let exact = request.before + u64::try_from(request.amount).unwrap();
+        for limit in [request.before, request.before + 1, exact - 1] {
+            let (result, budget) = read_at(&read, limit);
+            let denied = match &result {
+                CheckedPackageV2BudgetedReadResult::BudgetIncomplete(stop) => stop.denied,
+                CheckedPackageV2BudgetedReadResult::Exhausted(stop) => stop.denied,
+                other => panic!("limit {limit}: typed stop, got {other:?}"),
+            };
+            assert_eq!(denied.resource, PackageReadResource::ReadStorage);
+            assert_eq!(denied.amount, request.amount, "limit {limit}");
+            let locus = budget.first_unpaid_locus().expect("a denial has a locus");
+            assert_eq!(
+                (locus.source, locus.form),
+                (
+                    NativeJoinLocusSource::PackageRead(PackageReadStage::Canonical, 0),
+                    "canonical_bytes"
+                ),
+                "limit {limit}"
+            );
+        }
+    }
+}
+
 #[trace("TC-472", "FR-038-AC-505")]
 #[test]
 fn capability_table_is_charged_at_the_capability_report() {

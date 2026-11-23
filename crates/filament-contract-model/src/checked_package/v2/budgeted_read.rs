@@ -4,6 +4,7 @@
 //!
 //! Implements: FR-038 "Budget-charged strict read", FR-358.
 
+use super::checked_json::NoncanonicalValue;
 use super::native_join_budget::{NativeJoinBudget, NativeJoinLocus, NativeJoinLocusSource};
 use super::{
     CatalogReadError, CheckedPackageEvidence, CheckedPackageV2, CheckedPackageV2ReadResult,
@@ -94,6 +95,9 @@ pub enum CheckedPackageV2BudgetedReadResult {
     Exhausted(CheckedPackageReadExhausted),
     /// The reader's operation catalog is unreadable; no input was judged.
     CatalogUnavailable(CatalogReadError),
+    /// The host refused an allocation the budget had admitted; the input
+    /// was not judged.
+    HostAllocationFailed(CheckedPackageHostAllocationFailed),
 }
 
 /// The closed result of dispatching bytes through the budgeted read.
@@ -112,6 +116,9 @@ pub enum CheckedPackageBudgetedDispatchResult {
     Exhausted(CheckedPackageReadExhausted),
     /// The reader's operation catalog is unreadable; no input was judged.
     CatalogUnavailable(CatalogReadError),
+    /// The host refused an allocation the budget had admitted; the input
+    /// was not judged.
+    HostAllocationFailed(CheckedPackageHostAllocationFailed),
 }
 
 /// A budget denial inside the read, before its outcome is built.
@@ -221,7 +228,20 @@ impl CheckedPackageV2 {
         work_before: super::NativeJoinCharge,
         storage_before: u64,
     ) -> CheckedPackageV2BudgetedReadResult {
-        match Self::admit_bytes(catalog, bytes, limits, evidence, budget) {
+        let document = match read_envelope(bytes, limits, budget) {
+            Ok(document) => document,
+            Err(EnvelopeStop::Failure(stop)) => {
+                budget.abort();
+                return budgeted_outcome(stop, budget);
+            }
+            // The host's failure is the outcome as it is: no diagnostic is
+            // built and nothing more is charged.
+            Err(EnvelopeStop::HostAllocation(failure)) => {
+                budget.abort();
+                return CheckedPackageV2BudgetedReadResult::HostAllocationFailed(failure);
+            }
+        };
+        match Self::admit_document(catalog, document, limits, evidence, budget) {
             Ok(package) => {
                 // The result's box is the read's last storage request, except
                 // for a package that carries `protocol_correlation_occurrences`:
@@ -324,6 +344,9 @@ impl CheckedPackageV2 {
                     consumed: budget.consumed().work,
                     path: None,
                 })
+            }
+            CheckedPackageV2BudgetedReadResult::HostAllocationFailed(failure) => {
+                CheckedPackageV2ReadResult::HostAllocationFailed(failure)
             }
         }
     }
@@ -541,8 +564,11 @@ impl quire_canonical::Sink for ComparingSink<'_> {
 
 /// The package document as the canonical writer encodes it, with the
 /// encoder's refusal of an integer past 2^53 (see [`super::checked_json`]).
+/// `found` records a value the encoding refused for having no canonical
+/// spelling.
 struct PackageDocument<'d> {
     document: &'d Document,
+    found: &'d std::cell::Cell<Option<NoncanonicalValue>>,
 }
 
 impl quire_canonical::Encode for PackageDocument<'_> {
@@ -550,8 +576,157 @@ impl quire_canonical::Encode for PackageDocument<'_> {
         &self,
         writer: &mut quire_canonical::Writer<'_, S>,
     ) -> Result<(), quire_canonical::Error> {
-        super::checked_json::encode_node(self.document.root(), writer)
+        let mut found = None;
+        let encoded =
+            super::checked_json::encode_node_noting(self.document.root(), writer, &mut found);
+        self.found.set(found);
+        encoded
     }
+}
+
+/// What the canonical comparison decided about the package bytes.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum CanonicalVerdict {
+    /// The bytes are their own canonical encoding.
+    Canonical,
+    /// The bytes are not the canonical encoding of the value read, or the
+    /// value has none: `noncanonical_wire`.
+    Noncanonical,
+    /// The budget denied a growth of the writer: the typed budget stop.
+    Denied,
+    /// The allocator refused a block the budget had admitted: the host's
+    /// failure, never a refusal of the package or a budget stop.
+    AllocationFailed,
+}
+
+/// Decides the comparison from the encoder's result, the value the encoding
+/// recorded as having no canonical spelling, and whether the comparing sink
+/// received exactly the input. A resource failure of the encoder is never a
+/// statement about the package's bytes.
+fn canonical_verdict(
+    encoded: Result<u64, quire_canonical::Error>,
+    found: Option<NoncanonicalValue>,
+    sink_matched: bool,
+) -> CanonicalVerdict {
+    use quire_canonical::{Error, LimitKind};
+    match encoded {
+        Ok(_) if sink_matched => CanonicalVerdict::Canonical,
+        // A byte differs, or the canonical text is shorter or longer.
+        Ok(_) => CanonicalVerdict::Noncanonical,
+        Err(Error::ReservationDenied { .. }) => CanonicalVerdict::Denied,
+        Err(Error::Allocation { .. }) => CanonicalVerdict::AllocationFailed,
+        // The input is within the byte limit, so canonical text past it is
+        // longer than the input.
+        Err(Error::Limit(limit)) if limit.kind == LimitKind::CanonicalBytes => {
+            CanonicalVerdict::Noncanonical
+        }
+        // FR-038: a document `quire-canonical` refuses to encode refuses
+        // `noncanonical_wire`. These are values with no RFC 8785 spelling.
+        Err(
+            Error::IntegerMagnitudeAboveMaximum(_)
+            | Error::UnsignedIntegerMagnitudeAboveMaximum(_)
+            | Error::WideIntegerMagnitudeAboveMaximum(_)
+            | Error::NonFiniteNumber(_),
+        ) => CanonicalVerdict::Noncanonical,
+        Err(Error::Internal { .. }) if found.is_some() => CanonicalVerdict::Noncanonical,
+        // FR-038's other encoder refusals of the document: the fixed object
+        // buffer bound, and the encoder's own faults (the comparing sink
+        // never fails; the reader already refused duplicate names; the
+        // walk emits balanced events and no serde values). None of them is a
+        // resource of the caller's budget or of the allocator.
+        Err(
+            Error::Limit(_)
+            | Error::DuplicateMemberName { .. }
+            | Error::NonStringMemberName { .. }
+            | Error::SerdeJsonPrivateToken(_)
+            | Error::Sink(_)
+            | Error::Protocol(_)
+            | Error::Internal { .. }
+            | Error::Serialize(_),
+        ) => CanonicalVerdict::Noncanonical,
+        // `quire_canonical::Error` is `#[non_exhaustive]`, and the read has no
+        // internal-fault outcome. Every variant of the pinned version is
+        // matched above, so this arm is reached only by a variant a later
+        // version adds, which must be classified here when the dependency
+        // moves; until then it is FR-038's "a document quire-canonical
+        // refuses to encode refuses noncanonical_wire".
+        Err(_) => CanonicalVerdict::Noncanonical,
+    }
+}
+
+/// A read the host could not finish: the allocator refused a block that the
+/// read's budget had already admitted and charged. It says nothing about the
+/// package. It is not a refusal, not a structural `incomplete` and not a
+/// budget stop, so a larger budget would not change it.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct CheckedPackageHostAllocationFailed {
+    /// The read stage whose allocation failed.
+    pub stage: PackageReadStage,
+    /// Where the failed block was charged.
+    pub locus: NativeJoinLocus,
+    /// The bytes of the block the allocator could not provide, as the budget
+    /// charged them.
+    pub requested: u64,
+    /// The read storage charged when the allocation failed, that block
+    /// included; nothing is added for the failure.
+    pub consumed: u64,
+}
+
+/// How reading and comparing the package bytes can stop: a failure the read
+/// turns into its outcome, or the host's allocation failure.
+#[derive(Debug)]
+pub(in crate::checked_package) enum EnvelopeStop {
+    Failure(ValidationFailure),
+    HostAllocation(CheckedPackageHostAllocationFailed),
+}
+
+impl From<ValidationFailure> for EnvelopeStop {
+    fn from(failure: ValidationFailure) -> Self {
+        Self::Failure(failure)
+    }
+}
+
+/// [`ReadStorageReservation`], remembering the last block it admitted. The
+/// shared reader and writer charge a block and then allocate it at once, so
+/// when the allocation fails that block is the one the host refused.
+struct RecordingReservation<'b> {
+    budget: &'b mut NativeJoinBudget,
+    last_admitted: usize,
+}
+
+impl<'b> RecordingReservation<'b> {
+    fn new(budget: &'b mut NativeJoinBudget) -> Self {
+        Self {
+            budget,
+            last_admitted: 0,
+        }
+    }
+}
+
+impl Reservation for RecordingReservation<'_> {
+    fn reserve(&mut self, bytes: usize) -> Result<(), ReservationDenied> {
+        ReadStorageReservation(&mut *self.budget).reserve(bytes)?;
+        self.last_admitted = bytes;
+        Ok(())
+    }
+}
+
+/// The host's refusal of the block `admitted` at `stage`'s package locus.
+fn host_allocation_failed(
+    stage: PackageReadStage,
+    form: &'static str,
+    admitted: usize,
+    budget: &NativeJoinBudget,
+) -> EnvelopeStop {
+    EnvelopeStop::HostAllocation(CheckedPackageHostAllocationFailed {
+        stage,
+        locus: NativeJoinLocus {
+            source: NativeJoinLocusSource::PackageRead(stage, 0),
+            form,
+        },
+        requested: u64::try_from(admitted).unwrap_or(u64::MAX),
+        consumed: budget.read_storage_consumed(),
+    })
 }
 
 /// Reads the package bytes with the shared reader and requires them to be
@@ -582,25 +757,20 @@ pub(super) fn share_document(
     Ok(std::sync::Arc::new(document))
 }
 
-pub(in crate::checked_package) fn read_envelope(
-    bytes: &[u8],
+/// The outcome of a refused read of the package bytes. A resource failure of
+/// the reader is the typed stop it is; only a fault of the bytes refuses.
+fn envelope_failure(
+    error: ReadError,
     limits: CheckedPackageReadLimits,
+    length: usize,
+    admitted: usize,
     budget: &mut NativeJoinBudget,
-) -> Result<Document, ValidationFailure> {
-    if exceeds(bytes.len(), limits.bytes) {
-        return Err(refuse_bytes_exceeded(limits.bytes, bytes.len()));
-    }
-    at_stage(budget, PackageReadStage::Envelope, "package_bytes");
-    let document = match quire_canonical::read_with_reservation(
-        bytes,
-        limits.bytes,
-        &mut ReadStorageReservation(budget),
-    ) {
-        Ok(document) => document,
-        Err(ReadError::Limit(_)) => return Err(refuse_bytes_exceeded(limits.bytes, bytes.len())),
-        Err(ReadError::DuplicateName { pointer, .. }) => {
+) -> EnvelopeStop {
+    let failure = match error {
+        ReadError::Limit(_) => refuse_bytes_exceeded(limits.bytes, length),
+        ReadError::DuplicateName { pointer, .. } => {
             let mut meter = super::WorkMeter::over(budget);
-            return Err(super::stage_storage::refuse_held_pointer(
+            super::stage_storage::refuse_held_pointer(
                 &mut meter,
                 &super::stage_storage::Site::new(
                     PackageReadStage::Envelope,
@@ -610,21 +780,66 @@ pub(in crate::checked_package) fn read_envelope(
                 ),
                 CheckedPackageRefusalCode::DuplicateMember,
                 pointer,
-            ));
+            )
         }
-        Err(ReadError::ReservationDenied { .. }) => return Err(denial(budget)),
-        Err(_) => {
-            return Err(prepaid_bytes_refusal(
-                budget,
+        ReadError::ReservationDenied { .. } => denial(budget),
+        // The allocator refused a block the budget had admitted: a property
+        // of the host, never of the package or of the budget.
+        ReadError::Allocation { .. } => {
+            return host_allocation_failed(
                 PackageReadStage::Envelope,
-                CheckedPackageRefusalCode::MalformedWire,
-            ));
+                "package_bytes",
+                admitted,
+                budget,
+            );
+        }
+        ReadError::Malformed { .. } | ReadError::NumberOutOfRange { .. } => prepaid_bytes_refusal(
+            budget,
+            PackageReadStage::Envelope,
+            CheckedPackageRefusalCode::MalformedWire,
+        ),
+        // `ReadError` is `#[non_exhaustive]`, and the read has no
+        // internal-fault outcome. Every variant of the pinned version is
+        // matched above, so this arm is reached only by a variant a later
+        // version adds, which must be classified here when the dependency
+        // moves; until then it is a byte-stream fault, `malformed_wire`.
+        _ => prepaid_bytes_refusal(
+            budget,
+            PackageReadStage::Envelope,
+            CheckedPackageRefusalCode::MalformedWire,
+        ),
+    };
+    EnvelopeStop::Failure(failure)
+}
+
+pub(in crate::checked_package) fn read_envelope(
+    bytes: &[u8],
+    limits: CheckedPackageReadLimits,
+    budget: &mut NativeJoinBudget,
+) -> Result<Document, EnvelopeStop> {
+    if exceeds(bytes.len(), limits.bytes) {
+        return Err(refuse_bytes_exceeded(limits.bytes, bytes.len()).into());
+    }
+    at_stage(budget, PackageReadStage::Envelope, "package_bytes");
+    let mut reservation = RecordingReservation::new(budget);
+    let read = quire_canonical::read_with_reservation(bytes, limits.bytes, &mut reservation);
+    let admitted = reservation.last_admitted;
+    let document = match read {
+        Ok(document) => document,
+        Err(error) => {
+            return Err(envelope_failure(
+                error,
+                limits,
+                bytes.len(),
+                admitted,
+                budget,
+            ))
         }
     };
     // The reservation-backed reader has already checked syntax and duplicate
     // members. Walk its arena with fixed stack storage to locate the cap value.
     if let Some(failure) = nesting_cap_refusal(&document, budget) {
-        return Err(failure);
+        return Err(failure.into());
     }
     at_stage(budget, PackageReadStage::Canonical, "canonical_bytes");
     let mut sink = ComparingSink {
@@ -632,25 +847,37 @@ pub(in crate::checked_package) fn read_envelope(
         at: 0,
         agrees: true,
     };
+    let found = std::cell::Cell::new(None);
+    let mut reservation = RecordingReservation::new(budget);
     let encoded = quire_canonical::encode_with_reservation(
         &mut sink,
         &PackageDocument {
             document: &document,
+            found: &found,
         },
         quire_canonical::Limits::new(limits.bytes),
-        &mut ReadStorageReservation(budget),
+        &mut reservation,
     );
-    match encoded {
-        Err(quire_canonical::Error::ReservationDenied { .. }) => Err(denial(budget)),
-        Ok(_) if sink.agrees && sink.at == bytes.len() => {
+    let admitted = reservation.last_admitted;
+    let sink_matched = sink.agrees && sink.at == bytes.len();
+    match canonical_verdict(encoded, found.get(), sink_matched) {
+        CanonicalVerdict::Canonical => {
             budget.set_active_locus(None);
             Ok(document)
         }
-        _ => Err(prepaid_bytes_refusal(
+        CanonicalVerdict::Denied => Err(denial(budget).into()),
+        CanonicalVerdict::AllocationFailed => Err(host_allocation_failed(
+            PackageReadStage::Canonical,
+            "canonical_bytes",
+            admitted,
+            budget,
+        )),
+        CanonicalVerdict::Noncanonical => Err(prepaid_bytes_refusal(
             budget,
             PackageReadStage::Canonical,
             CheckedPackageRefusalCode::NoncanonicalWire,
-        )),
+        )
+        .into()),
     }
 }
 
@@ -751,6 +978,184 @@ fn prepaid_bytes_refusal(
         ),
         code,
     )
+}
+
+#[cfg(test)]
+mod canonical_verdict_tests {
+    use super::*;
+    use quire_canonical::{Error, LimitExceeded, LimitKind, ProtocolViolation};
+
+    fn limit(kind: LimitKind) -> Error {
+        Error::Limit(LimitExceeded {
+            kind,
+            bound: 10,
+            required: 11,
+        })
+    }
+
+    /// IR-1590: a resource failure of the re-encode is the typed stop it is,
+    /// whatever the sink saw; only a refusal of the document is
+    /// `noncanonical_wire`.
+    #[trace("TC-472", "FR-038-AC-511")]
+    #[test]
+    fn encoder_resource_failures_are_typed_stops_never_noncanonical_wire() {
+        for matched in [true, false] {
+            for found in [None, Some(NoncanonicalValue::WholeNumberPastMaximum)] {
+                assert_eq!(
+                    canonical_verdict(
+                        Err(Error::ReservationDenied { requested: 64 }),
+                        found,
+                        matched
+                    ),
+                    CanonicalVerdict::Denied
+                );
+                assert_eq!(
+                    canonical_verdict(Err(Error::Allocation { requested: 64 }), found, matched),
+                    CanonicalVerdict::AllocationFailed
+                );
+            }
+        }
+    }
+
+    #[trace("TC-472", "FR-038-AC-511")]
+    #[test]
+    fn only_a_mismatch_or_a_refused_value_is_noncanonical() {
+        assert_eq!(
+            canonical_verdict(Ok(4), None, true),
+            CanonicalVerdict::Canonical
+        );
+        assert_eq!(
+            canonical_verdict(Ok(4), None, false),
+            CanonicalVerdict::Noncanonical
+        );
+        for refused in [
+            limit(LimitKind::CanonicalBytes),
+            Error::IntegerMagnitudeAboveMaximum(1 << 60),
+            Error::UnsignedIntegerMagnitudeAboveMaximum(1 << 60),
+            Error::WideIntegerMagnitudeAboveMaximum(String::from("1")),
+            Error::NonFiniteNumber(f64::INFINITY),
+        ] {
+            assert_eq!(
+                canonical_verdict(Err(refused), None, false),
+                CanonicalVerdict::Noncanonical
+            );
+        }
+        for found in [
+            NoncanonicalValue::WholeNumberPastMaximum,
+            NoncanonicalValue::SerdeJsonNumberToken,
+        ] {
+            assert_eq!(
+                canonical_verdict(
+                    Err(Error::Internal { invariant: "value" }),
+                    Some(found),
+                    false
+                ),
+                CanonicalVerdict::Noncanonical
+            );
+        }
+        for fault in [
+            limit(LimitKind::ObjectBytes),
+            Error::Protocol(ProtocolViolation::Incomplete),
+            Error::Internal { invariant: "fault" },
+        ] {
+            assert_eq!(
+                canonical_verdict(Err(fault), None, false),
+                CanonicalVerdict::Noncanonical
+            );
+        }
+    }
+
+    /// A whole number past 2^53 in exponent form is recorded as the value the
+    /// encoding refused, so the read can tell it from an encoder fault.
+    #[trace("TC-472", "FR-038-AC-511")]
+    #[test]
+    fn the_encoding_records_the_value_it_refused() {
+        for (bytes, expected) in [
+            (
+                b"[1e16]".as_slice(),
+                Some(NoncanonicalValue::WholeNumberPastMaximum),
+            ),
+            (
+                br#"{"$serde_json::private::Number":"1"}"#.as_slice(),
+                Some(NoncanonicalValue::SerdeJsonNumberToken),
+            ),
+            (br#"{"a":1}"#.as_slice(), None),
+        ] {
+            let document = quire_canonical::read(bytes, 64).expect("read");
+            let found = std::cell::Cell::new(None);
+            let mut sink = ComparingSink {
+                original: bytes,
+                at: 0,
+                agrees: true,
+            };
+            let _ = quire_canonical::encode(
+                &mut sink,
+                &PackageDocument {
+                    document: &document,
+                    found: &found,
+                },
+                quire_canonical::Limits::new(64),
+            );
+            assert_eq!(found.get(), expected, "{bytes:?}");
+        }
+    }
+
+    /// The block a reservation admitted last is the one the host refused, and
+    /// it is charged exactly once.
+    #[trace("TC-472", "FR-038-AC-614")]
+    #[test]
+    fn the_recording_reservation_charges_once_and_keeps_the_last_block() {
+        let mut budget = NativeJoinBudget::new(u64::MAX, 0).with_read_storage_limit(1_000);
+        let mut reservation = RecordingReservation::new(&mut budget);
+        assert!(reservation.reserve(100).is_ok());
+        assert!(reservation.reserve(300).is_ok());
+        assert!(reservation.reserve(700).is_err());
+        assert_eq!(reservation.last_admitted, 300);
+        assert_eq!(budget.read_storage_consumed(), 400);
+    }
+
+    /// The shared reader's allocation failure (it was
+    /// `malformed_wire`) is the host's failure at the envelope locus, with
+    /// the refused block and exactly the storage charged; the byte-stream
+    /// faults still refuse `malformed_wire`.
+    #[trace("TC-472", "FR-038-AC-614")]
+    #[test]
+    fn an_envelope_allocation_failure_is_the_host_outcome() {
+        let limits = CheckedPackageReadLimits::bounded();
+        let mut budget = NativeJoinBudget::new(u64::MAX, 0).with_read_storage_limit(u64::MAX);
+        at_stage(&mut budget, PackageReadStage::Envelope, "package_bytes");
+        assert!(budget.charge_read_storage(96));
+        assert!(budget.charge_read_storage(512));
+        let stop = envelope_failure(
+            ReadError::Allocation { requested: 256 },
+            limits,
+            16,
+            512,
+            &mut budget,
+        );
+        let EnvelopeStop::HostAllocation(failure) = stop else {
+            panic!("host outcome: {stop:?}");
+        };
+        assert_eq!(
+            failure,
+            CheckedPackageHostAllocationFailed {
+                stage: PackageReadStage::Envelope,
+                locus: NativeJoinLocus {
+                    source: NativeJoinLocusSource::PackageRead(PackageReadStage::Envelope, 0),
+                    form: "package_bytes",
+                },
+                requested: 512,
+                consumed: 608,
+            }
+        );
+        let malformed = quire_canonical::read(b"{", 16).expect_err("malformed");
+        let refused = envelope_failure(malformed, limits, 1, 0, &mut budget);
+        assert!(
+            matches!(&refused, EnvelopeStop::Failure(ValidationFailure::Refused(refusal))
+                if refusal.code == CheckedPackageRefusalCode::MalformedWire),
+            "{refused:?}"
+        );
+    }
 }
 
 #[cfg(test)]

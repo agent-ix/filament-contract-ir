@@ -571,6 +571,7 @@ fn budgeted_kind(result: &Budgeted) -> &'static str {
         Budgeted::BudgetIncomplete(_) => "budget-incomplete",
         Budgeted::Exhausted(_) => "exhausted",
         Budgeted::CatalogUnavailable(_) => "catalog-unavailable",
+        Budgeted::HostAllocationFailed(_) => "host-allocation-failed",
     }
 }
 
@@ -1164,6 +1165,7 @@ fn finish_proof(
         Plain::Refused(_) => "refused",
         Plain::Incomplete(_) => "incomplete",
         Plain::CatalogUnavailable(_) => "catalog-unavailable",
+        Plain::HostAllocationFailed(_) => "host-allocation-failed",
     };
     let log = std::env::var_os("IR1404_READ_PROOF_LOG")
         .map(std::path::PathBuf::from)

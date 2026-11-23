@@ -1469,6 +1469,7 @@ fn every_registered_positive_and_refusal_is_a_genuine_public_input() {
                 CheckedPackageV2ReadResult::Refused(_) => "refused",
                 CheckedPackageV2ReadResult::Incomplete(_) => "incomplete",
                 CheckedPackageV2ReadResult::CatalogUnavailable(_) => "catalog_unavailable",
+                CheckedPackageV2ReadResult::HostAllocationFailed(_) => "host_allocation_failed",
             };
             native_providers.push(json!({
                 "provider": input.label,

@@ -277,6 +277,9 @@ fn reading_of(package: &Value) -> Result<String, String> {
     Ok(match read_package(package)? {
         CheckedPackageV2ReadResult::Admitted(_) => "admitted".to_owned(),
         CheckedPackageV2ReadResult::Incomplete(_) => "incomplete".to_owned(),
+        CheckedPackageV2ReadResult::HostAllocationFailed(failure) => {
+            return Err(format!("the host refused an allocation: {failure:?}"));
+        }
         CheckedPackageV2ReadResult::CatalogUnavailable(error) => {
             return Err(format!(
                 "production operation catalog unavailable: {error:?}"

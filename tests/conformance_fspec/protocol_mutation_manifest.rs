@@ -79,6 +79,9 @@ fn assert_manifest_refusal(id: &str, expected_locus: &str, node_index: usize) {
         CheckedPackageV2ReadResult::Incomplete(incomplete) => {
             panic!("{id}: reader incomplete ({incomplete:?}); FSpec FR-464 requires refusal")
         }
+        CheckedPackageV2ReadResult::HostAllocationFailed(failure) => {
+            panic!("{id}: the host refused an allocation: {failure:?}")
+        }
         CheckedPackageV2ReadResult::CatalogUnavailable(error) => {
             panic!("{id}: production operation catalog unavailable: {error:?}")
         }
