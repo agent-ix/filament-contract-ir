@@ -9,10 +9,11 @@ use crate::fixture_support::{
     rebuild_complete_source_map, rebuild_source_map, settle, structural_fixture_id,
 };
 use filament_contract_model::{
-    encode_checked_package_v2_with_requirement_items, CheckedPackageReadLimits,
+    encode_checked_package_v2_with_path_condition_frames, CheckedPackageReadLimits,
     CheckedPackageRefusalCause, CheckedPackageRefusalCode, CheckedPackageSidecarsRef,
     CheckedPackageSourceCorrespondenceRef, CheckedPackageV2, CheckedPackageV2BudgetedReadResult,
-    CheckedPackageV2ReadResult, JsonPointer, NativeJoinBudget,
+    CheckedPackageV2ReadResult, JsonPointer, NativeJoinBudget, RequirementItemRow,
+    RequirementRecord, ValueValidityRecord,
 };
 use ix_trace_rs::trace;
 use serde_json::{json, Value};
@@ -77,6 +78,49 @@ fn row(claim: &Value, kind: &str) -> Value {
         "kind": kind,
         "extent": {"classification": "bounded"},
     })
+}
+
+fn canonical_nonnegative_integer(value: &Value) -> Option<u64> {
+    match value {
+        Value::Number(number) => number.as_u64(),
+        Value::String(text) => text
+            .parse::<u64>()
+            .ok()
+            .filter(|value| value.to_string() == *text),
+        _ => None,
+    }
+}
+
+fn binding_value<'a>(node: &'a Value, name: &str) -> &'a Value {
+    node["body"]["members"]
+        .as_array()
+        .expect("record body bindings")
+        .iter()
+        .find(|binding| binding["name"] == name)
+        .unwrap_or_else(|| panic!("missing {name} binding"))
+        .get("value")
+        .expect("binding value")
+}
+
+fn binding_value_mut<'a>(node: &'a mut Value, name: &str) -> &'a mut Value {
+    node["body"]["members"]
+        .as_array_mut()
+        .expect("record body bindings")
+        .iter_mut()
+        .find(|binding| binding["name"] == name)
+        .unwrap_or_else(|| panic!("missing {name} binding"))
+        .get_mut("value")
+        .expect("binding value")
+}
+
+fn value_validity_record(row: &RequirementItemRow) -> &ValueValidityRecord {
+    match row.record.as_ref() {
+        Some(RequirementRecord::ValueValidity(record)) => record,
+        Some(RequirementRecord::OperationContract(_)) => {
+            panic!("expected a value-validity requirement record")
+        }
+        None => panic!("requirement row has no record"),
+    }
 }
 
 fn sync_body_dependencies(node: &mut Value) {
@@ -389,7 +433,7 @@ fn boolean_value_guard_package(spec: &Value) -> Value {
                 (node["semantic_form"] == "value_validity").then(|| {
                     (
                         position,
-                        node["body"]["members"][2]["value"]["value"]
+                        binding_value(node, "occurrence")["value"]
                             .as_u64()
                             .expect("application occurrence"),
                     )
@@ -430,11 +474,11 @@ fn boolean_value_guard_package(spec: &Value) -> Value {
         .iter_mut()
         .filter(|node| node["semantic_form"] == "value_validity")
     {
-        record["body"]["members"][6]["value"]["members"] = json!([
+        binding_value_mut(record, "extent_roots")["members"] = json!([
             {"term":"reference","target":node_id("value/parameter/n/0")},
             {"term":"reference","target":boolean_parameter_id.clone()}
         ]);
-        record["body"]["members"][6]["value"]["members"]
+        binding_value_mut(record, "extent_roots")["members"]
             .as_array_mut()
             .expect("extent roots")
             .sort_by_key(|root| structural_fixture_id(&root["target"]));
@@ -453,6 +497,13 @@ fn boolean_value_guard_package(spec: &Value) -> Value {
 }
 
 fn large_requirement_record_package(record_count: usize) -> Value {
+    assert!(
+        record_count >= 2,
+        "the chain fixture needs both branch records"
+    );
+    let generated_chain_count = record_count
+        .checked_sub(1)
+        .expect("the chain fixture includes one false-branch record");
     let proposal = super::proposal_dir_of(&super::fixtures_dir());
     let vectors = super::read_json(&proposal.join("requirement-record-vectors.json"))
         .expect("published FR-825 vectors");
@@ -464,17 +515,24 @@ fn large_requirement_record_package(record_count: usize) -> Value {
         .iter()
         .find(|node| {
             node["semantic_form"] == "value_validity"
-                && node["body"]["members"][2]["value"]["value"] == 0
+                && binding_value(node, "occurrence")["value"] == 0
         })
         .expect("true-branch record template")
         .clone();
-    let original_application_id = record_template["body"]["members"][1]["value"]["target"].clone();
+    let original_application_id = binding_value(&record_template, "application")["target"].clone();
     package["semantic_graph"]["nodes"]
         .as_array_mut()
         .expect("graph nodes")
         .retain(|node| node["semantic_form"] != "value_validity");
     package["requirement_items"] = json!([]);
     let package_name = package["name"].clone();
+    let false_frame_id = package["path_condition_frames"]
+        .as_array()
+        .expect("path-condition frames")
+        .iter()
+        .position(|frame| frame["holds"] == false)
+        .and_then(|position| u64::try_from(position).ok())
+        .expect("false-branch frame id");
 
     let nodes = package["semantic_graph"]["nodes"]
         .as_array_mut()
@@ -483,9 +541,10 @@ fn large_requirement_record_package(record_count: usize) -> Value {
         .iter()
         .position(|node| node["node_tag"] == "function")
         .expect("function owner");
+    let conditional_id = binding_value(&nodes[owner_position], "body")["target"].clone();
     let conditional_position = nodes
         .iter()
-        .position(|node| node["semantic_form"] == "conditional")
+        .position(|node| node["node_id"] == conditional_id)
         .expect("conditional body root");
     let previous_position = nodes
         .iter()
@@ -497,19 +556,12 @@ fn large_requirement_record_package(record_count: usize) -> Value {
         json!(["expression/integer_add"])
     );
     assert!("expression" < "expression/integer_add");
-    let boolean_parameter_position = nodes
-        .iter()
-        .position(|node| {
-            node["semantic_form"] == "parameter"
-                && node["body"]["members"][0]["value"]["value"] == "p"
-        })
-        .expect("Boolean parameter");
-    let bound_id = record_template["body"]["members"][3]["value"]["target"].clone();
+    let bound_id = binding_value(&record_template, "result_bound")["target"].clone();
     let bound_position = nodes
         .iter()
         .position(|node| node["node_id"] == bound_id)
         .expect("record result bound");
-    let extent_root_positions = record_template["body"]["members"][6]["value"]["members"]
+    let extent_root_positions = binding_value(&record_template, "extent_roots")["members"]
         .as_array()
         .expect("extent roots")
         .iter()
@@ -521,11 +573,14 @@ fn large_requirement_record_package(record_count: usize) -> Value {
         })
         .collect::<Vec<_>>();
     let application_template = nodes[previous_position].clone();
-    nodes[previous_position]["occurrences"] = json!([{"role":"expression","ordinal":0}]);
+    nodes[previous_position]["occurrences"] = json!([
+        {"role":"expression","ordinal":0},
+        {"role":"expression","ordinal":1}
+    ]);
 
-    let mut application_positions = Vec::with_capacity(record_count);
-    let mut application_ids = Vec::with_capacity(record_count);
-    for generated_index in 0..record_count {
+    let mut application_positions = Vec::with_capacity(generated_chain_count);
+    let mut application_ids = Vec::with_capacity(generated_chain_count);
+    for generated_index in 0..generated_chain_count {
         let application_position = nodes.len();
         let application_id = json!({
             "package":package_name,
@@ -554,14 +609,12 @@ fn large_requirement_record_package(record_count: usize) -> Value {
         conditional["body"]["arguments"][1] =
             json!({"term":"reference","target":final_application_id});
         conditional["body"]["arguments"][2] =
-            json!({"term":"reference","target":final_application_id});
-        for dependency in conditional["dependencies"]
+            json!({"term":"reference","target":original_application_id.clone()});
+        let dependencies = conditional["dependencies"]
             .as_array_mut()
-            .expect("conditional dependencies")
-        {
-            if *dependency == original_application_id {
-                *dependency = final_application_id.clone();
-            }
+            .expect("conditional dependencies");
+        if !dependencies.contains(&final_application_id) {
+            dependencies.push(final_application_id.clone());
         }
         sort_graph_ids(
             conditional["dependencies"]
@@ -570,14 +623,10 @@ fn large_requirement_record_package(record_count: usize) -> Value {
         );
     }
 
-    let guard_occurrence = record_template["body"]["members"][5]["value"]["members"][0]["members"]
-        [1]["value"]["value"]
-        .as_u64()
-        .expect("guard occurrence");
-    let guard_holds = record_template["body"]["members"][5]["value"]["members"][0]["members"][2]
-        ["value"]["value"]
-        .as_bool()
-        .expect("guard outcome");
+    let terminal_frame_value =
+        &binding_value(&record_template, "path_condition")["members"][0]["value"];
+    let terminal_frame_id = canonical_nonnegative_integer(terminal_frame_value)
+        .expect("terminal frame id is a canonical nonnegative integer");
     let mut requirement_rows = Vec::with_capacity(record_count);
     for (generated_index, (&application_position, application_id)) in application_positions
         .iter()
@@ -588,8 +637,8 @@ fn large_requirement_record_package(record_count: usize) -> Value {
             "package":package_name,
             "path":[
                 "claim", "value_validity", {"node":owner_position}, {"node":application_position}, "0",
-                "bound", {"node":bound_position}, "conversion", "guards",
-                {"node":boolean_parameter_position}, guard_occurrence.to_string(), guard_holds.to_string(),
+                "bound", {"node":bound_position}, "conversion", "path_condition",
+                terminal_frame_id.to_string(),
                 "roots",
                 {"node":extent_root_positions[0]}, {"node":extent_root_positions[1]}, "objects"
             ],
@@ -598,7 +647,7 @@ fn large_requirement_record_package(record_count: usize) -> Value {
         let mut record = record_template.clone();
         record["node_id"] = record_id.clone();
         record["occurrences"] = json!([{"role":"generated","ordinal":generated_index}]);
-        record["body"]["members"][1]["value"]["target"] = application_id.clone();
+        binding_value_mut(&mut record, "application")["target"] = application_id.clone();
         for dependency in record["dependencies"]
             .as_array_mut()
             .expect("record dependencies")
@@ -620,12 +669,57 @@ fn large_requirement_record_package(record_count: usize) -> Value {
             "record":record_id
         }));
     }
+    // The package carries both branch frames. Keep a distinct second
+    // occurrence on the false branch so its record uses the false frame and
+    // the admitted frame table has no orphan entry.
+    let false_record_id = {
+        let mut record = record_template.clone();
+        let record_id = json!({
+            "package":package_name,
+            "path":[
+                "claim", "value_validity", {"node":owner_position}, {"node":previous_position}, "1",
+                "bound", {"node":bound_position}, "conversion", "path_condition",
+                false_frame_id.to_string(), "roots",
+                {"node":extent_root_positions[0]}, {"node":extent_root_positions[1]}, "objects"
+            ],
+            "ordinal":0
+        });
+        record["node_id"] = record_id.clone();
+        record["occurrences"] = json!([{"role":"generated","ordinal":generated_chain_count}]);
+        binding_value_mut(&mut record, "application")["target"] = original_application_id.clone();
+        binding_value_mut(&mut record, "occurrence")["value"] = json!(1);
+        binding_value_mut(&mut record, "path_condition")["members"][0]["value"] =
+            json!(false_frame_id);
+        nodes.push(record);
+        record_id
+    };
+    requirement_rows.push(json!({
+        "claim":{"node":original_application_id,"occurrence":{"role":"expression","ordinal":1}},
+        "kind":"value-validity",
+        "extent":{"classification":"bounded"},
+        "record":false_record_id
+    }));
     // Fixed-width numeric path segments make generated claim keys increase in
     // structural order. The generated path's first segment, "expression",
     // sorts before the seed's single "expression/integer_add" segment, so
     // appending rows in generation order is canonical.
     package["requirement_items"] = Value::Array(requirement_rows);
-    super::fixture_support::rebuild_source_map(&mut package);
+    super::fixture_support::rebuild_complete_source_map(&mut package);
+    assert!(
+        package["source_map"]
+            .as_array()
+            .expect("complete source map")
+            .iter()
+            .any(|entry| {
+                entry["node_id"] == original_application_id
+                    && entry["role"] == "expression"
+                    && entry["ordinal"] == 1
+                    && entry["regions"]
+                        .as_array()
+                        .is_some_and(|regions| !regions.is_empty())
+            }),
+        "the false-branch claim occurrence has a source region"
+    );
     package
 }
 
@@ -698,7 +792,7 @@ fn boolean_literal_guard_package(spec: &Value) -> Value {
         .iter()
         .position(|node| {
             node["semantic_form"] == "value_validity"
-                && node["body"]["members"][2]["value"]["value"] == 1
+                && binding_value(node, "occurrence")["value"] == 1
         })
         .expect("false-branch value-validity record");
     let discarded_id = package["semantic_graph"]["nodes"][discarded_position]["node_id"].clone();
@@ -850,13 +944,14 @@ fn rekey_requirement_record(
             }
         }
         if let Some((_, root_id)) = &extent_root_to_remove {
-            if let Some(roots) = record["body"]["members"][6]["value"]["members"].as_array_mut() {
+            if let Some(roots) = binding_value_mut(record, "extent_roots")["members"].as_array_mut()
+            {
                 roots.retain(|root| root["target"] != *root_id);
             }
             sync_body_dependencies(record);
         }
         let frame_id = if holds { 0 } else { 1 };
-        record["body"]["members"][5]["value"]["members"] = json!([
+        binding_value_mut(record, "path_condition")["members"] = json!([
             {"term":"literal","type":node_id("scalar_type/integer"),"value_kind":"integer","value":frame_id}
         ]);
         (old_id, record["node_id"].clone())
@@ -882,10 +977,8 @@ fn rekey_requirement_record(
 fn public_reader_admits_typed_requirement_rows_in_package_order() {
     let mut package = parameters_package();
     let claim = function_claim(&package);
-    package["requirement_items"] = json!([
-        row(&claim, "finite-replay"),
-        row(&claim, "operation-contract"),
-    ]);
+    package["requirement_items"] =
+        json!([row(&claim, "finite-replay"), row(&claim, "monitorability"),]);
 
     let CheckedPackageV2ReadResult::Admitted(admitted) = read(&package) else {
         panic!("public V2 reader admits ordered requirement rows")
@@ -898,7 +991,7 @@ fn public_reader_admits_typed_requirement_rows_in_package_order() {
     );
     assert_eq!(
         rows[1].kind,
-        filament_contract_model::CapabilityKind::OperationContract
+        filament_contract_model::CapabilityKind::Monitorability
     );
     assert_eq!(rows[0].claim, rows[1].claim);
     assert_eq!(rows[0].occurrence, rows[1].occurrence);
@@ -1027,10 +1120,7 @@ fn public_reader_retains_value_validity_record_facts_and_owner_index() {
             path: Vec::new(),
         }
     );
-    let record = rows[0]
-        .record
-        .as_ref()
-        .expect("typed row retains its value-validity record");
+    let record = value_validity_record(&rows[0]);
     let wire_record: filament_contract_model::CheckedNodeId =
         serde_json::from_value(package["requirement_items"][0]["record"].clone())
             .expect("document-held record ID");
@@ -1049,10 +1139,7 @@ fn public_reader_retains_value_validity_record_facts_and_owner_index() {
     assert_eq!(record.extent_roots.len(), 1);
     assert_eq!(&record.extent_roots[0], resolved_parameter);
     assert!(record.objects.is_empty());
-    assert_eq!(
-        rows[1].record.as_ref().expect("second record").occurrence,
-        1
-    );
+    assert_eq!(value_validity_record(&rows[1]).occurrence, 1);
     assert_eq!(admitted.value_validity_records_of(resolved_owner), &[0, 1]);
 
     let mut reordered_package = value_validity_package(true);
@@ -1082,8 +1169,8 @@ fn public_reader_retains_value_validity_record_facts_and_owner_index() {
         assert_eq!(reordered_row.occurrence, row.occurrence);
         assert_eq!(reordered_row.kind, row.kind);
         assert_eq!(reordered_row.extent, row.extent);
-        let reordered_record = reordered_row.record.as_ref().expect("reordered record");
-        let record = row.record.as_ref().expect("record");
+        let reordered_record = value_validity_record(reordered_row);
+        let record = value_validity_record(row);
         assert_eq!(reordered_record.owner, record.owner);
         assert_eq!(reordered_record.application, record.application);
         assert_eq!(reordered_record.occurrence, record.occurrence);
@@ -1109,7 +1196,7 @@ fn canonical_writer_readback_preserves_typed_requirement_rows() {
             read(&package)
         )
     };
-    let bytes = encode_checked_package_v2_with_requirement_items(
+    let bytes = encode_checked_package_v2_with_path_condition_frames(
         admitted.name(),
         admitted.lock(),
         admitted.graph(),
@@ -1127,6 +1214,8 @@ fn canonical_writer_readback_preserves_typed_requirement_rows() {
             operation_bodies: None,
         },
         Some(admitted.requirement_items()),
+        None,
+        Some(admitted.path_condition_frames()),
         admitted.capability_report(),
         admitted.diagnostics(),
         quire_canonical::Limits::new(1 << 24),
@@ -1235,10 +1324,8 @@ fn public_reader_admits_at_the_exact_work_budget_and_reports_the_last_row_one_sh
 fn public_reader_refuses_out_of_order_rows_without_admitting_a_partial_package() {
     let mut package = parameters_package();
     let claim = function_claim(&package);
-    package["requirement_items"] = json!([
-        row(&claim, "operation-contract"),
-        row(&claim, "finite-replay"),
-    ]);
+    package["requirement_items"] =
+        json!([row(&claim, "monitorability"), row(&claim, "finite-replay"),]);
 
     let CheckedPackageV2ReadResult::Refused(refusal) = read(&package) else {
         panic!("public V2 reader refuses rows outside package order")
@@ -1700,10 +1787,8 @@ fn add_out_of_order_requirement_rows(package: &mut Value) {
                 .map(|occurrence| json!({"node":node["node_id"],"occurrence":occurrence}))
         })
         .expect("an occurrence key");
-    package["requirement_items"] = json!([
-        row(&claim, "operation-contract"),
-        row(&claim, "finite-replay"),
-    ]);
+    package["requirement_items"] =
+        json!([row(&claim, "monitorability"), row(&claim, "finite-replay"),]);
 }
 
 #[trace("TC-488", "FR-376-AC-3")]
@@ -1789,7 +1874,7 @@ fn published_requirement_record_vectors_admit_shared_frames_and_refuse_non_boole
     let records = admitted
         .requirement_items()
         .iter()
-        .map(|row| row.record.as_ref().expect("value-validity record"))
+        .map(value_validity_record)
         .collect::<Vec<_>>();
     assert_eq!(records.len(), 2);
     assert_eq!(
@@ -1837,7 +1922,7 @@ fn public_reader_admits_a_reachable_boolean_literal_value_guard() {
     let records = admitted
         .requirement_items()
         .iter()
-        .map(|row| row.record.as_ref().expect("value-validity record"))
+        .map(value_validity_record)
         .collect::<Vec<_>>();
     assert_eq!(records.len(), 1);
     let guards = admitted
@@ -1929,9 +2014,7 @@ fn path_frame_reader_rejects_bad_links_or_record_bindings() {
         })
         .expect("first value-validity record");
     nodes[record_position]["body"]["members"][5]["value"]["members"][0]["value"] = json!(1);
-    let body_pointer = format!(
-        "/semantic_graph/nodes/{record_position}/body/members/5"
-    );
+    let body_pointer = format!("/semantic_graph/nodes/{record_position}/body/members/5");
     assert_refusal(
         &body_disagrees,
         CheckedPackageRefusalCode::InvalidPackage,

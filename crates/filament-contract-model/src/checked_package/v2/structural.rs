@@ -387,7 +387,8 @@ impl StructuralForm {
                 | ClaimForm::StepRelation
                 | ClaimForm::Schedulability
                 | ClaimForm::ProbabilisticClaim
-                | ClaimForm::ValueValidity,
+                | ClaimForm::ValueValidity
+                | ClaimForm::OperationContract,
             ) => None,
             K::Correspondence(
                 CorrespondenceForm::AbstractionRelation
