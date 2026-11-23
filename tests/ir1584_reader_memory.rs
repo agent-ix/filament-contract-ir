@@ -29,34 +29,89 @@ use filament_contract_model::{
 };
 use ix_trace_rs::trace;
 use std::alloc::{GlobalAlloc, Layout, System};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::cell::Cell;
+use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 use std::sync::Mutex;
 use support::checked_package::{evidence_for, v2_all_families, v2_reference_chain};
 
-/// Bytes currently allocated.
-static LIVE: AtomicU64 = AtomicU64::new(0);
+/// Net bytes the armed thread allocated: a block allocated before arming and
+/// released while armed counts negative.
+static LIVE: AtomicI64 = AtomicI64::new(0);
 /// The largest `LIVE` since the active stage began.
-static STAGE_PEAK: AtomicU64 = AtomicU64::new(0);
+static STAGE_PEAK: AtomicI64 = AtomicI64::new(0);
 /// The largest `LIVE` since the read began.
-static PEAK: AtomicU64 = AtomicU64::new(0);
-/// Every byte requested from the allocator, a reallocation counted at its
-/// full new size, as the read's budget charges it.
+static PEAK: AtomicI64 = AtomicI64::new(0);
+/// Every byte the armed thread requested from the allocator, a reallocation
+/// counted at its full new size, as the read's budget charges it.
 static REQUESTED: AtomicU64 = AtomicU64::new(0);
 /// The counters are process-wide: one measured read at a time.
 static MEASURING: Mutex<()> = Mutex::new(());
 
+thread_local! {
+    /// Whether this thread's allocations go to the counters above. Only the
+    /// reading thread is armed, only around its read and only while it holds
+    /// `MEASURING` (FR-038-AC-511 measures "on the reading thread"), so the
+    /// harness and other tests' threads never touch them.
+    static ARMED: Cell<bool> = const { Cell::new(false) };
+    /// This thread's own request total, for the shared support's
+    /// `measure_fspec_read_requests`, which other tests call in parallel.
+    static OWN_REQUESTS: Cell<Option<u64>> = const { Cell::new(None) };
+}
+
+fn armed() -> bool {
+    ARMED.try_with(Cell::get).unwrap_or(false)
+}
+
+fn note_own_request(bytes: usize) {
+    let _ = OWN_REQUESTS.try_with(|own| {
+        if let Some(total) = own.get() {
+            own.set(Some(total.saturating_add(bytes as u64)));
+        }
+    });
+}
+
+/// Runs `operation` with this thread's allocations counted.
+fn counted<T>(operation: impl FnOnce() -> T) -> T {
+    struct Disarm;
+    impl Drop for Disarm {
+        fn drop(&mut self) {
+            ARMED.set(false);
+        }
+    }
+    ARMED.set(true);
+    let _disarm = Disarm;
+    operation()
+}
+
+fn live() -> i64 {
+    LIVE.load(Ordering::Relaxed)
+}
+
+/// `value` above `baseline`, in bytes; zero below it.
+fn above(value: i64, baseline: i64) -> u64 {
+    u64::try_from(value.saturating_sub(baseline)).unwrap_or(0)
+}
+
 struct Counting;
 
 fn note_request(bytes: usize) {
-    let bytes = bytes as u64;
-    REQUESTED.fetch_add(bytes, Ordering::Relaxed);
-    let live = LIVE.fetch_add(bytes, Ordering::Relaxed) + bytes;
+    note_own_request(bytes);
+    if !armed() {
+        return;
+    }
+    REQUESTED.fetch_add(bytes as u64, Ordering::Relaxed);
+    let bytes = i64::try_from(bytes).unwrap_or(i64::MAX);
+    let live = LIVE
+        .fetch_add(bytes, Ordering::Relaxed)
+        .saturating_add(bytes);
     STAGE_PEAK.fetch_max(live, Ordering::Relaxed);
     PEAK.fetch_max(live, Ordering::Relaxed);
 }
 
 fn note_release(bytes: usize) {
-    LIVE.fetch_sub(bytes as u64, Ordering::Relaxed);
+    if armed() {
+        LIVE.fetch_sub(i64::try_from(bytes).unwrap_or(i64::MAX), Ordering::Relaxed);
+    }
 }
 
 // SAFETY: every method forwards its arguments unchanged to `System`, which
@@ -160,15 +215,16 @@ fn measure(
     let (bytes, _) = v2_reference_chain(length);
     let limits = generous_limits(nodes, bytes.len());
     let mut budget = NativeJoinBudget::new(limits.work, u64::MAX).with_read_storage_limit(u64::MAX);
-    let baseline = LIVE.load(Ordering::Relaxed);
+    let baseline = live();
     STAGE_PEAK.store(baseline, Ordering::Relaxed);
     PEAK.store(baseline, Ordering::Relaxed);
     let requested_before = REQUESTED.load(Ordering::Relaxed);
-    let result =
-        read(&mut || CheckedPackageV2::read_with_budget(&bytes, limits, &evidence, &mut budget));
+    let result = counted(|| {
+        read(&mut || CheckedPackageV2::read_with_budget(&bytes, limits, &evidence, &mut budget))
+    });
     let requested = REQUESTED.load(Ordering::Relaxed) - requested_before;
-    let peak = PEAK.load(Ordering::Relaxed) - baseline;
-    let retained = LIVE.load(Ordering::Relaxed).saturating_sub(baseline);
+    let peak = above(PEAK.load(Ordering::Relaxed), baseline);
+    let retained = above(live(), baseline);
     let CheckedPackageV2BudgetedReadResult::Admitted(package) = result else {
         panic!("the chain admits: {result:?}");
     };
@@ -245,7 +301,7 @@ mod by_stage {
 
     static ACTIVE: AtomicUsize = AtomicUsize::new(NO_STAGE);
     static CHARGED: [AtomicU64; BUCKETS] = [const { AtomicU64::new(0) }; BUCKETS];
-    static STAGE_PEAKS: [AtomicU64; BUCKETS] = [const { AtomicU64::new(0) }; BUCKETS];
+    static STAGE_PEAKS: [AtomicI64; BUCKETS] = [const { AtomicI64::new(0) }; BUCKETS];
 
     /// The stages in read order.
     const STAGES: [(PackageReadStage, &str); 17] = [
@@ -280,7 +336,7 @@ mod by_stage {
         let previous = ACTIVE.swap(next, Ordering::Relaxed);
         if previous != NO_STAGE && previous != next {
             STAGE_PEAKS[previous].fetch_max(STAGE_PEAK.load(Ordering::Relaxed), Ordering::Relaxed);
-            STAGE_PEAK.store(LIVE.load(Ordering::Relaxed), Ordering::Relaxed);
+            STAGE_PEAK.store(live(), Ordering::Relaxed);
         }
     }
 
@@ -314,7 +370,7 @@ mod by_stage {
             ACTIVE.store(NO_STAGE, Ordering::Relaxed);
             let mut baseline = 0;
             let measured = measure(length, |read| {
-                baseline = LIVE.load(Ordering::Relaxed);
+                baseline = live();
                 let result = with_native_budget_observer(observe, read);
                 switch_to(NO_STAGE);
                 result
@@ -336,9 +392,7 @@ mod by_stage {
                 }
                 let charged = CHARGED[index].load(Ordering::Relaxed);
                 if charged > 0 {
-                    let peak = STAGE_PEAKS[index]
-                        .load(Ordering::Relaxed)
-                        .saturating_sub(baseline);
+                    let peak = above(STAGE_PEAKS[index].load(Ordering::Relaxed), baseline);
                     eprintln!(
                         "  stage={name:<18} charged={:>6.2}x live_peak={:>6.2}x",
                         ratio(charged, bytes),
@@ -413,12 +467,25 @@ mod by_stage {
     }
 }
 
+/// The bytes this thread requests while `read` runs; nested scopes restore
+/// the enclosing count.
 fn measure_fspec_read_requests(read: impl FnOnce()) -> u64 {
-    let before = REQUESTED.load(Ordering::Relaxed);
+    let outer = OWN_REQUESTS.replace(Some(0));
     read();
-    REQUESTED.load(Ordering::Relaxed) - before
+    let requested = OWN_REQUESTS.replace(outer).unwrap_or(0);
+    if let Some(total) = outer {
+        OWN_REQUESTS.set(Some(total.saturating_add(requested)));
+    }
+    requested
 }
 
+/// Runs `operation` without counting this thread's requests.
 fn without_fspec_instrumentation<T>(operation: impl FnOnce() -> T) -> T {
-    operation()
+    let outer = OWN_REQUESTS.replace(None);
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(operation));
+    OWN_REQUESTS.set(outer);
+    match result {
+        Ok(value) => value,
+        Err(panic) => std::panic::resume_unwind(panic),
+    }
 }
