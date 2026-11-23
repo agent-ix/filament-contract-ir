@@ -137,7 +137,7 @@ fn protocol_reference_reads_both_protocol_target_forms_and_rekeys_on_retarget() 
             .graph()
             .node(position)
             .expect("graph position exists")
-            .occurrences[0]
+            .occurrences()[0]
             .role
     );
     assert_eq!(
@@ -147,12 +147,12 @@ fn protocol_reference_reads_both_protocol_target_forms_and_rekeys_on_retarget() 
                 .graph()
                 .node(position)
                 .expect("graph position exists")
-                .semantic_form,
+                .semantic_form(),
         ),
         Some(CheckedNodeKind::Protocol(ProtocolForm::ProtocolReference)),
     );
     assert!(first.graph().nodes().any(|node| {
-        node.node_tag.as_ref() == "expression" && node.semantic_form.as_ref() == "reference"
+        node.node_tag().as_ref() == "expression" && node.semantic_form().as_ref() == "reference"
     }));
     assert_eq!(
         first
@@ -207,7 +207,7 @@ fn protocol_reference_reads_both_protocol_target_forms_and_rekeys_on_retarget() 
                     .graph()
                     .node(position)
                     .expect("graph position exists")
-                    .semantic_form
+                    .semantic_form()
                     .as_ref(),
                 "protocol_reference"
             );
@@ -502,16 +502,16 @@ fn grouped_protocol_reference_is_admitted_with_its_group_key() {
         graph
             .node(first)
             .expect("graph position exists")
-            .recursion_group,
+            .recursion_group(),
         graph
             .node(second)
             .expect("graph position exists")
-            .recursion_group
+            .recursion_group()
     );
     assert!(graph
         .node(first)
         .expect("graph position exists")
-        .recursion_group
+        .recursion_group()
         .is_some());
     assert_ne!(
         graph.node(first).expect("graph position exists").node_id(),
@@ -697,7 +697,7 @@ fn repeated_protocol_references_retain_one_carrier_and_stable_canonical_identiti
             admitted
                 .graph()
                 .nodes()
-                .filter(|node| { node.semantic_form.as_ref() == "protocol_reference" })
+                .filter(|node| { node.semantic_form().as_ref() == "protocol_reference" })
                 .count(),
             1,
         );

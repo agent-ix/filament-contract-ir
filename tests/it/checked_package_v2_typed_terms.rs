@@ -151,7 +151,7 @@ fn admitted_v2_bodies_are_closed_typed_terms() {
     let mut saw_application_argument = false;
     let mut saw_nested_binding = false;
     for node in admitted.graph().nodes() {
-        let body: &CheckedTerm = &node.body;
+        let body: &CheckedTerm = &node.wire_body();
         let term = admitted
             .term(&node.node_id)
             .expect("every admitted node has a typed body");
@@ -235,7 +235,7 @@ fn public_literal_and_binding_reads_preserve_exact_values() {
     };
     let mut saw_boolean = false;
     for node in admitted.graph().nodes() {
-        if let Some(literal) = node.body.literal_read() {
+        if let Some(literal) = node.wire_body().literal_read() {
             assert_eq!(literal.type_id, &*node.semantic_type);
             if let CheckedLiteralValue::Boolean(true) = literal.value {
                 saw_boolean = true;
@@ -397,7 +397,7 @@ fn public_operation_read_exposes_admitted_records_and_rejects_forgery() {
     };
     let mut count = 0;
     for node in admitted.graph().nodes() {
-        if let CheckedTerm::Application { operation, .. } = &node.body {
+        if let CheckedTerm::Application { operation, .. } = &node.wire_body() {
             let read = operation
                 .read()
                 .expect("reader installed complete admission view");

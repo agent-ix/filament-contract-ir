@@ -340,7 +340,10 @@ impl<'d> TermNode<'d> {
             }
         }
         let valid = !package.is_empty() && path.len() != 0 && ordinal <= MAXIMUM;
-        sink.reserve(package.len() as u128, site)?;
+        sink.reserve(
+            (package.len() + crate::checked_package::shared::ARC_STR_HEADER) as u128,
+            site,
+        )?;
         let package = crate::checked_package::shared::intern_checked_package_string(package);
         sink.reserve(
             (path.len() as u128)
@@ -351,7 +354,10 @@ impl<'d> TermNode<'d> {
         for segment in path {
             segments.push(match segment.segment_form() {
                 Some(SegmentForm::Name(name)) => {
-                    sink.reserve(name.len() as u128, site)?;
+                    sink.reserve(
+                        (name.len() + crate::checked_package::shared::ARC_STR_HEADER) as u128,
+                        site,
+                    )?;
                     CheckedNodePathSegment::Name(
                         crate::checked_package::shared::intern_checked_package_string(name),
                     )
@@ -360,7 +366,11 @@ impl<'d> TermNode<'d> {
                 Some(SegmentForm::Operand(slot)) => {
                     let segment = CheckedNodePathSegment::Operand(slot);
                     super::node_index::resolve_operand_segment(&segment, row, |package| {
-                        sink.reserve(package.len() as u128, site)?;
+                        sink.reserve(
+                            (package.len() + crate::checked_package::shared::ARC_STR_HEADER)
+                                as u128,
+                            site,
+                        )?;
                         Ok::<_, Denied>(
                             crate::checked_package::shared::intern_checked_package_string(package),
                         )
@@ -368,7 +378,10 @@ impl<'d> TermNode<'d> {
                     .unwrap_or(segment)
                 }
                 Some(SegmentForm::Dependency(package, node)) => {
-                    sink.reserve(package.len() as u128, site)?;
+                    sink.reserve(
+                        (package.len() + crate::checked_package::shared::ARC_STR_HEADER) as u128,
+                        site,
+                    )?;
                     CheckedNodePathSegment::Dependency {
                         package: crate::checked_package::shared::intern_checked_package_string(
                             package,

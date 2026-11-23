@@ -241,7 +241,7 @@ fn node_with_operation(
         .graph()
         .nodes()
         .find(|node| {
-            body_at(&node.body, "/operation/identity")
+            body_at(&node.wire_body(), "/operation/identity")
                 .as_ref()
                 .and_then(Value::as_str)
                 == Some(identity)
@@ -257,9 +257,9 @@ fn reference_guard_node(
         .graph()
         .nodes()
         .find(|node| {
-            node.node_tag.as_ref() == "expression"
-                && node.semantic_form.as_ref() == "reference"
-                && body_at(&node.body, "/target") == Some(node_id(&family_key("a4a4")))
+            node.node_tag().as_ref() == "expression"
+                && node.semantic_form().as_ref() == "reference"
+                && body_at(&node.wire_body(), "/target") == Some(node_id(&family_key("a4a4")))
         })
         .map(|node| node.to_owned_wire())
         .expect("shared reference guard")

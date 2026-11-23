@@ -326,7 +326,7 @@ fn admitted_nominal_enum_details_borrow_authored_order_and_members() {
             .iter()
             .zip(admitted.graph().nodes())
         {
-            let CheckedTerm::NominalBody(body) = &node.body else {
+            let CheckedTerm::NominalBody(body) = &node.wire_body() else {
                 continue;
             };
             let term = authored["body"]["term"]

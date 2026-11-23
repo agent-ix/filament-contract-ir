@@ -616,7 +616,7 @@ mod tests {
         let source = package
             .graph()
             .nodes()
-            .find(|node| node.semantic_form.as_ref() == "time_source")
+            .find(|node| node.semantic_form().as_ref() == "time_source")
             .expect("genuine time source")
             .node_id
             .clone();

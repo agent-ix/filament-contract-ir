@@ -387,7 +387,7 @@ fn selected_source_record_requires_complete_ordered_producer_rows() {
     assert!(package
         .graph()
         .nodes()
-        .any(|node| node.semantic_form.as_ref() == "enum"));
+        .any(|node| node.semantic_form().as_ref() == "enum"));
     let source = &package.lock().sources[0];
     let key = NodeKey::new(
         "fsl-record-stage",
@@ -404,7 +404,7 @@ fn selected_source_record_requires_complete_ordered_producer_rows() {
         let type_node = package
             .graph()
             .nodes()
-            .find(|node| node.semantic_form.as_ref() == form)
+            .find(|node| node.semantic_form().as_ref() == form)
             .map(|node| node.to_owned_wire())
             .expect("field type")
             .node_id
@@ -2671,7 +2671,7 @@ fn native_source_family_fixture_with_authority(
         package
             .graph()
             .nodes()
-            .find(|node| node.semantic_form.as_ref() == form)
+            .find(|node| node.semantic_form().as_ref() == form)
             .map(|node| node.to_owned_wire())
             .expect("named node")
             .node_id
@@ -2839,12 +2839,12 @@ fn native_source_family_fixture_with_authority(
         package
             .graph()
             .nodes()
-            .filter(|node| node.semantic_form.as_ref() == "unit")
+            .filter(|node| node.semantic_form().as_ref() == "unit")
             .map(|node| {
                 let filament_contract_model::CheckedNodeOwner::Source {
                     authority,
                     identity,
-                } = node.owner.as_ref().unwrap()
+                } = node.owner().as_ref().unwrap()
                 else {
                     panic!("source unit");
                 };
@@ -2852,10 +2852,14 @@ fn native_source_family_fixture_with_authority(
                     node.node_id().into_owned(),
                     authority.clone(),
                     identity.clone(),
-                    node.declaration.as_ref().unwrap().qualified_name.clone(),
+                    node.declaration().as_ref().unwrap().qualified_name.clone(),
                     filament_exact::UnitId::Declared(key(&format!(
                         "private-unit-{}",
-                        node.declaration.as_ref().unwrap().qualified_name.join("/")
+                        node.declaration()
+                            .as_ref()
+                            .unwrap()
+                            .qualified_name
+                            .join("/")
                     ))),
                 )
             })

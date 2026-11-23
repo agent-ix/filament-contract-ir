@@ -1786,7 +1786,10 @@ impl<'w, 'b> Budget<'w, 'b> {
         text: &str,
         form: &'static str,
     ) -> Result<std::sync::Arc<str>, ValidationFailure> {
-        self.request(text.len(), form)?;
+        self.request(
+            text.len() + crate::checked_package::shared::ARC_STR_HEADER,
+            form,
+        )?;
         Ok(crate::checked_package::shared::intern_checked_package_string(text))
     }
 }

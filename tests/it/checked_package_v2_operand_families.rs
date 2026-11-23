@@ -1653,7 +1653,7 @@ fn genuine_integer_fold_with_both_authored_binders_is_admitted() {
     let fold = package
         .graph()
         .nodes()
-        .find(|node| node.semantic_form.as_ref() == "collection")
+        .find(|node| node.semantic_form().as_ref() == "collection")
         .expect("emitted fold node");
     let Some(filament_contract_model::CheckedTerm::Application {
         arguments,

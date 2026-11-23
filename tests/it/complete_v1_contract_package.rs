@@ -129,7 +129,7 @@ fn v1_package_carries_function_check_mode_and_refuses_an_invalid_value() {
     let key = source
         .graph()
         .nodes()
-        .find(|node| matches!(&node.body, CheckedTerm::Application { .. }))
+        .find(|node| matches!(&node.wire_body(), CheckedTerm::Application { .. }))
         .map(|node| node.to_owned_wire())
         .expect("operation node")
         .node_id
@@ -200,7 +200,7 @@ fn v1_operation_views_require_authenticated_source() {
     let key = source
         .graph()
         .nodes()
-        .find(|node| matches!(&node.body, CheckedTerm::Application { .. }))
+        .find(|node| matches!(&node.wire_body(), CheckedTerm::Application { .. }))
         .map(|node| node.to_owned_wire())
         .expect("operation node")
         .node_id
@@ -316,7 +316,7 @@ fn v1_handoff_preserves_populated_mode_laws_and_member_declaration() {
         let key = source
             .graph()
             .nodes()
-            .find_map(|node| match &node.body {
+            .find_map(|node| match &node.wire_body() {
                 CheckedTerm::Application { operation, .. }
                     if operation.identity() == Some(identity) =>
                 {
@@ -371,7 +371,7 @@ fn v1_handoff_keeps_operation_views_after_source_node_reordering() {
     let key = source
         .graph()
         .nodes()
-        .find(|node| matches!(&node.body, CheckedTerm::Application { .. }))
+        .find(|node| matches!(&node.wire_body(), CheckedTerm::Application { .. }))
         .map(|node| node.to_owned_wire())
         .expect("source operation")
         .node_id
@@ -404,7 +404,7 @@ fn v1_source_handoff_is_atomic_and_preserves_plain_refusal_precedence() {
     let key = source
         .graph()
         .nodes()
-        .find(|node| matches!(&node.body, CheckedTerm::Application { .. }))
+        .find(|node| matches!(&node.wire_body(), CheckedTerm::Application { .. }))
         .map(|node| node.to_owned_wire())
         .expect("operation node")
         .node_id
@@ -476,7 +476,7 @@ fn v1_source_handoff_is_atomic_and_preserves_plain_refusal_precedence() {
     let changed_key = changed_operation
         .graph()
         .nodes()
-        .find_map(|node| match &node.body {
+        .find_map(|node| match &node.wire_body() {
             CheckedTerm::Application { operation, .. }
                 if operation.identity() == Some("filament.op.ieee.from_exact") =>
             {
@@ -523,7 +523,7 @@ fn v1_source_handoff_is_atomic_and_preserves_plain_refusal_precedence() {
     let changed_key = changed_reference
         .graph()
         .nodes()
-        .find(|node| matches!(&node.body, CheckedTerm::Reference { .. }))
+        .find(|node| matches!(&node.wire_body(), CheckedTerm::Reference { .. }))
         .map(|node| node.to_owned_wire())
         .expect("changed reference node")
         .node_id
@@ -1515,7 +1515,7 @@ fn reached_view_uses_all_three_edges_and_preserves_sources_and_wire() {
         .graph()
         .nodes()
         .find(|node| {
-            node.node_tag.as_ref() == "expression" && node.semantic_form.as_ref() == "reference"
+            node.node_tag().as_ref() == "expression" && node.semantic_form().as_ref() == "reference"
         })
         .map(|node| node.to_owned_wire())
         .expect("root")
@@ -1589,7 +1589,9 @@ fn reached_view_exposes_empty_subsets_and_absent_keys() {
     let root = admitted
         .graph()
         .nodes()
-        .find(|node| node.node_tag.as_ref() == "value" && node.semantic_form.as_ref() == "literal")
+        .find(|node| {
+            node.node_tag().as_ref() == "value" && node.semantic_form().as_ref() == "literal"
+        })
         .map(|node| node.to_owned_wire())
         .expect("literal")
         .node_id

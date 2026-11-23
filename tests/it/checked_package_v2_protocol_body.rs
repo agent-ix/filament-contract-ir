@@ -7000,7 +7000,7 @@ fn declared_role_source_occurrences_leave_structural_identity_stable() {
             .graph()
             .node(position)
             .expect("graph position exists")
-            .occurrences
+            .occurrences()
             .len(),
         2
     );

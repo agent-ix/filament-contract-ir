@@ -6,6 +6,7 @@
 //! byte length.
 
 use super::checked_json::CheckedJson;
+use super::read_charge::{ReadStorage, Site};
 #[cfg(test)]
 use super::BodyTerm;
 use super::{
@@ -20,6 +21,7 @@ use super::{
     RefinementAssume, RefinementEnsure, RefinementHistory, RefinementKey, RefinementObject,
     RefinementPopulation, RefinementStep, RefinementStepArgument, RefinementStepTarget,
 };
+use crate::checked_package::common::ValidationFailure;
 use crate::checked_package::shared::{CheckedArtifactRef, CheckedNodeId, CheckedNodePathSegment};
 use crate::identity::ExecutionPoint;
 use filament_exact::Integer;
@@ -257,13 +259,18 @@ fn projected_members_equal(left: MemberProjection<'_>, right: MemberProjection<'
 }
 
 impl CheckedApplicationOperationRecord {
-    pub(super) fn detach_json_payloads(&mut self) {
+    pub(super) fn detach_json_payloads(
+        &mut self,
+        sink: &mut dyn ReadStorage,
+        site: Site,
+    ) -> Result<(), ValidationFailure> {
         if let Some(member) = &mut self.member {
-            member.detach_from_source();
+            member.detach_from_source(sink, site)?;
         }
         if let Some(malformed) = &mut self.malformed {
-            malformed.detach_from_source();
+            malformed.detach_from_source(sink, site)?;
         }
+        Ok(())
     }
 
     fn projected_member(&self) -> Option<MemberProjection<'_>> {
@@ -1548,8 +1555,12 @@ fn decode_optional_decimal_integer<'de, D: Deserializer<'de>>(
 }
 
 impl CheckedApplicationOperation {
-    pub(super) fn detach_json_payloads(&mut self) {
-        self.record.detach_json_payloads();
+    pub(super) fn detach_json_payloads(
+        &mut self,
+        sink: &mut dyn ReadStorage,
+        site: Site,
+    ) -> Result<(), ValidationFailure> {
+        self.record.detach_json_payloads(sink, site)
     }
 
     /// Construct the catalogued state-clause operation without a JSON payload.
@@ -2690,17 +2701,21 @@ pub(super) enum SelectedTermTraversal<'a> {
 }
 
 impl CheckedTerm {
-    pub(super) fn detach_json_payloads(&mut self) {
+    pub(super) fn detach_json_payloads(
+        &mut self,
+        sink: &mut dyn ReadStorage,
+        site: Site,
+    ) -> Result<(), ValidationFailure> {
         let mut pending = vec![self];
         while let Some(term) = pending.pop() {
             match term {
-                Self::Literal { value, .. } => value.detach_from_source(),
+                Self::Literal { value, .. } => value.detach_from_source(sink, site)?,
                 Self::Application {
                     operation,
                     arguments,
                     ..
                 } => {
-                    operation.detach_json_payloads();
+                    operation.detach_json_payloads(sink, site)?;
                     pending.extend(arguments);
                 }
                 Self::Aggregate { members } => pending.extend(members),
@@ -2717,6 +2732,7 @@ impl CheckedTerm {
                 | Self::OperationAnchorBody(_) => {}
             }
         }
+        Ok(())
     }
 
     /// Read a scalar literal without inspecting its JSON wire payload.

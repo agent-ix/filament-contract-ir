@@ -712,7 +712,7 @@ fn other_nominal_forms_have_no_equivalence_view() {
         .iter()
         .zip(admitted.graph().nodes())
     {
-        if let CheckedTerm::NominalBody(body) = &node.body {
+        if let CheckedTerm::NominalBody(body) = &node.wire_body() {
             assert!(body.dimension_equivalence_details().is_none());
             seen.insert(authored["body"]["term"].as_str().expect("term").to_owned());
         }

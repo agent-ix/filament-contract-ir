@@ -1235,7 +1235,7 @@ fn recursive_group_round_trips_with_original_node_keys() {
     let source_group = admitted
         .graph()
         .nodes()
-        .filter(|node| node.recursion_group.is_some())
+        .filter(|node| node.recursion_group().is_some())
         .map(|node| node.node_id().into_owned())
         .collect::<Vec<_>>();
     assert_eq!(source_group.len(), 2);
@@ -1412,7 +1412,7 @@ fn reached_view_visits_an_admitted_recursion_group_once() {
     let admitted_group = admitted
         .graph()
         .nodes()
-        .filter(|node| node.recursion_group.is_some())
+        .filter(|node| node.recursion_group().is_some())
         .map(|node| node.node_id().into_owned())
         .collect::<BTreeSet<_>>();
     assert_eq!(grouped, admitted_group);

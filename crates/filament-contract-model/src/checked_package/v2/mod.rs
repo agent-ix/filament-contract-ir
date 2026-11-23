@@ -874,6 +874,69 @@ impl<'a> CheckedSemanticNodeView<'a> {
         self.dependencies.iter()
     }
 
+    /// The graph schema version.
+    pub fn schema_version(&self) -> &'a Arc<str> {
+        &self.node.schema_version
+    }
+
+    /// The node tag.
+    pub fn node_tag(&self) -> &'a Arc<str> {
+        &self.node.node_tag
+    }
+
+    /// The semantic form.
+    pub fn semantic_form(&self) -> &'a Arc<str> {
+        &self.node.semantic_form
+    }
+
+    /// The source occurrences. They hold no node IDs, so wire and resolved
+    /// form agree.
+    pub fn occurrences(&self) -> &'a [CheckedOccurrence] {
+        &self.node.occurrences
+    }
+
+    /// The recursion group, if any.
+    pub fn recursion_group(&self) -> Option<&'a Arc<str>> {
+        self.node.recursion_group.as_ref()
+    }
+
+    /// The declaration, if any. It holds names only.
+    pub fn declaration(&self) -> Option<&'a CheckedDeclaration> {
+        self.node.declaration.as_ref()
+    }
+
+    /// The owner, if any. It holds package identities only.
+    pub fn owner(&self) -> Option<&'a CheckedNodeOwner> {
+        self.node.owner.as_ref()
+    }
+
+    /// The check mode of a function node.
+    pub fn check_mode(&self) -> Option<CheckMode> {
+        self.node.check_mode
+    }
+
+    /// The body with each node-held ID resolved to the index segment of the
+    /// node it names: the form the reader checks. Borrowed, no copy.
+    pub fn resolved_body(&self) -> &'a CheckedTerm {
+        &self.node.body
+    }
+
+    /// The body with each node-held ID written with the operand slot this
+    /// node's row names it by: the form on the wire. Built for the call.
+    pub fn wire_body(&self) -> CheckedTerm {
+        node_index::slot_node(self.node, self.row).body
+    }
+
+    /// The owner model in resolved form, if any.
+    pub fn resolved_owner_model(&self) -> Option<&'a CheckedNodeId> {
+        self.node.owner_model.as_ref()
+    }
+
+    /// The owner model in operand-slot wire form, if any.
+    pub fn wire_owner_model(&self) -> Option<CheckedNodeId> {
+        node_index::slot_node(self.node, self.row).owner_model
+    }
+
     /// The resolved typed node, for semantic inspection without a wire copy.
     pub fn resolved_node(&self) -> &'a CheckedSemanticNodeV2 {
         self.node
@@ -882,14 +945,6 @@ impl<'a> CheckedSemanticNodeView<'a> {
     /// Materialize only this node in operand-slot wire form.
     pub fn to_owned_wire(&self) -> CheckedSemanticNodeV2 {
         node_index::slot_node(self.node, self.row)
-    }
-}
-
-impl std::ops::Deref for CheckedSemanticNodeView<'_> {
-    type Target = CheckedSemanticNodeV2;
-
-    fn deref(&self) -> &Self::Target {
-        self.node
     }
 }
 
@@ -2030,12 +2085,13 @@ impl CheckedPackageV2 {
         let mut validated = validate(
             &catalog, &wire, &bodies, &document, limits, evidence, budget,
         )?;
+        let detach_site = read_charge::Site::new(PackageReadStage::Retained, 0, "json_payload");
         for term in &mut validated.terms {
-            term.detach_json_payloads();
+            term.detach_json_payloads(budget, detach_site)?;
         }
         for entry in &mut wire.diagnostics.entries {
             for detail in &mut entry.details {
-                detail.detach_from_source();
+                detail.detach_from_source(budget, detach_site)?;
             }
         }
         drop(_string_interner);
@@ -3989,6 +4045,49 @@ fn decode_node_kind<Body>(
     node_kind_or_fault(node).map_err(|(code, member)| refuse(code, at(member)))
 }
 
+/// The document form of a retained typed body, for the structural comparison
+/// of an imported node against the importer's wire body. Segments serialize as
+/// the forms `TermNode::node_id_in` reads (`{"node":i}`, `{"operand":k}`,
+/// `{"package":p,"node":n}`) and integers keep their written digits, so
+/// `equivalent_values` sees the selected body as it saw the wire body.
+///
+/// The serialized length is counted without allocating and charged (work and
+/// read storage) before the bytes and the parsed document are built. A body
+/// that cannot be written or read back is a refusal, never a mismatch.
+fn selected_body_document(
+    body: &CheckedTerm,
+    position: usize,
+    meter: &mut WorkMeter,
+) -> Result<quire_canonical::Document, ValidationFailure> {
+    // The bytes plus the parsed document's token tables: measured at about
+    // seven bytes per serialized byte, rounded up.
+    const BYTES_PER_SERIALIZED_BYTE: u128 = 8;
+    struct Count(u64);
+    impl std::io::Write for Count {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0 = self.0.saturating_add(bytes.len() as u64);
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let at = || node_pointer(position).key("body");
+    let malformed = || refuse(CheckedPackageRefusalCode::MalformedWire, at());
+    let mut count = Count(0);
+    serde_json::to_writer(&mut count, body).map_err(|_| malformed())?;
+    meter.charge(count.0, at)?;
+    let site = read_charge::Site::new(PackageReadStage::Graph, position, "import_body");
+    read_charge::ReadStorage::reserve(
+        meter,
+        u128::from(count.0).saturating_mul(BYTES_PER_SERIALIZED_BYTE),
+        site,
+    )
+    .map_err(|_| read_charge::ReadStorage::denial(meter))?;
+    let bytes = serde_json::to_vec(body).map_err(|_| malformed())?;
+    quire_canonical::read(&bytes, u64::MAX).map_err(|_| malformed())
+}
+
 /// Compare a selected import's complete content after resolving each graph-
 /// local operand in its own document. Both packages may choose different node
 /// order and thus different wire index spellings for the same structural key.
@@ -4159,21 +4258,20 @@ fn validate_graph<'w>(
                             .zip(selected_graph.operand_rows.get(selected_position))
                         {
                             Some((selected_node, selected_row)) => {
-                                // Retained bodies are typed terms; the structural
-                                // comparison reads the canonical document form.
-                                match CheckedJson::from_serializable(&selected_node.body) {
-                                    Ok(selected_body) => imported_node_matches(
-                                        node,
-                                        selected_node,
-                                        TermNode::of(&selected_body),
-                                        structural_keys,
-                                        &selected_package.structural_keys,
-                                        &wire.semantic_graph.operand_rows[position],
-                                        selected_row,
-                                        meter,
-                                    )?,
-                                    Err(_) => false,
-                                }
+                                // The selected body is retained as a typed term; the
+                                // comparison reads its document form, paid for first.
+                                let selected_body =
+                                    selected_body_document(&selected_node.body, position, meter)?;
+                                imported_node_matches(
+                                    node,
+                                    selected_node,
+                                    TermNode::from_ref(selected_body.root()),
+                                    structural_keys,
+                                    &selected_package.structural_keys,
+                                    &wire.semantic_graph.operand_rows[position],
+                                    selected_row,
+                                    meter,
+                                )?
                             }
                             None => false,
                         }
@@ -7219,5 +7317,146 @@ mod header_fault_storage_tests {
         assert_eq!(repeated.read_storage_consumed(), 2 * required);
         assert_eq!(repeated.consumed().work, 0);
         assert_eq!(repeated.first_unpaid_read_storage(), None);
+    }
+}
+
+#[cfg(test)]
+mod imported_body_document_tests {
+    use super::*;
+    use crate::checked_package::shared::CheckedDependencyOperand;
+    use ix_trace_rs::trace;
+    use serde_json::{json, Value};
+    use std::sync::Arc;
+
+    /// An imported body is compared as its retained typed term, written back
+    /// out. That must decide as the wire body did, for operand slots resolved
+    /// through the node's row, dependency segments, and integers past 2^53.
+    #[trace("TC-048", "FR-038-AC-558")]
+    #[test]
+    fn an_imported_body_decides_the_same_as_its_wire_document() {
+        let key = |n: u64| {
+            Arc::new(CheckedNodeId {
+                package: "pkg".into(),
+                path: vec![
+                    CheckedNodePathSegment::Name("k".into()),
+                    CheckedNodePathSegment::Name(n.to_string().into()),
+                ],
+                ordinal: 0,
+            })
+        };
+        let keys: Vec<_> = (0..8).map(key).collect();
+        let id = |tail: Value| json!({"package":"pkg","path":["k", tail],"ordinal":0});
+        let body = |slot: Value, big: i64, other: Value| {
+            json!({"term":"aggregate","members":[
+                {"term":"literal","type":id(slot),"value_kind":"integer","value":big},
+                {"term":"reference","target":id(other)},
+            ]})
+        };
+        let handle = |value: &Value| {
+            let bytes = serde_json::to_vec(value).expect("body bytes");
+            let document = quire_canonical::read(&bytes, u64::MAX).expect("body document");
+            let root = document.root().id();
+            CheckedJson::new(Arc::new(document), root)
+        };
+        let node = |body: &CheckedJson| RawSemanticNodeV2 {
+            node_id: (*keys[0]).clone(),
+            schema_version: GRAPH_V2.into(),
+            node_tag: "value".into(),
+            semantic_form: "literal".into(),
+            semantic_type: (*keys[0]).clone(),
+            dependencies: vec![],
+            occurrences: vec![],
+            recursion_group: None,
+            declaration: None,
+            owner: None,
+            owner_model: None,
+            check_mode: None,
+            body: body.clone(),
+        };
+        let row = |own: u64, dependency: u64| {
+            vec![
+                CheckedOperandEntry::Node(own),
+                CheckedOperandEntry::Dependency(CheckedDependencyOperand {
+                    package: "dep".into(),
+                    node: dependency,
+                }),
+            ]
+        };
+        // Returns (decision on the wire body, decision on the typed body's
+        // document), the importer always read from its wire document.
+        let decide = |imported: &Value,
+                      imported_row: &[CheckedOperandEntry],
+                      selected: &Value,
+                      selected_row: &[CheckedOperandEntry]| {
+            let imported = handle(imported);
+            let selected = handle(selected);
+            let mut budget = NativeJoinBudget::new(u64::MAX, 0).with_read_storage_limit(u64::MAX);
+            let mut meter = WorkMeter::over(&mut budget);
+            let typed = decode_admitted_body(
+                CheckedNodeKind::Value(ValueForm::Literal),
+                &selected,
+                selected_row,
+                0,
+                &mut meter,
+            )
+            .expect("selected body decodes");
+            let on_wire = imported_node_matches(
+                &node(&imported),
+                &node(&selected),
+                TermNode::of(&selected),
+                &keys,
+                &keys,
+                imported_row,
+                selected_row,
+                &mut meter,
+            )
+            .expect("wire comparison");
+            let document = selected_body_document(&typed, 0, &mut meter).expect("document");
+            let on_typed = imported_node_matches(
+                &node(&imported),
+                &node(&selected),
+                TermNode::from_ref(document.root()),
+                &keys,
+                &keys,
+                imported_row,
+                selected_row,
+                &mut meter,
+            )
+            .expect("typed comparison");
+            (on_wire, on_typed)
+        };
+        let big = 9_007_199_254_740_993_i64;
+        let slots = body(json!({"operand":0}), big, json!({"operand":1}));
+        let indexed = body(json!({"node":3}), big, json!({"package":"dep","node":5}));
+        // Same body and rows: match, whichever spelling each side uses.
+        assert_eq!(decide(&slots, &row(3, 5), &slots, &row(3, 5)), (true, true));
+        assert_eq!(decide(&indexed, &[], &slots, &row(3, 5)), (true, true));
+        // The row names another node or another dependency position.
+        assert_eq!(
+            decide(&slots, &row(3, 5), &slots, &row(4, 5)),
+            (false, false)
+        );
+        assert_eq!(
+            decide(&slots, &row(3, 5), &slots, &row(3, 6)),
+            (false, false)
+        );
+        // An integer past 2^53 differs in its last digit.
+        let off = body(json!({"operand":0}), big + 1, json!({"operand":1}));
+        assert_eq!(decide(&slots, &row(3, 5), &off, &row(3, 5)), (false, false));
+    }
+
+    #[trace("TC-048", "FR-038-AC-558")]
+    #[test]
+    fn the_selected_body_document_is_paid_for_before_it_is_built() {
+        let body = CheckedTerm::Reference {
+            target: test_support::node_id('1'),
+        };
+        let run = |limit| {
+            let mut budget = NativeJoinBudget::new(u64::MAX, 0).with_read_storage_limit(limit);
+            let mut meter = WorkMeter::over(&mut budget);
+            selected_body_document(&body, 7, &mut meter).map(|_| ())
+        };
+        assert!(run(u64::MAX).is_ok());
+        assert!(matches!(run(0), Err(ValidationFailure::Budget(_))));
     }
 }

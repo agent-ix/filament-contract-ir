@@ -7,9 +7,11 @@
 //! retains, so a literal's value and a diagnostic's details are not copied
 //! into a tree. Implements: FR-038 "The `CheckedJson` payload type".
 
+use super::read_charge::{ReadStorage, Site};
+use crate::checked_package::common::ValidationFailure;
 use quire_canonical::{
-    Document, Encode, Error as CanonicalError, Limits, Node, NodeId, NodeRef, ReadError, Sink,
-    Writer,
+    Document, Encode, Error as CanonicalError, Items, Limits, Members, Node, NodeId, NodeRef,
+    ReadError, Sink, Writer,
 };
 use serde::ser::{SerializeMap, SerializeSeq};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -71,61 +73,86 @@ pub struct CheckedJson {
 enum JsonStorage {
     Shared(Arc<Document>),
     Compact {
-        bytes: Arc<[u8]>,
+        bytes: Box<[u8]>,
         document: std::sync::OnceLock<Arc<Document>>,
     },
 }
 
-fn lexical_subtree_bytes(root: NodeRef<'_>) -> Vec<u8> {
+/// Writes the value's JSON text: each number as it was written, each string and
+/// name re-escaped. The walk keeps its own work stack, which `reserve` is asked
+/// for before every growth (a scalar needs none), so the read can charge it.
+/// Called once to count and once to write.
+fn write_lexical_subtree<W: std::io::Write>(
+    root: NodeRef<'_>,
+    out: &mut W,
+    reserve: &mut dyn FnMut(usize) -> Result<(), ()>,
+) -> Result<(), ()> {
     enum Task<'a> {
         Value(NodeRef<'a>),
-        Name(&'a str),
-        Raw(&'static [u8]),
+        Items(Items<'a>, bool),
+        Members(Members<'a>, bool),
     }
-
-    let mut bytes = Vec::new();
-    let mut pending = vec![Task::Value(root)];
-    while let Some(task) = pending.pop() {
+    fn put<'a>(
+        stack: &mut Vec<Task<'a>>,
+        task: Task<'a>,
+        reserve: &mut dyn FnMut(usize) -> Result<(), ()>,
+    ) -> Result<(), ()> {
+        if stack.len() == stack.capacity() {
+            let target = stack.capacity().saturating_mul(2).max(4);
+            reserve(target.saturating_mul(std::mem::size_of::<Task<'a>>()))?;
+            stack
+                .try_reserve_exact(target - stack.len())
+                .map_err(|_| ())?;
+        }
+        stack.push(task);
+        Ok(())
+    }
+    let io = |result: std::io::Result<()>| result.map_err(|_| ());
+    let json = |result: serde_json::Result<()>| result.map_err(|_| ());
+    let mut stack: Vec<Task<'_>> = Vec::new();
+    put(&mut stack, Task::Value(root), reserve)?;
+    while let Some(task) = stack.pop() {
         match task {
-            Task::Raw(raw) => bytes.extend_from_slice(raw),
-            Task::Name(name) => serde_json::to_writer(&mut bytes, name)
-                .expect("writing a string into a byte vector succeeds"),
             Task::Value(node) => match node.node() {
-                Node::Null => bytes.extend_from_slice(b"null"),
-                Node::Bool(false) => bytes.extend_from_slice(b"false"),
-                Node::Bool(true) => bytes.extend_from_slice(b"true"),
-                Node::Number(number) => bytes.extend_from_slice(number.text().as_bytes()),
-                Node::String(text) => serde_json::to_writer(&mut bytes, text)
-                    .expect("writing a string into a byte vector succeeds"),
+                Node::Null => io(out.write_all(b"null"))?,
+                Node::Bool(false) => io(out.write_all(b"false"))?,
+                Node::Bool(true) => io(out.write_all(b"true"))?,
+                Node::Number(number) => io(out.write_all(number.text().as_bytes()))?,
+                Node::String(text) => json(serde_json::to_writer(&mut *out, text))?,
                 Node::Array(items) => {
-                    let items: Vec<_> = items.collect();
-                    bytes.push(b'[');
-                    pending.push(Task::Raw(b"]"));
-                    for index in (0..items.len()).rev() {
-                        pending.push(Task::Value(items[index]));
-                        if index > 0 {
-                            pending.push(Task::Raw(b","));
-                        }
-                    }
+                    io(out.write_all(b"["))?;
+                    put(&mut stack, Task::Items(items, true), reserve)?;
                 }
                 Node::Object(members) => {
-                    let members: Vec<_> = members.collect();
-                    bytes.push(b'{');
-                    pending.push(Task::Raw(b"}"));
-                    for index in (0..members.len()).rev() {
-                        let (name, value) = members[index];
-                        pending.push(Task::Value(value));
-                        pending.push(Task::Raw(b":"));
-                        pending.push(Task::Name(name));
-                        if index > 0 {
-                            pending.push(Task::Raw(b","));
-                        }
-                    }
+                    io(out.write_all(b"{"))?;
+                    put(&mut stack, Task::Members(members, true), reserve)?;
                 }
+            },
+            Task::Items(mut items, first) => match items.next() {
+                Some(item) => {
+                    if !first {
+                        io(out.write_all(b","))?;
+                    }
+                    put(&mut stack, Task::Items(items, false), reserve)?;
+                    put(&mut stack, Task::Value(item), reserve)?;
+                }
+                None => io(out.write_all(b"]"))?,
+            },
+            Task::Members(mut members, first) => match members.next() {
+                Some((name, value)) => {
+                    if !first {
+                        io(out.write_all(b","))?;
+                    }
+                    json(serde_json::to_writer(&mut *out, name))?;
+                    io(out.write_all(b":"))?;
+                    put(&mut stack, Task::Members(members, false), reserve)?;
+                    put(&mut stack, Task::Value(value), reserve)?;
+                }
+                None => io(out.write_all(b"}"))?,
             },
         }
     }
-    bytes
+    Ok(())
 }
 
 /// An outer semantic-node body retained only while admission validators read
@@ -168,10 +195,16 @@ impl CheckedJson {
         match self.storage.as_ref() {
             JsonStorage::Shared(document) => document,
             JsonStorage::Compact { bytes, document } => document.get_or_init(|| {
-                Arc::new(
-                    quire_canonical::read(bytes, u64::MAX)
-                        .expect("a retained JSON subtree was read from a valid document"),
-                )
+                // `Compact` storage is built only by `detach_from_source`, from the
+                // lexical text of a node of a document the reader accepted (the
+                // same numbers, strings re-escaped, no deeper), so it reads back;
+                // no package content reaches this failure.
+                let read = quire_canonical::read(bytes, u64::MAX);
+                debug_assert!(
+                    read.is_ok(),
+                    "compact JSON bytes are a subtree of an accepted document"
+                );
+                Arc::new(read.expect("compact JSON bytes are a subtree of an accepted document"))
             }),
         }
     }
@@ -185,19 +218,54 @@ impl CheckedJson {
         }
     }
 
-    pub(super) fn detach_from_source(&mut self) {
+    /// Replaces the borrow of the package document with a copy of this value's
+    /// own bytes, so the document can be dropped.
+    ///
+    /// The copy, and the handle that holds it, are charged to `sink` before they
+    /// are built. The handles that reach this call name disjoint subtrees of the
+    /// one package document (a literal's value, an operation record's member, a
+    /// malformed record, a diagnostic detail; none contains another), so the
+    /// copies sum to at most the document's bytes. Cloned handles share one copy.
+    pub(super) fn detach_from_source(
+        &mut self,
+        sink: &mut dyn ReadStorage,
+        site: Site,
+    ) -> Result<(), ValidationFailure> {
         let JsonStorage::Shared(document) = self.storage.as_ref() else {
-            return;
+            return Ok(());
         };
         let root_id = document.root().id();
-        let bytes: Arc<[u8]> =
-            lexical_subtree_bytes(document.node(self.node).unwrap_or_else(|| document.root()))
-                .into();
+        let subtree = document.node(self.node).unwrap_or_else(|| document.root());
+        struct Count(usize);
+        impl std::io::Write for Count {
+            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+                self.0 = self.0.saturating_add(bytes.len());
+                Ok(bytes.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let mut count = Count(0);
+        let mut paid = |bytes: usize| sink.reserve(bytes as u128, site).map_err(|_| ());
+        write_lexical_subtree(subtree, &mut count, &mut paid).map_err(|()| sink.denial())?;
+        let held = count
+            .0
+            .saturating_add(std::mem::size_of::<JsonStorage>() + 2 * std::mem::size_of::<usize>());
+        sink.reserve(held as u128, site)
+            .map_err(|_| sink.denial())?;
+        let mut bytes = Vec::with_capacity(count.0);
+        write_lexical_subtree(subtree, &mut bytes, &mut |bytes| {
+            sink.reserve(bytes as u128, site).map_err(|_| ())
+        })
+        .map_err(|()| sink.denial())?;
+        let bytes = bytes.into_boxed_slice();
         self.node = root_id;
         self.storage = Arc::new(JsonStorage::Compact {
             bytes,
             document: std::sync::OnceLock::new(),
         });
+        Ok(())
     }
 
     pub(super) fn root_body(document: Arc<Document>, node: NodeId) -> RootBodyHandle {
@@ -812,7 +880,12 @@ mod tests {
         };
         assert_eq!(value.number_text(), Some("9007199254740993"));
         assert_eq!(value.as_u64(), Some(9_007_199_254_740_993));
-        value.detach_from_source();
+        value
+            .detach_from_source(
+                &mut crate::NativeJoinBudget::new(u64::MAX, 0).with_read_storage_limit(u64::MAX),
+                Site::new(crate::PackageReadStage::Retained, 0, "json_payload"),
+            )
+            .expect("an unlimited budget pays");
         assert_eq!(value.number_text(), Some("9007199254740993"));
         assert_eq!(value.as_u64(), Some(9_007_199_254_740_993));
         assert!(matches!(

@@ -187,11 +187,11 @@ fn admitted_operation_member_maps_whole_nested_id_and_typed_mirror() {
     let mut term = package
         .graph()
         .nodes()
-        .find_map(|node| match &node.body {
+        .find_map(|node| match &node.wire_body() {
             CheckedTerm::Application { operation, .. }
                 if operation.identity() == Some("filament.op.collection.index") =>
             {
-                Some(node.body.clone())
+                Some(node.wire_body().clone())
             }
             _ => None,
         })
@@ -346,11 +346,11 @@ fn assert_admitted_member_census_case(
     let mut term = package
         .graph()
         .nodes()
-        .find_map(|node| match &node.body {
+        .find_map(|node| match &node.wire_body() {
             CheckedTerm::Application { operation, .. }
                 if operation.identity() == Some(identity) =>
             {
-                Some(node.body.clone())
+                Some(node.wire_body().clone())
             }
             _ => None,
         })

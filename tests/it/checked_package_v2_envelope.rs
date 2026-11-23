@@ -123,7 +123,8 @@ fn typed_writer_round_trips_protocol_clause_owner_model() {
         .graph()
         .nodes()
         .find(|node| {
-            node.node_tag.as_ref() == "protocol" && node.semantic_form.as_ref() == "protocol_clause"
+            node.node_tag().as_ref() == "protocol"
+                && node.semantic_form().as_ref() == "protocol_clause"
         })
         .map(|node| node.to_owned_wire())
         .expect("protocol clause");

@@ -17,11 +17,7 @@ use super::{
     ExactTypeProjectionError, ExactTypeProjectionErrorCode, SelectedExactIdentities,
     SelectedExactIdentity, SelectedTupleDeclarationRow,
 };
-use filament_exact::{
-    CardinalityBound, CollectionKind, CollectionType, FloatType, IeeeWidth, Integer,
-    IntegerInterval, NodeKey, OriginalDeclarationKey, RationalDomain, TextProfile, TextType,
-    UnionMember, UnitId, ValueType,
-};
+use filament_exact::{NodeKey, OriginalDeclarationKey, UnionMember, UnitId, ValueType};
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -157,7 +153,10 @@ impl NodeAlloc for PayloadNodeAlloc<'_> {
     }
 
     fn text(&mut self, text: &str, form: &'static str) -> Res<std::sync::Arc<str>> {
-        self.request(text.len(), form)?;
+        self.request(
+            text.len() + crate::checked_package::shared::ARC_STR_HEADER,
+            form,
+        )?;
         Ok(crate::checked_package::shared::intern_checked_package_string(text))
     }
 
@@ -1542,6 +1541,10 @@ mod tests {
     };
     use super::*;
     use crate::CheckedPackageEvidence;
+    use filament_exact::{
+        CardinalityBound, CollectionKind, CollectionType, FloatType, IeeeWidth, Integer,
+        IntegerInterval, RationalDomain, TextProfile, TextType,
+    };
     use ix_trace_rs::trace;
 
     const CHECKED: &[u8] =

@@ -183,7 +183,7 @@ fn generated_occurrence_ordinal_and_source_region_survive_reading() {
             .graph()
             .node(position)
             .expect("graph position exists")
-            .occurrences[0]
+            .occurrences()[0]
             .role,
         CheckedOccurrenceRole::Generated
     );
@@ -192,7 +192,7 @@ fn generated_occurrence_ordinal_and_source_region_survive_reading() {
             .graph()
             .node(position)
             .expect("graph position exists")
-            .occurrences[0]
+            .occurrences()[0]
             .ordinal,
         1
     );
@@ -221,7 +221,7 @@ fn generated_occurrence_ordinal_and_source_region_survive_reading() {
             .graph()
             .node(position)
             .expect("graph position exists")
-            .occurrences[0]
+            .occurrences()[0]
             .ordinal,
         1
     );
@@ -1590,7 +1590,7 @@ fn tc_048_model_root_identities_are_unique_in_either_graph_order() {
             package
                 .graph()
                 .nodes()
-                .filter(|node| node.semantic_form.as_ref() == "model_root")
+                .filter(|node| node.semantic_form().as_ref() == "model_root")
                 .count(),
             2
         );
@@ -1776,7 +1776,8 @@ fn tc_048_model_export_is_not_a_v2_model_form() {
         panic!("selected persistence interface must admit: {result:?}");
     };
     assert!(admitted.graph().nodes().any(|node| {
-        node.node_tag.as_ref() == "model" && node.semantic_form.as_ref() == "persistence_interface"
+        node.node_tag().as_ref() == "model"
+            && node.semantic_form().as_ref() == "persistence_interface"
     }));
     let mut export = base.clone();
     export["semantic_graph"]["nodes"][model]["semantic_form"] = json!("model_export");

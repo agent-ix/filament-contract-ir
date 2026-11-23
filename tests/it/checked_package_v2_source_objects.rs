@@ -355,7 +355,7 @@ fn a_package_without_a_source_object_reads_and_re_encodes_stably() {
     assert!(!admitted_package
         .graph()
         .nodes()
-        .any(|node| is_source_node(&node)));
+        .any(|node| is_source_node(node.resolved_node())));
     let evidence = evidence_of(&indexed(&package));
     let name = package["name"].as_str().expect("name").to_owned();
     let encode = |package: &CheckedPackageV2| {
@@ -399,7 +399,7 @@ fn source_object_with_one_field_and_one_operation_admits_as_a_source_node() {
     let node = package
         .graph()
         .nodes()
-        .find(|node| is_source_node(node))
+        .find(|node| is_source_node(node.resolved_node()))
         .map(|node| node.to_owned_wire())
         .expect("the source-declared type");
     assert!(matches!(
@@ -434,10 +434,10 @@ fn source_type_is_never_joined_to_a_selected_model() {
         .graph()
         .nodes()
         .filter(|node| {
-            node.semantic_form.as_ref() == "object_type"
-                && match &node.owner {
+            node.semantic_form().as_ref() == "object_type"
+                && match &node.owner() {
                     Some(CheckedNodeOwner::Source { .. }) => {
-                        node.declaration
+                        node.declaration()
                             .as_ref()
                             .map(|d| d.qualified_name == vec!["Account".into()])
                             == Some(true)
@@ -449,7 +449,7 @@ fn source_type_is_never_joined_to_a_selected_model() {
         .collect();
     assert_eq!(accounts.len(), 2);
     assert_ne!(accounts[0].node_id, accounts[1].node_id);
-    assert_ne!(accounts[0].owner, accounts[1].owner);
+    assert_ne!(accounts[0].owner(), accounts[1].owner());
 }
 
 /// Trace: FR-363-AC-1, FR-363-AC-2.
@@ -461,7 +461,7 @@ fn protocol_clause_and_role_over_a_source_type_admit() {
     let clause = admitted_package
         .graph()
         .nodes()
-        .find(|node| node.semantic_form.as_ref() == "protocol_clause")
+        .find(|node| node.semantic_form().as_ref() == "protocol_clause")
         .map(|node| node.to_owned_wire())
         .expect("clause");
     assert_eq!(clause.owner_model.as_ref(), Some(&id("qualified:Order")));
@@ -963,12 +963,15 @@ fn source_population_reference_admits_self_typed_and_distinct_per_name() {
     let populations: Vec<_> = read_package
         .graph()
         .nodes()
-        .filter(|node| node.semantic_form.as_ref() == "population")
+        .filter(|node| node.semantic_form().as_ref() == "population")
         .collect();
     assert_eq!(populations.len(), 2);
     for node in &populations {
         assert_eq!(node.semantic_type, node.node_id, "self-typed");
-        assert!(matches!(node.owner, Some(CheckedNodeOwner::Source { .. })));
+        assert!(matches!(
+            node.owner(),
+            Some(CheckedNodeOwner::Source { .. })
+        ));
     }
     assert_ne!(populations[0].node_id, populations[1].node_id);
 }
@@ -2458,7 +2461,7 @@ fn anchor_of(package: &CheckedPackageV2) -> CheckedNodeId {
     package
         .graph()
         .nodes()
-        .find(|node| node.semantic_form.as_ref() == "operation_anchor")
+        .find(|node| node.semantic_form().as_ref() == "operation_anchor")
         .map(|node| node.to_owned_wire())
         .expect("an operation anchor")
         .node_id

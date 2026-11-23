@@ -131,7 +131,7 @@ fn check_mode_is_typed_identity_bearing_and_written() {
                         .graph()
                         .node(position)
                         .expect("graph position exists")
-                        .check_mode,
+                        .check_mode(),
                     Some(expected.1)
                 );
             } else {
@@ -141,7 +141,7 @@ fn check_mode_is_typed_identity_bearing_and_written() {
                         .graph()
                         .node(position)
                         .expect("graph position exists")
-                        .check_mode,
+                        .check_mode(),
                     None
                 );
             }
@@ -184,7 +184,7 @@ fn the_node_projection_copies_and_writes_check_mode() {
         assert_eq!(emitted["check_mode"], name);
         let other = graph
             .nodes()
-            .find(|node| node.node_tag.as_ref() != "function")
+            .find(|node| node.node_tag().as_ref() != "function")
             .map(|node| node.to_owned_wire())
             .expect("a non-function node");
         let other = CheckedNodeProjectionV2::from(&other);

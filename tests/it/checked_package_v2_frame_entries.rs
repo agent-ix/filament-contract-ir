@@ -123,7 +123,7 @@ fn admitted_frame_body(value: &Value) -> Value {
                 .graph()
                 .nodes()
                 .find(|node| {
-                    node.node_tag.as_ref() == "state" && node.semantic_form.as_ref() == "frame"
+                    node.node_tag().as_ref() == "state" && node.semantic_form().as_ref() == "frame"
                 })
                 .map(|node| node.to_owned_wire())
                 .expect("admitted frame")
@@ -916,7 +916,8 @@ fn tc_056_exactly_fifteen_model_forms_admit() {
         panic!("selected persistence interface must admit: {result:?}");
     };
     assert!(admitted.graph().nodes().any(|node| {
-        node.node_tag.as_ref() == "model" && node.semantic_form.as_ref() == "persistence_interface"
+        node.node_tag().as_ref() == "model"
+            && node.semantic_form().as_ref() == "persistence_interface"
     }));
     for form in [
         "field_declaration",
@@ -4232,7 +4233,7 @@ fn tc_462_public_accessor_returns_exact_admitted_points_without_source_bytes() {
             .graph()
             .node(position)
             .expect("graph position exists")
-            .occurrences[0]
+            .occurrences()[0]
             .clone();
         let unchanged = admitted.clone();
         let identity = admitted.name().to_owned();
@@ -4282,7 +4283,7 @@ fn tc_462_public_accessor_refuses_in_closed_precedence_order() {
         .graph()
         .node(pointed)
         .expect("graph position exists")
-        .occurrences[0]
+        .occurrences()[0]
         .clone();
     let other_claim = admitted
         .graph()
@@ -4795,7 +4796,7 @@ fn step_relation_reader_retains_two_executions_and_roundtrips() {
     let relation = admitted
         .graph()
         .nodes()
-        .find(|node| node.semantic_form.as_ref() == "step_relation")
+        .find(|node| node.semantic_form().as_ref() == "step_relation")
         .map(|node| node.to_owned_wire())
         .expect("relation");
     let body = relation.step_relation_body().expect("typed relation");
@@ -4960,7 +4961,7 @@ fn step_relation_reader_retains_two_executions_and_roundtrips() {
             let again = reloaded
                 .graph()
                 .nodes()
-                .find(|node| node.semantic_form.as_ref() == "step_relation")
+                .find(|node| node.semantic_form().as_ref() == "step_relation")
                 .map(|node| node.to_owned_wire())
                 .expect("relation");
             assert_eq!(again.step_relation_body(), Some(body));
@@ -5076,13 +5077,13 @@ fn step_relation_source_correspondence_does_not_change_semantic_identity() {
     let original_relation = original
         .graph()
         .nodes()
-        .find(|node| node.semantic_form.as_ref() == "step_relation")
+        .find(|node| node.semantic_form().as_ref() == "step_relation")
         .map(|node| node.to_owned_wire())
         .expect("original relation");
     let moved_relation = moved
         .graph()
         .nodes()
-        .find(|node| node.semantic_form.as_ref() == "step_relation")
+        .find(|node| node.semantic_form().as_ref() == "step_relation")
         .map(|node| node.to_owned_wire())
         .expect("moved relation");
     assert_eq!(original_relation.node_id, moved_relation.node_id);
@@ -5344,7 +5345,7 @@ fn step_relation_bound_implementation_requests_code_claim_and_checks_frame() {
     let relation_node = admitted
         .graph()
         .nodes()
-        .find(|node| node.semantic_form.as_ref() == "step_relation")
+        .find(|node| node.semantic_form().as_ref() == "step_relation")
         .map(|node| node.to_owned_wire())
         .expect("relation");
     let body = relation_node.step_relation_body().expect("typed body");
@@ -5673,7 +5674,7 @@ fn model_operation_callable_joins_selected_body_and_frame() {
         .graph()
         .nodes()
         .find(|node| {
-            node.semantic_form.as_ref() == "operation_anchor" && *node.node_id != anchor_id
+            node.semantic_form().as_ref() == "operation_anchor" && *node.node_id != anchor_id
         })
         .map(|node| node.to_owned_wire())
         .expect("second execution point")
@@ -5940,7 +5941,7 @@ fn declared_order(package: &CheckedPackageV2) -> Option<Vec<(String, CheckedNode
     let relation = package
         .graph()
         .nodes()
-        .find(|node| node.semantic_form.as_ref() == "step_relation")
+        .find(|node| node.semantic_form().as_ref() == "step_relation")
         .map(|node| node.to_owned_wire())
         .expect("relation");
     relation
@@ -5979,8 +5980,8 @@ fn step_relation_declaration_order_is_optional_and_legacy_four_binding_admits() 
         package
             .graph()
             .nodes()
-            .find(|node| node.semantic_form.as_ref() == "step_relation")
-            .and_then(|node| node.step_relation_body())
+            .find(|node| node.semantic_form().as_ref() == "step_relation")
+            .and_then(|node| node.to_owned_wire().step_relation_body())
             .expect("typed body")
     };
     assert_eq!(body(&with_member), body(&without_member));
@@ -6007,8 +6008,8 @@ fn step_relation_declaration_order_preserves_supplied_order_over_one_root_and_ro
     let first_use = admitted
         .graph()
         .nodes()
-        .find(|node| node.semantic_form.as_ref() == "step_relation")
-        .and_then(|node| node.step_relation_body())
+        .find(|node| node.semantic_form().as_ref() == "step_relation")
+        .and_then(|node| node.to_owned_wire().step_relation_body())
         .expect("typed body")
         .subjects
         .into_iter()

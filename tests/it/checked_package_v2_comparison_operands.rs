@@ -150,7 +150,7 @@ fn version_unchanged(package: &CheckedPackageV2) -> CheckedClauseComparison {
         .graph()
         .nodes()
         .filter(|node| {
-            node.node_tag.as_ref() == "state" && node.semantic_form.as_ref() == "state_clause"
+            node.node_tag().as_ref() == "state" && node.semantic_form().as_ref() == "state_clause"
         })
         .flat_map(|clause| {
             let package = &package;
@@ -394,7 +394,8 @@ fn tc_445_fresh_fsl_config_version_has_shared_field_with_post_and_pre_observatio
             .graph()
             .nodes()
             .filter(|node| {
-                node.node_tag.as_ref() == "state" && node.semantic_form.as_ref() == "state_clause"
+                node.node_tag().as_ref() == "state"
+                    && node.semantic_form().as_ref() == "state_clause"
             })
             .flat_map(|clause| {
                 let package = &contextual_package;
@@ -448,8 +449,8 @@ fn tc_445_fresh_fsl_config_version_has_shared_field_with_post_and_pre_observatio
         };
         assert!(contextual_package.graph().nodes().any(|node| {
             &*node.node_id == literal_id
-                && node.node_tag.as_ref() == "value"
-                && node.semantic_form.as_ref() == "literal"
+                && node.node_tag().as_ref() == "value"
+                && node.semantic_form().as_ref() == "literal"
         }));
     }
 
@@ -506,10 +507,10 @@ fn tc_445_fresh_fsl_config_version_has_shared_field_with_post_and_pre_observatio
         .graph()
         .nodes()
         .find(|node| {
-            node.node_tag.as_ref() == "state"
-                && node.semantic_form.as_ref() == "state_clause"
+            node.node_tag().as_ref() == "state"
+                && node.semantic_form().as_ref() == "state_clause"
                 && node
-                    .occurrences
+                    .occurrences()
                     .iter()
                     .filter(|occurrence| {
                         occurrence.role == filament_contract_model::CheckedOccurrenceRole::Claim
@@ -574,7 +575,7 @@ fn tc_445_fresh_fsl_config_version_has_shared_field_with_post_and_pre_observatio
         .graph()
         .nodes()
         .filter(|node| {
-            node.node_tag.as_ref() == "state" && node.semantic_form.as_ref() == "state_clause"
+            node.node_tag().as_ref() == "state" && node.semantic_form().as_ref() == "state_clause"
         })
         .flat_map(|clause| {
             let package = &unbounded_package;

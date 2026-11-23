@@ -528,7 +528,7 @@ fn state_graph_forms_read_and_write() {
                 .nodes()
                 .last()
                 .expect("claim")
-                .semantic_form
+                .semantic_form()
                 .as_ref(),
             "state_graph"
         );
@@ -560,7 +560,7 @@ fn terminal_any_reads_and_writes() {
             .nodes()
             .last()
             .expect("terminal")
-            .semantic_form
+            .semantic_form()
             .as_ref(),
         "terminal"
     );
@@ -1197,7 +1197,7 @@ fn state_graph_identity_and_shared_occurrences() {
     second_claim_occurrence(&mut shared);
     let admitted = admitted(&shared);
     let claim = admitted.graph().nodes().last().expect("claim");
-    assert_eq!(claim.occurrences.len(), 2);
+    assert_eq!(claim.occurrences().len(), 2);
     assert_eq!(
         admitted
             .source_map()
@@ -1406,8 +1406,8 @@ fn terminal_identity_and_several_terminals_per_model() {
         read.graph()
             .node(base_node_index())
             .expect("graph position exists")
-            .occurrences
-            .clone()
+            .occurrences()
+            .to_vec()
     };
     assert_eq!(
         one_row(&repeated),

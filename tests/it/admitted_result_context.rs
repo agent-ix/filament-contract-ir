@@ -245,7 +245,7 @@ pub(crate) fn by_operation(package: &CheckedPackageV2, identity: &str) -> Contra
         .graph()
         .nodes()
         .find(|node| {
-            body_at(&node.body, "/operation/identity")
+            body_at(&node.wire_body(), "/operation/identity")
                 .as_ref()
                 .and_then(Value::as_str)
                 == Some(identity)
@@ -464,9 +464,9 @@ fn tc_447_none_and_invalid_occurrences_have_distinct_typed_outcomes() {
         .graph()
         .nodes()
         .find(|node| {
-            node.node_tag.as_ref() == "value"
-                && node.semantic_form.as_ref() == "parameter"
-                && body_at(&node.body, "/members/0/value/value")
+            node.node_tag().as_ref() == "value"
+                && node.semantic_form().as_ref() == "parameter"
+                && body_at(&node.wire_body(), "/members/0/value/value")
                     .as_ref()
                     .and_then(Value::as_str)
                     == Some("a")
@@ -616,8 +616,9 @@ fn tc_447_represented_wrong_conversion_shapes_refuse_without_a_bound() {
         .graph()
         .nodes()
         .find(|node| {
-            body_at(&node.body, "/operation/identity") == Some(json!("filament.op.integer.add"))
-                && body_at(&node.body, "/arguments/1/value") == Some(json!("1"))
+            body_at(&node.wire_body(), "/operation/identity")
+                == Some(json!("filament.op.integer.add"))
+                && body_at(&node.wire_body(), "/arguments/1/value") == Some(json!("1"))
         })
         .map(|node| node.to_owned_wire())
         .expect("original add");
@@ -625,8 +626,9 @@ fn tc_447_represented_wrong_conversion_shapes_refuse_without_a_bound() {
         .graph()
         .nodes()
         .find(|node| {
-            body_at(&node.body, "/operation/identity") == Some(json!("filament.op.integer.add"))
-                && body_at(&node.body, "/arguments/1/value") == Some(json!("2"))
+            body_at(&node.wire_body(), "/operation/identity")
+                == Some(json!("filament.op.integer.add"))
+                && body_at(&node.wire_body(), "/arguments/1/value") == Some(json!("2"))
         })
         .map(|node| node.to_owned_wire())
         .expect("other add");
@@ -634,8 +636,9 @@ fn tc_447_represented_wrong_conversion_shapes_refuse_without_a_bound() {
         .graph()
         .nodes()
         .find(|node| {
-            body_at(&node.body, "/operation/identity") == Some(json!("filament.op.numeric.narrow"))
-                && body_at(&node.body, "/arguments/0/target")
+            body_at(&node.wire_body(), "/operation/identity")
+                == Some(json!("filament.op.numeric.narrow"))
+                && body_at(&node.wire_body(), "/arguments/0/target")
                     == Some(serde_json::to_value(&other_add.node_id).expect("typed key"))
         })
         .map(|node| node.to_owned_wire())
@@ -644,7 +647,8 @@ fn tc_447_represented_wrong_conversion_shapes_refuse_without_a_bound() {
         .graph()
         .nodes()
         .find(|node| {
-            body_at(&node.body, "/operation/identity") == Some(json!("filament.op.numeric.convert"))
+            body_at(&node.wire_body(), "/operation/identity")
+                == Some(json!("filament.op.numeric.convert"))
         })
         .map(|node| node.to_owned_wire())
         .expect("represented wrong operation");
@@ -828,11 +832,12 @@ fn tc_447_direct_bounded_expression_keeps_own_result_until_its_narrow_is_selecte
         .graph()
         .nodes()
         .find(|node| {
-            node.node_tag.as_ref() == "expression"
-                && node.semantic_form.as_ref() == "binary"
+            node.node_tag().as_ref() == "expression"
+                && node.semantic_form().as_ref() == "binary"
                 && node.semantic_type
                     == serde_json::from_value(node_id(&input_bound)).expect("bound id")
-                && body_at(&node.body, "/arguments/0/target") == Some(node_id(&parameter_key))
+                && body_at(&node.wire_body(), "/arguments/0/target")
+                    == Some(node_id(&parameter_key))
         })
         .map(|node| node.to_owned_wire())
         .expect("own-bounded expression");
@@ -840,8 +845,9 @@ fn tc_447_direct_bounded_expression_keeps_own_result_until_its_narrow_is_selecte
         .graph()
         .nodes()
         .find(|node| {
-            body_at(&node.body, "/operation/identity") == Some(json!("filament.op.numeric.narrow"))
-                && body_at(&node.body, "/arguments/0/target")
+            body_at(&node.wire_body(), "/operation/identity")
+                == Some(json!("filament.op.numeric.narrow"))
+                && body_at(&node.wire_body(), "/arguments/0/target")
                     == Some(serde_json::to_value(&expression.node_id).expect("typed key"))
         })
         .map(|node| node.to_owned_wire())
@@ -966,7 +972,7 @@ fn tc_447_shared_expression_uses_each_supplied_occurrence_and_direct_narrow() {
         .graph()
         .nodes()
         .filter(|node| {
-            body_at(&node.body, "/operation/identity")
+            body_at(&node.wire_body(), "/operation/identity")
                 .as_ref()
                 .and_then(Value::as_str)
                 == Some("filament.op.numeric.narrow")
@@ -981,8 +987,8 @@ fn tc_447_shared_expression_uses_each_supplied_occurrence_and_direct_narrow() {
             role: CheckedOccurrenceRole::Expression,
             ordinal: 0,
         };
-    let first = selected(first);
-    let second = selected(second);
+    let first = selected(&first.to_owned_wire());
+    let second = selected(&second.to_owned_wire());
     let combined = package(
         &input,
         &[

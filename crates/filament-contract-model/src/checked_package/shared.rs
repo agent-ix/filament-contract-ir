@@ -44,6 +44,10 @@ impl Drop for CheckedPackageStringInterner {
     }
 }
 
+/// The bytes an `Arc<str>` holds beyond its text: the strong and weak counts.
+/// A charge for a shared string is its text plus this.
+pub(crate) const ARC_STR_HEADER: usize = 2 * std::mem::size_of::<usize>();
+
 pub(crate) fn intern_checked_package_string(value: &str) -> Arc<str> {
     CHECKED_PACKAGE_STRINGS.with(|strings| {
         let mut strings = strings.borrow_mut();

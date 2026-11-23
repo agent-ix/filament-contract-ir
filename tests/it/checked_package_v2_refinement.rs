@@ -7846,20 +7846,20 @@ fn refinement_catalog_joins_owned_finish_without_a_step_row() {
     let round_trip_clause = round_trip
         .graph()
         .nodes()
-        .find(|node| node.semantic_form.as_ref() == "protocol_clause")
+        .find(|node| node.semantic_form().as_ref() == "protocol_clause")
         .expect("admitted clause");
     assert_eq!(
         serde_json::to_value(&round_trip_clause.node_id).expect("clause key"),
         clause_key
     );
     assert_eq!(
-        serde_json::to_value(&round_trip_clause.owner_model).expect("owner edge"),
+        serde_json::to_value(&round_trip_clause.wire_owner_model()).expect("owner edge"),
         object_b
     );
     let round_trip_refinement = round_trip
         .graph()
         .nodes()
-        .find(|node| node.semantic_form.as_ref() == "refinement")
+        .find(|node| node.semantic_form().as_ref() == "refinement")
         .expect("admitted refinement");
     assert_eq!(
         serde_json::to_value(&round_trip_refinement.node_id).expect("node id"),

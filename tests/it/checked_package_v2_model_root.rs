@@ -124,7 +124,7 @@ fn selected_root_roundtrips_through_public_typed_writer_and_reader() {
         first
             .graph()
             .nodes()
-            .filter(|node| node.semantic_form.as_ref() == "model_root")
+            .filter(|node| node.semantic_form().as_ref() == "model_root")
             .count(),
         2
     );
@@ -214,7 +214,7 @@ fn one_declaration_selection_has_one_root() {
         admitted
             .graph()
             .nodes()
-            .filter(|node| node.semantic_form.as_ref() == "model_root")
+            .filter(|node| node.semantic_form().as_ref() == "model_root")
             .count(),
         1
     );
@@ -254,7 +254,7 @@ fn adding_another_object_type_does_not_add_another_model_root() {
             admitted
                 .graph()
                 .nodes()
-                .filter(|node| node.semantic_form.as_ref() == "model_root")
+                .filter(|node| node.semantic_form().as_ref() == "model_root")
                 .count(),
             1,
             "{} object types",
@@ -272,7 +272,7 @@ fn no_model_selection_has_no_root() {
     assert!(admitted
         .graph()
         .nodes()
-        .all(|node| node.semantic_form.as_ref() != "model_root"));
+        .all(|node| node.semantic_form().as_ref() != "model_root"));
 }
 
 /// Trace: FR-065-AC-4
@@ -498,7 +498,7 @@ fn root_only_package_keeps_the_root_key_when_its_source_alias_changes() {
             .graph()
             .node(0)
             .expect("graph position exists")
-            .semantic_form
+            .semantic_form()
             .as_ref(),
         "model_root"
     );
