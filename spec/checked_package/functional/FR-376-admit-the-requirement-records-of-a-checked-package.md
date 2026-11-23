@@ -56,21 +56,24 @@ carriers and FSpec FR-640's probabilistic step before the requirement-record
 step, and the `checked_term_data` step after it (FSpec FR-322 "Check
 order"). In this crate that step SHALL run in `v2/mod.rs` after
 `probabilistic_join::validate` and before `checked_term_data` validation.
-Within the step it SHALL apply FSpec FR-825's rules 1 to 10 to each
-`claim`/`value_validity` node in ascending structural node-id order, then
-rules 11 to 13 to the rows in array order, then rule 14, refusing the first
-failure with exactly the code, cause and pointer FR-825 gives. The owner
-reachability of rules 4 and 8 SHALL walk each owner function's body once,
-from its body root and not its measure, and reuse the reached set for every
-record of that owner. The step SHALL charge the caller's reader budget as
-FR-825 "Reader" states, before inspecting each charged item, and on
-exhaustion return the reader's `incomplete` result at the first uncharged
-member with no partial package.
+Within the step it SHALL validate FSpec FR-825's `path_condition_frames`
+table first; then its `claim`/`value_validity` nodes in ascending structural
+node-id order; then its `requirement_items` rows in array order; then record
+coverage and generated ordinals. It SHALL refuse the first failure with
+exactly the code, cause and pointer FR-825 gives. One owner-body walk from its
+body root (not its measure) SHALL derive all scalar-operation path conditions
+for that owner, validate each frame's parent and required branch polarity,
+and compare every record's terminal frame id with the independently derived
+chain for the record's application occurrence. A mismatch is refused; the
+reader SHALL NOT trust the emitter's table without this comparison. The reader
+SHALL charge the caller's reader budget before each FR-825 validation item.
+When the budget is exhausted, the reader SHALL return `incomplete` at the
+first uncharged member, with no partial package.
 
-The reader SHALL NOT compare a record node's path with its body, recompute
-an extent, re-derive an owner or a guard, or refuse a package because it
-lacks a record the producer's checker might have written (FSpec FR-825
-"Reader").
+The reader SHALL compare the record node's identity terminal frame id with
+its body binding and SHALL derive/validate the path-condition chain as FR-825
+requires. It SHALL NOT recompute an extent, re-derive an owner, or refuse a
+package because it lacks a record the producer's checker might have written.
 
 ### Public requirement rows
 
@@ -95,16 +98,30 @@ pub struct ValueValidityRecord {
     pub occurrence: u64,               // the application's expression ordinal
     pub result_bound: CheckedNodeId,   // the bound's type node
     pub conversion: Option<(CheckedNodeId, u64)>, // narrow node and its ordinal
-    pub path_condition: Vec<RequirementGuard>,    // outermost first
+    pub path_condition_frame: Option<PathConditionFrameId>, // terminal frame id
     pub extent_roots: Vec<CheckedNodeId>,         // ascending node id
     pub objects: Vec<CheckedNodeId>,              // ascending node id
 }
-pub struct RequirementGuard {
+pub struct PathConditionFrameId(pub usize); // package-local row index
+pub struct PathConditionFrame {
+    pub parent: Option<PathConditionFrameId>,
     pub guard: CheckedNodeId,
     pub occurrence: u64,
     pub holds: bool,
 }
+pub struct PathConditionView<'a> {
+    // Borrowed from the admitted package; iterates outermost first.
+}
 ```
+
+`CheckedPackageV2::path_condition_frames(&self) -> &[PathConditionFrame]`
+returns the admitted shared table. `CheckedPackageV2::path_condition(&self,
+record: &ValueValidityRecord) -> PathConditionView<'_>` returns a borrowed
+view over that table and the record's optional terminal id. The view iterates
+`RequirementGuard { guard, occurrence, holds }` values outermost first without
+allocating or storing a per-record vector. An empty terminal id gives an empty
+view. Frame ids are package-local indices and cannot be used with another
+admitted package.
 
 - The rows SHALL be in the package's array order, which the reader has
   checked is FSpec FR-825's package order, so a row's index is its record's
@@ -114,23 +131,30 @@ pub struct RequirementGuard {
   and ids compare by structural key (FSpec FR-322 "Rebuilding the key").
 - `record` is `Some` exactly for a `value-validity` row; every field is read
   from the admitted node's body in FR-825's binding order, `conversion`
-  `None` for the empty aggregate.
+  `None` for the empty aggregate, and `path_condition_frame` is `None` for its
+  empty aggregate or the sole terminal frame id otherwise.
 - `value_validity_records_of` returns the empty slice for a function that
   owns no record and for a node that is not a function. A package with no
   `requirement_items` returns the empty slice from both reads.
-- Both reads SHALL allocate nothing per call and return what admission
-  retained.
+- The rows, frames and path-condition views SHALL allocate nothing per read
+  call and return only references/indices into what admission retained.
+- Retained storage for all requirement rows, value-validity records and
+  path-condition frames SHALL be O(R + G), where R is the number of records
+  and G is the number of unique frame rows. Admission's owner-body traversal
+  SHALL run once per owner and SHALL NOT retain a full path vector per record.
 
-The writer SHALL write `requirement_items` and the record nodes exactly as
-admitted, so a read of the writer's output returns equal rows in equal order.
+The writer SHALL write `requirement_items`, `path_condition_frames` and the
+record nodes exactly as admitted, so a read of the writer's output returns
+equal rows, frames and path-condition views in equal order.
 
 ## Acceptance Criteria
 
 | ID | Criteria | Verification |
 | --- | --- | --- |
-| FR-376-AC-1 | The reader admits FSpec TC-2053's packages of FR-825-AC-1 to FR-825-AC-3. For FR-825-AC-1's package `requirement_items()` returns two rows, both `value-validity`, `Bounded`, keyed at the `+` node's `expression` occurrences 0 and 1, with records whose `owner` is `f`, `result_bound` the `Int[0, 10]` and `Int[0, 20]` nodes, `conversion` `Some` of each narrow and its ordinal, `path_condition` `[]` and `[{guard: the g(x + 1) node, occurrence, holds: true}]`, `extent_roots` `[x]` and `objects` `[]`; `value_validity_records_of(f)` returns `[0, 1]` and `value_validity_records_of(g)` the empty slice. For FR-825-AC-3's package the `inc` row's index equals its array position, `Bounded`'s and `BelowThree`'s rows have `record` `None`. The writer's output read back returns equal rows in equal order, and the same package with its nodes in another graph order returns equal rows. The reader also admits the packages FSpec FR-825-AC-5 and FR-322-AC-473 admit: a package whose only `claim` nodes are `value_validity` nodes and which has no `claim_names` member, and FR-322-AC-473's package emitted with records, whose every other node is byte-identical to the golden package written without records; a package of a unit with no requirement record returns the empty slice from both reads. | Test (TC-488) |
+| FR-376-AC-1 | The reader admits TC-2053's packages of FR-825-AC-1 to AC-3. For AC-1, `requirement_items()` returns two rows keyed at the `+` node's expression occurrences 0 and 1, both `value-validity` and bounded; their records retain `f`, their separate bounds and conversions, roots `[x]` and no objects. The first record has no terminal frame; the second has the terminal id of the `g(x + 1)` guard frame, whose view yields that guard with holds true. `path_condition_frames()` returns the shared table and `path_condition(record)` returns a borrowed outermost-first view. `value_validity_records_of(f)` returns `[0, 1]` and the read for `g` is empty. The writer round trip and a package with graph nodes in another order yield equal rows, frames and views. AC-3's non-value-validity rows have no record; an empty package returns empty rows, frames and owner indices. | Test (TC-488) |
 | FR-376-AC-2 | Each refusing mutation of FSpec FR-825-AC-4 and FR-825-AC-5, and each refusing package of FR-322-AC-473 (the two check-order packages and the `claim_names` row naming a `value_validity` node), refuses with FR-825's or FR-322's exact code, cause and pointer, observed separately through the public reader, and none admits a partial package; the admitted cases of those ACs are FR-376-AC-1's and FR-376-AC-3's; an unknown `claim` form still refuses at `semantic_form`. | Test (TC-488) |
-| FR-376-AC-3 | The requirement-record step runs after `probabilistic_join::validate` and before `checked_term_data` validation: a package with a probabilistic rule-6 defect and a record defect refuses at the probabilistic defect, and one with a record defect and a reversed `probabilistic_claims` row refuses at the record defect; FR-825-AC-1's package is admitted with exactly its charged count, and a reader budget one visit short of that count returns `incomplete` at `/requirement_items/1`, the last charged member (FSpec FR-825-AC-5), with no partial package; and an owner with two records is walked once (its reach visits are charged once). | Test (TC-488) |
+| FR-376-AC-3 | The requirement-record step runs after `probabilistic_join::validate` and before `checked_term_data` validation: a package with a probabilistic defect and a record defect refuses at the probabilistic defect, and one with a record defect and a reversed probabilistic row refuses at the record defect. The reader charges each frame, record and owner-body node once; a budget one validation visit short returns `incomplete` at the first uncharged item and no partial package. An owner with multiple records is walked once. | Test (TC-488) |
+| FR-376-AC-4 | Admit a package with 1,000 value-validity records under a 1,000-deep nested guard body and 1,000 shared condition frames. The retained requirement-record, frame and view storage is at most 1,000 record entries plus 1,000 frame entries and O(1) indexes per entry (linear in records plus unique guards); the measured reader storage charge for those records is linear in the frame and record counts, and no record retains a 1,000-element guard vector. | Test, Analysis (TC-488) |
 
 ## Dependencies
 
