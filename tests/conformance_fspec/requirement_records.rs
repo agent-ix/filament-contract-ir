@@ -608,7 +608,7 @@ fn large_requirement_record_package(record_count: usize) -> Value {
     }
 
     let terminal_frame_value =
-        &binding_value(&record_template, "path_condition")["members"][0]["value"]["value"];
+        &binding_value(&record_template, "path_condition")["members"][0]["value"];
     let terminal_frame_id = canonical_nonnegative_integer(terminal_frame_value)
         .expect("terminal frame id is a canonical nonnegative integer");
     let mut requirement_rows = Vec::with_capacity(record_count);
