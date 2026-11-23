@@ -7948,7 +7948,7 @@ fn package_with_operation_contract_record_and_unbounded_population(
     (package, record_position)
 }
 
-#[trace("TC-488", "FR-376-AC-2")]
+#[trace("TC-488", "FR-376-AC-1")]
 #[test]
 fn operation_contract_population_without_maximum_admits_empty_aggregate_leaf() {
     let (package, _) = package_with_operation_contract_record_and_unbounded_population(true);
