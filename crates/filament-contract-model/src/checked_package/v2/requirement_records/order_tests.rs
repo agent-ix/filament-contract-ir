@@ -4,7 +4,8 @@
 //! Work and order of the requirement-record structural-key orderings.
 
 use super::{
-    key_order, row_key_order, sort_by_structural_key, sort_charged, GraphIndex, RowKey, WorkMeter,
+    key_order, named_record_order, row_key_order, sort_by_structural_key, sort_charged, GraphIndex,
+    RowKey, WorkMeter,
 };
 use crate::checked_package::shared::checked_node_comparisons;
 use crate::checked_package::shared::{CheckedNodeId, CheckedNodePathSegment as Segment};
@@ -136,7 +137,7 @@ fn chain_work(length: usize, with_retired: bool) -> Work {
     checked_node_comparisons::reset();
     sort_charged(&mut ranked, &mut meter, |left, right, meter| {
         calls += 1;
-        key_order(&index, &chain.keys, *left, *right, meter)
+        Ok(key_order(&index, &chain.keys, left, right, meter)?.then(left.cmp(&right)))
     })
     .unwrap_or_else(|_| panic!("ranked sort admits"));
     let mut ranked_work = calls + checked_node_comparisons::count();
@@ -204,6 +205,17 @@ fn chain_work(length: usize, with_retired: bool) -> Work {
 /// applications, and checking their rows' package order, costs O(n log n)
 /// comparisons of O(1) work each. The retired order walked the shared
 /// application chain on every comparison: O(n^2 log n).
+///
+/// Work counted, for the ranked order and for the retired reference alike:
+/// (1) the record sort (`sort_charged` with the production comparator, or
+/// the retired `sort_unstable_by(CheckedNodeId::cmp)`): one unit per
+/// comparator call plus one per
+/// `checked_node_comparisons` visit (each `CheckedNodeId` comparison entered
+/// and each distinct nested operand pair it descends into); and (2) the
+/// row-order scan: one unit per adjacent row pair compared by
+/// `row_key_order` plus its node visits. The named-record sort is not
+/// counted: on this chain every record has the same owner, whose key
+/// compares by identity, and the row index decides.
 #[trace("TC-488", "FR-376-AC-3")]
 #[test]
 fn record_ordering_work_is_linearithmic_on_a_chain_of_scalar_applications() {
@@ -357,9 +369,134 @@ fn ranked_record_order_equals_the_structural_id_order_on_random_graphs() {
         }
         let mut retired = records.clone();
         retired.sort_unstable_by(|left, right| keys[*left].cmp(&keys[*right]));
+        let mut tie_broken = records.clone();
+        tie_broken
+            .sort_unstable_by(|left, right| keys[*left].cmp(&keys[*right]).then(left.cmp(right)));
         sort_by_structural_key(&mut records, &index, &keys, &mut meter)
             .unwrap_or_else(|_| panic!("record sort admits"));
-        assert_eq!(records, retired, "case {case}: record order");
+        // Random graphs, unlike admitted ones, can hold equal keys at two
+        // positions; the key sequence is the retired one either way.
+        assert_eq!(records, tie_broken, "case {case}: record order");
+        assert!(
+            records
+                .iter()
+                .zip(&retired)
+                .all(|(new, old)| keys[*new] == keys[*old]),
+            "case {case}: record key sequence"
+        );
+
+        // Named records: distinct rows, any record positions, owners named
+        // by their wire ids as the validated rows name them.
+        let count = random.below(12);
+        let mut rows: Vec<usize> = (0..count).collect();
+        for at in (1..rows.len()).rev() {
+            rows.swap(at, random.below(at + 1));
+        }
+        let named: Vec<(usize, usize, CheckedNodeId)> = rows
+            .into_iter()
+            .map(|row| (row, random.below(size), wire[random.below(size)].clone()))
+            .collect();
+        let mut retired_named = named.clone();
+        retired_named.sort_unstable_by(
+            |(left_row, left, left_owner), (right_row, right, right_owner)| {
+                let left_owner_position = index.get(left_owner).copied().unwrap_or(usize::MAX);
+                let right_owner_position = index.get(right_owner).copied().unwrap_or(usize::MAX);
+                keys[left_owner_position]
+                    .cmp(&keys[right_owner_position])
+                    .then_with(|| left_row.cmp(right_row))
+                    .then_with(|| keys[*left].cmp(&keys[*right]))
+            },
+        );
+        let order = named_record_order(&named, &index, &keys, &mut meter)
+            .unwrap_or_else(|_| panic!("named-record order admits"));
+        let ordered: Vec<(usize, usize, CheckedNodeId)> =
+            order.iter().map(|&at| named[at].clone()).collect();
+        assert_eq!(ordered, retired_named, "case {case}: named-record order");
     }
     assert!(ranked_graphs > 0 && unranked_graphs > 0);
+}
+
+/// IR-1588: on an unranked graph the record sort compares through the
+/// meter. A read budget that runs out at any point of the sort, the scratch
+/// block or any comparison's frame list, returns the typed read-storage
+/// stop, which the budgeted entry reports as `incomplete`; the sort never
+/// panics and never answers a comparison after a refusal.
+#[trace("TC-488", "FR-376-AC-3")]
+#[test]
+fn record_sort_on_an_unranked_graph_stops_typed_wherever_the_budget_runs_out() {
+    use super::super::{BudgetStop, NativeJoinBudget, PackageReadResource};
+    use crate::checked_package::common::ValidationFailure;
+
+    // Records nest copies of their applications, which are not themselves
+    // listed keys, so the graph is unranked and comparisons walk chains.
+    let length = 64;
+    let mut keys: Vec<Arc<CheckedNodeId>> = Vec::new();
+    let mut application = Arc::new(CheckedNodeId {
+        package: "p".into(),
+        path: vec![Segment::Name("x".into())],
+        ordinal: 0,
+    });
+    for _ in 0..length {
+        application = Arc::new(CheckedNodeId {
+            package: "p".into(),
+            path: vec![
+                Segment::Name("expression".into()),
+                Segment::Node(Arc::clone(&application)),
+            ],
+            ordinal: 0,
+        });
+        keys.push(Arc::new(CheckedNodeId {
+            package: "p".into(),
+            path: vec![
+                Segment::Name("claim".into()),
+                Segment::Node(Arc::new(CheckedNodeId::clone(&application))),
+            ],
+            ordinal: 0,
+        }));
+    }
+    let wire: Vec<CheckedNodeId> = (0..keys.len()).map(wire_id).collect();
+    let mut own = WorkMeter::new(u64::MAX);
+    let index = GraphIndex::build(wire.iter(), &mut own)
+        .and_then(|index| index.with_ranks(&keys, &mut own))
+        .unwrap_or_else(|_| panic!("unranked graph indexes"));
+    assert!(index.rank_at(0).is_none(), "the graph must be unranked");
+    let input = scrambled(&(0..keys.len()).collect::<Vec<_>>());
+
+    let sort = |limit: u64| {
+        let mut budget = NativeJoinBudget::new(u64::MAX, 0).with_read_storage_limit(limit);
+        let mut records = input.clone();
+        let result = {
+            let mut meter = WorkMeter::over(&mut budget);
+            sort_by_structural_key(&mut records, &index, &keys, &mut meter)
+        };
+        (result, records, budget.read_storage_consumed())
+    };
+    let (admitted, sorted, required) = sort(u64::MAX);
+    assert!(admitted.is_ok());
+    let mut retired = input.clone();
+    retired.sort_unstable_by(|left, right| keys[*left].cmp(&keys[*right]));
+    assert_eq!(sorted, retired);
+    let scratch = (keys.len() * std::mem::size_of::<usize>()) as u64;
+    assert!(
+        required > 2 * scratch,
+        "comparisons charge frame lists beyond the scratch block: {required}"
+    );
+    let cuts = [
+        0,
+        scratch - 1,
+        scratch,
+        scratch + 1,
+        required / 2,
+        required - 1,
+    ];
+    for limit in cuts {
+        let (result, _, _) = sort(limit);
+        match result {
+            Err(ValidationFailure::Budget(BudgetStop {
+                resource: PackageReadResource::ReadStorage,
+                ..
+            })) => {}
+            other => panic!("budget {limit} of {required}: {other:?}"),
+        }
+    }
 }

@@ -2093,3 +2093,6 @@ fn assert_refusal(
         "{pointer}: {refusal:?}"
     );
 }
+
+#[cfg(test)]
+mod order;
