@@ -276,6 +276,93 @@ fn first_unnamed_position(
     None
 }
 
+/// The order of the structural keys at graph positions `left` and `right`.
+///
+/// The reader's graph index ranks every structural key once, in one pass that
+/// enters each operand key before the keys nesting it (hash-consing: a key's
+/// entry is compared through its operands' entries, never by walking a shared
+/// operand chain). A rank is the key's position in `CheckedNodeId::cmp`
+/// order, and equal keys share one entry and so one rank. Two ranked keys
+/// therefore compare by their ranks exactly as `CheckedNodeId::cmp` compares
+/// them, in O(1) where that comparison walks a chain of `k` nested
+/// applications in O(k). An unranked graph compares through the meter, which
+/// charges the frame list a nested comparison asks for.
+fn key_order(
+    index: &GraphIndex<'_>,
+    structural_keys: &[std::sync::Arc<CheckedNodeId>],
+    left: usize,
+    right: usize,
+    meter: &mut WorkMeter,
+) -> Result<std::cmp::Ordering, ValidationFailure> {
+    index
+        .resolved_at(left, structural_keys)
+        .order(&index.resolved_at(right, structural_keys), meter)
+}
+
+/// Sorts `items` by a fallible `compare`, keeping its first refusal. After a
+/// refusal the remaining comparisons answer without work. Before one, the
+/// unstable sort sees exactly the answers `compare` gives; given the same
+/// input and the same answer for every pair, it yields the same permutation
+/// as a sort by any comparator that agrees with `compare` on every pair.
+fn sort_charged<T>(
+    items: &mut [T],
+    meter: &mut WorkMeter,
+    mut compare: impl FnMut(&T, &T, &mut WorkMeter) -> Result<std::cmp::Ordering, ValidationFailure>,
+) -> Result<(), ValidationFailure> {
+    let mut refused = None;
+    items.sort_unstable_by(|left, right| {
+        if refused.is_some() {
+            return std::cmp::Ordering::Equal;
+        }
+        compare(left, right, meter).unwrap_or_else(|failure| {
+            refused = Some(failure);
+            std::cmp::Ordering::Equal
+        })
+    });
+    refused.map_or(Ok(()), Err)
+}
+
+/// Sorts graph positions into ascending structural-key order. Every
+/// comparison answers as `CheckedNodeId::cmp` on the two keys does (see
+/// [`key_order`]), so the order, ties included, is the one a sort by
+/// `CheckedNodeId::cmp` yields, with O(1) work per comparison on a ranked
+/// graph.
+fn sort_by_structural_key(
+    positions: &mut [usize],
+    index: &GraphIndex<'_>,
+    structural_keys: &[std::sync::Arc<CheckedNodeId>],
+    meter: &mut WorkMeter,
+) -> Result<(), ValidationFailure> {
+    sort_charged(positions, meter, |left, right, meter| {
+        key_order(index, structural_keys, *left, *right, meter)
+    })
+}
+
+/// A requirement row's package-order key: the claim's structural key, then
+/// its occurrence role, occurrence ordinal and capability, as wire spellings.
+type RowKey<'a> = (
+    super::graph_storage::ResolvedKey<'a>,
+    &'static str,
+    u64,
+    &'static str,
+);
+
+/// The lexicographic order of two row keys, the claim key compared as
+/// [`key_order`] compares it.
+fn row_key_order(
+    left: &RowKey<'_>,
+    right: &RowKey<'_>,
+    meter: &mut WorkMeter,
+) -> Result<std::cmp::Ordering, ValidationFailure> {
+    Ok(left
+        .0
+        .order(&right.0, meter)?
+        .then_with(|| (left.1, left.2, left.3).cmp(&(right.1, right.2, right.3))))
+}
+
+#[cfg(test)]
+mod order_tests;
+
 fn refuse(
     index: usize,
     at: Path<'_>,
@@ -305,7 +392,7 @@ pub(super) fn validate(
             (*kind == CheckedNodeKind::Claim(super::ClaimForm::ValueValidity)).then_some(position)
         })
         .collect();
-    records.sort_unstable_by(|left, right| structural_keys[*left].cmp(&structural_keys[*right]));
+    sort_by_structural_key(&mut records, index, structural_keys, meter)?;
     let mut owner_reach: BTreeMap<usize, BTreeSet<usize>> = BTreeMap::new();
     for &position in &records {
         let node = &nodes[position];
@@ -653,7 +740,7 @@ pub(super) fn validate(
             Refusal::new(Code::MalformedWire, root()),
         ));
     }
-    let mut previous: Option<(&CheckedNodeId, &'static str, u64, &'static str)> = None;
+    let mut previous: Option<RowKey<'_>> = None;
     let mut named_records: Vec<(usize, usize, CheckedNodeId)> = Vec::new();
     for (row_index, row) in rows.iter().enumerate() {
         let at = root().index(row_index);
@@ -788,17 +875,18 @@ pub(super) fn validate(
                 meter,
             ));
         }
-        let key = (
-            structural_keys[claim_position].as_ref(),
+        let key: RowKey<'_> = (
+            index.resolved_at(claim_position, structural_keys),
             occurrence_role_wire(&row.claim.occurrence.role),
             row.claim.occurrence.ordinal,
             capability_wire(row.kind),
         );
-        if previous.is_some_and(|prior| prior >= key) {
-            let duplicate = previous.is_some_and(|prior| {
-                prior.0 == key.0 && prior.1 == key.1 && prior.2 == key.2 && prior.3 == key.3
-            });
-            let cause = if duplicate {
+        let order = match &previous {
+            Some(prior) => Some(row_key_order(prior, &key, meter)?),
+            None => None,
+        };
+        if let Some(order) = order.filter(|order| order.is_ge()) {
+            let cause = if order.is_eq() {
                 Cause::ConflictingDefinition
             } else {
                 Cause::InvalidSemanticGraph
@@ -826,16 +914,26 @@ pub(super) fn validate(
             meter,
         ));
     }
-    named_records.sort_unstable_by(
-        |(left_row, left, left_owner), (right_row, right, right_owner)| {
+    sort_charged(
+        &mut named_records,
+        meter,
+        |(left_row, left, left_owner), (right_row, right, right_owner), meter| {
             let left_owner_position = index.get(left_owner).copied().unwrap_or(usize::MAX);
             let right_owner_position = index.get(right_owner).copied().unwrap_or(usize::MAX);
-            structural_keys[left_owner_position]
-                .cmp(&structural_keys[right_owner_position])
-                .then_with(|| left_row.cmp(right_row))
-                .then_with(|| structural_keys[*left].cmp(&structural_keys[*right]))
+            let order = key_order(
+                index,
+                structural_keys,
+                left_owner_position,
+                right_owner_position,
+                meter,
+            )?
+            .then_with(|| left_row.cmp(right_row));
+            if order.is_ne() {
+                return Ok(order);
+            }
+            key_order(index, structural_keys, *left, *right, meter)
         },
-    );
+    )?;
     let mut previous_owner: Option<CheckedNodeId> = None;
     let mut owner_ordinal = 0_u64;
     for (_, record_position, owner) in named_records {
@@ -1178,14 +1276,20 @@ fn resolve_record(
 }
 
 pub(super) fn owner_index(rows: &[RequirementItemRow]) -> Vec<(CheckedNodeId, Vec<usize>)> {
+    // One stable sort by owner keeps each owner's rows in row order, then one
+    // pass groups equal owners: O(n log n) where inserting each new owner
+    // into a sorted vector shifted every later owner.
+    let mut owned: Vec<(&CheckedNodeId, usize)> = rows
+        .iter()
+        .enumerate()
+        .filter_map(|(row_index, row)| Some((&row.record.as_ref()?.owner, row_index)))
+        .collect();
+    owned.sort_by_key(|&(owner, _)| owner);
     let mut index: Vec<(CheckedNodeId, Vec<usize>)> = Vec::new();
-    for (row_index, row) in rows.iter().enumerate() {
-        let Some(record) = &row.record else {
-            continue;
-        };
-        match index.binary_search_by(|(owner, _)| owner.cmp(&record.owner)) {
-            Ok(slot) => index[slot].1.push(row_index),
-            Err(slot) => index.insert(slot, (record.owner.clone(), vec![row_index])),
+    for (owner, row_index) in owned {
+        match index.last_mut() {
+            Some((last, owner_rows)) if *last == *owner => owner_rows.push(row_index),
+            _ => index.push((owner.clone(), vec![row_index])),
         }
     }
     index
