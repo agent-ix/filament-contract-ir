@@ -20,6 +20,8 @@ FSL_EMIT_CHECKED_V2_BIN ?= $(FILAMENT_SPEC_LANGUAGE_DIR)/target/debug/examples/e
 .PHONY: help
 help:
 	@echo "Available targets:"
+	@echo "  make figures          - Regenerate docs/images from docs/images/figures.json (ixd-figures)"
+	@echo "  make figures-check    - Fail when docs/images are stale; writes nothing"
 	@echo "  make fmt              - Format with rustfmt"
 	@echo "  make fmt-check        - Verify formatting (CI gate)"
 	@echo "  make lint             - Clippy with -D warnings"
@@ -291,3 +293,19 @@ conformance-fsl-ir1384:
 	@test -n "$(FILAMENT_SPEC_LANGUAGE_DIR)" || { echo "conformance-fsl-ir1384 reads the owner's domain package: set FILAMENT_SPEC_LANGUAGE_DIR"; exit 2; }
 	cp Cargo.lock tests/conformance_fsl_ir1384/Cargo.lock
 	FILAMENT_SPEC_LANGUAGE_DIR="$(FILAMENT_SPEC_LANGUAGE_DIR)" $(CARGO) test --workspace --manifest-path tests/conformance_fsl_ir1384/Cargo.toml -- --nocapture
+
+# =============================================================================
+# Documentation figures
+# =============================================================================
+# docs/images/figures.json defines the figures; ixd-figures (agent-ix/ix-diagrams) renders them.
+# Install it with: cargo install --git https://github.com/agent-ix/ix-diagrams ixd-figures
+
+IXD_FIGURES ?= ixd-figures
+
+.PHONY: figures
+figures:
+	$(IXD_FIGURES) generate --definitions docs/images/figures.json
+
+.PHONY: figures-check
+figures-check:
+	$(IXD_FIGURES) check --definitions docs/images/figures.json
