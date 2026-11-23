@@ -1352,6 +1352,9 @@ fn duration_bounds_are_typed_by_the_clock_unit_in_its_owning_package() {
             refusal.loci[0].path.as_ref().map(ToString::to_string)
         ),
         CheckedPackageV2ReadResult::Incomplete(_) => panic!("complete package"),
+        CheckedPackageV2ReadResult::HostAllocationFailed(failure) => {
+            panic!("the host refused an allocation: {failure:?}")
+        }
         CheckedPackageV2ReadResult::CatalogUnavailable(error) => {
             panic!("production operation catalog unavailable: {error:?}")
         }

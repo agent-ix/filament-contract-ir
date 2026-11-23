@@ -123,6 +123,8 @@ fn published_model_field_read_forms_survive_admission_and_round_trip() {
                         format!("{:?} {:?}", refusal.code, refusal.loci),
                     CheckedPackageV2ReadResult::Admitted(_) => "admitted".into(),
                     CheckedPackageV2ReadResult::Incomplete(_) => "incomplete".into(),
+                    CheckedPackageV2ReadResult::HostAllocationFailed(failure) =>
+                        format!("the host refused an allocation: {failure:?}"),
                     CheckedPackageV2ReadResult::CatalogUnavailable(error) =>
                         format!("production operation catalog unavailable: {error:?}"),
                 }
