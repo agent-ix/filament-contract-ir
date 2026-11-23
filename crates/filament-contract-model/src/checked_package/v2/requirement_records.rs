@@ -1518,7 +1518,7 @@ fn derive_owner_path_conditions(
                         }
                     }
                 }
-                CheckedTerm::Aggregate { members } => {
+                CheckedTerm::Aggregate { members, .. } => {
                     for member in members.iter().rev() {
                         pending.push(OwnerWalkTask::Term(member, terminal));
                     }
@@ -1904,7 +1904,7 @@ fn read_record(node: CheckedNodeId, term: &CheckedTerm) -> Option<ValueValidityR
         )),
         _ => return None,
     };
-    let CheckedTerm::Aggregate { members: path } = binding(term, 5)? else {
+    let CheckedTerm::Aggregate { members: path, .. } = binding(term, 5)? else {
         return None;
     };
     let path_condition_frame = match path.as_slice() {
