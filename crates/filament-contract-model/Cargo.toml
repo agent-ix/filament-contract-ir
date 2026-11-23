@@ -55,7 +55,7 @@ filament-verification-contracts = { version = "0.2", git = "https://github.com/a
 # through, and the reader's canonical-bytes check; see
 # `checked_package/v2/encode.rs`. The `serde_json` feature is its `Encode` for
 # `serde_json::Value` and the non-recursive `drop_value`.
-quire-canonical = { version = "0.3", git = "https://github.com/agent-ix/quire-canonical", tag = "v0.3.1", features = ["serde_json"] }
+quire-canonical = { version = "0.3", git = "https://github.com/agent-ix/quire-canonical", tag = "v0.3.2", features = ["serde_json"] }
 serde = { version = "1.0.228", features = ["derive"] }
 # `float_roundtrip` makes the package document's parse of a shortest round-trip
 # text exact, so the canonical-bytes comparison of the value read holds

@@ -259,12 +259,12 @@ fn measure(
 }
 
 /// Cumulative read storage, at most this many times the package bytes
-/// (measured 29.59x at 4,026 nodes and 29.54x at 8,026 after IR-1584;
-/// 29.84x and 29.80x before).
-const CHARGED_CEILING: f64 = 31.0;
-/// Live heap peak during the read (measured 10.85x; the canonical writer's
-/// staged copies over the retained document).
-const PEAK_CEILING: f64 = 11.5;
+/// (measured 21.84x at 4,026 nodes and 21.77x at 8,026 with the in-order
+/// canonical comparison; 29.59x and 29.54x with the sorting writer).
+const CHARGED_CEILING: f64 = 23.0;
+/// Live heap peak during the read (measured 9.68x, reached in the graph
+/// stage; 10.85x when the sorting writer's copies sat over the document).
+const PEAK_CEILING: f64 = 10.2;
 /// Heap the admitted package retains (measured 8.47x; the shared document is
 /// 6.36x of it).
 const RETAINED_CEILING: f64 = 9.0;

@@ -460,10 +460,18 @@ read SHALL call it through its caller-reservation entry with the encoded-input
 provision equal to the byte limit, and SHALL charge each working-byte
 reservation it asks to the caller's budget ("Budget-charged strict read").
 The reader returns one arena `quire_canonical::Document`. The canonical-byte
-decision SHALL encode that document with `quire_canonical`'s writer, through its
+decision SHALL encode that document with `quire_canonical`'s in-order writer
+(`encode_in_order_with_reservation`, quire-canonical 0.3.2), through its
 caller-reservation entry, into a comparing sink that owns no heap and compares
-each written byte with the input; any difference, or written output shorter or
-longer than the input, refuses `noncanonical_wire` with no pointer. No second
+each written byte with the input as it is produced; any difference, or written
+output shorter or longer than the input, refuses `noncanonical_wire` with no
+pointer. The in-order writer neither sorts nor stages output: it refuses a
+member name that does not sort after the previous name of its object
+(`Error::MemberOrder`), and that refusal is `noncanonical_wire` with no
+pointer, because the reader keeps the input's member order and a document whose
+members are out of canonical order has a canonical encoding that differs from
+its bytes. The writer's only heap is its open-container stack and one
+previous-name buffer per open object, each charged before it grows. No second
 full-document byte buffer is allocated.
 
 The closed-schema decoder SHALL decode the typed V2 wire from that document.
@@ -824,6 +832,14 @@ decided differently as a result:
   to U+FFFF) refuses `noncanonical_wire`, and the same names in UTF-16 order
   pass the canonical-bytes check; the reverse holds today. Passing that check
   admits nothing by itself: the closed body grammar still decides the document.
+
+The in-order comparison decides every input as the sorting comparison did, and
+returns the same first refusal. Members out of order whose canonical form is
+also past the byte limit, with the misordered name before the point the limit
+is reached, were refused by the sorting writer's canonical-bytes limit and are
+now refused by its member-order check. Both are `noncanonical_wire` with no
+pointer, so the read's outcome does not change. Duplicate member names never
+reach the writer: the shared reader refuses them first (`duplicate_member`).
 
 The order of checks is: strict syntax and duplicate member; canonical
 bytes; closed-schema decode and header; body grammar; then graph shape, owner,
@@ -6283,7 +6299,7 @@ a charge for an owned refusal or `incomplete` diagnostic uses them with `form`
 | Stage (`PackageReadStage`) | `index` | `form` | Charged requests |
 | --- | --- | --- | --- |
 | `Envelope` | 0 | `"operation_catalog"`, then `"package_bytes"` | Every catalog reader, typed catalog decode, exact table and owned catalog reservation, followed by every reservation the shared reader asks while reading the package bytes: arena nodes, child ids and object members, decoded text, the open-container stack and its children, the duplicate-name sort buffer, and the pointer and lexeme of a duplicate-name or number-out-of-range refusal. |
-| `Canonical` | 0 | `"canonical_bytes"` | Every reservation the shared writer asks while encoding the package document into the comparing sink. |
+| `Canonical` | 0 | `"canonical_bytes"` | Every reservation the shared in-order writer asks while encoding the package document into the comparing sink (its open-container stack and previous-name buffers), and the comparison's walk stack. |
 | `WireDecode` | the position of the decoded value in the innermost wire array holding it, or 0 for a value in no array | the dotted wire path of that array, or of the member for a value in no array, without indices (`"semantic_graph.nodes"`, `"lock.dependency_selections"`, `"diagnostics.entries"`, `"name"`) | Each typed wire container (`Vec`, `Box<[T]>`), owned string (`Box<str>`, `String`), `Box<T>`, structural node-id path and `CheckedJson` handle, at the exact length the document holds. |
 | `WireChecks` | graph node index; 0 for the header | `"header"`, `"owner_schema"`, `"flat_wire"` or `"interval_bounds"` | The operand-slot resolution that precedes the owner-schema check (its worklist for each node body, at that node's index with the form `"owner_schema"`; a rewritten slot reuses its own key text and requests nothing), the header and owner-schema checks, `flat_wire::check` and interval-bound checks: the decoded kind table and each temporary they build. |
 | `NodeIndex` | graph node index | `"node_index"` | The shared structural keys (`Arc<CheckedNodeId>` per node), the uniqueness table and the index-segment cycle worklist. |
@@ -6354,7 +6370,13 @@ outcome as an unlimited budget: an equal admitted package and equal lowering,
 or a refusal or structural `incomplete` with equal code, cause, loci and
 `document_pointer`. Reading the same bytes and evidence again, under equal
 limits, charges equal work and read storage and stops at the same first unpaid
-charge.
+charge. The measured requirement is that of this reader: a reader change that
+removes allocations lowers it, so a budget that stopped an earlier reader at a
+read-storage charge can be enough for this one. Such a budget then returns the
+outcome an unlimited budget returns (admission, a refusal or a structural
+`incomplete`) instead of the earlier budget stop. When the canonical comparison
+stopped holding two document-sized byte buffers, the read-storage requirement
+of every package fell by about the canonical stage's former charge.
 
 ### The `CheckedJson` payload type
 
