@@ -623,10 +623,12 @@ fn canonical_verdict(
             | Error::Internal { .. }
             | Error::Serialize(_),
         ) => CanonicalVerdict::Noncanonical,
-        // `quire_canonical::Error` is `#[non_exhaustive]`; every variant of
-        // the pinned version is matched above, so this arm is reached only by
-        // a variant a later version adds, which must be classified here when
-        // the dependency moves.
+        // `quire_canonical::Error` is `#[non_exhaustive]`, and the read has no
+        // internal-fault outcome. Every variant of the pinned version is
+        // matched above, so this arm is reached only by a variant a later
+        // version adds, which must be classified here when the dependency
+        // moves; until then it is FR-038's "a document quire-canonical
+        // refuses to encode refuses noncanonical_wire".
         Err(_) => CanonicalVerdict::Noncanonical,
     }
 }
@@ -669,6 +671,52 @@ pub(super) fn share_document(
     Ok(std::sync::Arc::new(document))
 }
 
+/// The outcome of a refused read of the package bytes. A resource failure of
+/// the reader is the typed stop it is; only a fault of the bytes refuses.
+fn envelope_failure(
+    error: ReadError,
+    limits: CheckedPackageReadLimits,
+    length: usize,
+    budget: &mut NativeJoinBudget,
+) -> ValidationFailure {
+    match error {
+        ReadError::Limit(_) => refuse_bytes_exceeded(limits.bytes, length),
+        ReadError::DuplicateName { pointer, .. } => {
+            let mut meter = super::WorkMeter::over(budget);
+            super::stage_storage::refuse_held_pointer(
+                &mut meter,
+                &super::stage_storage::Site::new(
+                    PackageReadStage::Envelope,
+                    0,
+                    "package_bytes",
+                    super::stage_storage::Path::root(),
+                ),
+                CheckedPackageRefusalCode::DuplicateMember,
+                pointer,
+            )
+        }
+        ReadError::ReservationDenied { .. } => denial(budget),
+        // The allocator refused a growth the budget had admitted: a property
+        // of the host, never of the package (IR-1590).
+        ReadError::Allocation { requested } => allocation_stop(requested),
+        ReadError::Malformed { .. } | ReadError::NumberOutOfRange { .. } => prepaid_bytes_refusal(
+            budget,
+            PackageReadStage::Envelope,
+            CheckedPackageRefusalCode::MalformedWire,
+        ),
+        // `ReadError` is `#[non_exhaustive]`, and the read has no
+        // internal-fault outcome. Every variant of the pinned version is
+        // matched above, so this arm is reached only by a variant a later
+        // version adds, which must be classified here when the dependency
+        // moves; until then it is a byte-stream fault, `malformed_wire`.
+        _ => prepaid_bytes_refusal(
+            budget,
+            PackageReadStage::Envelope,
+            CheckedPackageRefusalCode::MalformedWire,
+        ),
+    }
+}
+
 pub(in crate::checked_package) fn read_envelope(
     bytes: &[u8],
     limits: CheckedPackageReadLimits,
@@ -684,41 +732,7 @@ pub(in crate::checked_package) fn read_envelope(
         &mut ReadStorageReservation(budget),
     ) {
         Ok(document) => document,
-        Err(ReadError::Limit(_)) => return Err(refuse_bytes_exceeded(limits.bytes, bytes.len())),
-        Err(ReadError::DuplicateName { pointer, .. }) => {
-            let mut meter = super::WorkMeter::over(budget);
-            return Err(super::stage_storage::refuse_held_pointer(
-                &mut meter,
-                &super::stage_storage::Site::new(
-                    PackageReadStage::Envelope,
-                    0,
-                    "package_bytes",
-                    super::stage_storage::Path::root(),
-                ),
-                CheckedPackageRefusalCode::DuplicateMember,
-                pointer,
-            ));
-        }
-        Err(ReadError::ReservationDenied { .. }) => return Err(denial(budget)),
-        Err(ReadError::Allocation { requested }) => return Err(allocation_stop(requested)),
-        Err(ReadError::Malformed { .. } | ReadError::NumberOutOfRange { .. }) => {
-            return Err(prepaid_bytes_refusal(
-                budget,
-                PackageReadStage::Envelope,
-                CheckedPackageRefusalCode::MalformedWire,
-            ));
-        }
-        // `ReadError` is `#[non_exhaustive]`; every variant of the pinned
-        // version is matched above, so this arm is reached only by a variant a
-        // later version adds, which must be classified here when the
-        // dependency moves.
-        Err(_) => {
-            return Err(prepaid_bytes_refusal(
-                budget,
-                PackageReadStage::Envelope,
-                CheckedPackageRefusalCode::MalformedWire,
-            ));
-        }
+        Err(error) => return Err(envelope_failure(error, limits, bytes.len(), budget)),
     };
     // The reservation-backed reader has already checked syntax and duplicate
     // members. Walk its arena with fixed stack storage to locate the cap value.
@@ -995,6 +1009,40 @@ mod canonical_verdict_tests {
             }
         );
         assert_eq!((stop.limit, stop.consumed, stop.path), (1_000, 4_196, None));
+    }
+
+    /// IR-1590 changes this outcome: the shared reader's allocation failure
+    /// was `malformed_wire`; it is now the typed read-storage stop, and the
+    /// byte-stream faults still refuse `malformed_wire`.
+    #[trace("TC-472", "FR-038-AC-511")]
+    #[test]
+    fn an_envelope_allocation_failure_is_a_budget_stop_not_malformed_wire() {
+        let limits = CheckedPackageReadLimits::bounded();
+        let mut budget = NativeJoinBudget::new(u64::MAX, 0).with_read_storage_limit(u64::MAX);
+        let stop = envelope_failure(
+            ReadError::Allocation { requested: 512 },
+            limits,
+            16,
+            &mut budget,
+        );
+        assert_eq!(stop, allocation_stop(512));
+        let outcome = budgeted_outcome(stop, &mut budget);
+        assert!(
+            matches!(
+                &outcome,
+                CheckedPackageV2BudgetedReadResult::BudgetIncomplete(stop)
+                    if stop.denied.resource == PackageReadResource::ReadStorage
+                        && stop.denied.amount == 512
+            ),
+            "{outcome:?}"
+        );
+        let malformed = quire_canonical::read(b"{", 16).expect_err("malformed");
+        let refused = envelope_failure(malformed, limits, 1, &mut budget);
+        assert!(
+            matches!(&refused, ValidationFailure::Refused(refusal)
+                if refusal.code == CheckedPackageRefusalCode::MalformedWire),
+            "{refused:?}"
+        );
     }
 }
 
