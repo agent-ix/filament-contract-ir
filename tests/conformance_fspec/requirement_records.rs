@@ -497,6 +497,13 @@ fn boolean_value_guard_package(spec: &Value) -> Value {
 }
 
 fn large_requirement_record_package(record_count: usize) -> Value {
+    assert!(
+        record_count >= 2,
+        "the chain fixture needs both branch records"
+    );
+    let generated_chain_count = record_count
+        .checked_sub(1)
+        .expect("the chain fixture includes one false-branch record");
     let proposal = super::proposal_dir_of(&super::fixtures_dir());
     let vectors = super::read_json(&proposal.join("requirement-record-vectors.json"))
         .expect("published FR-825 vectors");
@@ -558,11 +565,14 @@ fn large_requirement_record_package(record_count: usize) -> Value {
         })
         .collect::<Vec<_>>();
     let application_template = nodes[previous_position].clone();
-    nodes[previous_position]["occurrences"] = json!([{"role":"expression","ordinal":0}]);
+    nodes[previous_position]["occurrences"] = json!([
+        {"role":"expression","ordinal":0},
+        {"role":"expression","ordinal":1}
+    ]);
 
-    let mut application_positions = Vec::with_capacity(record_count);
-    let mut application_ids = Vec::with_capacity(record_count);
-    for generated_index in 0..record_count {
+    let mut application_positions = Vec::with_capacity(generated_chain_count);
+    let mut application_ids = Vec::with_capacity(generated_chain_count);
+    for generated_index in 0..generated_chain_count {
         let application_position = nodes.len();
         let application_id = json!({
             "package":package_name,
@@ -591,14 +601,12 @@ fn large_requirement_record_package(record_count: usize) -> Value {
         conditional["body"]["arguments"][1] =
             json!({"term":"reference","target":final_application_id});
         conditional["body"]["arguments"][2] =
-            json!({"term":"reference","target":final_application_id});
-        for dependency in conditional["dependencies"]
+            json!({"term":"reference","target":original_application_id.clone()});
+        let dependencies = conditional["dependencies"]
             .as_array_mut()
-            .expect("conditional dependencies")
-        {
-            if *dependency == original_application_id {
-                *dependency = final_application_id.clone();
-            }
+            .expect("conditional dependencies");
+        if !dependencies.contains(&final_application_id) {
+            dependencies.push(final_application_id.clone());
         }
         sort_graph_ids(
             conditional["dependencies"]
@@ -611,6 +619,13 @@ fn large_requirement_record_package(record_count: usize) -> Value {
         &binding_value(&record_template, "path_condition")["members"][0]["value"];
     let terminal_frame_id = canonical_nonnegative_integer(terminal_frame_value)
         .expect("terminal frame id is a canonical nonnegative integer");
+    let false_frame_id = package["path_condition_frames"]
+        .as_array()
+        .expect("path-condition frames")
+        .iter()
+        .position(|frame| frame["holds"] == false)
+        .and_then(|position| u64::try_from(position).ok())
+        .expect("false-branch frame id");
     let mut requirement_rows = Vec::with_capacity(record_count);
     for (generated_index, (&application_position, application_id)) in application_positions
         .iter()
@@ -653,12 +668,57 @@ fn large_requirement_record_package(record_count: usize) -> Value {
             "record":record_id
         }));
     }
+    // The package carries both branch frames. Keep a distinct second
+    // occurrence on the false branch so its record uses the false frame and
+    // the admitted frame table has no orphan entry.
+    let false_record_id = {
+        let mut record = record_template.clone();
+        let record_id = json!({
+            "package":package_name,
+            "path":[
+                "claim", "value_validity", {"node":owner_position}, {"node":previous_position}, "1",
+                "bound", {"node":bound_position}, "conversion", "path_condition",
+                false_frame_id.to_string(), "roots",
+                {"node":extent_root_positions[0]}, {"node":extent_root_positions[1]}, "objects"
+            ],
+            "ordinal":0
+        });
+        record["node_id"] = record_id.clone();
+        record["occurrences"] = json!([{"role":"generated","ordinal":generated_chain_count}]);
+        binding_value_mut(&mut record, "application")["target"] = original_application_id.clone();
+        binding_value_mut(&mut record, "occurrence")["value"] = json!(1);
+        binding_value_mut(&mut record, "path_condition")["members"][0]["value"] =
+            json!(false_frame_id);
+        nodes.push(record);
+        record_id
+    };
+    requirement_rows.push(json!({
+        "claim":{"node":original_application_id,"occurrence":{"role":"expression","ordinal":1}},
+        "kind":"value-validity",
+        "extent":{"classification":"bounded"},
+        "record":false_record_id
+    }));
     // Fixed-width numeric path segments make generated claim keys increase in
     // structural order. The generated path's first segment, "expression",
     // sorts before the seed's single "expression/integer_add" segment, so
     // appending rows in generation order is canonical.
     package["requirement_items"] = Value::Array(requirement_rows);
-    super::fixture_support::rebuild_source_map(&mut package);
+    super::fixture_support::rebuild_complete_source_map(&mut package);
+    assert!(
+        package["source_map"]
+            .as_array()
+            .expect("complete source map")
+            .iter()
+            .any(|entry| {
+                entry["node_id"] == original_application_id
+                    && entry["role"] == "expression"
+                    && entry["ordinal"] == 1
+                    && entry["regions"]
+                        .as_array()
+                        .is_some_and(|regions| !regions.is_empty())
+            }),
+        "the false-branch claim occurrence has a source region"
+    );
     package
 }
 
