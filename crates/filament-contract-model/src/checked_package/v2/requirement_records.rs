@@ -2217,12 +2217,12 @@ fn derive_package_path_conditions(
     Ok(paths)
 }
 
-fn walk_owner_expression(
+fn walk_owner_expression<'a>(
     root: usize,
     owner: usize,
     derive: bool,
     nodes: &[RawSemanticNodeV2],
-    terms: &[CheckedTerm],
+    terms: &'a [CheckedTerm],
     index: &GraphIndex<'_>,
     frame_index: &[PathConditionFrameIndexEntry],
     record_position: usize,
@@ -2231,7 +2231,7 @@ fn walk_owner_expression(
     paths: &mut Vec<DerivedPath>,
     frame_seen: &mut [u8],
     frame_order: &mut Vec<usize>,
-    pending: &mut Vec<OwnerWalkTask<'_>>,
+    pending: &mut Vec<OwnerWalkTask<'a>>,
     walk_site: &Site<'_>,
     meter: &mut WorkMeter,
 ) -> Result<(), ValidationFailure> {
