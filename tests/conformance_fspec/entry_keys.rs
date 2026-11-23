@@ -248,7 +248,20 @@ fn entry_keys_assigned_label_is_resolved_without_recomputation() {
         &serde_json::from_value::<CheckedNodeId>(assigned).unwrap()
     );
     assert_ne!(before.structural_key_at(n), after.structural_key_at(n));
-    assert_eq!(before.graph().nodes[n].body, after.graph().nodes[n].body);
+    assert_eq!(
+        before
+            .graph()
+            .node(n)
+            .expect("graph position exists")
+            .to_owned_wire()
+            .body,
+        after
+            .graph()
+            .node(n)
+            .expect("graph position exists")
+            .to_owned_wire()
+            .body
+    );
 }
 
 #[trace("TC-048", "FR-038-AC-434")]

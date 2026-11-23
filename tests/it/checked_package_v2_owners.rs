@@ -144,7 +144,13 @@ fn selected_source_tuple_requires_complete_ordered_position_rows() {
     let CheckedPackageV2ReadResult::Admitted(package) = read(&wire) else {
         panic!("source tuple fixture admits")
     };
-    let structural_node = package.graph().nodes.last().unwrap().node_id.clone();
+    let structural_node = package
+        .graph()
+        .nodes()
+        .last()
+        .unwrap()
+        .node_id()
+        .into_owned();
     let source = &package.lock().sources[0];
     let key = NodeKey::new(
         "fsl-tuple-stage",
@@ -373,16 +379,15 @@ fn selected_source_record_requires_complete_ordered_producer_rows() {
     };
     let record = package
         .graph()
-        .nodes
+        .nodes()
         .last()
         .expect("record")
-        .node_id
-        .clone();
+        .node_id()
+        .into_owned();
     assert!(package
         .graph()
-        .nodes
-        .iter()
-        .any(|node| node.semantic_form.as_ref() == "enum"));
+        .nodes()
+        .any(|node| node.semantic_form().as_ref() == "enum"));
     let source = &package.lock().sources[0];
     let key = NodeKey::new(
         "fsl-record-stage",
@@ -398,9 +403,9 @@ fn selected_source_record_requires_complete_ordered_producer_rows() {
     .map(|(name, form, value_type)| {
         let type_node = package
             .graph()
-            .nodes
-            .iter()
-            .find(|node| node.semantic_form.as_ref() == form)
+            .nodes()
+            .find(|node| node.semantic_form().as_ref() == form)
+            .map(|node| node.to_owned_wire())
             .expect("field type")
             .node_id
             .clone();
@@ -2665,9 +2670,9 @@ fn native_source_family_fixture_with_authority(
     let named = |form: &str| {
         package
             .graph()
-            .nodes
-            .iter()
-            .find(|node| node.semantic_form.as_ref() == form)
+            .nodes()
+            .find(|node| node.semantic_form().as_ref() == form)
+            .map(|node| node.to_owned_wire())
             .expect("named node")
             .node_id
             .clone()
@@ -2833,25 +2838,28 @@ fn native_source_family_fixture_with_authority(
     let units: Vec<_> = if include_model {
         package
             .graph()
-            .nodes
-            .iter()
-            .filter(|node| node.semantic_form.as_ref() == "unit")
+            .nodes()
+            .filter(|node| node.semantic_form().as_ref() == "unit")
             .map(|node| {
                 let filament_contract_model::CheckedNodeOwner::Source {
                     authority,
                     identity,
-                } = node.owner.as_ref().unwrap()
+                } = node.owner().as_ref().unwrap()
                 else {
                     panic!("source unit");
                 };
                 filament_contract_model::SelectedSourceUnitRow::new(
-                    node.node_id.clone(),
+                    node.node_id().into_owned(),
                     authority.clone(),
                     identity.clone(),
-                    node.declaration.as_ref().unwrap().qualified_name.clone(),
+                    node.declaration().as_ref().unwrap().qualified_name.clone(),
                     filament_exact::UnitId::Declared(key(&format!(
                         "private-unit-{}",
-                        node.declaration.as_ref().unwrap().qualified_name.join("/")
+                        node.declaration()
+                            .as_ref()
+                            .unwrap()
+                            .qualified_name
+                            .join("/")
                     ))),
                 )
             })

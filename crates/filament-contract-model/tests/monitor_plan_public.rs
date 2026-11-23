@@ -293,8 +293,7 @@ fn default_feature_consumer_reads_an_actual_admitted_monitor_plan() {
     };
     let integer = package
         .graph()
-        .nodes
-        .iter()
+        .nodes()
         .find(|node| node.semantic_form.as_ref() == "integer")
         .unwrap();
     assert_eq!(target, &integer.node_id);
@@ -324,7 +323,7 @@ fn default_feature_consumer_reads_an_actual_admitted_monitor_plan() {
     let bytes = filament_contract_model::encode_checked_package_v2(
         package.name(),
         package.lock(),
-        package.graph(),
+        &package.graph().to_owned_wire(),
         filament_contract_model::CheckedPackageSourceCorrespondenceRef {
             source_map: package.source_map(),
             refinement_step_rows: package.refinement_step_rows(),

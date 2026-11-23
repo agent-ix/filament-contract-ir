@@ -6,6 +6,7 @@
 //! byte length.
 
 use super::checked_json::CheckedJson;
+use super::read_charge::{ReadStorage, Site};
 #[cfg(test)]
 use super::BodyTerm;
 use super::{
@@ -20,6 +21,7 @@ use super::{
     RefinementAssume, RefinementEnsure, RefinementHistory, RefinementKey, RefinementObject,
     RefinementPopulation, RefinementStep, RefinementStepArgument, RefinementStepTarget,
 };
+use crate::checked_package::common::ValidationFailure;
 use crate::checked_package::shared::{CheckedArtifactRef, CheckedNodeId, CheckedNodePathSegment};
 use crate::identity::ExecutionPoint;
 use filament_exact::Integer;
@@ -257,6 +259,20 @@ fn projected_members_equal(left: MemberProjection<'_>, right: MemberProjection<'
 }
 
 impl CheckedApplicationOperationRecord {
+    pub(super) fn detach_json_payloads(
+        &mut self,
+        sink: &mut dyn ReadStorage,
+        site: Site,
+    ) -> Result<(), ValidationFailure> {
+        if let Some(member) = &mut self.member {
+            member.detach_from_source(sink, site)?;
+        }
+        if let Some(malformed) = &mut self.malformed {
+            malformed.detach_from_source(sink, site)?;
+        }
+        Ok(())
+    }
+
     fn projected_member(&self) -> Option<MemberProjection<'_>> {
         self.member.as_ref().map(|member| MemberProjection {
             node: member.node(),
@@ -1539,6 +1555,14 @@ fn decode_optional_decimal_integer<'de, D: Deserializer<'de>>(
 }
 
 impl CheckedApplicationOperation {
+    pub(super) fn detach_json_payloads(
+        &mut self,
+        sink: &mut dyn ReadStorage,
+        site: Site,
+    ) -> Result<(), ValidationFailure> {
+        self.record.detach_json_payloads(sink, site)
+    }
+
     /// Construct the catalogued state-clause operation without a JSON payload.
     pub fn state_clause(clause: StateClauseKind, execution_point: Option<ExecutionPoint>) -> Self {
         #[derive(Serialize)]
@@ -2677,6 +2701,40 @@ pub(super) enum SelectedTermTraversal<'a> {
 }
 
 impl CheckedTerm {
+    pub(super) fn detach_json_payloads(
+        &mut self,
+        sink: &mut dyn ReadStorage,
+        site: Site,
+    ) -> Result<(), ValidationFailure> {
+        let mut pending = vec![self];
+        while let Some(term) = pending.pop() {
+            match term {
+                Self::Literal { value, .. } => value.detach_from_source(sink, site)?,
+                Self::Application {
+                    operation,
+                    arguments,
+                    ..
+                } => {
+                    operation.detach_json_payloads(sink, site)?;
+                    pending.extend(arguments);
+                }
+                Self::Aggregate { members } => pending.extend(members),
+                Self::Binding { value, .. } => pending.push(value),
+                Self::ExtensionForm { clauses, .. } => pending.extend(clauses),
+                Self::Reference { .. }
+                | Self::DependencyReference { .. }
+                | Self::Frame { .. }
+                | Self::AbstractionRelation { .. }
+                | Self::ImplementationGuarantee { .. }
+                | Self::ComponentComposition { .. }
+                | Self::Refinement { .. }
+                | Self::NominalBody(_)
+                | Self::OperationAnchorBody(_) => {}
+            }
+        }
+        Ok(())
+    }
+
     /// Read a scalar literal without inspecting its JSON wire payload.
     /// Returns `None` for another term or a directly decoded malformed literal.
     pub fn literal_read(&self) -> Option<CheckedLiteralRead<'_>> {

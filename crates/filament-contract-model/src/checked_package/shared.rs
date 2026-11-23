@@ -7,6 +7,83 @@
 
 use quire_canonical::{Encode, Error as CanonicalError, FixedShape, Sink, Writer};
 use serde::{Deserialize, Serialize};
+use std::cell::RefCell;
+use std::collections::HashSet;
+use std::sync::Arc;
+
+thread_local! {
+    static CHECKED_PACKAGE_STRINGS: RefCell<Option<HashSet<Arc<str>>>> = const { RefCell::new(None) };
+}
+
+/// Scopes wire-string sharing to one package read. The intern table is
+/// discarded at the end of the read while the graph IDs retain their Arcs.
+pub(crate) struct CheckedPackageStringInterner {
+    clear_on_drop: bool,
+}
+
+impl CheckedPackageStringInterner {
+    pub(crate) fn scope() -> Self {
+        let clear_on_drop = CHECKED_PACKAGE_STRINGS.with(|strings| {
+            let mut strings = strings.borrow_mut();
+            if strings.is_some() {
+                false
+            } else {
+                *strings = Some(HashSet::new());
+                true
+            }
+        });
+        Self { clear_on_drop }
+    }
+}
+
+impl Drop for CheckedPackageStringInterner {
+    fn drop(&mut self) {
+        if self.clear_on_drop {
+            CHECKED_PACKAGE_STRINGS.with(|strings| *strings.borrow_mut() = None);
+        }
+    }
+}
+
+/// The bytes an `Arc<str>` holds beyond its text: the strong and weak counts.
+/// A charge for a shared string is its text plus this.
+pub(crate) const ARC_STR_HEADER: usize = 2 * std::mem::size_of::<usize>();
+
+pub(crate) fn intern_checked_package_string(value: &str) -> Arc<str> {
+    CHECKED_PACKAGE_STRINGS.with(|strings| {
+        let mut strings = strings.borrow_mut();
+        let Some(strings) = strings.as_mut() else {
+            return Arc::from(value);
+        };
+        if let Some(shared) = strings.get(value) {
+            return Arc::clone(shared);
+        }
+        let shared: Arc<str> = Arc::from(value);
+        strings.insert(Arc::clone(&shared));
+        shared
+    })
+}
+
+fn intern_checked_package_string_owned(value: String) -> Arc<str> {
+    CHECKED_PACKAGE_STRINGS.with(|strings| {
+        let mut strings = strings.borrow_mut();
+        let Some(strings) = strings.as_mut() else {
+            return Arc::from(value);
+        };
+        if let Some(shared) = strings.get(value.as_str()) {
+            return Arc::clone(shared);
+        }
+        let shared: Arc<str> = Arc::from(value);
+        strings.insert(Arc::clone(&shared));
+        shared
+    })
+}
+
+fn deserialize_interned_arc_str<'de, D>(deserializer: D) -> Result<Arc<str>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    String::deserialize(deserializer).map(intern_checked_package_string_owned)
+}
 
 /// Caller-supplied, exact ceilings for a checked-package read.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -631,7 +708,7 @@ pub struct CheckedArtifactLocator {
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
 pub enum CheckedNodePathSegment {
     /// An authored or derived path spelling.
-    Name(Box<str>),
+    Name(std::sync::Arc<str>),
     /// An operand node's structural identity.
     Node(std::sync::Arc<CheckedNodeId>),
     /// A document-held graph index on the V2 wire, before key resolution.
@@ -645,7 +722,7 @@ pub enum CheckedNodePathSegment {
     /// only as a row entry, never as a path segment.
     Dependency {
         /// The selected dependency whose graph `node` indexes.
-        package: Box<str>,
+        package: std::sync::Arc<str>,
         /// The position in that dependency's graph.
         node: u64,
     },
@@ -697,7 +774,8 @@ impl<'de> Deserialize<'de> for CheckedOperandEntry {
 #[serde(deny_unknown_fields)]
 pub struct CheckedDependencyOperand {
     /// The selected dependency's identity.
-    pub package: Box<str>,
+    #[serde(deserialize_with = "deserialize_interned_arc_str")]
+    pub package: std::sync::Arc<str>,
     /// The position in that dependency's graph.
     pub node: u64,
 }
@@ -719,10 +797,14 @@ impl<'de> Deserialize<'de> for CheckedNodePathSegment {
                 f.write_str("a flat path segment")
             }
             fn visit_str<E: serde::de::Error>(self, value: &str) -> Result<Self::Value, E> {
-                Ok(CheckedNodePathSegment::Name(value.into()))
+                Ok(CheckedNodePathSegment::Name(intern_checked_package_string(
+                    value,
+                )))
             }
             fn visit_string<E: serde::de::Error>(self, value: String) -> Result<Self::Value, E> {
-                Ok(CheckedNodePathSegment::Name(value.into()))
+                Ok(CheckedNodePathSegment::Name(
+                    intern_checked_package_string_owned(value),
+                ))
             }
             fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
                 let first = map
@@ -730,7 +812,8 @@ impl<'de> Deserialize<'de> for CheckedNodePathSegment {
                     .ok_or_else(|| serde::de::Error::missing_field("node"))?;
                 let (node, package, operand) = match first {
                     Field::Package => {
-                        let package = map.next_value::<Box<str>>()?;
+                        let package =
+                            intern_checked_package_string_owned(map.next_value::<String>()?);
                         if map.next_key::<Field>()? != Some(Field::Node) {
                             return Err(serde::de::Error::missing_field("node"));
                         }
@@ -740,9 +823,9 @@ impl<'de> Deserialize<'de> for CheckedNodePathSegment {
                         let node = map.next_value::<u64>()?;
                         let next = map.next_key::<Field>()?;
                         let package = match (first, next) {
-                            (Field::Node, Some(Field::Package)) => {
-                                Some(map.next_value::<Box<str>>()?)
-                            }
+                            (Field::Node, Some(Field::Package)) => Some(
+                                intern_checked_package_string_owned(map.next_value::<String>()?),
+                            ),
                             (_, None) => None,
                             _ => {
                                 return Err(serde::de::Error::custom(
@@ -805,7 +888,7 @@ impl Serialize for CheckedNodePathSegment {
 #[serde(deny_unknown_fields)]
 pub struct CheckedNodeId {
     /// The name of the owning package.
-    pub package: Box<str>,
+    pub package: std::sync::Arc<str>,
     /// Nonempty declared or derived path.
     pub path: Vec<CheckedNodePathSegment>,
     /// Position among nodes sharing the package and path.
@@ -910,7 +993,8 @@ impl<'de> Deserialize<'de> for CheckedNodeId {
         #[derive(Deserialize)]
         #[serde(deny_unknown_fields)]
         struct WireNodeId {
-            package: Box<str>,
+            #[serde(deserialize_with = "deserialize_interned_arc_str")]
+            package: std::sync::Arc<str>,
             path: Vec<CheckedNodePathSegment>,
             ordinal: u64,
         }
@@ -1550,6 +1634,51 @@ pub(crate) mod checked_node_comparisons {
 
     pub(crate) fn count() -> u64 {
         COUNT.with(Cell::get)
+    }
+}
+
+#[cfg(test)]
+mod scoped_node_id_string_interner_tests {
+    use super::{CheckedNodeId, CheckedNodePathSegment, CheckedOperandEntry};
+    use std::sync::Arc;
+
+    #[test]
+    fn repeated_wire_spellings_share_arcs_only_inside_the_read_scope() {
+        let first: CheckedNodeId = serde_json::from_value(serde_json::json!({
+            "package":"shared", "path":["shared"], "ordinal":0
+        }))
+        .expect("first flat node ID");
+        let (second, dependency) = {
+            let _scope = super::CheckedPackageStringInterner::scope();
+            let first: CheckedNodeId = serde_json::from_value(serde_json::json!({
+                "package":"shared", "path":["shared"], "ordinal":0
+            }))
+            .expect("first scoped node ID");
+            let second: CheckedNodeId = serde_json::from_value(serde_json::json!({
+                "package":"shared", "path":["shared"], "ordinal":1
+            }))
+            .expect("second scoped node ID");
+            let dependency: CheckedOperandEntry = serde_json::from_value(serde_json::json!({
+                "package":"shared", "node":0
+            }))
+            .expect("dependency operand");
+            let CheckedNodePathSegment::Name(name) = &first.path[0] else {
+                panic!("path spelling remains a name");
+            };
+            assert!(Arc::ptr_eq(&first.package, name));
+            let CheckedOperandEntry::Dependency(dependency_ref) = &dependency else {
+                panic!("dependency shape remains classified as dependency");
+            };
+            assert!(Arc::ptr_eq(&first.package, &second.package));
+            assert!(Arc::ptr_eq(name, &dependency_ref.package));
+            (second, dependency)
+        };
+
+        assert!(!Arc::ptr_eq(&first.package, &second.package));
+        let CheckedOperandEntry::Dependency(dependency_ref) = dependency else {
+            panic!("dependency shape remains classified as dependency");
+        };
+        assert!(Arc::ptr_eq(&second.package, &dependency_ref.package));
     }
 }
 

@@ -1,14 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! `CheckedJson`: an owned handle to one value of a shared
-//! `quire_canonical::Document`.
+//! `CheckedJson`: an owned handle to one value of a
+//! `quire_canonical::Document`, detached to its own subtree bytes after
+//! package admission.
 //!
 //! The strict read builds every handle from the one package document it
 //! retains, so a literal's value and a diagnostic's details are not copied
 //! into a tree. Implements: FR-038 "The `CheckedJson` payload type".
 
+use super::read_charge::{ReadStorage, Site};
+use crate::checked_package::common::ValidationFailure;
 use quire_canonical::{
-    Document, Encode, Error as CanonicalError, Limits, Node, NodeId, NodeRef, ReadError, Sink,
-    Writer,
+    Document, Encode, Error as CanonicalError, Items, Limits, Members, Node, NodeId, NodeRef,
+    ReadError, Sink, Writer,
 };
 use serde::ser::{SerializeMap, SerializeSeq};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -20,9 +23,12 @@ use std::sync::Arc;
 /// The name under which the read's document deserializer hands out a handle
 /// instead of a copied value.
 pub(super) const CHECKED_JSON_TOKEN: &str = "$quire::CheckedJson";
+pub(super) const ROOT_BODY_TOKEN: &str = "$quire::RootBodyHandle";
 
 thread_local! {
     static OFFERED: std::cell::RefCell<Option<CheckedJson>> =
+        const { std::cell::RefCell::new(None) };
+    static OFFERED_BODY: std::cell::RefCell<Option<RootBodyHandle>> =
         const { std::cell::RefCell::new(None) };
 }
 
@@ -52,26 +58,222 @@ impl fmt::Display for CheckedJsonError {
 
 impl std::error::Error for CheckedJsonError {}
 
-/// A cheap-to-clone handle to one JSON value of a shared document.
+/// A cheap-to-clone handle to one JSON value.
 ///
 /// Two handles are equal when their values have equal canonical encodings,
-/// whatever document or node they name.
+/// whatever document or node they name. Admission-time handles borrow the
+/// package document; retained handles are detached to subtree bytes and parse
+/// a small document only when an accessor needs one.
 #[derive(Clone)]
 pub struct CheckedJson {
-    document: Arc<Document>,
+    storage: Arc<JsonStorage>,
     node: NodeId,
+}
+
+enum JsonStorage {
+    Shared(Arc<Document>),
+    Compact {
+        bytes: Box<[u8]>,
+        document: std::sync::OnceLock<Arc<Document>>,
+    },
+}
+
+/// Writes the value's JSON text: each number as it was written, each string and
+/// name re-escaped. The walk keeps its own work stack, which `reserve` is asked
+/// for before every growth (a scalar needs none), so the read can charge it.
+/// Called once to count and once to write.
+fn write_lexical_subtree<W: std::io::Write>(
+    root: NodeRef<'_>,
+    out: &mut W,
+    reserve: &mut dyn FnMut(usize) -> Result<(), ()>,
+) -> Result<(), ()> {
+    enum Task<'a> {
+        Value(NodeRef<'a>),
+        Items(Items<'a>, bool),
+        Members(Members<'a>, bool),
+    }
+    fn put<'a>(
+        stack: &mut Vec<Task<'a>>,
+        task: Task<'a>,
+        reserve: &mut dyn FnMut(usize) -> Result<(), ()>,
+    ) -> Result<(), ()> {
+        if stack.len() == stack.capacity() {
+            let target = stack.capacity().saturating_mul(2).max(4);
+            reserve(target.saturating_mul(std::mem::size_of::<Task<'a>>()))?;
+            stack
+                .try_reserve_exact(target - stack.len())
+                .map_err(|_| ())?;
+        }
+        stack.push(task);
+        Ok(())
+    }
+    let io = |result: std::io::Result<()>| result.map_err(|_| ());
+    let json = |result: serde_json::Result<()>| result.map_err(|_| ());
+    let mut stack: Vec<Task<'_>> = Vec::new();
+    put(&mut stack, Task::Value(root), reserve)?;
+    while let Some(task) = stack.pop() {
+        match task {
+            Task::Value(node) => match node.node() {
+                Node::Null => io(out.write_all(b"null"))?,
+                Node::Bool(false) => io(out.write_all(b"false"))?,
+                Node::Bool(true) => io(out.write_all(b"true"))?,
+                Node::Number(number) => io(out.write_all(number.text().as_bytes()))?,
+                Node::String(text) => json(serde_json::to_writer(&mut *out, text))?,
+                Node::Array(items) => {
+                    io(out.write_all(b"["))?;
+                    put(&mut stack, Task::Items(items, true), reserve)?;
+                }
+                Node::Object(members) => {
+                    io(out.write_all(b"{"))?;
+                    put(&mut stack, Task::Members(members, true), reserve)?;
+                }
+            },
+            Task::Items(mut items, first) => match items.next() {
+                Some(item) => {
+                    if !first {
+                        io(out.write_all(b","))?;
+                    }
+                    put(&mut stack, Task::Items(items, false), reserve)?;
+                    put(&mut stack, Task::Value(item), reserve)?;
+                }
+                None => io(out.write_all(b"]"))?,
+            },
+            Task::Members(mut members, first) => match members.next() {
+                Some((name, value)) => {
+                    if !first {
+                        io(out.write_all(b","))?;
+                    }
+                    json(serde_json::to_writer(&mut *out, name))?;
+                    io(out.write_all(b":"))?;
+                    put(&mut stack, Task::Members(members, false), reserve)?;
+                    put(&mut stack, Task::Value(value), reserve)?;
+                }
+                None => io(out.write_all(b"}"))?,
+            },
+        }
+    }
+    Ok(())
+}
+
+/// An outer semantic-node body retained only while admission validators read
+/// directly from the package document.
+pub(super) struct RootBodyHandle(CheckedJson);
+
+impl RootBodyHandle {
+    pub(super) fn into_checked_json(self) -> CheckedJson {
+        self.0
+    }
+
+    fn offer(handle: Self) {
+        OFFERED_BODY.with(|slot| *slot.borrow_mut() = Some(handle));
+    }
+}
+
+impl<'de> Deserialize<'de> for RootBodyHandle {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct Body;
+        impl<'de> serde::de::Visitor<'de> for Body {
+            type Value = RootBodyHandle;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.write_str("a root semantic-node body handle")
+            }
+
+            fn visit_unit<E: serde::de::Error>(self) -> Result<Self::Value, E> {
+                OFFERED_BODY
+                    .with(|slot| slot.borrow_mut().take())
+                    .ok_or_else(|| E::custom("no root body handle was offered"))
+            }
+        }
+        deserializer.deserialize_newtype_struct(ROOT_BODY_TOKEN, Body)
+    }
 }
 
 impl CheckedJson {
     /// The document this handle names a value of.
     pub(in crate::checked_package) fn document(&self) -> &Arc<Document> {
-        &self.document
+        match self.storage.as_ref() {
+            JsonStorage::Shared(document) => document,
+            JsonStorage::Compact { bytes, document } => document.get_or_init(|| {
+                // `Compact` storage is built only by `detach_from_source`, from the
+                // lexical text of a node of a document the reader accepted (the
+                // same numbers, strings re-escaped, no deeper), so it reads back;
+                // no package content reaches this failure.
+                let read = quire_canonical::read(bytes, u64::MAX);
+                debug_assert!(
+                    read.is_ok(),
+                    "compact JSON bytes are a subtree of an accepted document"
+                );
+                Arc::new(read.expect("compact JSON bytes are a subtree of an accepted document"))
+            }),
+        }
     }
 
-    /// The handle for `node` of `document`. Used by the read, which builds
-    /// each handle from the package document it retains.
+    /// A shared-document handle, used by the read while validators still need
+    /// to borrow the package document.
     pub(in crate::checked_package) fn new(document: Arc<Document>, node: NodeId) -> Self {
-        Self { document, node }
+        Self {
+            storage: Arc::new(JsonStorage::Shared(document)),
+            node,
+        }
+    }
+
+    /// Replaces the borrow of the package document with a copy of this value's
+    /// own bytes, so the document can be dropped.
+    ///
+    /// The copy, and the handle that holds it, are charged to `sink` before they
+    /// are built. The handles that reach this call name disjoint subtrees of the
+    /// one package document (a literal's value, an operation record's member, a
+    /// malformed record, a diagnostic detail; none contains another), so the
+    /// copies sum to at most the document's bytes. Cloned handles share one copy.
+    pub(super) fn detach_from_source(
+        &mut self,
+        sink: &mut dyn ReadStorage,
+        site: Site,
+    ) -> Result<(), ValidationFailure> {
+        let JsonStorage::Shared(document) = self.storage.as_ref() else {
+            return Ok(());
+        };
+        let root_id = document.root().id();
+        let subtree = document.node(self.node).unwrap_or_else(|| document.root());
+        struct Count(usize);
+        impl std::io::Write for Count {
+            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+                self.0 = self.0.saturating_add(bytes.len());
+                Ok(bytes.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let mut count = Count(0);
+        let mut paid = |bytes: usize| sink.reserve(bytes as u128, site).map_err(|_| ());
+        write_lexical_subtree(subtree, &mut count, &mut paid).map_err(|()| sink.denial())?;
+        let held = count
+            .0
+            .saturating_add(std::mem::size_of::<JsonStorage>() + 2 * std::mem::size_of::<usize>());
+        sink.reserve(held as u128, site)
+            .map_err(|_| sink.denial())?;
+        let mut bytes = Vec::with_capacity(count.0);
+        write_lexical_subtree(subtree, &mut bytes, &mut |bytes| {
+            sink.reserve(bytes as u128, site).map_err(|_| ())
+        })
+        .map_err(|()| sink.denial())?;
+        let bytes = bytes.into_boxed_slice();
+        self.node = root_id;
+        self.storage = Arc::new(JsonStorage::Compact {
+            bytes,
+            document: std::sync::OnceLock::new(),
+        });
+        Ok(())
+    }
+
+    pub(super) fn root_body(document: Arc<Document>, node: NodeId) -> RootBodyHandle {
+        RootBodyHandle(Self::new(document, node))
+    }
+
+    pub(super) fn offer_root_body(handle: RootBodyHandle) {
+        RootBodyHandle::offer(handle);
     }
 
     /// A handle for a scalar literal payload, read as written: a number the
@@ -143,9 +345,12 @@ impl CheckedJson {
     pub fn node(&self) -> NodeRef<'_> {
         // The id was produced by this document; the fallback keeps a handle
         // total without a panic path.
-        self.document
-            .node(self.node)
-            .unwrap_or_else(|| self.document.root())
+        match self.storage.as_ref() {
+            JsonStorage::Shared(document) => {
+                document.node(self.node).unwrap_or_else(|| document.root())
+            }
+            JsonStorage::Compact { .. } => self.document().root(),
+        }
     }
 
     /// The string the value is, borrowed from the document.
@@ -670,9 +875,17 @@ mod tests {
             ordinal: 0,
         };
         let term = CheckedTerm::literal_integer(type_id, 9_007_199_254_740_993);
-        let CheckedTerm::Literal { value, .. } = term else {
+        let CheckedTerm::Literal { mut value, .. } = term else {
             panic!("an integer constructor produces a literal");
         };
+        assert_eq!(value.number_text(), Some("9007199254740993"));
+        assert_eq!(value.as_u64(), Some(9_007_199_254_740_993));
+        value
+            .detach_from_source(
+                &mut crate::NativeJoinBudget::new(u64::MAX, 0).with_read_storage_limit(u64::MAX),
+                Site::new(crate::PackageReadStage::Retained, 0, "json_payload"),
+            )
+            .expect("an unlimited budget pays");
         assert_eq!(value.number_text(), Some("9007199254740993"));
         assert_eq!(value.as_u64(), Some(9_007_199_254_740_993));
         assert!(matches!(

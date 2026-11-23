@@ -117,13 +117,13 @@ fn protocol_reference_reads_both_protocol_target_forms_and_rekeys_on_retarget() 
         other => panic!("protocol clause carrier did not admit: {other:?}"),
     };
     assert_eq!(
-        first.graph().nodes.len(),
+        first.graph().node_count(),
         package["semantic_graph"]["nodes"]
             .as_array()
             .expect("nodes")
             .len()
     );
-    assert_eq!(first.source_map().len(), first.graph().nodes.len());
+    assert_eq!(first.source_map().len(), first.graph().node_count());
     assert_eq!(
         first.source_map()[position].node_id,
         first
@@ -133,21 +133,40 @@ fn protocol_reference_reads_both_protocol_target_forms_and_rekeys_on_retarget() 
     );
     assert_eq!(
         first.source_map()[position].role,
-        first.graph().nodes[position].occurrences[0].role
+        first
+            .graph()
+            .node(position)
+            .expect("graph position exists")
+            .occurrences()[0]
+            .role
     );
     assert_eq!(
         CheckedNodeKind::decode(
             filament_contract_model::CheckedNodeTag::Protocol,
-            &first.graph().nodes[position].semantic_form,
+            &first
+                .graph()
+                .node(position)
+                .expect("graph position exists")
+                .semantic_form(),
         ),
         Some(CheckedNodeKind::Protocol(ProtocolForm::ProtocolReference)),
     );
-    assert!(first.graph().nodes.iter().any(|node| {
-        node.node_tag.as_ref() == "expression" && node.semantic_form.as_ref() == "reference"
+    assert!(first.graph().nodes().any(|node| {
+        node.node_tag().as_ref() == "expression" && node.semantic_form().as_ref() == "reference"
     }));
     assert_eq!(
-        first.graph().nodes[position].dependencies,
-        vec![match &first.graph().nodes[position].body {
+        first
+            .graph()
+            .node(position)
+            .expect("graph position exists")
+            .dependencies,
+        vec![match &first
+            .graph()
+            .node(position)
+            .expect("graph position exists")
+            .to_owned_wire()
+            .body
+        {
             filament_contract_model::CheckedTerm::Reference { target } => target.clone(),
             other => panic!("expected typed reference, got {other:?}"),
         }]
@@ -184,7 +203,12 @@ fn protocol_reference_reads_both_protocol_target_forms_and_rekeys_on_retarget() 
     match read(&package) {
         CheckedPackageV2ReadResult::Admitted(package) => {
             assert_eq!(
-                package.graph().nodes[position].semantic_form.as_ref(),
+                package
+                    .graph()
+                    .node(position)
+                    .expect("graph position exists")
+                    .semantic_form()
+                    .as_ref(),
                 "protocol_reference"
             );
         }
@@ -473,16 +497,39 @@ fn grouped_protocol_reference_is_admitted_with_its_group_key() {
         CheckedPackageV2ReadResult::Admitted(admitted) => admitted,
         other => panic!("cyclic grouped protocol references did not admit: {other:?}"),
     };
-    let nodes = &admitted.graph().nodes;
-    assert_eq!(nodes[first].recursion_group, nodes[second].recursion_group);
-    assert!(nodes[first].recursion_group.is_some());
-    assert_ne!(nodes[first].node_id, nodes[second].node_id);
-    for (position, target) in [
-        (first, &nodes[second].node_id),
-        (second, &nodes[first].node_id),
-    ] {
+    let graph = admitted.graph();
+    assert_eq!(
+        graph
+            .node(first)
+            .expect("graph position exists")
+            .recursion_group(),
+        graph
+            .node(second)
+            .expect("graph position exists")
+            .recursion_group()
+    );
+    assert!(graph
+        .node(first)
+        .expect("graph position exists")
+        .recursion_group()
+        .is_some());
+    assert_ne!(
+        graph.node(first).expect("graph position exists").node_id(),
+        graph.node(second).expect("graph position exists").node_id()
+    );
+    let first_id = graph
+        .node(first)
+        .expect("graph position exists")
+        .node_id()
+        .into_owned();
+    let second_id = graph
+        .node(second)
+        .expect("graph position exists")
+        .node_id()
+        .into_owned();
+    for (position, target) in [(first, &second_id), (second, &first_id)] {
         assert!(matches!(
-            &nodes[position].body,
+            &graph.node(position).expect("graph position exists").to_owned_wire().body,
             filament_contract_model::CheckedTerm::Reference { target: actual } if actual == target
         ));
     }
@@ -587,7 +634,7 @@ fn hundred_thousand_protocol_reference_cycle_is_admitted_iteratively() {
             panic!("{member_count}-node protocol cycle did not admit: {actual:?}");
         };
         assert_eq!(
-            admitted.graph().nodes.len(),
+            admitted.graph().node_count(),
             package["semantic_graph"]["nodes"]
                 .as_array()
                 .expect("nodes")
@@ -649,13 +696,16 @@ fn repeated_protocol_references_retain_one_carrier_and_stable_canonical_identiti
         assert_eq!(
             admitted
                 .graph()
-                .nodes
-                .iter()
-                .filter(|node| { node.semantic_form.as_ref() == "protocol_reference" })
+                .nodes()
+                .filter(|node| { node.semantic_form().as_ref() == "protocol_reference" })
                 .count(),
             1,
         );
-        let node = &admitted.graph().nodes[position];
+        let node = &admitted
+            .graph()
+            .node(position)
+            .expect("graph position exists")
+            .to_owned_wire();
         assert_eq!(
             serde_json::to_value(&node.node_id).expect("node id"),
             expected_key

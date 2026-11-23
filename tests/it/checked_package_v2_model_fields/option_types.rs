@@ -64,10 +64,9 @@ fn named_and_presence_options_share_the_public_reader_result_node() {
     );
     let result_ids = admitted
         .graph()
-        .nodes
-        .iter()
+        .nodes()
         .filter_map(|node| {
-            if node.semantic_form.as_ref() != "query" {
+            if node.semantic_form().as_ref() != "query" {
                 return None;
             }
             match admitted.term(&node.node_id) {

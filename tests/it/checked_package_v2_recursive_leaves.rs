@@ -1234,10 +1234,9 @@ fn recursive_group_round_trips_with_original_node_keys() {
     };
     let source_group = admitted
         .graph()
-        .nodes
-        .iter()
-        .filter(|node| node.recursion_group.is_some())
-        .map(|node| node.node_id.clone())
+        .nodes()
+        .filter(|node| node.recursion_group().is_some())
+        .map(|node| node.node_id().into_owned())
         .collect::<Vec<_>>();
     assert_eq!(source_group.len(), 2);
     assert!(
@@ -1269,9 +1268,8 @@ fn recursive_group_round_trips_with_original_node_keys() {
     for node in &decoded.wire().semantic_graph.nodes {
         let position = admitted
             .graph()
-            .nodes
-            .iter()
-            .position(|source| source.node_id == node.node_id)
+            .nodes()
+            .position(|source| *source.node_id == node.node_id)
             .expect("represented source node");
         let kind = admitted.node_kinds()[position];
         assert_eq!(producer.node_kind(&node.node_id), Some(kind));
@@ -1359,9 +1357,8 @@ fn reached_view_visits_an_admitted_recursion_group_once() {
     );
     let nodes = admitted
         .graph()
-        .nodes
-        .iter()
-        .map(|node| (&node.node_id, node))
+        .nodes()
+        .map(|node| (node.node_id().into_owned(), node.to_owned_wire()))
         .collect::<BTreeMap<_, _>>();
     let mut independent = BTreeSet::new();
     let mut pending = VecDeque::from([root.clone()]);
@@ -1414,10 +1411,9 @@ fn reached_view_visits_an_admitted_recursion_group_once() {
         .collect::<BTreeSet<_>>();
     let admitted_group = admitted
         .graph()
-        .nodes
-        .iter()
-        .filter(|node| node.recursion_group.is_some())
-        .map(|node| node.node_id.clone())
+        .nodes()
+        .filter(|node| node.recursion_group().is_some())
+        .map(|node| node.node_id().into_owned())
         .collect::<BTreeSet<_>>();
     assert_eq!(grouped, admitted_group);
     assert_eq!(grouped.len(), 2);

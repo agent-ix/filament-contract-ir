@@ -233,35 +233,35 @@ fn package(source: &CheckedPackageV2, roots: &[CheckedNodeId]) -> ContractPackag
     }
 }
 
-fn node_with_operation<'a>(
-    package: &'a CheckedPackageV2,
+fn node_with_operation(
+    package: &CheckedPackageV2,
     identity: &str,
-) -> &'a filament_contract_model::CheckedSemanticNodeV2 {
+) -> filament_contract_model::CheckedSemanticNodeV2 {
     package
         .graph()
-        .nodes
-        .iter()
+        .nodes()
         .find(|node| {
-            body_at(&node.body, "/operation/identity")
+            body_at(&node.wire_body(), "/operation/identity")
                 .as_ref()
                 .and_then(Value::as_str)
                 == Some(identity)
         })
+        .map(|node| node.to_owned_wire())
         .expect("fixture operation")
 }
 
 fn reference_guard_node(
     package: &CheckedPackageV2,
-) -> &filament_contract_model::CheckedSemanticNodeV2 {
+) -> filament_contract_model::CheckedSemanticNodeV2 {
     package
         .graph()
-        .nodes
-        .iter()
+        .nodes()
         .find(|node| {
-            node.node_tag.as_ref() == "expression"
-                && node.semantic_form.as_ref() == "reference"
-                && body_at(&node.body, "/target") == Some(node_id(&family_key("a4a4")))
+            node.node_tag().as_ref() == "expression"
+                && node.semantic_form().as_ref() == "reference"
+                && body_at(&node.wire_body(), "/target") == Some(node_id(&family_key("a4a4")))
         })
+        .map(|node| node.to_owned_wire())
         .expect("shared reference guard")
 }
 
@@ -305,13 +305,13 @@ fn tc_450_guard_context_preserves_order_polarity_identity_and_root_accounting() 
     let shared_guard = reference_guard_node(&source);
     let nested_guard = node_with_operation(&source, "filament.op.boolean.not");
     let app_id = app.node_id.clone();
-    let app_first = occurrence(app, 0);
-    let app_else = occurrence(app, 1);
-    let guard_outer = occurrence(shared_guard, 0);
-    let guard_inner = occurrence(nested_guard, 0);
-    let guard_repeat = occurrence(shared_guard, 1);
-    let integer_occurrence = occurrence(integer_expression, 0);
-    let narrow_occurrence = occurrence(direct_narrow, 0);
+    let app_first = occurrence(&app, 0);
+    let app_else = occurrence(&app, 1);
+    let guard_outer = occurrence(&shared_guard, 0);
+    let guard_inner = occurrence(&nested_guard, 0);
+    let guard_repeat = occurrence(&shared_guard, 1);
+    let integer_occurrence = occurrence(&integer_expression, 0);
+    let narrow_occurrence = occurrence(&direct_narrow, 0);
     let application_only = package(&source, std::slice::from_ref(&app_id));
     let absent_application = typed_key("guard/absent-application");
     assert!(matches!(
@@ -542,13 +542,13 @@ fn tc_450_guard_context_refuses_first_bad_occurrence_without_a_prefix() {
     let integer_guard = node_with_operation(&source, "filament.op.integer.add");
     let non_expression = source
         .graph()
-        .nodes
-        .iter()
-        .find(|node| node.node_id == typed_key(&family_key("aaaa")))
+        .nodes()
+        .find(|node| *node.node_id == typed_key(&family_key("aaaa")))
+        .map(|node| node.to_owned_wire())
         .expect("Boolean scalar node");
     let app_id = app.node_id.clone();
-    let app_occurrence = occurrence(app, 0);
-    let good = occurrence(reference_guard, 0);
+    let app_occurrence = occurrence(&app, 0);
+    let good = occurrence(&reference_guard, 0);
     let context = package(
         &source,
         &[
@@ -573,8 +573,8 @@ fn tc_450_guard_context_refuses_first_bad_occurrence_without_a_prefix() {
         ordinal: 99,
         ..good.clone()
     };
-    let non_boolean = occurrence(integer_guard, 0);
-    let wrong_form = occurrence(non_expression, 0);
+    let non_boolean = occurrence(&integer_guard, 0);
+    let wrong_form = occurrence(&non_expression, 0);
     for (occurrence, cause) in [
         (absent, ContractGuardContextFailureCauseV1::AbsentRoot),
         (
@@ -632,7 +632,7 @@ fn tc_450_guard_context_refuses_first_bad_occurrence_without_a_prefix() {
         &app_occurrence,
         &[
             path_guard(good.clone(), true),
-            path_guard(occurrence(nested_guard, 0), false),
+            path_guard(occurrence(&nested_guard, 0), false),
         ],
     );
     assert!(
@@ -697,13 +697,13 @@ fn tc_450_unrepresented_guard_key_cannot_gain_authority_from_its_body_position()
     let app = node_with_operation(&source, "filament.op.boolean.and");
     let represented_parameter = source
         .graph()
-        .nodes
-        .iter()
-        .find(|node| node.node_id == typed_key(&family_key("a4a4")))
+        .nodes()
+        .find(|node| *node.node_id == typed_key(&family_key("a4a4")))
+        .map(|node| node.to_owned_wire())
         .expect("parameter in the application's ordinary forward closure");
     let app_id = app.node_id.clone();
-    let app_occurrence = occurrence(app, 0);
-    let guard_occurrence = occurrence(represented_parameter, 0);
+    let app_occurrence = occurrence(&app, 0);
+    let guard_occurrence = occurrence(&represented_parameter, 0);
     let application_only = package(&source, std::slice::from_ref(&app_id));
     assert!(application_only
         .wire()

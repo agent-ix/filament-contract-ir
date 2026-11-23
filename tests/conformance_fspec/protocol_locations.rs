@@ -76,11 +76,14 @@ fn every_published_protocol_location_vector_runs_through_the_strict_reader() {
             .collect();
         let (wire, position) = fixture(rows);
         let package = admitted(&wire);
-        let node = &package.graph().nodes[position];
+        let node = &package
+            .graph()
+            .node(position)
+            .expect("graph position exists");
         let row = package
             .protocol_location(
                 &node.node_id,
-                &node.occurrences[0],
+                &node.occurrences()[0],
                 selected["term_ordinal"].as_u64().unwrap(),
                 100,
             )
@@ -198,10 +201,13 @@ fn published_leaf_graphs_keep_their_application_location_admissible() {
             })
             .unwrap();
         let package = admitted(&wire);
-        let application = &package.graph().nodes[position];
+        let application = &package
+            .graph()
+            .node(position)
+            .expect("graph position exists");
         assert!(
             package
-                .protocol_location(&application.node_id, &application.occurrences[0], 0, 100)
+                .protocol_location(&application.node_id, &application.occurrences()[0], 0, 100)
                 .is_ok(),
             "{id}: published application row must remain admissible"
         );
@@ -248,8 +254,11 @@ fn witnessed_interior_gap_refuses_and_new_occurrence_restarts_at_zero() {
     wire["checked_term_data"]["protocol_locations"][1]["occurrence"] = occurrence;
     refresh_identity(&mut wire);
     let package = admitted(&wire);
-    let node = &package.graph().nodes[position];
-    for occurrence in &node.occurrences {
+    let node = &package
+        .graph()
+        .node(position)
+        .expect("graph position exists");
+    for occurrence in node.occurrences() {
         let row = package
             .protocol_location(&node.node_id, occurrence, 0, 100)
             .unwrap();
@@ -264,8 +273,11 @@ fn published_locations_preserve_distinct_semantic_terms_on_one_application() {
     let originals = [positive("PL-01-root"), positive("PL-02-child")];
     let (wire, position) = fixture(originals.to_vec());
     let package = admitted(&wire);
-    let node = &package.graph().nodes[position];
-    let occurrence = &node.occurrences[0];
+    let node = &package
+        .graph()
+        .node(position)
+        .expect("graph position exists");
+    let occurrence = &node.occurrences()[0];
     let first = package
         .protocol_location(&node.node_id, occurrence, 0, 100)
         .unwrap();
@@ -302,9 +314,12 @@ fn published_named_type_origin_is_returned_without_source_region_inference() {
     let original = positive("PL-03-declaration");
     let (wire, position) = fixture(vec![original.clone()]);
     let package = admitted(&wire);
-    let node = &package.graph().nodes[position];
+    let node = &package
+        .graph()
+        .node(position)
+        .expect("graph position exists");
     let row = package
-        .protocol_location(&node.node_id, &node.occurrences[0], 0, 100)
+        .protocol_location(&node.node_id, &node.occurrences()[0], 0, 100)
         .unwrap();
     assert_eq!(
         serde_json::to_value(&row.location).unwrap(),
@@ -437,13 +452,16 @@ fn unknown_origin_and_noncanonical_child_ordinals_never_admit() {
 fn bounded_read_returns_complete_borrowed_path_only_at_the_exact_work_limit() {
     let (wire, position) = fixture(vec![positive("PL-01-root"), positive("PL-02-child")]);
     let package = admitted(&wire);
-    let node = &package.graph().nodes[position];
+    let node = &package
+        .graph()
+        .node(position)
+        .expect("graph position exists");
     // Two inspected rows plus the selected row's two child indices.
     assert!(package
-        .protocol_location(&node.node_id, &node.occurrences[0], 1, 4)
+        .protocol_location(&node.node_id, &node.occurrences()[0], 1, 4)
         .is_ok());
     assert_eq!(
-        package.protocol_location(&node.node_id, &node.occurrences[0], 1, 3),
+        package.protocol_location(&node.node_id, &node.occurrences()[0], 1, 3),
         Err(CheckedProtocolLocationReadError::WorkExhausted {
             limit: 3,
             consumed: 4,
@@ -453,7 +471,7 @@ fn bounded_read_returns_complete_borrowed_path_only_at_the_exact_work_limit() {
     );
     let absent = CheckedOccurrence {
         ordinal: 999,
-        ..node.occurrences[0].clone()
+        ..node.occurrences()[0].clone()
     };
     assert_eq!(
         package.protocol_location(&node.node_id, &absent, 0, 100),
@@ -466,16 +484,19 @@ fn bounded_read_returns_complete_borrowed_path_only_at_the_exact_work_limit() {
 fn absent_capture_and_present_empty_capture_have_distinct_typed_reads() {
     let (mut wire, position) = fixture(Vec::new());
     let empty = admitted(&wire);
-    let node = &empty.graph().nodes[position];
+    let node = &empty.graph().node(position).expect("graph position exists");
     assert_eq!(
-        empty.protocol_location(&node.node_id, &node.occurrences[0], 0, 100),
+        empty.protocol_location(&node.node_id, &node.occurrences()[0], 0, 100),
         Err(CheckedProtocolLocationReadError::Missing)
     );
     wire.as_object_mut().unwrap().remove("checked_term_data");
     let absent = admitted(&wire);
-    let node = &absent.graph().nodes[position];
+    let node = &absent
+        .graph()
+        .node(position)
+        .expect("graph position exists");
     assert_eq!(
-        absent.protocol_location(&node.node_id, &node.occurrences[0], 0, 100),
+        absent.protocol_location(&node.node_id, &node.occurrences()[0], 0, 100),
         Err(CheckedProtocolLocationReadError::Unavailable)
     );
 }
@@ -490,9 +511,12 @@ fn valid_large_child_indices_remain_exact_canonical_owner_values() {
         "18446744073709551616"
     ]);
     let package = admitted(&wire);
-    let node = &package.graph().nodes[position];
+    let node = &package
+        .graph()
+        .node(position)
+        .expect("graph position exists");
     let row = package
-        .protocol_location(&node.node_id, &node.occurrences[0], 1, 100)
+        .protocol_location(&node.node_id, &node.occurrences()[0], 1, 100)
         .unwrap();
     assert_eq!(
         serde_json::to_value(&row.location).unwrap()["path"],

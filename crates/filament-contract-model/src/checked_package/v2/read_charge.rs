@@ -276,16 +276,6 @@ pub(super) fn new_arc<T>(
     Ok(Arc::new(value))
 }
 
-/// A boxed copy of `text`, charged first.
-pub(super) fn boxed_str(
-    budget: &mut NativeJoinBudget,
-    site: Site,
-    text: &str,
-) -> Result<Box<str>, ValidationFailure> {
-    charge(budget, site, text.len() as u128)?;
-    Ok(text.into())
-}
-
 /// Sets no active locus: the stage is over.
 pub(super) fn end_stage(budget: &mut NativeJoinBudget) {
     budget.set_active_locus(None);

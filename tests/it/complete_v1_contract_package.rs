@@ -128,9 +128,9 @@ fn v1_package_carries_function_check_mode_and_refuses_an_invalid_value() {
     let source = admit(&checked_package::positive_operation_identities());
     let key = source
         .graph()
-        .nodes
-        .iter()
-        .find(|node| matches!(&node.body, CheckedTerm::Application { .. }))
+        .nodes()
+        .find(|node| matches!(&node.wire_body(), CheckedTerm::Application { .. }))
+        .map(|node| node.to_owned_wire())
         .expect("operation node")
         .node_id
         .clone();
@@ -170,9 +170,9 @@ fn mixed_source_literal_keeps_its_type_and_empty_dependencies_through_v1() {
     let source = admit(&mixed_fixture());
     let literal = source
         .graph()
-        .nodes
-        .iter()
-        .find(|node| node.node_id == id("dddd"))
+        .nodes()
+        .find(|node| *node.node_id == id("dddd"))
+        .map(|node| node.to_owned_wire())
         .expect("source literal");
     assert!(literal.dependencies.is_empty());
     assert_eq!(literal.semantic_type, id("aaaa"));
@@ -199,9 +199,9 @@ fn v1_operation_views_require_authenticated_source() {
     let source = admit(&checked_package::positive_operation_identities());
     let key = source
         .graph()
-        .nodes
-        .iter()
-        .find(|node| matches!(&node.body, CheckedTerm::Application { .. }))
+        .nodes()
+        .find(|node| matches!(&node.wire_body(), CheckedTerm::Application { .. }))
+        .map(|node| node.to_owned_wire())
         .expect("operation node")
         .node_id
         .clone();
@@ -315,9 +315,8 @@ fn v1_handoff_preserves_populated_mode_laws_and_member_declaration() {
         let source = admit(&fixture);
         let key = source
             .graph()
-            .nodes
-            .iter()
-            .find_map(|node| match &node.body {
+            .nodes()
+            .find_map(|node| match &node.wire_body() {
                 CheckedTerm::Application { operation, .. }
                     if operation.identity() == Some(identity) =>
                 {
@@ -371,9 +370,9 @@ fn v1_handoff_keeps_operation_views_after_source_node_reordering() {
     let source = admit(&fixture);
     let key = source
         .graph()
-        .nodes
-        .iter()
-        .find(|node| matches!(&node.body, CheckedTerm::Application { .. }))
+        .nodes()
+        .find(|node| matches!(&node.wire_body(), CheckedTerm::Application { .. }))
+        .map(|node| node.to_owned_wire())
         .expect("source operation")
         .node_id
         .clone();
@@ -404,9 +403,9 @@ fn v1_source_handoff_is_atomic_and_preserves_plain_refusal_precedence() {
     let source = admit(&checked_package::positive_operation_identities());
     let key = source
         .graph()
-        .nodes
-        .iter()
-        .find(|node| matches!(&node.body, CheckedTerm::Application { .. }))
+        .nodes()
+        .find(|node| matches!(&node.wire_body(), CheckedTerm::Application { .. }))
+        .map(|node| node.to_owned_wire())
         .expect("operation node")
         .node_id
         .clone();
@@ -476,9 +475,8 @@ fn v1_source_handoff_is_atomic_and_preserves_plain_refusal_precedence() {
     );
     let changed_key = changed_operation
         .graph()
-        .nodes
-        .iter()
-        .find_map(|node| match &node.body {
+        .nodes()
+        .find_map(|node| match &node.wire_body() {
             CheckedTerm::Application { operation, .. }
                 if operation.identity() == Some("filament.op.ieee.from_exact") =>
             {
@@ -524,9 +522,9 @@ fn v1_source_handoff_is_atomic_and_preserves_plain_refusal_precedence() {
     let changed_reference = admit(&changed_reference_wire);
     let changed_key = changed_reference
         .graph()
-        .nodes
-        .iter()
-        .find(|node| matches!(&node.body, CheckedTerm::Reference { .. }))
+        .nodes()
+        .find(|node| matches!(&node.wire_body(), CheckedTerm::Reference { .. }))
+        .map(|node| node.to_owned_wire())
         .expect("changed reference node")
         .node_id
         .clone();
@@ -591,9 +589,8 @@ fn lowered_package_retains_typed_terms_by_admitted_node_key() {
     for unrepresented in [id("1010"), id("7070")] {
         assert!(source
             .graph()
-            .nodes
-            .iter()
-            .any(|node| node.node_id == unrepresented));
+            .nodes()
+            .any(|node| *node.node_id == unrepresented));
         assert_eq!(producer.term(&unrepresented), None);
         assert_eq!(reader.term(&unrepresented), None);
         assert_eq!(producer.node(&unrepresented), None);
@@ -842,8 +839,7 @@ fn indexed_reached_closure_uses_a_typed_source_structural_key() {
     let source = admit(&input);
     let position = source
         .graph()
-        .nodes
-        .iter()
+        .nodes()
         .position(|node| {
             node.node_id.path.iter().any(|segment| {
                 matches!(
@@ -889,7 +885,7 @@ fn indexed_reached_closure_uses_a_typed_source_structural_key() {
         })
         .expect("indexed fixture path");
     *index = filament_contract_model::CheckedNodePathSegment::Index(
-        u64::try_from(source.graph().nodes.len()).expect("fixture graph size"),
+        u64::try_from(source.graph().node_count()).expect("fixture graph size"),
     );
     assert!(ContractSourceKeyV1::from_v2_request(&source, &out_of_range).is_none());
 
@@ -1005,8 +1001,7 @@ fn indexed_reached_closure_uses_a_typed_source_structural_key() {
     ));
     let unrequested = source
         .graph()
-        .nodes
-        .iter()
+        .nodes()
         .enumerate()
         .find(|(candidate, _)| *candidate != position)
         .and_then(|(candidate, _)| source.structural_key_at(candidate))
@@ -1477,9 +1472,8 @@ fn independent_closure(
 ) -> BTreeSet<CheckedNodeId> {
     let by_key = admitted
         .graph()
-        .nodes
-        .iter()
-        .map(|node| (&node.node_id, node))
+        .nodes()
+        .map(|node| (node.node_id().into_owned(), node.to_owned_wire()))
         .collect::<BTreeMap<_, _>>();
     let mut reached = BTreeSet::new();
     let mut pending = VecDeque::from([root.clone()]);
@@ -1519,11 +1513,11 @@ fn reached_view_uses_all_three_edges_and_preserves_sources_and_wire() {
     let admitted = admit(&input);
     let root = admitted
         .graph()
-        .nodes
-        .iter()
+        .nodes()
         .find(|node| {
-            node.node_tag.as_ref() == "expression" && node.semantic_form.as_ref() == "reference"
+            node.node_tag().as_ref() == "expression" && node.semantic_form().as_ref() == "reference"
         })
+        .map(|node| node.to_owned_wire())
         .expect("root")
         .node_id
         .clone();
@@ -1549,9 +1543,9 @@ fn reached_view_uses_all_three_edges_and_preserves_sources_and_wire() {
     for entry in &view.nodes {
         let original = admitted
             .graph()
-            .nodes
-            .iter()
-            .find(|node| node.node_id == entry.node.node_id)
+            .nodes()
+            .find(|node| *node.node_id == entry.node.node_id)
+            .map(|node| node.to_owned_wire())
             .expect("source node");
         assert_eq!(
             serde_json::to_value(entry.node).expect("contract node"),
@@ -1594,9 +1588,11 @@ fn reached_view_exposes_empty_subsets_and_absent_keys() {
     let admitted = admit(&v2_all_families());
     let root = admitted
         .graph()
-        .nodes
-        .iter()
-        .find(|node| node.node_tag.as_ref() == "value" && node.semantic_form.as_ref() == "literal")
+        .nodes()
+        .find(|node| {
+            node.node_tag().as_ref() == "value" && node.semantic_form().as_ref() == "literal"
+        })
+        .map(|node| node.to_owned_wire())
         .expect("literal")
         .node_id
         .clone();
@@ -1689,9 +1685,8 @@ fn retained_typed_views_match_source_and_strict_reader_without_changing_wire() {
     for node in &producer.wire().semantic_graph.nodes {
         let source_position = admitted
             .graph()
-            .nodes
-            .iter()
-            .position(|source| source.node_id == node.node_id)
+            .nodes()
+            .position(|source| *source.node_id == node.node_id)
             .expect("source node");
         let expected = admitted.node_kinds()[source_position];
         assert_eq!(producer.node_kind(&node.node_id), Some(expected));
@@ -1759,11 +1754,10 @@ fn unsupported_source_kind_tracks_requested_root_across_mixed_accounting() {
     let by_kind = |kind| {
         source
             .graph()
-            .nodes
-            .iter()
+            .nodes()
             .zip(source.node_kinds())
             .find(|(_, candidate)| **candidate == kind)
-            .map(|(node, _)| node.node_id.clone())
+            .map(|(node, _)| node.node_id().into_owned())
             .expect("admitted kind")
     };
     let clause = by_kind(CheckedNodeKind::Temporal(TemporalForm::TemporalClause));
@@ -1771,11 +1765,10 @@ fn unsupported_source_kind_tracks_requested_root_across_mixed_accounting() {
     let formula = by_kind(CheckedNodeKind::Temporal(TemporalForm::Formula));
     let healthy = source
         .graph()
-        .nodes
-        .iter()
+        .nodes()
         .zip(source.node_kinds())
         .find(|(_, kind)| kind.tag() == CheckedNodeTag::Value)
-        .map(|(node, _)| node.node_id.clone())
+        .map(|(node, _)| node.node_id().into_owned())
         .expect("healthy value");
     let requests = [
         clause.clone(),
@@ -2542,23 +2535,21 @@ fn selected_dependencies_are_bound_by_library_identity_before_graph_checks() {
         .semantic_graph
         .nodes
         .iter()
-        .map(|node| &node.node_id)
+        .map(|node| node.node_id.clone())
         .collect::<BTreeSet<_>>();
     let local_source = admit(&mixed_fixture());
     let local_keys = local_source
         .graph()
-        .nodes
-        .iter()
-        .map(|node| &node.node_id)
+        .nodes()
+        .map(|node| node.node_id().into_owned())
         .collect::<BTreeSet<_>>();
     let external_only_key = dependency
         .graph()
-        .nodes
-        .iter()
-        .map(|node| &node.node_id)
+        .nodes()
+        .map(|node| node.node_id().into_owned())
         .find(|key| !represented_keys.contains(key) && local_keys.contains(key))
         .expect("an identically keyed local node cannot satisfy a selected dependency");
-    assert_eq!(package.node_kind(external_only_key), None);
+    assert_eq!(package.node_kind(&external_only_key), None);
     let ContractPackageReadResult::Refused(missing) = read(&bytes) else {
         panic!("selection requires input");
     };

@@ -211,7 +211,7 @@ fn default_feature_consumer_borrows_admitted_clock_rows() {
     let encoded = encode_checked_package_v2(
         package.name(),
         package.lock(),
-        package.graph(),
+        &package.graph().to_owned_wire(),
         CheckedPackageSourceCorrespondenceRef {
             source_map: package.source_map(),
             refinement_step_rows: package.refinement_step_rows(),

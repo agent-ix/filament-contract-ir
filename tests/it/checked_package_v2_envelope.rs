@@ -98,7 +98,7 @@ fn admission_binding_identifies_clones_but_not_equal_independent_reads() {
 
     let second = read();
     let second_binding = second.admission_binding();
-    assert_eq!(first.graph().nodes, second.graph().nodes);
+    assert_eq!(first.graph(), second.graph());
     assert!(!first.retains(&second_binding));
     assert!(!second.retains(&binding));
     assert!(second.retains(&second_binding));
@@ -121,16 +121,17 @@ fn typed_writer_round_trips_protocol_clause_owner_model() {
     };
     let clause = first
         .graph()
-        .nodes
-        .iter()
+        .nodes()
         .find(|node| {
-            node.node_tag.as_ref() == "protocol" && node.semantic_form.as_ref() == "protocol_clause"
+            node.node_tag().as_ref() == "protocol"
+                && node.semantic_form().as_ref() == "protocol_clause"
         })
+        .map(|node| node.to_owned_wire())
         .expect("protocol clause");
     let owner = clause.owner_model.as_ref().expect("exact owner edge");
     assert!(clause.dependencies.contains(owner));
     assert_eq!(
-        CheckedNodeProjectionV2::from(clause).owner_model.as_ref(),
+        CheckedNodeProjectionV2::from(&clause).owner_model.as_ref(),
         Some(owner)
     );
 
@@ -152,13 +153,13 @@ fn typed_writer_round_trips_protocol_clause_owner_model() {
             other => panic!("encoded owner-bearing fixture must admit: {other:?}"),
         };
     assert_eq!(second.name(), first.name());
-    assert_eq!(second.graph().nodes, first.graph().nodes);
+    assert_eq!(second.graph(), first.graph());
     assert_eq!(
         second
             .graph()
-            .nodes
-            .iter()
-            .find(|node| node.node_id == clause.node_id)
+            .nodes()
+            .find(|node| *node.node_id == clause.node_id)
+            .map(|node| node.to_owned_wire())
             .expect("clause")
             .node_id,
         clause.node_id

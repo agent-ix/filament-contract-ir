@@ -534,12 +534,12 @@ fn fspec_positive_fixtures_expose_complete_public_typed_reads() {
         let wire_nodes = wire["semantic_graph"]["nodes"]
             .as_array()
             .expect("published nodes");
-        assert_eq!(wire_nodes.len(), admitted.graph().nodes.len());
+        assert_eq!(wire_nodes.len(), admitted.graph().node_count());
         for (wire_node, node) in wire_nodes.iter().zip(&admitted.resolved_graph().nodes) {
             assert_fspec_term_record(&node.body, &wire_node["body"], &catalog);
         }
         let mut pending: Vec<&CheckedTerm> = admitted
-            .graph()
+            .resolved_graph()
             .nodes
             .iter()
             .map(|node| &node.body)
@@ -581,7 +581,7 @@ fn fspec_positive_fixtures_expose_complete_public_typed_reads() {
         let encoded = encode_checked_package_v2(
             admitted.name(),
             admitted.lock(),
-            admitted.graph(),
+            &admitted.graph().to_owned_wire(),
             CheckedPackageSourceCorrespondenceRef {
                 source_map: admitted.source_map(),
                 refinement_step_rows: admitted.refinement_step_rows(),
@@ -1006,7 +1006,7 @@ fn fspec_admitted_values_members_and_catalog_constraints_are_exact() {
     let encoded = encode_checked_package_v2(
         admitted.name(),
         admitted.lock(),
-        admitted.graph(),
+        &admitted.graph().to_owned_wire(),
         CheckedPackageSourceCorrespondenceRef {
             source_map: admitted.source_map(),
             refinement_step_rows: admitted.refinement_step_rows(),
@@ -1129,7 +1129,10 @@ fn tc_048_fspec_union_values_admit_under_their_application_keys() {
     .expect("the current FSpec union fixture admits");
     for (position, member, payload) in [(10, "Rect", vec![8, 9]), (11, "Empty", vec![])] {
         let node = &wire["semantic_graph"]["nodes"][position];
-        let retained = &admitted.graph().nodes[position];
+        let retained = &admitted
+            .graph()
+            .node(position)
+            .expect("graph position exists");
         assert_eq!(node["node_tag"], "value");
         assert_eq!(node["semantic_form"], "union_value");
         assert_eq!(
@@ -1137,7 +1140,7 @@ fn tc_048_fspec_union_values_admit_under_their_application_keys() {
             &serde_json::from_value(node["node_id"].clone()).expect("node id")
         );
         assert_eq!(
-            serde_json::to_value(&retained.body).expect("retained body"),
+            serde_json::to_value(&retained.wire_body()).expect("retained body"),
             fixture_support::wire_form(&wire)["semantic_graph"]["nodes"][position]["body"]
         );
         assert_eq!(node["body"]["term"], "aggregate");
@@ -1270,7 +1273,7 @@ fn tc_048_fspec_all_positive_packages_and_owner_identities() {
             .as_array()
             .expect("published graph nodes");
         assert_eq!(
-            admitted.graph().nodes.len(),
+            admitted.graph().node_count(),
             nodes.len(),
             "{name}: graph length"
         );
@@ -1278,7 +1281,8 @@ fn tc_048_fspec_all_positive_packages_and_owner_identities() {
             admitted.name(),
             wire["name"].as_str().expect("package name")
         );
-        for (node, published) in admitted.graph().nodes.iter().zip(nodes) {
+        for (node, published) in admitted.graph().nodes().zip(nodes) {
+            let node = node.to_owned_wire();
             let id = serde_json::to_value(&node.node_id).expect("typed node id");
             let owner = serde_json::to_value(&node.owner).expect("typed owner");
             assert_eq!(id, published["node_id"], "{name}: structural node id");
@@ -1342,12 +1346,21 @@ fn tc_048_published_nominal_structural_ids_survive_reader_and_writer() {
         .expect("published nominal nodes");
     assert_eq!(published.len(), expected.len());
     for (position, base) in [(3, true), (4, true), (5, false)] {
-        let CheckedTerm::NominalBody(body) = &admitted.graph().nodes[position].body else {
+        let CheckedTerm::NominalBody(body) = &admitted
+            .graph()
+            .node(position)
+            .expect("graph position exists")
+            .to_owned_wire()
+            .body
+        else {
             panic!("{position}: published dimension has a typed nominal body")
         };
         assert_eq!(body.dimension_base(), Some(base), "{position}: base flag");
     }
-    for (position, (node, id)) in admitted.graph().nodes.iter().zip(expected).enumerate() {
+    let admitted_graph = admitted.graph();
+    let graph_for_key = admitted_graph.to_owned_wire();
+    for (position, (node, id)) in admitted_graph.nodes().zip(expected).enumerate() {
+        let node = node.to_owned_wire();
         assert_eq!(
             serde_json::to_value(&node.node_id).expect("node id"),
             published[position]["node_id"],
@@ -1355,8 +1368,8 @@ fn tc_048_published_nominal_structural_ids_survive_reader_and_writer() {
         );
         assert_eq!(
             serde_json::to_value(node_index::fixture_structural_key(
-                &admitted.graph().nodes,
-                &admitted.graph().operand_rows,
+                &graph_for_key.nodes,
+                &graph_for_key.operand_rows,
                 position
             ))
             .expect("resolved structural id"),
@@ -1377,7 +1390,7 @@ fn tc_048_published_nominal_structural_ids_survive_reader_and_writer() {
     let encoded = filament_contract_model::encode_checked_package_v2(
         admitted.name(),
         admitted.lock(),
-        admitted.graph(),
+        &admitted.graph().to_owned_wire(),
         filament_contract_model::CheckedPackageSourceCorrespondenceRef {
             source_map: admitted.source_map(),
             refinement_step_rows: admitted.refinement_step_rows(),
@@ -1429,8 +1442,8 @@ fn fspec_dimensionless_derived_is_not_a_base_root_or_term_target() {
     let document = proposal_dir_of(&fixtures).join(DOMAIN_DOCUMENT);
     let (wire, admitted) =
         read_positive(&fixtures, name, &document).unwrap_or_else(|why| panic!("{why}"));
-    let dimensionless = &admitted.graph().nodes[5];
-    let CheckedTerm::NominalBody(body) = &dimensionless.body else {
+    let dimensionless = &admitted.graph().node(5).expect("graph position exists");
+    let CheckedTerm::NominalBody(body) = dimensionless.resolved_body() else {
         panic!("published dimensionless declaration must retain a typed body")
     };
     assert_eq!(body.dimension_base(), Some(false));

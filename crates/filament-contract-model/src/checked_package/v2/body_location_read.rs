@@ -95,7 +95,7 @@ impl CheckedPackageV2 {
             .node_index
             .node(&self.wire.semantic_graph.nodes, function)
             .ok_or(CheckedBodyLocationReadError::MissingFunction)?;
-        if function.package != self.wire.name
+        if function.package.as_ref() != self.wire.name.as_ref()
             || !matches!(self.kinds.get(position), Some(CheckedNodeKind::Function(_)))
         {
             return Err(CheckedBodyLocationReadError::MissingFunction);
@@ -107,7 +107,8 @@ impl CheckedPackageV2 {
             .get(position)
             .and_then(|node| body_binding(&node.body))
             .ok_or(CheckedBodyLocationReadError::MissingFunction)?;
-        let Some(start) = start.filter(|start| start.package == self.wire.name) else {
+        let Some(start) = start.filter(|start| start.package.as_ref() == self.wire.name.as_ref())
+        else {
             return Ok(cursor);
         };
         cursor.charge(1)?;
@@ -277,7 +278,7 @@ impl<'a> CheckedBodyLocations<'a> {
                 Task::Term(term) => match term {
                     CheckedTerm::Reference { target } => {
                         self.charge(1)?;
-                        if target.package == self.package.wire.name {
+                        if target.package.as_ref() == self.package.wire.name.as_ref() {
                             if let Some(position) = self
                                 .package
                                 .node_index

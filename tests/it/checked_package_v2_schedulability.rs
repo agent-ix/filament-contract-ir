@@ -161,7 +161,7 @@ fn encode(read: &CheckedPackageV2) -> Vec<u8> {
     encode_checked_package_v2(
         read.name(),
         read.lock(),
-        read.graph(),
+        &read.graph().to_owned_wire(),
         CheckedPackageSourceCorrespondenceRef {
             source_map: read.source_map(),
             refinement_step_rows: read.refinement_step_rows(),
@@ -337,7 +337,7 @@ fn complete_writer_preserves_supplied_index_order_without_repair() {
     let bytes = encode_checked_package_v2(
         read.name(),
         read.lock(),
-        read.graph(),
+        &read.graph().to_owned_wire(),
         CheckedPackageSourceCorrespondenceRef {
             source_map: read.source_map(),
             refinement_step_rows: read.refinement_step_rows(),
@@ -648,7 +648,7 @@ fn complete_claim_writer_has_exact_canonical_byte_boundary() {
         encode_checked_package_v2(
             read.name(),
             read.lock(),
-            read.graph(),
+            &read.graph().to_owned_wire(),
             CheckedPackageSourceCorrespondenceRef {
                 source_map: read.source_map(),
                 refinement_step_rows: read.refinement_step_rows(),

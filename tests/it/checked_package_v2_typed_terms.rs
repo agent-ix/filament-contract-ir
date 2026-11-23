@@ -150,8 +150,8 @@ fn admitted_v2_bodies_are_closed_typed_terms() {
     let mut saw_reference = false;
     let mut saw_application_argument = false;
     let mut saw_nested_binding = false;
-    for node in &admitted.graph().nodes {
-        let body: &CheckedTerm = &node.body;
+    for node in admitted.graph().nodes() {
+        let body: &CheckedTerm = &node.wire_body();
         let term = admitted
             .term(&node.node_id)
             .expect("every admitted node has a typed body");
@@ -196,7 +196,7 @@ fn admitted_v2_bodies_are_closed_typed_terms() {
         CheckedPackageV2ReadResult::Admitted(package) => package,
         other => panic!("literal V2 fixture refused: {other:?}"),
     };
-    assert!(literal_package.graph().nodes.iter().any(|node| {
+    assert!(literal_package.graph().nodes().any(|node| {
         matches!(
             literal_package.term(&node.node_id),
             Some(CheckedTerm::Literal { .. })
@@ -234,9 +234,9 @@ fn public_literal_and_binding_reads_preserve_exact_values() {
         other => panic!("positive V2 fixture refused: {other:?}"),
     };
     let mut saw_boolean = false;
-    for node in &admitted.graph().nodes {
-        if let Some(literal) = node.body.literal_read() {
-            assert_eq!(literal.type_id, &node.semantic_type);
+    for node in admitted.graph().nodes() {
+        if let Some(literal) = node.wire_body().literal_read() {
+            assert_eq!(literal.type_id, &*node.semantic_type);
             if let CheckedLiteralValue::Boolean(true) = literal.value {
                 saw_boolean = true;
             }
@@ -246,7 +246,7 @@ fn public_literal_and_binding_reads_preserve_exact_values() {
     let encoded = encode_checked_package_v2(
         admitted.name(),
         admitted.lock(),
-        admitted.graph(),
+        &admitted.graph().to_owned_wire(),
         CheckedPackageSourceCorrespondenceRef {
             source_map: admitted.source_map(),
             refinement_step_rows: admitted.refinement_step_rows(),
@@ -396,8 +396,8 @@ fn public_operation_read_exposes_admitted_records_and_rejects_forgery() {
         other => panic!("positive V2 fixture refused: {other:?}"),
     };
     let mut count = 0;
-    for node in &admitted.graph().nodes {
-        if let CheckedTerm::Application { operation, .. } = &node.body {
+    for node in admitted.graph().nodes() {
+        if let CheckedTerm::Application { operation, .. } = &node.wire_body() {
             let read = operation
                 .read()
                 .expect("reader installed complete admission view");
@@ -496,9 +496,8 @@ fn admitted_controls_expose_missing_catalog_constraint_productions() {
         };
         let operation = package
             .graph()
-            .nodes
-            .iter()
-            .find_map(|node| match &node.body {
+            .nodes()
+            .find_map(|node| match &node.resolved_node().body {
                 CheckedTerm::Application { operation, .. }
                     if operation.identity() == Some(identity) =>
                 {
@@ -584,9 +583,8 @@ fn admitted_controls_expose_element_and_fairness_members() {
     );
     let operation = package
         .graph()
-        .nodes
-        .iter()
-        .find_map(|node| match &node.body {
+        .nodes()
+        .find_map(|node| match &node.resolved_node().body {
             CheckedTerm::Application { operation, .. }
                 if operation.identity() == Some("filament.op.collection.index") =>
             {
@@ -608,9 +606,8 @@ fn admitted_controls_expose_element_and_fairness_members() {
     let package = crate::checked_package_v2_temporal::admitted_fairness_source_for_contract();
     let operation = package
         .graph()
-        .nodes
-        .iter()
-        .find_map(|node| match &node.body {
+        .nodes()
+        .find_map(|node| match &node.resolved_node().body {
             CheckedTerm::Application { operation, .. }
                 if operation.identity() == Some("filament.op.temporal.fair") =>
             {

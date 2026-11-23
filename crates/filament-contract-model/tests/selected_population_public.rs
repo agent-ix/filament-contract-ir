@@ -153,8 +153,7 @@ fn population_nodes(
 ) -> Vec<&filament_contract_model::CheckedSemanticNodeV2> {
     package
         .graph()
-        .nodes
-        .iter()
+        .nodes()
         .filter(|node| {
             node.node_tag.as_ref() == "bounded_domain"
                 && node.semantic_form.as_ref() == "model_population"
@@ -204,8 +203,7 @@ fn selected_population_is_bound_to_the_emitted_node_and_source_occurrence() {
             // `graph()` shows.
             let held = package
                 .graph()
-                .nodes
-                .iter()
+                .nodes()
                 .position(|candidate| candidate.node_id == node.node_id)
                 .and_then(|position| package.document_held_id(position))
                 .expect("document-held population ID");
@@ -323,8 +321,7 @@ fn selected_population_is_bound_to_the_emitted_node_and_source_occurrence() {
     );
     let non_population = package
         .graph()
-        .nodes
-        .iter()
+        .nodes()
         .find(|node| {
             node.node_tag.as_ref() != "bounded_domain"
                 && node.occurrences.iter().any(|occurrence| {
@@ -507,8 +504,7 @@ fn selected_population_reads_source_for_node_held_operand_spelling() {
     let node = nodes[0];
     let position = package
         .graph()
-        .nodes
-        .iter()
+        .nodes()
         .position(|candidate| candidate.node_id == node.node_id)
         .expect("population graph position");
     let held = package

@@ -106,11 +106,11 @@ fn tc_048_ir575_reader_only_peak() {
     let incremental_peak = sampled_peak.max(post_hwm) - baseline_rss;
     eprintln!(
         "input_bytes={} admitted_nodes={} baseline_rss_kib={} baseline_hwm_kib={} sampled_peak_rss_kib={} post_read_rss_kib={} post_read_hwm_kib={} incremental_peak_kib={} elapsed_ms={} platform={}-{} allocator=System",
-        bytes.len(), package.graph().nodes.len(), baseline_rss, baseline_hwm, sampled_peak,
+        bytes.len(), package.graph().node_count(), baseline_rss, baseline_hwm, sampled_peak,
         post_rss, post_hwm, incremental_peak, elapsed.as_millis(),
         std::env::consts::OS, std::env::consts::ARCH,
     );
-    assert_eq!(package.graph().nodes.len(), total);
+    assert_eq!(package.graph().node_count(), total);
     assert!(
         incremental_peak <= 1_572_864,
         "reader incremental peak {incremental_peak} KiB exceeds AC-214 ceiling",

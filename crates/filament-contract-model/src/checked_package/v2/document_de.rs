@@ -9,7 +9,7 @@
 //!
 //! Implements: FR-038 "Budget-charged strict read", stage `WireDecode`.
 
-use super::checked_json::{CheckedJson, CHECKED_JSON_TOKEN};
+use super::checked_json::{CheckedJson, CHECKED_JSON_TOKEN, ROOT_BODY_TOKEN};
 use super::native_join_budget::{NativeJoinBudget, NativeJoinLocus, NativeJoinLocusSource};
 use super::PackageReadStage;
 use crate::checked_package::shared::CheckedNodeId;
@@ -744,9 +744,16 @@ impl<'de, 'c> de::Deserializer<'de> for ValueDe<'c, 'de> {
             );
             return visitor.visit_unit();
         }
+        if name == ROOT_BODY_TOKEN {
+            CheckedJson::offer_root_body(CheckedJson::root_body(
+                Arc::clone(self.context.document),
+                self.node.id(),
+            ));
+            return visitor.visit_unit();
+        }
         if name == CHECKED_JSON_TOKEN {
-            // The handle is a clone of the retained document's `Arc`, which
-            // allocates nothing.
+            // The post-validation detachment pass replaces this temporary
+            // source-document handle with compact subtree storage.
             CheckedJson::offer(CheckedJson::new(
                 Arc::clone(self.context.document),
                 self.node.id(),

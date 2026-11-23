@@ -17,11 +17,7 @@ use super::{
     ExactTypeProjectionError, ExactTypeProjectionErrorCode, SelectedExactIdentities,
     SelectedExactIdentity, SelectedTupleDeclarationRow,
 };
-use filament_exact::{
-    CardinalityBound, CollectionKind, CollectionType, FloatType, IeeeWidth, Integer,
-    IntegerInterval, NodeKey, OriginalDeclarationKey, RationalDomain, TextProfile, TextType,
-    UnionMember, UnitId, ValueType,
-};
+use filament_exact::{NodeKey, OriginalDeclarationKey, UnionMember, UnitId, ValueType};
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -122,7 +118,7 @@ fn absent_node(
     node: &CheckedNodeId,
     pointer: &str,
 ) -> ExactTypeProjectionError {
-    let code = if node.package == package.wire.name
+    let code = if node.package.as_ref() == package.wire.name.as_ref()
         || package.models.selected_model(&node.package).is_some()
     {
         ExactTypeProjectionErrorCode::UnknownNode
@@ -156,9 +152,12 @@ impl NodeAlloc for PayloadNodeAlloc<'_> {
         charge_native_storage(self.budget, self.at, self.at, form, amount)
     }
 
-    fn text(&mut self, text: &str, form: &'static str) -> Res<Box<str>> {
-        self.request(text.len(), form)?;
-        Ok(Box::from(text))
+    fn text(&mut self, text: &str, form: &'static str) -> Res<std::sync::Arc<str>> {
+        self.request(
+            text.len() + crate::checked_package::shared::ARC_STR_HEADER,
+            form,
+        )?;
+        Ok(crate::checked_package::shared::intern_checked_package_string(text))
     }
 
     fn vec<T>(&mut self, capacity: usize, form: &'static str) -> Res<Vec<T>> {
@@ -1542,6 +1541,10 @@ mod tests {
     };
     use super::*;
     use crate::CheckedPackageEvidence;
+    use filament_exact::{
+        CardinalityBound, CollectionKind, CollectionType, FloatType, IeeeWidth, Integer,
+        IntegerInterval, RationalDomain, TextProfile, TextType,
+    };
     use ix_trace_rs::trace;
 
     const CHECKED: &[u8] =

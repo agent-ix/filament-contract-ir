@@ -121,11 +121,11 @@ fn admitted_frame_body(value: &Value) -> Value {
         CheckedPackageV2ReadResult::Admitted(package) => serde_json::to_value(
             &package
                 .graph()
-                .nodes
-                .iter()
+                .nodes()
                 .find(|node| {
-                    node.node_tag.as_ref() == "state" && node.semantic_form.as_ref() == "frame"
+                    node.node_tag().as_ref() == "state" && node.semantic_form().as_ref() == "frame"
                 })
+                .map(|node| node.to_owned_wire())
                 .expect("admitted frame")
                 .body,
         )
@@ -915,8 +915,9 @@ fn tc_056_exactly_fifteen_model_forms_admit() {
     let CheckedPackageV2ReadResult::Admitted(admitted) = result else {
         panic!("selected persistence interface must admit: {result:?}");
     };
-    assert!(admitted.graph().nodes.iter().any(|node| {
-        node.node_tag.as_ref() == "model" && node.semantic_form.as_ref() == "persistence_interface"
+    assert!(admitted.graph().nodes().any(|node| {
+        node.node_tag().as_ref() == "model"
+            && node.semantic_form().as_ref() == "persistence_interface"
     }));
     for form in [
         "field_declaration",
@@ -1203,7 +1204,7 @@ fn assert_pointed_writer_round_trip(package: &StatePackage, positions: &[usize])
     let encoded = encode_checked_package_v2(
         admitted.name(),
         admitted.lock(),
-        admitted.graph(),
+        &admitted.graph().to_owned_wire(),
         CheckedPackageSourceCorrespondenceRef {
             source_map: admitted.source_map(),
             refinement_step_rows: admitted.refinement_step_rows(),
@@ -1250,8 +1251,15 @@ fn tc_056_model_clause_points_retain_name_and_structural_identity() {
     };
     let absent_clause = absent.clause("invariant");
     assert_eq!(
-        serde_json::to_value(&absent_read.graph().nodes[absent_clause].body)
-            .expect("typed unpointed invariant"),
+        serde_json::to_value(
+            &absent_read
+                .graph()
+                .node(absent_clause)
+                .expect("graph position exists")
+                .to_owned_wire()
+                .body
+        )
+        .expect("typed unpointed invariant"),
         absent.value["semantic_graph"]["nodes"][absent_clause]["body"]
     );
     assert_pointed_writer_round_trip(&absent, &[absent_clause]);
@@ -1264,7 +1272,15 @@ fn tc_056_model_clause_points_retain_name_and_structural_identity() {
         };
         let clause = package.clause("invariant");
         assert_eq!(
-            serde_json::to_value(&admitted.graph().nodes[clause].body).expect("typed clause"),
+            serde_json::to_value(
+                &admitted
+                    .graph()
+                    .node(clause)
+                    .expect("graph position exists")
+                    .to_owned_wire()
+                    .body
+            )
+            .expect("typed clause"),
             package.value["semantic_graph"]["nodes"][clause]["body"]
         );
         assert_eq!(
@@ -1293,8 +1309,15 @@ fn tc_056_model_clause_points_retain_name_and_structural_identity() {
             other => panic!("pointed constraint refused: {other:?}"),
         };
         assert_eq!(
-            serde_json::to_value(&admitted.graph().nodes[clause].body).expect("typed constraint")
-                ["operation"]["member"]["execution_point"],
+            serde_json::to_value(
+                &admitted
+                    .graph()
+                    .node(clause)
+                    .expect("graph position exists")
+                    .to_owned_wire()
+                    .body
+            )
+            .expect("typed constraint")["operation"]["member"]["execution_point"],
             point
         );
         assert_pointed_writer_round_trip(&package, &[clause]);
@@ -1462,7 +1485,12 @@ fn tc_056_execution_points_rekey_and_round_trip_as_bare_wire_objects() {
             .as_array()
             .and_then(|members| members.get(3))
             .map(|member| &member["value"]);
-        let CheckedTerm::OperationAnchorBody(typed_anchor) = &admitted.graph().nodes[anchor].body
+        let CheckedTerm::OperationAnchorBody(typed_anchor) = &admitted
+            .graph()
+            .node(anchor)
+            .expect("graph position exists")
+            .to_owned_wire()
+            .body
         else {
             panic!("admitted anchor must have one typed form");
         };
@@ -1472,13 +1500,26 @@ fn tc_056_execution_points_rekey_and_round_trip_as_bare_wire_objects() {
                 members: typed_anchor.members.clone(),
                 execution_point: expected_point.clone(),
             }));
-        assert_eq!(constructed_anchor, admitted.graph().nodes[anchor].body);
+        assert_eq!(
+            constructed_anchor,
+            admitted
+                .graph()
+                .node(anchor)
+                .expect("graph position exists")
+                .to_owned_wire()
+                .body
+        );
         let CheckedTerm::Application {
             operator,
             operation,
             result_type,
             arguments,
-        } = &admitted.graph().nodes[clause].body
+        } = &admitted
+            .graph()
+            .node(clause)
+            .expect("graph position exists")
+            .to_owned_wire()
+            .body
         else {
             panic!("admitted clause must have a typed application");
         };
@@ -1492,16 +1533,40 @@ fn tc_056_execution_points_rekey_and_round_trip_as_bare_wire_objects() {
             result_type: result_type.clone(),
             arguments: arguments.clone(),
         };
-        assert_eq!(constructed, admitted.graph().nodes[clause].body);
+        assert_eq!(
+            constructed,
+            admitted
+                .graph()
+                .node(clause)
+                .expect("graph position exists")
+                .to_owned_wire()
+                .body
+        );
         if let Some(point) = point {
             assert!(point.get("term").is_none(), "anchor point is not a term");
         }
         assert_eq!(
-            serde_json::to_value(&admitted.graph().nodes[anchor].body).expect("typed anchor"),
+            serde_json::to_value(
+                &admitted
+                    .graph()
+                    .node(anchor)
+                    .expect("graph position exists")
+                    .to_owned_wire()
+                    .body
+            )
+            .expect("typed anchor"),
             package.value["semantic_graph"]["nodes"][anchor]["body"]
         );
         assert_eq!(
-            serde_json::to_value(&admitted.graph().nodes[clause].body).expect("typed clause"),
+            serde_json::to_value(
+                &admitted
+                    .graph()
+                    .node(clause)
+                    .expect("graph position exists")
+                    .to_owned_wire()
+                    .body
+            )
+            .expect("typed clause"),
             package.value["semantic_graph"]["nodes"][clause]["body"]
         );
         assert_pointed_writer_round_trip(package, &[anchor, clause]);
@@ -1532,8 +1597,15 @@ fn tc_056_execution_points_rekey_and_round_trip_as_bare_wire_objects() {
             other => panic!("postcondition with either operation point refused: {other:?}"),
         };
         assert_eq!(
-            serde_json::to_value(&admitted.graph().nodes[clause].body)
-                .expect("typed postcondition")["operation"]["member"]["execution_point"],
+            serde_json::to_value(
+                &admitted
+                    .graph()
+                    .node(clause)
+                    .expect("graph position exists")
+                    .to_owned_wire()
+                    .body
+            )
+            .expect("typed postcondition")["operation"]["member"]["execution_point"],
             point
         );
     }
@@ -2207,7 +2279,11 @@ fn tc_056_public_state_clause_kind_tracks_reader_admission() {
         ("precondition", StateClauseKind::Precondition),
         ("postcondition", StateClauseKind::Postcondition),
     ] {
-        let node = &admitted.graph().nodes[package.clause(name)];
+        let node = &admitted
+            .graph()
+            .node(package.clause(name))
+            .expect("graph position exists")
+            .to_owned_wire();
         let CheckedTerm::Application { operation, .. } = &node.body else {
             panic!("{name} clause is an application");
         };
@@ -2218,9 +2294,8 @@ fn tc_056_public_state_clause_kind_tracks_reader_admission() {
     }
     let plain = admitted
         .graph()
-        .nodes
-        .iter()
-        .find_map(|node| match &node.body {
+        .nodes()
+        .find_map(|node| match &node.resolved_node().body {
             CheckedTerm::Application { operation, .. }
                 if operation.identity() != Some("filament.op.state.clause") =>
             {
@@ -3882,9 +3957,9 @@ fn tc_445_source_declared_operation_input_has_no_selected_model_range() {
             .expect("clause id");
     let node = admitted
         .graph()
-        .nodes
-        .iter()
-        .find(|node| node.node_id == clause)
+        .nodes()
+        .find(|node| *node.node_id == clause)
+        .map(|node| node.to_owned_wire())
         .expect("admitted clause");
     let claim = node.occurrences.first().expect("authentic claim");
     let refusal = admitted
@@ -4024,7 +4099,11 @@ fn tc_462_clause_point_applicability_admits_all_eight_pairs() {
             CheckedPackageV2ReadResult::Admitted(package) => package,
             other => panic!("{kind} point refused: {other:?}"),
         };
-        let clause = &admitted.graph().nodes[position];
+        let clause = &admitted
+            .graph()
+            .node(position)
+            .expect("graph position exists")
+            .to_owned_wire();
         let claim = clause.occurrences.first().expect("clause claim");
         assert_eq!(
             admitted.clause_execution_point(&clause.node_id, (&clause.node_id, claim)),
@@ -4150,7 +4229,12 @@ fn tc_462_public_accessor_returns_exact_admitted_points_without_source_bytes() {
             .document_held_id(position)
             .expect("graph node")
             .clone();
-        let claim = admitted.graph().nodes[position].occurrences[0].clone();
+        let claim = admitted
+            .graph()
+            .node(position)
+            .expect("graph position exists")
+            .occurrences()[0]
+            .clone();
         let unchanged = admitted.clone();
         let identity = admitted.name().to_owned();
         drop(source);
@@ -4195,13 +4279,17 @@ fn tc_462_public_accessor_refuses_in_closed_precedence_order() {
         .document_held_id(anchor)
         .expect("graph node")
         .clone();
-    let claim = admitted.graph().nodes[pointed].occurrences[0].clone();
+    let claim = admitted
+        .graph()
+        .node(pointed)
+        .expect("graph position exists")
+        .occurrences()[0]
+        .clone();
     let other_claim = admitted
         .graph()
-        .nodes
-        .iter()
-        .find(|node| node.node_id == unpointed)
-        .and_then(|node| node.occurrences.first())
+        .nodes()
+        .find(|node| *node.node_id == unpointed)
+        .and_then(|node| node.resolved_node().occurrences.first())
         .expect("other clause claim")
         .clone();
     assert_eq!(
@@ -4309,7 +4397,11 @@ fn tc_462_multiple_claims_of_one_node_share_the_admitted_point() {
         CheckedPackageV2ReadResult::Admitted(package) => package,
         other => panic!("two-claim package refused: {other:?}"),
     };
-    let clause = &admitted.graph().nodes[position];
+    let clause = &admitted
+        .graph()
+        .node(position)
+        .expect("graph position exists")
+        .to_owned_wire();
     assert_eq!(clause.occurrences.len(), 2);
     for claim in &clause.occurrences {
         assert_eq!(
@@ -4383,7 +4475,11 @@ fn tc_462_point_change_rekeys_node_and_package_without_losing_accessor_value() {
                 CheckedPackageV2ReadResult::Admitted(package) => package,
                 other => panic!("pointed {kind} refused: {other:?}"),
             };
-            let clause = &admitted.graph().nodes[position];
+            let clause = &admitted
+                .graph()
+                .node(position)
+                .expect("graph position exists")
+                .to_owned_wire();
             let claim = clause.occurrences.first().expect("claim");
             assert_eq!(
                 admitted.clause_execution_point(&clause.node_id, (&clause.node_id, claim)),
@@ -4699,9 +4795,9 @@ fn step_relation_reader_retains_two_executions_and_roundtrips() {
     };
     let relation = admitted
         .graph()
-        .nodes
-        .iter()
-        .find(|node| node.semantic_form.as_ref() == "step_relation")
+        .nodes()
+        .find(|node| node.semantic_form().as_ref() == "step_relation")
+        .map(|node| node.to_owned_wire())
         .expect("relation");
     let body = relation.step_relation_body().expect("typed relation");
     assert_eq!(body.subjects.len(), 1);
@@ -4732,9 +4828,9 @@ fn step_relation_reader_retains_two_executions_and_roundtrips() {
     );
     let expression = admitted
         .graph()
-        .nodes
-        .iter()
-        .find(|node| node.node_id == body.body)
+        .nodes()
+        .find(|node| *node.node_id == body.body)
+        .map(|node| node.to_owned_wire())
         .expect("Boolean relation expression");
     let CheckedTerm::Application {
         operation,
@@ -4751,9 +4847,9 @@ fn step_relation_reader_retains_two_executions_and_roundtrips() {
         };
         let pre = admitted
             .graph()
-            .nodes
-            .iter()
-            .find(|node| node.node_id == *pre_id)
+            .nodes()
+            .find(|node| *node.node_id == *pre_id)
+            .map(|node| node.to_owned_wire())
             .expect("pre read");
         let CheckedTerm::Application {
             operation,
@@ -4769,9 +4865,9 @@ fn step_relation_reader_retains_two_executions_and_roundtrips() {
         };
         let field = admitted
             .graph()
-            .nodes
-            .iter()
-            .find(|node| node.node_id == *field_id)
+            .nodes()
+            .find(|node| *node.node_id == *field_id)
+            .map(|node| node.to_owned_wire())
             .expect("field read");
         let CheckedTerm::Application {
             operation,
@@ -4802,9 +4898,9 @@ fn step_relation_reader_retains_two_executions_and_roundtrips() {
         };
         let deref = admitted
             .graph()
-            .nodes
-            .iter()
-            .find(|node| node.node_id == *deref_id)
+            .nodes()
+            .find(|node| *node.node_id == *deref_id)
+            .map(|node| node.to_owned_wire())
             .expect("deref");
         let CheckedTerm::Application {
             operation,
@@ -4837,7 +4933,7 @@ fn step_relation_reader_retains_two_executions_and_roundtrips() {
     let bytes = encode_checked_package_v2(
         admitted.name(),
         admitted.lock(),
-        admitted.graph(),
+        &admitted.graph().to_owned_wire(),
         CheckedPackageSourceCorrespondenceRef {
             source_map: admitted.source_map(),
             refinement_step_rows: admitted.refinement_step_rows(),
@@ -4864,9 +4960,9 @@ fn step_relation_reader_retains_two_executions_and_roundtrips() {
         CheckedPackageV2ReadResult::Admitted(reloaded) => {
             let again = reloaded
                 .graph()
-                .nodes
-                .iter()
-                .find(|node| node.semantic_form.as_ref() == "step_relation")
+                .nodes()
+                .find(|node| node.semantic_form().as_ref() == "step_relation")
+                .map(|node| node.to_owned_wire())
                 .expect("relation");
             assert_eq!(again.step_relation_body(), Some(body));
             assert_eq!(again.node_id, relation.node_id);
@@ -4980,15 +5076,15 @@ fn step_relation_source_correspondence_does_not_change_semantic_identity() {
     let moved = admitted(&moved);
     let original_relation = original
         .graph()
-        .nodes
-        .iter()
-        .find(|node| node.semantic_form.as_ref() == "step_relation")
+        .nodes()
+        .find(|node| node.semantic_form().as_ref() == "step_relation")
+        .map(|node| node.to_owned_wire())
         .expect("original relation");
     let moved_relation = moved
         .graph()
-        .nodes
-        .iter()
-        .find(|node| node.semantic_form.as_ref() == "step_relation")
+        .nodes()
+        .find(|node| node.semantic_form().as_ref() == "step_relation")
+        .map(|node| node.to_owned_wire())
         .expect("moved relation");
     assert_eq!(original_relation.node_id, moved_relation.node_id);
     assert_eq!(
@@ -5248,9 +5344,9 @@ fn step_relation_bound_implementation_requests_code_claim_and_checks_frame() {
     };
     let relation_node = admitted
         .graph()
-        .nodes
-        .iter()
-        .find(|node| node.semantic_form.as_ref() == "step_relation")
+        .nodes()
+        .find(|node| node.semantic_form().as_ref() == "step_relation")
+        .map(|node| node.to_owned_wire())
         .expect("relation");
     let body = relation_node.step_relation_body().expect("typed body");
     assert!(body.requests_code_claim());
@@ -5429,9 +5525,12 @@ fn selected_operation_member_rows_join_only_admitted_model_anchors() {
         CheckedPackageV2ReadResult::Admitted(package) => package,
         other => panic!("expected source operation admission, got {other:?}"),
     };
-    let source_anchor = source_package.graph().nodes[source_anchor_position]
-        .node_id
-        .clone();
+    let source_anchor = source_package
+        .graph()
+        .node(source_anchor_position)
+        .expect("graph position exists")
+        .node_id()
+        .into_owned();
     assert_eq!(
         selected
             .read(&source_package, &source_anchor)
@@ -5573,9 +5672,11 @@ fn model_operation_callable_joins_selected_body_and_frame() {
     };
     let other_anchor_id = admitted
         .graph()
-        .nodes
-        .iter()
-        .find(|node| node.semantic_form.as_ref() == "operation_anchor" && node.node_id != anchor_id)
+        .nodes()
+        .find(|node| {
+            node.semantic_form().as_ref() == "operation_anchor" && *node.node_id != anchor_id
+        })
+        .map(|node| node.to_owned_wire())
         .expect("second execution point")
         .node_id
         .clone();
@@ -5839,9 +5940,9 @@ fn admitted_relation(package: &Value) -> CheckedPackageV2 {
 fn declared_order(package: &CheckedPackageV2) -> Option<Vec<(String, CheckedNodeId)>> {
     let relation = package
         .graph()
-        .nodes
-        .iter()
-        .find(|node| node.semantic_form.as_ref() == "step_relation")
+        .nodes()
+        .find(|node| node.semantic_form().as_ref() == "step_relation")
+        .map(|node| node.to_owned_wire())
         .expect("relation");
     relation
         .step_relation_subject_declaration_order()
@@ -5878,10 +5979,9 @@ fn step_relation_declaration_order_is_optional_and_legacy_four_binding_admits() 
     let body = |package: &CheckedPackageV2| {
         package
             .graph()
-            .nodes
-            .iter()
-            .find(|node| node.semantic_form.as_ref() == "step_relation")
-            .and_then(|node| node.step_relation_body())
+            .nodes()
+            .find(|node| node.semantic_form().as_ref() == "step_relation")
+            .and_then(|node| node.to_owned_wire().step_relation_body())
             .expect("typed body")
     };
     assert_eq!(body(&with_member), body(&without_member));
@@ -5907,10 +6007,9 @@ fn step_relation_declaration_order_preserves_supplied_order_over_one_root_and_ro
     assert_eq!(declared_order(&admitted), Some(expected.clone()));
     let first_use = admitted
         .graph()
-        .nodes
-        .iter()
-        .find(|node| node.semantic_form.as_ref() == "step_relation")
-        .and_then(|node| node.step_relation_body())
+        .nodes()
+        .find(|node| node.semantic_form().as_ref() == "step_relation")
+        .and_then(|node| node.to_owned_wire().step_relation_body())
         .expect("typed body")
         .subjects
         .into_iter()
@@ -5920,7 +6019,7 @@ fn step_relation_declaration_order_preserves_supplied_order_over_one_root_and_ro
     let bytes = encode_checked_package_v2(
         admitted.name(),
         admitted.lock(),
-        admitted.graph(),
+        &admitted.graph().to_owned_wire(),
         CheckedPackageSourceCorrespondenceRef {
             source_map: admitted.source_map(),
             refinement_step_rows: admitted.refinement_step_rows(),

@@ -101,7 +101,7 @@ fn tc_044_reader_admits_and_lowers_every_public_node_family() {
     // public families plus the supporting nodes their new required fields
     // (FR-208's `application.operation`/`result_type` and the 18 model
     // forms) now reference, such as the function family's second function.
-    assert_eq!(package.graph().nodes.len(), total_nodes);
+    assert_eq!(package.graph().node_count(), total_nodes);
 
     let known_ids: BTreeSet<CheckedNodeId> = (0..total_nodes)
         .map(|position| wire_node_id(&value, position))

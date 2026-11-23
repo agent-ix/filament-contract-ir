@@ -31,9 +31,8 @@ fn fsl_emitted_package_keeps_the_unreferenced_operation_in_the_census() {
         };
     let context = admitted
         .graph()
-        .nodes
-        .iter()
-        .find(|node| node.semantic_form.as_ref() == OBJECT)
+        .nodes()
+        .find(|node| node.semantic_form().as_ref() == OBJECT)
         .expect("FSL selected Node's model declaration");
     let census = admitted.model_operations(&context.node_id, 10_000).unwrap();
     assert_eq!(

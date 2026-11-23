@@ -45,7 +45,7 @@ fn ir_v2_inventory_matches_every_admitted_graph_node_and_occurrence() {
         &evidence_for(&value),
     );
     let graph = match &read {
-        CheckedPackageV2ReadResult::Admitted(package) => package.graph(),
+        CheckedPackageV2ReadResult::Admitted(package) => package.graph().to_owned_wire(),
         other => panic!("fixture must admit: {other:?}"),
     };
     let selected = source();

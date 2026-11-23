@@ -148,23 +148,21 @@ fn admit_selected_variant(case: &Path, bytes: &[u8]) -> CheckedPackageV2 {
 fn version_unchanged(package: &CheckedPackageV2) -> CheckedClauseComparison {
     let postconditions: Vec<_> = package
         .graph()
-        .nodes
-        .iter()
+        .nodes()
         .filter(|node| {
-            node.node_tag.as_ref() == "state" && node.semantic_form.as_ref() == "state_clause"
+            node.node_tag().as_ref() == "state" && node.semantic_form().as_ref() == "state_clause"
         })
         .flat_map(|clause| {
+            let package = &package;
+            let id = clause.node_id.clone().into_owned();
             clause
+                .resolved_node()
                 .occurrences
                 .iter()
                 .filter(|occurrence| {
                     occurrence.role == filament_contract_model::CheckedOccurrenceRole::Claim
                 })
-                .filter_map(|claim| {
-                    package
-                        .direct_integer_comparison(&clause.node_id, claim)
-                        .ok()
-                })
+                .filter_map(move |claim| package.direct_integer_comparison(&id, claim).ok())
         })
         .filter(|projection| projection.kind == CheckedComparisonClauseKind::Postcondition)
         .collect();
@@ -327,9 +325,8 @@ fn tc_445_fresh_fsl_config_version_has_shared_field_with_post_and_pre_observatio
             assert_eq!(field.as_ref(), "versionNumber");
             assert!(package
                 .graph()
-                .nodes
-                .iter()
-                .any(|node| &node.node_id == declaration));
+                .nodes()
+                .any(|node| &*node.node_id == declaration));
             (project, *observation)
         }
         other => panic!("expected StateField read, got {other:?}"),
@@ -395,17 +392,19 @@ fn tc_445_fresh_fsl_config_version_has_shared_field_with_post_and_pre_observatio
     ] {
         let projections: Vec<_> = contextual_package
             .graph()
-            .nodes
-            .iter()
+            .nodes()
             .filter(|node| {
-                node.node_tag.as_ref() == "state" && node.semantic_form.as_ref() == "state_clause"
+                node.node_tag().as_ref() == "state"
+                    && node.semantic_form().as_ref() == "state_clause"
             })
             .flat_map(|clause| {
-                clause.occurrences.iter().filter_map(|claim| {
-                    contextual_package
-                        .direct_integer_comparison(&clause.node_id, claim)
-                        .ok()
-                })
+                let package = &contextual_package;
+                let id = clause.node_id.clone().into_owned();
+                clause
+                    .resolved_node()
+                    .occurrences
+                    .iter()
+                    .filter_map(move |claim| package.direct_integer_comparison(&id, claim).ok())
             })
             .filter(|projection| projection.kind == kind)
             .collect();
@@ -448,10 +447,10 @@ fn tc_445_fresh_fsl_config_version_has_shared_field_with_post_and_pre_observatio
                 projection.operands[1].identity
             );
         };
-        assert!(contextual_package.graph().nodes.iter().any(|node| {
-            &node.node_id == literal_id
-                && node.node_tag.as_ref() == "value"
-                && node.semantic_form.as_ref() == "literal"
+        assert!(contextual_package.graph().nodes().any(|node| {
+            &*node.node_id == literal_id
+                && node.node_tag().as_ref() == "value"
+                && node.semantic_form().as_ref() == "literal"
         }));
     }
 
@@ -506,13 +505,12 @@ fn tc_445_fresh_fsl_config_version_has_shared_field_with_post_and_pre_observatio
     };
     let repeated_clause = repeated_package
         .graph()
-        .nodes
-        .iter()
+        .nodes()
         .find(|node| {
-            node.node_tag.as_ref() == "state"
-                && node.semantic_form.as_ref() == "state_clause"
+            node.node_tag().as_ref() == "state"
+                && node.semantic_form().as_ref() == "state_clause"
                 && node
-                    .occurrences
+                    .occurrences()
                     .iter()
                     .filter(|occurrence| {
                         occurrence.role == filament_contract_model::CheckedOccurrenceRole::Claim
@@ -520,6 +518,7 @@ fn tc_445_fresh_fsl_config_version_has_shared_field_with_post_and_pre_observatio
                     .count()
                     >= 2
         })
+        .map(|node| node.to_owned_wire())
         .expect("two producer claims share one content-addressed clause");
     let claims: Vec<_> = repeated_clause
         .occurrences
@@ -574,17 +573,18 @@ fn tc_445_fresh_fsl_config_version_has_shared_field_with_post_and_pre_observatio
     let unbounded_package = admit_selected_variant(&case, &unbounded_bytes);
     let refusals: Vec<_> = unbounded_package
         .graph()
-        .nodes
-        .iter()
+        .nodes()
         .filter(|node| {
-            node.node_tag.as_ref() == "state" && node.semantic_form.as_ref() == "state_clause"
+            node.node_tag().as_ref() == "state" && node.semantic_form().as_ref() == "state_clause"
         })
         .flat_map(|clause| {
-            clause.occurrences.iter().filter_map(|claim| {
-                unbounded_package
-                    .direct_integer_comparison(&clause.node_id, claim)
-                    .err()
-            })
+            let package = &unbounded_package;
+            let id = clause.node_id.clone().into_owned();
+            clause
+                .resolved_node()
+                .occurrences
+                .iter()
+                .filter_map(move |claim| package.direct_integer_comparison(&id, claim).err())
         })
         .filter(|error| error.kind == CheckedComparisonRefusal::UnboundedRange)
         .collect();

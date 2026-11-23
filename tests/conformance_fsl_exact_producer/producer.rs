@@ -3,9 +3,6 @@
 
 //! External typed consumer of FSL's selected-model identity producer.
 
-use fsl_foundation::SourceIdentity;
-use fsl_package::{emit_checked, CheckedPackage};
-use fsl_semantics::{check::PackageDeclarations, model::intake};
 use filament_contract_model::{
     CheckedNodeId, CheckedPackageEvidence, CheckedPackageReadLimits, CheckedPackageV2,
     CheckedPackageV2ReadResult, ExactTypeProjectionErrorCode as Code, SelectedExactDeclarationForm,
@@ -14,6 +11,9 @@ use filament_contract_model::{
 };
 use filament_exact::{Presence, ValueType};
 use filament_semantic_value::checking::CheckingLimits;
+use fsl_foundation::SourceIdentity;
+use fsl_package::{emit_checked, CheckedPackage};
+use fsl_semantics::{check::PackageDeclarations, model::intake};
 use serde_json::{json, Value};
 
 const MODEL: &str = "test/ir1003-producer";
@@ -82,8 +82,13 @@ fn join_error(
     node: &CheckedNodeId,
     code: Code,
 ) {
-    let error = SelectedExactIdentities::from_stage_rows(admitted, declarations, fields, &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX))
-        .expect_err("invalid producer rows must not yield a projection witness");
+    let error = SelectedExactIdentities::from_stage_rows(
+        admitted,
+        declarations,
+        fields,
+        &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+    )
+    .expect_err("invalid producer rows must not yield a projection witness");
     assert_eq!(error.code, code, "{error:?}");
     assert_eq!(error.requested.as_deref(), Some(node));
     assert_eq!(error.at.as_deref(), Some(node));
@@ -170,7 +175,11 @@ fn main() {
         panic!("object id");
     };
     let projection = admitted
-        .project_exact_type(&record.structural_node, &witnesses, &mut filament_contract_model::NativeJoinBudget::new(256, u64::MAX))
+        .project_exact_type(
+            &record.structural_node,
+            &witnesses,
+            &mut filament_contract_model::NativeJoinBudget::new(256, u64::MAX),
+        )
         .expect("external consumer projects the genuine record");
     assert_eq!(
         projection.value_type(),
@@ -219,15 +228,18 @@ fn main() {
     }
     let reference = admitted
         .graph()
-        .nodes
-        .iter()
+        .nodes()
         .find(|node| {
             node.node_tag.as_ref() == "composite_type" && node.semantic_form.as_ref() == "reference"
         })
         .expect("emitted object-reference type");
     assert_eq!(
         admitted
-            .project_exact_type(&reference.node_id, &witnesses, &mut filament_contract_model::NativeJoinBudget::new(256, u64::MAX))
+            .project_exact_type(
+                &reference.node_id,
+                &witnesses,
+                &mut filament_contract_model::NativeJoinBudget::new(256, u64::MAX)
+            )
             .expect("external reference consumer")
             .value_type(),
         &ValueType::Reference(effective.clone())
@@ -238,11 +250,19 @@ fn main() {
         .filter(|row| row.structural_node != object.structural_node)
         .cloned()
         .collect::<Vec<_>>();
-    let absent_object =
-        SelectedExactIdentities::from_stage_rows(&admitted, absent_object_rows, fields.clone(), &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX))
-            .expect("record witnesses still join without the object row");
+    let absent_object = SelectedExactIdentities::from_stage_rows(
+        &admitted,
+        absent_object_rows,
+        fields.clone(),
+        &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+    )
+    .expect("record witnesses still join without the object row");
     let error = admitted
-        .project_exact_type(&reference.node_id, &absent_object, &mut filament_contract_model::NativeJoinBudget::new(256, u64::MAX))
+        .project_exact_type(
+            &reference.node_id,
+            &absent_object,
+            &mut filament_contract_model::NativeJoinBudget::new(256, u64::MAX),
+        )
         .expect_err("reference projection cannot default a missing object identity");
     assert_eq!(error.code, Code::UnavailableIdentityWitness);
     assert_eq!(error.requested.as_deref(), Some(&reference.node_id));
@@ -251,7 +271,8 @@ fn main() {
     let absent = admitted
         .project_exact_type(
             &record.structural_node,
-            &SelectedExactIdentities::empty(), &mut filament_contract_model::NativeJoinBudget::new(256, u64::MAX),
+            &SelectedExactIdentities::empty(),
+            &mut filament_contract_model::NativeJoinBudget::new(256, u64::MAX),
         )
         .expect_err("no authoritative declaration witness");
     assert_eq!(absent.code, Code::UnavailableIdentityWitness);
@@ -265,11 +286,19 @@ fn main() {
         .cloned()
         .collect::<Vec<_>>();
     assert_eq!(missing_fields.len() + 1, fields.len());
-    let missing =
-        SelectedExactIdentities::from_stage_rows(&admitted, declarations.clone(), missing_fields, &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX))
-            .expect("other genuine producer rows still join");
+    let missing = SelectedExactIdentities::from_stage_rows(
+        &admitted,
+        declarations.clone(),
+        missing_fields,
+        &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+    )
+    .expect("other genuine producer rows still join");
     let error = admitted
-        .project_exact_type(&record.structural_node, &missing, &mut filament_contract_model::NativeJoinBudget::new(256, u64::MAX))
+        .project_exact_type(
+            &record.structural_node,
+            &missing,
+            &mut filament_contract_model::NativeJoinBudget::new(256, u64::MAX),
+        )
         .expect_err("missing inherited field refuses whole projection");
     assert_eq!(error.code, Code::UnavailableIdentityWitness);
     assert_eq!(error.at.as_deref(), Some(&record.structural_node));

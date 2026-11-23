@@ -1694,8 +1694,7 @@ fn tc_058_reader_admitted_operation_has_no_fixture_provenance() {
     };
     let operation = admitted
         .graph()
-        .nodes
-        .iter()
+        .nodes()
         .find_map(|node| match admitted.term(&node.node_id) {
             Some(CheckedTerm::Application { operation, .. }) => Some(operation),
             _ => None,

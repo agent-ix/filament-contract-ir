@@ -148,7 +148,15 @@ fn public_constructors_round_trip_all_four_nominal_forms_through_reader() {
             other => panic!("nominal fixture must admit: {other:?}"),
         };
         for (position, expected) in constructed {
-            assert_eq!(&admitted.graph().nodes[position].body, &expected);
+            assert_eq!(
+                &admitted
+                    .graph()
+                    .node(position)
+                    .expect("graph position exists")
+                    .to_owned_wire()
+                    .body,
+                &expected
+            );
         }
     }
     assert_eq!(
@@ -282,7 +290,13 @@ fn admitted_nominal_enum_details_borrow_authored_order_and_members() {
             CheckedPackageV2ReadResult::Admitted(package) => package,
             other => panic!("nominal fixture must admit: {other:?}"),
         };
-        let CheckedTerm::NominalBody(body) = &admitted.graph().nodes[1].body else {
+        let CheckedTerm::NominalBody(body) = &admitted
+            .graph()
+            .node(1)
+            .expect("graph position exists")
+            .to_owned_wire()
+            .body
+        else {
             panic!("admitted enum must retain a typed nominal body");
         };
         let (actual_ordered, names) = body.enum_details().expect("admitted enum details");
@@ -310,9 +324,9 @@ fn admitted_nominal_enum_details_borrow_authored_order_and_members() {
             .as_array()
             .expect("authored nodes")
             .iter()
-            .zip(&admitted.graph().nodes)
+            .zip(admitted.graph().nodes())
         {
-            let CheckedTerm::NominalBody(body) = &node.body else {
+            let CheckedTerm::NominalBody(body) = &node.wire_body() else {
                 continue;
             };
             let term = authored["body"]["term"]
@@ -350,7 +364,7 @@ fn admitted_nominal_enum_details_borrow_authored_order_and_members() {
         other => panic!("model-owned dimension must admit: {other:?}"),
     };
     assert!(matches!(
-        &model.graph().nodes[0].body,
+        &model.graph().node(0).expect("graph position exists").to_owned_wire().body,
         CheckedTerm::Aggregate { members } if members.is_empty()
     ));
 }

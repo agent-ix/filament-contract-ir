@@ -633,7 +633,11 @@ fn tc_225_the_minimal_abstraction_relation_body_admits_with_its_structural_id() 
         package.node_kinds()[position],
         CheckedNodeKind::Correspondence(CorrespondenceForm::AbstractionRelation)
     );
-    let node = &package.graph().nodes[position];
+    let node = &package
+        .graph()
+        .node(position)
+        .expect("graph position exists")
+        .to_owned_wire();
     assert_eq!(node.node_id, typed_node_id(&relation_key(0)));
     assert_eq!(node.semantic_type, node.node_id);
     assert_eq!(
@@ -1269,13 +1273,15 @@ fn tc_225_a_frame_entry_binds_its_pair_with_or_without_a_frame_node() {
     // The pairs are read back from the admitted graph: the relation node's
     // frame entry and the anchor's body.
     let pair_of = |package: &CheckedPackageV2| {
-        let graph = &package.graph().nodes;
+        let graph = package.graph().to_owned_wire();
         let entry = graph
+            .nodes
             .iter()
             .find(|node| node.semantic_form.as_ref() == "abstraction_relation")
             .map(|node| serde_json::to_value(&node.body).expect("typed relation body"))
             .expect("the relation node");
         let anchor = graph
+            .nodes
             .iter()
             .find(|node| node.semantic_form.as_ref() == "operation_anchor")
             .map(|node| serde_json::to_value(&node.body).expect("typed anchor body"))

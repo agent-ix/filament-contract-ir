@@ -4566,7 +4566,7 @@ fn tc_346_a_finite_domain_hyperproperty_has_no_subjects_alias_or_fairness_and_a_
         .as_array()
         .expect("dependency list")
         .contains(&domain["node_id"]));
-    assert!(admitted_package.graph().nodes.iter().any(|node| {
+    assert!(admitted_package.graph().nodes().any(|node| {
         node.node_id
             == serde_json::from_value(domain["node_id"].clone()).expect("finite trace node ID")
     }));
@@ -4830,8 +4830,12 @@ fn retained_argument(package: &Value, formula: usize) -> Value {
     let CheckedPackageV2ReadResult::Admitted(admitted) = result else {
         panic!("the aggregate package admits: {result:?}");
     };
-    let filament_contract_model::CheckedTerm::Application { arguments, .. } =
-        &admitted.graph().nodes[formula].body
+    let filament_contract_model::CheckedTerm::Application { arguments, .. } = &admitted
+        .graph()
+        .node(formula)
+        .expect("graph position exists")
+        .to_owned_wire()
+        .body
     else {
         panic!("the formula body is an application");
     };
@@ -4983,7 +4987,7 @@ fn tc_486_a_body_wrapper_over_its_first_subjects_model_root_reads_and_writes() {
     let encoded = filament_contract_model::encode_checked_package_v2(
         admitted.name(),
         admitted.lock(),
-        admitted.graph(),
+        &admitted.graph().to_owned_wire(),
         filament_contract_model::CheckedPackageSourceCorrespondenceRef {
             source_map: admitted.source_map(),
             refinement_step_rows: admitted.refinement_step_rows(),

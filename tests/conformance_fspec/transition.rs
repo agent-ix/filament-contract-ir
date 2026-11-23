@@ -28,7 +28,7 @@ fn write(read: &CheckedPackageV2) -> Value {
     let bytes = encode_checked_package_v2(
         read.name(),
         read.lock(),
-        read.graph(),
+        &read.graph().to_owned_wire(),
         filament_contract_model::CheckedPackageSourceCorrespondenceRef {
             source_map: read.source_map(),
             refinement_step_rows: read.refinement_step_rows(),

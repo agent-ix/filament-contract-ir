@@ -95,7 +95,7 @@ impl<Body> Graph<'_, '_, Body> {
         while let Some(next) = stack.pop() {
             match next {
                 CheckedTerm::Reference { target } => {
-                    if target.package == self.wire.name {
+                    if target.package.as_ref() == self.wire.name.as_ref() {
                         if let Some(position) = position_of(self.index, target) {
                             if matches!(
                                 self.kinds.get(position),
@@ -130,7 +130,7 @@ impl<Body> Graph<'_, '_, Body> {
         let Some(Some(start)) = self.terms.get(function).and_then(body_binding) else {
             return Ok(walk);
         };
-        let Some(start) = (start.package == self.wire.name)
+        let Some(start) = (start.package.as_ref() == self.wire.name.as_ref())
             .then(|| position_of(self.index, start))
             .flatten()
         else {
@@ -210,7 +210,7 @@ pub(super) fn validate<Body>(
             index: function_index,
         } = &row.location.origin;
         charge(meter, row_index, here)?;
-        let function_position = (function.package == wire.name)
+        let function_position = (function.package.as_ref() == wire.name.as_ref())
             .then(|| position_of(&index, function))
             .flatten()
             .filter(|position| {
@@ -276,7 +276,7 @@ pub(super) fn validate<Body>(
                 .semantic_graph
                 .nodes
                 .get(position)
-                .is_some_and(|node| node.node_id.package == wire.name);
+                .is_some_and(|node| node.node_id.package.as_ref() == wire.name.as_ref());
         if !is_function || body_binding(term).is_none() {
             continue;
         }

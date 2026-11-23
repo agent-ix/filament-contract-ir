@@ -525,10 +525,10 @@ fn state_graph_forms_read_and_write() {
         assert_eq!(
             admitted
                 .graph()
-                .nodes
+                .nodes()
                 .last()
                 .expect("claim")
-                .semantic_form
+                .semantic_form()
                 .as_ref(),
             "state_graph"
         );
@@ -557,10 +557,10 @@ fn terminal_any_reads_and_writes() {
     assert_eq!(
         admitted
             .graph()
-            .nodes
+            .nodes()
             .last()
             .expect("terminal")
-            .semantic_form
+            .semantic_form()
             .as_ref(),
         "terminal"
     );
@@ -1145,8 +1145,14 @@ fn state_graph_identity_and_shared_occurrences() {
     assert_eq!(moved_read.source_map(), expected_source);
     assert_eq!(moved_reread.source_map(), moved_read.source_map());
     assert_eq!(
-        moved_reread.graph().nodes[base_node_index()],
-        moved_read.graph().nodes[base_node_index()]
+        moved_reread
+            .graph()
+            .node(base_node_index())
+            .expect("graph position exists"),
+        moved_read
+            .graph()
+            .node(base_node_index())
+            .expect("graph position exists")
     );
     let mut instance_a = possible.clone();
     instance_a["source_map"][base_node_index()]["regions"][0]["start"] = json!(100);
@@ -1163,13 +1169,23 @@ fn state_graph_identity_and_shared_occurrences() {
             read.document_held_id(base_node_index())
                 .expect("graph node")
                 .clone(),
-            admitted(&possible).graph().nodes[base_node_index()].node_id
+            admitted(&possible)
+                .graph()
+                .node(base_node_index())
+                .expect("graph position exists")
+                .node_id()
+                .into_owned()
         );
         assert_eq!(read.name(), admitted(&possible).name());
         assert_eq!(written.source_map(), read.source_map());
         assert_eq!(
-            written.graph().nodes[base_node_index()],
-            read.graph().nodes[base_node_index()]
+            written
+                .graph()
+                .node(base_node_index())
+                .expect("graph position exists"),
+            read.graph()
+                .node(base_node_index())
+                .expect("graph position exists")
         );
     }
     assert_ne!(instance_a["source_map"], instance_b["source_map"]);
@@ -1180,13 +1196,13 @@ fn state_graph_identity_and_shared_occurrences() {
     let mut shared = possible.clone();
     second_claim_occurrence(&mut shared);
     let admitted = admitted(&shared);
-    let claim = admitted.graph().nodes.last().expect("claim");
-    assert_eq!(claim.occurrences.len(), 2);
+    let claim = admitted.graph().nodes().last().expect("claim");
+    assert_eq!(claim.occurrences().len(), 2);
     assert_eq!(
         admitted
             .source_map()
             .iter()
-            .filter(|entry| entry.node_id == claim.node_id)
+            .filter(|entry| entry.node_id == *claim.node_id)
             .count(),
         2
     );
@@ -1224,7 +1240,7 @@ fn state_graph_constant_predicate_and_absent_over() {
     assert_eq!(
         admitted(&possible)
             .graph()
-            .nodes
+            .nodes()
             .last()
             .expect("claim")
             .dependencies
@@ -1287,13 +1303,23 @@ fn terminal_identity_and_several_terminals_per_model() {
             read.document_held_id(base_node_index())
                 .expect("graph node")
                 .clone(),
-            admitted(&any).graph().nodes[base_node_index()].node_id
+            admitted(&any)
+                .graph()
+                .node(base_node_index())
+                .expect("graph position exists")
+                .node_id()
+                .into_owned()
         );
         assert_eq!(read.name(), admitted(&any).name());
         assert_eq!(written.source_map(), read.source_map());
         assert_eq!(
-            written.graph().nodes[base_node_index()],
-            read.graph().nodes[base_node_index()]
+            written
+                .graph()
+                .node(base_node_index())
+                .expect("graph position exists"),
+            read.graph()
+                .node(base_node_index())
+                .expect("graph position exists")
         );
     }
     assert_ne!(encoded(&any), encoded(&families()));
@@ -1377,7 +1403,11 @@ fn terminal_identity_and_several_terminals_per_model() {
         let written = reread_written(package);
         assert_eq!(written.terminal_rows(), rows);
         assert_eq!(written.source_map(), read.source_map());
-        read.graph().nodes[base_node_index()].occurrences.clone()
+        read.graph()
+            .node(base_node_index())
+            .expect("graph position exists")
+            .occurrences()
+            .to_vec()
     };
     assert_eq!(
         one_row(&repeated),
@@ -2048,9 +2078,10 @@ fn terminal_admits_a_boolean_literal_condition() {
             std::slice::from_ref(&model),
         )))
         .graph()
-        .nodes[base_node_index()]
-        .node_id
-        .clone();
+        .node(base_node_index())
+        .expect("graph position exists")
+        .node_id()
+        .into_owned();
         assert_ne!(&rows[0].node, any_node);
     }
     // A literal condition with a `self` parameter reads no `self`.

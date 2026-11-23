@@ -238,7 +238,7 @@ fn node_id_order_equals_canonical_key_byte_order_on_real_packages() {
         let CheckedPackageV2ReadResult::Admitted(package) = result else {
             panic!("fixture admits");
         };
-        for at in 0..package.graph().nodes.len() {
+        for at in 0..package.graph().node_count() {
             ids.push(package.structural_key_at(at).expect("key").clone());
         }
     }

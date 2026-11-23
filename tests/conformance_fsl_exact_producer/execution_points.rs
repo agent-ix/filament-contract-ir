@@ -5,14 +5,14 @@
 
 use std::{env, fs, path::PathBuf};
 
-use fsl_foundation::SourceIdentity;
-use fsl_replay::{
-    compile_package_with_execution_points, spine::DependencyInput, ReplayLimits, StageLimits,
-};
 use filament_contract_model::{
     CheckedExecutionPointError, CheckedNodeId, CheckedOccurrence, CheckedOccurrenceRole,
     CheckedPackageEvidence, CheckedPackageReadLimits, CheckedPackageV2, CheckedPackageV2ReadResult,
     ExecutionPoint, ExecutionPointName,
+};
+use fsl_foundation::SourceIdentity;
+use fsl_replay::{
+    compile_package_with_execution_points, spine::DependencyInput, ReplayLimits, StageLimits,
 };
 use serde_json::Value;
 
@@ -148,8 +148,7 @@ fn main() {
         };
         assert!(package
             .graph()
-            .nodes
-            .iter()
+            .nodes()
             .find(|node| node.node_id == id)
             .expect("retained node")
             .occurrences

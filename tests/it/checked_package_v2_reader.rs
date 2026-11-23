@@ -179,10 +179,23 @@ fn generated_occurrence_ordinal_and_source_region_survive_reading() {
     package["source_map"][map_position]["ordinal"] = json!(1);
     let first = admitted(&package);
     assert_eq!(
-        first.graph().nodes[position].occurrences[0].role,
+        first
+            .graph()
+            .node(position)
+            .expect("graph position exists")
+            .occurrences()[0]
+            .role,
         CheckedOccurrenceRole::Generated
     );
-    assert_eq!(first.graph().nodes[position].occurrences[0].ordinal, 1);
+    assert_eq!(
+        first
+            .graph()
+            .node(position)
+            .expect("graph position exists")
+            .occurrences()[0]
+            .ordinal,
+        1
+    );
     assert_eq!(first.source_map()[map_position].ordinal, 1);
 
     // A different producer-supplied row region leaves the ordinal and
@@ -203,7 +216,15 @@ fn generated_occurrence_ordinal_and_source_region_survive_reading() {
             .expect("graph node")
             .clone()
     );
-    assert_eq!(reordered.graph().nodes[position].occurrences[0].ordinal, 1);
+    assert_eq!(
+        reordered
+            .graph()
+            .node(position)
+            .expect("graph position exists")
+            .occurrences()[0]
+            .ordinal,
+        1
+    );
     assert_eq!(reordered.source_map()[map_position].ordinal, 1);
     assert_eq!(reordered.source_map()[map_position].regions[0].start, 1000);
     assert_eq!(reordered.source_map()[map_position].regions[0].end, 1001);
@@ -990,8 +1011,15 @@ fn tc_048_nominal_body_schema_defects_refuse_as_malformed_wire() {
     ordered["semantic_graph"]["nodes"][1]["body"]["ordered"] = json!(true);
     let admitted_ordered = admitted(&ordered);
     assert_eq!(
-        serde_json::to_value(&admitted_ordered.graph().nodes[1].body).expect("typed enum body")
-            ["ordered"],
+        serde_json::to_value(
+            &admitted_ordered
+                .graph()
+                .node(1)
+                .expect("graph position exists")
+                .to_owned_wire()
+                .body
+        )
+        .expect("typed enum body")["ordered"],
         true
     );
 
@@ -1561,9 +1589,8 @@ fn tc_048_model_root_identities_are_unique_in_either_graph_order() {
         assert_eq!(
             package
                 .graph()
-                .nodes
-                .iter()
-                .filter(|node| node.semantic_form.as_ref() == "model_root")
+                .nodes()
+                .filter(|node| node.semantic_form().as_ref() == "model_root")
                 .count(),
             2
         );
@@ -1748,8 +1775,9 @@ fn tc_048_model_export_is_not_a_v2_model_form() {
     let CheckedPackageV2ReadResult::Admitted(admitted) = result else {
         panic!("selected persistence interface must admit: {result:?}");
     };
-    assert!(admitted.graph().nodes.iter().any(|node| {
-        node.node_tag.as_ref() == "model" && node.semantic_form.as_ref() == "persistence_interface"
+    assert!(admitted.graph().nodes().any(|node| {
+        node.node_tag().as_ref() == "model"
+            && node.semantic_form().as_ref() == "persistence_interface"
     }));
     let mut export = base.clone();
     export["semantic_graph"]["nodes"][model]["semantic_form"] = json!("model_export");

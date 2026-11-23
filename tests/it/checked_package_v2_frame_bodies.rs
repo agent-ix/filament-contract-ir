@@ -102,7 +102,11 @@ fn admitted_frame_body_is_typed_without_changing_the_wire() {
     let fixture = v2_all_families();
     let package = admitted(&fixture);
     let position = frame_index(&fixture);
-    let node = &package.graph().nodes[position];
+    let node = &package
+        .graph()
+        .node(position)
+        .expect("graph position exists")
+        .to_owned_wire();
     let Some(CheckedTerm::Frame {
         modifies,
         creates,

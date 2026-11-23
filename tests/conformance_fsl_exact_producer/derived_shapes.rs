@@ -4,6 +4,12 @@
 //! A genuine selected-model producer and strict-reader correspondence control.
 //! FSpec's documents and vectors remain in the caller's checkout.
 
+use filament_contract_model::{
+    CheckedCollectionKind, CheckedMemberType, CheckedNodeId, CheckedPackageEvidence,
+    CheckedPackageReadLimits, CheckedPackageV2, CheckedPackageV2ReadResult,
+};
+use filament_exact::{NodeKey, PathSegment};
+use filament_semantic_value::checking::CheckingLimits;
 use fsl_foundation::{node_wire, SourceIdentity};
 use fsl_package::{emit_checked, CheckedPackage};
 use fsl_semantics::{
@@ -13,12 +19,6 @@ use fsl_semantics::{
     },
     model::intake,
 };
-use filament_contract_model::{
-    CheckedCollectionKind, CheckedMemberType, CheckedNodeId, CheckedPackageEvidence,
-    CheckedPackageReadLimits, CheckedPackageV2, CheckedPackageV2ReadResult,
-};
-use filament_exact::{NodeKey, PathSegment};
-use filament_semantic_value::checking::CheckingLimits;
 use serde_json::{json, Value};
 use std::{collections::BTreeSet, path::Path};
 
@@ -514,7 +514,10 @@ fn main() {
                 .expect("produced body representation"),
             expected_body(&shape.body)
         );
-        let retained = &admitted.graph().nodes[position];
+        let retained = &admitted
+            .graph()
+            .node(position)
+            .expect("graph position exists");
         assert_eq!(retained.node_id, ids[position]);
         assert_eq!(
             fsl_semantics::check::wire_id::node_key(
@@ -536,7 +539,7 @@ fn main() {
             expected_body(&shape.body)
         );
     }
-    let order = admitted.graph().nodes.iter().find(|node| node.semantic_form.as_ref() == "object_type"
+    let order = admitted.graph().nodes().find(|node| node.semantic_form.as_ref() == "object_type"
         && node.node_id.path.last().is_some_and(|part| matches!(part, filament_contract_model::CheckedNodePathSegment::Name(name) if name.as_ref() == "ix://acme/orders/Order")))
         .expect("selected Order declaration");
     let fields = admitted
@@ -632,8 +635,7 @@ fn main() {
             serde_json::from_value(projection["node_id"].clone()).expect("projection ID");
         let retained = admitted
             .graph()
-            .nodes
-            .iter()
+            .nodes()
             .find(|node| node.node_id == projection_id)
             .expect("admitted projection");
         assert_eq!(

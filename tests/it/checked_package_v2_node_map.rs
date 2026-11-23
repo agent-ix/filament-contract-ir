@@ -186,13 +186,12 @@ fn admitted_operation_member_maps_whole_nested_id_and_typed_mirror() {
     );
     let mut term = package
         .graph()
-        .nodes
-        .iter()
-        .find_map(|node| match &node.body {
+        .nodes()
+        .find_map(|node| match &node.wire_body() {
             CheckedTerm::Application { operation, .. }
                 if operation.identity() == Some("filament.op.collection.index") =>
             {
-                Some(node.body.clone())
+                Some(node.wire_body().clone())
             }
             _ => None,
         })
@@ -346,13 +345,12 @@ fn assert_admitted_member_census_case(
 ) {
     let mut term = package
         .graph()
-        .nodes
-        .iter()
-        .find_map(|node| match &node.body {
+        .nodes()
+        .find_map(|node| match &node.wire_body() {
             CheckedTerm::Application { operation, .. }
                 if operation.identity() == Some(identity) =>
             {
-                Some(node.body.clone())
+                Some(node.wire_body().clone())
             }
             _ => None,
         })
@@ -869,8 +867,8 @@ fn hundred_thousand_node_position_remap_preserves_admitted_references() {
         CheckedPackageV2ReadResult::Admitted(package) => package,
         other => panic!("valid chain refused: {other:?}"),
     };
-    assert_eq!(original.graph().nodes.len(), base_count + LENGTH);
-    let mut graph = original.graph().clone();
+    assert_eq!(original.graph().node_count(), base_count + LENGTH);
+    let mut graph = original.graph().to_owned_wire();
     let mut base_visits = 0;
     for node in &mut graph.nodes[..base_count] {
         node.map_node_ids(|_| {
@@ -927,9 +925,13 @@ fn hundred_thousand_node_position_remap_preserves_admitted_references() {
             .document_held_id(base_count + position - 1)
             .expect("graph node")
             .clone();
-        let node = &rewritten.graph().nodes[base_count + position];
+        let node = &rewritten
+            .graph()
+            .node(base_count + position)
+            .expect("graph position exists")
+            .to_owned_wire();
         assert_eq!(node.dependencies.len(), 1);
-        assert_eq!(node.dependencies.first(), Some(previous));
+        assert_eq!(node.dependencies.first().as_deref(), Some(previous));
         assert!(matches!(&node.body, CheckedTerm::Reference { target } if target == previous));
     }
     for position in [0, LENGTH / 2, LENGTH - 1] {
@@ -960,7 +962,7 @@ fn mapped_duplicate_is_refused_by_the_package_reader() {
         CheckedPackageV2ReadResult::Admitted(package) => package,
         other => panic!("positive fixture refused: {other:?}"),
     };
-    let mut graph = admitted.graph().clone();
+    let mut graph = admitted.graph().to_owned_wire();
     let duplicate = graph.nodes[1].node_id.clone();
     let original = graph.nodes[0].node_id.clone();
     let mut visits = 0;

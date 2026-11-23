@@ -1364,7 +1364,7 @@ pub(super) fn encode_package(package: &CheckedPackageV2) -> Vec<u8> {
     encode_checked_package_v2(
         package.name(),
         package.lock(),
-        package.graph(),
+        &package.graph().to_owned_wire(),
         filament_contract_model::CheckedPackageSourceCorrespondenceRef {
             source_map: package.source_map(),
             refinement_step_rows: package.refinement_step_rows(),

@@ -448,7 +448,11 @@ fn tc_474_an_implementation_guarantee_node_admits_with_its_typed_term() {
         admitted.node_kinds()[position],
         CheckedNodeKind::Correspondence(CorrespondenceForm::ImplementationGuarantee)
     );
-    let node = &admitted.graph().nodes[position];
+    let node = &admitted
+        .graph()
+        .node(position)
+        .expect("graph position exists")
+        .to_owned_wire();
     let Some(CheckedTerm::ImplementationGuarantee {
         initial,
         progress,
@@ -495,7 +499,11 @@ fn tc_474_a_component_composition_node_admits_with_its_typed_term() {
         admitted.node_kinds()[position],
         CheckedNodeKind::Correspondence(CorrespondenceForm::ComponentComposition)
     );
-    let node = &admitted.graph().nodes[position];
+    let node = &admitted
+        .graph()
+        .node(position)
+        .expect("graph position exists")
+        .to_owned_wire();
     let Some(CheckedTerm::ComponentComposition {
         rule,
         components,
@@ -1224,7 +1232,11 @@ fn guarantee_without_progress_or_environment_retains_its_complete_typed_body() {
     });
     let expected = nodes(&package)[position]["body"].clone();
     let admitted = admitted("empty guarantee lists", &package);
-    let node = &admitted.graph().nodes[position];
+    let node = &admitted
+        .graph()
+        .node(position)
+        .expect("graph position exists")
+        .to_owned_wire();
     let term = admitted.term(&node.node_id).expect("retained guarantee");
     let CheckedTerm::ImplementationGuarantee {
         progress,
@@ -1254,7 +1266,11 @@ fn every_composition_rule_retains_its_rule_and_distinct_premise_lists() {
         let (package, position) = composed(|body| body["rule"] = json!(expected_rule));
         let expected = nodes(&package)[position]["body"].clone();
         let admitted = admitted(expected_rule, &package);
-        let node = &admitted.graph().nodes[position];
+        let node = &admitted
+            .graph()
+            .node(position)
+            .expect("graph position exists")
+            .to_owned_wire();
         let term = admitted.term(&node.node_id).expect("retained composition");
         let CheckedTerm::ComponentComposition {
             rule,
@@ -1341,18 +1357,18 @@ fn tc_474_a_composition_admits_foreign_clauses_named_by_dependency_positions() {
     // The dependency's nodes are not copied into the importer: its graph holds
     // none, and the anchor's position is not one of the importer's.
     let graph = admitted.graph();
-    assert!(graph.nodes.iter().all(|node| node
-        .node_id
+    assert!(graph.nodes().all(|node| node
+        .node_id()
         .path
         .iter()
         .all(|segment| *segment != CheckedNodePathSegment::Name(ANCHOR.into()))));
-    assert!(anchor >= u64::try_from(graph.nodes.len()).expect("count"));
+    assert!(anchor >= u64::try_from(graph.node_count()).expect("count"));
     // The row names the dependency position, and the typed body keeps it.
     let wanted = CheckedOperandEntry::Dependency(CheckedDependencyOperand {
         package: DEPENDENCY.into(),
         node: anchor,
     });
-    assert!(graph.operand_rows[position].contains(&wanted));
+    assert!(graph.operand_rows()[position].contains(&wanted));
     let node = &admitted.resolved_graph().nodes[position];
     let Some(CheckedTerm::ComponentComposition { guarantees, .. }) = admitted.term(&node.node_id)
     else {
@@ -1657,7 +1673,11 @@ fn rewrite_entry(
 fn a_composition_names_itself_and_keeps_authored_member_regions() {
     let (package, position) = authored();
     let admitted = admitted("authored composition", &package);
-    let node = &admitted.graph().nodes[position];
+    let node = &admitted
+        .graph()
+        .node(position)
+        .expect("graph position exists")
+        .to_owned_wire();
     // The declared name is the node's path and its one name row.
     assert_eq!(
         node.declaration
@@ -1740,7 +1760,7 @@ fn a_written_composition_reads_back_with_its_name_and_coordinates() {
     let written = encode_checked_package_v2(
         admitted.name(),
         admitted.lock(),
-        admitted.graph(),
+        &admitted.graph().to_owned_wire(),
         CheckedPackageSourceCorrespondenceRef {
             source_map: admitted.source_map(),
             refinement_step_rows: admitted.refinement_step_rows(),

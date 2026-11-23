@@ -246,7 +246,7 @@ pub(super) fn validate<Body>(
                 return Err(invalid(meter, row.key("enum_members").index(0)));
             }
         }
-        if decision.application.package != wire.name
+        if decision.application.package.as_ref() != wire.name.as_ref()
             || kinds.get(position) != Some(&CheckedNodeKind::Expression(expected_form))
         {
             return Err(invalid(meter, row.key("application")));
@@ -1213,7 +1213,7 @@ fn join_source_unit(
     let mut found = None;
     for row in rows {
         charge_work(work, application, &row.structural_node)?;
-        if row.structural_node.package != package.wire.name {
+        if row.structural_node.package.as_ref() != package.wire.name.as_ref() {
             return Err(read_error(
                 work,
                 AdmittedEqualityReadErrorCode::ForeignEqualityWitness,
@@ -2184,7 +2184,7 @@ impl CheckedPackageV2 {
     ) -> Result<AdmittedEqualityDecision, AdmittedEqualityReadError> {
         let before = work.begin();
         charge_work(work, application, application)?;
-        if application.package != self.wire.name {
+        if application.package.as_ref() != self.wire.name.as_ref() {
             return Err(read_error(
                 work,
                 AdmittedEqualityReadErrorCode::ForeignApplication,
@@ -2324,7 +2324,7 @@ impl CheckedPackageV2 {
         let mut seen_rows = BTreeSet::new();
         for candidate in application_rows {
             charge_work(work, application, &candidate.application)?;
-            if candidate.application.package != self.wire.name {
+            if candidate.application.package.as_ref() != self.wire.name.as_ref() {
                 return Err(read_error(
                     work,
                     AdmittedEqualityReadErrorCode::ForeignEqualityWitness,

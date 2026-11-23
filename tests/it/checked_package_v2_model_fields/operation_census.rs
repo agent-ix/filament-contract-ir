@@ -208,9 +208,8 @@ fn complete_census_includes_unreferenced_operations_without_bodies_or_anchors() 
         .is_empty());
     assert!(admitted
         .graph()
-        .nodes
-        .iter()
-        .all(|node| node.semantic_form.as_ref() != "operation_anchor"));
+        .nodes()
+        .all(|node| node.semantic_form().as_ref() != "operation_anchor"));
     let mut changed = doc.clone();
     changed["types"][0]["operations"]
         .as_array_mut()
@@ -572,9 +571,8 @@ fn context_refusals_and_exact_work_boundary_do_not_expose_partial_tables() {
     );
     let root = admitted
         .graph()
-        .nodes
-        .iter()
-        .find(|node| node.semantic_form.as_ref() == "model_root")
+        .nodes()
+        .find(|node| node.semantic_form().as_ref() == "model_root")
         .unwrap();
     assert_eq!(
         admitted

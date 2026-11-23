@@ -53,7 +53,7 @@ fn written(package: &CheckedPackageV2) -> Value {
     let bytes = encode_checked_package_v2(
         package.name(),
         package.lock(),
-        package.graph(),
+        &package.graph().to_owned_wire(),
         CheckedPackageSourceCorrespondenceRef {
             source_map: package.source_map(),
             refinement_step_rows: package.refinement_step_rows(),
@@ -127,12 +127,23 @@ fn check_mode_is_typed_identity_bearing_and_written() {
                 };
                 assert_eq!(node["check_mode"], expected.0);
                 assert_eq!(
-                    kernel_read.graph().nodes[position].check_mode,
+                    kernel_read
+                        .graph()
+                        .node(position)
+                        .expect("graph position exists")
+                        .check_mode(),
                     Some(expected.1)
                 );
             } else {
                 assert!(node.get("check_mode").is_none());
-                assert_eq!(kernel_read.graph().nodes[position].check_mode, None);
+                assert_eq!(
+                    kernel_read
+                        .graph()
+                        .node(position)
+                        .expect("graph position exists")
+                        .check_mode(),
+                    None
+                );
             }
         }
     }
@@ -161,16 +172,22 @@ fn the_node_projection_copies_and_writes_check_mode() {
         (&kernel, CheckMode::Kernel, "kernel"),
     ] {
         let read = admitted(package);
-        let nodes = &read.graph().nodes;
-        let projection = CheckedNodeProjectionV2::from(&nodes[position]);
+        let graph = read.graph();
+        let projection = CheckedNodeProjectionV2::from(
+            &graph
+                .node(position)
+                .expect("graph position exists")
+                .to_owned_wire(),
+        );
         assert_eq!(projection.check_mode, Some(mode));
         let emitted = projected(&projection);
         assert_eq!(emitted["check_mode"], name);
-        let other = nodes
-            .iter()
-            .find(|node| node.node_tag.as_ref() != "function")
+        let other = graph
+            .nodes()
+            .find(|node| node.node_tag().as_ref() != "function")
+            .map(|node| node.to_owned_wire())
             .expect("a non-function node");
-        let other = CheckedNodeProjectionV2::from(other);
+        let other = CheckedNodeProjectionV2::from(&other);
         assert_eq!(other.check_mode, None);
         assert!(projected(&other).get("check_mode").is_none());
     }

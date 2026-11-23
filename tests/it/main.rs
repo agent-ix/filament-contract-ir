@@ -106,6 +106,7 @@ mod nfr003_invalid_input;
 mod output_mapping;
 mod public_interface;
 mod source_obligation;
+#[cfg(feature = "conformance-cli")]
 mod source_obligation_filament;
 mod source_obligation_ir_v2;
 mod std001_code;

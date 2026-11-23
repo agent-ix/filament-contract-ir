@@ -147,7 +147,7 @@ fn write_again(package: &CheckedPackageV2) -> Vec<u8> {
     encode_checked_package_v2(
         package.name(),
         package.lock(),
-        package.graph(),
+        &package.graph().to_owned_wire(),
         CheckedPackageSourceCorrespondenceRef {
             source_map: package.source_map(),
             refinement_step_rows: package.refinement_step_rows(),
@@ -488,7 +488,13 @@ fn a_refinement_row_name_equals_the_body_name() {
         &evidence,
         CheckedPackageReadLimits::bounded(),
     ));
-    let CheckedTerm::Refinement { name, .. } = &admitted.graph().nodes[position].body else {
+    let CheckedTerm::Refinement { name, .. } = &admitted
+        .graph()
+        .node(position)
+        .expect("graph position exists")
+        .to_owned_wire()
+        .body
+    else {
         panic!("a refinement body");
     };
     assert_eq!(name.as_ref(), body_name.as_str());
@@ -1764,13 +1770,25 @@ fn published_refinement_body_name_vectors_replay() {
         ));
         let CheckedTerm::Refinement {
             name: read_name, ..
-        } = &read.graph().nodes[position].body
+        } = &read
+            .graph()
+            .node(position)
+            .expect("graph position exists")
+            .to_owned_wire()
+            .body
         else {
             panic!("{id}: a refinement body");
         };
         assert_eq!(&json!(read_name.as_ref()), &name, "{id}");
         assert_eq!(
-            serde_json::to_value(&read.graph().nodes[position].node_id).expect("node id"),
+            serde_json::to_value(
+                &read
+                    .graph()
+                    .node(position)
+                    .expect("graph position exists")
+                    .node_id
+            )
+            .expect("node id"),
             expected,
             "{id}: the admitted node id is the vector's expected_node_id"
         );

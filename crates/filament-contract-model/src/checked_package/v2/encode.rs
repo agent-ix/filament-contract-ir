@@ -207,13 +207,15 @@ impl<Body: Encode> Encode for CheckedSemanticNodeV2<Body> {
     fn encode_into<S: Sink + ?Sized>(&self, writer: &mut Writer<'_, S>) -> Result<(), Error> {
         writer.begin_object()?;
         encoded(writer, "node_id", &self.node_id)?;
-        member(writer, "schema_version", &self.schema_version)?;
-        member(writer, "node_tag", &self.node_tag)?;
-        member(writer, "semantic_form", &self.semantic_form)?;
+        string_member(writer, "schema_version", &self.schema_version)?;
+        string_member(writer, "node_tag", &self.node_tag)?;
+        string_member(writer, "semantic_form", &self.semantic_form)?;
         encoded(writer, "semantic_type", &self.semantic_type)?;
         elements(writer, "dependencies", &self.dependencies)?;
         member(writer, "occurrences", &self.occurrences)?;
-        present(writer, "recursion_group", &self.recursion_group)?;
+        if let Some(group) = &self.recursion_group {
+            string_member(writer, "recursion_group", group)?;
+        }
         present(writer, "declaration", &self.declaration)?;
         present(writer, "owner", &self.owner)?;
         present_encoded(writer, "owner_model", &self.owner_model)?;
@@ -223,6 +225,15 @@ impl<Body: Encode> Encode for CheckedSemanticNodeV2<Body> {
         encoded(writer, "body", &self.body)?;
         writer.end_object()
     }
+}
+
+fn string_member<S: Sink + ?Sized>(
+    writer: &mut Writer<'_, S>,
+    name: &str,
+    value: &str,
+) -> Result<(), Error> {
+    writer.name(name)?;
+    writer.string(value)
 }
 
 impl Encode for CheckedDiagnosticsV2 {

@@ -108,7 +108,7 @@ test = false
 ix-cli-kit = { version = "0.1", git = "https://github.com/agent-ix/ix-cli-kit", tag = "v0.1.0", default-features = false, optional = true }
 ix-trace-rs = { version = "0.1", git = "https://github.com/agent-ix/ix-trace-rs", tag = "v0.1.2" }
 filament-contract-model = { version = "=0.1.2", path = "crates/filament-contract-model" }
-serde = { version = "1.0.228", features = ["derive"] }
+serde = { version = "1.0.228", features = ["derive", "rc"] }
 serde_json = { version = "1.0.151", features = ["unbounded_depth"] }
 thiserror = "=2.0.20"
 

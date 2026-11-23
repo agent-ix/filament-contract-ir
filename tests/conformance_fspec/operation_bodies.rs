@@ -365,7 +365,7 @@ fn tc_987_positive_operation_body_vectors_read_and_round_trip() {
         let encoded = encode_checked_package_v2(
             admitted.name(),
             admitted.lock(),
-            admitted.graph(),
+            &admitted.graph().to_owned_wire(),
             CheckedPackageSourceCorrespondenceRef {
                 source_map: admitted.source_map(),
                 refinement_step_rows: admitted.refinement_step_rows(),

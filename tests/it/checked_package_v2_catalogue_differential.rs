@@ -951,9 +951,8 @@ fn tc_048_public_operation_views_follow_admitted_values() {
     };
     let operation = admitted
         .graph()
-        .nodes
-        .iter()
-        .find_map(|node| match &node.body {
+        .nodes()
+        .find_map(|node| match &node.resolved_node().body {
             CheckedTerm::Application { operation, .. }
                 if operation.identity() == Some("filament.op.record.project") =>
             {
@@ -1010,9 +1009,8 @@ fn tc_048_public_operation_views_follow_admitted_values() {
         };
         let operation = admitted
             .graph()
-            .nodes
-            .iter()
-            .find_map(|node| match &node.body {
+            .nodes()
+            .find_map(|node| match &node.resolved_node().body {
                 CheckedTerm::Application { operation, .. }
                     if operation.identity() == Some(identity) =>
                 {
@@ -1054,9 +1052,8 @@ fn tc_048_public_operation_views_follow_admitted_values() {
     };
     let operation = admitted
         .graph()
-        .nodes
-        .iter()
-        .find_map(|node| match &node.body {
+        .nodes()
+        .find_map(|node| match &node.resolved_node().body {
             CheckedTerm::Application { operation, .. }
                 if operation.identity() == Some("filament.op.tuple.project") =>
             {
@@ -1083,9 +1080,8 @@ fn tc_048_public_operation_views_follow_admitted_values() {
     };
     let operation = admitted
         .graph()
-        .nodes
-        .iter()
-        .find_map(|node| match &node.body {
+        .nodes()
+        .find_map(|node| match &node.resolved_node().body {
             CheckedTerm::Application { operation, .. }
                 if operation.identity() == Some("filament.op.quantity.convert") =>
             {
@@ -1124,9 +1120,8 @@ fn tc_048_public_operation_views_follow_admitted_values() {
     };
     let operation = admitted
         .graph()
-        .nodes
-        .iter()
-        .find_map(|node| match &node.body {
+        .nodes()
+        .find_map(|node| match &node.resolved_node().body {
             CheckedTerm::Application { operation, .. }
                 if operation.identity() == Some("filament.op.integer.add") =>
             {
@@ -1285,8 +1280,15 @@ fn tc_048_every_catalogue_entry_retains_its_constructible_admission() {
                     .iter()
                     .position(|node| node["body"]["operation"]["identity"] == identity)
                     .expect("conversion application");
-                let body = serde_json::to_value(&admitted_package.graph().nodes[position].body)
-                    .expect("typed conversion body");
+                let body = serde_json::to_value(
+                    &admitted_package
+                        .graph()
+                        .node(position)
+                        .expect("graph position exists")
+                        .to_owned_wire()
+                        .body,
+                )
+                .expect("typed conversion body");
                 let source = identity.split('.').nth(2).expect("source family");
                 assert_eq!(body["operation"]["identity"], identity);
                 assert_eq!(body["arguments"][0]["value_kind"], source);
@@ -1296,8 +1298,14 @@ fn tc_048_every_catalogue_entry_retains_its_constructible_admission() {
                     body["result_type"]
                 );
                 assert_eq!(
-                    serde_json::to_value(&admitted_package.graph().nodes[position].semantic_type)
-                        .expect("typed result"),
+                    serde_json::to_value(
+                        &admitted_package
+                            .graph()
+                            .node(position)
+                            .expect("graph position exists")
+                            .semantic_type
+                    )
+                    .expect("typed result"),
                     body["result_type"]
                 );
             }
