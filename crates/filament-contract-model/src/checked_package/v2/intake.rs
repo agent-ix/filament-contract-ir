@@ -103,6 +103,8 @@ struct BorrowedWire {
     schedulability_claims: Option<Vec<super::CheckedSchedulabilityClaimRow>>,
     #[serde(default, deserialize_with = "super::document_de::exact_optional_vec")]
     requirement_items: Option<Vec<super::requirement_records::RequirementItemWireRow>>,
+    #[serde(default, deserialize_with = "super::document_de::exact_optional_vec")]
+    path_condition_frames: Option<Vec<super::requirement_records::PathConditionFrameWire>>,
     #[serde(default, deserialize_with = "super::operation_effects::present_rows")]
     operation_effects: Option<Vec<super::CheckedOperationEffectRow>>,
     #[serde(default, deserialize_with = "super::operation_effects::present_rows")]
@@ -332,6 +334,7 @@ pub(super) fn decode_borrowed_wire(
         protocol_correlation_occurrences: wire.protocol_correlation_occurrences,
         schedulability_claims: wire.schedulability_claims,
         requirement_items: wire.requirement_items,
+        path_condition_frames: wire.path_condition_frames,
         operation_effects: wire.operation_effects,
         operation_bodies: wire.operation_bodies,
         capability_report: wire.capability_report,
@@ -756,6 +759,12 @@ pub(super) fn check_lossless_source(
         root,
         "requirement_items",
         wire.requirement_items.as_deref(),
+        meter,
+    )?;
+    compare_optional_rows(
+        root,
+        "path_condition_frames",
+        wire.path_condition_frames.as_deref(),
         meter,
     )?;
     let entries = root

@@ -81,6 +81,7 @@ pub use probabilistic_read::{
 mod requirement_records;
 pub use requirement_records::{
     CapabilityKind, DomainKey, DomainKind, OperationContractRecord, OperationPopulation,
+    PathConditionFrame, PathConditionFrameId, PathConditionIter, PathConditionView,
     RequirementExtent, RequirementGuard, RequirementItemRow, RequirementRecord,
     ValueValidityRecord,
 };
@@ -910,7 +911,7 @@ macro_rules! checked_package_envelope {
     ($($name:ident: $parameter:ident => $encoding:ident),+ $(,)?) => {
         #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
         #[serde(deny_unknown_fields)]
-        struct CheckedPackageEnvelope<C, N, L, G, S, R, T, B, M, K, H, Q, E, O, A, D, P> {
+        struct CheckedPackageEnvelope<C, N, L, G, S, R, T, B, M, K, H, Q, F, E, O, A, D, P> {
             $($name: $parameter,)+
             #[serde(default, skip_serializing_if = "Option::is_none")]
             refinement_step_rows: Option<R>,
@@ -928,6 +929,8 @@ macro_rules! checked_package_envelope {
             schedulability_claims: Option<H>,
             #[serde(default, deserialize_with = "operation_effects::present_rows", bound(deserialize = "Q: Deserialize<'de>"), skip_serializing_if = "Option::is_none")]
             requirement_items: Option<Q>,
+            #[serde(default, deserialize_with = "operation_effects::present_rows", bound(deserialize = "F: Deserialize<'de>"), skip_serializing_if = "Option::is_none")]
+            path_condition_frames: Option<F>,
             #[serde(default, deserialize_with = "operation_effects::present_rows", bound(deserialize = "E: Deserialize<'de>"), skip_serializing_if = "Option::is_none")]
             operation_effects: Option<E>,
             #[serde(default, deserialize_with = "operation_effects::present_rows", bound(deserialize = "O: Deserialize<'de>"), skip_serializing_if = "Option::is_none")]
@@ -947,6 +950,7 @@ macro_rules! checked_package_envelope {
             &[ClaimNameRow],
             &[CheckedSchedulabilityClaimRow],
             &[RequirementItemRow],
+            &[PathConditionFrame],
             &[CheckedOperationEffectRow],
             &[OperationBodyRow],
             &[CheckedCapability],
@@ -980,6 +984,9 @@ macro_rules! checked_package_envelope {
                 }
                 if let Some(rows) = self.requirement_items {
                     encode::elements(writer, "requirement_items", rows)?;
+                }
+                if let Some(rows) = self.path_condition_frames {
+                    encode::elements(writer, "path_condition_frames", rows)?;
                 }
                 if let Some(rows) = &self.operation_effects {
                     encode::elements(writer, "operation_effects", rows)?;
@@ -1016,6 +1023,7 @@ type CheckedPackageWireV2<Body = CheckedTerm> = CheckedPackageEnvelope<
     Vec<ClaimNameRow>,
     Vec<CheckedSchedulabilityClaimRow>,
     Vec<requirement_records::RequirementItemWireRow>,
+    Vec<requirement_records::PathConditionFrameWire>,
     Vec<CheckedOperationEffectRow>,
     Vec<OperationBodyRow>,
     Vec<CheckedCapability>,
@@ -1087,6 +1095,64 @@ pub fn encode_checked_package_v2<Body: quire_canonical::Encode>(
     )
 }
 
+/// Canonically encodes a complete V2 envelope with shared value-validity path frames.
+#[allow(clippy::too_many_arguments)]
+pub fn encode_checked_package_v2_with_path_condition_frames<Body: quire_canonical::Encode>(
+    name: &str,
+    lock: &CheckedPackageLockV2,
+    semantic_graph: &CheckedSemanticGraphV2<Body>,
+    sources: CheckedPackageSourceCorrespondenceRef<'_>,
+    sidecars: CheckedPackageSidecarsRef<'_>,
+    requirement_items: Option<&[RequirementItemRow]>,
+    protocol_correlation_occurrences: Option<&[ProtocolCorrelationRow]>,
+    path_condition_frames: Option<&[PathConditionFrame]>,
+    capability_report: &[CheckedCapability],
+    diagnostics: &CheckedDiagnosticsV2,
+    limits: quire_canonical::Limits,
+) -> Result<Vec<u8>, quire_canonical::Error> {
+    if semantic_graph.nodes.iter().any(|node| {
+        [&node.node_id, &node.semantic_type]
+            .into_iter()
+            .chain(node.dependencies.iter())
+            .any(|id| {
+                id.path
+                    .iter()
+                    .any(|segment| matches!(segment, CheckedNodePathSegment::Node(_)))
+            })
+    }) {
+        return Err(quire_canonical::Error::Internal {
+            invariant: "checked-package V2 paths require graph-local operand indices",
+        });
+    }
+    let envelope = CheckedPackageEnvelope {
+        contract_version: CHECKED_PACKAGE_V2,
+        name,
+        lock,
+        semantic_graph,
+        source_map: sources.source_map,
+        refinement_step_rows: sources.refinement_step_rows,
+        checked_term_data: sidecars.checked_term_data,
+        temporal_bindings: sidecars.temporal_bindings,
+        temporal_clause_names: sidecars.temporal_clause_names,
+        claim_names: sidecars.claim_names,
+        protocol_correlation_occurrences,
+        schedulability_claims: sidecars.schedulability_claims,
+        requirement_items,
+        path_condition_frames,
+        operation_effects: sidecars.operation_effects,
+        operation_bodies: sidecars.operation_bodies,
+        capability_report,
+        diagnostics,
+    };
+    let bytes = quire_canonical::to_vec(&envelope, limits)?;
+    if node_index::contains_inline_node_path(&bytes) {
+        return Err(quire_canonical::Error::Internal {
+            invariant: "checked-package V2 paths cannot embed node IDs",
+        });
+    }
+    Ok(bytes)
+}
+
 /// Canonically encodes a complete checked-package V2 envelope with requirement rows.
 #[allow(clippy::too_many_arguments)] // Requirement rows are an independent optional envelope sidecar.
 pub fn encode_checked_package_v2_with_requirement_items<Body: quire_canonical::Encode>(
@@ -1135,46 +1201,19 @@ pub fn encode_checked_package_v2_with_protocol_correlation_occurrences<
     diagnostics: &CheckedDiagnosticsV2,
     limits: quire_canonical::Limits,
 ) -> Result<Vec<u8>, quire_canonical::Error> {
-    if semantic_graph.nodes.iter().any(|node| {
-        [&node.node_id, &node.semantic_type]
-            .into_iter()
-            .chain(node.dependencies.iter())
-            .any(|id| {
-                id.path
-                    .iter()
-                    .any(|segment| matches!(segment, CheckedNodePathSegment::Node(_)))
-            })
-    }) {
-        return Err(quire_canonical::Error::Internal {
-            invariant: "checked-package V2 paths require graph-local operand indices",
-        });
-    }
-    let envelope = CheckedPackageEnvelope {
-        contract_version: CHECKED_PACKAGE_V2,
+    encode_checked_package_v2_with_path_condition_frames(
         name,
         lock,
         semantic_graph,
-        source_map: sources.source_map,
-        refinement_step_rows: sources.refinement_step_rows,
-        checked_term_data: sidecars.checked_term_data,
-        temporal_bindings: sidecars.temporal_bindings,
-        temporal_clause_names: sidecars.temporal_clause_names,
-        claim_names: sidecars.claim_names,
-        protocol_correlation_occurrences,
-        schedulability_claims: sidecars.schedulability_claims,
+        sources,
+        sidecars,
         requirement_items,
-        operation_effects: sidecars.operation_effects,
-        operation_bodies: sidecars.operation_bodies,
+        protocol_correlation_occurrences,
+        None,
         capability_report,
         diagnostics,
-    };
-    let bytes = quire_canonical::to_vec(&envelope, limits)?;
-    if node_index::contains_inline_node_path(&bytes) {
-        return Err(quire_canonical::Error::Internal {
-            invariant: "checked-package V2 paths cannot embed node IDs",
-        });
-    }
-    Ok(bytes)
+        limits,
+    )
 }
 
 /// The closed result of reading untrusted bytes as V2.
@@ -1203,6 +1242,7 @@ struct SlotView {
     /// then position.
     positions: Vec<usize>,
     requirement_items: Vec<RequirementItemRow>,
+    path_condition_frames: Vec<PathConditionFrame>,
     value_validity_record_index: Vec<(CheckedNodeId, Vec<usize>)>,
 }
 
@@ -1810,6 +1850,7 @@ impl CheckedPackageV2 {
             protocol_correlation_occurrences,
             schedulability_claims,
             requirement_items,
+            path_condition_frames,
             operation_effects,
             operation_bodies,
             capability_report,
@@ -1849,6 +1890,7 @@ impl CheckedPackageV2 {
             protocol_correlation_occurrences,
             schedulability_claims,
             requirement_items,
+            path_condition_frames,
             operation_effects,
             operation_bodies,
             capability_report,
@@ -1977,11 +2019,18 @@ impl CheckedPackageV2 {
                 &self.wire.semantic_graph.operand_rows,
                 &self.node_index,
             );
+            let path_condition_frames = requirement_records::retain_frames(
+                self.wire.path_condition_frames.as_deref(),
+                &self.wire.semantic_graph.nodes,
+                &self.wire.semantic_graph.operand_rows,
+                &self.node_index,
+            );
             let value_validity_record_index = requirement_records::owner_index(&requirement_items);
             SlotView {
                 graph,
                 positions,
                 requirement_items,
+                path_condition_frames,
                 value_validity_record_index,
             }
         })
@@ -2173,6 +2222,19 @@ impl CheckedPackageV2 {
     /// Requirement records in the checked package's request order.
     pub fn requirement_items(&self) -> &[RequirementItemRow] {
         &self.slot_view().requirement_items
+    }
+
+    /// The admitted shared parent-linked path-condition frame table.
+    pub fn path_condition_frames(&self) -> &[PathConditionFrame] {
+        &self.slot_view().path_condition_frames
+    }
+
+    /// A borrowed outermost-first path-condition view for one admitted record.
+    pub fn path_condition(&self, record: &ValueValidityRecord) -> PathConditionView<'_> {
+        PathConditionView::new(
+            &self.slot_view().path_condition_frames,
+            record.path_condition_frame,
+        )
     }
 
     /// Indices of this function's value-validity records in package order.
@@ -2410,6 +2472,7 @@ fn validate(
     probabilistic_join::validate(wire, &kinds, &terms, &models, &structural_keys, &mut meter)?;
     requirement_records::validate(
         wire.requirement_items.as_deref(),
+        wire.path_condition_frames.as_deref(),
         &wire.semantic_graph.nodes,
         &kinds,
         &terms,
