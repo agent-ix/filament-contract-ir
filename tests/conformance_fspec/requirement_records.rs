@@ -576,8 +576,10 @@ fn large_requirement_record_package(record_count: usize) -> Value {
 
     let terminal_frame_id = record_template["body"]["members"][5]["value"]["members"][0]["value"]
         ["value"]
-        .as_u64()
-        .expect("terminal frame id");
+        .as_str()
+        .expect("canonical integer literal uses decimal text")
+        .parse::<u64>()
+        .expect("terminal frame id is a nonnegative integer");
     let mut requirement_rows = Vec::with_capacity(record_count);
     for (generated_index, (&application_position, application_id)) in application_positions
         .iter()
