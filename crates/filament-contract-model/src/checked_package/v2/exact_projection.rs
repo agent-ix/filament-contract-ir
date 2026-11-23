@@ -3447,6 +3447,7 @@ pub(super) fn project_record_field_type(
                 budget,
             );
         }
+        MemberType::ClockReference => (ValueType::ClockReference, 1),
         MemberType::Float32 => (ValueType::Float(FloatType::exact(IeeeWidth::Binary32)), 3),
         MemberType::Float64 => (ValueType::Float(FloatType::exact(IeeeWidth::Binary64)), 3),
         MemberType::Bytes => (ValueType::Bytes, 1),
@@ -3498,9 +3499,7 @@ pub(super) fn project_record_field_type(
                 CarriedQuantityType::new(unit.clone(), QuantityCarrier::Rational(domain)),
             )));
         }
-        MemberType::Clock
-        | MemberType::ClockReference
-        | MemberType::Option(_)
+        MemberType::Clock | MemberType::Option(_)
         | MemberType::Collection { .. } => {
             return Err(refuse!(
                 ExactTypeProjectionErrorCode::UnsupportedExactType,

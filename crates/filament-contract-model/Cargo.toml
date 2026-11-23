@@ -50,12 +50,12 @@ jsonschema = { version = "=0.17.1", default-features = false }
 # from there rather than carrying its own copy of the bytes; see
 # `checked_package/v2/operation_catalog.rs`.
 # First-party dependencies use release tags; Cargo.lock records the immutable commits.
-filament-verification-contracts = { version = "0.2", git = "https://github.com/agent-ix/filament-verification-contracts", rev = "cd0c8ef67e5d4263ce12773831cedd771246e5e5" }
+filament-verification-contracts = { version = "0.2", git = "https://github.com/agent-ix/filament-verification-contracts", rev = "e6eebb660c6d9b3dee25d643923d3984cbc745b6" }
 # The one RFC 8785 encoder every identity digest and the V2 wire types encode
 # through, and the reader's canonical-bytes check; see
 # `checked_package/v2/encode.rs`. The `serde_json` feature is its `Encode` for
 # `serde_json::Value` and the non-recursive `drop_value`.
-quire-canonical = { version = "0.3", git = "https://github.com/agent-ix/quire-canonical", tag = "v0.3.1", features = ["serde_json"] }
+quire-canonical = { version = "0.3", git = "https://github.com/agent-ix/quire-canonical", tag = "v0.3.2", features = ["serde_json"] }
 serde = { version = "1.0.228", features = ["derive"] }
 # `float_roundtrip` makes the package document's parse of a shortest round-trip
 # text exact, so the canonical-bytes comparison of the value read holds
@@ -73,8 +73,8 @@ stacker = "=0.1.15"
 # The shared iterative walk (`Walk` and `walk`): every walk of the V2 reader
 # over a term runs on its explicit heap stack, never on the call stack.
 filament-walk = { version = "0.1", git = "https://github.com/agent-ix/filament-walk", tag = "v0.1.1" }
-filament-exact = { version = "0.3", git = "https://github.com/agent-ix/filament-exact", rev = "a58474cc105a86f3307a11def3fc001e2459679f" }
-filament-semantic-value = { version = "0.1", git = "https://github.com/agent-ix/filament-semantic-value", rev = "31d807ccb8ffd5a88beb0b1a570b80acb099f5e9" }
+filament-exact = { version = "0.3", git = "https://github.com/agent-ix/filament-exact", rev = "08a5a1763ef4bd1ea7d1147717c959af5a3522cc" }
+filament-semantic-value = { version = "0.1", git = "https://github.com/agent-ix/filament-semantic-value", rev = "4274b4eb4abeae4ccd457a6de681625acb8fc57d" }
 # The Rust identifier syntax of an abstraction relation body (FR-346): the
 # Unicode identifier tables and the NFC check FR-450's "Rust spellings" name.
 unicode-ident = "=1.0.24"

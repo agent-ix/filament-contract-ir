@@ -1465,8 +1465,9 @@ impl SelectedExactIdentities {
     /// The Exact type one payload's member type has, by the one projection a
     /// record field of that member type has: the wrappers, then the leaf, so an
     /// identical admitted type cannot project differently as a payload and as a
-    /// field. A leaf with no faithful Exact representation (a clock-place
-    /// reference) is `UnsupportedExactType` in both.
+    /// field. A clock-place reference leaf is Exact `ClockReference` in both;
+    /// a leaf with no faithful Exact representation is `UnsupportedExactType`
+    /// in both.
     fn model_union_expected_type(
         &self,
         package: &CheckedPackageV2,
@@ -1727,7 +1728,7 @@ mod tests {
     /// Every admitted non-Clock payload form has its Exact value type; the
     /// native leaves are built here and the rest are read from the shared
     /// member-type projection.
-    #[trace("FR-352-AC-32")]
+    #[trace("FR-352-AC-32", "FR-352-AC-45", "FR-352-AC-46", "TC-494")]
     #[test]
     fn every_admitted_non_clock_payload_form_has_its_exact_value_type() {
         let rational = RationalBounds {
@@ -1767,14 +1768,11 @@ mod tests {
             .unwrap(),
             ValueType::Text(TextType::new(1, 8, TextProfile::Nfc).unwrap())
         );
-        for refused in [
-            MemberType::TextBounds(TextBounds {
-                lower: 1,
-                upper: 8,
-                profile: "not-a-profile".into(),
-            }),
-            MemberType::ClockReference,
-        ] {
+        for refused in [MemberType::TextBounds(TextBounds {
+            lower: 1,
+            upper: 8,
+            profile: "not-a-profile".into(),
+        })] {
             let error = expected(&refused).expect_err("no faithful Exact type");
             assert_eq!(error.code.as_str(), "unsupported_exact_type", "{refused:?}");
             assert_eq!(
@@ -1782,7 +1780,36 @@ mod tests {
                 Some("/model_unions/0/cases/0/payload/node")
             );
         }
+        assert_eq!(
+            expected(&MemberType::ClockReference).unwrap(),
+            ValueType::ClockReference
+        );
+        assert_eq!(
+            expected(&MemberType::Collection {
+                kind: Kind::Sequence,
+                element: Box::new(MemberType::ClockReference),
+                bounds: Some((0, 3)),
+            })
+            .unwrap(),
+            ValueType::collection(CollectionType::new(
+                CollectionKind::Sequence,
+                ValueType::ClockReference,
+                Some(CardinalityBound::new(0, 3).unwrap())
+            ))
+        );
+        // A plain Clock leaf stays refused, bare and wrapped.
+        for member in [
+            MemberType::Clock,
+            MemberType::Option(Box::new(MemberType::Clock)),
+        ] {
+            let error = expected(&member).expect_err("Clock has no Exact type");
+            assert_eq!(error.code.as_str(), "unsupported_exact_type", "{member:?}");
+        }
         // Wrapped payloads: Option and Collection around any leaf.
+        assert_eq!(
+            expected(&MemberType::Option(Box::new(MemberType::ClockReference))).unwrap(),
+            ValueType::option(ValueType::ClockReference)
+        );
         assert_eq!(
             expected(&MemberType::Option(Box::new(MemberType::Bytes))).unwrap(),
             ValueType::option(ValueType::Bytes)

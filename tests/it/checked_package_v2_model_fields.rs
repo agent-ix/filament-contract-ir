@@ -9219,7 +9219,7 @@ fn a_witness_missing_only_the_union_row_is_refused_at_the_union_completeness_sta
 /// type the record field of that declared type projects, and a witness naming a
 /// wrong type (another bound, profile, width, unit or kind) is refused at the
 /// payload's original type. A collection declaration is refused at intake;
-/// Clock, ClockReference and map payloads are outside this test.
+/// Clock and map payloads are outside this test.
 #[trace(
     "FR-352-AC-32",
     "FR-352-AC-34",
@@ -9425,7 +9425,7 @@ fn every_strict_admitted_non_scalar_payload_form_joins_and_each_wrong_witness_is
             CheckedPackageV2ReadResult::Admitted(package) => *package,
             CheckedPackageV2ReadResult::Refused(refusal) => {
                 // A collection declaration is not an admitted union payload.
-                assert_eq!(node_form, "sequence");
+                assert_eq!(node_form, "sequence", "{refusal:?}");
                 assert_eq!(
                     refusal.code,
                     CheckedPackageRefusalCode::UnsupportedConstruct
@@ -9693,4 +9693,138 @@ fn a_carried_quantity_record_field_needs_the_declared_unit_identity_row() {
         ExactTypeProjectionErrorCode::UnavailableIdentityWitness
     );
     assert_eq!(error.at.as_deref(), Some(&unit));
+}
+
+/// FR-352-AC-45 / TC-494 steps 1 and 2: a record whose fields are typed by a
+/// `reference` type over `Clock` projects through the record-field path with
+/// no identity row for the clock reference. `r` is Exact `ClockReference`,
+/// `maybe` is `ClockReference` with optional presence and `refs` is
+/// `Sequence<ClockReference>[0, 3]`; a package clone gives an equal view.
+#[trace("FR-352-AC-45", "TC-494")]
+#[test]
+fn clock_reference_record_fields_project_to_exact_clock_reference_without_a_witness_row() {
+    let clock_ref = json!({
+        "identity": orders("ClockRef"),
+        "kind": "reference",
+        "target": format!("{NATIVE}Clock")
+    });
+    let fields = [
+        field("r", &orders("ClockRef")),
+        field("maybe", &orders("ClockRef")).optional(),
+        field("refs", &orders("ClockRef")).many((0, Some(3), true, false)),
+    ];
+    let mut selected = document(vec![
+        clock_ref,
+        typed_object("Receipt", "record", &[], &fields),
+    ]);
+    selected["constructs"].as_array_mut().unwrap().push(json!({
+        "kind":{"module":IDENTITY,"name":"record"},
+        "construct":{"meaning":"filament.meaning.model.record-value-type/v1"}
+    }));
+    let reads = [
+        Read {
+            owner: "Receipt",
+            field: "r",
+            ty: Ty::ClockReference,
+        },
+        Read {
+            owner: "Receipt",
+            field: "maybe",
+            ty: Ty::Option(Box::new(Ty::ClockReference)),
+        },
+        Read {
+            owner: "Receipt",
+            field: "refs",
+            ty: Ty::Collection(Kind::Sequence, Box::new(Ty::ClockReference), Some((0, 3))),
+        },
+    ];
+    let (wire, _, _) = package(&selected, &[("Receipt", "record_value_type")], &reads);
+    let evidence = evidence_with_document(&wire, IDENTITY, &selected);
+    let package = match read_with(&wire, &evidence, CheckedPackageReadLimits::bounded()) {
+        CheckedPackageV2ReadResult::Admitted(package) => *package,
+        other => panic!("the clock-reference record admits: {other:?}"),
+    };
+    let record = package
+        .resolved_graph()
+        .nodes
+        .iter()
+        .find(|node| node.semantic_form.as_ref() == "record_value_type")
+        .expect("the record node")
+        .node_id
+        .clone();
+    let record_key = NodeKey::new("checked", vec![PathSegment::Text("Receipt".into())], 0).unwrap();
+    let declarations = vec![SelectedExactDeclarationRow::new(
+        record.clone(),
+        IDENTITY,
+        SelectedExactDeclarationForm::RecordValueType,
+        orders("Receipt"),
+        SelectedExactIdentity::Record(record_key.clone()),
+    )];
+    let field_rows = ["r", "maybe", "refs"]
+        .map(|name| {
+            SelectedExactFieldRow::new(
+                record.clone(),
+                IDENTITY,
+                orders("Receipt"),
+                format!("{}/{name}", orders("Receipt")),
+                MemberId::new(MemberOwner::Node(record_key.clone()), name).unwrap(),
+            )
+        })
+        .to_vec();
+    let witness = SelectedExactIdentities::from_stage_rows(
+        &package,
+        declarations,
+        field_rows,
+        &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+    )
+    .expect("the stage rows join with no row for the clock reference");
+    let project = |package: &CheckedPackageV2| {
+        package.project_exact_type(
+            &record,
+            &witness,
+            &mut filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX),
+        )
+    };
+    let projected = project(&package).expect("the clock-reference record projects");
+    let types: Vec<_> = projected
+        .record_view()
+        .expect("a record view")
+        .fields()
+        .iter()
+        .map(|field| {
+            (
+                field.name().to_owned(),
+                field.presence(),
+                field.value_type().clone(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        types,
+        vec![
+            (
+                "r".to_owned(),
+                Presence::Required,
+                ValueType::ClockReference
+            ),
+            (
+                "maybe".to_owned(),
+                Presence::Optional,
+                ValueType::ClockReference
+            ),
+            (
+                "refs".to_owned(),
+                Presence::Required,
+                ValueType::collection(CollectionType::new(
+                    CollectionKind::Sequence,
+                    ValueType::ClockReference,
+                    Some(CardinalityBound::new(0, 3).unwrap())
+                ))
+            ),
+        ]
+    );
+    assert_eq!(
+        project(&package.clone()).expect("the clone projects"),
+        projected
+    );
 }
