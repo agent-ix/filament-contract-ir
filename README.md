@@ -42,7 +42,7 @@ fetch anything.
   <img alt="A filament.checked-package/v2 has seven required members: contract_version, name, lock, semantic_graph, source_map, capability_report and diagnostics, plus eleven optional ones. The reader checks the members, and lowering works on the semantic graph, whose nodes come in thirteen families: scalar_type, composite_type, bounded_domain, value, expression, function, model, relation, state, temporal, protocol, claim and correspondence." src="docs/images/inside-package-light.svg">
 </picture>
 
-Reading has five outcomes:
+Reading has five outcomes. A read under a caller budget reports the same outcomes with `Admitted` named `AdmittedV2` and two more, `BudgetIncomplete` (the budget ran out, and the diagnostic was affordable) and `Exhausted` (the budget ran out and could not pay for the diagnostic), seven in all.
 
 | Outcome | Meaning |
 | --- | --- |
