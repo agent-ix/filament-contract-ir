@@ -123,8 +123,8 @@ mod tests {
         }
     }
 
-    /// FR-418-AC-22: `candidate_blocks` is a certificate member, so a wrong-length or untimed
-    /// `candidate_blocks` can be named in a `malformed` rejection, and it follows `abstract_states`.
+    /// FR-418-AC-22: `candidate_blocks` is a certificate member of the `positions` entry, listed
+    /// after `abstract_states`; a wrong length or presence refuses `malformed` at `positions`.
     #[trace("FR-418-AC-22")]
     #[test]
     fn candidate_blocks_is_a_member_after_abstract_states() {
