@@ -7,6 +7,10 @@ relationships:
     type: verifies
   - target: ix://agent-ix/filament-contract-ir/FR-038-AC-600
     type: verifies
+  - target: ix://agent-ix/filament-contract-ir/FR-038-AC-629
+    type: verifies
+  - target: ix://agent-ix/filament-specification/FR-322-AC-538
+    type: verifies
   - target: ix://agent-ix/filament-specification/TC-2048
     type: references
   - target: ix://agent-ix/filament-specification/TC-976
@@ -1639,6 +1643,16 @@ vector or schema is copied into this repository.
     B catalog and require C's class to be absent from A's catalog. A source
     producer given C declared over A SHALL still emit O; its candidate B
     edge fails producer conformance, a separate check from reader admission.
+10a. On the same positive package, let C's current owner be A and a distinct
+    valid selected object-type node be B. Change only C's `owner_model` to B
+    and replace A with B in C's `dependencies`, preserving canonical order,
+    but leave the owner-model operand in C's `node_id.path` resolving to A.
+    Require `invalid_package`/`stale-node-key` at
+    `/semantic_graph/nodes/{C}/owner_model`, the graph-node locus C, and no
+    admitted package. In a separate positive package, update the `owner_model`,
+    its dependency and that path operand to B; require admission. This isolates
+    the owner-key mismatch from the ordinary dependency-closure check
+    (FR-038-AC-629; FSpec FR-322-AC-538; FSL TC-1063).
     In independent packages, retarget C to a selected `state_machine`,
     `process`, `record_value_type`, relation or `model_root` node, then to a
     source-local declaration or a missing local target. Require the typed
