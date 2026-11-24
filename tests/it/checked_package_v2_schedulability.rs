@@ -143,7 +143,7 @@ fn package_with_release_binding(release_backed: bool) -> Value {
         .as_array_mut()
         .expect("nodes");
     let id = |path: &[&str]| json!({"package":"pkg","path":path,"ordinal":0});
-    let declaration = id(&["claim", "schedulability", "Ctl"]);
+    let claim_id = id(&["claim", "schedulability", "Ctl"]);
     let boolean = id(&["scalar_type", "boolean"]);
     let text = nodes
         .iter()
@@ -189,15 +189,13 @@ fn package_with_release_binding(release_backed: bool) -> Value {
     boolean_node["semantic_type"] = boolean.clone();
     boolean_node["semantic_form"] = json!("boolean");
     let claim_node = json!({
-        "node_id":declaration,
+        "node_id":claim_id,
         "schema_version":"filament.checked-semantic-graph/v2",
         "node_tag":"claim",
         "semantic_form":"schedulability",
         "semantic_type":boolean,
         "dependencies":[],
         "occurrences":[{"role":"claim","ordinal":0}],
-        "declaration":null,
-        "owner":null,
         "body":claim_body,
     });
     nodes.push(boolean_node);
@@ -221,7 +219,7 @@ fn package_with_release_binding(release_backed: bool) -> Value {
         .find(|row| row["role"] == "expression")
         .expect("source region template")
         .clone();
-    claim_region["node_id"] = declaration.clone();
+    claim_region["node_id"] = claim_id;
     claim_region["role"] = json!("claim");
     claim_region["ordinal"] = json!(0);
     package["source_map"]
@@ -230,6 +228,14 @@ fn package_with_release_binding(release_backed: bool) -> Value {
         .extend([boolean_region, claim_region]);
     crate::support::checked_package::rebuild_complete_source_map(&mut package);
     crate::support::checked_package::index_fixture_node_ids(&mut package);
+    crate::support::checked_package::refresh_identity(&mut package);
+    let declaration = package["semantic_graph"]["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|node| node["semantic_form"] == "schedulability")
+        .expect("claim node")["node_id"]
+        .clone();
     let object = package["semantic_graph"]["nodes"]
         .as_array()
         .unwrap()
@@ -281,6 +287,338 @@ fn admitted_claim_views_preserve_task_set_and_release_bindings() {
     assert_eq!(releases[0].operation_member(), "step");
 }
 
+fn as_mode_switch(wire: &mut Value) {
+    let release = wire["schedulability_claims"][0]["release_bindings"][0].clone();
+    wire["schedulability_claims"][0]["release_bindings"] = json!([]);
+    wire["schedulability_claims"][0]["mode_switch_bindings"] = json!([{
+        "selected_model_identity":release["selected_model_identity"],
+        "operation_declaring_identity":release["operation_declaring_identity"],
+        "operation_member":release["operation_member"]
+    }]);
+}
+
+fn add_second_named_task(wire: &mut Value) {
+    let claim = wire["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|node| node["semantic_form"] == "schedulability")
+        .expect("claim node");
+    let tasks = &mut claim["body"]["members"][4]["value"]["members"];
+    let mut second = tasks[0].clone();
+    second["members"][0]["value"]["value"] = json!("alpha");
+    second["members"][8]["value"]["value"] = json!("2");
+    let tasks = tasks.as_array_mut().expect("task list");
+    tasks.push(second);
+    tasks.sort_by(|left, right| {
+        left["members"][0]["value"]["value"]
+            .as_str()
+            .cmp(&right["members"][0]["value"]["value"].as_str())
+    });
+}
+
+fn add_second_source_operation(wire: &mut Value) {
+    let mut second = wire["operation_bodies"][0].clone();
+    second["operation"] = json!("zstep");
+    wire["operation_bodies"]
+        .as_array_mut()
+        .unwrap()
+        .push(second);
+    wire["operation_bodies"]
+        .as_array_mut()
+        .unwrap()
+        .sort_by(|left, right| left["operation"].as_str().cmp(&right["operation"].as_str()));
+}
+
+#[trace(
+    "TC-048",
+    "FR-038-AC-619",
+    "FR-038-AC-620",
+    "FR-038-AC-621",
+    "FR-038-AC-622"
+)]
+#[test]
+fn release_and_mode_switch_relations_join_exact_claim_model_and_member() {
+    use filament_contract_model::{
+        CheckedPackageRefusalCause as Cause, CheckedPackageRefusalCode as Code,
+    };
+
+    let mut absent_task = package_with_release_binding(true);
+    absent_task["schedulability_claims"][0]["release_bindings"][0]["task_name"] = json!("missing");
+    refuses(
+        &absent_task,
+        Code::InvalidPackage,
+        Some(Cause::InvalidValue),
+        "/schedulability_claims/0/release_bindings/0/task_name",
+    );
+
+    for mode_switch in [false, true] {
+        let mut absent_model = package_with_release_binding(true);
+        if mode_switch {
+            as_mode_switch(&mut absent_model);
+        }
+        absent_model["schedulability_claims"][0][if mode_switch {
+            "mode_switch_bindings"
+        } else {
+            "release_bindings"
+        }][0]["selected_model_identity"] = json!("test:missing-model");
+        refuses(
+            &absent_model,
+            Code::InvalidPackage,
+            Some(Cause::InvalidValue),
+            if mode_switch {
+                "/schedulability_claims/0/mode_switch_bindings/0/selected_model_identity"
+            } else {
+                "/schedulability_claims/0/release_bindings/0/selected_model_identity"
+            },
+        );
+
+        let mut wrong_declaration = package_with_release_binding(true);
+        if mode_switch {
+            as_mode_switch(&mut wrong_declaration);
+        }
+        wrong_declaration["schedulability_claims"][0][if mode_switch {
+            "mode_switch_bindings"
+        } else {
+            "release_bindings"
+        }][0]["operation_declaring_identity"] =
+            json!({"package":"pkg","path":["Missing"],"ordinal":0});
+        refuses(
+            &wrong_declaration,
+            Code::InvalidPackage,
+            Some(Cause::InvalidValue),
+            if mode_switch {
+                "/schedulability_claims/0/mode_switch_bindings/0/operation_declaring_identity"
+            } else {
+                "/schedulability_claims/0/release_bindings/0/operation_declaring_identity"
+            },
+        );
+
+        let mut wrong_member = package_with_release_binding(true);
+        if mode_switch {
+            as_mode_switch(&mut wrong_member);
+        }
+        wrong_member["schedulability_claims"][0][if mode_switch {
+            "mode_switch_bindings"
+        } else {
+            "release_bindings"
+        }][0]["operation_member"] = json!("missing");
+        refuses(
+            &wrong_member,
+            Code::InvalidPackage,
+            Some(Cause::InvalidValue),
+            if mode_switch {
+                "/schedulability_claims/0/mode_switch_bindings/0/operation_member"
+            } else {
+                "/schedulability_claims/0/release_bindings/0/operation_member"
+            },
+        );
+    }
+}
+
+#[trace("TC-048", "FR-038-AC-618", "FR-038-AC-623", "FR-038-AC-627")]
+#[test]
+fn claim_occurrence_relations_round_trip_without_collapsing_shared_body() {
+    let mut wire = package_with_release_binding(true);
+    let node = wire["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|node| node["semantic_form"] == "schedulability")
+        .expect("claim node");
+    let declaration = node["node_id"].clone();
+    node["occurrences"] = json!([
+        {"role":"claim","ordinal":0},
+        {"role":"claim","ordinal":1}
+    ]);
+    let mut second_row = wire["source_map"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["node_id"] == declaration && row["role"] == "claim")
+        .expect("claim source row")
+        .clone();
+    second_row["ordinal"] = json!(1);
+    wire["source_map"].as_array_mut().unwrap().push(second_row);
+    let mut second_claim = wire["schedulability_claims"][0].clone();
+    second_claim["occurrence"] = json!(1);
+    second_claim["task_set"] = json!("Other");
+    let release = second_claim["release_bindings"][0].clone();
+    second_claim["release_bindings"] = json!([]);
+    second_claim["mode_switch_bindings"] = json!([{
+        "selected_model_identity":release["selected_model_identity"],
+        "operation_declaring_identity":release["operation_declaring_identity"],
+        "operation_member":release["operation_member"]
+    }]);
+    wire["schedulability_claims"]
+        .as_array_mut()
+        .unwrap()
+        .push(second_claim);
+    crate::support::checked_package::refresh_claim_names(&mut wire);
+    wire["source_map"]
+        .as_array_mut()
+        .unwrap()
+        .sort_by(|left, right| {
+            let left_id: CheckedNodeId =
+                serde_json::from_value(left["node_id"].clone()).expect("source node ID");
+            let right_id: CheckedNodeId =
+                serde_json::from_value(right["node_id"].clone()).expect("source node ID");
+            left_id
+                .cmp(&right_id)
+                .then_with(|| left["role"].as_str().cmp(&right["role"].as_str()))
+                .then_with(|| left["ordinal"].as_u64().cmp(&right["ordinal"].as_u64()))
+        });
+
+    let read = admitted(&wire);
+    let claims = read.schedulability_claims().collect::<Vec<_>>();
+    assert_eq!(claims.len(), 2);
+    assert_eq!(claims[0].declaration(), claims[1].declaration());
+    assert_eq!(claims[0].occurrence().ordinal, 0);
+    assert_eq!(claims[1].occurrence().ordinal, 1);
+    assert_eq!(claims[0].task_set(), "Ctl");
+    assert_eq!(claims[1].task_set(), "Other");
+    assert_eq!(claims[0].release_bindings().len(), 1);
+    assert_eq!(claims[0].mode_switch_bindings().len(), 0);
+    assert_eq!(claims[1].release_bindings().len(), 0);
+    assert_eq!(claims[1].mode_switch_bindings().len(), 1);
+    let mode_switch = claims[1]
+        .mode_switch_bindings()
+        .next()
+        .expect("mode-switch relation");
+    let source_binding: CheckedNodeId = serde_json::from_value(
+        wire["schedulability_claims"][1]["mode_switch_bindings"][0]["operation_declaring_identity"]
+            .clone(),
+    )
+    .expect("mode-switch declaring identity");
+    assert_eq!(mode_switch.selected_model_identity(), "test:spine-model");
+    assert_eq!(mode_switch.operation_declaring_identity(), &source_binding);
+    assert_eq!(mode_switch.operation_member(), "step");
+
+    let bytes = encode(&read);
+    let encoded: Value = serde_json::from_slice(&bytes).expect("wire package");
+    assert_eq!(
+        encoded["schedulability_claims"],
+        wire["schedulability_claims"]
+    );
+    let reread = admitted(&encoded);
+    assert_eq!(
+        reread.schedulability_claim_rows(),
+        read.schedulability_claim_rows()
+    );
+    assert_eq!(reread.schedulability_claims().count(), 2);
+}
+
+#[trace("TC-048", "FR-038-AC-624")]
+#[test]
+fn release_bindings_use_canonical_task_order_without_repair() {
+    use filament_contract_model::{
+        CheckedPackageRefusalCause as Cause, CheckedPackageRefusalCode as Code,
+    };
+
+    let mut descending = package_with_release_binding(true);
+    add_second_named_task(&mut descending);
+    let worker = descending["schedulability_claims"][0]["release_bindings"][0].clone();
+    let mut alpha = worker.clone();
+    alpha["task_name"] = json!("alpha");
+    descending["schedulability_claims"][0]["release_bindings"] =
+        json!([worker.clone(), alpha.clone()]);
+    refuses(
+        &descending,
+        Code::InvalidPackage,
+        Some(Cause::InvalidValue),
+        "/schedulability_claims/0/release_bindings/1",
+    );
+
+    let mut ascending = descending;
+    ascending["schedulability_claims"][0]["release_bindings"] = json!([alpha, worker]);
+    let read = admitted(&ascending);
+    let releases = read
+        .schedulability_claims()
+        .next()
+        .expect("claim")
+        .release_bindings()
+        .map(|release| release.task_name().to_owned())
+        .collect::<Vec<_>>();
+    assert_eq!(releases, ["alpha", "worker"]);
+    let mut raw_rows = read.schedulability_claim_rows().unwrap().to_vec();
+    raw_rows[0].release_bindings.reverse();
+    let bytes = encode_with_claim_rows(&read, Some(&raw_rows));
+    let encoded: Value = serde_json::from_slice(&bytes).expect("encoded package");
+    assert_eq!(
+        encoded["schedulability_claims"][0]["release_bindings"][0]["task_name"],
+        "worker"
+    );
+    let CheckedPackageV2ReadResult::Refused(refusal) = crate::read_and_account(
+        &bytes,
+        CheckedPackageReadLimits::bounded(),
+        &fixtures::evidence_for(&encoded),
+    ) else {
+        panic!("strict reader must refuse, not repair, descending release bindings")
+    };
+    assert_eq!(refusal.code, Code::InvalidPackage);
+    assert_eq!(refusal.cause, Some(Cause::InvalidValue));
+    assert_eq!(
+        refusal.loci[0].path.as_ref().unwrap().as_str(),
+        "/schedulability_claims/0/release_bindings/1"
+    );
+}
+
+#[trace("TC-048", "FR-038-AC-625")]
+#[test]
+fn mode_switch_bindings_use_canonical_operation_order_without_repair() {
+    use filament_contract_model::{
+        CheckedPackageRefusalCause as Cause, CheckedPackageRefusalCode as Code,
+    };
+
+    let mut descending = package_with_release_binding(true);
+    as_mode_switch(&mut descending);
+    add_second_source_operation(&mut descending);
+    let binding = descending["schedulability_claims"][0]["mode_switch_bindings"][0].clone();
+    let mut zstep = binding.clone();
+    zstep["operation_member"] = json!("zstep");
+    descending["schedulability_claims"][0]["mode_switch_bindings"] =
+        json!([zstep.clone(), binding.clone()]);
+    refuses(
+        &descending,
+        Code::InvalidPackage,
+        Some(Cause::InvalidValue),
+        "/schedulability_claims/0/mode_switch_bindings/1",
+    );
+
+    let mut ascending = descending;
+    ascending["schedulability_claims"][0]["mode_switch_bindings"] = json!([binding, zstep]);
+    let read = admitted(&ascending);
+    let members = read
+        .schedulability_claims()
+        .next()
+        .expect("claim")
+        .mode_switch_bindings()
+        .map(|binding| binding.operation_member().to_owned())
+        .collect::<Vec<_>>();
+    assert_eq!(members, ["step", "zstep"]);
+    let mut raw_rows = read.schedulability_claim_rows().unwrap().to_vec();
+    raw_rows[0].mode_switch_bindings.reverse();
+    let bytes = encode_with_claim_rows(&read, Some(&raw_rows));
+    let encoded: Value = serde_json::from_slice(&bytes).expect("encoded package");
+    assert_eq!(
+        encoded["schedulability_claims"][0]["mode_switch_bindings"][0]["operation_member"],
+        "zstep"
+    );
+    let CheckedPackageV2ReadResult::Refused(refusal) = crate::read_and_account(
+        &bytes,
+        CheckedPackageReadLimits::bounded(),
+        &fixtures::evidence_for(&encoded),
+    ) else {
+        panic!("strict reader must refuse, not repair, descending mode-switch bindings")
+    };
+    assert_eq!(refusal.code, Code::InvalidPackage);
+    assert_eq!(refusal.cause, Some(Cause::InvalidValue));
+    assert_eq!(
+        refusal.loci[0].path.as_ref().unwrap().as_str(),
+        "/schedulability_claims/0/mode_switch_bindings/1"
+    );
+}
+
 fn admitted(package: &Value) -> Box<CheckedPackageV2> {
     let result = crate::read_and_account(
         &fixtures::canonical(package),
@@ -305,6 +643,13 @@ fn exact(read: CheckedLiteralRead<'_>, unit: &CheckedNodeId, numerator: i64, den
 }
 
 fn encode(read: &CheckedPackageV2) -> Vec<u8> {
+    encode_with_claim_rows(read, read.schedulability_claim_rows())
+}
+
+fn encode_with_claim_rows(
+    read: &CheckedPackageV2,
+    schedulability_claims: Option<&[CheckedSchedulabilityClaimRow]>,
+) -> Vec<u8> {
     encode_checked_package_v2(
         read.name(),
         read.lock(),
@@ -317,10 +662,10 @@ fn encode(read: &CheckedPackageV2) -> Vec<u8> {
             temporal_clause_names: read.temporal_clause_names(),
             claim_names: read.claim_names(),
             operation_effects: None,
-            operation_bodies: None,
+            operation_bodies: read.operation_body_rows(),
             checked_term_data: read.checked_term_data(),
             temporal_bindings: read.temporal_bindings(),
-            schedulability_claims: read.schedulability_claim_rows(),
+            schedulability_claims,
         },
         read.capability_report(),
         read.diagnostics(),
@@ -434,6 +779,9 @@ fn absent_index_stays_absent_and_raw_rows_do_not_authenticate_claims() {
     assert_eq!(read.schedulability_claims().len(), 0);
     let encoded: Value = serde_json::from_slice(&encode(&read)).unwrap();
     assert!(encoded.get("schedulability_claims").is_none());
+    let explicit_empty: Value =
+        serde_json::from_slice(&encode_with_claim_rows(&read, Some(&[]))).unwrap();
+    assert_eq!(explicit_empty["schedulability_claims"], json!([]));
     assert_eq!(
         encoded,
         crate::support::checked_package::wire_form(&wire),

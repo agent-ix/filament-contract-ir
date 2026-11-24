@@ -830,6 +830,8 @@ fn validate_model_binding<Body>(
             meter,
         ));
     }
+    let declaring_at = binding_path.key("operation_declaring_identity");
+    let operation_at = binding_path.key("operation_member");
     let model_node = index.get(declaring_identity).copied();
     let operation_declared_by_model = owners
         .owner_by_key(declaring_identity)
@@ -843,24 +845,26 @@ fn validate_model_binding<Body>(
                 .map(|declared| declared == Some(owner.node))
         })
         .transpose()?;
-    let operation_declared_by_source = model_node.is_some_and(|position| {
+    let source_declaring_owner = model_node.is_some_and(|position| {
         matches!(
             nodes[position].owner.as_ref(),
             Some(super::CheckedNodeOwner::Source { identity, .. })
                 if identity.as_ref() == model_identity
-        ) && operation_bodies.is_some_and(|rows| {
+        )
+    });
+    let operation_declared_by_source = source_declaring_owner
+        && operation_bodies.is_some_and(|rows| {
             rows.iter().any(|row| {
                 row.document.as_ref() == model_identity
                     && row.declaring == *declaring_identity
                     && row.operation.as_ref() == operation_member
             })
-        })
-    });
-    if model_node.is_none() {
+        });
+    if model_node.is_none() || (operation_declared_by_model.is_none() && !source_declaring_owner) {
         return Err(invalid(
             Code::InvalidPackage,
             Some(Cause::InvalidValue),
-            binding_path.key("operation_declaring_identity"),
+            declaring_at,
             claim_identity,
             meter,
         ));
@@ -869,7 +873,7 @@ fn validate_model_binding<Body>(
         return Err(invalid(
             Code::MalformedWire,
             None,
-            binding_path.key("operation_member"),
+            operation_at,
             claim_identity,
             meter,
         ));
@@ -878,7 +882,7 @@ fn validate_model_binding<Body>(
         return Err(invalid(
             Code::InvalidPackage,
             Some(Cause::InvalidValue),
-            binding_path.key("operation_member"),
+            operation_at,
             claim_identity,
             meter,
         ));
