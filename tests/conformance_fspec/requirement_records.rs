@@ -2339,6 +2339,126 @@ fn else_without_scalar_operation_package() -> Value {
     package
 }
 
+fn nested_frame_pruning_package() -> Value {
+    let mut package = else_without_scalar_operation_package();
+    let guard = node_id("expression/integer_ge");
+    let root = node_id("expression/conditional");
+    let integer = node_id("scalar_type/integer");
+    let wrapper = node_id("expression/conditional/nested-parent");
+    let mut dependencies = vec![guard.clone(), root.clone(), integer.clone()];
+    dependencies.sort_by_key(structural_fixture_id);
+    let outer = json!({
+        "node_id":wrapper,
+        "schema_version":"filament.checked-semantic-graph/v2",
+        "node_tag":"expression", "semantic_form":"conditional", "semantic_type":integer,
+        "dependencies":dependencies, "occurrences":[{"role":"expression","ordinal":0}],
+        "body":{"term":"application","operator":"conditional",
+            "operation":{"identity":"filament.op.control.if","laws":[],"mode":null,"member":null,"leaves":[]},
+            "result_type":integer,
+            "arguments":[{"term":"reference","target":guard},
+                {"term":"reference","target":root},
+                {"term":"literal","type":integer,"value_kind":"integer","value":"0"}]}
+    });
+    let nodes = package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("graph nodes");
+    nodes.push(outer);
+    let guard_node = nodes
+        .iter_mut()
+        .find(|node| node["node_id"] == guard)
+        .expect("Boolean guard");
+    guard_node["occurrences"] = json!([
+        {"role":"expression","ordinal":0},
+        {"role":"expression","ordinal":1}
+    ]);
+    let owner = nodes
+        .iter_mut()
+        .find(|node| node["node_tag"] == "function")
+        .expect("function owner");
+    binding_value_mut(owner, "body")["target"] = wrapper.clone();
+    sync_body_dependencies(owner);
+
+    let frame = |parent: Value, occurrence: u64| json!({"parent":parent,"guard":{"node":guard,"occurrence":{"role":"expression","ordinal":occurrence}},"holds":true});
+    package["path_condition_frames"] = json!([frame(Value::Null, 0), frame(json!(0), 1)]);
+    let nodes = package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("graph nodes");
+    let record = nodes
+        .iter_mut()
+        .find(|node| node["semantic_form"] == "value_validity")
+        .expect("true-branch record");
+    let old_id = record["node_id"].clone();
+    binding_value_mut(record, "path_condition")["members"][0]["value"] = json!(1);
+    let path = record["node_id"]["path"]
+        .as_array_mut()
+        .expect("record identity path");
+    let path_condition = path
+        .iter()
+        .position(|segment| segment == "path_condition")
+        .expect("path-condition identity segment");
+    path[path_condition + 1] = json!("1");
+    let new_id = record["node_id"].clone();
+    let item = package["requirement_items"]
+        .as_array_mut()
+        .expect("requirement items")
+        .iter_mut()
+        .find(|item| item["record"] == old_id)
+        .expect("true-branch requirement item");
+    item["record"] = new_id;
+    settle(&mut package);
+    rebuild_complete_source_map(&mut package);
+    package
+}
+
+fn pruned_branch_occurrence_package() -> Value {
+    let mut package = value_validity_package(false);
+    let nodes = package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("graph nodes");
+    let pruned_id = nodes
+        .iter()
+        .find(|node| {
+            node["semantic_form"] == "value_validity"
+                && binding_value(node, "occurrence")["value"] == 0
+        })
+        .expect("first-branch record")["node_id"]
+        .clone();
+    nodes.retain(|node| node["node_id"] != pruned_id);
+    let record = nodes
+        .iter_mut()
+        .find(|node| node["semantic_form"] == "value_validity")
+        .expect("second-branch record");
+    let old_id = record["node_id"].clone();
+    record["occurrences"][0]["ordinal"] = json!(0);
+    binding_value_mut(record, "path_condition")["members"][0]["value"] = json!(0);
+    let path = record["node_id"]["path"]
+        .as_array_mut()
+        .expect("record identity path");
+    let path_condition = path
+        .iter()
+        .position(|segment| segment == "path_condition")
+        .expect("path-condition identity segment");
+    path[path_condition + 1] = json!("0");
+    let new_id = record["node_id"].clone();
+    package["requirement_items"]
+        .as_array_mut()
+        .expect("requirement items")
+        .retain(|item| item["record"] != pruned_id);
+    package["requirement_items"]
+        .as_array_mut()
+        .expect("requirement items")
+        .iter_mut()
+        .find(|item| item["record"] == old_id)
+        .expect("second-branch requirement item")["record"] = new_id;
+    package["path_condition_frames"]
+        .as_array_mut()
+        .expect("path-condition frames")
+        .remove(0);
+    settle(&mut package);
+    rebuild_complete_source_map(&mut package);
+    package
+}
+
 /// One value-validity record of `owner` at `application`'s `occurrence`, cited
 /// at `frame`, the `generated_ordinal`th record of its owner.
 fn push_record(
@@ -2562,6 +2682,100 @@ fn reader_refuses_a_record_in_an_if_branch_whose_frame_is_absent() {
     );
 }
 
+#[trace("TC-2053", "FR-825-AC-12")]
+#[test]
+fn nested_pruned_branch_keeps_parent_frame_and_refuses_when_parent_is_removed() {
+    let package = nested_frame_pruning_package();
+    let CheckedPackageV2ReadResult::Admitted(admitted) = read(&package) else {
+        panic!(
+            "nested branch frames retain the parent path: {:?}",
+            read(&package)
+        );
+    };
+    let frames = admitted.path_condition_frames();
+    assert_eq!(frames.len(), 2);
+    assert_eq!(frames[0].parent, None);
+    assert_eq!(frames[0].occurrence, 0);
+    assert!(frames[0].holds);
+    assert_eq!(frames[1].parent.map(|parent| parent.0), Some(0));
+    assert_eq!(frames[1].occurrence, 1);
+    assert!(frames[1].holds);
+    let record = admitted
+        .requirement_items()
+        .iter()
+        .map(value_validity_record)
+        .next()
+        .expect("the nested true-branch record");
+    let chain = admitted.path_condition(record).iter().collect::<Vec<_>>();
+    assert_eq!(chain.len(), 2);
+    assert!(chain.iter().all(|frame| frame.holds));
+
+    let mut missing_parent = package;
+    let child = missing_parent["path_condition_frames"][1].clone();
+    missing_parent["path_condition_frames"] = json!([{
+        "parent":null,
+        "guard":child["guard"],
+        "holds":child["holds"]
+    }]);
+    let nodes = missing_parent["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("graph nodes");
+    let record = nodes
+        .iter_mut()
+        .find(|node| node["semantic_form"] == "value_validity")
+        .expect("true-branch record");
+    let old_id = record["node_id"].clone();
+    binding_value_mut(record, "path_condition")["members"][0]["value"] = json!(0);
+    let path = record["node_id"]["path"]
+        .as_array_mut()
+        .expect("record identity path");
+    let path_condition = path
+        .iter()
+        .position(|segment| segment == "path_condition")
+        .expect("path-condition identity segment");
+    path[path_condition + 1] = json!("0");
+    let new_id = record["node_id"].clone();
+    missing_parent["requirement_items"]
+        .as_array_mut()
+        .expect("requirement items")
+        .iter_mut()
+        .find(|item| item["record"] == old_id)
+        .expect("true-branch requirement item")["record"] = new_id;
+    settle(&mut missing_parent);
+    rebuild_complete_source_map(&mut missing_parent);
+    assert_refusal(
+        &missing_parent,
+        CheckedPackageRefusalCode::InvalidPackage,
+        Some(CheckedPackageRefusalCause::InvalidValue),
+        "/path_condition_frames/0",
+    );
+}
+
+#[trace("TC-2053", "FR-825-AC-12")]
+#[test]
+fn visits_in_a_pruned_branch_still_advance_the_later_record_ordinal() {
+    let package = pruned_branch_occurrence_package();
+    let CheckedPackageV2ReadResult::Admitted(admitted) = read(&package) else {
+        panic!(
+            "the surviving branch record keeps its package ordinal: {:?}",
+            read(&package)
+        );
+    };
+    let records = admitted
+        .requirement_items()
+        .iter()
+        .map(value_validity_record)
+        .collect::<Vec<_>>();
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0].occurrence, 1);
+    assert_eq!(
+        records[0].path_condition_frame.map(|frame| frame.0),
+        Some(0)
+    );
+    assert_eq!(admitted.path_condition_frames().len(), 1);
+    assert!(!admitted.path_condition_frames()[0].holds);
+}
+
 #[trace("TC-2053", "FR-825-AC-6", "FR-825-AC-9", "FR-825-AC-11")]
 #[test]
 fn record_occurrence_of_a_node_shared_by_two_owners_is_numbered_package_wide() {
@@ -2610,7 +2824,7 @@ fn record_occurrence_of_a_node_shared_by_two_owners_is_numbered_package_wide() {
     );
 }
 
-#[trace("TC-2053", "FR-825-AC-11", "FR-322-AC-522")]
+#[trace("TC-2053", "FR-825-AC-11", "FR-825-AC-12", "FR-322-AC-522")]
 #[test]
 fn omitting_the_first_owners_record_does_not_renumber_a_shared_occurrence() {
     let (mut package, second_owner) = second_owner_package("expression/integer_add", 0);
@@ -2635,6 +2849,8 @@ fn omitting_the_first_owners_record_does_not_renumber_a_shared_occurrence() {
 
     let second_record = push_record(&mut package, &second_owner, &application, 1, None, 0);
     finish_second_owner(&mut package, &[(second_record, 1)], &[]);
+    let mut explicit_empty_table = package.clone();
+    explicit_empty_table["path_condition_frames"] = json!([]);
     package
         .as_object_mut()
         .expect("package object")
@@ -2653,6 +2869,12 @@ fn omitting_the_first_owners_record_does_not_renumber_a_shared_occurrence() {
         .collect::<Vec<_>>();
     assert_eq!(records.len(), 1);
     assert_eq!(records[0].occurrence, 1);
+    assert_refusal(
+        &explicit_empty_table,
+        CheckedPackageRefusalCode::InvalidPackage,
+        Some(CheckedPackageRefusalCause::InvalidValue),
+        "/path_condition_frames",
+    );
 }
 
 #[trace("TC-2053", "FR-825-AC-11")]

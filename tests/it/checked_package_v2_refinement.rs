@@ -3992,7 +3992,7 @@ fn history_initial_reference_package(
 #[trace("TC-310", "FR-375-AC-36")]
 #[test]
 fn history_initial_admits_matching_option_value_and_refuses_non_option_history() {
-    let (package, evidence, _) = option_history_initial_reference_package();
+    let (package, evidence, position) = option_history_initial_reference_package();
     let CheckedPackageV2ReadResult::Admitted(admitted) = read(&package, &evidence) else {
         panic!(
             "an Option<T> history admits its matching option value: {:?}",
@@ -4007,6 +4007,21 @@ fn history_initial_admits_matching_option_value_and_refuses_non_option_history()
         .expect("option value node")["node_id"]
         .clone();
     let option_value: CheckedNodeId = serde_json::from_value(target).expect("option value ID");
+    let refinement_id: CheckedNodeId = serde_json::from_value(
+        package["semantic_graph"]["nodes"]
+            .as_array()
+            .expect("nodes")[position]["node_id"]
+            .clone(),
+    )
+    .expect("refinement ID");
+    let Some(CheckedTerm::Refinement { histories, .. }) = admitted.term(&refinement_id) else {
+        panic!("the admitted refinement term is retained");
+    };
+    let Some(CheckedTerm::Reference { target }) = histories.first().map(|history| &history.initial)
+    else {
+        panic!("the decoded history initial refers to its OptionValue node");
+    };
+    assert_eq!(target, &option_value);
     let Some(CheckedTerm::Aggregate { members, .. }) = admitted.term(&option_value) else {
         panic!("the admitted option value has a present payload");
     };
