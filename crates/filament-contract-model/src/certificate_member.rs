@@ -56,6 +56,7 @@ certificate_members! {
     Nested => "nested",
     TaskProduct => "task_product",
     AbstractStates => "abstract_states",
+    CandidateBlocks => "candidate_blocks",
     Automaton => "automaton",
     Bias => "bias",
     Bound => "bound",
@@ -120,6 +121,17 @@ mod tests {
             );
             assert!(name.chars().all(|c| c.is_ascii_lowercase() || c == '_'));
         }
+    }
+
+    /// FR-418-AC-22: `candidate_blocks` is a certificate member, so a wrong-length or untimed
+    /// `candidate_blocks` can be named in a `malformed` rejection, and it follows `abstract_states`.
+    #[trace("FR-418-AC-22")]
+    #[test]
+    fn candidate_blocks_is_a_member_after_abstract_states() {
+        let names: Vec<&str> = CertificateMember::ALL.iter().map(|m| m.as_str()).collect();
+        let at = names.iter().position(|n| *n == "abstract_states").expect("abstract_states");
+        assert_eq!(CertificateMember::CandidateBlocks.as_str(), "candidate_blocks");
+        assert_eq!(names[at + 1], "candidate_blocks");
     }
 
     /// FR-070-AC-1: horizon and part use their exact schema spellings.
