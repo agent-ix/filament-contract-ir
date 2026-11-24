@@ -334,21 +334,47 @@ fn typed_equivalence_retains_complete_structural_node() {
 
 /// The scalar body is closed, and malformed body/owner shape wins over graph
 /// consistency checks at the node where it occurs.
+#[trace("TC-048", "FR-063-AC-7")]
+#[test]
+fn missing_equivalence_root_scale_refuses_at_its_node() {
+    let mut wire = package();
+    wire["semantic_graph"]["nodes"][3]["body"]
+        .as_object_mut()
+        .expect("equivalence body is an object")
+        .remove("root_scale");
+    expect_refusal(&wire, Code::MalformedWire, None, "/semantic_graph/nodes/3");
+}
+
+#[trace("TC-048", "FR-063-AC-7")]
+#[test]
+fn malformed_equivalence_root_scale_container_refuses_at_its_node() {
+    let base = package();
+
+    let mut non_object = base.clone();
+    non_object["semantic_graph"]["nodes"][3]["body"]["root_scale"] = json!("1/1");
+    expect_refusal(
+        &non_object,
+        Code::MalformedWire,
+        None,
+        "/semantic_graph/nodes/3",
+    );
+
+    let mut extra_member = base;
+    extra_member["semantic_graph"]["nodes"][3]["body"]["root_scale"]["extra"] = json!("x");
+    expect_refusal(
+        &extra_member,
+        Code::MalformedWire,
+        None,
+        "/semantic_graph/nodes/3",
+    );
+}
+
 #[trace("TC-048", "FR-063-AC-5", "FR-063-AC-7")]
 #[test]
 fn malformed_equivalence_shape_refuses_at_its_node() {
     let base = package();
     type Case = (fn(&mut Value), &'static str);
-    let cases: [Case; 8] = [
-        (
-            |v: &mut Value| {
-                v["semantic_graph"]["nodes"][3]["body"]
-                    .as_object_mut()
-                    .unwrap()
-                    .remove("root_scale");
-            },
-            "/semantic_graph/nodes/3",
-        ),
+    let cases: [Case; 7] = [
         (
             |v: &mut Value| {
                 v["semantic_graph"]["nodes"][3]["body"]["root_scale"]["numerator"] = json!("0");

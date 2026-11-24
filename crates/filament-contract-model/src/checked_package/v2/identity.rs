@@ -895,12 +895,14 @@ impl NominalBody {
     /// [`Self::from_value`] over a node of the retained document, whose
     /// operand slots read through `row`. Every list, name, number text and ID
     /// the body keeps is charged to the meter before it is allocated, and
-    /// the same first defect is refused at the same body-relative path.
+    /// the same first defect is refused at the same body-relative path, with
+    /// a missing or invalid root scale attributed to the owning node.
     #[ix_trace_rs::string_edge]
     pub(super) fn from_document(
         body: TermNode<'_>,
         row: &[CheckedOperandEntry],
         at: &dyn Fn() -> JsonPointer,
+        node_at: &dyn Fn() -> JsonPointer,
         meter: &mut WorkMeter,
     ) -> Result<Self, ValidationFailure> {
         let malformed =
@@ -921,7 +923,7 @@ impl NominalBody {
         };
         let rational = |meter: &mut WorkMeter, member: &str, positive_numerator: bool| {
             let path = || at().key(member);
-            let node_path = || owner_node_pointer(at);
+            let node_path = || node_at();
             let value = body.get(member).ok_or_else(|| {
                 if member == "root_scale" {
                     malformed(node_path())
@@ -930,10 +932,18 @@ impl NominalBody {
                 }
             })?;
             if !value.is_object() {
-                return Err(malformed(path()));
+                return Err(malformed(if member == "root_scale" {
+                    node_path()
+                } else {
+                    path()
+                }));
             }
             if !value.exact_members(&["numerator", "denominator"]) {
-                return Err(malformed(path()));
+                return Err(malformed(if member == "root_scale" {
+                    node_path()
+                } else {
+                    path()
+                }));
             }
             let numerator = value
                 .get("numerator")
@@ -1582,7 +1592,10 @@ impl<'a> BodyInput<'a> {
     ) -> Result<NominalBody, ValidationFailure> {
         let at = || node_pointer(position).key("body");
         match self {
-            Self::Document(Some((body, row))) => NominalBody::from_document(body, row, &at, meter),
+            Self::Document(Some((body, row))) => {
+                let node_at = || node_pointer(position);
+                NominalBody::from_document(body, row, &at, &node_at, meter)
+            }
             Self::Document(None) => Err(ValidationFailure::refused(
                 CheckedPackageRefusalCode::MalformedWire,
                 at(),
@@ -4089,11 +4102,13 @@ mod tests {
         ];
         let row = [10_u64, 11, 12].map(crate::CheckedOperandEntry::Node);
         let at = || JsonPointer::root().key("body");
+        let node_at = || JsonPointer::root();
         let mut closed = 0;
         for (slotted, resolved) in &bodies {
             let handle = CheckedJson::from_serializable(slotted).expect("canonical");
             let mut meter = WorkMeter::new(u64::MAX);
-            let read = NominalBody::from_document(TermNode::of(&handle), &row, &at, &mut meter);
+            let read =
+                NominalBody::from_document(TermNode::of(&handle), &row, &at, &node_at, &mut meter);
             let expected = NominalBody::from_value(resolved, at());
             match (&read, &expected) {
                 (Ok(read), Ok(expected)) => {
@@ -4137,6 +4152,7 @@ mod tests {
             .collect();
         let row = [4_u64].map(crate::CheckedOperandEntry::Node);
         let at = || JsonPointer::root().key("body");
+        let node_at = || JsonPointer::root();
         let run = |limit: u64| {
             let mut budget = NativeJoinBudget::new(u64::MAX, 0).with_read_storage_limit(limit);
             let mut read = Vec::with_capacity(handles.len());
@@ -4144,7 +4160,13 @@ mod tests {
                 let mut meter = WorkMeter::over(&mut budget);
                 meter.at_node(2, "scalar_type");
                 for handle in &handles {
-                    match NominalBody::from_document(TermNode::of(handle), &row, &at, &mut meter) {
+                    match NominalBody::from_document(
+                        TermNode::of(handle),
+                        &row,
+                        &at,
+                        &node_at,
+                        &mut meter,
+                    ) {
                         Ok(body) => read.push(body),
                         Err(_) => break,
                     }
