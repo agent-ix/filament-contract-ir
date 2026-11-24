@@ -45,6 +45,7 @@ use fspec_inputs::{
 
 mod body_locations;
 mod carried_quantity;
+mod certificate_identity;
 mod certificate_member;
 mod check_mode_vectors;
 mod dependency_call;
