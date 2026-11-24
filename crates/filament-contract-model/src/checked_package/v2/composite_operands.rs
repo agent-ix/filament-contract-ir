@@ -1537,6 +1537,382 @@ pub(in crate::checked_package::v2) mod tests {
         wire
     }
 
+    fn selected_model_dimension_equivalence_wire(
+    ) -> (Value, CheckedNodeId, CheckedNodeId, Vec<(String, Value)>) {
+        use super::super::CheckedNodePathSegment as Segment;
+
+        let models = [
+            (
+                "acme/rpc",
+                "ix://acme/rpc/dimension/Time",
+                "ix://acme/rpc/unit/s",
+                "s",
+                "1",
+            ),
+            (
+                "acme/flow",
+                "ix://acme/flow/dimension/Time",
+                "ix://acme/flow/unit/ms",
+                "ms",
+                "1",
+            ),
+            (
+                "acme/clock",
+                "ix://acme/clock/dimension/Time",
+                "ix://acme/clock/unit/ms",
+                "ms",
+                "1",
+            ),
+        ];
+        let model_node_id = |package: &str, form: &str, identity: &str| CheckedNodeId {
+            package: package.into(),
+            path: vec![
+                Segment::Name("scalar_type".into()),
+                Segment::Name(form.into()),
+                Segment::Name(identity.into()),
+            ],
+            ordinal: 0,
+        };
+        let model_root_id = |identity: &str| CheckedNodeId {
+            package: identity.into(),
+            path: vec![
+                Segment::Name("model".into()),
+                Segment::Name("model_root".into()),
+                Segment::Name(identity.into()),
+            ],
+            ordinal: 0,
+        };
+        let mut wire = boolean_equality_wire();
+        let source = wire["lock"]["sources"][0].clone();
+        let mut nodes = Vec::new();
+        let mut source_map = Vec::new();
+        let mut documents = Vec::new();
+        let mut dimensions = Vec::new();
+
+        for (package, dimension_identity, unit_identity, unit_name, unit_scale) in models {
+            let root_id = model_root_id(package);
+            let dimension_id = model_node_id(package, "dimension", dimension_identity);
+            let unit_id = model_node_id(package, "unit", unit_identity);
+            let dimension_node = json!({
+                "node_id":dimension_id,
+                "schema_version":"filament.checked-semantic-graph/v2",
+                "node_tag":"scalar_type","semantic_form":"dimension",
+                "semantic_type":dimension_id,"dependencies":[],
+                "occurrences":[{"role":"generated","ordinal":0}],
+                "owner":{"kind":"model","identity":package,"node":dimension_identity},
+                "body":{"term":"aggregate","members":[]}
+            });
+            let unit_node = json!({
+                "node_id":unit_id,
+                "schema_version":"filament.checked-semantic-graph/v2",
+                "node_tag":"scalar_type","semantic_form":"unit",
+                "semantic_type":dimension_id,"dependencies":[dimension_id],
+                "occurrences":[{"role":"generated","ordinal":0}],
+                "owner":{"kind":"model","identity":package,"node":unit_identity},
+                "body":{"term":"aggregate","members":[]}
+            });
+            let root_node = json!({
+                "node_id":root_id,"schema_version":"filament.checked-semantic-graph/v2",
+                "node_tag":"model","semantic_form":"model_root","semantic_type":root_id,
+                "dependencies":[],"occurrences":[{"role":"generated","ordinal":0}],
+                "owner":{"kind":"model_root","identity":package},
+                "body":{"term":"aggregate","members":[]}
+            });
+            for (node, role) in [
+                (root_node, "generated"),
+                (dimension_node, "generated"),
+                (unit_node, "generated"),
+            ] {
+                let position = wire["semantic_graph"]["nodes"]
+                    .as_array()
+                    .expect("base graph nodes")
+                    .len()
+                    + nodes.len();
+                source_map.push(json!({
+                    "node_id":node["node_id"],"role":role,"ordinal":0,
+                    "regions":[{"source":source,"start":position,"end":position+1}]
+                }));
+                nodes.push(node);
+            }
+            documents.push((
+                package.to_owned(),
+                json!({
+                    "contractVersion":"2.0.0",
+                    "package":{"identity":package,"version":"1.0.0"},
+                    "constructs":[],"types":[],
+                    "dimensions":[{"identity":dimension_identity,"name":"Time","base":true,"terms":[]}],
+                    "units":[{"identity":unit_identity,"name":unit_name,
+                        "dimension":dimension_identity,"scale":unit_scale,"offset":"0"}]
+                }),
+            ));
+            dimensions.push((package.to_owned(), dimension_id));
+        }
+        dimensions.sort_by(|left, right| left.1.cmp(&right.1));
+        let dimension = |package: &str| {
+            dimensions
+                .iter()
+                .find(|(identity, _)| identity == package)
+                .expect("selected package dimension")
+        };
+        let mut make_equivalence = |left: &(String, CheckedNodeId),
+                                    right: &(String, CheckedNodeId),
+                                    ordinal: u64,
+                                    scale: &str| {
+            let pair = if left.1 < right.1 {
+                [left, right]
+            } else {
+                [right, left]
+            };
+            let mut path = vec![
+                Segment::Name("scalar_type".into()),
+                Segment::Name("dimension_equivalence".into()),
+            ];
+            for (_, id) in pair {
+                path.push(Segment::Name(id.package.clone()));
+                path.extend(id.path.iter().cloned());
+                path.push(Segment::Name(id.ordinal.to_string().into()));
+            }
+            let id = CheckedNodeId {
+                package: "composite".into(),
+                path,
+                ordinal,
+            };
+            let operands = pair.map(|(package, node)| json!({"package":package,"node":node}));
+            let position = wire["semantic_graph"]["nodes"]
+                .as_array()
+                .expect("base graph nodes")
+                .len()
+                + nodes.len();
+            nodes.push(json!({
+                "node_id":id,"schema_version":"filament.checked-semantic-graph/v2",
+                "node_tag":"scalar_type","semantic_form":"dimension_equivalence",
+                "semantic_type":id,"dependencies":[],
+                "occurrences":[{"role":"anchor","ordinal":ordinal}],
+                "owner":{"kind":"source","authority":"test","identity":"composite"},
+                "body":{"term":"dimension_equivalence","dimension_node_ids":operands,
+                    "root_scale":{"numerator":scale,"denominator":"1"}}
+            }));
+            source_map.push(json!({
+                "node_id":id,"role":"anchor","ordinal":ordinal,
+                "regions":[{"source":source,"start":position,"end":position+1}]
+            }));
+            id
+        };
+        let first_equivalence =
+            make_equivalence(dimension("acme/rpc"), dimension("acme/flow"), 0, "1");
+        let third_package_equivalence =
+            make_equivalence(dimension("acme/rpc"), dimension("acme/clock"), 1, "1000");
+        wire["semantic_graph"]["nodes"]
+            .as_array_mut()
+            .expect("base graph nodes")
+            .extend(nodes);
+        wire["source_map"]
+            .as_array_mut()
+            .expect("base source map")
+            .extend(source_map);
+        (
+            wire,
+            first_equivalence,
+            third_package_equivalence,
+            documents,
+        )
+    }
+
+    /// FR-094-AC-13: dimension operands resolve through selected domain-package
+    /// evidence without adding those packages to library dependency selections.
+    #[trace("TC-419", "FR-094-AC-13")]
+    #[test]
+    fn dimension_equivalence_resolves_selected_model_package_operands() {
+        use super::super::{CheckedDimensionOperand, CheckedTerm};
+
+        let (wire, equivalence_id, third_package_equivalence, documents) =
+            selected_model_dimension_equivalence_wire();
+        let equivalence_position = wire["semantic_graph"]["nodes"]
+            .as_array()
+            .expect("semantic graph nodes")
+            .iter()
+            .position(|node| node["node_id"] == json!(equivalence_id))
+            .expect("first equivalence node");
+        let mut evidence = CheckedPackageEvidence::new();
+        for (identity, document) in &documents {
+            evidence
+                .insert_domain_package_document(
+                    identity.as_str(),
+                    serde_json::to_vec(document).expect("domain package bytes"),
+                )
+                .expect("selected model evidence");
+        }
+        let result = CheckedPackageV2::read(
+            &crate::checked_package::v2::test_support::canonical(&wire),
+            CheckedPackageReadLimits::bounded(),
+            &evidence,
+        );
+        let CheckedPackageV2ReadResult::Admitted(package) = result else {
+            panic!("selected model dimensions must admit: {result:?}");
+        };
+        assert!(package.lock().dependency_selections.is_empty());
+        let Some(CheckedTerm::NominalBody(body)) = package.term(&equivalence_id) else {
+            panic!("the admitted dimension equivalence body");
+        };
+        let (operands, root_scale) = body
+            .dimension_equivalence_details()
+            .expect("the admitted dimension equivalence");
+        let selected = operands
+            .iter()
+            .map(|operand| match operand {
+                CheckedDimensionOperand::Package(reference) => {
+                    (reference.package.as_ref(), reference.node.node_id())
+                }
+                CheckedDimensionOperand::Local(_) => panic!("model operands retain package form"),
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(selected.len(), 2);
+        assert_eq!(selected[0].0, "acme/flow");
+        assert_eq!(selected[1].0, "acme/rpc");
+        assert!(
+            selected[0].1 < selected[1].1,
+            "operands use structural order"
+        );
+        assert_eq!(
+            (&*root_scale.numerator, &*root_scale.denominator),
+            ("1", "1")
+        );
+        let Some(CheckedTerm::NominalBody(third_body)) = package.term(&third_package_equivalence)
+        else {
+            panic!("the admitted third-package dimension equivalence body");
+        };
+        let (third_operands, third_scale) = third_body
+            .dimension_equivalence_details()
+            .expect("the admitted third-package dimension equivalence");
+        let third_packages = third_operands
+            .iter()
+            .map(|operand| match operand {
+                CheckedDimensionOperand::Package(reference) => reference.package.as_ref(),
+                CheckedDimensionOperand::Local(_) => panic!("model operands retain package form"),
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(third_packages, ["acme/clock", "acme/rpc"]);
+        assert_eq!(
+            (&*third_scale.numerator, &*third_scale.denominator),
+            ("1000", "1")
+        );
+
+        for (numerator, denominator) in [("0", "1"), ("-1", "1"), ("2000", "2")] {
+            let mut invalid = wire.clone();
+            invalid["semantic_graph"]["nodes"][equivalence_position]["body"]["root_scale"] =
+                json!({"numerator":numerator,"denominator":denominator});
+            let refused = CheckedPackageV2::read(
+                &crate::checked_package::v2::test_support::canonical(&invalid),
+                CheckedPackageReadLimits::bounded(),
+                &evidence,
+            );
+            let CheckedPackageV2ReadResult::Refused(refusal) = refused else {
+                panic!("invalid dimension root scale must refuse: {numerator}/{denominator}");
+            };
+            assert_eq!(
+                refusal.code,
+                CheckedPackageRefusalCode::InvalidSemanticGraph
+            );
+        }
+
+        let mut missing_scale = wire.clone();
+        missing_scale["semantic_graph"]["nodes"][equivalence_position]["body"]
+            .as_object_mut()
+            .expect("equivalence body")
+            .remove("root_scale");
+        let refused = CheckedPackageV2::read(
+            &crate::checked_package::v2::test_support::canonical(&missing_scale),
+            CheckedPackageReadLimits::bounded(),
+            &evidence,
+        );
+        assert!(
+            matches!(
+                refused,
+                CheckedPackageV2ReadResult::Refused(ref refusal)
+                    if refusal.code == CheckedPackageRefusalCode::InvalidSemanticGraph
+            ),
+            "missing root scale refusal: {refused:?}"
+        );
+
+        for (package, node) in [
+            ("acme/missing", selected[0].1),
+            ("acme/flow", selected[1].1),
+        ] {
+            let mut invalid = wire.clone();
+            invalid["semantic_graph"]["nodes"][equivalence_position]["body"]
+                ["dimension_node_ids"][0] = json!({"package":package,"node":node});
+            let refused = CheckedPackageV2::read(
+                &crate::checked_package::v2::test_support::canonical(&invalid),
+                CheckedPackageReadLimits::bounded(),
+                &evidence,
+            );
+            assert!(matches!(
+                refused,
+                CheckedPackageV2ReadResult::Refused(refusal)
+                    if refusal.code == CheckedPackageRefusalCode::MissingDeclaration
+            ));
+        }
+
+        let mut no_selection = CheckedPackageEvidence::new();
+        for (identity, document) in &documents[1..] {
+            no_selection
+                .insert_domain_package_document(
+                    identity.as_str(),
+                    serde_json::to_vec(document).expect("domain package bytes"),
+                )
+                .expect("selected model evidence");
+        }
+        let refused = CheckedPackageV2::read(
+            &crate::checked_package::v2::test_support::canonical(&wire),
+            CheckedPackageReadLimits::bounded(),
+            &no_selection,
+        );
+        assert!(matches!(refused, CheckedPackageV2ReadResult::Refused(_)));
+
+        let mut inconsistent_cycle = wire.clone();
+        let mut reverse =
+            inconsistent_cycle["semantic_graph"]["nodes"][equivalence_position].clone();
+        reverse["node_id"]["ordinal"] = json!(1);
+        reverse["occurrences"][0]["ordinal"] = json!(1);
+        reverse["body"]["root_scale"] = json!({"numerator":"2","denominator":"1"});
+        let position = inconsistent_cycle["semantic_graph"]["nodes"]
+            .as_array()
+            .expect("semantic graph nodes")
+            .len();
+        inconsistent_cycle["semantic_graph"]["nodes"]
+            .as_array_mut()
+            .expect("semantic graph nodes")
+            .push(reverse.clone());
+        let source = inconsistent_cycle["lock"]["sources"][0].clone();
+        inconsistent_cycle["source_map"]
+            .as_array_mut()
+            .expect("source map")
+            .push(json!({
+                "node_id":reverse["node_id"],"role":"anchor","ordinal":1,
+                "regions":[{"source":source,"start":position,"end":position+1}]
+            }));
+        let refused = CheckedPackageV2::read(
+            &crate::checked_package::v2::test_support::canonical(&inconsistent_cycle),
+            CheckedPackageReadLimits::bounded(),
+            &evidence,
+        );
+        let CheckedPackageV2ReadResult::Refused(refusal) = refused else {
+            panic!("inconsistent dimension equivalence cycle must refuse");
+        };
+        assert_eq!(
+            refusal.code,
+            CheckedPackageRefusalCode::InvalidSemanticGraph
+        );
+        assert_eq!(
+            refusal.loci[0]
+                .path
+                .as_ref()
+                .map(ToString::to_string)
+                .as_deref(),
+            Some("/semantic_graph/nodes/20")
+        );
+    }
+
     fn converted_integer_equality_wire() -> Value {
         let mut wire = boolean_equality_wire();
         let ids = &fixture().1;
