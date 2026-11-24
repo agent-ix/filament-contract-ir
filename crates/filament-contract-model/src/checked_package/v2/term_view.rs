@@ -1141,11 +1141,12 @@ mod refinement_fault {
             "operation" => {
                 shape(
                     node,
-                    &["kind", "operation", "receiver", "arguments"],
+                    &["kind", "operation", "target_type", "receiver", "arguments"],
                     &[],
                     at,
                 )?;
                 key(member(node, "operation", at)?, &at.key("operation"))?;
+                key(member(node, "target_type", at)?, &at.key("target_type"))?;
                 term(member(node, "receiver", at)?, &at.key("receiver"), walk)?;
                 rows(node, "arguments", at, |row, row_at| {
                     argument(row, row_at, walk)

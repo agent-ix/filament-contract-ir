@@ -1629,6 +1629,13 @@ impl RefinementGraph<'_, '_> {
     }
 
     fn key_owner_identity(&self, key: &RefinementKey) -> Option<&str> {
+        if let RefinementKey::Local(id) = key {
+            if let Some(super::CheckedNodeOwner::Model { identity, .. }) =
+                self.local_node(id)?.owner.as_ref()
+            {
+                return Some(identity);
+            }
+        }
         let owner = match key {
             RefinementKey::Local(id) => return self.local_owner_identity(id),
             RefinementKey::External(external) => {

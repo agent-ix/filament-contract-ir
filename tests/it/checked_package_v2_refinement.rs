@@ -2611,7 +2611,7 @@ fn complete_model_refinement_retains_all_rows_through_public_roundtrip() {
 #[trace("TC-062", "FR-061-AC-4", "FSpec-FR-375-AC-41")]
 #[test]
 fn model_step_targets_keep_operation_stutter_and_any_through_public_writer() {
-    let (base, evidence, position) = catalog_free_operation_package("object_type");
+    let (mut base, evidence, position) = catalog_free_operation_package("object_type");
     let step = &base["semantic_graph"]["nodes"][position]["body"]["steps"][0];
     let anchor = step["source_node"].clone();
     let receiver = base["semantic_graph"]["nodes"]
@@ -2623,6 +2623,17 @@ fn model_step_targets_keep_operation_stutter_and_any_through_public_writer() {
         })
         .expect("selected object type")["node_id"]
         .clone();
+    let local_root = base["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|node| {
+            node["semantic_form"] == "model_root" && node["owner"]["identity"] == MODEL_IDENTITY
+        })
+        .expect("selected local model root")["node_id"]
+        .clone();
+    base["semantic_graph"]["nodes"][position]["body"]["abstract"] = local_root;
+    settle_refinement(&mut base, position);
     for (name, target) in [
         ("stutter", json!({"kind":"stutter"})),
         ("any", json!({"kind":"any"})),
@@ -2685,6 +2696,24 @@ fn model_step_targets_keep_operation_stutter_and_any_through_public_writer() {
         assert_eq!(admitted.graph(), reread.graph());
     }
 
+    let mut non_type = base.clone();
+    non_type["semantic_graph"]["nodes"][position]["body"]["steps"][0]["target"] = json!({
+        "kind":"operation", "operation":anchor, "target_type":anchor,
+        "receiver":{"term":"reference","target":receiver}, "arguments":[]
+    });
+    let node = &mut non_type["semantic_graph"]["nodes"][position];
+    let dependencies = node["dependencies"].as_array_mut().expect("dependencies");
+    dependencies.push(receiver.clone());
+    dependencies.sort_by(node_id_order);
+    dependencies.dedup();
+    settle_refinement(&mut non_type, position);
+    assert_step_refusal(
+        read(&non_type, &evidence),
+        CheckedPackageRefusalCode::InvalidModelBinding,
+        Some(CheckedPackageRefusalCause::MalformedDeclaration),
+        &format!("/semantic_graph/nodes/{position}/body/steps/0/target/target_type"),
+    );
+
     let mut missing_target = base.clone();
     let unresolved = node_id("refinement/absent-abstract-operation");
     let node = &mut missing_target["semantic_graph"]["nodes"][position];
@@ -2718,7 +2747,7 @@ fn model_step_targets_keep_operation_stutter_and_any_through_public_writer() {
     settle_refinement(&mut missing_type, position);
     assert_step_refusal(
         read(&missing_type, &evidence),
-        CheckedPackageRefusalCode::MalformedWire,
+        CheckedPackageRefusalCode::InvalidSemanticGraph,
         None,
         &format!("/semantic_graph/nodes/{position}/body/steps/0/target"),
     );
@@ -2736,7 +2765,7 @@ fn model_step_targets_keep_operation_stutter_and_any_through_public_writer() {
     settle_refinement(&mut null_type, position);
     assert_step_refusal(
         read(&null_type, &evidence),
-        CheckedPackageRefusalCode::MalformedWire,
+        CheckedPackageRefusalCode::InvalidSemanticGraph,
         None,
         &format!("/semantic_graph/nodes/{position}/body/steps/0/target/target_type"),
     );
