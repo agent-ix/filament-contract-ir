@@ -2603,6 +2603,15 @@ fn validate_rows(
             locus,
         )?;
         graph.local_kind(meter, &row.type_id, at.key("type"), locus)?;
+        if let CheckedTerm::DependencyReference { .. } = &row.initial {
+            return Err(refuse_at(
+                meter,
+                CheckedPackageRefusalCode::InvalidModelBinding,
+                Some(CheckedPackageRefusalCause::MalformedDeclaration),
+                at.key("initial"),
+                locus,
+            ));
+        }
         if let CheckedTerm::Reference { target } = &row.initial {
             // FR-375: a `history-literal` is a literal or, for `Some`/`none`
             // over an option type, an option value.
@@ -2616,7 +2625,44 @@ fn validate_rows(
                     meter,
                     CheckedPackageRefusalCode::InvalidModelBinding,
                     Some(CheckedPackageRefusalCause::MalformedDeclaration),
-                    target_at,
+                    at.key("initial"),
+                    locus,
+                ));
+            }
+            if actual == K::Value(super::ValueForm::OptionValue) {
+                let option_type = graph
+                    .index
+                    .get(&row.type_id)
+                    .and_then(|position| graph.kinds.get(*position));
+                let value_type = graph
+                    .index
+                    .get(target)
+                    .and_then(|position| graph.nodes.get(*position))
+                    .map(|value| &value.semantic_type);
+                if !matches!(
+                    option_type,
+                    Some(K::CompositeType(super::CompositeTypeForm::Option))
+                ) || value_type != Some(&row.type_id)
+                {
+                    return Err(refuse_at(
+                        meter,
+                        CheckedPackageRefusalCode::InvalidModelBinding,
+                        Some(CheckedPackageRefusalCause::MalformedDeclaration),
+                        at.key("initial"),
+                        locus,
+                    ));
+                }
+            } else if graph
+                .index
+                .get(&row.type_id)
+                .and_then(|position| graph.kinds.get(*position))
+                .is_some_and(|kind| *kind == K::CompositeType(super::CompositeTypeForm::Option))
+            {
+                return Err(refuse_at(
+                    meter,
+                    CheckedPackageRefusalCode::InvalidModelBinding,
+                    Some(CheckedPackageRefusalCause::MalformedDeclaration),
+                    at.key("initial"),
                     locus,
                 ));
             }
