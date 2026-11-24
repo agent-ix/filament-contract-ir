@@ -123,6 +123,7 @@ extern crate self as filament_contract_model;
 
 mod binding;
 mod canonical;
+mod certificate_identity;
 mod certificate_member;
 mod checked_package;
 mod code;
@@ -143,6 +144,9 @@ pub use binding::{
 pub use canonical::{
     CanonicalBody, CanonicalBytes, CanonicalKind, CanonicalOutput, CanonicalProfile,
     CANONICAL_PROFILE,
+};
+pub use certificate_identity::{
+    CertificateNodeId, CertificateNodeIdError, CertificatePathSegment, MAX_CERTIFICATE_NODE_ORDINAL,
 };
 pub use certificate_member::CertificateMember;
 pub use checked_package::CheckedCallableRead;
