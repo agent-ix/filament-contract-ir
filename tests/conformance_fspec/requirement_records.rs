@@ -2871,8 +2871,8 @@ fn omitting_the_first_owners_record_does_not_renumber_a_shared_occurrence() {
     assert_eq!(records[0].occurrence, 1);
     assert_refusal(
         &explicit_empty_table,
-        CheckedPackageRefusalCode::InvalidPackage,
-        Some(CheckedPackageRefusalCause::InvalidValue),
+        CheckedPackageRefusalCode::MalformedWire,
+        None,
         "/path_condition_frames",
     );
 }

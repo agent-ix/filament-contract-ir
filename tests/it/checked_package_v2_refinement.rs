@@ -2867,8 +2867,8 @@ fn model_step_targets_keep_operation_stutter_and_any_through_public_writer() {
     settle_refinement(&mut missing_type, position);
     assert_step_refusal(
         read(&missing_type, &evidence),
-        CheckedPackageRefusalCode::InvalidModelBinding,
-        Some(CheckedPackageRefusalCause::MalformedDeclaration),
+        CheckedPackageRefusalCode::InvalidSemanticGraph,
+        None,
         &format!("/semantic_graph/nodes/{position}/body/steps/0/target"),
     );
 
