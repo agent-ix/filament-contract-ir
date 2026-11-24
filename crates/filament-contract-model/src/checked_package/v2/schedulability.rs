@@ -27,12 +27,85 @@ pub struct CheckedSchedulabilityClaimRow {
     pub declaration: CheckedNodeId,
     /// Ordinal of its claim occurrence.
     pub occurrence: u64,
+    /// Exact checked source task-set identifier for this occurrence.
+    pub task_set: Box<str>,
+    /// Release declarations associated with this occurrence's task set.
+    pub release_bindings: Vec<CheckedSchedulabilityReleaseBinding>,
+    /// Mode-switch declarations associated with this occurrence's task set.
+    pub mode_switch_bindings: Vec<CheckedSchedulabilityModeSwitchBinding>,
 }
+
+/// One checked task-to-operation release relation supplied by the producer.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CheckedSchedulabilityReleaseBinding {
+    /// Exact task identifier in the claim's task set.
+    pub task_name: Box<str>,
+    /// Identity of the selected model package that declares the operation.
+    pub selected_model_identity: Box<str>,
+    /// Structural identity of the operation's declaring model node.
+    pub operation_declaring_identity: CheckedNodeId,
+    /// Exact operation member identifier, separate from its declaring node.
+    pub operation_member: Box<str>,
+}
+
+/// One checked claim-to-operation criticality mode-switch relation.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CheckedSchedulabilityModeSwitchBinding {
+    /// Identity of the selected model package that declares the operation.
+    pub selected_model_identity: Box<str>,
+    /// Structural identity of the operation's declaring model node.
+    pub operation_declaring_identity: CheckedNodeId,
+    /// Exact operation member identifier, separate from its declaring node.
+    pub operation_member: Box<str>,
+}
+
 impl Encode for CheckedSchedulabilityClaimRow {
     fn encode_into<S: Sink + ?Sized>(&self, writer: &mut Writer<'_, S>) -> Result<(), Error> {
         writer.begin_object()?;
         super::encode::encoded(writer, "declaration", &self.declaration)?;
         super::encode::member(writer, "occurrence", &self.occurrence)?;
+        super::encode::member(writer, "task_set", self.task_set.as_ref())?;
+        super::encode::elements(writer, "release_bindings", &self.release_bindings)?;
+        super::encode::elements(writer, "mode_switch_bindings", &self.mode_switch_bindings)?;
+        writer.end_object()
+    }
+}
+
+impl Encode for CheckedSchedulabilityReleaseBinding {
+    fn encode_into<S: Sink + ?Sized>(&self, writer: &mut Writer<'_, S>) -> Result<(), Error> {
+        writer.begin_object()?;
+        super::encode::member(writer, "task_name", self.task_name.as_ref())?;
+        super::encode::member(
+            writer,
+            "selected_model_identity",
+            self.selected_model_identity.as_ref(),
+        )?;
+        super::encode::encoded(
+            writer,
+            "operation_declaring_identity",
+            &self.operation_declaring_identity,
+        )?;
+        super::encode::member(writer, "operation_member", self.operation_member.as_ref())?;
+        writer.end_object()
+    }
+}
+
+impl Encode for CheckedSchedulabilityModeSwitchBinding {
+    fn encode_into<S: Sink + ?Sized>(&self, writer: &mut Writer<'_, S>) -> Result<(), Error> {
+        writer.begin_object()?;
+        super::encode::member(
+            writer,
+            "selected_model_identity",
+            self.selected_model_identity.as_ref(),
+        )?;
+        super::encode::encoded(
+            writer,
+            "operation_declaring_identity",
+            &self.operation_declaring_identity,
+        )?;
+        super::encode::member(writer, "operation_member", self.operation_member.as_ref())?;
         writer.end_object()
     }
 }
@@ -92,6 +165,55 @@ pub struct CheckedSchedulabilityClaimRef<'a> {
     declaration: &'a CheckedNodeId,
     occurrence: &'a CheckedOccurrence,
     body: &'a CheckedTerm,
+    task_set: &'a str,
+    release_bindings: &'a [CheckedSchedulabilityReleaseBinding],
+    mode_switch_bindings: &'a [CheckedSchedulabilityModeSwitchBinding],
+}
+
+/// A package-borrowed, admitted task release binding.
+#[derive(Clone, Copy, Debug)]
+pub struct CheckedSchedulabilityReleaseBindingRef<'a> {
+    row: &'a CheckedSchedulabilityReleaseBinding,
+}
+
+impl CheckedSchedulabilityReleaseBindingRef<'_> {
+    /// Exact task identifier in the claim's task set.
+    pub fn task_name(&self) -> &str {
+        &self.row.task_name
+    }
+    /// Exact selected model package identity.
+    pub fn selected_model_identity(&self) -> &str {
+        &self.row.selected_model_identity
+    }
+    /// Exact declaring model node identity.
+    pub fn operation_declaring_identity(&self) -> &CheckedNodeId {
+        &self.row.operation_declaring_identity
+    }
+    /// Exact operation member identifier.
+    pub fn operation_member(&self) -> &str {
+        &self.row.operation_member
+    }
+}
+
+/// A package-borrowed, admitted criticality mode-switch binding.
+#[derive(Clone, Copy, Debug)]
+pub struct CheckedSchedulabilityModeSwitchBindingRef<'a> {
+    row: &'a CheckedSchedulabilityModeSwitchBinding,
+}
+
+impl CheckedSchedulabilityModeSwitchBindingRef<'_> {
+    /// Exact selected model package identity.
+    pub fn selected_model_identity(&self) -> &str {
+        &self.row.selected_model_identity
+    }
+    /// Exact declaring model node identity.
+    pub fn operation_declaring_identity(&self) -> &CheckedNodeId {
+        &self.row.operation_declaring_identity
+    }
+    /// Exact operation member identifier.
+    pub fn operation_member(&self) -> &str {
+        &self.row.operation_member
+    }
 }
 /// A package-borrowed task whose binding shape and policy premises were admitted.
 ///
@@ -152,6 +274,26 @@ impl<'a> CheckedSchedulabilityClaimRef<'a> {
     /// Exact owned claim occurrence.
     pub fn occurrence(&self) -> &'a CheckedOccurrence {
         self.occurrence
+    }
+    /// Exact checked source task-set identifier for this claim occurrence.
+    pub fn task_set(&self) -> &'a str {
+        self.task_set
+    }
+    /// Admitted task-to-operation release bindings in canonical order.
+    pub fn release_bindings(
+        &self,
+    ) -> impl ExactSizeIterator<Item = CheckedSchedulabilityReleaseBindingRef<'a>> + 'a {
+        self.release_bindings
+            .iter()
+            .map(|row| CheckedSchedulabilityReleaseBindingRef { row })
+    }
+    /// Admitted claim-to-operation mode-switch bindings in canonical order.
+    pub fn mode_switch_bindings(
+        &self,
+    ) -> impl ExactSizeIterator<Item = CheckedSchedulabilityModeSwitchBindingRef<'a>> + 'a {
+        self.mode_switch_bindings
+            .iter()
+            .map(|row| CheckedSchedulabilityModeSwitchBindingRef { row })
     }
     /// Complete admitted body, borrowed without copying.
     pub fn body(&self) -> &'a CheckedTerm {
@@ -259,12 +401,20 @@ impl CheckedPackageV2 {
     ) -> impl ExactSizeIterator<Item = CheckedSchedulabilityClaimRef<'_>> + '_ {
         self.schedulability_claim_index
             .iter()
-            .map(|&(node, occurrence)| {
+            .map(|&(node, occurrence, row_index)| {
                 let node = &self.wire.semantic_graph.nodes[node];
+                let row = &self
+                    .wire
+                    .schedulability_claims
+                    .as_ref()
+                    .expect("indexed rows present")[row_index];
                 CheckedSchedulabilityClaimRef {
                     declaration: &node.node_id,
                     occurrence: &node.occurrences[occurrence],
                     body: &node.body,
+                    task_set: &row.task_set,
+                    release_bindings: &row.release_bindings,
+                    mode_switch_bindings: &row.mode_switch_bindings,
                 }
             })
     }
@@ -303,7 +453,7 @@ pub(super) fn validate_carrier<Body>(
     index: &GraphIndex<'_>,
     structural_keys: &[std::sync::Arc<CheckedNodeId>],
     meter: &mut WorkMeter,
-) -> Result<Vec<(usize, usize)>, ValidationFailure> {
+) -> Result<Vec<(usize, usize, usize)>, ValidationFailure> {
     let caller = meter.site();
     meter.at_row("schedulability_claims", 0);
     let root = || Path::root().key("schedulability_claims");
@@ -411,7 +561,7 @@ pub(super) fn validate_carrier<Body>(
             }
         }
         previous = Some(key);
-        joined.push((position, occurrence_position));
+        joined.push((position, occurrence_position, i));
     }
     for (p, node) in nodes.iter().enumerate().filter(|(p, _)| claim(kinds[*p])) {
         for occurrence in node
@@ -432,6 +582,356 @@ pub(super) fn validate_carrier<Body>(
     }
     meter.restore_site(caller);
     Ok(joined)
+}
+
+/// Validate the task-set and operation relations after timed-model and claim
+/// body admission, retaining every occurrence-scoped row without repair.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn validate_relations<Body>(
+    rows: Option<&[CheckedSchedulabilityClaimRow]>,
+    claim_index: &[(usize, usize, usize)],
+    nodes: &[CheckedSemanticNodeV2<Body>],
+    kinds: &[CheckedNodeKind],
+    terms: &[Option<CheckedTerm>],
+    index: &GraphIndex<'_>,
+    structural_keys: &[std::sync::Arc<CheckedNodeId>],
+    owners: &super::model_members::ModelOwners<'_>,
+    operation_bodies: Option<&[super::OperationBodyRow]>,
+    meter: &mut WorkMeter,
+) -> Result<(), ValidationFailure> {
+    let rows = rows.unwrap_or_default();
+    for &(node_position, _, row_position) in claim_index {
+        let row = &rows[row_position];
+        let declaration = &row.declaration;
+        meter.at_row("schedulability_claims", row_position);
+        let at = || {
+            Path::root()
+                .key("schedulability_claims")
+                .index(row_position)
+        };
+        if !super::identity::is_identifier(&row.task_set) {
+            return Err(invalid(
+                Code::MalformedWire,
+                None,
+                at().key("task_set"),
+                declaration,
+                meter,
+            ));
+        }
+        let body = terms[node_position]
+            .as_ref()
+            .expect("admitted schedulability body");
+        let tasks = members(admitted_bound(body, 4)).expect("admitted task list");
+
+        let mut previous_release: Option<(&CheckedSchedulabilityReleaseBinding, usize)> = None;
+        for (binding_position, binding) in row.release_bindings.iter().enumerate() {
+            let path = at().key("release_bindings").index(binding_position);
+            stage_storage::work(
+                meter,
+                &Site::new(
+                    PackageReadStage::Graph,
+                    row_position,
+                    "schedulability_claims",
+                    path,
+                ),
+                1,
+            )?;
+            if !super::identity::is_identifier(&binding.task_name) {
+                return Err(invalid(
+                    Code::MalformedWire,
+                    None,
+                    path.key("task_name"),
+                    declaration,
+                    meter,
+                ));
+            }
+            if !tasks
+                .iter()
+                .any(|task| text(admitted_bound(task, 0)) == Some(binding.task_name.as_ref()))
+            {
+                return Err(invalid(
+                    Code::InvalidPackage,
+                    Some(Cause::InvalidValue),
+                    path.key("task_name"),
+                    declaration,
+                    meter,
+                ));
+            }
+            validate_model_binding(
+                &binding.selected_model_identity,
+                &binding.operation_declaring_identity,
+                &binding.operation_member,
+                path,
+                row_position,
+                declaration,
+                nodes,
+                kinds,
+                terms,
+                index,
+                owners,
+                operation_bodies,
+                meter,
+            )?;
+            if let Some((previous, previous_owner_position)) = previous_release {
+                let ordering = previous
+                    .task_name
+                    .cmp(&binding.task_name)
+                    .then_with(|| {
+                        previous
+                            .selected_model_identity
+                            .cmp(&binding.selected_model_identity)
+                    })
+                    .then(
+                        index
+                            .resolved_at(previous_owner_position, structural_keys)
+                            .order(
+                                &index.resolved_at(
+                                    *index
+                                        .get(&binding.operation_declaring_identity)
+                                        .expect("validated declaring identity"),
+                                    structural_keys,
+                                ),
+                                meter,
+                            )?,
+                    )
+                    .then(previous.operation_member.cmp(&binding.operation_member));
+                if ordering == Ordering::Greater {
+                    return Err(invalid(
+                        Code::InvalidPackage,
+                        Some(Cause::InvalidValue),
+                        path,
+                        declaration,
+                        meter,
+                    ));
+                }
+            }
+            previous_release = Some((
+                binding,
+                *index
+                    .get(&binding.operation_declaring_identity)
+                    .expect("validated declaring identity"),
+            ));
+        }
+
+        let mut previous_switch: Option<(&CheckedSchedulabilityModeSwitchBinding, usize)> = None;
+        for (binding_position, binding) in row.mode_switch_bindings.iter().enumerate() {
+            let path = at().key("mode_switch_bindings").index(binding_position);
+            stage_storage::work(
+                meter,
+                &Site::new(
+                    PackageReadStage::Graph,
+                    row_position,
+                    "schedulability_claims",
+                    path,
+                ),
+                1,
+            )?;
+            validate_model_binding(
+                &binding.selected_model_identity,
+                &binding.operation_declaring_identity,
+                &binding.operation_member,
+                path,
+                row_position,
+                declaration,
+                nodes,
+                kinds,
+                terms,
+                index,
+                owners,
+                operation_bodies,
+                meter,
+            )?;
+            if let Some((previous, previous_owner_position)) = previous_switch {
+                let ordering = previous
+                    .selected_model_identity
+                    .cmp(&binding.selected_model_identity)
+                    .then(
+                        index
+                            .resolved_at(previous_owner_position, structural_keys)
+                            .order(
+                                &index.resolved_at(
+                                    *index
+                                        .get(&binding.operation_declaring_identity)
+                                        .expect("validated declaring identity"),
+                                    structural_keys,
+                                ),
+                                meter,
+                            )?,
+                    )
+                    .then(previous.operation_member.cmp(&binding.operation_member));
+                if ordering == Ordering::Greater {
+                    return Err(invalid(
+                        Code::InvalidPackage,
+                        Some(Cause::InvalidValue),
+                        path,
+                        declaration,
+                        meter,
+                    ));
+                }
+            }
+            previous_switch = Some((
+                binding,
+                *index
+                    .get(&binding.operation_declaring_identity)
+                    .expect("validated declaring identity"),
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn validate_model_binding<Body>(
+    model_identity: &str,
+    declaring_identity: &CheckedNodeId,
+    operation_member: &str,
+    binding_path: Path<'_>,
+    row_position: usize,
+    claim_identity: &CheckedNodeId,
+    nodes: &[CheckedSemanticNodeV2<Body>],
+    kinds: &[CheckedNodeKind],
+    terms: &[Option<CheckedTerm>],
+    index: &GraphIndex<'_>,
+    owners: &super::model_members::ModelOwners<'_>,
+    operation_bodies: Option<&[super::OperationBodyRow]>,
+    meter: &mut WorkMeter,
+) -> Result<(), ValidationFailure> {
+    let model_at = binding_path.key("selected_model_identity");
+    let mut selected_timed = false;
+    if !model_identity.is_empty() {
+        for (position, kind) in kinds.iter().enumerate() {
+            stage_storage::work(
+                meter,
+                &Site::new(
+                    PackageReadStage::Graph,
+                    row_position,
+                    "schedulability_claims",
+                    model_at,
+                ),
+                1,
+            )?;
+            if *kind != CheckedNodeKind::TimedModel(super::TimedModelForm::Model) {
+                continue;
+            }
+            let root = &nodes[position];
+            let target_identity = terms
+                .get(position)
+                .and_then(Option::as_ref)
+                .and_then(|body| bound(body, 0))
+                .and_then(|model| match model {
+                    CheckedTerm::Reference { target, .. } => index.get(target),
+                    _ => None,
+                })
+                .and_then(|target| nodes.get(*target))
+                .and_then(|target| target.owner.as_ref())
+                .and_then(owner_identity);
+            if root
+                .owner
+                .as_ref()
+                .and_then(owner_identity)
+                .is_some_and(|identity| identity == model_identity)
+                || target_identity.is_some_and(|identity| identity == model_identity)
+            {
+                selected_timed = true;
+                break;
+            }
+        }
+    }
+    if !selected_timed {
+        return Err(invalid(
+            if model_identity.is_empty() {
+                Code::MalformedWire
+            } else {
+                Code::InvalidPackage
+            },
+            (!model_identity.is_empty()).then_some(Cause::InvalidValue),
+            model_at,
+            claim_identity,
+            meter,
+        ));
+    }
+    let declaring_at = binding_path.key("operation_declaring_identity");
+    let operation_at = binding_path.key("operation_member");
+    let model_node = index.get(declaring_identity).copied();
+    let operation_declared_by_model = owners
+        .owner_by_key(declaring_identity)
+        .filter(|owner| owner.package.identity.as_ref() == model_identity)
+        .map(|owner| {
+            let mut budget =
+                super::model_members::Budget::new(meter, owner.package.root, owner.package.bytes);
+            owner
+                .package
+                .effective_operation_owner(owner.node, operation_member, &mut budget)
+                .map(|declared| declared == Some(owner.node))
+        })
+        .transpose()?;
+    let source_declaring_owner = model_node.is_some_and(|position| {
+        matches!(
+            nodes[position].owner.as_ref(),
+            Some(super::CheckedNodeOwner::Source { identity, .. })
+                if identity.as_ref() == model_identity
+        )
+    });
+    let mut operation_declared_by_source = false;
+    if source_declaring_owner {
+        if let Some(rows) = operation_bodies {
+            for row in rows {
+                stage_storage::work(
+                    meter,
+                    &Site::new(
+                        PackageReadStage::Graph,
+                        row_position,
+                        "schedulability_claims",
+                        operation_at,
+                    ),
+                    1,
+                )?;
+                if row.document.as_ref() == model_identity
+                    && row.declaring == *declaring_identity
+                    && row.operation.as_ref() == operation_member
+                {
+                    operation_declared_by_source = true;
+                    break;
+                }
+            }
+        }
+    }
+    if model_node.is_none() || (operation_declared_by_model.is_none() && !source_declaring_owner) {
+        return Err(invalid(
+            Code::InvalidPackage,
+            Some(Cause::InvalidValue),
+            declaring_at,
+            claim_identity,
+            meter,
+        ));
+    }
+    if !super::identity::is_identifier(operation_member) {
+        return Err(invalid(
+            Code::MalformedWire,
+            None,
+            operation_at,
+            claim_identity,
+            meter,
+        ));
+    }
+    if !operation_declared_by_model.unwrap_or(false) && !operation_declared_by_source {
+        return Err(invalid(
+            Code::InvalidPackage,
+            Some(Cause::InvalidValue),
+            operation_at,
+            claim_identity,
+            meter,
+        ));
+    }
+    Ok(())
+}
+
+fn owner_identity(owner: &super::CheckedNodeOwner) -> Option<&str> {
+    match owner {
+        super::CheckedNodeOwner::ModelRoot { identity }
+        | super::CheckedNodeOwner::Source { identity, .. }
+        | super::CheckedNodeOwner::Model { identity, .. } => Some(identity),
+    }
 }
 
 /// The order of two `(structural key, ordinal)` rows: ranks when the graph
@@ -601,6 +1101,7 @@ fn record_priority(
 }
 
 #[ix_trace_rs::string_edge]
+#[allow(clippy::too_many_arguments)]
 pub(super) fn validate_bodies<Body>(
     nodes: &[CheckedSemanticNodeV2<Body>],
     kinds: &[CheckedNodeKind],
@@ -608,6 +1109,10 @@ pub(super) fn validate_bodies<Body>(
     index: &GraphIndex<'_>,
     structural_keys: &[std::sync::Arc<CheckedNodeId>],
     models: &[super::model_members::DomainModel],
+    claim_rows: Option<&[CheckedSchedulabilityClaimRow]>,
+    claim_index: &[(usize, usize, usize)],
+    owners: &super::model_members::ModelOwners<'_>,
+    operation_bodies: Option<&[super::OperationBodyRow]>,
     meter: &mut WorkMeter,
 ) -> Result<(), ValidationFailure> {
     // The site is the caller's again once the claims are checked.
@@ -854,6 +1359,18 @@ pub(super) fn validate_bodies<Body>(
             }
         }
     }
+    validate_relations(
+        claim_rows,
+        claim_index,
+        nodes,
+        kinds,
+        terms,
+        index,
+        structural_keys,
+        owners,
+        operation_bodies,
+        meter,
+    )?;
     meter.restore_site(caller);
     Ok(())
 }
@@ -1007,6 +1524,7 @@ mod tests {
     /// carrier holds only flat wire IDs, so the join's comparisons never
     /// allocate.
     #[trace("TC-472", "FR-038-AC-504")]
+    #[trace("TC-3009", "FR-246-AC-5")]
     #[test]
     fn claim_carrier_join_allocates_exactly_what_it_charges() {
         let claim = |name: &str, occurrences: u64| -> super::super::RawSemanticNodeV2 {
@@ -1040,6 +1558,9 @@ mod tests {
                 .map(|(position, occurrence)| CheckedSchedulabilityClaimRow {
                     declaration: nodes[position].node_id.clone(),
                     occurrence,
+                    task_set: "Set".into(),
+                    release_bindings: Vec::new(),
+                    mode_switch_bindings: Vec::new(),
                 })
                 .collect();
         let run = |limit: u64| {
@@ -1066,12 +1587,159 @@ mod tests {
         let (joined, allocated, charged) = run(u64::MAX);
         assert_eq!(
             joined,
-            Some(vec![(0, 0), (0, 1), (1, 0), (2, 0), (2, 1), (2, 2)])
+            Some(vec![
+                (0, 0, 0),
+                (0, 1, 1),
+                (1, 0, 2),
+                (2, 0, 3),
+                (2, 1, 4),
+                (2, 2, 5),
+            ])
         );
         assert!(charged > 0);
         assert_eq!(allocated, charged, "allocated == requested");
         assert_eq!(run(charged).0, joined, "the measured limit admits");
         assert_eq!(run(charged - 1).0, None, "one byte short is denied");
+    }
+
+    /// The exact occurrence relation row is required and has a strict closed shape.
+    #[trace("TC-3009", "FR-246-AC-4", "FR-246-AC-5", "FR-038-AC-618")]
+    #[test]
+    fn schedulability_claim_relation_rows_are_required_and_strict() {
+        let declaration = CheckedNodeId {
+            package: "example".into(),
+            path: vec![super::super::CheckedNodePathSegment::Name("claim".into())],
+            ordinal: 0,
+        };
+        let row = |release_bindings| CheckedSchedulabilityClaimRow {
+            declaration: declaration.clone(),
+            occurrence: 0,
+            task_set: "Tasks".into(),
+            release_bindings,
+            mode_switch_bindings: Vec::new(),
+        };
+        let unbacked = serde_json::to_value(row(Vec::new())).expect("serializes empty bindings");
+        let release = CheckedSchedulabilityReleaseBinding {
+            task_name: "worker".into(),
+            selected_model_identity: "model:one".into(),
+            operation_declaring_identity: declaration.clone(),
+            operation_member: "step".into(),
+        };
+        let backed = serde_json::to_value(row(vec![release.clone()])).expect("serializes binding");
+        assert!(unbacked["release_bindings"].as_array().unwrap().is_empty());
+        assert_eq!(backed["release_bindings"][0]["task_name"], "worker");
+        assert_eq!(
+            serde_json::from_value::<CheckedSchedulabilityClaimRow>(backed.clone())
+                .expect("reads binding"),
+            row(vec![release])
+        );
+
+        for malformed in [
+            json!({"declaration": declaration.clone(), "occurrence": 0}),
+            json!({"declaration": declaration.clone(), "occurrence": 0, "task_set":"Tasks", "release_bindings":[], "mode_switch_bindings":[], "extra": false}),
+            json!({"declaration": declaration, "occurrence": 0, "task_set":"Tasks", "release_bindings":[]}),
+        ] {
+            assert!(
+                serde_json::from_value::<CheckedSchedulabilityClaimRow>(malformed).is_err(),
+                "malformed schedulability relation row is rejected"
+            );
+        }
+    }
+
+    /// Every candidate timed-model node and each source operation row checked
+    /// for one relation consumes caller work, and the final source-row check
+    /// refuses at that relation's operation-member locus when one unit short.
+    #[trace("TC-472", "FR-038-AC-504", "FR-038-AC-618")]
+    #[test]
+    fn model_binding_candidate_scans_are_charged_to_the_relation() {
+        let model_identity = "model:fixture";
+        let nodes = ['a', 'b', 'c', 'd'].map(|name| CheckedSemanticNodeV2 {
+            node_id: super::super::test_support::node_id(name),
+            schema_version: "filament.checked-semantic-graph/v2".into(),
+            node_tag: "timed_model".into(),
+            semantic_form: "timed_model".into(),
+            semantic_type: super::super::test_support::node_id('e'),
+            dependencies: Vec::new(),
+            occurrences: Vec::new(),
+            recursion_group: None,
+            declaration: None,
+            owner: Some(super::super::CheckedNodeOwner::Source {
+                authority: "fixture".into(),
+                identity: if name == 'd' {
+                    model_identity.into()
+                } else {
+                    "model:other".into()
+                },
+            }),
+            owner_model: None,
+            check_mode: None,
+            body: (),
+        });
+        let node_id = nodes[3].node_id.clone();
+        let kinds = [CheckedNodeKind::TimedModel(super::super::TimedModelForm::Model); 4];
+        let terms = [None, None, None, None];
+        let mut index_meter = WorkMeter::new(u64::MAX);
+        let index = GraphIndex::build(nodes.iter().map(|node| &node.node_id), &mut index_meter)
+            .expect("the one-node index builds");
+        let operation_bodies = [
+            super::super::OperationBodyRow {
+                document: model_identity.into(),
+                declaring: node_id.clone(),
+                operation: "other_a".into(),
+                body: super::super::OperationBody::NoBody,
+            },
+            super::super::OperationBodyRow {
+                document: model_identity.into(),
+                declaring: node_id.clone(),
+                operation: "other_b".into(),
+                body: super::super::OperationBody::NoBody,
+            },
+        ];
+        let binding_path = Path::root()
+            .key("schedulability_claims")
+            .index(4)
+            .key("release_bindings")
+            .index(2);
+        let claim = super::super::test_support::node_id('c');
+        let run = |work_limit| {
+            let mut budget = NativeJoinBudget::new(work_limit, 0).with_read_storage_limit(u64::MAX);
+            let result = {
+                let mut meter = WorkMeter::over(&mut budget);
+                validate_model_binding(
+                    model_identity,
+                    &node_id,
+                    "step",
+                    binding_path,
+                    4,
+                    &claim,
+                    &nodes,
+                    &kinds,
+                    &terms,
+                    &index,
+                    &super::super::model_members::ModelOwners::default(),
+                    Some(&operation_bodies),
+                    &mut meter,
+                )
+            };
+            (result, budget)
+        };
+
+        let (complete, measured) = run(6);
+        assert!(matches!(complete, Err(ValidationFailure::Refused(_))));
+        assert_eq!(measured.consumed().work, 6);
+        assert_eq!(measured.first_unpaid_locus(), None);
+
+        let (one_short, denied) = run(5);
+        assert!(matches!(one_short, Err(ValidationFailure::Budget(_))));
+        assert_eq!(denied.consumed().work, 5);
+        let locus = denied
+            .first_unpaid_locus()
+            .expect("the scan charge is refused");
+        assert_eq!(
+            locus.source,
+            super::super::NativeJoinLocusSource::PackageRead(PackageReadStage::Graph, 4)
+        );
+        assert_eq!(locus.form, "schedulability_claims");
     }
 
     /// The model table is one charged exact block the table keeps without
@@ -1117,6 +1785,10 @@ mod tests {
                     &index,
                     &[],
                     &models,
+                    None,
+                    &[],
+                    &super::super::model_members::ModelOwners::default(),
+                    None,
                     &mut meter,
                 ));
             });

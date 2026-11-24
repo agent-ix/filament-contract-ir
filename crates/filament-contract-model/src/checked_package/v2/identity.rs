@@ -618,14 +618,7 @@ impl NominalBody {
                 if !positive_integer(&root_scale.numerator)
                     || !positive_integer(&root_scale.denominator)
                 {
-                    return Err(Box::new(CheckedPackageRefusal::new(RefusalFields {
-                        code: CheckedPackageRefusalCode::InvalidSemanticGraph,
-                        path: Some(path()),
-                        cause: None,
-                        locus: None,
-                        contract_version: None,
-                        document_pointer: None,
-                    })));
+                    return Err(malformed(path()));
                 }
             }
         }
@@ -748,18 +741,10 @@ impl NominalBody {
         };
         let rational = |member: &str, positive_numerator: bool| {
             let path = at.clone().key(member);
+            let node_path = || owner_node_pointer(&|| at.clone());
             let value = object.get(member).ok_or_else(|| {
                 if member == "root_scale" {
-                    ValidationFailure::Refused(Box::new(CheckedPackageRefusal::new(
-                        RefusalFields {
-                            code: CheckedPackageRefusalCode::InvalidSemanticGraph,
-                            path: Some(path.clone()),
-                            cause: None,
-                            locus: None,
-                            contract_version: None,
-                            document_pointer: None,
-                        },
-                    )))
+                    malformed(node_path())
                 } else {
                     malformed(path.clone())
                 }
@@ -772,18 +757,30 @@ impl NominalBody {
                 .get("numerator")
                 .and_then(Value::as_str)
                 .filter(|number| {
-                    if positive_numerator && member != "root_scale" {
+                    if positive_numerator {
                         positive_integer(number)
                     } else {
                         integer_magnitude(number).is_some()
                     }
                 })
-                .ok_or_else(|| malformed(path.clone().key("numerator")))?;
+                .ok_or_else(|| {
+                    if member == "root_scale" {
+                        malformed(node_path())
+                    } else {
+                        malformed(path.clone().key("numerator"))
+                    }
+                })?;
             let denominator = fields
                 .get("denominator")
                 .and_then(Value::as_str)
                 .filter(|number| positive_integer(number))
-                .ok_or_else(|| malformed(path.clone().key("denominator")))?;
+                .ok_or_else(|| {
+                    if member == "root_scale" {
+                        malformed(node_path())
+                    } else {
+                        malformed(path.clone().key("denominator"))
+                    }
+                })?;
             Ok(CheckedRational {
                 numerator: numerator.into(),
                 denominator: denominator.into(),
@@ -888,16 +885,7 @@ impl NominalBody {
                 if exact_members(object, &["term", "dimension_node_ids"])
                     && !object.contains_key("root_scale") =>
             {
-                Err(ValidationFailure::Refused(Box::new(
-                    CheckedPackageRefusal::new(RefusalFields {
-                        code: CheckedPackageRefusalCode::InvalidSemanticGraph,
-                        path: Some(at.clone().key("root_scale")),
-                        cause: None,
-                        locus: None,
-                        contract_version: None,
-                        document_pointer: None,
-                    }),
-                )))
+                Err(malformed(owner_node_pointer(&|| at.clone())))
             }
             _ => Err(malformed(at.clone())),
         }?;
@@ -933,18 +921,10 @@ impl NominalBody {
         };
         let rational = |meter: &mut WorkMeter, member: &str, positive_numerator: bool| {
             let path = || at().key(member);
+            let node_path = || owner_node_pointer(at);
             let value = body.get(member).ok_or_else(|| {
                 if member == "root_scale" {
-                    ValidationFailure::Refused(Box::new(CheckedPackageRefusal::new(
-                        RefusalFields {
-                            code: CheckedPackageRefusalCode::InvalidSemanticGraph,
-                            path: Some(path()),
-                            cause: None,
-                            locus: None,
-                            contract_version: None,
-                            document_pointer: None,
-                        },
-                    )))
+                    malformed(node_path())
                 } else {
                     malformed(path())
                 }
@@ -959,18 +939,30 @@ impl NominalBody {
                 .get("numerator")
                 .and_then(TermNode::as_str)
                 .filter(|number| {
-                    if positive_numerator && member != "root_scale" {
+                    if positive_numerator {
                         positive_integer(number)
                     } else {
                         integer_magnitude(number).is_some()
                     }
                 })
-                .ok_or_else(|| malformed(path().key("numerator")))?;
+                .ok_or_else(|| {
+                    if member == "root_scale" {
+                        malformed(node_path())
+                    } else {
+                        malformed(path().key("numerator"))
+                    }
+                })?;
             let denominator = value
                 .get("denominator")
                 .and_then(TermNode::as_str)
                 .filter(|number| positive_integer(number))
-                .ok_or_else(|| malformed(path().key("denominator")))?;
+                .ok_or_else(|| {
+                    if member == "root_scale" {
+                        malformed(node_path())
+                    } else {
+                        malformed(path().key("denominator"))
+                    }
+                })?;
             Ok(CheckedRational {
                 numerator: meter.boxed_str(numerator)?,
                 denominator: meter.boxed_str(denominator)?,
@@ -1091,16 +1083,7 @@ impl NominalBody {
                 if body.exact_members(&["term", "dimension_node_ids"])
                     && body.get("root_scale").is_none() =>
             {
-                Err(ValidationFailure::Refused(Box::new(
-                    CheckedPackageRefusal::new(RefusalFields {
-                        code: CheckedPackageRefusalCode::InvalidSemanticGraph,
-                        path: Some(at().key("root_scale")),
-                        cause: None,
-                        locus: None,
-                        contract_version: None,
-                        document_pointer: None,
-                    }),
-                )))
+                Err(malformed(owner_node_pointer(at)))
             }
             _ => Err(malformed(at())),
         }?;
@@ -1416,6 +1399,14 @@ impl NominalKind {
 
 fn invalid(path: JsonPointer) -> ValidationFailure {
     ValidationFailure::refused(CheckedPackageRefusalCode::InvalidSemanticGraph, path)
+}
+
+fn owner_node_pointer(at: &dyn Fn() -> JsonPointer) -> JsonPointer {
+    let body = at();
+    body.as_str()
+        .strip_suffix("/body")
+        .and_then(JsonPointer::parse)
+        .unwrap_or(body)
 }
 
 /// Refuses at the pointer `at` builds unless `condition` holds.
@@ -2798,7 +2789,7 @@ fn equivalence_potentials<'a>(
         adjacency.push((second, first, ratio, *position, sequence * 2 + 1));
     }
     adjacency.sort_unstable_by(|left, right| left.0.cmp(&right.0).then(left.4.cmp(&right.4)));
-    let mut queue: Vec<usize> = meter.vec(count)?;
+    let mut pending_edges: Vec<usize> = meter.vec(adjacency.len())?;
     for id in graph
         .index
         .keys()
@@ -2811,35 +2802,32 @@ fn equivalence_potentials<'a>(
         {
             continue;
         }
-        queue.clear();
-        queue.push(start);
+        pending_edges.clear();
         potentials.entries[start] = Some((start, ExactRatio::one()));
-        let mut head = 0;
-        while let Some(&current) = queue.get(head) {
-            head += 1;
-            let Some((component, current_ratio)) = potentials.entries[current].as_ref() else {
+        let first = adjacency.partition_point(|step| step.0 < start);
+        let last = adjacency.partition_point(|step| step.0 <= start);
+        pending_edges.extend((first..last).rev());
+        while let Some(edge_index) = pending_edges.pop() {
+            let (current, neighbor, multiplier, position, _) = &adjacency[edge_index];
+            let Some((component, current_ratio)) = potentials.entries[*current].as_ref() else {
                 continue;
             };
             let (component, current_ratio) = (*component, current_ratio.duplicate(meter)?);
-            let first = adjacency.partition_point(|step| step.0 < current);
-            for (_, neighbor, multiplier, position, _) in adjacency[first..]
-                .iter()
-                .take_while(|step| step.0 == current)
-            {
-                let at = || node_pointer(*position);
-                meter.at_node(*position, "scalar_type");
-                let candidate = current_ratio.multiply(multiplier, meter, &at)?;
-                match &potentials.entries[*neighbor] {
-                    Some((known_component, known_ratio)) => {
-                        require(
-                            *known_component == component && *known_ratio == candidate,
-                            at,
-                        )?;
-                    }
-                    None => {
-                        potentials.entries[*neighbor] = Some((component, candidate));
-                        queue.push(*neighbor);
-                    }
+            let at = || node_pointer(*position);
+            meter.at_node(*position, "scalar_type");
+            let candidate = current_ratio.multiply(multiplier, meter, &at)?;
+            match &potentials.entries[*neighbor] {
+                Some((known_component, known_ratio)) => {
+                    require(
+                        *known_component == component && *known_ratio == candidate,
+                        at,
+                    )?;
+                }
+                None => {
+                    potentials.entries[*neighbor] = Some((component, candidate));
+                    let first = adjacency.partition_point(|step| step.0 < *neighbor);
+                    let last = adjacency.partition_point(|step| step.0 <= *neighbor);
+                    pending_edges.extend((first..last).rev());
                 }
             }
         }
