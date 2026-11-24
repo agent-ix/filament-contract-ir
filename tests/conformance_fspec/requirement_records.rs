@@ -2747,7 +2747,7 @@ fn nested_pruned_branch_keeps_parent_frame_and_refuses_when_parent_is_removed() 
         &missing_parent,
         CheckedPackageRefusalCode::InvalidPackage,
         Some(CheckedPackageRefusalCause::InvalidValue),
-        "/path_condition_frames/0",
+        "/path_condition_frames",
     );
 }
 
