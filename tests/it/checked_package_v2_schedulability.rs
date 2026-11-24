@@ -258,7 +258,13 @@ fn package_with_release_binding(release_backed: bool) -> Value {
     package
 }
 
-#[trace("TC-451", "FR-246-AC-4", "FR-246-AC-5", "FR-038-AC-618")]
+#[trace(
+    "TC-451",
+    "FR-246-AC-4",
+    "FR-246-AC-5",
+    "FR-038-AC-618",
+    "FR-019-AC-30"
+)]
 #[test]
 fn admitted_claim_views_preserve_task_set_and_release_bindings() {
     let without_release = package_with_release_binding(false);
@@ -416,7 +422,13 @@ fn release_and_mode_switch_relations_join_exact_claim_model_and_member() {
     }
 }
 
-#[trace("TC-048", "FR-038-AC-618", "FR-038-AC-623", "FR-038-AC-627")]
+#[trace(
+    "TC-048",
+    "FR-038-AC-618",
+    "FR-038-AC-623",
+    "FR-038-AC-627",
+    "FR-019-AC-30"
+)]
 #[test]
 fn claim_occurrence_relations_round_trip_without_collapsing_shared_body() {
     let mut wire = package_with_release_binding(true);
