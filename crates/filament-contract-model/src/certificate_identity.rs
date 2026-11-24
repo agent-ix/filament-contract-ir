@@ -20,6 +20,27 @@ pub struct CertificateNodeId {
     ordinal: u64,
 }
 
+impl Drop for CertificateNodeId {
+    fn drop(&mut self) {
+        let mut pending = Vec::new();
+        drain_nested_nodes(&mut self.path, &mut pending);
+        while let Some(mut node) = pending.pop() {
+            drain_nested_nodes(&mut node.path, &mut pending);
+        }
+    }
+}
+
+fn drain_nested_nodes(
+    path: &mut Vec<CertificatePathSegment>,
+    pending: &mut Vec<Box<CertificateNodeId>>,
+) {
+    for segment in path.drain(..) {
+        if let CertificatePathSegment::Node(node) = segment {
+            pending.push(node);
+        }
+    }
+}
+
 /// One segment in a certificate node identity path.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -130,6 +151,23 @@ impl CertificateNodeId {
     /// Structural ordinal.
     pub fn ordinal(&self) -> u64 {
         self.ordinal
+    }
+
+    /// Read a certificate identity from JSON bytes without imposing a nesting-depth cap.
+    pub fn from_json_slice(input: &[u8]) -> Result<Self, serde_json::Error> {
+        let mut deserializer = serde_json::Deserializer::from_slice(input);
+        deserializer.disable_recursion_limit();
+        let value = Self::deserialize(serde_stacker::Deserializer::new(&mut deserializer))?;
+        deserializer.end()?;
+        Ok(value)
+    }
+
+    /// Write a certificate identity as JSON bytes without recursion-depth stack growth.
+    pub fn to_json_vec(&self) -> Result<Vec<u8>, serde_json::Error> {
+        let mut output = Vec::new();
+        let mut serializer = serde_json::Serializer::new(&mut output);
+        self.serialize(serde_stacker::Serializer::new(&mut serializer))?;
+        Ok(output)
     }
 
     /// Copy an existing exact structural identity without changing its key.

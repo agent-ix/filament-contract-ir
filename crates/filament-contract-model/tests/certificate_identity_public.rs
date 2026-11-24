@@ -92,8 +92,9 @@ fn deeply_nested_certificate_identity_round_trips_without_a_depth_cap() {
     }
 
     let value = CertificateNodeId::from_node_key(&key).unwrap();
-    let json = serde_json::to_value(&value).unwrap();
-    let decoded: CertificateNodeId = serde_json::from_value(json).unwrap();
+    let json = value.to_json_vec().unwrap();
+    drop(value);
+    let decoded = CertificateNodeId::from_json_slice(&json).unwrap();
     let recovered = decoded.to_node_key().unwrap();
     assert_eq!(recovered, key);
 
