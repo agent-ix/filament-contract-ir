@@ -2865,13 +2865,13 @@ fn later_guard_keeps_its_ordinal_after_a_pruned_branch_visit() {
             read(&package)
         );
     };
-    let guard: CheckedNodeId =
+    let guard: filament_contract_model::CheckedNodeId =
         serde_json::from_value(node_id("expression/integer_ge")).expect("shared guard ID");
     let frames = admitted.path_condition_frames();
     assert_eq!(frames.len(), 2);
-    assert_eq!(frames[0].guard.node, guard);
+    assert_eq!(frames[0].guard, guard);
     assert_eq!(frames[0].occurrence, 0);
-    assert_eq!(frames[1].guard.node, guard);
+    assert_eq!(frames[1].guard, guard);
     assert_eq!(frames[1].occurrence, 2);
     assert_eq!(frames[1].parent, None);
     assert!(frames.iter().all(|frame| frame.holds));
