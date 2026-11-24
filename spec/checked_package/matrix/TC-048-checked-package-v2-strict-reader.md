@@ -125,6 +125,12 @@ relationships:
     type: verifies
   - target: ix://agent-ix/filament-specification/TC-187
     type: references
+  - target: ix://agent-ix/filament-contract-ir/FR-063-AC-7
+    type: verifies
+  - target: ix://agent-ix/filament-contract-ir/FR-063-AC-8
+    type: verifies
+  - target: ix://agent-ix/filament-contract-ir/FR-063-AC-9
+    type: verifies
 ---
 # TC-048: CheckedPackage V2 strict reader validates structural identities
 
@@ -2798,6 +2804,23 @@ the importing package or its direct dependency, returns none for dimension,
 unit and enum bodies, and that a wrong-kind or unselected operand still
 refuses at read time so no node exists to view. The view round-trips through
 the canonical writer.
+
+For FR-063-AC-7, read each isolated malformed wire input with an otherwise
+valid equivalence node: omit `body.root_scale`, set `numerator` to `"0"`,
+set `numerator` to `"-1"`, set `denominator` to `"0"`, and set `denominator`
+to `"-1"`. Assert `malformed_wire` at the equivalence node before graph
+admission. For FR-063-AC-8, use positive schema-valid `root_scale`
+`{"numerator":"2000","denominator":"2"}` and assert
+`invalid_semantic_graph` at that node after wire validation.
+
+For FR-063-AC-9, read one package with three base dimensions A, B, and C and
+three equivalence nodes, all otherwise valid. Use ordered pairs A–B at `1/1`,
+B–C at `1/1`, and A–C at `999/1`; assign their node ids in order E-AB
+(`package: "cycle-999", path: ["01-ab"], ordinal: 0`), E-BC
+(`path: ["02-bc"]`), E-AC (`path: ["03-ac"]`), with the latter two sharing
+the same package and ordinal. Assert the cycle product is `1 × 1 × 1/999 =
+1/999`, so it is not one, and that the reader refuses `invalid_semantic_graph`
+without a cause at E-AC, the later node id, returning no admitted package.
 
 ## Authenticated schedulability claim carrier (FR-038-AC-396 through FR-038-AC-400)
 
