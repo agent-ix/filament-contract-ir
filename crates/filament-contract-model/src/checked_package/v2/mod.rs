@@ -1262,7 +1262,7 @@ pub struct CheckedPackageV2 {
     /// Original body views, moved from the charged intake table for imported joins.
     body_documents: Vec<CheckedJson>,
     kinds: Arc<Vec<CheckedNodeKind>>,
-    schedulability_claim_index: Vec<(usize, usize)>,
+    schedulability_claim_index: Vec<(usize, usize, bool)>,
     monitor_plan_index: Vec<monitor_plan::Plan>,
     timed_model_roots: Vec<usize>,
     /// Admission-derived lookup; excluded from content equality.
@@ -2368,7 +2368,7 @@ fn check_package_header(
 
 struct ValidatedPackage {
     kinds: Vec<CheckedNodeKind>,
-    schedulability_claim_index: Vec<(usize, usize)>,
+    schedulability_claim_index: Vec<(usize, usize, bool)>,
     monitor_plan_index: Vec<monitor_plan::Plan>,
     terms: Vec<CheckedTerm>,
     models: RetainedModels,
@@ -2382,7 +2382,7 @@ struct ValidatedGraph<'w> {
     /// every later per-row stage.
     index: GraphIndex<'w>,
     kinds: Vec<CheckedNodeKind>,
-    schedulability_claim_index: Vec<(usize, usize)>,
+    schedulability_claim_index: Vec<(usize, usize, bool)>,
     monitor_plan_index: Vec<monitor_plan::Plan>,
     terms: Vec<CheckedTerm>,
     declarations: DeclarationIndex,
@@ -6178,10 +6178,12 @@ mod tests {
             super::CheckedSchedulabilityClaimRow {
                 declaration: declaration.clone(),
                 occurrence: 9,
+                release_backed: true,
             },
             super::CheckedSchedulabilityClaimRow {
                 declaration,
                 occurrence: 2,
+                release_backed: false,
             },
         ];
         for rows in [None, Some(Vec::new()), Some(rows)] {

@@ -27,12 +27,15 @@ pub struct CheckedSchedulabilityClaimRow {
     pub declaration: CheckedNodeId,
     /// Ordinal of its claim occurrence.
     pub occurrence: u64,
+    /// Whether the checked claim is backed by a checked task release.
+    pub release_backed: bool,
 }
 impl Encode for CheckedSchedulabilityClaimRow {
     fn encode_into<S: Sink + ?Sized>(&self, writer: &mut Writer<'_, S>) -> Result<(), Error> {
         writer.begin_object()?;
         super::encode::encoded(writer, "declaration", &self.declaration)?;
         super::encode::member(writer, "occurrence", &self.occurrence)?;
+        super::encode::member(writer, "release_backed", &self.release_backed)?;
         writer.end_object()
     }
 }
@@ -92,6 +95,7 @@ pub struct CheckedSchedulabilityClaimRef<'a> {
     declaration: &'a CheckedNodeId,
     occurrence: &'a CheckedOccurrence,
     body: &'a CheckedTerm,
+    release_backed: bool,
 }
 /// A package-borrowed task whose binding shape and policy premises were admitted.
 ///
@@ -152,6 +156,10 @@ impl<'a> CheckedSchedulabilityClaimRef<'a> {
     /// Exact owned claim occurrence.
     pub fn occurrence(&self) -> &'a CheckedOccurrence {
         self.occurrence
+    }
+    /// Whether the checked claim is backed by a checked task release.
+    pub const fn release_backed(&self) -> bool {
+        self.release_backed
     }
     /// Complete admitted body, borrowed without copying.
     pub fn body(&self) -> &'a CheckedTerm {
@@ -259,12 +267,13 @@ impl CheckedPackageV2 {
     ) -> impl ExactSizeIterator<Item = CheckedSchedulabilityClaimRef<'_>> + '_ {
         self.schedulability_claim_index
             .iter()
-            .map(|&(node, occurrence)| {
+            .map(|&(node, occurrence, release_backed)| {
                 let node = &self.wire.semantic_graph.nodes[node];
                 CheckedSchedulabilityClaimRef {
                     declaration: &node.node_id,
                     occurrence: &node.occurrences[occurrence],
                     body: &node.body,
+                    release_backed,
                 }
             })
     }
@@ -303,7 +312,7 @@ pub(super) fn validate_carrier<Body>(
     index: &GraphIndex<'_>,
     structural_keys: &[std::sync::Arc<CheckedNodeId>],
     meter: &mut WorkMeter,
-) -> Result<Vec<(usize, usize)>, ValidationFailure> {
+) -> Result<Vec<(usize, usize, bool)>, ValidationFailure> {
     let caller = meter.site();
     meter.at_row("schedulability_claims", 0);
     let root = || Path::root().key("schedulability_claims");
@@ -411,7 +420,7 @@ pub(super) fn validate_carrier<Body>(
             }
         }
         previous = Some(key);
-        joined.push((position, occurrence_position));
+        joined.push((position, occurrence_position, row.release_backed));
     }
     for (p, node) in nodes.iter().enumerate().filter(|(p, _)| claim(kinds[*p])) {
         for occurrence in node
@@ -1007,6 +1016,7 @@ mod tests {
     /// carrier holds only flat wire IDs, so the join's comparisons never
     /// allocate.
     #[trace("TC-472", "FR-038-AC-504")]
+    #[trace("TC-3009", "FR-246-AC-5")]
     #[test]
     fn claim_carrier_join_allocates_exactly_what_it_charges() {
         let claim = |name: &str, occurrences: u64| -> super::super::RawSemanticNodeV2 {
@@ -1040,6 +1050,7 @@ mod tests {
                 .map(|(position, occurrence)| CheckedSchedulabilityClaimRow {
                     declaration: nodes[position].node_id.clone(),
                     occurrence,
+                    release_backed: occurrence % 2 == 1,
                 })
                 .collect();
         let run = |limit: u64| {
@@ -1066,12 +1077,56 @@ mod tests {
         let (joined, allocated, charged) = run(u64::MAX);
         assert_eq!(
             joined,
-            Some(vec![(0, 0), (0, 1), (1, 0), (2, 0), (2, 1), (2, 2)])
+            Some(vec![
+                (0, 0, false),
+                (0, 1, true),
+                (1, 0, false),
+                (2, 0, false),
+                (2, 1, true),
+                (2, 2, false),
+            ])
         );
         assert!(charged > 0);
         assert_eq!(allocated, charged, "allocated == requested");
         assert_eq!(run(charged).0, joined, "the measured limit admits");
         assert_eq!(run(charged - 1).0, None, "one byte short is denied");
+    }
+
+    /// Release-backed evidence is a required boolean on every producer row;
+    /// neither omission, mistyping, nor extra members can enter the reader.
+    #[trace("TC-3009", "FR-246-AC-5")]
+    #[test]
+    fn release_backed_claim_rows_are_required_and_strict() {
+        let declaration = CheckedNodeId {
+            package: "example".into(),
+            path: vec![super::super::CheckedNodePathSegment::Name("claim".into())],
+            ordinal: 0,
+        };
+        let row = |release_backed| CheckedSchedulabilityClaimRow {
+            declaration: declaration.clone(),
+            occurrence: 0,
+            release_backed,
+        };
+        let unbacked = serde_json::to_value(row(false)).expect("serializes false marker");
+        let backed = serde_json::to_value(row(true)).expect("serializes true marker");
+        assert_eq!(unbacked["release_backed"], false);
+        assert_eq!(backed["release_backed"], true);
+        assert_eq!(
+            serde_json::from_value::<CheckedSchedulabilityClaimRow>(backed.clone())
+                .expect("reads true marker"),
+            row(true)
+        );
+
+        for malformed in [
+            json!({"declaration": declaration.clone(), "occurrence": 0}),
+            json!({"declaration": declaration.clone(), "occurrence": 0, "release_backed": "true"}),
+            json!({"declaration": declaration, "occurrence": 0, "release_backed": true, "extra": false}),
+        ] {
+            assert!(
+                serde_json::from_value::<CheckedSchedulabilityClaimRow>(malformed).is_err(),
+                "malformed release-backed row is rejected"
+            );
+        }
     }
 
     /// The model table is one charged exact block the table keeps without
