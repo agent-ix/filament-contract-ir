@@ -932,10 +932,18 @@ impl NominalBody {
                 }
             })?;
             if !value.is_object() {
-                return Err(malformed(path()));
+                return Err(malformed(if member == "root_scale" {
+                    node_path()
+                } else {
+                    path()
+                }));
             }
             if !value.exact_members(&["numerator", "denominator"]) {
-                return Err(malformed(path()));
+                return Err(malformed(if member == "root_scale" {
+                    node_path()
+                } else {
+                    path()
+                }));
             }
             let numerator = value
                 .get("numerator")
