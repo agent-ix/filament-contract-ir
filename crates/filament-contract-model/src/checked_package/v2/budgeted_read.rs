@@ -162,6 +162,26 @@ impl CheckedPackageV2 {
         evidence: &CheckedPackageEvidence,
         budget: &mut NativeJoinBudget,
     ) -> CheckedPackageV2BudgetedReadResult {
+        Self::read_with_budget_mode(bytes, limits, evidence, budget, false)
+    }
+
+    /// Reads with law definitions treated as opaque values joined only to lock rows.
+    pub fn read_structural_with_budget(
+        bytes: &[u8],
+        limits: CheckedPackageReadLimits,
+        evidence: &CheckedPackageEvidence,
+        budget: &mut NativeJoinBudget,
+    ) -> CheckedPackageV2BudgetedReadResult {
+        Self::read_with_budget_mode(bytes, limits, evidence, budget, true)
+    }
+
+    fn read_with_budget_mode(
+        bytes: &[u8],
+        limits: CheckedPackageReadLimits,
+        evidence: &CheckedPackageEvidence,
+        budget: &mut NativeJoinBudget,
+        opaque_law_definitions: bool,
+    ) -> CheckedPackageV2BudgetedReadResult {
         let work_before = budget.consumed();
         let storage_before = budget.read_storage_mark();
         budget.resume();
@@ -188,6 +208,7 @@ impl CheckedPackageV2 {
             budget,
             work_before,
             storage_before,
+            opaque_law_definitions,
         )
     }
 
@@ -216,6 +237,7 @@ impl CheckedPackageV2 {
             budget,
             work_before,
             storage_before,
+            false,
         )
     }
 
@@ -227,6 +249,7 @@ impl CheckedPackageV2 {
         budget: &mut NativeJoinBudget,
         work_before: super::NativeJoinCharge,
         storage_before: u64,
+        opaque_law_definitions: bool,
     ) -> CheckedPackageV2BudgetedReadResult {
         let document = match read_envelope(bytes, limits, budget) {
             Ok(document) => document,
@@ -241,7 +264,14 @@ impl CheckedPackageV2 {
                 return CheckedPackageV2BudgetedReadResult::HostAllocationFailed(failure);
             }
         };
-        match Self::admit_document(catalog, document, limits, evidence, budget) {
+        match Self::admit_document(
+            catalog,
+            document,
+            limits,
+            evidence,
+            budget,
+            opaque_law_definitions,
+        ) {
             Ok(package) => {
                 // The result's box is the read's last storage request, except
                 // for a package that carries `protocol_correlation_occurrences`:
@@ -290,6 +320,19 @@ impl CheckedPackageV2 {
         let mut budget =
             NativeJoinBudget::new(limits.work, u64::MAX).with_read_storage_limit(u64::MAX);
         let outcome = Self::read_with_budget(bytes, limits, evidence, &mut budget);
+        Self::unbudgeted_result(outcome, limits, &budget)
+    }
+
+    /// Reads a structurally consistent V2 package while retaining opaque law
+    /// definition pairs. Each value role's law must still match a lock row.
+    pub fn read_structural(
+        bytes: &[u8],
+        limits: CheckedPackageReadLimits,
+        evidence: &CheckedPackageEvidence,
+    ) -> CheckedPackageV2ReadResult {
+        let mut budget =
+            NativeJoinBudget::new(limits.work, u64::MAX).with_read_storage_limit(u64::MAX);
+        let outcome = Self::read_structural_with_budget(bytes, limits, evidence, &mut budget);
         Self::unbudgeted_result(outcome, limits, &budget)
     }
 

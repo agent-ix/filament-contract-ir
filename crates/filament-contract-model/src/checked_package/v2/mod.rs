@@ -1749,6 +1749,7 @@ impl CheckedPackageV2 {
         limits: CheckedPackageReadLimits,
         evidence: &CheckedPackageEvidence,
         budget: &mut NativeJoinBudget,
+        opaque_law_definitions: bool,
     ) -> Result<Self, ValidationFailure> {
         let document = budgeted_read::share_document(document, budget)?;
         let package = TermNode::from_ref(document.root());
@@ -1820,7 +1821,14 @@ impl CheckedPackageV2 {
             lowering_facts,
             structural_keys,
         } = validate(
-            &catalog, &wire, &bodies, &document, limits, evidence, budget,
+            &catalog,
+            &wire,
+            &bodies,
+            &document,
+            limits,
+            evidence,
+            budget,
+            opaque_law_definitions,
         )?;
         let site = |form| read_charge::Site::new(PackageReadStage::Retained, 0, form);
         let selections = &wire.lock.dependency_selections;
@@ -2402,6 +2410,7 @@ fn validate(
     limits: CheckedPackageReadLimits,
     evidence: &CheckedPackageEvidence,
     budget: &mut NativeJoinBudget,
+    opaque_law_definitions: bool,
 ) -> Result<ValidatedPackage, ValidationFailure> {
     check_package_header(wire, &mut WorkMeter::over(budget))?;
     // The body grammar is strict wire validation: a body outside it refuses
@@ -2435,6 +2444,7 @@ fn validate(
         &dependencies,
         evidence,
         &structural_keys,
+        opaque_law_definitions,
     )?;
     if !source_map_checked {
         validate_source_map_entries(
@@ -3868,6 +3878,7 @@ fn validate_graph<'w>(
     dependencies: &SuppliedDependencies<'_>,
     evidence: &CheckedPackageEvidence,
     structural_keys: &[std::sync::Arc<CheckedNodeId>],
+    opaque_law_definitions: bool,
 ) -> Result<ValidatedGraph<'w>, ValidationFailure> {
     let graph = &wire.semantic_graph;
     check_graph_version(graph)?;
@@ -4508,6 +4519,7 @@ fn validate_graph<'w>(
                     catalog,
                     wire_index: &index,
                     structural_keys,
+                    opaque_law_definitions,
                 },
                 &terms,
                 &wire.lock,
@@ -4711,6 +4723,7 @@ fn validate_graph<'w>(
                 catalog,
                 wire_index: &index,
                 structural_keys,
+                opaque_law_definitions,
             },
             &terms,
             &wire.lock,
@@ -6872,6 +6885,7 @@ mod namespace_fault_storage_tests {
                         &dependencies,
                         &evidence,
                         &[],
+                        false,
                     ) {
                         Err(failure) => failure,
                         Ok(_) => panic!("foreign unselected namespace must refuse"),
