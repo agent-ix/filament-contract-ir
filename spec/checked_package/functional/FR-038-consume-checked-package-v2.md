@@ -99,6 +99,42 @@ relationships:
     type: references
   - target: ix://agent-ix/filament-specification/FR-322-AC-302
     type: references
+  - target: ix://agent-ix/filament-specification/FR-322-AC-524
+    type: references
+  - target: ix://agent-ix/filament-specification/FR-322-AC-525
+    type: references
+  - target: ix://agent-ix/filament-specification/FR-322-AC-526
+    type: references
+  - target: ix://agent-ix/filament-specification/FR-322-AC-527
+    type: references
+  - target: ix://agent-ix/filament-specification/FR-322-AC-528
+    type: references
+  - target: ix://agent-ix/filament-specification/FR-322-AC-529
+    type: references
+  - target: ix://agent-ix/filament-specification/FR-322-AC-530
+    type: references
+  - target: ix://agent-ix/filament-specification/FR-322-AC-531
+    type: references
+  - target: ix://agent-ix/filament-specification/FR-322-AC-532
+    type: references
+  - target: ix://agent-ix/filament-specification/FR-322-AC-533
+    type: references
+  - target: ix://agent-ix/filament-specification/FR-322-AC-534
+    type: references
+  - target: ix://agent-ix/filament-specification/FR-322-AC-535
+    type: references
+  - target: ix://agent-ix/filament-specification/FR-322-AC-536
+    type: references
+  - target: ix://agent-ix/filament-specification/FR-322-AC-537
+    type: references
+  - target: ix://agent-ix/filament-specification/FR-482-AC-5
+    type: references
+  - target: ix://agent-ix/filament-specification/FR-482-AC-6
+    type: references
+  - target: ix://agent-ix/filament-spec-language/FR-246
+    type: references
+  - target: ix://agent-ix/filament-spec-language/FR-075
+    type: references
   - target: ix://agent-ix/filament-specification/FR-142-AC-6
     type: references
   - target: ix://agent-ix/filament-specification/FR-142-AC-27
@@ -5758,11 +5794,26 @@ AC-300 and “Schedulability claim carrier”, and validate every
 [FSpec FR-482](ix://agent-ix/filament-specification/FR-482). The closed
 `ClaimForm` vocabulary gains `Schedulability`. The index is absent when there
 is no schedulability claim occurrence; otherwise it contains exactly one
-closed `{declaration, occurrence}` row for each such occurrence. The row's
+closed row for each such occurrence. Each row has exactly the required fields
+`declaration`, `occurrence`, `task_set`, `release_bindings` and
+`mode_switch_bindings`. The row's
 `declaration` is a local structural `CheckedNodeId`; its wire `occurrence`
 is the non-negative integer ordinal of that node's `claim` occurrence.
-A shared claim node with two occurrences has two rows. The index contains
-identity references only; the graph retains the complete claim body once.
+A shared claim node with two occurrences has two rows keyed by the distinct
+`(declaration, occurrence)` pairs. `task_set` is the exact source task-set
+`Identifier`. `release_bindings` is an array of zero or more exact objects
+with fields `task_name`, `selected_model_identity`,
+`operation_declaring_identity` and `operation_member`; `mode_switch_bindings`
+is an array of zero or more exact objects with fields
+`selected_model_identity`, `operation_declaring_identity` and
+`operation_member`. The first release field is an `Identifier`, the model
+identity is its nonempty selected package identity string, the operation
+declaring identity is the structural `CheckedNodeId` of the exact declaring
+model node (the type owner of the operation member), and the operation member
+is a separate `Identifier`; model operations have no graph node of their own.
+Both arrays are present when empty. The graph retains the
+complete claim body once; these relation rows are scoped to the exact
+occurrence key, not the shared claim node or body.
 
 After aggregate-order validation and before the FR-482 body step, the reader
 SHALL visit index rows in array order. Before inspecting a row it charges one
@@ -5805,9 +5856,16 @@ causes for these checks; ordinary graph and term checks still precede them.
 The reader preserves producer-assigned structural identities and does not
 compute a body-derived node id.
 
-The raw wire row `CheckedSchedulabilityClaimRow` has public
-`declaration: CheckedNodeId` and `occurrence: u64` fields. It is an untrusted
-producer value, not an authenticated view. The admitted package's
+The raw wire row `CheckedSchedulabilityClaimRow` has public fields
+`declaration: CheckedNodeId`, `occurrence: u64`, `task_set: Identifier`,
+`release_bindings: Vec<CheckedSchedulabilityReleaseBinding>` and
+`mode_switch_bindings: Vec<CheckedSchedulabilityModeSwitchBinding>`. Each
+release binding has public fields `task_name: Identifier`,
+`selected_model_identity: Box<str>`,
+`operation_declaring_identity: CheckedNodeId` and
+`operation_member: Identifier`; each mode-switch binding has the same fields
+except `task_name`. These are untrusted producer values, not authenticated
+views. The admitted package's
 `schedulability_claim_rows(&self) -> Option<&[CheckedSchedulabilityClaimRow]>`
 borrows its retained index for complete re-encoding under
 [FR-051](./FR-051-encode-checked-package-v2-envelope.md). Complete read/encode/read
@@ -5849,9 +5907,64 @@ repeat binding-shape or policy validation to obtain the fields. Existing
 literal reads may decode exact numeric values; the body remains borrowed and
 no entire task or body copy is needed.
 
-The IR read ends at that authenticated claim. The FSL FR-418 checker owns
-joining it to a selected timed model, resolving source release bindings and
-recomputing source/scheduler successors. `TaskTransitionTemplate` and
+The same admitted claim view SHALL be keyed by the exact pair
+`(declaration, occurrence)`, not by the shared claim node or its body, and
+SHALL expose `task_set() -> &str` with the exact checked task-set identifier
+for that claim occurrence. It SHALL expose
+`release_bindings() -> impl ExactSizeIterator<Item = CheckedSchedulabilityReleaseBindingRef<'_>> + '_`
+and
+`mode_switch_bindings() -> impl ExactSizeIterator<Item = CheckedSchedulabilityModeSwitchBindingRef<'_>> + '_`.
+Each collection has cardinality zero or more; an admitted claim with no
+bindings returns an empty iterator. Each release binding SHALL expose exactly
+`task_name() -> &str`, `selected_model_identity() -> &str`,
+`operation_declaring_identity() -> &CheckedNodeId`, and
+`operation_member() -> &Identifier`. Each mode-switch binding SHALL expose
+exactly `selected_model_identity() -> &str`,
+`operation_declaring_identity() -> &CheckedNodeId`, and
+`operation_member() -> &Identifier`. The selected model value is the exact
+admitted package identity string; the declaring identity is the exact
+admitted structural identity, not a display name or newly computed id. The
+operation member is the exact admitted member Identifier. Every typed read
+borrows the corresponding value from its admitted wire row.
+
+Release bindings SHALL be in canonical ascending tuple order
+`(task_name, selected_model_identity, operation_declaring_identity,
+operation_member)`: identifiers compare by Unicode scalar value, selected
+model package identities by UTF-8 bytes, and declaring identities by
+canonical structural `CheckedNodeId` order. Mode-switch bindings SHALL be in
+canonical ascending tuple order
+`(selected_model_identity, operation_declaring_identity, operation_member)`
+using those same comparisons. The reader SHALL retain
+distinct rows and exact structural identities; it SHALL NOT deduplicate rows
+because two schedulability claim occurrences share one declaration node or
+one claim body.
+
+After strict claim-body and timed-model admission, the reader SHALL validate
+each release `task_name` against that claim row's admitted FR-482 task list,
+each selected model identity against the package's selected timed models,
+and each `operation_declaring_identity` as the exact selected model node that
+declares the operation member. `operation_declaring_identity` denotes the
+declaring model node, not a synthetic operation node or operation path; the
+separate `operation_member` value is the exact member name. A task name not
+in the claim's task list refuses `invalid_package`/`invalid-value` at
+`/schedulability_claims/{i}/release_bindings/{j}/task_name`. An unselected
+model identity refuses the same code and cause at its corresponding
+`selected_model_identity`; an absent or wrong declaring model node refuses at
+`operation_declaring_identity`; and a member not declared by that exact node
+refuses at `operation_member`. Each refusal exposes no admitted package or
+claim view. FSL's `TaskProductPlan` input SHALL resolve
+`claim.task_set`, then select release and mode-switch bindings by that task
+set and selected model; it SHALL bind the exact operation declaring identity
+and member, and release bindings SHALL additionally bind the task name. The
+package route and source route SHALL supply equal ordered task-product inputs
+for the same checked claim and selected model, without reconstructing any
+relation from raw wire bytes.
+
+The IR read does not create task-product states or recompute task successors.
+The typed relation view supplies the admitted task-set, release and
+mode-switch relations to the FSL FR-418 checker; the checker uses the exact
+operation bindings and recomputes every source and scheduler successor.
+`TaskTransitionTemplate` and
 `TaskProductCertificate` remain backend-provider certificate values; exact
 `TaskTransitionIdentity` remains concrete replay/search evidence. This carrier
 adds none of them to the checked-package wire or the cycle-free model API.
@@ -6507,8 +6620,8 @@ the minimum the read uses.
 | FR-038-AC-396 | Implemented. The public strict reader admits complete packages constructed around FSpec TC-976 SCC-01 and SCC-02, retains one row for occurrence 0 and two distinct rows for the shared node's occurrences 0 and 1 respectively, and exposes their exact borrowed declaration, claim occurrence and FR-482 body in canonical order. A package with no schedulability occurrence omits the index and returns an empty typed iterator. Equal display names or source regions do not select or merge claims. | Test |
 | FR-038-AC-397 | Implemented. SCC-03/04/05/12 refuse `malformed_wire` at their published row/member loci. SCC-06/07/08 refuse `invalid_package`/`invalid-value` at the published declaration/occurrence loci; additional absent-local, wrong-kind and wrong-role controls have the same corresponding refusal. SCC-09 refuses `invalid_package`/`conflicting-definition` at the later row; SCC-11 refuses `invalid_package`/`invalid-value` there. SCC-10 and an omitted required index refuse that code/cause at `/schedulability_claims`. Each refusal compares the exact typed primary locus and exposes no admitted package. | Test |
 | FR-038-AC-398 | Implemented. Wire and graph/aggregate validation precede carrier joins; declaration precedes occurrence, repeated key precedes order, coverage follows all rows, and carrier validation precedes FR-482 body validation. Combined defects distinguish each adjacent check. Each visited row charges one existing validation visit before inspection; an exact measured budget admits the positive package, and one below the measured charge refuses with the existing incomplete/resource-exhaustion result at the first uncharged row and no partial typed claim view. | Test |
-| FR-038-AC-399 | Implemented. The reader admits the full FR-482 schedulable/response bodies and validates its shape, literal vocabulary, form fit, strict task order, common time unit and policy-specific task-set premises in that order after the protocol body step. FSpec FR-482-AC-3's adverse bodies, including negative/excess BCET, wrong time unit, duplicate fixed-priority priorities and the EDF equal-priority positive control, have their exact published codes, causes and loci. Existing graph refusals for nonempty dependencies, owner, semantic type or identity precede the dependent body checks. The typed claim/task accessors return the closed kind, policy, arrival and criticality variants, task names, optional response fields, optional HI work and priority, and exact quantity magnitudes with the common unit identity; absent priority stays absent. Consumers require no raw JSON or binding-shape validation. The typed read retains every policy, task and exact time-value member without interpreting model releases or successors. | Test |
-| FR-038-AC-400 | Implemented. TC-048 reads FSpec's `proposals/checked-package-v2/schedulability-claim-vectors.json`, TC-976 and FR-482/TC-967 cases by reference from a selected FSpec checkout, constructs complete IR packages around their resolved-node context, applies every carrier mutation and compares admission or exact typed code, cause and primary locus. The evidence states the selected checkout revision; no upstream schema, fixture or vector is copied into IR and the row vectors are not treated as complete packages. Complete public read/encode/read retains every identity row and the body, including both shared-node occurrences and the absent index; the private envelope, raw intake and borrowed encoder agree on the optional member. The default-feature public read requires no timed-model, release-binding or scheduler-engine input and adds no task-transition template wire member. | Test |
+| FR-038-AC-399 | Implemented. The reader admits the full FR-482 schedulable/response bodies and validates its shape, literal vocabulary, form fit, strict task order, common time unit and policy-specific task-set premises in that order after the protocol body step. FSpec FR-482-AC-3's adverse bodies, including negative/excess BCET, wrong time unit, duplicate fixed-priority priorities and the EDF equal-priority positive control, have their exact published codes, causes and loci. Existing graph refusals for nonempty dependencies, owner, semantic type or identity precede the dependent body checks. The implemented typed claim/task accessors return the closed kind, policy, arrival and criticality variants, task names, optional response fields, optional HI work and priority, and exact quantity magnitudes with the common unit identity; absent priority stays absent. This criterion covers the claim body; the task-set, release and mode-switch relation views and their model checks are separately owned by FR-038-AC-618 through FR-038-AC-622. | Test |
+| FR-038-AC-400 | Implemented. TC-048 reads FSpec's `proposals/checked-package-v2/schedulability-claim-vectors.json`, TC-976 and FR-482/TC-967 cases by reference from a selected FSpec checkout, constructs complete IR packages around their resolved-node context, applies every carrier mutation and compares admission or exact typed code, cause and primary locus. The evidence states the selected checkout revision; no upstream schema, fixture or vector is copied into IR and the row vectors are not treated as complete packages. Complete public read/encode/read retains every identity row and the body, including both shared-node occurrences and the absent index; the private envelope, raw intake and borrowed encoder agree on the optional member. The default-feature public read validates admitted task-set, release and mode-switch relations against timed-model identities already in the package and exposes them through the typed claim view; it needs no external scheduler-engine input and adds no task-transition template wire member. | Test |
 | FR-038-AC-6 | Every admitted node family lowers independently with exact source, type, dependency, bound and claim correspondence; missing, unsupported, unbounded and over-work requests return `invalid_input`, `unsupported`, `requires_bound` and `failed` without a node and without changing sibling records, except that a package over the byte ceiling fails every requested record (FR-038-AC-95). | Test (TC-050) |
 | FR-038-AC-9 | The shipped default read-limit policy is exactly those six finite values, every member is strictly positive and finite, and each meter is enforced at its own true measured boundary against a real package: the package's exact measured consumption for that meter admits it, and one below that exact value refuses it as `incomplete`, naming that meter and reporting the true consumption. The shipped default is far larger than any fixture, so this boundary is proven against each meter's real measured cost rather than against the default value itself; no fixture approaches that scale, and none is fabricated to do so. | Test (TC-048) |
 | FR-038-AC-7 | Lowering every node of every positive fixture under a profile supporting every tag yields no `invalid_body` and no `body_incomplete` record, and the seven-member record vocabulary is exhaustive: no eighth kind is reachable and each of the seven is named. | Test (TC-052) |
@@ -7038,6 +7151,17 @@ IR-661's planned relationship-navigation-only refusal does not reinstate AC-66.
 
 The timed-slot criteria FR-038-AC-335 through FR-038-AC-340 consume FSpec [FR-322](https://github.com/agent-ix/filament-specification/blob/main/spec/objects/interfaces/FR-322-checked-package-artifact.md), AC-148..150 and AC-155..157. Owner [ruling #485](https://github.com/agent-ix/filament-specification/pull/485) (`81078f14`) withdrew indexed presence (PR-02); the empty-guard-root control is GD-01 rather than withdrawn SL-08. IR #775 supplies public-reader qualification of all 19 currently published SL/SR/PR/GD cases and their earlier-stage controls.
 
+
+| FR-038-AC-618 | A default-feature producer constructs `CheckedSchedulabilityClaimRow` with exact fields `declaration`, `occurrence`, `task_set`, `release_bindings` and `mode_switch_bindings`; a release binding has exact fields `task_name`, `selected_model_identity`, `operation_declaring_identity`, `operation_member`, and a mode-switch binding has the latter three. The admitted `CheckedSchedulabilityClaimRef` exposes `task_set() -> &str`, `release_bindings() -> impl ExactSizeIterator<Item = CheckedSchedulabilityReleaseBindingRef<'_>> + '_` and `mode_switch_bindings() -> impl ExactSizeIterator<Item = CheckedSchedulabilityModeSwitchBindingRef<'_>> + '_`. The binding accessors return the exact typed values specified above; empty arrays return exact-size empty iterators. Compile controls reject public view construction and mutable fields. | Test, Inspection |
+| FR-038-AC-619 | For a valid claim row, a release binding whose `task_name` is absent from that claim body's tasks refuses `invalid_package`/`invalid-value` at `/schedulability_claims/{i}/release_bindings/{j}/task_name` and returns no `CheckedPackageV2` or typed claim view. | Test |
+| FR-038-AC-620 | For a valid claim row, a release or mode-switch binding whose `selected_model_identity` is absent from the package's selected timed models refuses `invalid_package`/`invalid-value` at its exact `/selected_model_identity` field and returns no `CheckedPackageV2` or typed claim view. | Test |
+| FR-038-AC-621 | For a valid claim row, a release or mode-switch `operation_declaring_identity` that does not resolve to the exact declaring model node in the named selected model refuses `invalid_package`/`invalid-value` at its exact `/operation_declaring_identity` field. The identity is the declaring model node, never a synthetic operation node or operation path; the refusal returns no `CheckedPackageV2` or typed claim view. | Test |
+| FR-038-AC-622 | For a valid claim row, a release or mode-switch `operation_member` that is not declared by its exact `operation_declaring_identity` in the selected model refuses `invalid_package`/`invalid-value` at its exact `/operation_member` field and returns no `CheckedPackageV2` or typed claim view. | Test |
+| FR-038-AC-623 | Two rows with equal `declaration` and FR-482 body but occurrences 0 and 1 retain two distinct `CheckedSchedulabilityClaimRef` values and each value's own `task_set`, `release_bindings` and `mode_switch_bindings`; typed iteration and raw-row readback preserve canonical row order and never key relations by node or body identity alone. | Test (TC-048; FSpec FR-322-AC-537, FR-482-AC-6) |
+| FR-038-AC-624 | Release bindings iterate in canonical ascending `(task_name, selected_model_identity, operation_declaring_identity, operation_member)` order, using Unicode scalar, UTF-8 byte and structural identity comparisons as FR-038 defines. A descending release array refuses `invalid_package`/`invalid-value` at its first out-of-order row and exposes no package view. | Test (TC-048; FSpec FR-322-AC-535) |
+| FR-038-AC-625 | Mode-switch bindings iterate in canonical ascending `(selected_model_identity, operation_declaring_identity, operation_member)` order, using Unicode scalar, UTF-8 byte and structural identity comparisons as FR-038 defines. A descending mode-switch array refuses `invalid_package`/`invalid-value` at its first out-of-order row and exposes no package view. | Test (TC-048; FSpec FR-322-AC-536) |
+| FR-038-AC-626 | Given one admitted source claim and one admitted package claim for the same checked task set and selected model, `TaskProductPlan` input uses `claim.task_set`, selects release and mode-switch bindings by that task-set identity plus selected model identity, binds each exact declaring model identity/member pair, and additionally binds each release task name; the resulting ordered inputs are equal, with no raw-wire relation reconstruction. | Test (TC-048; FSpec FR-322-AC-529/530; FSL FR-246-AC-4/5, FR-075-AC-23) |
+| FR-038-AC-627 | `encode_checked_package_v2` and strict read/encode/read preserve every claim row's exact occurrence key, task-set identifier, ordered release bindings and ordered mode-switch bindings. `None` omits `schedulability_claims`; `Some(empty)` retains an empty array; a present claim row with empty relation arrays remains present. The encoder does not sort or repair supplied rows; a schema-valid but descending binding array is encoded unchanged and refused only by strict read at the specified row. | Test (TC-048; FSpec FR-322-AC-524, FR-322-AC-525, FR-322-AC-528, FR-322-AC-535, FR-322-AC-536; FR-051-AC-7) |
 
 ## Dependencies
 
