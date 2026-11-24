@@ -2459,6 +2459,85 @@ fn pruned_branch_occurrence_package() -> Value {
     package
 }
 
+fn pruned_branch_guard_occurrence_package() -> Value {
+    let (mut package, second_owner) = second_owner_package("expression/conditional", 0);
+    let guard = node_id("expression/integer_ge");
+    let application = node_id("expression/integer_add");
+    let conditional = node_id("expression/conditional");
+    let integer = node_id("scalar_type/integer");
+    let nested = node_id("expression/conditional/pruned-branch");
+    let pruned_record = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("graph nodes")
+        .iter()
+        .find(|node| {
+            node["semantic_form"] == "value_validity"
+                && binding_value(node, "occurrence")["value"] == 1
+        })
+        .expect("first owner's false-branch record")["node_id"]
+        .clone();
+    {
+        let nodes = package["semantic_graph"]["nodes"]
+            .as_array_mut()
+            .expect("graph nodes");
+        nodes.retain(|node| node["node_id"] != pruned_record);
+        let mut nested_dependencies = vec![guard.clone(), integer.clone()];
+        nested_dependencies.sort_by_key(structural_fixture_id);
+        nodes.push(json!({
+            "node_id":nested.clone(),
+            "schema_version":"filament.checked-semantic-graph/v2",
+            "node_tag":"expression", "semantic_form":"conditional", "semantic_type":integer.clone(),
+            "dependencies":nested_dependencies, "occurrences":[{"role":"expression","ordinal":0}],
+            "body":{"term":"application","operator":"conditional",
+                "operation":{"identity":"filament.op.control.if","laws":[],"mode":null,"member":null,"leaves":[]},
+                "result_type":integer.clone(),
+                "arguments":[{"term":"reference","target":guard.clone()},
+                    {"term":"literal","type":integer.clone(),"value_kind":"integer","value":"0"},
+                    {"term":"literal","type":integer.clone(),"value_kind":"integer","value":"0"}]}
+        }));
+        let outer = nodes
+            .iter_mut()
+            .find(|node| node["node_id"] == conditional)
+            .expect("outer conditional");
+        outer["body"]["arguments"][2] = json!({"term":"reference","target":nested});
+        let mut outer_dependencies = vec![
+            guard.clone(),
+            application.clone(),
+            nested.clone(),
+            integer.clone(),
+        ];
+        outer_dependencies.sort_by_key(structural_fixture_id);
+        outer["dependencies"] = Value::Array(outer_dependencies);
+        let guard_node = nodes
+            .iter_mut()
+            .find(|node| node["node_id"] == guard)
+            .expect("shared Boolean guard");
+        guard_node["occurrences"] = Value::Array(
+            (0..4)
+                .map(|ordinal| json!({"role":"expression","ordinal":ordinal}))
+                .collect(),
+        );
+    }
+    package["requirement_items"]
+        .as_array_mut()
+        .expect("requirement items")
+        .retain(|item| item["record"] != pruned_record);
+    package["path_condition_frames"]
+        .as_array_mut()
+        .expect("path-condition frames")
+        .retain(|frame| frame["holds"] == true);
+    settle(&mut package);
+    rebuild_complete_source_map(&mut package);
+    let record = push_record(&mut package, &second_owner, &application, 1, Some(1), 0);
+    let later_guard = json!({
+        "parent":null,
+        "guard":{"node":guard,"occurrence":{"role":"expression","ordinal":2}},
+        "holds":true
+    });
+    finish_second_owner(&mut package, &[(record, 1)], &[later_guard]);
+    package
+}
+
 /// One value-validity record of `owner` at `application`'s `occurrence`, cited
 /// at `frame`, the `generated_ordinal`th record of its owner.
 fn push_record(
@@ -2774,6 +2853,44 @@ fn visits_in_a_pruned_branch_still_advance_the_later_record_ordinal() {
     );
     assert_eq!(admitted.path_condition_frames().len(), 1);
     assert!(!admitted.path_condition_frames()[0].holds);
+}
+
+#[trace("TC-2053", "FR-825-AC-11", "FR-825-AC-12")]
+#[test]
+fn later_guard_keeps_its_ordinal_after_a_pruned_branch_visit() {
+    let package = pruned_branch_guard_occurrence_package();
+    let CheckedPackageV2ReadResult::Admitted(admitted) = read(&package) else {
+        panic!(
+            "the later owner guard keeps its package ordinal: {:?}",
+            read(&package)
+        );
+    };
+    let guard: CheckedNodeId =
+        serde_json::from_value(node_id("expression/integer_ge")).expect("shared guard ID");
+    let frames = admitted.path_condition_frames();
+    assert_eq!(frames.len(), 2);
+    assert_eq!(frames[0].guard.node, guard);
+    assert_eq!(frames[0].occurrence, 0);
+    assert_eq!(frames[1].guard.node, guard);
+    assert_eq!(frames[1].occurrence, 2);
+    assert_eq!(frames[1].parent, None);
+    assert!(frames.iter().all(|frame| frame.holds));
+
+    let records = admitted
+        .requirement_items()
+        .iter()
+        .map(value_validity_record)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        records
+            .iter()
+            .map(|record| (
+                record.occurrence,
+                record.path_condition_frame.map(|frame| frame.0)
+            ))
+            .collect::<Vec<_>>(),
+        vec![(0, Some(0)), (1, Some(1))]
+    );
 }
 
 #[trace("TC-2053", "FR-825-AC-6", "FR-825-AC-9", "FR-825-AC-11")]
