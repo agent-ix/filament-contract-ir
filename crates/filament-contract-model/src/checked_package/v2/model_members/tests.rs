@@ -1232,7 +1232,7 @@ fn tc_048_semantic_ir_declaration_defects_refuse_with_their_fr_154_cause() {
         ModelRefusal::new(Code::InvalidModelBinding, Cause::ConflictingBinding)
     );
     assert_eq!(
-        refused(vec![object_type("ix://acme/orders/sys-pump", &[], vec![])]),
+        refused(vec![object_type("ix://acme/orders/-sys_pump", &[], vec![])]),
         ModelRefusal::new(Code::InvalidModelBinding, Cause::MalformedDeclaration)
     );
     let mut backwards = field(WIDGET, "x", "ix://filament/native/Integer");
@@ -1308,9 +1308,10 @@ fn tc_048_a_selection_admits_only_the_document_it_names() {
 }
 
 const ZETA: &str = "ix://acme/orders/Zeta";
-const BAD_ID: &str = "ix://acme/orders/bad-id";
+const BAD_ID: &str = "ix://acme/orders/sys.pump";
 
-/// FSpec FR-154: a reference to a node refused for its own object id is not
+/// FSpec FR-154-AC-8: an object id outside `^[A-Za-z][A-Za-z0-9_-]*$` (hyphens
+/// are admitted, so `sys.pump` is refused) is refused; a reference to that node is not
 /// reported again as `missing-name`; the refused node's own refusal stands,
 /// whether the referencing node is read before or after it.
 #[trace("TC-048", "FR-038-AC-28")]
@@ -1318,7 +1319,7 @@ const BAD_ID: &str = "ix://acme/orders/bad-id";
 fn tc_048_a_reference_to_a_refused_node_leaves_that_nodes_own_refusal() {
     let malformed = ModelRefusal::new(Code::InvalidModelBinding, Cause::MalformedDeclaration);
     let bad = || object_type(BAD_ID, &[], vec![]);
-    // `bad-id` sorts after `Gadget` and `Widget`, so each reference below is
+    // `sys.pump` sorts after `Gadget` and `Widget`, so each reference below is
     // read before the node it names.
     for referencing in [
         object_type(GADGET, &[BAD_ID], vec![]),
