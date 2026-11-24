@@ -55,6 +55,37 @@ pub fn read_checked_package(
     }
 }
 
+/// Reads a strict package with opaque value-law definitions.
+///
+/// Operation and law roles remain catalog checked. For value-law roles this
+/// entry admits an otherwise unknown `{authority, identity}` pair only when
+/// the exact pair is present in `lock.definition_selections`; the pair is
+/// retained unchanged in the admitted package. Use [`read_checked_package`]
+/// when the caller requires the catalogued law definition.
+pub fn read_checked_package_structural(
+    bytes: &[u8],
+    limits: CheckedPackageReadLimits,
+    evidence: &CheckedPackageEvidence,
+) -> CheckedPackageDispatchResult {
+    match CheckedPackageV2::read_structural(bytes, limits, evidence) {
+        CheckedPackageV2ReadResult::Admitted(package) => {
+            CheckedPackageDispatchResult::AdmittedV2(package)
+        }
+        CheckedPackageV2ReadResult::Refused(refusal) => {
+            CheckedPackageDispatchResult::Refused(refusal)
+        }
+        CheckedPackageV2ReadResult::Incomplete(incomplete) => {
+            CheckedPackageDispatchResult::Incomplete(incomplete)
+        }
+        CheckedPackageV2ReadResult::CatalogUnavailable(error) => {
+            CheckedPackageDispatchResult::CatalogUnavailable(error)
+        }
+        CheckedPackageV2ReadResult::HostAllocationFailed(failure) => {
+            CheckedPackageDispatchResult::HostAllocationFailed(failure)
+        }
+    }
+}
+
 /// [`read_checked_package`] under the caller's budget: the budgeted V2 read,
 /// with each variant mapped one to one. There is no V1 branch.
 pub fn read_checked_package_with_budget(

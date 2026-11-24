@@ -145,6 +145,7 @@ pub use canonical::{
     CANONICAL_PROFILE,
 };
 pub use certificate_member::CertificateMember;
+pub use checked_package::read_checked_package_structural;
 pub use checked_package::CheckedCallableRead;
 pub use checked_package::{
     encode_checked_package_v2, initialize_operation_catalog, is_slot_parameter_name,
