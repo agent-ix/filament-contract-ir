@@ -329,7 +329,12 @@ pub(super) fn check(
                         Some(&node.node_id),
                         &mut meter.reservation(flat_site(position)),
                     )
-                } else if kind == CheckedNodeKind::Claim(super::ClaimForm::Schedulability) {
+                } else if matches!(
+                    kind,
+                    CheckedNodeKind::Claim(
+                        super::ClaimForm::Schedulability | super::ClaimForm::OperationContract
+                    )
+                ) {
                     check_term_with_empty_leaf(
                         body,
                         &at,
@@ -1324,6 +1329,37 @@ mod tests {
             CheckedPackageRefusalCode::MalformedWire,
             "/semantic_graph/nodes/0/body",
         );
+    }
+
+    /// FSpec FR-825: an operation-contract record writes an absent population
+    /// `maximum` as an empty aggregate, which the flat wire admits as a
+    /// terminal leaf in that claim's body, as it does for a schedulability one.
+    #[trace("TC-2053", "FR-825-AC-3")]
+    #[test]
+    fn operation_contract_population_without_a_maximum_is_wire_admitted() {
+        let none = json!({"term": "aggregate", "members": []});
+        let population = json!({"term": "aggregate", "members": [
+            {"term": "binding", "name": "maximum", "value": none}
+        ]});
+        let body = json!({"term": "aggregate", "members": [
+            {"term": "binding", "name": "populations", "value": {
+                "term": "aggregate", "members": [population]
+            }}
+        ]});
+        let wire = header_wire(vec![header_node(
+            "claim",
+            "operation_contract",
+            super::super::GRAPH_V2,
+            body,
+        )]);
+        let bodies = wire
+            .semantic_graph
+            .nodes
+            .iter()
+            .map(|node| node.body.clone())
+            .collect::<Vec<_>>();
+        let checked = check(&wire, &bodies, &mut NativeJoinBudget::unlimited());
+        assert!(checked.is_ok(), "{checked:?}");
     }
 
     /// FSpec FR-464 step 1 rejects a known operator's damaged fixed layout
