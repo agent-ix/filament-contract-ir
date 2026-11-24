@@ -93,7 +93,7 @@ impl CheckedJson {
 
     /// Reads one JSON value with the shared reader and refuses bytes that are
     /// not its canonical encoding. Neither this constructor nor
-    /// [`Self::from_value`] is on the read path or charges a budget.
+    /// `Self::from_value` is on the read path or charges a budget.
     ///
     /// # Errors
     ///
