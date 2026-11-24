@@ -97,7 +97,9 @@ pub struct CheckedExtensionClauseSchema {
 ///
 /// A domain package is supplied as its document bytes, keyed by the domain
 /// package identity a `model_root` owner names; one document is held per
-/// identity (FR-154 admission, FR-322 "Model-owned members" step 1).
+/// identity (FR-154 admission, FR-322 "Model-owned members" step 1). Package
+/// references to dimensions selected from these documents resolve through the
+/// retained model selection, separately from library dependencies.
 ///
 /// A library dependency is supplied as its already admitted
 /// [`CheckedPackageV2`] under the identity its `import` names (FR-322

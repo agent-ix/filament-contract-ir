@@ -203,11 +203,11 @@ impl CheckedDeclaredNodeId {
     }
 }
 
-/// A declared-form node reference whose package selection is checked on admission.
+/// A declared-form node reference resolved through a direct dependency or selected domain package.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct CheckedPackageNodeRef {
-    /// Selected dependency package name.
+    /// Selected dependency or domain package identity.
     pub package: Box<str>,
     /// Declared structural node in that package.
     pub node: CheckedDeclaredNodeId,
@@ -219,7 +219,7 @@ pub struct CheckedPackageNodeRef {
 pub enum CheckedDimensionOperand {
     /// A node of the importing graph.
     Local(CheckedNodeId),
-    /// A declared-form node reference checked against a direct dependency on admission.
+    /// A declared-form node reference checked against a direct dependency or selected model.
     Package(CheckedPackageNodeRef),
 }
 
@@ -614,7 +614,19 @@ impl NominalBody {
                         }
                     }
                 }
-                valid_rational(root_scale, &|| at().key("root_scale"), true)?;
+                let path = || at().key("root_scale");
+                if !positive_integer(&root_scale.numerator)
+                    || !positive_integer(&root_scale.denominator)
+                {
+                    return Err(Box::new(CheckedPackageRefusal::new(RefusalFields {
+                        code: CheckedPackageRefusalCode::InvalidSemanticGraph,
+                        path: Some(path()),
+                        cause: None,
+                        locus: None,
+                        contract_version: None,
+                        document_pointer: None,
+                    })));
+                }
             }
         }
         Ok(())
@@ -736,7 +748,22 @@ impl NominalBody {
         };
         let rational = |member: &str, positive_numerator: bool| {
             let path = at.clone().key(member);
-            let value = object.get(member).ok_or_else(|| malformed(path.clone()))?;
+            let value = object.get(member).ok_or_else(|| {
+                if member == "root_scale" {
+                    ValidationFailure::Refused(Box::new(CheckedPackageRefusal::new(
+                        RefusalFields {
+                            code: CheckedPackageRefusalCode::InvalidSemanticGraph,
+                            path: Some(path.clone()),
+                            cause: None,
+                            locus: None,
+                            contract_version: None,
+                            document_pointer: None,
+                        },
+                    )))
+                } else {
+                    malformed(path.clone())
+                }
+            })?;
             let fields = value.as_object().ok_or_else(|| malformed(path.clone()))?;
             if !exact_members(fields, &["numerator", "denominator"]) {
                 return Err(malformed(path));
@@ -745,7 +772,7 @@ impl NominalBody {
                 .get("numerator")
                 .and_then(Value::as_str)
                 .filter(|number| {
-                    if positive_numerator {
+                    if positive_numerator && member != "root_scale" {
                         positive_integer(number)
                     } else {
                         integer_magnitude(number).is_some()
@@ -857,6 +884,21 @@ impl NominalBody {
                     root_scale: rational("root_scale", true)?,
                 })
             }
+            "dimension_equivalence"
+                if exact_members(object, &["term", "dimension_node_ids"])
+                    && !object.contains_key("root_scale") =>
+            {
+                Err(ValidationFailure::Refused(Box::new(
+                    CheckedPackageRefusal::new(RefusalFields {
+                        code: CheckedPackageRefusalCode::InvalidSemanticGraph,
+                        path: Some(at.clone().key("root_scale")),
+                        cause: None,
+                        locus: None,
+                        contract_version: None,
+                        document_pointer: None,
+                    }),
+                )))
+            }
             _ => Err(malformed(at.clone())),
         }?;
         Self::try_kind(kind, at).map_err(ValidationFailure::Refused)
@@ -891,7 +933,22 @@ impl NominalBody {
         };
         let rational = |meter: &mut WorkMeter, member: &str, positive_numerator: bool| {
             let path = || at().key(member);
-            let value = body.get(member).ok_or_else(|| malformed(path()))?;
+            let value = body.get(member).ok_or_else(|| {
+                if member == "root_scale" {
+                    ValidationFailure::Refused(Box::new(CheckedPackageRefusal::new(
+                        RefusalFields {
+                            code: CheckedPackageRefusalCode::InvalidSemanticGraph,
+                            path: Some(path()),
+                            cause: None,
+                            locus: None,
+                            contract_version: None,
+                            document_pointer: None,
+                        },
+                    )))
+                } else {
+                    malformed(path())
+                }
+            })?;
             if !value.is_object() {
                 return Err(malformed(path()));
             }
@@ -902,7 +959,7 @@ impl NominalBody {
                 .get("numerator")
                 .and_then(TermNode::as_str)
                 .filter(|number| {
-                    if positive_numerator {
+                    if positive_numerator && member != "root_scale" {
                         positive_integer(number)
                     } else {
                         integer_magnitude(number).is_some()
@@ -1029,6 +1086,21 @@ impl NominalBody {
                     dimension_node_ids: [first, second],
                     root_scale: rational(meter, "root_scale", true)?,
                 })
+            }
+            "dimension_equivalence"
+                if body.exact_members(&["term", "dimension_node_ids"])
+                    && body.get("root_scale").is_none() =>
+            {
+                Err(ValidationFailure::Refused(Box::new(
+                    CheckedPackageRefusal::new(RefusalFields {
+                        code: CheckedPackageRefusalCode::InvalidSemanticGraph,
+                        path: Some(at().key("root_scale")),
+                        cause: None,
+                        locus: None,
+                        contract_version: None,
+                        document_pointer: None,
+                    }),
+                )))
             }
             _ => Err(malformed(at())),
         }?;
@@ -2023,20 +2095,34 @@ fn validate_dimension_equivalence(
                 )?;
             }
             CheckedDimensionOperand::Package(reference) => {
-                let selected = dependencies
-                    .selected_package(&reference.package)
-                    .ok_or_else(|| {
-                        ValidationFailure::refused_because(
-                            CheckedPackageRefusalCode::MissingDeclaration,
+                let package = reference.package.as_ref();
+                let model_dimension = graph.selected_model_dimension(package, id);
+                let dependency_dimension = dependencies
+                    .selected_package(package)
+                    .and_then(|selected| selected.node(id))
+                    .is_some();
+                if model_dimension && dependency_dimension {
+                    return Err(ValidationFailure::refused_because(
+                        CheckedPackageRefusalCode::AmbiguousDeclaration,
+                        at().key("package"),
+                        CheckedPackageRefusalCause::AmbiguousName,
+                    ));
+                }
+                if !model_dimension && !dependency_dimension {
+                    let selected = graph.selected_models.get(&package).is_some()
+                        || dependencies.selected_package(package).is_some();
+                    let (pointer, cause) = if selected {
+                        (at().key("node"), CheckedPackageRefusalCause::MissingName)
+                    } else {
+                        (
                             at().key("package"),
                             CheckedPackageRefusalCause::MissingSelection,
                         )
-                    })?;
-                if selected.node(id).is_none() {
+                    };
                     return Err(ValidationFailure::refused_because(
                         CheckedPackageRefusalCode::MissingDeclaration,
-                        at().key("node"),
-                        CheckedPackageRefusalCause::MissingName,
+                        pointer,
+                        cause,
                     ));
                 }
             }
@@ -2968,6 +3054,20 @@ impl NominalGraph<'_> {
             .and_then(|position| self.records.get(*position))
             .and_then(Option::as_ref)
             .or_else(|| self.imported.find(|held| (*held).cmp(id)))
+    }
+
+    fn selected_model_dimension(&self, package: &str, id: &CheckedNodeId) -> bool {
+        let Some(model) = self.selected_models.get(&package) else {
+            return false;
+        };
+        let Some(NominalRecord::Dimension(dimension)) = self.nominal(id) else {
+            return false;
+        };
+        matches!(
+            &dimension.owner,
+            NominalOwner::Model { identity, node }
+                if identity.as_ref() == package && model.dimensions.contains_key(node.as_ref())
+        )
     }
 
     fn model_variant_cases(
