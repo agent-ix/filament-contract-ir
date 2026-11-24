@@ -3097,9 +3097,10 @@ fn decode_admitted_body(
     meter: &mut WorkMeter,
 ) -> Result<CheckedTerm, ValidationFailure> {
     let at = || node_pointer(position).key("body");
+    let node_at = || node_pointer(position);
     let node = TermNode::of(body);
     if source_nominal_body(kind, node.get("term").and_then(TermNode::as_str)) {
-        let nominal = identity::NominalBody::from_document(node, row, &at, meter)?;
+        let nominal = identity::NominalBody::from_document(node, row, &at, &node_at, meter)?;
         meter.reserve(std::mem::size_of::<identity::NominalBody>())?;
         return Ok(CheckedTerm::NominalBody(Box::new(nominal)));
     }
@@ -3137,6 +3138,7 @@ fn wire_nominal_body(
         node,
         &[],
         &|| node_pointer(position).key("body"),
+        &|| node_pointer(position),
         &mut WorkMeter::new(u64::MAX),
     )
     .map(Some)
@@ -4101,6 +4103,7 @@ fn validate_graph<'w>(
                     view,
                     &wire.semantic_graph.operand_rows[position],
                     &|| at("body"),
+                    &|| node_pointer(position),
                     meter,
                 )
                 .map_err(|failure| with_node_locus(failure, &node.node_id))?,
