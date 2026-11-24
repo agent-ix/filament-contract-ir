@@ -2481,7 +2481,7 @@ fn finish_second_owner(package: &mut Value, new_records: &[(Value, u64)], frames
         .extend(frames.iter().cloned());
 }
 
-#[trace("TC-2053", "FR-825-AC-6")]
+#[trace("TC-2053", "FR-825-AC-6", "FR-825-AC-12")]
 #[test]
 fn reader_admits_an_if_branch_that_holds_no_scalar_operation() {
     let package = else_without_scalar_operation_package();
@@ -2509,6 +2509,26 @@ fn reader_admits_an_if_branch_that_holds_no_scalar_operation() {
     assert_eq!(chain.len(), 1);
     assert!(chain[0].holds);
     assert_eq!(admitted.path_condition_frames().len(), 1);
+}
+
+#[trace("TC-2053", "FR-825-AC-12")]
+#[test]
+fn reader_refuses_a_frame_for_a_branch_without_a_scalar_record() {
+    let mut package = else_without_scalar_operation_package();
+    let mut unused = package["path_condition_frames"][0].clone();
+    unused["holds"] = json!(false);
+    package["path_condition_frames"]
+        .as_array_mut()
+        .expect("frame table")
+        .push(unused);
+    settle(&mut package);
+    rebuild_complete_source_map(&mut package);
+    assert_refusal(
+        &package,
+        CheckedPackageRefusalCode::InvalidPackage,
+        Some(CheckedPackageRefusalCause::InvalidValue),
+        "/path_condition_frames/1",
+    );
 }
 
 #[trace("TC-2053", "FR-825-AC-8", "FR-825-AC-9")]
@@ -2542,7 +2562,7 @@ fn reader_refuses_a_record_in_an_if_branch_whose_frame_is_absent() {
     );
 }
 
-#[trace("TC-2053", "FR-825-AC-6", "FR-825-AC-9")]
+#[trace("TC-2053", "FR-825-AC-6", "FR-825-AC-9", "FR-825-AC-11")]
 #[test]
 fn record_occurrence_of_a_node_shared_by_two_owners_is_numbered_package_wide() {
     // `both` reads `add` twice (occurrences 0, 1); `h` is declared after it
@@ -2635,7 +2655,50 @@ fn omitting_the_first_owners_record_does_not_renumber_a_shared_occurrence() {
     assert_eq!(records[0].occurrence, 1);
 }
 
-#[trace("TC-2053", "FR-825-AC-6", "FR-825-AC-9")]
+#[trace("TC-2053", "FR-825-AC-11")]
+#[test]
+fn first_owner_measure_consumes_package_ordinal_without_a_record_or_frame() {
+    let (mut package, second_owner) = second_owner_package("expression/integer_add", 2);
+    let application = node_id("expression/integer_add");
+    let first_owner = package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("graph nodes")
+        .iter_mut()
+        .find(|node| node["node_tag"] == "function")
+        .expect("first owner");
+    first_owner["body"]["members"]
+        .as_array_mut()
+        .expect("function body")
+        .push(json!({"term":"binding","name":"decreases","value":{"term":"reference","target":application}}));
+    sync_body_dependencies(first_owner);
+
+    let second_record = push_record(&mut package, &second_owner, &application, 3, None, 0);
+    finish_second_owner(&mut package, &[(second_record, 3)], &[]);
+    let CheckedPackageV2ReadResult::Admitted(admitted) = read(&package) else {
+        panic!(
+            "the measure visit consumes an ordinal without a record: {:?}",
+            read(&package)
+        );
+    };
+    let records = admitted
+        .requirement_items()
+        .iter()
+        .map(value_validity_record)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        records
+            .iter()
+            .map(|record| (
+                record.occurrence,
+                record.path_condition_frame.map(|frame| frame.0)
+            ))
+            .collect::<Vec<_>>(),
+        vec![(0, Some(0)), (1, Some(1)), (3, None)]
+    );
+    assert_eq!(admitted.path_condition_frames().len(), 2);
+}
+
+#[trace("TC-2053", "FR-825-AC-6", "FR-825-AC-9", "FR-825-AC-11")]
 #[test]
 fn guard_occurrence_of_a_node_shared_by_two_owners_is_numbered_package_wide() {
     // `h`'s body is the conditional `both` already reads: its guard is read a

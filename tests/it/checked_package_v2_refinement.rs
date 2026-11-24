@@ -9,8 +9,8 @@ use crate::support::checked_package::{
     structural_fixture_id, v2_all_families, v2_nominal,
 };
 use filament_contract_model::{
-    encode_checked_package_v2, CheckedCapability, CheckedDiagnosticsV2, CheckedOccurrenceRole,
-    CheckedPackageEvidence, CheckedPackageLockV2, CheckedPackageReadLimits,
+    encode_checked_package_v2, CheckedCapability, CheckedDiagnosticsV2, CheckedNodeId,
+    CheckedOccurrenceRole, CheckedPackageEvidence, CheckedPackageLockV2, CheckedPackageReadLimits,
     CheckedPackageRefusalCause, CheckedPackageRefusalCode, CheckedPackageV2,
     CheckedPackageV2ReadResult, CheckedRefinementStepRowRegion, CheckedSemanticGraphV2,
     CheckedSourceMapEntry, CheckedTerm, RefinementClassCatalog, RefinementConcreteClass,
@@ -2867,8 +2867,8 @@ fn model_step_targets_keep_operation_stutter_and_any_through_public_writer() {
     settle_refinement(&mut missing_type, position);
     assert_step_refusal(
         read(&missing_type, &evidence),
-        CheckedPackageRefusalCode::InvalidSemanticGraph,
-        None,
+        CheckedPackageRefusalCode::InvalidModelBinding,
+        Some(CheckedPackageRefusalCause::MalformedDeclaration),
         &format!("/semantic_graph/nodes/{position}/body/steps/0/target"),
     );
 
@@ -3989,18 +3989,140 @@ fn history_initial_reference_package(
     (package, evidence, position)
 }
 
-#[trace("TC-062", "FR-061-AC-5")]
+#[trace("TC-310", "FR-375-AC-36")]
 #[test]
-fn history_initial_admits_an_option_value_reference_and_refuses_other_value_forms() {
-    let (package, evidence, _) =
-        history_initial_reference_package("option_value", json!({"term":"aggregate","members":[]}));
+fn history_initial_admits_matching_option_value_and_refuses_non_option_history() {
+    let (package, evidence, _) = option_history_initial_reference_package();
+    let CheckedPackageV2ReadResult::Admitted(admitted) = read(&package, &evidence) else {
+        panic!(
+            "an Option<T> history admits its matching option value: {:?}",
+            read(&package, &evidence)
+        );
+    };
+    let target = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|node| node["node_id"] == node_id("value/option/history-initial"))
+        .expect("option value node")["node_id"]
+        .clone();
+    let option_value: CheckedNodeId = serde_json::from_value(target).expect("option value ID");
+    let Some(CheckedTerm::Aggregate { members, .. }) = admitted.term(&option_value) else {
+        panic!("the admitted option value has a present payload");
+    };
+    assert!(matches!(
+        members.first(),
+        Some(CheckedTerm::Literal { value, .. }) if value.as_str() == Some("present")
+    ));
+
+    let (mut shared, shared_evidence, position) = option_history_initial_reference_package();
+    let mut second_history =
+        shared["semantic_graph"]["nodes"][position]["body"]["histories"][0].clone();
+    second_history["name"] = json!("past2");
+    second_history["updates"] = json!([]);
+    shared["semantic_graph"]["nodes"][position]["body"]["histories"]
+        .as_array_mut()
+        .expect("histories")
+        .push(second_history);
+    settle_refinement(&mut shared, position);
+    crate::support::checked_package::resolve_operands(&mut shared);
+    rebuild_source_map(&mut shared);
+    refresh_identity(&mut shared);
+    let CheckedPackageV2ReadResult::Admitted(shared_admitted) = read(&shared, &shared_evidence)
+    else {
+        panic!(
+            "two histories can share one option initial: {:?}",
+            read(&shared, &shared_evidence)
+        );
+    };
+    let decoded_body = serde_json::to_value(&shared_admitted.resolved_graph().nodes[position].body)
+        .expect("decoded refinement body");
+    let histories = decoded_body["histories"]
+        .as_array()
+        .expect("decoded histories");
+    assert_eq!(histories.len(), 2);
+    assert_eq!(histories[0]["initial"], histories[1]["initial"]);
+
+    let (mut none, none_evidence, position) = option_history_initial_reference_package();
+    let option_type =
+        none["semantic_graph"]["nodes"][position]["body"]["histories"][0]["type"].clone();
+    none["semantic_graph"]["nodes"][position]["body"]["histories"][0]["initial"] =
+        json!({"term":"literal","type":option_type,"value_kind":"none","value":null});
+    let option_value = node_id("value/option/history-initial");
+    none["semantic_graph"]["nodes"][position]["dependencies"]
+        .as_array_mut()
+        .expect("refinement dependencies")
+        .retain(|dependency| dependency != &option_value);
+    settle_refinement(&mut none, position);
+    crate::support::checked_package::resolve_operands(&mut none);
+    rebuild_source_map(&mut none);
+    refresh_identity(&mut none);
     assert!(
         matches!(
-            read(&package, &evidence),
+            read(&none, &none_evidence),
             CheckedPackageV2ReadResult::Admitted(_)
         ),
-        "an option-value history initial: {:?}",
-        read(&package, &evidence)
+        "a literal none remains admitted for an Option<T> history"
+    );
+
+    let (mut mismatched, mismatched_evidence, position) =
+        option_history_initial_reference_package();
+    let text_type = mismatched["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|node| node["node_tag"] == "scalar_type" && node["semantic_form"] == "text")
+        .expect("text type")
+        .clone();
+    let integer_type = node_id("scalar_type/integer/history-initial");
+    let mut integer_node = text_type;
+    integer_node["node_id"] = integer_type.clone();
+    integer_node["semantic_form"] = json!("integer");
+    integer_node["semantic_type"] = integer_type.clone();
+    mismatched["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .push(integer_node);
+    let wrong_option = node_id("composite_type/option/history-initial-wrong-inner");
+    let wrong_option_node = json!({
+        "node_id":wrong_option,
+        "schema_version":"filament.checked-semantic-graph/v2", "node_tag":"composite_type",
+        "semantic_form":"option", "semantic_type":wrong_option,
+        "dependencies":[integer_type], "occurrences":[{"role":"type","ordinal":0}],
+        "body":{"term":"aggregate","members":[{"term":"reference","target":integer_type}]}
+    });
+    mismatched["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .push(wrong_option_node);
+    let value = mismatched["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .iter_mut()
+        .find(|node| node["node_id"] == node_id("value/option/history-initial"))
+        .expect("option value node");
+    value["semantic_type"] = wrong_option;
+    value["dependencies"] = json!([integer_type]);
+    value["body"]["members"][0] =
+        json!({"term":"literal","type":integer_type,"value_kind":"integer","value":"1"});
+    settle_refinement(&mut mismatched, position);
+    crate::support::checked_package::resolve_operands(&mut mismatched);
+    rebuild_source_map(&mut mismatched);
+    refresh_identity(&mut mismatched);
+    assert_step_refusal(
+        read(&mismatched, &mismatched_evidence),
+        CheckedPackageRefusalCode::InvalidModelBinding,
+        Some(CheckedPackageRefusalCause::MalformedDeclaration),
+        &format!("/semantic_graph/nodes/{position}/body/histories/0/initial"),
+    );
+
+    let (package, evidence, position) =
+        history_initial_reference_package("option_value", json!({"term":"aggregate","members":[]}));
+    assert_step_refusal(
+        read(&package, &evidence),
+        CheckedPackageRefusalCode::InvalidModelBinding,
+        Some(CheckedPackageRefusalCause::MalformedDeclaration),
+        &format!("/semantic_graph/nodes/{position}/body/histories/0/initial"),
     );
 
     let (package, evidence, position) =
@@ -4009,8 +4131,50 @@ fn history_initial_admits_an_option_value_reference_and_refuses_other_value_form
         read(&package, &evidence),
         CheckedPackageRefusalCode::InvalidModelBinding,
         Some(CheckedPackageRefusalCause::MalformedDeclaration),
-        &format!("/semantic_graph/nodes/{position}/body/histories/0/initial/target"),
+        &format!("/semantic_graph/nodes/{position}/body/histories/0/initial"),
     );
+}
+
+fn option_history_initial_reference_package() -> (Value, CheckedPackageEvidence, usize) {
+    let (mut package, evidence, position, _, inner_type, _) = ac5_history_package();
+    let option_type = node_id("composite_type/option/history-initial");
+    let option_type_node = json!({
+        "node_id":option_type,
+        "schema_version":"filament.checked-semantic-graph/v2", "node_tag":"composite_type",
+        "semantic_form":"option", "semantic_type":option_type,
+        "dependencies":[inner_type], "occurrences":[{"role":"type","ordinal":0}],
+        "body":{"term":"aggregate","members":[{"term":"reference","target":inner_type}]}
+    });
+    let option_value_id = node_id("value/option/history-initial");
+    let option_value = json!({
+        "node_id":option_value_id,
+        "schema_version":"filament.checked-semantic-graph/v2", "node_tag":"value",
+        "semantic_form":"option_value", "semantic_type":option_type,
+        "dependencies":[inner_type], "occurrences":[{"role":"generated","ordinal":0}],
+        "body":{"term":"aggregate","members":[{"term":"literal","type":inner_type,
+            "value_kind":"text","value":"present"}]}
+    });
+    package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .extend([option_type_node, option_value]);
+    let history = &mut package["semantic_graph"]["nodes"][position];
+    history["body"]["histories"][0]["type"] = option_type.clone();
+    history["body"]["histories"][0]["initial"] =
+        json!({"term":"reference","target":option_value_id});
+    let dependencies = history["dependencies"]
+        .as_array_mut()
+        .expect("dependencies");
+    dependencies.extend([option_type, option_value_id]);
+    dependencies.retain(|dependency| dependency != &inner_type);
+    dependencies.sort_by(node_id_order);
+    dependencies.dedup();
+    rebuild_source_map(&mut package);
+    settle_refinement(&mut package, position);
+    crate::support::checked_package::resolve_operands(&mut package);
+    rebuild_source_map(&mut package);
+    refresh_identity(&mut package);
+    (package, evidence, position)
 }
 
 #[trace("TC-062", "FR-061-AC-5")]
@@ -4193,7 +4357,7 @@ fn refinement_rejects_each_unsorted_row_array_without_reordering() {
     }
 }
 
-#[trace("TC-062", "FR-061-AC-5")]
+#[trace("TC-310", "FR-375-AC-36")]
 #[test]
 fn history_initial_rejects_selected_dependency_literal_reference() {
     let mut dependency_wire = v2_all_families();
@@ -4223,10 +4387,10 @@ fn history_initial_rejects_selected_dependency_literal_reference() {
     package["semantic_graph"]["nodes"][position]["body"]["histories"][0]["initial"] = json!({"term":"dependency_reference","package":"test/history-literal",
             "node":literal});
     settle_refinement(&mut package, position);
-    ac5_refusal_preserved_by_writer(
-        &package,
-        &evidence,
+    assert_step_refusal(
+        read(&package, &evidence),
         CheckedPackageRefusalCode::InvalidSemanticGraph,
+        None,
         &format!("/semantic_graph/nodes/{position}/body/histories/0/initial"),
     );
 }
