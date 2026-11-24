@@ -785,9 +785,14 @@ impl<'d> RefinementDocument<'_, 'd> {
         use super::refinement::RefinementStepTarget;
         match node.get("kind").and_then(TermNode::as_str) {
             Some("operation") => {
-                self.shape(node, &["kind", "operation", "receiver", "arguments"], &[])?;
+                self.shape(
+                    node,
+                    &["kind", "operation", "target_type", "receiver", "arguments"],
+                    &[],
+                )?;
                 Ok(RefinementStepTarget::Operation {
                     operation: self.key(self.member(node, "operation")?)?,
+                    target_type: self.key(self.member(node, "target_type")?)?,
                     receiver: self.boxed(|| self.term(self.member(node, "receiver")?))?,
                     arguments: self.rows(node, "arguments", |n| self.argument(n))?,
                 })
@@ -1136,11 +1141,12 @@ mod refinement_fault {
             "operation" => {
                 shape(
                     node,
-                    &["kind", "operation", "receiver", "arguments"],
+                    &["kind", "operation", "target_type", "receiver", "arguments"],
                     &[],
                     at,
                 )?;
                 key(member(node, "operation", at)?, &at.key("operation"))?;
+                key(member(node, "target_type", at)?, &at.key("target_type"))?;
                 term(member(node, "receiver", at)?, &at.key("receiver"), walk)?;
                 rows(node, "arguments", at, |row, row_at| {
                     argument(row, row_at, walk)
@@ -2128,7 +2134,7 @@ mod flat_document_allocation_tests {
         let wire = json!({"term":"refinement","name":"Differential","abstract":external,"profile":{"authority":"a","identity":"trace"},
             "populations":[{"abstract":external,"concrete":id}],
             "objects":[{"abstract_type":external,"concrete_type":id,"fields":[{"name":"value","expression":term}]}],
-            "steps":[{"source_class":"act","source_node":id,"target":{"kind":"operation","operation":external,"receiver":term,"arguments":[{"term":"open"},term]}},
+            "steps":[{"source_class":"act","source_node":id,"target":{"kind":"operation","operation":external,"target_type":external,"receiver":term,"arguments":[{"term":"open"},term]}},
                 {"source_class":"other","target":{"kind":"protocol_step","class":"step","node":external,"arguments":[]}},
                 {"source_class":"idle","target":{"kind":"stutter"}}, {"source_class":"free","target":{"kind":"any"}}],
             "histories":[{"concrete_type":id,"name":"history","type":id,"initial":term,"updates":[{"operation":id,"expression":term}]}],

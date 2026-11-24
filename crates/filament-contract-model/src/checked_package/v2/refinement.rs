@@ -133,6 +133,8 @@ pub enum RefinementStepTarget {
     Operation {
         /// Abstract operation declaration.
         operation: RefinementKey,
+        /// Abstract type the step row maps the receiver against.
+        target_type: RefinementKey,
         /// Mapped receiver.
         receiver: Box<CheckedTerm>,
         /// Mapped arguments.
@@ -541,12 +543,15 @@ impl Encode for RefinementStepTarget {
         match self {
             Self::Operation {
                 operation,
+                target_type,
                 receiver,
                 arguments,
             } => {
                 writer.string("operation")?;
                 writer.name("operation")?;
                 operation.encode_into(writer)?;
+                writer.name("target_type")?;
+                target_type.encode_into(writer)?;
                 writer.name("receiver")?;
                 receiver.encode_into(writer)?;
                 writer.name("arguments")?;
@@ -676,10 +681,12 @@ pub(super) fn replace_node_ids(body: &mut CheckedTerm, old: &CheckedNodeId, new:
         match &mut row.target {
             RefinementStepTarget::Operation {
                 operation,
+                target_type,
                 receiver,
                 arguments,
             } => {
                 replace_key(operation, old, new);
+                replace_key(target_type, old, new);
                 receiver.replace_node_id(old, new);
                 replace_arguments(arguments, old, new);
             }
@@ -889,12 +896,13 @@ fn parse_target(value: &Value, at: &Trail<'_>) -> Result<RefinementStepTarget, V
         "operation" => {
             shape(
                 value,
-                &["kind", "operation", "receiver", "arguments"],
+                &["kind", "operation", "target_type", "receiver", "arguments"],
                 &[],
                 at,
             )?;
             Ok(RefinementStepTarget::Operation {
                 operation: key(member(value, "operation", at)?, &at.key("operation"))?,
+                target_type: key(member(value, "target_type", at)?, &at.key("target_type"))?,
                 receiver: Box::new(term(member(value, "receiver", at)?, &at.key("receiver"))?),
                 arguments: rows(value, "arguments", at, parse_argument)?,
             })
@@ -1621,6 +1629,23 @@ impl RefinementGraph<'_, '_> {
     }
 
     fn key_owner_identity(&self, key: &RefinementKey) -> Option<&str> {
+        match key {
+            RefinementKey::Local(id) => {
+                if let Some(super::CheckedNodeOwner::Model { identity, .. }) =
+                    self.local_node(id)?.owner.as_ref()
+                {
+                    return Some(identity);
+                }
+            }
+            RefinementKey::External(external) => {
+                let selected = self.dependencies.selected_package(&external.package)?;
+                if let Some(super::CheckedNodeOwner::Model { identity, .. }) =
+                    selected.node(&external.node)?.owner.as_ref()
+                {
+                    return Some(identity);
+                }
+            }
+        }
         let owner = match key {
             RefinementKey::Local(id) => return self.local_owner_identity(id),
             RefinementKey::External(external) => {
@@ -1828,6 +1853,75 @@ impl RefinementGraph<'_, '_> {
             return Err(wrong_binding(meter, at, locus));
         }
         Ok(operation)
+    }
+
+    fn require_type_subject(
+        &self,
+        meter: &mut super::WorkMeter,
+        key: &RefinementKey,
+        subject: &RefinementKey,
+        at: Path<'_>,
+        locus: &CheckedNodeId,
+    ) -> Result<(), ValidationFailure> {
+        use super::{CheckedNodeKind as K, CheckedNodeOwner, ModelForm};
+        self.require_kind(meter, key, K::Model(ModelForm::ObjectType), at, locus)?;
+        let selected_identity = match subject {
+            RefinementKey::Local(root) => {
+                self.local_node(root)
+                    .and_then(|node| match node.owner.as_ref()? {
+                        CheckedNodeOwner::ModelRoot { identity, .. } => Some(identity.as_ref()),
+                        _ => None,
+                    })
+            }
+            RefinementKey::External(root) => self
+                .dependencies
+                .selected_package(&root.package)
+                .and_then(|package| package.node(&root.node))
+                .and_then(|node| match node.owner.as_ref()? {
+                    CheckedNodeOwner::ModelRoot { identity, .. } => Some(identity.as_ref()),
+                    _ => None,
+                }),
+        };
+        if selected_identity.is_none() || self.key_owner_identity(key) != selected_identity {
+            return Err(wrong_binding(meter, at, locus));
+        }
+        Ok(())
+    }
+
+    fn require_target_type_conforms(
+        &self,
+        meter: &mut super::WorkMeter,
+        owners: &super::model_members::ModelOwners<'_>,
+        operation: &RefinementKey,
+        target_type: &RefinementKey,
+        at: Path<'_>,
+        locus: &CheckedNodeId,
+    ) -> Result<(), ValidationFailure> {
+        let Some((declaring_type, _)) = self.key_anchor(operation) else {
+            return Err(wrong_binding(meter, at, locus));
+        };
+        let target_type_id = match target_type {
+            RefinementKey::Local(id) => id,
+            RefinementKey::External(external) => &external.node,
+        };
+        let (Some(actual), Some(expected)) = (
+            owners.owner_by_key(target_type_id),
+            owners.owner_by_key(declaring_type),
+        ) else {
+            return Err(wrong_binding(meter, at, locus));
+        };
+        if !std::ptr::eq(actual.package, expected.package) {
+            return Err(wrong_binding(meter, at, locus));
+        }
+        let mut budget =
+            super::model_members::Budget::new(meter, actual.package.root, actual.package.bytes);
+        if !actual
+            .package
+            .conforms_to(actual.node, expected.node, &mut budget)?
+        {
+            return Err(wrong_binding(meter, at, locus));
+        }
+        Ok(())
     }
 
     fn require_concrete_step_anchor<'s>(
@@ -2414,12 +2508,38 @@ fn validate_rows(
         }
         let target_at = at.key("target");
         match &row.target {
-            RefinementStepTarget::Operation { operation, .. } => {
+            RefinementStepTarget::Operation {
+                operation,
+                target_type,
+                ..
+            } => {
                 graph.require_anchor_subject(
                     meter,
                     operation,
                     abstract_key,
                     target_at.key("operation"),
+                    locus,
+                )?;
+                graph.require_kind(
+                    meter,
+                    target_type,
+                    K::Model(ModelForm::ObjectType),
+                    target_at.key("target_type"),
+                    locus,
+                )?;
+                graph.require_type_subject(
+                    meter,
+                    target_type,
+                    abstract_key,
+                    target_at.key("target_type"),
+                    locus,
+                )?;
+                graph.require_target_type_conforms(
+                    meter,
+                    owners,
+                    operation,
+                    target_type,
+                    target_at.key("target_type"),
                     locus,
                 )?;
             }
@@ -4482,10 +4602,12 @@ fn local_dependencies(
         match &row.target {
             RefinementStepTarget::Operation {
                 operation,
+                target_type,
                 receiver,
                 arguments,
             } => {
                 add_key(&mut targets, operation, meter)?;
+                add_key(&mut targets, target_type, meter)?;
                 add_term(&mut targets, receiver, meter)?;
                 for argument in arguments {
                     if let RefinementStepArgument::Term(term) = argument {

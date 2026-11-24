@@ -759,6 +759,7 @@ fn remaining_closed_forms_map_every_typed_identity_slot() {
                     source_node: Some(original.clone()),
                     target: RefinementStepTarget::Operation {
                         operation: RefinementKey::Local(original.clone()),
+                        target_type: RefinementKey::Local(original.clone()),
                         receiver: Box::new(CheckedTerm::reference(original.clone())),
                         arguments: vec![RefinementStepArgument::Term(Box::new(
                             CheckedTerm::reference(original.clone()),

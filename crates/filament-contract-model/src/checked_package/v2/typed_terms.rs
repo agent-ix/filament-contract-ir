@@ -3245,6 +3245,7 @@ impl CheckedTerm {
                             match &mut row.target {
                                 RefinementStepTarget::Operation {
                                     operation,
+                                    target_type,
                                     receiver,
                                     arguments,
                                 } => {
@@ -3254,6 +3255,7 @@ impl CheckedTerm {
                                         }
                                     }
                                     work.push(NodeMapWork::Term(receiver));
+                                    push_refinement_key(&mut work, target_type);
                                     push_refinement_key(&mut work, operation);
                                 }
                                 RefinementStepTarget::ProtocolStep {
@@ -4588,7 +4590,7 @@ mod tests {
                 "fields":[{"name":"history","expression":reference}]}],
             "steps":[
                 {"source_class":"finish","source_node":node,"target":{
-                    "kind":"operation","operation":node,"receiver":reference,
+                    "kind":"operation","operation":node,"target_type":node,"receiver":reference,
                     "arguments":[{"term":"open"},reference]}},
                 {"source_class":"memory flush","target":{
                     "kind":"protocol_step","class":"memory flush",
