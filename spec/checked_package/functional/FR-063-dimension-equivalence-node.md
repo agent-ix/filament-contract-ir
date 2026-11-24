@@ -74,8 +74,10 @@ The closed V2 wire schema SHALL require `root_scale` with positive-integer
 `numerator` and `denominator` strings, exactly two `dimension_node_ids`, and
 no `declaration` member. A missing scale, zero or negative scale component,
 one-entry pair or present declaration SHALL refuse `malformed_wire` at the
-node before graph checks. The graph check SHALL require a schema-valid
-`root_scale` to be reduced, with the exact ratio determined by the two base
+node before graph checks. This wire-shape classification is the default for a
+missing or non-positive `root_scale`; a positive, schema-valid value proceeds
+to graph admission, where the reader SHALL require `root_scale` to be reduced,
+with the exact ratio determined by the two base
 roots. For equivalences
 between derived dimensions, it SHALL require equal normalized maps and
 the ratio fixed by those base roots. Across a connected equivalence graph,
@@ -93,6 +95,9 @@ reader admission.
 | FR-063-AC-4 | PLANNED/UNRUN (IR-1141; FSpec #529). Each independently authored adverse pair or graph is refused `invalid_semantic_graph` at its equivalence node: descending ids, equal ids, a unit id, a repeated pair, unequal derived-dimension normalized maps, a scale inconsistent with base roots, or a cycle whose exact scale product differs from one. No malformed node is skipped or treated as an unknown form. | Test |
 | FR-063-AC-5 | PLANNED/UNRUN (IR-1141; FSpec #529). Missing or invalid scale, one-entry pair, missing top-level SourceOwner and present declaration refuse `malformed_wire` at the node before graph checks. Unreduced scale, missing dependency or non-self semantic_type refuses `invalid_semantic_graph` at its exact node. A well-formed SourceOwner absent from `lock.sources` refuses `missing_declaration`/`missing-selection` at the node's `node_id` in the owner join before equivalence-body checks. No stale-key refusal or vector hash comparison occurs. | Test |
 | FR-063-AC-6 | The writer and reader use the typed dimension_equivalence form in the V2 graph and envelope. Unknown scalar forms remain closed; no untyped alternate path or copied FSpec schema or fixture is added. | Inspection |
+| FR-063-AC-7 | PLANNED/UNRUN (QSL-3120; FSpec FR-322). With each other package member valid, a strict-reader input with the `root_scale` member omitted, or with either `numerator` or `denominator` a zero or negative integer string, is refused as `malformed_wire` at the equivalence node during wire validation, before graph checks. This is the wire-shape default: a missing or non-positive scale component is not reclassified as a semantic graph error. | Test (TC-048) |
+| FR-063-AC-8 | PLANNED/UNRUN (QSL-3120; FSpec FR-322). With a schema-valid positive scale `numerator: "2000"`, `denominator: "2"`, the strict reader admits the wire shape, then refuses the unreduced value as `invalid_semantic_graph` at that equivalence node during graph admission, with no partially admitted package. | Test (TC-048) |
+| FR-063-AC-9 | PLANNED/UNRUN (QSL-3120; FSpec FR-322-AC-268). The strict reader receives three base-dimension pairs in ascending endpoint order: A–B with `root_scale` `1/1`, B–C with `1/1`, and A–C with `999/1`. The equivalence-node identities sort by node id as E-AB (`path: ["01-ab"]`), E-BC (`["02-bc"]`), then E-AC (`["03-ac"]`); each edge otherwise has valid endpoints, ownership and occurrences. Traversing A→B→C→A multiplies `1 × 1 × 1/999 = 1/999`, not one. The reader refuses `invalid_semantic_graph` with no cause at E-AC, the later equivalence node in node-id order, and returns no admitted package. | Test (TC-048) |
 
 ## Dependencies
 
