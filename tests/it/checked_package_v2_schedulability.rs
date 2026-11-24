@@ -127,11 +127,158 @@ pub(super) fn package(policy: &str, response: bool, high: bool, occurrences: u64
         "body":body
     }));
     package["schedulability_claims"] = json!((0..occurrences)
-        .map(|occurrence| json!({"declaration":id,"occurrence":occurrence}))
+        .map(|occurrence| json!({"declaration":id,"occurrence":occurrence,"task_set":"Ctl","release_bindings":[],"mode_switch_bindings":[]}))
         .collect::<Vec<_>>());
     fixtures::rebuild_complete_source_map(&mut package);
     fixtures::index_fixture_node_ids(&mut package);
     package
+}
+
+fn package_with_release_binding(release_backed: bool) -> Value {
+    let mut package: Value = serde_json::from_str(include_str!(
+        "../fixtures/qsl-2347-emitted/clock-place.json"
+    ))
+    .expect("current timed-model fixture");
+    let nodes = package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes");
+    let id = |path: &[&str]| json!({"package":"pkg","path":path,"ordinal":0});
+    let declaration = id(&["claim", "schedulability", "Ctl"]);
+    let boolean = id(&["scalar_type", "boolean"]);
+    let text = nodes
+        .iter()
+        .find(|node| node["node_tag"] == "scalar_type" && node["semantic_form"] == "text")
+        .expect("text type")["node_id"]
+        .clone();
+    let unit = nodes
+        .iter()
+        .find(|node| node["node_tag"] == "scalar_type" && node["semantic_form"] == "unit")
+        .expect("time unit")["node_id"]
+        .clone();
+    let integer = nodes
+        .iter()
+        .find(|node| node["node_tag"] == "scalar_type" && node["semantic_form"] == "integer")
+        .expect("integer type")["node_id"]
+        .clone();
+    let task = json!({"term":"aggregate","members":[
+        binding("name", literal(&text,"text","worker")),
+        binding("arrival", literal(&text,"text","periodic")),
+        binding("period", literal(&unit,"quantity","4/1")),
+        binding("deadline", literal(&unit,"quantity","4/1")),
+        binding("bcet", literal(&unit,"quantity","0/1")),
+        binding("wcet", literal(&unit,"quantity","1/1")),
+        binding("wcet_hi", aggregate(vec![])),
+        binding("criticality", literal(&text,"text","lo")),
+        binding("priority", literal(&integer,"integer","1")),
+        binding("jitter", literal(&unit,"quantity","0/1")),
+        binding("blocking", literal(&unit,"quantity","0/1")),
+    ]});
+    let claim_body = aggregate(vec![
+        binding("kind", literal(&text, "text", "schedulable")),
+        binding("policy", literal(&text, "text", "fixed-priority")),
+        binding("task", aggregate(vec![])),
+        binding("bound", aggregate(vec![])),
+        binding("tasks", aggregate(vec![task])),
+    ]);
+    let mut boolean_node = nodes
+        .iter()
+        .find(|node| node["node_tag"] == "scalar_type" && node["semantic_form"] == "text")
+        .expect("text node template")
+        .clone();
+    boolean_node["node_id"] = boolean.clone();
+    boolean_node["semantic_type"] = boolean.clone();
+    boolean_node["semantic_form"] = json!("boolean");
+    let claim_node = json!({
+        "node_id":declaration,
+        "schema_version":"filament.checked-semantic-graph/v2",
+        "node_tag":"claim",
+        "semantic_form":"schedulability",
+        "semantic_type":boolean,
+        "dependencies":[],
+        "occurrences":[{"role":"claim","ordinal":0}],
+        "declaration":null,
+        "owner":null,
+        "body":claim_body,
+    });
+    nodes.push(boolean_node);
+    nodes.push(claim_node);
+    nodes.sort_by_key(|node| {
+        serde_json::from_value::<CheckedNodeId>(node["node_id"].clone()).expect("node ID")
+    });
+
+    let source_rows = package["source_map"]
+        .as_array()
+        .expect("source map")
+        .clone();
+    let mut boolean_region = source_rows
+        .iter()
+        .find(|row| row["role"] == "generated")
+        .expect("generated source region")
+        .clone();
+    boolean_region["node_id"] = boolean;
+    let mut claim_region = source_rows
+        .iter()
+        .find(|row| row["role"] == "expression")
+        .expect("source region template")
+        .clone();
+    claim_region["node_id"] = declaration.clone();
+    claim_region["role"] = json!("claim");
+    claim_region["ordinal"] = json!(0);
+    package["source_map"]
+        .as_array_mut()
+        .unwrap()
+        .extend([boolean_region, claim_region]);
+    crate::support::checked_package::rebuild_complete_source_map(&mut package);
+    crate::support::checked_package::index_fixture_node_ids(&mut package);
+    let object = package["semantic_graph"]["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|node| node["declaration"]["qualified_name"] == json!(["O"]))
+        .expect("timed model declaring object")["node_id"]
+        .clone();
+    package["schedulability_claims"] = json!([{
+        "declaration": declaration,
+        "occurrence": 0,
+        "task_set": "Ctl",
+        "release_bindings": if release_backed { json!([{
+            "task_name":"worker",
+            "selected_model_identity":"test:spine-model",
+            "operation_declaring_identity":object,
+            "operation_member":"step"
+        }]) } else { json!([]) },
+        "mode_switch_bindings": []
+    }]);
+    package
+}
+
+#[trace("TC-451", "FR-246-AC-4", "FR-246-AC-5", "FR-038-AC-618")]
+#[test]
+fn admitted_claim_views_preserve_task_set_and_release_bindings() {
+    let without_release = package_with_release_binding(false);
+    let unbacked = admitted(&without_release);
+    let claims = unbacked.schedulability_claims().collect::<Vec<_>>();
+    assert_eq!(claims.len(), 1);
+    assert_eq!(claims[0].task_set(), "Ctl");
+    assert_eq!(claims[0].release_bindings().len(), 0);
+
+    let with_release = package_with_release_binding(true);
+    let backed = admitted(&with_release);
+    let claims = backed.schedulability_claims().collect::<Vec<_>>();
+    assert_eq!(claims.len(), 1);
+    assert_eq!(claims[0].task_set(), "Ctl");
+    let releases = claims[0].release_bindings().collect::<Vec<_>>();
+    assert_eq!(releases.len(), 1);
+    assert_eq!(releases[0].task_name(), "worker");
+    assert_eq!(releases[0].selected_model_identity(), "test:spine-model");
+    let object: CheckedNodeId = serde_json::from_value(
+        with_release["schedulability_claims"][0]["release_bindings"][0]
+            ["operation_declaring_identity"]
+            .clone(),
+    )
+    .expect("declaring object identity");
+    assert_eq!(releases[0].operation_declaring_identity(), &object);
+    assert_eq!(releases[0].operation_member(), "step");
 }
 
 fn admitted(package: &Value) -> Box<CheckedPackageV2> {
@@ -500,8 +647,8 @@ fn claim_body_refusals_follow_structural_order_among_nonclaim_nodes() {
         nodes[position]["body"]["members"][1]["value"]["value"] = json!("unknown-policy");
     }
     wire["schedulability_claims"] = json!([
-        {"declaration": first, "occurrence": 0},
-        {"declaration": second, "occurrence": 0},
+        {"declaration": first, "occurrence": 0, "task_set":"Ctl", "release_bindings":[], "mode_switch_bindings":[]},
+        {"declaration": second, "occurrence": 0, "task_set":"Ctl", "release_bindings":[], "mode_switch_bindings":[]},
     ]);
     fixtures::rebuild_complete_source_map(&mut wire);
     fixtures::refresh_identity(&mut wire);

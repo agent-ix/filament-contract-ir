@@ -49,6 +49,31 @@ fn equivalence(left: &Value, right: &Value, source: &Value) -> Value {
     })
 }
 
+fn named_equivalence(
+    edge_name: &str,
+    left: &Value,
+    right: &Value,
+    source: &Value,
+    numerator: &str,
+    denominator: &str,
+) -> Value {
+    let id = json!({
+        "package":"test/families",
+        "path":["Equivalence",edge_name],
+        "ordinal":0
+    });
+    json!({
+        "node_id":id,
+        "schema_version":"filament.checked-semantic-graph/v2",
+        "node_tag":"scalar_type", "semantic_form":"dimension_equivalence",
+        "semantic_type":id, "dependencies":[left,right],
+        "occurrences":[{"role":"anchor","ordinal":0}],
+        "owner":{"kind":"source","authority":source["authority"],"identity":source["identity"]},
+        "body":{"term":"dimension_equivalence","dimension_node_ids":[left,right],
+            "root_scale":{"numerator":numerator,"denominator":denominator}}
+    })
+}
+
 pub(super) fn package() -> Value {
     let mut package = v2_all_families();
     let source = fixture_source();
@@ -309,12 +334,12 @@ fn typed_equivalence_retains_complete_structural_node() {
 
 /// The scalar body is closed, and malformed body/owner shape wins over graph
 /// consistency checks at the node where it occurs.
-#[trace("TC-048", "FR-063-AC-5")]
+#[trace("TC-048", "FR-063-AC-5", "FR-063-AC-7")]
 #[test]
 fn malformed_equivalence_shape_refuses_at_its_node() {
     let base = package();
     type Case = (fn(&mut Value), &'static str);
-    let cases: [Case; 4] = [
+    let cases: [Case; 8] = [
         (
             |v: &mut Value| {
                 v["semantic_graph"]["nodes"][3]["body"]
@@ -322,7 +347,31 @@ fn malformed_equivalence_shape_refuses_at_its_node() {
                     .unwrap()
                     .remove("root_scale");
             },
-            "/semantic_graph/nodes/3/body",
+            "/semantic_graph/nodes/3",
+        ),
+        (
+            |v: &mut Value| {
+                v["semantic_graph"]["nodes"][3]["body"]["root_scale"]["numerator"] = json!("0");
+            },
+            "/semantic_graph/nodes/3",
+        ),
+        (
+            |v: &mut Value| {
+                v["semantic_graph"]["nodes"][3]["body"]["root_scale"]["numerator"] = json!("-1");
+            },
+            "/semantic_graph/nodes/3",
+        ),
+        (
+            |v: &mut Value| {
+                v["semantic_graph"]["nodes"][3]["body"]["root_scale"]["denominator"] = json!("0");
+            },
+            "/semantic_graph/nodes/3",
+        ),
+        (
+            |v: &mut Value| {
+                v["semantic_graph"]["nodes"][3]["body"]["root_scale"]["denominator"] = json!("-1");
+            },
+            "/semantic_graph/nodes/3",
         ),
         (
             |v: &mut Value| {
@@ -357,7 +406,7 @@ fn malformed_equivalence_shape_refuses_at_its_node() {
 
 /// Equal or reversed pair ids and an unreduced scale are graph failures,
 /// rather than stale-key refusals from the retired content identity scheme.
-#[trace("TC-048", "FR-063-AC-4", "FR-063-AC-5")]
+#[trace("TC-048", "FR-063-AC-4", "FR-063-AC-5", "FR-063-AC-8")]
 #[test]
 fn invalid_pair_and_scale_refuse_at_equivalence_node() {
     let base = package();
@@ -387,12 +436,58 @@ fn invalid_pair_and_scale_refuse_at_equivalence_node() {
 
     let mut unreduced = base;
     unreduced["semantic_graph"]["nodes"][3]["body"]["root_scale"] =
-        json!({"numerator":"2","denominator":"2"});
+        json!({"numerator":"2000","denominator":"2"});
     expect_refusal(
         &unreduced,
         Code::InvalidSemanticGraph,
         None,
         "/semantic_graph/nodes/3",
+    );
+}
+
+/// An inconsistent ratio discovered only after traversing A-B and B-C is
+/// attributed to the closing E-AC edge, even though that edge is visited last.
+#[trace("TC-048", "FR-063-AC-9")]
+#[test]
+fn inconsistent_three_edge_ratio_cycle_refuses_at_closing_edge() {
+    let mut wire = package();
+    let source = fixture_source();
+    let alpha = dimension("A", &source);
+    let beta = dimension("B", &source);
+    let gamma = dimension("C", &source);
+    let alpha_id = alpha["node_id"].clone();
+    let beta_id = beta["node_id"].clone();
+    let gamma_id = gamma["node_id"].clone();
+    let mut nodes = vec![
+        named_equivalence("01-ab", &alpha_id, &beta_id, &source, "1", "1"),
+        named_equivalence("02-bc", &beta_id, &gamma_id, &source, "1", "1"),
+        named_equivalence("03-ac", &alpha_id, &gamma_id, &source, "999", "1"),
+        alpha,
+        beta,
+        gamma,
+    ];
+    for (ordinal, node) in nodes.iter_mut().take(3).enumerate() {
+        node["occurrences"][0]["ordinal"] = json!(ordinal);
+    }
+    wire["semantic_graph"]["nodes"] = json!(nodes);
+    wire["source_map"] = json!(nodes
+        .iter()
+        .enumerate()
+        .map(|(index, node)| json!({
+            "node_id":node["node_id"],
+            "role":node["occurrences"][0]["role"],
+            "ordinal":node["occurrences"][0]["ordinal"],
+            "regions":[{"source":source,"start":index,"end":index+1}]
+        }))
+        .collect::<Vec<_>>());
+    index_fixture_node_ids(&mut wire);
+    refresh_identity(&mut wire);
+
+    expect_refusal(
+        &wire,
+        Code::InvalidSemanticGraph,
+        None,
+        "/semantic_graph/nodes/2",
     );
 }
 

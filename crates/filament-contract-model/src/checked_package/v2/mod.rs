@@ -295,6 +295,8 @@ pub use scalar_operands::{
 };
 pub use schedulability::{
     CheckedSchedulabilityClaimRef, CheckedSchedulabilityClaimRow, CheckedSchedulabilityKind,
+    CheckedSchedulabilityModeSwitchBinding, CheckedSchedulabilityModeSwitchBindingRef,
+    CheckedSchedulabilityReleaseBinding, CheckedSchedulabilityReleaseBindingRef,
     CheckedSchedulabilityTaskRef, CheckedSchedulingPolicy, CheckedTaskArrival,
     CheckedTaskCriticality,
 };
@@ -1262,7 +1264,7 @@ pub struct CheckedPackageV2 {
     /// Original body views, moved from the charged intake table for imported joins.
     body_documents: Vec<CheckedJson>,
     kinds: Arc<Vec<CheckedNodeKind>>,
-    schedulability_claim_index: Vec<(usize, usize, bool)>,
+    schedulability_claim_index: Vec<(usize, usize, usize)>,
     monitor_plan_index: Vec<monitor_plan::Plan>,
     timed_model_roots: Vec<usize>,
     /// Admission-derived lookup; excluded from content equality.
@@ -2368,7 +2370,7 @@ fn check_package_header(
 
 struct ValidatedPackage {
     kinds: Vec<CheckedNodeKind>,
-    schedulability_claim_index: Vec<(usize, usize, bool)>,
+    schedulability_claim_index: Vec<(usize, usize, usize)>,
     monitor_plan_index: Vec<monitor_plan::Plan>,
     terms: Vec<CheckedTerm>,
     models: RetainedModels,
@@ -2382,7 +2384,7 @@ struct ValidatedGraph<'w> {
     /// every later per-row stage.
     index: GraphIndex<'w>,
     kinds: Vec<CheckedNodeKind>,
-    schedulability_claim_index: Vec<(usize, usize, bool)>,
+    schedulability_claim_index: Vec<(usize, usize, usize)>,
     monitor_plan_index: Vec<monitor_plan::Plan>,
     terms: Vec<CheckedTerm>,
     declarations: DeclarationIndex,
@@ -4678,6 +4680,10 @@ fn validate_graph<'w>(
         &index,
         structural_keys,
         models,
+        wire.schedulability_claims.as_deref(),
+        &schedulability_claim_index,
+        &owners,
+        wire.operation_bodies.as_deref(),
         meter,
     )?;
     refinement::validate_catalog_graph(
@@ -6178,12 +6184,21 @@ mod tests {
             super::CheckedSchedulabilityClaimRow {
                 declaration: declaration.clone(),
                 occurrence: 9,
-                release_backed: true,
+                task_set: "Tasks".into(),
+                release_bindings: vec![super::CheckedSchedulabilityReleaseBinding {
+                    task_name: "worker".into(),
+                    selected_model_identity: "model:one".into(),
+                    operation_declaring_identity: declaration.clone(),
+                    operation_member: "step".into(),
+                }],
+                mode_switch_bindings: Vec::new(),
             },
             super::CheckedSchedulabilityClaimRow {
                 declaration,
                 occurrence: 2,
-                release_backed: false,
+                task_set: "Tasks".into(),
+                release_bindings: Vec::new(),
+                mode_switch_bindings: Vec::new(),
             },
         ];
         for rows in [None, Some(Vec::new()), Some(rows)] {
