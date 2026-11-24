@@ -1629,11 +1629,21 @@ impl RefinementGraph<'_, '_> {
     }
 
     fn key_owner_identity(&self, key: &RefinementKey) -> Option<&str> {
-        if let RefinementKey::Local(id) = key {
-            if let Some(super::CheckedNodeOwner::Model { identity, .. }) =
-                self.local_node(id)?.owner.as_ref()
-            {
-                return Some(identity);
+        match key {
+            RefinementKey::Local(id) => {
+                if let Some(super::CheckedNodeOwner::Model { identity, .. }) =
+                    self.local_node(id)?.owner.as_ref()
+                {
+                    return Some(identity);
+                }
+            }
+            RefinementKey::External(external) => {
+                let selected = self.dependencies.selected_package(&external.package)?;
+                if let Some(super::CheckedNodeOwner::Model { identity, .. }) =
+                    selected.node(&external.node)?.owner.as_ref()
+                {
+                    return Some(identity);
+                }
             }
         }
         let owner = match key {
@@ -1873,6 +1883,42 @@ impl RefinementGraph<'_, '_> {
                 }),
         };
         if selected_identity.is_none() || self.key_owner_identity(key) != selected_identity {
+            return Err(wrong_binding(meter, at, locus));
+        }
+        Ok(())
+    }
+
+    fn require_target_type_conforms(
+        &self,
+        meter: &mut super::WorkMeter,
+        owners: &super::model_members::ModelOwners<'_>,
+        operation: &RefinementKey,
+        target_type: &RefinementKey,
+        at: Path<'_>,
+        locus: &CheckedNodeId,
+    ) -> Result<(), ValidationFailure> {
+        let Some((declaring_type, _)) = self.key_anchor(operation) else {
+            return Err(wrong_binding(meter, at, locus));
+        };
+        let target_type_id = match target_type {
+            RefinementKey::Local(id) => id,
+            RefinementKey::External(external) => &external.node,
+        };
+        let (Some(actual), Some(expected)) = (
+            owners.owner_by_key(target_type_id),
+            owners.owner_by_key(declaring_type),
+        ) else {
+            return Err(wrong_binding(meter, at, locus));
+        };
+        if !std::ptr::eq(actual.package, expected.package) {
+            return Err(wrong_binding(meter, at, locus));
+        }
+        let mut budget =
+            super::model_members::Budget::new(meter, actual.package.root, actual.package.bytes);
+        if !actual
+            .package
+            .conforms_to(actual.node, expected.node, &mut budget)?
+        {
             return Err(wrong_binding(meter, at, locus));
         }
         Ok(())
@@ -2485,6 +2531,14 @@ fn validate_rows(
                     meter,
                     target_type,
                     abstract_key,
+                    target_at.key("target_type"),
+                    locus,
+                )?;
+                graph.require_target_type_conforms(
+                    meter,
+                    owners,
+                    operation,
+                    target_type,
                     target_at.key("target_type"),
                     locus,
                 )?;
