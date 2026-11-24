@@ -105,7 +105,31 @@ relationships:
     type: references
   - target: ix://agent-ix/filament-specification/FR-322-AC-526
     type: references
+  - target: ix://agent-ix/filament-specification/FR-322-AC-527
+    type: references
+  - target: ix://agent-ix/filament-specification/FR-322-AC-528
+    type: references
+  - target: ix://agent-ix/filament-specification/FR-322-AC-529
+    type: references
+  - target: ix://agent-ix/filament-specification/FR-322-AC-530
+    type: references
+  - target: ix://agent-ix/filament-specification/FR-322-AC-531
+    type: references
+  - target: ix://agent-ix/filament-specification/FR-322-AC-532
+    type: references
+  - target: ix://agent-ix/filament-specification/FR-322-AC-533
+    type: references
+  - target: ix://agent-ix/filament-specification/FR-322-AC-534
+    type: references
+  - target: ix://agent-ix/filament-specification/FR-322-AC-535
+    type: references
+  - target: ix://agent-ix/filament-specification/FR-322-AC-536
+    type: references
+  - target: ix://agent-ix/filament-specification/FR-322-AC-537
+    type: references
   - target: ix://agent-ix/filament-specification/FR-482-AC-5
+    type: references
+  - target: ix://agent-ix/filament-specification/FR-482-AC-6
     type: references
   - target: ix://agent-ix/filament-spec-language/FR-246
     type: references
@@ -5784,8 +5808,10 @@ is an array of zero or more exact objects with fields
 `selected_model_identity`, `operation_declaring_identity` and
 `operation_member`. The first release field is an `Identifier`, the model
 identity is its nonempty selected package identity string, the operation
-declaring identity is a structural `CheckedNodeId`, and the operation member
-is an `Identifier`. Both arrays are present when empty. The graph retains the
+declaring identity is the structural `CheckedNodeId` of the exact declaring
+model node (the type owner of the operation member), and the operation member
+is a separate `Identifier`; model operations have no graph node of their own.
+Both arrays are present when empty. The graph retains the
 complete claim body once; these relation rows are scoped to the exact
 occurrence key, not the shared claim node or body.
 
@@ -5916,15 +5942,17 @@ one claim body.
 After strict claim-body and timed-model admission, the reader SHALL validate
 each release `task_name` against that claim row's admitted FR-482 task list,
 each selected model identity against the package's selected timed models,
-and each operation declaring identity/member against that selected model.
-A task name not in the claim's task list refuses
-`invalid_package`/`invalid-value` at
+and each `operation_declaring_identity` as the exact selected model node that
+declares the operation member. `operation_declaring_identity` denotes the
+declaring model node, not a synthetic operation node or operation path; the
+separate `operation_member` value is the exact member name. A task name not
+in the claim's task list refuses `invalid_package`/`invalid-value` at
 `/schedulability_claims/{i}/release_bindings/{j}/task_name`. An unselected
 model identity refuses the same code and cause at its corresponding
-`selected_model_identity`; a missing declaring identity or a member not
-declared by that identity in the model refuses at the corresponding
-`operation_declaring_identity` or `operation_member`. Each refusal exposes no
-admitted package or claim view. FSL's `TaskProductPlan` input SHALL resolve
+`selected_model_identity`; an absent or wrong declaring model node refuses at
+`operation_declaring_identity`; and a member not declared by that exact node
+refuses at `operation_member`. Each refusal exposes no admitted package or
+claim view. FSL's `TaskProductPlan` input SHALL resolve
 `claim.task_set`, then select release and mode-switch bindings by that task
 set and selected model; it SHALL bind the exact operation declaring identity
 and member, and release bindings SHALL additionally bind the task name. The
@@ -7124,12 +7152,16 @@ IR-661's planned relationship-navigation-only refusal does not reinstate AC-66.
 The timed-slot criteria FR-038-AC-335 through FR-038-AC-340 consume FSpec [FR-322](https://github.com/agent-ix/filament-specification/blob/main/spec/objects/interfaces/FR-322-checked-package-artifact.md), AC-148..150 and AC-155..157. Owner [ruling #485](https://github.com/agent-ix/filament-specification/pull/485) (`81078f14`) withdrew indexed presence (PR-02); the empty-guard-root control is GD-01 rather than withdrawn SL-08. IR #775 supplies public-reader qualification of all 19 currently published SL/SR/PR/GD cases and their earlier-stage controls.
 
 
-| FR-038-AC-618 | A default-feature producer constructs `CheckedSchedulabilityClaimRow` with exact fields `declaration`, `occurrence`, `task_set`, `release_bindings` and `mode_switch_bindings`; a release binding has exact fields `task_name`, `selected_model_identity`, `operation_declaring_identity`, `operation_member`, and a mode-switch binding has the latter three. The admitted `CheckedSchedulabilityClaimRef` exposes `task_set() -> &str`, `release_bindings() -> impl ExactSizeIterator<Item = CheckedSchedulabilityReleaseBindingRef<'_>> + '_` and `mode_switch_bindings() -> impl ExactSizeIterator<Item = CheckedSchedulabilityModeSwitchBindingRef<'_>> + '_`. The binding accessors return the exact typed values specified above; empty arrays return exact-size empty iterators. Compile controls reject public view construction and mutable fields. | Test, Inspection (TC-048) |
-| FR-038-AC-619 | For a valid claim row, a release binding whose `task_name` is absent from that claim body's tasks refuses `invalid_package`/`invalid-value` at `/schedulability_claims/{i}/release_bindings/{j}/task_name`; a `selected_model_identity` absent from the selected timed models refuses at `/schedulability_claims/{i}/release_bindings/{j}/selected_model_identity` or `/schedulability_claims/{i}/mode_switch_bindings/{j}/selected_model_identity`; an `operation_declaring_identity` absent from the named model refuses at the corresponding `/operation_declaring_identity`; and an `operation_member` not declared by that identity refuses at the corresponding `/operation_member`. Every refusal is `invalid_package`/`invalid-value`, returns no `CheckedPackageV2` and no typed claim view. | Test (TC-048; FSpec TC-976) |
-| FR-038-AC-620 | Two rows with equal `declaration` and FR-482 body but occurrences 0 and 1 retain two distinct `CheckedSchedulabilityClaimRef` values and each value's own `task_set`, `release_bindings` and `mode_switch_bindings`; typed iteration and raw-row readback preserve canonical row order and never key relations by node or body identity alone. | Test (TC-048; FSpec FR-322-AC-526) |
-| FR-038-AC-621 | Release bindings iterate in canonical ascending `(task_name, selected_model_identity, operation_declaring_identity, operation_member)` order and mode-switch bindings in canonical ascending `(selected_model_identity, operation_declaring_identity, operation_member)` order, using Unicode scalar, UTF-8 byte and structural identity comparisons as FR-038 defines. A descending release or mode-switch array refuses `invalid_package`/`invalid-value` at its first out-of-order row and exposes no package view. | Test (TC-048; FSpec TC-976) |
-| FR-038-AC-622 | Given one admitted source claim and one admitted package claim for the same checked task set and selected model, `TaskProductPlan` input uses `claim.task_set`, selects release and mode-switch bindings by that task-set identity plus selected model identity, binds each exact operation declaring identity/member, and additionally binds each release task name; the resulting ordered inputs are equal, with no raw-wire relation reconstruction. | Test (TC-048; FSL FR-246-AC-4/5, FR-075-AC-23) |
-| FR-038-AC-623 | `encode_checked_package_v2` and strict read/encode/read preserve every claim row's exact occurrence key, task-set identifier, ordered release bindings and ordered mode-switch bindings. `None` omits `schedulability_claims`; `Some(empty)` retains an empty array; a present claim row with empty relation arrays remains present. The encoder does not sort or repair supplied rows; a schema-valid but descending binding array is encoded unchanged and refused only by strict read at the specified row. | Test (TC-048; FR-051-AC-7) |
+| FR-038-AC-618 | A default-feature producer constructs `CheckedSchedulabilityClaimRow` with exact fields `declaration`, `occurrence`, `task_set`, `release_bindings` and `mode_switch_bindings`; a release binding has exact fields `task_name`, `selected_model_identity`, `operation_declaring_identity`, `operation_member`, and a mode-switch binding has the latter three. The admitted `CheckedSchedulabilityClaimRef` exposes `task_set() -> &str`, `release_bindings() -> impl ExactSizeIterator<Item = CheckedSchedulabilityReleaseBindingRef<'_>> + '_` and `mode_switch_bindings() -> impl ExactSizeIterator<Item = CheckedSchedulabilityModeSwitchBindingRef<'_>> + '_`. The binding accessors return the exact typed values specified above; empty arrays return exact-size empty iterators. Compile controls reject public view construction and mutable fields. | Test, Inspection |
+| FR-038-AC-619 | For a valid claim row, a release binding whose `task_name` is absent from that claim body's tasks refuses `invalid_package`/`invalid-value` at `/schedulability_claims/{i}/release_bindings/{j}/task_name` and returns no `CheckedPackageV2` or typed claim view. | Test |
+| FR-038-AC-620 | For a valid claim row, a release or mode-switch binding whose `selected_model_identity` is absent from the package's selected timed models refuses `invalid_package`/`invalid-value` at its exact `/selected_model_identity` field and returns no `CheckedPackageV2` or typed claim view. | Test |
+| FR-038-AC-621 | For a valid claim row, a release or mode-switch `operation_declaring_identity` that does not resolve to the exact declaring model node in the named selected model refuses `invalid_package`/`invalid-value` at its exact `/operation_declaring_identity` field. The identity is the declaring model node, never a synthetic operation node or operation path; the refusal returns no `CheckedPackageV2` or typed claim view. | Test |
+| FR-038-AC-622 | For a valid claim row, a release or mode-switch `operation_member` that is not declared by its exact `operation_declaring_identity` in the selected model refuses `invalid_package`/`invalid-value` at its exact `/operation_member` field and returns no `CheckedPackageV2` or typed claim view. | Test |
+| FR-038-AC-623 | Two rows with equal `declaration` and FR-482 body but occurrences 0 and 1 retain two distinct `CheckedSchedulabilityClaimRef` values and each value's own `task_set`, `release_bindings` and `mode_switch_bindings`; typed iteration and raw-row readback preserve canonical row order and never key relations by node or body identity alone. | Test (TC-048; FSpec FR-322-AC-537, FR-482-AC-6) |
+| FR-038-AC-624 | Release bindings iterate in canonical ascending `(task_name, selected_model_identity, operation_declaring_identity, operation_member)` order, using Unicode scalar, UTF-8 byte and structural identity comparisons as FR-038 defines. A descending release array refuses `invalid_package`/`invalid-value` at its first out-of-order row and exposes no package view. | Test (TC-048; FSpec FR-322-AC-535) |
+| FR-038-AC-625 | Mode-switch bindings iterate in canonical ascending `(selected_model_identity, operation_declaring_identity, operation_member)` order, using Unicode scalar, UTF-8 byte and structural identity comparisons as FR-038 defines. A descending mode-switch array refuses `invalid_package`/`invalid-value` at its first out-of-order row and exposes no package view. | Test (TC-048; FSpec FR-322-AC-536) |
+| FR-038-AC-626 | Given one admitted source claim and one admitted package claim for the same checked task set and selected model, `TaskProductPlan` input uses `claim.task_set`, selects release and mode-switch bindings by that task-set identity plus selected model identity, binds each exact declaring model identity/member pair, and additionally binds each release task name; the resulting ordered inputs are equal, with no raw-wire relation reconstruction. | Test (TC-048; FSpec FR-322-AC-529/530; FSL FR-246-AC-4/5, FR-075-AC-23) |
+| FR-038-AC-627 | `encode_checked_package_v2` and strict read/encode/read preserve every claim row's exact occurrence key, task-set identifier, ordered release bindings and ordered mode-switch bindings. `None` omits `schedulability_claims`; `Some(empty)` retains an empty array; a present claim row with empty relation arrays remains present. The encoder does not sort or repair supplied rows; a schema-valid but descending binding array is encoded unchanged and refused only by strict read at the specified row. | Test (TC-048; FSpec FR-322-AC-524, FR-322-AC-525, FR-322-AC-528, FR-322-AC-535, FR-322-AC-536; FR-051-AC-7) |
 
 ## Dependencies
 
