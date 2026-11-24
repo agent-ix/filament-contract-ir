@@ -2694,7 +2694,7 @@ fn model_step_targets_keep_operation_stutter_and_any_through_public_writer() {
         "receiver":{"term":"reference","target":receiver}, "arguments":[]
     });
     let dependencies = node["dependencies"].as_array_mut().expect("dependencies");
-    dependencies.extend([unresolved, receiver]);
+    dependencies.extend([unresolved, receiver.clone()]);
     dependencies.sort_by(node_id_order);
     dependencies.dedup();
     settle_refinement(&mut missing_target, position);
