@@ -16,7 +16,7 @@ fn canonical_node() -> Value {
     })
 }
 
-#[trace("FR-019-AC-30", "FR-412-AC-34")]
+#[trace("FR-019-AC-31", "FR-412-AC-34")]
 #[test]
 fn certificate_node_id_round_trips_exact_recursive_shape_and_node_key() {
     let canonical = canonical_node();
@@ -45,7 +45,7 @@ fn certificate_node_id_round_trips_exact_recursive_shape_and_node_key() {
     assert_eq!(from_key.to_node_key().unwrap(), key);
 }
 
-#[trace("FR-019-AC-30", "FR-412-AC-34")]
+#[trace("FR-019-AC-31", "FR-412-AC-34")]
 #[test]
 fn certificate_node_id_reader_refuses_malformed_exact_shape() {
     let valid = canonical_node();
@@ -79,4 +79,34 @@ fn certificate_node_id_reader_refuses_malformed_exact_shape() {
         MAX_CERTIFICATE_NODE_ORDINAL + 1,
     )
     .is_err());
+}
+
+#[trace("FR-019-AC-31", "FR-412-AC-34")]
+#[test]
+fn deeply_nested_certificate_identity_round_trips_without_a_depth_cap() {
+    const DEPTH: usize = 512;
+
+    let mut key = NodeKey::new("pkg", vec![PathSegment::Text("leaf".into())], 0).unwrap();
+    for ordinal in 1..=DEPTH as u64 {
+        key = NodeKey::new("pkg", vec![PathSegment::Node(key)], ordinal).unwrap();
+    }
+
+    let value = CertificateNodeId::from_node_key(&key).unwrap();
+    let json = serde_json::to_value(&value).unwrap();
+    let decoded: CertificateNodeId = serde_json::from_value(json).unwrap();
+    let recovered = decoded.to_node_key().unwrap();
+    assert_eq!(recovered, key);
+
+    let mut node = &decoded;
+    for expected_ordinal in (1..=DEPTH as u64).rev() {
+        assert_eq!(node.package(), "pkg");
+        assert_eq!(node.ordinal(), expected_ordinal);
+        let [Segment::Node(child)] = node.path() else {
+            panic!("each nested identity has exactly one structural child segment");
+        };
+        node = child;
+    }
+    assert_eq!(node.package(), "pkg");
+    assert_eq!(node.ordinal(), 0);
+    assert_eq!(node.path(), [Segment::Text("leaf".into())]);
 }

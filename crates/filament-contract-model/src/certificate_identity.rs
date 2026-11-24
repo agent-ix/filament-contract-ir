@@ -42,9 +42,6 @@ pub enum CertificateNodeIdError {
     /// Ordinals must be exactly representable by the schema's JSON number domain.
     #[error("certificate node identity ordinal exceeds the schema maximum")]
     OrdinalOutOfRange,
-    /// The recursive identity exceeds the supported structural depth.
-    #[error("certificate node identity exceeds the maximum depth")]
-    TooDeep,
 }
 
 #[derive(Deserialize)]
@@ -73,7 +70,7 @@ impl CertificateNodeId {
         ordinal: u64,
     ) -> Result<Self, CertificateNodeIdError> {
         let package = package.into();
-        Self::validate_shape(&package, &path, ordinal, 0)?;
+        Self::validate_shape(&package, &path, ordinal)?;
         Ok(Self {
             package,
             path,
@@ -85,11 +82,7 @@ impl CertificateNodeId {
         package: &str,
         path: &[CertificatePathSegment],
         ordinal: u64,
-        depth: usize,
     ) -> Result<(), CertificateNodeIdError> {
-        if depth > 256 {
-            return Err(CertificateNodeIdError::TooDeep);
-        }
         if package.is_empty() {
             return Err(CertificateNodeIdError::EmptyPackage);
         }
@@ -99,9 +92,26 @@ impl CertificateNodeId {
         if ordinal > MAX_CERTIFICATE_NODE_ORDINAL {
             return Err(CertificateNodeIdError::OrdinalOutOfRange);
         }
+        let mut pending = Vec::new();
         for segment in path {
             if let CertificatePathSegment::Node(node) = segment {
-                Self::validate_shape(&node.package, &node.path, node.ordinal, depth + 1)?;
+                pending.push(node.as_ref());
+            }
+        }
+        while let Some(node) = pending.pop() {
+            if node.package.is_empty() {
+                return Err(CertificateNodeIdError::EmptyPackage);
+            }
+            if node.path.is_empty() {
+                return Err(CertificateNodeIdError::EmptyPath);
+            }
+            if node.ordinal > MAX_CERTIFICATE_NODE_ORDINAL {
+                return Err(CertificateNodeIdError::OrdinalOutOfRange);
+            }
+            for segment in &node.path {
+                if let CertificatePathSegment::Node(child) = segment {
+                    pending.push(child.as_ref());
+                }
             }
         }
         Ok(())
@@ -124,28 +134,128 @@ impl CertificateNodeId {
 
     /// Copy an existing exact structural identity without changing its key.
     pub fn from_node_key(key: &NodeKey) -> Result<Self, CertificateNodeIdError> {
-        let path = key
-            .path()
-            .into_iter()
-            .map(|segment| match segment {
-                PathSegment::Text(text) => Ok(CertificatePathSegment::Text(text)),
-                PathSegment::Node(node) => Self::from_node_key(&node)
-                    .map(|node| CertificatePathSegment::Node(Box::new(node))),
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-        Self::new(key.package(), path, key.ordinal())
+        struct Frame {
+            key: NodeKey,
+            segments: Vec<PathSegment>,
+            next: usize,
+            converted: Vec<CertificatePathSegment>,
+        }
+
+        impl Frame {
+            fn new(key: NodeKey) -> Self {
+                let segments = key.path();
+                Self {
+                    key,
+                    segments,
+                    next: 0,
+                    converted: Vec::new(),
+                }
+            }
+        }
+
+        let mut frames = vec![Frame::new(key.clone())];
+        loop {
+            let finished = frames
+                .last()
+                .is_some_and(|frame| frame.next == frame.segments.len());
+            if finished {
+                let frame = frames.pop().expect("a conversion frame is present");
+                let node = Self {
+                    package: frame.key.package().to_owned(),
+                    path: frame.converted,
+                    ordinal: frame.key.ordinal(),
+                };
+                if let Some(parent) = frames.last_mut() {
+                    parent
+                        .converted
+                        .push(CertificatePathSegment::Node(Box::new(node)));
+                } else {
+                    return Ok(node);
+                }
+                continue;
+            }
+
+            enum Action {
+                Text(String),
+                Node(NodeKey),
+            }
+            let action = {
+                let frame = frames.last_mut().expect("a conversion frame is present");
+                let segment = &frame.segments[frame.next];
+                frame.next += 1;
+                match segment {
+                    PathSegment::Text(text) => Action::Text(text.clone()),
+                    PathSegment::Node(child) => Action::Node(child.clone()),
+                }
+            };
+            match action {
+                Action::Text(text) => frames
+                    .last_mut()
+                    .expect("a conversion frame is present")
+                    .converted
+                    .push(CertificatePathSegment::Text(text)),
+                Action::Node(child) => frames.push(Frame::new(child)),
+            }
+        }
     }
 
     /// Recover the exact structural key represented by this certificate identity.
     pub fn to_node_key(&self) -> Result<NodeKey, InvalidNodeKey> {
-        let path = self
-            .path
-            .iter()
-            .map(|segment| match segment {
-                CertificatePathSegment::Text(text) => Ok(PathSegment::Text(text.clone())),
-                CertificatePathSegment::Node(node) => node.to_node_key().map(PathSegment::Node),
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-        NodeKey::new(self.package.clone(), path, self.ordinal)
+        struct Frame<'a> {
+            node: &'a CertificateNodeId,
+            next: usize,
+            converted: Vec<PathSegment>,
+        }
+
+        let mut frames = vec![Frame {
+            node: self,
+            next: 0,
+            converted: Vec::new(),
+        }];
+        loop {
+            let finished = frames
+                .last()
+                .is_some_and(|frame| frame.next == frame.node.path.len());
+            if finished {
+                let frame = frames.pop().expect("a conversion frame is present");
+                let key = NodeKey::new(
+                    frame.node.package.clone(),
+                    frame.converted,
+                    frame.node.ordinal,
+                )?;
+                if let Some(parent) = frames.last_mut() {
+                    parent.converted.push(PathSegment::Node(key));
+                } else {
+                    return Ok(key);
+                }
+                continue;
+            }
+
+            enum Action<'a> {
+                Text(String),
+                Node(&'a CertificateNodeId),
+            }
+            let action = {
+                let frame = frames.last_mut().expect("a conversion frame is present");
+                let segment = &frame.node.path[frame.next];
+                frame.next += 1;
+                match segment {
+                    CertificatePathSegment::Text(text) => Action::Text(text.clone()),
+                    CertificatePathSegment::Node(child) => Action::Node(child),
+                }
+            };
+            match action {
+                Action::Text(text) => frames
+                    .last_mut()
+                    .expect("a conversion frame is present")
+                    .converted
+                    .push(PathSegment::Text(text)),
+                Action::Node(child) => frames.push(Frame {
+                    node: child,
+                    next: 0,
+                    converted: Vec::new(),
+                }),
+            }
+        }
     }
 }
