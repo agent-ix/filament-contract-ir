@@ -1653,6 +1653,10 @@ mod tests {
                     &index,
                     &[],
                     &models,
+                    None,
+                    &[],
+                    &super::super::model_members::ModelOwners::default(),
+                    None,
                     &mut meter,
                 ));
             });
