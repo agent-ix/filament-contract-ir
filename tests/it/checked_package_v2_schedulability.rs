@@ -770,7 +770,13 @@ fn authenticated_views_preserve_exact_premises_and_shared_occurrences() {
     }
 }
 
-#[trace("TC-048", "FR-038-AC-397", "FR-038-AC-399", "FR-051-AC-7")]
+#[trace(
+    "TC-048",
+    "FR-038-AC-397",
+    "FR-038-AC-399",
+    "FR-038-AC-627",
+    "FR-051-AC-7"
+)]
 #[test]
 fn absent_index_stays_absent_and_raw_rows_do_not_authenticate_claims() {
     let wire = fixtures::v2_all_families();

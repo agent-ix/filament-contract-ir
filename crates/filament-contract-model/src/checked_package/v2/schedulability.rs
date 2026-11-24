@@ -662,6 +662,7 @@ pub(super) fn validate_relations<Body>(
                 &binding.operation_declaring_identity,
                 &binding.operation_member,
                 path,
+                row_position,
                 declaration,
                 nodes,
                 kinds,
@@ -730,6 +731,7 @@ pub(super) fn validate_relations<Body>(
                 &binding.operation_declaring_identity,
                 &binding.operation_member,
                 path,
+                row_position,
                 declaration,
                 nodes,
                 kinds,
@@ -784,6 +786,7 @@ fn validate_model_binding<Body>(
     declaring_identity: &CheckedNodeId,
     operation_member: &str,
     binding_path: Path<'_>,
+    row_position: usize,
     claim_identity: &CheckedNodeId,
     nodes: &[CheckedSemanticNodeV2<Body>],
     kinds: &[CheckedNodeKind],
@@ -794,10 +797,21 @@ fn validate_model_binding<Body>(
     meter: &mut WorkMeter,
 ) -> Result<(), ValidationFailure> {
     let model_at = binding_path.key("selected_model_identity");
-    let selected_timed = !model_identity.is_empty()
-        && kinds.iter().enumerate().any(|(position, kind)| {
+    let mut selected_timed = false;
+    if !model_identity.is_empty() {
+        for (position, kind) in kinds.iter().enumerate() {
+            stage_storage::work(
+                meter,
+                &Site::new(
+                    PackageReadStage::Graph,
+                    row_position,
+                    "schedulability_claims",
+                    model_at,
+                ),
+                1,
+            )?;
             if *kind != CheckedNodeKind::TimedModel(super::TimedModelForm::Model) {
-                return false;
+                continue;
             }
             let root = &nodes[position];
             let target_identity = terms
@@ -811,12 +825,18 @@ fn validate_model_binding<Body>(
                 .and_then(|target| nodes.get(*target))
                 .and_then(|target| target.owner.as_ref())
                 .and_then(owner_identity);
-            root.owner
+            if root
+                .owner
                 .as_ref()
                 .and_then(owner_identity)
                 .is_some_and(|identity| identity == model_identity)
                 || target_identity.is_some_and(|identity| identity == model_identity)
-        });
+            {
+                selected_timed = true;
+                break;
+            }
+        }
+    }
     if !selected_timed {
         return Err(invalid(
             if model_identity.is_empty() {
@@ -852,14 +872,30 @@ fn validate_model_binding<Body>(
                 if identity.as_ref() == model_identity
         )
     });
-    let operation_declared_by_source = source_declaring_owner
-        && operation_bodies.is_some_and(|rows| {
-            rows.iter().any(|row| {
-                row.document.as_ref() == model_identity
+    let mut operation_declared_by_source = false;
+    if source_declaring_owner {
+        if let Some(rows) = operation_bodies {
+            for row in rows {
+                stage_storage::work(
+                    meter,
+                    &Site::new(
+                        PackageReadStage::Graph,
+                        row_position,
+                        "schedulability_claims",
+                        operation_at,
+                    ),
+                    1,
+                )?;
+                if row.document.as_ref() == model_identity
                     && row.declaring == *declaring_identity
                     && row.operation.as_ref() == operation_member
-            })
-        });
+                {
+                    operation_declared_by_source = true;
+                    break;
+                }
+            }
+        }
+    }
     if model_node.is_none() || (operation_declared_by_model.is_none() && !source_declaring_owner) {
         return Err(invalid(
             Code::InvalidPackage,
@@ -1608,6 +1644,102 @@ mod tests {
                 "malformed schedulability relation row is rejected"
             );
         }
+    }
+
+    /// Every candidate timed-model node and each source operation row checked
+    /// for one relation consumes caller work, and the final source-row check
+    /// refuses at that relation's operation-member locus when one unit short.
+    #[trace("TC-472", "FR-038-AC-504", "FR-038-AC-618")]
+    #[test]
+    fn model_binding_candidate_scans_are_charged_to_the_relation() {
+        let model_identity = "model:fixture";
+        let nodes = ['a', 'b', 'c', 'd'].map(|name| CheckedSemanticNodeV2 {
+            node_id: super::super::test_support::node_id(name),
+            schema_version: "filament.checked-semantic-graph/v2".into(),
+            node_tag: "timed_model".into(),
+            semantic_form: "timed_model".into(),
+            semantic_type: super::super::test_support::node_id('e'),
+            dependencies: Vec::new(),
+            occurrences: Vec::new(),
+            recursion_group: None,
+            declaration: None,
+            owner: Some(super::super::CheckedNodeOwner::Source {
+                authority: "fixture".into(),
+                identity: if name == 'd' {
+                    model_identity.into()
+                } else {
+                    "model:other".into()
+                },
+            }),
+            owner_model: None,
+            check_mode: None,
+            body: (),
+        });
+        let node_id = nodes[3].node_id.clone();
+        let kinds = [CheckedNodeKind::TimedModel(super::super::TimedModelForm::Model); 4];
+        let terms = [None, None, None, None];
+        let mut index_meter = WorkMeter::new(u64::MAX);
+        let index = GraphIndex::build(nodes.iter().map(|node| &node.node_id), &mut index_meter)
+            .expect("the one-node index builds");
+        let operation_bodies = [
+            super::super::OperationBodyRow {
+                document: model_identity.into(),
+                declaring: node_id.clone(),
+                operation: "other_a".into(),
+                body: super::super::OperationBody::NoBody,
+            },
+            super::super::OperationBodyRow {
+                document: model_identity.into(),
+                declaring: node_id.clone(),
+                operation: "other_b".into(),
+                body: super::super::OperationBody::NoBody,
+            },
+        ];
+        let binding_path = Path::root()
+            .key("schedulability_claims")
+            .index(4)
+            .key("release_bindings")
+            .index(2);
+        let claim = super::super::test_support::node_id('c');
+        let run = |work_limit| {
+            let mut budget = NativeJoinBudget::new(work_limit, 0).with_read_storage_limit(u64::MAX);
+            let result = {
+                let mut meter = WorkMeter::over(&mut budget);
+                validate_model_binding(
+                    model_identity,
+                    &node_id,
+                    "step",
+                    binding_path,
+                    4,
+                    &claim,
+                    &nodes,
+                    &kinds,
+                    &terms,
+                    &index,
+                    &super::super::model_members::ModelOwners::default(),
+                    Some(&operation_bodies),
+                    &mut meter,
+                )
+            };
+            (result, budget)
+        };
+
+        let (complete, measured) = run(6);
+        assert!(matches!(complete, Err(ValidationFailure::Refused(_))));
+        assert_eq!(measured.consumed().work, 6);
+        assert_eq!(measured.first_unpaid_locus(), None);
+
+        let (one_short, denied) = run(5);
+        assert!(matches!(one_short, Err(ValidationFailure::Budget(_))));
+        assert_eq!(denied.consumed().work, 5);
+        let locus = denied
+            .first_unpaid_locus()
+            .expect("the scan charge is refused");
+        assert_eq!(
+            locus.source,
+            super::super::NativeJoinLocusSource::PackageRead(PackageReadStage::Graph, 4)
+        );
+        assert_eq!(locus.form, "schedulability_claims");
     }
 
     /// The model table is one charged exact block the table keeps without
