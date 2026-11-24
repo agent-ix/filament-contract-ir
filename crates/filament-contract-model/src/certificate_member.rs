@@ -129,8 +129,14 @@ mod tests {
     #[test]
     fn candidate_blocks_is_a_member_after_abstract_states() {
         let names: Vec<&str> = CertificateMember::ALL.iter().map(|m| m.as_str()).collect();
-        let at = names.iter().position(|n| *n == "abstract_states").expect("abstract_states");
-        assert_eq!(CertificateMember::CandidateBlocks.as_str(), "candidate_blocks");
+        let at = names
+            .iter()
+            .position(|n| *n == "abstract_states")
+            .expect("abstract_states");
+        assert_eq!(
+            CertificateMember::CandidateBlocks.as_str(),
+            "candidate_blocks"
+        );
         assert_eq!(names[at + 1], "candidate_blocks");
     }
 
