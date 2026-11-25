@@ -46,6 +46,7 @@ use crate::checked_package::shared::{
     CheckedNodePathSegment, CheckedPackageRefusalCause, CheckedPackageRefusalCode, JsonPointer,
 };
 use filament_exact::{Integer, TextProfile};
+use ix_trace_rs::implements;
 use serde::Deserialize;
 use std::rc::Rc;
 
@@ -3639,6 +3640,7 @@ impl EventReach {
 /// captures and protocol binder slots are not read. When `projects_event`, the
 /// application is an event field projection ([`is_event_field_projection`]),
 /// whose first operand [`check_event_field_projection`] checks instead.
+#[implements("FR-038-AC-633", "FR-038-AC-642")]
 fn check_event_operands(
     application: Application<'_>,
     entry: &OperationCatalogEntry,
@@ -3705,6 +3707,7 @@ fn check_event_operands(
 /// whose `field` member's `declaration` names that same node and whose
 /// `result_type` reaches no event type. It is the one operation admitted over
 /// an event value.
+#[implements("FR-038-AC-640", "FR-038-AC-641")]
 fn is_event_field_projection(
     application: Application<'_>,
     operation: &OperationWire,
@@ -6859,6 +6862,7 @@ fn check_model_member(
 /// type's exposed effective fields, and the application's `result_type` is the
 /// node of the field's member type. The projection reads the declaring type
 /// itself, so no operand conformance is left to check.
+#[implements("FR-038-AC-640", "FR-038-AC-641")]
 fn check_event_field_projection(
     application: Application<'_>,
     operation: &OperationWire,

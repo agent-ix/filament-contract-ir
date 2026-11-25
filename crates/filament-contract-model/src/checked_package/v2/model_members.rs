@@ -56,6 +56,7 @@ use crate::checked_package::shared::{
     CheckedNodeId, CheckedNodePathSegment, CheckedPackageRefusalCause, CheckedPackageRefusalCode,
     JsonPointer,
 };
+use ix_trace_rs::implements;
 use ix_trace_rs::string_edge;
 use serde::Deserialize;
 
@@ -2318,6 +2319,7 @@ impl DomainModel {
     /// built at admission, one work unit per exposed or hidden entry of that
     /// table; an operation walks the ancestors, and every ancestor edge, member
     /// and redefinition pair visited is one work unit.
+    #[implements("FR-038-AC-640")]
     pub(super) fn resolve(
         &self,
         node: &str,
@@ -3586,6 +3588,7 @@ impl<'m> ModelOwners<'m> {
     /// recovers an event type's declaration: the selected package and event
     /// type that `node`'s `ModelOwner` names. Event types hold no row, so
     /// [`Self::recover`] and every key lookup leave an event type unmatched.
+    #[implements("FR-038-AC-640")]
     pub(super) fn recover_event_type<Body: EmptyAggregateBody>(
         &self,
         node: &CheckedSemanticNodeV2<Body>,
@@ -6072,6 +6075,7 @@ impl References<'_> {
     /// A supertype names a type of the document of the declaring type's own
     /// family: a record value type, a process, a state machine, an event type
     /// or, for every other declaration, a nominal object.
+    #[implements("FR-038-AC-643")]
     fn check_supertype(
         &self,
         supertype: &str,
@@ -6549,6 +6553,7 @@ fn operation_frame(
 /// when there is none.
 // Reads a selected domain package document's supertype references.
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
+#[implements("FR-038-AC-643")]
 fn semantic_ir_object_type<'v>(
     value: View<'v>,
     node: &str,
