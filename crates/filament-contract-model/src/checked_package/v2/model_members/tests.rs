@@ -1310,10 +1310,10 @@ fn tc_048_a_selection_admits_only_the_document_it_names() {
 const ZETA: &str = "ix://acme/orders/Zeta";
 const BAD_ID: &str = "ix://acme/orders/sys.pump";
 
-/// FSpec FR-154-AC-8: an object id outside `^[A-Za-z][A-Za-z0-9_-]*$` (hyphens
-/// are admitted, so `sys.pump` is refused) is refused; a reference to that node is not
-/// reported again as `missing-name`; the refused node's own refusal stands,
-/// whether the referencing node is read before or after it.
+/// FSpec FR-154-AC-8: an artifact id outside `^[A-Za-z][A-Za-z0-9_-]*$` is
+/// refused (hyphens are admitted; the `.` in `sys.pump` is not); a reference to
+/// that node is not reported again as `missing-name`; the refused node's own
+/// refusal stands, whether the referencing node is read before or after it.
 #[trace("TC-048", "FR-038-AC-28")]
 #[test]
 fn tc_048_a_reference_to_a_refused_node_leaves_that_nodes_own_refusal() {
