@@ -3,6 +3,7 @@
 use super::read_charge::{self, Site};
 use super::{CheckedPackageV2, NativeJoinBudget, PackageReadStage};
 use crate::checked_package::common::ValidationFailure;
+use ix_trace_rs::implements;
 use std::sync::Arc;
 
 /// The packages reachable through a package's direct dependencies, one per
@@ -42,6 +43,7 @@ impl ClosureIndex {
     /// value. Two indexes over one shared block agree without comparing an
     /// entry. Otherwise `charge` is called before each pair of entries is
     /// compared, and the first unequal pair ends the comparison.
+    #[implements("FR-038-AC-293")]
     pub(super) fn agrees_with(
         &self,
         other: &Self,
