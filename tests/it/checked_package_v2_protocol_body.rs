@@ -3,6 +3,7 @@
 
 //! Public reader checks for the first protocol validation passes.
 
+use crate::checked_package_v2_dependency_selections::dependency_selection_inputs::dependency_selection_package;
 use crate::checked_package_v2_whole_read_accounting::fspec_inputs;
 use crate::support::checked_package::protocol_ports::role_port_fixture;
 use crate::support::checked_package::{
@@ -12,7 +13,7 @@ use crate::support::checked_package::{
     read_with_dependencies, reassign_node_id, rebuild_source_map, refresh_identity,
     refresh_identity_projection, refusal, refusal_at_id, rename_node, resolved_fixture_id,
     select_model, selected_interface_model_node, settle, source_owner, structural_fixture_id,
-    structural_id, structural_key, v2_all_families, v2_nominal, wire_form, COMPLETE_VALUE_FEATURE,
+    structural_id, structural_key, v2_all_families, wire_form, COMPLETE_VALUE_FEATURE,
 };
 use filament_contract_model::{
     CheckedNodeId, CheckedNodePathSegment, CheckedPackageEvidence, CheckedPackageLimit,
@@ -3435,7 +3436,8 @@ fn protocol_owner_declaration_only_path_refuses() {
 #[trace("TC-048", "FR-038-AC-629")]
 #[test]
 fn protocol_owner_dependency_position_operand_refuses() {
-    let (name, dependency) = admitted_dependency(&v2_nominal());
+    let (name, dependency) =
+        admitted_dependency(&dependency_selection_package("test/owner-library"));
     let mut package = admitted_object_owned_protocol_families();
     package["lock"]["dependency_selections"] = json!([{"identity": name}]);
     settle_after_structural_rekey(&mut package);

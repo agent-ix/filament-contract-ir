@@ -2669,6 +2669,104 @@ fn contract_reader_refuses_unequal_complete_values_in_dependency_diamond() {
         refusal.loci[1].path.as_ref().map(|path| path.as_str()),
         Some("/package/source/lock/dependency_selections/1/lock/dependency_selections/0")
     );
+
+    // Equal complete values through the diamond admit.
+    let equal_right = intermediary("lib/right", &first_leaf);
+    let mut agreeing = ContractDependencies::new();
+    for (identity, package) in [("lib/left", &left), ("lib/right", &equal_right)] {
+        agreeing.insert(identity, ContractDependencyInput { identity, package });
+    }
+    let result =
+        ContractPackageWireV1::read(&bytes, CheckedPackageReadLimits::bounded(), &agreeing);
+    assert!(
+        matches!(result, ContractPackageReadResult::Admitted(_)),
+        "{result:?}"
+    );
+}
+
+/// The ContractPackage reader derives the same closure as the V2 reader, so it
+/// refuses a source package whose dependency closure holds its own name,
+/// directly or through a library, after it has checked supply.
+#[trace("TC-047", "FR-035-AC-18")]
+#[test]
+fn contract_reader_refuses_a_dependency_closure_holding_its_own_name() {
+    use crate::support::checked_package::read_with_dependencies;
+    use filament_contract_model::ContractDependencyInput;
+
+    let output = lower(&mixed_fixture(), &request());
+    let wire: Value = serde_json::from_slice(bytes(&output)).expect("wire json");
+    let name = mixed_fixture()["name"]
+        .as_str()
+        .expect("fixture name")
+        .to_owned();
+    assert_eq!(wire["package"]["source"]["name"], json!(name));
+
+    // Another value under the source package's own name, and a library that
+    // selects it.
+    let mut namesake_wire = mixed_fixture();
+    namesake_wire["source_map"][0]["regions"][0]["end"] = json!(2);
+    let namesake = admit(&namesake_wire);
+    let mut library_wire = mixed_fixture();
+    library_wire["name"] = json!("lib/middle");
+    library_wire["lock"]["dependency_selections"] = json!([{"identity": name}]);
+    refresh_identity(&mut library_wire);
+    let CheckedPackageV2ReadResult::Admitted(library) =
+        read_with_dependencies(&library_wire, &[(name.as_str(), &namesake)])
+    else {
+        panic!("the library admits on its own read");
+    };
+
+    for (identity, package, path) in [
+        (
+            name.as_str(),
+            &namesake,
+            "/package/source/lock/dependency_selections/0",
+        ),
+        (
+            "lib/middle",
+            library.as_ref(),
+            "/package/source/lock/dependency_selections/0/lock/dependency_selections/0",
+        ),
+    ] {
+        let mut selecting = wire.clone();
+        selecting["package"]["source"]["lock"]["dependency_selections"] =
+            json!([{"identity": identity}]);
+        let mut supplied = ContractDependencies::new();
+        supplied.insert(identity, ContractDependencyInput { identity, package });
+        let result = ContractPackageWireV1::read(
+            &canonical(&selecting),
+            CheckedPackageReadLimits::bounded(),
+            &supplied,
+        );
+        let ContractPackageReadResult::Refused(refusal) = result else {
+            panic!("a closure holding the source package's name through {path} must refuse");
+        };
+        assert_eq!(refusal.code, Code::InvalidPackage, "{refusal:?}");
+        assert_eq!(refusal.cause, Some(Cause::DefinitionCycle), "{refusal:?}");
+        let loci: Vec<_> = refusal
+            .loci
+            .iter()
+            .map(|locus| locus.path.as_ref().map(|path| path.as_str()))
+            .collect();
+        assert_eq!(loci, [Some(path)], "{refusal:?}");
+    }
+
+    let mut unsupplied = wire.clone();
+    unsupplied["package"]["source"]["lock"]["dependency_selections"] = json!([{"identity": name}]);
+    let result = ContractPackageWireV1::read(
+        &canonical(&unsupplied),
+        CheckedPackageReadLimits::bounded(),
+        &ContractDependencies::new(),
+    );
+    let ContractPackageReadResult::Refused(refusal) = result else {
+        panic!("an unsupplied selection must refuse");
+    };
+    assert_eq!(refusal.code, Code::MissingImport, "{refusal:?}");
+    assert_eq!(refusal.cause, Some(Cause::MissingSelection), "{refusal:?}");
+    assert_eq!(
+        refusal.loci[0].path.as_ref().map(|path| path.as_str()),
+        Some("/package/source/lock/dependency_selections/0")
+    );
 }
 
 #[trace("TC-047", "FR-035-AC-2")]

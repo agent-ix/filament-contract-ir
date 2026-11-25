@@ -5,8 +5,8 @@
 
 use crate::support::checked_package::{
     admitted_dependency, canonical, evidence_for, family_key, fixture_source, node_id,
-    protocol_role_node, read_with_dependencies, rebuild_source_map, refresh_identity, settle,
-    source_owner, v2_all_families,
+    protocol_role_node, read_with_dependencies, rebuild_source_map, refresh_identity,
+    refresh_temporal_bindings, settle, source_owner, v2_all_families,
 };
 use filament_contract_model::{
     CheckedNodeKind, CheckedPackageReadLimits, CheckedPackageRefusalCause,
@@ -48,6 +48,28 @@ fn expect_refusal(
         Some(locus.clone()),
         "{refusal:?}"
     );
+}
+
+/// Renames the fixture package in every node id but a model declaration's,
+/// whose package is the selected domain package.
+fn rename_checked_nodes(value: &mut Value, name: &str) {
+    match value {
+        Value::Array(items) => items
+            .iter_mut()
+            .for_each(|item| rename_checked_nodes(item, name)),
+        Value::Object(members) => {
+            let model = members.get("path").is_some_and(|path| path[0] == "model");
+            if let Some(package) = members.get_mut("package") {
+                if !model && package == "test/families" {
+                    *package = json!(name);
+                }
+            }
+            members
+                .values_mut()
+                .for_each(|item| rename_checked_nodes(item, name));
+        }
+        _ => {}
+    }
 }
 
 fn carrier(target: &Value, semantic_type: &Value) -> Value {
@@ -213,8 +235,13 @@ fn protocol_reference_joins_only_the_local_typed_protocol_target() {
     );
 
     let mut dependency_document = v2_all_families();
-    let selected_target = role_target(&mut dependency_document);
+    let mut selected_target = role_target(&mut dependency_document);
+    for value in [&mut dependency_document, &mut selected_target] {
+        rename_checked_nodes(value, "test/owner-library");
+    }
+    dependency_document["name"] = json!("test/owner-library");
     rebuild_source_map(&mut dependency_document);
+    refresh_temporal_bindings(&mut dependency_document);
     refresh_identity(&mut dependency_document);
     let (dependency_name, admitted) = admitted_dependency(&dependency_document);
     let mut selected_only = base.clone();
