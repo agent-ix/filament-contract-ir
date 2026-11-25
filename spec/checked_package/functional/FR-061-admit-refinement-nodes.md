@@ -66,9 +66,9 @@ The row entries SHALL match FSpec's closed `RefinementPopulationEntry`,
 population keys. An object entry pairs abstract and concrete type keys and
 sorted `{name, expression}` field rows. A step entry holds `source_class`,
 `source_node` exactly when that class has a declaration node, and one of
-four targets: `operation` with operation key, receiver and arguments;
-`protocol_step` with class, optional node according to the class and
-arguments; `stutter`; or `any`. The exact `{term: "open"}` value is admitted
+four targets: `operation` with operation key, `target_type`, receiver and
+arguments; `protocol_step` with class, optional node according to the class
+and arguments; `stutter`; or `any`. The exact `{term: "open"}` value is admitted
 only as a step argument for `_`, not as a general semantic term. A history
 entry holds a concrete type, field name, field type, a literal or local
 history-literal reference as `initial`, and ordered operation/expression

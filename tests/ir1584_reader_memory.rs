@@ -17,9 +17,11 @@
 //! active, through the native budget observer.
 
 #[path = "it/support/mod.rs"]
+#[allow(dead_code)] // This binary uses only some of the shared support helpers.
 mod support;
 
 #[path = "it/support/fspec_read_proof.rs"]
+#[allow(dead_code)] // This binary uses only some of the shared read-proof helpers.
 mod fspec_read_proof;
 use fspec_read_proof::read_and_account;
 
