@@ -12,8 +12,9 @@
 //! cycle's members share one `recursion_group`.
 
 use crate::support::checked_package::{
-    canonical, evidence_for, node_id, nominal_package, pointer, reassign_node_ids, refusal,
-    refusal_at, settle, ExpectedRefusal, BOOLEAN_KEY, INTEGER_KEY,
+    canonical, evidence_for, fixture_source, node_id, nominal_package, owned_structural_node,
+    pointer, reassign_node_ids, refusal, refusal_at, settle, source_owner, ExpectedRefusal,
+    BOOLEAN_KEY, INTEGER_KEY,
 };
 use filament_contract_model::{
     CheckedNodeId, CheckedNodePathSegment, CheckedNodeTag, CheckedPackageLimit,
@@ -32,6 +33,7 @@ fn key(name: &str) -> String {
     match name {
         "integer" => INTEGER_KEY.to_owned(),
         "boolean" => BOOLEAN_KEY.to_owned(),
+        "deposited" => "qualified:Example/Deposited".to_owned(),
         _ => format!("recursive/{name}"),
     }
 }
@@ -1991,4 +1993,74 @@ fn tc_048_a_cycle_of_twenty_thousand_records_is_decided_on_a_small_stack() {
         })
         .expect("spawn the 256 KiB reader thread");
     assert_eq!(reader.join().expect("the reader did not overflow"), Ok(()));
+}
+
+/// A source-declared event type node.
+fn deposited() -> Typed {
+    let (id, mut event) = node(
+        "deposited",
+        "model",
+        "event_type",
+        "deposited",
+        [] as [&str; 0],
+        "declaration",
+        empty(),
+    );
+    event["declaration"] = json!({"qualified_name": ["Example", "Deposited"]});
+    (
+        id,
+        owned_structural_node(event, source_owner(&fixture_source())),
+    )
+}
+
+/// The walk for an event type ends on `Node`, which reaches itself: a package
+/// declaring an event type still admits equality over it, and refuses it once
+/// `Node` also holds that event type.
+#[trace("TC-048", "FR-038-AC-634", "FR-038-AC-635")]
+#[test]
+fn tc_048_the_event_type_walk_ends_on_a_recursive_compared_type() {
+    let [some, payload] = some_segments();
+    let leaves = vec![
+        text_leaf(&[field("label")]),
+        recursion_leaf(&[field("next"), some, payload, "recursion:0".into()]),
+    ];
+    let limits = CheckedPackageReadLimits::bounded();
+
+    let mut apart = node_types();
+    apart.push(deposited());
+    let (package, _) = equality_package(apart, "node", leaves.clone());
+    let outcome = read(&package, limits);
+    assert!(
+        matches!(outcome, CheckedPackageV2ReadResult::Admitted(_)),
+        "a recursive record holding no event: {outcome:?}"
+    );
+
+    let holding = vec![
+        in_group(record(
+            "node",
+            &[
+                ("label", "nfc"),
+                ("next", "node_next"),
+                ("placed", "deposited"),
+            ],
+        )),
+        in_group(some_of("node_next", "node")),
+        deposited(),
+    ];
+    let (package, application) = equality_package(holding, "node", leaves);
+    let position = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .position(|node| node["node_tag"] == "expression")
+        .expect("application");
+    assert_eq!(
+        read(&package, limits),
+        refusal_at(
+            CheckedPackageRefusalCode::IllTyped,
+            &format!("/semantic_graph/nodes/{position}/body/arguments/0"),
+            Some(CheckedPackageRefusalCause::OperatorIneligible),
+            &application,
+        )
+    );
 }

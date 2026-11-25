@@ -422,6 +422,7 @@ pub(super) fn validate_operations(
         }
     }
     let binder_reads = BinderReads::new(&graph, meter)?;
+    let mut events = EventReach::new(&graph, owners);
     // Select the first defect of this whole step by rebuilt structural key.
     // Comparing only defective entries keeps a valid deep chain linear in
     // its shared-key depth. An incomplete read cannot establish a first
@@ -470,6 +471,7 @@ pub(super) fn validate_operations(
                     binder_reads: Some(&binder_reads),
                     opaque_law_definitions: order.opaque_law_definitions,
                 },
+                &mut events,
                 meter,
                 &mut admitted_views,
             )? {
@@ -2162,6 +2164,7 @@ fn check_type_argument_alias(
     Ok(Some(failure))
 }
 
+#[allow(clippy::too_many_arguments)] // The event walk marks outlive each application.
 #[ix_trace_rs::string_edge]
 fn operation_defect(
     application: Application<'_>,
@@ -2170,6 +2173,7 @@ fn operation_defect(
     owners: &ModelOwners<'_>,
     references: DependencyReferences<'_>,
     resolution: OperationResolution<'_>,
+    events: &mut EventReach,
     meter: &mut WorkMeter,
     admitted_views: &mut Vec<(usize, CheckedOperationViews)>,
 ) -> Result<Option<ValidationFailure>, ValidationFailure> {
@@ -2530,7 +2534,7 @@ fn operation_defect(
             CheckedPackageRefusalCause::OperatorIneligible,
         )));
     }
-    if let Some(failure) = check_event_parameter_operands(application, entry, graph, meter)? {
+    if let Some(failure) = check_event_operands(application, entry, graph, owners, events, meter)? {
         return Ok(Some(failure));
     }
     let place_presence = check_place_presence(application, &operation, graph, owners, meter)?;
@@ -3394,17 +3398,190 @@ fn check_carried_member(
 /// FR-370).
 const TEMPORAL_ACTIVATION_OPERAND: usize = 2;
 
-/// FR-038: no operation over a parameter typed by an event type is admitted,
-/// whether an argument references it or a `binder` operand holds that
-/// reference in its bound value or body. An event type has no operand family,
-/// so the operand checks would skip such an operand. A temporal clause's first
-/// operand names its `over` parameter and reads no value; the `guard` in its
-/// activation is read as a binder body is. Triggers, captures and protocol
-/// binder slots are not read.
-fn check_event_parameter_operands(
+/// Which type nodes of one package graph reach an event type, with the walk
+/// marks one read shares across its applications.
+#[derive(Default)]
+struct EventReach {
+    /// Whether the graph or a selected domain package declares an event type.
+    /// With none, no type reaches one and nothing is walked.
+    declared: bool,
+    /// Per node position, whether a walk has expanded the type there and found
+    /// no event type under it, so no later walk expands it again. Empty until
+    /// a walk first expands a type.
+    eventless: Vec<bool>,
+}
+
+impl EventReach {
+    fn new(graph: &Graph<'_>, owners: &ModelOwners<'_>) -> Self {
+        Self {
+            declared: graph
+                .kinds
+                .contains(&CheckedNodeKind::Model(ModelForm::EventType))
+                || owners.selects_events(),
+            eventless: Vec::new(),
+        }
+    }
+
+    /// Whether `term` is a `reference` or a `literal` whose operand type node
+    /// reaches an event type: it is a `model`/`event_type` node, or a value of
+    /// it can hold an event value at any depth. A structural composite holds
+    /// the types its body references, an alias or bounded domain its
+    /// `semantic_type`, and a model record, tuple or variant what its selected
+    /// declaration holds. A `composite_type`/`reference` value and an object
+    /// hold an identity, never an event value. The walk keeps its own
+    /// worklist and expands each type node once, so a recursive type ends it.
+    fn term_reaches_event(
+        &mut self,
+        application: Application<'_>,
+        term: &CheckedTerm,
+        graph: &Graph<'_>,
+        owners: &ModelOwners<'_>,
+        meter: &mut WorkMeter,
+    ) -> Result<bool, ValidationFailure> {
+        if !self.declared {
+            return Ok(false);
+        }
+        let Some(root) = operand_type_node_typed(term, graph.nodes, graph.kinds, graph.index)
+            .and_then(|type_id| graph.index.get(type_id).copied())
+        else {
+            return Ok(false);
+        };
+        let mut expanded = Vec::new();
+        let reaches = self.walk(application, root, &mut expanded, graph, owners, meter)?;
+        if reaches {
+            // Some of these may lie on the way to the event type.
+            for position in expanded {
+                if let Some(mark) = self.eventless.get_mut(position) {
+                    *mark = false;
+                }
+            }
+        }
+        Ok(reaches)
+    }
+
+    /// The walk of [`Self::term_reaches_event`] from the type at `root`,
+    /// listing in `expanded` each position it marks.
+    fn walk(
+        &mut self,
+        application: Application<'_>,
+        root: usize,
+        expanded: &mut Vec<usize>,
+        graph: &Graph<'_>,
+        owners: &ModelOwners<'_>,
+        meter: &mut WorkMeter,
+    ) -> Result<bool, ValidationFailure> {
+        let mut pending: Vec<usize> = Vec::new();
+        let mut members: Vec<&CheckedTerm> = Vec::new();
+        let mut next = Some(root);
+        while let Some(position) = next {
+            let (Some(node), Some(&kind)) = (graph.nodes.get(position), graph.kinds.get(position))
+            else {
+                next = pending.pop();
+                continue;
+            };
+            match kind {
+                CheckedNodeKind::Model(ModelForm::EventType) => return Ok(true),
+                CheckedNodeKind::Model(
+                    ModelForm::RecordValueType | ModelForm::TupleValueType | ModelForm::VariantType,
+                ) => {
+                    let first = self.expand(application, position, expanded, graph, meter)?;
+                    if first && owners.holds_event(&node.node_id, meter)? {
+                        return Ok(true);
+                    }
+                }
+                CheckedNodeKind::CompositeType(CompositeTypeForm::Alias)
+                | CheckedNodeKind::BoundedDomain(_) => {
+                    let first = self.expand(application, position, expanded, graph, meter)?;
+                    if first {
+                        if let Some(&inner) = graph.index.get(&node.semantic_type) {
+                            meter.push(&mut pending, inner)?;
+                        }
+                    }
+                }
+                CheckedNodeKind::CompositeType(
+                    CompositeTypeForm::Option
+                    | CompositeTypeForm::Sequence
+                    | CompositeTypeForm::Set
+                    | CompositeTypeForm::Bag
+                    | CompositeTypeForm::OrderedSet
+                    | CompositeTypeForm::Map
+                    | CompositeTypeForm::Record
+                    | CompositeTypeForm::Tuple
+                    | CompositeTypeForm::Union,
+                ) => {
+                    let first = self.expand(application, position, expanded, graph, meter)?;
+                    if first {
+                        if let Some(body) = graph.terms.get(position).and_then(Option::as_ref) {
+                            meter.push(&mut members, body)?;
+                        }
+                        while let Some(term) = members.pop() {
+                            work_at_path(meter, &application.read_node().key("node_id"), 1)?;
+                            match term {
+                                CheckedTerm::Reference { target } => {
+                                    if let Some(&held) = graph.index.get(target) {
+                                        meter.push(&mut pending, held)?;
+                                    }
+                                }
+                                CheckedTerm::Binding { value, .. } => {
+                                    meter.push(&mut members, value.as_ref())?;
+                                }
+                                CheckedTerm::Aggregate { members: inner, .. } => {
+                                    for member in inner {
+                                        meter.push(&mut members, member)?;
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
+            next = pending.pop();
+        }
+        Ok(false)
+    }
+
+    /// Marks and charges the type at `position`; `false` when it is marked
+    /// already.
+    fn expand(
+        &mut self,
+        application: Application<'_>,
+        position: usize,
+        expanded: &mut Vec<usize>,
+        graph: &Graph<'_>,
+        meter: &mut WorkMeter,
+    ) -> Result<bool, ValidationFailure> {
+        if self.eventless.is_empty() {
+            self.eventless = meter.filled(graph.nodes.len(), false)?;
+        }
+        match self.eventless.get_mut(position) {
+            Some(mark) if !*mark => *mark = true,
+            _ => return Ok(false),
+        }
+        work_at_path(meter, &application.read_node().key("node_id"), 1)?;
+        meter.push(expanded, position)?;
+        Ok(true)
+    }
+}
+
+/// The `filament.op.temporal.clause` operand holding its activation (FSpec
+/// FR-370).
+const TEMPORAL_ACTIVATION_OPERAND: usize = 2;
+
+/// FR-038: no operation over a value whose type reaches an event type is
+/// admitted, whether an argument is such a value ([`EventReach`]) or a
+/// `binder` operand holds one in its bound value or body. An event type has no
+/// operand family, so the operand checks would skip such an operand. A
+/// temporal clause's first operand names its `over` parameter and reads no
+/// value; the `guard` in its activation is read as a binder body is. Triggers,
+/// captures and protocol binder slots are not read.
+fn check_event_operands(
     application: Application<'_>,
     entry: &OperationCatalogEntry,
     graph: &Graph<'_>,
+    owners: &ModelOwners<'_>,
+    events: &mut EventReach,
     meter: &mut WorkMeter,
 ) -> Result<Option<ValidationFailure>, ValidationFailure> {
     let Some(arguments) = admitted_arguments(application, graph) else {
@@ -3422,15 +3599,29 @@ fn check_event_parameter_operands(
             .or(entry.rest.as_ref())
             .is_some_and(|operand| operand.class == FamilyClass::Binder);
         let reads_event = match argument {
-            CheckedTerm::Binding { value, .. } if binder => {
-                bound_value_reads_event_parameter(application, entry.operator, value, graph, meter)?
-            }
+            CheckedTerm::Binding { value, .. } if binder => bound_value_reads_event(
+                application,
+                entry.operator,
+                value,
+                graph,
+                owners,
+                events,
+                meter,
+            )?,
             CheckedTerm::Aggregate { members, .. }
                 if reads_over && position == TEMPORAL_ACTIVATION_OPERAND =>
             {
-                guard_reads_event_parameter(application, entry.operator, members, graph, meter)?
+                guard_reads_event(
+                    application,
+                    entry.operator,
+                    members,
+                    graph,
+                    owners,
+                    events,
+                    meter,
+                )?
             }
-            _ => is_event_parameter_reference(argument, graph),
+            _ => events.term_reaches_event(application, argument, graph, owners, meter)?,
         };
         if reads_event {
             return Ok(Some(application.refuse(
@@ -3443,34 +3634,17 @@ fn check_event_parameter_operands(
     Ok(None)
 }
 
-/// Whether `term` is a `reference` to a `value`/`parameter` node typed by an
-/// event type node.
-fn is_event_parameter_reference(term: &CheckedTerm, graph: &Graph<'_>) -> bool {
-    let CheckedTerm::Reference { target } = term else {
-        return false;
-    };
-    let position = |id: &CheckedNodeId| graph.index.get(id).copied();
-    let Some(parameter) = position(target) else {
-        return false;
-    };
-    graph.kinds.get(parameter) == Some(&CheckedNodeKind::Value(ValueForm::Parameter))
-        && graph
-            .nodes
-            .get(parameter)
-            .and_then(|node| position(&node.semantic_type))
-            .and_then(|type_node| graph.kinds.get(type_node))
-            == Some(&CheckedNodeKind::Model(ModelForm::EventType))
-}
-
-/// Whether a temporal clause's activation holds a `guard` binding that reads
-/// an event-typed parameter. The activation's trigger names its binder and is
-/// not read.
+/// Whether a temporal clause's activation holds a `guard` binding that reads a
+/// value whose type reaches an event type. The activation's trigger names its
+/// binder and is not read.
 #[ix_trace_rs::string_edge]
-fn guard_reads_event_parameter(
+fn guard_reads_event(
     application: Application<'_>,
     operator: ApplicationOperator,
     activation: &[CheckedTerm],
     graph: &Graph<'_>,
+    owners: &ModelOwners<'_>,
+    events: &mut EventReach,
     meter: &mut WorkMeter,
 ) -> Result<bool, ValidationFailure> {
     for member in activation {
@@ -3478,7 +3652,7 @@ fn guard_reads_event_parameter(
             continue;
         };
         if name.as_ref() == "guard"
-            && bound_value_reads_event_parameter(application, operator, value, graph, meter)?
+            && bound_value_reads_event(application, operator, value, graph, owners, events, meter)?
         {
             return Ok(true);
         }
@@ -3487,14 +3661,16 @@ fn guard_reads_event_parameter(
 }
 
 /// Whether a binder operand's bound value or body, or an activation guard,
-/// holds a reference to an event-typed parameter, at any depth of `binding` and
-/// `aggregate` terms. A `case` arm is its binder slots and then its body; the
-/// slots declare binders and are not read.
-fn bound_value_reads_event_parameter(
+/// holds a `reference` or `literal` whose type reaches an event type, at any
+/// depth of `binding` and `aggregate` terms. A `case` arm is its binder slots
+/// and then its body; the slots declare binders and are not read.
+fn bound_value_reads_event(
     application: Application<'_>,
     operator: ApplicationOperator,
     value: &CheckedTerm,
     graph: &Graph<'_>,
+    owners: &ModelOwners<'_>,
+    events: &mut EventReach,
     meter: &mut WorkMeter,
 ) -> Result<bool, ValidationFailure> {
     let mut next = Some(match value {
@@ -3524,8 +3700,11 @@ fn bound_value_reads_event_parameter(
                     continue;
                 }
             }
-            _ if is_event_parameter_reference(term, graph) => return Ok(true),
-            _ => {}
+            _ => {
+                if events.term_reaches_event(application, term, graph, owners, meter)? {
+                    return Ok(true);
+                }
+            }
         }
         next = pending.pop();
     }
@@ -9306,6 +9485,7 @@ mod tests {
                 binder_reads: None,
                 opaque_law_definitions: false,
             },
+            &mut super::EventReach::default(),
             &mut meter,
             &mut Vec::new(),
         )
@@ -9353,6 +9533,7 @@ mod tests {
                 binder_reads: None,
                 opaque_law_definitions: false,
             },
+            &mut super::EventReach::default(),
             &mut WorkMeter::new(1_000),
             &mut Vec::new(),
         );
@@ -9476,6 +9657,7 @@ mod tests {
                 binder_reads: None,
                 opaque_law_definitions,
             },
+            &mut super::EventReach::default(),
             &mut meter,
             &mut Vec::new(),
         );
@@ -13398,6 +13580,7 @@ mod tests {
                 binder_reads: None,
                 opaque_law_definitions: false,
             },
+            &mut super::EventReach::default(),
             &mut meter,
             &mut Vec::new(),
         );

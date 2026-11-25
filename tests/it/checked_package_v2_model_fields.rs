@@ -10221,6 +10221,19 @@ fn event_package_edited(
     applications: &[Applied],
     edit: impl FnOnce(&mut Vec<Value>),
 ) -> (Value, CheckedPackageEvidence) {
+    event_package_selecting(Vec::new(), &[], parameters, applications, edit)
+}
+
+/// [`event_package_edited`], whose domain package also declares the types
+/// `added`, with a model declaration node for each of `declared`
+/// (`(short name, form)`).
+fn event_package_selecting(
+    added: Vec<Value>,
+    declared: &[(&str, &str)],
+    parameters: &[(&str, Ty)],
+    applications: &[Applied],
+    edit: impl FnOnce(&mut Vec<Value>),
+) -> (Value, CheckedPackageEvidence) {
     let mut event = typed_object(
         "OrderPlaced",
         "event",
@@ -10240,6 +10253,10 @@ fn event_package_edited(
             "kind": {"module": IDENTITY, "name": "record"},
             "construct": {"meaning": "filament.meaning.model.record-value-type/v1"},
         }));
+    selected["types"]
+        .as_array_mut()
+        .expect("declared types")
+        .extend(added);
 
     let mut nodes = BTreeMap::new();
     let integer = type_nodes(&Ty::Integer, &mut nodes);
@@ -10289,7 +10306,10 @@ fn event_package_edited(
         ("OrderPlaced", "event_type"),
         ("Money", "record_value_type"),
         ("Order", OBJECT),
-    ] {
+    ]
+    .into_iter()
+    .chain(declared.iter().copied())
+    {
         let key = declaration_key(short, form);
         let mut node = wire_node(&key, "model", form, &key, &[], empty());
         node["owner"] = json!({"kind": "model", "identity": IDENTITY, "node": orders(short)});
@@ -10408,7 +10428,7 @@ fn tc_048_an_operation_over_an_event_typed_parameter_is_ineligible() {
                 result: Ty::Boolean,
                 operands: vec![0, 1],
             },
-            1,
+            0,
         ),
         (
             "model.deref",
@@ -10459,7 +10479,7 @@ fn bound_as(name: &str, value: Value) -> Value {
 #[test]
 fn tc_048_a_binder_operand_holding_an_event_typed_parameter_is_ineligible() {
     const UNION: &str = "qualified:Shape";
-    let events = Ty::Collection(Kind::Set, Box::new(event_type()), None);
+    let flags = Ty::Collection(Kind::Set, Box::new(Ty::Boolean), None);
     let applied = |operator: &'static str, identity: &'static str, operands: Vec<usize>| Applied {
         operator,
         identity,
@@ -10482,14 +10502,14 @@ fn tc_048_a_binder_operand_holding_an_event_typed_parameter_is_ineligible() {
         ),
         (
             "collection.forall body",
-            vec![("all", events.clone()), ("each", event_type())],
+            vec![("all", flags.clone()), ("each", event_type())],
             applied("quantify", "filament.op.collection.forall", vec![0, 1]),
             1,
         ),
         (
             "collection.fold step",
             vec![
-                ("all", events),
+                ("all", flags),
                 ("each", event_type()),
                 ("seed", Ty::Boolean),
             ],
@@ -10576,5 +10596,317 @@ fn tc_048_a_binder_operand_holding_an_event_typed_parameter_is_ineligible() {
             Some(format!("/semantic_graph/nodes/{position}/body/arguments/{argument}").as_str()),
             "{case}"
         );
+    }
+}
+
+/// The application of `identity`, a binary comparison of the parameters at
+/// `operands`.
+fn comparing(identity: &'static str, operands: [usize; 2]) -> Applied {
+    Applied {
+        operator: "binary",
+        identity,
+        member: None,
+        result: Ty::Boolean,
+        operands: operands.to_vec(),
+    }
+}
+
+/// Asserts the read refuses `ill_typed`/`operator-ineligible` at argument
+/// `argument` of the package's application node number `application`.
+fn assert_ineligible_operand(
+    case: &str,
+    (package, evidence): &(Value, CheckedPackageEvidence),
+    application: usize,
+    argument: usize,
+) {
+    let position = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .enumerate()
+        .filter(|(_, node)| node["node_tag"] == "expression")
+        .map(|(position, _)| position)
+        .nth(application)
+        .expect("application node");
+    let CheckedPackageV2ReadResult::Refused(refusal) =
+        read_with(package, evidence, CheckedPackageReadLimits::bounded())
+    else {
+        panic!("{case} must refuse");
+    };
+    assert_eq!(refusal.code, CheckedPackageRefusalCode::IllTyped, "{case}");
+    assert_eq!(
+        refusal.cause,
+        Some(CheckedPackageRefusalCause::OperatorIneligible),
+        "{case}"
+    );
+    assert_eq!(
+        refusal.loci[0].path.as_ref().map(|path| path.as_str()),
+        Some(format!("/semantic_graph/nodes/{position}/body/arguments/{argument}").as_str()),
+        "{case}"
+    );
+}
+
+#[trace("TC-048", "FR-038-AC-634")]
+#[test]
+fn tc_048_an_operand_whose_type_holds_event_elements_is_ineligible() {
+    let optional = || Ty::Option(Box::new(event_type()));
+    let collected = |kind, bounds| Ty::Collection(kind, Box::new(event_type()), bounds);
+    let types = [
+        ("Option", optional()),
+        ("Set", collected(Kind::Set, None)),
+        ("Sequence", collected(Kind::Sequence, None)),
+        ("Bag", collected(Kind::Bag, None)),
+        ("OrderedSet", collected(Kind::OrderedSet, None)),
+        ("bounded Sequence", collected(Kind::Sequence, Some((0, 4)))),
+        (
+            "Option<Set>",
+            Ty::Option(Box::new(collected(Kind::Set, None))),
+        ),
+    ];
+    for (shape, ty) in types {
+        for identity in ["filament.op.structural.eq", "filament.op.structural.ne"] {
+            let built = event_package(
+                &[("left", ty.clone()), ("right", ty.clone())],
+                &[comparing(identity, [0, 1])],
+            );
+            let case = format!("{identity} over {shape} of OrderPlaced");
+            assert_ineligible_operand(&case, &built, 0, 0);
+        }
+    }
+
+    let second = event_package(
+        &[
+            ("flag", Ty::Option(Box::new(Ty::Boolean))),
+            ("held", optional()),
+        ],
+        &[comparing("filament.op.structural.eq", [0, 1])],
+    );
+    assert_ineligible_operand("an event type in the second operand only", &second, 0, 1);
+
+    let unwrapped = event_package(
+        &[("held", optional())],
+        &[Applied {
+            operator: "value",
+            identity: "filament.op.option.value",
+            member: None,
+            result: event_type(),
+            operands: vec![0],
+        }],
+    );
+    assert_ineligible_operand("option.value of Option<OrderPlaced>", &unwrapped, 0, 0);
+
+    // The clean first application is walked first or last; only the second
+    // application holds an event.
+    let beside = event_package(
+        &[
+            (
+                "paid",
+                Ty::Record(declaration_key("Money", "record_value_type")),
+            ),
+            ("held", optional()),
+        ],
+        &[
+            comparing("filament.op.structural.eq", [0, 0]),
+            comparing("filament.op.structural.eq", [1, 1]),
+        ],
+    );
+    assert_ineligible_operand("an eligible application beside", &beside, 1, 0);
+}
+
+#[trace("TC-048", "FR-038-AC-634")]
+#[test]
+fn tc_048_an_operand_composite_holding_an_event_type_is_ineligible() {
+    const HOLDER: &str = "qualified:Holder";
+    let event = declaration_key("OrderPlaced", "event_type");
+    let optional = || Ty::Option(Box::new(event_type()));
+    let option_key = type_nodes(&optional(), &mut BTreeMap::new());
+    let equal = || comparing("filament.op.structural.eq", [0, 0]);
+    let projected = Applied {
+        operator: "query",
+        identity: "filament.op.record.project",
+        member: Some((HOLDER.to_owned(), "placed")),
+        result: event_type(),
+        operands: vec![0],
+    };
+    let record = || {
+        (
+            "record",
+            event.clone(),
+            json!({"term": "aggregate", "members": [bound_as("placed", reference(&event))]}),
+        )
+    };
+    let cases = [
+        ("structural.eq over a record field", record(), equal()),
+        ("record.project of a record field", record(), projected),
+        (
+            "structural.eq over a tuple position",
+            (
+                "tuple",
+                option_key.clone(),
+                json!({"term": "aggregate", "members": [reference(&option_key)]}),
+            ),
+            equal(),
+        ),
+        (
+            "structural.eq over a union payload",
+            (
+                "union",
+                option_key.clone(),
+                json!({"term": "aggregate", "members": [bound_as(
+                    "Only",
+                    json!({"term": "aggregate", "members": [reference(&option_key)]}),
+                )]}),
+            ),
+            equal(),
+        ),
+    ];
+    for (case, (form, held, body), application) in cases {
+        // The unused parameter puts the `Option<OrderPlaced>` node in the graph.
+        let built = event_package_edited(
+            &[
+                ("holder", Ty::Record(HOLDER.to_owned())),
+                ("unused", optional()),
+            ],
+            &[application],
+            |nodes| {
+                let mut node = wire_node(HOLDER, "composite_type", form, HOLDER, &[&held], body);
+                node["occurrences"] = json!([{"role": "declaration", "ordinal": 0}]);
+                node["declaration"] = json!({"qualified_name": ["Holder"]});
+                nodes.push(owned_structural_node(node, source_owner(&fixture_source())));
+            },
+        );
+        assert_ineligible_operand(case, &built, 0, 0);
+    }
+
+    let alias = "composite_type/alias/held";
+    let built = event_package_edited(
+        &[
+            ("aliased", Ty::Record(alias.to_owned())),
+            ("unused", optional()),
+        ],
+        &[equal()],
+        |nodes| {
+            nodes.push(wire_node(
+                alias,
+                "composite_type",
+                "alias",
+                &option_key,
+                &[&option_key],
+                empty(),
+            ));
+        },
+    );
+    assert_ineligible_operand("structural.eq over an alias", &built, 0, 0);
+}
+
+#[trace("TC-048", "FR-038-AC-634")]
+#[test]
+fn tc_048_a_model_record_holding_an_event_sequence_is_an_ineligible_operand() {
+    let ledger = || Ty::Record(declaration_key("Ledger", "record_value_type"));
+    for (case, ty) in [
+        ("a model record", ledger()),
+        ("an optional model record", Ty::Option(Box::new(ledger()))),
+    ] {
+        let built = event_package_selecting(
+            vec![
+                json!({"identity": orders("EventSeq"), "kind": "sequence",
+                    "items": orders("OrderPlaced")}),
+                typed_object(
+                    "Ledger",
+                    "record",
+                    &[],
+                    &[field("entries", &orders("EventSeq"))],
+                ),
+            ],
+            &[("Ledger", "record_value_type")],
+            &[("ledger", ty)],
+            &[comparing("filament.op.structural.eq", [0, 0])],
+            |_| {},
+        );
+        assert_ineligible_operand(case, &built, 0, 0);
+    }
+}
+
+#[trace("TC-048", "FR-038-AC-634")]
+#[test]
+fn tc_048_a_literal_or_declaration_operand_reaching_an_event_type_is_ineligible() {
+    let optional = || Ty::Option(Box::new(event_type()));
+    let option_key = type_nodes(&optional(), &mut BTreeMap::new());
+    let none = json!({"term": "literal", "type": node_id(&option_key),
+        "value_kind": "none", "value": null});
+    let declared = reference(&declaration_key("OrderPlaced", "event_type"));
+    for (case, operand) in [
+        ("a none literal of Option<OrderPlaced>", none),
+        ("the event declaration", declared),
+    ] {
+        let built = event_package_edited(
+            &[("held", optional())],
+            &[comparing("filament.op.structural.eq", [0, 0])],
+            |nodes| {
+                let application = nodes
+                    .iter_mut()
+                    .find(|node| node["node_tag"] == "expression")
+                    .expect("application node");
+                application["body"]["arguments"] = json!([operand.clone(), operand]);
+            },
+        );
+        assert_ineligible_operand(case, &built, 0, 0);
+    }
+}
+
+#[trace("TC-048", "FR-038-AC-634")]
+#[test]
+fn tc_048_a_binder_operand_reading_a_composite_of_events_is_ineligible() {
+    let built = event_package_edited(
+        &[
+            (
+                "all",
+                Ty::Collection(Kind::Set, Box::new(Ty::Boolean), None),
+            ),
+            ("held", Ty::Option(Box::new(event_type()))),
+        ],
+        &[Applied {
+            operator: "quantify",
+            identity: "filament.op.collection.forall",
+            member: None,
+            result: Ty::Boolean,
+            operands: vec![0, 1],
+        }],
+        |nodes| {
+            let application = nodes
+                .iter_mut()
+                .find(|node| node["node_tag"] == "expression")
+                .expect("application node");
+            let read = application["body"]["arguments"][1].take();
+            application["body"]["arguments"][1] = bound_as("each", read);
+        },
+    );
+    assert_ineligible_operand("a forall body reading Option<OrderPlaced>", &built, 0, 1);
+}
+
+#[trace("TC-048", "TC-281", "FR-038-AC-635")]
+#[test]
+fn tc_281_equality_over_a_type_reaching_no_event_type_stays_admitted() {
+    let money = || Ty::Record(declaration_key("Money", "record_value_type"));
+    let types = [
+        ("Money", money()),
+        ("Option<Money>", Ty::Option(Box::new(money()))),
+        ("Option<Boolean>", Ty::Option(Box::new(Ty::Boolean))),
+        (
+            "Set<Integer>",
+            Ty::Collection(Kind::Set, Box::new(Ty::Integer), None),
+        ),
+    ];
+    for (shape, ty) in types {
+        for identity in ["filament.op.structural.eq", "filament.op.structural.ne"] {
+            let (package, evidence) = event_package(
+                &[("left", ty.clone()), ("right", ty.clone())],
+                &[comparing(identity, [0, 1])],
+            );
+            match read_with(&package, &evidence, CheckedPackageReadLimits::bounded()) {
+                CheckedPackageV2ReadResult::Admitted(_) => {}
+                other => panic!("{identity} over {shape} must admit: {other:?}"),
+            }
+        }
     }
 }
