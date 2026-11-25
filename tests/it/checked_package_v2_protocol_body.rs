@@ -6,11 +6,12 @@
 use crate::support::checked_package::protocol_ports::role_port_fixture;
 use crate::support::checked_package::{
     admitted_protocol_families, application_node_key, canonical, evidence_for,
-    evidence_with_document, family_key, family_model_document, fixture_source, node_id,
-    owned_structural_node, protocol_named_node, protocol_role_node, reassign_node_id,
+    evidence_with_document, family_key, family_model_document, fixture_source, model_owner,
+    node_id, owned_structural_node, protocol_named_node, protocol_role_node, reassign_node_id,
     rebuild_source_map, refresh_identity, refresh_identity_projection, refusal, refusal_at_id,
-    rename_node, select_model, selected_interface_model_node, settle, source_owner,
-    structural_fixture_id, structural_id, structural_key, v2_all_families, COMPLETE_VALUE_FEATURE,
+    rename_node, resolved_fixture_id, select_model, selected_interface_model_node, settle,
+    source_owner, structural_fixture_id, structural_id, structural_key, v2_all_families,
+    COMPLETE_VALUE_FEATURE,
 };
 use filament_contract_model::{
     CheckedNodeId, CheckedPackageEvidence, CheckedPackageLimit, CheckedPackageReadLimits,
@@ -2138,8 +2139,13 @@ fn protocol_capture_admits_population_query_in_the_protocol_state() {
         .find(|node| node["node_tag"] == "model" && node["semantic_form"] == "object_type")
         .expect("object type")["node_id"]
         .clone();
+    let object_position = node_position_for_key(&package, &object);
     retarget_parameter_to_object_reference(&mut owned, &over);
     let owned_clause = clause_position(&owned);
+    owned["semantic_graph"]["nodes"][owned_clause]["node_id"]["path"]
+        .as_array_mut()
+        .expect("protocol clause path")
+        .push(json!({"node": object_position}));
     owned["semantic_graph"]["nodes"][owned_clause]["owner_model"] = object.clone();
     owned["semantic_graph"]["nodes"][owned_clause]["dependencies"]
         .as_array_mut()
@@ -2267,7 +2273,12 @@ fn protocol_capture_reads_population_when_owned_by_another_selected_model() {
         }));
     let over_position = node_position_for_key(&package, &over);
     package["semantic_graph"]["nodes"][over_position]["semantic_type"] = reference;
+    let other_object_position = node_position_for_key(&package, &other_object);
     package["semantic_graph"]["nodes"][clause]["owner_model"] = other_object.clone();
+    package["semantic_graph"]["nodes"][clause]["node_id"]["path"]
+        .as_array_mut()
+        .expect("protocol clause path")
+        .push(json!({"node": other_object_position}));
     package["semantic_graph"]["nodes"][clause]["dependencies"]
         .as_array_mut()
         .expect("clause dependencies")
@@ -3101,6 +3112,7 @@ pub(super) fn admitted_object_owned_protocol_families() -> Value {
         .find(|node| node["node_tag"] == "model" && node["semantic_form"] == "object_type")
         .expect("object type")["node_id"]
         .clone();
+    let object_position = node_position_for_key(&package, &object);
     let reference_body = json!({"term": "aggregate", "members": [
         {"term": "reference", "target": object}
     ]});
@@ -3124,6 +3136,10 @@ pub(super) fn admitted_object_owned_protocol_families() -> Value {
     package["semantic_graph"]["nodes"][over_position]["dependencies"] = json!([]);
     let over_key = node_id("fixture/protocol-body/object-over-parameter");
     reassign_node_id(&mut package, &over, &over_key);
+    package["semantic_graph"]["nodes"][clause]["node_id"]["path"]
+        .as_array_mut()
+        .expect("protocol clause path")
+        .push(json!({"node": object_position}));
     package["semantic_graph"]["nodes"][clause]["owner_model"] = object.clone();
     let dependencies = package["semantic_graph"]["nodes"][clause]["dependencies"]
         .as_array_mut()
@@ -3206,6 +3222,138 @@ fn protocol_owner_edge_has_closed_wire_presence_and_local_shape() {
     assert_eq!(
         refusal.loci[0].path.as_ref().map(|p| p.as_str()),
         Some(format!("/semantic_graph/nodes/{position}/owner_model").as_str())
+    );
+}
+
+/// Trace: FR-038-AC-629
+#[trace("FR-038-AC-629")]
+#[test]
+fn protocol_owner_retarget_with_stale_key_path_refuses_and_updated_path_admits() {
+    const OTHER_MODEL: &str = "ix://test/families/Other";
+
+    let mut package = admitted_object_owned_protocol_families();
+    let mut model_document = family_model_document();
+    model_document["types"]
+        .as_array_mut()
+        .expect("model types")
+        .push(json!({
+            "identity": OTHER_MODEL,
+            "displayName": "Other",
+            "kind": {"module": "test/families", "name": "entity"},
+            "roles": [], "constraints": [], "extensions": [], "unknownPolicy": "reject",
+            "supertypes": [], "fields": [], "operations": [],
+        }));
+
+    let other_id = json!({
+        "package": "test/families",
+        "path": ["model", "object_type", OTHER_MODEL],
+        "ordinal": 0,
+    });
+    let other_position = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .len();
+    package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .push(json!({
+            "node_id": other_id,
+            "schema_version": "filament.checked-semantic-graph/v2",
+            "node_tag": "model",
+            "semantic_form": "object_type",
+            "semantic_type": other_id,
+            "dependencies": [],
+            "occurrences": [{"role": "generated", "ordinal": 0}],
+            "owner": model_owner("test/families", OTHER_MODEL),
+            "body": {"term": "aggregate", "members": []},
+        }));
+    settle(&mut package);
+
+    let evidence = evidence_with_document(&package, "test/families", &model_document);
+    let baseline = read_with_model(&package, &evidence);
+    assert!(
+        matches!(baseline, CheckedPackageV2ReadResult::Admitted(_)),
+        "the original owner and matching path admit before mutation: {baseline:?}"
+    );
+
+    let clause = clause_position(&package);
+    let original_owner = package["semantic_graph"]["nodes"][clause]["owner_model"].clone();
+    let original_owner_position = node_position_for_key(&package, &original_owner);
+    assert_eq!(
+        package["semantic_graph"]["nodes"][clause]["node_id"]["path"]
+            .as_array()
+            .and_then(|path| path.last()),
+        Some(&json!({"node": original_owner_position})),
+        "settle preserves the clause owner's graph-index path segment"
+    );
+    let resolved_clause = resolved_fixture_id(
+        &package["semantic_graph"]["nodes"][clause]["node_id"],
+        package["semantic_graph"]["nodes"]
+            .as_array()
+            .expect("nodes"),
+    );
+    let resolved_owner_segment = filament_contract_model::CheckedNodePathSegment::Node(
+        std::sync::Arc::new(structural_fixture_id(&original_owner)),
+    );
+    assert_eq!(
+        resolved_clause.path.last(),
+        Some(&resolved_owner_segment),
+        "the clause's resolved Index segment names the owner's structural key"
+    );
+    let mut stale = package.clone();
+    stale["semantic_graph"]["nodes"][clause]["owner_model"] = other_id.clone();
+    let dependencies = stale["semantic_graph"]["nodes"][clause]["dependencies"]
+        .as_array_mut()
+        .expect("dependencies");
+    dependencies.retain(|dependency| dependency != &original_owner);
+    dependencies.push(other_id.clone());
+    dependencies.sort_by_key(checked_node_id);
+    settle(&mut stale);
+
+    let CheckedPackageV2ReadResult::Refused(refusal) = read_with_model(&stale, &evidence) else {
+        panic!("retargeting the owner and dependency but keeping the old path must refuse");
+    };
+    assert_eq!(
+        refusal.code,
+        CheckedPackageRefusalCode::InvalidPackage,
+        "{refusal:?}"
+    );
+    assert_eq!(
+        refusal.cause,
+        Some(CheckedPackageRefusalCause::StaleNodeKey),
+        "{refusal:?}"
+    );
+    assert_eq!(
+        serde_json::to_value(refusal.cause).expect("cause tag serializes"),
+        json!("stale-node-key")
+    );
+    assert_eq!(
+        refusal.loci[0].path.as_ref().map(|path| path.as_str()),
+        Some(format!("/semantic_graph/nodes/{clause}/owner_model").as_str()),
+        "{refusal:?}"
+    );
+    let clause_key = checked_node_id(&stale["semantic_graph"]["nodes"][clause]["node_id"]);
+    assert_eq!(refusal.locus.as_ref(), Some(&clause_key), "{refusal:?}");
+
+    let mut updated = package;
+    updated["semantic_graph"]["nodes"][clause]["owner_model"] = other_id.clone();
+    let dependencies = updated["semantic_graph"]["nodes"][clause]["dependencies"]
+        .as_array_mut()
+        .expect("dependencies");
+    dependencies.retain(|dependency| dependency != &original_owner);
+    dependencies.push(other_id);
+    dependencies.sort_by_key(checked_node_id);
+    updated["semantic_graph"]["nodes"][clause]["node_id"]["path"]
+        .as_array_mut()
+        .expect("owner operand path")
+        .last_mut()
+        .expect("owner operand segment")
+        .clone_from(&json!({"node": other_position}));
+    settle(&mut updated);
+    let updated_result = read_with_model(&updated, &evidence);
+    assert!(
+        matches!(updated_result, CheckedPackageV2ReadResult::Admitted(_)),
+        "updating the owner operand segment to the new owner admits: {updated_result:?}"
     );
 }
 
@@ -3521,6 +3669,11 @@ fn protocol_owner_requirement_follows_indirect_object_over_types() {
         ));
         reassign_node_id(&mut package, &over, &typed_over);
         package["semantic_graph"]["nodes"][clause]["owner_model"] = object_type.clone();
+        let object_type_position = node_position_for_key(&package, &object_type);
+        package["semantic_graph"]["nodes"][clause]["node_id"]["path"]
+            .as_array_mut()
+            .expect("protocol clause path")
+            .push(json!({"node": object_type_position}));
         let finish = protocol_position(&package, "obligation");
         package["semantic_graph"]["nodes"][finish]["body"]["arguments"][1]["value"] = json!({
             "term": "literal", "type": node_id(&family_key("aaaa")),
@@ -3551,6 +3704,13 @@ fn protocol_owner_requirement_follows_indirect_object_over_types() {
                 "body": {"term": "aggregate", "members": []}
             }));
         package["semantic_graph"]["nodes"][clause]["owner_model"] = other_id.clone();
+        let other_position = node_position_for_key(&package, &other_id);
+        package["semantic_graph"]["nodes"][clause]["node_id"]["path"]
+            .as_array_mut()
+            .expect("protocol clause path")
+            .last_mut()
+            .expect("owner operand segment")
+            .clone_from(&json!({"node": other_position}));
         package["semantic_graph"]["nodes"][clause]["dependencies"]
             .as_array_mut()
             .expect("dependencies")

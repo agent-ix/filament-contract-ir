@@ -926,6 +926,11 @@ pub fn refresh_identity_projection(package: &mut Value) {
         .iter()
         .filter_map(|node| {
             let old = node["node_id"].clone();
+            let protocol_owner_path = node["node_tag"] == "protocol"
+                && node["semantic_form"] == "protocol_clause"
+                && node
+                    .get("owner_model")
+                    .is_some_and(|owner| !owner.is_null());
             let (owner_package, path) = match node["owner"]["kind"].as_str() {
                 Some("model_root") => (
                     node["owner"]["identity"]
@@ -939,10 +944,14 @@ pub fn refresh_identity_projection(package: &mut Value) {
                 ),
                 _ => (
                     package_name.as_str(),
-                    node.get("declaration").map_or_else(
-                        || old["path"].clone(),
-                        |declaration| declaration["qualified_name"].clone(),
-                    ),
+                    if protocol_owner_path {
+                        old["path"].clone()
+                    } else {
+                        node.get("declaration").map_or_else(
+                            || old["path"].clone(),
+                            |declaration| declaration["qualified_name"].clone(),
+                        )
+                    },
                 ),
             };
             let fresh = json!({"package": owner_package, "path": path, "ordinal": old["ordinal"]});
