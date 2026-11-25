@@ -36,3 +36,13 @@ This planless, repository-driven audit used the computed trace matrix and checke
 - Stub scan: 0 explicit source candidates for `todo!`, `unimplemented!`, `TODO:`, or `not implemented`; 1 tiny source candidate (`checked_package/v2/raw_body.rs`, 2 lines) was inspected and is an inert, undeclared module doc stating that carriers are implemented in `model_members`, not executable behavior. No confirmed source stub. The test tree has 238 test-path candidates and 14 `#[ignore]` annotations; changed-feature assertions were inspected, but the full test tree was not exhaustively adjudicated for hollow assertions, so confirmed test-stub count is 0 and unclassified count remains undetermined. No whole-tree stub PASS is claimed.
 - `quoin matrix` and `quire trace --file` exited 0 and emitted pre-existing symbol-id-collision diagnostics in unrelated checked-package files. No diagnostics pointed to the two changed validators.
 - Semantic review: skipped; it was not requested.
+
+## Dispositions
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-001 | deferred | The 122 untagged criteria are repository-wide and outside this location-scan PR's two production files; this docs-only follow-up adds no code or test changes that affect them. They remain a repository assurance follow-up, not a blocker for this PR's scoped behavior. |
+| FND-002 | deferred | FR-028-AC-4 concerns optional/dev/historical dependency isolation and its ignored build-lane test, unrelated to the location-row scan. No changed file or behavior in this PR can resolve it; it remains a repository assurance follow-up. |
+| FND-003 | deferred | The 411 untracked symbol records are repository-wide, and the reported external FSpec ids require owner classification unrelated to the location-row scan. This docs-only follow-up does not alter those traces; they remain a repository assurance follow-up. |
+
+Disposition pass 1 reviewed PR #1186 at `5082ad46448ee1d22e056cd7e6b95f722a98c33c`. Since the originally reviewed code head `5128e8c1dcac06ead600dd063b7ce93ab32d4f99`, only the two review artifacts were added. The matrix findings are deferred as repository-wide issues outside the location-scan diff; they do not block this PR's scoped code change. The code-review artifact has only its no-findings placeholder and is not dispositioned.
