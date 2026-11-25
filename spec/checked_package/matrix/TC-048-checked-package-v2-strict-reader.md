@@ -2431,7 +2431,11 @@ cause and pointer of FR-038-AC-641: the field name, the `result_type`, an added
 `read_form`, the `declaration` and the operand. Include the supertype, a second
 event type and a model record value type as the wrong declarations, and an event
 field typed by a record value type that holds an event through a domain package
-sequence beside a sibling field that holds none.
+sequence beside a sibling field that holds none. Then name the `Tick` node as
+`declaration` in a projection over a model record parameter, and in the
+`operation` member of a `filament.op.model.dispatch_call` over a `Reference`
+receiver of an object type, and require `missing_declaration`/`missing-selection`
+at each member's `declaration`.
 
 For FR-038-AC-642, place a reference to a projection node in each of the five
 positions it names and require admission, then replace that reference with one
