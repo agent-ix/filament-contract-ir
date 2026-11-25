@@ -10246,13 +10246,19 @@ fn event_package_selecting(
         typed_object("Money", "record", &[], &[]),
         object("Order", &[], &[]),
     ]);
-    selected["constructs"]
-        .as_array_mut()
-        .expect("construct catalog")
-        .push(json!({
-            "kind": {"module": IDENTITY, "name": "record"},
-            "construct": {"meaning": "filament.meaning.model.record-value-type/v1"},
-        }));
+    for (name, meaning) in [
+        ("record", "filament.meaning.model.record-value-type/v1"),
+        ("tuple", "filament.meaning.model.tuple-value-type/v1"),
+        ("variant", "filament.meaning.model.variant-type/v1"),
+    ] {
+        selected["constructs"]
+            .as_array_mut()
+            .expect("construct catalog")
+            .push(json!({
+                "kind": {"module": IDENTITY, "name": name},
+                "construct": {"meaning": meaning},
+            }));
+    }
     selected["types"]
         .as_array_mut()
         .expect("declared types")
@@ -10908,5 +10914,126 @@ fn tc_281_equality_over_a_type_reaching_no_event_type_stays_admitted() {
                 other => panic!("{identity} over {shape} must admit: {other:?}"),
             }
         }
+    }
+}
+
+#[trace("TC-048", "FR-038-AC-634")]
+#[test]
+fn tc_048_an_event_reached_through_domain_declarations_is_an_ineligible_operand() {
+    // Every route ends at this sequence: model intake refuses a field, tuple
+    // position, variant payload or option that names the event type itself.
+    let events = || {
+        json!({"identity": orders("EventSeq"), "kind": "sequence",
+            "items": orders("OrderPlaced")})
+    };
+    let entries = || {
+        typed_object(
+            "Entries",
+            "record",
+            &[],
+            &[field("entries", &orders("EventSeq"))],
+        )
+    };
+    let ledger = |type_ref: &str| typed_object("Ledger", "record", &[], &[field("held", type_ref)]);
+    let pair = orders("Pair");
+    let choice = orders("Choice");
+    let cases = [
+        (
+            "an inherited field",
+            vec![
+                events(),
+                entries(),
+                typed_object("Ledger", "record", &["Entries"], &[]),
+            ],
+        ),
+        (
+            "a tuple position",
+            vec![
+                events(),
+                entries(),
+                json!({"identity": pair, "displayName": "Pair",
+                    "kind": {"module": IDENTITY, "name": "tuple"},
+                    "positions": [{"identity": format!("{pair}/p0"),
+                        "typeRef": orders("Entries")}]}),
+                ledger(&pair),
+            ],
+        ),
+        (
+            "a variant payload",
+            vec![
+                events(),
+                entries(),
+                json!({"identity": choice, "displayName": "Choice",
+                    "kind": {"module": IDENTITY, "name": "variant"},
+                    "variants": [{"identity": format!("{choice}/variant/Held"),
+                        "name": "Held", "payloadType": orders("Entries")}]}),
+                ledger(&choice),
+            ],
+        ),
+        (
+            "an option definition",
+            vec![
+                events(),
+                json!({"identity": orders("MaybeEvents"), "kind": "option",
+                    "inner": orders("EventSeq")}),
+                ledger(&orders("MaybeEvents")),
+            ],
+        ),
+        (
+            "a map value",
+            vec![
+                json!({"identity": orders("EventMap"), "kind": "map",
+                    "keys": "ix://filament/native/String", "values": orders("OrderPlaced"),
+                    "bound": {"lower": 0}}),
+                ledger(&orders("EventMap")),
+            ],
+        ),
+    ];
+    for (case, types) in cases {
+        let built = event_package_selecting(
+            types,
+            &[("Ledger", "record_value_type")],
+            &[(
+                "ledger",
+                Ty::Record(declaration_key("Ledger", "record_value_type")),
+            )],
+            &[comparing("filament.op.structural.eq", [0, 0])],
+            |_| {},
+        );
+        assert_ineligible_operand(case, &built, 0, 0);
+    }
+}
+
+#[trace("TC-048", "TC-281", "FR-038-AC-635")]
+#[test]
+fn tc_281_equality_over_a_record_of_identities_and_scalars_stays_admitted() {
+    let (package, evidence) = event_package_selecting(
+        vec![
+            value_type("Digit", "integer", Some(("0", "9"))),
+            json!({"identity": orders("OrderRef"), "kind": "reference",
+                "target": orders("Order")}),
+            typed_object(
+                "Holder",
+                "record",
+                &[],
+                &[
+                    field("customer", &orders("Order")),
+                    field("link", &orders("OrderRef")),
+                    field("digit", &orders("Digit")),
+                    field("total", "ix://filament/native/Integer"),
+                ],
+            ),
+        ],
+        &[("Holder", "record_value_type")],
+        &[(
+            "holder",
+            Ty::Record(declaration_key("Holder", "record_value_type")),
+        )],
+        &[comparing("filament.op.structural.eq", [0, 0])],
+        |_| {},
+    );
+    match read_with(&package, &evidence, CheckedPackageReadLimits::bounded()) {
+        CheckedPackageV2ReadResult::Admitted(_) => {}
+        other => panic!("equality over a record of identities and scalars must admit: {other:?}"),
     }
 }

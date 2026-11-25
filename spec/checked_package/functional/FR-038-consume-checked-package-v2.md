@@ -3292,11 +3292,18 @@ of it can hold an event value at any depth:
   types.
 
 A `composite_type`/`reference` value and an object hold an identity, never an
-event value, and no other node holds one. The walk over these types expands
-each type once, so a recursive type ends it, and charges each type it expands
-and each body or declaration step to the read's work limit. A package that
-declares no event type, in its graph or in a selected domain package, is not
-walked.
+event value, and no other node holds one. In a selected declaration, a native
+type, a unit, a value type, an object type and a reference type hold none
+either, while a field with no `typeRef`, an inline map and a `typeRef` naming
+any other declaration than a value, record, tuple, variant, option, sequence,
+map, reference or object type count as holding an event. A walk expands each
+type at most once, so a recursive type ends it. When a walk finds no event,
+every type it expanded keeps that answer, and when it finds one, each type on
+its way to it keeps that one, so a later operand of such a type is not walked
+again. Each type expanded, each use of
+a kept answer and each body or declaration step is charged to the read's work
+limit. A package that declares no event type, in its graph or in a selected
+domain package, is not walked.
 
 An application refuses `ill_typed`/`operator-ineligible` at the first argument
 that is a `reference` or `literal` whose operand type reaches an event type,
@@ -3311,14 +3318,26 @@ application: a parameter or type node that reaches an event type is admitted
 as a node. It precedes the application's operand family, constraint and leaf
 checks.
 
-This diverges on purpose from FSpec TC-281 EV-03, which admits
-`filament.op.record.project` over an event value: field projection of an event
-value (FSpec FR-322-AC-68) is not yet admitted, and neither is record
-conformance between event types. A record that holds an event value is refused
-under projection of any of its fields. FSpec FR-322's event equality paragraph
-says that no parameter holds an event. The reader admits an event-typed
-parameter node whatever binds it; STD-728 asks FSpec to state that a clause
-binder may be typed by an event type.
+This diverges on purpose from FSpec, whose event equality paragraph (FR-322)
+refuses only `filament.op.structural.eq` and `filament.op.structural.ne` over a
+compared type that holds an event (TC-281 EV-04, EV-05), and which gives a
+`model`/`event_type` node family `record` (FR-322-AC-68). This reader refuses
+every operand the rule above names, whatever the operation, so it also refuses
+applications that FSpec's family and constraint rules admit. Those include
+`filament.op.record.project` over an event value (TC-281 EV-03; field
+projection of an event value is not yet admitted),
+`filament.op.option.value` over an `option` of an event type, and
+`filament.op.collection.forall`, `filament.op.collection.contains` and every
+other collection operation over a collection of events. An event type has no
+operand family in this reader, so an operation that produced an event value
+would leave the operations reading it unchecked. Record conformance between
+event types is not admitted either. STD-728 records this divergence.
+
+FSpec FR-208-AC-9 and FR-322 say that no record, field or parameter holds an
+event. Where this reader still admits a type that holds one, it refuses an
+operand of that type in the same way, projection of any field of such a record
+included. The reader admits an event-typed parameter node whatever binds it;
+STD-728 asks FSpec to state that a clause binder may be typed by an event type.
 
 A `scalar_type`/`compound_unit` node carries no `declaration` and is its own
 semantic type. Its body is an `aggregate` of terms, each exactly
@@ -7214,8 +7233,8 @@ the minimum the read uses.
 | FR-038-AC-627 | `encode_checked_package_v2` and strict read/encode/read preserve every claim row's exact occurrence key, task-set identifier, ordered release bindings and ordered mode-switch bindings. `None` omits `schedulability_claims`; `Some(empty)` retains an empty array; a present claim row with empty relation arrays remains present. The encoder does not sort or repair supplied rows; a schema-valid but descending binding array is encoded unchanged and refused only by strict read at the specified row. | Test (TC-048; FSpec FR-322-AC-524, FR-322-AC-525, FR-322-AC-528, FR-322-AC-535, FR-322-AC-536; FR-051-AC-7) |
 | FR-038-AC-632 | A `value`/`parameter` node whose `semantic_type` is a `model`/`event_type` declaration node owned by a selected event type is admitted, including as the `over` parameter that a temporal clause's and a protocol clause's `over` reference, and as the trigger of a temporal clause's `each` activation that a capture references again. With such a parameter present, an event node whose `ModelOwner` names a record value type, an object type or an absent declaration refuses `missing_declaration`/`missing-selection` at the event node's `node_id`. | Test (TC-048; FSpec FR-322-AC-68, TC-281 EV-01, EV-02) |
 | FR-038-AC-633 | An application refuses `ill_typed`/`operator-ineligible` at an argument that is a `reference` to a `value`/`parameter` node typed by a `model`/`event_type` node, the temporal clause's `over` operand excepted: `filament.op.structural.eq` over two such parameters, `filament.op.boolean.not`, `filament.op.record.project` of an event field and `filament.op.model.deref` over one, `filament.op.collection.contains` of one in a set of that event type (refused at the set operand, argument 0, which reaches the event type first), and a temporal clause whose captures argument is itself such a reference. It refuses the same way at a `binder` operand that holds the reference in a `filament.op.control.let` bound value, a `filament.op.collection.forall` body, a `filament.op.collection.fold` step or a `filament.op.control.case` arm body, and at a temporal clause's activation argument whose `each` guard is a reference to the event-typed trigger. Refusing the field projection diverges on purpose from FSpec TC-281 EV-03, which admits it. | Test (TC-048; FSpec TC-281 EV-03, EV-04) |
-| FR-038-AC-634 | In a package that declares an event type, an application refuses `ill_typed`/`operator-ineligible` at the first argument whose operand type reaches that event type: `filament.op.structural.eq` and `ne` over an `option`, `set`, `sequence`, `bag`, `ordered_set`, bounded `sequence` and `option` of `set` of it, at argument 1 when only the second operand reaches it; `filament.op.option.value` over an `option` of it; `eq` over a structural record, tuple, union and alias holding it, and `filament.op.record.project` over that record; `eq` over a model record value type whose field is a domain package sequence of it, and over an `option` of that record; `eq` over `none` literals typed at an `option` of it and over references to its declaration node; a `filament.op.collection.forall` body reading an `option` of it; `eq` over a recursive record that also holds it; and, beside an application that reaches no event type, at the application that does. | Test (TC-048; FSpec TC-281 EV-04, EV-05) |
-| FR-038-AC-635 | In a package that declares an event type, `filament.op.structural.eq` and `ne` over a model record value type that holds no event value, an `option` of it, `Option<Boolean>` and `Set<Integer>` are admitted, and `eq` over a recursive record that holds no event value is admitted. | Test (TC-048; FSpec TC-281 EV-06) |
+| FR-038-AC-634 | In a package that declares an event type, an application refuses `ill_typed`/`operator-ineligible` at the first argument whose operand type reaches that event type: `filament.op.structural.eq` and `ne` over an `option`, `set`, `sequence`, `bag`, `ordered_set`, bounded `sequence` and `option` of `set` of it, at argument 1 when only the second operand reaches it; `filament.op.option.value` over an `option` of it; `eq` over a structural record, tuple, union and alias holding it, and `filament.op.record.project` over that record; `eq` over a model record value type that reaches it through a domain package sequence, in its own field and over an `option` of that record, and through an inherited field, a tuple position, a variant payload, an option definition and a map value; `eq` over `none` literals typed at an `option` of it and over references to its declaration node; a `filament.op.collection.forall` body reading an `option` of it; `eq` over a recursive record that also holds it; and, beside an application that reaches no event type, at the application that does. The model record cases rest on a model intake gap: FSpec FR-208-AC-9 and FR-322 let no field hold an event, and this reader still admits a field that reaches one through a sequence or map definition, so closing that gap changes those cases. | Test (TC-048; FSpec TC-281 EV-04, EV-05) |
+| FR-038-AC-635 | In a package that declares an event type, `filament.op.structural.eq` and `ne` over a model record value type that holds no event value, an `option` of it, `Option<Boolean>` and `Set<Integer>` are admitted, `eq` over a model record value type whose fields name an object type, a reference type over it, a value type and a native `Integer` is admitted, and `eq` over a recursive record that holds no event value is admitted. | Test (TC-048; FSpec TC-281 EV-06) |
 
 
 FR-038-AC-66 is retired and its ID is not reused (ADR-0056). It required that every

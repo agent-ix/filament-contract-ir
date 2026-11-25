@@ -2052,20 +2052,34 @@ impl DomainModel {
     /// depth by what this document declares: through the fields, own and
     /// inherited, of a record value type, tuple positions, variant payloads,
     /// options, sequences and map keys and values. A reference and an object
-    /// type hold an identity, never an event value. Each declaration is
-    /// expanded once, and each step is charged to `budget`.
+    /// type hold an identity, and a value type holds a scalar, never an event
+    /// value. A field with no `typeRef`, an inline map and any other
+    /// declaration count as holding one, so the walk fails closed. Each
+    /// declaration is expanded once, and each step is charged to `budget`.
     pub(super) fn holds_event(
         &self,
         node: &str,
         budget: &mut Budget<'_, '_>,
     ) -> Result<bool, ValidationFailure> {
+        enum Item<'a> {
+            Ref(&'a SelectedTypeRef),
+            Name(&'a str),
+        }
         let mut visited: SortedSet<&str> = SortedSet::new();
-        let mut pending: Vec<&str> = budget.vec(1, MODEL)?;
-        pending.push(node);
-        // The type references of the declaration being expanded.
-        let mut held: Vec<&SelectedTypeRef> = Vec::new();
-        while let Some(name) = pending.pop() {
+        let mut pending: Vec<Item<'_>> = budget.vec(1, MODEL)?;
+        pending.push(Item::Name(node));
+        while let Some(item) = pending.pop() {
             budget.charge(1)?;
+            let name = match item {
+                Item::Ref(SelectedTypeRef::Native(_) | SelectedTypeRef::Unit(_)) => continue,
+                // Unreachable: an inline `Map<K, V>` `typeRef` is refused when
+                // the document is read, and a declared map is a
+                // `collection_types` definition walked below. Fail closed
+                // rather than guess at the raw key and value text.
+                Item::Ref(SelectedTypeRef::Map(..)) => return Ok(true),
+                Item::Ref(SelectedTypeRef::Declared(name)) => name.as_ref(),
+                Item::Name(name) => name,
+            };
             if !visited.insert(budget, name, MODEL)? {
                 continue;
             }
@@ -2076,12 +2090,12 @@ impl DomainModel {
                 match definition {
                     SelectedTypeDefinition::Sequence(inner)
                     | SelectedTypeDefinition::Option(inner) => {
-                        budget.push(&mut held, inner, MODEL)?;
+                        budget.push(&mut pending, Item::Ref(inner), MODEL)?;
                     }
                     SelectedTypeDefinition::Reference(_) => {}
                     SelectedTypeDefinition::Map(map) => {
-                        budget.push(&mut held, &map.keys, MODEL)?;
-                        budget.push(&mut held, &map.values, MODEL)?;
+                        budget.push(&mut pending, Item::Ref(&map.keys), MODEL)?;
+                        budget.push(&mut pending, Item::Ref(&map.values), MODEL)?;
                     }
                 }
             } else if self.record_types.contains_key(name) {
@@ -2091,33 +2105,31 @@ impl DomainModel {
                         continue;
                     };
                     for field in &record.fields {
-                        if let Some(type_ref) = field.slot.type_ref.as_ref() {
-                            budget.push(&mut held, type_ref, MODEL)?;
+                        match field.slot.type_ref.as_ref() {
+                            Some(type_ref) => {
+                                budget.push(&mut pending, Item::Ref(type_ref), MODEL)?;
+                            }
+                            // The document stage refuses a field without a
+                            // `typeRef`, so this is unreachable; fail closed.
+                            None => return Ok(true),
                         }
                     }
                 }
             } else if let Some(positions) = self.tuple_types.get(name) {
                 for type_ref in positions {
-                    budget.push(&mut held, type_ref, MODEL)?;
+                    budget.push(&mut pending, Item::Ref(type_ref), MODEL)?;
                 }
             } else if let Some(cases) = self.variant_types.get(name) {
                 for case in cases.values() {
                     if let Some(type_ref) = case.payload.as_ref() {
-                        budget.push(&mut held, type_ref, MODEL)?;
+                        budget.push(&mut pending, Item::Ref(type_ref), MODEL)?;
                     }
                 }
-            }
-            while let Some(type_ref) = held.pop() {
-                match type_ref {
-                    SelectedTypeRef::Declared(next) => {
-                        budget.push(&mut pending, next.as_ref(), MODEL)?;
-                    }
-                    SelectedTypeRef::Map(keys, values) => {
-                        budget.push(&mut pending, keys.as_ref(), MODEL)?;
-                        budget.push(&mut pending, values.as_ref(), MODEL)?;
-                    }
-                    SelectedTypeRef::Native(_) | SelectedTypeRef::Unit(_) => {}
-                }
+            } else if !self.value_types.contains_key(name) && !self.object_types.contains_key(name)
+            {
+                // The document stage refuses a `typeRef` that names no
+                // declaration, so this is unreachable; fail closed.
+                return Ok(true);
             }
         }
         Ok(false)

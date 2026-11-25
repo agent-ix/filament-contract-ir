@@ -3398,6 +3398,20 @@ fn check_carried_member(
 /// FR-370).
 const TEMPORAL_ACTIVATION_OPERAND: usize = 2;
 
+/// What the walks of one read know about the type at one node position.
+#[derive(Clone, Copy)]
+enum EventMark {
+    Unwalked,
+    /// Expanded, and no event type found under it.
+    Eventless,
+    /// A value of it can hold an event value.
+    Reaches,
+}
+
+/// One type a walk expanded: its node position, and the entry of the walk's
+/// list that holds it, `None` for the walk's root.
+type ExpandedType = (usize, Option<usize>);
+
 /// Which type nodes of one package graph reach an event type, with the walk
 /// marks one read shares across its applications.
 #[derive(Default)]
@@ -3405,10 +3419,9 @@ struct EventReach {
     /// Whether the graph or a selected domain package declares an event type.
     /// With none, no type reaches one and nothing is walked.
     declared: bool,
-    /// Per node position, whether a walk has expanded the type there and found
-    /// no event type under it, so no later walk expands it again. Empty until
-    /// a walk first expands a type.
-    eventless: Vec<bool>,
+    /// Per node position, what earlier walks found. Empty until a walk first
+    /// expands a type.
+    marks: Vec<EventMark>,
 }
 
 impl EventReach {
@@ -3418,7 +3431,7 @@ impl EventReach {
                 .kinds
                 .contains(&CheckedNodeKind::Model(ModelForm::EventType))
                 || owners.selects_events(),
-            eventless: Vec::new(),
+            marks: Vec::new(),
         }
     }
 
@@ -3429,7 +3442,10 @@ impl EventReach {
     /// `semantic_type`, and a model record, tuple or variant what its selected
     /// declaration holds. A `composite_type`/`reference` value and an object
     /// hold an identity, never an event value. The walk keeps its own
-    /// worklist and expands each type node once, so a recursive type ends it.
+    /// worklist and expands each type node at most once, so a recursive type
+    /// ends it. When it finds no event every type it expanded keeps that answer
+    /// for later operands, and when it finds one each type on its way to it
+    /// keeps that one; using a kept answer is charged as expanding a type is.
     fn term_reaches_event(
         &mut self,
         application: Application<'_>,
@@ -3446,56 +3462,50 @@ impl EventReach {
         else {
             return Ok(false);
         };
-        let mut expanded = Vec::new();
-        let reaches = self.walk(application, root, &mut expanded, graph, owners, meter)?;
-        if reaches {
-            // Some of these may lie on the way to the event type.
-            for position in expanded {
-                if let Some(mark) = self.eventless.get_mut(position) {
-                    *mark = false;
-                }
-            }
-        }
-        Ok(reaches)
-    }
-
-    /// The walk of [`Self::term_reaches_event`] from the type at `root`,
-    /// listing in `expanded` each position it marks.
-    fn walk(
-        &mut self,
-        application: Application<'_>,
-        root: usize,
-        expanded: &mut Vec<usize>,
-        graph: &Graph<'_>,
-        owners: &ModelOwners<'_>,
-        meter: &mut WorkMeter,
-    ) -> Result<bool, ValidationFailure> {
-        let mut pending: Vec<usize> = Vec::new();
+        let mut expanded: Vec<ExpandedType> = Vec::new();
+        let mut pending: Vec<(usize, Option<usize>)> = Vec::new();
         let mut members: Vec<&CheckedTerm> = Vec::new();
-        let mut next = Some(root);
-        while let Some(position) = next {
+        let mut next = Some((root, None));
+        while let Some((position, holder)) = next {
             let (Some(node), Some(&kind)) = (graph.nodes.get(position), graph.kinds.get(position))
             else {
                 next = pending.pop();
                 continue;
             };
+            match self.marks.get(position).copied() {
+                Some(EventMark::Reaches) => {
+                    work_at_path(meter, &application.read_node().key("node_id"), 1)?;
+                    self.keep_reaching(&expanded, holder);
+                    return Ok(true);
+                }
+                Some(EventMark::Eventless) => {
+                    work_at_path(meter, &application.read_node().key("node_id"), 1)?;
+                    next = pending.pop();
+                    continue;
+                }
+                Some(EventMark::Unwalked) | None => {}
+            }
             match kind {
-                CheckedNodeKind::Model(ModelForm::EventType) => return Ok(true),
+                CheckedNodeKind::Model(ModelForm::EventType) => {
+                    self.keep_reaching(&expanded, holder);
+                    return Ok(true);
+                }
                 CheckedNodeKind::Model(
                     ModelForm::RecordValueType | ModelForm::TupleValueType | ModelForm::VariantType,
                 ) => {
-                    let first = self.expand(application, position, expanded, graph, meter)?;
-                    if first && owners.holds_event(&node.node_id, meter)? {
+                    let entry =
+                        self.expand(application, (position, holder), &mut expanded, graph, meter)?;
+                    if owners.holds_event(&node.node_id, meter)? {
+                        self.keep_reaching(&expanded, Some(entry));
                         return Ok(true);
                     }
                 }
                 CheckedNodeKind::CompositeType(CompositeTypeForm::Alias)
                 | CheckedNodeKind::BoundedDomain(_) => {
-                    let first = self.expand(application, position, expanded, graph, meter)?;
-                    if first {
-                        if let Some(&inner) = graph.index.get(&node.semantic_type) {
-                            meter.push(&mut pending, inner)?;
-                        }
+                    let entry =
+                        self.expand(application, (position, holder), &mut expanded, graph, meter)?;
+                    if let Some(&inner) = graph.index.get(&node.semantic_type) {
+                        meter.push(&mut pending, (inner, Some(entry)))?;
                     }
                 }
                 CheckedNodeKind::CompositeType(
@@ -3509,29 +3519,28 @@ impl EventReach {
                     | CompositeTypeForm::Tuple
                     | CompositeTypeForm::Union,
                 ) => {
-                    let first = self.expand(application, position, expanded, graph, meter)?;
-                    if first {
-                        if let Some(body) = graph.terms.get(position).and_then(Option::as_ref) {
-                            meter.push(&mut members, body)?;
-                        }
-                        while let Some(term) = members.pop() {
-                            work_at_path(meter, &application.read_node().key("node_id"), 1)?;
-                            match term {
-                                CheckedTerm::Reference { target } => {
-                                    if let Some(&held) = graph.index.get(target) {
-                                        meter.push(&mut pending, held)?;
-                                    }
+                    let entry =
+                        self.expand(application, (position, holder), &mut expanded, graph, meter)?;
+                    if let Some(body) = graph.terms.get(position).and_then(Option::as_ref) {
+                        meter.push(&mut members, body)?;
+                    }
+                    while let Some(term) = members.pop() {
+                        work_at_path(meter, &application.read_node().key("node_id"), 1)?;
+                        match term {
+                            CheckedTerm::Reference { target } => {
+                                if let Some(&held) = graph.index.get(target) {
+                                    meter.push(&mut pending, (held, Some(entry)))?;
                                 }
-                                CheckedTerm::Binding { value, .. } => {
-                                    meter.push(&mut members, value.as_ref())?;
-                                }
-                                CheckedTerm::Aggregate { members: inner, .. } => {
-                                    for member in inner {
-                                        meter.push(&mut members, member)?;
-                                    }
-                                }
-                                _ => {}
                             }
+                            CheckedTerm::Binding { value, .. } => {
+                                meter.push(&mut members, value.as_ref())?;
+                            }
+                            CheckedTerm::Aggregate { members: inner, .. } => {
+                                for member in inner {
+                                    meter.push(&mut members, member)?;
+                                }
+                            }
+                            _ => {}
                         }
                     }
                 }
@@ -3542,32 +3551,45 @@ impl EventReach {
         Ok(false)
     }
 
-    /// Marks and charges the type at `position`; `false` when it is marked
-    /// already.
+    /// Charges the type `expanded_type` names, marks it eventless until the
+    /// walk finds otherwise, lists it and returns its entry in that list.
     fn expand(
         &mut self,
         application: Application<'_>,
-        position: usize,
-        expanded: &mut Vec<usize>,
+        expanded_type: ExpandedType,
+        expanded: &mut Vec<ExpandedType>,
         graph: &Graph<'_>,
         meter: &mut WorkMeter,
-    ) -> Result<bool, ValidationFailure> {
-        if self.eventless.is_empty() {
-            self.eventless = meter.filled(graph.nodes.len(), false)?;
+    ) -> Result<usize, ValidationFailure> {
+        if self.marks.is_empty() {
+            self.marks = meter.filled(graph.nodes.len(), EventMark::Unwalked)?;
         }
-        match self.eventless.get_mut(position) {
-            Some(mark) if !*mark => *mark = true,
-            _ => return Ok(false),
+        if let Some(mark) = self.marks.get_mut(expanded_type.0) {
+            *mark = EventMark::Eventless;
         }
         work_at_path(meter, &application.read_node().key("node_id"), 1)?;
-        meter.push(expanded, position)?;
-        Ok(true)
+        let entry = expanded.len();
+        meter.push(expanded, expanded_type)?;
+        Ok(entry)
+    }
+
+    /// Ends a walk that found an event: each type on the way from its root to
+    /// the entry `holder` reaches one. Any other type it expanded may or may
+    /// not, so a later walk expands it again.
+    fn keep_reaching(&mut self, expanded: &[ExpandedType], mut holder: Option<usize>) {
+        for &(position, _) in expanded {
+            if let Some(mark) = self.marks.get_mut(position) {
+                *mark = EventMark::Unwalked;
+            }
+        }
+        while let Some(&(position, above)) = holder.and_then(|entry| expanded.get(entry)) {
+            if let Some(mark) = self.marks.get_mut(position) {
+                *mark = EventMark::Reaches;
+            }
+            holder = above;
+        }
     }
 }
-
-/// The `filament.op.temporal.clause` operand holding its activation (FSpec
-/// FR-370).
-const TEMPORAL_ACTIVATION_OPERAND: usize = 2;
 
 /// FR-038: no operation over a value whose type reaches an event type is
 /// admitted, whether an argument is such a value ([`EventReach`]) or a
