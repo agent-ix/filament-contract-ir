@@ -286,6 +286,14 @@ fn source_package() -> Value {
         .position(|node| node["node_id"] == over)
         .expect("over parameter");
     nodes_mut(&mut package)[over_position]["semantic_type"] = reference_type;
+    let order_position = nodes(&package)
+        .iter()
+        .position(|node| node["node_id"] == order_id())
+        .expect("source type");
+    nodes_mut(&mut package)[clause]["node_id"]["path"]
+        .as_array_mut()
+        .expect("protocol clause path")
+        .push(json!({"node": order_position}));
     nodes_mut(&mut package)[clause]["owner_model"] = order_id();
     nodes_mut(&mut package)[clause]["dependencies"]
         .as_array_mut()

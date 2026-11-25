@@ -6940,12 +6940,22 @@ fn concrete_protocol_refinement_with_family(
             "term": "literal", "type": node_id(&crate::support::checked_package::family_key("aaaa")),
             "value_kind": "boolean", "value": true
         });
+        let model_position = package["semantic_graph"]["nodes"]
+            .as_array()
+            .expect("nodes")
+            .iter()
+            .position(|node| node["node_id"] == model["node_id"])
+            .expect("selected model node");
         for clause in package["semantic_graph"]["nodes"]
             .as_array_mut()
             .expect("nodes")
             .iter_mut()
             .filter(|node| node["semantic_form"] == "protocol_clause")
         {
+            clause["node_id"]["path"]
+                .as_array_mut()
+                .expect("protocol clause path")
+                .push(json!({"node": model_position}));
             clause["owner_model"] = model["node_id"].clone();
             clause["dependencies"]
                 .as_array_mut()

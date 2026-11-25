@@ -60,10 +60,10 @@ fn node_work(meter: &mut WorkMeter, position: usize) -> Result<(), ValidationFai
     super::natural::work_at(meter, site, 1)
 }
 
-/// The owner operand of a clause's node path: the index or node-ID segment of
-/// a path that is the declaration path followed by that one operand. A path
-/// that is the declaration path alone carries none. Wire validation has already
-/// refused a protocol clause without a declaration.
+/// The owner operand of a clause's node path: the operand segment of a path
+/// that is the declaration path followed by that one operand. A path that is
+/// the declaration path alone carries none. Wire validation has already refused
+/// a protocol clause without a declaration.
 fn owner_path_operand(node: &RawSemanticNodeV2) -> Option<&CheckedNodePathSegment> {
     let declaration = node.declaration.as_ref()?;
     if node.node_id.path.len() != declaration.qualified_name.len() + 1 {
@@ -72,7 +72,9 @@ fn owner_path_operand(node: &RawSemanticNodeV2) -> Option<&CheckedNodePathSegmen
     node.node_id.path.last().filter(|segment| {
         matches!(
             segment,
-            CheckedNodePathSegment::Index(_) | CheckedNodePathSegment::Node(_)
+            CheckedNodePathSegment::Index(_)
+                | CheckedNodePathSegment::Node(_)
+                | CheckedNodePathSegment::Dependency { .. }
         )
     })
 }
@@ -7183,17 +7185,17 @@ pub(super) fn validate_protocol_nodes(
                     ));
                 }
             }
-            if let Some(operand) = owner_path_operand(node) {
-                node_work(meter, position)?;
-                if !owner_operand_names(operand, owner_position, structural_keys) {
-                    return Err(refuse_at(
-                        meter,
-                        Code::InvalidPackage,
-                        Some(Cause::StaleNodeKey),
-                        owner_at(),
-                        &node.node_id,
-                    ));
-                }
+            node_work(meter, position)?;
+            if !owner_path_operand(node).is_some_and(|operand| {
+                owner_operand_names(operand, owner_position, structural_keys)
+            }) {
+                return Err(refuse_at(
+                    meter,
+                    Code::InvalidPackage,
+                    Some(Cause::StaleNodeKey),
+                    owner_at(),
+                    &node.node_id,
+                ));
             }
         }
         let Some((operator, arguments)) = validated[position] else {

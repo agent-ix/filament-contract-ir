@@ -3664,10 +3664,13 @@ fn validate_declaration_names(
             Some(CheckedNodeKind::Protocol(ProtocolForm::ProtocolClause))
         ) && node.node_id.path.len()
             == declaration.qualified_name.len() + 1
-            && matches!(
-                node.node_id.path.last(),
-                Some(CheckedNodePathSegment::Index(_) | CheckedNodePathSegment::Node(_))
-            );
+            && match node.node_id.path.last() {
+                Some(CheckedNodePathSegment::Index(_) | CheckedNodePathSegment::Node(_)) => true,
+                // A dependency position never names the local owner: an owned
+                // clause passes here so the owner check refuses it.
+                Some(CheckedNodePathSegment::Dependency { .. }) => node.owner_model.is_some(),
+                _ => false,
+            };
         let path_matches = declared_prefix_matches
             && (node.node_id.path.len() == declaration.qualified_name.len()
                 || has_protocol_owner_operand);
