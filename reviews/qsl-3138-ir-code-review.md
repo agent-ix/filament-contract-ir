@@ -9,7 +9,7 @@ review_set: subset
 
 ## Summary
 
-Ticket: QSL-3138. Code review with the rust-review lane, read only. Nothing was compiled or run (owner rule). Basis: FSpec FR-322 "Protocol clause owner identity", FR-322-AC-538 and FR-322-AC-521 (NI-33, NI-38) at filament-specification origin/main 7de9a209.
+Ticket: QSL-3138. Code review with the rust-review lane, read only. Nothing was compiled or run for this review. Basis: FSpec FR-322 "Protocol clause owner identity", FR-322-AC-538 and FR-322-AC-521 (NI-33, NI-38) at filament-specification origin/main 7de9a209.
 
 ## Examined scope
 

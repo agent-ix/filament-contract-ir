@@ -9,7 +9,7 @@ review_set: subset
 
 ## Summary
 
-Ticket: QSL-3138. Gap analysis scoped to the PR diff. Plan completion: not assessed. The criterion-to-test check was done by hand; `quire matrix` was not run (read-only, no build).
+Ticket: QSL-3138. Gap analysis scoped to the PR diff. Plan completion: not assessed. The criterion-to-test check was done by hand; `quire matrix` was not run (not run for this review).
 
 ## Examined scope
 
