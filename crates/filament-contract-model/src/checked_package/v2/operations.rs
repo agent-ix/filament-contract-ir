@@ -3390,12 +3390,17 @@ fn check_carried_member(
     })
 }
 
+/// The `filament.op.temporal.clause` operand holding its activation (FSpec
+/// FR-370).
+const TEMPORAL_ACTIVATION_OPERAND: usize = 2;
+
 /// FR-038: no operation over a parameter typed by an event type is admitted,
 /// whether an argument references it or a `binder` operand holds that
 /// reference in its bound value or body. An event type has no operand family,
 /// so the operand checks would skip such an operand. A temporal clause's first
-/// operand names its `over` parameter and reads no value. Triggers, captures
-/// and protocol binder slots are not `binder` operands.
+/// operand names its `over` parameter and reads no value; the `guard` in its
+/// activation is read as a binder body is. Triggers, captures and protocol
+/// binder slots are not read.
 fn check_event_parameter_operands(
     application: Application<'_>,
     entry: &OperationCatalogEntry,
@@ -3418,7 +3423,12 @@ fn check_event_parameter_operands(
             .is_some_and(|operand| operand.class == FamilyClass::Binder);
         let reads_event = match argument {
             CheckedTerm::Binding { value, .. } if binder => {
-                binder_reads_event_parameter(application, entry.operator, value, graph, meter)?
+                bound_value_reads_event_parameter(application, entry.operator, value, graph, meter)?
+            }
+            CheckedTerm::Aggregate { members, .. }
+                if reads_over && position == TEMPORAL_ACTIVATION_OPERAND =>
+            {
+                guard_reads_event_parameter(application, entry.operator, members, graph, meter)?
             }
             _ => is_event_parameter_reference(argument, graph),
         };
@@ -3452,11 +3462,35 @@ fn is_event_parameter_reference(term: &CheckedTerm, graph: &Graph<'_>) -> bool {
             == Some(&CheckedNodeKind::Model(ModelForm::EventType))
 }
 
-/// Whether a binder operand's bound value or body holds a reference to an
-/// event-typed parameter, at any depth of `binding` and `aggregate` terms. A
-/// `case` arm is its binder slots and then its body; the slots declare
-/// binders and are not read.
-fn binder_reads_event_parameter(
+/// Whether a temporal clause's activation holds a `guard` binding that reads
+/// an event-typed parameter. The activation's trigger names its binder and is
+/// not read.
+#[ix_trace_rs::string_edge]
+fn guard_reads_event_parameter(
+    application: Application<'_>,
+    operator: ApplicationOperator,
+    activation: &[CheckedTerm],
+    graph: &Graph<'_>,
+    meter: &mut WorkMeter,
+) -> Result<bool, ValidationFailure> {
+    for member in activation {
+        let CheckedTerm::Binding { name, value, .. } = member else {
+            continue;
+        };
+        if name.as_ref() == "guard"
+            && bound_value_reads_event_parameter(application, operator, value, graph, meter)?
+        {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+/// Whether a binder operand's bound value or body, or an activation guard,
+/// holds a reference to an event-typed parameter, at any depth of `binding` and
+/// `aggregate` terms. A `case` arm is its binder slots and then its body; the
+/// slots declare binders and are not read.
+fn bound_value_reads_event_parameter(
     application: Application<'_>,
     operator: ApplicationOperator,
     value: &CheckedTerm,

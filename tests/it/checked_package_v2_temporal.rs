@@ -6812,6 +6812,15 @@ fn add_event_trigger(package: &mut Value, ty: Value) -> Value {
     refer("event-trigger")
 }
 
+/// A temporal clause's `each` activation over `trigger`.
+fn each_activation(trigger: Value) -> Value {
+    json!({"term": "aggregate", "members": [
+        {"term": "binding", "name": "kind", "value": {"term": "literal",
+            "type": node_id(&family_key("a1a1")), "value_kind": "text", "value": "each"}},
+        {"term": "binding", "name": "trigger", "value": trigger},
+    ]})
+}
+
 #[trace("TC-048", "FR-038-AC-632")]
 #[test]
 fn tc_048_a_temporal_clause_admits_an_event_typed_over_parameter() {
@@ -6828,12 +6837,8 @@ fn tc_048_a_temporal_clause_admits_an_event_typed_trigger_and_capture() {
     let (mut package, document, tick) = event_over_fixture();
     let trigger = add_event_trigger(&mut package, tick);
     let at = clause(&package);
-    package["semantic_graph"]["nodes"][at]["body"]["arguments"][2] = json!({
-    "term": "aggregate", "members": [
-        {"term": "binding", "name": "kind", "value": {"term": "literal",
-            "type": node_id(&family_key("a1a1")), "value_kind": "text", "value": "each"}},
-        {"term": "binding", "name": "trigger", "value": trigger.clone()},
-    ]});
+    package["semantic_graph"]["nodes"][at]["body"]["arguments"][2] =
+        each_activation(trigger.clone());
     package["semantic_graph"]["nodes"][at]["body"]["arguments"][3] = json!({
     "term": "aggregate", "members": [
         {"term": "binding", "name": "c0", "value": trigger},
@@ -6864,5 +6869,31 @@ fn tc_048_a_temporal_clause_operand_after_over_may_not_read_an_event_typed_param
     assert_eq!(
         refusal.loci[0].path.as_ref().map(|path| path.as_str()),
         Some(format!("/semantic_graph/nodes/{at}/body/arguments/3").as_str())
+    );
+}
+
+#[trace("TC-048", "FR-038-AC-633")]
+#[test]
+fn tc_048_a_temporal_activation_guard_may_not_read_an_event_typed_parameter() {
+    let (mut package, document, tick) = event_over_fixture();
+    let trigger = add_event_trigger(&mut package, tick);
+    let at = clause(&package);
+    let mut activation = each_activation(trigger.clone());
+    activation["members"]
+        .as_array_mut()
+        .expect("activation members")
+        .push(json!({"term": "binding", "name": "guard", "value": trigger}));
+    package["semantic_graph"]["nodes"][at]["body"]["arguments"][2] = activation;
+    settle(&mut package);
+    let CheckedPackageV2ReadResult::Refused(refusal) =
+        read_with_model(&package, &document, CheckedPackageReadLimits::bounded())
+    else {
+        panic!("a guard reading the event-typed trigger must refuse");
+    };
+    assert_eq!(refusal.code, Code::IllTyped);
+    assert_eq!(refusal.cause, Some(Cause::OperatorIneligible));
+    assert_eq!(
+        refusal.loci[0].path.as_ref().map(|path| path.as_str()),
+        Some(format!("/semantic_graph/nodes/{at}/body/arguments/2").as_str())
     );
 }
