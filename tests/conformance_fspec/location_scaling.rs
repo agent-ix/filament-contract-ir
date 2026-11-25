@@ -379,10 +379,16 @@ fn nested_lets(count: usize) -> Value {
             entry
         })
         .collect();
-    package["semantic_graph"]["nodes"] = json!(nodes);
-    package["source_map"] = json!(sources);
+    package["semantic_graph"]["nodes"] = Value::Array(nodes);
+    package["source_map"] = Value::Array(sources);
     package["lock"]["definition_selections"] = json!([]);
-    package["checked_term_data"] = json!({"equality_decisions":[],"protocol_locations":[],"dispatch_tables":[],"probabilistic_claims":[],"body_locations":rows});
+    let mut checked_term_data = serde_json::Map::new();
+    checked_term_data.insert("equality_decisions".into(), Value::Array(Vec::new()));
+    checked_term_data.insert("protocol_locations".into(), Value::Array(Vec::new()));
+    checked_term_data.insert("dispatch_tables".into(), Value::Array(Vec::new()));
+    checked_term_data.insert("probabilistic_claims".into(), Value::Array(Vec::new()));
+    checked_term_data.insert("body_locations".into(), Value::Array(rows));
+    package["checked_term_data"] = Value::Object(checked_term_data);
     package
 }
 
