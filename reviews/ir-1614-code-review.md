@@ -35,3 +35,9 @@ Approve with one medium finding. The narrowing is exactly the lead's option A fo
 | ID | Severity | Summary | Refs |
 | --- | --- | --- | --- |
 | FND-001 | medium | `owner_path_operand` returns `None` for a clause with no `declaration`, so an owned `protocol_clause` without a declaration now skips the owner comparison entirely, whatever its path holds; before, its last segment had to name the owner. Option A and the new FR-038-AC-629 sentence only cover the declaration-only path; nothing states or tests the undeclared case | crates/filament-contract-model/src/checked_package/v2/protocol_body.rs:66-77, crates/filament-contract-model/src/checked_package/v2/protocol_body.rs:7185-7196 |
+
+## Dispositions
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-001 | rejected: not a defect | Verified at 4993b028: flat_wire.rs (unchanged since base) refuses `malformed_wire` at the node for every protocol form except queue and reference whose `declaration` presence is wrong, so an owned clause without a declaration never reaches the owner step. `protocol_owner_clause_without_declaration_refuses_at_the_wire` pins this for an owner operand, another node's operand and a name; the FR-038-AC-629 text now states it. |

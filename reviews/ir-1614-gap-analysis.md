@@ -33,3 +33,9 @@ CONDITIONAL. One low gap. The four tests left red (FR-038-AC-80 tag literal, thr
 
 - Criteria examined: 5; tagged: 5; untagged: 0.
 - Plan completion: not assessed
+
+## Dispositions
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-001 | fixed | 4993b028 adds `try_dimension_equivalence` cases with denominators "0" and "-1" expecting `/root_scale/denominator` in `public_constructors_refuse_malformed_members_at_body_relative_pointers`. |
