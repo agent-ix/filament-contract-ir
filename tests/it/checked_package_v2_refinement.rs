@@ -6940,12 +6940,6 @@ fn concrete_protocol_refinement_with_family(
             "term": "literal", "type": node_id(&crate::support::checked_package::family_key("aaaa")),
             "value_kind": "boolean", "value": true
         });
-        let model_position = package["semantic_graph"]["nodes"]
-            .as_array()
-            .expect("nodes")
-            .iter()
-            .position(|node| node["node_id"] == model["node_id"])
-            .expect("selected model node");
         let clauses: Vec<usize> = package["semantic_graph"]["nodes"]
             .as_array()
             .expect("nodes")
@@ -6960,7 +6954,7 @@ fn concrete_protocol_refinement_with_family(
             owned["path"]
                 .as_array_mut()
                 .expect("protocol clause path")
-                .push(json!({"node": model_position}));
+                .push(model["node_id"].clone());
             crate::support::checked_package::reassign_node_id(&mut package, &unowned, &owned);
             let clause = &mut package["semantic_graph"]["nodes"][position];
             clause["owner_model"] = model["node_id"].clone();
@@ -8228,7 +8222,6 @@ fn refinement_catalog_joins_owned_finish_without_a_step_row() {
         .iter()
         .find(|node| node["semantic_form"] == "protocol_clause")
         .expect("original clause");
-    let original_clause_key = original_clause["node_id"].clone();
     let (mut package, evidence) =
         concrete_protocol_refinement(ProtocolStepRows::Empty, ProtocolClauseOwner::SelectedModel);
     let nodes = package["semantic_graph"]["nodes"]
@@ -8259,7 +8252,15 @@ fn refinement_catalog_joins_owned_finish_without_a_step_row() {
     assert_eq!(over_type["semantic_form"], "reference");
     assert_eq!(over_type["body"]["members"][0]["target"], object_b);
     let clause_key = clause["node_id"].clone();
-    assert_eq!(clause["node_id"], original_clause_key);
+    // The clause key is the declaration path and the owner operand.
+    assert_eq!(
+        clause["node_id"],
+        json!({
+            "package": "test/families",
+            "path": ["Example", "OrderFlow", object_b],
+            "ordinal": 0
+        })
+    );
     let concrete_root = nodes
         .iter()
         .find(|node| {
@@ -8308,20 +8309,22 @@ fn refinement_catalog_joins_owned_finish_without_a_step_row() {
     let CheckedPackageV2ReadResult::Admitted(round_trip) = written_read else {
         panic!("typed writer output must read back: {written_read:?}");
     };
+    let wire = crate::support::checked_package::wire_form(&indexed_package(&package));
     assert_eq!(
         serde_json::to_value(round_trip.graph()).expect("round-trip graph"),
-        crate::support::checked_package::wire_form(&package)["semantic_graph"]
+        wire["semantic_graph"]
     );
-    let round_trip_clause = round_trip
+    let (clause_position, round_trip_clause) = round_trip
         .graph()
         .nodes
         .iter()
-        .find(|node| node.semantic_form.as_ref() == "protocol_clause")
+        .enumerate()
+        .find(|(_, node)| node.semantic_form.as_ref() == "protocol_clause")
         .expect("admitted clause");
-    assert_eq!(
-        serde_json::to_value(&round_trip_clause.node_id).expect("clause key"),
-        clause_key
-    );
+    let admitted_key = round_trip
+        .resolve_node_held(clause_position, &round_trip_clause.node_id)
+        .expect("the clause path resolves");
+    assert_eq!(admitted_key, structural_fixture_id(&clause_key));
     assert_eq!(
         serde_json::to_value(&round_trip_clause.owner_model).expect("owner edge"),
         object_b
