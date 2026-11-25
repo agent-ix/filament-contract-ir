@@ -30,3 +30,9 @@ AC-629 is covered except for the dependency-position branch (wrong oracle). One 
 | ID | Severity | Summary | Refs |
 | --- | --- | --- | --- |
 | FND-001 | medium | No criterion or test covers an ownerless `protocol_clause` whose path carries an operand. FR-038 (prose) says a declared path "that carries any other segment, refuses at its `node_id`", and FSpec FR-322 says such a clause "retains its exact `declaration.qualified_name` path". AC-629 states only the owned case, and no test reads an ownerless clause with an operand. The reader admits it (SR-2026112569086487 FND-002), and nothing would catch that. Fix: add the ownerless case to AC-629 or a sibling AC, with a test that expects `declaration-nominal-mismatch` at `/semantic_graph/nodes/{i}/node_id/path`. | spec/checked_package/functional/FR-038-consume-checked-package-v2.md:665-667; crates/filament-contract-model/src/checked_package/v2/mod.rs:3662-3678 |
+
+## Dispositions
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-001 | fixed | 7a4cda78: AC-629 gains "A `protocol_clause` without `owner_model` keeps its declaration path: one with an operand after that path refuses `invalid_package`/`declaration-nominal-mismatch` at `/semantic_graph/nodes/{i}/node_id/path`", and TC-048 gains the matching step. `protocol_ownerless_clause_with_an_operand_refuses` first asserts the ownerless families package admits, then adds `{"node": boolean}` through `reassign_node_id`. It asserts the literal code, cause and pointer, and the refusal it reaches is protocol_body.rs:7063. The package is not settled after the rekey; nothing in it orders ids by the clause key (the source map follows graph order), so the case still reaches that refusal. |
