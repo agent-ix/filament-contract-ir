@@ -2806,6 +2806,16 @@ fn check_hyper_shape(
             _ => None,
         }
     }
+    fn text_literal(term: &CheckedTerm) -> Option<&str> {
+        match term {
+            CheckedTerm::Literal {
+                value_kind: LiteralKind::Text,
+                value,
+                ..
+            } => value.as_str(),
+            _ => None,
+        }
+    }
     for (at, member) in members.iter().enumerate().take(NAMES.len()) {
         if binding(member).map(|(name, _)| name) != Some(NAMES[at]) {
             return Err(graph_defect(at_body().key("members").index(at)));
@@ -2829,15 +2839,7 @@ fn check_hyper_shape(
             kind == CheckedNodeKind::BoundedDomain(BoundedDomainForm::FiniteTracePopulation)
         });
     let finite_domain = finite.then(|| typed_reference(domain).cloned()).flatten();
-    let domain_text = match domain {
-        CheckedTerm::Literal {
-            value_kind: LiteralKind::Text,
-            value,
-            ..
-        } => value.as_str(),
-        _ => None,
-    };
-    if !finite && domain_text != Some("behaviours") {
+    if !finite && text_literal(domain) != Some("behaviours") {
         return Err(graph_defect(at_value(0)));
     }
     let Some(CheckedTerm::Aggregate {
@@ -2886,6 +2888,8 @@ fn check_hyper_shape(
     }
     let bindings_in_group: usize = if finite { 2 } else { 3 };
     let mut aliases = meter.vec(quantifiers.len())?;
+    // The variable texts of the Groups read so far, in ascending order.
+    let mut variables = meter.vec(quantifiers.len())?;
     for (group_at, group) in quantifiers.iter().enumerate() {
         let at_group = || at_value(3).key("members").index(group_at);
         let CheckedTerm::Aggregate {
@@ -2913,14 +2917,7 @@ fn check_hyper_shape(
         if group_members.len() < bindings_in_group {
             return Err(graph_defect(at_group()));
         }
-        let quantifier = binding(&group_members[1]).and_then(|(_, value)| match value {
-            CheckedTerm::Literal {
-                value_kind: LiteralKind::Text,
-                value,
-                ..
-            } => value.as_str(),
-            _ => None,
-        });
+        let quantifier = binding(&group_members[1]).and_then(|(_, value)| text_literal(value));
         if quantifier.is_none_or(|word| !matches!(word, "forall" | "exists")) {
             return Err(ValidationFailure::refused_at(
                 CheckedPackageRefusalCode::InvalidPackage,
@@ -2929,16 +2926,27 @@ fn check_hyper_shape(
                 node.node_id.clone(),
             ));
         }
+        // Each trace variable is one Group: the later of two Groups binding one
+        // text is refused at its `variable` binding.
+        if let Some(variable) =
+            binding(&group_members[0]).and_then(|(_, value)| text_literal(value))
+        {
+            match variables.binary_search(&variable) {
+                Ok(_) => {
+                    return Err(ValidationFailure::refused_at(
+                        CheckedPackageRefusalCode::AmbiguousDeclaration,
+                        at_group().key("members").index(0),
+                        Some(CheckedPackageRefusalCause::AmbiguousName),
+                        node.node_id.clone(),
+                    ));
+                }
+                // Within the capacity charged for one entry per Group.
+                Err(at) => variables.insert(at, variable),
+            }
+        }
         if !finite {
             let alias = binding(&group_members[2])
-                .and_then(|(_, value)| match value {
-                    CheckedTerm::Literal {
-                        value_kind: LiteralKind::Text,
-                        value,
-                        ..
-                    } => value.as_str(),
-                    _ => None,
-                })
+                .and_then(|(_, value)| text_literal(value))
                 .unwrap_or_default();
             meter.push(&mut aliases, alias)?;
         }
