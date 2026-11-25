@@ -1718,9 +1718,11 @@ pub(in crate::checked_package::v2) mod tests {
         )
     }
 
-    /// FR-094-AC-13: dimension operands resolve through selected domain-package
-    /// evidence without adding those packages to library dependency selections.
-    #[trace("TC-419", "FR-094-AC-13")]
+    /// Dimension operands resolve through selected domain-package evidence
+    /// without adding those packages to library dependency selections. A
+    /// non-positive or omitted root scale refuses at wire validation, an
+    /// unreduced one at graph admission.
+    #[trace("TC-048", "FR-063-AC-7", "FR-063-AC-8")]
     #[test]
     fn dimension_equivalence_resolves_selected_model_package_operands() {
         use super::super::{CheckedDimensionOperand, CheckedTerm};
@@ -1797,7 +1799,16 @@ pub(in crate::checked_package::v2) mod tests {
             ("1000", "1")
         );
 
-        for (numerator, denominator) in [("0", "1"), ("-1", "1"), ("2000", "2")] {
+        // A non-positive component is a wire-shape refusal; an unreduced
+        // positive scale is refused by graph admission (FR-063-AC-7, AC-8).
+        let equivalence_pointer = format!("/semantic_graph/nodes/{equivalence_position}");
+        for (numerator, denominator, code) in [
+            ("0", "1", CheckedPackageRefusalCode::MalformedWire),
+            ("-1", "1", CheckedPackageRefusalCode::MalformedWire),
+            ("1", "0", CheckedPackageRefusalCode::MalformedWire),
+            ("1", "-1", CheckedPackageRefusalCode::MalformedWire),
+            ("2000", "2", CheckedPackageRefusalCode::InvalidSemanticGraph),
+        ] {
             let mut invalid = wire.clone();
             invalid["semantic_graph"]["nodes"][equivalence_position]["body"]["root_scale"] =
                 json!({"numerator":numerator,"denominator":denominator});
@@ -1809,9 +1820,15 @@ pub(in crate::checked_package::v2) mod tests {
             let CheckedPackageV2ReadResult::Refused(refusal) = refused else {
                 panic!("invalid dimension root scale must refuse: {numerator}/{denominator}");
             };
+            assert_eq!(refusal.code, code, "{numerator}/{denominator}");
             assert_eq!(
-                refusal.code,
-                CheckedPackageRefusalCode::InvalidSemanticGraph
+                refusal.loci[0]
+                    .path
+                    .as_ref()
+                    .map(ToString::to_string)
+                    .as_deref(),
+                Some(equivalence_pointer.as_str()),
+                "{numerator}/{denominator}"
             );
         }
 
@@ -1825,13 +1842,18 @@ pub(in crate::checked_package::v2) mod tests {
             CheckedPackageReadLimits::bounded(),
             &evidence,
         );
-        assert!(
-            matches!(
-                refused,
-                CheckedPackageV2ReadResult::Refused(ref refusal)
-                    if refusal.code == CheckedPackageRefusalCode::InvalidSemanticGraph
-            ),
-            "missing root scale refusal: {refused:?}"
+        let refusal = match refused {
+            CheckedPackageV2ReadResult::Refused(refusal) => refusal,
+            other => panic!("missing root scale must refuse: {other:?}"),
+        };
+        assert_eq!(refusal.code, CheckedPackageRefusalCode::MalformedWire);
+        assert_eq!(
+            refusal.loci[0]
+                .path
+                .as_ref()
+                .map(ToString::to_string)
+                .as_deref(),
+            Some(equivalence_pointer.as_str())
         );
 
         for (package, node) in [
@@ -1869,40 +1891,65 @@ pub(in crate::checked_package::v2) mod tests {
         );
         assert!(matches!(refused, CheckedPackageV2ReadResult::Refused(_)));
 
-        let mut inconsistent_cycle = wire.clone();
-        let mut reverse =
-            inconsistent_cycle["semantic_graph"]["nodes"][equivalence_position].clone();
-        reverse["node_id"]["ordinal"] = json!(1);
-        reverse["occurrences"][0]["ordinal"] = json!(1);
-        reverse["body"]["root_scale"] = json!({"numerator":"2","denominator":"1"});
-        let position = inconsistent_cycle["semantic_graph"]["nodes"]
+        // A third edge closes the triangle over a new pair, (clock, flow).
+        // (clock, rpc) is 1000 and (flow, rpc) is 1, so the cycle product is
+        // one only at 1000. Its node id sorts after both other edges.
+        let third_position = wire["semantic_graph"]["nodes"]
             .as_array()
             .expect("semantic graph nodes")
-            .len();
-        inconsistent_cycle["semantic_graph"]["nodes"]
-            .as_array_mut()
-            .expect("semantic graph nodes")
-            .push(reverse.clone());
-        let source = inconsistent_cycle["lock"]["sources"][0].clone();
-        inconsistent_cycle["source_map"]
-            .as_array_mut()
-            .expect("source map")
-            .push(json!({
-                "node_id":reverse["node_id"],"role":"anchor","ordinal":1,
-                "regions":[{"source":source,"start":position,"end":position+1}]
-            }));
-        let refused = CheckedPackageV2::read(
-            &crate::checked_package::v2::test_support::canonical(&inconsistent_cycle),
-            CheckedPackageReadLimits::bounded(),
-            &evidence,
+            .iter()
+            .position(|node| node["node_id"] == json!(third_package_equivalence))
+            .expect("third-package equivalence node");
+        let operand = |position: usize| {
+            wire["semantic_graph"]["nodes"][position]["body"]["dimension_node_ids"][0].clone()
+        };
+        let closing_pair = [operand(third_position), operand(equivalence_position)];
+        assert_eq!(closing_pair[0]["package"], "acme/clock");
+        assert_eq!(closing_pair[1]["package"], "acme/flow");
+        let read_closed_by = |numerator: &str| {
+            let mut closed = wire.clone();
+            let id = json!({"package":"composite",
+                "path":["scalar_type","dimension_equivalence","closing"],"ordinal":0});
+            let mut closing = closed["semantic_graph"]["nodes"][equivalence_position].clone();
+            closing["node_id"] = id.clone();
+            closing["semantic_type"] = id.clone();
+            closing["occurrences"][0]["ordinal"] = json!(2);
+            closing["body"]["dimension_node_ids"] = json!(closing_pair);
+            closing["body"]["root_scale"] = json!({"numerator":numerator,"denominator":"1"});
+            let nodes = closed["semantic_graph"]["nodes"]
+                .as_array_mut()
+                .expect("semantic graph nodes");
+            let position = nodes.len();
+            nodes.push(closing);
+            let source = closed["lock"]["sources"][0].clone();
+            closed["source_map"]
+                .as_array_mut()
+                .expect("source map")
+                .push(json!({
+                    "node_id":id,"role":"anchor","ordinal":2,
+                    "regions":[{"source":source,"start":position,"end":position+1}]
+                }));
+            CheckedPackageV2::read(
+                &crate::checked_package::v2::test_support::canonical(&closed),
+                CheckedPackageReadLimits::bounded(),
+                &evidence,
+            )
+        };
+        let consistent = read_closed_by("1000");
+        assert!(
+            matches!(consistent, CheckedPackageV2ReadResult::Admitted(_)),
+            "consistent dimension equivalence cycle must admit: {consistent:?}"
         );
-        let CheckedPackageV2ReadResult::Refused(refusal) = refused else {
-            panic!("inconsistent dimension equivalence cycle must refuse");
+        let inconsistent = read_closed_by("2");
+        let refusal = match inconsistent {
+            CheckedPackageV2ReadResult::Refused(refusal) => refusal,
+            other => panic!("inconsistent dimension equivalence cycle must refuse: {other:?}"),
         };
         assert_eq!(
             refusal.code,
             CheckedPackageRefusalCode::InvalidSemanticGraph
         );
+        assert_eq!(refusal.cause, None);
         assert_eq!(
             refusal.loci[0]
                 .path
