@@ -614,12 +614,7 @@ impl NominalBody {
                         }
                     }
                 }
-                let path = || at().key("root_scale");
-                if !positive_integer(&root_scale.numerator)
-                    || !positive_integer(&root_scale.denominator)
-                {
-                    return Err(malformed(path()));
-                }
+                valid_rational(root_scale, &|| at().key("root_scale"), true)?;
             }
         }
         Ok(())
@@ -3887,11 +3882,16 @@ mod tests {
         let malformed = json!({"term":"dimension_equivalence",
             "dimension_node_ids":[first,second],
             "root_scale":{"numerator":"0","denominator":"1"}});
+        // A read refuses a non-positive scale at the equivalence node that
+        // holds the body (FR-063-AC-7).
+        let body_at = JsonPointer::parse("/semantic_graph/nodes/0/body").expect("body pointer");
         assert!(matches!(
-            NominalBody::from_value(&malformed, JsonPointer::root()),
+            NominalBody::from_value(&malformed, body_at),
             Err(ValidationFailure::Refused(refusal))
                 if refusal.code == CheckedPackageRefusalCode::MalformedWire
-                    && refusal.loci[0].path.as_ref().is_some_and(|path| path.as_str() == "/root_scale/numerator")
+                    && refusal.loci[0].path.as_ref().is_some_and(
+                        |path| path.as_str() == "/semantic_graph/nodes/0"
+                    )
         ));
     }
 

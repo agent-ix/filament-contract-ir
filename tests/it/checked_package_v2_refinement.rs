@@ -3128,6 +3128,13 @@ fn declared_protocol_step_target_roundtrips_and_refuses_wrong_row_keys() {
     wrong_operation["semantic_graph"]["nodes"][position]["body"]["steps"][0]["target"] = json!({"kind":"operation", "operation":finish,
             "target_type":target_type,
             "receiver":{"term":"reference","target":finish}, "arguments":[]});
+    // The target type is one of the step's dependency edges.
+    let dependencies = wrong_operation["semantic_graph"]["nodes"][position]["dependencies"]
+        .as_array_mut()
+        .expect("dependencies");
+    dependencies.push(target_type);
+    dependencies.sort_by(node_id_order);
+    dependencies.dedup();
     settle_refinement(&mut wrong_operation, position);
     assert_step_refusal(
         read(&wrong_operation, &evidence),
