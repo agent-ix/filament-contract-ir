@@ -36,6 +36,9 @@ pub(super) trait LocationRow {
     fn occurrence(&self) -> &CheckedOccurrence;
     /// The term coordinate within the occurrence.
     fn term_ordinal(&self) -> u64;
+    /// Body locations are independently keyed by function; protocol rows have
+    /// no function owner.
+    fn function(&self) -> Option<&CheckedNodeId>;
     /// The captured child path entries, as written.
     fn path(&self) -> &[CheckedKeyOrdinal];
     /// The wire member that holds `path()`.
@@ -58,6 +61,9 @@ impl LocationRow for CheckedProtocolSemanticLocation {
     }
     fn term_ordinal(&self) -> u64 {
         self.term_ordinal
+    }
+    fn function(&self) -> Option<&CheckedNodeId> {
+        None
     }
     fn path(&self) -> &[CheckedKeyOrdinal] {
         &self.location.path
@@ -84,6 +90,11 @@ impl LocationRow for CheckedBodySemanticLocation {
     }
     fn term_ordinal(&self) -> u64 {
         self.term_ordinal
+    }
+    fn function(&self) -> Option<&CheckedNodeId> {
+        match &self.location.origin {
+            CheckedBodyLocationOrigin::FunctionBody { function, .. } => Some(function),
+        }
     }
     fn path(&self) -> &[CheckedKeyOrdinal] {
         &self.location.down
@@ -219,12 +230,45 @@ pub(super) fn validate_rows<'a, Body, Row: LocationRow>(
     }));
     occurrences.sort_unstable();
     let mut previous: Option<&Row> = None;
+    let mut ordinal_rows = stage_storage::vec(meter, &site, rows.len())?;
+    type SeenKey<'a> = (
+        Option<&'a CheckedNodeId>,
+        &'a CheckedNodeId,
+        &'a CheckedOccurrence,
+        u64,
+    );
+    let mut seen_keys = stage_storage::vec::<SeenKey<'_>>(meter, &site, rows.len())?;
     let mut missing_predecessor = false;
     for (index, row) in rows.iter().enumerate() {
         let here = at(array, index);
         work(meter, index, here, 1)?;
         intake_local_application(row.application(), name, array, index, meter)?;
         let term_ordinal = intake_term_ordinal(row.term_ordinal(), array, index, meter)?;
+        work(meter, index, here, 1)?;
+        let key = (
+            row.function(),
+            row.application(),
+            row.occurrence(),
+            term_ordinal,
+        );
+        let mut duplicate = false;
+        for seen in &seen_keys {
+            work(meter, index, here, 1)?;
+            if *seen == key {
+                duplicate = true;
+                break;
+            }
+        }
+        if duplicate {
+            return Err(fail(
+                meter,
+                index,
+                CheckedPackageRefusalCode::InvalidPackage,
+                Some(CheckedPackageRefusalCause::ConflictingDefinition),
+                here,
+            ));
+        }
+        seen_keys.push(key);
         if let Some(before) = previous {
             let key = (row.application(), row.occurrence(), term_ordinal);
             let prior = (
@@ -232,25 +276,10 @@ pub(super) fn validate_rows<'a, Body, Row: LocationRow>(
                 before.occurrence(),
                 before.term_ordinal(),
             );
-            if key == prior {
-                return Err(fail(
-                    meter,
-                    index,
-                    CheckedPackageRefusalCode::InvalidPackage,
-                    Some(CheckedPackageRefusalCause::ConflictingDefinition),
-                    here,
-                ));
-            }
             if key < prior {
                 return Err(invalid(meter, index, here));
             }
         }
-        let expected = previous
-            .filter(|before| {
-                before.application() == row.application() && before.occurrence() == row.occurrence()
-            })
-            .map_or(0, |before| before.term_ordinal() + 1);
-        missing_predecessor |= term_ordinal != expected;
         previous = Some(row);
         work(meter, index, here.key("application"), 1)?;
         let found = node_index.partition_point(|(id, _)| *id < row.application());
@@ -286,6 +315,32 @@ pub(super) fn validate_rows<'a, Body, Row: LocationRow>(
             return Err(invalid(meter, index, here.key("occurrence")));
         }
         intake_location_value(row, array, index, meter)?;
+        ordinal_rows.push((
+            row.function(),
+            row.application(),
+            row.occurrence(),
+            term_ordinal,
+        ));
+    }
+    stage_storage::work(
+        meter,
+        &site,
+        u64::try_from(ordinal_rows.len()).unwrap_or(u64::MAX),
+    )?;
+    ordinal_rows.sort_unstable_by(|left, right| {
+        (left.0, left.1, left.2, left.3).cmp(&(right.0, right.1, right.2, right.3))
+    });
+    let mut prior: Option<(Option<&CheckedNodeId>, &CheckedNodeId, &CheckedOccurrence)> = None;
+    let mut expected = 0_u64;
+    for (function, application, occurrence, ordinal) in ordinal_rows {
+        let key = (function, application, occurrence);
+        if prior == Some(key) {
+            missing_predecessor |= ordinal != expected;
+        } else {
+            missing_predecessor |= ordinal != 0;
+            prior = Some(key);
+        }
+        expected = ordinal.saturating_add(1);
     }
     Ok((missing_predecessor, node_index))
 }
