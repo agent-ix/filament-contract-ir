@@ -62,7 +62,8 @@ fn node_work(meter: &mut WorkMeter, position: usize) -> Result<(), ValidationFai
 
 /// The owner operand of a clause's node path: the index or node-ID segment of
 /// a path that is the declaration path followed by that one operand. A path
-/// that is the declaration path alone carries none.
+/// that is the declaration path alone carries none. Wire validation has already
+/// refused a protocol clause without a declaration.
 fn owner_path_operand(node: &RawSemanticNodeV2) -> Option<&CheckedNodePathSegment> {
     let declaration = node.declaration.as_ref()?;
     if node.node_id.path.len() != declaration.qualified_name.len() + 1 {

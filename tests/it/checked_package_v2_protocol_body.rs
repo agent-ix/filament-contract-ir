@@ -3337,6 +3337,31 @@ fn protocol_owner_retarget_with_stale_key_path_refuses_and_updated_path_admits()
     let clause_key = checked_node_id(&stale["semantic_graph"]["nodes"][clause]["node_id"]);
     assert_eq!(refusal.locus.as_ref(), Some(&clause_key), "{refusal:?}");
 
+    // On its declaration path alone the same retargeted clause records no
+    // operand, so the reader does not compare the edge.
+    let mut uncompared = stale;
+    uncompared["semantic_graph"]["nodes"][clause]["node_id"]["path"]
+        .as_array_mut()
+        .expect("owner operand path")
+        .pop()
+        .expect("owner operand segment");
+    settle_after_structural_rekey(&mut uncompared);
+    let clause = clause_position(&uncompared);
+    assert_eq!(
+        uncompared["semantic_graph"]["nodes"][clause]["node_id"]["path"],
+        json!(["Example", "OrderFlow"])
+    );
+    assert_eq!(
+        uncompared["semantic_graph"]["nodes"][clause]["owner_model"],
+        other_id
+    );
+    let uncompared_result = read_with_model(&uncompared, &evidence);
+    assert!(
+        matches!(uncompared_result, CheckedPackageV2ReadResult::Admitted(_)),
+        "a retargeted edge on a declaration-only path admits: {uncompared_result:?}"
+    );
+    let clause = clause_position(&package);
+
     let mut updated = package;
     updated["semantic_graph"]["nodes"][clause]["owner_model"] = other_id.clone();
     let dependencies = updated["semantic_graph"]["nodes"][clause]["dependencies"]
@@ -3488,6 +3513,48 @@ fn protocol_owner_path_longer_than_declaration_must_name_the_owner() {
         refusal.loci[0].path.as_ref().map(|path| path.as_str()),
         Some(format!("/semantic_graph/nodes/{clause}/node_id/path").as_str())
     );
+}
+
+#[trace("TC-048", "FR-038-AC-629")]
+#[test]
+fn protocol_owner_clause_without_declaration_refuses_at_the_wire() {
+    let package = admitted_object_owned_protocol_families();
+    let clause = clause_position(&package);
+    let owner = package["semantic_graph"]["nodes"][clause]["owner_model"].clone();
+    let owner_operand = json!({"node": node_position_for_key(&package, &owner)});
+    let boolean = node_id(&family_key("aaaa"));
+    let other_operand = json!({"node": node_position_for_key(&package, &boolean)});
+
+    for last in [Some(owner_operand), Some(other_operand), None] {
+        let mut undeclared = package.clone();
+        let node = &mut undeclared["semantic_graph"]["nodes"][clause];
+        node.as_object_mut()
+            .expect("protocol clause")
+            .remove("declaration")
+            .expect("clause declaration");
+        let path = node["node_id"]["path"]
+            .as_array_mut()
+            .expect("protocol clause path");
+        path.pop().expect("owner operand segment");
+        // With no operand the path ends in a name.
+        path.extend(last);
+        settle_after_structural_rekey(&mut undeclared);
+        let clause = clause_position(&undeclared);
+        let CheckedPackageV2ReadResult::Refused(refusal) = read(&undeclared) else {
+            panic!("an owned clause without a declaration refuses");
+        };
+        assert_eq!(
+            refusal.code,
+            CheckedPackageRefusalCode::MalformedWire,
+            "{refusal:?}"
+        );
+        assert_eq!(refusal.cause, None, "{refusal:?}");
+        assert_eq!(
+            refusal.loci[0].path.as_ref().map(|path| path.as_str()),
+            Some(format!("/semantic_graph/nodes/{clause}").as_str()),
+            "{refusal:?}"
+        );
+    }
 }
 
 /// Trace: FR-064-AC-7

@@ -1655,7 +1655,11 @@ vector or schema is copied into this repository.
     (FR-038-AC-629; FSpec FR-322-AC-538; FSL TC-1063).
     In a further positive package, keep the `owner_model` edge and its
     dependency but give C its declaration path alone as `node_id.path`; require
-    admission.
+    admission, and require admission again after retargeting that edge and its
+    dependency to B, which that path does not let the reader compare (a known
+    limitation). Then remove C's `declaration`: require `malformed_wire` at C's
+    node whether its last `node_id.path` segment resolves to C's owner, resolves
+    to another node or is a name (FR-038-AC-629).
     In independent packages, retarget C to a selected `state_machine`,
     `process`, `record_value_type`, relation or `model_root` node, then to a
     source-local declaration or a missing local target. Require the typed
