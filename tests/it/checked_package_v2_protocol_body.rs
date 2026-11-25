@@ -6,13 +6,13 @@
 use crate::checked_package_v2_whole_read_accounting::fspec_inputs;
 use crate::support::checked_package::protocol_ports::role_port_fixture;
 use crate::support::checked_package::{
-    admitted_protocol_families, application_node_key, canonical, evidence_for,
+    admitted_dependency, admitted_protocol_families, application_node_key, canonical, evidence_for,
     evidence_with_document, family_key, family_model_document, fixture_source, model_owner,
-    node_id, owned_structural_node, protocol_named_node, protocol_role_node, reassign_node_id,
-    rebuild_source_map, refresh_identity, refresh_identity_projection, refusal, refusal_at_id,
-    rename_node, resolved_fixture_id, select_model, selected_interface_model_node, settle,
-    source_owner, structural_fixture_id, structural_id, structural_key, v2_all_families,
-    COMPLETE_VALUE_FEATURE,
+    node_id, owned_structural_node, protocol_named_node, protocol_role_node,
+    read_with_dependencies, reassign_node_id, rebuild_source_map, refresh_identity,
+    refresh_identity_projection, refusal, refusal_at_id, rename_node, resolved_fixture_id,
+    select_model, selected_interface_model_node, settle, source_owner, structural_fixture_id,
+    structural_id, structural_key, v2_all_families, v2_nominal, wire_form, COMPLETE_VALUE_FEATURE,
 };
 use filament_contract_model::{
     CheckedNodeId, CheckedNodePathSegment, CheckedPackageEvidence, CheckedPackageLimit,
@@ -3337,29 +3337,25 @@ fn protocol_owner_retarget_with_stale_key_path_refuses_and_updated_path_admits()
     let clause_key = checked_node_id(&stale["semantic_graph"]["nodes"][clause]["node_id"]);
     assert_eq!(refusal.locus.as_ref(), Some(&clause_key), "{refusal:?}");
 
-    // On its declaration path alone the same retargeted clause records no
-    // operand, so the reader does not compare the edge.
-    let mut uncompared = stale;
-    uncompared["semantic_graph"]["nodes"][clause]["node_id"]["path"]
+    // The same retargeted clause on its declaration path alone carries no
+    // operand that names the new owner.
+    let mut bare = stale;
+    bare["semantic_graph"]["nodes"][clause]["node_id"]["path"]
         .as_array_mut()
         .expect("owner operand path")
         .pop()
         .expect("owner operand segment");
-    settle_after_structural_rekey(&mut uncompared);
-    let clause = clause_position(&uncompared);
+    settle_after_structural_rekey(&mut bare);
+    let clause = clause_position(&bare);
     assert_eq!(
-        uncompared["semantic_graph"]["nodes"][clause]["node_id"]["path"],
+        bare["semantic_graph"]["nodes"][clause]["node_id"]["path"],
         json!(["Example", "OrderFlow"])
     );
     assert_eq!(
-        uncompared["semantic_graph"]["nodes"][clause]["owner_model"],
+        bare["semantic_graph"]["nodes"][clause]["owner_model"],
         other_id
     );
-    let uncompared_result = read_with_model(&uncompared, &evidence);
-    assert!(
-        matches!(uncompared_result, CheckedPackageV2ReadResult::Admitted(_)),
-        "a retargeted edge on a declaration-only path admits: {uncompared_result:?}"
-    );
+    assert_stale_owner_refusal(&bare, read_with_model(&bare, &evidence));
     let clause = clause_position(&package);
 
     let mut updated = package;
@@ -3384,19 +3380,42 @@ fn protocol_owner_retarget_with_stale_key_path_refuses_and_updated_path_admits()
     );
 }
 
-fn clause_path_strings(path: &[CheckedNodePathSegment]) -> Vec<&str> {
-    path.iter()
-        .map(|segment| match segment {
-            CheckedNodePathSegment::Name(name) => &**name,
-            other => panic!("the clause path holds an operand: {other:?}"),
-        })
-        .collect()
+/// Requires the owner-edge refusal at the clause's `owner_model`, with the
+/// clause as graph-node locus.
+fn assert_stale_owner_refusal(package: &Value, result: CheckedPackageV2ReadResult) {
+    let CheckedPackageV2ReadResult::Refused(refusal) = result else {
+        panic!("an owner edge the clause path does not name refuses: {result:?}");
+    };
+    assert_eq!(
+        refusal.code,
+        CheckedPackageRefusalCode::InvalidPackage,
+        "{refusal:?}"
+    );
+    assert_eq!(
+        refusal.cause,
+        Some(CheckedPackageRefusalCause::StaleNodeKey),
+        "{refusal:?}"
+    );
+    let clause = clause_position(package);
+    assert_eq!(
+        refusal.loci[0].path.as_ref().map(|path| path.as_str()),
+        Some(format!("/semantic_graph/nodes/{clause}/owner_model").as_str()),
+        "{refusal:?}"
+    );
+    let clause_key = checked_node_id(&package["semantic_graph"]["nodes"][clause]["node_id"]);
+    assert_eq!(refusal.locus.as_ref(), Some(&clause_key), "{refusal:?}");
 }
 
 #[trace("TC-048", "FR-038-AC-629")]
 #[test]
-fn protocol_owner_declaration_only_path_admits() {
+fn protocol_owner_declaration_only_path_refuses() {
     let mut package = admitted_object_owned_protocol_families();
+    let admitted = read(&package);
+    assert!(
+        matches!(admitted, CheckedPackageV2ReadResult::Admitted(_)),
+        "the clause admits on its owner operand path: {admitted:?}"
+    );
+
     let clause = clause_position(&package);
     package["semantic_graph"]["nodes"][clause]["node_id"]["path"]
         .as_array_mut()
@@ -3410,25 +3429,93 @@ fn protocol_owner_declaration_only_path_admits() {
         json!(["Example", "OrderFlow"])
     );
 
-    let result = read(&package);
-    let CheckedPackageV2ReadResult::Admitted(admitted) = result else {
-        panic!("an owned clause at its declaration path admits: {result:?}");
-    };
-    let node = &admitted.graph().nodes[clause];
-    assert_eq!(
-        clause_path_strings(&node.node_id.path),
-        ["Example", "OrderFlow"]
+    assert_stale_owner_refusal(&package, read(&package));
+}
+
+#[trace("TC-048", "FR-038-AC-629")]
+#[test]
+fn protocol_owner_dependency_position_operand_refuses() {
+    let (name, dependency) = admitted_dependency(&v2_nominal());
+    let mut package = admitted_object_owned_protocol_families();
+    package["lock"]["dependency_selections"] = json!([{"identity": name}]);
+    settle_after_structural_rekey(&mut package);
+    let mut wire = wire_form(&package);
+    let selected = read_with_dependencies(&wire, &[(name.as_str(), &dependency)]);
+    assert!(
+        matches!(selected, CheckedPackageV2ReadResult::Admitted(_)),
+        "the package admits with the selected dependency: {selected:?}"
     );
-    let owner = node.owner_model.as_ref().expect("owner edge");
+
+    // The clause's own `node_id` slot now names a dependency position.
+    let clause = clause_position(&wire);
+    let slot = wire["semantic_graph"]["nodes"][clause]["node_id"]["path"][2]["operand"]
+        .as_u64()
+        .expect("owner operand slot");
+    let slot = usize::try_from(slot).expect("slot fits usize");
+    wire["semantic_graph"]["operand_rows"][clause][slot] = json!({"package": name, "node": 0});
+
+    let CheckedPackageV2ReadResult::Refused(refusal) =
+        read_with_dependencies(&wire, &[(name.as_str(), &dependency)])
+    else {
+        panic!("an owner operand naming a dependency position refuses");
+    };
     assert_eq!(
-        clause_path_strings(&owner.path),
-        ["model", "object_type", "ix://test/families/Account"]
+        refusal.code,
+        CheckedPackageRefusalCode::MalformedWire,
+        "{refusal:?}"
+    );
+    assert_eq!(refusal.cause, None, "{refusal:?}");
+    assert_eq!(
+        refusal.loci[0].path.as_ref().map(|path| path.as_str()),
+        Some(format!("/semantic_graph/nodes/{clause}/node_id/path/2/operand").as_str()),
+        "{refusal:?}"
     );
 }
 
 #[trace("TC-048", "FR-038-AC-629")]
 #[test]
-fn fspec_object_owned_clause_at_its_declaration_path_admits() {
+fn protocol_ownerless_clause_with_an_operand_refuses() {
+    let mut package = admitted_protocol_families();
+    let admitted = read(&package);
+    assert!(
+        matches!(admitted, CheckedPackageV2ReadResult::Admitted(_)),
+        "the ownerless clause admits on its declaration path: {admitted:?}"
+    );
+
+    let clause = clause_position(&package);
+    let unowned = package["semantic_graph"]["nodes"][clause]["node_id"].clone();
+    assert_eq!(unowned["path"], json!(["Example", "OrderFlow"]));
+    let boolean = node_position_for_key(&package, &node_id(&family_key("aaaa")));
+    let mut extended = unowned.clone();
+    extended["path"]
+        .as_array_mut()
+        .expect("protocol clause path")
+        .push(json!({"node": boolean}));
+    reassign_node_id(&mut package, &unowned, &extended);
+
+    let CheckedPackageV2ReadResult::Refused(refusal) = read(&package) else {
+        panic!("an ownerless clause with an operand refuses");
+    };
+    assert_eq!(
+        refusal.code,
+        CheckedPackageRefusalCode::InvalidPackage,
+        "{refusal:?}"
+    );
+    assert_eq!(
+        refusal.cause,
+        Some(CheckedPackageRefusalCause::DeclarationNominalMismatch),
+        "{refusal:?}"
+    );
+    assert_eq!(
+        refusal.loci[0].path.as_ref().map(|path| path.as_str()),
+        Some(format!("/semantic_graph/nodes/{clause}/node_id/path").as_str()),
+        "{refusal:?}"
+    );
+}
+
+#[trace("TC-048", "FR-038-AC-629")]
+#[test]
+fn fspec_object_owned_clause_admits_on_its_owner_operand_path() {
     let proposal = match std::env::var_os("FILAMENT_SPECIFICATION_DIR") {
         Some(root) => std::path::PathBuf::from(root).join("proposals/checked-package-v2"),
         None if std::env::var_os("FSPEC_CONFORMANCE").is_none() => return,
@@ -3447,24 +3534,32 @@ fn fspec_object_owned_clause_at_its_declaration_path_admits() {
         &fixtures,
     )
     .expect("published evidence");
-    let clause = clause_position(&package);
-    assert_eq!(
-        package["semantic_graph"]["nodes"][clause]["node_id"]["path"],
-        json!(["Example", "Handshake"])
-    );
 
     let result = read_with_model(&package, &evidence);
     let CheckedPackageV2ReadResult::Admitted(admitted) = result else {
         panic!("the published owned clause admits: {result:?}");
     };
+    let clause = clause_position(&package);
     let node = &admitted.graph().nodes[clause];
+    let resolved = admitted
+        .resolve_node_held(clause, &node.node_id)
+        .expect("the clause path resolves");
+    let [CheckedNodePathSegment::Name(module), CheckedNodePathSegment::Name(declaration), CheckedNodePathSegment::Node(operand)] =
+        resolved.path.as_slice()
+    else {
+        panic!("the declaration path and one owner operand: {resolved:?}");
+    };
+    assert_eq!([&**module, &**declaration], ["Example", "Handshake"]);
+    let owner_path = |path: &[CheckedNodePathSegment]| {
+        path.iter()
+            .map(|segment| match segment {
+                CheckedNodePathSegment::Name(name) => name.to_string(),
+                other => panic!("the owner path holds an operand: {other:?}"),
+            })
+            .collect::<Vec<_>>()
+    };
     assert_eq!(
-        clause_path_strings(&node.node_id.path),
-        ["Example", "Handshake"]
-    );
-    let owner = node.owner_model.as_ref().expect("owner edge");
-    assert_eq!(
-        clause_path_strings(&owner.path),
+        owner_path(&operand.path),
         ["model", "object_type", "ix://acme/orders/Order"]
     );
 }
@@ -15059,6 +15154,11 @@ fn add_minimal_protocol_named(package: &mut Value, name: &str) -> usize {
     let mut clause = protocol_named_node("protocol_clause", &["Example", name], body, &[]);
     let owner = package["semantic_graph"]["nodes"][original]["owner_model"].clone();
     if !owner.is_null() {
+        let owner_position = node_position_for_key(package, &owner);
+        clause["node_id"]["path"]
+            .as_array_mut()
+            .expect("protocol clause path")
+            .push(json!({"node": owner_position}));
         clause["owner_model"] = owner;
     }
     let position = package["semantic_graph"]["nodes"].as_array().unwrap().len() + 3;

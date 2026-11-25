@@ -1653,13 +1653,17 @@ vector or schema is copied into this repository.
     its dependency and that path operand to B; require admission. This isolates
     the owner-key mismatch from the ordinary dependency-closure check
     (FR-038-AC-629; FSpec FR-322-AC-538; FSL TC-1063).
-    In a further positive package, keep the `owner_model` edge and its
-    dependency but give C its declaration path alone as `node_id.path`; require
-    admission, and require admission again after retargeting that edge and its
-    dependency to B, which that path does not let the reader compare (a known
-    limitation). Then remove C's `declaration`: require `malformed_wire` at C's
-    node whether its last `node_id.path` segment resolves to C's owner, resolves
-    to another node or is a name (FR-038-AC-629).
+    In further packages, keep the `owner_model` edge and its dependency but give
+    C its declaration path alone as `node_id.path`, both with the edge unchanged
+    and after retargeting that edge and its dependency to B. Require the same
+    `stale-node-key` refusal, loci and absent package each time. With a selected
+    dependency package, make C's own `node_id` operand slot name a dependency
+    position: require `malformed_wire`, with no cause, at that slot. Give an
+    ownerless clause one operand after its declaration path: require
+    `invalid_package`/`declaration-nominal-mismatch` at its `node_id.path`. Then
+    remove C's `declaration`: require `malformed_wire` at C's node whether its
+    last `node_id.path` segment resolves to C's owner, resolves to another node
+    or is a name (FR-038-AC-629).
     In independent packages, retarget C to a selected `state_machine`,
     `process`, `record_value_type`, relation or `model_root` node, then to a
     source-local declaration or a missing local target. Require the typed

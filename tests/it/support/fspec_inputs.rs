@@ -418,6 +418,7 @@ pub(crate) fn ordinal_case_package(base: &Value, case: &Value) -> (Value, Vec<us
                 .expect("graph nodes")
                 .len()
         };
+        fixture_support::shift_graph_positions(&mut package, position, 1);
         package["semantic_graph"]["nodes"]
             .as_array_mut()
             .expect("graph nodes")

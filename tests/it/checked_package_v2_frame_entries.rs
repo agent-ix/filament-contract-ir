@@ -203,6 +203,14 @@ fn select_other_protocol_owner(value: &mut Value) {
         .expect("nodes")
         .push(model);
     let clause = position(value, "protocol", "protocol_clause");
+    let owner_position = nodes(value).len() - 1;
+    let unowned = value["semantic_graph"]["nodes"][clause]["node_id"].clone();
+    let mut owned = unowned.clone();
+    owned["path"]
+        .as_array_mut()
+        .expect("protocol clause path")
+        .push(json!({"node": owner_position}));
+    reassign_node_id(value, &unowned, &owned);
     value["semantic_graph"]["nodes"][clause]["owner_model"] = owner;
     let over =
         value["semantic_graph"]["nodes"][clause]["body"]["arguments"][0]["value"]["target"].clone();

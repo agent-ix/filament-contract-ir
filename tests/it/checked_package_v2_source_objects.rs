@@ -5,8 +5,8 @@
 //! (FR-362 through FR-368). Every package is built here node by node.
 
 use crate::support::checked_package::{
-    canonical, evidence_for, family_key, fixture_source, index_fixture_node_ids, node_id, settle,
-    structural_key, v2_all_families,
+    canonical, evidence_for, family_key, fixture_source, index_fixture_node_ids, node_id,
+    reassign_node_id, settle, structural_key, v2_all_families,
 };
 use filament_contract_model::{
     encode_checked_package_v2, CheckedNodeId, CheckedNodeOwner, CheckedOperationEffectOrigin,
@@ -286,6 +286,17 @@ fn source_package() -> Value {
         .position(|node| node["node_id"] == over)
         .expect("over parameter");
     nodes_mut(&mut package)[over_position]["semantic_type"] = reference_type;
+    let order_position = nodes(&package)
+        .iter()
+        .position(|node| node["node_id"] == order_id())
+        .expect("source type");
+    let unowned = nodes(&package)[clause]["node_id"].clone();
+    let mut owned = unowned.clone();
+    owned["path"]
+        .as_array_mut()
+        .expect("protocol clause path")
+        .push(json!({"node": order_position}));
+    reassign_node_id(&mut package, &unowned, &owned);
     nodes_mut(&mut package)[clause]["owner_model"] = order_id();
     nodes_mut(&mut package)[clause]["dependencies"]
         .as_array_mut()

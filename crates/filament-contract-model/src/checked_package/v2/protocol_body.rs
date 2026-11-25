@@ -7183,17 +7183,17 @@ pub(super) fn validate_protocol_nodes(
                     ));
                 }
             }
-            if let Some(operand) = owner_path_operand(node) {
-                node_work(meter, position)?;
-                if !owner_operand_names(operand, owner_position, structural_keys) {
-                    return Err(refuse_at(
-                        meter,
-                        Code::InvalidPackage,
-                        Some(Cause::StaleNodeKey),
-                        owner_at(),
-                        &node.node_id,
-                    ));
-                }
+            node_work(meter, position)?;
+            if !owner_path_operand(node).is_some_and(|operand| {
+                owner_operand_names(operand, owner_position, structural_keys)
+            }) {
+                return Err(refuse_at(
+                    meter,
+                    Code::InvalidPackage,
+                    Some(Cause::StaleNodeKey),
+                    owner_at(),
+                    &node.node_id,
+                ));
             }
         }
         let Some((operator, arguments)) = validated[position] else {

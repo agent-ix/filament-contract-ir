@@ -764,7 +764,10 @@
           "package": "test/families",
           "path": [
             "Example",
-            "OrderFlow"
+            "OrderFlow",
+            {
+              "node": 21
+            }
           ]
         },
         "node_tag": "protocol",
@@ -3287,7 +3290,10 @@
         "package": "test/families",
         "path": [
           "Example",
-          "OrderFlow"
+          "OrderFlow",
+          {
+            "node": 21
+          }
         ]
       },
       "ordinal": 0,

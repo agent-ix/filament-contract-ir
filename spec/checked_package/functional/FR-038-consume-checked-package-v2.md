@@ -640,14 +640,19 @@ object exists to mirror or authenticate them.
 The reader SHALL validate every `CheckedNodeId` as the closed structural value
 `{package, path, ordinal}`. `package` is the owning package's `name`; an
 imported node retains the package name it came from. `path` is a non-empty
-array: a declared node's declaration path is its `declaration.qualified_name`;
+array: a declared node's declaration path is its `declaration.qualified_name`,
+followed, for a `protocol_clause` with an `owner_model` edge, by one
+owner-model operand segment;
 an ungrouped derived node's path is `[node_tag, semantic_form, ...operands]`,
 where an operand is a string or an operand segment: the closed operand slot `{"operand": k}` in a node-held id, naming entry `k` of the holding node's row of `semantic_graph.operand_rows`, or the closed index segment `{"node": i}` in a document-held id, naming `semantic_graph.nodes[i]` (FSpec FR-322 "Operand index segments"). A path never contains a nested node id. A group member with a declaration keeps its own declaration path, so
 several declared members in one group can have distinct paths. An anonymous
 derived member uses the sole declared member's path when there is exactly one;
 with zero or multiple declared members, the producer chooses its path and the
 reader admits it without inventing an anchor. No grouped member embeds
-operands in its path (FSpec FR-322-AC-274, TC-946 K14). Its structural
+derived operands in its path (FSpec FR-322-AC-274, TC-946 K14); the owner-model
+operand of an owned `protocol_clause` is held by that clause, grouped or not,
+and by each anonymous member that takes its path as the sole declared member's.
+Its structural
 `node_id.ordinal`, like every node's, is producer assigned and need not be
 zero or contiguous with another node's ordinal; the reader does not derive
 it from the body or graph position or require sibling ordering. A recursion group is identified only by its shared, non-empty
@@ -660,13 +665,14 @@ The structural `node_id.ordinal` is an integer
 from zero through 9007199254740991. A malformed structural ordinal refuses
 `malformed_wire` at its own pointer. Two equal node ids refuse
 `invalid_semantic_graph` at the second node's `node_id`; a repeated model root
-of the same identity refuses at its later `owner`. A declared path that differs
-from its `qualified_name` refuses at its `node_id`. The reader SHALL not derive
+of the same identity refuses at its later `owner`. A declared path whose
+declaration segments differ from its `qualified_name`, or that carries any other
+segment, refuses at its `node_id`. The reader SHALL not derive
 a complete node id from arbitrary node bodies, hash, rekey or seal a node id.
 When a `protocol_clause` has an `owner_model` edge, however, the reader SHALL
 resolve that edge to its exact structural node id and verify that the
 owner-model operand segment in the clause's `node_id.path` equals that id. If
-the edge and that segment differ, the reader SHALL refuse
+that segment is absent or differs from the edge, the reader SHALL refuse
 `invalid_package`/`stale-node-key` at
 `/semantic_graph/nodes/{i}/owner_model`, with the `protocol_clause` node as
 the graph-node locus, before exposing any package. This validates the one
@@ -3495,7 +3501,8 @@ as `package`. A derived ungrouped node has the FSpec path
 `{"node": i}` index into this document's graph. A declared recursion-group member keeps its own declaration path; an
 anonymous derived member uses the sole declared member's path when exactly
 one exists, or a producer-chosen path when zero or multiple exist. No grouped
-member embeds operands in its path (FSpec FR-322-AC-274; TC-946 K14).
+member embeds derived operands in its path (FSpec FR-322-AC-274; TC-946 K14);
+the owner-model operand of an owned `protocol_clause` is the exception.
 Its structural `node_id.ordinal` remains producer assigned. The shared
 non-empty `recursion_group` label identifies membership; references to members
 use exact structural node IDs. No group-position carrier is written or derived.
@@ -7042,7 +7049,7 @@ the minimum the read uses.
 | FR-038-AC-369 | PLANNED/UNRUN (IR-1141). A repeated `lock.refinement_internals` row, a repeated spelling and a repeated dependency identity each report both concrete entry pointers as two `loci` in declaration order, with the first primary. An unequal dependency diamond reports both conflicting lock-selection pointers in declaration order. Every other refusal has one location entry; these changes preserve each refusal's code, cause and first-defect precedence. | Test (TC-048) |
 | FR-038-AC-370 | PLANNED/UNRUN (IR-1164/IR-1165). For an admitted selected object with fields declared as `zeta` then `alpha`, `model_object_fields().fields()` returns `zeta`, `alpha`, not name order; `field("alpha")` selects that same second item and `field("absent")` is `None`. In a chain `Base` declaring `b`, `Mid` declaring `m`, and `Leaf` declaring `l`, the Leaf result is `b`, `m`, `l` with authentic declaring structural node IDs Base, Mid, Leaf respectively, matching the admitted graph nodes rather than the requested Leaf ID. Each returned name and `member_type` remains the effective field that the same retained table supplies to a field read. A name-sort or a declaration-ID copied from the requested subtype fails these observations. | Test (TC-227) |
 | FR-038-AC-371 | PLANNED/UNRUN (IR-1164/IR-1165). A subtype redefining an inherited field retains one exposed field at the hidden field’s earliest declaration-order slot, with the redefiner’s name, derived member type and actual redefining owner’s structural node ID; the hidden owner’s ID is not returned. A diamond that reaches one inherited field twice returns it once at the first inherited slot with its original declaring ID. Reversing two authored supertype edges reverses distinct inherited field order but does not change their declaring IDs. The object’s accessor result agrees with the retained `ordered_exposed` table and its binder order; a name-sort, duplicate diamond field, hidden base identity, or later-slot redefiner fails. | Test (TC-227) |
-| FR-038-AC-629 | A `protocol_clause` whose `owner_model` edge resolves to structural node id `M` is admitted when its `node_id.path` owner-model operand segment resolves to the same `M` and its dependencies contain `M` in canonical order. Retargeting `/semantic_graph/nodes/{i}/owner_model` and replacing `M` by `N` in that clause's dependencies, where `N` is another valid model node, while leaving `node_id.path` unchanged, refuses `invalid_package`/`stale-node-key` at that exact edge with the clause node as graph-node locus and exposes no package. Updating the path segment to resolve to `N` admits. For a clause with a `declaration`, the owner-model operand segment is the one segment that follows the declaration path in `node_id.path`. Known limitation: when such a path is the declaration path alone, the reader does not compare the `owner_model` edge, so a retargeted `owner_model` with its matching dependency that passes the other owner checks admits there. FSpec FR-322 "Structural node identity" asks for the comparison on every clause that carries `owner_model` without saying what it compares on such a path, and FR-322-AC-538 covers only a path that contains the operand; the gap is undecided upstream. A `protocol_clause` without a `declaration` never reaches the owner comparison: whatever its `node_id.path` holds, strict wire validation refuses it as `malformed_wire` at `/semantic_graph/nodes/{i}`. A malformed target, missing owner edge, missing dependency or unrelated stale path continues to settle under the existing wire, owner, graph or body rule. | Test (TC-048; TC-1063) |
+| FR-038-AC-629 | A `protocol_clause` with a `declaration` and an `owner_model` edge resolving to structural node id `M` has as its `node_id.path` the declaration path followed by exactly one owner-model operand segment, and is admitted when that segment resolves to the same `M` and its dependencies contain `M` in canonical order. Retargeting `/semantic_graph/nodes/{i}/owner_model` and replacing `M` by `N` in that clause's dependencies, where `N` is another valid model node, while leaving `node_id.path` unchanged, refuses `invalid_package`/`stale-node-key` at that exact edge with the clause node as graph-node locus and exposes no package. Updating the path segment to resolve to `N` admits. The same refusal applies when `node_id.path` is the declaration path alone, with the edge unchanged or retargeted (FSpec FR-322 "Protocol clause owner identity", FR-322-AC-538). An owner operand slot that names a dependency position never reaches the owner comparison: the operand checks refuse it as `malformed_wire`, with no cause, at `/semantic_graph/nodes/{i}/node_id/path/{n}/operand` (FSpec FR-322-AC-521). A path with two or more segments past the declaration path refuses `invalid_package`/`declaration-nominal-mismatch` at `/semantic_graph/nodes/{i}/node_id/path`. A `protocol_clause` without `owner_model` keeps its declaration path: one with an operand after that path refuses `invalid_package`/`declaration-nominal-mismatch` at `/semantic_graph/nodes/{i}/node_id/path`. A `protocol_clause` without a `declaration` never reaches the owner comparison: whatever its `node_id.path` holds, strict wire validation refuses it as `malformed_wire` at `/semantic_graph/nodes/{i}`. A malformed target, missing owner edge, missing dependency or unrelated stale path continues to settle under the existing wire, owner, graph or body rule. | Test (TC-048; TC-1063) |
 | FR-038-AC-628 | PLANNED/UNRUN (IR-1164/IR-1165). A selected document whose `Leaf` inherits `Base.b` admits with only the Leaf object declaration node in the graph, as FSpec FR-322-AC-30 permits; `model_object_fields(Leaf)` returns `MissingDeclaringNode` carrying the selected IR field identity of `Base.b` for the entire call, without inventing a Base ID or omitting `b`. Adding the authentic Base declaration node makes the call succeed with Base’s structural node ID. Two distinct admitted `model`/`object_type` nodes matching the same selected owner declaration identity but bearing distinct structural ordinals yield `AmbiguousDeclaringNode` for the first exposed field they own; neither node is chosen. With distinct defects, the first field in effective declaration order decides; `UnknownNode`, `NotModelObjectType` and existing `AmbiguousField` retain their earlier precedence. Malformed or unselected owners retain their independent admission refusal. | Test (TC-227) |
 | FR-038-AC-373 | PLANNED/UNRUN (IR-1164/IR-1165). A public API fixture calls `declaring_node_id()` on every successful `CheckedModelField` and exhaustively matches the closed `CheckedModelFieldsError` variants, including `MissingDeclaringNode` and `AmbiguousDeclaringNode`; it cannot construct a `CheckedModelField` with a fabricated ID through public fields. The accessor returns equal results on equal calls and a package clone, charges no new work, performs no second model-resolution walk and does not read raw graph JSON or a copied domain schema. The revised declaration-order and typed-identity controls supersede only AC-136’s former ascending-name oracle; AC-136’s field set and type obligations remain. | Test (TC-227) |
 | FR-038-AC-401 | The strict reader admits FSpec `CQ-W01` through `CQ-W04`: decimal and integer carried-quantity nodes are anonymous, self typed and of family `quantity`; the integer carrier with `exact` and with `nearest-even` produces distinct structural nodes. The public `ScalarTypeForm::CarriedQuantity` and admitted body expose the exact unit, carrier and rounding without evaluating a quantity. | Test (TC-048; FSpec TC-280) |

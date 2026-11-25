@@ -8,7 +8,9 @@
 use crate::checked_package_v2_whole_read_accounting::fspec_inputs::{
     evidence_for_published, read_json, DOMAIN_DOCUMENT,
 };
-use crate::support::checked_package::{canonical, rebuild_source_map, refresh_identity};
+use crate::support::checked_package::{
+    canonical, rebuild_source_map, refresh_identity, shift_graph_positions,
+};
 use filament_contract_model::{
     CheckedDelayFamily, CheckedNodeId, CheckedPackageReadLimits, CheckedPackageRefusalCause,
     CheckedPackageRefusalCode, CheckedPackageV2, CheckedPackageV2ReadResult,
@@ -248,6 +250,7 @@ fn least_work(proposal: &std::path::Path, wire: &Value) -> u64 {
 /// `wire` with `count` copies of a scalar type node before the nodes it already holds.
 fn padded(wire: &Value, count: usize) -> Value {
     let mut wire = wire.clone();
+    shift_graph_positions(&mut wire, 0, count);
     let nodes = wire["semantic_graph"]["nodes"]
         .as_array_mut()
         .expect("nodes");
