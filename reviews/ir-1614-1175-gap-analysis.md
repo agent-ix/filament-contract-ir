@@ -27,3 +27,9 @@ The new expectations close the gap for FR-063-AC-7 and AC-8 in this test. The te
 | ID | Severity | Summary | Refs |
 | --- | --- | --- | --- |
 | FND-001 | medium | The test is tagged `#[trace("TC-419", "FR-094-AC-13")]`, which names filament-spec-language ids that do not exist in this repo's spec. That foreign AC says the IR reader refuses `invalid_semantic_graph` for `0/1`, `-1/1`, `2000/2` or a missing scale. The test now asserts `malformed_wire` for three of these, as FR-063-AC-7 requires, so the test contradicts the AC it claims. The correct local tag is `#[trace("TC-048", "FR-063-AC-1", "FR-063-AC-7", "FR-063-AC-8")]`. | crates/filament-contract-model/src/checked_package/v2/composite_operands.rs:1721-1723 |
+
+## Dispositions
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-001 | fixed | Round 1, head d40be75e43b1082e0ab43aafcb89f21fbed68e02. The tag is now `#[trace("TC-048", "FR-063-AC-7", "FR-063-AC-8")]`, and both ids exist in this repo's TC-048. FR-063-AC-1 was left out on purpose. The test does not assert node `dependencies`, so AC-7 and AC-8 are a sound binding. The new `1/0` and `1/-1` cases add the denominator half of AC-7: `positive_integer` rejects both in `from_document`, which refuses `malformed_wire` at /semantic_graph/nodes/{i}. The stale clause in filament-spec-language FR-094-AC-13 stays outside this repo. |
