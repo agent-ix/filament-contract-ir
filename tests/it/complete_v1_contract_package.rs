@@ -2673,7 +2673,8 @@ fn contract_reader_refuses_unequal_complete_values_in_dependency_diamond() {
 
 /// The ContractPackage reader derives the same closure as the V2 reader, so it
 /// refuses a source package whose dependency closure holds its own name,
-/// directly or through a library.
+/// directly or through a library, after it has checked supply.
+#[trace("TC-047", "FR-035-AC-18")]
 #[test]
 fn contract_reader_refuses_a_dependency_closure_holding_its_own_name() {
     use crate::support::checked_package::read_with_dependencies;
@@ -2729,11 +2730,30 @@ fn contract_reader_refuses_a_dependency_closure_holding_its_own_name() {
         };
         assert_eq!(refusal.code, Code::InvalidPackage, "{refusal:?}");
         assert_eq!(refusal.cause, Some(Cause::DefinitionCycle), "{refusal:?}");
-        assert_eq!(
-            refusal.loci[0].path.as_ref().map(|path| path.as_str()),
-            Some(path)
-        );
+        let loci: Vec<_> = refusal
+            .loci
+            .iter()
+            .map(|locus| locus.path.as_ref().map(|path| path.as_str()))
+            .collect();
+        assert_eq!(loci, [Some(path)], "{refusal:?}");
     }
+
+    let mut unsupplied = wire.clone();
+    unsupplied["package"]["source"]["lock"]["dependency_selections"] = json!([{"identity": name}]);
+    let result = ContractPackageWireV1::read(
+        &canonical(&unsupplied),
+        CheckedPackageReadLimits::bounded(),
+        &ContractDependencies::new(),
+    );
+    let ContractPackageReadResult::Refused(refusal) = result else {
+        panic!("an unsupplied selection must refuse");
+    };
+    assert_eq!(refusal.code, Code::MissingImport, "{refusal:?}");
+    assert_eq!(refusal.cause, Some(Cause::MissingSelection), "{refusal:?}");
+    assert_eq!(
+        refusal.loci[0].path.as_ref().map(|path| path.as_str()),
+        Some("/package/source/lock/dependency_selections/0")
+    );
 }
 
 #[trace("TC-047", "FR-035-AC-2")]

@@ -294,7 +294,12 @@ fn selection_pointer(root: &Path<'_>, paths: &[SelectionPath], path: usize) -> J
 
 /// Checks the recursive closure without copying it into every admitted package.
 /// The input packages are aligned with the importing lock's direct selections.
+///
+/// Entries are checked depth first, in lock order, and the first one that names
+/// the importing package `importer`, or reaches a package unequal to the one an
+/// earlier entry reached under the same identity, refuses.
 pub(super) fn check_derived_closure<'a>(
+    importer: &str,
     selections: &'a [CheckedDependencySelection],
     packages: &[&'a CheckedPackageV2],
     root: Path<'_>,
@@ -302,13 +307,16 @@ pub(super) fn check_derived_closure<'a>(
 ) -> Result<(), ValidationFailure> {
     let mut budget = Budget::lock(meter, "dependency_selections");
     if let ([selection], [package]) = (selections, packages) {
-        if package
-            .closure_index
-            .get(&selection.identity)
-            .is_none_or(|candidate| candidate.wire == package.wire)
+        if selection.identity.as_ref() != importer
+            && package.closure_index.get(importer).is_none()
+            && package
+                .closure_index
+                .get(&selection.identity)
+                .is_none_or(|candidate| candidate.wire == package.wire)
         {
-            // The admitted child already checked its closure. One new identity
-            // cannot conflict when it is absent there or has the same ID.
+            // The admitted child already checked its closure, which does not
+            // hold the importer. One new identity cannot conflict when it is
+            // absent there or has the same ID.
             budget.charge_at_position(
                 1,
                 F,
@@ -338,6 +346,13 @@ pub(super) fn check_derived_closure<'a>(
         let entry = paths[path].root;
         budget.set_index(entry);
         budget.charge_at(1, F, || selection_pointer(&root, &paths, path))?;
+        if selection.identity.as_ref() == importer {
+            return Err(ValidationFailure::refused_because(
+                CheckedPackageRefusalCode::InvalidPackage,
+                selection_pointer(&root, &paths, path),
+                CheckedPackageRefusalCause::DefinitionCycle,
+            ));
+        }
         if let Some((prior_package, prior_path)) = seen.get(selection.identity.as_ref()) {
             if prior_package.wire != package.wire {
                 let mut refusal = ValidationFailure::refused_because(
@@ -350,9 +365,15 @@ pub(super) fn check_derived_closure<'a>(
                 }
                 return Err(refusal);
             }
-            continue;
+            // Equal wire values can be admitted against different packages. A
+            // repeat whose own closure holds the importer is walked to the
+            // entry that names it.
+            if package.closure_index.get(importer).is_none() {
+                continue;
+            }
+        } else {
+            seen.insert(&mut budget, selection.identity.as_ref(), (package, path), F)?;
         }
-        seen.insert(&mut budget, selection.identity.as_ref(), (package, path), F)?;
         for (index, (child_selection, child_package)) in package
             .lock()
             .dependency_selections
@@ -1075,7 +1096,7 @@ mod tests {
                 .index(8)
         });
         assert_exact(lock_locus, denial, |meter| {
-            check_derived_closure(&selections, &packages, Path::root(), meter)
+            check_derived_closure("importer", &selections, &packages, Path::root(), meter)
         });
     }
 
@@ -1093,6 +1114,7 @@ mod tests {
             let mut result = None;
             let requested = allocation_counter::measure(|| {
                 result = Some(check_derived_closure(
+                    "importer",
                     &selections,
                     &packages,
                     root,

@@ -408,52 +408,138 @@ fn overlisted_transitive_selection_admits_when_values_agree() {
     ));
 }
 
-/// FR-038-AC-293: a dependency whose closure holds its own name, here through
-/// another library, refuses on its own read at the path to the offending entry.
+/// Admits, on its own read, a package named `name` that selects each of
+/// `supplied`, which must be in ascending name order.
+fn admitted_selecting(name: &str, supplied: &[&CheckedPackageV2]) -> CheckedPackageV2 {
+    match read_selecting(name, supplied) {
+        CheckedPackageV2ReadResult::Admitted(package) => *package,
+        other => panic!("{name} admits on its own read: {other:?}"),
+    }
+}
+
+fn read_selecting(name: &str, supplied: &[&CheckedPackageV2]) -> CheckedPackageV2ReadResult {
+    let wire = with_selections(
+        empty_package(name),
+        supplied
+            .iter()
+            .map(|package| entry(package.name()))
+            .collect(),
+    );
+    let evidence: Vec<_> = supplied
+        .iter()
+        .map(|package| (package.name(), *package))
+        .collect();
+    read_with_dependencies(&wire, &evidence)
+}
+
+/// Reads `name` over `supplied` and requires the one-location import-cycle
+/// refusal at `path`.
+fn expect_cycle(name: &str, supplied: &[&CheckedPackageV2], path: &str) {
+    let CheckedPackageV2ReadResult::Refused(refusal) = read_selecting(name, supplied) else {
+        panic!("a closure holding {name} through {path} must refuse");
+    };
+    assert_eq!(refusal.code, Code::InvalidPackage, "{refusal:?}");
+    assert_eq!(refusal.cause, Some(Cause::DefinitionCycle), "{refusal:?}");
+    let loci: Vec<_> = refusal.loci.iter().map(|locus| &locus.path).collect();
+    assert_eq!(loci, [&Some(pointer(path))], "{refusal:?}");
+}
+
+/// A package named `name` with no selections, distinct from the one every
+/// other helper builds when `end` differs.
+fn leaf_ending_at(name: &str, end: u64) -> CheckedPackageV2 {
+    let mut wire = empty_package(name);
+    wire["source_map"][0]["regions"][0]["end"] = json!(end);
+    admitted_dependency(&wire).1
+}
+
+/// A package's closure cannot hold its own name, selected directly or through
+/// one or two libraries. The refused package is a child to any importer, so it
+/// refuses on its own read.
+#[trace("TC-048", "FR-038-AC-637", "FR-038-AC-293")]
+#[test]
+fn a_closure_holding_the_package_name_refuses_at_the_entry_that_names_it() {
+    let own = leaf_ending_at("test/own", 100);
+    expect_cycle("test/own", &[&own], "/lock/dependency_selections/0");
+
+    let library = admitted_selecting("test/library", &[&own]);
+    expect_cycle(
+        "test/own",
+        &[&library],
+        "/lock/dependency_selections/0/lock/dependency_selections/0",
+    );
+
+    let outer = admitted_selecting("test/outer", &[&library]);
+    expect_cycle(
+        "test/own",
+        &[&outer],
+        "/lock/dependency_selections/0/lock/dependency_selections/0/lock/dependency_selections/0",
+    );
+}
+
+/// Two libraries that select unequal packages under the reading package's name
+/// are an import cycle at the first, not a diamond conflict.
+#[trace("TC-048", "FR-038-AC-637")]
+#[test]
+fn unequal_packages_under_the_own_name_are_a_cycle_not_a_conflict() {
+    let first = leaf_ending_at("test/own", 100);
+    let second = leaf_ending_at("test/own", 101);
+    let left = admitted_selecting("test/left", &[&first]);
+    let right = admitted_selecting("test/right", &[&second]);
+    expect_cycle(
+        "test/own",
+        &[&left, &right],
+        "/lock/dependency_selections/0/lock/dependency_selections/0",
+    );
+}
+
+/// Supply is checked first: an unsupplied direct entry naming the reading
+/// package is a missing selection.
+#[trace("TC-048", "FR-038-AC-637")]
+#[test]
+fn an_unsupplied_entry_naming_the_package_is_a_missing_selection() {
+    let root = with_selections(empty_package("test/own"), vec![entry("test/own")]);
+    let CheckedPackageV2ReadResult::Refused(refusal) = read_with_dependencies(&root, &[]) else {
+        panic!("an unsupplied selection must refuse");
+    };
+    assert_eq!(refusal.code, Code::MissingImport, "{refusal:?}");
+    assert_eq!(refusal.cause, Some(Cause::MissingSelection), "{refusal:?}");
+    let loci: Vec<_> = refusal.loci.iter().map(|locus| &locus.path).collect();
+    assert_eq!(loci, [&Some(pointer("/lock/dependency_selections/0"))]);
+}
+
+/// Two copies of one library with equal wire values, admitted over unequal
+/// packages: only the second reaches the reading package. The walk follows the
+/// second copy and refuses at the first unequal pair it meets.
 #[trace("TC-048", "FR-038-AC-293")]
 #[test]
-fn a_dependency_closure_holding_its_own_name_refuses_on_its_own_read() {
-    let leaf_wire = empty_package("test/repeated");
-    let (_, leaf) = admitted_dependency(&leaf_wire);
-    let middle_wire = with_selections(empty_package("test/middle"), vec![entry(leaf.name())]);
-    let CheckedPackageV2ReadResult::Admitted(middle) =
-        read_with_dependencies(&middle_wire, &[(leaf.name(), &leaf)])
-    else {
-        panic!("middle dependency admits");
-    };
-    let child_wire = with_selections(empty_package("test/repeated"), vec![entry(middle.name())]);
-    let CheckedPackageV2ReadResult::Refused(refusal) =
-        read_with_dependencies(&child_wire, &[(middle.name(), &middle)])
+fn a_repeated_library_that_reaches_the_importer_is_walked() {
+    let own = leaf_ending_at("test/own", 100);
+    let plain = leaf_ending_at("test/n", 100);
+    let reaching = admitted_selecting("test/n", &[&own]);
+    let first_copy = admitted_selecting("test/m", &[&plain]);
+    let second_copy = admitted_selecting("test/m", &[&reaching]);
+    let left = admitted_selecting("test/a", &[&first_copy]);
+    let right = admitted_selecting("test/b", &[&second_copy]);
+    let CheckedPackageV2ReadResult::Refused(refusal) = read_selecting("test/own", &[&left, &right])
     else {
         panic!("a closure holding the package's own name must refuse");
     };
     assert_eq!(refusal.code, Code::InvalidPackage, "{refusal:?}");
-    assert_eq!(refusal.cause, Some(Cause::DefinitionCycle), "{refusal:?}");
     assert_eq!(
-        refusal.loci[0].path,
-        Some(pointer(
-            "/lock/dependency_selections/0/lock/dependency_selections/0"
-        ))
+        refusal.cause,
+        Some(Cause::ConflictingDefinition),
+        "{refusal:?}"
     );
-}
-
-/// A package that selects its own name refuses the same way, whatever the
-/// selected value holds.
-#[test]
-fn a_package_selecting_its_own_name_refuses() {
-    let mut other_wire = empty_package("test/root");
-    other_wire["source_map"][0]["regions"][0]["end"] = json!(100);
-    let (_, other) = admitted_dependency(&other_wire);
-    let root = with_selections(empty_package("test/root"), vec![entry(other.name())]);
-    let CheckedPackageV2ReadResult::Refused(refusal) =
-        read_with_dependencies(&root, &[(other.name(), &other)])
-    else {
-        panic!("a package selecting its own name must refuse");
-    };
-    assert_eq!(refusal.code, Code::InvalidPackage, "{refusal:?}");
-    assert_eq!(refusal.cause, Some(Cause::DefinitionCycle), "{refusal:?}");
+    let loci: Vec<_> = refusal.loci.iter().map(|locus| &locus.path).collect();
     assert_eq!(
-        refusal.loci[0].path,
-        Some(pointer("/lock/dependency_selections/0"))
+        loci,
+        [
+            &Some(pointer(
+                "/lock/dependency_selections/0/lock/dependency_selections/0/lock/dependency_selections/0"
+            )),
+            &Some(pointer(
+                "/lock/dependency_selections/1/lock/dependency_selections/0/lock/dependency_selections/0"
+            )),
+        ]
     );
 }

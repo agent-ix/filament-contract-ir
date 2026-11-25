@@ -3325,6 +3325,7 @@ impl ContractPackageWireV1 {
             packages.push(input.package);
         }
         check_derived_closure(
+            &self.package.source.name,
             selected,
             &packages,
             super::stage_storage::Path::root()

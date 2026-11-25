@@ -2606,6 +2606,7 @@ fn validate_lock<'a>(
     // binds to its entry, before any `dependency_reference` is read.
     let dependencies = admit_dependencies(&lock.dependency_selections, evidence, meter)?;
     check_derived_closure(
+        &wire.name,
         &lock.dependency_selections,
         &dependencies.packages(meter)?,
         stage_storage::Path::root(),
