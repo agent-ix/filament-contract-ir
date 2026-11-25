@@ -312,6 +312,33 @@ pub(super) enum NativeTypeRef {
     Clock,
 }
 
+/// A name in the native namespace.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum NativeName {
+    /// One of the closed native names.
+    Known(NativeTypeRef),
+    /// A name the selected model grammar lacks.
+    Unknown,
+}
+
+impl NativeName {
+    /// The native-namespace name `identity` spells; `None` outside it.
+    #[string_edge]
+    pub(super) fn from_identity(identity: &str) -> Option<Self> {
+        let name = identity.strip_prefix(NATIVE_PREFIX)?;
+        Some(NativeTypeRef::from_name(name).map_or(Self::Unknown, Self::Known))
+    }
+}
+
+/// How a type definition names another type.
+#[derive(Clone, Copy)]
+enum NativeNaming {
+    /// An `alias` row.
+    Alias,
+    /// A value type bound by `target` to the native namespace.
+    Bound(NativeName),
+}
+
 impl SelectedTypeRef {
     #[string_edge]
     fn from_admitted_name(name: &str) -> Option<Self> {
@@ -838,12 +865,10 @@ impl CollectionKind {
 /// value type bound to a native by `target`, which is that native under its
 /// own name exactly as an alias is (FSpec FR-154 "Value types bound to a
 /// native by `target`").
-fn names_a_native(row: View<'_>, meanings: &SortedMap<(&str, &str), &str>) -> bool {
-    let Some(kind) = row.get("kind") else {
-        return false;
-    };
+fn names_a_native(row: View<'_>, meanings: &SortedMap<(&str, &str), &str>) -> Option<NativeNaming> {
+    let kind = row.get("kind")?;
     if kind.as_str() == Some("alias") {
-        return true;
+        return Some(NativeNaming::Alias);
     }
     let meaning = kind
         .get("module")
@@ -851,11 +876,13 @@ fn names_a_native(row: View<'_>, meanings: &SortedMap<(&str, &str), &str>) -> bo
         .zip(kind.get("name").and_then(View::as_str))
         .and_then(|key| meanings.get(&key).copied())
         .and_then(meaning::Kind::from_wire);
-    meaning == Some(meaning::Kind::ValueType)
-        && row
-            .get("target")
-            .and_then(View::as_str)
-            .is_some_and(|target| target.starts_with(NATIVE_PREFIX))
+    if meaning != Some(meaning::Kind::ValueType) {
+        return None;
+    }
+    row.get("target")
+        .and_then(View::as_str)
+        .and_then(NativeName::from_identity)
+        .map(NativeNaming::Bound)
 }
 
 /// A member type FR-322 step 4 derives.
@@ -4846,7 +4873,7 @@ pub(super) fn read_semantic_ir(
     let declared_types = list(document, "types")?;
     let alias_count = declared_types
         .iter()
-        .filter(|declared| names_a_native(*declared, &meanings))
+        .filter(|declared| names_a_native(*declared, &meanings).is_some())
         .count();
     let mut aliases: SortedMap<Box<str>, Box<str>> =
         SortedMap::with_capacity(budget, alias_count, F)?;
@@ -4861,17 +4888,11 @@ pub(super) fn read_semantic_ir(
         let Some(node) = row.get("identity").and_then(View::as_str) else {
             return Err(SelectionRefusal::located(ModelRefusal::malformed(), row, budget)?.into());
         };
-        if names_a_native(row, &meanings) {
-            if row.get("kind").and_then(View::as_str) != Some("alias") {
+        if let Some(naming) = names_a_native(row, &meanings) {
+            if let NativeNaming::Bound(native) = naming {
                 // A value type bound to a native by `target`: an unknown
                 // native, or a second binding by `scalar`, is malformed.
-                let member = if row
-                    .get("target")
-                    .and_then(View::as_str)
-                    .and_then(|target| target.strip_prefix(NATIVE_PREFIX))
-                    .and_then(NativeTypeRef::from_name)
-                    .is_none()
-                {
+                let member = if native == NativeName::Unknown {
                     Some("target")
                 } else if row.get("scalar").is_some() {
                     Some("scalar")
@@ -4888,8 +4909,7 @@ pub(super) fn read_semantic_ir(
                 // Native-target value types retain their raw constraints for
                 // the checker. Intake validates only the keyword vocabulary;
                 // Clock bounds are interpreted by the owning checker.
-                let clock =
-                    row.get("target").and_then(View::as_str) == Some("ix://filament/native/Clock");
+                let clock = native == NativeName::Known(NativeTypeRef::Clock);
                 for (index, constraint) in list(row, "constraints")?.iter().enumerate() {
                     if !clock
                         || !matches!(

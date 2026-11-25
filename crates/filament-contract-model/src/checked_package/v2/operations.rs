@@ -4568,9 +4568,9 @@ fn parameter_name_level<'g>(position: usize, graph: &Graph<'g>) -> Option<(&'g s
         let CheckedTerm::Literal { value, .. } = value.as_ref() else {
             continue;
         };
-        match field.as_ref() {
-            "name" => name = value.as_str(),
-            "level" => level = value.as_str(),
+        match field.internal_kind() {
+            super::TermBindingName::Name => name = value.as_str(),
+            super::TermBindingName::Level => level = value.as_str(),
             _ => {}
         }
     }
