@@ -1606,6 +1606,37 @@ equal, the diamond is admitted. The reader reports the first failing entry in
 lock order and no later one. Every direct entry is supplied before any
 `dependency_reference` check.
 
+The derived closure of an admitted package never holds that package's own
+`name` (FSpec FR-322). An entry whose `identity` equals the importing
+package's `name`, whether a direct entry or one reached through the locks of
+selected dependencies, is an import cycle, and the reader refuses
+`invalid_package`/`definition-cycle`. The refusal does not depend on the
+content of any package supplied under that identity: it is the same whether or
+not that content is structurally equal to the importing package's or to that of
+another package supplied under the identity, so the diamond comparison above
+never decides an entry that names the importing package. The refusal precedes
+graph-reference validation and reports one location, the importer-rooted
+selection path that ends at that entry: `/lock/dependency_selections/<i>` for a
+direct entry, and each further `/lock/dependency_selections/<j>` through the
+admitted package selected by the preceding entry. A package whose own closure
+reaches its own name is therefore refused on its own read and is never supplied
+to an importer as an admitted dependency.
+
+Supply is checked first: a direct entry that names the importing package and
+has no package supplied under it refuses `missing_import`/`missing-selection`
+at that entry, as any unsupplied entry does. A consumer that resolves the
+import graph before supplying packages, such as a source compile or a handoff
+directory loader, refuses `invalid_package`/`definition-cycle` instead; both
+refuse. Once every direct entry is supplied, the reader walks the derived
+closure depth first, in lock order: it checks an entry when it reaches it and
+walks the lock of that entry's package before it takes the next entry. The
+first entry in this order that names the importing package, or whose package is
+not structurally equal to the one an earlier entry of the walk reached under the
+same identity, decides the one refusal. A closure holding both an import cycle
+and a diamond conflict therefore reports whichever the walk reaches first
+(FSpec FR-322). The ContractPackage reader applies the same rules with
+`package.source.identity` as the importing name (FR-035-AC-18).
+
 After admission, `CheckedPackageV2::direct_dependencies()` SHALL expose the
 retained admitted dependency package values as immutable borrows in the same
 order as `lock.dependency_selections`. The accessor SHALL yield only direct
@@ -6736,7 +6767,9 @@ the minimum the read uses.
 | FR-038-AC-35 | A function call with a `dependency_reference` callee to a declared function in the supplied dependency admits and carries the term verbatim without listing that remote target as a local dependency. Listing it locally refuses `invalid_semantic_graph`; changing the referenced package name or structural node id changes the referenced target and is checked by the normal dependency and declaration joins, without a rekey step. | Test (TC-048) |
 | FR-038-AC-36 | A `dependency_reference` requires a non-empty package identity and a closed structural node id `{package,path,ordinal}`; malformed members refuse at their own pointer. A well-formed term outside argument 0 of `filament.op.function.call` refuses `ill_typed`/`operator-ineligible` at the term. | Test (TC-048) |
 | FR-038-AC-37 | An unsupplied selected dependency refuses `missing_import`/`missing-selection` at the lock entry. A term whose package no entry names refuses `missing_declaration`/`missing-selection` at `package`; a node absent from that package or without a declaration refuses `missing_declaration`/`missing-name` at `node`; a declared non-function target refuses `ill_typed`/`operator-ineligible`, with the calling node as locus. | Test (TC-048) |
-| FR-038-AC-293 | Given an otherwise valid package with direct selections for two admitted dependencies whose own direct selections reach the same transitive name with unequal complete JSON package values, the V2 reader refuses `invalid_package`/`conflicting-definition` before graph-reference validation. Its two ordered `loci` name the exact importer-rooted selection paths in declaration order, each following `/lock/dependency_selections/<i>` through the admitted package selected by the preceding entry; neither path is encoded in prose. The same refusal holds when the importer has one direct selection whose identity recurs in that admitted child's transitive closure with an unequal complete JSON package value. | Test (TC-048) |
+| FR-038-AC-293 | Given an otherwise valid package with direct selections for two admitted dependencies whose own direct selections reach the same transitive name with unequal complete JSON package values, the V2 reader refuses `invalid_package`/`conflicting-definition` before graph-reference validation. Its two ordered `loci` name the exact importer-rooted selection paths in declaration order, each following `/lock/dependency_selections/<i>` through the admitted package selected by the preceding entry; neither path is encoded in prose. A child whose own transitive closure reaches its own name is refused on its own read, before any importer's selection is checked, as `invalid_package`/`definition-cycle` at the selection path from the child to that entry (FR-038-AC-637), whether or not the package it reaches under that name has an equal complete JSON value. | Test (TC-048) |
+| FR-038-AC-637 | For FSpec FR-322-AC-551, the V2 reader refuses an otherwise valid package `P` whose derived closure holds its own `name` as `invalid_package`/`definition-cycle`, before graph-reference validation and with one location. Each dependency named here is supplied and admits on its own read, and the package named `P` that a library selects has no selections of its own. A direct selection of `P`, supplied with such a package, locates at `/lock/dependency_selections/0`; `P` selecting `L`, whose lock selects `P`, at `/lock/dependency_selections/0/lock/dependency_selections/0`; and `P` selecting `L`, `L` selecting `M` and `M` selecting `P`, at `/lock/dependency_selections/0/lock/dependency_selections/0/lock/dependency_selections/0`. `P` selecting two libraries whose locks select `P` supplied as two structurally unequal packages refuses `invalid_package`/`definition-cycle` at `/lock/dependency_selections/0/lock/dependency_selections/0`, never `invalid_package`/`conflicting-definition`. A direct selection of `P` with no package supplied under it refuses `missing_import`/`missing-selection` at `/lock/dependency_selections/0`. | Test (TC-048) |
+| FR-038-AC-638 | For FSpec FR-322-AC-552, the V2 reader, run over the `own-name-before-diamond` closure vector of FSpec `dependency-selection-vectors.json` as that file records it, refuses exactly `invalid_package`/`definition-cycle` with the one location `/lock/dependency_selections/0/lock/dependency_selections/0/lock/dependency_selections/0`: the depth-first walk reaches that entry before the later entry that conflicts under `test/x`, which is not reported. | Test (TC-048) |
 | FR-038-AC-38 | A dependency function whose parameter is a declared record, whose result is a declared record, whose parameter is a `Set` of one, a tuple holding one, or a `Reference` to a `model` node refuses `ill_typed`/`operator-ineligible` at the callee; the same function over a `Set` of a bounded integer admits. | Test (TC-048) |
 | FR-038-AC-39 | Under a bounds-required profile, `x + 1` over a parameter `x` typed at an `integer_range` domain over `integer` lowers although the parameter's name literal is annotated with the unbounded `text` type, and the annotation stays in the closure and in `dependencies`; a parameter typed at an unbounded `integer` or `rational` type refuses `requires_bound` naming that type. | Test (TC-050) |
 | FR-038-AC-40 | Under a bounds-required profile a `bounded_domain` over a shared unbounded type does not bound another position naming it: `{n: Integer, k: Int[0,9]}`, `Sequence<Integer>[0,3]` beside `Int[0,9]`, and `(x + 1) + n` over `x: Int[0,9]` and an `n` typed at `integer` each return `requires_bound` naming `integer`, while `Sequence<Boolean>[0,3]`, a record of bounded collections and ranged fields, and `x + 1` over `x: Int[0,9]` lower. | Test (TC-050) |

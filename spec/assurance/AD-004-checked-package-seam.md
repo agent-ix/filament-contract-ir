@@ -95,8 +95,12 @@ codegen consumer adoption remains IR-744.
   checked to name that identity. A selected dependency is supplied under its
   `{identity}` lock row and must have that `name`; two structurally unequal
   packages reached under one identity in a diamond refuse
-  `invalid_package`/`conflicting-definition` with both paths. Neither package
-  nor node has a content-derived id, and no stale-content refusal exists.
+  `invalid_package`/`conflicting-definition` with both paths. A package whose
+  dependency closure holds its own `name`, directly or through a library,
+  refuses `invalid_package`/`definition-cycle` with the selection path to the
+  entry that names it, whatever the content of the package under that name
+  (FR-038-AC-637). Neither package nor node has a content-derived id, and no
+  stale-content refusal exists.
 - Published FSpec FR-322 still describes a three-member source reference,
   which conflicts with the canceled IR-1273 decision. FSpec owns removal of
   that unsupported source-byte requirement. IR's `CheckedSourceRef` and
@@ -124,6 +128,7 @@ and does not copy it.
 | Duplicate member, unknown member | IR | `duplicate_member`, `unknown_member`, each at the pointer of the member |
 | A selected domain package document or dependency package not supplied | IR | `missing_import` |
 | A missing or mismatched selected dependency name, or unequal packages under one identity in a diamond | IR | `missing_import`/`missing-selection` or `invalid_package`/`conflicting-definition`, with exact lock paths |
+| A dependency closure that holds the importing package's own name, directly or through a library | IR | `invalid_package`/`definition-cycle`, with the selection path to that entry |
 | Duplicate or malformed structural node id, unresolved reference, cycle outside one recursion group, other graph-form defects | IR | `malformed_wire`, `invalid_semantic_graph` and the other codes FR-322 fixes, at the pointer of the value at fault |
 | Frame, anchor or state-clause body defect | IR | the cause tag FR-322's pairing fixes, with the node key |
 | A limit reached | IR | `Incomplete` with the limit, the consumed amount and, except for the byte budget, the pointer of the value whose charge failed |
@@ -163,7 +168,7 @@ no backing test was measured here) or gap (not true today).
   such test exists.
 - Q-2. A byte string whose `contract_version` is not `filament.checked-package/v2` refuses
   `unknown_contract_version` before any version-specific decode. Current: FR-038 Description.
-- Q-3. An admitted package exposes its exact required `name`; a diamond over one identity admits only structurally equal complete JSON packages and refuses unequal ones with both lock paths. Planned: FR-038-AC-363 and AC-366.
+- Q-3. An admitted package exposes its exact required `name`; a diamond over one identity admits only structurally equal complete JSON packages and refuses unequal ones with both lock paths. Planned: FR-038-AC-363 and AC-366. No admitted package's dependency closure holds its own `name`; such a package is refused `invalid_package`/`definition-cycle`. Planned: FR-038-AC-637.
 - Q-4. A domain package document whose own identity differs from the identity it is supplied under is refused `invalid_model_binding`/`wrong-model-selection`. Stated: `CheckedPackageEvidence` doc; FR-038-AC-27.
 - Q-5. Every refusal carries a pointer that resolves in the given document, except a refusal of
   the byte stream. Stated: FR-038 pointer rules; backing test not measured.
