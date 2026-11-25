@@ -4076,10 +4076,10 @@ fn tc_483_reversed_quantifiers_over_one_wrapper_keep_their_own_row_order() {
     );
 }
 
-/// FR-402-AC-10 refuses a repeated quantifier variable at the hyperproperty
-/// step, so no checked package carries one. A reader that sees one anyway
-/// matches coverage by key: the second row of two Groups' shared variable is a
-/// repeated key, and one row for them is not a missing row.
+/// The binding step precedes the hyperproperty step, which refuses a repeated
+/// quantifier variable. The binding step matches coverage by key: the second row
+/// of two Groups' shared variable is a repeated key, and one row for them is not
+/// a missing row.
 #[trace("TC-483", "FR-038-AC-561")]
 #[test]
 fn tc_483_a_repeated_quantifier_variable_is_a_repeated_key_not_a_missing_row() {
@@ -4091,7 +4091,7 @@ fn tc_483_a_repeated_quantifier_variable_is_a_repeated_key_not_a_missing_row() {
         Cause::ConflictingDefinition,
         "/temporal_bindings/1",
     );
-    let (mut finite, _) = finite_clock_fixture_with(&["a", "a"]);
+    let (mut finite, hyper) = finite_clock_fixture_with(&["a", "a"]);
     refusal_at(
         &finite,
         Code::InvalidPackage,
@@ -4103,18 +4103,106 @@ fn tc_483_a_repeated_quantifier_variable_is_a_repeated_key_not_a_missing_row() {
         .as_array_mut()
         .expect("rows")
         .remove(at);
-    if let CheckedPackageV2ReadResult::Refused(refusal) = read(&finite) {
-        let path = refusal.loci[0]
-            .path
-            .as_ref()
-            .map(|path| path.as_str().to_owned());
-        assert!(
-            !path.as_deref().is_some_and(
-                |path| path.ends_with("/body") && refusal.cause == Some(TIMED_NODE_REFERENCE)
-            ),
-            "one row for a repeated variable is not a missing row: {path:?}"
-        );
-    }
+    expect(
+        "one row for a repeated variable is not a missing row",
+        &finite,
+        Code::AmbiguousDeclaration,
+        Cause::AmbiguousName,
+        &at_node(hyper, "/body/members/3/value/members/1/members/0"),
+    );
+}
+
+/// A behaviours hyperproperty with the Groups `quantifiers` over the
+/// infinite-trace wrapper, which configures no clock and so takes no rows, with
+/// its graph position.
+fn behaviours_without_rows(quantifiers: Vec<Value>) -> (Value, usize) {
+    let (mut package, _, keys) = hyper_fixture();
+    let clause_key = keys.split('\n').nth(1).expect("clause").to_owned();
+    let hyper = push(
+        &mut package,
+        hyperproperty(
+            "hyperproperty",
+            quantifiers,
+            vec![],
+            vec![],
+            refer(&clause_key),
+        ),
+    );
+    claim_occurrence(&mut package, hyper);
+    settle(&mut package);
+    assert!(package.get("temporal_bindings").is_none());
+    (package, hyper)
+}
+
+/// Asserts the repeated-variable refusal at the `variable` binding of Group
+/// `group` of the hyperproperty at `hyper`, with that node as locus.
+fn refuses_repeated_variable(case: &str, package: &Value, hyper: usize, group: usize) {
+    let path =
+        format!("/semantic_graph/nodes/{hyper}/body/members/3/value/members/{group}/members/0");
+    expect(
+        case,
+        package,
+        Code::AmbiguousDeclaration,
+        Cause::AmbiguousName,
+        &path,
+    );
+}
+
+#[trace("TC-483", "FR-038-AC-630", "FSpec-FR-402-AC-10")]
+#[test]
+fn tc_483_a_repeated_behaviours_variable_refuses_at_the_later_group() {
+    let (admitted_package, _) = behaviours_without_rows(vec![trace_group("s"), trace_group("n")]);
+    admitted("Groups s and n", &admitted_package);
+
+    let (package, hyper) = behaviours_without_rows(vec![trace_group("s"), trace_group("s")]);
+    refuses_repeated_variable("Groups s and s without rows", &package, hyper, 1);
+
+    // The later Group is the refused one, wherever it stands.
+    let (package, hyper) =
+        behaviours_without_rows(vec![trace_group("s"), trace_group("n"), trace_group("s")]);
+    refuses_repeated_variable("Groups s, n and s", &package, hyper, 2);
+
+    // One row for the shared variable satisfies the binding step.
+    let (mut package, _, hyper) = hyper_clock_fixture(&["s", "s"]);
+    package["temporal_bindings"]
+        .as_array_mut()
+        .expect("rows")
+        .remove(1);
+    refuses_repeated_variable("Groups s and s with one row", &package, hyper, 1);
+}
+
+/// The Shape step precedes the Subjects step: the later Group's alias names no
+/// subject, which alone refuses at that alias.
+#[trace("TC-483", "FR-038-AC-630", "FSpec-FR-402-AC-10")]
+#[test]
+fn tc_483_a_repeated_variable_refuses_before_the_subjects_step() {
+    let unnamed_alias = |variable: &str| {
+        let mut group = trace_group(variable);
+        group["members"][2]["value"] = text("z");
+        group
+    };
+    let (package, hyper) = behaviours_without_rows(vec![trace_group("s"), unnamed_alias("n")]);
+    expect(
+        "an alias naming no subject",
+        &package,
+        Code::MissingDeclaration,
+        Cause::MissingName,
+        &at_node(hyper, "/body/members/3/value/members/1/members/2"),
+    );
+    let (package, hyper) = behaviours_without_rows(vec![trace_group("s"), unnamed_alias("s")]);
+    refuses_repeated_variable("a repeated variable and that alias", &package, hyper, 1);
+}
+
+#[trace("TC-483", "FR-038-AC-630", "FSpec-FR-402-AC-10")]
+#[test]
+fn tc_483_a_repeated_finite_domain_variable_refuses_at_the_later_group() {
+    let (mut package, hyper) = finite_clock_fixture_with(&["t", "t"]);
+    let later = hyper_rows(&package)[1];
+    package["temporal_bindings"]
+        .as_array_mut()
+        .expect("rows")
+        .remove(later);
+    refuses_repeated_variable("finite Groups t and t", &package, hyper, 1);
 }
 
 #[trace("TC-483", "FR-038-AC-561")]
@@ -4346,7 +4434,7 @@ fn tc_346_a_fairness_reference_in_a_quantifier_group_is_admitted() {
         &mut package,
         hyperproperty(
             "hyperproperty",
-            vec![group(vec![refer(&fair), refer(&fair)]), group(vec![])],
+            vec![group(vec![refer(&fair), refer(&fair)]), trace_group("b")],
             vec![],
             vec![],
             refer(&clause_key),
