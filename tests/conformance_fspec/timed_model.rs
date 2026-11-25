@@ -2360,7 +2360,7 @@ fn timed_root_without_guards_keeps_the_place_template() {
     let nodes = wire["semantic_graph"]["nodes"]
         .as_array()
         .expect("graph nodes");
-    let place = nodes
+    let mut place = nodes
         .iter()
         .find(|node| node["semantic_form"] == "clock_place")
         .expect("clock place")["node_id"]
@@ -2370,6 +2370,11 @@ fn timed_root_without_guards_keeps_the_place_template() {
         .find(|node| node["semantic_form"] == "clock_guard")
         .expect("clock guard")["node_id"]
         .clone();
+    let node_count = nodes.len();
+    let guard_position = nodes
+        .iter()
+        .position(|node| node["node_id"] == guard)
+        .expect("clock guard position");
     let root = wire["semantic_graph"]["nodes"]
         .as_array_mut()
         .expect("graph nodes")
@@ -2393,6 +2398,17 @@ fn timed_root_without_guards_keeps_the_place_template() {
         .as_array_mut()
         .expect("source map")
         .retain(|entry| entry["node_id"] != guard);
+    // Later nodes move up one graph position, and every index naming one
+    // moves with it.
+    let positions = (0..node_count)
+        .map(|old| match old.cmp(&guard_position) {
+            std::cmp::Ordering::Less => old,
+            std::cmp::Ordering::Equal => usize::MAX,
+            std::cmp::Ordering::Greater => old - 1,
+        })
+        .collect::<Vec<_>>();
+    crate::node_index::remap_graph_indexes(&mut wire, &positions);
+    crate::node_index::remap_graph_indexes(&mut place, &positions);
     fixture_support::settle(&mut wire);
     sort_timed_graph_dependencies(&mut wire);
     fixture_support::settle(&mut wire);
