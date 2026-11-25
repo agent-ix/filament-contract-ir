@@ -1218,7 +1218,7 @@ fn model_enum_stage_rows_join_selected_declaration_and_exact_members() {
         &package,
         [declaration.clone()],
         [gold.clone(), two.clone()],
-        6,
+        7,
     )
     .expect("selected model enum rows join admission");
     assert_eq!(
@@ -1245,6 +1245,12 @@ fn model_enum_stage_rows_join_selected_declaration_and_exact_members() {
             .expect_err("declaration is not an enum member")
             .code,
         SelectedModelEnumErrorCode::UnavailableWitness
+    );
+    assert_eq!(
+        SelectedModelEnums::from_stage_rows(&package, [declaration], [gold, two], 6)
+            .expect_err("one charge short of both members")
+            .code,
+        SelectedModelEnumErrorCode::WorkLimit
     );
 }
 
@@ -1309,7 +1315,7 @@ fn model_enum_stage_rows_refuse_foreign_missing_duplicate_and_wrong_case() {
     let mut wrong_identity = member.clone();
     wrong_identity.member_original_identity = "another/member".into();
     assert_eq!(
-        SelectedModelEnums::from_stage_rows(&package, [declaration.clone()], [wrong_identity], 3,)
+        SelectedModelEnums::from_stage_rows(&package, [declaration.clone()], [wrong_identity], 4,)
             .expect_err("wrong original member identity")
             .code,
         SelectedModelEnumErrorCode::MismatchedWitness
@@ -1327,7 +1333,7 @@ fn model_enum_stage_rows_refuse_foreign_missing_duplicate_and_wrong_case() {
             &package,
             [declaration.clone()],
             [member.clone(), member.clone()],
-            5,
+            6,
         )
         .expect_err("duplicate member row")
         .code,
@@ -1340,14 +1346,14 @@ fn model_enum_stage_rows_refuse_foreign_missing_duplicate_and_wrong_case() {
             &package,
             [declaration.clone()],
             [colliding_member],
-            3,
+            4,
         )
         .expect_err("declaration and member cannot share one Exact key")
         .code,
         SelectedModelEnumErrorCode::ConflictingWitness
     );
     let joined =
-        SelectedModelEnums::from_stage_rows(&package, [declaration.clone()], [member.clone()], 3)
+        SelectedModelEnums::from_stage_rows(&package, [declaration.clone()], [member.clone()], 4)
             .expect("valid rows");
     assert_eq!(
         joined
@@ -1357,7 +1363,7 @@ fn model_enum_stage_rows_refuse_foreign_missing_duplicate_and_wrong_case() {
         SelectedModelEnumErrorCode::ForeignPackage
     );
     assert_eq!(
-        SelectedModelEnums::from_stage_rows(&package, [declaration], [member], 2)
+        SelectedModelEnums::from_stage_rows(&package, [declaration], [member], 3)
             .expect_err("one charge short")
             .code,
         SelectedModelEnumErrorCode::WorkLimit

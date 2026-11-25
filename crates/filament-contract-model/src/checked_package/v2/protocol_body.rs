@@ -60,20 +60,37 @@ fn node_work(meter: &mut WorkMeter, position: usize) -> Result<(), ValidationFai
     super::natural::work_at(meter, site, 1)
 }
 
-fn owner_model_path_matches(
-    node: &RawSemanticNodeV2,
+/// The owner operand of a clause's node path: the index or node-ID segment of
+/// a path that is the declaration path followed by that one operand. A path
+/// that is the declaration path alone carries none.
+fn owner_path_operand(node: &RawSemanticNodeV2) -> Option<&CheckedNodePathSegment> {
+    let declaration = node.declaration.as_ref()?;
+    if node.node_id.path.len() != declaration.qualified_name.len() + 1 {
+        return None;
+    }
+    node.node_id.path.last().filter(|segment| {
+        matches!(
+            segment,
+            CheckedNodePathSegment::Index(_) | CheckedNodePathSegment::Node(_)
+        )
+    })
+}
+
+/// Whether a path's owner operand names the node the owner edge resolves to.
+fn owner_operand_names(
+    operand: &CheckedNodePathSegment,
     owner_position: usize,
     structural_keys: &[std::sync::Arc<CheckedNodeId>],
 ) -> bool {
     let Some(owner_key) = structural_keys.get(owner_position) else {
         return false;
     };
-    match node.node_id.path.last() {
-        Some(CheckedNodePathSegment::Index(index)) => usize::try_from(*index)
+    match operand {
+        CheckedNodePathSegment::Index(index) => usize::try_from(*index)
             .ok()
             .and_then(|position| structural_keys.get(position))
             .is_some_and(|path_key| path_key.as_ref() == owner_key.as_ref()),
-        Some(CheckedNodePathSegment::Node(path_key)) => path_key.as_ref() == owner_key.as_ref(),
+        CheckedNodePathSegment::Node(path_key) => path_key.as_ref() == owner_key.as_ref(),
         _ => false,
     }
 }
@@ -7042,15 +7059,7 @@ pub(super) fn validate_protocol_nodes(
             continue;
         }
         let node = &nodes[position];
-        let has_unowned_path_operand = node.owner_model.is_none()
-            && node.declaration.as_ref().is_some_and(|declaration| {
-                node.node_id.path.len() == declaration.qualified_name.len() + 1
-                    && matches!(
-                        node.node_id.path.last(),
-                        Some(CheckedNodePathSegment::Index(_) | CheckedNodePathSegment::Node(_))
-                    )
-            });
-        if has_unowned_path_operand {
+        if node.owner_model.is_none() && owner_path_operand(node).is_some() {
             node_work(meter, position)?;
             return Err(refuse_at(
                 meter,
@@ -7173,15 +7182,17 @@ pub(super) fn validate_protocol_nodes(
                     ));
                 }
             }
-            node_work(meter, position)?;
-            if !owner_model_path_matches(node, owner_position, structural_keys) {
-                return Err(refuse_at(
-                    meter,
-                    Code::InvalidPackage,
-                    Some(Cause::StaleNodeKey),
-                    owner_at(),
-                    &node.node_id,
-                ));
+            if let Some(operand) = owner_path_operand(node) {
+                node_work(meter, position)?;
+                if !owner_operand_names(operand, owner_position, structural_keys) {
+                    return Err(refuse_at(
+                        meter,
+                        Code::InvalidPackage,
+                        Some(Cause::StaleNodeKey),
+                        owner_at(),
+                        &node.node_id,
+                    ));
+                }
             }
         }
         let Some((operator, arguments)) = validated[position] else {

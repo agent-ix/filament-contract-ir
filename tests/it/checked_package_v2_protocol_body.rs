@@ -3,6 +3,7 @@
 
 //! Public reader checks for the first protocol validation passes.
 
+use crate::checked_package_v2_whole_read_accounting::fspec_inputs;
 use crate::support::checked_package::protocol_ports::role_port_fixture;
 use crate::support::checked_package::{
     admitted_protocol_families, application_node_key, canonical, evidence_for,
@@ -14,10 +15,11 @@ use crate::support::checked_package::{
     COMPLETE_VALUE_FEATURE,
 };
 use filament_contract_model::{
-    CheckedNodeId, CheckedPackageEvidence, CheckedPackageLimit, CheckedPackageReadLimits,
-    CheckedPackageRefusal, CheckedPackageRefusalCause, CheckedPackageRefusalCode, CheckedPackageV2,
-    CheckedPackageV2ReadResult, CheckedProtocolActivation, CheckedProtocolActivationRow,
-    CheckedProtocolRefusalDetail, CheckedTerm,
+    CheckedNodeId, CheckedNodePathSegment, CheckedPackageEvidence, CheckedPackageLimit,
+    CheckedPackageReadLimits, CheckedPackageRefusal, CheckedPackageRefusalCause,
+    CheckedPackageRefusalCode, CheckedPackageV2, CheckedPackageV2ReadResult,
+    CheckedProtocolActivation, CheckedProtocolActivationRow, CheckedProtocolRefusalDetail,
+    CheckedTerm,
 };
 use ix_trace_rs::trace;
 use serde_json::{json, Value};
@@ -3354,6 +3356,137 @@ fn protocol_owner_retarget_with_stale_key_path_refuses_and_updated_path_admits()
     assert!(
         matches!(updated_result, CheckedPackageV2ReadResult::Admitted(_)),
         "updating the owner operand segment to the new owner admits: {updated_result:?}"
+    );
+}
+
+fn clause_path_strings(path: &[CheckedNodePathSegment]) -> Vec<&str> {
+    path.iter()
+        .map(|segment| match segment {
+            CheckedNodePathSegment::Name(name) => &**name,
+            other => panic!("the clause path holds an operand: {other:?}"),
+        })
+        .collect()
+}
+
+#[trace("TC-048", "FR-038-AC-629")]
+#[test]
+fn protocol_owner_declaration_only_path_admits() {
+    let mut package = admitted_object_owned_protocol_families();
+    let clause = clause_position(&package);
+    package["semantic_graph"]["nodes"][clause]["node_id"]["path"]
+        .as_array_mut()
+        .expect("protocol clause path")
+        .pop()
+        .expect("owner operand segment");
+    settle_after_structural_rekey(&mut package);
+    let clause = clause_position(&package);
+    assert_eq!(
+        package["semantic_graph"]["nodes"][clause]["node_id"]["path"],
+        json!(["Example", "OrderFlow"])
+    );
+
+    let result = read(&package);
+    let CheckedPackageV2ReadResult::Admitted(admitted) = result else {
+        panic!("an owned clause at its declaration path admits: {result:?}");
+    };
+    let node = &admitted.graph().nodes[clause];
+    assert_eq!(
+        clause_path_strings(&node.node_id.path),
+        ["Example", "OrderFlow"]
+    );
+    let owner = node.owner_model.as_ref().expect("owner edge");
+    assert_eq!(
+        clause_path_strings(&owner.path),
+        ["model", "object_type", "ix://test/families/Account"]
+    );
+}
+
+#[trace("TC-048", "FR-038-AC-629")]
+#[test]
+fn fspec_object_owned_clause_at_its_declaration_path_admits() {
+    let proposal = match std::env::var_os("FILAMENT_SPECIFICATION_DIR") {
+        Some(root) => std::path::PathBuf::from(root).join("proposals/checked-package-v2"),
+        None if std::env::var_os("FSPEC_CONFORMANCE").is_none() => return,
+        None => panic!("FILAMENT_SPECIFICATION_DIR required for owner conformance"),
+    };
+    let fixtures = proposal.join("fixtures");
+    let mut package = fspec_inputs::read_json(&fixtures.join("positive-all-families.json"))
+        .expect("published package");
+    fspec_inputs::supply_positive_function_check_mode(&mut package);
+    let evidence = fspec_inputs::evidence_for_published(
+        &package,
+        "positive-all-families.json",
+        &proposal.join(fspec_inputs::DOMAIN_DOCUMENT),
+        true,
+        None,
+        &fixtures,
+    )
+    .expect("published evidence");
+    let clause = clause_position(&package);
+    assert_eq!(
+        package["semantic_graph"]["nodes"][clause]["node_id"]["path"],
+        json!(["Example", "Handshake"])
+    );
+
+    let result = read_with_model(&package, &evidence);
+    let CheckedPackageV2ReadResult::Admitted(admitted) = result else {
+        panic!("the published owned clause admits: {result:?}");
+    };
+    let node = &admitted.graph().nodes[clause];
+    assert_eq!(
+        clause_path_strings(&node.node_id.path),
+        ["Example", "Handshake"]
+    );
+    let owner = node.owner_model.as_ref().expect("owner edge");
+    assert_eq!(
+        clause_path_strings(&owner.path),
+        ["model", "object_type", "ix://acme/orders/Order"]
+    );
+}
+
+#[trace("TC-048", "FR-038-AC-629")]
+#[test]
+fn protocol_owner_path_longer_than_declaration_must_name_the_owner() {
+    let package = admitted_object_owned_protocol_families();
+    let clause = clause_position(&package);
+    let boolean_position = node_position_for_key(&package, &node_id(&family_key("aaaa")));
+
+    let mut other = package.clone();
+    other["semantic_graph"]["nodes"][clause]["node_id"]["path"] =
+        json!(["Example", "OrderFlow", {"node": boolean_position}]);
+    settle_after_structural_rekey(&mut other);
+    let clause = clause_position(&other);
+    let CheckedPackageV2ReadResult::Refused(refusal) = read(&other) else {
+        panic!("an operand naming a node other than the owner refuses");
+    };
+    assert_eq!(refusal.code, CheckedPackageRefusalCode::InvalidPackage);
+    assert_eq!(
+        refusal.cause,
+        Some(CheckedPackageRefusalCause::StaleNodeKey)
+    );
+    assert_eq!(
+        refusal.loci[0].path.as_ref().map(|path| path.as_str()),
+        Some(format!("/semantic_graph/nodes/{clause}/owner_model").as_str())
+    );
+
+    let mut longer = package;
+    longer["semantic_graph"]["nodes"][clause]["node_id"]["path"]
+        .as_array_mut()
+        .expect("protocol clause path")
+        .push(json!({"node": boolean_position}));
+    settle_after_structural_rekey(&mut longer);
+    let clause = clause_position(&longer);
+    let CheckedPackageV2ReadResult::Refused(refusal) = read(&longer) else {
+        panic!("two segments past the declaration path refuse");
+    };
+    assert_eq!(refusal.code, CheckedPackageRefusalCode::InvalidPackage);
+    assert_eq!(
+        refusal.cause,
+        Some(CheckedPackageRefusalCause::DeclarationNominalMismatch)
+    );
+    assert_eq!(
+        refusal.loci[0].path.as_ref().map(|path| path.as_str()),
+        Some(format!("/semantic_graph/nodes/{clause}/node_id/path").as_str())
     );
 }
 

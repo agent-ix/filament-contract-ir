@@ -1653,6 +1653,9 @@ vector or schema is copied into this repository.
     its dependency and that path operand to B; require admission. This isolates
     the owner-key mismatch from the ordinary dependency-closure check
     (FR-038-AC-629; FSpec FR-322-AC-538; FSL TC-1063).
+    In a further positive package, keep the `owner_model` edge and its
+    dependency but give C its declaration path alone as `node_id.path`; require
+    admission.
     In independent packages, retarget C to a selected `state_machine`,
     `process`, `record_value_type`, relation or `model_root` node, then to a
     source-local declaration or a missing local target. Require the typed

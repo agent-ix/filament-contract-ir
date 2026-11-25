@@ -1002,19 +1002,34 @@ fn repository_file(path: &str) -> String {
 }
 
 /// AC-367 public API absence slice. Production sources contain no retired
-/// semantic-id, candidate-key, stale-key or digest-pair API.
+/// semantic-id, candidate-key or digest-pair API, and name the stale-node-key
+/// cause only for the owner-model consistency check.
 #[trace("TC-048", "FR-038-AC-367")]
 #[test]
 fn structural_v2_public_surface_has_no_stale_identity_api() {
+    let mut named = Vec::new();
     for path in files_under(&["crates/filament-contract-model/src", "src"], "rs") {
         let source = fs::read_to_string(&path).expect("checked-package source");
         let retired = retired_identity_identifiers(&source);
-        assert!(
-            retired.is_empty(),
-            "{} contains retired identity identifiers: {retired:?}",
-            path.display()
-        );
+        if !retired.is_empty() {
+            let file = path
+                .strip_prefix(env!("CARGO_MANIFEST_DIR"))
+                .expect("repository file");
+            named.push((file.display().to_string(), retired));
+        }
     }
+    // FR-038-AC-629 keeps one stale-node-key refusal: the cause's declaration,
+    // its admitted refusal code and the owner check that raises it.
+    let owner_cause = || vec!["StaleNodeKey".to_owned()];
+    let checked = "crates/filament-contract-model/src/checked_package";
+    assert_eq!(
+        named,
+        [
+            (format!("{checked}/shared.rs"), owner_cause()),
+            (format!("{checked}/v2/contract_package.rs"), owner_cause()),
+            (format!("{checked}/v2/protocol_body.rs"), owner_cause()),
+        ]
+    );
 }
 
 fn retired_identity_identifiers(source: &str) -> Vec<String> {
