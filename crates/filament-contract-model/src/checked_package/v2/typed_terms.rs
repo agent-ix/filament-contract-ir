@@ -23,6 +23,7 @@ use super::{
 use crate::checked_package::shared::{CheckedArtifactRef, CheckedNodeId, CheckedNodePathSegment};
 use crate::identity::ExecutionPoint;
 use filament_exact::Integer;
+use ix_trace_rs::implements;
 use quire_canonical::{Encode, Error, FixedShape, Sink, Writer};
 #[cfg(test)]
 use serde::de::DeserializeOwned;
@@ -3509,7 +3510,16 @@ impl CheckedTerm {
 }
 
 impl Encode for CheckedTerm {
+    #[implements("FR-051-AC-4")]
     fn encode_into<S: Sink + ?Sized>(&self, writer: &mut Writer<'_, S>) -> Result<(), Error> {
+        enum Action<'a> {
+            Term(&'a CheckedTerm),
+            EndArray,
+            EndObject,
+            TemporalProfile(&'a CheckedArtifactRef),
+            ExecutionPoint(&'a ExecutionPoint),
+        }
+
         fn encode_rational<S: Sink + ?Sized>(
             value: &super::identity::CheckedRational,
             writer: &mut Writer<'_, S>,
@@ -3521,316 +3531,17 @@ impl Encode for CheckedTerm {
             writer.string(&value.denominator)?;
             writer.end_object()
         }
-        writer.begin_object()?;
-        match self {
-            Self::Literal {
-                type_id,
-                value_kind,
-                value,
-            } => {
-                writer.name("term")?;
-                writer.string("literal")?;
-                writer.name("type")?;
-                type_id.encode_into(writer)?;
-                writer.name("value_kind")?;
-                writer.serialize(value_kind)?;
-                writer.name("value")?;
-                value.encode_into(writer)?;
-            }
-            Self::Reference { target } => {
-                writer.name("term")?;
-                writer.string("reference")?;
-                writer.name("target")?;
-                target.encode_into(writer)?;
-            }
-            Self::Application {
-                operator,
-                operation,
-                result_type,
-                arguments,
-            } => {
-                writer.name("term")?;
-                writer.string("application")?;
-                writer.name("operator")?;
-                writer.serialize(operator)?;
-                writer.name("operation")?;
-                operation.encode_into(writer)?;
-                writer.name("result_type")?;
-                result_type.encode_into(writer)?;
-                writer.name("arguments")?;
-                writer.begin_array()?;
-                for argument in arguments {
-                    argument.encode_into(writer)?;
-                }
-                writer.end_array()?;
-            }
-            Self::Aggregate {
-                members,
-                temporal_profile,
-            } => {
-                writer.name("term")?;
-                writer.string("aggregate")?;
-                writer.name("members")?;
-                writer.begin_array()?;
-                for member in members {
-                    member.encode_into(writer)?;
-                }
-                writer.end_array()?;
-                if let Some(profile) = temporal_profile {
+
+        let mut actions = vec![Action::Term(self)];
+        while let Some(action) = actions.pop() {
+            match action {
+                Action::EndArray => writer.end_array()?,
+                Action::EndObject => writer.end_object()?,
+                Action::TemporalProfile(profile) => {
                     writer.name("temporal_profile")?;
                     profile.encode_into(writer)?;
                 }
-            }
-            Self::Binding {
-                name,
-                binder,
-                value,
-            } => {
-                writer.name("term")?;
-                writer.string("binding")?;
-                writer.name("name")?;
-                writer.string(name)?;
-                if let Some(binder) = binder {
-                    writer.name("binder")?;
-                    binder.encode_into(writer)?;
-                }
-                writer.name("value")?;
-                value.encode_into(writer)?;
-            }
-            Self::DependencyReference { package, node } => {
-                writer.name("term")?;
-                writer.string("dependency_reference")?;
-                writer.name("package")?;
-                writer.serialize(package)?;
-                writer.name("node")?;
-                node.encode_into(writer)?;
-            }
-            Self::Frame {
-                modifies,
-                creates,
-                deletes,
-                deletes_scoped,
-            } => {
-                writer.name("term")?;
-                writer.string("frame")?;
-                writer.name("modifies")?;
-                super::refinement::encode_rows(modifies, writer)?;
-                writer.name("creates")?;
-                super::refinement::encode_rows(creates, writer)?;
-                writer.name("deletes")?;
-                super::refinement::encode_rows(deletes, writer)?;
-                writer.name("deletes_scoped")?;
-                writer.serialize(deletes_scoped)?;
-            }
-            Self::AbstractionRelation {
-                objects,
-                populations,
-                frames,
-            } => {
-                writer.name("term")?;
-                writer.string("abstraction_relation")?;
-                writer.name("objects")?;
-                super::refinement::encode_rows(objects, writer)?;
-                writer.name("populations")?;
-                super::refinement::encode_rows(populations, writer)?;
-                writer.name("frames")?;
-                super::refinement::encode_rows(frames, writer)?;
-            }
-            Self::ImplementationGuarantee {
-                clause,
-                relation,
-                initial,
-                progress,
-                environment,
-            } => {
-                writer.name("term")?;
-                writer.string("implementation_guarantee")?;
-                writer.name("clause")?;
-                clause.encode_into(writer)?;
-                writer.name("relation")?;
-                relation.encode_into(writer)?;
-                writer.name("initial")?;
-                writer.serialize(initial)?;
-                writer.name("progress")?;
-                super::guarantee_terms::encode_all(progress, writer)?;
-                writer.name("environment")?;
-                super::guarantee_terms::encode_all(environment, writer)?;
-            }
-            Self::ComponentComposition {
-                rule,
-                components,
-                guarantees,
-                relies,
-                liveness_dependencies,
-                supplies,
-                environment,
-            } => {
-                writer.name("term")?;
-                writer.string("component_composition")?;
-                writer.name("rule")?;
-                writer.serialize(rule)?;
-                writer.name("components")?;
-                super::guarantee_terms::encode_all(components, writer)?;
-                writer.name("guarantees")?;
-                super::guarantee_terms::encode_all(guarantees, writer)?;
-                writer.name("relies")?;
-                super::guarantee_terms::encode_all(relies, writer)?;
-                writer.name("liveness_dependencies")?;
-                super::guarantee_terms::encode_all(liveness_dependencies, writer)?;
-                writer.name("supplies")?;
-                super::guarantee_terms::encode_all(supplies, writer)?;
-                writer.name("environment")?;
-                super::guarantee_terms::encode_all(environment, writer)?;
-            }
-            Self::Refinement {
-                name,
-                abstract_key,
-                profile,
-                populations,
-                objects,
-                steps,
-                histories,
-                assume,
-                ensure,
-                protocol,
-                abstract_internal,
-                class_catalog,
-            } => {
-                writer.name("term")?;
-                writer.string("refinement")?;
-                writer.name("name")?;
-                writer.string(name)?;
-                writer.name("abstract")?;
-                abstract_key.encode_into(writer)?;
-                writer.name("profile")?;
-                writer.serialize(profile)?;
-                writer.name("populations")?;
-                super::refinement::encode_rows(populations, writer)?;
-                writer.name("objects")?;
-                super::refinement::encode_rows(objects, writer)?;
-                writer.name("steps")?;
-                super::refinement::encode_rows(steps, writer)?;
-                writer.name("histories")?;
-                super::refinement::encode_rows(histories, writer)?;
-                writer.name("assume")?;
-                super::refinement::encode_rows(assume, writer)?;
-                writer.name("ensure")?;
-                super::refinement::encode_rows(ensure, writer)?;
-                if let Some(protocol) = protocol {
-                    writer.name("protocol")?;
-                    protocol.encode_into(writer)?;
-                }
-                if let Some(internal) = abstract_internal {
-                    writer.name("abstract_internal")?;
-                    writer.serialize(internal)?;
-                }
-                if let Some(catalog) = class_catalog {
-                    writer.name("class_catalog")?;
-                    catalog.encode_into(writer)?;
-                }
-            }
-            Self::ExtensionForm {
-                definition,
-                node_kind,
-                clauses,
-            } => {
-                writer.name("term")?;
-                writer.string("extension_form")?;
-                writer.name("definition")?;
-                writer.serialize(definition)?;
-                writer.name("node_kind")?;
-                writer.string(node_kind)?;
-                writer.name("clauses")?;
-                writer.begin_array()?;
-                for clause in clauses {
-                    clause.encode_into(writer)?;
-                }
-                writer.end_array()?;
-            }
-            Self::NominalBody(body) => match body.kind() {
-                super::identity::NominalBodyKind::Enum { ordered, members } => {
-                    writer.name("term")?;
-                    writer.string("enum")?;
-                    writer.name("ordered")?;
-                    writer.serialize(ordered)?;
-                    writer.name("members")?;
-                    writer.serialize(members)?;
-                }
-                super::identity::NominalBodyKind::Dimension { base, terms } => {
-                    writer.name("term")?;
-                    writer.string("dimension")?;
-                    writer.name("base")?;
-                    writer.serialize(base)?;
-                    writer.name("terms")?;
-                    writer.begin_array()?;
-                    for term in terms {
-                        writer.begin_object()?;
-                        writer.name("dimension_node_id")?;
-                        term.dimension_node_id.encode_into(writer)?;
-                        writer.name("exponent")?;
-                        writer.string(&term.exponent)?;
-                        writer.end_object()?;
-                    }
-                    writer.end_array()?;
-                }
-                super::identity::NominalBodyKind::Unit {
-                    dimension_node_id,
-                    target_unit_node_id,
-                    scale,
-                    offset,
-                } => {
-                    writer.name("term")?;
-                    writer.string("unit")?;
-                    writer.name("dimension_node_id")?;
-                    dimension_node_id.encode_into(writer)?;
-                    writer.name("target_unit_node_id")?;
-                    if let Some(target) = target_unit_node_id {
-                        target.encode_into(writer)?;
-                    } else {
-                        writer.serialize(&Option::<u8>::None)?;
-                    }
-                    writer.name("scale")?;
-                    encode_rational(scale, writer)?;
-                    writer.name("offset")?;
-                    encode_rational(offset, writer)?;
-                }
-                super::identity::NominalBodyKind::DimensionEquivalence {
-                    dimension_node_ids,
-                    root_scale,
-                } => {
-                    writer.name("term")?;
-                    writer.string("dimension_equivalence")?;
-                    writer.name("dimension_node_ids")?;
-                    writer.begin_array()?;
-                    for operand in dimension_node_ids {
-                        match operand {
-                            super::identity::CheckedDimensionOperand::Local(id) => {
-                                id.encode_into(writer)?;
-                            }
-                            super::identity::CheckedDimensionOperand::Package(reference) => {
-                                writer.begin_object()?;
-                                writer.name("package")?;
-                                writer.string(&reference.package)?;
-                                writer.name("node")?;
-                                reference.node.node_id().encode_into(writer)?;
-                                writer.end_object()?;
-                            }
-                        }
-                    }
-                    writer.end_array()?;
-                    writer.name("root_scale")?;
-                    encode_rational(root_scale, writer)?;
-                }
-            },
-            Self::OperationAnchorBody(body) => {
-                writer.name("term")?;
-                writer.string("aggregate")?;
-                writer.name("members")?;
-                writer.begin_array()?;
-                for member in &body.members {
-                    member.encode_into(writer)?;
-                }
-                if let Some(point) = &body.execution_point {
+                Action::ExecutionPoint(point) => {
                     writer.begin_object()?;
                     writer.name("term")?;
                     writer.string("binding")?;
@@ -3840,10 +3551,328 @@ impl Encode for CheckedTerm {
                     writer.serialize(point)?;
                     writer.end_object()?;
                 }
-                writer.end_array()?;
+                Action::Term(term) => {
+                    writer.begin_object()?;
+                    actions.push(Action::EndObject);
+                    match term {
+                        Self::Literal {
+                            type_id,
+                            value_kind,
+                            value,
+                        } => {
+                            writer.name("term")?;
+                            writer.string("literal")?;
+                            writer.name("type")?;
+                            type_id.encode_into(writer)?;
+                            writer.name("value_kind")?;
+                            writer.serialize(value_kind)?;
+                            writer.name("value")?;
+                            value.encode_into(writer)?;
+                        }
+                        Self::Reference { target } => {
+                            writer.name("term")?;
+                            writer.string("reference")?;
+                            writer.name("target")?;
+                            target.encode_into(writer)?;
+                        }
+                        Self::Application {
+                            operator,
+                            operation,
+                            result_type,
+                            arguments,
+                        } => {
+                            writer.name("term")?;
+                            writer.string("application")?;
+                            writer.name("operator")?;
+                            writer.serialize(operator)?;
+                            writer.name("operation")?;
+                            operation.encode_into(writer)?;
+                            writer.name("result_type")?;
+                            result_type.encode_into(writer)?;
+                            writer.name("arguments")?;
+                            writer.begin_array()?;
+                            actions.push(Action::EndArray);
+                            for argument in arguments.iter().rev() {
+                                actions.push(Action::Term(argument));
+                            }
+                        }
+                        Self::Aggregate {
+                            members,
+                            temporal_profile,
+                        } => {
+                            writer.name("term")?;
+                            writer.string("aggregate")?;
+                            writer.name("members")?;
+                            writer.begin_array()?;
+                            if let Some(profile) = temporal_profile {
+                                actions.push(Action::TemporalProfile(profile));
+                            }
+                            actions.push(Action::EndArray);
+                            for member in members.iter().rev() {
+                                actions.push(Action::Term(member));
+                            }
+                        }
+                        Self::Binding {
+                            name,
+                            binder,
+                            value,
+                        } => {
+                            writer.name("term")?;
+                            writer.string("binding")?;
+                            writer.name("name")?;
+                            writer.string(name)?;
+                            if let Some(binder) = binder {
+                                writer.name("binder")?;
+                                binder.encode_into(writer)?;
+                            }
+                            writer.name("value")?;
+                            actions.push(Action::Term(value));
+                        }
+                        Self::DependencyReference { package, node } => {
+                            writer.name("term")?;
+                            writer.string("dependency_reference")?;
+                            writer.name("package")?;
+                            writer.serialize(package)?;
+                            writer.name("node")?;
+                            node.encode_into(writer)?;
+                        }
+                        Self::Frame {
+                            modifies,
+                            creates,
+                            deletes,
+                            deletes_scoped,
+                        } => {
+                            writer.name("term")?;
+                            writer.string("frame")?;
+                            writer.name("modifies")?;
+                            super::refinement::encode_rows(modifies, writer)?;
+                            writer.name("creates")?;
+                            super::refinement::encode_rows(creates, writer)?;
+                            writer.name("deletes")?;
+                            super::refinement::encode_rows(deletes, writer)?;
+                            writer.name("deletes_scoped")?;
+                            writer.serialize(deletes_scoped)?;
+                        }
+                        Self::AbstractionRelation {
+                            objects,
+                            populations,
+                            frames,
+                        } => {
+                            writer.name("term")?;
+                            writer.string("abstraction_relation")?;
+                            writer.name("objects")?;
+                            super::refinement::encode_rows(objects, writer)?;
+                            writer.name("populations")?;
+                            super::refinement::encode_rows(populations, writer)?;
+                            writer.name("frames")?;
+                            super::refinement::encode_rows(frames, writer)?;
+                        }
+                        Self::ImplementationGuarantee {
+                            clause,
+                            relation,
+                            initial,
+                            progress,
+                            environment,
+                        } => {
+                            writer.name("term")?;
+                            writer.string("implementation_guarantee")?;
+                            writer.name("clause")?;
+                            clause.encode_into(writer)?;
+                            writer.name("relation")?;
+                            relation.encode_into(writer)?;
+                            writer.name("initial")?;
+                            writer.serialize(initial)?;
+                            writer.name("progress")?;
+                            super::guarantee_terms::encode_all(progress, writer)?;
+                            writer.name("environment")?;
+                            super::guarantee_terms::encode_all(environment, writer)?;
+                        }
+                        Self::ComponentComposition {
+                            rule,
+                            components,
+                            guarantees,
+                            relies,
+                            liveness_dependencies,
+                            supplies,
+                            environment,
+                        } => {
+                            writer.name("term")?;
+                            writer.string("component_composition")?;
+                            writer.name("rule")?;
+                            writer.serialize(rule)?;
+                            writer.name("components")?;
+                            super::guarantee_terms::encode_all(components, writer)?;
+                            writer.name("guarantees")?;
+                            super::guarantee_terms::encode_all(guarantees, writer)?;
+                            writer.name("relies")?;
+                            super::guarantee_terms::encode_all(relies, writer)?;
+                            writer.name("liveness_dependencies")?;
+                            super::guarantee_terms::encode_all(liveness_dependencies, writer)?;
+                            writer.name("supplies")?;
+                            super::guarantee_terms::encode_all(supplies, writer)?;
+                            writer.name("environment")?;
+                            super::guarantee_terms::encode_all(environment, writer)?;
+                        }
+                        Self::Refinement {
+                            name,
+                            abstract_key,
+                            profile,
+                            populations,
+                            objects,
+                            steps,
+                            histories,
+                            assume,
+                            ensure,
+                            protocol,
+                            abstract_internal,
+                            class_catalog,
+                        } => {
+                            writer.name("term")?;
+                            writer.string("refinement")?;
+                            writer.name("name")?;
+                            writer.string(name)?;
+                            writer.name("abstract")?;
+                            abstract_key.encode_into(writer)?;
+                            writer.name("profile")?;
+                            writer.serialize(profile)?;
+                            writer.name("populations")?;
+                            super::refinement::encode_rows(populations, writer)?;
+                            writer.name("objects")?;
+                            super::refinement::encode_rows(objects, writer)?;
+                            writer.name("steps")?;
+                            super::refinement::encode_rows(steps, writer)?;
+                            writer.name("histories")?;
+                            super::refinement::encode_rows(histories, writer)?;
+                            writer.name("assume")?;
+                            super::refinement::encode_rows(assume, writer)?;
+                            writer.name("ensure")?;
+                            super::refinement::encode_rows(ensure, writer)?;
+                            if let Some(protocol) = protocol {
+                                writer.name("protocol")?;
+                                protocol.encode_into(writer)?;
+                            }
+                            if let Some(internal) = abstract_internal {
+                                writer.name("abstract_internal")?;
+                                writer.serialize(internal)?;
+                            }
+                            if let Some(catalog) = class_catalog {
+                                writer.name("class_catalog")?;
+                                catalog.encode_into(writer)?;
+                            }
+                        }
+                        Self::ExtensionForm {
+                            definition,
+                            node_kind,
+                            clauses,
+                        } => {
+                            writer.name("term")?;
+                            writer.string("extension_form")?;
+                            writer.name("definition")?;
+                            writer.serialize(definition)?;
+                            writer.name("node_kind")?;
+                            writer.string(node_kind)?;
+                            writer.name("clauses")?;
+                            writer.begin_array()?;
+                            actions.push(Action::EndArray);
+                            for clause in clauses.iter().rev() {
+                                actions.push(Action::Term(clause));
+                            }
+                        }
+                        Self::NominalBody(body) => match body.kind() {
+                            super::identity::NominalBodyKind::Enum { ordered, members } => {
+                                writer.name("term")?;
+                                writer.string("enum")?;
+                                writer.name("ordered")?;
+                                writer.serialize(ordered)?;
+                                writer.name("members")?;
+                                writer.serialize(members)?;
+                            }
+                            super::identity::NominalBodyKind::Dimension { base, terms } => {
+                                writer.name("term")?;
+                                writer.string("dimension")?;
+                                writer.name("base")?;
+                                writer.serialize(base)?;
+                                writer.name("terms")?;
+                                writer.begin_array()?;
+                                for term in terms {
+                                    writer.begin_object()?;
+                                    writer.name("dimension_node_id")?;
+                                    term.dimension_node_id.encode_into(writer)?;
+                                    writer.name("exponent")?;
+                                    writer.string(&term.exponent)?;
+                                    writer.end_object()?;
+                                }
+                                writer.end_array()?;
+                            }
+                            super::identity::NominalBodyKind::Unit {
+                                dimension_node_id,
+                                target_unit_node_id,
+                                scale,
+                                offset,
+                            } => {
+                                writer.name("term")?;
+                                writer.string("unit")?;
+                                writer.name("dimension_node_id")?;
+                                dimension_node_id.encode_into(writer)?;
+                                writer.name("target_unit_node_id")?;
+                                if let Some(target) = target_unit_node_id {
+                                    target.encode_into(writer)?;
+                                } else {
+                                    writer.serialize(&Option::<u8>::None)?;
+                                }
+                                writer.name("scale")?;
+                                encode_rational(scale, writer)?;
+                                writer.name("offset")?;
+                                encode_rational(offset, writer)?;
+                            }
+                            super::identity::NominalBodyKind::DimensionEquivalence {
+                                dimension_node_ids,
+                                root_scale,
+                            } => {
+                                writer.name("term")?;
+                                writer.string("dimension_equivalence")?;
+                                writer.name("dimension_node_ids")?;
+                                writer.begin_array()?;
+                                for operand in dimension_node_ids {
+                                    match operand {
+                                        super::identity::CheckedDimensionOperand::Local(id) => {
+                                            id.encode_into(writer)?;
+                                        }
+                                        super::identity::CheckedDimensionOperand::Package(
+                                            reference,
+                                        ) => {
+                                            writer.begin_object()?;
+                                            writer.name("package")?;
+                                            writer.string(&reference.package)?;
+                                            writer.name("node")?;
+                                            reference.node.node_id().encode_into(writer)?;
+                                            writer.end_object()?;
+                                        }
+                                    }
+                                }
+                                writer.end_array()?;
+                                writer.name("root_scale")?;
+                                encode_rational(root_scale, writer)?;
+                            }
+                        },
+                        Self::OperationAnchorBody(body) => {
+                            writer.name("term")?;
+                            writer.string("aggregate")?;
+                            writer.name("members")?;
+                            writer.begin_array()?;
+                            actions.push(Action::EndArray);
+                            if let Some(point) = &body.execution_point {
+                                actions.push(Action::ExecutionPoint(point));
+                            }
+                            for member in body.members.iter().rev() {
+                                actions.push(Action::Term(member));
+                            }
+                        }
+                    }
+                }
             }
         }
-        writer.end_object()
+        Ok(())
     }
 }
 
@@ -4557,6 +4586,62 @@ mod tests {
                 Err(expected),
                 "a recursive binding preserves the first child's exact cause"
             );
+        }
+    }
+
+    /// Deep typed terms use the existing canonical body vocabulary at arbitrary depth.
+    /// Provenance: QSL-3310.
+    #[ix_trace_rs::trace("FR-051-AC-4")]
+    #[test]
+    fn deeply_nested_checked_term_encodes_on_a_small_stack() {
+        const DEPTH: usize = 50_000;
+        let node = CheckedNodeId {
+            package: "deep-term".into(),
+            path: Vec::new(),
+            ordinal: 0,
+        };
+        let mut term = CheckedTerm::Reference { target: node };
+        for _ in 0..DEPTH {
+            term = CheckedTerm::Aggregate {
+                members: vec![term],
+                temporal_profile: None,
+            };
+        }
+
+        let encoded = std::thread::scope(|scope| {
+            std::thread::Builder::new()
+                .stack_size(512 * 1024)
+                .spawn_scoped(scope, || {
+                    to_vec(&term, Limits::new(u64::MAX)).expect("deep term encodes")
+                })
+                .expect("small-stack thread starts")
+                .join()
+                .expect("deep encoding does not overflow the thread stack")
+        });
+
+        let aggregate_tag = b"\"term\":\"aggregate\"";
+        assert_eq!(
+            encoded
+                .windows(aggregate_tag.len())
+                .filter(|window| *window == aggregate_tag)
+                .count(),
+            DEPTH,
+            "every nested aggregate is present in the encoded bytes"
+        );
+        drop_deep_aggregate(term);
+    }
+
+    fn drop_deep_aggregate(mut term: CheckedTerm) {
+        loop {
+            match term {
+                CheckedTerm::Aggregate { mut members, .. } if members.len() == 1 => {
+                    term = members.pop().expect("one nested member");
+                }
+                leaf => {
+                    drop(leaf);
+                    return;
+                }
+            }
         }
     }
 

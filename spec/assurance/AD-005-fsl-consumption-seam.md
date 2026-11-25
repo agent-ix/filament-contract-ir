@@ -74,7 +74,9 @@ type comes from IR (AD-001 Replay ownership; FR-039 "Items FSL owns"), and no FS
   `{package, path, ordinal}` and is compared componentwise. A dependency
   selection is `{identity}`; a supplied dependency binds when its `name`
   matches. Diamond paths to unequal complete JSON packages under one identity
-  refuse `invalid_package`/`conflicting-definition`. FSL emits canonical
+  refuse `invalid_package`/`conflicting-definition`. A package whose
+  dependency closure holds its own `name`, directly or through a library,
+  refuses `invalid_package`/`definition-cycle` (FR-038-AC-637). FSL emits canonical
   bytes; IR validates those bytes, the structural ids and the graph. Neither
   side computes a package or node content hash, and no staleness refusal
   exists. The emitted-package admission test remains FSL-owned.

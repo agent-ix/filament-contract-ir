@@ -145,7 +145,14 @@ For FR-035-AC-17, construct an otherwise valid package with one nested
 For FR-035-AC-18, supply two admitted direct dependencies whose own locks
 select one name with unequal complete package values. Require
 `Refused(invalid_package)` with cause `conflicting-definition` before graph
-references, and assert both importer-rooted selection pointers exactly.
+references, and assert both importer-rooted selection pointers exactly. Select
+`package.source.identity` directly, with no package supplied under it and then
+with one, and through one library; require `missing_import`/`missing-selection`
+for the unsupplied entry and `invalid_package`/`definition-cycle` with one
+selection-path pointer for the others. Run the FSpec `own-name-before-diamond`
+closure vector, with its `read` entry as `package.source`, and require its
+`outcome` at exactly its `contract_package_loci`, with no
+`conflicting-definition`.
 
 For FR-035-AC-2, change the source package name, selected dependency name and an exact represented body independently. Require the normal selected-source, missing-import, graph or handoff refusal when the change breaks a join. A correctly renamed and otherwise valid package admits. There is no own-identity digest or stale-dependency content-mismatch refusal.
 
