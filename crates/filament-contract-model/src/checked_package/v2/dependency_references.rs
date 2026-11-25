@@ -51,6 +51,7 @@ use crate::checked_package::shared::{
     CheckedNodeId, CheckedNodePathSegment, CheckedPackageRefusalCause, CheckedPackageRefusalCode,
     ForeignNodeKey, JsonPointer, NodeKeyProbe,
 };
+use ix_trace_rs::implements;
 
 /// The form of every request the dependency checks make.
 const F: &str = "dependencies";
@@ -298,6 +299,7 @@ fn selection_pointer(root: &Path<'_>, paths: &[SelectionPath], path: usize) -> J
 /// Entries are checked depth first, in lock order, and the first one that names
 /// the importing package `importer`, or reaches a package unequal to the one an
 /// earlier entry reached under the same identity, refuses.
+#[implements("FR-038-AC-293", "FR-038-AC-637", "FR-038-AC-638", "FR-035-AC-18")]
 pub(super) fn check_derived_closure<'a>(
     importer: &str,
     selections: &'a [CheckedDependencySelection],

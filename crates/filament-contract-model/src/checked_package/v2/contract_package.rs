@@ -39,6 +39,7 @@ use crate::checked_package::shared::{
     CheckedPackageLimit, CheckedPackageReadLimits, CheckedPackageRefusal,
     CheckedPackageRefusalCause, CheckedPackageRefusalCode, CheckedSourceMapEntry, JsonPointer,
 };
+use ix_trace_rs::implements;
 use quire_canonical::{Encode, Error as CanonicalError, FixedShape, Sink, Writer};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -3287,6 +3288,7 @@ impl ContractPackageWireV1 {
         Ok(())
     }
 
+    #[implements("FR-035-AC-18")]
     fn validate_dependencies(
         &self,
         dependencies: &ContractDependencies<'_>,
