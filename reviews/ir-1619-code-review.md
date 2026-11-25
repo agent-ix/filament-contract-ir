@@ -32,3 +32,17 @@ Not mergeable as pushed: the crate does not compile (FND-001). With FND-001 fixe
 | FND-001 | high | `const TEMPORAL_ACTIVATION_OPERAND` is defined twice at module scope (kept at 3399, re-added at 3570): E0428, so filament-contract-model does not compile and no test can run | crates/filament-contract-model/src/checked_package/v2/operations.rs:3397-3399, 3568-3570 |
 | FND-002 | low | `DomainModel::holds_event` fails open where the sibling `holds_key_unstable_leaf` fails closed: a field without `typeRef`, and a declared name that is in no table, both return no event | crates/filament-contract-model/src/checked_package/v2/model_members.rs:2057-2130 |
 | FND-003 | low | A positive walk caches nothing and clears every mark it set. Every later application over the same event-holding type walks its whole closure again, including a fresh domain walk, so a package with many such applications can end on the work limit instead of `ill_typed` | crates/filament-contract-model/src/checked_package/v2/operations.rs:3433-3460 |
+
+## New findings (disposition pass 1)
+
+| ID | Severity | Summary | Refs |
+| --- | --- | --- | --- |
+| FND-004 | medium | `holds_event` treats an inline `Map<K, V>` field `typeRef` as unreachable and fails closed. `References::check_type_ref` appears to admit `Map<Text, V>` at the document stage (`CheckedTypeRefInput::MapValue`). If such a field survives the read, `eq` over its record is refused as reaching an event in any package that declares one. Confidence is low: reachability was not checked through the whole read. | crates/filament-contract-model/src/checked_package/v2/model_members.rs:2075-2079, 5921, 5982 |
+
+## Dispositions
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-001 | fixed | The second const was removed in 992e3f07; one definition remains, at operations.rs:3399. |
+| FND-002 | fixed | `holds_event` now fails closed: a field with no typeRef, an inline map, or a name outside the value, record, tuple, variant, collection and object tables returns true. |
+| FND-003 | fixed | The tri-state `EventMark` caches both answers. `keep_reaching` marks only the root-to-event holder chain as Reaches and resets the rest; `Eventless` is kept only after a walk completes with no event. |

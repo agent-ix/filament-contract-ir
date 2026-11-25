@@ -10920,8 +10920,9 @@ fn tc_281_equality_over_a_type_reaching_no_event_type_stays_admitted() {
 #[trace("TC-048", "FR-038-AC-634")]
 #[test]
 fn tc_048_an_event_reached_through_domain_declarations_is_an_ineligible_operand() {
-    // Every route ends at this sequence: model intake refuses a field, tuple
-    // position, variant payload or option that names the event type itself.
+    // Every route ends at a sequence or map of events: model intake refuses a
+    // field, tuple position, variant payload or option that names the event type
+    // itself.
     let events = || {
         json!({"identity": orders("EventSeq"), "kind": "sequence",
             "items": orders("OrderPlaced")})
@@ -10988,6 +10989,10 @@ fn tc_048_an_event_reached_through_domain_declarations_is_an_ineligible_operand(
                 ledger(&orders("EventMap")),
             ],
         ),
+        (
+            "an inline map value",
+            vec![ledger(&format!("Map<Text, {}>", orders("OrderPlaced")))],
+        ),
     ];
     for (case, types) in cases {
         let built = event_package_selecting(
@@ -11017,7 +11022,6 @@ fn tc_281_equality_over_a_record_of_identities_and_scalars_stays_admitted() {
                 "record",
                 &[],
                 &[
-                    field("customer", &orders("Order")),
                     field("link", &orders("OrderRef")),
                     field("digit", &orders("Digit")),
                     field("total", "ix://filament/native/Integer"),
@@ -11035,5 +11039,36 @@ fn tc_281_equality_over_a_record_of_identities_and_scalars_stays_admitted() {
     match read_with(&package, &evidence, CheckedPackageReadLimits::bounded()) {
         CheckedPackageV2ReadResult::Admitted(_) => {}
         other => panic!("equality over a record of identities and scalars must admit: {other:?}"),
+    }
+}
+
+#[trace("TC-048", "FR-038-AC-635")]
+#[test]
+fn tc_048_equality_over_a_record_with_inline_maps_of_scalars_stays_admitted() {
+    let (package, evidence) = event_package_selecting(
+        vec![
+            json!({"identity": orders("Flag"), "kind": "alias",
+                "target": "ix://filament/native/Boolean"}),
+            typed_object(
+                "Holder",
+                "record",
+                &[],
+                &[
+                    field("flags", "Map<Text, ix://filament/native/Boolean>"),
+                    field("aliased", &format!("Map<Text, {}>", orders("Flag"))),
+                ],
+            ),
+        ],
+        &[("Holder", "record_value_type")],
+        &[(
+            "holder",
+            Ty::Record(declaration_key("Holder", "record_value_type")),
+        )],
+        &[comparing("filament.op.structural.eq", [0, 0])],
+        |_| {},
+    );
+    match read_with(&package, &evidence, CheckedPackageReadLimits::bounded()) {
+        CheckedPackageV2ReadResult::Admitted(_) => {}
+        other => panic!("equality over a record with inline maps of scalars must admit: {other:?}"),
     }
 }

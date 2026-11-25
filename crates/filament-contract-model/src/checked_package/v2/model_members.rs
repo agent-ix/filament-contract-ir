@@ -2053,9 +2053,10 @@ impl DomainModel {
     /// inherited, of a record value type, tuple positions, variant payloads,
     /// options, sequences and map keys and values. A reference and an object
     /// type hold an identity, and a value type holds a scalar, never an event
-    /// value. A field with no `typeRef`, an inline map and any other
-    /// declaration count as holding one, so the walk fails closed. Each
-    /// declaration is expanded once, and each step is charged to `budget`.
+    /// value. An inline `Map<Text, V>` holds what `V` holds. A field with no
+    /// `typeRef` and any other declaration count as holding one, so the walk
+    /// fails closed. Each declaration is expanded once, and each step is
+    /// charged to `budget`.
     pub(super) fn holds_event(
         &self,
         node: &str,
@@ -2072,11 +2073,17 @@ impl DomainModel {
             budget.charge(1)?;
             let name = match item {
                 Item::Ref(SelectedTypeRef::Native(_) | SelectedTypeRef::Unit(_)) => continue,
-                // Unreachable: an inline `Map<K, V>` `typeRef` is refused when
-                // the document is read, and a declared map is a
-                // `collection_types` definition walked below. Fail closed
-                // rather than guess at the raw key and value text.
-                Item::Ref(SelectedTypeRef::Map(..)) => return Ok(true),
+                // An inline `Map<Text, V>` `typeRef` keeps `V` as authored, so
+                // its aliases are followed here. The key is `Text`.
+                Item::Ref(SelectedTypeRef::Map(_, value)) => {
+                    match self.resolve_alias(value).and_then(SelectedTypeRef::admit) {
+                        Some(Admitted::Native | Admitted::Unit(_)) => continue,
+                        Some(Admitted::Declared(name)) => name,
+                        // The document stage refuses a nested map and a
+                        // malformed name, so this is unreachable; fail closed.
+                        Some(Admitted::Map(..)) | None => return Ok(true),
+                    }
+                }
                 Item::Ref(SelectedTypeRef::Declared(name)) => name.as_ref(),
                 Item::Name(name) => name,
             };

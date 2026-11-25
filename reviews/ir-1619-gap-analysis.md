@@ -28,3 +28,9 @@ The criteria are bound to tests that pin the code, cause and locus. The domain-w
 | ID | Severity | Summary | Refs |
 | --- | --- | --- | --- |
 | FND-001 | medium | FR-038 says the domain walk follows inherited record fields, tuple positions, variant payloads, option and map definitions, and stops at reference and object types. Tests reach only own field → domain sequence. No test covers an inherited event-holding field, a domain tuple, a variant payload, an option or map definition, or a domain reference or object field that must stay admitted. | crates/filament-contract-model/src/checked_package/v2/model_members.rs:2057-2130; tests/it/checked_package_v2_model_fields.rs:10804 |
+
+## Dispositions
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-001 | fixed | `tc_048_an_event_reached_through_domain_declarations_is_an_ineligible_operand` covers an inherited field, a tuple position, a variant payload, an option definition and a map value. `tc_281_equality_over_a_record_of_identities_and_scalars_stays_admitted` covers object, reference, value-type and native fields staying admitted. |

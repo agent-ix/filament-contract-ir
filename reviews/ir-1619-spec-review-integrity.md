@@ -31,3 +31,16 @@ FR-038 now refuses more than FSpec does, and records only part of that as diverg
 | --- | --- | --- | --- |
 | FND-001 | medium | FR-038 refuses every operation over a value whose type reaches an event: `option.value`, a `forall` over `Set<OrderPlaced>`, `contains`, `ne`, and `record.project` over a record holding one. Its divergence paragraph names only TC-281 EV-03 and record conformance. FSpec FR-322 gives `model`/`event_type` family `record` and limits the event exception to `structural.eq`/`ne`, so it admits the rest. The broader divergence and its STD ticket are not recorded. | spec/checked_package/functional/FR-038-consume-checked-package-v2.md:3280-3322 |
 | FND-002 | low | FR-038-AC-634's case "eq over a model record value type whose field is a domain package sequence of it" asserts behaviour for a document that FSpec (FR-322 "no record, field or parameter holds an event"; FR-208-AC-9) refuses at intake. The AC and its test do not say that this rests on an intake gap still open in the reader. | spec/checked_package/functional/FR-038-consume-checked-package-v2.md:7216 |
+
+## New findings (disposition pass 1)
+
+| ID | Severity | Summary | Refs |
+| --- | --- | --- | --- |
+| FND-003 | low | The new FR-038-AC-635 clause pins as admitted an `eq` over a model record whose field names an object type. FSpec FR-208-AC-9 refuses a field `typeRef` naming any business model meaning other than a record value type at intake, so the AC asserts admission of a document FSpec refuses. The AC does not cite the open intake gap (IR-1620) the way AC-634 now does. | spec/checked_package/functional/FR-038-consume-checked-package-v2.md:7237 |
+
+## Dispositions
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-001 | fixed | The divergence paragraph now names FR-322's eq/ne-only rule and the `record` family, lists project, option.value, forall, contains and every other collection operation, and cites STD-728. |
+| FND-002 | fixed | AC-634 now says that its model-record cases rest on a model intake gap (FR-208-AC-9 and FR-322), and that closing the gap changes those cases. |
