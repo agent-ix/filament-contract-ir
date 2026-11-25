@@ -3858,10 +3858,10 @@ impl Encode for CheckedTerm {
                             writer.string("aggregate")?;
                             writer.name("members")?;
                             writer.begin_array()?;
+                            actions.push(Action::EndArray);
                             if let Some(point) = &body.execution_point {
                                 actions.push(Action::ExecutionPoint(point));
                             }
-                            actions.push(Action::EndArray);
                             for member in body.members.iter().rev() {
                                 actions.push(Action::Term(member));
                             }
