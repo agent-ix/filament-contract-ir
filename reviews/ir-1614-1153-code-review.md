@@ -32,3 +32,9 @@ Approve. Both changed tests now match FR-154-AC-8, and they pass for the stated 
 | ID | Severity | Summary | Refs |
 | --- | --- | --- | --- |
 | FND-001 | low | The new doc comment says "object id" where FR-154-AC-8 and `is_artifact_id` say "artifact id", and it says "is refused" twice in one clause | crates/filament-contract-model/src/checked_package/v2/model_members/tests.rs:1313-1314 |
+
+## Dispositions
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-001 | fixed | Round 1, head a14a1d92a088fc1b66696c8d4777632c92230223: the doc comment now says "artifact id" and says "refused" once. The code and the assertions did not change. |
