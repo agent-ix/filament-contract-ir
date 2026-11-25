@@ -89,6 +89,7 @@ certificate_members! {
     Type => "type",
     Upper => "upper",
     Value => "value",
+    ZeroWeight => "zero_weight",
     Zone => "zone",
 }
 
@@ -140,13 +141,14 @@ mod tests {
         assert_eq!(names[at + 1], "candidate_blocks");
     }
 
-    /// FR-070-AC-1: horizon and part use their exact schema spellings.
+    /// FR-070-AC-1: horizon, part and zero_weight use their exact schema spellings.
     #[trace("FR-070-AC-1")]
     #[test]
-    fn horizon_and_part_have_schema_spellings() {
+    fn horizon_part_and_zero_weight_have_schema_spellings() {
         for (member, spelling) in [
             (CertificateMember::Horizon, "horizon"),
             (CertificateMember::Part, "part"),
+            (CertificateMember::ZeroWeight, "zero_weight"),
         ] {
             assert!(CertificateMember::ALL.contains(&member));
             assert_eq!(member.as_str(), spelling);
