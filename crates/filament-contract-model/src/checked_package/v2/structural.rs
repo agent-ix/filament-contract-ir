@@ -12,9 +12,9 @@
 //!   = an identifier text literal typed at a `scalar_type`/`text` node,
 //!   binding "level" = a canonical non-negative integer literal typed at a
 //!   `scalar_type`/`integer` node]}`; its `semantic_type` is the binder's
-//!   type node (a `scalar_type`, `composite_type`, `bounded_domain`, or
-//!   selected model value declaration node, never itself); its body names
-//!   no node, so `dependencies` is empty. Every
+//!   type node (a `scalar_type`, `composite_type`, `bounded_domain`, selected
+//!   model value declaration or selected event type node, never itself); its
+//!   body names no node, so `dependencies` is empty. Every
 //!   occurrence has role `expression`.
 //! - **Operation anchor** (FSpec FR-342): `aggregate{[binding "context" = a
 //!   reference, binding "operation" = an identifier text literal, binding
@@ -1618,11 +1618,13 @@ fn parameter_defect(
                 kind == CheckedNodeKind::Model(ModelForm::RecordValueType)
                     || kind == CheckedNodeKind::Model(ModelForm::TupleValueType)
                     || kind == CheckedNodeKind::Hybrid(super::HybridForm::Model)
-                    || (kind == CheckedNodeKind::Model(ModelForm::VariantType)
-                        && matches!(
-                            type_node.owner.as_ref(),
-                            Some(super::CheckedNodeOwner::Model { .. })
-                        ))
+                    || (matches!(
+                        kind,
+                        CheckedNodeKind::Model(ModelForm::VariantType | ModelForm::EventType)
+                    ) && matches!(
+                        type_node.owner.as_ref(),
+                        Some(super::CheckedNodeOwner::Model { .. })
+                    ))
                     || matches!(
                         kind.tag(),
                         CheckedNodeTag::ScalarType

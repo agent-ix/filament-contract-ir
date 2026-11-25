@@ -105,6 +105,7 @@ impl CatalogLeafSource {
 pub(super) enum FamilyClass {
     Reference,
     String,
+    Binder,
     Other,
 }
 
@@ -114,6 +115,7 @@ impl FamilyClass {
         match text {
             "reference" => Self::Reference,
             "string" => Self::String,
+            "binder" => Self::Binder,
             _ => Self::Other,
         }
     }

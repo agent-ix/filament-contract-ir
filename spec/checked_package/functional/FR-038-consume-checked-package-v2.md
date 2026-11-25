@@ -3271,8 +3271,10 @@ checks the compound unit's derived shape independently of graph dependencies.
 
 A `value`/`parameter` node carries no `declaration`. Its `semantic_type` is
 its binder's type: a `scalar_type`, `composite_type` or `bounded_domain`
-node other than itself, or a `model`/`record_value_type` declaration node
-([FR-347](./FR-347-admit-conforming-records-as-operation-call-arguments.md)). Its body is exactly `aggregate{[binding "name" = a
+node other than itself, a `model`/`record_value_type` declaration node
+([FR-347](./FR-347-admit-conforming-records-as-operation-call-arguments.md))
+or a `model`/`event_type` declaration node that carries a `ModelOwner`. Its
+body is exactly `aggregate{[binding "name" = a
 `text` literal typed at a `scalar_type`/`text` node whose value is an
 identifier, binding "level" = an `integer` literal typed at a
 `scalar_type`/`integer` node whose value is a canonical non-negative decimal
@@ -3280,6 +3282,25 @@ string]}`, and its `dependencies` is empty. A body of any other shape refuses
 as `invalid_semantic_graph` at the node's `body`, as
 [FR-040](./FR-040-admit-frame-entries-and-state-clauses.md) fixes; a
 `declaration`, a dependency or itself as its type refuses at that member.
+
+No operation over a parameter typed by an event type is admitted. An
+application refuses `ill_typed`/`operator-ineligible` at an argument that is a
+`reference` to such a parameter, or that is a `binder` operand whose bound
+value or body holds such a reference at any depth of its `binding` and
+`aggregate` terms (a `case` arm's binder slots are not read), or that is a
+temporal clause's activation whose `guard` binding holds such a reference in
+the same way. The one exception for a `reference` argument is the first
+operand of a temporal clause, which names the clause's `over` parameter and
+reads no value. A temporal clause's activation trigger and captures and a
+protocol clause's binder slots stay admitted.
+
+This diverges on purpose from FSpec TC-281 EV-03, which admits
+`filament.op.record.project` over an event value: field projection of an event
+value (FSpec FR-322-AC-68) is not yet admitted, and neither is record
+conformance between event types. FSpec FR-322's event equality paragraph says
+that no parameter holds an event. The reader admits an event-typed parameter
+node whatever binds it; STD-728 asks FSpec to state that a clause binder may
+be typed by an event type.
 
 A `scalar_type`/`compound_unit` node carries no `declaration` and is its own
 semantic type. Its body is an `aggregate` of terms, each exactly
@@ -7174,6 +7195,8 @@ the minimum the read uses.
 | FR-038-AC-625 | Mode-switch bindings iterate in canonical ascending `(selected_model_identity, operation_declaring_identity, operation_member)` order, using Unicode scalar, UTF-8 byte and structural identity comparisons as FR-038 defines. A descending mode-switch array refuses `invalid_package`/`invalid-value` at its first out-of-order row and exposes no package view. | Test (TC-048; FSpec FR-322-AC-536) |
 | FR-038-AC-626 | Given one admitted source claim and one admitted package claim for the same checked task set and selected model, `TaskProductPlan` input uses `claim.task_set`, selects release and mode-switch bindings by that task-set identity plus selected model identity, binds each exact declaring model identity/member pair, and additionally binds each release task name; the resulting ordered inputs are equal, with no raw-wire relation reconstruction. | Test (TC-048; FSpec FR-322-AC-529/530; FSL FR-246-AC-4/5, FR-075-AC-23) |
 | FR-038-AC-627 | `encode_checked_package_v2` and strict read/encode/read preserve every claim row's exact occurrence key, task-set identifier, ordered release bindings and ordered mode-switch bindings. `None` omits `schedulability_claims`; `Some(empty)` retains an empty array; a present claim row with empty relation arrays remains present. The encoder does not sort or repair supplied rows; a schema-valid but descending binding array is encoded unchanged and refused only by strict read at the specified row. | Test (TC-048; FSpec FR-322-AC-524, FR-322-AC-525, FR-322-AC-528, FR-322-AC-535, FR-322-AC-536; FR-051-AC-7) |
+| FR-038-AC-632 | A `value`/`parameter` node whose `semantic_type` is a `model`/`event_type` declaration node owned by a selected event type is admitted, including as the `over` parameter that a temporal clause's and a protocol clause's `over` reference, and as the trigger of a temporal clause's `each` activation that a capture references again. With such a parameter present, an event node whose `ModelOwner` names a record value type, an object type or an absent declaration refuses `missing_declaration`/`missing-selection` at the event node's `node_id`. | Test (TC-048; FSpec FR-322-AC-68, TC-281 EV-01, EV-02) |
+| FR-038-AC-633 | An application refuses `ill_typed`/`operator-ineligible` at an argument that is a `reference` to a `value`/`parameter` node typed by a `model`/`event_type` node, the temporal clause's `over` operand excepted: `filament.op.structural.eq` over two such parameters, `filament.op.boolean.not`, `filament.op.record.project` of an event field and `filament.op.model.deref` over one, `filament.op.collection.contains` of one in a set of that event type, and a temporal clause whose captures argument is itself such a reference. It refuses the same way at a `binder` operand that holds the reference in a `filament.op.control.let` bound value, a `filament.op.collection.forall` body, a `filament.op.collection.fold` step or a `filament.op.control.case` arm body, and at a temporal clause's activation argument whose `each` guard is a reference to the event-typed trigger. Refusing the field projection diverges on purpose from FSpec TC-281 EV-03, which admits it. | Test (TC-048; FSpec TC-281 EV-03, EV-04) |
 
 
 FR-038-AC-66 is retired and its ID is not reused (ADR-0056). It required that every
