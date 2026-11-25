@@ -8,6 +8,8 @@ use checked_package::{canonical, evidence_for, v2_nominal};
 use filament_contract_model::{
     CheckedNodeId, CheckedNodeTag, CheckedPackageLimit, CheckedPackageReadLimits, CheckedPackageV2,
     CheckedPackageV2ReadResult, CompleteLoweringProfileV2, CompleteLoweringRecordV2,
+    ContractDependencies, ContractDependencyInput, ContractPackageReadResult,
+    ContractPackageWireV1,
 };
 use ix_trace_rs::trace;
 use serde_json::{json, Value};
@@ -1112,4 +1114,170 @@ fn published_dependency_selections_supply_and_diamonds_fail_closed() {
         error.contains("unexpectedly admitted"),
         "the actual admission must trigger the guard: {error}"
     );
+}
+
+/// Replaces every `package` member equal to `from` with `to`.
+fn rename_package_members(value: &mut Value, from: &str, to: &str) {
+    match value {
+        Value::Object(members) => {
+            for (key, member) in members {
+                if key == "package" && member.as_str() == Some(from) {
+                    *member = json!(to);
+                } else {
+                    rename_package_members(member, from, to);
+                }
+            }
+        }
+        Value::Array(items) => {
+            for item in items {
+                rename_package_members(item, from, to);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// One package of a closure vector, built as the FSpec vectors README states:
+/// the base renamed to the entry's name, selecting the name of each supplied
+/// package, with the entry's patch applied.
+fn closure_vector_package(
+    base: &Value,
+    entry: &Value,
+    supplied: &[(&str, &CheckedPackageV2)],
+) -> Result<Value, String> {
+    let name = entry["name"].as_str().ok_or("package name")?;
+    let base_name = base["name"].as_str().ok_or("base name")?;
+    let mut wire = base.clone();
+    rename_package_members(&mut wire, base_name, name);
+    wire["name"] = json!(name);
+    wire["lock"]["dependency_selections"] = supplied
+        .iter()
+        .map(|(identity, _)| json!({"identity": identity}))
+        .collect();
+    for operation in entry["patch"].as_array().ok_or("package patch")? {
+        if operation["op"] != "replace" {
+            return Err(format!("unsupported patch operation {operation}"));
+        }
+        let path = operation["path"].as_str().ok_or("patch path")?;
+        *wire
+            .pointer_mut(path)
+            .ok_or_else(|| format!("patch path {path} is absent"))? = operation["value"].clone();
+    }
+    Ok(wire)
+}
+
+/// Reads the ContractPackage form of `wire`'s selections: a lowering of the
+/// same package without them, with them written into its source lock.
+fn contract_closure_outcome(
+    wire: &Value,
+    supplied: &[(&str, &CheckedPackageV2)],
+    vector: &Value,
+) -> Result<(), String> {
+    let mut alone = wire.clone();
+    alone["lock"]["dependency_selections"] = json!([]);
+    let source = admitted_dependency(&alone);
+    let request: CheckedNodeId =
+        serde_json::from_value(alone["semantic_graph"]["nodes"][0]["node_id"].clone())
+            .map_err(|error| error.to_string())?;
+    let lowered = source.lower(std::slice::from_ref(&request), &profile(u64::MAX));
+    let mut contract: Value = serde_json::from_slice(
+        lowered
+            .package
+            .canonical_bytes()
+            .ok_or("the lowering has no canonical bytes")?,
+    )
+    .map_err(|error| error.to_string())?;
+    if contract["package"]["source"]["name"] != wire["name"] {
+        return Err("the lowered source does not carry the read entry's name".into());
+    }
+    contract["package"]["source"]["lock"]["dependency_selections"] =
+        wire["lock"]["dependency_selections"].clone();
+    let mut dependencies = ContractDependencies::new();
+    for &(identity, package) in supplied {
+        dependencies.insert(identity, ContractDependencyInput { identity, package });
+    }
+    let outcome = ContractPackageWireV1::read(
+        &canonical(&contract),
+        CheckedPackageReadLimits::bounded(),
+        &dependencies,
+    );
+    let ContractPackageReadResult::Refused(refusal) = outcome else {
+        return Err(format!("the ContractPackage reader returned {outcome:?}"));
+    };
+    let cause = refusal.cause.ok_or("refusal has no cause")?;
+    let actual = format!(
+        "refused:{}/{}",
+        super::code_word(refusal.code),
+        super::cause_word(cause)
+    );
+    if vector["outcome"] != actual.as_str() {
+        return Err(format!("expected {}, got {actual}", vector["outcome"]));
+    }
+    let loci: Value = refusal
+        .loci
+        .iter()
+        .map(|locus| json!(locus.path.as_ref().map(ToString::to_string)))
+        .collect();
+    if vector["contract_package_loci"] != loci {
+        return Err(format!(
+            "expected {}, got {loci}",
+            vector["contract_package_loci"]
+        ));
+    }
+    Ok(())
+}
+
+/// Admits every package listed before the vector's `read` entry on its own
+/// read, then requires the vector's outcome of both package readers.
+fn run_closure_vector(proposal: &std::path::Path, vector: &Value) -> Result<(), String> {
+    let base = vector["package_base"].as_str().ok_or("package base")?;
+    let base = super::read_json(&proposal.join(base))?;
+    let read = vector["read"].as_str().ok_or("read entry")?;
+    let mut admitted: Vec<(&str, CheckedPackageV2)> = Vec::new();
+    for entry in vector["packages"].as_array().ok_or("packages")? {
+        let supplied = entry["supplies"]
+            .as_array()
+            .ok_or("supplies")?
+            .iter()
+            .map(|id| {
+                admitted
+                    .iter()
+                    .find(|(known, _)| id == *known)
+                    .map(|(_, package)| (package.name(), package))
+                    .ok_or_else(|| format!("{id} is not listed before it is supplied"))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let wire = closure_vector_package(&base, entry, &supplied)?;
+        let id = entry["id"].as_str().ok_or("package id")?;
+        if id == read {
+            dependency_outcome(&wire, &supplied, vector)?;
+            return contract_closure_outcome(&wire, &supplied, vector);
+        }
+        match dependency_read(&wire, &supplied)? {
+            CheckedPackageV2ReadResult::Admitted(package) => admitted.push((id, *package)),
+            other => return Err(format!("{id} must admit on its own read: {other:?}")),
+        }
+    }
+    Err(format!("the read entry {read} is not listed"))
+}
+
+#[trace("TC-048", "TC-047", "FR-038-AC-639", "FR-035-AC-18")]
+#[test]
+fn published_closure_vectors_refuse_in_both_package_readers() {
+    let proposal = super::proposal_dir_of(&super::fixtures_dir());
+    let vectors = super::read_json(&proposal.join(DEPENDENCY_VECTORS))
+        .expect("current published dependency selection vectors");
+    let closures = vectors["closure_vectors"]
+        .as_array()
+        .expect("published closure vectors");
+    assert!(
+        closures
+            .iter()
+            .any(|vector| vector["id"] == "own-name-before-diamond"),
+        "the own-name closure vector is published"
+    );
+    for vector in closures {
+        run_closure_vector(&proposal, vector)
+            .unwrap_or_else(|why| panic!("{}: {why}", vector["id"]));
+    }
 }
