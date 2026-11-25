@@ -15,7 +15,8 @@ use super::{
 };
 use crate::checked_package::common::{Trail, ValidationFailure};
 use crate::checked_package::shared::{
-    CheckedArtifactRef, CheckedNodeId, CheckedProtocolDecisionRead, CheckedProtocolRefusalDetail,
+    CheckedArtifactRef, CheckedNodeId, CheckedNodePathSegment, CheckedProtocolDecisionRead,
+    CheckedProtocolRefusalDetail,
 };
 use crate::checked_package::shared::{
     CheckedPackageRefusalCause as Cause, CheckedPackageRefusalCode as Code,
@@ -57,6 +58,24 @@ fn node_work(meter: &mut WorkMeter, position: usize) -> Result<(), ValidationFai
         .index(position);
     let site = super::natural::site(meter, path);
     super::natural::work_at(meter, site, 1)
+}
+
+fn owner_model_path_matches(
+    node: &RawSemanticNodeV2,
+    owner_position: usize,
+    structural_keys: &[std::sync::Arc<CheckedNodeId>],
+) -> bool {
+    let Some(owner_key) = structural_keys.get(owner_position) else {
+        return false;
+    };
+    match node.node_id.path.last() {
+        Some(CheckedNodePathSegment::Index(index)) => usize::try_from(*index)
+            .ok()
+            .and_then(|position| structural_keys.get(position))
+            .is_some_and(|path_key| path_key.as_ref() == owner_key.as_ref()),
+        Some(CheckedNodePathSegment::Node(path_key)) => path_key.as_ref() == owner_key.as_ref(),
+        _ => false,
+    }
 }
 
 /// The activation selected by an admitted protocol clause.
@@ -7018,6 +7037,30 @@ pub(super) fn validate_protocol_nodes(
             ));
         }
     }
+    for &position in index.values() {
+        if kinds.get(position) != Some(&CheckedNodeKind::Protocol(ProtocolForm::ProtocolClause)) {
+            continue;
+        }
+        let node = &nodes[position];
+        let has_unowned_path_operand = node.owner_model.is_none()
+            && node.declaration.as_ref().is_some_and(|declaration| {
+                node.node_id.path.len() == declaration.qualified_name.len() + 1
+                    && matches!(
+                        node.node_id.path.last(),
+                        Some(CheckedNodePathSegment::Index(_) | CheckedNodePathSegment::Node(_))
+                    )
+            });
+        if has_unowned_path_operand {
+            node_work(meter, position)?;
+            return Err(refuse_at(
+                meter,
+                Code::InvalidPackage,
+                Some(Cause::DeclarationNominalMismatch),
+                node_path(position).key("node_id").key("path"),
+                &node.node_id,
+            ));
+        }
+    }
     validate_protocol_declaration_names(nodes, kinds, index, meter)?;
     validate_protocol_declaration_paths(nodes, kinds, &validated, index, meter)?;
     let regions = observe_regions(kinds, &validated, index, meter)?;
@@ -7129,6 +7172,16 @@ pub(super) fn validate_protocol_nodes(
                         &node.node_id,
                     ));
                 }
+            }
+            node_work(meter, position)?;
+            if !owner_model_path_matches(node, owner_position, structural_keys) {
+                return Err(refuse_at(
+                    meter,
+                    Code::InvalidPackage,
+                    Some(Cause::StaleNodeKey),
+                    owner_at(),
+                    &node.node_id,
+                ));
             }
         }
         let Some((operator, arguments)) = validated[position] else {

@@ -3648,7 +3648,26 @@ fn validate_declaration_names(
         let Some(declaration) = &node.declaration else {
             continue;
         };
-        let path_matches=node.node_id.path.len()==declaration.qualified_name.len() && node.node_id.path.iter().zip(&declaration.qualified_name).all(|(part,name)|matches!(part,CheckedNodePathSegment::Name(value) if value==name));
+        let declared_prefix_matches = node
+            .node_id
+            .path
+            .iter()
+            .zip(&declaration.qualified_name)
+            .all(
+                |(part, name)| matches!(part, CheckedNodePathSegment::Name(value) if value == name),
+            );
+        let has_protocol_owner_operand = matches!(
+            kinds.get(position),
+            Some(CheckedNodeKind::Protocol(ProtocolForm::ProtocolClause))
+        ) && node.node_id.path.len()
+            == declaration.qualified_name.len() + 1
+            && matches!(
+                node.node_id.path.last(),
+                Some(CheckedNodePathSegment::Index(_) | CheckedNodePathSegment::Node(_))
+            );
+        let path_matches = declared_prefix_matches
+            && (node.node_id.path.len() == declaration.qualified_name.len()
+                || has_protocol_owner_operand);
         if !path_matches {
             return Err(declaration_name_failure(
                 meter,

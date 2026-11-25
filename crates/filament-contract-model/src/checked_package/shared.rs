@@ -252,6 +252,9 @@ pub enum CheckedPackageRefusalCause {
     InexactNumber,
     /// A schedulability task set violates its declared premises.
     InvalidTaskSet,
+    /// `invalid-package`: a protocol clause's resolved `owner_model` edge
+    /// differs from the owner-model operand retained in its structural path.
+    StaleNodeKey,
     /// `clock-read-outside-constraint`: a clock is read in a value position
     /// rather than as the clock operand of an atomic clock constraint;
     /// paired with `invalid_timed_model` (FSpec FR-272).

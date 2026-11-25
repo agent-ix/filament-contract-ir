@@ -2669,7 +2669,8 @@ fn cause_admitted(code: CheckedPackageRefusalCode, cause: CheckedPackageRefusalC
         | Cause::OperationMemberMismatch
         | Cause::OperationModeTypeMismatch
         | Cause::InvalidDerivedShape
-        | Cause::DeclarationNominalMismatch => code == Code::InvalidPackage,
+        | Cause::DeclarationNominalMismatch
+        | Cause::StaleNodeKey => code == Code::InvalidPackage,
         Cause::InvalidTaskSet | Cause::ClockReadOutsideConstraint => {
             code == Code::InvalidTimedModel
         }
@@ -2698,6 +2699,18 @@ fn cause_admitted(code: CheckedPackageRefusalCode, cause: CheckedPackageRefusalC
 #[cfg(test)]
 mod refusal_cause_tests {
     use super::{cause_admitted, CheckedPackageRefusalCause, CheckedPackageRefusalCode};
+
+    #[test]
+    fn stale_node_key_requires_invalid_package() {
+        assert!(cause_admitted(
+            CheckedPackageRefusalCode::InvalidPackage,
+            CheckedPackageRefusalCause::StaleNodeKey,
+        ));
+        assert!(!cause_admitted(
+            CheckedPackageRefusalCode::InvalidSemanticGraph,
+            CheckedPackageRefusalCause::StaleNodeKey,
+        ));
+    }
 
     #[test]
     fn wrong_observation_requires_wrong_snapshot() {
