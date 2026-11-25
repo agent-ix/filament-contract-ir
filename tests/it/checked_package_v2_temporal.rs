@@ -4193,6 +4193,54 @@ fn tc_483_a_repeated_variable_refuses_before_the_subjects_step() {
     refuses_repeated_variable("a repeated variable and that alias", &package, hyper, 1);
 }
 
+/// The Shape step checks one Group at a time: a repeat precedes a later Group's
+/// layout and `quantifier` defects and follows its own Group's `quantifier`
+/// defect.
+#[trace("TC-483", "FR-038-AC-630")]
+#[test]
+fn tc_483_a_repeated_variable_is_refused_in_group_order() {
+    // `quantifier` before `variable`.
+    let misordered = || {
+        let mut group = trace_group("m");
+        group["members"].as_array_mut().expect("members").swap(0, 1);
+        group
+    };
+    let unknown_quantifier = |variable: &str| {
+        let mut group = trace_group(variable);
+        group["members"][1]["value"] = text("some");
+        group
+    };
+    let (package, hyper) =
+        behaviours_without_rows(vec![trace_group("s"), trace_group("n"), misordered()]);
+    assert_eq!(
+        first_refusal("a misordered Group alone", &package),
+        outcome(
+            Code::InvalidSemanticGraph,
+            None,
+            at_node(hyper, "/body/members/3/value/members/2/members/0"),
+        )
+    );
+    for (case, later) in [
+        ("a repeat before a misordered Group", misordered()),
+        (
+            "a repeat before a quantifier `some`",
+            unknown_quantifier("m"),
+        ),
+    ] {
+        let (package, hyper) =
+            behaviours_without_rows(vec![trace_group("s"), trace_group("s"), later]);
+        refuses_repeated_variable(case, &package, hyper, 1);
+    }
+    let (package, hyper) = behaviours_without_rows(vec![trace_group("s"), unknown_quantifier("s")]);
+    expect(
+        "the repeating Group's own quantifier `some`",
+        &package,
+        Code::InvalidPackage,
+        Cause::InvalidValue,
+        &at_node(hyper, "/body/members/3/value/members/1/members/1/value"),
+    );
+}
+
 #[trace("TC-483", "FR-038-AC-630", "FSpec-FR-402-AC-10")]
 #[test]
 fn tc_483_a_repeated_finite_domain_variable_refuses_at_the_later_group() {
@@ -4691,7 +4739,7 @@ fn outcome(code: Code, cause: Option<Cause>, path: String) -> Outcome {
     (code, cause, Some(path))
 }
 
-#[trace("TC-346", "FR-038-AC-531")]
+#[trace("TC-346", "FR-038-AC-631")]
 #[test]
 fn tc_346_a_group_reference_to_a_non_fairness_node_is_refused_before_resolution() {
     let (package, _) = hyper_edited(|_| {});

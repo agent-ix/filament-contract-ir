@@ -57,6 +57,11 @@ without them.
 16. Give the later Group an alias naming no subject, with a distinct variable
     and then a repeated one; expect `missing-name` at the alias, then
     `ambiguous-name` at the variable binding.
+17. Read Groups `s`, `n` and a third with `quantifier` before `variable`;
+    expect `invalid_semantic_graph` at that member. Make the second Group `s`,
+    with the third misordered and then with `quantifier` `some`; expect
+    `ambiguous-name` at the second Group. Give the second of two `s` Groups
+    `quantifier` `some`; expect `invalid-value` at that value.
 
 ## Expected Results
 
