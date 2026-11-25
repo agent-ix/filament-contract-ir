@@ -1,5 +1,5 @@
 ---
-id: SR-967175026302197768900474181941935084594
+id: SR-150477245673046275081656875996336444
 title: "QSL-2497 PR 1169 code and Rust review"
 type: SpecReview
 analysis: code-review
@@ -50,3 +50,9 @@ resource defect.
 - FR-038-AC-630 (examined); FR-038-AC-561 (examined).
 - Tests examined: tc_483_a_repeated_quantifier_variable_is_a_repeated_key_not_a_missing_row, tc_483_a_repeated_behaviours_variable_refuses_at_the_later_group, tc_483_a_repeated_variable_refuses_before_the_subjects_step, tc_483_a_repeated_finite_domain_variable_refuses_at_the_later_group, tc_346_a_fairness_reference_in_a_quantifier_group_is_admitted.
 - Plan completion: not assessed.
+
+## Dispositions
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-001 | fixed | Round 1, head b94652a577348cdb944dfcfb81aafa972fb679d7. FR-038-AC-630 now states the order: one Group at a time, layout, then `quantifier`, then `variable`. tc_483_a_repeated_variable_is_refused_in_group_order and TC-483 step 17 pin it. On base temporal.rs the test fails with invalid_semantic_graph at Group 2 (QSL-2497-fix1-base-temporal.log). |

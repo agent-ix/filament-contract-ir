@@ -1,5 +1,5 @@
 ---
-id: SR-967175026302197768900474181941935084595
+id: SR-147623435807452943721569667553606464
 title: "QSL-2497 PR 1169 gap analysis"
 type: SpecReview
 analysis: gap-analysis
@@ -40,3 +40,10 @@ main.
 - Reverse gap: the new code (`text_literal`, the variable repeat check) belongs to FR-038-AC-630. No unowned behaviour.
 - Semantic review: covered by the code-review SR, not run as a separate pass.
 - Plan completion: not assessed
+
+## Dispositions
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-001 | fixed | Round 1, head b94652a577348cdb944dfcfb81aafa972fb679d7. The renumbered row (now FR-038-AC-631) cites `Test (TC-346)` only, and FR-038-AC-630 is the only row that cites FSpec FR-402-AC-10. |
+| FND-002 | fixed | Round 1, head b94652a577348cdb944dfcfb81aafa972fb679d7. The second FR-038-AC-531 is now FR-038-AC-631. checked_package_v2_temporal.rs:4742 is retagged FR-038-AC-631, and FR-038-AC-531 keeps only the two TC-474 tests. quire matrix shows each id tagged once. |
