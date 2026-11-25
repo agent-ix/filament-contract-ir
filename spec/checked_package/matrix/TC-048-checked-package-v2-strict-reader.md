@@ -11,7 +11,7 @@ relationships:
     type: verifies
   - target: ix://agent-ix/filament-contract-ir/FR-038-AC-637
     type: verifies
-  - target: ix://agent-ix/filament-contract-ir/FR-038-AC-638
+  - target: ix://agent-ix/filament-contract-ir/FR-038-AC-639
     type: verifies
   - target: ix://agent-ix/filament-specification/FR-322-AC-551
     type: verifies
@@ -165,7 +165,7 @@ FR-038-AC-31 through FR-038-AC-33 (FSpec FR-322-AC-35) against the
 `DependencySelection` entries of a self-built package, and
 FR-038-AC-293 against recursively derived dependency closures with conflicting complete packages under one name, and
 FR-038-AC-637 against closures that hold the reading package's own name,
-FR-038-AC-638 against the published closure vector, and
+FR-038-AC-639 against the published closure vector, and
 FR-038-AC-35 through FR-038-AC-38 (FSpec FR-322-AC-36 and FR-322-AC-37)
 against a self-built dependency package and a package that calls it, and
 FR-038-AC-45 (FSpec FR-322-AC-28) against a model-owned nominal declaration and
@@ -2384,7 +2384,7 @@ Read FSpec `positive-union-nodes.json` directly from the selected checkout throu
 
 Supply a dependency package whose `name` matches the lock's `{identity}` row and require admission. Omit it and require `missing_import`/`missing-selection` at the row. Supply equal packages through two branches of a diamond and require admission; change one complete JSON body under the same name and require `invalid_package`/`conflicting-definition` with both paths, comparing ordered arrays and object members structurally. Require every refusal to retain code, cause and pointer, with no expected/actual digest pair or content-mismatch cause.
 
-## Dependency closure holding the package's own name (FR-038-AC-293, FR-038-AC-637, FR-038-AC-638)
+## Dependency closure holding the package's own name (FR-038-AC-293, FR-038-AC-637, FR-038-AC-639)
 
 Admit a package named `P` with no selections on its own read. Read an importer
 named `P` that selects it directly and require `invalid_package`/`definition-cycle`
@@ -2401,7 +2401,7 @@ Read `P` selecting itself with no package supplied under `P` and require
 package. The refused `P` is the child of FR-038-AC-293's last sentence: it
 refuses on its own read, so no importer is supplied it.
 
-For FR-038-AC-638, run the `own-name-before-diamond` entry of the
+For FR-038-AC-639, run the `own-name-before-diamond` entry of the
 `closure_vectors` in FSpec `dependency-selection-vectors.json`, read from the
 selected checkout: build its packages as the FSpec vectors README states, admit
 every entry before `read`, then require the `read` entry's `outcome` at exactly

@@ -299,7 +299,7 @@ fn selection_pointer(root: &Path<'_>, paths: &[SelectionPath], path: usize) -> J
 /// Entries are checked depth first, in lock order, and the first one that names
 /// the importing package `importer`, or reaches a package unequal to the one an
 /// earlier entry reached under the same identity, refuses.
-#[implements("FR-038-AC-293", "FR-038-AC-637", "FR-038-AC-638", "FR-035-AC-18")]
+#[implements("FR-038-AC-293", "FR-038-AC-637", "FR-038-AC-639", "FR-035-AC-18")]
 pub(super) fn check_derived_closure<'a>(
     importer: &str,
     selections: &'a [CheckedDependencySelection],
@@ -309,16 +309,12 @@ pub(super) fn check_derived_closure<'a>(
 ) -> Result<(), ValidationFailure> {
     let mut budget = Budget::lock(meter, "dependency_selections");
     if let ([selection], [package]) = (selections, packages) {
-        if selection.identity.as_ref() != importer
-            && package.closure_index.get(importer).is_none()
-            && package
-                .closure_index
-                .get(&selection.identity)
-                .is_none_or(|candidate| candidate.wire == package.wire)
+        if selection.identity.as_ref() != importer && package.closure_index.get(importer).is_none()
         {
-            // The admitted child already checked its closure, which does not
-            // hold the importer. One new identity cannot conflict when it is
-            // absent there or has the same ID.
+            // The admitted child checked its own closure on its own read, so
+            // that closure holds one value per name and not the child's name.
+            // With the importer absent too, one entry can neither close a
+            // cycle nor conflict.
             budget.charge_at_position(
                 1,
                 F,
@@ -367,10 +363,15 @@ pub(super) fn check_derived_closure<'a>(
                 }
                 return Err(refusal);
             }
-            // Equal wire values can be admitted against different packages. A
-            // repeat whose own closure holds the importer is walked to the
-            // entry that names it.
-            if package.closure_index.get(importer).is_none() {
+            // Equal wire values can be admitted against different packages.
+            // Only a repeat whose closure matches the walked one is skipped;
+            // any other is walked to the entry that refuses it.
+            if package
+                .closure_index
+                .agrees_with(&prior_package.closure_index, || {
+                    budget.charge_at(1, F, || selection_pointer(&root, &paths, path))
+                })?
+            {
                 continue;
             }
         } else {

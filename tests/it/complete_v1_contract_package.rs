@@ -2669,6 +2669,19 @@ fn contract_reader_refuses_unequal_complete_values_in_dependency_diamond() {
         refusal.loci[1].path.as_ref().map(|path| path.as_str()),
         Some("/package/source/lock/dependency_selections/1/lock/dependency_selections/0")
     );
+
+    // Equal complete values through the diamond admit.
+    let equal_right = intermediary("lib/right", &first_leaf);
+    let mut agreeing = ContractDependencies::new();
+    for (identity, package) in [("lib/left", &left), ("lib/right", &equal_right)] {
+        agreeing.insert(identity, ContractDependencyInput { identity, package });
+    }
+    let result =
+        ContractPackageWireV1::read(&bytes, CheckedPackageReadLimits::bounded(), &agreeing);
+    assert!(
+        matches!(result, ContractPackageReadResult::Admitted(_)),
+        "{result:?}"
+    );
 }
 
 /// The ContractPackage reader derives the same closure as the V2 reader, so it

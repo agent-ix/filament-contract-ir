@@ -543,3 +543,106 @@ fn a_repeated_library_that_reaches_the_importer_is_walked() {
         ]
     );
 }
+
+/// Reads `root` selecting libraries over two copies of `test/m` and requires
+/// the diamond conflict under them, located `depth` selections below each
+/// library.
+fn expect_conflict_under_copies(first: &CheckedPackageV2, second: &CheckedPackageV2, depth: usize) {
+    let left = admitted_selecting("test/a", &[first]);
+    let right = admitted_selecting("test/b", &[second]);
+    let CheckedPackageV2ReadResult::Refused(refusal) =
+        read_selecting("test/root", &[&left, &right])
+    else {
+        panic!("a closure holding two unequal packages of one name must refuse");
+    };
+    assert_eq!(refusal.code, Code::InvalidPackage, "{refusal:?}");
+    assert_eq!(
+        refusal.cause,
+        Some(Cause::ConflictingDefinition),
+        "{refusal:?}"
+    );
+    let loci: Vec<_> = refusal.loci.iter().map(|locus| &locus.path).collect();
+    let below = "/lock/dependency_selections/0".repeat(depth);
+    assert_eq!(
+        loci,
+        [
+            &Some(pointer(&format!("/lock/dependency_selections/0{below}"))),
+            &Some(pointer(&format!("/lock/dependency_selections/1{below}"))),
+        ]
+    );
+}
+
+/// Two copies of one library with equal wire values, admitted over unequal
+/// packages that do not reach the reading package, are a diamond conflict one
+/// or two libraries below the repeated one.
+#[trace("TC-048", "FR-038-AC-293")]
+#[test]
+fn a_repeated_library_over_unequal_packages_is_a_conflict() {
+    let plain = leaf_ending_at("test/n", 100);
+    let other = leaf_ending_at("test/n", 101);
+
+    let first = admitted_selecting("test/m", &[&plain]);
+    let second = admitted_selecting("test/m", &[&other]);
+    expect_conflict_under_copies(&first, &second, 2);
+
+    let first_inner = admitted_selecting("test/k", &[&plain]);
+    let second_inner = admitted_selecting("test/k", &[&other]);
+    let first = admitted_selecting("test/m", &[&first_inner]);
+    let second = admitted_selecting("test/m", &[&second_inner]);
+    expect_conflict_under_copies(&first, &second, 3);
+}
+
+/// The least work limit under which `root`, selecting `supplied`, admits.
+fn least_admitting_work(root: &str, supplied: &[&CheckedPackageV2]) -> u64 {
+    let wire = with_selections(
+        empty_package(root),
+        supplied
+            .iter()
+            .map(|package| entry(package.name()))
+            .collect(),
+    );
+    let mut evidence = evidence_for(&wire);
+    for package in supplied {
+        evidence
+            .insert_dependency_package(package.name(), (*package).clone())
+            .expect("one package per name");
+    }
+    let admits = |work| {
+        let mut limits = CheckedPackageReadLimits::bounded();
+        limits.work = work;
+        matches!(
+            crate::read_and_account(&canonical(&wire), limits, &evidence),
+            CheckedPackageV2ReadResult::Admitted(_)
+        )
+    };
+    let (mut refused, mut admitted) = (0, CheckedPackageReadLimits::bounded().work);
+    assert!(admits(admitted), "{root} admits under the default limit");
+    while admitted - refused > 1 {
+        let middle = refused + (admitted - refused) / 2;
+        if admits(middle) {
+            admitted = middle;
+        } else {
+            refused = middle;
+        }
+    }
+    admitted
+}
+
+/// Equal copies of a library admitted separately agree entry by entry through a
+/// diamond: the read admits and charges one unit of work for each of the two
+/// compared closure entries. Copies of one admission share their closure and
+/// compare none.
+#[trace("TC-048", "FR-038-AC-217")]
+#[test]
+fn separately_admitted_equal_closures_admit_and_charge_each_compared_entry() {
+    let leaf = leaf_ending_at("test/n", 100);
+    let inner = admitted_selecting("test/k", &[&leaf]);
+    let first = admitted_selecting("test/m", &[&inner]);
+    let separate = admitted_selecting("test/m", &[&inner]);
+    let work_through = |second: &CheckedPackageV2| {
+        let left = admitted_selecting("test/a", &[&first]);
+        let right = admitted_selecting("test/b", &[second]);
+        least_admitting_work("test/root", &[&left, &right])
+    };
+    assert_eq!(work_through(&separate), work_through(&first) + 2);
+}

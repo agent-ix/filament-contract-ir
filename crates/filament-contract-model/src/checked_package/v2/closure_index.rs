@@ -38,6 +38,32 @@ impl ClosureIndex {
         self.packages.as_deref().unwrap_or_default().iter()
     }
 
+    /// Whether both closures hold the same names, each under an equal wire
+    /// value. Two indexes over one shared block agree without comparing an
+    /// entry. Otherwise `charge` is called before each pair of entries is
+    /// compared, and the first unequal pair ends the comparison.
+    pub(super) fn agrees_with(
+        &self,
+        other: &Self,
+        mut charge: impl FnMut() -> Result<(), ValidationFailure>,
+    ) -> Result<bool, ValidationFailure> {
+        let shared = self.packages.as_ref().zip(other.packages.as_ref());
+        if shared.is_some_and(|(left, right)| Arc::ptr_eq(left, right)) {
+            return Ok(true);
+        }
+        if self.len() != other.len() {
+            return Ok(false);
+        }
+        for (left, right) in self.iter().zip(other.iter()) {
+            charge()?;
+            if !Arc::ptr_eq(left, right) && (left.name() != right.name() || left.wire != right.wire)
+            {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    }
+
     /// Builds the index after exact closure conflict validation: every direct
     /// package and each package its own closure holds, once per identity. The
     /// candidate list and the index are charged to `budget` before they are

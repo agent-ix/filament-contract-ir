@@ -1261,7 +1261,7 @@ fn run_closure_vector(proposal: &std::path::Path, vector: &Value) -> Result<(), 
     Err(format!("the read entry {read} is not listed"))
 }
 
-#[trace("TC-048", "TC-047", "FR-038-AC-638", "FR-035-AC-18")]
+#[trace("TC-048", "TC-047", "FR-038-AC-639", "FR-035-AC-18")]
 #[test]
 fn published_closure_vectors_refuse_in_both_package_readers() {
     let proposal = super::proposal_dir_of(&super::fixtures_dir());
