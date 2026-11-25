@@ -73,8 +73,8 @@ stacker = "=0.1.15"
 # The shared iterative walk (`Walk` and `walk`): every walk of the V2 reader
 # over a term runs on its explicit heap stack, never on the call stack.
 filament-walk = { version = "0.1", git = "https://github.com/agent-ix/filament-walk", tag = "v0.1.1" }
-filament-exact = { version = "0.3", git = "https://github.com/agent-ix/filament-exact", rev = "08a5a1763ef4bd1ea7d1147717c959af5a3522cc" }
-filament-semantic-value = { version = "0.1", git = "https://github.com/agent-ix/filament-semantic-value", rev = "689f259eab592b62cb362f5e649dba16adf874f7" }
+filament-exact = { version = "0.3", git = "https://github.com/agent-ix/filament-exact", rev = "743c42e4e458782bf7a8befc3b76cc8a190ed727" }
+filament-semantic-value = { version = "0.1", git = "https://github.com/agent-ix/filament-semantic-value", rev = "95a9034d5ac8abe856f1d67428dd60c9bbc85fc5" }
 # The Rust identifier syntax of an abstraction relation body (FR-346): the
 # Unicode identifier tables and the NFC check FR-450's "Rust spellings" name.
 unicode-ident = "=1.0.24"
