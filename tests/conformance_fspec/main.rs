@@ -371,6 +371,7 @@ fn cause_word(cause: Cause) -> &'static str {
         Cause::WrongObservation => "wrong-observation",
         Cause::InvalidTaskSet => "invalid-task-set",
         Cause::ClockReadOutsideConstraint => "clock-read-outside-constraint",
+        Cause::StaleNodeKey => "stale-node-key",
     }
 }
 
