@@ -10419,18 +10419,6 @@ fn tc_048_an_operation_over_an_event_typed_parameter_is_ineligible() {
             0,
         ),
         (
-            "record.project",
-            placed(),
-            Applied {
-                operator: "query",
-                identity: "filament.op.record.project",
-                member: Some((declaration_key("OrderPlaced", "event_type"), "occurred_at")),
-                result: Ty::Timestamp,
-                operands: vec![0],
-            },
-            0,
-        ),
-        (
             "collection.contains",
             vec![("all", events), ("placed", event_type())],
             Applied {
@@ -11083,5 +11071,568 @@ fn tc_048_equality_over_a_record_with_inline_maps_of_scalars_stays_admitted() {
     match read_with(&package, &evidence, CheckedPackageReadLimits::bounded()) {
         CheckedPackageV2ReadResult::Admitted(_) => {}
         other => panic!("equality over a record with inline maps of scalars must admit: {other:?}"),
+    }
+}
+
+// --- event field projection --------------------------------------------------
+
+/// `Base { source: Integer }` and `Tick: Base { amount: Integer,
+/// armed: Boolean, note?: Integer }`, both event types.
+fn tick_events() -> Vec<Value> {
+    let integer = "ix://filament/native/Integer";
+    vec![
+        typed_object("Base", "event", &[], &[field("source", integer)]),
+        typed_object(
+            "Tick",
+            "event",
+            &["Base"],
+            &[
+                field("amount", integer),
+                field("armed", "ix://filament/native/Boolean"),
+                field("note", integer).optional(),
+            ],
+        ),
+    ]
+}
+
+/// The model declaration nodes of [`tick_events`].
+const TICK_NODES: [(&str, &str); 2] = [("Tick", "event_type"), ("Base", "event_type")];
+
+fn tick() -> Ty {
+    Ty::Record(declaration_key("Tick", "event_type"))
+}
+
+/// `filament.op.record.project` of the field `name` of the declaration
+/// `declaring` (`(short name, form)`), typed `result`, over operand `operand`.
+fn projected(declaring: (&str, &str), name: &'static str, result: Ty, operand: usize) -> Applied {
+    Applied {
+        operator: "query",
+        identity: "filament.op.record.project",
+        member: Some((declaration_key(declaring.0, declaring.1), name)),
+        result,
+        operands: vec![operand],
+    }
+}
+
+/// The projection of the field `name` that `Tick` exposes, over operand 0.
+fn tick_field(name: &'static str, result: Ty) -> Applied {
+    projected(("Tick", "event_type"), name, result, 0)
+}
+
+/// [`event_package_selecting`] over [`tick_events`] and `added`, with the
+/// declaration nodes of both and of `declared`.
+fn tick_package(
+    added: Vec<Value>,
+    declared: &[(&str, &str)],
+    parameters: &[(&str, Ty)],
+    applications: &[Applied],
+    edit: impl FnOnce(&mut Vec<Value>),
+) -> (Value, CheckedPackageEvidence) {
+    let mut types = tick_events();
+    types.extend(added);
+    let declared: Vec<(&str, &str)> = TICK_NODES
+        .into_iter()
+        .chain(declared.iter().copied())
+        .collect();
+    event_package_selecting(types, &declared, parameters, applications, edit)
+}
+
+fn assert_admits(case: &str, (package, evidence): &(Value, CheckedPackageEvidence)) {
+    match read_with(package, evidence, CheckedPackageReadLimits::bounded()) {
+        CheckedPackageV2ReadResult::Admitted(_) => {}
+        other => panic!("{case} must admit: {other:?}"),
+    }
+}
+
+/// Asserts the read refuses `code`/`cause` at `member` of the body of the
+/// package's application node number `application`.
+fn assert_application_refusal(
+    case: &str,
+    (package, evidence): &(Value, CheckedPackageEvidence),
+    application: usize,
+    code: CheckedPackageRefusalCode,
+    cause: CheckedPackageRefusalCause,
+    member: &str,
+) {
+    let position = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .enumerate()
+        .filter(|(_, node)| node["node_tag"] == "expression")
+        .map(|(position, _)| position)
+        .nth(application)
+        .expect("application node");
+    let CheckedPackageV2ReadResult::Refused(refusal) =
+        read_with(package, evidence, CheckedPackageReadLimits::bounded())
+    else {
+        panic!("{case} must refuse");
+    };
+    assert_eq!(refusal.code, code, "{case}");
+    assert_eq!(refusal.cause, Some(cause), "{case}");
+    assert_eq!(
+        refusal.loci[0].path.as_ref().map(|path| path.as_str()),
+        Some(format!("/semantic_graph/nodes/{position}/body/{member}").as_str()),
+        "{case}"
+    );
+}
+
+#[trace("TC-048", "TC-281", "FR-038-AC-640")]
+#[test]
+fn tc_048_a_field_of_an_event_typed_parameter_is_projected() {
+    let note = Ty::Option(Box::new(Ty::Integer));
+    for (name, result) in [
+        ("amount", Ty::Integer),
+        ("armed", Ty::Boolean),
+        ("note", note),
+        ("source", Ty::Integer),
+    ] {
+        let built = tick_package(
+            Vec::new(),
+            &[],
+            &[("e", tick())],
+            &[tick_field(name, result)],
+            |_| {},
+        );
+        assert_admits(name, &built);
+    }
+}
+
+#[trace("TC-048", "FR-038-AC-641")]
+#[test]
+fn tc_048_an_event_field_projection_refuses_a_wrong_name_result_or_read_form() {
+    let read = |application: Applied| {
+        tick_package(Vec::new(), &[], &[("e", tick())], &[application], |_| {})
+    };
+    assert_application_refusal(
+        "an unknown field",
+        &read(tick_field("missing", Ty::Integer)),
+        0,
+        CheckedPackageRefusalCode::IllTyped,
+        CheckedPackageRefusalCause::OperatorIneligible,
+        "operation/member/name",
+    );
+    assert_application_refusal(
+        "amount typed Boolean",
+        &read(tick_field("amount", Ty::Boolean)),
+        0,
+        CheckedPackageRefusalCode::IllTyped,
+        CheckedPackageRefusalCause::OperatorIneligible,
+        "result_type",
+    );
+
+    let (package, evidence) = tick_package(
+        Vec::new(),
+        &[],
+        &[("e", tick())],
+        &[tick_field("amount", Ty::Integer)],
+        |nodes| {
+            let node = nodes
+                .iter_mut()
+                .find(|node| node["node_tag"] == "expression")
+                .expect("application node");
+            node["body"]["operation"]["member"]["read_form"] = json!("bare");
+        },
+    );
+    let position = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .position(|node| node["node_tag"] == "expression")
+        .expect("application node");
+    let CheckedPackageV2ReadResult::Refused(refusal) =
+        read_with(&package, &evidence, CheckedPackageReadLimits::bounded())
+    else {
+        panic!("a read_form on an event field projection must refuse");
+    };
+    assert_eq!(refusal.code, CheckedPackageRefusalCode::MalformedWire);
+    assert_eq!(
+        refusal.loci[0].path.as_ref().map(|path| path.as_str()),
+        Some(format!("/semantic_graph/nodes/{position}/body/operation/member/read_form").as_str())
+    );
+}
+
+#[trace("TC-048", "FR-038-AC-641")]
+#[test]
+fn tc_048_a_projection_other_than_of_the_operands_event_type_refuses_at_the_operand() {
+    let optional = Ty::Option(Box::new(tick()));
+    let cases = [
+        (
+            "source declared by the supertype",
+            tick(),
+            projected(("Base", "event_type"), "source", Ty::Integer, 0),
+        ),
+        (
+            "amount declared by another event type",
+            tick(),
+            projected(("OrderPlaced", "event_type"), "amount", Ty::Integer, 0),
+        ),
+        (
+            "amount declared by a record value type",
+            tick(),
+            projected(("Money", "record_value_type"), "amount", Ty::Integer, 0),
+        ),
+        (
+            "a parameter typed Option<Tick>",
+            optional,
+            tick_field("amount", Ty::Integer),
+        ),
+    ];
+    for (case, parameter, application) in cases {
+        let built = tick_package(Vec::new(), &[], &[("e", parameter)], &[application], |_| {});
+        assert_ineligible_operand(case, &built, 0, 0);
+    }
+}
+
+#[trace("TC-048", "FR-038-AC-641")]
+#[test]
+fn tc_048_only_the_event_field_projection_recovers_an_event_type() {
+    let money = Ty::Record(declaration_key("Money", "record_value_type"));
+    let record = tick_package(
+        Vec::new(),
+        &[],
+        &[("held", money)],
+        &[tick_field("amount", Ty::Integer)],
+        |_| {},
+    );
+    assert_application_refusal(
+        "a record parameter projected under the Tick declaration",
+        &record,
+        0,
+        CheckedPackageRefusalCode::MissingDeclaration,
+        CheckedPackageRefusalCause::MissingSelection,
+        "operation/member/declaration",
+    );
+
+    let order = Ty::Reference(declaration_key("Order", OBJECT));
+    let dispatched = tick_package(
+        Vec::new(),
+        &[],
+        &[("receiver", order)],
+        &[Applied {
+            operator: "call",
+            identity: "filament.op.model.dispatch_call",
+            member: Some((declaration_key("Tick", "event_type"), "amount")),
+            result: Ty::Integer,
+            operands: vec![0],
+        }],
+        |nodes| {
+            let node = nodes
+                .iter_mut()
+                .find(|node| node["node_tag"] == "expression")
+                .expect("application node");
+            node["body"]["operation"]["member"]["kind"] = json!("operation");
+        },
+    );
+    assert_application_refusal(
+        "an operation member naming Tick",
+        &dispatched,
+        0,
+        CheckedPackageRefusalCode::MissingDeclaration,
+        CheckedPackageRefusalCause::MissingSelection,
+        "operation/member/declaration",
+    );
+}
+
+#[trace("TC-048", "FR-038-AC-641")]
+#[test]
+fn tc_048_an_event_field_whose_type_reaches_an_event_is_not_projected() {
+    let holder = || Ty::Record(declaration_key("Holder", "record_value_type"));
+    let read = |name: &'static str, result: Ty| {
+        tick_package(
+            vec![
+                json!({"identity": orders("EventSeq"), "kind": "sequence",
+                    "items": orders("OrderPlaced")}),
+                typed_object(
+                    "Holder",
+                    "record",
+                    &[],
+                    &[field("entries", &orders("EventSeq"))],
+                ),
+                typed_object(
+                    "Logged",
+                    "event",
+                    &[],
+                    &[
+                        field("held", &orders("Holder")),
+                        field("count", "ix://filament/native/Integer"),
+                    ],
+                ),
+            ],
+            &[("Holder", "record_value_type"), ("Logged", "event_type")],
+            &[("e", Ty::Record(declaration_key("Logged", "event_type")))],
+            &[projected(("Logged", "event_type"), name, result, 0)],
+            |_| {},
+        )
+    };
+    assert_ineligible_operand(
+        "held typed as its event-holding record",
+        &read("held", holder()),
+        0,
+        0,
+    );
+    assert_application_refusal(
+        "held typed Integer",
+        &read("held", Ty::Integer),
+        0,
+        CheckedPackageRefusalCode::IllTyped,
+        CheckedPackageRefusalCause::OperatorIneligible,
+        "result_type",
+    );
+    assert_admits("the sibling field count", &read("count", Ty::Integer));
+}
+
+/// A position that reads a projection node: the parameters after `e`, the
+/// field of `Tick` projected and its type, the application that reads it and
+/// which of its arguments holds the read.
+struct Position {
+    case: &'static str,
+    parameters: Vec<(&'static str, Ty)>,
+    field: (&'static str, Ty),
+    reader: Applied,
+    argument: usize,
+}
+
+#[trace("TC-048", "FR-038-AC-642", "FR-038-AC-633")]
+#[test]
+fn tc_048_a_binder_operand_reads_an_event_field_projection_node() {
+    const UNION: &str = "qualified:Shape";
+    let integers = Ty::Collection(Kind::Set, Box::new(Ty::Integer), None);
+    let flags = Ty::Collection(Kind::Set, Box::new(Ty::Boolean), None);
+    let reader = |operator: &'static str, identity: &'static str, result: Ty, operands| Applied {
+        operator,
+        identity,
+        member: None,
+        result,
+        operands,
+    };
+    // Operand 0 is `e`; the projection node follows the parameters.
+    let positions = [
+        Position {
+            case: "control.let bound value",
+            parameters: vec![("kept", Ty::Integer)],
+            field: ("amount", Ty::Integer),
+            reader: reader("let", "filament.op.control.let", Ty::Integer, vec![2, 1]),
+            argument: 0,
+        },
+        Position {
+            case: "collection.forall body",
+            parameters: vec![("all", integers), ("each", Ty::Integer)],
+            field: ("armed", Ty::Boolean),
+            reader: reader(
+                "quantify",
+                "filament.op.collection.forall",
+                Ty::Boolean,
+                vec![1, 3],
+            ),
+            argument: 1,
+        },
+        Position {
+            case: "collection.fold step",
+            parameters: vec![("all", flags), ("each", Ty::Boolean), ("seed", Ty::Boolean)],
+            field: ("armed", Ty::Boolean),
+            reader: reader(
+                "collection",
+                "filament.op.collection.fold",
+                Ty::Boolean,
+                vec![1, 4, 3],
+            ),
+            argument: 1,
+        },
+        Position {
+            case: "control.case arm body",
+            parameters: vec![("choice", Ty::Record(UNION.to_owned()))],
+            field: ("armed", Ty::Boolean),
+            reader: reader("case", "filament.op.control.case", Ty::Boolean, vec![1, 2]),
+            argument: 1,
+        },
+    ];
+    for position in positions {
+        let Position {
+            case,
+            parameters,
+            field,
+            reader,
+            argument,
+        } = position;
+        let mut bound = vec![("e", tick())];
+        bound.extend(parameters);
+        // `reads_event` replaces the reference to the projection node with one
+        // to `e` itself.
+        for reads_event in [false, true] {
+            let built = tick_package(
+                Vec::new(),
+                &[],
+                &bound,
+                &[
+                    tick_field(field.0, field.1.clone()),
+                    Applied {
+                        operator: reader.operator,
+                        identity: reader.identity,
+                        member: None,
+                        result: reader.result.clone(),
+                        operands: reader.operands.clone(),
+                    },
+                ],
+                |nodes| {
+                    if case == "control.case arm body" {
+                        let mut union = wire_node(
+                            UNION,
+                            "composite_type",
+                            "union",
+                            UNION,
+                            &[],
+                            json!({"term": "aggregate",
+                                "members": [bound_as("Only", empty())]}),
+                        );
+                        union["occurrences"] = json!([{"role": "declaration", "ordinal": 0}]);
+                        union["declaration"] = json!({"qualified_name": ["Shape"]});
+                        nodes.push(owned_structural_node(
+                            union,
+                            source_owner(&fixture_source()),
+                        ));
+                    }
+                    let node = nodes
+                        .iter_mut()
+                        .rfind(|node| node["node_tag"] == "expression")
+                        .expect("reading node");
+                    let mut read = node["body"]["arguments"][argument].take();
+                    if reads_event {
+                        read = reference("value/parameter/e");
+                    }
+                    node["body"]["arguments"][argument] = match case {
+                        "control.let bound value" => {
+                            let mut binding = bound_as("kept", read);
+                            binding["binder"] = node_id("value/parameter/kept");
+                            binding
+                        }
+                        "collection.forall body" => bound_as("each", read),
+                        "collection.fold step" => {
+                            node["body"]["operation"]["member"] = json!({
+                                "kind": "type_argument",
+                                "declaration": node["body"]["result_type"].clone(),
+                            });
+                            bound_as(
+                                "acc",
+                                json!({"term": "aggregate",
+                                    "members": [bound_as("each", read)]}),
+                            )
+                        }
+                        _ => bound_as(
+                            "Only",
+                            json!({"term": "aggregate", "members": [empty(), read]}),
+                        ),
+                    };
+                },
+            );
+            if reads_event {
+                assert_ineligible_operand(case, &built, 1, argument);
+            } else {
+                assert_admits(case, &built);
+            }
+        }
+    }
+}
+
+#[trace("TC-048", "FR-038-AC-642")]
+#[test]
+fn tc_048_a_forall_over_events_refuses_whatever_its_body_projects() {
+    let events = Ty::Collection(Kind::Set, Box::new(tick()), None);
+    let built = tick_package(
+        Vec::new(),
+        &[],
+        &[("e", tick()), ("ticks", events), ("each", Ty::Boolean)],
+        &[
+            tick_field("armed", Ty::Boolean),
+            Applied {
+                operator: "quantify",
+                identity: "filament.op.collection.forall",
+                member: None,
+                result: Ty::Boolean,
+                operands: vec![1, 3],
+            },
+        ],
+        |nodes| {
+            let node = nodes
+                .iter_mut()
+                .rfind(|node| node["node_tag"] == "expression")
+                .expect("quantifier node");
+            let read = node["body"]["arguments"][1].take();
+            node["body"]["arguments"][1] = bound_as("each", read);
+        },
+    );
+    assert_ineligible_operand("a forall over a set of Tick", &built, 1, 0);
+}
+
+#[trace("TC-048", "FR-038-AC-643")]
+#[test]
+fn tc_048_a_malformed_event_declaration_refuses_at_the_model_root_owner() {
+    let integer = "ix://filament/native/Integer";
+    let zeta = || {
+        json!({"identity": orders("Zeta"), "kind": "sequence",
+            "items": integer})
+    };
+    // `Tick` with one more field of the record `Money`, which holds no event,
+    // edited by `supertypes` and `next`.
+    let read = |supertypes: &[&str], next: Option<&str>, projects: bool| {
+        let mut fields = vec![
+            field("amount", integer),
+            field("armed", "ix://filament/native/Boolean"),
+            field("price", &orders("Money")),
+        ];
+        if let Some(next) = next {
+            fields.push(field("next", &orders(next)));
+        }
+        let types = vec![
+            typed_object("Base", "event", &[], &[field("source", integer)]),
+            typed_object("Tick", "event", supertypes, &fields),
+            zeta(),
+        ];
+        let applications = if projects {
+            vec![tick_field("armed", Ty::Boolean)]
+        } else {
+            Vec::new()
+        };
+        event_package_selecting(types, &TICK_NODES, &[("e", tick())], &applications, |_| {})
+    };
+    let malformed = (
+        CheckedPackageRefusalCode::InvalidModelBinding,
+        CheckedPackageRefusalCause::MalformedDeclaration,
+    );
+    let missing = (
+        CheckedPackageRefusalCode::MissingDeclaration,
+        CheckedPackageRefusalCause::MissingName,
+    );
+    let cases: [(&str, &[&str], Option<&str>, _); 4] = [
+        (
+            "a field naming an event type",
+            &["Base"],
+            Some("Base"),
+            malformed,
+        ),
+        ("a record supertype", &["Money"], None, malformed),
+        ("a sequence supertype", &["Zeta"], None, malformed),
+        ("an absent supertype", &["Absent"], None, missing),
+    ];
+    for projects in [false, true] {
+        assert_admits(
+            "an event supertype and a record-typed field",
+            &read(&["Base"], None, projects),
+        );
+        for (case, supertypes, next, (code, cause)) in cases {
+            let (package, evidence) = read(supertypes, next, projects);
+            let CheckedPackageV2ReadResult::Refused(refusal) =
+                read_with(&package, &evidence, CheckedPackageReadLimits::bounded())
+            else {
+                panic!("{case} must refuse, projects {projects}");
+            };
+            assert_eq!(refusal.code, code, "{case}, projects {projects}");
+            assert_eq!(refusal.cause, Some(cause), "{case}, projects {projects}");
+            assert_eq!(
+                refusal.loci[0].path.as_ref().map(|path| path.as_str()),
+                Some(root_owner(&package, IDENTITY).as_str()),
+                "{case}, projects {projects}"
+            );
+        }
     }
 }

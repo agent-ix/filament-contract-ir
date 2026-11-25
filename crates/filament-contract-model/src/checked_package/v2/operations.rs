@@ -30,9 +30,9 @@ use super::typed_terms::{
 };
 use super::{
     ApplicationOperator, BoundedDomainForm, CheckedArtifactRef, CheckedNodeId, CheckedNodeKind,
-    CheckedNodeTag, CheckedPackageLockV2, CheckedTerm, ClaimForm, CompositeTypeForm,
-    CorrespondenceForm, ExpressionForm, FunctionForm, LawRole, LiteralKind, ModelForm,
-    OperationConstraintKind, OperationMemberKind, OperationModeKind, ProtocolForm,
+    CheckedNodeOwner, CheckedNodeTag, CheckedPackageLockV2, CheckedTerm, ClaimForm,
+    CompositeTypeForm, CorrespondenceForm, ExpressionForm, FunctionForm, LawRole, LiteralKind,
+    ModelForm, OperationConstraintKind, OperationMemberKind, OperationModeKind, ProtocolForm,
     RawSemanticNodeV2 as CheckedSemanticNodeV2, RelationForm, ScalarTypeForm, StateForm,
     TemporalForm, ValueForm, WorkMeter,
 };
@@ -2534,7 +2534,17 @@ fn operation_defect(
             CheckedPackageRefusalCause::OperatorIneligible,
         )));
     }
-    if let Some(failure) = check_event_operands(application, entry, graph, owners, events, meter)? {
+    let projects_event =
+        is_event_field_projection(application, &operation, graph, owners, events, meter)?;
+    if let Some(failure) = check_event_operands(
+        application,
+        entry,
+        projects_event,
+        graph,
+        owners,
+        events,
+        meter,
+    )? {
         return Ok(Some(failure));
     }
     let place_presence = check_place_presence(application, &operation, graph, owners, meter)?;
@@ -2633,15 +2643,27 @@ fn operation_defect(
             Some((declaring, declaring_kind))
                 if owners.is_model_declaration_node(declaring, declaring_kind.tag()) =>
             {
-                if let Some(failure) = check_model_member(
-                    application,
-                    &operation,
-                    kind,
-                    declaring,
-                    graph,
-                    owners,
-                    meter,
-                )? {
+                let failure = if projects_event {
+                    check_event_field_projection(
+                        application,
+                        &operation,
+                        declaring,
+                        graph,
+                        owners,
+                        meter,
+                    )?
+                } else {
+                    check_model_member(
+                        application,
+                        &operation,
+                        kind,
+                        declaring,
+                        graph,
+                        owners,
+                        meter,
+                    )?
+                };
+                if let Some(failure) = failure {
                     return Ok(Some(failure));
                 }
             }
@@ -3436,16 +3458,7 @@ impl EventReach {
     }
 
     /// Whether `term` is a `reference` or a `literal` whose operand type node
-    /// reaches an event type: it is a `model`/`event_type` node, or a value of
-    /// it can hold an event value at any depth. A structural composite holds
-    /// the types its body references, an alias or bounded domain its
-    /// `semantic_type`, and a model record, tuple or variant what its selected
-    /// declaration holds. A `composite_type`/`reference` value and an object
-    /// hold an identity, never an event value. The walk keeps its own
-    /// worklist and expands each type node at most once, so a recursive type
-    /// ends it. When it finds no event every type it expanded keeps that answer
-    /// for later operands, and when it finds one each type on its way to it
-    /// keeps that one; using a kept answer is charged as expanding a type is.
+    /// reaches an event type ([`Self::type_reaches_event`]).
     fn term_reaches_event(
         &mut self,
         application: Application<'_>,
@@ -3457,9 +3470,35 @@ impl EventReach {
         if !self.declared {
             return Ok(false);
         }
-        let Some(root) = operand_type_node_typed(term, graph.nodes, graph.kinds, graph.index)
-            .and_then(|type_id| graph.index.get(type_id).copied())
-        else {
+        match operand_type_node_typed(term, graph.nodes, graph.kinds, graph.index) {
+            Some(type_id) => self.type_reaches_event(application, type_id, graph, owners, meter),
+            None => Ok(false),
+        }
+    }
+
+    /// Whether the type node `type_id` reaches an event type: it is a
+    /// `model`/`event_type` node, or a value of it can hold an event value at
+    /// any depth. A structural composite holds the types its body references,
+    /// an alias or bounded domain its `semantic_type`, and a model record,
+    /// tuple or variant what its selected declaration holds. A
+    /// `composite_type`/`reference` value and an object hold an identity, never
+    /// an event value. The walk keeps its own worklist and expands each type
+    /// node at most once, so a recursive type ends it. When it finds no event
+    /// every type it expanded keeps that answer for later walks, and when it
+    /// finds one each type on its way to it keeps that one; using a kept answer
+    /// is charged as expanding a type is.
+    fn type_reaches_event(
+        &mut self,
+        application: Application<'_>,
+        type_id: &CheckedNodeId,
+        graph: &Graph<'_>,
+        owners: &ModelOwners<'_>,
+        meter: &mut WorkMeter,
+    ) -> Result<bool, ValidationFailure> {
+        if !self.declared {
+            return Ok(false);
+        }
+        let Some(root) = graph.index.get(type_id).copied() else {
             return Ok(false);
         };
         let mut expanded: Vec<ExpandedType> = Vec::new();
@@ -3597,10 +3636,13 @@ impl EventReach {
 /// operand family, so the operand checks would skip such an operand. A
 /// temporal clause's first operand names its `over` parameter and reads no
 /// value; the `guard` in its activation is read as a binder body is. Triggers,
-/// captures and protocol binder slots are not read.
+/// captures and protocol binder slots are not read. When `projects_event`, the
+/// application is an event field projection ([`is_event_field_projection`]),
+/// whose first operand [`check_event_field_projection`] checks instead.
 fn check_event_operands(
     application: Application<'_>,
     entry: &OperationCatalogEntry,
+    projects_event: bool,
     graph: &Graph<'_>,
     owners: &ModelOwners<'_>,
     events: &mut EventReach,
@@ -3614,7 +3656,8 @@ fn check_event_operands(
             .operands
             .first()
             .is_some_and(|operand| operand.class == FamilyClass::Reference);
-    for (position, argument) in arguments.iter().enumerate().skip(usize::from(reads_over)) {
+    let exempt = usize::from(reads_over || projects_event);
+    for (position, argument) in arguments.iter().enumerate().skip(exempt) {
         let binder = entry
             .operands
             .get(position)
@@ -3654,6 +3697,58 @@ fn check_event_operands(
         }
     }
     Ok(None)
+}
+
+/// Whether the application is an event field projection: a
+/// `filament.op.record.project` whose argument 0 is a `reference` whose operand
+/// type node is itself a `model`/`event_type` node carrying a `ModelOwner`,
+/// whose `field` member's `declaration` names that same node and whose
+/// `result_type` reaches no event type. It is the one operation admitted over
+/// an event value.
+fn is_event_field_projection(
+    application: Application<'_>,
+    operation: &OperationWire,
+    graph: &Graph<'_>,
+    owners: &ModelOwners<'_>,
+    events: &mut EventReach,
+    meter: &mut WorkMeter,
+) -> Result<bool, ValidationFailure> {
+    if operation.field_projection_identity() != FieldProjectionIdentity::RecordProject
+        || operation.member_kind_class() != Some(Some(OperationMemberKind::Field))
+    {
+        return Ok(false);
+    }
+    let Some(CheckedTerm::Application {
+        arguments,
+        result_type,
+        ..
+    }) = graph
+        .terms
+        .get(application.position)
+        .and_then(Option::as_ref)
+    else {
+        return Ok(false);
+    };
+    let Some(receiver @ CheckedTerm::Reference { .. }) = arguments.first() else {
+        return Ok(false);
+    };
+    let Some(operand) = operand_type_node_typed(receiver, graph.nodes, graph.kinds, graph.index)
+        .and_then(|type_id| graph.index.get(type_id).copied())
+    else {
+        return Ok(false);
+    };
+    let declaring =
+        member_declaration(operation).and_then(|declaration| graph.index.get(declaration).copied());
+    let event_value = graph.kinds.get(operand)
+        == Some(&CheckedNodeKind::Model(ModelForm::EventType))
+        && graph
+            .nodes
+            .get(operand)
+            .is_some_and(|node| matches!(node.owner, Some(CheckedNodeOwner::Model { .. })));
+    if !event_value || declaring != Some(operand) {
+        return Ok(false);
+    }
+    Ok(!events.type_reaches_event(application, result_type, graph, owners, meter)?)
 }
 
 /// Whether a temporal clause's activation holds a `guard` binding that reads a
@@ -6675,11 +6770,7 @@ fn check_model_member(
     {
         return ineligible(argument_at(0));
     }
-    let name = operation
-        .member_node()
-        .and_then(|member| member.get("name"))
-        .and_then(super::TermNode::as_str)
-        .unwrap_or("");
+    let name = member_name_text(operation);
     // A field is read on an object or a record value type; a record owns no
     // operation.
     let Some(object) = owner.package.field_owner(owner.node) else {
@@ -6760,8 +6851,79 @@ fn check_model_member(
             }
         }
     };
+    check_member_result(application, owner.package, member_type, graph, meter)
+}
+
+/// FR-322 steps 2 to 4 for an event field projection's `field` member: the
+/// declaring node recovers its selected event type, `name` resolves among that
+/// type's exposed effective fields, and the application's `result_type` is the
+/// node of the field's member type. The projection reads the declaring type
+/// itself, so no operand conformance is left to check.
+fn check_event_field_projection(
+    application: Application<'_>,
+    operation: &OperationWire,
+    declaring: &CheckedSemanticNodeV2,
+    graph: &Graph<'_>,
+    owners: &ModelOwners<'_>,
+    meter: &mut WorkMeter,
+) -> Result<Option<ValidationFailure>, ValidationFailure> {
+    let member_at = |member: &str| application.body(&["operation", "member", member]);
+    let refuse = |path: JsonPointer, refusal: ModelRefusal| {
+        Ok(Some(model_refusal(application, path, refusal)))
+    };
+    let (package, event) = match owners.recover_event_type(declaring) {
+        Ok(recovered) => recovered,
+        Err(refusal) => return refuse(member_at("declaration"), refusal),
+    };
+    let mut budget = Budget::new(meter, package.root, package.bytes);
+    let field = match package.resolve(
+        event,
+        MemberKind::Field,
+        member_name_text(operation),
+        &mut budget,
+    ) {
+        Ok(Resolved::Field(field)) => field,
+        Ok(Resolved::Operation(_)) => {
+            return refuse(member_at("name"), ModelRefusal::ineligible());
+        }
+        Err(ModelFailure::Refused(refusal)) => return refuse(member_at("name"), refusal),
+        Err(ModelFailure::Limit(failure)) => return Err(failure),
+    };
+    let member_type = package.field_type_charged(
+        field,
+        &mut Budget::new(meter, package.root, package.bytes),
+        "member_type",
+    )?;
+    check_member_result(application, package, member_type, graph, meter)
+}
+
+/// The `name` a member names, empty when it carries none.
+fn member_name_text(operation: &OperationWire) -> &str {
+    operation
+        .member_node()
+        .and_then(|member| member.get("name"))
+        .and_then(super::TermNode::as_str)
+        .unwrap_or("")
+}
+
+/// FR-322 step 4: the resolved member's type, `None` when it has none, against
+/// the application's `result_type` by node key.
+fn check_member_result(
+    application: Application<'_>,
+    package: &super::model_members::DomainModel,
+    member_type: Option<MemberType>,
+    graph: &Graph<'_>,
+    meter: &mut WorkMeter,
+) -> Result<Option<ValidationFailure>, ValidationFailure> {
+    let ineligible = |path: JsonPointer| {
+        Ok(Some(model_refusal(
+            application,
+            path,
+            ModelRefusal::ineligible(),
+        )))
+    };
     let Some(member_type) = member_type else {
-        return ineligible(member_at("name"));
+        return ineligible(application.body(&["operation", "member", "name"]));
     };
     let result_type = graph
         .terms
@@ -6773,7 +6935,7 @@ fn check_model_member(
         });
     let Some(member_id) = member_type.node_id_in(
         &application.node.node_id.package,
-        &mut Budget::new(meter, owner.package.root, owner.package.bytes),
+        &mut Budget::new(meter, package.root, package.bytes),
     )?
     else {
         return ineligible(application.body(&["result_type"]));
