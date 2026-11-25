@@ -2894,6 +2894,11 @@ pub fn refresh_temporal_bindings(package: &mut Value) {
         })
         .and_then(|selection| selection["definition"]["identity"].as_str());
     let lock_source = package["lock"]["sources"][0].clone();
+    // A package locking no unit has none for a row to name; its rows stay as
+    // they are.
+    if lock_source.is_null() {
+        return;
+    }
     let nodes = package["semantic_graph"]["nodes"]
         .as_array()
         .expect("nodes");

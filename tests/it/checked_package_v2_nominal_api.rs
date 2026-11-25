@@ -459,6 +459,21 @@ fn public_constructors_refuse_malformed_members_at_body_relative_pointers() {
             "/root_scale/numerator",
         );
     }
+    for denominator in ["0", "-1"] {
+        assert_malformed(
+            NominalBody::try_dimension_equivalence(
+                [
+                    CheckedDimensionOperand::Local(id.clone()),
+                    CheckedDimensionOperand::Local(id.clone()),
+                ],
+                CheckedRational {
+                    numerator: "1".into(),
+                    denominator: denominator.into(),
+                },
+            ),
+            "/root_scale/denominator",
+        );
+    }
     assert!(NominalBody::try_dimension_equivalence(
         [
             CheckedDimensionOperand::Local(id.clone()),
