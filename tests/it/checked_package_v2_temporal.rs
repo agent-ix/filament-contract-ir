@@ -6742,12 +6742,11 @@ fn shared_hyper_wrapper_checks_every_source_and_clock_in_both_orders() {
     }
 }
 
-/// The fixture's temporal clause, its `over` parameter typed at an event type
-/// of the selected domain package: the clause reads the parameter as its
-/// `over` operand and applies no operation to its value.
-#[trace("TC-048", "FR-038-AC-632")]
-#[test]
-fn tc_048_a_temporal_clause_admits_an_event_typed_over_parameter() {
+/// The all-families fixture, whose temporal clause and protocol control share
+/// one `over` parameter, with that parameter typed at an event type of the
+/// selected domain package; returns the package, the domain package document
+/// and the event node's id.
+fn event_over_fixture() -> (Value, Value, Value) {
     const TICK_NODE: &str = "ix://acme/orders/Tick";
     let tick = json!({"package": ORDERS, "path": ["model", "event_type", TICK_NODE], "ordinal": 0});
     let mut package = v2_all_families();
@@ -6767,7 +6766,7 @@ fn tc_048_a_temporal_clause_admits_an_event_typed_over_parameter() {
     );
     let over = node_id(&family_key("a4a4"));
     let parameter = find(&package, |node| node["node_id"] == over);
-    package["semantic_graph"]["nodes"][parameter]["semantic_type"] = tick;
+    package["semantic_graph"]["nodes"][parameter]["semantic_type"] = tick.clone();
     settle(&mut package);
 
     let mut document = orders_document();
@@ -6788,8 +6787,82 @@ fn tc_048_a_temporal_clause_admits_an_event_typed_over_parameter() {
     }]);
     event["occurrenceField"] = json!(format!("{TICK_NODE}/at"));
     document["types"].as_array_mut().expect("types").push(event);
+    (package, document, tick)
+}
+
+/// Adds a second `value`/`parameter` node typed `ty`, at binder level 1, and
+/// returns a `reference` to it.
+fn add_event_trigger(package: &mut Value, ty: Value) -> Value {
+    let literal = |type_key: &str, kind: &str, value: &str| {
+        json!({"term": "literal", "type": node_id(&family_key(type_key)),
+               "value_kind": kind, "value": value})
+    };
+    let mut trigger = node_with_key(
+        "event-trigger",
+        "value",
+        "parameter",
+        json!({"term": "aggregate", "members": [
+            {"term": "binding", "name": "name", "value": literal("a1a1", "text", "t")},
+            {"term": "binding", "name": "level", "value": literal("a3a3", "integer", "1")},
+        ]}),
+    );
+    trigger["semantic_type"] = ty;
+    trigger["occurrences"] = json!([{"role": "expression", "ordinal": 0}]);
+    push(package, trigger);
+    refer("event-trigger")
+}
+
+#[trace("TC-048", "FR-038-AC-632")]
+#[test]
+fn tc_048_a_temporal_clause_admits_an_event_typed_over_parameter() {
+    let (package, document, _) = event_over_fixture();
     match read_with_model(&package, &document, CheckedPackageReadLimits::bounded()) {
         CheckedPackageV2ReadResult::Admitted(_) => {}
-        other => panic!("a clause over an event-typed parameter must admit: {other:?}"),
+        other => panic!("clauses over an event-typed parameter must admit: {other:?}"),
     }
+}
+
+#[trace("TC-048", "FR-038-AC-632")]
+#[test]
+fn tc_048_a_temporal_clause_admits_an_event_typed_trigger_and_capture() {
+    let (mut package, document, tick) = event_over_fixture();
+    let trigger = add_event_trigger(&mut package, tick);
+    let at = clause(&package);
+    package["semantic_graph"]["nodes"][at]["body"]["arguments"][2] = json!({
+    "term": "aggregate", "members": [
+        {"term": "binding", "name": "kind", "value": {"term": "literal",
+            "type": node_id(&family_key("a1a1")), "value_kind": "text", "value": "each"}},
+        {"term": "binding", "name": "trigger", "value": trigger.clone()},
+    ]});
+    package["semantic_graph"]["nodes"][at]["body"]["arguments"][3] = json!({
+    "term": "aggregate", "members": [
+        {"term": "binding", "name": "c0", "value": trigger},
+    ]});
+    settle(&mut package);
+    match read_with_model(&package, &document, CheckedPackageReadLimits::bounded()) {
+        CheckedPackageV2ReadResult::Admitted(_) => {}
+        other => panic!("an event-typed trigger and capture must admit: {other:?}"),
+    }
+}
+
+/// The `over` exception is the clause's first operand only.
+#[trace("TC-048", "FR-038-AC-633")]
+#[test]
+fn tc_048_a_temporal_clause_operand_after_over_may_not_read_an_event_typed_parameter() {
+    let (mut package, document, tick) = event_over_fixture();
+    let trigger = add_event_trigger(&mut package, tick);
+    let at = clause(&package);
+    package["semantic_graph"]["nodes"][at]["body"]["arguments"][3] = trigger;
+    settle(&mut package);
+    let CheckedPackageV2ReadResult::Refused(refusal) =
+        read_with_model(&package, &document, CheckedPackageReadLimits::bounded())
+    else {
+        panic!("a bare event-typed operand after `over` must refuse");
+    };
+    assert_eq!(refusal.code, Code::IllTyped);
+    assert_eq!(refusal.cause, Some(Cause::OperatorIneligible));
+    assert_eq!(
+        refusal.loci[0].path.as_ref().map(|path| path.as_str()),
+        Some(format!("/semantic_graph/nodes/{at}/body/arguments/3").as_str())
+    );
 }

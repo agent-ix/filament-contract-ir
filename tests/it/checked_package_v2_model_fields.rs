@@ -6,9 +6,9 @@
 //! Semantic IR 2.0.0 domain package document selected by the lock.
 
 use crate::support::checked_package::{
-    canonical, evidence_for, evidence_with_document, index_fixture_node_ids,
-    node_id as fixture_node_id, nominal_package, rebuild_source_map, select_model, settle,
-    structural_fixture_id, structural_id,
+    canonical, evidence_for, evidence_with_document, fixture_source, index_fixture_node_ids,
+    node_id as fixture_node_id, nominal_package, owned_structural_node, rebuild_source_map,
+    select_model, settle, source_owner, structural_fixture_id, structural_id,
 };
 use filament_contract_model::{
     CheckedCollectionKind, CheckedMemberType, CheckedModelFieldsError, CheckedModelObjectFields,
@@ -10211,6 +10211,16 @@ fn event_package(
     parameters: &[(&str, Ty)],
     applications: &[Applied],
 ) -> (Value, CheckedPackageEvidence) {
+    event_package_edited(parameters, applications, |_| {})
+}
+
+/// [`event_package`], with `edit` applied to its graph nodes before the
+/// package settles.
+fn event_package_edited(
+    parameters: &[(&str, Ty)],
+    applications: &[Applied],
+    edit: impl FnOnce(&mut Vec<Value>),
+) -> (Value, CheckedPackageEvidence) {
     let mut event = typed_object(
         "OrderPlaced",
         "event",
@@ -10293,6 +10303,7 @@ fn event_package(
     graph.extend(nodes.into_values());
     graph.extend(declarations);
     graph.extend(applied);
+    edit(graph);
     select_model(&mut package, IDENTITY);
     settle(&mut package);
     let evidence = evidence_with_document(&package, IDENTITY, &selected);
@@ -10399,6 +10410,18 @@ fn tc_048_an_operation_over_an_event_typed_parameter_is_ineligible() {
             },
             1,
         ),
+        (
+            "model.deref",
+            placed(),
+            Applied {
+                operator: "deref",
+                identity: "filament.op.model.deref",
+                member: None,
+                result: Ty::Boolean,
+                operands: vec![0],
+            },
+            0,
+        ),
     ];
     for (case, parameters, application, argument) in cases {
         let (package, evidence) = event_package(&parameters, &[application]);
@@ -10412,6 +10435,135 @@ fn tc_048_an_operation_over_an_event_typed_parameter_is_ineligible() {
             read_with(&package, &evidence, CheckedPackageReadLimits::bounded())
         else {
             panic!("{case} over an event-typed parameter must refuse");
+        };
+        assert_eq!(refusal.code, CheckedPackageRefusalCode::IllTyped, "{case}");
+        assert_eq!(
+            refusal.cause,
+            Some(CheckedPackageRefusalCause::OperatorIneligible),
+            "{case}"
+        );
+        assert_eq!(
+            refusal.loci[0].path.as_ref().map(|path| path.as_str()),
+            Some(format!("/semantic_graph/nodes/{position}/body/arguments/{argument}").as_str()),
+            "{case}"
+        );
+    }
+}
+
+/// `{"term": "binding", "name": name, "value": value}`.
+fn bound_as(name: &str, value: Value) -> Value {
+    json!({"term": "binding", "name": name, "value": value})
+}
+
+#[trace("TC-048", "FR-038-AC-633")]
+#[test]
+fn tc_048_a_binder_operand_holding_an_event_typed_parameter_is_ineligible() {
+    const UNION: &str = "qualified:Shape";
+    let events = Ty::Collection(Kind::Set, Box::new(event_type()), None);
+    let applied = |operator: &'static str, identity: &'static str, operands: Vec<usize>| Applied {
+        operator,
+        identity,
+        member: None,
+        result: Ty::Boolean,
+        operands,
+    };
+    // Each case wraps the application's argument 1, or for `let` argument 0,
+    // so that the event-typed parameter is read only inside a binder.
+    let cases = [
+        (
+            "control.let bound value",
+            vec![
+                ("placed", event_type()),
+                ("kept", event_type()),
+                ("flag", Ty::Boolean),
+            ],
+            applied("let", "filament.op.control.let", vec![0, 2]),
+            0,
+        ),
+        (
+            "collection.forall body",
+            vec![("all", events.clone()), ("each", event_type())],
+            applied("quantify", "filament.op.collection.forall", vec![0, 1]),
+            1,
+        ),
+        (
+            "collection.fold step",
+            vec![
+                ("all", events),
+                ("each", event_type()),
+                ("seed", Ty::Boolean),
+            ],
+            applied("collection", "filament.op.collection.fold", vec![0, 1, 2]),
+            1,
+        ),
+        (
+            "control.case arm body",
+            vec![
+                ("choice", Ty::Record(UNION.to_owned())),
+                ("placed", event_type()),
+            ],
+            applied("case", "filament.op.control.case", vec![0, 1]),
+            1,
+        ),
+    ];
+    for (case, parameters, application, argument) in cases {
+        let argument: usize = argument;
+        let (package, evidence) = event_package_edited(&parameters, &[application], |nodes| {
+            if case == "control.case arm body" {
+                let mut union = wire_node(
+                    UNION,
+                    "composite_type",
+                    "union",
+                    UNION,
+                    &[],
+                    json!({"term": "aggregate", "members": [bound_as("Only", empty())]}),
+                );
+                union["occurrences"] = json!([{"role": "declaration", "ordinal": 0}]);
+                union["declaration"] = json!({"qualified_name": ["Shape"]});
+                nodes.push(owned_structural_node(
+                    union,
+                    source_owner(&fixture_source()),
+                ));
+            }
+            let node = nodes
+                .iter_mut()
+                .find(|node| node["node_tag"] == "expression")
+                .expect("application node");
+            let read = node["body"]["arguments"][argument].take();
+            let wrapped = match case {
+                "control.let bound value" => {
+                    let mut binding = bound_as("kept", read);
+                    binding["binder"] = node_id("value/parameter/kept");
+                    binding
+                }
+                "collection.forall body" => bound_as("each", read),
+                "collection.fold step" => {
+                    node["body"]["operation"]["member"] = json!({
+                        "kind": "type_argument",
+                        "declaration": node["body"]["result_type"].clone(),
+                    });
+                    bound_as(
+                        "acc",
+                        json!({"term": "aggregate", "members": [bound_as("each", read)]}),
+                    )
+                }
+                _ => bound_as(
+                    "Only",
+                    json!({"term": "aggregate", "members": [empty(), read]}),
+                ),
+            };
+            node["body"]["arguments"][argument] = wrapped;
+        });
+        let position = package["semantic_graph"]["nodes"]
+            .as_array()
+            .expect("nodes")
+            .iter()
+            .position(|node| node["node_tag"] == "expression")
+            .expect("application node");
+        let CheckedPackageV2ReadResult::Refused(refusal) =
+            read_with(&package, &evidence, CheckedPackageReadLimits::bounded())
+        else {
+            panic!("{case} holding an event-typed parameter must refuse");
         };
         assert_eq!(refusal.code, CheckedPackageRefusalCode::IllTyped, "{case}");
         assert_eq!(
