@@ -445,6 +445,79 @@ fn caller_before_unguarded_inc_does_not_enter_inc_body() {
 
 #[trace("TC-491", "FR-038-AC-581", "FR-322-AC-490")]
 #[test]
+fn interleaved_function_rows_still_reject_a_duplicate_body_location_key() {
+    let integer = family_key("a3a3");
+    let mut package = v2_all_families();
+    let shared = expression_application(
+        &mut package,
+        "binary",
+        "binary",
+        "filament.op.integer.add",
+        &integer,
+        vec![
+            json!({"term":"literal","type":node_id(&integer),"value_kind":"integer","value":"1"}),
+            json!({"term":"literal","type":node_id(&integer),"value_kind":"integer","value":"1"}),
+        ],
+    );
+    function(
+        &mut package,
+        "owner_a",
+        &integer,
+        json!({"term":"reference","target":shared}),
+        vec![],
+        "pure_function",
+        None,
+    );
+    function(
+        &mut package,
+        "owner_b",
+        &integer,
+        json!({"term":"reference","target":shared}),
+        vec![],
+        "pure_function",
+        None,
+    );
+    let mut package = package_with_rows(package);
+    let owner_a = function_id(&package, "owner_a");
+    let owner_b = function_id(&package, "owner_b");
+    let rows = package["checked_term_data"]["body_locations"]
+        .as_array()
+        .unwrap();
+    let row_a = rows
+        .iter()
+        .find(|row| row["location"]["origin"]["function"] == json!(owner_a))
+        .unwrap()
+        .clone();
+    let row_b = rows
+        .iter()
+        .find(|row| row["location"]["origin"]["function"] == json!(owner_b))
+        .unwrap()
+        .clone();
+    assert_eq!(row_a["application"], row_b["application"]);
+    assert_eq!(row_a["occurrence"], row_b["occurrence"]);
+    assert_eq!(row_a["term_ordinal"], 0);
+    assert_eq!(row_b["term_ordinal"], 0);
+
+    // Preserve global row-key order while separating the repeated A key with
+    // the B-owned row: A/0, B/0, A/0.
+    package["checked_term_data"]["body_locations"] = json!([row_a, row_b, row_a]);
+    refresh_identity(&mut package);
+    let CheckedPackageV2ReadResult::Refused(refusal) = read(&package) else {
+        panic!("an interleaved duplicate body-location key must be refused");
+    };
+    assert_eq!(refusal.code, CheckedPackageRefusalCode::InvalidPackage);
+    assert_eq!(
+        refusal.cause,
+        Some(CheckedPackageRefusalCause::ConflictingDefinition)
+    );
+    assert_eq!(
+        refusal.loci[0].path.as_ref().unwrap().as_str(),
+        "/checked_term_data/body_locations/2"
+    );
+}
+
+#[trace("TC-491", "FR-038-AC-581", "FR-322-AC-490")]
+#[test]
 fn a_function_node_at_the_body_root_is_rejected_before_body_walk() {
     let boolean = family_key("aaaa");
     let mut package = v2_all_families();

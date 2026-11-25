@@ -17,6 +17,7 @@ use crate::checked_package::shared::{
     CheckedNodeId, CheckedOccurrence, CheckedPackageRefusalCause, CheckedPackageRefusalCode,
     CheckedSourceMapEntry,
 };
+use std::collections::BTreeSet;
 
 /// Sorted borrowed node identities, shared with the body walk.
 pub(super) type NodeIndex<'a> = Vec<(&'a CheckedNodeId, usize)>;
@@ -231,12 +232,35 @@ pub(super) fn validate_rows<'a, Body, Row: LocationRow>(
     occurrences.sort_unstable();
     let mut previous: Option<&Row> = None;
     let mut ordinal_rows = stage_storage::vec(meter, &site, rows.len())?;
+    type SeenKey<'a> = (
+        Option<&'a CheckedNodeId>,
+        &'a CheckedNodeId,
+        &'a CheckedOccurrence,
+        u64,
+    );
+    stage_storage::reserve_items::<SeenKey<'_>>(meter, &site, rows.len())?;
+    let mut seen_keys = BTreeSet::<SeenKey<'_>>::new();
     let mut missing_predecessor = false;
     for (index, row) in rows.iter().enumerate() {
         let here = at(array, index);
         work(meter, index, here, 1)?;
         intake_local_application(row.application(), name, array, index, meter)?;
         let term_ordinal = intake_term_ordinal(row.term_ordinal(), array, index, meter)?;
+        work(meter, index, here, 1)?;
+        if !seen_keys.insert((
+            row.function(),
+            row.application(),
+            row.occurrence(),
+            term_ordinal,
+        )) {
+            return Err(fail(
+                meter,
+                index,
+                CheckedPackageRefusalCode::InvalidPackage,
+                Some(CheckedPackageRefusalCause::ConflictingDefinition),
+                here,
+            ));
+        }
         if let Some(before) = previous {
             let key = (row.application(), row.occurrence(), term_ordinal);
             let prior = (
@@ -244,15 +268,6 @@ pub(super) fn validate_rows<'a, Body, Row: LocationRow>(
                 before.occurrence(),
                 before.term_ordinal(),
             );
-            if key == prior && row.function() == before.function() {
-                return Err(fail(
-                    meter,
-                    index,
-                    CheckedPackageRefusalCode::InvalidPackage,
-                    Some(CheckedPackageRefusalCause::ConflictingDefinition),
-                    here,
-                ));
-            }
             if key < prior {
                 return Err(invalid(meter, index, here));
             }
