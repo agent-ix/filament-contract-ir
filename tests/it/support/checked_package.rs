@@ -419,6 +419,41 @@ pub fn resolve_node_row(node: &mut Value, row: &Value) {
     });
 }
 
+/// Moves every local graph position at or after `from` up by `count` in a
+/// package held in resolved index form, before a helper inserts `count` nodes
+/// at `from`. The `node` of a foreign `{package, node}` key names a
+/// dependency's graph and is left alone.
+pub fn shift_graph_positions(value: &mut Value, from: usize, count: usize) {
+    match value {
+        Value::Array(items) => {
+            for item in items {
+                shift_graph_positions(item, from, count);
+            }
+        }
+        Value::Object(object) => {
+            if object.len() == 2
+                && object.contains_key("package")
+                && object.get("node").is_some_and(Value::is_object)
+            {
+                return;
+            }
+            if object.len() == 1 {
+                if let Some(position) = object.get("node").and_then(Value::as_u64) {
+                    let position = usize::try_from(position).expect("position fits usize");
+                    if position >= from {
+                        object.insert("node".into(), json!(position + count));
+                    }
+                    return;
+                }
+            }
+            for member in object.values_mut() {
+                shift_graph_positions(member, from, count);
+            }
+        }
+        _ => {}
+    }
+}
+
 /// Reads published vector nodes into resolved index form. A vector keeps a
 /// list of nodes beside `operand_rows` (or `restored_nodes` beside
 /// `restored_operand_rows`) and a single node `X` beside `X_operand_row`; the
