@@ -926,6 +926,11 @@ pub fn refresh_identity_projection(package: &mut Value) {
         .iter()
         .filter_map(|node| {
             let old = node["node_id"].clone();
+            let protocol_owner_path = node["node_tag"] == "protocol"
+                && node["semantic_form"] == "protocol_clause"
+                && node
+                    .get("owner_model")
+                    .is_some_and(|owner| !owner.is_null());
             let (owner_package, path) = match node["owner"]["kind"].as_str() {
                 Some("model_root") => (
                     node["owner"]["identity"]
@@ -939,10 +944,14 @@ pub fn refresh_identity_projection(package: &mut Value) {
                 ),
                 _ => (
                     package_name.as_str(),
-                    node.get("declaration").map_or_else(
-                        || old["path"].clone(),
-                        |declaration| declaration["qualified_name"].clone(),
-                    ),
+                    if protocol_owner_path {
+                        old["path"].clone()
+                    } else {
+                        node.get("declaration").map_or_else(
+                            || old["path"].clone(),
+                            |declaration| declaration["qualified_name"].clone(),
+                        )
+                    },
                 ),
             };
             let fresh = json!({"package": owner_package, "path": path, "ordinal": old["ordinal"]});
@@ -2764,7 +2773,6 @@ pub fn rebuild_body_locations(package: &mut Value) {
     }
     let mut rows: Vec<(usize, u64, u64, Value)> = Vec::new();
     let mut index = 0_u64;
-    let mut visits: HashMap<usize, u64> = HashMap::new();
     let local = resolved["name"].clone();
     for node in nodes
         .iter()
@@ -2785,6 +2793,10 @@ pub fn rebuild_body_locations(package: &mut Value) {
             .map_or_else(|| format!("f{index}"), str::to_owned);
         let mut pending = vec![start];
         let mut at_start = true;
+        // Visit ordinals are per function walk. The same shared expression
+        // may occur in several functions and starts again at ordinal zero
+        // for each function, as FR-322 requires.
+        let mut visits: HashMap<usize, u64> = HashMap::new();
         while let Some(target) = pending.pop() {
             let is_start = std::mem::take(&mut at_start);
             let Some(&position) = positions.get(&target.to_string()) else {
@@ -2882,6 +2894,11 @@ pub fn refresh_temporal_bindings(package: &mut Value) {
         })
         .and_then(|selection| selection["definition"]["identity"].as_str());
     let lock_source = package["lock"]["sources"][0].clone();
+    // A package locking no unit has none for a row to name; its rows stay as
+    // they are.
+    if lock_source.is_null() {
+        return;
+    }
     let nodes = package["semantic_graph"]["nodes"]
         .as_array()
         .expect("nodes");

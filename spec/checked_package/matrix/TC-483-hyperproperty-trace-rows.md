@@ -5,14 +5,17 @@ type: TC
 relationships:
   - target: ix://agent-ix/filament-contract-ir/FR-038
     type: verifies
+  - target: ix://agent-ix/filament-contract-ir/FR-038-AC-630
+    type: verifies
 ---
 # TC-483: Strict V2 reader keys a hyperproperty's clock rows by trace
 
 ## Description
 
-Verify FR-038-AC-561 through the public strict V2 reader over event-position
-packages holding `claim`/`hyperproperty` nodes, in the behaviours and the
-finite domain.
+Verify FR-038-AC-561 and FR-038-AC-630 through the public strict V2 reader over
+packages holding `claim`/`hyperproperty` nodes, in the behaviours and the finite
+domain: event-position packages with clock rows, and infinite-trace packages
+without them.
 
 ## Test Procedure
 
@@ -42,9 +45,23 @@ finite domain.
 11. Add `trace` to a single-trace clause's row; expect
     `timed-node-reference` at its `trace`.
 12. Give two Groups one variable; expect `conflicting-definition` at the
-    second row, and no missing-row refusal when only one row is present.
+    second row, and, with only one row present, `ambiguous-name` at the later
+    Group's `variable` binding in place of a missing-row refusal.
 13. Set `trace` to the empty string, `null` and a number; expect `malformed_wire`.
 14. Round-trip a row with and without `trace` through the row type.
+15. Without rows, read Groups `s` and `n` (admitted), `s` and `s`, and `s`,
+    `n` and `s`; with one event-position row, read behaviours Groups `s` and
+    `s` and finite-domain Groups `t` and `t`; expect
+    `ambiguous_declaration`/`ambiguous-name` at the later Group's `variable`
+    binding.
+16. Give the later Group an alias naming no subject, with a distinct variable
+    and then a repeated one; expect `missing-name` at the alias, then
+    `ambiguous-name` at the variable binding.
+17. Read Groups `s`, `n` and a third with `quantifier` before `variable`;
+    expect `invalid_semantic_graph` at that member. Make the second Group `s`,
+    with the third misordered and then with `quantifier` `some`; expect
+    `ambiguous-name` at the second Group. Give the second of two `s` Groups
+    `quantifier` `some`; expect `invalid-value` at that value.
 
 ## Expected Results
 

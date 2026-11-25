@@ -759,6 +759,7 @@ fn remaining_closed_forms_map_every_typed_identity_slot() {
                     source_node: Some(original.clone()),
                     target: RefinementStepTarget::Operation {
                         operation: RefinementKey::Local(original.clone()),
+                        target_type: RefinementKey::Local(original.clone()),
                         receiver: Box::new(CheckedTerm::reference(original.clone())),
                         arguments: vec![RefinementStepArgument::Term(Box::new(
                             CheckedTerm::reference(original.clone()),
@@ -805,7 +806,7 @@ fn remaining_closed_forms_map_every_typed_identity_slot() {
                     }],
                 }),
             },
-            22,
+            23,
         ),
     ];
     for (index, (term, expected_count)) in forms.iter_mut().enumerate() {
@@ -824,6 +825,11 @@ fn remaining_closed_forms_map_every_typed_identity_slot() {
             );
         }
     }
+    let refinement = serde_json::to_value(&forms[3].0).expect("refinement wire");
+    assert_eq!(
+        refinement["steps"][0]["target"]["target_type"],
+        serde_json::json!({"package": "node-map", "path": ["replacement"], "ordinal": 0})
+    );
 }
 
 #[trace("FR-048-AC-8")]

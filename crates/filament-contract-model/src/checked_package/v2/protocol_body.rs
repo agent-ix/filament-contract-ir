@@ -15,7 +15,8 @@ use super::{
 };
 use crate::checked_package::common::{Trail, ValidationFailure};
 use crate::checked_package::shared::{
-    CheckedArtifactRef, CheckedNodeId, CheckedProtocolDecisionRead, CheckedProtocolRefusalDetail,
+    CheckedArtifactRef, CheckedNodeId, CheckedNodePathSegment, CheckedProtocolDecisionRead,
+    CheckedProtocolRefusalDetail,
 };
 use crate::checked_package::shared::{
     CheckedPackageRefusalCause as Cause, CheckedPackageRefusalCode as Code,
@@ -57,6 +58,42 @@ fn node_work(meter: &mut WorkMeter, position: usize) -> Result<(), ValidationFai
         .index(position);
     let site = super::natural::site(meter, path);
     super::natural::work_at(meter, site, 1)
+}
+
+/// The owner operand of a clause's node path: the index or node-ID segment of
+/// a path that is the declaration path followed by that one operand. A path
+/// that is the declaration path alone carries none. Wire validation has already
+/// refused a protocol clause without a declaration.
+fn owner_path_operand(node: &RawSemanticNodeV2) -> Option<&CheckedNodePathSegment> {
+    let declaration = node.declaration.as_ref()?;
+    if node.node_id.path.len() != declaration.qualified_name.len() + 1 {
+        return None;
+    }
+    node.node_id.path.last().filter(|segment| {
+        matches!(
+            segment,
+            CheckedNodePathSegment::Index(_) | CheckedNodePathSegment::Node(_)
+        )
+    })
+}
+
+/// Whether a path's owner operand names the node the owner edge resolves to.
+fn owner_operand_names(
+    operand: &CheckedNodePathSegment,
+    owner_position: usize,
+    structural_keys: &[std::sync::Arc<CheckedNodeId>],
+) -> bool {
+    let Some(owner_key) = structural_keys.get(owner_position) else {
+        return false;
+    };
+    match operand {
+        CheckedNodePathSegment::Index(index) => usize::try_from(*index)
+            .ok()
+            .and_then(|position| structural_keys.get(position))
+            .is_some_and(|path_key| path_key.as_ref() == owner_key.as_ref()),
+        CheckedNodePathSegment::Node(path_key) => path_key.as_ref() == owner_key.as_ref(),
+        _ => false,
+    }
 }
 
 /// The activation selected by an admitted protocol clause.
@@ -7018,6 +7055,22 @@ pub(super) fn validate_protocol_nodes(
             ));
         }
     }
+    for &position in index.values() {
+        if kinds.get(position) != Some(&CheckedNodeKind::Protocol(ProtocolForm::ProtocolClause)) {
+            continue;
+        }
+        let node = &nodes[position];
+        if node.owner_model.is_none() && owner_path_operand(node).is_some() {
+            node_work(meter, position)?;
+            return Err(refuse_at(
+                meter,
+                Code::InvalidPackage,
+                Some(Cause::DeclarationNominalMismatch),
+                node_path(position).key("node_id").key("path"),
+                &node.node_id,
+            ));
+        }
+    }
     validate_protocol_declaration_names(nodes, kinds, index, meter)?;
     validate_protocol_declaration_paths(nodes, kinds, &validated, index, meter)?;
     let regions = observe_regions(kinds, &validated, index, meter)?;
@@ -7125,6 +7178,18 @@ pub(super) fn validate_protocol_nodes(
                         meter,
                         Code::InvalidModelBinding,
                         Some(Cause::MalformedDeclaration),
+                        owner_at(),
+                        &node.node_id,
+                    ));
+                }
+            }
+            if let Some(operand) = owner_path_operand(node) {
+                node_work(meter, position)?;
+                if !owner_operand_names(operand, owner_position, structural_keys) {
+                    return Err(refuse_at(
+                        meter,
+                        Code::InvalidPackage,
+                        Some(Cause::StaleNodeKey),
                         owner_at(),
                         &node.node_id,
                     ));

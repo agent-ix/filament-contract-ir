@@ -234,6 +234,7 @@ pub(crate) fn evidence_for_published(
 /// Supplies the published predicate package under NI-40's unlocked identity.
 /// The wire lock still selects only `test/predicates`, so the vector proves
 /// that evidence reachability cannot substitute for direct selection.
+#[allow(dead_code)] // The conformance binary calls it; the integration binary does not.
 pub(crate) fn evidence_for_node_index_ni40(
     package: &Value,
     domain_document: &Path,

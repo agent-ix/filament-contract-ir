@@ -295,6 +295,8 @@ pub use scalar_operands::{
 };
 pub use schedulability::{
     CheckedSchedulabilityClaimRef, CheckedSchedulabilityClaimRow, CheckedSchedulabilityKind,
+    CheckedSchedulabilityModeSwitchBinding, CheckedSchedulabilityModeSwitchBindingRef,
+    CheckedSchedulabilityReleaseBinding, CheckedSchedulabilityReleaseBindingRef,
     CheckedSchedulabilityTaskRef, CheckedSchedulingPolicy, CheckedTaskArrival,
     CheckedTaskCriticality,
 };
@@ -424,6 +426,7 @@ pub(super) enum TermBindingName {
     Optional,
     Clause,
     Name,
+    Level,
     PointAnchor,
     Other,
 }
@@ -437,6 +440,7 @@ impl TermBindingName {
             "optional" => Self::Optional,
             "clause" => Self::Clause,
             "name" => Self::Name,
+            "level" => Self::Level,
             "point_anchor" => Self::PointAnchor,
             _ => Self::Other,
         }
@@ -1262,7 +1266,7 @@ pub struct CheckedPackageV2 {
     /// Original body views, moved from the charged intake table for imported joins.
     body_documents: Vec<CheckedJson>,
     kinds: Arc<Vec<CheckedNodeKind>>,
-    schedulability_claim_index: Vec<(usize, usize)>,
+    schedulability_claim_index: Vec<(usize, usize, usize)>,
     monitor_plan_index: Vec<monitor_plan::Plan>,
     timed_model_roots: Vec<usize>,
     /// Admission-derived lookup; excluded from content equality.
@@ -1747,6 +1751,7 @@ impl CheckedPackageV2 {
         limits: CheckedPackageReadLimits,
         evidence: &CheckedPackageEvidence,
         budget: &mut NativeJoinBudget,
+        opaque_law_definitions: bool,
     ) -> Result<Self, ValidationFailure> {
         let document = budgeted_read::share_document(document, budget)?;
         let package = TermNode::from_ref(document.root());
@@ -1818,7 +1823,14 @@ impl CheckedPackageV2 {
             lowering_facts,
             structural_keys,
         } = validate(
-            &catalog, &wire, &bodies, &document, limits, evidence, budget,
+            &catalog,
+            &wire,
+            &bodies,
+            &document,
+            limits,
+            evidence,
+            budget,
+            opaque_law_definitions,
         )?;
         let site = |form| read_charge::Site::new(PackageReadStage::Retained, 0, form);
         let selections = &wire.lock.dependency_selections;
@@ -2018,6 +2030,7 @@ impl CheckedPackageV2 {
             let requirement_items = requirement_records::retain_rows(
                 self.wire.requirement_items.as_deref(),
                 &self.wire.semantic_graph.nodes,
+                &self.kinds,
                 &self.wire.semantic_graph.operand_rows,
                 &self.node_index,
             );
@@ -2368,7 +2381,7 @@ fn check_package_header(
 
 struct ValidatedPackage {
     kinds: Vec<CheckedNodeKind>,
-    schedulability_claim_index: Vec<(usize, usize)>,
+    schedulability_claim_index: Vec<(usize, usize, usize)>,
     monitor_plan_index: Vec<monitor_plan::Plan>,
     terms: Vec<CheckedTerm>,
     models: RetainedModels,
@@ -2382,7 +2395,7 @@ struct ValidatedGraph<'w> {
     /// every later per-row stage.
     index: GraphIndex<'w>,
     kinds: Vec<CheckedNodeKind>,
-    schedulability_claim_index: Vec<(usize, usize)>,
+    schedulability_claim_index: Vec<(usize, usize, usize)>,
     monitor_plan_index: Vec<monitor_plan::Plan>,
     terms: Vec<CheckedTerm>,
     declarations: DeclarationIndex,
@@ -2400,6 +2413,7 @@ fn validate(
     limits: CheckedPackageReadLimits,
     evidence: &CheckedPackageEvidence,
     budget: &mut NativeJoinBudget,
+    opaque_law_definitions: bool,
 ) -> Result<ValidatedPackage, ValidationFailure> {
     check_package_header(wire, &mut WorkMeter::over(budget))?;
     // The body grammar is strict wire validation: a body outside it refuses
@@ -2433,6 +2447,7 @@ fn validate(
         &dependencies,
         evidence,
         &structural_keys,
+        opaque_law_definitions,
     )?;
     if !source_map_checked {
         validate_source_map_entries(
@@ -3095,9 +3110,10 @@ fn decode_admitted_body(
     meter: &mut WorkMeter,
 ) -> Result<CheckedTerm, ValidationFailure> {
     let at = || node_pointer(position).key("body");
+    let node_at = || node_pointer(position);
     let node = TermNode::of(body);
     if source_nominal_body(kind, node.get("term").and_then(TermNode::as_str)) {
-        let nominal = identity::NominalBody::from_document(node, row, &at, meter)?;
+        let nominal = identity::NominalBody::from_document(node, row, &at, &node_at, meter)?;
         meter.reserve(std::mem::size_of::<identity::NominalBody>())?;
         return Ok(CheckedTerm::NominalBody(Box::new(nominal)));
     }
@@ -3135,6 +3151,7 @@ fn wire_nominal_body(
         node,
         &[],
         &|| node_pointer(position).key("body"),
+        &|| node_pointer(position),
         &mut WorkMeter::new(u64::MAX),
     )
     .map(Some)
@@ -3634,7 +3651,26 @@ fn validate_declaration_names(
         let Some(declaration) = &node.declaration else {
             continue;
         };
-        let path_matches=node.node_id.path.len()==declaration.qualified_name.len() && node.node_id.path.iter().zip(&declaration.qualified_name).all(|(part,name)|matches!(part,CheckedNodePathSegment::Name(value) if value==name));
+        let declared_prefix_matches = node
+            .node_id
+            .path
+            .iter()
+            .zip(&declaration.qualified_name)
+            .all(
+                |(part, name)| matches!(part, CheckedNodePathSegment::Name(value) if value == name),
+            );
+        let has_protocol_owner_operand = matches!(
+            kinds.get(position),
+            Some(CheckedNodeKind::Protocol(ProtocolForm::ProtocolClause))
+        ) && node.node_id.path.len()
+            == declaration.qualified_name.len() + 1
+            && matches!(
+                node.node_id.path.last(),
+                Some(CheckedNodePathSegment::Index(_) | CheckedNodePathSegment::Node(_))
+            );
+        let path_matches = declared_prefix_matches
+            && (node.node_id.path.len() == declaration.qualified_name.len()
+                || has_protocol_owner_operand);
         if !path_matches {
             return Err(declaration_name_failure(
                 meter,
@@ -3864,6 +3900,7 @@ fn validate_graph<'w>(
     dependencies: &SuppliedDependencies<'_>,
     evidence: &CheckedPackageEvidence,
     structural_keys: &[std::sync::Arc<CheckedNodeId>],
+    opaque_law_definitions: bool,
 ) -> Result<ValidatedGraph<'w>, ValidationFailure> {
     let graph = &wire.semantic_graph;
     check_graph_version(graph)?;
@@ -4099,6 +4136,7 @@ fn validate_graph<'w>(
                     view,
                     &wire.semantic_graph.operand_rows[position],
                     &|| at("body"),
+                    &|| node_pointer(position),
                     meter,
                 )
                 .map_err(|failure| with_node_locus(failure, &node.node_id))?,
@@ -4503,6 +4541,7 @@ fn validate_graph<'w>(
                     catalog,
                     wire_index: &index,
                     structural_keys,
+                    opaque_law_definitions,
                 },
                 &terms,
                 &wire.lock,
@@ -4678,6 +4717,10 @@ fn validate_graph<'w>(
         &index,
         structural_keys,
         models,
+        wire.schedulability_claims.as_deref(),
+        &schedulability_claim_index,
+        &owners,
+        wire.operation_bodies.as_deref(),
         meter,
     )?;
     refinement::validate_catalog_graph(
@@ -4702,6 +4745,7 @@ fn validate_graph<'w>(
                 catalog,
                 wire_index: &index,
                 structural_keys,
+                opaque_law_definitions,
             },
             &terms,
             &wire.lock,
@@ -6178,10 +6222,21 @@ mod tests {
             super::CheckedSchedulabilityClaimRow {
                 declaration: declaration.clone(),
                 occurrence: 9,
+                task_set: "Tasks".into(),
+                release_bindings: vec![super::CheckedSchedulabilityReleaseBinding {
+                    task_name: "worker".into(),
+                    selected_model_identity: "model:one".into(),
+                    operation_declaring_identity: declaration.clone(),
+                    operation_member: "step".into(),
+                }],
+                mode_switch_bindings: Vec::new(),
             },
             super::CheckedSchedulabilityClaimRow {
                 declaration,
                 occurrence: 2,
+                task_set: "Tasks".into(),
+                release_bindings: Vec::new(),
+                mode_switch_bindings: Vec::new(),
             },
         ];
         for rows in [None, Some(Vec::new()), Some(rows)] {
@@ -6852,6 +6907,7 @@ mod namespace_fault_storage_tests {
                         &dependencies,
                         &evidence,
                         &[],
+                        false,
                     ) {
                         Err(failure) => failure,
                         Ok(_) => panic!("foreign unselected namespace must refuse"),

@@ -389,6 +389,7 @@ pub(super) struct OperationNodeOrder<'a> {
     pub(super) catalog: &'a OperationCatalog,
     pub(super) wire_index: &'a GraphIndex<'a>,
     pub(super) structural_keys: &'a [std::sync::Arc<CheckedNodeId>],
+    pub(super) opaque_law_definitions: bool,
 }
 
 pub(super) fn validate_operations(
@@ -467,6 +468,7 @@ pub(super) fn validate_operations(
                     catalog,
                     fast_index: Some(&flat_index),
                     binder_reads: Some(&binder_reads),
+                    opaque_law_definitions: order.opaque_law_definitions,
                 },
                 meter,
                 &mut admitted_views,
@@ -2063,6 +2065,7 @@ struct OperationResolution<'a> {
     catalog: &'a OperationCatalog,
     fast_index: Option<&'a FlatWireIndex<'a>>,
     binder_reads: Option<&'a BinderReads<'a>>,
+    opaque_law_definitions: bool,
 }
 
 /// The text of the `alias` label `member` carries, as `(package, node)`; the
@@ -2174,6 +2177,7 @@ fn operation_defect(
         catalog,
         fast_index,
         binder_reads,
+        opaque_law_definitions,
     } = resolution;
     let Graph {
         nodes,
@@ -2298,7 +2302,7 @@ fn operation_defect(
         } else {
             let catalogued = catalog.law_role_definitions(role);
             let known = catalogued.is_some_and(|definitions| definitions.contains(&law.definition));
-            if !known {
+            if !known && !opaque_law_definitions {
                 return refuse(
                     law_at(law_index, "definition"),
                     CheckedPackageRefusalCause::OperationLawMismatch,
@@ -4564,9 +4568,9 @@ fn parameter_name_level<'g>(position: usize, graph: &Graph<'g>) -> Option<(&'g s
         let CheckedTerm::Literal { value, .. } = value.as_ref() else {
             continue;
         };
-        match field.as_ref() {
-            "name" => name = value.as_str(),
-            "level" => level = value.as_str(),
+        match field.internal_kind() {
+            super::TermBindingName::Name => name = value.as_str(),
+            super::TermBindingName::Level => level = value.as_str(),
             _ => {}
         }
     }
@@ -9155,6 +9159,7 @@ mod tests {
                 catalog: operation_catalog(),
                 fast_index: None,
                 binder_reads: None,
+                opaque_law_definitions: false,
             },
             &mut meter,
             &mut Vec::new(),
@@ -9201,6 +9206,7 @@ mod tests {
                 catalog: operation_catalog(),
                 fast_index: None,
                 binder_reads: None,
+                opaque_law_definitions: false,
             },
             &mut WorkMeter::new(1_000),
             &mut Vec::new(),
@@ -9249,7 +9255,15 @@ mod tests {
         nodes: Vec<CheckedSemanticNodeV2>,
         lock: &CheckedPackageLockV2,
     ) -> Result<Option<ValidationFailure>, ValidationFailure> {
-        defect_for_graph_metered(nodes, lock, 1_000)
+        defect_for_graph_mode(nodes, lock, false)
+    }
+
+    fn defect_for_graph_mode(
+        nodes: Vec<CheckedSemanticNodeV2>,
+        lock: &CheckedPackageLockV2,
+        opaque_law_definitions: bool,
+    ) -> Result<Option<ValidationFailure>, ValidationFailure> {
+        defect_for_graph_metered_mode(nodes, lock, 1_000, opaque_law_definitions)
     }
 
     /// [`defect_for_graph_locked`] under a work budget of `limit` units.
@@ -9258,13 +9272,31 @@ mod tests {
         lock: &CheckedPackageLockV2,
         limit: u64,
     ) -> Result<Option<ValidationFailure>, ValidationFailure> {
-        measured_defect_for_graph(nodes, lock, limit).0
+        defect_for_graph_metered_mode(nodes, lock, limit, false)
+    }
+
+    fn defect_for_graph_metered_mode(
+        nodes: Vec<CheckedSemanticNodeV2>,
+        lock: &CheckedPackageLockV2,
+        limit: u64,
+        opaque_law_definitions: bool,
+    ) -> Result<Option<ValidationFailure>, ValidationFailure> {
+        measured_defect_for_graph_mode(nodes, lock, limit, opaque_law_definitions).0
     }
 
     fn measured_defect_for_graph(
         nodes: Vec<CheckedSemanticNodeV2>,
         lock: &CheckedPackageLockV2,
         limit: u64,
+    ) -> (Result<Option<ValidationFailure>, ValidationFailure>, u64) {
+        measured_defect_for_graph_mode(nodes, lock, limit, false)
+    }
+
+    fn measured_defect_for_graph_mode(
+        nodes: Vec<CheckedSemanticNodeV2>,
+        lock: &CheckedPackageLockV2,
+        limit: u64,
+        opaque_law_definitions: bool,
     ) -> (Result<Option<ValidationFailure>, ValidationFailure>, u64) {
         let index: GraphIndex<'_> = nodes
             .iter()
@@ -9297,6 +9329,7 @@ mod tests {
                 catalog: operation_catalog(),
                 fast_index: None,
                 binder_reads: None,
+                opaque_law_definitions,
             },
             &mut meter,
             &mut Vec::new(),
@@ -10014,6 +10047,41 @@ mod tests {
                 Some(CheckedPackageRefusalCause::OperationLawUnselected),
                 node.node_id.clone(),
             )))
+        );
+    }
+
+    /// TC-3217 / FR-110-AC-16: the structural reader keeps the law pair
+    /// opaque but still requires the exact lock row to accompany it.
+    #[trace("TC-3217", "FR-110-AC-16")]
+    #[test]
+    fn structural_mode_admits_only_paired_opaque_value_law_rows() {
+        let ceiling = json!({
+            "authority": "agent-ix",
+            "identity": "filament.value.integer-division.ceiling/v1",
+        });
+        let node = integer_division_node(ceiling.clone());
+        let mut lock = empty_lock();
+        lock.definition_selections =
+            vec![serde_json::from_value(ceiling.clone()).expect("opaque definition row")];
+        assert_eq!(
+            defect_for_graph_mode(vec![node.clone()], &lock, true),
+            Ok(None),
+            "the structural mode retains the exact opaque pair when both sites agree"
+        );
+
+        let mut lock_only = empty_lock();
+        lock_only.definition_selections =
+            vec![serde_json::from_value(ceiling).expect("opaque definition row")];
+        let floor_node = integer_division_node(real_integer_division_truncating_definition());
+        assert_eq!(
+            defect_for_graph_mode(vec![floor_node.clone()], &lock_only, true),
+            Ok(Some(refused_at(
+                CheckedPackageRefusalCode::InvalidPackage,
+                "/semantic_graph/nodes/0/body/operation/laws/0/definition",
+                Some(CheckedPackageRefusalCause::OperationLawUnselected),
+                floor_node.node_id.clone(),
+            ))),
+            "a lock-only edit remains structurally inconsistent"
         );
     }
 
@@ -13183,6 +13251,7 @@ mod tests {
                 catalog: operation_catalog(),
                 fast_index: None,
                 binder_reads: None,
+                opaque_law_definitions: false,
             },
             &mut meter,
             &mut Vec::new(),
@@ -13896,6 +13965,7 @@ mod tests {
                     catalog: operation_catalog(),
                     wire_index: &index,
                     structural_keys: &structural_keys,
+                    opaque_law_definitions: false,
                 },
                 &terms,
                 &empty_lock(),

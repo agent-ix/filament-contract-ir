@@ -9,9 +9,9 @@ use crate::support::checked_package::{
     structural_fixture_id, v2_all_families,
 };
 use filament_contract_model::{
-    CheckedPackageEvidence, CheckedPackageReadLimits, CheckedPackageRefusalCause,
-    CheckedPackageRefusalCode, CheckedPackageV2, CheckedPackageV2ReadResult, CheckedTerm,
-    OperationModeKind,
+    read_checked_package, read_checked_package_structural, CheckedPackageEvidence,
+    CheckedPackageReadLimits, CheckedPackageRefusalCause, CheckedPackageRefusalCode,
+    CheckedPackageV2, CheckedPackageV2ReadResult, CheckedTerm, OperationModeKind,
 };
 use ix_trace_rs::trace;
 use serde_json::{json, Value};
@@ -353,6 +353,115 @@ fn read_with_evidence(
         CheckedPackageReadLimits::bounded(),
         evidence,
     )
+}
+
+/// TC-3217 / FR-110-AC-16: the catalog-free strict entry retains a paired
+/// opaque value-law row, while the catalog-bound entry keeps FR-038-AC-56.
+#[trace("TC-3217", "FR-110-AC-16", "FR-038-AC-56")]
+#[test]
+fn tc_3217_structural_reader_retains_paired_opaque_law_definition() {
+    let mut f = fixture();
+    let integer = f.integer.clone();
+    let position = application_with_member(
+        &mut f,
+        "binary",
+        "call",
+        "filament.op.integer.div",
+        Value::Null,
+        Value::Null,
+        &integer,
+        vec![integer_literal(&integer), integer_literal(&integer)],
+    );
+    let floor = json!({
+        "authority": "agent-ix",
+        "identity": "filament.value.integer-division.floor/v1",
+    });
+    f.package["lock"]["definition_selections"]
+        .as_array_mut()
+        .expect("definition selections")
+        .push(floor.clone());
+    f.package["semantic_graph"]["nodes"][position]["body"]["operation"]["laws"] =
+        json!([{"role": "integer_division", "definition": floor}]);
+    settle(&mut f.package);
+
+    let mut wire = f.package.clone();
+    index_fixture_node_ids(&mut wire);
+    let bytes = canonical(&wire);
+    let evidence = evidence_for(&wire);
+    let limits = CheckedPackageReadLimits::bounded();
+    assert!(matches!(
+        read_checked_package(&bytes, limits, &evidence),
+        filament_contract_model::CheckedPackageDispatchResult::AdmittedV2(_)
+    ));
+
+    let ceiling = json!({
+        "authority": "agent-ix",
+        "identity": "filament.value.integer-division.ceiling/v1",
+    });
+    let law_row = wire["lock"]["definition_selections"]
+        .as_array()
+        .expect("definition selections")
+        .iter()
+        .position(|row| {
+            row["identity"]
+                .as_str()
+                .is_some_and(|id| id == "filament.value.integer-division.floor/v1")
+        })
+        .expect("integer division law row");
+    let div_node = wire["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .position(|node| node["body"]["operation"]["identity"] == "filament.op.integer.div")
+        .expect("division operation");
+    let law_path = format!("/semantic_graph/nodes/{div_node}/body/operation/laws/0/definition");
+
+    let mut paired = wire.clone();
+    paired["lock"]["definition_selections"][law_row] = ceiling.clone();
+    *paired.pointer_mut(&law_path).expect("division law") = ceiling.clone();
+    let paired_bytes = canonical(&paired);
+    let paired_evidence = evidence_for(&paired);
+    let structural = read_checked_package_structural(&paired_bytes, limits, &paired_evidence);
+    let filament_contract_model::CheckedPackageDispatchResult::AdmittedV2(package) = structural
+    else {
+        panic!("structural reader refused paired opaque law: {structural:?}");
+    };
+    assert_eq!(
+        package.lock().definition_selections[law_row]
+            .identity
+            .as_ref(),
+        ceiling["identity"].as_str().expect("opaque law identity")
+    );
+    let CheckedTerm::Application { operation, .. } = &package.graph().nodes[div_node].body else {
+        panic!("division node body is an application");
+    };
+    let retained_laws = operation
+        .law_definitions()
+        .expect("admitted operation law definitions");
+    assert_eq!(retained_laws[0].authority.as_ref(), "agent-ix");
+    assert_eq!(
+        retained_laws[0].identity.as_ref(),
+        "filament.value.integer-division.ceiling/v1"
+    );
+
+    assert!(matches!(
+        read_checked_package(&paired_bytes, limits, &paired_evidence),
+        filament_contract_model::CheckedPackageDispatchResult::Refused(refusal)
+            if refusal.code == CheckedPackageRefusalCode::InvalidPackage
+                && refusal.cause == Some(CheckedPackageRefusalCause::OperationLawMismatch)
+                && refusal.loci[0].path.as_ref().is_some_and(|path| path.as_str() == law_path)
+    ));
+
+    let mut lock_only = wire;
+    lock_only["lock"]["definition_selections"][law_row] = ceiling;
+    let lock_only_bytes = canonical(&lock_only);
+    let lock_only_evidence = evidence_for(&lock_only);
+    assert!(matches!(
+        read_checked_package_structural(&lock_only_bytes, limits, &lock_only_evidence),
+        filament_contract_model::CheckedPackageDispatchResult::Refused(refusal)
+            if refusal.code == CheckedPackageRefusalCode::InvalidPackage
+                && refusal.cause == Some(CheckedPackageRefusalCause::OperationLawUnselected)
+    ));
 }
 
 fn assert_catalogue_application_round_trip(package: &Value) {

@@ -546,6 +546,34 @@ pub(super) fn model_enum_shape(row: &super::SelectedModelEnumShapeRow) -> u128 {
     })
 }
 
+/// One staged model-union row: its node, texts, the shared type handle and settled
+/// key (one handle unit each), cases (each with its shared member declaration
+/// handle) and payloads.
+pub(super) fn model_union(row: &super::exact_projection::SelectedModelUnionRow) -> u128 {
+    use super::exact_projection::SelectedModelUnionPayload as Payload;
+    let mut units = add(8, node(&row.structural_node));
+    units = add(units, text(&row.selected_document));
+    for case in &row.cases {
+        units = add(units, 7);
+        units = add(units, text(&case.name));
+        units = add(units, text(case.original_case.package()));
+        units = add(units, text(case.original_case.node()));
+        units = add(units, text(case.member.identifier()));
+        units = add(
+            units,
+            match &case.payload {
+                Payload::None => 1,
+                Payload::Clock { payload_type } => text(payload_type),
+                Payload::Data {
+                    node: payload,
+                    original_type,
+                } => add(node(payload), value_type(original_type)),
+            },
+        );
+    }
+    units
+}
+
 #[cfg(test)]
 mod map_copy_tests {
     use super::*;
@@ -601,32 +629,4 @@ mod map_copy_tests {
             assert_eq!(copied.unwrap(), *interval);
         }
     }
-}
-
-/// One staged model-union row: its node, texts, the shared type handle and settled
-/// key (one handle unit each), cases (each with its shared member declaration
-/// handle) and payloads.
-pub(super) fn model_union(row: &super::exact_projection::SelectedModelUnionRow) -> u128 {
-    use super::exact_projection::SelectedModelUnionPayload as Payload;
-    let mut units = add(8, node(&row.structural_node));
-    units = add(units, text(&row.selected_document));
-    for case in &row.cases {
-        units = add(units, 7);
-        units = add(units, text(&case.name));
-        units = add(units, text(case.original_case.package()));
-        units = add(units, text(case.original_case.node()));
-        units = add(units, text(case.member.identifier()));
-        units = add(
-            units,
-            match &case.payload {
-                Payload::None => 1,
-                Payload::Clock { payload_type } => text(payload_type),
-                Payload::Data {
-                    node: payload,
-                    original_type,
-                } => add(node(payload), value_type(original_type)),
-            },
-        );
-    }
-    units
 }

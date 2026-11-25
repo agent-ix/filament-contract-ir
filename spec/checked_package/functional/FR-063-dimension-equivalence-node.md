@@ -53,12 +53,17 @@ the reader retains the admitted node in its typed graph.
 The reader SHALL require the pair to name distinct `scalar_type`/`dimension`
 nodes in structural-id order, with no second equivalence node for that pair.
 
-The node SHALL be self-typed, have no `declaration`, have `dependencies`
-exactly the pair, and have one `anchor` occurrence with its source-order
-ordinal among that source's equivalence declarations; the top-level source
-owner joins the lock. Reversing the source declaration's operand spelling
-preserves the normalized pair and scale. A valid pair or scale edit changes
-the retained body without causing a stale-id refusal.
+The node SHALL be self-typed, have no `declaration`, and have a `dependencies`
+list containing only locally declared endpoint `NodeId`s, in the order in
+which those endpoints occur in `dimension_node_ids`; the list is empty when
+both endpoints are `Package` operands. Foreign endpoints are represented and
+validated solely through the ordered `dimension_node_ids` `Package`
+references and selected-model evidence. The node SHALL have one `anchor`
+occurrence with its source-order ordinal among that source's equivalence
+declarations; the top-level source owner joins the lock. Reversing the source
+declaration's operand spelling preserves the normalized pair and scale. A
+valid pair or scale edit changes the retained body without causing a stale-id
+refusal.
 
 The reader SHALL validate the authored structural id for shape and uniqueness
 without deriving the path from the pair or scale. The path on this
@@ -69,8 +74,10 @@ The closed V2 wire schema SHALL require `root_scale` with positive-integer
 `numerator` and `denominator` strings, exactly two `dimension_node_ids`, and
 no `declaration` member. A missing scale, zero or negative scale component,
 one-entry pair or present declaration SHALL refuse `malformed_wire` at the
-node before graph checks. The graph check SHALL require a schema-valid
-`root_scale` to be reduced, with the exact ratio determined by the two base
+node before graph checks. This wire-shape classification is the default for a
+missing or non-positive `root_scale`; a positive, schema-valid value proceeds
+to graph admission, where the reader SHALL require `root_scale` to be reduced,
+with the exact ratio determined by the two base
 roots. For equivalences
 between derived dimensions, it SHALL require equal normalized maps and
 the ratio fixed by those base roots. Across a connected equivalence graph,
@@ -83,11 +90,14 @@ reader admission.
 
 | ID | Criteria | Verification |
 | --- | --- | --- |
-| FR-063-AC-1 | PLANNED/UNRUN (IR-1141; FSpec #529). An external consumer encodes a typed dimension_equivalence node with the closed three-member body and top-level SourceOwner, then reads it through the public strict V2 reader. The admitted package retains the structural id, exact pair, positive reduced scale, two dependencies, self semantic_type, absent declaration, owner and one anchor occurrence. Canonical re-encoding retains the same complete node. | Test |
-| FR-063-AC-3 | PLANNED/UNRUN (IR-1141; FSpec FR-322-AC-268, XP-01). Three independently authored equivalence packages retain the ordered pairs `(clock_time, flow_time)`, `(clock_time, rpc_time)` and `(flow_time, rpc_time)` with `root_scale` respectively `1/1000`, `1/1000` and `1/1`: one canonical root of the first node equals that ratio of canonical roots of the second. The reader admits their consistent three-package graph as one equivalence class with anchor ordinals in source declaration order; a selected dependency reference resolves to its named package and structural node id, never to a same-path local node. As an additive control, three equivalence nodes in one selected package graph with the same consistent ratios also admit as one class. Withdrawn hash-based TC-233 MU-22 through MU-24 are not evidence for either current structural control. | Test |
+| FR-063-AC-1 | PLANNED/UNRUN (IR-1141; FSpec #529). An external consumer encodes a typed dimension_equivalence node with the closed three-member body and top-level SourceOwner, then reads it through the public strict V2 reader. The admitted package retains the structural id, exact pair, positive reduced scale, self semantic_type, absent declaration, owner and one anchor occurrence. For two local endpoints, `dependencies` contains both local endpoint `NodeId`s in `dimension_node_ids` order; for two selected-model `Package` endpoints it is `[]`, and the foreign endpoints are validated through their ordered `dimension_node_ids` references and selected-model evidence. Canonical re-encoding retains the same complete node. | Test |
+| FR-063-AC-3 | PLANNED/UNRUN (IR-1141; FSpec FR-322-AC-268, XP-01). Three independently authored equivalence packages retain endpoint pairs in ascending canonical node-key order: `(clock_time, flow_time)`, `(clock_time, rpc_time)` and `(flow_time, rpc_time)`, with `root_scale` respectively `1/1000`, `1/1000` and `1/1`. For the second pair, the source equation `1 R::s = 1000 G::ms` therefore stores `root_scale` `1/1000` when `clock_time` precedes `rpc_time`; `root_scale` is the ratio of the canonical root of the first ordered endpoint to that of the second. Reversing the authored equation yields the same ordered pair and stored ratio. One canonical root of the first endpoint equals the stored ratio times the canonical root of the second. The reader admits their consistent three-package graph as one equivalence class with anchor ordinals in source declaration order; a selected dependency reference resolves to its named package and structural node id, never to a same-path local node. As an additive control, three equivalence nodes in one selected package graph with the same consistent ratios also admit as one class. Withdrawn hash-based TC-233 MU-22 through MU-24 are not evidence for either current structural control. | Test |
 | FR-063-AC-4 | PLANNED/UNRUN (IR-1141; FSpec #529). Each independently authored adverse pair or graph is refused `invalid_semantic_graph` at its equivalence node: descending ids, equal ids, a unit id, a repeated pair, unequal derived-dimension normalized maps, a scale inconsistent with base roots, or a cycle whose exact scale product differs from one. No malformed node is skipped or treated as an unknown form. | Test |
 | FR-063-AC-5 | PLANNED/UNRUN (IR-1141; FSpec #529). Missing or invalid scale, one-entry pair, missing top-level SourceOwner and present declaration refuse `malformed_wire` at the node before graph checks. Unreduced scale, missing dependency or non-self semantic_type refuses `invalid_semantic_graph` at its exact node. A well-formed SourceOwner absent from `lock.sources` refuses `missing_declaration`/`missing-selection` at the node's `node_id` in the owner join before equivalence-body checks. No stale-key refusal or vector hash comparison occurs. | Test |
 | FR-063-AC-6 | The writer and reader use the typed dimension_equivalence form in the V2 graph and envelope. Unknown scalar forms remain closed; no untyped alternate path or copied FSpec schema or fixture is added. | Inspection |
+| FR-063-AC-7 | PLANNED/UNRUN (QSL-3120; FSpec FR-322). With each other package member valid, a strict-reader input with the `root_scale` member omitted, or with either `numerator` or `denominator` a zero or negative integer string, is refused as `malformed_wire` at the equivalence node during wire validation, before graph checks. This is the wire-shape default: a missing or non-positive scale component is not reclassified as a semantic graph error. | Test (TC-048) |
+| FR-063-AC-8 | PLANNED/UNRUN (QSL-3120; FSpec FR-322). With a schema-valid positive scale `numerator: "2000"`, `denominator: "2"`, the strict reader admits the wire shape, then refuses the unreduced value as `invalid_semantic_graph` at that equivalence node during graph admission, with no partially admitted package. | Test (TC-048) |
+| FR-063-AC-9 | PLANNED/UNRUN (QSL-3120; FSpec FR-322-AC-268). The strict reader receives three base-dimension pairs in ascending endpoint order: A–B with `root_scale` `1/1`, B–C with `1/1`, and A–C with `999/1`. The equivalence-node identities sort by node id as E-AB (`path: ["01-ab"]`), E-BC (`["02-bc"]`), then E-AC (`["03-ac"]`); each edge otherwise has valid endpoints, ownership and occurrences. Traversing A→B→C→A multiplies `1 × 1 × 1/999 = 1/999`, not one. The reader refuses `invalid_semantic_graph` with no cause at E-AC, the later equivalence node in node-id order, and returns no admitted package. | Test (TC-048) |
 
 ## Dependencies
 

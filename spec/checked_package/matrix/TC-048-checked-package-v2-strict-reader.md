@@ -7,6 +7,10 @@ relationships:
     type: verifies
   - target: ix://agent-ix/filament-contract-ir/FR-038-AC-600
     type: verifies
+  - target: ix://agent-ix/filament-contract-ir/FR-038-AC-629
+    type: verifies
+  - target: ix://agent-ix/filament-specification/FR-322-AC-538
+    type: verifies
   - target: ix://agent-ix/filament-specification/TC-2048
     type: references
   - target: ix://agent-ix/filament-specification/TC-976
@@ -125,6 +129,12 @@ relationships:
     type: verifies
   - target: ix://agent-ix/filament-specification/TC-187
     type: references
+  - target: ix://agent-ix/filament-contract-ir/FR-063-AC-7
+    type: verifies
+  - target: ix://agent-ix/filament-contract-ir/FR-063-AC-8
+    type: verifies
+  - target: ix://agent-ix/filament-contract-ir/FR-063-AC-9
+    type: verifies
 ---
 # TC-048: CheckedPackage V2 strict reader validates structural identities
 
@@ -1633,6 +1643,23 @@ vector or schema is copied into this repository.
     B catalog and require C's class to be absent from A's catalog. A source
     producer given C declared over A SHALL still emit O; its candidate B
     edge fails producer conformance, a separate check from reader admission.
+10a. On the same positive package, let C's current owner be A and a distinct
+    valid selected object-type node be B. Change only C's `owner_model` to B
+    and replace A with B in C's `dependencies`, preserving canonical order,
+    but leave the owner-model operand in C's `node_id.path` resolving to A.
+    Require `invalid_package`/`stale-node-key` at
+    `/semantic_graph/nodes/{C}/owner_model`, the graph-node locus C, and no
+    admitted package. In a separate positive package, update the `owner_model`,
+    its dependency and that path operand to B; require admission. This isolates
+    the owner-key mismatch from the ordinary dependency-closure check
+    (FR-038-AC-629; FSpec FR-322-AC-538; FSL TC-1063).
+    In a further positive package, keep the `owner_model` edge and its
+    dependency but give C its declaration path alone as `node_id.path`; require
+    admission, and require admission again after retargeting that edge and its
+    dependency to B, which that path does not let the reader compare (a known
+    limitation). Then remove C's `declaration`: require `malformed_wire` at C's
+    node whether its last `node_id.path` segment resolves to C's owner, resolves
+    to another node or is a name (FR-038-AC-629).
     In independent packages, retarget C to a selected `state_machine`,
     `process`, `record_value_type`, relation or `model_root` node, then to a
     source-local declaration or a missing local target. Require the typed
@@ -2798,6 +2825,23 @@ the importing package or its direct dependency, returns none for dimension,
 unit and enum bodies, and that a wrong-kind or unselected operand still
 refuses at read time so no node exists to view. The view round-trips through
 the canonical writer.
+
+For FR-063-AC-7, read each isolated malformed wire input with an otherwise
+valid equivalence node: omit `body.root_scale`, set `numerator` to `"0"`,
+set `numerator` to `"-1"`, set `denominator` to `"0"`, and set `denominator`
+to `"-1"`. Assert `malformed_wire` at the equivalence node before graph
+admission. For FR-063-AC-8, use positive schema-valid `root_scale`
+`{"numerator":"2000","denominator":"2"}` and assert
+`invalid_semantic_graph` at that node after wire validation.
+
+For FR-063-AC-9, read one package with three base dimensions A, B, and C and
+three equivalence nodes, all otherwise valid. Use ordered pairs A–B at `1/1`,
+B–C at `1/1`, and A–C at `999/1`; assign their node ids in order E-AB
+(`package: "cycle-999", path: ["01-ab"], ordinal: 0`), E-BC
+(`path: ["02-bc"]`), E-AC (`path: ["03-ac"]`), with the latter two sharing
+the same package and ordinal. Assert the cycle product is `1 × 1 × 1/999 =
+1/999`, so it is not one, and that the reader refuses `invalid_semantic_graph`
+without a cause at E-AC, the later node id, returning no admitted package.
 
 ## Authenticated schedulability claim carrier (FR-038-AC-396 through FR-038-AC-400)
 

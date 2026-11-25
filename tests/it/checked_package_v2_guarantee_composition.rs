@@ -2483,6 +2483,7 @@ fn a_member_ending_at_the_declaration_end_refuses_at_its_entry() {
 }
 
 /// Moves every structural node id of the importer to package `name`.
+#[cfg(feature = "test-support")]
 fn rehome(value: &mut Value, name: &str) {
     match value {
         Value::Object(object) => {
@@ -2503,6 +2504,7 @@ fn rehome(value: &mut Value, name: &str) {
 /// refinement, in the refinement fixture's package: the phases that need the
 /// package-wide source-map check meet in one read. Returns the package, its
 /// evidence and the number of `source_map` entries.
+#[cfg(feature = "test-support")]
 fn hosted() -> (Value, filament_contract_model::CheckedPackageEvidence) {
     let (mut host, mut evidence) = crate::checked_package_v2_refinement::machine_package();
     crate::checked_package_v2_refinement::row_empty_refinement(&mut host);

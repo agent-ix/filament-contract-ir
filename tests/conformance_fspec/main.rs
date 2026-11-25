@@ -45,6 +45,7 @@ use fspec_inputs::{
 
 mod body_locations;
 mod carried_quantity;
+mod certificate_identity;
 mod certificate_member;
 mod check_mode_vectors;
 mod dependency_call;
@@ -370,6 +371,7 @@ fn cause_word(cause: Cause) -> &'static str {
         Cause::WrongObservation => "wrong-observation",
         Cause::InvalidTaskSet => "invalid-task-set",
         Cause::ClockReadOutsideConstraint => "clock-read-outside-constraint",
+        Cause::StaleNodeKey => "stale-node-key",
     }
 }
 

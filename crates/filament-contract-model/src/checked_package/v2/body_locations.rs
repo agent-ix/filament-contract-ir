@@ -77,6 +77,15 @@ pub(super) fn is_term(kind: CheckedNodeKind, term: &CheckedTerm) -> bool {
     }
 }
 
+/// Whether the body walk follows a reference to this node kind.
+pub(super) fn is_walk_node(kind: CheckedNodeKind) -> bool {
+    matches!(
+        kind,
+        CheckedNodeKind::Expression(_)
+            | CheckedNodeKind::Value(ValueForm::RecordValue | ValueForm::TupleValue)
+    )
+}
+
 /// The graph a walk reads.
 struct Graph<'a, 'w, Body> {
     wire: &'w CheckedPackageWireV2<Body>,
@@ -97,13 +106,7 @@ impl<Body> Graph<'_, '_, Body> {
                 CheckedTerm::Reference { target } => {
                     if target.package == self.wire.name {
                         if let Some(position) = position_of(self.index, target) {
-                            if matches!(
-                                self.kinds.get(position),
-                                Some(CheckedNodeKind::Expression(_))
-                                    | Some(CheckedNodeKind::Value(
-                                        ValueForm::RecordValue | ValueForm::TupleValue
-                                    ))
-                            ) {
+                            if self.kinds.get(position).copied().is_some_and(is_walk_node) {
                                 found.push(position);
                             }
                         }
@@ -136,6 +139,13 @@ impl<Body> Graph<'_, '_, Body> {
         else {
             return Ok(walk);
         };
+        // The body binding is a reference leaf, but the walk follows it only
+        // when it names an expression or a composite value. Function, type,
+        // atomic value, and foreign targets terminate at the root just as
+        // they do for references encountered below it.
+        if !self.kinds.get(start).copied().is_some_and(is_walk_node) {
+            return Ok(walk);
+        }
         let mut pending = vec![start];
         while let Some(position) = pending.pop() {
             charge(meter, row, array_path())?;
@@ -357,6 +367,208 @@ mod tests {
 
     fn key(value: u64) -> CheckedKeyOrdinal {
         CheckedKeyOrdinal::Safe(value)
+    }
+
+    fn graph(
+        nodes: Vec<serde_json::Value>,
+    ) -> (
+        super::super::CheckedPackageWireV2,
+        Vec<CheckedNodeKind>,
+        Vec<CheckedTerm>,
+    ) {
+        let wire = super::super::test_support::private_wire(serde_json::json!({
+            "contract_version": "filament.checked-package/v2",
+            "name": "test",
+            "lock": {
+                "sources": [],
+                "edition": {"role":"edition","definition":{"authority":"test","identity":"edition"}},
+                "profile_selections": [], "definition_selections": [],
+                "required_features": [], "dependency_selections": []
+            },
+            "semantic_graph": {"graph_version":"filament.checked-semantic-graph/v2", "nodes":nodes},
+            "source_map": [], "capability_report": [],
+            "diagnostics": {"catalog":{"authority":"test","identity":"diagnostics"},"entries":[]}
+        }));
+        let kinds = wire
+            .semantic_graph
+            .nodes
+            .iter()
+            .map(|node| {
+                let tag = super::super::CheckedNodeTag::from_wire(&node.node_tag).unwrap();
+                CheckedNodeKind::decode(tag, &node.semantic_form).unwrap()
+            })
+            .collect();
+        let terms = wire
+            .semantic_graph
+            .nodes
+            .iter()
+            .map(|node| node.body.clone())
+            .collect();
+        (wire, kinds, terms)
+    }
+
+    fn node(path: &str, tag: &str, form: &str, body: serde_json::Value) -> serde_json::Value {
+        serde_json::json!({
+            "node_id":{"package":"test","path":[path],"ordinal":0},
+            "schema_version":"filament.checked-semantic-graph/v2",
+            "node_tag":tag,"semantic_form":form,
+            "semantic_type":{"package":"test","path":["bool"],"ordinal":0},
+            "dependencies":[],"occurrences":[{"role":"expression","ordinal":0}],
+            "body":body
+        })
+    }
+
+    fn reference(path: &str) -> serde_json::Value {
+        serde_json::json!({"term":"reference","target":{"package":"test","path":[path],"ordinal":0}})
+    }
+
+    fn function(path: &str, target: &str) -> serde_json::Value {
+        node(
+            path,
+            "function",
+            "pure_function",
+            serde_json::json!({
+                "term":"aggregate","members":[{"term":"binding","name":"body","value":reference(target)}]
+            }),
+        )
+    }
+
+    fn expression(path: &str, form: &str, children: &[&str]) -> serde_json::Value {
+        node(
+            path,
+            "expression",
+            form,
+            serde_json::json!({
+                "term":"aggregate","members":children.iter().map(|child|
+                    serde_json::json!({"term":"binding","name":"arg","value":reference(child)})
+                ).collect::<Vec<_>>()
+            }),
+        )
+    }
+
+    fn walk_counts(nodes: Vec<serde_json::Value>, function_path: &str) -> BTreeMap<usize, u64> {
+        let (wire, kinds, terms) = graph(nodes);
+        let index: Vec<_> = wire
+            .semantic_graph
+            .nodes
+            .iter()
+            .enumerate()
+            .map(|(position, node)| (&node.node_id, position))
+            .collect();
+        let function = wire
+            .semantic_graph
+            .nodes
+            .iter()
+            .position(|node| {
+                node.node_id.path.first().is_some_and(|part| {
+                    matches!(
+                        part,
+                        crate::checked_package::shared::CheckedNodePathSegment::Name(name)
+                            if name.as_ref() == function_path
+                    )
+                })
+            })
+            .unwrap();
+        Graph {
+            wire: &wire,
+            kinds: &kinds,
+            terms: &terms,
+            index: &index,
+        }
+        .walk(function, 0, &mut WorkMeter::new(u64::MAX))
+        .unwrap()
+        .counts
+    }
+
+    #[test]
+    #[trace("TC-491", "FR-038-AC-581", "FR-322-AC-490")]
+    fn body_walk_keeps_function_targets_terminal_and_is_per_function() {
+        // Caller precedes its guarded callee in graph order. The callee body
+        // points back to itself, but a function reference is a terminal leaf.
+        let guarded = walk_counts(
+            vec![
+                function("caller", "call"),
+                expression("call", "call", &["callee"]),
+                function("callee", "guard"),
+                expression("guard", "binary", &["call", "shared"]),
+                expression("shared", "binary", &[]),
+            ],
+            "caller",
+        );
+        assert_eq!(guarded.len(), 1);
+        assert_eq!(guarded.values().copied().sum::<u64>(), 1);
+
+        // Both functions visit the same scalar application independently.
+        let shared = vec![
+            function("first", "shared"),
+            function("second", "shared"),
+            expression("shared", "binary", &[]),
+        ];
+        for function_name in ["first", "second"] {
+            let counts = walk_counts(shared.clone(), function_name);
+            assert_eq!(counts.values().copied().sum::<u64>(), 1);
+        }
+
+        // Mutual even/odd recursion stops at each function reference.
+        for (name, target) in [("even", "odd"), ("odd", "even")] {
+            let counts = walk_counts(
+                vec![
+                    function("even", "even_call"),
+                    function("odd", "odd_call"),
+                    expression("even_call", "call", &["odd"]),
+                    expression("odd_call", "call", &["even"]),
+                ],
+                name,
+            );
+            assert_eq!(counts.values().copied().sum::<u64>(), 1, "{target}");
+        }
+
+        // An unguarded callee after its caller is still not part of the
+        // caller's body walk.
+        let unguarded = walk_counts(
+            vec![
+                function("caller", "call"),
+                expression("call", "call", &["inc"]),
+                function("inc", "inc_body"),
+                expression("inc_body", "binary", &[]),
+            ],
+            "caller",
+        );
+        assert_eq!(unguarded.values().copied().sum::<u64>(), 1);
+    }
+
+    #[test]
+    #[trace("TC-491", "FR-038-AC-581", "FR-322-AC-490")]
+    fn body_walk_does_not_descend_through_terminal_root_targets() {
+        for (terminal, tag, form) in [
+            ("callee", "function", "pure_function"),
+            ("type", "scalar_type", "boolean"),
+            ("literal", "value", "literal"),
+        ] {
+            let mut leaf = node(
+                terminal,
+                tag,
+                form,
+                serde_json::json!({
+                    "term":"aggregate","members":[{"term":"binding","name":"child","value":reference("nested")}]
+                }),
+            );
+            if tag == "value" {
+                leaf["body"] = serde_json::json!({"term":"literal","type":{"package":"test","path":["bool"],"ordinal":0},"value_kind":"boolean","value":true});
+            }
+            let counts = walk_counts(
+                vec![
+                    function("caller", terminal),
+                    leaf,
+                    expression("nested", "binary", &[]),
+                ],
+                "caller",
+            );
+            assert!(
+                counts.is_empty(),
+                "{tag}/{form} must terminate the root walk"
+            );
+        }
     }
 
     fn apply(previous: &mut Vec<CheckedKeyOrdinal>, up: u64, down: &[u64]) -> bool {

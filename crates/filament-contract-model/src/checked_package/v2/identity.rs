@@ -203,11 +203,11 @@ impl CheckedDeclaredNodeId {
     }
 }
 
-/// A declared-form node reference whose package selection is checked on admission.
+/// A declared-form node reference resolved through a direct dependency or selected domain package.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct CheckedPackageNodeRef {
-    /// Selected dependency package name.
+    /// Selected dependency or domain package identity.
     pub package: Box<str>,
     /// Declared structural node in that package.
     pub node: CheckedDeclaredNodeId,
@@ -219,7 +219,7 @@ pub struct CheckedPackageNodeRef {
 pub enum CheckedDimensionOperand {
     /// A node of the importing graph.
     Local(CheckedNodeId),
-    /// A declared-form node reference checked against a direct dependency on admission.
+    /// A declared-form node reference checked against a direct dependency or selected model.
     Package(CheckedPackageNodeRef),
 }
 
@@ -736,7 +736,14 @@ impl NominalBody {
         };
         let rational = |member: &str, positive_numerator: bool| {
             let path = at.clone().key(member);
-            let value = object.get(member).ok_or_else(|| malformed(path.clone()))?;
+            let node_path = || owner_node_pointer(&|| at.clone());
+            let value = object.get(member).ok_or_else(|| {
+                if member == "root_scale" {
+                    malformed(node_path())
+                } else {
+                    malformed(path.clone())
+                }
+            })?;
             let fields = value.as_object().ok_or_else(|| malformed(path.clone()))?;
             if !exact_members(fields, &["numerator", "denominator"]) {
                 return Err(malformed(path));
@@ -751,12 +758,24 @@ impl NominalBody {
                         integer_magnitude(number).is_some()
                     }
                 })
-                .ok_or_else(|| malformed(path.clone().key("numerator")))?;
+                .ok_or_else(|| {
+                    if member == "root_scale" {
+                        malformed(node_path())
+                    } else {
+                        malformed(path.clone().key("numerator"))
+                    }
+                })?;
             let denominator = fields
                 .get("denominator")
                 .and_then(Value::as_str)
                 .filter(|number| positive_integer(number))
-                .ok_or_else(|| malformed(path.clone().key("denominator")))?;
+                .ok_or_else(|| {
+                    if member == "root_scale" {
+                        malformed(node_path())
+                    } else {
+                        malformed(path.clone().key("denominator"))
+                    }
+                })?;
             Ok(CheckedRational {
                 numerator: numerator.into(),
                 denominator: denominator.into(),
@@ -857,6 +876,12 @@ impl NominalBody {
                     root_scale: rational("root_scale", true)?,
                 })
             }
+            "dimension_equivalence"
+                if exact_members(object, &["term", "dimension_node_ids"])
+                    && !object.contains_key("root_scale") =>
+            {
+                Err(malformed(owner_node_pointer(&|| at.clone())))
+            }
             _ => Err(malformed(at.clone())),
         }?;
         Self::try_kind(kind, at).map_err(ValidationFailure::Refused)
@@ -865,12 +890,14 @@ impl NominalBody {
     /// [`Self::from_value`] over a node of the retained document, whose
     /// operand slots read through `row`. Every list, name, number text and ID
     /// the body keeps is charged to the meter before it is allocated, and
-    /// the same first defect is refused at the same body-relative path.
+    /// the same first defect is refused at the same body-relative path, with
+    /// a missing or invalid root scale attributed to the owning node.
     #[ix_trace_rs::string_edge]
     pub(super) fn from_document(
         body: TermNode<'_>,
         row: &[CheckedOperandEntry],
         at: &dyn Fn() -> JsonPointer,
+        node_at: &dyn Fn() -> JsonPointer,
         meter: &mut WorkMeter,
     ) -> Result<Self, ValidationFailure> {
         let malformed =
@@ -891,12 +918,27 @@ impl NominalBody {
         };
         let rational = |meter: &mut WorkMeter, member: &str, positive_numerator: bool| {
             let path = || at().key(member);
-            let value = body.get(member).ok_or_else(|| malformed(path()))?;
+            let node_path = || node_at();
+            let value = body.get(member).ok_or_else(|| {
+                if member == "root_scale" {
+                    malformed(node_path())
+                } else {
+                    malformed(path())
+                }
+            })?;
             if !value.is_object() {
-                return Err(malformed(path()));
+                return Err(malformed(if member == "root_scale" {
+                    node_path()
+                } else {
+                    path()
+                }));
             }
             if !value.exact_members(&["numerator", "denominator"]) {
-                return Err(malformed(path()));
+                return Err(malformed(if member == "root_scale" {
+                    node_path()
+                } else {
+                    path()
+                }));
             }
             let numerator = value
                 .get("numerator")
@@ -908,12 +950,24 @@ impl NominalBody {
                         integer_magnitude(number).is_some()
                     }
                 })
-                .ok_or_else(|| malformed(path().key("numerator")))?;
+                .ok_or_else(|| {
+                    if member == "root_scale" {
+                        malformed(node_path())
+                    } else {
+                        malformed(path().key("numerator"))
+                    }
+                })?;
             let denominator = value
                 .get("denominator")
                 .and_then(TermNode::as_str)
                 .filter(|number| positive_integer(number))
-                .ok_or_else(|| malformed(path().key("denominator")))?;
+                .ok_or_else(|| {
+                    if member == "root_scale" {
+                        malformed(node_path())
+                    } else {
+                        malformed(path().key("denominator"))
+                    }
+                })?;
             Ok(CheckedRational {
                 numerator: meter.boxed_str(numerator)?,
                 denominator: meter.boxed_str(denominator)?,
@@ -1029,6 +1083,12 @@ impl NominalBody {
                     dimension_node_ids: [first, second],
                     root_scale: rational(meter, "root_scale", true)?,
                 })
+            }
+            "dimension_equivalence"
+                if body.exact_members(&["term", "dimension_node_ids"])
+                    && body.get("root_scale").is_none() =>
+            {
+                Err(malformed(owner_node_pointer(at)))
             }
             _ => Err(malformed(at())),
         }?;
@@ -1346,6 +1406,14 @@ fn invalid(path: JsonPointer) -> ValidationFailure {
     ValidationFailure::refused(CheckedPackageRefusalCode::InvalidSemanticGraph, path)
 }
 
+fn owner_node_pointer(at: &dyn Fn() -> JsonPointer) -> JsonPointer {
+    let body = at();
+    body.as_str()
+        .strip_suffix("/body")
+        .and_then(JsonPointer::parse)
+        .unwrap_or(body)
+}
+
 /// Refuses at the pointer `at` builds unless `condition` holds.
 fn require(condition: bool, at: impl FnOnce() -> JsonPointer) -> Result<(), ValidationFailure> {
     if condition {
@@ -1519,7 +1587,10 @@ impl<'a> BodyInput<'a> {
     ) -> Result<NominalBody, ValidationFailure> {
         let at = || node_pointer(position).key("body");
         match self {
-            Self::Document(Some((body, row))) => NominalBody::from_document(body, row, &at, meter),
+            Self::Document(Some((body, row))) => {
+                let node_at = || node_pointer(position);
+                NominalBody::from_document(body, row, &at, &node_at, meter)
+            }
             Self::Document(None) => Err(ValidationFailure::refused(
                 CheckedPackageRefusalCode::MalformedWire,
                 at(),
@@ -2023,20 +2094,34 @@ fn validate_dimension_equivalence(
                 )?;
             }
             CheckedDimensionOperand::Package(reference) => {
-                let selected = dependencies
-                    .selected_package(&reference.package)
-                    .ok_or_else(|| {
-                        ValidationFailure::refused_because(
-                            CheckedPackageRefusalCode::MissingDeclaration,
+                let package = reference.package.as_ref();
+                let model_dimension = graph.selected_model_dimension(package, id);
+                let dependency_dimension = dependencies
+                    .selected_package(package)
+                    .and_then(|selected| selected.node(id))
+                    .is_some();
+                if model_dimension && dependency_dimension {
+                    return Err(ValidationFailure::refused_because(
+                        CheckedPackageRefusalCode::AmbiguousDeclaration,
+                        at().key("package"),
+                        CheckedPackageRefusalCause::AmbiguousName,
+                    ));
+                }
+                if !model_dimension && !dependency_dimension {
+                    let selected = graph.selected_models.get(&package).is_some()
+                        || dependencies.selected_package(package).is_some();
+                    let (pointer, cause) = if selected {
+                        (at().key("node"), CheckedPackageRefusalCause::MissingName)
+                    } else {
+                        (
                             at().key("package"),
                             CheckedPackageRefusalCause::MissingSelection,
                         )
-                    })?;
-                if selected.node(id).is_none() {
+                    };
                     return Err(ValidationFailure::refused_because(
                         CheckedPackageRefusalCode::MissingDeclaration,
-                        at().key("node"),
-                        CheckedPackageRefusalCause::MissingName,
+                        pointer,
+                        cause,
                     ));
                 }
             }
@@ -2712,7 +2797,7 @@ fn equivalence_potentials<'a>(
         adjacency.push((second, first, ratio, *position, sequence * 2 + 1));
     }
     adjacency.sort_unstable_by(|left, right| left.0.cmp(&right.0).then(left.4.cmp(&right.4)));
-    let mut queue: Vec<usize> = meter.vec(count)?;
+    let mut pending_edges: Vec<usize> = meter.vec(adjacency.len())?;
     for id in graph
         .index
         .keys()
@@ -2725,35 +2810,32 @@ fn equivalence_potentials<'a>(
         {
             continue;
         }
-        queue.clear();
-        queue.push(start);
+        pending_edges.clear();
         potentials.entries[start] = Some((start, ExactRatio::one()));
-        let mut head = 0;
-        while let Some(&current) = queue.get(head) {
-            head += 1;
-            let Some((component, current_ratio)) = potentials.entries[current].as_ref() else {
+        let first = adjacency.partition_point(|step| step.0 < start);
+        let last = adjacency.partition_point(|step| step.0 <= start);
+        pending_edges.extend((first..last).rev());
+        while let Some(edge_index) = pending_edges.pop() {
+            let (current, neighbor, multiplier, position, _) = &adjacency[edge_index];
+            let Some((component, current_ratio)) = potentials.entries[*current].as_ref() else {
                 continue;
             };
             let (component, current_ratio) = (*component, current_ratio.duplicate(meter)?);
-            let first = adjacency.partition_point(|step| step.0 < current);
-            for (_, neighbor, multiplier, position, _) in adjacency[first..]
-                .iter()
-                .take_while(|step| step.0 == current)
-            {
-                let at = || node_pointer(*position);
-                meter.at_node(*position, "scalar_type");
-                let candidate = current_ratio.multiply(multiplier, meter, &at)?;
-                match &potentials.entries[*neighbor] {
-                    Some((known_component, known_ratio)) => {
-                        require(
-                            *known_component == component && *known_ratio == candidate,
-                            at,
-                        )?;
-                    }
-                    None => {
-                        potentials.entries[*neighbor] = Some((component, candidate));
-                        queue.push(*neighbor);
-                    }
+            let at = || node_pointer(*position);
+            meter.at_node(*position, "scalar_type");
+            let candidate = current_ratio.multiply(multiplier, meter, &at)?;
+            match &potentials.entries[*neighbor] {
+                Some((known_component, known_ratio)) => {
+                    require(
+                        *known_component == component && *known_ratio == candidate,
+                        at,
+                    )?;
+                }
+                None => {
+                    potentials.entries[*neighbor] = Some((component, candidate));
+                    let first = adjacency.partition_point(|step| step.0 < *neighbor);
+                    let last = adjacency.partition_point(|step| step.0 <= *neighbor);
+                    pending_edges.extend((first..last).rev());
                 }
             }
         }
@@ -2968,6 +3050,20 @@ impl NominalGraph<'_> {
             .and_then(|position| self.records.get(*position))
             .and_then(Option::as_ref)
             .or_else(|| self.imported.find(|held| (*held).cmp(id)))
+    }
+
+    fn selected_model_dimension(&self, package: &str, id: &CheckedNodeId) -> bool {
+        let Some(model) = self.selected_models.get(&package) else {
+            return false;
+        };
+        let Some(NominalRecord::Dimension(dimension)) = self.nominal(id) else {
+            return false;
+        };
+        matches!(
+            &dimension.owner,
+            NominalOwner::Model { identity, node }
+                if identity.as_ref() == package && model.dimensions.contains_key(node.as_ref())
+        )
     }
 
     fn model_variant_cases(
@@ -3786,11 +3882,16 @@ mod tests {
         let malformed = json!({"term":"dimension_equivalence",
             "dimension_node_ids":[first,second],
             "root_scale":{"numerator":"0","denominator":"1"}});
+        // A read refuses a non-positive scale at the equivalence node that
+        // holds the body (FR-063-AC-7).
+        let body_at = JsonPointer::parse("/semantic_graph/nodes/0/body").expect("body pointer");
         assert!(matches!(
-            NominalBody::from_value(&malformed, JsonPointer::root()),
+            NominalBody::from_value(&malformed, body_at),
             Err(ValidationFailure::Refused(refusal))
                 if refusal.code == CheckedPackageRefusalCode::MalformedWire
-                    && refusal.loci[0].path.as_ref().is_some_and(|path| path.as_str() == "/root_scale/numerator")
+                    && refusal.loci[0].path.as_ref().is_some_and(
+                        |path| path.as_str() == "/semantic_graph/nodes/0"
+                    )
         ));
     }
 
@@ -4001,11 +4102,13 @@ mod tests {
         ];
         let row = [10_u64, 11, 12].map(crate::CheckedOperandEntry::Node);
         let at = || JsonPointer::root().key("body");
+        let node_at = || JsonPointer::root();
         let mut closed = 0;
         for (slotted, resolved) in &bodies {
             let handle = CheckedJson::from_serializable(slotted).expect("canonical");
             let mut meter = WorkMeter::new(u64::MAX);
-            let read = NominalBody::from_document(TermNode::of(&handle), &row, &at, &mut meter);
+            let read =
+                NominalBody::from_document(TermNode::of(&handle), &row, &at, &node_at, &mut meter);
             let expected = NominalBody::from_value(resolved, at());
             match (&read, &expected) {
                 (Ok(read), Ok(expected)) => {
@@ -4049,6 +4152,7 @@ mod tests {
             .collect();
         let row = [4_u64].map(crate::CheckedOperandEntry::Node);
         let at = || JsonPointer::root().key("body");
+        let node_at = || JsonPointer::root();
         let run = |limit: u64| {
             let mut budget = NativeJoinBudget::new(u64::MAX, 0).with_read_storage_limit(limit);
             let mut read = Vec::with_capacity(handles.len());
@@ -4056,7 +4160,13 @@ mod tests {
                 let mut meter = WorkMeter::over(&mut budget);
                 meter.at_node(2, "scalar_type");
                 for handle in &handles {
-                    match NominalBody::from_document(TermNode::of(handle), &row, &at, &mut meter) {
+                    match NominalBody::from_document(
+                        TermNode::of(handle),
+                        &row,
+                        &at,
+                        &node_at,
+                        &mut meter,
+                    ) {
                         Ok(body) => read.push(body),
                         Err(_) => break,
                     }

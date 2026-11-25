@@ -283,23 +283,13 @@ fn tc_056_scoped_frame_shape_refusals_precede_frame_semantics() {
         let mut package = base.clone();
         package["semantic_graph"]["nodes"][frame]["body"]["modifies"][0] = entry;
         refresh_identity(&mut package);
-        let CheckedPackageV2ReadResult::Refused(refusal) = read_secure_det(&package) else {
-            panic!("{case}: expected a refusal");
-        };
-        assert_eq!(
-            refusal.code,
-            Code::InvalidModelBinding,
-            "{case}: {refusal:?}"
-        );
-        assert_eq!(
-            refusal.cause,
-            Some(Cause::MalformedDeclaration),
-            "{case}: {refusal:?}"
-        );
-        assert_eq!(
-            refusal.loci[0].path.as_ref().map(|path| path.as_str()),
-            Some(format!("/semantic_graph/nodes/{frame}/body/modifies/0").as_str()),
-            "{case}: {refusal:?}"
+        expect(
+            case,
+            &package,
+            Code::InvalidSemanticGraph,
+            None,
+            &format!("/semantic_graph/nodes/{frame}/body/modifies/0"),
+            None,
         );
     }
     for entry in [

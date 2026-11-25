@@ -9,8 +9,8 @@ use crate::support::checked_package::{
     structural_fixture_id, v2_all_families, v2_nominal,
 };
 use filament_contract_model::{
-    encode_checked_package_v2, CheckedCapability, CheckedDiagnosticsV2, CheckedOccurrenceRole,
-    CheckedPackageEvidence, CheckedPackageLockV2, CheckedPackageReadLimits,
+    encode_checked_package_v2, CheckedCapability, CheckedDiagnosticsV2, CheckedNodeId,
+    CheckedOccurrenceRole, CheckedPackageEvidence, CheckedPackageLockV2, CheckedPackageReadLimits,
     CheckedPackageRefusalCause, CheckedPackageRefusalCode, CheckedPackageV2,
     CheckedPackageV2ReadResult, CheckedRefinementStepRowRegion, CheckedSemanticGraphV2,
     CheckedSourceMapEntry, CheckedTerm, RefinementClassCatalog, RefinementConcreteClass,
@@ -269,6 +269,25 @@ fn selected_forms_package_with(document: Value) -> (Value, CheckedPackageEvidenc
             .push(json!({
                 "node_id":id, "role":"type", "ordinal":0,
                 "regions":[{"source":source,"start":10,"end":11}]
+            }));
+    }
+    let cell_identity = format!("ix://{MODEL_IDENTITY}/Cell");
+    if document["types"]
+        .as_array()
+        .is_some_and(|types| types.iter().any(|ty| ty["identity"] == cell_identity))
+    {
+        let cell = selected_form_node("object_type", &cell_identity);
+        let id = cell["node_id"].clone();
+        package["semantic_graph"]["nodes"]
+            .as_array_mut()
+            .expect("nodes")
+            .push(cell);
+        package["source_map"]
+            .as_array_mut()
+            .expect("map")
+            .push(json!({
+                "node_id":id, "role":"type", "ordinal":0,
+                "regions":[{"source":source,"start":14,"end":15}]
             }));
     }
     for form in ["process", "state_machine"] {
@@ -1054,10 +1073,27 @@ fn catalog_free_operation_package_config_with_document(
             .expect("types")
             .push(parent);
     }
+    let include_save_again =
+        document["types"][4]["operations"]
+            .as_array()
+            .is_some_and(|operations| {
+                operations
+                    .iter()
+                    .any(|operation| operation["name"] == "saveAgain")
+            });
     document["types"][4]["operations"] = json!([{
         "identity": format!("ix://{MODEL_IDENTITY}/Account/save"),
         "name": "save", "params": []
     }]);
+    if include_save_again {
+        let mut save_again = document["types"][4]["operations"][0].clone();
+        save_again["identity"] = json!(format!("ix://{MODEL_IDENTITY}/Account/saveAgain"));
+        save_again["name"] = json!("saveAgain");
+        document["types"][4]["operations"]
+            .as_array_mut()
+            .expect("Account operations")
+            .push(save_again);
+    }
     let child = if inherited {
         let (index, parent_name, child_name) = match form {
             "object_type" => (4, "Account", "SubAccount"),
@@ -2198,6 +2234,7 @@ fn refinement_expression_operands_enter_dependencies_before_row_meaning() {
             "receiver" | "argument" => {
                 node["body"]["steps"][0]["target"] = json!({
                     "kind":"operation", "operation":node["body"]["steps"][0]["source_node"],
+                    "target_type":object,
                     "receiver":if location == "receiver" {term.clone()} else {
                         json!({"term":"literal", "type":type_id, "value_kind":"text", "value":"wrong receiver"})
                     },
@@ -2209,6 +2246,7 @@ fn refinement_expression_operands_enter_dependencies_before_row_meaning() {
         }
         let mut expected = original_dependencies.clone();
         expected.extend_from_slice(&operands[..3]);
+        expected.push(object.clone());
         expected.sort_by(node_id_order);
         expected.dedup();
         node["dependencies"] = json!(expected);
@@ -2280,7 +2318,7 @@ fn append_distinct_refinement_anchor(package: &mut Value, source: &Value, ordina
     let mut id = source.clone();
     id["ordinal"] = json!(ordinal);
     anchor["node_id"] = id.clone();
-    anchor["body"]["members"][1]["value"]["value"] = json!("goAgain");
+    anchor["body"]["members"][1]["value"]["value"] = json!("saveAgain");
     let mut region = package["source_map"]
         .as_array()
         .expect("source map")
@@ -2305,12 +2343,36 @@ fn append_distinct_refinement_anchor(package: &mut Value, source: &Value, ordina
 #[test]
 fn refinement_dependency_only_ensure_and_operation_target_keys_are_required() {
     for role in ["ensure", "operation"] {
-        let (mut package, evidence, position) = catalog_free_operation_package("process");
+        let (mut package, evidence, position) = catalog_free_operation_package_config_with_document(
+            "object_type",
+            false,
+            false,
+            false,
+            |document| {
+                let mut save_again = document["types"][4]["operations"][0].clone();
+                save_again["identity"] = json!(format!("ix://{MODEL_IDENTITY}/Account/saveAgain"));
+                save_again["name"] = json!("saveAgain");
+                document["types"][4]["operations"]
+                    .as_array_mut()
+                    .expect("Account operations")
+                    .push(save_again);
+            },
+        );
         let body = &package["semantic_graph"]["nodes"][position]["body"];
         let abstract_root = body["abstract"].clone();
         let source = body["steps"][0]["source_node"].clone();
         let target = append_distinct_refinement_anchor(&mut package, &source, 1);
         assert_ne!(source, target);
+        let target_type = package["semantic_graph"]["nodes"]
+            .as_array()
+            .expect("nodes")
+            .iter()
+            .find(|candidate| {
+                candidate["semantic_form"] == "object_type"
+                    && candidate["owner"]["identity"] == MODEL_IDENTITY
+            })
+            .expect("selected abstract object type")["node_id"]
+            .clone();
         let mut expected = vec![abstract_root, source, target.clone()];
         let node = &mut package["semantic_graph"]["nodes"][position];
         if role == "ensure" {
@@ -2318,10 +2380,12 @@ fn refinement_dependency_only_ensure_and_operation_target_keys_are_required() {
                 "operation":target, "kind":"strong", "granularity":"whole"
             }]);
         } else {
-            // A literal receiver has no reference edge: only operation contributes target.
+            // The receiver is a literal; the operation and target type are explicit edges.
+            expected.push(target_type.clone());
             let text = node_id(&crate::support::checked_package::family_key("a1a1"));
             node["body"]["steps"][0]["target"] = json!({
                 "kind":"operation", "operation":target,
+                "target_type": target_type,
                 "receiver":{"term":"literal", "type":text, "value_kind":"text", "value":"receiver"},
                 "arguments":[]
             });
@@ -2594,10 +2658,39 @@ fn complete_model_refinement_retains_all_rows_through_public_roundtrip() {
     );
 }
 
-#[trace("TC-062", "FR-061-AC-4")]
+#[trace(
+    "TC-062",
+    "FR-061-AC-4",
+    "FSpec-FR-375-AC-41",
+    "FSpec-FR-375-AC-42",
+    "FSpec-FR-375-AC-43"
+)]
 #[test]
 fn model_step_targets_keep_operation_stutter_and_any_through_public_writer() {
-    let (base, evidence, position) = catalog_free_operation_package("object_type");
+    let (mut base, evidence, position) = catalog_free_operation_package_config_with_document(
+        "object_type",
+        false,
+        false,
+        false,
+        |document| {
+            let mut cell = document["types"][4].clone();
+            rewrite_identity_prefix(
+                &mut cell,
+                &format!("ix://{MODEL_IDENTITY}/Account"),
+                &format!("ix://{MODEL_IDENTITY}/Cell"),
+            );
+            cell["displayName"] = json!("Cell");
+            cell["fields"] = json!([]);
+            cell["operations"] = json!([]);
+            cell.as_object_mut()
+                .expect("Cell object type")
+                .remove("identityFields");
+            document["types"]
+                .as_array_mut()
+                .expect("model types")
+                .push(cell);
+        },
+    );
     let step = &base["semantic_graph"]["nodes"][position]["body"]["steps"][0];
     let anchor = step["source_node"].clone();
     let receiver = base["semantic_graph"]["nodes"]
@@ -2609,6 +2702,29 @@ fn model_step_targets_keep_operation_stutter_and_any_through_public_writer() {
         })
         .expect("selected object type")["node_id"]
         .clone();
+    let target_type = base["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|node| node["node_id"] == anchor)
+        .expect("abstract operation anchor")["body"]["members"]
+        .as_array()
+        .expect("anchor members")
+        .iter()
+        .find(|member| member["name"] == "context")
+        .expect("anchor context")["value"]["target"]
+        .clone();
+    let local_root = base["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|node| {
+            node["semantic_form"] == "model_root" && node["owner"]["identity"] == MODEL_IDENTITY
+        })
+        .expect("selected local model root")["node_id"]
+        .clone();
+    base["semantic_graph"]["nodes"][position]["body"]["abstract"] = local_root;
+    settle_refinement(&mut base, position);
     for (name, target) in [
         ("stutter", json!({"kind":"stutter"})),
         ("any", json!({"kind":"any"})),
@@ -2616,6 +2732,7 @@ fn model_step_targets_keep_operation_stutter_and_any_through_public_writer() {
             "operation",
             json!({
                 "kind":"operation", "operation":anchor,
+            "target_type":target_type,
                 "receiver":{"term":"reference","target":receiver}, "arguments":[]
             }),
         ),
@@ -2626,6 +2743,7 @@ fn model_step_targets_keep_operation_stutter_and_any_through_public_writer() {
         if name == "operation" {
             let dependencies = node["dependencies"].as_array_mut().expect("dependencies");
             dependencies.push(receiver.clone());
+            dependencies.push(target_type.clone());
             dependencies.sort_by(node_id_order);
             dependencies.dedup();
         }
@@ -2670,15 +2788,62 @@ fn model_step_targets_keep_operation_stutter_and_any_through_public_writer() {
         assert_eq!(admitted.graph(), reread.graph());
     }
 
-    let mut missing_target = base;
+    let mut non_type = base.clone();
+    non_type["semantic_graph"]["nodes"][position]["body"]["steps"][0]["target"] = json!({
+        "kind":"operation", "operation":anchor, "target_type":anchor,
+        "receiver":{"term":"reference","target":receiver}, "arguments":[]
+    });
+    let node = &mut non_type["semantic_graph"]["nodes"][position];
+    let dependencies = node["dependencies"].as_array_mut().expect("dependencies");
+    dependencies.push(receiver.clone());
+    dependencies.sort_by(node_id_order);
+    dependencies.dedup();
+    settle_refinement(&mut non_type, position);
+    assert_step_refusal(
+        read(&non_type, &evidence),
+        CheckedPackageRefusalCode::InvalidModelBinding,
+        Some(CheckedPackageRefusalCause::MalformedDeclaration),
+        &format!("/semantic_graph/nodes/{position}/body/steps/0/target/target_type"),
+    );
+
+    let unrelated_type = base["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|node| {
+            node["semantic_form"] == "object_type"
+                && node["owner"]["node"] == format!("ix://{MODEL_IDENTITY}/Cell")
+        })
+        .expect("the unrelated Cell object type")["node_id"]
+        .clone();
+    let mut unrelated = base.clone();
+    unrelated["semantic_graph"]["nodes"][position]["body"]["steps"][0]["target"] = json!({
+        "kind":"operation", "operation":anchor, "target_type":unrelated_type,
+        "receiver":{"term":"reference","target":receiver}, "arguments":[]
+    });
+    let node = &mut unrelated["semantic_graph"]["nodes"][position];
+    let dependencies = node["dependencies"].as_array_mut().expect("dependencies");
+    dependencies.extend([receiver.clone(), unrelated_type]);
+    dependencies.sort_by(node_id_order);
+    dependencies.dedup();
+    settle_refinement(&mut unrelated, position);
+    assert_step_refusal(
+        read(&unrelated, &evidence),
+        CheckedPackageRefusalCode::InvalidModelBinding,
+        Some(CheckedPackageRefusalCause::MalformedDeclaration),
+        &format!("/semantic_graph/nodes/{position}/body/steps/0/target/target_type"),
+    );
+
+    let mut missing_target = base.clone();
     let unresolved = node_id("refinement/absent-abstract-operation");
     let node = &mut missing_target["semantic_graph"]["nodes"][position];
     node["body"]["steps"][0]["target"] = json!({
         "kind":"operation", "operation":unresolved,
+        "target_type":target_type,
         "receiver":{"term":"reference","target":receiver}, "arguments":[]
     });
     let dependencies = node["dependencies"].as_array_mut().expect("dependencies");
-    dependencies.extend([unresolved, receiver]);
+    dependencies.extend([unresolved, receiver.clone(), target_type.clone()]);
     dependencies.sort_by(node_id_order);
     dependencies.dedup();
     settle_refinement(&mut missing_target, position);
@@ -2687,6 +2852,42 @@ fn model_step_targets_keep_operation_stutter_and_any_through_public_writer() {
         CheckedPackageRefusalCode::MissingDeclaration,
         Some(CheckedPackageRefusalCause::MissingName),
         &format!("/semantic_graph/nodes/{position}/body/steps/0/target/operation"),
+    );
+
+    let mut missing_type = base.clone();
+    missing_type["semantic_graph"]["nodes"][position]["body"]["steps"][0]["target"] = json!({
+        "kind":"operation", "operation":anchor,
+        "receiver":{"term":"reference","target":receiver}, "arguments":[]
+    });
+    let node = &mut missing_type["semantic_graph"]["nodes"][position];
+    let dependencies = node["dependencies"].as_array_mut().expect("dependencies");
+    dependencies.push(receiver.clone());
+    dependencies.sort_by(node_id_order);
+    dependencies.dedup();
+    settle_refinement(&mut missing_type, position);
+    assert_step_refusal(
+        read(&missing_type, &evidence),
+        CheckedPackageRefusalCode::InvalidSemanticGraph,
+        None,
+        &format!("/semantic_graph/nodes/{position}/body/steps/0/target"),
+    );
+
+    let mut null_type = base;
+    null_type["semantic_graph"]["nodes"][position]["body"]["steps"][0]["target"] = json!({
+        "kind":"operation", "operation":anchor, "target_type":null,
+        "receiver":{"term":"reference","target":receiver}, "arguments":[]
+    });
+    let node = &mut null_type["semantic_graph"]["nodes"][position];
+    let dependencies = node["dependencies"].as_array_mut().expect("dependencies");
+    dependencies.push(receiver);
+    dependencies.sort_by(node_id_order);
+    dependencies.dedup();
+    settle_refinement(&mut null_type, position);
+    assert_step_refusal(
+        read(&null_type, &evidence),
+        CheckedPackageRefusalCode::InvalidSemanticGraph,
+        None,
+        &format!("/semantic_graph/nodes/{position}/body/steps/0/target/target_type"),
     );
 }
 
@@ -2736,6 +2937,7 @@ fn directly_selected_abstract_operation_target_uses_declaring_owner() {
     node["body"]["abstract"] = external(abstract_root);
     node["body"]["steps"][0]["target"] = json!({
         "kind":"operation", "operation":external(abstract_anchor.clone()),
+        "target_type":external(abstract_type.clone()),
         "receiver":{"term":"dependency_reference", "package":"test/abstract-operations",
             "node":abstract_type}, "arguments":[]
     });
@@ -2912,9 +3114,27 @@ fn declared_protocol_step_target_roundtrips_and_refuses_wrong_row_keys() {
         Some(CheckedPackageRefusalCause::MissingName),
         &format!("{at}/source_class"),
     );
+    let target_type = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|candidate| {
+            candidate["semantic_form"] == "object_type"
+                && candidate["owner"]["identity"] == MODEL_IDENTITY
+        })
+        .expect("selected abstract object type")["node_id"]
+        .clone();
     let mut wrong_operation = package.clone();
     wrong_operation["semantic_graph"]["nodes"][position]["body"]["steps"][0]["target"] = json!({"kind":"operation", "operation":finish,
+            "target_type":target_type,
             "receiver":{"term":"reference","target":finish}, "arguments":[]});
+    // The target type is one of the step's dependency edges.
+    let dependencies = wrong_operation["semantic_graph"]["nodes"][position]["dependencies"]
+        .as_array_mut()
+        .expect("dependencies");
+    dependencies.push(target_type);
+    dependencies.sort_by(node_id_order);
+    dependencies.dedup();
     settle_refinement(&mut wrong_operation, position);
     assert_step_refusal(
         read(&wrong_operation, &evidence),
@@ -3776,18 +3996,155 @@ fn history_initial_reference_package(
     (package, evidence, position)
 }
 
-#[trace("TC-062", "FR-061-AC-5")]
+#[trace("TC-310", "FR-375-AC-36")]
 #[test]
-fn history_initial_admits_an_option_value_reference_and_refuses_other_value_forms() {
-    let (package, evidence, _) =
-        history_initial_reference_package("option_value", json!({"term":"aggregate","members":[]}));
+fn history_initial_admits_matching_option_value_and_refuses_non_option_history() {
+    let (package, evidence, position) = option_history_initial_reference_package();
+    let CheckedPackageV2ReadResult::Admitted(admitted) = read(&package, &evidence) else {
+        panic!(
+            "an Option<T> history admits its matching option value: {:?}",
+            read(&package, &evidence)
+        );
+    };
+    let target = package["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|node| node["node_id"] == node_id("value/option/history-initial"))
+        .expect("option value node")["node_id"]
+        .clone();
+    let option_value: CheckedNodeId = serde_json::from_value(target).expect("option value ID");
+    let refinement_id: CheckedNodeId = serde_json::from_value(
+        package["semantic_graph"]["nodes"]
+            .as_array()
+            .expect("nodes")[position]["node_id"]
+            .clone(),
+    )
+    .expect("refinement ID");
+    let Some(CheckedTerm::Refinement { histories, .. }) = admitted.term(&refinement_id) else {
+        panic!("the admitted refinement term is retained");
+    };
+    let Some(CheckedTerm::Reference { target }) = histories.first().map(|history| &history.initial)
+    else {
+        panic!("the decoded history initial refers to its OptionValue node");
+    };
+    assert_eq!(target, &option_value);
+    let Some(CheckedTerm::Aggregate { members, .. }) = admitted.term(&option_value) else {
+        panic!("the admitted option value has a present payload");
+    };
+    assert!(matches!(
+        members.first(),
+        Some(CheckedTerm::Literal { value, .. }) if value.as_str() == Some("present")
+    ));
+
+    let (mut shared, shared_evidence, position) = option_history_initial_reference_package();
+    let mut second_history =
+        shared["semantic_graph"]["nodes"][position]["body"]["histories"][0].clone();
+    second_history["name"] = json!("past2");
+    second_history["updates"] = json!([]);
+    shared["semantic_graph"]["nodes"][position]["body"]["histories"]
+        .as_array_mut()
+        .expect("histories")
+        .push(second_history);
+    settle_refinement(&mut shared, position);
+    crate::support::checked_package::resolve_operands(&mut shared);
+    rebuild_source_map(&mut shared);
+    refresh_identity(&mut shared);
+    let CheckedPackageV2ReadResult::Admitted(shared_admitted) = read(&shared, &shared_evidence)
+    else {
+        panic!(
+            "two histories can share one option initial: {:?}",
+            read(&shared, &shared_evidence)
+        );
+    };
+    let decoded_body = serde_json::to_value(&shared_admitted.resolved_graph().nodes[position].body)
+        .expect("decoded refinement body");
+    let histories = decoded_body["histories"]
+        .as_array()
+        .expect("decoded histories");
+    assert_eq!(histories.len(), 2);
+    assert_eq!(histories[0]["initial"], histories[1]["initial"]);
+
+    let (mut none, none_evidence, position) = option_history_initial_reference_package();
+    let option_type =
+        none["semantic_graph"]["nodes"][position]["body"]["histories"][0]["type"].clone();
+    none["semantic_graph"]["nodes"][position]["body"]["histories"][0]["initial"] =
+        json!({"term":"literal","type":option_type,"value_kind":"none","value":null});
+    let option_value = node_id("value/option/history-initial");
+    none["semantic_graph"]["nodes"][position]["dependencies"]
+        .as_array_mut()
+        .expect("refinement dependencies")
+        .retain(|dependency| dependency != &option_value);
+    settle_refinement(&mut none, position);
+    crate::support::checked_package::resolve_operands(&mut none);
+    rebuild_source_map(&mut none);
+    refresh_identity(&mut none);
     assert!(
         matches!(
-            read(&package, &evidence),
+            read(&none, &none_evidence),
             CheckedPackageV2ReadResult::Admitted(_)
         ),
-        "an option-value history initial: {:?}",
-        read(&package, &evidence)
+        "a literal none remains admitted for an Option<T> history"
+    );
+
+    let (mut mismatched, mismatched_evidence, position) =
+        option_history_initial_reference_package();
+    let text_type = mismatched["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|node| node["node_tag"] == "scalar_type" && node["semantic_form"] == "text")
+        .expect("text type")
+        .clone();
+    let integer_type = node_id("scalar_type/integer/history-initial");
+    let mut integer_node = text_type;
+    integer_node["node_id"] = integer_type.clone();
+    integer_node["semantic_form"] = json!("integer");
+    integer_node["semantic_type"] = integer_type.clone();
+    mismatched["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .push(integer_node);
+    let wrong_option = node_id("composite_type/option/history-initial-wrong-inner");
+    let wrong_option_node = json!({
+        "node_id":wrong_option,
+        "schema_version":"filament.checked-semantic-graph/v2", "node_tag":"composite_type",
+        "semantic_form":"option", "semantic_type":wrong_option,
+        "dependencies":[integer_type], "occurrences":[{"role":"type","ordinal":0}],
+        "body":{"term":"aggregate","members":[{"term":"reference","target":integer_type}]}
+    });
+    mismatched["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .push(wrong_option_node);
+    let value = mismatched["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .iter_mut()
+        .find(|node| node["node_id"] == node_id("value/option/history-initial"))
+        .expect("option value node");
+    value["semantic_type"] = wrong_option;
+    value["dependencies"] = json!([integer_type]);
+    value["body"]["members"][0] =
+        json!({"term":"literal","type":integer_type,"value_kind":"integer","value":"1"});
+    settle_refinement(&mut mismatched, position);
+    crate::support::checked_package::resolve_operands(&mut mismatched);
+    rebuild_source_map(&mut mismatched);
+    refresh_identity(&mut mismatched);
+    assert_step_refusal(
+        read(&mismatched, &mismatched_evidence),
+        CheckedPackageRefusalCode::InvalidModelBinding,
+        Some(CheckedPackageRefusalCause::MalformedDeclaration),
+        &format!("/semantic_graph/nodes/{position}/body/histories/0/initial"),
+    );
+
+    let (package, evidence, position) =
+        history_initial_reference_package("option_value", json!({"term":"aggregate","members":[]}));
+    assert_step_refusal(
+        read(&package, &evidence),
+        CheckedPackageRefusalCode::InvalidModelBinding,
+        Some(CheckedPackageRefusalCause::MalformedDeclaration),
+        &format!("/semantic_graph/nodes/{position}/body/histories/0/initial"),
     );
 
     let (package, evidence, position) =
@@ -3796,8 +4153,50 @@ fn history_initial_admits_an_option_value_reference_and_refuses_other_value_form
         read(&package, &evidence),
         CheckedPackageRefusalCode::InvalidModelBinding,
         Some(CheckedPackageRefusalCause::MalformedDeclaration),
-        &format!("/semantic_graph/nodes/{position}/body/histories/0/initial/target"),
+        &format!("/semantic_graph/nodes/{position}/body/histories/0/initial"),
     );
+}
+
+fn option_history_initial_reference_package() -> (Value, CheckedPackageEvidence, usize) {
+    let (mut package, evidence, position, _, inner_type, _) = ac5_history_package();
+    let option_type = node_id("composite_type/option/history-initial");
+    let option_type_node = json!({
+        "node_id":option_type,
+        "schema_version":"filament.checked-semantic-graph/v2", "node_tag":"composite_type",
+        "semantic_form":"option", "semantic_type":option_type,
+        "dependencies":[inner_type], "occurrences":[{"role":"type","ordinal":0}],
+        "body":{"term":"aggregate","members":[{"term":"reference","target":inner_type}]}
+    });
+    let option_value_id = node_id("value/option/history-initial");
+    let option_value = json!({
+        "node_id":option_value_id,
+        "schema_version":"filament.checked-semantic-graph/v2", "node_tag":"value",
+        "semantic_form":"option_value", "semantic_type":option_type,
+        "dependencies":[inner_type], "occurrences":[{"role":"generated","ordinal":0}],
+        "body":{"term":"aggregate","members":[{"term":"literal","type":inner_type,
+            "value_kind":"text","value":"present"}]}
+    });
+    package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .extend([option_type_node, option_value]);
+    let history = &mut package["semantic_graph"]["nodes"][position];
+    history["body"]["histories"][0]["type"] = option_type.clone();
+    history["body"]["histories"][0]["initial"] =
+        json!({"term":"reference","target":option_value_id});
+    let dependencies = history["dependencies"]
+        .as_array_mut()
+        .expect("dependencies");
+    dependencies.extend([option_type, option_value_id]);
+    dependencies.retain(|dependency| dependency != &inner_type);
+    dependencies.sort_by(node_id_order);
+    dependencies.dedup();
+    rebuild_source_map(&mut package);
+    settle_refinement(&mut package, position);
+    crate::support::checked_package::resolve_operands(&mut package);
+    rebuild_source_map(&mut package);
+    refresh_identity(&mut package);
+    (package, evidence, position)
 }
 
 #[trace("TC-062", "FR-061-AC-5")]
@@ -3980,7 +4379,7 @@ fn refinement_rejects_each_unsorted_row_array_without_reordering() {
     }
 }
 
-#[trace("TC-062", "FR-061-AC-5")]
+#[trace("TC-310", "FR-375-AC-36")]
 #[test]
 fn history_initial_rejects_selected_dependency_literal_reference() {
     let mut dependency_wire = v2_all_families();
@@ -4010,10 +4409,10 @@ fn history_initial_rejects_selected_dependency_literal_reference() {
     package["semantic_graph"]["nodes"][position]["body"]["histories"][0]["initial"] = json!({"term":"dependency_reference","package":"test/history-literal",
             "node":literal});
     settle_refinement(&mut package, position);
-    ac5_refusal_preserved_by_writer(
-        &package,
-        &evidence,
+    assert_step_refusal(
+        read(&package, &evidence),
         CheckedPackageRefusalCode::InvalidSemanticGraph,
+        None,
         &format!("/semantic_graph/nodes/{position}/body/histories/0/initial"),
     );
 }

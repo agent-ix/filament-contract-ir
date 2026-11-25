@@ -15,6 +15,12 @@ relationships:
     type: references
   - target: ix://agent-ix/filament-specification/FR-322-AC-297
     type: references
+  - target: ix://agent-ix/filament-specification/FR-322-AC-524
+    type: references
+  - target: ix://agent-ix/filament-specification/FR-322-AC-525
+    type: references
+  - target: ix://agent-ix/filament-specification/FR-322-AC-526
+    type: references
   - target: ix://agent-ix/filament-specification/FR-272
     type: references
 ---
@@ -46,15 +52,17 @@ The producer-facing API remains the one typed encode function. `CheckedPackageV2
 
 `CheckedPackageSidecarsRef<'a>` SHALL gain
 `schedulability_claims: Option<&'a [CheckedSchedulabilityClaimRow]>` using
-[FR-038](./FR-038-consume-checked-package-v2.md)'s raw identity row. The
-complete encoder SHALL omit the top-level index for `None` and encode exactly
-the supplied rows for `Some`, retaining declaration identities, numeric
-occurrence ordinals and row order. This includes a supplied empty array;
-encoding it does not assert admission. The same optional field SHALL be
-retained by owned read, raw-term intake, lossless comparison and the borrowed
-canonical envelope. The encoder borrows the index without cloning it or the
-claim body; it neither sorts rows nor fills missing coverage. Public raw rows
-are producer inputs and cannot construct an authenticated claim view.
+[FR-038](./FR-038-consume-checked-package-v2.md)'s raw row with its exact
+declaration, occurrence, task-set, release-binding and mode-switch-binding
+fields. The complete encoder SHALL omit the top-level index for `None` and
+encode exactly the supplied rows for `Some`, retaining every exact identity,
+task-set identifier, binding field and supplied order. This includes a
+supplied empty array; encoding it does not assert admission. The same optional
+field SHALL be retained by owned read, raw-term intake, lossless comparison
+and the borrowed canonical envelope. The encoder borrows the index without
+cloning it or the claim body; it neither sorts rows or bindings nor fills
+missing coverage. Public raw rows are producer inputs and cannot construct an
+authenticated claim view.
 
 An admitted package's `schedulability_claim_rows` read supplies the borrowed
 rows for complete re-encoding. The exact-length and one-byte-short limits
@@ -75,6 +83,7 @@ builder, evaluator or certificate member.
 | FR-051-AC-5 | Given shared typed checked-term-data inputs built from FSpec FR-322's equality, protocol-location, dispatch, probabilistic-claim and body-location vectors (BL-01, BL-03), the public encoder emits all five arrays with canonical bytes matching the private envelope at the same limit. It preserves each array's producer order and a present dispatch row with an empty candidate set. At the complete sidecar envelope's exact byte limit it returns those bytes; one byte below it returns only the canonical limit error and no bytes. Writer success alone does not claim strict reader admission; FR-051-AC-6 and FR-038-AC-390 through FR-038-AC-395 require the nonempty probabilistic round trip. | Test |
 | FR-051-AC-6 | A default-feature external producer constructs two typed nonempty probabilistic-claim rows using FSpec `PC-01` and `PC-02` identities by reference, passes them through the borrowed public encoder, and the strict reader admits both with their exact distinct declaration `NodeRef` and claim occurrence. The bytes equal the same five-array private envelope's canonical bytes; no name/span inference, row dropping, sorting or pre-admission occurs on the writer path. `None` and `Some` with five empty arrays remain distinct through write/read round trips. | Test (TC-451, TC-233) |
 | FR-051-AC-7 | Implemented. An external producer encodes the complete SCC-01 and SCC-02 packages with `CheckedPackageSidecarsRef::schedulability_claims`; strict read and borrowed re-encode/read preserve the complete FR-482 body and every exact declaration-occurrence row, including both shared-node occurrences. The bytes equal the private envelope's canonical bytes at an exact measured byte limit; one byte less returns only the typed canonical limit error. `None` omits the index and `Some(empty)` encodes an empty array, with no writer normalization; malformed joins, missing coverage or reversed rows can be encoded but retain FR-038's refusal on read. No row or body clone or admission-proof constructor is introduced. | Test |
+| FR-051-AC-8 | Planned until QSL-3121's expanded row lands. An external producer encodes each exact `CheckedSchedulabilityClaimRow` field and both binding arrays; strict read and borrowed re-encode/read preserve every task-set identifier and binding field, its row key `(declaration, occurrence)`, and supplied array order. `None` omits the index and `Some(empty)` encodes an empty array. The encoder writes a malformed or descending row unchanged; only strict read refuses it under FR-038. | Test |
 
 ## Dependencies
 

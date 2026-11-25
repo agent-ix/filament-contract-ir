@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! Bounded, lazy reconstruction of admitted function-body locations.
 
-use super::body_locations::{body_binding, is_term};
+use super::body_locations::{body_binding, is_term, is_walk_node};
 use super::checked_term_data::{
     CheckedBodyLocationOrigin, CheckedBodySemanticLocation, CheckedKeyOrdinal,
 };
-use super::{CheckedNodeId, CheckedNodeKind, CheckedPackageV2, CheckedTerm, ValueForm};
+use super::{CheckedNodeId, CheckedNodeKind, CheckedPackageV2, CheckedTerm};
 
 /// Why a function's reconstructed body locations could not be read.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
@@ -115,6 +115,9 @@ impl CheckedPackageV2 {
             .node_index
             .node(&self.wire.semantic_graph.nodes, start)
             .ok_or(CheckedBodyLocationReadError::MissingFunction)?;
+        if !self.kinds.get(start).copied().is_some_and(is_walk_node) {
+            return Ok(cursor);
+        }
         cursor.charge_count(self.wire.semantic_graph.nodes.len())?;
         cursor.visits = vec![0; self.wire.semantic_graph.nodes.len()];
         cursor.charge_count(rows.len())?;
@@ -283,13 +286,13 @@ impl<'a> CheckedBodyLocations<'a> {
                                 .node_index
                                 .node(&self.package.wire.semantic_graph.nodes, target)
                             {
-                                if matches!(
-                                    self.package.kinds.get(position),
-                                    Some(CheckedNodeKind::Expression(_))
-                                        | Some(CheckedNodeKind::Value(
-                                            ValueForm::RecordValue | ValueForm::TupleValue
-                                        ))
-                                ) {
+                                if self
+                                    .package
+                                    .kinds
+                                    .get(position)
+                                    .copied()
+                                    .is_some_and(is_walk_node)
+                                {
                                     self.push(Task::Node(position))?;
                                 }
                             }

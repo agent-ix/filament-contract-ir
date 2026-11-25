@@ -9148,7 +9148,7 @@ fn a_model_union_in_a_record_field_an_object_field_and_a_tuple_position_projects
         .iter()
         .find(|tuple| tuple.original_identity() == orders("Pair"))
         .expect("the selected tuple");
-    assert_eq!(pair.positions(), [handle.clone()]);
+    assert_eq!(pair.positions(), std::slice::from_ref(&handle));
     // Without the union row none of the three can be projected.
     let missing = package
         .project_selected_type_declarations(

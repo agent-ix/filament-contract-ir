@@ -4605,6 +4605,22 @@ fn bounded_map_type(projected: &MapType, bound: CardinalityBound) -> MapType {
     .expect("a projected map key is a leaf")
 }
 
+/// The Exact rational domain a bounded rational member type names, when its
+/// numerator and denominator intervals are valid.
+fn rational_domain(bounds: &super::model_members::RationalBounds) -> Option<RationalDomain> {
+    let numerator = IntegerInterval::new(
+        Integer::from(bounds.numerator_min),
+        Integer::from(bounds.numerator_max),
+    )
+    .ok()?;
+    let denominator = IntegerInterval::new(
+        Integer::from(bounds.denominator_min),
+        Integer::from(bounds.denominator_max),
+    )
+    .ok()?;
+    RationalDomain::new(numerator, denominator).ok()
+}
+
 #[cfg(test)]
 mod model_enum_tests;
 
@@ -5065,20 +5081,4 @@ mod tests {
             )
         );
     }
-}
-
-/// The Exact rational domain a bounded rational member type names, when its
-/// numerator and denominator intervals are valid.
-fn rational_domain(bounds: &super::model_members::RationalBounds) -> Option<RationalDomain> {
-    let numerator = IntegerInterval::new(
-        Integer::from(bounds.numerator_min),
-        Integer::from(bounds.numerator_max),
-    )
-    .ok()?;
-    let denominator = IntegerInterval::new(
-        Integer::from(bounds.denominator_min),
-        Integer::from(bounds.denominator_max),
-    )
-    .ok()?;
-    RationalDomain::new(numerator, denominator).ok()
 }

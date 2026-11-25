@@ -123,6 +123,7 @@ extern crate self as filament_contract_model;
 
 mod binding;
 mod canonical;
+mod certificate_identity;
 mod certificate_member;
 mod checked_package;
 mod code;
@@ -144,7 +145,11 @@ pub use canonical::{
     CanonicalBody, CanonicalBytes, CanonicalKind, CanonicalOutput, CanonicalProfile,
     CANONICAL_PROFILE,
 };
+pub use certificate_identity::{
+    CertificateNodeId, CertificateNodeIdError, CertificatePathSegment, MAX_CERTIFICATE_NODE_ORDINAL,
+};
 pub use certificate_member::CertificateMember;
+pub use checked_package::read_checked_package_structural;
 pub use checked_package::CheckedCallableRead;
 pub use checked_package::{
     encode_checked_package_v2, initialize_operation_catalog, is_slot_parameter_name,
@@ -190,26 +195,27 @@ pub use checked_package::{
     CheckedOriginalDeclarationId, CheckedPackageBudgetIncomplete,
     CheckedPackageBudgetedDispatchResult, CheckedPackageDispatchResult, CheckedPackageEvidence,
     CheckedPackageEvidenceInsertionError, CheckedPackageHostAllocationFailed,
-    CheckedPackageIncomplete, CheckedPackageLimit,
-    CheckedPackageLockV2, CheckedPackageNodeRef, CheckedPackagePendingOutcome,
-    CheckedPackageReadExhausted, CheckedPackageReadLimits, CheckedPackageRefusal,
-    CheckedPackageRefusalCause, CheckedPackageRefusalCode, CheckedPackageRefusalLocation,
-    CheckedPackageSidecarsRef, CheckedPackageSourceCorrespondenceRef, CheckedPackageV2,
-    CheckedPackageV2BudgetedReadResult, CheckedPackageV2ReadResult, CheckedParameterDeclaration,
-    CheckedParameterDeclarationError, CheckedProbabilisticClaim, CheckedProbabilisticClaimNode,
-    CheckedProtocolActivation, CheckedProtocolActivationRow, CheckedProtocolBoundary,
-    CheckedProtocolDecisionRead, CheckedProtocolLocation, CheckedProtocolLocationOrigin,
-    CheckedProtocolLocationReadError, CheckedProtocolRefusalDetail,
-    CheckedProtocolSemanticLocation, CheckedRandomParameter, CheckedRational,
-    CheckedReachesPopulationError, CheckedRefinementInternal, CheckedRefinementStepRowRegion,
-    CheckedRelationshipEnd, CheckedRelationshipEndError, CheckedResolvedEqualityUnit,
-    CheckedResolvedEqualityUnitForm, CheckedReward, CheckedScalarOperand,
-    CheckedScalarOperandChild, CheckedScalarOperandError, CheckedScalarOperandRange,
-    CheckedSchedulabilityClaimRef, CheckedSchedulabilityClaimRow, CheckedSchedulabilityKind,
-    CheckedSchedulabilityTaskRef, CheckedSchedulingPolicy, CheckedSelectedModelPopulations,
-    CheckedSelectedOperationWitness, CheckedSelection, CheckedSelectionRole,
-    CheckedSemanticGraphV2, CheckedSemanticNodeV2, CheckedSourceMapEntry, CheckedSourceRef,
-    CheckedSourceRegion, CheckedStepExecution, CheckedStepRelationBody,
+    CheckedPackageIncomplete, CheckedPackageLimit, CheckedPackageLockV2, CheckedPackageNodeRef,
+    CheckedPackagePendingOutcome, CheckedPackageReadExhausted, CheckedPackageReadLimits,
+    CheckedPackageRefusal, CheckedPackageRefusalCause, CheckedPackageRefusalCode,
+    CheckedPackageRefusalLocation, CheckedPackageSidecarsRef,
+    CheckedPackageSourceCorrespondenceRef, CheckedPackageV2, CheckedPackageV2BudgetedReadResult,
+    CheckedPackageV2ReadResult, CheckedParameterDeclaration, CheckedParameterDeclarationError,
+    CheckedProbabilisticClaim, CheckedProbabilisticClaimNode, CheckedProtocolActivation,
+    CheckedProtocolActivationRow, CheckedProtocolBoundary, CheckedProtocolDecisionRead,
+    CheckedProtocolLocation, CheckedProtocolLocationOrigin, CheckedProtocolLocationReadError,
+    CheckedProtocolRefusalDetail, CheckedProtocolSemanticLocation, CheckedRandomParameter,
+    CheckedRational, CheckedReachesPopulationError, CheckedRefinementInternal,
+    CheckedRefinementStepRowRegion, CheckedRelationshipEnd, CheckedRelationshipEndError,
+    CheckedResolvedEqualityUnit, CheckedResolvedEqualityUnitForm, CheckedReward,
+    CheckedScalarOperand, CheckedScalarOperandChild, CheckedScalarOperandError,
+    CheckedScalarOperandRange, CheckedSchedulabilityClaimRef, CheckedSchedulabilityClaimRow,
+    CheckedSchedulabilityKind, CheckedSchedulabilityModeSwitchBinding,
+    CheckedSchedulabilityModeSwitchBindingRef, CheckedSchedulabilityReleaseBinding,
+    CheckedSchedulabilityReleaseBindingRef, CheckedSchedulabilityTaskRef, CheckedSchedulingPolicy,
+    CheckedSelectedModelPopulations, CheckedSelectedOperationWitness, CheckedSelection,
+    CheckedSelectionRole, CheckedSemanticGraphV2, CheckedSemanticNodeV2, CheckedSourceMapEntry,
+    CheckedSourceRef, CheckedSourceRegion, CheckedStepExecution, CheckedStepRelationBody,
     CheckedStepRelationCapability, CheckedStepRelationObligationIdentity, CheckedSupportValue,
     CheckedTaskArrival, CheckedTaskCriticality, CheckedTermDataV2,
     CheckedTypeArgumentRefusalDetail, CheckedUnitConversionEdge, CheckedUnitDimensionTerm,
