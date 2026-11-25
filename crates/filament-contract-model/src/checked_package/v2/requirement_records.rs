@@ -2343,86 +2343,42 @@ fn walk_owner_expression<'a>(
                             }
                             continue;
                         };
-                        match guard_literal_value(&arguments[0], nodes, terms, index) {
-                            Some(true) => {
-                                let then_frame = derived_frame_id(
-                                    terminal,
-                                    &guard,
-                                    occurrence,
-                                    true,
-                                    index,
-                                    frame_index,
-                                    record_position,
-                                    frame_seen,
-                                    frame_order,
-                                    meter,
-                                )?;
-                                push_owner_task(
-                                    pending,
-                                    OwnerWalkTask::Term(&arguments[1], then_frame),
-                                    meter,
-                                    walk_site,
-                                )?;
-                            }
-                            Some(false) => {
-                                let else_frame = derived_frame_id(
-                                    terminal,
-                                    &guard,
-                                    occurrence,
-                                    false,
-                                    index,
-                                    frame_index,
-                                    record_position,
-                                    frame_seen,
-                                    frame_order,
-                                    meter,
-                                )?;
-                                push_owner_task(
-                                    pending,
-                                    OwnerWalkTask::Term(&arguments[2], else_frame),
-                                    meter,
-                                    walk_site,
-                                )?;
-                            }
-                            None => {
-                                let then_frame = derived_frame_id(
-                                    terminal,
-                                    &guard,
-                                    occurrence,
-                                    true,
-                                    index,
-                                    frame_index,
-                                    record_position,
-                                    frame_seen,
-                                    frame_order,
-                                    meter,
-                                )?;
-                                let else_frame = derived_frame_id(
-                                    terminal,
-                                    &guard,
-                                    occurrence,
-                                    false,
-                                    index,
-                                    frame_index,
-                                    record_position,
-                                    frame_seen,
-                                    frame_order,
-                                    meter,
-                                )?;
-                                push_owner_task(
-                                    pending,
-                                    OwnerWalkTask::Term(&arguments[2], else_frame),
-                                    meter,
-                                    walk_site,
-                                )?;
-                                push_owner_task(
-                                    pending,
-                                    OwnerWalkTask::Term(&arguments[1], then_frame),
-                                    meter,
-                                    walk_site,
-                                )?;
-                            }
-                        }
+                        let then_frame = derived_frame_id(
+                            terminal,
+                            &guard,
+                            occurrence,
+                            true,
+                            index,
+                            frame_index,
+                            record_position,
+                            frame_seen,
+                            frame_order,
+                            meter,
+                        )?;
+                        let else_frame = derived_frame_id(
+                            terminal,
+                            &guard,
+                            occurrence,
+                            false,
+                            index,
+                            frame_index,
+                            record_position,
+                            frame_seen,
+                            frame_order,
+                            meter,
+                        )?;
+                        push_owner_task(
+                            pending,
+                            OwnerWalkTask::Term(&arguments[2], else_frame),
+                            meter,
+                            walk_site,
+                        )?;
+                        push_owner_task(
+                            pending,
+                            OwnerWalkTask::Term(&arguments[1], then_frame),
+                            meter,
+                            walk_site,
+                        )?;
                         push_owner_task(
                             pending,
                             OwnerWalkTask::Term(&arguments[0], terminal),
@@ -2454,16 +2410,7 @@ fn walk_owner_expression<'a>(
                                 .ordinal;
                             Some((guard, occurrence))
                         });
-                        let literal = guard_literal_value(&arguments[0], nodes, terms, index);
-                        let right_is_short_circuited = match identity {
-                            Some("filament.op.boolean.and") => literal == Some(false),
-                            Some("filament.op.boolean.or") => literal == Some(true),
-                            Some("filament.op.boolean.implies") => literal == Some(false),
-                            _ => false,
-                        };
-                        let right_terminal = if right_is_short_circuited {
-                            terminal
-                        } else if let Some((guard, occurrence)) = right_frame {
+                        let right_terminal = if let Some((guard, occurrence)) = right_frame {
                             derived_frame_id(
                                 terminal,
                                 &guard,
@@ -2479,14 +2426,12 @@ fn walk_owner_expression<'a>(
                         } else {
                             terminal
                         };
-                        if !right_is_short_circuited {
-                            push_owner_task(
-                                pending,
-                                OwnerWalkTask::Term(&arguments[1], right_terminal),
-                                meter,
-                                walk_site,
-                            )?;
-                        }
+                        push_owner_task(
+                            pending,
+                            OwnerWalkTask::Term(&arguments[1], right_terminal),
+                            meter,
+                            walk_site,
+                        )?;
                         push_owner_task(
                             pending,
                             OwnerWalkTask::Term(&arguments[0], terminal),
@@ -2552,27 +2497,6 @@ fn push_owner_task<'a>(
     }
     pending.push(task);
     Ok(())
-}
-
-fn guard_literal_value(
-    term: &CheckedTerm,
-    nodes: &[RawSemanticNodeV2],
-    terms: &[CheckedTerm],
-    index: &GraphIndex<'_>,
-) -> Option<bool> {
-    let target = reference(term)?;
-    let position = *index.get(&target)?;
-    if !matches!(nodes.get(position)?.node_tag.as_ref(), "value") {
-        return None;
-    }
-    match terms.get(position)? {
-        CheckedTerm::Literal {
-            value_kind: LiteralKind::Boolean,
-            value,
-            ..
-        } => value.as_bool(),
-        _ => None,
-    }
 }
 
 fn derived_frame_id(
