@@ -23,6 +23,7 @@ use super::{
 use crate::checked_package::shared::{CheckedArtifactRef, CheckedNodeId, CheckedNodePathSegment};
 use crate::identity::ExecutionPoint;
 use filament_exact::Integer;
+use ix_trace_rs::implements;
 use quire_canonical::{Encode, Error, FixedShape, Sink, Writer};
 #[cfg(test)]
 use serde::de::DeserializeOwned;
@@ -3509,6 +3510,7 @@ impl CheckedTerm {
 }
 
 impl Encode for CheckedTerm {
+    #[implements("FR-051-AC-4")]
     fn encode_into<S: Sink + ?Sized>(&self, writer: &mut Writer<'_, S>) -> Result<(), Error> {
         enum Action<'a> {
             Term(&'a CheckedTerm),
