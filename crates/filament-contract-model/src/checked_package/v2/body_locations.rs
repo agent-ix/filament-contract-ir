@@ -481,7 +481,7 @@ mod tests {
     }
 
     #[test]
-    #[trace("TC-491", "FR-038-AC-581", "FR-322-AC-510")]
+    #[trace("TC-491", "FR-038-AC-581", "FR-322-AC-490")]
     fn body_walk_keeps_function_targets_terminal_and_is_per_function() {
         // Caller precedes its guarded callee in graph order. The callee body
         // points back to itself, but a function reference is a terminal leaf.
@@ -538,7 +538,7 @@ mod tests {
     }
 
     #[test]
-    #[trace("TC-491", "FR-038-AC-581", "FR-322-AC-510")]
+    #[trace("TC-491", "FR-038-AC-581", "FR-322-AC-490")]
     fn body_walk_does_not_descend_through_terminal_root_targets() {
         for (terminal, tag, form) in [
             ("callee", "function", "pure_function"),
