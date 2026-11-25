@@ -13,6 +13,14 @@ relationships:
     type: verifies
   - target: ix://agent-ix/filament-contract-ir/FR-038-AC-639
     type: verifies
+  - target: ix://agent-ix/filament-contract-ir/FR-038-AC-640
+    type: verifies
+  - target: ix://agent-ix/filament-contract-ir/FR-038-AC-641
+    type: verifies
+  - target: ix://agent-ix/filament-contract-ir/FR-038-AC-642
+    type: verifies
+  - target: ix://agent-ix/filament-contract-ir/FR-038-AC-643
+    type: verifies
   - target: ix://agent-ix/filament-specification/FR-322-AC-551
     type: verifies
   - target: ix://agent-ix/filament-specification/FR-322-AC-552
@@ -166,6 +174,7 @@ FR-038-AC-31 through FR-038-AC-33 (FSpec FR-322-AC-35) against the
 FR-038-AC-293 against recursively derived dependency closures with conflicting complete packages under one name, and
 FR-038-AC-637 against closures that hold the reading package's own name,
 FR-038-AC-639 against the published closure vector, and
+FR-038-AC-640 through FR-038-AC-643 against event field projections, and
 FR-038-AC-35 through FR-038-AC-38 (FSpec FR-322-AC-36 and FR-322-AC-37)
 against a self-built dependency package and a package that calls it, and
 FR-038-AC-45 (FSpec FR-322-AC-28) against a model-owned nominal declaration and
@@ -2406,6 +2415,38 @@ For FR-038-AC-639, run the `own-name-before-diamond` entry of the
 selected checkout: build its packages as the FSpec vectors README states, admit
 every entry before `read`, then require the `read` entry's `outcome` at exactly
 its `loci`. A missing or empty `closure_vectors` fails the test.
+
+## Event field projection (FR-038-AC-640 through FR-038-AC-643)
+
+Select a self-built domain package declaring an event type `Base` with `source`,
+and an event type `Tick` that specializes it and declares `amount`, `armed` and
+the optional `note`, and build a `value`/`parameter` node `e` typed by the
+`Tick` node. Read one `filament.op.record.project` over `e` per field, each with
+the `Tick` node as `declaration` and the field's type node as `result_type`, and
+require admission; then require a temporal clause over `e` that compares the
+`amount` projection with a literal to admit (FR-038-AC-640).
+
+From that admitting package change one thing per read and require the code,
+cause and pointer of FR-038-AC-641: the field name, the `result_type`, an added
+`read_form`, the `declaration` and the operand. Include the supertype, a second
+event type and a model record value type as the wrong declarations, and an event
+field typed by a record value type that holds an event through a domain package
+sequence beside a sibling field that holds none. Then name the `Tick` node as
+`declaration` in a projection over a model record parameter, and in the
+`operation` member of a `filament.op.model.dispatch_call` over a `Reference`
+receiver of an object type, and require `missing_declaration`/`missing-selection`
+at each member's `declaration`.
+
+For FR-038-AC-642, place a reference to a projection node in each of the five
+positions it names and require admission, then replace that reference with one
+to `e` and require the refusal of FR-038-AC-633. Run the `forall` over a set of
+`Tick` as its own read and require the refusal at the set operand.
+
+For FR-038-AC-643, edit only the domain package document: give an event field a
+`typeRef` naming an event type, give an event type a record value type as
+supertype, and give it a supertype that names no node. Require each refusal at
+the `model_root` node's `owner`, with and without a projection of that event
+type in the graph, and require the unedited document to admit.
 
 ## Structural type forwarding work (FR-038-AC-224)
 
