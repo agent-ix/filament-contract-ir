@@ -17,7 +17,6 @@ use crate::checked_package::shared::{
     CheckedNodeId, CheckedOccurrence, CheckedPackageRefusalCause, CheckedPackageRefusalCode,
     CheckedSourceMapEntry,
 };
-use std::collections::BTreeSet;
 
 /// Sorted borrowed node identities, shared with the body walk.
 pub(super) type NodeIndex<'a> = Vec<(&'a CheckedNodeId, usize)>;
@@ -238,8 +237,7 @@ pub(super) fn validate_rows<'a, Body, Row: LocationRow>(
         &'a CheckedOccurrence,
         u64,
     );
-    stage_storage::reserve_items::<SeenKey<'_>>(meter, &site, rows.len())?;
-    let mut seen_keys = BTreeSet::<SeenKey<'_>>::new();
+    let mut seen_keys = stage_storage::vec::<SeenKey<'_>>(meter, &site, rows.len())?;
     let mut missing_predecessor = false;
     for (index, row) in rows.iter().enumerate() {
         let here = at(array, index);
@@ -247,12 +245,21 @@ pub(super) fn validate_rows<'a, Body, Row: LocationRow>(
         intake_local_application(row.application(), name, array, index, meter)?;
         let term_ordinal = intake_term_ordinal(row.term_ordinal(), array, index, meter)?;
         work(meter, index, here, 1)?;
-        if !seen_keys.insert((
+        let key = (
             row.function(),
             row.application(),
             row.occurrence(),
             term_ordinal,
-        )) {
+        );
+        let mut duplicate = false;
+        for seen in &seen_keys {
+            work(meter, index, here, 1)?;
+            if *seen == key {
+                duplicate = true;
+                break;
+            }
+        }
+        if duplicate {
             return Err(fail(
                 meter,
                 index,
@@ -261,6 +268,7 @@ pub(super) fn validate_rows<'a, Body, Row: LocationRow>(
                 here,
             ));
         }
+        seen_keys.push(key);
         if let Some(before) = previous {
             let key = (row.application(), row.occurrence(), term_ordinal);
             let prior = (
