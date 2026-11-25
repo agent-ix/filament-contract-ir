@@ -3267,7 +3267,7 @@ A `value`/`parameter` node carries no `declaration`. Its `semantic_type` is
 its binder's type: a `scalar_type`, `composite_type` or `bounded_domain`
 node other than itself, a `model`/`record_value_type` declaration node
 ([FR-347](./FR-347-admit-conforming-records-as-operation-call-arguments.md))
-or a `model`/`event_type` declaration node. Its body is exactly `aggregate{[binding "name" = a
+or a `model`/`event_type` declaration node that carries a `ModelOwner`. Its body is exactly `aggregate{[binding "name" = a
 `text` literal typed at a `scalar_type`/`text` node whose value is an
 identifier, binding "level" = an `integer` literal typed at a
 `scalar_type`/`integer` node whose value is a canonical non-negative decimal

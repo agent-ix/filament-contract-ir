@@ -6741,3 +6741,55 @@ fn shared_hyper_wrapper_checks_every_source_and_clock_in_both_orders() {
         }
     }
 }
+
+/// The fixture's temporal clause, its `over` parameter typed at an event type
+/// of the selected domain package: the clause reads the parameter as its
+/// `over` operand and applies no operation to its value.
+#[trace("TC-048", "FR-038-AC-632")]
+#[test]
+fn tc_048_a_temporal_clause_admits_an_event_typed_over_parameter() {
+    const TICK_NODE: &str = "ix://acme/orders/Tick";
+    let tick = json!({"package": ORDERS, "path": ["model", "event_type", TICK_NODE], "ordinal": 0});
+    let mut package = v2_all_families();
+    select_model(&mut package, ORDERS);
+    let mut declared = node_with_key(
+        TICK_NODE,
+        "model",
+        "event_type",
+        json!({"term": "aggregate", "members": []}),
+    );
+    declared["node_id"] = tick.clone();
+    declared["semantic_type"] = tick.clone();
+    declared["occurrences"] = json!([{"role": "type", "ordinal": 0}]);
+    push(
+        &mut package,
+        owned_structural_node(declared, model_owner(ORDERS, TICK_NODE)),
+    );
+    let over = node_id(&family_key("a4a4"));
+    let parameter = find(&package, |node| node["node_id"] == over);
+    package["semantic_graph"]["nodes"][parameter]["semantic_type"] = tick;
+    settle(&mut package);
+
+    let mut document = orders_document();
+    document["constructs"]
+        .as_array_mut()
+        .expect("constructs")
+        .push(json!({
+            "kind": {"module": ORDERS, "name": "event"},
+            "construct": {"meaning": "filament.meaning.model.event-type/v1"},
+        }));
+    let mut event = domain_type(TICK_NODE, &[], json!([]));
+    event["kind"]["name"] = json!("event");
+    event["fields"] = json!([{
+        "identity": format!("{TICK_NODE}/at"), "name": "at",
+        "typeRef": "ix://filament/native/Timestamp", "presence": "required",
+        "nullable": false, "defaultKind": "none",
+        "multiplicity": {"lower": 1, "upper": 1, "ordered": false, "unique": true},
+    }]);
+    event["occurrenceField"] = json!(format!("{TICK_NODE}/at"));
+    document["types"].as_array_mut().expect("types").push(event);
+    match read_with_model(&package, &document, CheckedPackageReadLimits::bounded()) {
+        CheckedPackageV2ReadResult::Admitted(_) => {}
+        other => panic!("a clause over an event-typed parameter must admit: {other:?}"),
+    }
+}

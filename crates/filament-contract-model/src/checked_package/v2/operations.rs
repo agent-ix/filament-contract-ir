@@ -2530,6 +2530,9 @@ fn operation_defect(
             CheckedPackageRefusalCause::OperatorIneligible,
         )));
     }
+    if let Some(failure) = check_event_parameter_operands(application, entry, graph) {
+        return Ok(Some(failure));
+    }
     let place_presence = check_place_presence(application, &operation, graph, owners, meter)?;
     let place_reference =
         check_place_reference(application, &operation, graph, owners, catalog, meter)?;
@@ -3385,6 +3388,54 @@ fn check_carried_member(
             CheckedPackageRefusalCause::OperatorIneligible,
         )
     })
+}
+
+/// FR-038: no operation over a parameter typed by an event type is admitted.
+/// An event type has no operand family, so the operand checks would skip such
+/// an operand. A temporal clause's first operand names its `over` parameter
+/// and reads no value.
+fn check_event_parameter_operands(
+    application: Application<'_>,
+    entry: &OperationCatalogEntry,
+    graph: &Graph<'_>,
+) -> Option<ValidationFailure> {
+    let CheckedTerm::Application { arguments, .. } =
+        graph.terms.get(application.position)?.as_ref()?
+    else {
+        return None;
+    };
+    let kind_of = |id: &CheckedNodeId| {
+        let position = *graph.index.get(id)?;
+        Some((
+            graph.nodes.get(position)?,
+            graph.kinds.get(position).copied()?,
+        ))
+    };
+    let reads_over = entry.operator == ApplicationOperator::Temporal
+        && entry
+            .operands
+            .first()
+            .is_some_and(|operand| operand.class == FamilyClass::Reference);
+    let position = arguments
+        .iter()
+        .enumerate()
+        .skip(usize::from(reads_over))
+        .find_map(|(position, argument)| {
+            let CheckedTerm::Reference { target } = argument else {
+                return None;
+            };
+            let (parameter, kind) = kind_of(target)?;
+            if kind != CheckedNodeKind::Value(ValueForm::Parameter) {
+                return None;
+            }
+            let (_, type_kind) = kind_of(&parameter.semantic_type)?;
+            (type_kind == CheckedNodeKind::Model(ModelForm::EventType)).then_some(position)
+        })?;
+    Some(application.refuse(
+        CheckedPackageRefusalCode::IllTyped,
+        application.body(&["arguments"]).index(position),
+        CheckedPackageRefusalCause::OperatorIneligible,
+    ))
 }
 
 #[ix_trace_rs::string_edge]

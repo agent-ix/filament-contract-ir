@@ -10190,3 +10190,239 @@ fn a_plain_clock_position_or_field_refuses_beside_a_clock_reference() {
     assert_eq!(error.at.as_deref(), Some(&record_node));
     assert_eq!(error.form.as_deref(), Some("model/record_value_type"));
 }
+
+/// One application over the nodes before it: its expression form, operation
+/// identity, field member (a declaration key and a field name), result type
+/// and operands, each a position among the parameters and then the earlier
+/// applications.
+struct Applied {
+    operator: &'static str,
+    identity: &'static str,
+    member: Option<(String, &'static str)>,
+    result: Ty,
+    operands: Vec<usize>,
+}
+
+/// A package selecting `OrderPlaced` (an event type), `Money` (a record value
+/// type) and `Order` (an object type), with their declaration nodes, one
+/// `value`/`parameter` node per `(name, type)` of `parameters` and one
+/// `expression` node per application; returns the package and its evidence.
+fn event_package(
+    parameters: &[(&str, Ty)],
+    applications: &[Applied],
+) -> (Value, CheckedPackageEvidence) {
+    let mut event = typed_object(
+        "OrderPlaced",
+        "event",
+        &[],
+        &[field("occurred_at", "ix://filament/native/Timestamp")],
+    );
+    event["occurrenceField"] = json!(format!("{}/occurred_at", orders("OrderPlaced")));
+    let mut selected = document(vec![
+        event,
+        typed_object("Money", "record", &[], &[]),
+        object("Order", &[], &[]),
+    ]);
+    selected["constructs"]
+        .as_array_mut()
+        .expect("construct catalog")
+        .push(json!({
+            "kind": {"module": IDENTITY, "name": "record"},
+            "construct": {"meaning": "filament.meaning.model.record-value-type/v1"},
+        }));
+
+    let mut nodes = BTreeMap::new();
+    let integer = type_nodes(&Ty::Integer, &mut nodes);
+    let text = "scalar_type/text".to_owned();
+    nodes.insert(
+        text.clone(),
+        wire_node(&text, "scalar_type", "text", &text, &[], empty()),
+    );
+    let mut keys = Vec::new();
+    for (name, ty) in parameters {
+        let ty = type_nodes(ty, &mut nodes);
+        let body = json!({"term": "aggregate", "members": [
+            {"term": "binding", "name": "name", "value":
+                {"term": "literal", "type": node_id(&text), "value_kind": "text", "value": name}},
+            {"term": "binding", "name": "level", "value":
+                {"term": "literal", "type": node_id(&integer), "value_kind": "integer", "value": "0"}},
+        ]});
+        let key = format!("value/parameter/{name}");
+        let mut node = wire_node(&key, "value", "parameter", &ty, &[], body);
+        node["occurrences"] = json!([{"role": "expression", "ordinal": 0}]);
+        nodes.insert(key.clone(), node);
+        keys.push(key);
+    }
+    let mut applied = Vec::new();
+    for (index, application) in applications.iter().enumerate() {
+        let result = type_nodes(&application.result, &mut nodes);
+        let arguments = application
+            .operands
+            .iter()
+            .map(|at| reference(&keys[*at]))
+            .collect::<Vec<_>>();
+        let member = application.member.as_ref().map(|(declaration, name)| {
+            json!({"kind": "field", "declaration": node_id(declaration), "name": name})
+        });
+        let body = json!({"term": "application", "operator": application.operator,
+            "operation": {"identity": application.identity, "laws": [], "mode": null,
+                "member": member, "leaves": []},
+            "result_type": node_id(&result), "arguments": arguments});
+        let key = format!("expression/{}/{index}", application.operator);
+        let mut node = wire_node(&key, "expression", application.operator, &result, &[], body);
+        node["occurrences"] = json!([{"role": "expression", "ordinal": 0}]);
+        keys.push(key);
+        applied.push(node);
+    }
+    let mut declarations = Vec::new();
+    for (short, form) in [
+        ("OrderPlaced", "event_type"),
+        ("Money", "record_value_type"),
+        ("Order", OBJECT),
+    ] {
+        let key = declaration_key(short, form);
+        let mut node = wire_node(&key, "model", form, &key, &[], empty());
+        node["owner"] = json!({"kind": "model", "identity": IDENTITY, "node": orders(short)});
+        declarations.push(node);
+    }
+
+    let mut package = nominal_package(&[]);
+    let graph = package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("nodes");
+    graph.extend(nodes.into_values());
+    graph.extend(declarations);
+    graph.extend(applied);
+    select_model(&mut package, IDENTITY);
+    settle(&mut package);
+    let evidence = evidence_with_document(&package, IDENTITY, &selected);
+    (package, evidence)
+}
+
+fn event_type() -> Ty {
+    Ty::Record(declaration_key("OrderPlaced", "event_type"))
+}
+
+#[trace("TC-048", "FR-038-AC-632")]
+#[test]
+fn tc_048_an_event_typed_parameter_is_admitted_only_over_a_selected_event() {
+    let (base, evidence) = event_package(&[("placed", event_type())], &[]);
+    match read_with(&base, &evidence, CheckedPackageReadLimits::bounded()) {
+        CheckedPackageV2ReadResult::Admitted(_) => {}
+        other => panic!("an event-typed parameter must admit: {other:?}"),
+    }
+    let position = base["semantic_graph"]["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .position(|node| node["semantic_form"] == "event_type")
+        .expect("event node");
+
+    for wrong in ["Money", "Order", "Absent"] {
+        let mut package = base.clone();
+        package["semantic_graph"]["nodes"][position]["owner"]["node"] = json!(orders(wrong));
+        settle(&mut package);
+        let CheckedPackageV2ReadResult::Refused(refusal) =
+            read_with(&package, &evidence, CheckedPackageReadLimits::bounded())
+        else {
+            panic!("an event node owned by {wrong} must refuse");
+        };
+        assert_eq!(
+            refusal.code,
+            CheckedPackageRefusalCode::MissingDeclaration,
+            "{wrong}"
+        );
+        assert_eq!(
+            refusal.cause,
+            Some(CheckedPackageRefusalCause::MissingSelection),
+            "{wrong}"
+        );
+        assert_eq!(
+            refusal.loci[0].path.as_ref().map(|path| path.as_str()),
+            Some(format!("/semantic_graph/nodes/{position}/node_id").as_str()),
+            "{wrong}"
+        );
+    }
+}
+
+#[trace("TC-048", "FR-038-AC-633")]
+#[test]
+fn tc_048_an_operation_over_an_event_typed_parameter_is_ineligible() {
+    let events = Ty::Collection(Kind::Set, Box::new(event_type()), None);
+    let placed = || vec![("placed", event_type())];
+    let cases = [
+        (
+            "structural.eq",
+            vec![("placed", event_type()), ("repeated", event_type())],
+            Applied {
+                operator: "binary",
+                identity: "filament.op.structural.eq",
+                member: None,
+                result: Ty::Boolean,
+                operands: vec![0, 1],
+            },
+            0,
+        ),
+        (
+            "boolean.not",
+            placed(),
+            Applied {
+                operator: "unary",
+                identity: "filament.op.boolean.not",
+                member: None,
+                result: Ty::Boolean,
+                operands: vec![0],
+            },
+            0,
+        ),
+        (
+            "record.project",
+            placed(),
+            Applied {
+                operator: "query",
+                identity: "filament.op.record.project",
+                member: Some((declaration_key("OrderPlaced", "event_type"), "occurred_at")),
+                result: Ty::Timestamp,
+                operands: vec![0],
+            },
+            0,
+        ),
+        (
+            "collection.contains",
+            vec![("all", events), ("placed", event_type())],
+            Applied {
+                operator: "collection",
+                identity: "filament.op.collection.contains",
+                member: None,
+                result: Ty::Boolean,
+                operands: vec![0, 1],
+            },
+            1,
+        ),
+    ];
+    for (case, parameters, application, argument) in cases {
+        let (package, evidence) = event_package(&parameters, &[application]);
+        let position = package["semantic_graph"]["nodes"]
+            .as_array()
+            .expect("nodes")
+            .iter()
+            .position(|node| node["node_tag"] == "expression")
+            .expect("application node");
+        let CheckedPackageV2ReadResult::Refused(refusal) =
+            read_with(&package, &evidence, CheckedPackageReadLimits::bounded())
+        else {
+            panic!("{case} over an event-typed parameter must refuse");
+        };
+        assert_eq!(refusal.code, CheckedPackageRefusalCode::IllTyped, "{case}");
+        assert_eq!(
+            refusal.cause,
+            Some(CheckedPackageRefusalCause::OperatorIneligible),
+            "{case}"
+        );
+        assert_eq!(
+            refusal.loci[0].path.as_ref().map(|path| path.as_str()),
+            Some(format!("/semantic_graph/nodes/{position}/body/arguments/{argument}").as_str()),
+            "{case}"
+        );
+    }
+}
