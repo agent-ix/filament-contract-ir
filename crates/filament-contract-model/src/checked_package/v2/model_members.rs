@@ -2048,6 +2048,100 @@ impl DomainModel {
         Ok(false)
     }
 
+    /// Whether `node` is an event type, or a value of it can hold one at any
+    /// depth by what this document declares: through the fields, own and
+    /// inherited, of a record value type, tuple positions, variant payloads,
+    /// options, sequences and map keys and values. A reference and an object
+    /// type hold an identity, and a value type holds a scalar, never an event
+    /// value. An inline `Map<Text, V>` holds what `V` holds. A field with no
+    /// `typeRef` and any other declaration count as holding one, so the walk
+    /// fails closed. Each declaration is expanded once, and each step is
+    /// charged to `budget`.
+    pub(super) fn holds_event(
+        &self,
+        node: &str,
+        budget: &mut Budget<'_, '_>,
+    ) -> Result<bool, ValidationFailure> {
+        enum Item<'a> {
+            Ref(&'a SelectedTypeRef),
+            Name(&'a str),
+        }
+        let mut visited: SortedSet<&str> = SortedSet::new();
+        let mut pending: Vec<Item<'_>> = budget.vec(1, MODEL)?;
+        pending.push(Item::Name(node));
+        while let Some(item) = pending.pop() {
+            budget.charge(1)?;
+            let name = match item {
+                Item::Ref(SelectedTypeRef::Native(_) | SelectedTypeRef::Unit(_)) => continue,
+                // An inline `Map<Text, V>` `typeRef` keeps `V` as authored, so
+                // its aliases are followed here. The key is `Text`.
+                Item::Ref(SelectedTypeRef::Map(_, value)) => {
+                    match self.resolve_alias(value).and_then(SelectedTypeRef::admit) {
+                        Some(Admitted::Native | Admitted::Unit(_)) => continue,
+                        Some(Admitted::Declared(name)) => name,
+                        // The document stage refuses a nested map and a
+                        // malformed name, so this is unreachable; fail closed.
+                        Some(Admitted::Map(..)) | None => return Ok(true),
+                    }
+                }
+                Item::Ref(SelectedTypeRef::Declared(name)) => name.as_ref(),
+                Item::Name(name) => name,
+            };
+            if !visited.insert(budget, name, MODEL)? {
+                continue;
+            }
+            if self.event_types.contains(name) {
+                return Ok(true);
+            }
+            if let Some(definition) = self.collection_types.get(name) {
+                match definition {
+                    SelectedTypeDefinition::Sequence(inner)
+                    | SelectedTypeDefinition::Option(inner) => {
+                        budget.push(&mut pending, Item::Ref(inner), MODEL)?;
+                    }
+                    SelectedTypeDefinition::Reference(_) => {}
+                    SelectedTypeDefinition::Map(map) => {
+                        budget.push(&mut pending, Item::Ref(&map.keys), MODEL)?;
+                        budget.push(&mut pending, Item::Ref(&map.values), MODEL)?;
+                    }
+                }
+            } else if self.record_types.contains_key(name) {
+                let ancestors = self.ancestors(name, budget)?;
+                for declaration in std::iter::once(name).chain(ancestors.iter().copied()) {
+                    let Some(record) = self.field_owner(declaration) else {
+                        continue;
+                    };
+                    for field in &record.fields {
+                        match field.slot.type_ref.as_ref() {
+                            Some(type_ref) => {
+                                budget.push(&mut pending, Item::Ref(type_ref), MODEL)?;
+                            }
+                            // The document stage refuses a field without a
+                            // `typeRef`, so this is unreachable; fail closed.
+                            None => return Ok(true),
+                        }
+                    }
+                }
+            } else if let Some(positions) = self.tuple_types.get(name) {
+                for type_ref in positions {
+                    budget.push(&mut pending, Item::Ref(type_ref), MODEL)?;
+                }
+            } else if let Some(cases) = self.variant_types.get(name) {
+                for case in cases.values() {
+                    if let Some(type_ref) = case.payload.as_ref() {
+                        budget.push(&mut pending, Item::Ref(type_ref), MODEL)?;
+                    }
+                }
+            } else if !self.value_types.contains_key(name) && !self.object_types.contains_key(name)
+            {
+                // The document stage refuses a `typeRef` that names no
+                // declaration, so this is unreachable; fail closed.
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
     /// The proper ancestors of `node` along its declared supertypes; one
     /// work unit per supertype edge followed.
     pub(super) fn ancestors(
@@ -3126,6 +3220,27 @@ impl<'m> ModelOwners<'m> {
         } else {
             "enum"
         })
+    }
+
+    /// Whether any selected domain package declares an event type.
+    pub(super) fn selects_events(&self) -> bool {
+        self.models
+            .iter()
+            .any(|model| !model.event_types.as_slice().is_empty())
+    }
+
+    /// Whether a value of the selected declaration `key` can hold an event
+    /// value.
+    pub(super) fn holds_event(
+        &self,
+        key: &CheckedNodeId,
+        meter: &mut WorkMeter<'_>,
+    ) -> Result<bool, ValidationFailure> {
+        let Some(owner) = self.owner_by_key(key) else {
+            return Ok(false);
+        };
+        let mut budget = Budget::new(meter, owner.package.root, owner.package.bytes);
+        owner.package.holds_event(owner.node, &mut budget)
     }
 
     /// Whether the selected tuple or variant `key` carries a `Clock`.
