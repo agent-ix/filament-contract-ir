@@ -408,11 +408,11 @@ fn overlisted_transitive_selection_admits_when_values_agree() {
     ));
 }
 
-/// One direct selection also detects a collision with a differently valued
-/// package reached below it, using both importer-rooted paths.
+/// FR-038-AC-293: a dependency whose closure holds its own name, here through
+/// another library, refuses on its own read at the path to the offending entry.
 #[trace("TC-048", "FR-038-AC-293")]
 #[test]
-fn one_direct_edge_refuses_conflicting_transitive_name() {
+fn a_dependency_closure_holding_its_own_name_refuses_on_its_own_read() {
     let leaf_wire = empty_package("test/repeated");
     let (_, leaf) = admitted_dependency(&leaf_wire);
     let middle_wire = with_selections(empty_package("test/middle"), vec![entry(leaf.name())]);
@@ -422,27 +422,38 @@ fn one_direct_edge_refuses_conflicting_transitive_name() {
         panic!("middle dependency admits");
     };
     let child_wire = with_selections(empty_package("test/repeated"), vec![entry(middle.name())]);
-    let CheckedPackageV2ReadResult::Admitted(child) =
+    let CheckedPackageV2ReadResult::Refused(refusal) =
         read_with_dependencies(&child_wire, &[(middle.name(), &middle)])
     else {
-        panic!("child admits before its importer's selection is checked");
+        panic!("a closure holding the package's own name must refuse");
     };
-    let root = with_selections(empty_package("test/root"), vec![entry(child.name())]);
+    assert_eq!(refusal.code, Code::InvalidPackage, "{refusal:?}");
+    assert_eq!(refusal.cause, Some(Cause::DefinitionCycle), "{refusal:?}");
+    assert_eq!(
+        refusal.loci[0].path,
+        Some(pointer(
+            "/lock/dependency_selections/0/lock/dependency_selections/0"
+        ))
+    );
+}
+
+/// A package that selects its own name refuses the same way, whatever the
+/// selected value holds.
+#[test]
+fn a_package_selecting_its_own_name_refuses() {
+    let mut other_wire = empty_package("test/root");
+    other_wire["source_map"][0]["regions"][0]["end"] = json!(100);
+    let (_, other) = admitted_dependency(&other_wire);
+    let root = with_selections(empty_package("test/root"), vec![entry(other.name())]);
     let CheckedPackageV2ReadResult::Refused(refusal) =
-        read_with_dependencies(&root, &[(child.name(), &child)])
+        read_with_dependencies(&root, &[(other.name(), &other)])
     else {
-        panic!("unequal complete values under the same name must refuse");
+        panic!("a package selecting its own name must refuse");
     };
-    assert_eq!(refusal.code, Code::InvalidPackage);
-    assert_eq!(refusal.cause, Some(Cause::ConflictingDefinition));
+    assert_eq!(refusal.code, Code::InvalidPackage, "{refusal:?}");
+    assert_eq!(refusal.cause, Some(Cause::DefinitionCycle), "{refusal:?}");
     assert_eq!(
         refusal.loci[0].path,
         Some(pointer("/lock/dependency_selections/0"))
-    );
-    assert_eq!(
-        refusal.loci[1].path,
-        Some(pointer(
-            "/lock/dependency_selections/0/lock/dependency_selections/0/lock/dependency_selections/0"
-        ))
     );
 }
