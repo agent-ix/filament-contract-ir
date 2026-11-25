@@ -426,6 +426,7 @@ pub(super) enum TermBindingName {
     Optional,
     Clause,
     Name,
+    Level,
     PointAnchor,
     Other,
 }
@@ -439,6 +440,7 @@ impl TermBindingName {
             "optional" => Self::Optional,
             "clause" => Self::Clause,
             "name" => Self::Name,
+            "level" => Self::Level,
             "point_anchor" => Self::PointAnchor,
             _ => Self::Other,
         }
@@ -2028,6 +2030,7 @@ impl CheckedPackageV2 {
             let requirement_items = requirement_records::retain_rows(
                 self.wire.requirement_items.as_deref(),
                 &self.wire.semantic_graph.nodes,
+                &self.kinds,
                 &self.wire.semantic_graph.operand_rows,
                 &self.node_index,
             );

@@ -34,7 +34,7 @@ use std::sync::Arc;
 /// Check a present position ordinal before semantic graph validation.
 #[ix_trace_rs::string_edge]
 fn key_ordinal_node(value: TermNode<'_>) -> bool {
-    const MAX_SAFE: &str = "9007199254740991";
+    const MAX_SAFE_DIGITS: &str = "9007199254740991";
     if value
         .as_u64()
         .is_some_and(|number| number <= 9_007_199_254_740_991)
@@ -47,7 +47,8 @@ fn key_ordinal_node(value: TermNode<'_>) -> bool {
     !text.is_empty()
         && !text.starts_with('0')
         && text.bytes().all(|byte| byte.is_ascii_digit())
-        && (text.len() > MAX_SAFE.len() || (text.len() == MAX_SAFE.len() && text > MAX_SAFE))
+        && (text.len() > MAX_SAFE_DIGITS.len()
+            || (text.len() == MAX_SAFE_DIGITS.len() && text > MAX_SAFE_DIGITS))
 }
 
 fn position_member_shape(body: TermNode<'_>) -> bool {

@@ -32,11 +32,11 @@ impl Drop for CertificateNodeId {
 
 fn drain_nested_nodes(
     path: &mut Vec<CertificatePathSegment>,
-    pending: &mut Vec<Box<CertificateNodeId>>,
+    pending: &mut Vec<CertificateNodeId>,
 ) {
     for segment in path.drain(..) {
         if let CertificatePathSegment::Node(node) = segment {
-            pending.push(node);
+            pending.push(*node);
         }
     }
 }

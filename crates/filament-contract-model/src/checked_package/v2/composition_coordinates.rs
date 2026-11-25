@@ -89,7 +89,7 @@ impl Accepted {
         self.total += 1;
         while rank < self.tree.len() {
             self.tree[rank] += 1;
-            rank += rank & rank.wrapping_neg();
+            rank += rank.isolate_lowest_one();
         }
     }
 
@@ -182,10 +182,7 @@ pub(super) fn validate(
                 // insertion, each walking at most `steps` cells.
                 stage_storage::work(meter, &site(at), 6 * accepted.steps)?;
                 let key = (&region.source, region.start, region.end, position);
-                let rank = candidates
-                    .binary_search(&key)
-                    .map_or_else(|slot| slot, |found| found)
-                    + 1;
+                let rank = candidates.binary_search(&key).unwrap_or_else(|slot| slot) + 1;
                 let (below, above) = accepted.neighbours(rank);
                 let touches_below = below.is_some_and(|rank| {
                     let (source, _, end, _) = candidates[rank - 1];

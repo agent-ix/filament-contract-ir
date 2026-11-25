@@ -610,6 +610,7 @@ fn refuse(
     stage_storage::refuse(meter, &site(index, at), refusal)
 }
 
+#[allow(clippy::too_many_arguments)] // each argument is a separate admitted table the row checks join
 pub(super) fn validate(
     rows: Option<&[RequirementItemWireRow]>,
     path_condition_frames: Option<&[PathConditionFrameWire]>,
@@ -1723,7 +1724,7 @@ fn operation_contract_identity_prefix(
     let row = operand_rows.get(holder)?;
     let mut path = vec![path_name("claim"), path_name("operation_contract")];
     path.push(path_operand(
-        operand_slot_for_term(binding(term, 0)?, holder, row, nodes, index, evidence)?,
+        operand_slot_for_term(binding(term, 0)?, row, nodes, index, evidence)?,
         row,
     )?);
     let (_, occurrence) = read_operation_contract_join(term)?;
@@ -1731,7 +1732,7 @@ fn operation_contract_identity_prefix(
     path.push(path_number(occurrence.ordinal));
     path.push(path_name("bound"));
     path.push(path_operand(
-        operand_slot_for_term(binding(term, 2)?, holder, row, nodes, index, evidence)?,
+        operand_slot_for_term(binding(term, 2)?, row, nodes, index, evidence)?,
         row,
     )?);
     path.push(path_name("invariant"));
@@ -1739,7 +1740,7 @@ fn operation_contract_identity_prefix(
     path.push(path_name("operation"));
     if record.operation.is_some() {
         path.push(path_operand(
-            operand_slot_for_term(binding(term, 4)?, holder, row, nodes, index, evidence)?,
+            operand_slot_for_term(binding(term, 4)?, row, nodes, index, evidence)?,
             row,
         )?);
     } else {
@@ -1759,7 +1760,7 @@ fn operation_contract_identity_prefix(
     }
     for object in object_terms {
         path.push(path_operand(
-            operand_slot_for_term(object, holder, row, nodes, index, evidence)?,
+            operand_slot_for_term(object, row, nodes, index, evidence)?,
             row,
         )?);
     }
@@ -1783,7 +1784,6 @@ fn operation_contract_identity_prefix(
         path.push(path_operand(
             operand_slot_for_term(
                 named_value(members.first()?, "member_type")?,
-                holder,
                 row,
                 nodes,
                 index,
@@ -1866,7 +1866,6 @@ fn operation_contract_identity_path(
 
 fn operand_slot_for_term(
     term: &CheckedTerm,
-    holder: usize,
     row: &[CheckedOperandEntry],
     nodes: &[RawSemanticNodeV2],
     index: &GraphIndex<'_>,
@@ -1961,18 +1960,25 @@ fn read_operation_contract_join(
     {
         return None;
     }
-    let role = named_value(members.first()?, "role").and_then(string)?;
+    let role = named_value(members.first()?, "role")
+        .and_then(string)
+        .and_then(occurrence_role_from_wire)?;
     let ordinal = named_value(members.get(1)?, "ordinal").and_then(integer)?;
-    let role = match role {
-        "declaration" => CheckedOccurrenceRole::Declaration,
-        "type" => CheckedOccurrenceRole::Type,
-        "expression" => CheckedOccurrenceRole::Expression,
-        "anchor" => CheckedOccurrenceRole::Anchor,
-        "claim" => CheckedOccurrenceRole::Claim,
-        "generated" => CheckedOccurrenceRole::Generated,
-        _ => return None,
-    };
     Some((claim, super::CheckedOccurrence { role, ordinal }))
+}
+
+/// The occurrence role a record's `role` literal spells.
+#[ix_trace_rs::string_edge]
+fn occurrence_role_from_wire(text: &str) -> Option<CheckedOccurrenceRole> {
+    match text {
+        "declaration" => Some(CheckedOccurrenceRole::Declaration),
+        "type" => Some(CheckedOccurrenceRole::Type),
+        "expression" => Some(CheckedOccurrenceRole::Expression),
+        "anchor" => Some(CheckedOccurrenceRole::Anchor),
+        "claim" => Some(CheckedOccurrenceRole::Claim),
+        "generated" => Some(CheckedOccurrenceRole::Generated),
+        _ => None,
+    }
 }
 
 enum OwnerWalkTask<'a> {
@@ -2104,16 +2110,16 @@ fn derive_package_path_conditions(
     let scalar_occurrence_count = terms
         .iter()
         .enumerate()
-        .filter_map(|(position, term)| {
+        .filter(|(_, term)| {
             matches!(term, CheckedTerm::Application { operation, .. }
                 if operation.identity().is_some_and(is_scalar_operation))
-            .then(|| {
-                nodes[position]
-                    .occurrences
-                    .iter()
-                    .filter(|occurrence| occurrence.role == CheckedOccurrenceRole::Expression)
-                    .count()
-            })
+        })
+        .map(|(position, _)| {
+            nodes[position]
+                .occurrences
+                .iter()
+                .filter(|occurrence| occurrence.role == CheckedOccurrenceRole::Expression)
+                .count()
         })
         .fold(0_usize, usize::saturating_add);
     // These flat tables are sized from admitted input counts before traversal;
@@ -2225,6 +2231,7 @@ fn derive_package_path_conditions(
     Ok(paths)
 }
 
+#[allow(clippy::too_many_arguments)] // the walk state is charged and reused across owner bodies
 fn walk_owner_expression<'a>(
     root: usize,
     owner: usize,
@@ -2499,6 +2506,7 @@ fn push_owner_task<'a>(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)] // the frame key, its lookup tables and the walk state it updates
 fn derived_frame_id(
     parent: Option<PathConditionFrameId>,
     guard: &CheckedNodeId,
@@ -2781,6 +2789,7 @@ pub struct OperationPopulation {
 pub(super) fn retain_rows(
     rows: Option<&[RequirementItemWireRow]>,
     nodes: &[CheckedSemanticNodeV2],
+    kinds: &[CheckedNodeKind],
     operand_rows: &[Vec<CheckedOperandEntry>],
     node_positions: &super::retained_index::PositionIndex,
 ) -> Vec<RequirementItemRow> {
@@ -2793,23 +2802,22 @@ pub(super) fn retain_rows(
                 let record = row.record.as_ref().and_then(|id| {
                     let position = node_positions.node(nodes, id)?;
                     let holder_row = operand_rows.get(position)?;
-                    match nodes.get(position)?.semantic_form.as_ref() {
-                        "value_validity" => read_record(
-                            nodes[position].node_id.clone(),
-                            &nodes[position].body,
-                        )
-                        .map(|record| {
-                            RequirementRecord::ValueValidity(resolve_record(record, holder_row))
-                        }),
-                        "operation_contract" => read_operation_contract_record(
-                            nodes[position].node_id.clone(),
-                            &nodes[position].body,
-                        )
-                        .map(|record| {
-                            RequirementRecord::OperationContract(resolve_operation_contract_record(
-                                record, holder_row,
-                            ))
-                        }),
+                    let node = nodes.get(position)?;
+                    match kinds.get(position)? {
+                        CheckedNodeKind::Claim(super::ClaimForm::ValueValidity) => {
+                            read_record(node.node_id.clone(), &node.body).map(|record| {
+                                RequirementRecord::ValueValidity(resolve_record(record, holder_row))
+                            })
+                        }
+                        CheckedNodeKind::Claim(super::ClaimForm::OperationContract) => {
+                            read_operation_contract_record(node.node_id.clone(), &node.body).map(
+                                |record| {
+                                    RequirementRecord::OperationContract(
+                                        resolve_operation_contract_record(record, holder_row),
+                                    )
+                                },
+                            )
+                        }
                         _ => None,
                     }
                 });

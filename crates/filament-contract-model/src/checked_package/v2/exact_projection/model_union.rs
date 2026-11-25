@@ -7,7 +7,9 @@
 //! set that passes every join is admitted whether or not the producer that wrote
 //! it held the declaration.
 
-use super::super::model_members::{node_id_bytes, DeclarationForm, MemberType, NodeAlloc};
+use super::super::model_members::{
+    node_id_bytes, DeclarationForm, MemberType, NativeName, NativeTypeRef, NodeAlloc,
+};
 use super::super::native_join_storage as storage;
 use super::super::{
     CheckedNodeId, CheckedPackageV2, NativeJoinBudget, NativeJoinLocus, NativeJoinLocusSource,
@@ -17,22 +19,16 @@ use super::{
     ExactTypeProjectionError, ExactTypeProjectionErrorCode, SelectedExactIdentities,
     SelectedExactIdentity, SelectedTupleDeclarationRow,
 };
-use filament_exact::{
-    CardinalityBound, CollectionKind, CollectionType, FloatType, IeeeWidth, Integer,
-    IntegerInterval, NodeKey, OriginalDeclarationKey, RationalDomain, TextProfile, TextType,
-    UnionMember, UnitId, ValueType,
-};
+use filament_exact::{NodeKey, OriginalDeclarationKey, UnionMember, UnitId, ValueType};
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
-
-/// The identity of the Clock native type a clock payload carries.
-const CLOCK_IDENTITY: &str = "ix://filament/native/Clock";
 
 type Res<T> = Result<T, ExactTypeProjectionError>;
 
 /// One case's payload, in one of the three closed forms of FR-830.
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[allow(clippy::large_enum_variant)] // the public row carries the original value type inline
 pub enum SelectedModelUnionPayload {
     /// A nullary case with no `payloadType`.
     None,
@@ -1349,7 +1345,9 @@ impl SelectedExactIdentities {
             match (&case.payload, &document_case.payload) {
                 (SelectedModelUnionPayload::None, None) => {}
                 (SelectedModelUnionPayload::Clock { payload_type }, Some(_)) if is_clock => {
-                    if payload_type.as_ref() != CLOCK_IDENTITY {
+                    if NativeName::from_identity(payload_type)
+                        != Some(NativeName::Known(NativeTypeRef::Clock))
+                    {
                         return Err(fail(
                             budget,
                             ExactTypeProjectionErrorCode::MismatchedIdentityWitness,
@@ -1543,6 +1541,10 @@ mod tests {
     };
     use super::*;
     use crate::CheckedPackageEvidence;
+    use filament_exact::{
+        CardinalityBound, CollectionKind, CollectionType, FloatType, IeeeWidth, Integer,
+        IntegerInterval, RationalDomain, TextProfile, TextType,
+    };
     use ix_trace_rs::trace;
 
     const CHECKED: &[u8] =
@@ -1707,7 +1709,7 @@ mod tests {
             let used = if work == 0 {
                 budget.consumed().work
             } else {
-                u64::try_from(budget.consumed().storage).unwrap()
+                budget.consumed().storage
             };
             assert_eq!(used, 0, "a denied charge consumes nothing");
         }

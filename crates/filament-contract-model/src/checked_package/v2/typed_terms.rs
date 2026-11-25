@@ -2034,6 +2034,7 @@ impl CheckedBindingName {
             super::TermBindingName::Optional => CheckedBindingNameKind::Optional,
             super::TermBindingName::Clause => CheckedBindingNameKind::Clause,
             super::TermBindingName::Name
+            | super::TermBindingName::Level
             | super::TermBindingName::PointAnchor
             | super::TermBindingName::Other => CheckedBindingNameKind::Other(&self.raw),
         }
