@@ -900,8 +900,10 @@ impl<'de, 'c> SeqAccess<'de> for Sequence<'c, 'de> {
     ) -> Result<Option<T::Value>, Error> {
         if !self.charged {
             self.charged = true;
-            // The sequence's container is reserved at its exact final length
-            // before its first element is decoded.
+            // For a visitor that reserves nothing before its first element.
+            // serde's own `Vec` visitor reserves from the size hint before it
+            // asks for one, so a vector must decode through `exact_vec`,
+            // which is charged before the visitor runs.
             let bytes = self.count.saturating_mul(std::mem::size_of::<T::Value>());
             self.parent.context.charge(bytes)?;
         }
@@ -1262,6 +1264,136 @@ mod tests {
             decode(&document, &mut short),
             Err(ValidationFailure::Budget(_))
         ));
+    }
+
+    /// Decodes a minimal package carrying the sidecar `member` at every
+    /// read-storage allowance up to its requirement. The bytes allocated are
+    /// always the bytes admitted, so no request is made before its charge or
+    /// without one.
+    fn assert_every_request_is_paid_first(member: &str, rows: serde_json::Value) {
+        let artifact = json!({"authority": "a", "identity": "i"});
+        let mut package = json!({
+            "contract_version": "filament.checked-package/v2",
+            "name": "p",
+            "lock": {
+                "sources": [],
+                "edition": {"role": "protocol_profile", "definition": artifact},
+                "profile_selections": [],
+                "definition_selections": [],
+                "required_features": [],
+                "dependency_selections": [],
+            },
+            "semantic_graph": {
+                "graph_version": "filament.checked-semantic-graph/v2",
+                "nodes": [],
+                "operand_rows": [],
+            },
+            "source_map": [],
+            "capability_report": [],
+            "diagnostics": {"catalog": artifact, "entries": []},
+        });
+        package[member] = rows;
+        let bytes = quire_canonical::to_vec(&package, quire_canonical::Limits::new(u64::MAX))
+            .expect("the package encodes");
+        let document = Arc::new(quire_canonical::read(&bytes, u64::MAX).expect("reads"));
+        let run = |limit| {
+            let mut budget = NativeJoinBudget::new(u64::MAX, 0).with_read_storage_limit(limit);
+            let mut outcome = None;
+            let allocated = allocation_counter::measure(|| {
+                outcome = Some(decode(&document, &mut budget));
+            })
+            .bytes_total;
+            (outcome.expect("decoded"), allocated, budget)
+        };
+        let (outcome, allocated, budget) = run(u64::MAX);
+        assert!(outcome.is_ok(), "{member}: {outcome:?}");
+        let required = budget.read_storage_consumed();
+        assert_eq!(allocated, required, "{member}: every request is charged");
+        for limit in 0..=required {
+            let (outcome, allocated, budget) = run(limit);
+            assert_eq!(
+                allocated,
+                budget.read_storage_consumed(),
+                "{member}: unpaid allocation at allowance {limit}"
+            );
+            assert_eq!(outcome.is_ok(), limit == required, "{member}: {limit}");
+        }
+    }
+
+    fn node_id() -> serde_json::Value {
+        json!({"package": "p", "path": ["n"], "ordinal": 0})
+    }
+
+    #[trace("TC-472", "FR-038-AC-499")]
+    #[test]
+    fn a_claim_name_row_pays_for_each_list_before_requesting_it() {
+        assert_every_request_is_paid_first(
+            "claim_names",
+            json!([{
+                "declaration": node_id(),
+                "occurrence": {"role": "declaration", "ordinal": 0},
+                "name": "claim",
+                "qualified_name": ["module", "claim"],
+                "declaration_region": {
+                    "source": {"authority": "a", "identity": "i"}, "start": 0, "end": 1,
+                },
+            }]),
+        );
+    }
+
+    #[trace("TC-472", "FR-038-AC-499")]
+    #[test]
+    fn a_schedulability_claim_row_pays_for_each_list_before_requesting_it() {
+        assert_every_request_is_paid_first(
+            "schedulability_claims",
+            json!([{
+                "declaration": node_id(),
+                "occurrence": 0,
+                "task_set": "tasks",
+                "release_bindings": [{
+                    "task_name": "task",
+                    "selected_model_identity": "model",
+                    "operation_declaring_identity": node_id(),
+                    "operation_member": "release",
+                }],
+                "mode_switch_bindings": [{
+                    "selected_model_identity": "model",
+                    "operation_declaring_identity": node_id(),
+                    "operation_member": "switch",
+                }],
+            }]),
+        );
+    }
+
+    #[trace("TC-472", "FR-038-AC-499")]
+    #[test]
+    fn operation_effect_rows_are_paid_for_before_they_are_requested() {
+        assert_every_request_is_paid_first(
+            "operation_effects",
+            json!([{
+                "document": "model",
+                "declaring": node_id(),
+                "operation": "apply",
+                "effect": {
+                    "modifies": [], "creates": [], "deletes": [], "deletes_scoped": [],
+                },
+                "provenance": {"origin": "model_document_operation_frame", "member": "apply"},
+            }]),
+        );
+    }
+
+    #[trace("TC-472", "FR-038-AC-499")]
+    #[test]
+    fn operation_body_rows_are_paid_for_before_they_are_requested() {
+        assert_every_request_is_paid_first(
+            "operation_bodies",
+            json!([{
+                "document": "model",
+                "declaring": node_id(),
+                "operation": "apply",
+                "body": {"kind": "no_body"},
+            }]),
+        );
     }
 
     /// A denial retains the deepest supported borrowed path without allocation;

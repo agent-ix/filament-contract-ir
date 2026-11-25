@@ -30,8 +30,10 @@ pub struct CheckedSchedulabilityClaimRow {
     /// Exact checked source task-set identifier for this occurrence.
     pub task_set: Box<str>,
     /// Release declarations associated with this occurrence's task set.
+    #[serde(deserialize_with = "super::document_de::exact_vec")]
     pub release_bindings: Vec<CheckedSchedulabilityReleaseBinding>,
     /// Mode-switch declarations associated with this occurrence's task set.
+    #[serde(deserialize_with = "super::document_de::exact_vec")]
     pub mode_switch_bindings: Vec<CheckedSchedulabilityModeSwitchBinding>,
 }
 

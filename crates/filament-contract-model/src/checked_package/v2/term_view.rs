@@ -1547,10 +1547,10 @@ fn decode_term<'d>(
             node: decode_field(context, term, TermField::Node)?,
         }),
         TermTag::Known(BodyTerm::Frame) => Ok(CheckedTerm::Frame {
-            modifies: decode_field(context, term, TermField::Modifies)?,
-            creates: decode_field(context, term, TermField::Creates)?,
-            deletes: decode_field(context, term, TermField::Deletes)?,
-            deletes_scoped: decode_field(context, term, TermField::DeletesScoped)?,
+            modifies: decode_vec_field(context, term, TermField::Modifies)?,
+            creates: decode_vec_field(context, term, TermField::Creates)?,
+            deletes: decode_vec_field(context, term, TermField::Deletes)?,
+            deletes_scoped: decode_vec_field(context, term, TermField::DeletesScoped)?,
         }),
         TermTag::Known(BodyTerm::AbstractionRelation) => Ok(CheckedTerm::AbstractionRelation {
             objects: decode_vec_field(context, term, TermField::Objects)?,
@@ -2101,6 +2101,48 @@ mod flat_document_allocation_tests {
             limit = next;
         }
         assert!(!run(total - 1).0);
+    }
+
+    #[trace("TC-472", "FR-038-AC-504")]
+    #[test]
+    fn frame_term_lists_are_paid_for_before_they_are_requested() {
+        let id = json!({"package":"p","path":["n"],"ordinal":0});
+        let wire = json!({"term":"frame","modifies":[],"creates":[id],"deletes":[id],
+            "deletes_scoped":[]});
+        let body = CheckedJson::from_value(&wire).expect("document");
+        let run = |limit| {
+            let mut budget = NativeJoinBudget::new(u64::MAX, 0).with_read_storage_limit(limit);
+            let mut accepted = false;
+            let measured = allocation_counter::measure(|| {
+                let context = DecodeContext::at_locus(
+                    body.document(),
+                    &mut budget,
+                    Site::new(PackageReadStage::Graph, 7, "body").locus(),
+                );
+                let outcome = decode_term(&context, body.document(), TermNode::of(&body));
+                accepted = matches!(
+                    &outcome,
+                    Ok(CheckedTerm::Frame { creates, deletes, .. })
+                        if creates.len() == 1 && deletes.len() == 1
+                );
+                drop(outcome);
+                budget = context.finish();
+            });
+            (accepted, measured.bytes_total, budget)
+        };
+        let (accepted, allocated, budget) = run(u64::MAX);
+        assert!(accepted);
+        let required = budget.read_storage_consumed();
+        assert_eq!(allocated, required);
+        for limit in 0..=required {
+            let (accepted, allocated, budget) = run(limit);
+            assert_eq!(
+                allocated,
+                budget.read_storage_consumed(),
+                "unpaid allocation at allowance {limit}"
+            );
+            assert_eq!(accepted, limit == required, "allowance {limit}");
+        }
     }
 
     #[trace("TC-477", "FR-371-AC-8")]

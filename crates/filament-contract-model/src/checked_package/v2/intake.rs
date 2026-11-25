@@ -106,9 +106,15 @@ struct BorrowedWire {
     requirement_items: Option<Vec<super::requirement_records::RequirementItemWireRow>>,
     #[serde(default, deserialize_with = "super::document_de::exact_optional_vec")]
     path_condition_frames: Option<Vec<super::requirement_records::PathConditionFrameWire>>,
-    #[serde(default, deserialize_with = "super::operation_effects::present_rows")]
+    #[serde(
+        default,
+        deserialize_with = "super::document_de::exact_nonnull_optional_vec"
+    )]
     operation_effects: Option<Vec<super::CheckedOperationEffectRow>>,
-    #[serde(default, deserialize_with = "super::operation_effects::present_rows")]
+    #[serde(
+        default,
+        deserialize_with = "super::document_de::exact_nonnull_optional_vec"
+    )]
     operation_bodies: Option<Vec<super::OperationBodyRow>>,
     #[serde(deserialize_with = "super::document_de::exact_vec")]
     capability_report: Vec<CheckedCapability>,
