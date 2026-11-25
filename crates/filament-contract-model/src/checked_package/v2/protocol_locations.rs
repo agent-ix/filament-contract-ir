@@ -17,6 +17,7 @@ use crate::checked_package::shared::{
     CheckedNodeId, CheckedOccurrence, CheckedPackageRefusalCause, CheckedPackageRefusalCode,
     CheckedSourceMapEntry,
 };
+use ix_trace_rs::implements;
 
 /// Sorted borrowed node identities, shared with the body walk.
 pub(super) type NodeIndex<'a> = Vec<(&'a CheckedNodeId, usize)>;
@@ -183,6 +184,7 @@ pub(super) fn refuse_missing_predecessor(
 
 /// Check every row of `array` in order and report whether a row follows a
 /// missing predecessor ordinal.
+#[implements("FR-038-AC-597")]
 #[allow(clippy::too_many_arguments)]
 pub(super) fn validate_rows<'a, Body, Row: LocationRow>(
     array: &'static str,
@@ -229,15 +231,20 @@ pub(super) fn validate_rows<'a, Body, Row: LocationRow>(
             .map(move |occurrence| (i, occurrence))
     }));
     occurrences.sort_unstable();
+    let repeated_key = stage_storage::first_repeat(
+        meter,
+        &site,
+        rows.iter().map(|row| {
+            (
+                row.function(),
+                row.application(),
+                row.occurrence(),
+                row.term_ordinal(),
+            )
+        }),
+    )?;
     let mut previous: Option<&Row> = None;
     let mut ordinal_rows = stage_storage::vec(meter, &site, rows.len())?;
-    type SeenKey<'a> = (
-        Option<&'a CheckedNodeId>,
-        &'a CheckedNodeId,
-        &'a CheckedOccurrence,
-        u64,
-    );
-    let mut seen_keys = stage_storage::vec::<SeenKey<'_>>(meter, &site, rows.len())?;
     let mut missing_predecessor = false;
     for (index, row) in rows.iter().enumerate() {
         let here = at(array, index);
@@ -245,21 +252,7 @@ pub(super) fn validate_rows<'a, Body, Row: LocationRow>(
         intake_local_application(row.application(), name, array, index, meter)?;
         let term_ordinal = intake_term_ordinal(row.term_ordinal(), array, index, meter)?;
         work(meter, index, here, 1)?;
-        let key = (
-            row.function(),
-            row.application(),
-            row.occurrence(),
-            term_ordinal,
-        );
-        let mut duplicate = false;
-        for seen in &seen_keys {
-            work(meter, index, here, 1)?;
-            if *seen == key {
-                duplicate = true;
-                break;
-            }
-        }
-        if duplicate {
+        if repeated_key == Some(index) {
             return Err(fail(
                 meter,
                 index,
@@ -268,7 +261,6 @@ pub(super) fn validate_rows<'a, Body, Row: LocationRow>(
                 here,
             ));
         }
-        seen_keys.push(key);
         if let Some(before) = previous {
             let key = (row.application(), row.occurrence(), term_ordinal);
             let prior = (

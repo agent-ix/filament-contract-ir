@@ -21,6 +21,7 @@ use super::{
 };
 use crate::checked_package::common::ValidationFailure;
 use crate::checked_package::shared::CheckedNodeId;
+use ix_trace_rs::implements;
 use std::collections::BTreeMap;
 
 const ARRAY: &str = "body_locations";
@@ -175,6 +176,7 @@ fn charge_many(meter: &mut WorkMeter, row: usize, count: usize) -> Result<(), Va
 }
 
 /// Check `rows` against the admitted graph; an absent sidecar is `rows == []`.
+#[implements("FR-038-AC-597")]
 pub(super) fn validate<Body>(
     wire: &CheckedPackageWireV2<Body>,
     kinds: &[CheckedNodeKind],
