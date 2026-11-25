@@ -1797,7 +1797,14 @@ pub(in crate::checked_package::v2) mod tests {
             ("1000", "1")
         );
 
-        for (numerator, denominator) in [("0", "1"), ("-1", "1"), ("2000", "2")] {
+        // A non-positive component is a wire-shape refusal; an unreduced
+        // positive scale is refused by graph admission (FR-063-AC-7, AC-8).
+        let equivalence_pointer = format!("/semantic_graph/nodes/{equivalence_position}");
+        for (numerator, denominator, code) in [
+            ("0", "1", CheckedPackageRefusalCode::MalformedWire),
+            ("-1", "1", CheckedPackageRefusalCode::MalformedWire),
+            ("2000", "2", CheckedPackageRefusalCode::InvalidSemanticGraph),
+        ] {
             let mut invalid = wire.clone();
             invalid["semantic_graph"]["nodes"][equivalence_position]["body"]["root_scale"] =
                 json!({"numerator":numerator,"denominator":denominator});
@@ -1809,9 +1816,15 @@ pub(in crate::checked_package::v2) mod tests {
             let CheckedPackageV2ReadResult::Refused(refusal) = refused else {
                 panic!("invalid dimension root scale must refuse: {numerator}/{denominator}");
             };
+            assert_eq!(refusal.code, code, "{numerator}/{denominator}");
             assert_eq!(
-                refusal.code,
-                CheckedPackageRefusalCode::InvalidSemanticGraph
+                refusal.loci[0]
+                    .path
+                    .as_ref()
+                    .map(ToString::to_string)
+                    .as_deref(),
+                Some(equivalence_pointer.as_str()),
+                "{numerator}/{denominator}"
             );
         }
 
@@ -1825,13 +1838,17 @@ pub(in crate::checked_package::v2) mod tests {
             CheckedPackageReadLimits::bounded(),
             &evidence,
         );
-        assert!(
-            matches!(
-                refused,
-                CheckedPackageV2ReadResult::Refused(ref refusal)
-                    if refusal.code == CheckedPackageRefusalCode::InvalidSemanticGraph
-            ),
-            "missing root scale refusal: {refused:?}"
+        let CheckedPackageV2ReadResult::Refused(refusal) = refused else {
+            panic!("missing root scale must refuse");
+        };
+        assert_eq!(refusal.code, CheckedPackageRefusalCode::MalformedWire);
+        assert_eq!(
+            refusal.loci[0]
+                .path
+                .as_ref()
+                .map(ToString::to_string)
+                .as_deref(),
+            Some(equivalence_pointer.as_str())
         );
 
         for (package, node) in [
