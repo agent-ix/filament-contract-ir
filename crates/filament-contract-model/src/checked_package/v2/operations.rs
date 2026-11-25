@@ -2530,6 +2530,9 @@ fn operation_defect(
             CheckedPackageRefusalCause::OperatorIneligible,
         )));
     }
+    if let Some(failure) = check_event_parameter_operands(application, entry, graph, meter)? {
+        return Ok(Some(failure));
+    }
     let place_presence = check_place_presence(application, &operation, graph, owners, meter)?;
     let place_reference =
         check_place_reference(application, &operation, graph, owners, catalog, meter)?;
@@ -3385,6 +3388,148 @@ fn check_carried_member(
             CheckedPackageRefusalCause::OperatorIneligible,
         )
     })
+}
+
+/// The `filament.op.temporal.clause` operand holding its activation (FSpec
+/// FR-370).
+const TEMPORAL_ACTIVATION_OPERAND: usize = 2;
+
+/// FR-038: no operation over a parameter typed by an event type is admitted,
+/// whether an argument references it or a `binder` operand holds that
+/// reference in its bound value or body. An event type has no operand family,
+/// so the operand checks would skip such an operand. A temporal clause's first
+/// operand names its `over` parameter and reads no value; the `guard` in its
+/// activation is read as a binder body is. Triggers, captures and protocol
+/// binder slots are not read.
+fn check_event_parameter_operands(
+    application: Application<'_>,
+    entry: &OperationCatalogEntry,
+    graph: &Graph<'_>,
+    meter: &mut WorkMeter,
+) -> Result<Option<ValidationFailure>, ValidationFailure> {
+    let Some(arguments) = admitted_arguments(application, graph) else {
+        return Ok(None);
+    };
+    let reads_over = entry.operator == ApplicationOperator::Temporal
+        && entry
+            .operands
+            .first()
+            .is_some_and(|operand| operand.class == FamilyClass::Reference);
+    for (position, argument) in arguments.iter().enumerate().skip(usize::from(reads_over)) {
+        let binder = entry
+            .operands
+            .get(position)
+            .or(entry.rest.as_ref())
+            .is_some_and(|operand| operand.class == FamilyClass::Binder);
+        let reads_event = match argument {
+            CheckedTerm::Binding { value, .. } if binder => {
+                bound_value_reads_event_parameter(application, entry.operator, value, graph, meter)?
+            }
+            CheckedTerm::Aggregate { members, .. }
+                if reads_over && position == TEMPORAL_ACTIVATION_OPERAND =>
+            {
+                guard_reads_event_parameter(application, entry.operator, members, graph, meter)?
+            }
+            _ => is_event_parameter_reference(argument, graph),
+        };
+        if reads_event {
+            return Ok(Some(application.refuse(
+                CheckedPackageRefusalCode::IllTyped,
+                application.body(&["arguments"]).index(position),
+                CheckedPackageRefusalCause::OperatorIneligible,
+            )));
+        }
+    }
+    Ok(None)
+}
+
+/// Whether `term` is a `reference` to a `value`/`parameter` node typed by an
+/// event type node.
+fn is_event_parameter_reference(term: &CheckedTerm, graph: &Graph<'_>) -> bool {
+    let CheckedTerm::Reference { target } = term else {
+        return false;
+    };
+    let position = |id: &CheckedNodeId| graph.index.get(id).copied();
+    let Some(parameter) = position(target) else {
+        return false;
+    };
+    graph.kinds.get(parameter) == Some(&CheckedNodeKind::Value(ValueForm::Parameter))
+        && graph
+            .nodes
+            .get(parameter)
+            .and_then(|node| position(&node.semantic_type))
+            .and_then(|type_node| graph.kinds.get(type_node))
+            == Some(&CheckedNodeKind::Model(ModelForm::EventType))
+}
+
+/// Whether a temporal clause's activation holds a `guard` binding that reads
+/// an event-typed parameter. The activation's trigger names its binder and is
+/// not read.
+#[ix_trace_rs::string_edge]
+fn guard_reads_event_parameter(
+    application: Application<'_>,
+    operator: ApplicationOperator,
+    activation: &[CheckedTerm],
+    graph: &Graph<'_>,
+    meter: &mut WorkMeter,
+) -> Result<bool, ValidationFailure> {
+    for member in activation {
+        let CheckedTerm::Binding { name, value, .. } = member else {
+            continue;
+        };
+        if name.as_ref() == "guard"
+            && bound_value_reads_event_parameter(application, operator, value, graph, meter)?
+        {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+/// Whether a binder operand's bound value or body, or an activation guard,
+/// holds a reference to an event-typed parameter, at any depth of `binding` and
+/// `aggregate` terms. A `case` arm is its binder slots and then its body; the
+/// slots declare binders and are not read.
+fn bound_value_reads_event_parameter(
+    application: Application<'_>,
+    operator: ApplicationOperator,
+    value: &CheckedTerm,
+    graph: &Graph<'_>,
+    meter: &mut WorkMeter,
+) -> Result<bool, ValidationFailure> {
+    let mut next = Some(match value {
+        CheckedTerm::Aggregate { members, .. } if operator == ApplicationOperator::Case => {
+            match members.as_slice() {
+                [_, body] => body,
+                _ => value,
+            }
+        }
+        _ => value,
+    });
+    // Only an aggregate of several members needs the worklist.
+    let mut pending: Vec<&CheckedTerm> = Vec::new();
+    while let Some(term) = next {
+        match term {
+            CheckedTerm::Binding { value, .. } => {
+                next = Some(value);
+                continue;
+            }
+            CheckedTerm::Aggregate { members, .. } => {
+                if let Some((first, rest)) = members.split_first() {
+                    for member in rest {
+                        work_at_path(meter, &application.read_node().key("node_id"), 1)?;
+                        meter.push(&mut pending, member)?;
+                    }
+                    next = Some(first);
+                    continue;
+                }
+            }
+            _ if is_event_parameter_reference(term, graph) => return Ok(true),
+            _ => {}
+        }
+        next = pending.pop();
+    }
+    Ok(false)
 }
 
 #[ix_trace_rs::string_edge]
