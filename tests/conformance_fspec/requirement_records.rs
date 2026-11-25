@@ -981,25 +981,17 @@ fn tc_488_a_hundred_thousand_requirement_records_admit_within_fifteen_minutes() 
     );
 }
 
-fn boolean_literal_guard_package(spec: &Value) -> Value {
+/// FR-825-AC-6's shared-application package with the Boolean parameter guard
+/// replaced by the Boolean literal `value`: `if value then x + 1 else x + 1`.
+/// Both occurrences keep their record, one under each frame of the literal.
+fn boolean_literal_guard_package(spec: &Value, value: bool) -> Value {
     let mut package = boolean_value_guard_package(spec);
-    let boolean = node_id("scalar_type/boolean");
     let literal_id = node_id("value/literal/boolean_guard");
     {
         let nodes = package["semantic_graph"]["nodes"]
             .as_array_mut()
             .expect("graph nodes");
-        let literal = json!({
-            "node_id":literal_id,
-            "schema_version":"filament.checked-semantic-graph/v2",
-            "node_tag":"value",
-            "semantic_form":"literal",
-            "semantic_type":boolean,
-            "dependencies":[],
-            "occurrences":[{"role":"expression","ordinal":0}],
-            "body":{"term":"literal","type":boolean,"value_kind":"boolean","value":true}
-        });
-        nodes.push(literal);
+        nodes.push(boolean_literal_node(&literal_id, value));
         let conditional_position = nodes
             .iter()
             .position(|node| node["node_id"] == node_id("expression/boolean_guard_if"))
@@ -1017,45 +1009,6 @@ fn boolean_literal_guard_package(spec: &Value) -> Value {
             .sort_by_key(structural_fixture_id);
     }
 
-    // A true literal condition has no false branch, so the literal-form
-    // control retains only the record for application occurrence zero.
-    let discarded_position = package["semantic_graph"]["nodes"]
-        .as_array()
-        .expect("graph nodes")
-        .iter()
-        .position(|node| {
-            node["semantic_form"] == "value_validity"
-                && binding_value(node, "occurrence")["value"] == 1
-        })
-        .expect("false-branch value-validity record");
-    let discarded_id = package["semantic_graph"]["nodes"][discarded_position]["node_id"].clone();
-    package["semantic_graph"]["nodes"]
-        .as_array_mut()
-        .expect("graph nodes")
-        .remove(discarded_position);
-    package["requirement_items"]
-        .as_array_mut()
-        .expect("requirement rows")
-        .retain(|row| row["record"] != discarded_id);
-    package["source_map"]
-        .as_array_mut()
-        .expect("source map")
-        .retain(|row| row["node_id"] != discarded_id);
-    package["path_condition_frames"]
-        .as_array_mut()
-        .expect("path-condition frames")
-        .truncate(1);
-
-    let record_path = spec["record_path_condition"]
-        .as_array()
-        .expect("published record path conditions")
-        .iter()
-        .find(|row| row["application_occurrence"].as_u64() == Some(0))
-        .expect("true-branch record path");
-    let frame_id = record_path["terminal_frame_id"]
-        .as_u64()
-        .expect("true-branch terminal frame id");
-    let frame = &spec["path_condition_frames"][usize::try_from(frame_id).expect("frame id")];
     let parameter_position = package["semantic_graph"]["nodes"]
         .as_array()
         .expect("graph nodes")
@@ -1088,29 +1041,54 @@ fn boolean_literal_guard_package(spec: &Value) -> Value {
         .iter()
         .position(|node| node["node_id"] == literal_id)
         .expect("Boolean literal position after parameter removal");
-    let record_position = package["semantic_graph"]["nodes"]
-        .as_array()
-        .expect("graph nodes")
-        .iter()
-        .position(|node| {
-            node["semantic_form"] == "value_validity"
-                && node["body"]["members"][2]["value"]["value"] == 0
-        })
-        .expect("true-branch value-validity record after parameter removal");
-    let guard_read_occurrence = frame["guard"]["occurrence"]["ordinal"]
-        .as_u64()
-        .expect("guard read occurrence");
-    let holds = frame["holds"].as_bool().expect("required guard outcome");
-    rekey_requirement_record(
-        &mut package,
-        record_position,
-        literal_position,
-        guard_read_occurrence,
-        holds,
-        Some((parameter_position, parameter_id)),
-    );
+    for (application_occurrence, holds) in [(0, true), (1, false)] {
+        let record_position = package["semantic_graph"]["nodes"]
+            .as_array()
+            .expect("graph nodes")
+            .iter()
+            .position(|node| {
+                node["semantic_form"] == "value_validity"
+                    && node["body"]["members"][2]["value"]["value"] == application_occurrence
+            })
+            .expect("value-validity record after parameter removal");
+        rekey_requirement_record(
+            &mut package,
+            record_position,
+            literal_position,
+            0,
+            holds,
+            Some((parameter_position, parameter_id.clone())),
+        );
+    }
     settle(&mut package);
-    let final_literal_id = package["semantic_graph"]["nodes"]
+    let final_literal_id = settled_boolean_literal(&package);
+    for frame in package["path_condition_frames"]
+        .as_array_mut()
+        .expect("path-condition frames")
+    {
+        frame["guard"]["node"] = final_literal_id.clone();
+    }
+    rebuild_body_locations(&mut package);
+    rebuild_complete_source_map(&mut package);
+    package
+}
+
+fn boolean_literal_node(literal_id: &Value, value: bool) -> Value {
+    let boolean = node_id("scalar_type/boolean");
+    json!({
+        "node_id":literal_id,
+        "schema_version":"filament.checked-semantic-graph/v2",
+        "node_tag":"value",
+        "semantic_form":"literal",
+        "semantic_type":boolean,
+        "dependencies":[],
+        "occurrences":[{"role":"expression","ordinal":0}],
+        "body":{"term":"literal","type":boolean,"value_kind":"boolean","value":value}
+    })
+}
+
+fn settled_boolean_literal(package: &Value) -> Value {
+    package["semantic_graph"]["nodes"]
         .as_array()
         .expect("settled graph nodes")
         .iter()
@@ -1120,8 +1098,185 @@ fn boolean_literal_guard_package(spec: &Value) -> Value {
                 && node["semantic_type"] == node_id("scalar_type/boolean")
         })
         .expect("settled Boolean literal")["node_id"]
-        .clone();
-    package["path_condition_frames"][0]["guard"]["node"] = final_literal_id;
+        .clone()
+}
+
+/// `value OP ((if n >= 0 then n + 1 else n + 1) >= 0)` for a
+/// short-circuit `operator`: the two `+` records stand inside the right
+/// operand, under the literal's frame (`holds`) and then the `n >= 0` frame.
+fn literal_short_circuit_package(operator: &str, value: bool, holds: bool) -> Value {
+    let mut package = value_validity_package(false);
+    let boolean = node_id("scalar_type/boolean");
+    let integer = node_id("scalar_type/integer");
+    let literal_id = node_id("value/literal/boolean_guard");
+    let comparison_id = node_id("expression/conditional/at-least-zero");
+    let root_id = node_id("expression/literal_short_circuit");
+    let conditional_id = node_id("expression/conditional");
+    let nodes = package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("graph nodes");
+    nodes.push(boolean_literal_node(&literal_id, value));
+    let application = |node_id: &Value, identity: &str, arguments: Value| {
+        let mut node = json!({
+            "node_id":node_id,
+            "schema_version":"filament.checked-semantic-graph/v2",
+            "node_tag":"expression", "semantic_form":"binary", "semantic_type":boolean,
+            "dependencies":[], "occurrences":[{"role":"expression","ordinal":0}],
+            "body":{"term":"application","operator":"binary",
+                "operation":{"identity":identity,"laws":[],"mode":null,"member":null,"leaves":[]},
+                "result_type":boolean,
+                "arguments":arguments}
+        });
+        sync_body_dependencies(&mut node);
+        node["dependencies"]
+            .as_array_mut()
+            .expect("application dependencies")
+            .push(boolean.clone());
+        sort_graph_ids(
+            node["dependencies"]
+                .as_array_mut()
+                .expect("application dependencies"),
+        );
+        node
+    };
+    nodes.push(application(
+        &comparison_id,
+        "filament.op.integer.ge",
+        json!([{"term":"reference","target":conditional_id},
+            {"term":"literal","type":integer,"value_kind":"integer","value":"0"}]),
+    ));
+    nodes.push(application(
+        &root_id,
+        operator,
+        json!([{"term":"reference","target":literal_id},
+            {"term":"reference","target":comparison_id}]),
+    ));
+    let owner = nodes
+        .iter_mut()
+        .find(|node| node["node_tag"] == "function")
+        .expect("function owner");
+    owner["semantic_type"] = boolean.clone();
+    binding_value_mut(owner, "body")["target"] = root_id;
+    sync_body_dependencies(owner);
+
+    cite_frames_behind_a_new_root_frame(&mut package);
+    let comparison_guard = package["path_condition_frames"][0]["guard"].clone();
+    let literal_guard = json!({"node":literal_id,"occurrence":{"role":"expression","ordinal":0}});
+    package["path_condition_frames"] = json!([
+        {"parent":null,"guard":literal_guard,"holds":holds},
+        {"parent":0,"guard":comparison_guard,"holds":true},
+        {"parent":0,"guard":comparison_guard,"holds":false}
+    ]);
+    settle(&mut package);
+    package["path_condition_frames"][0]["guard"]["node"] = settled_boolean_literal(&package);
+    rebuild_body_locations(&mut package);
+    rebuild_complete_source_map(&mut package);
+    package
+}
+
+/// Re-points each value-validity record, its identity path and its row at the
+/// frame one row later, leaving row 0 for a new outermost frame.
+fn cite_frames_behind_a_new_root_frame(package: &mut Value) {
+    let mut renamed = Vec::new();
+    for record in package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("graph nodes")
+        .iter_mut()
+        .filter(|node| node["semantic_form"] == "value_validity")
+    {
+        let old_id = record["node_id"].clone();
+        let frame = binding_value(record, "path_condition")["members"][0]["value"]
+            .as_u64()
+            .expect("terminal frame id")
+            + 1;
+        binding_value_mut(record, "path_condition")["members"][0]["value"] = json!(frame);
+        let path = record["node_id"]["path"]
+            .as_array_mut()
+            .expect("record identity path");
+        let marker = path
+            .iter()
+            .position(|segment| segment == "path_condition")
+            .expect("path-condition identity segment");
+        path[marker + 1] = json!(frame.to_string());
+        renamed.push((old_id, record["node_id"].clone()));
+    }
+    for item in package["requirement_items"]
+        .as_array_mut()
+        .expect("requirement items")
+    {
+        let old_id = item["record"].clone();
+        item["record"] = renamed
+            .iter()
+            .find_map(|(old, new)| (old == &old_id).then(|| new.clone()))
+            .expect("renamed record");
+    }
+}
+
+/// `if false then (if n >= 0 then n else n) else (if n >= 0 then n + 1 else
+/// n + 1)`: the guard `n >= 0` is read first in the branch the literal decides
+/// away, which holds no record, so the live frames name its occurrence 1.
+fn literal_dead_guard_read_package() -> Value {
+    let mut package = value_validity_package(false);
+    let integer = node_id("scalar_type/integer");
+    let parameter_id = node_id("value/parameter/n/0");
+    let literal_id = node_id("value/literal/boolean_guard");
+    let live_id = node_id("expression/conditional");
+    let dead_id = node_id("expression/conditional/dead");
+    let root_id = node_id("expression/conditional/outer");
+    let comparison_guard = package["path_condition_frames"][0]["guard"]["node"].clone();
+    let nodes = package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("graph nodes");
+    nodes
+        .iter_mut()
+        .find(|node| node["node_id"] == comparison_guard)
+        .expect("comparison guard")["occurrences"] = json!([
+        {"role":"expression","ordinal":0},
+        {"role":"expression","ordinal":1}
+    ]);
+    nodes.push(boolean_literal_node(&literal_id, false));
+    for (node_id, arguments) in [
+        (&dead_id, [&comparison_guard, &parameter_id, &parameter_id]),
+        (&root_id, [&literal_id, &dead_id, &live_id]),
+    ] {
+        let mut conditional = json!({
+            "node_id":node_id,
+            "schema_version":"filament.checked-semantic-graph/v2",
+            "node_tag":"expression", "semantic_form":"conditional", "semantic_type":integer,
+            "dependencies":[], "occurrences":[{"role":"expression","ordinal":0}],
+            "body":{"term":"application","operator":"conditional",
+                "operation":{"identity":"filament.op.control.if","laws":[],"mode":null,"member":null,"leaves":[]},
+                "result_type":integer,
+                "arguments":arguments
+                    .iter()
+                    .map(|target| json!({"term":"reference","target":target}))
+                    .collect::<Vec<_>>()}
+        });
+        sync_body_dependencies(&mut conditional);
+        let dependencies = conditional["dependencies"]
+            .as_array_mut()
+            .expect("conditional dependencies");
+        dependencies.push(integer.clone());
+        sort_graph_ids(dependencies);
+        nodes.push(conditional);
+    }
+    let owner = nodes
+        .iter_mut()
+        .find(|node| node["node_tag"] == "function")
+        .expect("function owner");
+    binding_value_mut(owner, "body")["target"] = root_id;
+    sync_body_dependencies(owner);
+
+    cite_frames_behind_a_new_root_frame(&mut package);
+    let live_guard =
+        json!({"node":comparison_guard,"occurrence":{"role":"expression","ordinal":1}});
+    package["path_condition_frames"] = json!([
+        {"parent":null,"guard":{"node":literal_id,"occurrence":{"role":"expression","ordinal":0}},"holds":false},
+        {"parent":0,"guard":live_guard,"holds":true},
+        {"parent":0,"guard":live_guard,"holds":false}
+    ]);
+    settle(&mut package);
+    package["path_condition_frames"][0]["guard"]["node"] = settled_boolean_literal(&package);
     rebuild_body_locations(&mut package);
     rebuild_complete_source_map(&mut package);
     package
@@ -2130,58 +2285,144 @@ fn published_requirement_record_vectors_admit_shared_frames_and_refuse_non_boole
     );
 }
 
+/// Each record's terminal frame id and its chain as
+/// `(guard is the literal, guard occurrence, holds)`, outermost first.
+type LiteralChains = Vec<(Option<usize>, Vec<(bool, u64, bool)>)>;
+
+fn literal_chains(package: &Value) -> LiteralChains {
+    let admitted = match read(package) {
+        CheckedPackageV2ReadResult::Admitted(admitted) => admitted,
+        result => panic!("FR-825 admits a record behind a Boolean literal guard: {result:?}"),
+    };
+    admitted
+        .requirement_items()
+        .iter()
+        .map(value_validity_record)
+        .map(|record| {
+            let chain = admitted
+                .path_condition(record)
+                .iter()
+                .map(|guard| {
+                    let node = admitted
+                        .resolved_graph()
+                        .nodes
+                        .iter()
+                        .find(|node| &node.node_id == guard.guard)
+                        .expect("retained guard node");
+                    (
+                        node.semantic_form.as_ref() == "literal",
+                        guard.occurrence,
+                        guard.holds,
+                    )
+                })
+                .collect();
+            (record.path_condition_frame.map(|frame| frame.0), chain)
+        })
+        .collect()
+}
+
+/// FR-825 "Shared path-condition frames": `if` then and else branches
+/// contribute their condition with `holds` true and false, a literal
+/// condition included, so `if true then x + 1 else x + 1` (and the `false`
+/// literal) admits both records, each under its own frame of the literal.
 #[trace("TC-2053", "FR-825-AC-6")]
 #[test]
 fn public_reader_admits_a_reachable_boolean_literal_value_guard() {
     let proposal = super::proposal_dir_of(&super::fixtures_dir());
     let vectors = super::read_json(&proposal.join("requirement-record-vectors.json"))
         .expect("published FR-825 vectors");
-    let spec = &vectors["positive"][0];
-    let package = boolean_literal_guard_package(spec);
-    assert!(!package["semantic_graph"]["nodes"]
-        .as_array()
-        .expect("graph nodes")
-        .iter()
-        .any(|node| node["node_id"] == node_id("value/parameter/p/0")));
-    let admitted = match read(&package) {
-        CheckedPackageV2ReadResult::Admitted(admitted) => admitted,
-        result => panic!("FR-825 item 6 admits a reachable Boolean literal guard: {result:?}"),
-    };
-    let records = admitted
-        .requirement_items()
-        .iter()
-        .map(value_validity_record)
-        .collect::<Vec<_>>();
-    assert_eq!(records.len(), 1);
-    let guards = admitted
-        .path_condition(records[0])
-        .iter()
-        .collect::<Vec<_>>();
-    let guard_id = guards[0].guard;
-    assert!(records.iter().all(|record| {
-        admitted
-            .path_condition(record)
+    for value in [true, false] {
+        let package = boolean_literal_guard_package(&vectors["positive"][0], value);
+        assert!(!package["semantic_graph"]["nodes"]
+            .as_array()
+            .expect("graph nodes")
             .iter()
-            .all(|guard| guard.guard == guard_id)
-    }));
-    let guard = admitted
-        .resolved_graph()
-        .nodes
-        .iter()
-        .find(|node| &node.node_id == guard_id)
-        .expect("retained Boolean literal guard node");
-    assert_eq!(guard.node_tag.as_ref(), "value");
-    assert_eq!(guard.semantic_form.as_ref(), "literal");
-    assert_eq!(guards[0].occurrence, 0);
-    assert_eq!(records[0].extent_roots.len(), 1);
-    let extent_root = admitted
-        .resolved_graph()
-        .nodes
-        .iter()
-        .find(|node| &node.node_id == &records[0].extent_roots[0])
-        .expect("x parameter extent root");
-    assert_eq!(extent_root.node_tag.as_ref(), "value");
-    assert_eq!(extent_root.semantic_form.as_ref(), "parameter");
+            .any(|node| node["node_id"] == node_id("value/parameter/p/0")));
+        assert_eq!(
+            literal_chains(&package),
+            vec![
+                (Some(0), vec![(true, 0, true)]),
+                (Some(1), vec![(true, 0, false)]),
+            ],
+            "literal {value}"
+        );
+        let CheckedPackageV2ReadResult::Admitted(admitted) = read(&package) else {
+            panic!("the package admitted above is admitted again");
+        };
+        let nodes = &admitted.resolved_graph().nodes;
+        for record in admitted
+            .requirement_items()
+            .iter()
+            .map(value_validity_record)
+        {
+            assert_eq!(record.extent_roots.len(), 1, "only `x` is a root");
+            let root = nodes
+                .iter()
+                .find(|node| node.node_id == record.extent_roots[0])
+                .expect("retained extent root node");
+            assert_eq!(root.node_tag.as_ref(), "value");
+            assert_eq!(root.semantic_form.as_ref(), "parameter");
+            let body = serde_json::to_value(&root.body).expect("parameter body");
+            assert_eq!(body["members"][0]["value"]["value"], "x");
+            for guard in admitted.path_condition(record).iter() {
+                let node = nodes
+                    .iter()
+                    .find(|node| &node.node_id == guard.guard)
+                    .expect("retained Boolean literal guard node");
+                assert_eq!(node.node_tag.as_ref(), "value");
+                assert_eq!(node.semantic_form.as_ref(), "literal");
+            }
+        }
+    }
+}
+
+/// FR-825: "pruning removes a frame, never a visit". The guard read inside the
+/// branch a literal decides away takes occurrence 0, so the later frames name
+/// occurrence 1 and a table naming occurrence 0 is refused.
+#[trace("TC-2053", "FR-825-AC-12")]
+#[test]
+fn a_guard_read_behind_a_literal_advances_the_later_guard_occurrence() {
+    let package = literal_dead_guard_read_package();
+    assert_eq!(
+        literal_chains(&package),
+        vec![
+            (Some(1), vec![(true, 0, false), (false, 1, true)]),
+            (Some(2), vec![(true, 0, false), (false, 1, false)]),
+        ]
+    );
+
+    let mut earlier = package;
+    for frame in [1, 2] {
+        earlier["path_condition_frames"][frame]["guard"]["occurrence"]["ordinal"] = json!(0);
+    }
+    assert_refusal(
+        &earlier,
+        CheckedPackageRefusalCode::InvalidPackage,
+        Some(CheckedPackageRefusalCause::InvalidValue),
+        "/path_condition_frames",
+    );
+}
+
+/// FR-825: the right operand of `and` and `implies` stands under the left
+/// operand with `holds` true, and of `or` with `holds` false, also when the
+/// left operand is the literal that decides the result.
+#[test]
+fn public_reader_admits_records_in_a_literal_short_circuited_operand() {
+    for (operator, value, holds) in [
+        ("filament.op.boolean.and", false, true),
+        ("filament.op.boolean.or", true, false),
+        ("filament.op.boolean.implies", false, true),
+    ] {
+        let package = literal_short_circuit_package(operator, value, holds);
+        assert_eq!(
+            literal_chains(&package),
+            vec![
+                (Some(1), vec![(true, 0, holds), (false, 0, true)]),
+                (Some(2), vec![(true, 0, holds), (false, 0, false)]),
+            ],
+            "{value} {operator}"
+        );
+    }
 }
 
 #[trace("TC-2053", "FR-825-AC-8")]
