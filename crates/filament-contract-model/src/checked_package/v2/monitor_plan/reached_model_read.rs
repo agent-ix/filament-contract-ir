@@ -1211,10 +1211,15 @@ mod tests {
         wire["semantic_graph"]["nodes"][parameter_at]["semantic_type"] = subject_type;
         // The owner edge is derived from the `over` type: a clause whose
         // `over` reaches an object type names that model (FR-064-AC-1).
-        let protocol = monitor_plan_fixtures::position(
-            wire,
-            &monitor_plan_fixtures::find(wire, "protocol_clause"),
-        );
+        let unowned = monitor_plan_fixtures::find(wire, "protocol_clause");
+        let protocol = monitor_plan_fixtures::position(wire, &unowned);
+        let model_at = monitor_plan_fixtures::position(wire, &model);
+        let mut owned = unowned.clone();
+        owned["path"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!({"node": model_at}));
+        fixture_support::reassign_node_id(wire, &unowned, &owned);
         wire["semantic_graph"]["nodes"][protocol]["owner_model"] = model.clone();
         wire["semantic_graph"]["nodes"][protocol]["dependencies"]
             .as_array_mut()
