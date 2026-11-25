@@ -1655,9 +1655,12 @@ vector or schema is copied into this repository.
     (FR-038-AC-629; FSpec FR-322-AC-538; FSL TC-1063).
     In further packages, keep the `owner_model` edge and its dependency but give
     C its declaration path alone as `node_id.path`, both with the edge unchanged
-    and after retargeting that edge and its dependency to B; then, with a
-    selected dependency package, end C's path in a dependency position. Require
-    the same `stale-node-key` refusal, loci and absent package each time. Then
+    and after retargeting that edge and its dependency to B. Require the same
+    `stale-node-key` refusal, loci and absent package each time. With a selected
+    dependency package, make C's own `node_id` operand slot name a dependency
+    position: require `malformed_wire`, with no cause, at that slot. Give an
+    ownerless clause one operand after its declaration path: require
+    `invalid_package`/`declaration-nominal-mismatch` at its `node_id.path`. Then
     remove C's `declaration`: require `malformed_wire` at C's node whether its
     last `node_id.path` segment resolves to C's owner, resolves to another node
     or is a name (FR-038-AC-629).

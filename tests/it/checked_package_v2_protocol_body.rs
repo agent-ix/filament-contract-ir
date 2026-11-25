@@ -12,7 +12,7 @@ use crate::support::checked_package::{
     read_with_dependencies, reassign_node_id, rebuild_source_map, refresh_identity,
     refresh_identity_projection, refusal, refusal_at_id, rename_node, resolved_fixture_id,
     select_model, selected_interface_model_node, settle, source_owner, structural_fixture_id,
-    structural_id, structural_key, v2_all_families, v2_nominal, COMPLETE_VALUE_FEATURE,
+    structural_id, structural_key, v2_all_families, v2_nominal, wire_form, COMPLETE_VALUE_FEATURE,
 };
 use filament_contract_model::{
     CheckedNodeId, CheckedNodePathSegment, CheckedPackageEvidence, CheckedPackageLimit,
@@ -3439,24 +3439,77 @@ fn protocol_owner_dependency_position_operand_refuses() {
     let mut package = admitted_object_owned_protocol_families();
     package["lock"]["dependency_selections"] = json!([{"identity": name}]);
     settle_after_structural_rekey(&mut package);
-    let selected = read_with_dependencies(&package, &[(name.as_str(), &dependency)]);
+    let mut wire = wire_form(&package);
+    let selected = read_with_dependencies(&wire, &[(name.as_str(), &dependency)]);
     assert!(
         matches!(selected, CheckedPackageV2ReadResult::Admitted(_)),
         "the package admits with the selected dependency: {selected:?}"
     );
 
+    // The clause's own `node_id` slot now names a dependency position.
+    let clause = clause_position(&wire);
+    let slot = wire["semantic_graph"]["nodes"][clause]["node_id"]["path"][2]["operand"]
+        .as_u64()
+        .expect("owner operand slot");
+    let slot = usize::try_from(slot).expect("slot fits usize");
+    wire["semantic_graph"]["operand_rows"][clause][slot] = json!({"package": name, "node": 0});
+
+    let CheckedPackageV2ReadResult::Refused(refusal) =
+        read_with_dependencies(&wire, &[(name.as_str(), &dependency)])
+    else {
+        panic!("an owner operand naming a dependency position refuses");
+    };
+    assert_eq!(
+        refusal.code,
+        CheckedPackageRefusalCode::MalformedWire,
+        "{refusal:?}"
+    );
+    assert_eq!(refusal.cause, None, "{refusal:?}");
+    assert_eq!(
+        refusal.loci[0].path.as_ref().map(|path| path.as_str()),
+        Some(format!("/semantic_graph/nodes/{clause}/node_id/path/2/operand").as_str()),
+        "{refusal:?}"
+    );
+}
+
+#[trace("TC-048", "FR-038-AC-629")]
+#[test]
+fn protocol_ownerless_clause_with_an_operand_refuses() {
+    let mut package = admitted_protocol_families();
+    let admitted = read(&package);
+    assert!(
+        matches!(admitted, CheckedPackageV2ReadResult::Admitted(_)),
+        "the ownerless clause admits on its declaration path: {admitted:?}"
+    );
+
     let clause = clause_position(&package);
-    package["semantic_graph"]["nodes"][clause]["node_id"]["path"]
+    let unowned = package["semantic_graph"]["nodes"][clause]["node_id"].clone();
+    assert_eq!(unowned["path"], json!(["Example", "OrderFlow"]));
+    let boolean = node_position_for_key(&package, &node_id(&family_key("aaaa")));
+    let mut extended = unowned.clone();
+    extended["path"]
         .as_array_mut()
         .expect("protocol clause path")
-        .last_mut()
-        .expect("owner operand segment")
-        .clone_from(&json!({"package": name, "node": 0}));
-    settle_after_structural_rekey(&mut package);
+        .push(json!({"node": boolean}));
+    reassign_node_id(&mut package, &unowned, &extended);
 
-    assert_stale_owner_refusal(
-        &package,
-        read_with_dependencies(&package, &[(name.as_str(), &dependency)]),
+    let CheckedPackageV2ReadResult::Refused(refusal) = read(&package) else {
+        panic!("an ownerless clause with an operand refuses");
+    };
+    assert_eq!(
+        refusal.code,
+        CheckedPackageRefusalCode::InvalidPackage,
+        "{refusal:?}"
+    );
+    assert_eq!(
+        refusal.cause,
+        Some(CheckedPackageRefusalCause::DeclarationNominalMismatch),
+        "{refusal:?}"
+    );
+    assert_eq!(
+        refusal.loci[0].path.as_ref().map(|path| path.as_str()),
+        Some(format!("/semantic_graph/nodes/{clause}/node_id/path").as_str()),
+        "{refusal:?}"
     );
 }
 

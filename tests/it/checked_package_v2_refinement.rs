@@ -6946,16 +6946,23 @@ fn concrete_protocol_refinement_with_family(
             .iter()
             .position(|node| node["node_id"] == model["node_id"])
             .expect("selected model node");
-        for clause in package["semantic_graph"]["nodes"]
-            .as_array_mut()
+        let clauses: Vec<usize> = package["semantic_graph"]["nodes"]
+            .as_array()
             .expect("nodes")
-            .iter_mut()
-            .filter(|node| node["semantic_form"] == "protocol_clause")
-        {
-            clause["node_id"]["path"]
+            .iter()
+            .enumerate()
+            .filter(|(_, node)| node["semantic_form"] == "protocol_clause")
+            .map(|(position, _)| position)
+            .collect();
+        for position in clauses {
+            let unowned = package["semantic_graph"]["nodes"][position]["node_id"].clone();
+            let mut owned = unowned.clone();
+            owned["path"]
                 .as_array_mut()
                 .expect("protocol clause path")
                 .push(json!({"node": model_position}));
+            crate::support::checked_package::reassign_node_id(&mut package, &unowned, &owned);
+            let clause = &mut package["semantic_graph"]["nodes"][position];
             clause["owner_model"] = model["node_id"].clone();
             clause["dependencies"]
                 .as_array_mut()
