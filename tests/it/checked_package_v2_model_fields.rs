@@ -10301,8 +10301,14 @@ fn event_package_selecting(
             "operation": {"identity": application.identity, "laws": [], "mode": null,
                 "member": member, "leaves": []},
             "result_type": node_id(&result), "arguments": arguments});
-        let key = format!("expression/{}/{index}", application.operator);
-        let mut node = wire_node(&key, "expression", application.operator, &result, &[], body);
+        // The `value` operator's expression form is `value_read`; each other
+        // operator used here names its own form.
+        let form = match application.operator {
+            "value" => "value_read",
+            operator => operator,
+        };
+        let key = format!("expression/{form}/{index}");
+        let mut node = wire_node(&key, "expression", form, &result, &[], body);
         node["occurrences"] = json!([{"role": "expression", "ordinal": 0}]);
         keys.push(key);
         applied.push(node);
@@ -10689,16 +10695,23 @@ fn tc_048_an_operand_whose_type_holds_event_elements_is_ineligible() {
     );
     assert_ineligible_operand("an event type in the second operand only", &second, 0, 1);
 
-    let unwrapped = event_package(
-        &[("held", optional())],
-        &[Applied {
-            operator: "value",
-            identity: "filament.op.option.value",
-            member: None,
-            result: event_type(),
-            operands: vec![0],
-        }],
+    let unwrapping = |result| Applied {
+        operator: "value",
+        identity: "filament.op.option.value",
+        member: None,
+        result,
+        operands: vec![0],
+    };
+    // The same application over an `Option<Boolean>` is admitted.
+    let (flag, evidence) = event_package(
+        &[("flag", Ty::Option(Box::new(Ty::Boolean)))],
+        &[unwrapping(Ty::Boolean)],
     );
+    match read_with(&flag, &evidence, CheckedPackageReadLimits::bounded()) {
+        CheckedPackageV2ReadResult::Admitted(_) => {}
+        other => panic!("option.value of Option<Boolean> must admit: {other:?}"),
+    }
+    let unwrapped = event_package(&[("held", optional())], &[unwrapping(event_type())]);
     assert_ineligible_operand("option.value of Option<OrderPlaced>", &unwrapped, 0, 0);
 
     // The clean first application is walked first or last; only the second
