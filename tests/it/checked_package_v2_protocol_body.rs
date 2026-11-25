@@ -6,9 +6,9 @@
 use crate::checked_package_v2_whole_read_accounting::fspec_inputs;
 use crate::support::checked_package::protocol_ports::role_port_fixture;
 use crate::support::checked_package::{
-    admitted_dependency, admitted_protocol_families, application_node_key, canonical,
-    evidence_for, evidence_with_document, family_key, family_model_document, fixture_source,
-    model_owner, node_id, owned_structural_node, protocol_named_node, protocol_role_node,
+    admitted_dependency, admitted_protocol_families, application_node_key, canonical, evidence_for,
+    evidence_with_document, family_key, family_model_document, fixture_source, model_owner,
+    node_id, owned_structural_node, protocol_named_node, protocol_role_node,
     read_with_dependencies, reassign_node_id, rebuild_source_map, refresh_identity,
     refresh_identity_projection, refusal, refusal_at_id, rename_node, resolved_fixture_id,
     select_model, selected_interface_model_node, settle, source_owner, structural_fixture_id,
