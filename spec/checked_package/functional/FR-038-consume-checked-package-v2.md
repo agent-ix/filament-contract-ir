@@ -127,6 +127,12 @@ relationships:
     type: references
   - target: ix://agent-ix/filament-specification/FR-322-AC-537
     type: references
+  - target: ix://agent-ix/filament-specification/FR-322-AC-539
+    type: references
+  - target: ix://agent-ix/filament-specification/FR-322-AC-549
+    type: references
+  - target: ix://agent-ix/filament-specification/FR-322-AC-550
+    type: references
   - target: ix://agent-ix/filament-specification/FR-482-AC-5
     type: references
   - target: ix://agent-ix/filament-specification/FR-482-AC-6
@@ -5718,6 +5724,14 @@ its own admitted node and SHALL NOT inherit an enclosing application's row
 location. This leaf rule does not assign a new refusal to an absent, foreign
 or other non-application node; those retain the existing row-join behavior.
 
+During graph-shape validation, a directed cycle composed only of local
+`expression` nodes and local `value` nodes with `semantic_form` `record_value`,
+`tuple_value` or `option_value` SHALL be refused as
+`invalid_semantic_graph` with no cause at the graph-node locus of the first
+member in ascending structural `NodeId` order. A shared `recursion_group` does
+not exempt any member. Cycles that pass through a function, predicate, type or
+protocol node retain their existing behavior under their owning criteria.
+
 For `body_locations` (FSpec FR-322), the strict reader SHALL apply the
 `protocol_locations` row shape, key, consecutive-ordinal, row-join and leaf
 rules to each row, at `body_locations` loci, and SHALL admit only the closed
@@ -5727,11 +5741,16 @@ from the admitted graph alone: it starts at the local node the function's
 `body` binding references and visits nodes in pre-order, following, in the
 order they occur in a pre-order traversal of each visited node's `body` term
 (members, then arguments, left to right), every `reference` leaf whose target
-is a local `expression` node or a composite `value`/`record_value` or
-`value`/`tuple_value` node. A composite value is walked through without
-counting a term: its stored record fields or ascending tuple positions expose
-their expression-reference leaves in that order. Atomic literals and parameters
-end the branch, as do function, type and foreign nodes. A node reached twice is
+is a local `expression` node or a composite `value`/`record_value`,
+`value`/`tuple_value` or `value`/`option_value` node. A composite value is
+walked through without counting a term. Its stored record fields, ascending
+tuple positions, or an option value's sole `some` payload reference expose
+their child references in that order. This traversal continues recursively
+when a child reference targets another `record_value`, `tuple_value` or
+`option_value`, preserving depth-first pre-order; expression references enter
+the ordinary expression walk. The composite values themselves are not terms.
+Atomic literals and parameters end the branch, as do function, type and
+foreign nodes. A node reached twice is
 visited twice, and a function node with no `body` binding has no walk. A visit
 is a *term* exactly when its node is an `expression` node other than a
 reference, a let, a conditional or a case: an `expression`/`reference` node
@@ -7275,6 +7294,8 @@ the minimum the read uses.
 | FR-038-AC-633 | An application refuses `ill_typed`/`operator-ineligible` at an argument that is a `reference` to a `value`/`parameter` node typed by a `model`/`event_type` node, the temporal clause's `over` operand excepted: `filament.op.structural.eq` over two such parameters, `filament.op.boolean.not`, `filament.op.record.project` of an event field and `filament.op.model.deref` over one, `filament.op.collection.contains` of one in a set of that event type (refused at the set operand, argument 0, which reaches the event type first), and a temporal clause whose captures argument is itself such a reference. It refuses the same way at a `binder` operand that holds the reference in a `filament.op.control.let` bound value, a `filament.op.collection.forall` body, a `filament.op.collection.fold` step or a `filament.op.control.case` arm body, and at a temporal clause's activation argument whose `each` guard is a reference to the event-typed trigger. Refusing the field projection diverges on purpose from FSpec TC-281 EV-03, which admits it. | Test (TC-048; FSpec TC-281 EV-03, EV-04) |
 | FR-038-AC-634 | In a package that declares an event type, an application refuses `ill_typed`/`operator-ineligible` at the first argument whose operand type reaches that event type: `filament.op.structural.eq` and `ne` over an `option`, `set`, `sequence`, `bag`, `ordered_set`, bounded `sequence` and `option` of `set` of it, at argument 1 when only the second operand reaches it; `filament.op.option.value` over an `option` of it; `eq` over a structural record, tuple, union and alias holding it, and `filament.op.record.project` over that record; `eq` over a model record value type that reaches it through a domain package sequence, in its own field and over an `option` of that record, and through an inherited field, a tuple position, a variant payload, an option definition, a map value and an inline `Map<Text, V>` field `typeRef`; `eq` over `none` literals typed at an `option` of it and over references to its declaration node; a `filament.op.collection.forall` body reading an `option` of it; `eq` over a recursive record that also holds it; and, beside an application that reaches no event type, at the application that does. The model record cases rest on a model intake gap: FSpec FR-208-AC-9 and FR-322 let no field hold an event, and this reader still admits a field that reaches one through a sequence or map definition or an inline map, which FSpec FR-154-AC-50 refuses as a `typeRef`, so closing those gaps changes those cases. | Test (TC-048; FSpec TC-281 EV-04, EV-05) |
 | FR-038-AC-635 | In a package that declares an event type, `filament.op.structural.eq` and `ne` over a model record value type that holds no event value, an `option` of it, `Option<Boolean>` and `Set<Integer>` are admitted, `eq` over a model record value type whose fields name a reference type over an object type, a value type and a native `Integer` is admitted, `eq` over a recursive record that holds no event value is admitted, and `eq` over a model record value type whose fields are inline `Map<Text, V>` `typeRef`s over a native `Boolean` and an alias of it is admitted. The inline map case rests on a model intake gap: FSpec FR-154-AC-50 refuses such a `typeRef` at intake, and this reader still admits it, so closing that gap changes that case. | Test (TC-048; FSpec TC-281 EV-06) |
+| FR-038-AC-636 | For a package whose function-body reference reaches an outer `value`/`option_value` with `some` referencing a `value`/`record_value`, whose first stored field references a `value`/`tuple_value` with position 0 referring to application A and position 1 referring to application B, and whose second stored field references a nested `value`/`option_value` with `some` referring to application C, with A, B and C each having only literal operands, the strict reader walks these transparent composites recursively in depth-first pre-order: the outer `some` payload, record fields in stored order, the first field's tuple positions in ascending order, and then the second field's nested `some` payload, yielding exactly application terms A, B and C at walk ordinals 0, 1 and 2. No composite value is a term. Exactly one body-location row for each of the three terms admits and the lazy cursor returns A, B and C in that order; omitting any of those rows refuses `invalid_package`/`invalid-value` at `/checked_term_data/body_locations`. This criterion implements FSpec FR-322-AC-539 and applies the same recursive composite traversal to option values nested within another body term. | Test |
+| FR-038-AC-638 | For FSpec FR-322-AC-549/550, graph-shape validation refuses `invalid_semantic_graph` with no cause when a directed cycle is composed only of local `expression` nodes and local `value` nodes with `semantic_form` `record_value`, `tuple_value` or `option_value`. A self-reference from a `record_value` and a two-node cycle between `tuple_value` and `option_value` with both members sharing one `recursion_group` each refuse at `/semantic_graph/nodes/{i}` for the first cycle member in ascending structural `NodeId` order, even though the group is shared. Cycles through a function, predicate, type or protocol node retain their existing outcomes and are not assigned this refusal by this criterion. The reader returns no admitted package for either refusing fixture. | Test |
 
 
 FR-038-AC-66 is retired and its ID is not reused (ADR-0056). It required that every
