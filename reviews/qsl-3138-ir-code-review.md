@@ -39,3 +39,21 @@ Not mergeable. The unconditional check is right for local owners and refuses no 
 | FND-001 | fixed | 7a4cda78: the dead `Dependency` arms are removed from `validate_declaration_names` and `owner_path_operand`. The test now sets the clause's row entry at its own `node_id` slot to `{"package", "node"}` on the wire form, and expects `MalformedWire`, no cause, at `/semantic_graph/nodes/{clause}/node_id/path/2/operand`. The coder's pointer is right and the FND's (row entry) was not: node_index.rs step 2 ("Placement") refuses a `node_id` slot that names a dependency position before step 3 checks row entries, as FSpec FR-322-AC-521 NI-33/NI-39 state. Body slots do not trigger step 2, so the `node_id` site is the one reported. |
 | FND-002 | rejected | not a defect. protocol_body.rs:7063 (`owner_model.is_none() && owner_path_operand(node).is_some()`, on main since #1173) refuses this case as `invalid_package`/`declaration-nominal-mismatch` at `/semantic_graph/nodes/{i}/node_id/path`, and the loop visits every protocol clause, so no path admits it. The review missed that check. Refusing it in `validate_declaration_names` instead would turn the presence refusal (`malformed_wire` at the clause, which FSL's "the edge is missing" case asserts) into a nominal mismatch, so keeping the check where it is is right. |
 | FND-003 | fixed | 7a4cda78: `source_package()` and `concrete_protocol_refinement_with_family` now rekey each clause through `reassign_node_id(&mut package, &unowned, &owned)`. |
+
+## New findings (disposition pass 3)
+
+| ID | Severity | Summary | Refs |
+| --- | --- | --- | --- |
+| FND-004 | high | Merging this head turns main CI red. `.github/workflows/ci.yml` checks out FSpec at 01f8dd31 (#807), which predates FSpec #843. At that ref, `positive-all-families.json` and its siblings carry the owned `Handshake` clause on its declaration path alone, `["Example", "Handshake"]` with `owner_model`. That form was admitted under IR-1614; this PR's unconditional check now refuses it `invalid_package`/`stale-node-key`. `make test` runs every target with `--include-ignored` and `FILAMENT_SPECIFICATION_DIR` set, so each FSpec conformance test that needs those fixtures admitted is predicted to fail. That includes `fspec_object_owned_clause_admits_on_its_owner_operand_path` and the AC-112 adverse base. Moving the ref to FSpec main 7de9a209 does not help: there those fixtures refuse `invalid_source_map` (see the dispositions below). Fix: first an FSpec PR that rewrites the clause's source_map entry in the eight #843 fixtures to the operand form. Then move this PR's ci.yml FSpec ref to that commit. | .github/workflows/ci.yml:14-19; Makefile (test target); tests/it/checked_package_v2_protocol_body.rs (fspec_object_owned_clause_admits_on_its_owner_operand_path) |
+
+## Dispositions (pass 3)
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-004 | still-open | New this pass. Closes only when CI's FSpec ref names a commit whose owned-clause fixtures carry the operand in both the node and its source_map entry. |
+
+## Dispositions (pass 4)
+
+| FND | outcome | reason |
+| --- | --- | --- |
+| FND-004 | fixed | de8f4136: commit 78b03dbf moves the ci.yml FSpec ref to a6968fb8 (FSpec #846). At that ref all eight owned-clause fixtures hold the operand in the clause node id and in its source_map entry: positive-all-families source_map[43] `["Example", "Handshake", {"node": 44}]` with `operand_rows[9][3]` = 44, and likewise in the other seven. `make test` does not build `conformance_fspec` (`test = false`). The FSpec-reading `it` and lib groups that CI runs report 327/0 and 41/0, and the five C2 failures are the read-budget reds already on main. So the merge adds no CI red. |
