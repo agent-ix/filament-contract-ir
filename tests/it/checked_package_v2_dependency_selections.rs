@@ -289,6 +289,69 @@ fn diamond_with_unequal_complete_leaf_packages_refuses() {
     );
 }
 
+/// FR-038-AC-293: two values of one package name that differ only in a
+/// dimension equivalence's `root_scale`, and so share the equivalence's node
+/// id, refuse in the lock stage when a diamond reaches both.
+#[trace("TC-048", "FR-038-AC-293")]
+#[test]
+fn diamond_with_leaf_packages_differing_only_in_root_scale_refuses() {
+    let first_wire = crate::checked_package_v2_dimension_equivalence::package();
+    let mut second_wire = first_wire.clone();
+    let scale = "/semantic_graph/nodes/3/body/root_scale/numerator";
+    *second_wire.pointer_mut(scale).expect("equivalence ratio") = json!("2");
+    assert_eq!(first_wire.pointer(scale), Some(&json!("1")));
+    let mut restored = second_wire.clone();
+    *restored.pointer_mut(scale).expect("equivalence ratio") = json!("1");
+    assert_eq!(restored, first_wire, "the ratio is the only difference");
+    let (_, first_leaf) = admitted_dependency(&first_wire);
+    let (_, second_leaf) = admitted_dependency(&second_wire);
+    assert_eq!(first_leaf.name(), second_leaf.name());
+    assert_eq!(
+        first_leaf.document_held_id(3),
+        second_leaf.document_held_id(3)
+    );
+
+    let branch = |name: &str, leaf: &CheckedPackageV2| {
+        let wire = with_selections(empty_package(name), vec![entry(leaf.name())]);
+        let CheckedPackageV2ReadResult::Admitted(admitted) =
+            read_with_dependencies(&wire, &[(leaf.name(), leaf)])
+        else {
+            panic!("{name} admits over its own leaf");
+        };
+        admitted
+    };
+    let left = branch("test/left", &first_leaf);
+    let agreeing = branch("test/right", &first_leaf);
+    let conflicting = branch("test/right", &second_leaf);
+    let root = with_selections(
+        empty_package("test/root"),
+        vec![entry("test/left"), entry("test/right")],
+    );
+    assert!(matches!(
+        read_with_dependencies(&root, &[("test/left", &left), ("test/right", &agreeing)]),
+        CheckedPackageV2ReadResult::Admitted(_)
+    ));
+    let CheckedPackageV2ReadResult::Refused(refusal) =
+        read_with_dependencies(&root, &[("test/left", &left), ("test/right", &conflicting)])
+    else {
+        panic!("leaf values differing only in root_scale must refuse");
+    };
+    assert_eq!(refusal.code, Code::InvalidPackage);
+    assert_eq!(refusal.cause, Some(Cause::ConflictingDefinition));
+    assert_eq!(
+        refusal.loci[0].path,
+        Some(pointer(
+            "/lock/dependency_selections/0/lock/dependency_selections/0"
+        ))
+    );
+    assert_eq!(
+        refusal.loci[1].path,
+        Some(pointer(
+            "/lock/dependency_selections/1/lock/dependency_selections/0"
+        ))
+    );
+}
+
 /// AC-366 equal-value diamond and direct-lock-only projection slice. Both
 /// branches supply the same admitted leaf value under one selected name.
 #[trace("TC-048", "FR-038-AC-366")]
