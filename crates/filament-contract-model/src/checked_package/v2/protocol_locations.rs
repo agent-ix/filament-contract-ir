@@ -37,9 +37,6 @@ pub(super) trait LocationRow {
     fn occurrence(&self) -> &CheckedOccurrence;
     /// The term coordinate within the occurrence.
     fn term_ordinal(&self) -> u64;
-    /// Body locations are independently keyed by function; protocol rows have
-    /// no function owner.
-    fn function(&self) -> Option<&CheckedNodeId>;
     /// The captured child path entries, as written.
     fn path(&self) -> &[CheckedKeyOrdinal];
     /// The wire member that holds `path()`.
@@ -62,9 +59,6 @@ impl LocationRow for CheckedProtocolSemanticLocation {
     }
     fn term_ordinal(&self) -> u64 {
         self.term_ordinal
-    }
-    fn function(&self) -> Option<&CheckedNodeId> {
-        None
     }
     fn path(&self) -> &[CheckedKeyOrdinal] {
         &self.location.path
@@ -91,11 +85,6 @@ impl LocationRow for CheckedBodySemanticLocation {
     }
     fn term_ordinal(&self) -> u64 {
         self.term_ordinal
-    }
-    fn function(&self) -> Option<&CheckedNodeId> {
-        match &self.location.origin {
-            CheckedBodyLocationOrigin::FunctionBody { function, .. } => Some(function),
-        }
     }
     fn path(&self) -> &[CheckedKeyOrdinal] {
         &self.location.down
@@ -184,7 +173,7 @@ pub(super) fn refuse_missing_predecessor(
 
 /// Check every row of `array` in order and report whether a row follows a
 /// missing predecessor ordinal.
-#[implements("FR-038-AC-597")]
+#[implements("FR-322-AC-291")]
 #[allow(clippy::too_many_arguments)]
 pub(super) fn validate_rows<'a, Body, Row: LocationRow>(
     array: &'static str,
@@ -234,14 +223,8 @@ pub(super) fn validate_rows<'a, Body, Row: LocationRow>(
     let repeated_key = stage_storage::first_repeat(
         meter,
         &site,
-        rows.iter().map(|row| {
-            (
-                row.function(),
-                row.application(),
-                row.occurrence(),
-                row.term_ordinal(),
-            )
-        }),
+        rows.iter()
+            .map(|row| (row.application(), row.occurrence(), row.term_ordinal())),
     )?;
     let mut previous: Option<&Row> = None;
     let mut ordinal_rows = stage_storage::vec(meter, &site, rows.len())?;
@@ -307,25 +290,18 @@ pub(super) fn validate_rows<'a, Body, Row: LocationRow>(
             return Err(invalid(meter, index, here.key("occurrence")));
         }
         intake_location_value(row, array, index, meter)?;
-        ordinal_rows.push((
-            row.function(),
-            row.application(),
-            row.occurrence(),
-            term_ordinal,
-        ));
+        ordinal_rows.push((row.application(), row.occurrence(), term_ordinal));
     }
     stage_storage::work(
         meter,
         &site,
         u64::try_from(ordinal_rows.len()).unwrap_or(u64::MAX),
     )?;
-    ordinal_rows.sort_unstable_by(|left, right| {
-        (left.0, left.1, left.2, left.3).cmp(&(right.0, right.1, right.2, right.3))
-    });
-    let mut prior: Option<(Option<&CheckedNodeId>, &CheckedNodeId, &CheckedOccurrence)> = None;
+    ordinal_rows.sort_unstable();
+    let mut prior: Option<(&CheckedNodeId, &CheckedOccurrence)> = None;
     let mut expected = 0_u64;
-    for (function, application, occurrence, ordinal) in ordinal_rows {
-        let key = (function, application, occurrence);
+    for (application, occurrence, ordinal) in ordinal_rows {
+        let key = (application, occurrence);
         if prior == Some(key) {
             missing_predecessor |= ordinal != expected;
         } else {

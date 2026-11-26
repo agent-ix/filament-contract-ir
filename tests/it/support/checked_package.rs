@@ -2808,6 +2808,7 @@ pub fn rebuild_body_locations(package: &mut Value) {
     }
     let mut rows: Vec<(usize, u64, u64, Value)> = Vec::new();
     let mut index = 0_u64;
+    let mut visits: HashMap<usize, u64> = HashMap::new();
     let local = resolved["name"].clone();
     for node in nodes
         .iter()
@@ -2828,10 +2829,8 @@ pub fn rebuild_body_locations(package: &mut Value) {
             .map_or_else(|| format!("f{index}"), str::to_owned);
         let mut pending = vec![start];
         let mut at_start = true;
-        // Visit ordinals are per function walk. The same shared expression
-        // may occur in several functions and starts again at ordinal zero
-        // for each function, as FR-322 requires.
-        let mut visits: HashMap<usize, u64> = HashMap::new();
+        // Visit ordinals are shared by application occurrence across function
+        // walks, as FR-322-AC-291 requires.
         while let Some(target) = pending.pop() {
             let is_start = std::mem::take(&mut at_start);
             let Some(&position) = positions.get(&target.to_string()) else {

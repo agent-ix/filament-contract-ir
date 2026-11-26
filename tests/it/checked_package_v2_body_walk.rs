@@ -240,7 +240,7 @@ fn caller_before_guarded_callee_keeps_each_walk_separate() {
         .all(|(application, _)| application == &guarded_term_id));
 }
 
-#[trace("TC-491", "FR-038-AC-581", "FR-322-AC-490")]
+#[trace("TC-491", "FR-038-AC-581", "FR-322-AC-490", "FR-322-AC-291")]
 #[test]
 fn shared_k_call_plus_one_is_walked_once_per_function() {
     let integer = family_key("a3a3");
@@ -310,20 +310,21 @@ fn shared_k_call_plus_one_is_walked_once_per_function() {
         .unwrap();
     let k_call_id: CheckedNodeId =
         serde_json::from_value(shared_add_node["body"]["arguments"][0]["target"].clone()).unwrap();
-    let expected = vec![(shared_add_id, 0), (k_call_id, 0)];
+    let expected = [(shared_add_id, 0), (k_call_id, 0)];
     for name in ["first", "second"] {
         let function = function_id(&package, name);
         let rows = cursor_rows(&admitted, &function);
+        let ordinal = u64::from(name == "second");
+        let expected = expected
+            .iter()
+            .map(|(application, _)| (application.clone(), ordinal))
+            .collect::<Vec<_>>();
         assert_eq!(rows, expected);
         assert_eq!(rows.len(), 2);
         assert_eq!(
             rows.iter().map(|(_, ordinal)| *ordinal).collect::<Vec<_>>(),
-            [0, 0]
+            [ordinal, ordinal]
         );
-        if name == "first" {
-            let second = cursor_rows(&admitted, &function_id(&package, "second"));
-            assert_eq!(rows, second);
-        }
     }
     assert!(cursor_rows(&admitted, &function_id(&package, "k")).is_empty());
 }
@@ -443,7 +444,7 @@ fn caller_before_unguarded_inc_does_not_enter_inc_body() {
     assert_eq!((caller_rows[0].1, inc_rows[0].1), (0, 0));
 }
 
-#[trace("TC-491", "FR-038-AC-581", "FR-322-AC-490")]
+#[trace("TC-491", "FR-038-AC-581", "FR-322-AC-490", "FR-322-AC-291")]
 #[test]
 fn interleaved_function_rows_still_reject_a_duplicate_body_location_key() {
     let integer = family_key("a3a3");
@@ -496,11 +497,12 @@ fn interleaved_function_rows_still_reject_a_duplicate_body_location_key() {
     assert_eq!(row_a["application"], row_b["application"]);
     assert_eq!(row_a["occurrence"], row_b["occurrence"]);
     assert_eq!(row_a["term_ordinal"], 0);
-    assert_eq!(row_b["term_ordinal"], 0);
+    assert_eq!(row_b["term_ordinal"], 1);
 
-    // Preserve global row-key order while separating the repeated A key with
-    // the B-owned row: A/0, B/0, A/0.
-    package["checked_term_data"]["body_locations"] = json!([row_a, row_b, row_a]);
+    // Mutate B's package-wide ordinal to duplicate A/0 at the next row.
+    let mut duplicate_b = row_b;
+    duplicate_b["term_ordinal"] = json!(0);
+    package["checked_term_data"]["body_locations"] = json!([row_a, duplicate_b, row_a]);
     refresh_identity(&mut package);
     let CheckedPackageV2ReadResult::Refused(refusal) = read(&package) else {
         panic!("an interleaved duplicate body-location key must be refused");
@@ -512,7 +514,7 @@ fn interleaved_function_rows_still_reject_a_duplicate_body_location_key() {
     );
     assert_eq!(
         refusal.loci[0].path.as_ref().unwrap().as_str(),
-        "/checked_term_data/body_locations/2"
+        "/checked_term_data/body_locations/1"
     );
 }
 

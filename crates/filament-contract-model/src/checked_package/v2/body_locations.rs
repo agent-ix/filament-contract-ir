@@ -211,7 +211,8 @@ pub(super) fn validate<Body>(
     let mut walks: BTreeMap<usize, Walk> = BTreeMap::new();
     // The rows of each function and application, in array order, which is rank
     // order: rows are stored in (`application`, `occurrence`, `term_ordinal`)
-    // order.
+    // order. Ordinals themselves are shared across functions for each
+    // (`application`, `occurrence`) key.
     let mut slots: BTreeMap<(usize, usize), Vec<usize>> = BTreeMap::new();
     for (row_index, row) in rows.iter().enumerate() {
         let here = array_path().index(row_index);
@@ -365,6 +366,7 @@ fn step(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::checked_package::shared::CheckedPackageRefusalCause;
     use ix_trace_rs::trace;
 
     fn key(value: u64) -> CheckedKeyOrdinal {
@@ -407,6 +409,106 @@ mod tests {
             .map(|node| node.body.clone())
             .collect();
         (wire, kinds, terms)
+    }
+
+    fn body_row(
+        application: &serde_json::Value,
+        function: &str,
+        ordinal: u64,
+    ) -> CheckedBodySemanticLocation {
+        serde_json::from_value(serde_json::json!({
+            "application": application,
+            "occurrence": {"role":"expression","ordinal":0},
+            "term_ordinal": ordinal,
+            "location": {
+                "origin": {
+                    "kind":"function_body",
+                    "function":{"package":"test","path":[function],"ordinal":0},
+                    "name":function,"index":0
+                },
+                "up":0,"down":[]
+            }
+        }))
+        .unwrap()
+    }
+
+    /// FR-322-AC-291: the application/occurrence ordinal sequence is shared
+    /// across function rows; function identity does not split its key.
+    #[test]
+    #[trace("TC-491", "FR-322-AC-291")]
+    fn ordinals_are_shared_across_functions_for_one_application_occurrence() {
+        let (mut wire, kinds, terms) = graph(vec![
+            function("f0", "app"),
+            function("f1", "app"),
+            node(
+                "app",
+                "expression",
+                "binary",
+                serde_json::json!({
+                    "term":"application","operator":"binary",
+                    "operation":{"identity":"filament.op.test","laws":[],"mode":null,"member":null,"leaves":[]},
+                    "result_type":{"package":"test","path":["app"],"ordinal":0},"arguments":[]
+                }),
+            ),
+        ]);
+        let app = wire.semantic_graph.nodes[2].node_id.clone();
+        wire.source_map.push(
+            serde_json::from_value(serde_json::json!({
+                "node_id":app,"role":"expression","ordinal":0,"regions":[]
+            }))
+            .unwrap(),
+        );
+        let app_value = serde_json::to_value(&app).unwrap();
+        let rows = [body_row(&app_value, "f0", 0), body_row(&app_value, "f1", 1)];
+        let (gap, _) = super::super::protocol_locations::validate_rows(
+            ARRAY,
+            "test",
+            &wire.semantic_graph.nodes,
+            &kinds,
+            &terms,
+            &wire.source_map,
+            &rows,
+            &mut WorkMeter::new(u64::MAX),
+        )
+        .unwrap();
+        assert!(
+            !gap,
+            "ordinals 0 and 1 across two functions are consecutive"
+        );
+
+        let duplicate = [body_row(&app_value, "f0", 0), body_row(&app_value, "f1", 0)];
+        let Err(ValidationFailure::Refused(refusal)) =
+            super::super::protocol_locations::validate_rows(
+                ARRAY,
+                "test",
+                &wire.semantic_graph.nodes,
+                &kinds,
+                &terms,
+                &wire.source_map,
+                &duplicate,
+                &mut WorkMeter::new(u64::MAX),
+            )
+        else {
+            panic!("duplicate ordinals across functions must refuse");
+        };
+        assert_eq!(
+            refusal.cause,
+            Some(CheckedPackageRefusalCause::ConflictingDefinition)
+        );
+
+        let gap_rows = [body_row(&app_value, "f0", 0), body_row(&app_value, "f1", 2)];
+        let (gap, _) = super::super::protocol_locations::validate_rows(
+            ARRAY,
+            "test",
+            &wire.semantic_graph.nodes,
+            &kinds,
+            &terms,
+            &wire.source_map,
+            &gap_rows,
+            &mut WorkMeter::new(u64::MAX),
+        )
+        .unwrap();
+        assert!(gap, "ordinal 2 witnesses a missing ordinal 1");
     }
 
     fn node(path: &str, tag: &str, form: &str, body: serde_json::Value) -> serde_json::Value {
