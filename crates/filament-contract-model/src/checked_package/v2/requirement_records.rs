@@ -1314,7 +1314,7 @@ fn mark_chain(
 }
 
 /// Refuses the first frame-table row no record's chain uses, at that row.
-#[implements("FSpec-FR-825-AC-9", "FSpec-FR-825-AC-12")]
+#[implements("FR-825-AC-9", "FR-825-AC-12")]
 fn refuse_unused_frame(used: &[bool], meter: &mut WorkMeter) -> Result<(), ValidationFailure> {
     let Some(frame_index) = used.iter().position(|used| !used) else {
         return Ok(());
