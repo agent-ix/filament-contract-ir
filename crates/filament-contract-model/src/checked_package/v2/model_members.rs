@@ -5561,8 +5561,11 @@ pub(super) fn read_semantic_ir(
                     return Err(selected.into());
                 }
                 if meaning == meaning::Kind::EventType {
-                    let key = budget.text(node, F)?;
-                    model.event_types.insert(budget, key, object, F)?;
+                    // The first pass inserted this event type's key.
+                    *model
+                        .event_types
+                        .get_mut(node)
+                        .ok_or_else(ModelRefusal::malformed)? = object;
                 } else if meaning == meaning::Kind::RecordValueType {
                     records.push((node, object));
                 } else {
@@ -6019,18 +6022,14 @@ impl References<'_> {
             Err((Row::Reference, ModelRefusal::missing_name()))
         }
     }
-    /// Whether `node` is declared by the document as something other than an
-    /// object type: a value type, a type of another meaning, or a
-    /// relationship.
+
+    /// Whether the document declares `node`, as a type of any meaning or as a
+    /// relationship. The answer comes from the classification of the whole
+    /// document, not from the tables still being filled, so it does not depend
+    /// on where `node` sorts.
+    #[implements("FR-208-AC-12")]
     fn declared_elsewhere(&self, node: &str) -> bool {
-        self.model.value_types.contains_key(node)
-            || self.model.variant_types.contains_key(node)
-            || self.model.tuple_types.contains_key(node)
-            || self.model.record_types.contains_key(node)
-            || self.model.collection_types.contains_key(node)
-            || self.scope.records.contains(node)
-            || self.model.other_types.contains_key(node)
-            || self.scope.relationships.contains(node)
+        self.scope.all_types.contains(node) || self.scope.relationships.contains(node)
     }
 
     /// A field type or parameter or result type (FR-154 rows 3 and 4): a
@@ -6075,7 +6074,7 @@ impl References<'_> {
     /// A supertype names a type of the document of the declaring type's own
     /// family: a record value type, a process, a state machine, an event type
     /// or, for every other declaration, a nominal object.
-    #[implements("FR-038-AC-643")]
+    #[implements("FR-038-AC-643", "FR-208-AC-12")]
     fn check_supertype(
         &self,
         supertype: &str,
@@ -6093,13 +6092,7 @@ impl References<'_> {
         if eligible.contains(supertype) || self.scope.refused.contains(supertype) {
             return;
         }
-        if self.declared_elsewhere(supertype)
-            || self.scope.objects.contains(supertype)
-            || self.scope.records.contains(supertype)
-            // A value definition read after this event type is not in the
-            // model's tables yet; its classification already is.
-            || (meaning == meaning::Kind::EventType && self.scope.all_types.contains(supertype))
-        {
+        if self.declared_elsewhere(supertype) {
             defects.push(Row::Meaning, path, ModelRefusal::malformed());
         } else {
             defects.push(Row::Reference, path, ModelRefusal::missing_name());

@@ -170,6 +170,132 @@ fn record_wrong_kind_type_refs_retain_field_identity_and_type_ref_path() {
     }
 }
 
+/// A declaration of `short` whose construct is `kind`, of `acme/orders`, with
+/// the members its meaning requires.
+fn specializing(short: &str, kind: &str, supertypes: &[&str]) -> Value {
+    let node = format!("ix://acme/orders/{short}");
+    let mut declared = object_type(&node, supertypes, vec![]);
+    declared["kind"]["name"] = json!(kind);
+    match kind {
+        "process" => {
+            declared["fields"] = json!([field(&node, "run", "ix://filament/native/UUID")]);
+            declared["identityFields"] = json!([format!("{node}/run")]);
+            declared["steps"] = json!([{"identity": format!("{node}/advance"),
+                "name": "advance", "stepKind": "command", "consumes": [], "emits": []}]);
+        }
+        "machine" => {
+            declared["operations"] = json!([{"identity": format!("{node}/toggle"), "params": []}]);
+            declared["states"] = json!([{"identity": format!("{node}/open"), "name": "open"}]);
+            declared["transitions"] = json!([{"identity": format!("{node}/transition"),
+                "from": format!("{node}/open"), "to": format!("{node}/open"),
+                "trigger": format!("{node}/toggle"), "emits": []}]);
+        }
+        _ => {}
+    }
+    declared
+}
+
+/// `types` after the constructs [`specializing`] names.
+fn specializing_document(types: Vec<Value>) -> Value {
+    let mut selected = document(types);
+    let constructs = selected["constructs"].as_array_mut().expect("constructs");
+    for (name, meaning) in [
+        ("record", "filament.meaning.model.record-value-type/v1"),
+        ("event", "filament.meaning.model.event-type/v1"),
+        ("process", "filament.meaning.model.process/v1"),
+        ("machine", "filament.meaning.model.state-machine/v1"),
+        ("interface", "filament.meaning.systems.interface/v1"),
+    ] {
+        constructs.push(json!({"kind": {"module": "acme/orders", "name": name},
+            "construct": {"meaning": meaning}}));
+    }
+    selected
+}
+
+/// The value definitions of one document, each named `short`: a sequence, a
+/// map, an option and a reference.
+fn value_definitions_named(short: &str) -> [Value; 4] {
+    let identity = format!("ix://acme/orders/{short}");
+    let integer = "ix://filament/native/Integer";
+    [
+        json!({"identity": identity, "kind": "sequence", "items": integer}),
+        json!({"identity": identity, "kind": "map", "keys": integer, "values": integer,
+            "bound": {"lower": 0}}),
+        json!({"identity": identity, "kind": "option", "inner": integer}),
+        json!({"identity": identity, "kind": "reference",
+            "target": "ix://acme/orders/Target"}),
+    ]
+}
+
+/// A supertype naming a value definition is a supertype of another meaning for
+/// every declaration that can specialize, whether the definition sorts before
+/// or after the declaration.
+#[trace("TC-048", "FR-208-AC-12")]
+#[test]
+fn tc_048_a_supertype_naming_a_value_definition_is_malformed_in_either_order() {
+    for kind in [
+        "entity",
+        "interface",
+        "record",
+        "event",
+        "process",
+        "machine",
+    ] {
+        for name in ["Alpha", "Zeta"] {
+            for definition in value_definitions_named(name) {
+                let form = definition["kind"].clone();
+                let supertype = format!("ix://acme/orders/{name}");
+                let selected = specializing_document(vec![
+                    specializing("Holder", kind, &[&supertype]),
+                    specializing("Target", "entity", &[]),
+                    definition,
+                ]);
+                let (refusal, pointer) = located_refusal(&selected);
+                assert_eq!(
+                    (refusal, pointer.as_str()),
+                    (ModelRefusal::malformed(), "/types/0/supertypes/0"),
+                    "{kind} over the {form} {name}"
+                );
+            }
+        }
+        let admitted = specializing_document(vec![
+            specializing("Holder", kind, &["ix://acme/orders/Zeta"]),
+            specializing("Zeta", kind, &[]),
+        ]);
+        let mut meter = WorkMeter::new(u64::MAX);
+        assert!(
+            read_semantic_ir(
+                view_of(&admitted),
+                "checked",
+                &mut Budget::new(&mut meter, 0, BYTES),
+                &UnitRefs::default(),
+            )
+            .is_ok(),
+            "{kind} over its own meaning"
+        );
+    }
+}
+
+/// A relationship end naming a value definition names a type that is not an
+/// object type, wherever the definition sorts.
+#[trace("TC-048", "FR-038-AC-28")]
+#[test]
+fn tc_048_a_relationship_end_naming_a_value_definition_is_malformed_in_either_order() {
+    for name in ["Alpha", "Zeta"] {
+        for definition in value_definitions_named(name) {
+            let form = definition["kind"].clone();
+            let mut link = relationship();
+            link["targetEnd"]["type"] = json!(format!("ix://acme/orders/{name}"));
+            let mut selected = relationship_document(vec![link]);
+            let types = selected["types"].as_array_mut().expect("types");
+            types.push(specializing("Target", "entity", &[]));
+            types.push(definition);
+            let (refusal, _) = located_refusal(&selected);
+            assert_eq!(refusal, ModelRefusal::malformed(), "{form} {name}");
+        }
+    }
+}
+
 /// Selected model declarations use the full authored path and package.
 #[trace("TC-048", "TC-229", "FR-038-AC-176", "FR-038-AC-303", "FR-038-AC-307")]
 #[test]

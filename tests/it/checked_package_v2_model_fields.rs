@@ -11636,3 +11636,61 @@ fn tc_048_a_malformed_event_declaration_refuses_at_the_model_root_owner() {
         }
     }
 }
+
+/// IR-level read of the supertype rule: a record specializing a value
+/// definition refuses the same way wherever the definition sorts.
+#[trace("TC-048", "FR-208-AC-12")]
+#[test]
+fn tc_048_a_record_supertype_naming_a_value_definition_refuses_wherever_it_sorts() {
+    for name in ["Alpha", "Zeta"] {
+        let (package, evidence) = event_package_selecting(
+            vec![
+                typed_object("Holder", "record", &[name], &[]),
+                json!({"identity": orders(name), "kind": "sequence",
+                    "items": "ix://filament/native/Integer"}),
+            ],
+            &[],
+            &[],
+            &[],
+            |_| {},
+        );
+        let CheckedPackageV2ReadResult::Refused(refusal) =
+            read_with(&package, &evidence, CheckedPackageReadLimits::bounded())
+        else {
+            panic!("a record specializing the sequence {name} must refuse");
+        };
+        assert_eq!(
+            (refusal.code, refusal.cause),
+            (
+                CheckedPackageRefusalCode::InvalidModelBinding,
+                Some(CheckedPackageRefusalCause::MalformedDeclaration)
+            ),
+            "{name}"
+        );
+        assert_eq!(
+            refusal.loci[0].path.as_ref().map(|path| path.as_str()),
+            Some(root_owner(&package, IDENTITY).as_str()),
+            "{name}"
+        );
+    }
+}
+
+#[trace("TC-048", "FR-038-AC-640")]
+#[test]
+fn tc_048_a_field_of_an_event_supertype_cycle_is_projected() {
+    let integer = "ix://filament/native/Integer";
+    let (package, evidence) = event_package_selecting(
+        vec![
+            typed_object("Left", "event", &["Right"], &[field("left", integer)]),
+            typed_object("Right", "event", &["Left"], &[field("right", integer)]),
+        ],
+        &[("Left", "event_type")],
+        &[("e", Ty::Record(declaration_key("Left", "event_type")))],
+        &[projected(("Left", "event_type"), "right", Ty::Integer, 0)],
+        |_| {},
+    );
+    assert_admits(
+        "a field of the other member of the cycle",
+        &(package, evidence),
+    );
+}
