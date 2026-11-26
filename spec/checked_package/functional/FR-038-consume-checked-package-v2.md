@@ -91,6 +91,8 @@ relationships:
     type: references
   - target: ix://agent-ix/filament-specification/FR-322-AC-288
     type: references
+  - target: ix://agent-ix/filament-specification/FR-322-AC-291
+    type: depends_on
   - target: ix://agent-ix/filament-specification/FR-322-AC-297
     type: references
   - target: ix://agent-ix/filament-specification/FR-322-AC-299
