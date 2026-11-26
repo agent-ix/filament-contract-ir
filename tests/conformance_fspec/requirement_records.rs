@@ -3333,6 +3333,76 @@ fn guard_occurrence_of_a_node_shared_by_two_owners_is_numbered_package_wide() {
     );
 }
 
+/// FR-825: a frame row no record's chain uses is refused at that row, wherever
+/// it stands in the table, also when it breaks the walk's canonical order.
+#[trace("TC-2053", "FR-825-AC-9", "FR-825-AC-12")]
+#[test]
+fn reader_refuses_an_unused_frame_at_its_row_before_the_table_order() {
+    // The then frame is kept at row 1; row 0 is a frame for the else branch,
+    // which holds no scalar operation, so no record's chain uses it.
+    let mut pruned_first = else_without_scalar_operation_package();
+    let kept = pruned_first["path_condition_frames"][0].clone();
+    let mut unused = kept.clone();
+    unused["holds"] = json!(false);
+    pruned_first["path_condition_frames"] = json!([unused, kept]);
+    let nodes = pruned_first["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("graph nodes");
+    let record = nodes
+        .iter_mut()
+        .find(|node| node["semantic_form"] == "value_validity")
+        .expect("true-branch record");
+    let old_id = record["node_id"].clone();
+    binding_value_mut(record, "path_condition")["members"][0]["value"] = json!(1);
+    let path = record["node_id"]["path"]
+        .as_array_mut()
+        .expect("record identity path");
+    let marker = path
+        .iter()
+        .position(|segment| segment == "path_condition")
+        .expect("path-condition identity segment");
+    path[marker + 1] = json!("1");
+    let new_id = record["node_id"].clone();
+    pruned_first["requirement_items"]
+        .as_array_mut()
+        .expect("requirement items")
+        .iter_mut()
+        .find(|item| item["record"] == old_id)
+        .expect("true-branch requirement item")["record"] = new_id;
+    settle(&mut pruned_first);
+    rebuild_complete_source_map(&mut pruned_first);
+    assert_refusal(
+        &pruned_first,
+        CheckedPackageRefusalCode::InvalidPackage,
+        Some(CheckedPackageRefusalCause::InvalidValue),
+        "/path_condition_frames/0",
+    );
+}
+
+/// FR-825: a package with a frame table and no value-validity record has no
+/// chain that could use a row.
+#[trace("TC-2053", "FR-825-AC-9")]
+#[test]
+fn reader_refuses_a_frame_table_in_a_package_without_records() {
+    let mut package = value_validity_package(false);
+    package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("graph nodes")
+        .retain(|node| node["semantic_form"] != "value_validity");
+    package
+        .as_object_mut()
+        .expect("package object")
+        .remove("requirement_items");
+    settle(&mut package);
+    rebuild_complete_source_map(&mut package);
+    assert_refusal(
+        &package,
+        CheckedPackageRefusalCode::InvalidPackage,
+        Some(CheckedPackageRefusalCause::InvalidValue),
+        "/path_condition_frames/0",
+    );
+}
+
 fn assert_refusal(
     package: &Value,
     code: CheckedPackageRefusalCode,
