@@ -173,7 +173,7 @@ pub(super) fn refuse_missing_predecessor(
 
 /// Check every row of `array` in order and report whether a row follows a
 /// missing predecessor ordinal.
-#[implements("FR-038-AC-597")]
+#[implements("FR-038-AC-597", "FR-322-AC-291")]
 #[allow(clippy::too_many_arguments)]
 pub(super) fn validate_rows<'a, Body, Row: LocationRow>(
     array: &'static str,
