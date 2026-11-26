@@ -15,7 +15,9 @@
 //!    `ModelDeclarationNode` key recomputed; a declaring node's owner is the
 //!    declaration whose key, tag and form all equal the node's, and the node's
 //!    fixed members (`semantic_type` is itself, no `declaration`, no
-//!    `recursion_group`, an empty body) must hold.
+//!    `recursion_group`, an empty body) must hold. An event type is recovered
+//!    for an event field projection alone
+//!    ([`ModelOwners::recover_event_type`]).
 //! 3. **Resolution** ([`DomainModel::resolve`]), charged to the reader's
 //!    `work` limit at the selection's row ([`Budget`]): an operation by
 //!    every ancestor edge, member and redefinition pair it walks, a field by
@@ -34,7 +36,8 @@
 //! object types, processes, state machines, persistence interfaces,
 //! record value types, variant types, systems interfaces,
 //! integer value types and relationship declarations, with their cases,
-//! fields, operations, supertypes and member redefinitions. A type of any
+//! fields, operations, supertypes and member redefinitions, and event types
+//! with their fields and supertypes. A type of any
 //! other FR-208 meaning is recorded as declared,
 //! so a `typeRef` naming it resolves to a declaration with no element type,
 //! but its own body is not read. Field and operation `redefines` references
@@ -53,6 +56,7 @@ use crate::checked_package::shared::{
     CheckedNodeId, CheckedNodePathSegment, CheckedPackageRefusalCause, CheckedPackageRefusalCode,
     JsonPointer,
 };
+use ix_trace_rs::implements;
 use ix_trace_rs::string_edge;
 use serde::Deserialize;
 
@@ -491,8 +495,8 @@ pub(super) struct SourceOperationFrame {
     pub(super) deletes_parameters: Vec<Box<str>>,
 }
 
-/// One object, record value type or systems interface declaration.
-#[derive(Clone, Debug, Eq, PartialEq)]
+/// One object, record value type, event type or systems interface declaration.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub(super) struct FieldBearingTypeDecl {
     /// Whether it carries `interfaceFeatures` (a systems interface).
     pub(super) interface: bool,
@@ -682,8 +686,9 @@ pub(super) struct DomainModel {
     pub(super) persistence_operations: SortedMap<Box<str>, FieldBearingTypeDecl>,
     /// Record value types, with their own and inherited fields.
     pub(super) record_types: SortedMap<Box<str>, FieldBearingTypeDecl>,
-    /// Event type declarations, by their exact selected identities.
-    pub(super) event_types: SortedSet<Box<str>>,
+    /// Event type declarations, with their own and inherited fields. They
+    /// hold no [`ModelOwners`] row.
+    pub(super) event_types: SortedMap<Box<str>, FieldBearingTypeDecl>,
     /// Ordered positions of each selected tuple value type.
     pub(super) tuple_types: SortedMap<Box<str>, Vec<SelectedTypeRef>>,
     /// Value types by IR node identity; `None` for an unmapped value type.
@@ -1884,7 +1889,7 @@ impl DomainModel {
             || self.persistence_interfaces.contains(name)
             || self.persistence_operations.contains_key(name)
             || self.record_types.contains_key(name)
-            || self.event_types.contains(name)
+            || self.event_types.contains_key(name)
             || self.tuple_types.contains_key(name)
             || self.value_types.contains_key(name)
             || self.variant_types.contains_key(name)
@@ -1943,11 +1948,13 @@ impl DomainModel {
         })
     }
 
-    /// A field-bearing declaration, whether it is an object or a value record.
+    /// A field-bearing declaration: an object, a value record or an event
+    /// type.
     pub(super) fn field_owner(&self, node: &str) -> Option<&FieldBearingTypeDecl> {
         self.object_types
             .get(node)
             .or_else(|| self.record_types.get(node))
+            .or_else(|| self.event_types.get(node))
     }
     /// FSpec FR-726: whether the model-owned record, tuple or variant `node`
     /// is not FIFO-key-stable by what this document declares: a `float32`,
@@ -2090,7 +2097,7 @@ impl DomainModel {
             if !visited.insert(budget, name, MODEL)? {
                 continue;
             }
-            if self.event_types.contains(name) {
+            if self.event_types.contains_key(name) {
                 return Ok(true);
             }
             if let Some(definition) = self.collection_types.get(name) {
@@ -2307,10 +2314,12 @@ impl DomainModel {
     }
 
     /// FR-322 step 3: the member of `kind` named `name` among the exposed
-    /// effective members of the object or record type `node`. A field is selected from
-    /// the field table built at admission, one work unit per exposed or hidden
-    /// entry of that table; an operation walks the ancestors, and every
-    /// ancestor edge, member and redefinition pair visited is one work unit.
+    /// effective members of the object, record or event type `node`; only an
+    /// object type owns an operation. A field is selected from the field table
+    /// built at admission, one work unit per exposed or hidden entry of that
+    /// table; an operation walks the ancestors, and every ancestor edge, member
+    /// and redefinition pair visited is one work unit.
+    #[implements("FR-038-AC-640")]
     pub(super) fn resolve(
         &self,
         node: &str,
@@ -2322,10 +2331,11 @@ impl DomainModel {
             .object_types
             .get_key_value(node)
             .or_else(|| self.record_types.get_key_value(node))
+            .or_else(|| self.event_types.get_key_value(node))
         else {
             return Err(ModelRefusal::ineligible().into());
         };
-        if kind == MemberKind::Operation && self.record_types.contains_key(node) {
+        if kind == MemberKind::Operation && !self.object_types.contains_key(node) {
             return Err(ModelRefusal::ineligible().into());
         }
         if kind == MemberKind::Field {
@@ -3226,7 +3236,7 @@ impl<'m> ModelOwners<'m> {
     pub(super) fn selects_events(&self) -> bool {
         self.models
             .iter()
-            .any(|model| !model.event_types.as_slice().is_empty())
+            .any(|model| !model.event_types.is_empty())
     }
 
     /// Whether a value of the selected declaration `key` can hold an event
@@ -3574,6 +3584,31 @@ impl<'m> ModelOwners<'m> {
         Ok(owner)
     }
 
+    /// FR-322 step 2 for an event field projection, the one check that
+    /// recovers an event type's declaration: the selected package and event
+    /// type that `node`'s `ModelOwner` names. Event types hold no row, so
+    /// [`Self::recover`] and every key lookup leave an event type unmatched.
+    #[implements("FR-038-AC-640")]
+    pub(super) fn recover_event_type<Body: EmptyAggregateBody>(
+        &self,
+        node: &CheckedSemanticNodeV2<Body>,
+    ) -> Result<(&'m DomainModel, &'m str), ModelRefusal> {
+        let Some(CheckedNodeOwner::Model {
+            identity,
+            node: declaration,
+        }) = &node.owner
+        else {
+            return Err(ModelRefusal::unselected());
+        };
+        let package = self.model(identity).ok_or_else(ModelRefusal::unselected)?;
+        let (declared, _) = package
+            .event_types
+            .get_key_value(declaration.as_ref())
+            .ok_or_else(ModelRefusal::unselected)?;
+        check_declaration_shape("model", "event_type", node, node.body.is_empty_aggregate())?;
+        Ok((package, declared))
+    }
+
     /// Implements: FR-347. the record value type whose model declaration node key is
     /// `key`, `None` when `key` names no selected record.
     pub(super) fn record_by_key(&self, key: &CheckedNodeId) -> Option<Owner<'m>> {
@@ -3633,7 +3668,25 @@ pub(super) fn check_declaration_node<Body>(
     node: &CheckedSemanticNodeV2<Body>,
     body_is_empty_aggregate: bool,
 ) -> Result<(), ModelRefusal> {
-    if form.tag() != node.node_tag.as_ref() || form.form() != node.semantic_form.as_ref() {
+    let fixed_dependencies = form != DeclarationForm::Population || node.dependencies.is_empty();
+    check_declaration_shape(
+        form.tag(),
+        form.form(),
+        node,
+        body_is_empty_aggregate && fixed_dependencies,
+    )
+}
+
+/// [`check_declaration_node`] for a declaration node of `node_tag` and
+/// `semantic_form`; `fixed_content` is whether the members particular to that
+/// form hold.
+fn check_declaration_shape<Body>(
+    node_tag: &str,
+    semantic_form: &str,
+    node: &CheckedSemanticNodeV2<Body>,
+    fixed_content: bool,
+) -> Result<(), ModelRefusal> {
+    if node_tag != node.node_tag.as_ref() || semantic_form != node.semantic_form.as_ref() {
         return Err(ModelRefusal::unselected());
     }
     let exact_owner_id = matches!(
@@ -3642,18 +3695,17 @@ pub(super) fn check_declaration_node<Body>(
             if node.node_id.package.as_ref() == identity.as_ref()
                 && matches!(node.node_id.path.as_slice(),
                     [CheckedNodePathSegment::Name(tag),
-                     CheckedNodePathSegment::Name(semantic_form),
+                     CheckedNodePathSegment::Name(form),
                      CheckedNodePathSegment::Name(path)]
-                        if tag.as_ref() == form.tag()
-                            && semantic_form.as_ref() == form.form()
+                        if tag.as_ref() == node_tag
+                            && form.as_ref() == semantic_form
                             && path.as_ref() == declaration.as_ref())
     );
     let fixed = exact_owner_id
         && node.semantic_type == node.node_id
         && node.declaration.is_none()
         && node.recursion_group.is_none()
-        && (form != DeclarationForm::Population || node.dependencies.is_empty())
-        && body_is_empty_aggregate;
+        && fixed_content;
     if fixed {
         Ok(())
     } else {
@@ -4790,6 +4842,7 @@ impl Counts {
                     }
                     if *meaning == meaning::Kind::EventType {
                         counts.events += 1;
+                        counts.members += members("fields");
                     }
                     if *meaning == meaning::Kind::PersistenceInterface {
                         counts.persistence_interfaces += 1;
@@ -5165,7 +5218,7 @@ pub(super) fn read_semantic_ir(
         persistence_interfaces: SortedSet::with_capacity(budget, counts.persistence_interfaces, F)?,
         persistence_operations: SortedMap::with_capacity(budget, counts.persistence_interfaces, F)?,
         record_types: SortedMap::with_capacity(budget, counts.records, F)?,
-        event_types: SortedSet::with_capacity(budget, counts.events, F)?,
+        event_types: SortedMap::with_capacity(budget, counts.events, F)?,
         tuple_types: SortedMap::with_capacity(budget, counts.tuple_types, F)?,
         value_types: SortedMap::with_capacity(budget, counts.value_types, F)?,
         ieee_value_types: SortedSet::with_capacity(budget, counts.value_types, F)?,
@@ -5390,8 +5443,15 @@ pub(super) fn read_semantic_ir(
                 }
                 if meaning == meaning::Kind::EventType {
                     let key = budget.text(node, F)?;
-                    model.event_types.insert(budget, key, F)?;
+                    model
+                        .event_types
+                        .insert(budget, key, FieldBearingTypeDecl::default(), F)?;
                     scope.events.insert(budget, node, F)?;
+                    for item in list(declared_node, "fields").unwrap_or_default() {
+                        if let Ok(identity) = member_identity(item, node) {
+                            scope.members.insert(budget, identity, F)?;
+                        }
+                    }
                 }
                 if meaning == meaning::Kind::PersistenceInterface {
                     let key = budget.text(node, F)?;
@@ -5458,14 +5518,18 @@ pub(super) fn read_semantic_ir(
             | meaning::Kind::StateMachine
             | meaning::Kind::Process
             | meaning::Kind::SystemsInterface
-            | meaning::Kind::RecordValueType => {
+            | meaning::Kind::RecordValueType
+            | meaning::Kind::EventType => {
                 let mut defects = Defects::new(declared_node);
                 check_selected_meaning(declared_node, meaning, &scope, &mut defects, budget)?;
                 let (object, declared_relationships) = semantic_ir_object_type(
                     declared_node,
                     node,
                     meaning == meaning::Kind::SystemsInterface,
-                    meaning == meaning::Kind::RecordValueType,
+                    matches!(
+                        meaning,
+                        meaning::Kind::RecordValueType | meaning::Kind::EventType
+                    ),
                     meaning,
                     &References {
                         model: &model,
@@ -5496,7 +5560,13 @@ pub(super) fn read_semantic_ir(
                     }
                     return Err(selected.into());
                 }
-                if meaning == meaning::Kind::RecordValueType {
+                if meaning == meaning::Kind::EventType {
+                    // The first pass inserted this event type's key.
+                    *model
+                        .event_types
+                        .get_mut(node)
+                        .ok_or_else(ModelRefusal::malformed)? = object;
+                } else if meaning == meaning::Kind::RecordValueType {
                     records.push((node, object));
                 } else {
                     if meaning == meaning::Kind::StateMachine {
@@ -5870,8 +5940,7 @@ pub(super) fn read_semantic_ir(
                 let key = budget.text(node, F)?;
                 model.variant_types.insert(budget, key, names, F)?;
             }
-            meaning::Kind::EventType
-            | meaning::Kind::Namespace
+            meaning::Kind::Namespace
             | meaning::Kind::Population
             | meaning::Kind::SystemsPart
             | meaning::Kind::SystemsPort
@@ -5953,18 +6022,14 @@ impl References<'_> {
             Err((Row::Reference, ModelRefusal::missing_name()))
         }
     }
-    /// Whether `node` is declared by the document as something other than an
-    /// object type: a value type, a type of another meaning, or a
-    /// relationship.
+
+    /// Whether the document declares `node`, as a type of any meaning or as a
+    /// relationship. The answer comes from the classification of the whole
+    /// document, not from the tables still being filled, so it does not depend
+    /// on where `node` sorts.
+    #[implements("FR-208-AC-12")]
     fn declared_elsewhere(&self, node: &str) -> bool {
-        self.model.value_types.contains_key(node)
-            || self.model.variant_types.contains_key(node)
-            || self.model.tuple_types.contains_key(node)
-            || self.model.record_types.contains_key(node)
-            || self.model.collection_types.contains_key(node)
-            || self.scope.records.contains(node)
-            || self.model.other_types.contains_key(node)
-            || self.scope.relationships.contains(node)
+        self.scope.all_types.contains(node) || self.scope.relationships.contains(node)
     }
 
     /// A field type or parameter or result type (FR-154 rows 3 and 4): a
@@ -6006,7 +6071,10 @@ impl References<'_> {
         }
     }
 
-    /// A supertype names an object type of the document.
+    /// A supertype names a type of the document of the declaring type's own
+    /// family: a record value type, a process, a state machine, an event type
+    /// or, for every other declaration, a nominal object.
+    #[implements("FR-038-AC-643", "FR-208-AC-12")]
     fn check_supertype(
         &self,
         supertype: &str,
@@ -6018,15 +6086,13 @@ impl References<'_> {
             meaning::Kind::RecordValueType => &self.scope.records,
             meaning::Kind::Process => &self.scope.processes,
             meaning::Kind::StateMachine => &self.scope.state_machines,
+            meaning::Kind::EventType => &self.scope.events,
             _ => &self.scope.nominal_objects,
         };
         if eligible.contains(supertype) || self.scope.refused.contains(supertype) {
             return;
         }
-        if self.declared_elsewhere(supertype)
-            || self.scope.objects.contains(supertype)
-            || self.scope.records.contains(supertype)
-        {
+        if self.declared_elsewhere(supertype) {
             defects.push(Row::Meaning, path, ModelRefusal::malformed());
         } else {
             defects.push(Row::Reference, path, ModelRefusal::missing_name());
@@ -6480,6 +6546,7 @@ fn operation_frame(
 /// when there is none.
 // Reads a selected domain package document's supertype references.
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
+#[implements("FR-038-AC-643")]
 fn semantic_ir_object_type<'v>(
     value: View<'v>,
     node: &str,
@@ -6492,6 +6559,9 @@ fn semantic_ir_object_type<'v>(
     budget: &mut Budget<'_, '_>,
 ) -> Result<(FieldBearingTypeDecl, Vec<(Box<str>, RelationshipDecl)>), ValidationFailure> {
     const F: &str = SET_FORM;
+    // An event type declares fields and supertypes; no other member of it is
+    // read.
+    let event = meaning == meaning::Kind::EventType;
     let field_rows = items(value, "fields", defects);
     let mut fields = budget.vec(field_rows.len(), F)?;
     for (index, field) in field_rows.iter().enumerate() {
@@ -6549,7 +6619,11 @@ fn semantic_ir_object_type<'v>(
         });
     }
     defects.context(value);
-    let operation_rows = items(value, "operations", defects);
+    let operation_rows = if event {
+        List::empty()
+    } else {
+        items(value, "operations", defects)
+    };
     let mut operations = budget.vec(operation_rows.len(), F)?;
     for (index, operation) in operation_rows.iter().enumerate() {
         defects.context(operation);
@@ -6642,7 +6716,11 @@ fn semantic_ir_object_type<'v>(
         });
     }
     defects.context(value);
-    let relationship_rows = items(value, "relationships", defects);
+    let relationship_rows = if event {
+        List::empty()
+    } else {
+        items(value, "relationships", defects)
+    };
     let mut relationships = budget.vec(relationship_rows.len(), F)?;
     let mut local_relationships: SortedSet<&str> =
         SortedSet::with_capacity(budget, relationship_rows.len(), F)?;

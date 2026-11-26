@@ -869,7 +869,7 @@ impl SelectedExactIdentities {
                 .iter()
                 .chain(model.state_machines.iter())
                 .chain(model.persistence_interfaces.iter())
-                .chain(model.event_types.iter())
+                .chain(model.event_types.keys())
                 .next()
             {
                 charge_native_work(budget, root, root, "complete_unsupported_identity_type", 1)?;
