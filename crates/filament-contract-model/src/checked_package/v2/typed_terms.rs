@@ -4089,7 +4089,7 @@ impl Encode for CheckedAbstractionFrame {
 /// the safe integer range, the exact decimal string beyond it.
 fn integer_slot(value: &Integer) -> serde_json::Value {
     match value.to_u64() {
-        Some(small) if small <= (1_u64 << 53) - 1 => serde_json::Value::from(small),
+        Some(small) if small < (1_u64 << 53) => serde_json::Value::from(small),
         _ => serde_json::Value::String(value.to_string()),
     }
 }
