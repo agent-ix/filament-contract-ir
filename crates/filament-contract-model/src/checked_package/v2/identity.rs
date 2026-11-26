@@ -23,6 +23,7 @@ use crate::checked_package::shared::{
     CheckedPackageRefusalCode, JsonPointer, RefusalFields,
 };
 use filament_exact::Integer;
+use ix_trace_rs::implements;
 use serde::{Deserialize, Serialize};
 #[cfg(test)]
 use serde_json::Value;
@@ -2742,6 +2743,7 @@ impl<'a> Potentials<'a> {
 /// addition makes the graph inconsistent, so it is the latest edge in node-id
 /// order of every inconsistent cycle it closes (FSpec FR-322-AC-268). A
 /// component is named by one of its own dimensions, whose scale is one.
+#[implements("FR-063-AC-9", "FSpec-FR-322-AC-268")]
 fn equivalence_potentials<'a>(
     graph: &'a NominalGraph<'a>,
     edges: &'a [(usize, &'a DimensionEquivalenceRecord)],
