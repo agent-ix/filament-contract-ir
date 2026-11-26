@@ -541,7 +541,7 @@ mod by_stage {
     }
 
     /// The exact arena bytes of the subtree at `root` at the element sizes of
-    /// quire-canonical v0.3.1: a 32-byte slot per value, an 8-byte item per
+    /// quire-canonical v0.3.3: a 16-byte range plus 1-byte tag per value, an 8-byte item per
     /// array element, a 24-byte member per object member, and decoded text.
     fn arena_bytes(root: quire_canonical::NodeRef<'_>) -> u64 {
         let (mut slots, mut items, mut members, mut text) = (0u64, 0u64, 0u64, 0u64);
@@ -567,7 +567,7 @@ mod by_stage {
                 _ => {}
             }
         }
-        slots * 32 + items * 8 + members * 24 + text
+        slots * 17 + items * 8 + members * 24 + text
     }
 
     /// Prints the package document's retained bytes, its exact arena size,
