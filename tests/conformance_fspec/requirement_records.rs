@@ -3403,6 +3403,54 @@ fn reader_refuses_a_frame_table_in_a_package_without_records() {
     );
 }
 
+/// FR-825: when records exist and none cites a row, every row is unused, so a
+/// table the walk does not account for is refused at its first row.
+#[trace("TC-2053", "FR-825-AC-9")]
+#[test]
+fn reader_refuses_the_first_row_when_no_record_cites_any_frame() {
+    let mut package = literal_dead_guard_read_package();
+    for frame in [1, 2] {
+        package["path_condition_frames"][frame]["guard"]["occurrence"]["ordinal"] = json!(0);
+    }
+    let mut renamed = Vec::new();
+    for record in package["semantic_graph"]["nodes"]
+        .as_array_mut()
+        .expect("graph nodes")
+        .iter_mut()
+        .filter(|node| node["semantic_form"] == "value_validity")
+    {
+        let old_id = record["node_id"].clone();
+        binding_value_mut(record, "path_condition")["members"] = json!([]);
+        let path = record["node_id"]["path"]
+            .as_array_mut()
+            .expect("record identity path");
+        let marker = path
+            .iter()
+            .position(|segment| segment == "path_condition")
+            .expect("path-condition identity segment");
+        // The empty path condition has no group in the identity path.
+        path.drain(marker..marker + 2);
+        renamed.push((old_id, record["node_id"].clone()));
+    }
+    assert_eq!(renamed.len(), 2);
+    for (old_id, new_id) in renamed {
+        package["requirement_items"]
+            .as_array_mut()
+            .expect("requirement items")
+            .iter_mut()
+            .find(|item| item["record"] == old_id)
+            .expect("renamed record item")["record"] = new_id;
+    }
+    settle(&mut package);
+    rebuild_complete_source_map(&mut package);
+    assert_refusal(
+        &package,
+        CheckedPackageRefusalCode::InvalidPackage,
+        Some(CheckedPackageRefusalCause::InvalidValue),
+        "/path_condition_frames/0",
+    );
+}
+
 fn assert_refusal(
     package: &Value,
     code: CheckedPackageRefusalCode,

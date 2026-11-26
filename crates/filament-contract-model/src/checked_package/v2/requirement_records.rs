@@ -2238,8 +2238,7 @@ fn derive_package_path_conditions(
         .any(|(expected, (_, _, frame_id))| *frame_id != expected);
     if out_of_order || frame_seen.contains(&0) {
         // A row no record's chain uses is the defect and is refused at that
-        // row. The table is refused as a whole when every row is used, or when
-        // no record cites any.
+        // row. The table is refused as a whole only when every row is used.
         let mut used = stage_storage::vec::<bool>(meter, &numbering_site, frames.len())?;
         used.resize(frames.len(), false);
         for (position, kind) in kinds.iter().enumerate() {
@@ -2248,9 +2247,7 @@ fn derive_package_path_conditions(
                 mark_chain(frames, terminal, &mut used);
             }
         }
-        if used.contains(&true) {
-            refuse_unused_frame(&used, meter)?;
-        }
+        refuse_unused_frame(&used, meter)?;
         return Err(refuse(
             record_position,
             Path::root().key("path_condition_frames"),
