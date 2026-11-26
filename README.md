@@ -23,25 +23,34 @@ lower ends as refused, unsupported or incomplete.
 
 ## Reading
 
-A `filament.checked-package/v2` has eight members. The reader checks every one: it
-refuses a package whose `contract_version` is not `v2`, whose bytes are not
-canonical JSON, whose `package_id` does not match the content it names, or whose
-required capabilities are missing. Evidence the package names (the domain
-package documents and any library packages it depends on) is handed in by the
-caller; the reader recomputes digests itself and does not fetch anything.
+A `filament.checked-package/v2` is one canonical JSON object with seven required
+members (`contract_version`, `name`, `lock`, `semantic_graph`, `source_map`,
+`capability_report` and `diagnostics`) and eleven optional ones
+(`refinement_step_rows`, `checked_term_data`, `temporal_bindings`,
+`temporal_clause_names`, `claim_names`, `protocol_correlation_occurrences`,
+`schedulability_claims`, `requirement_items`, `path_condition_frames`,
+`operation_effects` and `operation_bodies`). Any other member, including a
+`package_id`, is refused as an unknown member. The reader refuses a package whose
+`contract_version` is not `v2`, whose bytes are not canonical JSON, whose graph or
+source map is invalid, or whose required capabilities are missing. Evidence the
+package names (the domain package documents and any library packages it depends
+on) is handed in by the caller; the reader recomputes digests itself and does not
+fetch anything.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/inside-package-dark.svg">
-  <img alt="A filament.checked-package/v2 holds eight members. The reader checks each one, and lowering works on the semantic graph, whose nodes come in thirteen families: scalar_type, composite_type, bounded_domain, value, expression, function, model, relation, state, temporal, protocol, claim and correspondence." src="docs/images/inside-package-light.svg">
+  <img alt="A filament.checked-package/v2 has seven required members: contract_version, name, lock, semantic_graph, source_map, capability_report and diagnostics, plus eleven optional ones. The reader checks the members, and lowering works on the semantic graph, whose nodes come in thirteen families: scalar_type, composite_type, bounded_domain, value, expression, function, model, relation, state, temporal, protocol, claim and correspondence." src="docs/images/inside-package-light.svg">
 </picture>
 
-Reading has three outcomes:
+Reading has five outcomes. A read under a caller budget reports the same outcomes with `Admitted` named `AdmittedV2` and two more, `BudgetIncomplete` (the budget ran out, and the diagnostic was affordable) and `Exhausted` (the budget ran out and could not pay for the diagnostic), seven in all.
 
 | Outcome | Meaning |
 | --- | --- |
 | `Admitted` | The package is complete and immutable, and safe to lower. |
-| `Refused` | The input is invalid, with a typed code (`malformed_wire`, `noncanonical_wire`, `stale_dependency`, `invalid_semantic_graph`, `unknown_contract_version` and others) and the JSON pointer of the value at fault. |
+| `Refused` | The input is invalid, with a typed code (`malformed_wire`, `noncanonical_wire`, `unknown_member`, `invalid_semantic_graph`, `unknown_contract_version`, `unknown_required_capability` and others) and the JSON pointer of the value at fault. |
 | `Incomplete` | The input exceeded a limit the caller set, so no conclusion was reached. |
+| `CatalogUnavailable` | The reader's operation catalog cannot be read, a skew between the reader and its catalog dependency. The input was not judged. |
+| `HostAllocationFailed` | The host refused an allocation the read needed. The input was not judged, and a larger limit would not change it. |
 
 ## Lowering
 
