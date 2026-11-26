@@ -8,7 +8,7 @@ relationships:
   - target: ix://agent-ix/filament-contract-ir/FR-038
     type: depends_on
   - target: ix://agent-ix/filament-specification/FR-375
-    type: references
+    type: implements
   - target: ix://agent-ix/filament-specification/FR-322
     type: references
 ---
