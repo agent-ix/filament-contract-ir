@@ -435,7 +435,7 @@ mod tests {
     /// FR-322-AC-291: the application/occurrence ordinal sequence is shared
     /// across function rows; function identity does not split its key.
     #[test]
-    #[trace("TC-491", "FR-038-AC-597", "FR-322-AC-291")]
+    #[trace("TC-491", "FR-322-AC-291")]
     fn ordinals_are_shared_across_functions_for_one_application_occurrence() {
         let (mut wire, kinds, terms) = graph(vec![
             function("f0", "app"),
