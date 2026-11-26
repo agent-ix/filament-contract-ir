@@ -31,6 +31,7 @@ pub struct ClaimNameRow {
     /// Exact source identifier, independent of the node identity.
     pub name: Box<str>,
     /// Alias-free package-local path whose last segment is `name`.
+    #[serde(deserialize_with = "super::document_de::exact_vec")]
     pub qualified_name: Vec<Box<str>>,
     /// The whole source declaration that introduced the occurrence, under the
     /// source of the occurrence's `source_map` region and containing it.

@@ -457,8 +457,8 @@ fn spell(
     fresh: usize,
     budget: &mut Budget<'_, '_>,
 ) -> Result<Vec<Arc<str>>, ValidationFailure> {
-    budget.request(fresh, F)?;
     let mut spelled = budget.vec(names.len(), F)?;
+    budget.request(fresh, F)?;
     for (name, arc) in names {
         spelled.push(arc.map_or_else(|| Arc::from(*name), Arc::clone));
     }
@@ -542,6 +542,9 @@ fn build_component(
                 budget.row(),
             )
         })?;
+        // The member type charges for itself, so it is derived before the
+        // entry's request: a charge is followed at once by its allocations.
+        let member_type = model.field_type_charged(decl, budget, F)?;
         budget.request(
             arc_str_bytes(identity.len())
                 .saturating_add(owner.len())
@@ -549,7 +552,6 @@ fn build_component(
                 .saturating_add(arc_bytes::<FieldEntry>()),
             F,
         )?;
-        let member_type = model.field_type_charged(decl, budget, F)?;
         own.push((
             first,
             Arc::new(FieldEntry {

@@ -1739,6 +1739,8 @@ struct Tables {
     consumed: u64,
     allocated: u64,
     locus: Option<crate::NativeJoinLocus>,
+    /// The bytes of the first request the allowance could not pay.
+    unpaid: Option<u128>,
 }
 
 fn build_under(models: &[DomainModel], allowance: u64) -> Tables {
@@ -1755,6 +1757,7 @@ fn build_under(models: &[DomainModel], allowance: u64) -> Tables {
         consumed: budget.read_storage_consumed(),
         allocated: measured.bytes_total,
         locus: budget.first_unpaid_locus(),
+        unpaid: budget.first_unpaid_read_storage(),
     }
 }
 
@@ -1870,11 +1873,18 @@ fn tc_472_field_tables_allocate_exactly_what_they_request() {
             let outcome = build_under(&models, allowance);
             assert!(!outcome.built, "allowance {allowance} is short");
             assert!(
+                outcome.allocated >= outcome.consumed,
+                "allowance {allowance}: charged {} but requested {}",
+                outcome.consumed,
+                outcome.allocated
+            );
+            assert!(
                 outcome.allocated <= allowance + pointer,
                 "allowance {allowance}: allocated {}",
                 outcome.allocated
             );
-            allowance += 53;
+            let request = outcome.unpaid.expect("the denial records its request");
+            allowance = outcome.consumed + u64::try_from(request).expect("small fixture");
         }
     }
 }
