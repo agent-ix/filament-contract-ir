@@ -754,6 +754,8 @@ pub enum CheckedOperationMember {
         name: Box<str>,
         /// Source read form for a model-object projection; absent for record fields.
         read_form: Option<CheckedFieldReadForm>,
+        /// Population node, when the read names one.
+        population: Option<CheckedNodeId>,
     },
     /// A declared tuple position.
     Position {
@@ -1094,7 +1096,7 @@ pub struct CheckedOperationRational {
 }
 
 /// Whether an interval includes its endpoint.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CheckedIntervalEnd {
     /// Includes the endpoint.
@@ -1213,8 +1215,17 @@ impl CheckedOperationMember {
             Some(())
         };
         match self {
-            Self::Field { declaration, .. }
-            | Self::Position { declaration, .. }
+            Self::Field {
+                declaration,
+                population,
+                ..
+            } => {
+                replace(declaration)?;
+                if let Some(population) = population {
+                    replace(population)?;
+                }
+            }
+            Self::Position { declaration, .. }
             | Self::Element { declaration }
             | Self::Operation { declaration, .. }
             | Self::History { declaration, .. }
@@ -1327,6 +1338,11 @@ impl CheckedOperationMember {
                         .and_then(CheckedFieldReadForm::from_wire))),
                     None => None,
                 },
+                population: if value.get("population").is_some() {
+                    Some(meter.clone_id(need!(ids.population.as_ref()))?)
+                } else {
+                    None
+                },
             },
             OperationMemberKind::Position => Self::Position {
                 declaration: meter.clone_id(need!(declaration))?,
@@ -1423,6 +1439,10 @@ impl CheckedOperationMember {
                     Some(value) => Some(CheckedFieldReadForm::from_wire(value.as_str()?)?),
                     None => None,
                 },
+                population: match value.get("population") {
+                    Some(_) => Some(node("population")?),
+                    None => None,
+                },
             },
             OperationMemberKind::Position => {
                 let position = value.get("position")?;
@@ -1496,8 +1516,17 @@ impl CheckedOperationMember {
             }
         };
         match self {
-            Self::Field { declaration, .. }
-            | Self::Position { declaration, .. }
+            Self::Field {
+                declaration,
+                population,
+                ..
+            } => {
+                replace(declaration);
+                if let Some(population) = population {
+                    replace(population);
+                }
+            }
+            Self::Position { declaration, .. }
             | Self::Element { declaration }
             | Self::Operation { declaration, .. }
             | Self::History { declaration, .. }
@@ -4056,8 +4085,565 @@ impl Encode for CheckedAbstractionFrame {
     }
 }
 
+/// The wire shape of a member's decimal-integer slots: a JSON number inside
+/// the safe integer range, the exact decimal string beyond it.
+fn integer_slot(value: &Integer) -> serde_json::Value {
+    match value.to_u64() {
+        Some(small) if small <= (1_u64 << 53) - 1 => serde_json::Value::from(small),
+        _ => serde_json::Value::String(value.to_string()),
+    }
+}
+
+impl Serialize for CheckedOperationRational {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut map = serializer.serialize_map(Some(2))?;
+        map.serialize_entry("numerator", &self.numerator.to_string())?;
+        map.serialize_entry("denominator", &self.denominator.to_string())?;
+        map.end()
+    }
+}
+
+impl Serialize for CheckedOperationInterval {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Integer { lower, upper } => {
+                let mut map = serializer.serialize_map(Some(2))?;
+                map.serialize_entry("lower", &lower.to_string())?;
+                map.serialize_entry("upper", &upper.as_ref().map(ToString::to_string))?;
+                map.end()
+            }
+            Self::Timed {
+                lower,
+                upper,
+                lower_end,
+                upper_end,
+            } => {
+                let mut map = serializer.serialize_map(Some(4))?;
+                map.serialize_entry("lower", lower)?;
+                map.serialize_entry("lower_end", lower_end)?;
+                map.serialize_entry("upper", upper)?;
+                map.serialize_entry("upper_end", upper_end)?;
+                map.end()
+            }
+        }
+    }
+}
+
+/// The closed wire member of an operation, written from the typed member.
+/// This is the single writer of the shape the reader admits: a producer
+/// builds a [`CheckedOperationMember`] and never a JSON value
+/// (FR-038-AC-644).
+impl Serialize for CheckedOperationMember {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        MemberWrite {
+            member: self,
+            execution_point: None,
+        }
+        .serialize(serializer)
+    }
+}
+
+/// A member with the state-clause point the operation carries beside it.
+struct MemberWrite<'a> {
+    member: &'a CheckedOperationMember,
+    execution_point: Option<&'a ExecutionPoint>,
+}
+
+impl Serialize for MemberWrite<'_> {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut map = serializer.serialize_map(None)?;
+        match self.member {
+            CheckedOperationMember::Field {
+                declaration,
+                name,
+                read_form,
+                population,
+            } => {
+                map.serialize_entry("kind", "field")?;
+                map.serialize_entry("declaration", declaration)?;
+                map.serialize_entry("name", name)?;
+                if let Some(population) = population {
+                    map.serialize_entry("population", population)?;
+                }
+                if let Some(read_form) = read_form {
+                    map.serialize_entry(
+                        "read_form",
+                        match read_form {
+                            CheckedFieldReadForm::Bare => "bare",
+                            CheckedFieldReadForm::ExplicitDeref => "explicit_deref",
+                        },
+                    )?;
+                }
+            }
+            CheckedOperationMember::Position {
+                declaration,
+                position,
+            } => {
+                map.serialize_entry("kind", "position")?;
+                map.serialize_entry("declaration", declaration)?;
+                map.serialize_entry("position", &integer_slot(position))?;
+            }
+            CheckedOperationMember::Element { declaration } => {
+                map.serialize_entry("kind", "element")?;
+                map.serialize_entry("declaration", declaration)?;
+            }
+            CheckedOperationMember::RelationshipEnd {
+                declaration,
+                name,
+                destination_type,
+                population,
+            } => {
+                map.serialize_entry("kind", "relationship_end")?;
+                map.serialize_entry("declaration", declaration)?;
+                map.serialize_entry("name", name)?;
+                map.serialize_entry("destination_type", destination_type)?;
+                if let Some(population) = population {
+                    map.serialize_entry("population", population)?;
+                }
+            }
+            CheckedOperationMember::Operation { declaration, name } => {
+                map.serialize_entry("kind", "operation")?;
+                map.serialize_entry("declaration", declaration)?;
+                map.serialize_entry("name", name)?;
+            }
+            CheckedOperationMember::History { declaration, name } => {
+                map.serialize_entry("kind", "history")?;
+                map.serialize_entry("declaration", declaration)?;
+                map.serialize_entry("name", name)?;
+            }
+            CheckedOperationMember::TypeArgument { declaration, alias } => {
+                map.serialize_entry("kind", "type_argument")?;
+                map.serialize_entry("declaration", declaration)?;
+                if let Some(alias) = alias {
+                    map.serialize_entry(
+                        "alias",
+                        &serde_json::json!({"package": alias.package, "node": alias.node}),
+                    )?;
+                }
+            }
+            CheckedOperationMember::ProfileOperator { operator } => {
+                map.serialize_entry("kind", "profile_operator")?;
+                if let Some(operator) = operator {
+                    map.serialize_entry("operator", operator)?;
+                }
+            }
+            CheckedOperationMember::StateClause { clause } => {
+                map.serialize_entry("kind", "state_clause")?;
+                map.serialize_entry("clause", clause)?;
+                if let Some(point) = self.execution_point {
+                    map.serialize_entry("execution_point", point)?;
+                }
+            }
+            CheckedOperationMember::TemporalInterval { interval } => {
+                map.serialize_entry("kind", "temporal_interval")?;
+                map.serialize_entry("interval", interval)?;
+            }
+            CheckedOperationMember::Fairness {
+                fairness_kind,
+                granularity,
+                target,
+            } => {
+                map.serialize_entry("kind", "fairness")?;
+                map.serialize_entry("fairness_kind", fairness_kind)?;
+                map.serialize_entry("granularity", granularity)?;
+                map.serialize_entry("target", target)?;
+            }
+        }
+        map.end()
+    }
+}
+
+/// The typed record a producer writes an application operation from.
+/// `identity` is the catalogued identity; the rest is the operation's law,
+/// mode, member and leaf selection in wire order.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CheckedApplicationOperationForm {
+    /// Catalogued operation identity.
+    pub identity: Box<str>,
+    /// Selected laws in order.
+    pub laws: Vec<CheckedOperationLaw>,
+    /// Selected mode, when present.
+    pub mode: Option<CheckedOperationMode>,
+    /// Closed typed member, when the operation has one.
+    pub member: Option<CheckedOperationMember>,
+    /// The state-clause execution point; written inside a `state_clause` member.
+    pub execution_point: Option<ExecutionPoint>,
+    /// Ordered structural leaves.
+    pub leaves: Vec<CheckedOperationLeaf>,
+}
+
+/// A refused write of a [`CheckedApplicationOperationForm`].
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CheckedOperationFormError {
+    reason: Box<str>,
+}
+
+impl std::fmt::Display for CheckedOperationFormError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "operation form refused: {}", self.reason)
+    }
+}
+
+impl std::error::Error for CheckedOperationFormError {}
+
+impl CheckedApplicationOperation {
+    /// Write the typed operation form and read it back through the strict
+    /// reader, so the value is exactly what a reader admitting the written
+    /// bytes returns (FR-038-AC-644).
+    pub fn from_form(
+        form: &CheckedApplicationOperationForm,
+    ) -> Result<Self, CheckedOperationFormError> {
+        struct Law<'a>(&'a CheckedOperationLaw);
+        impl Serialize for Law<'_> {
+            fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+                let mut map = serializer.serialize_map(Some(2))?;
+                map.serialize_entry("role", self.0.role.as_wire())?;
+                map.serialize_entry("definition", &self.0.definition)?;
+                map.end()
+            }
+        }
+        struct Mode<'a>(&'a CheckedOperationMode);
+        impl Serialize for Mode<'_> {
+            fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+                let mut map = serializer.serialize_map(Some(2))?;
+                map.serialize_entry("kind", self.0.kind.as_wire())?;
+                map.serialize_entry("value", &self.0.value)?;
+                map.end()
+            }
+        }
+        struct Leaf<'a>(&'a CheckedOperationLeaf);
+        impl Serialize for Leaf<'_> {
+            fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+                let mut map = serializer.serialize_map(Some(3))?;
+                map.serialize_entry("path", &self.0.path)?;
+                map.serialize_entry("laws", &self.0.laws.iter().map(Law).collect::<Vec<_>>())?;
+                map.serialize_entry("mode", &self.0.mode.as_ref().map(Mode))?;
+                map.end()
+            }
+        }
+        #[derive(Serialize)]
+        struct Record<'a> {
+            identity: &'a str,
+            laws: Vec<Law<'a>>,
+            mode: Option<Mode<'a>>,
+            member: Option<MemberWrite<'a>>,
+            leaves: Vec<Leaf<'a>>,
+        }
+        let carries_point = matches!(
+            form.member,
+            Some(CheckedOperationMember::StateClause { .. })
+        );
+        if form.execution_point.is_some() && !carries_point {
+            return Err(CheckedOperationFormError {
+                reason: "an execution point belongs to a state_clause member".into(),
+            });
+        }
+        let record = Record {
+            identity: &form.identity,
+            laws: form.laws.iter().map(Law).collect(),
+            mode: form.mode.as_ref().map(Mode),
+            member: form.member.as_ref().map(|member| MemberWrite {
+                member,
+                execution_point: form.execution_point.as_ref(),
+            }),
+            leaves: form.leaves.iter().map(Leaf).collect(),
+        };
+        let raw =
+            CheckedJson::from_serializable(&record).map_err(|error| CheckedOperationFormError {
+                reason: error.to_string().into(),
+            })?;
+        Self::outside_read_raw(raw).map_err(|error| CheckedOperationFormError {
+            reason: error.to_string().into(),
+        })
+    }
+}
+
+/// The one function that assigns `term_ordinal`: the n-th row of an
+/// `(application, occurrence)` key takes ordinal n, counted from zero across
+/// every function that carries the key (FSpec FR-322-AC-291). `keys` are the
+/// rows' keys in row order; the result has one ordinal per key.
+#[implements("FR-322-AC-291")]
+pub fn term_ordinals<'a>(
+    keys: impl IntoIterator<
+        Item = (
+            &'a CheckedNodeId,
+            &'a crate::checked_package::shared::CheckedOccurrence,
+        ),
+    >,
+) -> Vec<u64> {
+    let mut next = std::collections::BTreeMap::new();
+    keys.into_iter()
+        .map(|key| {
+            let count = next.entry(key).or_insert(0_u64);
+            let ordinal = *count;
+            *count += 1;
+            ordinal
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
+    fn form_id(name: &str) -> CheckedNodeId {
+        CheckedNodeId {
+            package: "form".into(),
+            path: vec![CheckedNodePathSegment::Name(name.into())],
+            ordinal: 0,
+        }
+    }
+
+    fn form_of(
+        member: CheckedOperationMember,
+        execution_point: Option<ExecutionPoint>,
+    ) -> CheckedApplicationOperationForm {
+        CheckedApplicationOperationForm {
+            identity: "filament.op.test.member".into(),
+            laws: Vec::new(),
+            mode: None,
+            member: Some(member),
+            execution_point,
+            leaves: Vec::new(),
+        }
+    }
+
+    /// FR-038-AC-644: every member kind writes the closed wire member, and the
+    /// strict read of that write is the same operation and the same typed member.
+    #[trace("FR-038-AC-644")]
+    #[test]
+    fn typed_member_write_then_strict_read_round_trips_every_kind() {
+        use crate::identity::ExecutionPointName;
+        let declaration = form_id("decl");
+        let big: Integer = "18446744073709551616".parse().expect("integer");
+        let timed = |n: u64| CheckedOperationRational {
+            numerator: Integer::from(n),
+            denominator: Integer::from(2_u64),
+        };
+        let cases: Vec<(CheckedOperationMember, Option<ExecutionPoint>, Value)> = vec![
+            (
+                CheckedOperationMember::Field {
+                    declaration: declaration.clone(),
+                    name: "f".into(),
+                    read_form: Some(CheckedFieldReadForm::ExplicitDeref),
+                    population: Some(form_id("pop")),
+                },
+                None,
+                json!({"kind":"field","declaration":declaration,"name":"f",
+                    "population":form_id("pop"),"read_form":"explicit_deref"}),
+            ),
+            (
+                CheckedOperationMember::Field {
+                    declaration: declaration.clone(),
+                    name: "f".into(),
+                    read_form: None,
+                    population: None,
+                },
+                None,
+                json!({"kind":"field","declaration":declaration,"name":"f"}),
+            ),
+            (
+                CheckedOperationMember::Position {
+                    declaration: declaration.clone(),
+                    position: Integer::from(2_u64),
+                },
+                None,
+                json!({"kind":"position","declaration":declaration,"position":2}),
+            ),
+            (
+                CheckedOperationMember::Position {
+                    declaration: declaration.clone(),
+                    position: big.clone(),
+                },
+                None,
+                json!({"kind":"position","declaration":declaration,
+                    "position":"18446744073709551616"}),
+            ),
+            (
+                CheckedOperationMember::Element {
+                    declaration: declaration.clone(),
+                },
+                None,
+                json!({"kind":"element","declaration":declaration}),
+            ),
+            (
+                CheckedOperationMember::RelationshipEnd {
+                    declaration: declaration.clone(),
+                    name: "end".into(),
+                    destination_type: form_id("dest"),
+                    population: Some(form_id("pop")),
+                },
+                None,
+                json!({"kind":"relationship_end","declaration":declaration,"name":"end",
+                    "destination_type":form_id("dest"),"population":form_id("pop")}),
+            ),
+            (
+                CheckedOperationMember::Operation {
+                    declaration: declaration.clone(),
+                    name: "op".into(),
+                },
+                None,
+                json!({"kind":"operation","declaration":declaration,"name":"op"}),
+            ),
+            (
+                CheckedOperationMember::History {
+                    declaration: declaration.clone(),
+                    name: "h".into(),
+                },
+                None,
+                json!({"kind":"history","declaration":declaration,"name":"h"}),
+            ),
+            (
+                CheckedOperationMember::TypeArgument {
+                    declaration: declaration.clone(),
+                    alias: Some(CheckedTypeArgumentAlias {
+                        package: "p".into(),
+                        node: "ix://p/a".into(),
+                    }),
+                },
+                None,
+                json!({"kind":"type_argument","declaration":declaration,
+                    "alias":{"package":"p","node":"ix://p/a"}}),
+            ),
+            (
+                CheckedOperationMember::ProfileOperator {
+                    operator: Some("add".into()),
+                },
+                None,
+                json!({"kind":"profile_operator","operator":"add"}),
+            ),
+            (
+                CheckedOperationMember::StateClause {
+                    clause: StateClauseKind::Precondition,
+                },
+                Some(ExecutionPoint::Pre {
+                    operation: ExecutionPointName::new("go").expect("name"),
+                }),
+                json!({"kind":"state_clause","clause":"precondition",
+                    "execution_point":{"kind":"pre","operation":"go"}}),
+            ),
+            (
+                CheckedOperationMember::TemporalInterval {
+                    interval: Some(CheckedOperationInterval::Integer {
+                        lower: Integer::from(1_u64),
+                        upper: None,
+                    }),
+                },
+                None,
+                json!({"kind":"temporal_interval","interval":{"lower":"1","upper":null}}),
+            ),
+            (
+                CheckedOperationMember::TemporalInterval {
+                    interval: Some(CheckedOperationInterval::Timed {
+                        lower: timed(1),
+                        upper: Some(timed(3)),
+                        lower_end: CheckedIntervalEnd::Closed,
+                        upper_end: CheckedIntervalEnd::Open,
+                    }),
+                },
+                None,
+                json!({"kind":"temporal_interval","interval":{
+                    "lower":{"numerator":"1","denominator":"2"},"lower_end":"closed",
+                    "upper":{"numerator":"3","denominator":"2"},"upper_end":"open"}}),
+            ),
+            (
+                CheckedOperationMember::Fairness {
+                    fairness_kind: CheckedFairnessKind::Strong,
+                    granularity: CheckedFairnessGranularity::Each,
+                    target: CheckedFairnessTarget::ParallelBranch {
+                        parallel: form_id("par"),
+                        branch: "left".into(),
+                    },
+                },
+                None,
+                json!({"kind":"fairness","fairness_kind":"strong","granularity":"each",
+                    "target":{"kind":"parallel_branch","parallel":form_id("par"),"branch":"left"}}),
+            ),
+        ];
+        for (member, point, wire) in cases {
+            let operation = CheckedApplicationOperation::from_form(&form_of(member.clone(), point))
+                .expect("typed form writes");
+            let written = serde_json::to_value(&operation).expect("operation wire");
+            assert_eq!(written["member"], wire, "wire bytes of {member:?}");
+            let read: CheckedApplicationOperation =
+                serde_json::from_value(written).expect("strict read of the write");
+            assert_eq!(read, operation, "operation of {member:?}");
+            assert_eq!(
+                CheckedOperationMember::from_validated_value(&wire),
+                Some(member),
+                "typed member read back from the wire"
+            );
+        }
+    }
+
+    /// FR-038-AC-644: a point with no state clause to carry it is refused, and
+    /// a typed member rewrites through the one node-id mapping.
+    #[trace("FR-038-AC-644")]
+    #[test]
+    fn typed_member_form_refuses_a_stray_point_and_maps_population() {
+        use crate::identity::ExecutionPointName;
+        let stray = form_of(
+            CheckedOperationMember::Element {
+                declaration: form_id("decl"),
+            },
+            Some(ExecutionPoint::Pre {
+                operation: ExecutionPointName::new("go").expect("name"),
+            }),
+        );
+        assert!(CheckedApplicationOperation::from_form(&stray).is_err());
+        let mut member = CheckedOperationMember::Field {
+            declaration: form_id("decl"),
+            name: "f".into(),
+            read_form: None,
+            population: Some(form_id("pop")),
+        };
+        let mut seen = Vec::new();
+        member
+            .map_node_ids(|id| {
+                seen.push(id.clone());
+                Some(form_id("new"))
+            })
+            .expect("mapped");
+        assert_eq!(seen, vec![form_id("decl"), form_id("pop")]);
+        assert_eq!(
+            member,
+            CheckedOperationMember::Field {
+                declaration: form_id("new"),
+                name: "f".into(),
+                read_form: None,
+                population: Some(form_id("new")),
+            }
+        );
+    }
+
+    /// FR-322-AC-291: ordinals count per application and occurrence, across rows.
+    #[trace("FR-322-AC-291", "FR-038-AC-645")]
+    #[test]
+    fn term_ordinals_count_per_application_and_occurrence() {
+        use crate::checked_package::shared::{CheckedOccurrence, CheckedOccurrenceRole};
+        let (a, b) = (form_id("a"), form_id("b"));
+        let expression = CheckedOccurrence {
+            role: CheckedOccurrenceRole::Expression,
+            ordinal: 0,
+        };
+        let other = CheckedOccurrence {
+            ordinal: 1,
+            ..expression.clone()
+        };
+        let keys = [
+            (&a, &expression),
+            (&a, &expression),
+            (&b, &expression),
+            (&a, &other),
+            (&a, &expression),
+        ];
+        assert_eq!(term_ordinals(keys), vec![0, 1, 0, 0, 2]);
+        assert_eq!(term_ordinals(std::iter::empty()), Vec::<u64>::new());
+    }
+
+    use super::{
+        term_ordinals, CheckedApplicationOperationForm, CheckedFieldReadForm, CheckedIntervalEnd,
+        CheckedOperationInterval, CheckedOperationRational, CheckedTypeArgumentAlias,
+        StateClauseKind,
+    };
     use super::{
         ApplicationOperator, CheckedApplicationOperation, CheckedBindingName,
         CheckedBindingNameKind, CheckedFairnessGranularity, CheckedFairnessKind,
@@ -4065,8 +4651,10 @@ mod tests {
         CheckedOperationViews, CheckedTerm, ExecutionPoint, TermConversionCause,
     };
     use crate::checked_package::shared::{CheckedNodeId, CheckedNodePathSegment};
+    use filament_exact::Integer;
     use ix_trace_rs::trace;
     use quire_canonical::{to_vec, Limits};
+    use serde_json::Value;
     use serde_json::{error::Category, json};
 
     /// The record and its member keys are decoded from retained views; every
@@ -4157,6 +4745,7 @@ mod tests {
             declaration: original.clone(),
             name: "field".into(),
             read_form: None,
+            population: None,
         };
         let operation = CheckedApplicationOperation {
             record: json!({

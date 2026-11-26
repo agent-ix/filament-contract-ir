@@ -366,7 +366,7 @@ fn step(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::checked_package::shared::CheckedPackageRefusalCause;
+    use crate::checked_package::shared::{CheckedOccurrence, CheckedPackageRefusalCause};
     use ix_trace_rs::trace;
 
     fn key(value: u64) -> CheckedKeyOrdinal {
@@ -509,6 +509,58 @@ mod tests {
         )
         .unwrap();
         assert!(gap, "ordinal 2 witnesses a missing ordinal 1");
+    }
+
+    /// FR-322-AC-291: rows whose ordinals come from the one exported ordinal
+    /// function are admitted by the strict reader with no missing predecessor.
+    #[test]
+    #[trace("TC-491", "FR-322-AC-291", "FR-038-AC-645")]
+    fn exported_ordinals_are_admitted_by_the_reader() {
+        let (mut wire, kinds, terms) = graph(vec![
+            function("f0", "app"),
+            function("f1", "app"),
+            node(
+                "app",
+                "expression",
+                "binary",
+                serde_json::json!({
+                    "term":"application","operator":"binary",
+                    "operation":{"identity":"filament.op.test","laws":[],"mode":null,"member":null,"leaves":[]},
+                    "result_type":{"package":"test","path":["app"],"ordinal":0},"arguments":[]
+                }),
+            ),
+        ]);
+        let app = wire.semantic_graph.nodes[2].node_id.clone();
+        wire.source_map.push(
+            serde_json::from_value(serde_json::json!({
+                "node_id":app,"role":"expression","ordinal":0,"regions":[]
+            }))
+            .unwrap(),
+        );
+        let app_value = serde_json::to_value(&app).unwrap();
+        let occurrence = CheckedOccurrence {
+            role: crate::checked_package::shared::CheckedOccurrenceRole::Expression,
+            ordinal: 0,
+        };
+        let ordinals = super::super::term_ordinals([(&app, &occurrence); 3]);
+        assert_eq!(ordinals, vec![0, 1, 2]);
+        let rows = [
+            body_row(&app_value, "f0", ordinals[0]),
+            body_row(&app_value, "f1", ordinals[1]),
+            body_row(&app_value, "f1", ordinals[2]),
+        ];
+        let (gap, _) = super::super::protocol_locations::validate_rows(
+            ARRAY,
+            "test",
+            &wire.semantic_graph.nodes,
+            &kinds,
+            &terms,
+            &wire.source_map,
+            &rows,
+            &mut WorkMeter::new(u64::MAX),
+        )
+        .unwrap();
+        assert!(!gap, "assigned ordinals are consecutive from zero");
     }
 
     fn node(path: &str, tag: &str, form: &str, body: serde_json::Value) -> serde_json::Value {
