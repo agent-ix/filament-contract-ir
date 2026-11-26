@@ -962,6 +962,68 @@ fn tc_227_a_cycle_is_charged_and_built_once_per_component() {
     );
 }
 
+/// `types` as a document that also declares the event construct.
+fn event_document(types: Vec<Value>) -> Value {
+    let mut document = document(types);
+    document["constructs"]
+        .as_array_mut()
+        .expect("constructs")
+        .push(json!({
+            "kind": {"module": "acme/orders", "name": "event"},
+            "construct": {"meaning": "filament.meaning.model.event-type/v1"},
+        }));
+    document
+}
+
+/// An event type `short` extending `supertypes`, each of whose `fields` is a
+/// native Integer.
+fn event_type(short: &str, supertypes: &[&str], fields: &[&str]) -> Value {
+    let node = format!("{ORDERS}{short}");
+    let supertypes: Vec<String> = supertypes
+        .iter()
+        .map(|supertype| format!("{ORDERS}{supertype}"))
+        .collect();
+    let supertypes: Vec<&str> = supertypes.iter().map(String::as_str).collect();
+    let fields = fields
+        .iter()
+        .map(|name| field(&node, name, "ix://filament/native/Integer"))
+        .collect();
+    let mut declared = object_type(&node, &supertypes, fields);
+    declared["kind"]["name"] = json!("event");
+    declared
+}
+
+/// Event types that extend each other share one table, charged once, as object
+/// types in a cycle do; so does an event type that extends itself.
+#[trace("TC-227", "FR-038-AC-144")]
+#[test]
+fn tc_227_an_event_supertype_cycle_is_charged_and_built_once() {
+    let before = super::probe::components_built();
+    let (charged, model) = built(&event_document(vec![event_type("A", &["A"], &["f"])]));
+    assert_eq!(charged, 2);
+    assert_eq!(
+        exposed_identities(table_for(&model, "A")),
+        ["ix://acme/orders/A/f"]
+    );
+    assert_eq!(super::probe::components_built() - before, 1);
+
+    let before = super::probe::components_built();
+    let (charged, model) = built(&event_document(vec![
+        event_type("A", &["B"], &["a"]),
+        event_type("B", &["A"], &["b"]),
+    ]));
+    assert_eq!(charged, 4);
+    assert_eq!(super::probe::components_built() - before, 1);
+    assert!(
+        std::ptr::eq(table_for(&model, "A"), table_for(&model, "B")),
+        "one shared table"
+    );
+    assert_eq!(
+        exposed_identities(table_for(&model, "A")),
+        ["ix://acme/orders/A/a", "ix://acme/orders/B/b"]
+    );
+}
+
 /// An ambiguous name is retained in the table, not refused, and is charged
 /// as any other table.
 #[trace("TC-227", "FR-038-AC-139", "FR-038-AC-144")]
@@ -1758,6 +1820,14 @@ fn tc_472_field_tables_allocate_exactly_what_they_request() {
         document_of("redefining_chain"),
         chain_document(12),
         ledger(),
+        event_document(vec![
+            event_type("Base", &[], &["source"]),
+            event_type("Tick", &["Base"], &["amount", "count"]),
+        ]),
+        event_document(vec![
+            event_type("A", &["B"], &["a"]),
+            event_type("B", &["A"], &["b"]),
+        ]),
     ] {
         let model = unbuilt(&document);
         let mut meter = WorkMeter::new(u64::MAX);
@@ -1766,6 +1836,7 @@ fn tc_472_field_tables_allocate_exactly_what_they_request() {
             .object_types
             .values()
             .chain(model.record_types.values())
+            .chain(model.event_types.values())
         {
             for field in &declared.fields {
                 assert_eq!(

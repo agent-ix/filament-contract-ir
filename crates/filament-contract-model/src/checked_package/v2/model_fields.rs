@@ -190,7 +190,7 @@ fn tables_of(
     budget: &mut Budget<'_, '_>,
 ) -> Result<FieldTables, ValidationFailure> {
     let found = components(model, budget)?;
-    let nodes = model.object_types.len() + model.record_types.len();
+    let nodes = model.object_types.len() + model.record_types.len() + model.event_types.len();
     let mut tables = FieldTables {
         by_type: SortedMap::with_capacity(budget, nodes, F)?,
         components: budget.vec(found.len(), F)?,
@@ -208,14 +208,15 @@ fn tables_of(
 }
 
 /// The strongly connected components of the supertype graph of `model`'s
-/// objects and records, a component after every component of its supertypes
+/// objects, records and event types, a component after every component of its
+/// supertypes
 /// (Tarjan's algorithm over an explicit stack). Every table the search keeps
 /// is requested at the capacity the search can need: the number of nodes.
 fn components<'m>(
     model: &'m DomainModel,
     budget: &mut Budget<'_, '_>,
 ) -> Result<Vec<Component<'m>>, ValidationFailure> {
-    let nodes = model.object_types.len() + model.record_types.len();
+    let nodes = model.object_types.len() + model.record_types.len() + model.event_types.len();
     let mut search = Tarjan {
         model,
         visits: SortedMap::with_capacity(budget, nodes, F)?,
@@ -227,6 +228,7 @@ fn components<'m>(
         .object_types
         .keys()
         .chain(model.record_types.keys())
+        .chain(model.event_types.keys())
         .map(AsRef::as_ref)
     {
         if !search.visits.contains_key(root) {
@@ -374,6 +376,7 @@ impl<'m> Tarjan<'m> {
                 .object_types
                 .get_key_value(member)
                 .or_else(|| self.model.record_types.get_key_value(member))
+                .or_else(|| self.model.event_types.get_key_value(member))
             {
                 members.push((key.as_ref(), declared));
             }

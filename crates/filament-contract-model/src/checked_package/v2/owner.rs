@@ -550,7 +550,9 @@ fn model_kind_matches(
         CheckedNodeKind::Model(super::ModelForm::RecordValueType) => {
             model.record_types.contains_key(declared)
         }
-        CheckedNodeKind::Model(super::ModelForm::EventType) => model.event_types.contains(declared),
+        CheckedNodeKind::Model(super::ModelForm::EventType) => {
+            model.event_types.contains_key(declared)
+        }
         CheckedNodeKind::Model(super::ModelForm::TupleValueType) => {
             model.tuple_types.contains_key(declared)
         }
@@ -572,7 +574,7 @@ fn model_kind_matches(
                 model.object_types.get(declared).is_some_and(|object| {
                     !object.interface && !model.state_machines.contains(declared)
                 }) || model.record_types.contains_key(declared)
-                    || model.event_types.contains(declared)
+                    || model.event_types.contains_key(declared)
             }
             Some(
                 OwnerClauseKind::Precondition | OwnerClauseKind::Body | OwnerClauseKind::Reward,

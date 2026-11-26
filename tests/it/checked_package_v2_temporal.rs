@@ -6897,3 +6897,138 @@ fn tc_048_a_temporal_activation_guard_may_not_read_an_event_typed_parameter() {
         Some(format!("/semantic_graph/nodes/{at}/body/arguments/2").as_str())
     );
 }
+
+/// [`event_over_fixture`], whose `Tick` also declares `amount: Integer` and
+/// `armed: Boolean`; returns the package, the domain package document and the
+/// event node's id.
+fn event_field_fixture() -> (Value, Value, Value) {
+    let (package, mut document, tick) = event_over_fixture();
+    let event = document["types"]
+        .as_array_mut()
+        .expect("types")
+        .last_mut()
+        .expect("event type");
+    let identity = event["identity"].as_str().expect("identity").to_owned();
+    for (name, type_ref) in [
+        ("amount", NATIVE_INTEGER),
+        ("armed", "ix://filament/native/Boolean"),
+    ] {
+        let mut declared = slot(type_ref);
+        declared["identity"] = json!(format!("{identity}/{name}"));
+        declared["name"] = json!(name);
+        declared["presence"] = json!("required");
+        event["fields"]
+            .as_array_mut()
+            .expect("fields")
+            .push(declared);
+    }
+    (package, document, tick)
+}
+
+/// Adds the anonymous `scalar_type` node of `form` at the key that a member of
+/// that native type derives, and returns the key.
+fn push_member_scalar(package: &mut Value, form: &str) -> String {
+    let key = format!("qualified:scalar_type/{form}");
+    let empty = json!({"term": "aggregate", "members": []});
+    let mut node = node_with_key(&key, "scalar_type", form, empty);
+    node["semantic_type"] = node_id(&key);
+    push(package, node);
+    key
+}
+
+/// Adds an `expression`/`query` node keyed `key` that projects the field
+/// `name`, typed at the node keyed `result`, from the event value `receiver`.
+fn push_projection(
+    package: &mut Value,
+    key: &str,
+    tick: &Value,
+    name: &str,
+    result: &str,
+    receiver: Value,
+) {
+    let mut body = application(
+        "query",
+        "filament.op.record.project",
+        json!({"kind": "field", "declaration": tick, "name": name}),
+        vec![receiver],
+    );
+    body["result_type"] = node_id(result);
+    let mut node = node_with_key(key, "expression", "query", body);
+    node["semantic_type"] = node_id(result);
+    push(package, node);
+}
+
+#[trace("TC-048", "TC-281", "FR-038-AC-640")]
+#[test]
+fn tc_048_a_temporal_formula_compares_a_projected_event_field() {
+    let (mut package, document, tick) = event_field_fixture();
+    let integer = push_member_scalar(&mut package, "integer");
+    push_projection(
+        &mut package,
+        "amount-read",
+        &tick,
+        "amount",
+        &integer,
+        refer(&family_key("a4a4")),
+    );
+    let three = json!({"term": "literal", "type": node_id(&integer),
+        "value_kind": "integer", "value": "3"});
+    let comparison = application(
+        "binary",
+        "filament.op.integer.ge",
+        Value::Null,
+        vec![refer("amount-read"), three],
+    );
+    push(
+        &mut package,
+        node_with_key("at-least", "expression", "binary", comparison),
+    );
+    let holds = find_identity(&package, &temporal_identity("holds"));
+    package["semantic_graph"]["nodes"][holds]["body"]["arguments"][0] = refer("at-least");
+    settle(&mut package);
+    match read_with_model(&package, &document, CheckedPackageReadLimits::bounded()) {
+        CheckedPackageV2ReadResult::Admitted(_) => {}
+        other => panic!("a formula over a projected event field must admit: {other:?}"),
+    }
+}
+
+#[trace("TC-048", "FR-038-AC-642", "FR-038-AC-633")]
+#[test]
+fn tc_048_a_temporal_activation_guard_reads_an_event_field_projection_node() {
+    let (mut package, document, tick) = event_field_fixture();
+    let trigger = add_event_trigger(&mut package, tick.clone());
+    let boolean = push_member_scalar(&mut package, "boolean");
+    push_projection(
+        &mut package,
+        "armed-read",
+        &tick,
+        "armed",
+        &boolean,
+        trigger.clone(),
+    );
+    let at = clause(&package);
+    let guarded = |guard: Value| {
+        let mut activation = each_activation(trigger.clone());
+        activation["members"]
+            .as_array_mut()
+            .expect("activation members")
+            .push(json!({"term": "binding", "name": "guard", "value": guard}));
+        let mut package = package.clone();
+        package["semantic_graph"]["nodes"][at]["body"]["arguments"][2] = activation;
+        settle(&mut package);
+        read_with_model(&package, &document, CheckedPackageReadLimits::bounded())
+    };
+    match guarded(refer("armed-read")) {
+        CheckedPackageV2ReadResult::Admitted(_) => {}
+        other => panic!("a guard reading a projected event field must admit: {other:?}"),
+    }
+    let CheckedPackageV2ReadResult::Refused(refusal) = guarded(trigger.clone()) else {
+        panic!("a guard reading the event-typed trigger must refuse");
+    };
+    assert_eq!(refusal.code, Code::IllTyped);
+    assert_eq!(refusal.cause, Some(Cause::OperatorIneligible));
+    assert_eq!(
+        refusal.loci[0].path.as_ref().map(|path| path.as_str()),
+        Some(format!("/semantic_graph/nodes/{at}/body/arguments/2").as_str())
+    );
+}
