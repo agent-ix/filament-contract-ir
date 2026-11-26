@@ -1324,7 +1324,7 @@ mod tests {
         json!({"package": "p", "path": ["n"], "ordinal": 0})
     }
 
-    #[trace("TC-472", "FR-038-AC-499")]
+    #[trace("TC-472", "FR-038-AC-499", "FR-038-AC-511")]
     #[test]
     fn a_claim_name_row_pays_for_each_list_before_requesting_it() {
         assert_every_request_is_paid_first(
@@ -1341,7 +1341,7 @@ mod tests {
         );
     }
 
-    #[trace("TC-472", "FR-038-AC-499")]
+    #[trace("TC-472", "FR-038-AC-499", "FR-038-AC-511")]
     #[test]
     fn a_schedulability_claim_row_pays_for_each_list_before_requesting_it() {
         assert_every_request_is_paid_first(
@@ -1365,7 +1365,7 @@ mod tests {
         );
     }
 
-    #[trace("TC-472", "FR-038-AC-499")]
+    #[trace("TC-472", "FR-038-AC-499", "FR-038-AC-511")]
     #[test]
     fn operation_effect_rows_are_paid_for_before_they_are_requested() {
         assert_every_request_is_paid_first(
@@ -1382,7 +1382,7 @@ mod tests {
         );
     }
 
-    #[trace("TC-472", "FR-038-AC-499")]
+    #[trace("TC-472", "FR-038-AC-499", "FR-038-AC-511")]
     #[test]
     fn operation_body_rows_are_paid_for_before_they_are_requested() {
         assert_every_request_is_paid_first(
