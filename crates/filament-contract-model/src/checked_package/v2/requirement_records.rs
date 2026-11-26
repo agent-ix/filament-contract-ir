@@ -16,6 +16,7 @@ use crate::checked_package::shared::{
 use crate::checked_package::shared::{
     CheckedOccurrenceRole, CheckedPackageRefusalCause as Cause, CheckedPackageRefusalCode as Code,
 };
+use ix_trace_rs::implements;
 use quire_canonical::{Encode, Error, FixedShape, Sink, Writer};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
@@ -802,6 +803,7 @@ pub(super) fn validate(
                 index,
                 &frame_index,
                 source_map,
+                path_condition_frames.unwrap_or_default(),
                 position,
                 meter,
             )?);
@@ -936,18 +938,11 @@ pub(super) fn validate(
                 meter,
             ));
         }
-        let mut frame_at = record.path_condition_frame;
-        while let Some(frame_id) = frame_at {
-            let Some(frame) = path_condition_frames.and_then(|frames| frames.get(frame_id.0))
-            else {
-                break;
-            };
-            used_frames[frame_id.0] = true;
-            frame_at = frame
-                .parent
-                .and_then(|parent| usize::try_from(parent).ok())
-                .map(PathConditionFrameId);
-        }
+        mark_chain(
+            path_condition_frames.unwrap_or_default(),
+            record.path_condition_frame,
+            &mut used_frames,
+        );
     }
     let Some(rows) = rows else {
         if let Some(&position) = records.first().or_else(|| operation_records.first()) {
@@ -960,7 +955,7 @@ pub(super) fn validate(
                 meter,
             ));
         }
-        return Ok(());
+        return refuse_unused_frame(&used_frames, meter);
     };
     if rows.is_empty() {
         return Err(stage_storage::refuse(
@@ -1293,20 +1288,48 @@ pub(super) fn validate(
         }
         owner_ordinal = owner_ordinal.saturating_add(1);
     }
-    if let Some((frame_index, _)) = used_frames.iter().enumerate().find(|(_, used)| !**used) {
-        let at = Path::root().key("path_condition_frames").index(frame_index);
-        return Err(stage_storage::refuse(
-            meter,
-            &Site::new(
-                PackageReadStage::Graph,
-                frame_index,
-                "path_condition_frames",
-                at,
-            ),
-            Refusal::new(Code::InvalidPackage, at).because(Cause::InvalidValue),
-        ));
+    refuse_unused_frame(&used_frames, meter)
+}
+
+/// Marks the frame `terminal` names and its ancestors as used by a record's
+/// chain. A marked frame's ancestors are marked already.
+fn mark_chain(
+    frames: &[PathConditionFrameWire],
+    terminal: Option<PathConditionFrameId>,
+    used: &mut [bool],
+) {
+    let mut frame_at = terminal;
+    while let Some(frame_id) = frame_at {
+        let (Some(frame), Some(marked)) = (frames.get(frame_id.0), used.get_mut(frame_id.0)) else {
+            break;
+        };
+        if std::mem::replace(marked, true) {
+            break;
+        }
+        frame_at = frame
+            .parent
+            .and_then(|parent| usize::try_from(parent).ok())
+            .map(PathConditionFrameId);
     }
-    Ok(())
+}
+
+/// Refuses the first frame-table row no record's chain uses, at that row.
+#[implements("FR-825-AC-9", "FR-825-AC-12")]
+fn refuse_unused_frame(used: &[bool], meter: &mut WorkMeter) -> Result<(), ValidationFailure> {
+    let Some(frame_index) = used.iter().position(|used| !used) else {
+        return Ok(());
+    };
+    let at = Path::root().key("path_condition_frames").index(frame_index);
+    Err(stage_storage::refuse(
+        meter,
+        &Site::new(
+            PackageReadStage::Graph,
+            frame_index,
+            "path_condition_frames",
+            at,
+        ),
+        Refusal::new(Code::InvalidPackage, at).because(Cause::InvalidValue),
+    ))
 }
 
 fn validate_frames(
@@ -2045,6 +2068,7 @@ const PRUNED_FRAME: PathConditionFrameId = PathConditionFrameId(usize::MAX);
 /// package. Expression occurrences are numbered package-wide (FR-825): the
 /// owners are walked in declaration order, one count of visits per node
 /// carried across them, each owner's body before its measure.
+#[allow(clippy::too_many_arguments)] // the admitted tables the walk joins and the caller's meter
 fn derive_package_path_conditions(
     nodes: &[RawSemanticNodeV2],
     kinds: &[CheckedNodeKind],
@@ -2052,6 +2076,7 @@ fn derive_package_path_conditions(
     index: &GraphIndex<'_>,
     frame_index: &[PathConditionFrameIndexEntry],
     source_map: &[CheckedSourceMapEntry],
+    frames: &[PathConditionFrameWire],
     record_position: usize,
     meter: &mut WorkMeter,
 ) -> Result<Vec<DerivedPath>, ValidationFailure> {
@@ -2207,18 +2232,22 @@ fn derive_package_path_conditions(
             .cmp(&nodes[right.0].node_id)
             .then_with(|| left.1.cmp(&right.1))
     });
-    for (expected, (_, _, frame_id)) in frame_orders.iter().enumerate() {
-        if *frame_id != expected {
-            return Err(refuse(
-                record_position,
-                Path::root().key("path_condition_frames"),
-                Cause::InvalidValue,
-                None,
-                meter,
-            ));
+    let out_of_order = frame_orders
+        .iter()
+        .enumerate()
+        .any(|(expected, (_, _, frame_id))| *frame_id != expected);
+    if out_of_order || frame_seen.contains(&0) {
+        // A row no record's chain uses is the defect and is refused at that
+        // row. The table is refused as a whole only when every row is used.
+        let mut used = stage_storage::vec::<bool>(meter, &numbering_site, frames.len())?;
+        used.resize(frames.len(), false);
+        for (position, kind) in kinds.iter().enumerate() {
+            if *kind == CheckedNodeKind::Claim(super::ClaimForm::ValueValidity) {
+                let terminal = terms.get(position).and_then(record_terminal_frame);
+                mark_chain(frames, terminal, &mut used);
+            }
         }
-    }
-    if frame_seen.contains(&0) {
+        refuse_unused_frame(&used, meter)?;
         return Err(refuse(
             record_position,
             Path::root().key("path_condition_frames"),
@@ -2943,6 +2972,23 @@ pub(super) fn owner_index(rows: &[RequirementItemRow]) -> Vec<(CheckedNodeId, Ve
     index
 }
 
+fn path_condition_members(term: &CheckedTerm) -> Option<&[CheckedTerm]> {
+    let CheckedTerm::Aggregate { members, .. } = binding(term, 5)? else {
+        return None;
+    };
+    Some(members)
+}
+
+/// The terminal frame id a record body's `path_condition` member names.
+fn record_terminal_frame(term: &CheckedTerm) -> Option<PathConditionFrameId> {
+    let [terminal] = path_condition_members(term)? else {
+        return None;
+    };
+    Some(PathConditionFrameId(
+        usize::try_from(integer(terminal)?).ok()?,
+    ))
+}
+
 fn read_record(node: CheckedNodeId, term: &CheckedTerm) -> Option<ValueValidityRecord> {
     let owner = reference(binding(term, 0)?)?;
     let application = reference(binding(term, 1)?)?;
@@ -2957,14 +3003,9 @@ fn read_record(node: CheckedNodeId, term: &CheckedTerm) -> Option<ValueValidityR
         )),
         _ => return None,
     };
-    let CheckedTerm::Aggregate { members: path, .. } = binding(term, 5)? else {
-        return None;
-    };
-    let path_condition_frame = match path.as_slice() {
+    let path_condition_frame = match path_condition_members(term)? {
         [] => None,
-        [terminal] => Some(PathConditionFrameId(
-            usize::try_from(integer(terminal)?).ok()?,
-        )),
+        [_] => Some(record_terminal_frame(term)?),
         _ => return None,
     };
     Some(ValueValidityRecord {

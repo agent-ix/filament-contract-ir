@@ -517,6 +517,129 @@ fn inconsistent_three_edge_ratio_cycle_refuses_at_closing_edge() {
     );
 }
 
+/// One equivalence of a cycle graph: the two base dimensions by position, in
+/// ascending order, and `root_scale`.
+type Edge = (usize, usize, &'static str, &'static str);
+
+/// A package of the base dimensions A to D joined by `edges`, which are the
+/// graph's first nodes and sort by node id in the order given. Equivalence `n`
+/// is `/semantic_graph/nodes/n`.
+fn cycle_package(edges: &[Edge]) -> Value {
+    const LABELS: [&str; 6] = ["01", "02", "03", "04", "05", "06"];
+    let mut wire = package();
+    let source = fixture_source();
+    let dimensions = ["A", "B", "C", "D"].map(|name| dimension(name, &source));
+    let mut nodes = edges
+        .iter()
+        .enumerate()
+        .map(|(ordinal, &(left, right, numerator, denominator))| {
+            let mut node = named_equivalence(
+                LABELS[ordinal],
+                &dimensions[left]["node_id"],
+                &dimensions[right]["node_id"],
+                &source,
+                numerator,
+                denominator,
+            );
+            node["occurrences"][0]["ordinal"] = json!(ordinal);
+            node
+        })
+        .collect::<Vec<_>>();
+    nodes.extend(dimensions);
+    wire["semantic_graph"]["nodes"] = json!(nodes);
+    wire["source_map"] = json!(nodes
+        .iter()
+        .enumerate()
+        .map(|(index, node)| json!({
+            "node_id":node["node_id"],
+            "role":node["occurrences"][0]["role"],
+            "ordinal":node["occurrences"][0]["ordinal"],
+            "regions":[{"source":source,"start":index,"end":index+1}]
+        }))
+        .collect::<Vec<_>>());
+    index_fixture_node_ids(&mut wire);
+    refresh_identity(&mut wire);
+    wire
+}
+
+fn expect_admitted(edges: &[Edge]) {
+    let result = read(&cycle_package(edges));
+    assert!(
+        matches!(result, CheckedPackageV2ReadResult::Admitted(_)),
+        "{edges:?}: {result:?}"
+    );
+}
+
+fn expect_cycle_refusal(edges: &[Edge], node: usize) {
+    expect_refusal(
+        &cycle_package(edges),
+        Code::InvalidSemanticGraph,
+        None,
+        &format!("/semantic_graph/nodes/{node}"),
+    );
+}
+
+/// A = B / 1000, A = C / 1000 and so B = C: the third equivalence closes the
+/// cycle, although a depth-first walk from A meets the disagreement on the
+/// second.
+#[trace("TC-048", "FR-063-AC-9", "FSpec-FR-322-AC-268")]
+#[test]
+fn cycle_refusal_is_not_where_a_depth_first_walk_meets_it() {
+    expect_admitted(&[(0, 1, "1", "1000"), (0, 2, "1", "1000"), (1, 2, "1", "1")]);
+    expect_cycle_refusal(
+        &[(0, 1, "1", "1000"), (0, 2, "1", "1000"), (1, 2, "2", "1")],
+        2,
+    );
+}
+
+/// A = 2 B, C = 3 D and B = 5 D, so A = 10 D = 10/3 C. The third equivalence
+/// joins two classes of two dimensions each.
+#[trace("TC-048", "FR-063-AC-9", "FSpec-FR-322-AC-268")]
+#[test]
+fn cycle_through_two_joined_classes_refuses_at_its_latest_equivalence() {
+    let joined = [(0, 1, "2", "1"), (2, 3, "3", "1"), (1, 3, "5", "1")];
+    let closed = |numerator| {
+        let mut edges = joined.to_vec();
+        edges.push((0, 2, numerator, "3"));
+        edges
+    };
+    expect_admitted(&closed("10"));
+    expect_cycle_refusal(&closed("11"), 3);
+}
+
+/// B = 7 C, B = 2 D and then A = 5 B, so the single dimension A joins a class
+/// of three: A = 35 C = 10 D and C = 2/7 D.
+#[trace("TC-048", "FR-063-AC-9", "FSpec-FR-322-AC-268")]
+#[test]
+fn cycle_through_a_class_joined_from_its_smaller_side_keeps_every_ratio() {
+    let tree = [(1, 2, "7", "1"), (1, 3, "2", "1"), (0, 1, "5", "1")];
+    let with = |rest: &[Edge]| [&tree[..], rest].concat();
+    expect_admitted(&with(&[
+        (0, 2, "35", "1"),
+        (0, 3, "10", "1"),
+        (2, 3, "2", "7"),
+    ]));
+    expect_cycle_refusal(&with(&[(0, 2, "35", "1"), (0, 3, "11", "1")]), 4);
+    expect_cycle_refusal(&with(&[(0, 3, "10", "1"), (2, 3, "7", "2")]), 4);
+}
+
+/// Two cycles disagree. The one the third equivalence closes is complete
+/// first in node-id order, before the one the fifth closes.
+#[trace("TC-048", "FR-063-AC-9", "FSpec-FR-322-AC-268")]
+#[test]
+fn first_disagreeing_cycle_in_node_id_order_is_refused() {
+    expect_cycle_refusal(
+        &[
+            (0, 1, "1", "1"),
+            (0, 2, "1", "1"),
+            (1, 2, "2", "1"),
+            (0, 3, "1", "1"),
+            (2, 3, "7", "1"),
+        ],
+        2,
+    );
+}
+
 /// The graph step requires the exact pair as dependencies and a self type;
 /// owner resolution precedes those graph checks.
 #[trace("TC-048", "FR-063-AC-5")]

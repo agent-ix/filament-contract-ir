@@ -23,6 +23,7 @@ use crate::checked_package::shared::{
     CheckedPackageRefusalCode, JsonPointer, RefusalFields,
 };
 use filament_exact::Integer;
+use ix_trace_rs::implements;
 use serde::{Deserialize, Serialize};
 #[cfg(test)]
 use serde_json::Value;
@@ -2735,13 +2736,14 @@ impl<'a> Potentials<'a> {
     }
 }
 
-/// One equivalence edge as the walk takes it: from, to, the multiplier, the
-/// node it was written at, and its place in the order the edges were added.
-type Step = (usize, usize, ExactRatio, usize, usize);
-
-/// Derives one potential per connected component and checks each edge against
-/// the first path already established to its target. The first structural ID
-/// in order starts each component with ratio one, so the result is deterministic.
+/// Derives one potential per connected component, joining the edges' ends in
+/// the order the edges are given, which is node-id order. An edge between two
+/// dimensions already in one component closes a cycle, and is refused when its
+/// scale disagrees with theirs: the refused edge is then the first whose
+/// addition makes the graph inconsistent, so it is the latest edge in node-id
+/// order of every inconsistent cycle it closes (FSpec FR-322-AC-268). A
+/// component is named by one of its own dimensions, whose scale is one.
+#[implements("FR-063-AC-9", "FSpec-FR-322-AC-268")]
 fn equivalence_potentials<'a>(
     graph: &'a NominalGraph<'a>,
     edges: &'a [(usize, &'a DimensionEquivalenceRecord)],
@@ -2752,8 +2754,8 @@ fn equivalence_potentials<'a>(
         u64::try_from(graph.owners.len()).unwrap_or(u64::MAX),
         || JsonPointer::root().key("semantic_graph").key("nodes"),
     )?;
-    // Every id the walk can reach: the graph's, the imported, and each
-    // edge's two ends.
+    // Every id an entry can name: the graph's, the imported, and each edge's
+    // two ends.
     let reachable = graph
         .index
         .len()
@@ -2778,66 +2780,78 @@ fn equivalence_potentials<'a>(
             ValidationFailure::refused(CheckedPackageRefusalCode::MalformedWire, node_pointer(0))
         })
     };
-    let mut adjacency: Vec<Step> = meter.vec(edges.len().saturating_mul(2))?;
-    for (sequence, (position, edge)) in edges.iter().enumerate() {
-        let ids = &edge.dimension_node_ids;
+    // The members of each component as a circular list, and the size of the
+    // component at the position of the dimension that names it.
+    let mut next: Vec<usize> = meter.vec(count)?;
+    next.extend(0..count);
+    let mut size: Vec<usize> = meter.vec(count)?;
+    size.resize(count, 1);
+    for (position, edge) in edges {
+        let ends = &edge.dimension_node_ids;
         let is_base = |id: &CheckedNodeId| matches!(graph.nominal(id), Some(NominalRecord::Dimension(dim)) if dim.base);
-        if base_only && !(is_base(&ids[0]) && is_base(&ids[1])) {
+        if base_only && !(is_base(&ends[0]) && is_base(&ends[1])) {
             continue;
         }
         let at = || node_pointer(*position);
         meter.at_node(*position, "scalar_type");
+        // The first end's root is `ratio` times the second end's.
         let ratio = ExactRatio::parse(&edge.root_scale, meter, &at)?;
-        let inverse = ratio.inverse(meter)?;
-        let (first, second) = (
-            located(&potentials, &ids[0])?,
-            located(&potentials, &ids[1])?,
-        );
-        adjacency.push((first, second, inverse, *position, sequence * 2));
-        adjacency.push((second, first, ratio, *position, sequence * 2 + 1));
+        let first = located(&potentials, &ends[0])?;
+        let second = located(&potentials, &ends[1])?;
+        for end in [first, second] {
+            if potentials.entries[end].is_none() {
+                potentials.entries[end] = Some((end, ExactRatio::one()));
+            }
+        }
+        let (Some((first_component, first_ratio)), Some((second_component, second_ratio))) = (
+            potentials.entries[first].as_ref(),
+            potentials.entries[second].as_ref(),
+        ) else {
+            return Err(invalid(at()));
+        };
+        let (first_component, second_component) = (*first_component, *second_component);
+        // The potential the first end must have, in the second's component.
+        let required = second_ratio.multiply(&ratio, meter, &at)?;
+        if first_component == second_component {
+            require(*first_ratio == required, at)?;
+            continue;
+        }
+        // Rewrite the smaller component into the larger, so that each
+        // dimension is rewritten a logarithmic number of times at most.
+        let (kept, moved, factor) = if size[first_component] >= size[second_component] {
+            let factor = first_ratio.divide(&required, meter, &at)?;
+            (first_component, second_component, factor)
+        } else {
+            let factor = required.divide(first_ratio, meter, &at)?;
+            (second_component, first_component, factor)
+        };
+        let mut member = moved;
+        loop {
+            let Some((_, held)) = potentials.entries[member].as_ref() else {
+                return Err(invalid(at()));
+            };
+            let rewritten = held.multiply(&factor, meter, &at)?;
+            potentials.entries[member] = Some((kept, rewritten));
+            member = next[member];
+            if member == moved {
+                break;
+            }
+        }
+        next.swap(kept, moved);
+        size[kept] = size[kept].saturating_add(size[moved]);
     }
-    adjacency.sort_unstable_by(|left, right| left.0.cmp(&right.0).then(left.4.cmp(&right.4)));
-    let mut pending_edges: Vec<usize> = meter.vec(adjacency.len())?;
+    // A dimension no edge reaches is a component of its own.
     for id in graph
         .index
         .keys()
         .copied()
         .chain(graph.imported.iter().map(|(id, _)| *id))
     {
-        let start = located(&potentials, id)?;
-        if !matches!(graph.nominal(id), Some(NominalRecord::Dimension(_)))
-            || potentials.entries[start].is_some()
+        let own = located(&potentials, id)?;
+        if matches!(graph.nominal(id), Some(NominalRecord::Dimension(_)))
+            && potentials.entries[own].is_none()
         {
-            continue;
-        }
-        pending_edges.clear();
-        potentials.entries[start] = Some((start, ExactRatio::one()));
-        let first = adjacency.partition_point(|step| step.0 < start);
-        let last = adjacency.partition_point(|step| step.0 <= start);
-        pending_edges.extend((first..last).rev());
-        while let Some(edge_index) = pending_edges.pop() {
-            let (current, neighbor, multiplier, position, _) = &adjacency[edge_index];
-            let Some((component, current_ratio)) = potentials.entries[*current].as_ref() else {
-                continue;
-            };
-            let (component, current_ratio) = (*component, current_ratio.duplicate(meter)?);
-            let at = || node_pointer(*position);
-            meter.at_node(*position, "scalar_type");
-            let candidate = current_ratio.multiply(multiplier, meter, &at)?;
-            match &potentials.entries[*neighbor] {
-                Some((known_component, known_ratio)) => {
-                    require(
-                        *known_component == component && *known_ratio == candidate,
-                        at,
-                    )?;
-                }
-                None => {
-                    potentials.entries[*neighbor] = Some((component, candidate));
-                    let first = adjacency.partition_point(|step| step.0 < *neighbor);
-                    let last = adjacency.partition_point(|step| step.0 <= *neighbor);
-                    pending_edges.extend((first..last).rev());
-                }
-            }
+            potentials.entries[own] = Some((own, ExactRatio::one()));
         }
     }
     Ok(potentials)
