@@ -4129,21 +4129,12 @@ impl Serialize for CheckedOperationInterval {
     }
 }
 
-/// The closed wire member of an operation, written from the typed member.
-/// This is the single writer of the shape the reader admits: a producer
-/// builds a [`CheckedOperationMember`] and never a JSON value
-/// (FR-038-AC-644).
-impl Serialize for CheckedOperationMember {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        MemberWrite {
-            member: self,
-            execution_point: None,
-        }
-        .serialize(serializer)
-    }
-}
-
-/// A member with the state-clause point the operation carries beside it.
+/// The closed wire member of an operation, written from the typed member
+/// (FR-038-AC-644). It is private and has no public `Serialize` on
+/// [`CheckedOperationMember`]: a `state_clause` member's `execution_point`
+/// lives beside the member in the operation, so the member alone is not a
+/// complete wire member and only [`CheckedApplicationOperationForm`], which
+/// carries both, writes it.
 struct MemberWrite<'a> {
     member: &'a CheckedOperationMember,
     execution_point: Option<&'a ExecutionPoint>,
@@ -4290,45 +4281,10 @@ impl CheckedApplicationOperation {
     /// Write the typed operation form and read it back through the strict
     /// reader, so the value is exactly what a reader admitting the written
     /// bytes returns (FR-038-AC-644).
+    #[implements("FR-038-AC-644", "FR-038-AC-646")]
     pub fn from_form(
         form: &CheckedApplicationOperationForm,
     ) -> Result<Self, CheckedOperationFormError> {
-        struct Law<'a>(&'a CheckedOperationLaw);
-        impl Serialize for Law<'_> {
-            fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-                let mut map = serializer.serialize_map(Some(2))?;
-                map.serialize_entry("role", self.0.role.as_wire())?;
-                map.serialize_entry("definition", &self.0.definition)?;
-                map.end()
-            }
-        }
-        struct Mode<'a>(&'a CheckedOperationMode);
-        impl Serialize for Mode<'_> {
-            fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-                let mut map = serializer.serialize_map(Some(2))?;
-                map.serialize_entry("kind", self.0.kind.as_wire())?;
-                map.serialize_entry("value", &self.0.value)?;
-                map.end()
-            }
-        }
-        struct Leaf<'a>(&'a CheckedOperationLeaf);
-        impl Serialize for Leaf<'_> {
-            fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-                let mut map = serializer.serialize_map(Some(3))?;
-                map.serialize_entry("path", &self.0.path)?;
-                map.serialize_entry("laws", &self.0.laws.iter().map(Law).collect::<Vec<_>>())?;
-                map.serialize_entry("mode", &self.0.mode.as_ref().map(Mode))?;
-                map.end()
-            }
-        }
-        #[derive(Serialize)]
-        struct Record<'a> {
-            identity: &'a str,
-            laws: Vec<Law<'a>>,
-            mode: Option<Mode<'a>>,
-            member: Option<MemberWrite<'a>>,
-            leaves: Vec<Leaf<'a>>,
-        }
         let carries_point = matches!(
             form.member,
             Some(CheckedOperationMember::StateClause { .. })
@@ -4338,20 +4294,47 @@ impl CheckedApplicationOperation {
                 reason: "an execution point belongs to a state_clause member".into(),
             });
         }
-        let record = Record {
-            identity: &form.identity,
-            laws: form.laws.iter().map(Law).collect(),
-            mode: form.mode.as_ref().map(Mode),
-            member: form.member.as_ref().map(|member| MemberWrite {
-                member,
-                execution_point: form.execution_point.as_ref(),
-            }),
-            leaves: form.leaves.iter().map(Leaf).collect(),
+        let law = |law: &CheckedOperationLaw| CheckedOperationLawWire {
+            role: law.role.as_wire().into(),
+            definition: law.definition.clone(),
         };
-        let raw =
-            CheckedJson::from_serializable(&record).map_err(|error| CheckedOperationFormError {
-                reason: error.to_string().into(),
-            })?;
+        let mode = |mode: &CheckedOperationMode| CheckedOperationModeWire {
+            kind: mode.kind.as_wire().into(),
+            value: mode.value.clone(),
+        };
+        let fail = |error: &dyn std::fmt::Display| CheckedOperationFormError {
+            reason: error.to_string().into(),
+        };
+        // The reader's own record and wire types are the written shape.
+        let member = form
+            .member
+            .as_ref()
+            .map(|member| {
+                CheckedJson::from_serializable(&MemberWrite {
+                    member,
+                    execution_point: form.execution_point.as_ref(),
+                })
+            })
+            .transpose()
+            .map_err(|error| fail(&error))?;
+        let record = CheckedApplicationOperationRecord {
+            identity: Some(form.identity.clone()),
+            laws: form.laws.iter().map(law).collect(),
+            mode: form.mode.as_ref().map(mode),
+            member,
+            leaves: form
+                .leaves
+                .iter()
+                .map(|leaf| CheckedOperationLeafWire {
+                    path: leaf.path.clone(),
+                    laws: leaf.laws.iter().map(law).collect(),
+                    mode: leaf.mode.as_ref().map(mode),
+                })
+                .collect(),
+            member_ids: CheckedOperationMemberIds::default(),
+            malformed: None,
+        };
+        let raw = CheckedJson::from_serializable(&record).map_err(|error| fail(&error))?;
         Self::outside_read_raw(raw).map_err(|error| CheckedOperationFormError {
             reason: error.to_string().into(),
         })
@@ -4362,7 +4345,7 @@ impl CheckedApplicationOperation {
 /// `(application, occurrence)` key takes ordinal n, counted from zero across
 /// every function that carries the key (FSpec FR-322-AC-291). `keys` are the
 /// rows' keys in row order; the result has one ordinal per key.
-#[implements("FR-322-AC-291")]
+#[implements("FR-322-AC-291", "FR-038-AC-645")]
 pub fn term_ordinals<'a>(
     keys: impl IntoIterator<
         Item = (
@@ -4408,7 +4391,7 @@ mod tests {
 
     /// FR-038-AC-644: every member kind writes the closed wire member, and the
     /// strict read of that write is the same operation and the same typed member.
-    #[trace("FR-038-AC-644")]
+    #[trace("FR-038-AC-644", "FR-038-AC-646")]
     #[test]
     fn typed_member_write_then_strict_read_round_trips_every_kind() {
         use crate::identity::ExecutionPointName;
@@ -4447,6 +4430,24 @@ mod tests {
                 },
                 None,
                 json!({"kind":"position","declaration":declaration,"position":2}),
+            ),
+            (
+                CheckedOperationMember::Position {
+                    declaration: declaration.clone(),
+                    position: Integer::from((1_u64 << 53) - 1),
+                },
+                None,
+                json!({"kind":"position","declaration":declaration,
+                    "position":9007199254740991_u64}),
+            ),
+            (
+                CheckedOperationMember::Position {
+                    declaration: declaration.clone(),
+                    position: Integer::from(1_u64 << 53),
+                },
+                None,
+                json!({"kind":"position","declaration":declaration,
+                    "position":"9007199254740992"}),
             ),
             (
                 CheckedOperationMember::Position {
@@ -4566,17 +4567,28 @@ mod tests {
             let read: CheckedApplicationOperation =
                 serde_json::from_value(written).expect("strict read of the write");
             assert_eq!(read, operation, "operation of {member:?}");
+            // The typed member through the production strict typed reader.
+            let record = &read.record;
+            let node = super::super::TermNode::of(record.member.as_ref().expect("member"));
+            let typed = CheckedOperationMember::from_validated_node(
+                node,
+                &record.member_ids,
+                &mut super::super::WorkMeter::new(u64::MAX),
+            )
+            .expect("unmetered read")
+            .expect("admitted typed member");
+            assert_eq!(typed, member, "typed member read back by the reader");
             assert_eq!(
                 CheckedOperationMember::from_validated_value(&wire),
                 Some(member),
-                "typed member read back from the wire"
+                "the test-only value reader agrees"
             );
         }
     }
 
     /// FR-038-AC-644: a point with no state clause to carry it is refused, and
     /// a typed member rewrites through the one node-id mapping.
-    #[trace("FR-038-AC-644")]
+    #[trace("FR-038-AC-647")]
     #[test]
     fn typed_member_form_refuses_a_stray_point_and_maps_population() {
         use crate::identity::ExecutionPointName;
