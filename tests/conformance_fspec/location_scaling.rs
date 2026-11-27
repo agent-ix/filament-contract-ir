@@ -10,7 +10,7 @@ use filament_contract_model::{
 use ix_trace_rs::trace;
 use serde::ser::{SerializeMap, SerializeSeq};
 use serde::{Serialize, Serializer};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 fn chain(count: usize, body: bool) -> Value {
     let mut package =
@@ -204,19 +204,15 @@ fn assert_lazy_paths(package: &CheckedPackageV2, count: usize, lets: bool) {
             assert_eq!(location.path.len(), seen + usize::from(lets));
             if [0, count / 2, count - 1].contains(&seen) {
                 if lets {
-                    assert!(
-                        location.path[..seen]
-                            .iter()
-                            .all(|entry| *entry == CheckedKeyOrdinal::Safe(1))
-                    );
+                    assert!(location.path[..seen]
+                        .iter()
+                        .all(|entry| *entry == CheckedKeyOrdinal::Safe(1)));
                     assert_eq!(location.path.last(), Some(&CheckedKeyOrdinal::Safe(0)));
                 } else {
-                    assert!(
-                        location
-                            .path
-                            .iter()
-                            .all(|entry| *entry == CheckedKeyOrdinal::Safe(0))
-                    );
+                    assert!(location
+                        .path
+                        .iter()
+                        .all(|entry| *entry == CheckedKeyOrdinal::Safe(0)));
                 }
             }
             seen += 1;
