@@ -300,7 +300,7 @@ dependencies = [
  "ix-cli-kit",
  "ix-trace-rs",
  "jsonschema 0.17.1",
- "quire-canonical",
+ "quire-canonical 0.3.3",
  "quire-rs",
  "serde",
  "serde_json",
@@ -323,7 +323,7 @@ dependencies = [
  "num-bigint",
  "num-integer",
  "num-traits",
- "quire-canonical",
+ "quire-canonical 0.3.2",
  "serde",
  "serde_json",
  "serde_path_to_error",
@@ -358,7 +358,7 @@ version = "0.1.5"
 source = "git+https://github.com/agent-ix/filament-semantic-value?rev=95a9034d5ac8abe856f1d67428dd60c9bbc85fc5#95a9034d5ac8abe856f1d67428dd60c9bbc85fc5"
 dependencies = [
  "filament-exact",
- "quire-canonical",
+ "quire-canonical 0.3.2",
  "thiserror",
 ]
 
@@ -368,7 +368,7 @@ version = "0.2.1"
 source = "git+https://github.com/agent-ix/filament-verification-contracts?rev=e6eebb660c6d9b3dee25d643923d3984cbc745b6#e6eebb660c6d9b3dee25d643923d3984cbc745b6"
 dependencies = [
  "jsonschema 0.55.1",
- "quire-canonical",
+ "quire-canonical 0.3.2",
  "regress",
  "schemars",
  "serde",
@@ -1140,7 +1140,7 @@ name = "quire-canonical"
 version = "0.3.2"
 source = "git+https://github.com/agent-ix/quire-canonical?tag=v0.3.2#f00840e4add08100e3491e8bc5bcb7d60a9e9ca2"
 dependencies = [
- "quire-canonical-derive",
+ "quire-canonical-derive 0.3.0 (git+https://github.com/agent-ix/quire-canonical?tag=v0.3.2)",
  "ryu-js",
  "serde",
  "serde_json",
@@ -1149,9 +1149,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "quire-canonical"
+version = "0.3.3"
+source = "git+https://github.com/agent-ix/quire-canonical?rev=b3bf4cac75c7174f686682455f8ad5417f430030#b3bf4cac75c7174f686682455f8ad5417f430030"
+dependencies = [
+ "quire-canonical-derive 0.3.0 (git+https://github.com/agent-ix/quire-canonical?rev=b3bf4cac75c7174f686682455f8ad5417f430030)",
+ "ryu-js",
+ "serde",
+ "sha2",
+ "thiserror",
+]
+
+[[package]]
 name = "quire-canonical-derive"
 version = "0.3.0"
 source = "git+https://github.com/agent-ix/quire-canonical?tag=v0.3.2#f00840e4add08100e3491e8bc5bcb7d60a9e9ca2"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 3.0.9",
+]
+
+[[package]]
+name = "quire-canonical-derive"
+version = "0.3.0"
+source = "git+https://github.com/agent-ix/quire-canonical?rev=b3bf4cac75c7174f686682455f8ad5417f430030#b3bf4cac75c7174f686682455f8ad5417f430030"
 dependencies = [
  "proc-macro2",
  "quote",
