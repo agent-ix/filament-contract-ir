@@ -5195,14 +5195,14 @@ mod tests {
     #[ix_trace_rs::trace("FR-051-AC-4")]
     #[test]
     fn deeply_nested_checked_term_encodes_on_a_small_stack() {
-        const DEPTH: usize = 50_000;
+        const NESTING: usize = 50_000;
         let node = CheckedNodeId {
             package: "deep-term".into(),
             path: Vec::new(),
             ordinal: 0,
         };
         let mut term = CheckedTerm::Reference { target: node };
-        for _ in 0..DEPTH {
+        for _ in 0..NESTING {
             term = CheckedTerm::Aggregate {
                 members: vec![term],
                 temporal_profile: None,
@@ -5226,7 +5226,7 @@ mod tests {
                 .windows(aggregate_tag.len())
                 .filter(|window| *window == aggregate_tag)
                 .count(),
-            DEPTH,
+            NESTING,
             "every nested aggregate is present in the encoded bytes"
         );
         drop_deep_aggregate(term);
