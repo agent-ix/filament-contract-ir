@@ -321,6 +321,7 @@ use crate::identity::ExecutionPoint;
 use closure_index::ClosureIndex;
 use dependency_references::{admit_dependencies, check_derived_closure, SuppliedDependencies};
 use graph_storage::GraphIndex;
+use ix_trace_rs::implements;
 use ix_trace_rs::string_edge;
 use operations::{validate_operations, OperationNodeOrder};
 use owner::{validate_owner_joins, validate_owner_schema};
@@ -5020,6 +5021,7 @@ fn reference_requires_cycle_edge(
 /// Every strongly connected component that forms a cycle must share one
 /// explicit `recursion_group`. Iterative Tarjan; each edge costs one work,
 /// charged at the member that carried the edge (`edge_pointer`).
+#[implements("FR-038-AC-638")]
 fn validate_recursion<'p>(
     nodes: &[RawSemanticNodeV2],
     adjacency: &[Vec<(usize, EdgeSite)>],
@@ -5122,6 +5124,32 @@ fn validate_recursion<'p>(
                     .get(vertex)
                     .is_some_and(|edges| edges.iter().any(|(target, _)| *target == vertex));
             if cyclic {
+                let body_walk_cycle = component.iter().all(|member| {
+                    nodes.get(*member).is_some_and(|node| {
+                        matches!(
+                            CheckedNodeTag::from_wire(&node.node_tag)
+                                .and_then(|tag| CheckedNodeKind::decode(tag, &node.semantic_form)),
+                            Some(
+                                CheckedNodeKind::Expression(_)
+                                    | CheckedNodeKind::Value(
+                                        ValueForm::RecordValue
+                                            | ValueForm::TupleValue
+                                            | ValueForm::OptionValue
+                                    )
+                            )
+                        )
+                    })
+                });
+                if body_walk_cycle {
+                    // Graph nodes are admitted in structural NodeId order, so
+                    // the lowest member position is the required first cycle
+                    // locus.
+                    let first_member = component.iter().copied().min().unwrap_or(vertex);
+                    return Err(refuse(
+                        CheckedPackageRefusalCode::InvalidSemanticGraph,
+                        node_pointer(first_member),
+                    ));
+                }
                 let group_of = |member: usize| {
                     nodes
                         .get(member)
@@ -5911,6 +5939,65 @@ mod tests {
             CheckedPackageRefusalCode::MalformedWire,
             node_pointer(0).key("recursion_group").to_string(),
         );
+    }
+
+    fn body_walk_cycle_node(
+        digit: char,
+        node_tag: &str,
+        semantic_form: &str,
+    ) -> super::RawSemanticNodeV2 {
+        let mut node = recursion_test_node(digit, Some("shared"));
+        node.node_tag = node_tag.into();
+        node.semantic_form = semantic_form.into();
+        node
+    }
+
+    fn assert_body_walk_cycle_refuses(
+        nodes: &[super::RawSemanticNodeV2],
+        adjacency: &[Vec<(usize, EdgeSite)>],
+    ) {
+        let mut meter = WorkMeter::new(u64::MAX);
+        let result = validate_recursion(nodes, adjacency, &mut meter, &|_, _| {
+            super::stage_storage::Path::root()
+                .key("semantic_graph")
+                .key("nodes")
+                .index(0)
+                .key("body")
+                .into()
+        });
+        let Err(ValidationFailure::Refused(refusal)) = result else {
+            panic!("body-walk-only cycle must refuse, got {result:?}");
+        };
+        assert_eq!(
+            refusal.code,
+            CheckedPackageRefusalCode::InvalidSemanticGraph
+        );
+        assert!(refusal.cause.is_none(), "cycle refusal has no cause");
+        assert_eq!(
+            refusal.loci[0].path.as_ref().map(ToString::to_string),
+            Some(node_pointer(0).to_string())
+        );
+    }
+
+    #[trace("FR-038-AC-638", "FR-322-AC-549")]
+    #[test]
+    fn record_value_self_cycle_refuses_even_with_recursion_group() {
+        let nodes = [body_walk_cycle_node('a', "value", "record_value")];
+        assert_body_walk_cycle_refuses(&nodes, &[vec![(0, EdgeSite::Reference(0))]]);
+    }
+
+    #[trace("FR-038-AC-638", "FR-322-AC-550")]
+    #[test]
+    fn tuple_option_cycle_refuses_at_first_structural_member() {
+        let nodes = [
+            body_walk_cycle_node('a', "value", "tuple_value"),
+            body_walk_cycle_node('b', "value", "option_value"),
+        ];
+        let cycle = vec![
+            vec![(1, EdgeSite::Reference(0))],
+            vec![(0, EdgeSite::Reference(0))],
+        ];
+        assert_body_walk_cycle_refuses(&nodes, &cycle);
     }
 
     #[trace("FR-038-AC-149", "TC-226")]
