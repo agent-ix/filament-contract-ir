@@ -541,10 +541,19 @@ mod by_stage {
     }
 
     /// The exact arena bytes of the subtree at `root` at the element sizes of
-    /// quire-canonical v0.3.3: a 16-byte range plus 1-byte tag per value, an 8-byte item per
-    /// array element, a 24-byte member per object member, and decoded text.
-    fn arena_bytes(root: quire_canonical::NodeRef<'_>) -> u64 {
+    /// quire-canonical v0.3.3: the source-selected range width plus a 1-byte
+    /// tag per value, an 8-byte item per array element, a 24-byte member per
+    /// object member, and decoded text.
+    fn arena_bytes(root: quire_canonical::NodeRef<'_>, source_len: usize) -> u64 {
         let (mut slots, mut items, mut members, mut text) = (0u64, 0u64, 0u64, 0u64);
+        let range_bytes = if u32::try_from(source_len).is_ok() {
+            8
+        } else if u64::try_from(source_len).is_ok_and(|value| value < (1_u64 << 40)) {
+            10
+        } else {
+            2 * std::mem::size_of::<usize>()
+        };
+        let slot_bytes = range_bytes + std::mem::size_of::<u8>();
         let mut stack = vec![root];
         while let Some(node) = stack.pop() {
             slots += 1;
@@ -567,7 +576,7 @@ mod by_stage {
                 _ => {}
             }
         }
-        slots * 17 + items * 8 + members * 24 + text
+        slots * slot_bytes as u64 + items * 8 + members * 24 + text
     }
 
     /// Prints the package document's retained bytes, its exact arena size,
@@ -581,7 +590,7 @@ mod by_stage {
             let document = quire_canonical::read(&bytes, u64::MAX).expect("read");
             let input = bytes.len() as u64;
             let retained = document.retained_bytes() as u64;
-            let exact = arena_bytes(document.root());
+            let exact = arena_bytes(document.root(), bytes.len());
             let bodies: u64 = document
                 .root()
                 .get("semantic_graph")
