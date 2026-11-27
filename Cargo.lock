@@ -323,7 +323,7 @@ dependencies = [
  "num-bigint",
  "num-integer",
  "num-traits",
- "quire-canonical 0.3.2",
+ "quire-canonical 0.3.3",
  "serde",
  "serde_json",
  "serde_path_to_error",
@@ -1156,6 +1156,7 @@ dependencies = [
  "quire-canonical-derive 0.3.0 (git+https://github.com/agent-ix/quire-canonical?rev=b3bf4cac75c7174f686682455f8ad5417f430030)",
  "ryu-js",
  "serde",
+ "serde_json",
  "sha2",
  "thiserror",
 ]
