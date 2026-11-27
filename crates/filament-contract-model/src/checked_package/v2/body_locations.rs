@@ -79,11 +79,14 @@ pub(super) fn is_term(kind: CheckedNodeKind, term: &CheckedTerm) -> bool {
 }
 
 /// Whether the body walk follows a reference to this node kind.
+#[implements("FR-322-AC-539")]
 pub(super) fn is_walk_node(kind: CheckedNodeKind) -> bool {
     matches!(
         kind,
         CheckedNodeKind::Expression(_)
-            | CheckedNodeKind::Value(ValueForm::RecordValue | ValueForm::TupleValue)
+            | CheckedNodeKind::Value(
+                ValueForm::RecordValue | ValueForm::TupleValue | ValueForm::OptionValue,
+            )
     )
 }
 
@@ -124,6 +127,7 @@ impl<Body> Graph<'_, '_, Body> {
 
     /// Walk the body of the function at `function`. A node reached along two
     /// references is visited, and counted, twice.
+    #[implements("FR-322-AC-539")]
     fn walk(
         &self,
         function: usize,
@@ -177,6 +181,9 @@ fn charge_many(meter: &mut WorkMeter, row: usize, count: usize) -> Result<(), Va
 
 /// Check `rows` against the admitted graph; an absent sidecar is `rows == []`.
 #[implements("FR-038-AC-597")]
+#[implements("FR-322-AC-539")]
+#[implements("FR-322-AC-541")]
+#[implements("FR-322-AC-542")]
 pub(super) fn validate<Body>(
     wire: &CheckedPackageWireV2<Body>,
     kinds: &[CheckedNodeKind],
@@ -725,6 +732,62 @@ mod tests {
                 "{tag}/{form} must terminate the root walk"
             );
         }
+    }
+
+    #[test]
+    #[trace("FR-322-AC-539")]
+    #[trace("FR-322-AC-541")]
+    #[trace("FR-322-AC-542")]
+    fn body_walk_follows_option_some_payload_to_application() {
+        let (mut wire, kinds, terms) = graph(vec![
+            function("caller", "outer"),
+            node(
+                "outer",
+                "value",
+                "option_value",
+                serde_json::json!({
+                    "term":"aggregate",
+                    "members":[{"term":"binding","name":"some","value":reference("app")}]
+                }),
+            ),
+            node(
+                "app",
+                "expression",
+                "binary",
+                serde_json::json!({
+                    "term":"application","operator":"binary",
+                    "operation":{"identity":"filament.op.test","laws":[],"mode":null,"member":null,"leaves":[]},
+                    "result_type":{"package":"test","path":["app"],"ordinal":0},"arguments":[]
+                }),
+            ),
+        ]);
+        let app = wire.semantic_graph.nodes[2].node_id.clone();
+        wire.source_map.push(
+            serde_json::from_value(serde_json::json!({
+                "node_id":app,"role":"expression","ordinal":0,"regions":[]
+            }))
+            .unwrap(),
+        );
+        let app_value = serde_json::to_value(&app).unwrap();
+        let rows = [body_row(&app_value, "caller", 0)];
+        let mut meter = WorkMeter::new(u64::MAX);
+        validate(&wire, &kinds, &terms, &rows, &mut meter)
+            .expect("the option payload application has its captured row");
+
+        let mut meter = WorkMeter::new(u64::MAX);
+        let Err(ValidationFailure::Refused(refusal)) =
+            validate(&wire, &kinds, &terms, &[], &mut meter)
+        else {
+            panic!("a missing option payload row must refuse");
+        };
+        assert_eq!(
+            refusal.code,
+            super::super::CheckedPackageRefusalCode::InvalidPackage
+        );
+        assert_eq!(
+            refusal.loci[0].path.as_ref().map(ToString::to_string),
+            Some("/checked_term_data/body_locations".to_owned())
+        );
     }
 
     fn apply(previous: &mut Vec<CheckedKeyOrdinal>, up: u64, down: &[u64]) -> bool {

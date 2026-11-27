@@ -6,6 +6,7 @@ use super::checked_term_data::{
     CheckedBodyLocationOrigin, CheckedBodySemanticLocation, CheckedKeyOrdinal,
 };
 use super::{CheckedNodeId, CheckedNodeKind, CheckedPackageV2, CheckedTerm};
+use ix_trace_rs::implements;
 
 /// Why a function's reconstructed body locations could not be read.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
@@ -68,6 +69,9 @@ impl CheckedPackageV2 {
     /// pending task and removed/appended path entry. A wide decimal ordinal
     /// also charges its byte length before cloning it into the current path.
     /// No full paths are materialized during construction.
+    #[implements("FR-322-AC-539")]
+    #[implements("FR-322-AC-541")]
+    #[implements("FR-322-AC-542")]
     pub fn body_locations(
         &self,
         function: &CheckedNodeId,
