@@ -839,6 +839,7 @@ fn assert_fspec_operation_record(
             declaration,
             name,
             read_form,
+            ..
         }) => {
             assert_eq!(member["kind"], "field");
             node(declaration, "declaration");
