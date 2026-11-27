@@ -50,12 +50,12 @@ jsonschema = { version = "=0.17.1", default-features = false }
 # from there rather than carrying its own copy of the bytes; see
 # `checked_package/v2/operation_catalog.rs`.
 # First-party dependencies use release tags; Cargo.lock records the immutable commits.
-filament-verification-contracts = { version = "0.2", git = "https://github.com/agent-ix/filament-verification-contracts", rev = "e6eebb660c6d9b3dee25d643923d3984cbc745b6" }
+filament-verification-contracts = { version = "0.2", git = "https://github.com/agent-ix/filament-verification-contracts", rev = "16ba4da3141b524305d49cb630f30ac4d20f2881" }
 # The one RFC 8785 encoder every identity digest and the V2 wire types encode
 # through, and the reader's canonical-bytes check; see
 # `checked_package/v2/encode.rs`. The `serde_json` feature is its `Encode` for
 # `serde_json::Value` and the non-recursive `drop_value`.
-quire-canonical = { version = "0.3", git = "https://github.com/agent-ix/quire-canonical", tag = "v0.3.2", features = ["serde_json"] }
+quire-canonical = { version = "0.3", git = "https://github.com/agent-ix/quire-canonical", tag = "quire-canonical-v0.3.3", features = ["serde_json"] }
 serde = { version = "1.0.228", features = ["derive"] }
 # `float_roundtrip` makes the package document's parse of a shortest round-trip
 # text exact, so the canonical-bytes comparison of the value read holds
@@ -74,7 +74,7 @@ stacker = "=0.1.15"
 # over a term runs on its explicit heap stack, never on the call stack.
 filament-walk = { version = "0.1", git = "https://github.com/agent-ix/filament-walk", tag = "v0.1.1" }
 filament-exact = { version = "0.3", git = "https://github.com/agent-ix/filament-exact", rev = "743c42e4e458782bf7a8befc3b76cc8a190ed727" }
-filament-semantic-value = { version = "0.1", git = "https://github.com/agent-ix/filament-semantic-value", rev = "95a9034d5ac8abe856f1d67428dd60c9bbc85fc5" }
+filament-semantic-value = { version = "0.1", git = "https://github.com/agent-ix/filament-semantic-value", rev = "bb9e9053a6b60d5695d0585add616beaee859543" }
 # The Rust identifier syntax of an abstraction relation body (FR-346): the
 # Unicode identifier tables and the NFC check FR-450's "Rust spellings" name.
 unicode-ident = "=1.0.24"
