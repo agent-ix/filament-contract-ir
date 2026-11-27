@@ -4,10 +4,13 @@
 use crate::fixture_support::{canonical, evidence_for};
 use filament_contract_model::{
     CheckedBodyLocationOrigin, CheckedBodyLocationReadError, CheckedKeyOrdinal,
-    CheckedPackageLimit, CheckedPackageReadLimits, CheckedPackageV2, CheckedPackageV2ReadResult,
+    CheckedPackageEvidence, CheckedPackageLimit, CheckedPackageReadLimits, CheckedPackageV2,
+    CheckedPackageV2ReadResult,
 };
 use ix_trace_rs::trace;
-use serde_json::{json, Value};
+use serde::ser::{SerializeMap, SerializeSeq};
+use serde::{Serialize, Serializer};
+use serde_json::{Value, json};
 
 fn chain(count: usize, body: bool) -> Value {
     let mut package =
@@ -90,6 +93,14 @@ fn read_owned(mut package: Value, work: u64) -> CheckedPackageV2ReadResult {
     crate::fixture_support::wire_operands(&mut package);
     let bytes = serde_json::to_vec(&package).unwrap();
     drop(package);
+    read_serialized_owned(bytes, evidence, work)
+}
+
+fn read_serialized_owned(
+    bytes: Vec<u8>,
+    evidence: CheckedPackageEvidence,
+    work: u64,
+) -> CheckedPackageV2ReadResult {
     let limits = CheckedPackageReadLimits {
         bytes: u64::try_from(bytes.len()).unwrap() + 1024,
         nodes: 300_010,
@@ -142,7 +153,9 @@ fn body_location_join_scales_linearly_and_admits_a_thousand_terms() {
         read(&chain(1_000, true), 1_000_000),
         CheckedPackageV2ReadResult::Admitted(_)
     ));
-    println!("body indexed work: 100={small}, 200={large}; exact/one-short passed; 1000 body terms admitted at 1000000");
+    println!(
+        "body indexed work: 100={small}, 200={large}; exact/one-short passed; 1000 body terms admitted at 1000000"
+    );
 }
 
 #[test]
@@ -155,7 +168,9 @@ fn protocol_location_join_scales_linearly_and_admits_one_hundred_thousand_rows()
         read(&chain(100_000, false), 100_000_000),
         CheckedPackageV2ReadResult::Admitted(_)
     ));
-    println!("protocol indexed work: 100={small}, 200={large}; exact/one-short passed; 100000 rows admitted");
+    println!(
+        "protocol indexed work: 100={small}, 200={large}; exact/one-short passed; 100000 rows admitted"
+    );
 }
 
 #[test]
@@ -189,15 +204,19 @@ fn assert_lazy_paths(package: &CheckedPackageV2, count: usize, lets: bool) {
             assert_eq!(location.path.len(), seen + usize::from(lets));
             if [0, count / 2, count - 1].contains(&seen) {
                 if lets {
-                    assert!(location.path[..seen]
-                        .iter()
-                        .all(|entry| *entry == CheckedKeyOrdinal::Safe(1)));
+                    assert!(
+                        location.path[..seen]
+                            .iter()
+                            .all(|entry| *entry == CheckedKeyOrdinal::Safe(1))
+                    );
                     assert_eq!(location.path.last(), Some(&CheckedKeyOrdinal::Safe(0)));
                 } else {
-                    assert!(location
-                        .path
-                        .iter()
-                        .all(|entry| *entry == CheckedKeyOrdinal::Safe(0)));
+                    assert!(
+                        location
+                            .path
+                            .iter()
+                            .all(|entry| *entry == CheckedKeyOrdinal::Safe(0))
+                    );
                 }
             }
             seen += 1;
@@ -249,7 +268,10 @@ fn assert_lazy_paths(package: &CheckedPackageV2, count: usize, lets: bool) {
             consumed: 1
         })
     ));
-    println!("lazy paths: lets={lets}, rows={count}, exact_work={exact}, peak_bytes={}, storage_bound={storage_bound}; kth path oracles, cancellation and one-short passed", allocations.bytes_max);
+    println!(
+        "lazy paths: lets={lets}, rows={count}, exact_work={exact}, peak_bytes={}, storage_bound={storage_bound}; kth path oracles, cancellation and one-short passed",
+        allocations.bytes_max
+    );
 }
 
 #[test]
@@ -278,11 +300,346 @@ fn many_occurrences_of_one_application_join_without_a_per_row_scan() {
     println!("1000 occurrences of one node admit at exact work {needed}; one short incomplete");
 }
 
-fn nested_lets(count: usize) -> Value {
-    let mut package =
+struct NestedLets {
+    base: Value,
+    count: usize,
+    integer: Value,
+    text: Value,
+    add: Value,
+    function: Value,
+    source: Value,
+}
+
+impl NestedLets {
+    fn node_count(&self) -> usize {
+        3 * self.count + 4
+    }
+
+    fn id(&self, path: Value) -> Value {
+        json!({"package":"example","path":path,"ordinal":0})
+    }
+
+    fn parameter_id(&self, index: usize) -> Value {
+        self.id(json!([
+            "value", "parameter", "name", {"node":1}, format!("x{index:06}"),
+            "level", {"node":0}, index.to_string(), {"node":0}
+        ]))
+    }
+
+    fn add_node_index(&self, index: usize) -> usize {
+        self.count + 3 + index
+    }
+
+    fn let_node_index(&self, index: usize) -> usize {
+        2 * self.count + 3 + index
+    }
+
+    fn add_id(&self, index: usize) -> Value {
+        self.id(json!([
+            "expression", "binary", {"node":index + 2}, "1",
+            "filament.op.integer.add", "binary", {"node":0}
+        ]))
+    }
+
+    fn let_id(&self, index: usize) -> Value {
+        self.id(json!([
+            "expression", "let", {"node":index + 3}, format!("x{:06}", index + 1),
+            {"node":self.add_node_index(index)},
+            {"node":if index + 1 == self.count {index + 3} else {self.let_node_index(index + 1)}},
+            "filament.op.control.let", "let", {"node":0}
+        ]))
+    }
+
+    fn node(&self, position: usize) -> Value {
+        if position == 0 {
+            return self.integer.clone();
+        }
+        if position == 1 {
+            return self.text.clone();
+        }
+        if position < self.count + 3 {
+            let index = position - 2;
+            let mut node = self.add.clone();
+            node["node_id"] = self.parameter_id(index);
+            node["node_tag"] = json!("value");
+            node["semantic_form"] = json!("parameter");
+            node["dependencies"] = json!([]);
+            node["body"] = json!({"term":"aggregate","members":[
+                {"term":"binding","name":"name","value":{"term":"literal","type":self.text["node_id"],"value_kind":"text","value":format!("x{index:06}")}},
+                {"term":"binding","name":"level","value":{"term":"literal","type":self.integer["node_id"],"value_kind":"integer","value":index.to_string()}}
+            ]});
+            return node;
+        }
+        if position < 2 * self.count + 3 {
+            let index = position - (self.count + 3);
+            let mut node = self.add.clone();
+            node["node_id"] = self.add_id(index);
+            node["dependencies"] = json!([self.parameter_id(index)]);
+            node["body"]["arguments"] = json!([
+                {"term":"reference","target":self.parameter_id(index)},
+                {"term":"literal","type":self.integer["node_id"],"value_kind":"integer","value":"1"}
+            ]);
+            return node;
+        }
+        if position < 3 * self.count + 3 {
+            let index = position - (2 * self.count + 3);
+            let body = if index + 1 == self.count {
+                self.parameter_id(index + 1)
+            } else {
+                self.let_id(index + 1)
+            };
+            let mut node = self.add.clone();
+            node["node_id"] = self.let_id(index);
+            node["semantic_form"] = json!("let");
+            node["body"]["operator"] = json!("let");
+            node["body"]["operation"]["identity"] = json!("filament.op.control.let");
+            node["body"]["arguments"] = json!([
+                {"term":"binding","name":format!("x{:06}", index + 1),"binder":self.parameter_id(index + 1),"value":{"term":"reference","target":self.add_id(index)}},
+                {"term":"reference","target":body}
+            ]);
+            node["dependencies"] = if index + 1 == self.count {
+                json!([self.add_id(index), body])
+            } else {
+                json!([self.add_id(index), body, self.parameter_id(index + 1)])
+            };
+            return node;
+        }
+        let mut function = self.function.clone();
+        function["body"] = json!({"term":"aggregate","members":[
+            {"term":"binding","name":"parameters","value":{"term":"aggregate","members":[{"term":"reference","target":self.parameter_id(0)}]}},
+            {"term":"binding","name":"body","value":{"term":"reference","target":self.let_id(0)}}
+        ]});
+        function["dependencies"] = json!([self.let_id(0), self.parameter_id(0)]);
+        function
+    }
+
+    fn wire_node(&self, node: Value) -> (Value, Value) {
+        let mut package = json!({
+            "contract_version":"filament.checked-package/v2",
+            "semantic_graph":{"nodes":[node]}
+        });
+        crate::fixture_support::wire_operands(&mut package);
+        let graph = package.get_mut("semantic_graph").unwrap();
+        let node = std::mem::take(&mut graph["nodes"][0]);
+        let row = std::mem::take(&mut graph["operand_rows"][0]);
+        (node, row)
+    }
+
+    fn source_entry(&self, position: usize) -> Value {
+        let (node_id, role) = if position == 0 {
+            (
+                self.integer["node_id"].clone(),
+                self.integer["occurrences"][0]["role"].clone(),
+            )
+        } else if position == 1 {
+            (
+                self.text["node_id"].clone(),
+                self.text["occurrences"][0]["role"].clone(),
+            )
+        } else if position < self.count + 3 {
+            (
+                self.parameter_id(position - 2),
+                self.add["occurrences"][0]["role"].clone(),
+            )
+        } else if position < 2 * self.count + 3 {
+            (
+                self.add_id(position - (self.count + 3)),
+                self.add["occurrences"][0]["role"].clone(),
+            )
+        } else if position < 3 * self.count + 3 {
+            (
+                self.let_id(position - (2 * self.count + 3)),
+                self.add["occurrences"][0]["role"].clone(),
+            )
+        } else {
+            (
+                self.function["node_id"].clone(),
+                self.function["occurrences"][0]["role"].clone(),
+            )
+        };
+        let mut source = self.source.clone();
+        source["node_id"] = node_id;
+        source["role"] = role;
+        source
+    }
+}
+
+struct NestedNodes<'a>(&'a NestedLets);
+
+impl Serialize for NestedNodes<'_> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut sequence = serializer.serialize_seq(Some(self.0.node_count()))?;
+        for position in 0..self.0.node_count() {
+            let (node, _) = self.0.wire_node(self.0.node(position));
+            sequence.serialize_element(&node)?;
+        }
+        sequence.end()
+    }
+}
+
+struct NestedOperandRows<'a>(&'a NestedLets);
+
+impl Serialize for NestedOperandRows<'_> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut sequence = serializer.serialize_seq(Some(self.0.node_count()))?;
+        for position in 0..self.0.node_count() {
+            let (_, row) = self.0.wire_node(self.0.node(position));
+            sequence.serialize_element(&row)?;
+        }
+        sequence.end()
+    }
+}
+
+struct NestedSources<'a>(&'a NestedLets);
+
+impl Serialize for NestedSources<'_> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut sequence = serializer.serialize_seq(Some(self.0.node_count()))?;
+        for position in 0..self.0.node_count() {
+            sequence.serialize_element(&self.0.source_entry(position))?;
+        }
+        sequence.end()
+    }
+}
+
+struct NestedBodyLocations<'a>(&'a NestedLets);
+
+impl Serialize for NestedBodyLocations<'_> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut sequence = serializer.serialize_seq(Some(self.0.count))?;
+        for index in 0..self.0.count {
+            sequence.serialize_element(&json!({
+                "application":self.0.add_id(index),
+                "occurrence":{"role":"expression","ordinal":0},
+                "term_ordinal":0,
+                "location":{
+                    "origin":{"kind":"function_body","function":self.0.function["node_id"],"name":"double","index":0},
+                    "up":if index == 0 {0} else {1},
+                    "down":if index == 0 {json!([0])} else {json!([1,0])}
+                }
+            }))?;
+        }
+        sequence.end()
+    }
+}
+
+struct NestedGraph<'a> {
+    base: &'a Value,
+    fixture: &'a NestedLets,
+}
+
+impl Serialize for NestedGraph<'_> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let object = self.base.as_object().expect("semantic graph object");
+        let mut map = serializer.serialize_map(Some(object.len()))?;
+        for (key, value) in object {
+            match key.as_str() {
+                "nodes" => map.serialize_entry(key, &NestedNodes(self.fixture))?,
+                "operand_rows" => map.serialize_entry(key, &NestedOperandRows(self.fixture))?,
+                _ => map.serialize_entry(key, value)?,
+            }
+        }
+        map.end()
+    }
+}
+
+struct NestedLock<'a>(&'a Value);
+
+impl Serialize for NestedLock<'_> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let object = self.0.as_object().expect("lock object");
+        let mut map = serializer.serialize_map(Some(object.len()))?;
+        for (key, value) in object {
+            if key == "definition_selections" {
+                map.serialize_entry(key, &[] as &[Value])?;
+            } else {
+                map.serialize_entry(key, value)?;
+            }
+        }
+        map.end()
+    }
+}
+
+struct NestedCheckedTermData<'a> {
+    base: &'a Value,
+    fixture: &'a NestedLets,
+}
+
+impl Serialize for NestedCheckedTermData<'_> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let object = self.base.as_object().expect("checked term data object");
+        let mut map = serializer.serialize_map(Some(object.len()))?;
+        for (key, value) in object {
+            if key == "body_locations" {
+                map.serialize_entry(key, &NestedBodyLocations(self.fixture))?;
+            } else {
+                map.serialize_entry(key, value)?;
+            }
+        }
+        map.end()
+    }
+}
+
+struct NestedPackage<'a>(&'a NestedLets);
+
+impl Serialize for NestedPackage<'_> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let object = self.0.base.as_object().expect("package object");
+        let mut map = serializer.serialize_map(Some(object.len()))?;
+        for (key, value) in object {
+            match key.as_str() {
+                "semantic_graph" => map.serialize_entry(
+                    key,
+                    &NestedGraph {
+                        base: value,
+                        fixture: self.0,
+                    },
+                )?,
+                "source_map" => map.serialize_entry(key, &NestedSources(self.0))?,
+                "lock" => map.serialize_entry(key, &NestedLock(value))?,
+                "checked_term_data" => map.serialize_entry(
+                    key,
+                    &NestedCheckedTermData {
+                        base: value,
+                        fixture: self.0,
+                    },
+                )?,
+                _ => map.serialize_entry(key, value)?,
+            }
+        }
+        map.end()
+    }
+}
+
+fn nested_lets(count: usize) -> (Vec<u8>, CheckedPackageEvidence) {
+    let mut base =
         crate::read_json(&crate::fixtures_dir().join("positive-operation-identities.json"))
             .unwrap();
-    let original = package["semantic_graph"]["nodes"].as_array().unwrap();
+    let original = base["semantic_graph"]["nodes"].as_array().unwrap();
     let integer = original[16].clone();
     let text = original
         .iter()
@@ -290,108 +647,50 @@ fn nested_lets(count: usize) -> Value {
         .unwrap()
         .clone();
     let add = original[35].clone();
-    let mut function = original
+    let function = original
         .iter()
         .find(|node| node["node_tag"] == "function")
         .unwrap()
         .clone();
-    let source = package["source_map"]
+    let source = base["source_map"]
         .as_array()
         .unwrap()
         .iter()
         .find(|entry| entry["node_id"] == add["node_id"])
         .unwrap()
         .clone();
-    let id = |path: Value| json!({"package":"example","path":path,"ordinal":0});
-    let int_id = integer["node_id"].clone();
-    let text_id = text["node_id"].clone();
-    let parameter = |index: usize| {
-        id(
-            json!(["value","parameter","name",{"node":1},format!("x{index:06}"),"level",{"node":0},index.to_string(),{"node":0}]),
-        )
+
+    base["semantic_graph"]["nodes"] = json!([]);
+    base["semantic_graph"]["operand_rows"] = json!([]);
+    base["source_map"] = json!([]);
+    base["lock"]["definition_selections"] = json!([]);
+    base["checked_term_data"] = json!({
+        "equality_decisions":[],"protocol_locations":[],"dispatch_tables":[],
+        "probabilistic_claims":[],"body_locations":[]
+    });
+    let evidence = evidence_for(&base);
+    let fixture = NestedLets {
+        base,
+        count,
+        integer,
+        text,
+        add,
+        function,
+        source,
     };
-    let add_at = |index: usize| count + 3 + index;
-    let let_at = |index: usize| 2 * count + 3 + index;
-    let add_id = |index: usize| {
-        id(
-            json!(["expression","binary",{"node":index + 2},"1","filament.op.integer.add","binary",{"node":0}]),
-        )
-    };
-    let let_id = |index: usize| {
-        id(
-            json!(["expression","let",{"node":index+3},format!("x{:06}",index+1),{"node":add_at(index)},{"node":if index+1 == count {index+3} else {let_at(index+1)}},"filament.op.control.let","let",{"node":0}]),
-        )
-    };
-    let reference = |target: Value| json!({"term":"reference","target":target});
-    let mut nodes = vec![integer, text];
-    for index in 0..=count {
-        let mut node = add.clone();
-        node["node_id"] = parameter(index);
-        node["node_tag"] = json!("value");
-        node["semantic_form"] = json!("parameter");
-        node["dependencies"] = json!([]);
-        node["body"] = json!({"term":"aggregate","members":[
-            {"term":"binding","name":"name","value":{"term":"literal","type":text_id,"value_kind":"text","value":format!("x{index:06}")}},
-            {"term":"binding","name":"level","value":{"term":"literal","type":int_id,"value_kind":"integer","value":index.to_string()}}
-        ]});
-        nodes.push(node);
-    }
-    for index in 0..count {
-        let mut node = add.clone();
-        node["node_id"] = add_id(index);
-        node["dependencies"] = json!([parameter(index)]);
-        node["body"]["arguments"] = json!([reference(parameter(index)),{"term":"literal","type":int_id,"value_kind":"integer","value":"1"}]);
-        nodes.push(node);
-    }
-    for index in 0..count {
-        let mut node = add.clone();
-        let body = if index + 1 == count {
-            parameter(index + 1)
-        } else {
-            let_id(index + 1)
-        };
-        node["node_id"] = let_id(index);
-        node["semantic_form"] = json!("let");
-        node["body"]["operator"] = json!("let");
-        node["body"]["operation"]["identity"] = json!("filament.op.control.let");
-        node["body"]["arguments"] = json!([
-            {"term":"binding","name":format!("x{:06}",index+1),"binder":parameter(index+1),"value":reference(add_id(index))},reference(body.clone())]);
-        node["dependencies"] = if index + 1 == count {
-            json!([add_id(index), body])
-        } else {
-            json!([add_id(index), body, parameter(index + 1)])
-        };
-        nodes.push(node);
-    }
-    function["body"] = json!({"term":"aggregate","members":[
-        {"term":"binding","name":"parameters","value":{"term":"aggregate","members":[reference(parameter(0))]}},
-        {"term":"binding","name":"body","value":reference(let_id(0))}]});
-    function["dependencies"] = json!([let_id(0), parameter(0)]);
-    let rows: Vec<_> = (0..count).map(|index| json!({"application":add_id(index),"occurrence":{"role":"expression","ordinal":0},"term_ordinal":0,
-        "location":{"origin":{"kind":"function_body","function":function["node_id"],"name":"double","index":0},"up":if index == 0 {0} else {1},"down":if index == 0 {json!([0])} else {json!([1,0])}}})).collect();
-    nodes.push(function);
-    let sources: Vec<_> = nodes
-        .iter()
-        .map(|node| {
-            let mut entry = source.clone();
-            entry["node_id"] = node["node_id"].clone();
-            entry["role"] = node["occurrences"][0]["role"].clone();
-            entry
-        })
-        .collect();
-    package["semantic_graph"]["nodes"] = json!(nodes);
-    package["source_map"] = json!(sources);
-    package["lock"]["definition_selections"] = json!([]);
-    package["checked_term_data"] = json!({"equality_decisions":[],"protocol_locations":[],"dispatch_tables":[],"probabilistic_claims":[],"body_locations":rows});
-    package
+    let mut bytes = Vec::new();
+    serde_json::to_writer(&mut bytes, &NestedPackage(&fixture)).unwrap();
+    (bytes, evidence)
 }
 
 #[test]
 #[trace("TC-491", "FR-038-AC-597", "FR-322-AC-510")]
 fn bl_d2_one_hundred_thousand_nested_lets_admit_at_the_reader() {
     for count in [10, 100_000] {
-        let result = read_owned(
-            nested_lets(count),
+        let (bytes, evidence) = nested_lets(count);
+        let result = read_serialized_owned(
+            bytes,
+            evidence,
             u64::try_from(count).unwrap() * 1_000 + 10_000,
         );
         let CheckedPackageV2ReadResult::Admitted(admitted) = result else {
