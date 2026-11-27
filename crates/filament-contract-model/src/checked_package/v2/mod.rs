@@ -321,6 +321,7 @@ use crate::identity::ExecutionPoint;
 use closure_index::ClosureIndex;
 use dependency_references::{admit_dependencies, check_derived_closure, SuppliedDependencies};
 use graph_storage::GraphIndex;
+use ix_trace_rs::implements;
 use ix_trace_rs::string_edge;
 use operations::{validate_operations, OperationNodeOrder};
 use owner::{validate_owner_joins, validate_owner_schema};
@@ -5020,6 +5021,7 @@ fn reference_requires_cycle_edge(
 /// Every strongly connected component that forms a cycle must share one
 /// explicit `recursion_group`. Iterative Tarjan; each edge costs one work,
 /// charged at the member that carried the edge (`edge_pointer`).
+#[implements("FR-038-AC-638")]
 fn validate_recursion<'p>(
     nodes: &[RawSemanticNodeV2],
     adjacency: &[Vec<(usize, EdgeSite)>],
@@ -5122,6 +5124,32 @@ fn validate_recursion<'p>(
                     .get(vertex)
                     .is_some_and(|edges| edges.iter().any(|(target, _)| *target == vertex));
             if cyclic {
+                let body_walk_cycle = component.iter().all(|member| {
+                    nodes.get(*member).is_some_and(|node| {
+                        matches!(
+                            CheckedNodeTag::from_wire(&node.node_tag)
+                                .and_then(|tag| CheckedNodeKind::decode(tag, &node.semantic_form)),
+                            Some(
+                                CheckedNodeKind::Expression(_)
+                                    | CheckedNodeKind::Value(
+                                        ValueForm::RecordValue
+                                            | ValueForm::TupleValue
+                                            | ValueForm::OptionValue
+                                    )
+                            )
+                        )
+                    })
+                });
+                if body_walk_cycle {
+                    // Graph nodes are admitted in structural NodeId order, so
+                    // the lowest member position is the required first cycle
+                    // locus.
+                    let first_member = component.iter().copied().min().unwrap_or(vertex);
+                    return Err(refuse(
+                        CheckedPackageRefusalCode::InvalidSemanticGraph,
+                        node_pointer(first_member),
+                    ));
+                }
                 let group_of = |member: usize| {
                     nodes
                         .get(member)
@@ -5911,6 +5939,233 @@ mod tests {
             CheckedPackageRefusalCode::MalformedWire,
             node_pointer(0).key("recursion_group").to_string(),
         );
+    }
+
+    fn body_walk_cycle_node(
+        digit: char,
+        node_tag: &str,
+        semantic_form: &str,
+    ) -> super::RawSemanticNodeV2 {
+        let mut node = recursion_test_node(digit, Some("shared"));
+        node.node_tag = node_tag.into();
+        node.semantic_form = semantic_form.into();
+        node
+    }
+
+    fn assert_body_walk_cycle_refuses(
+        nodes: &[super::RawSemanticNodeV2],
+        adjacency: &[Vec<(usize, EdgeSite)>],
+    ) {
+        let mut meter = WorkMeter::new(u64::MAX);
+        let result = validate_recursion(nodes, adjacency, &mut meter, &|_, _| {
+            super::stage_storage::Path::root()
+                .key("semantic_graph")
+                .key("nodes")
+                .index(0)
+                .key("body")
+                .into()
+        });
+        let Err(ValidationFailure::Refused(refusal)) = result else {
+            panic!("body-walk-only cycle must refuse, got {result:?}");
+        };
+        assert_eq!(
+            refusal.code,
+            CheckedPackageRefusalCode::InvalidSemanticGraph
+        );
+        assert!(refusal.cause.is_none(), "cycle refusal has no cause");
+        assert_eq!(
+            refusal.loci[0].path.as_ref().map(ToString::to_string),
+            Some(node_pointer(0).to_string())
+        );
+    }
+
+    #[trace("FR-038-AC-638", "FR-322-AC-549")]
+    #[test]
+    fn record_value_self_cycle_refuses_even_with_recursion_group() {
+        let nodes = [body_walk_cycle_node('a', "value", "record_value")];
+        assert_body_walk_cycle_refuses(&nodes, &[vec![(0, EdgeSite::Reference(0))]]);
+    }
+
+    #[trace("FR-038-AC-638", "FR-322-AC-550")]
+    #[test]
+    fn tuple_option_cycle_refuses_at_first_structural_member() {
+        let nodes = [
+            body_walk_cycle_node('a', "value", "tuple_value"),
+            body_walk_cycle_node('b', "value", "option_value"),
+        ];
+        let cycle = vec![
+            vec![(1, EdgeSite::Reference(0))],
+            vec![(0, EdgeSite::Reference(0))],
+        ];
+        assert_body_walk_cycle_refuses(&nodes, &cycle);
+    }
+
+    fn strict_reader_cycle_wire(form: &str) -> (Vec<u8>, usize) {
+        use serde_json::Value;
+
+        let package = super::composite_operands::tests::package();
+        let mut wire = serde_json::to_value(package.wire.as_ref()).expect("fixture wire");
+        let source = wire["lock"]["sources"][0].clone();
+        let package_name = wire["name"].as_str().expect("package name").to_owned();
+        let graph = wire["semantic_graph"]["nodes"]
+            .as_array_mut()
+            .expect("fixture nodes");
+        let id_for = |tag: &str, form: &str| {
+            graph
+                .iter()
+                .find(|node| node["node_tag"] == tag && node["semantic_form"] == form)
+                .map(|node| node["node_id"].clone())
+                .expect("fixture type node")
+        };
+        let record_type = id_for("composite_type", "record");
+        let node_id = |name: &str| json!({"package":package_name.clone(),"path":["fixture",name],"ordinal":0});
+        let mut added = Vec::<Value>::new();
+        let mut source_rows = Vec::<Value>::new();
+        let mut next_source_position = 100_u64;
+        let mut add = |id: Value,
+                       tag: &str,
+                       semantic_form: &str,
+                       semantic_type: Value,
+                       occurrence: &str,
+                       body: Value,
+                       recursion_group: Option<&str>,
+                       dependencies: Vec<Value>| {
+            let position = graph.len() + added.len();
+            let mut row = json!({
+                "node_id":id,
+                "schema_version":"filament.checked-semantic-graph/v2",
+                "node_tag":tag,
+                "semantic_form":semantic_form,
+                "semantic_type":semantic_type,
+                "dependencies":dependencies,
+                "occurrences":[{"role":occurrence,"ordinal":0}],
+                "body":body
+            });
+            if let Some(recursion_group) = recursion_group {
+                row["recursion_group"] = json!(recursion_group);
+            }
+            source_rows.push(json!({
+                "node_id":row["node_id"],
+                "role":occurrence,
+                "ordinal":0,
+                "regions":[{"source":source.clone(),"start":next_source_position,"end":next_source_position+1}]
+            }));
+            next_source_position += 2;
+            added.push(row);
+            position
+        };
+
+        let expected_position = match form {
+            "record_value" => {
+                let id = node_id("record-self-cycle");
+                add(
+                    id.clone(),
+                    "value",
+                    form,
+                    record_type,
+                    "expression",
+                    json!({"term":"aggregate","members":[{"term":"binding","name":"ready","value":{"term":"reference","target":id}}]}),
+                    Some("shared"),
+                    Vec::new(),
+                )
+            }
+            "tuple_option" => {
+                let tuple_type = node_id("tuple-type");
+                let option_type = node_id("option-type");
+                add(
+                    tuple_type.clone(),
+                    "composite_type",
+                    "tuple",
+                    tuple_type.clone(),
+                    "generated",
+                    json!({"term":"aggregate","members":[{"term":"reference","target":option_type}]}),
+                    Some("shared-types"),
+                    vec![option_type.clone()],
+                );
+                add(
+                    option_type.clone(),
+                    "composite_type",
+                    "option",
+                    option_type.clone(),
+                    "generated",
+                    json!({"term":"aggregate","members":[{"term":"reference","target":tuple_type}]}),
+                    Some("shared-types"),
+                    vec![tuple_type.clone()],
+                );
+                let tuple_value = node_id("a-tuple-cycle");
+                let option_value = node_id("b-option-cycle");
+                let tuple_position = add(
+                    tuple_value.clone(),
+                    "value",
+                    "tuple_value",
+                    tuple_type,
+                    "expression",
+                    json!({"term":"aggregate","members":[{"term":"reference","target":option_value}]}),
+                    Some("shared"),
+                    Vec::new(),
+                );
+                add(
+                    option_value.clone(),
+                    "value",
+                    "option_value",
+                    option_type,
+                    "expression",
+                    json!({"term":"aggregate","members":[{"term":"binding","name":"some","value":{"term":"reference","target":tuple_value}}]}),
+                    Some("shared"),
+                    Vec::new(),
+                );
+                tuple_position
+            }
+            _ => unreachable!("test selects a closed cycle fixture"),
+        };
+
+        let added_count = added.len();
+        graph.extend(added);
+        wire["semantic_graph"]["operand_rows"]
+            .as_array_mut()
+            .expect("fixture operand rows")
+            .extend((0..added_count).map(|_| json!([])));
+        wire["source_map"]
+            .as_array_mut()
+            .expect("fixture source map")
+            .extend(source_rows);
+        let bytes = super::test_support::canonical(&wire);
+        // Capture the first cycle member's graph-array position before the
+        // completed cycle nodes are appended.
+        let expected = u64::try_from(expected_position).expect("fixture position fits u64");
+        (
+            bytes,
+            usize::try_from(expected).expect("fixture position fits usize"),
+        )
+    }
+
+    fn assert_strict_reader_cycle_refusal(form: &str) {
+        let (bytes, expected_position) = strict_reader_cycle_wire(form);
+        let result = super::CheckedPackageV2::read(
+            &bytes,
+            super::CheckedPackageReadLimits::bounded(),
+            &crate::CheckedPackageEvidence::default(),
+        );
+        let super::CheckedPackageV2ReadResult::Refused(refusal) = result else {
+            panic!("strict reader must refuse {form} cycle without admitting: {result:?}");
+        };
+        assert_eq!(
+            refusal.code,
+            CheckedPackageRefusalCode::InvalidSemanticGraph,
+            "{form}: {refusal:?}"
+        );
+        assert!(refusal.cause.is_none(), "cycle refusal has no cause");
+        assert_eq!(
+            refusal.loci[0].path.as_ref().map(ToString::to_string),
+            Some(node_pointer(expected_position).to_string())
+        );
+    }
+
+    #[trace("FR-038-AC-638", "FR-322-AC-549", "FR-322-AC-550")]
+    #[test]
+    fn strict_reader_refuses_body_walk_cycle_packages_without_admitting() {
+        assert_strict_reader_cycle_refusal("record_value");
+        assert_strict_reader_cycle_refusal("tuple_option");
     }
 
     #[trace("FR-038-AC-149", "TC-226")]

@@ -6,6 +6,7 @@ use super::checked_term_data::{
     CheckedBodyLocationOrigin, CheckedBodySemanticLocation, CheckedKeyOrdinal,
 };
 use super::{CheckedNodeId, CheckedNodeKind, CheckedPackageV2, CheckedTerm};
+use ix_trace_rs::implements;
 
 /// Why a function's reconstructed body locations could not be read.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
@@ -68,6 +69,9 @@ impl CheckedPackageV2 {
     /// pending task and removed/appended path entry. A wide decimal ordinal
     /// also charges its byte length before cloning it into the current path.
     /// No full paths are materialized during construction.
+    #[implements("FR-322-AC-539")]
+    #[implements("FR-322-AC-541")]
+    #[implements("FR-322-AC-542")]
     pub fn body_locations(
         &self,
         function: &CheckedNodeId,
@@ -314,5 +318,128 @@ impl<'a> CheckedBodyLocations<'a> {
             }
         }
         Ok(None)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ix_trace_rs::trace;
+    use serde_json::json;
+
+    fn fixture_package() -> CheckedPackageV2 {
+        let caller = super::super::test_support::id('c');
+        let outer = super::super::test_support::id('o');
+        let app = super::super::test_support::id('a');
+        let node = |node_id: serde_json::Value, tag: &str, form: &str, body| {
+            json!({
+                "node_id":node_id,
+                "schema_version":"filament.checked-semantic-graph/v2",
+                "node_tag":tag,
+                "semantic_form":form,
+                "semantic_type":node_id,
+                "dependencies":[],
+                "occurrences":[{"role":"expression","ordinal":0}],
+                "body":body
+            })
+        };
+        let wire = super::super::test_support::private_wire(json!({
+            "contract_version":"filament.checked-package/v2",
+            "name":"test",
+            "lock":{
+                "sources":[],
+                "edition":{"role":"edition","definition":{"authority":"test","identity":"edition"}},
+                "profile_selections":[],"definition_selections":[],
+                "required_features":[],"dependency_selections":[]
+            },
+            "semantic_graph":{
+                "graph_version":"filament.checked-semantic-graph/v2",
+                "nodes":[
+                    node(caller.clone(), "function", "pure_function", json!({
+                        "term":"aggregate",
+                        "members":[{"term":"binding","name":"body","value":{"term":"reference","target":outer}}]
+                    })),
+                    node(outer, "value", "option_value", json!({
+                        "term":"aggregate",
+                        "members":[{"term":"binding","name":"some","value":{"term":"reference","target":app}}]
+                    })),
+                    node(app.clone(), "expression", "binary", json!({
+                        "term":"application","operator":"binary",
+                        "operation":{"identity":"filament.op.test","laws":[],"mode":null,"member":null,"leaves":[]},
+                        "result_type":app.clone(),"arguments":[]
+                    }))
+                ]
+            },
+            "checked_term_data":{
+                "equality_decisions":[],"protocol_locations":[],"dispatch_tables":[],
+                "body_locations":[{
+                    "application":app,
+                    "occurrence":{"role":"expression","ordinal":0},
+                    "term_ordinal":0,
+                    "location":{
+                        "origin":{"kind":"function_body","function":caller,"name":"caller","index":0},
+                        "up":0,"down":[0]
+                    }
+                }],
+                "probabilistic_claims":[]
+            },
+            "source_map":[],"capability_report":[],
+            "diagnostics":{"catalog":{"authority":"test","identity":"diagnostics"},"entries":[]}
+        }));
+        let kinds = wire
+            .semantic_graph
+            .nodes
+            .iter()
+            .map(|node| {
+                let tag =
+                    super::super::CheckedNodeTag::from_wire(&node.node_tag).expect("fixture tag");
+                CheckedNodeKind::decode(tag, &node.semantic_form).expect("fixture form")
+            })
+            .collect();
+        CheckedPackageV2 {
+            correlation: Default::default(),
+            schedulability_claim_index: Vec::new(),
+            monitor_plan_index: Vec::new(),
+            terminal_rows: std::sync::Arc::new(Vec::new()),
+            probabilistic_claims: std::sync::Arc::new(Vec::new()),
+            timed_model_roots: Vec::new(),
+            node_index: std::sync::Arc::new(super::super::retained_node_index(&wire)),
+            structural_keys: Vec::new(),
+            slot_graph: Default::default(),
+            source_index: std::sync::Arc::new(super::super::retained_source_index(&wire)),
+            lowering_facts: Vec::new(),
+            wire: std::sync::Arc::new(wire),
+            kinds: std::sync::Arc::new(kinds),
+            bytes: 1 << 20,
+            models: std::sync::Arc::new(super::super::RetainedModels::default()),
+            selected_documents: std::sync::Arc::new(Vec::new()),
+            direct_dependencies: Vec::new(),
+            closure_index: Default::default(),
+            catalog: super::super::operation_catalog::owned_operation_catalog(),
+            admission_binding: Default::default(),
+            body_documents: Vec::new(),
+        }
+        .retain_original_admission()
+    }
+
+    #[trace("FR-322-AC-539", "FR-322-AC-541")]
+    #[test]
+    fn body_cursor_pairs_option_payload_row_with_rebuilt_path() {
+        let package = fixture_package();
+        let function = super::super::test_support::node_id('c');
+        let expected_application = super::super::test_support::node_id('a');
+        let mut cursor = package
+            .body_locations(&function, 1_000)
+            .expect("function body cursor");
+        let location = cursor
+            .next_location()
+            .expect("cursor step")
+            .expect("option payload application row");
+
+        assert_eq!(location.row.application, expected_application);
+        assert_eq!(location.row.occurrence.ordinal, 0);
+        assert_eq!(location.row.term_ordinal, 0);
+        assert_eq!(location.path, [CheckedKeyOrdinal::Safe(0)]);
+        assert!(cursor.next_location().expect("cursor exhaustion").is_none());
     }
 }
