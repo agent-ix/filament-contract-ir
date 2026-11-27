@@ -541,17 +541,20 @@ mod by_stage {
     }
 
     /// The exact arena bytes of the subtree at `root` at the element sizes of
-    /// quire-canonical v0.3.3: the source-selected range width plus a 1-byte
-    /// tag per value, an 8-byte item per array element, a 24-byte member per
-    /// object member, and decoded text.
+    /// quire-canonical v0.3.3: source-selected range, item, and member widths,
+    /// a 1-byte tag per value, and decoded text.
     fn arena_bytes(root: quire_canonical::NodeRef<'_>, source_len: usize) -> u64 {
         let (mut slots, mut items, mut members, mut text) = (0u64, 0u64, 0u64, 0u64);
-        let range_bytes = if u32::try_from(source_len).is_ok() {
-            8
+        let (range_bytes, item_bytes, member_bytes) = if u32::try_from(source_len).is_ok() {
+            (8, 4, 12)
         } else if u64::try_from(source_len).is_ok_and(|value| value < (1_u64 << 40)) {
-            10
+            (10, 5, 15)
         } else {
-            2 * std::mem::size_of::<usize>()
+            (
+                2 * std::mem::size_of::<usize>(),
+                std::mem::size_of::<usize>(),
+                3 * std::mem::size_of::<usize>(),
+            )
         };
         let slot_bytes = range_bytes + std::mem::size_of::<u8>();
         let mut stack = vec![root];
@@ -576,7 +579,7 @@ mod by_stage {
                 _ => {}
             }
         }
-        slots * slot_bytes as u64 + items * 8 + members * 24 + text
+        slots * slot_bytes as u64 + items * item_bytes + members * member_bytes + text
     }
 
     /// Prints the package document's retained bytes, its exact arena size,
@@ -598,7 +601,7 @@ mod by_stage {
                 .map(|nodes| match nodes.node() {
                     quire_canonical::Node::Array(items) => items
                         .filter_map(|node| node.get("body"))
-                        .map(arena_bytes)
+                        .map(|node| arena_bytes(node, bytes.len()))
                         .sum(),
                     _ => 0,
                 })
