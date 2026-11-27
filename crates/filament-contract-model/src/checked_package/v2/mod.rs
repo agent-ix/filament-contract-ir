@@ -6058,7 +6058,7 @@ mod tests {
         let expected_position = match form {
             "record_value" => {
                 let id = node_id("record-self-cycle");
-                let position = add(
+                add(
                     id.clone(),
                     "value",
                     form,
@@ -6067,8 +6067,7 @@ mod tests {
                     json!({"term":"aggregate","members":[{"term":"binding","name":"ready","value":{"term":"reference","target":id}}]}),
                     Some("shared"),
                     Vec::new(),
-                );
-                position
+                )
             }
             "tuple_option" => {
                 let tuple_type = node_id("tuple-type");
