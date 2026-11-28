@@ -10,6 +10,7 @@ use super::v2::{
     CheckedPackageBudgetedDispatchResult, CheckedPackageV2, CheckedPackageV2BudgetedReadResult,
     CheckedPackageV2ReadResult, NativeJoinBudget,
 };
+use ix_trace_rs::implements;
 
 /// The closed result of dispatching untrusted checked-package bytes.
 // The required inline typed refusal makes this public result larger than its
@@ -101,6 +102,67 @@ pub fn read_checked_package_with_catalog(
                         CheckedPackageDispatchResult::Refused,
                     ),
                 _ => CheckedPackageDispatchResult::Refused(refusal),
+            }
+        }
+        other => other,
+    }
+}
+
+/// Reads a strict checked package against the caller's definition catalog
+/// while charging both the strict admission and any catalog-only structural
+/// fallback to the same caller-owned budget.
+#[implements("FR-038-AC-495")]
+pub fn read_checked_package_with_catalog_and_budget(
+    bytes: &[u8],
+    limits: CheckedPackageReadLimits,
+    evidence: &CheckedPackageEvidence,
+    catalog: &DefinitionCatalog,
+    budget: &mut NativeJoinBudget,
+) -> CheckedPackageBudgetedDispatchResult {
+    let strict = read_checked_package_with_budget(bytes, limits, evidence, budget);
+    match strict {
+        CheckedPackageBudgetedDispatchResult::AdmittedV2(package) => {
+            catalog_refusal(&package, catalog).map_or(
+                CheckedPackageBudgetedDispatchResult::AdmittedV2(package),
+                CheckedPackageBudgetedDispatchResult::Refused,
+            )
+        }
+        CheckedPackageBudgetedDispatchResult::Refused(refusal)
+            if matches!(
+                refusal.cause,
+                Some(
+                    CheckedPackageRefusalCause::OperationLawUnselected
+                        | CheckedPackageRefusalCause::OperationLawMismatch
+                )
+            ) =>
+        {
+            match CheckedPackageV2::read_catalog_bound_structural_with_budget(
+                bytes, limits, evidence, budget,
+            ) {
+                CheckedPackageV2BudgetedReadResult::Admitted(package) => {
+                    catalog_refusal(&package, catalog).map_or(
+                        CheckedPackageBudgetedDispatchResult::Refused(refusal),
+                        CheckedPackageBudgetedDispatchResult::Refused,
+                    )
+                }
+                CheckedPackageV2BudgetedReadResult::Refused(_) => {
+                    CheckedPackageBudgetedDispatchResult::Refused(refusal)
+                }
+                CheckedPackageV2BudgetedReadResult::Incomplete(incomplete) => {
+                    CheckedPackageBudgetedDispatchResult::Incomplete(incomplete)
+                }
+                CheckedPackageV2BudgetedReadResult::BudgetIncomplete(incomplete) => {
+                    CheckedPackageBudgetedDispatchResult::BudgetIncomplete(incomplete)
+                }
+                CheckedPackageV2BudgetedReadResult::Exhausted(exhausted) => {
+                    CheckedPackageBudgetedDispatchResult::Exhausted(exhausted)
+                }
+                CheckedPackageV2BudgetedReadResult::CatalogUnavailable(error) => {
+                    CheckedPackageBudgetedDispatchResult::CatalogUnavailable(error)
+                }
+                CheckedPackageV2BudgetedReadResult::HostAllocationFailed(failure) => {
+                    CheckedPackageBudgetedDispatchResult::HostAllocationFailed(failure)
+                }
             }
         }
         other => other,
