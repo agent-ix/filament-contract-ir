@@ -149,7 +149,6 @@ pub use certificate_identity::{
     CertificateNodeId, CertificateNodeIdError, CertificatePathSegment, MAX_CERTIFICATE_NODE_ORDINAL,
 };
 pub use certificate_member::CertificateMember;
-pub use checked_package::read_checked_package_structural;
 pub use checked_package::CheckedCallableRead;
 pub use checked_package::{
     encode_checked_package_v2, initialize_operation_catalog, is_slot_parameter_name,
@@ -271,6 +270,9 @@ pub use checked_package::{
     SelectedUnionClockPayloadRow, SelectedUnionMemberRow, StateForm, TemporalBinding,
     TemporalClauseName, TemporalForm, TerminalDeclaration, TerminalRow, TimedModelForm, ValueForm,
     CHECKED_PACKAGE_V2, CONTRACT_PACKAGE_VERSION,
+};
+pub use checked_package::{
+    read_checked_package_structural, read_checked_package_with_catalog, DefinitionCatalog,
 };
 
 pub use checked_package::{

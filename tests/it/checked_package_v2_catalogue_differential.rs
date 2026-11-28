@@ -9,9 +9,10 @@ use crate::support::checked_package::{
     structural_fixture_id, v2_all_families,
 };
 use filament_contract_model::{
-    read_checked_package, read_checked_package_structural, CheckedPackageEvidence,
-    CheckedPackageReadLimits, CheckedPackageRefusalCause, CheckedPackageRefusalCode,
-    CheckedPackageV2, CheckedPackageV2ReadResult, CheckedTerm, OperationModeKind,
+    read_checked_package, read_checked_package_structural, read_checked_package_with_catalog,
+    CheckedArtifactRef, CheckedPackageEvidence, CheckedPackageReadLimits,
+    CheckedPackageRefusalCause, CheckedPackageRefusalCode, CheckedPackageV2,
+    CheckedPackageV2ReadResult, CheckedTerm, DefinitionCatalog, OperationModeKind,
 };
 use ix_trace_rs::trace;
 use serde_json::{json, Value};
@@ -389,6 +390,11 @@ fn tc_3217_structural_reader_retains_paired_opaque_law_definition() {
     let bytes = canonical(&wire);
     let evidence = evidence_for(&wire);
     let limits = CheckedPackageReadLimits::bounded();
+    let mut catalog = DefinitionCatalog::new();
+    catalog.insert_extension(CheckedArtifactRef {
+        authority: "agent-ix".into(),
+        identity: "filament.fixture.definition.selection/v1".into(),
+    });
     assert!(matches!(
         read_checked_package(&bytes, limits, &evidence),
         filament_contract_model::CheckedPackageDispatchResult::AdmittedV2(_)
@@ -451,6 +457,18 @@ fn tc_3217_structural_reader_retains_paired_opaque_law_definition() {
                 && refusal.cause == Some(CheckedPackageRefusalCause::OperationLawMismatch)
                 && refusal.loci[0].path.as_ref().is_some_and(|path| path.as_str() == law_path)
     ));
+    let paired_catalog_result =
+        read_checked_package_with_catalog(&paired_bytes, limits, &paired_evidence, &catalog);
+    assert!(
+        matches!(
+            &paired_catalog_result,
+            filament_contract_model::CheckedPackageDispatchResult::Refused(refusal)
+                if refusal.code == CheckedPackageRefusalCode::InvalidPackage
+                    && refusal.cause == Some(CheckedPackageRefusalCause::OperationLawMismatch)
+                    && refusal.loci[0].path.as_ref().is_some_and(|path| path.as_str() == law_path)
+        ),
+        "unexpected paired catalog result: {paired_catalog_result:?}"
+    );
 
     let mut lock_only = wire;
     lock_only["lock"]["definition_selections"][law_row] = ceiling;
@@ -461,6 +479,51 @@ fn tc_3217_structural_reader_retains_paired_opaque_law_definition() {
         filament_contract_model::CheckedPackageDispatchResult::Refused(refusal)
             if refusal.code == CheckedPackageRefusalCode::InvalidPackage
                 && refusal.cause == Some(CheckedPackageRefusalCause::OperationLawUnselected)
+    ));
+    assert!(matches!(
+        read_checked_package_with_catalog(&lock_only_bytes, limits, &lock_only_evidence, &catalog),
+        filament_contract_model::CheckedPackageDispatchResult::Refused(refusal)
+            if refusal.code == CheckedPackageRefusalCode::UnknownProfile
+                && refusal.cause == Some(CheckedPackageRefusalCause::UnsupportedSelection)
+                && refusal.loci[0].path.as_ref().is_some_and(|path| {
+                    path.as_str() == format!("/lock/definition_selections/{law_row}")
+                })
+    ));
+
+    let mut wrong_role = paired;
+    let profile = json!({
+        "authority": "agent-ix",
+        "identity": "filament.value.complete/v1",
+    });
+    wrong_role["lock"]["definition_selections"][law_row] = profile.clone();
+    *wrong_role.pointer_mut(&law_path).expect("division law") = profile.clone();
+    let wrong_role_bytes = canonical(&wrong_role);
+    let wrong_role_evidence = evidence_for(&wrong_role);
+    let mut catalog = DefinitionCatalog::new();
+    catalog.insert_extension(CheckedArtifactRef {
+        authority: "agent-ix".into(),
+        identity: "filament.fixture.definition.selection/v1".into(),
+    });
+    let profile_ref = CheckedArtifactRef {
+        authority: "agent-ix".into(),
+        identity: "filament.value.complete/v1".into(),
+    };
+    catalog.insert_extension(profile_ref.clone());
+    catalog.insert_profile(profile_ref.clone());
+    catalog.insert_extension(profile_ref);
+    assert!(matches!(
+        read_checked_package_with_catalog(
+            &wrong_role_bytes,
+            limits,
+            &wrong_role_evidence,
+            &catalog,
+        ),
+        filament_contract_model::CheckedPackageDispatchResult::Refused(refusal)
+            if refusal.code == CheckedPackageRefusalCode::UnknownProfile
+                && refusal.cause == Some(CheckedPackageRefusalCause::WrongSelectionRole)
+                && refusal.loci[0].path.as_ref().is_some_and(|path| {
+                    path.as_str() == format!("/lock/definition_selections/{law_row}")
+                })
     ));
 }
 

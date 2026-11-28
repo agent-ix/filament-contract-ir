@@ -14,6 +14,7 @@
 //!   typed [`CheckedPackageRefusalCode::UnknownContractVersion`] code.
 
 mod common;
+mod definition_catalog;
 mod dispatch;
 mod evidence;
 mod selected_population;
@@ -21,6 +22,7 @@ mod shared;
 mod terms;
 mod v2;
 
+pub use definition_catalog::DefinitionCatalog;
 pub use dispatch::*;
 pub use evidence::*;
 pub use selected_population::*;

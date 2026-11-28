@@ -391,6 +391,7 @@ pub(super) struct OperationNodeOrder<'a> {
     pub(super) wire_index: &'a GraphIndex<'a>,
     pub(super) structural_keys: &'a [std::sync::Arc<CheckedNodeId>],
     pub(super) opaque_law_definitions: bool,
+    pub(super) allow_unselected_law_definitions: bool,
 }
 
 pub(super) fn validate_operations(
@@ -471,6 +472,7 @@ pub(super) fn validate_operations(
                     fast_index: Some(&flat_index),
                     binder_reads: Some(&binder_reads),
                     opaque_law_definitions: order.opaque_law_definitions,
+                    allow_unselected_law_definitions: order.allow_unselected_law_definitions,
                 },
                 &mut events,
                 meter,
@@ -2069,6 +2071,7 @@ struct OperationResolution<'a> {
     fast_index: Option<&'a FlatWireIndex<'a>>,
     binder_reads: Option<&'a BinderReads<'a>>,
     opaque_law_definitions: bool,
+    allow_unselected_law_definitions: bool,
 }
 
 /// The text of the `alias` label `member` carries, as `(package, node)`; the
@@ -2183,6 +2186,7 @@ fn operation_defect(
         fast_index,
         binder_reads,
         opaque_law_definitions,
+        allow_unselected_law_definitions,
     } = resolution;
     let Graph {
         nodes,
@@ -2315,7 +2319,7 @@ fn operation_defect(
             }
             lock.definition_selections.contains(&law.definition)
         };
-        if !selected {
+        if !selected && !(allow_unselected_law_definitions && role.selection_role().is_none()) {
             return refuse(
                 law_at(law_index, "definition"),
                 CheckedPackageRefusalCause::OperationLawUnselected,
@@ -9672,6 +9676,7 @@ mod tests {
                 fast_index: None,
                 binder_reads: None,
                 opaque_law_definitions: false,
+                allow_unselected_law_definitions: false,
             },
             &mut super::EventReach::default(),
             &mut meter,
@@ -9720,6 +9725,7 @@ mod tests {
                 fast_index: None,
                 binder_reads: None,
                 opaque_law_definitions: false,
+                allow_unselected_law_definitions: false,
             },
             &mut super::EventReach::default(),
             &mut WorkMeter::new(1_000),
@@ -9844,6 +9850,7 @@ mod tests {
                 fast_index: None,
                 binder_reads: None,
                 opaque_law_definitions,
+                allow_unselected_law_definitions: false,
             },
             &mut super::EventReach::default(),
             &mut meter,
@@ -13767,6 +13774,7 @@ mod tests {
                 fast_index: None,
                 binder_reads: None,
                 opaque_law_definitions: false,
+                allow_unselected_law_definitions: false,
             },
             &mut super::EventReach::default(),
             &mut meter,
@@ -14482,6 +14490,7 @@ mod tests {
                     wire_index: &index,
                     structural_keys: &structural_keys,
                     opaque_law_definitions: false,
+                    allow_unselected_law_definitions: false,
                 },
                 &terms,
                 &empty_lock(),
