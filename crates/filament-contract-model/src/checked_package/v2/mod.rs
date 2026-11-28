@@ -2408,6 +2408,7 @@ struct ValidatedGraph<'w> {
     source_map_checked: bool,
 }
 
+#[allow(clippy::too_many_arguments)]
 fn validate(
     catalog: &operation_catalog::OperationCatalog,
     wire: &RawCheckedPackageWireV2,

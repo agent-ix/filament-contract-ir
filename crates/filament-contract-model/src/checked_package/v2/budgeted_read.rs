@@ -189,6 +189,18 @@ impl CheckedPackageV2 {
         Self::unbudgeted_result(outcome, limits, &budget)
     }
 
+    /// Reads the catalog-only structural fallback under the caller's budget.
+    /// The result is used only to classify an operation-law refusal and is
+    /// never returned as admitted by the catalog-bound dispatcher.
+    pub(in crate::checked_package) fn read_catalog_bound_structural_with_budget(
+        bytes: &[u8],
+        limits: CheckedPackageReadLimits,
+        evidence: &CheckedPackageEvidence,
+        budget: &mut NativeJoinBudget,
+    ) -> CheckedPackageV2BudgetedReadResult {
+        Self::read_with_budget_mode(bytes, limits, evidence, budget, true, true)
+    }
+
     fn read_with_budget_mode(
         bytes: &[u8],
         limits: CheckedPackageReadLimits,
@@ -258,6 +270,7 @@ impl CheckedPackageV2 {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn admit_with_catalog(
         catalog: super::operation_catalog::CatalogRef,
         bytes: &[u8],

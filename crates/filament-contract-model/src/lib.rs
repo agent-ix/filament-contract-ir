@@ -272,7 +272,8 @@ pub use checked_package::{
     CHECKED_PACKAGE_V2, CONTRACT_PACKAGE_VERSION,
 };
 pub use checked_package::{
-    read_checked_package_structural, read_checked_package_with_catalog, DefinitionCatalog,
+    read_checked_package_structural, read_checked_package_with_catalog,
+    read_checked_package_with_catalog_and_budget, DefinitionCatalog,
 };
 
 pub use checked_package::{

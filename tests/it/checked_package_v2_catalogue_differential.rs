@@ -358,7 +358,7 @@ fn read_with_evidence(
 
 /// TC-3217 / FR-110-AC-16: the catalog-free strict entry retains a paired
 /// opaque value-law row, while the catalog-bound entry keeps FR-038-AC-56.
-#[trace("TC-3217", "FR-110-AC-16", "FR-038-AC-56")]
+#[trace("TC-3217", "FR-110-AC-16", "FR-038-AC-56", "FR-038-AC-495")]
 #[test]
 fn tc_3217_structural_reader_retains_paired_opaque_law_definition() {
     let mut f = fixture();
@@ -488,6 +488,55 @@ fn tc_3217_structural_reader_retains_paired_opaque_law_definition() {
                 && refusal.loci[0].path.as_ref().is_some_and(|path| {
                     path.as_str() == format!("/lock/definition_selections/{law_row}")
                 })
+    ));
+    let mut catalog_budget = filament_contract_model::NativeJoinBudget::unlimited();
+    assert!(matches!(
+        filament_contract_model::read_checked_package_with_catalog_and_budget(
+            &lock_only_bytes,
+            limits,
+            &lock_only_evidence,
+            &catalog,
+            &mut catalog_budget,
+        ),
+        filament_contract_model::CheckedPackageBudgetedDispatchResult::Refused(refusal)
+            if refusal.code == CheckedPackageRefusalCode::UnknownProfile
+                && refusal.cause == Some(CheckedPackageRefusalCause::UnsupportedSelection)
+                && refusal.loci[0].path.as_ref().is_some_and(|path| {
+                    path.as_str() == format!("/lock/definition_selections/{law_row}")
+                })
+    ));
+    let required = catalog_budget.consumed().work;
+    assert!(required > 0, "the catalog-bound read charges caller work");
+    let mut exhausted = filament_contract_model::NativeJoinBudget::new(required - 1, u64::MAX)
+        .with_read_storage_limit(u64::MAX);
+    assert!(matches!(
+        filament_contract_model::read_checked_package_with_catalog_and_budget(
+            &lock_only_bytes,
+            limits,
+            &lock_only_evidence,
+            &catalog,
+            &mut exhausted,
+        ),
+        filament_contract_model::CheckedPackageBudgetedDispatchResult::BudgetIncomplete(_)
+            | filament_contract_model::CheckedPackageBudgetedDispatchResult::Exhausted(_)
+    ));
+    let required_storage = catalog_budget.read_storage_consumed();
+    assert!(
+        required_storage > 0,
+        "the catalog fallback reserves read storage"
+    );
+    let mut short_storage = filament_contract_model::NativeJoinBudget::new(u64::MAX, u64::MAX)
+        .with_read_storage_limit(required_storage - 1);
+    assert!(matches!(
+        filament_contract_model::read_checked_package_with_catalog_and_budget(
+            &lock_only_bytes,
+            limits,
+            &lock_only_evidence,
+            &catalog,
+            &mut short_storage,
+        ),
+        filament_contract_model::CheckedPackageBudgetedDispatchResult::BudgetIncomplete(_)
+            | filament_contract_model::CheckedPackageBudgetedDispatchResult::Exhausted(_)
     ));
 
     let mut wrong_role = paired;
