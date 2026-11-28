@@ -87,10 +87,7 @@ pub fn read_checked_package_with_catalog(
         CheckedPackageDispatchResult::Refused(refusal)
             if matches!(
                 refusal.cause,
-                Some(
-                    CheckedPackageRefusalCause::OperationLawUnselected
-                        | CheckedPackageRefusalCause::OperationLawMismatch
-                )
+                Some(CheckedPackageRefusalCause::OperationLawUnselected)
             ) =>
         {
             let structural =
@@ -130,10 +127,7 @@ pub fn read_checked_package_with_catalog_and_budget(
         CheckedPackageBudgetedDispatchResult::Refused(refusal)
             if matches!(
                 refusal.cause,
-                Some(
-                    CheckedPackageRefusalCause::OperationLawUnselected
-                        | CheckedPackageRefusalCause::OperationLawMismatch
-                )
+                Some(CheckedPackageRefusalCause::OperationLawUnselected)
             ) =>
         {
             match CheckedPackageV2::read_catalog_bound_structural_with_budget(
@@ -186,8 +180,15 @@ fn catalog_refusal(
         .flatten()
         .cloned()
         .collect::<std::collections::BTreeSet<_>>();
+    let mut seen = std::collections::BTreeSet::new();
 
     for (index, definition) in package.lock().definition_selections.iter().enumerate() {
+        if catalog.is_selection(definition) && !seen.insert(definition.clone()) {
+            return Some(definition_refusal(
+                index,
+                CheckedPackageRefusalCause::WrongSelectionRole,
+            ));
+        }
         let operation_law = operation_laws.contains(definition);
         if let Some(refusal) = catalog_selection_refusal(index, definition, operation_law, catalog)
         {
@@ -197,12 +198,16 @@ fn catalog_refusal(
     None
 }
 
+#[implements("FR-038-AC-495")]
 fn catalog_selection_refusal(
     index: usize,
     definition: &super::shared::CheckedArtifactRef,
     operation_law: bool,
     catalog: &DefinitionCatalog,
 ) -> Option<CheckedPackageRefusal> {
+    if catalog.is_selection(definition) {
+        return None;
+    }
     if catalog.is_profile(definition) || (operation_law && catalog.is_extension(definition)) {
         return Some(definition_refusal(
             index,
@@ -295,5 +300,26 @@ pub fn read_checked_package_with_budget(
         CheckedPackageV2BudgetedReadResult::HostAllocationFailed(failure) => {
             CheckedPackageBudgetedDispatchResult::HostAllocationFailed(failure)
         }
+    }
+}
+
+#[cfg(test)]
+mod catalog_selection_tests {
+    use super::*;
+    use ix_trace_rs::trace;
+
+    #[test]
+    #[trace("FR-038-AC-495")]
+    fn known_selection_is_admitted_without_becoming_a_profile_or_extension() {
+        let definition = super::super::shared::CheckedArtifactRef {
+            authority: "agent-ix".into(),
+            identity: "filament.value.complete/v1".into(),
+        };
+        let mut catalog = DefinitionCatalog::new();
+        catalog.insert_selection(definition.clone());
+
+        assert!(catalog_selection_refusal(0, &definition, false, &catalog).is_none());
+        assert!(!catalog.is_profile(&definition));
+        assert!(!catalog.is_extension(&definition));
     }
 }
