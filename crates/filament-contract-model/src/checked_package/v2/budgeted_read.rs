@@ -162,7 +162,7 @@ impl CheckedPackageV2 {
         evidence: &CheckedPackageEvidence,
         budget: &mut NativeJoinBudget,
     ) -> CheckedPackageV2BudgetedReadResult {
-        Self::read_with_budget_mode(bytes, limits, evidence, budget, false)
+        Self::read_with_budget_mode(bytes, limits, evidence, budget, false, false)
     }
 
     /// Reads with law definitions treated as opaque values joined only to lock rows.
@@ -172,7 +172,21 @@ impl CheckedPackageV2 {
         evidence: &CheckedPackageEvidence,
         budget: &mut NativeJoinBudget,
     ) -> CheckedPackageV2BudgetedReadResult {
-        Self::read_with_budget_mode(bytes, limits, evidence, budget, true)
+        Self::read_with_budget_mode(bytes, limits, evidence, budget, true, false)
+    }
+
+    /// Reads an opaque-law package without requiring the lock row to join the
+    /// law. The catalog-bound dispatcher uses this result only to classify the
+    /// missing selection and never returns it as admitted.
+    pub(in crate::checked_package) fn read_catalog_bound_structural(
+        bytes: &[u8],
+        limits: CheckedPackageReadLimits,
+        evidence: &CheckedPackageEvidence,
+    ) -> CheckedPackageV2ReadResult {
+        let mut budget =
+            NativeJoinBudget::new(limits.work, u64::MAX).with_read_storage_limit(u64::MAX);
+        let outcome = Self::read_with_budget_mode(bytes, limits, evidence, &mut budget, true, true);
+        Self::unbudgeted_result(outcome, limits, &budget)
     }
 
     fn read_with_budget_mode(
@@ -181,6 +195,7 @@ impl CheckedPackageV2 {
         evidence: &CheckedPackageEvidence,
         budget: &mut NativeJoinBudget,
         opaque_law_definitions: bool,
+        allow_unselected_law_definitions: bool,
     ) -> CheckedPackageV2BudgetedReadResult {
         let work_before = budget.consumed();
         let storage_before = budget.read_storage_mark();
@@ -209,6 +224,7 @@ impl CheckedPackageV2 {
             work_before,
             storage_before,
             opaque_law_definitions,
+            allow_unselected_law_definitions,
         )
     }
 
@@ -238,6 +254,7 @@ impl CheckedPackageV2 {
             work_before,
             storage_before,
             false,
+            false,
         )
     }
 
@@ -250,6 +267,7 @@ impl CheckedPackageV2 {
         work_before: super::NativeJoinCharge,
         storage_before: u64,
         opaque_law_definitions: bool,
+        allow_unselected_law_definitions: bool,
     ) -> CheckedPackageV2BudgetedReadResult {
         let document = match read_envelope(bytes, limits, budget) {
             Ok(document) => document,
@@ -271,6 +289,7 @@ impl CheckedPackageV2 {
             evidence,
             budget,
             opaque_law_definitions,
+            allow_unselected_law_definitions,
         ) {
             Ok(package) => {
                 // The result's box is the read's last storage request, except
