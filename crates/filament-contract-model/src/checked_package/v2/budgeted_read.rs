@@ -270,6 +270,7 @@ impl CheckedPackageV2 {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn admit_with_catalog(
         catalog: super::operation_catalog::CatalogRef,
         bytes: &[u8],
