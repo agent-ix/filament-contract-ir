@@ -1,7 +1,6 @@
 //! Caller-supplied definition identities used to bind strict package reads.
 
 use super::shared::CheckedArtifactRef;
-use ix_trace_rs::implements;
 use std::collections::BTreeSet;
 
 /// Definitions available to a catalog-bound checked-package read.
@@ -43,7 +42,6 @@ impl DefinitionCatalog {
 
     /// Adds a known definition that is valid in `lock.definition_selections`
     /// but is neither a caller-supplied profile nor an extension.
-    #[implements("FR-038-AC-495")]
     pub fn insert_selection(&mut self, definition: CheckedArtifactRef) {
         self.profiles.remove(&definition);
         self.extensions.remove(&definition);

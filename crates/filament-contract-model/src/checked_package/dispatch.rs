@@ -198,7 +198,6 @@ fn catalog_refusal(
     None
 }
 
-#[implements("FR-038-AC-495")]
 fn catalog_selection_refusal(
     index: usize,
     definition: &super::shared::CheckedArtifactRef,
